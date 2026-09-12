@@ -1,0 +1,129 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this repo is
+
+The agent itself: it determines the probable cause of a US general-aviation accident from
+investigator-gathered evidence, scored against the NTSB's own published verdict. It is built on
+the decision made in `../ntsb-spike/` (spike complete, decision: build — see
+`../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
+"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **Nothing exists
+here yet.** Read build-brief §7 before writing any code — it is the spec for this repo.
+
+## Required components (build-brief §7)
+
+- **Agent loop and tool interface**, with a step budget, an abstain path, and a log of every
+  step and its cost. Tool #1 is the docket; weather (Iowa Mesonet ASOS, params already verified
+  in the spike's `config.yaml`) comes later.
+- **Docket client and PDF classifier/extractor** as an importable module with test fixtures
+  (the spike's probe scripts hard-code temporary paths and are not reusable as-is).
+- **Code-constrained output**: the model picks from a supplied list of NTSB occurrence/finding
+  codes with their meanings, not free text, so scoring is exact-match. Seed the code lookup
+  table from the spike's `decidability_form.build_code_lookups()`.
+- **Eval harness**: one command, fixed case list, ablation flags, per-slice reporting
+  (narrative / no-narrative), confidence intervals, cost per run. The spike's `baseline.py` and
+  `oneshot.py` are numerical anchors, not a harness.
+- **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
+  document lists with first-seen timestamps; resolution outcomes.
+- **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
+  predictions (design notes suggest committing hashed rows to git for tamper-evidence).
+- **Tests and CI**: the leakage assertion as a test, docket parser fixtures, a check that
+  held-out cases never appear in development fixtures, and a retrieval-contamination test if
+  similar-case search is ever added.
+- **Data ingestion as an incremental job** (not `fetch.py <start> <end>`): updates by docket
+  date and status, raw data kept out of git, processed file rebuilt.
+- **Live board**: the public surface — a page for open cases and a trajectory view of the
+  agent's steps and costs, in the clinical tone the design notes require.
+
+## Rules that carry from the spike
+
+1. **Evidence/answer split in one function with an assertion.** Analysis narrative, probable
+   cause, occurrence codes and finding codes are answer fields, never passed to a model except
+   for scoring. The spike's `oneshot.build_evidence()` + `assert_no_answer_fields()` is the seed
+   for this repo's equivalent, which needs a test. Never a second payload assembler.
+2. **Never guess API details.** Endpoints, params, field paths come from the NTSB's OpenAPI spec
+   (`../ntsb-spike/public.yaml`) or a saved real response, not invention.
+3. **Every reported number comes from a script.** No numbers from memory.
+4. **Raw data never goes in git.** Keep `data/raw/`, `data/processed/`, `*.zip`, `*.mdb` ignored.
+5. **Splits are fixed**: dev ≤2019, held-out 2020–2023, open ≥2024. Held-out is touched rarely;
+   open cases feed the live board only. Filter live cases on `completionStatus == "Ongoing"`,
+   not `!= "Completed"` (foreign `N/A` cases carry verdicts).
+6. **Clinical tone.** These are fatalities. No victim names in any output; nothing that reads as
+   a game.
+7. **Documents Andy must sign off** (briefs, plans, reports) are written in simplified technical
+   English: say why each datum matters and why each decision is made, give examples, end with a
+   glossary. Numbers stay exact and scripted.
+
+## Rules that start here
+
+8. **Every significant decision gets a record.** Architecture, scope, tooling and
+   methodology choices are written to `docs/decisions/` as a numbered record stating the
+   context, the decision, why it was taken, and what it rules out. A decision that exists
+   only in a commit message or a conversation is not recorded. The reasoning is the
+   substance of this project: a reader who disagrees with a choice should be able to find
+   the argument for it and say precisely where it fails, rather than guess at what was
+   considered. Records are append-only — a superseded decision gets a new record naming
+   the one it replaces, and the old record stays in place. Format:
+   `docs/decisions/README.md`.
+
+## What to carry over from the spike as-is
+
+- The field map in `../ntsb-spike/config.yaml`.
+- The evidence/answer field roles.
+- `build_evidence()` and its leakage assertion.
+- The split definitions (dev / held-out / open, above).
+- The two labelling sheets (`../ntsb-spike/labelling/leakage.filled.csv`,
+  `../ntsb-spike/labelling/decidability.filled.csv`) as regression fixtures.
+
+## Eval bars to beat (build-brief §6, held-out split)
+
+**These are the spike's numbers, measured on free-text output through the `claude` CLI.
+Output is now code-constrained (0006) and the transport is now OpenRouter (0009), so the
+57% is a historical reference, not the bar. S1 re-measures the ceiling on the stack that
+will actually run, and that figure becomes the bar. The baseline, the 88/12 narrative
+split and the cost ceiling are unaffected in kind.**
+
+| metric | baseline (n=1,000) | one-shot ceiling (n=40) |
+|---|---|---|
+| occurrence top-1 | 16.2% | 57% |
+| occurrence top-3 | 32.2% | 65% |
+| no-narrative cases, top-1 | not computed | 12% (n=16) |
+| cost per case | — | £0.034 measured |
+
+"The agent wins" means: ≥50% top-1 on no-narrative cases (below ~30% means the docket tool
+isn't delivering); overall held-out top-1 above 57%, first like-for-like on the same 40 cases
+then a larger sample; an ablation (docket tool on/off) shows the drop concentrated in
+no-narrative cases; abstention falls on no-narrative cases as the docket supplies evidence but
+stays sensible where only physical evidence could decide it; cost stays under £0.05/case on
+average including tool calls, enforced by a hard cap in code.
+
+The first like-for-like evaluation set is the 40 case IDs in
+`../ntsb-spike/labelling/decidability.filled.csv`.
+
+## Model access
+
+**Claude Code develops and maintains this project.** Every model call the *product* makes —
+evaluation runs and live scheduled calls alike — goes through OpenRouter
+(`https://openrouter.ai/api/v1/chat/completions`, bearer token from the environment, never
+in git). One transport for both, so the evaluated agent and the deployed agent are identical
+at the transport layer too. Decision record: `docs/decisions/0009-model-access-via-openrouter.md`,
+which supersedes the spike's "Claude exclusively" rule.
+
+The agent's model starts at `anthropic/claude-sonnet-5` to keep continuity with the spike;
+model choice is a harness parameter, not a constant. Evaluation runs use the `:batch` variant
+(half price, no latency requirement); the live path does not.
+
+Two consequences to hold on to:
+- The spike's £0.034/case and 57% top-1 were measured on a different transport. They are
+  historical reference points, not bars. The bar is whatever S1 measures on this stack.
+- `../ntsb-spike/config.yaml` prices Sonnet 5 at $3/$15 per MTok. It is $2/$10 (that is
+  Sonnet 4.6's rate). Correct it in S0.
+
+The £0.05/case cap is enforced in code, not just measured, because these calls are metered.
+
+
+## Note
+
+No code exists yet in this repo — there are no commands to run here. Set up structure per
+build-brief §7 before adding any "how to run" section to this file.
