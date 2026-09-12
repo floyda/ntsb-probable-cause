@@ -1,0 +1,40 @@
+# Raw and processed data — never in git, at any size (CLAUDE.md rule 4).
+# The corpus is ~950MB raw plus an ~85MB processed file, and this repo is public.
+data/raw/
+data/processed/
+*.zip
+*.mdb
+*.accdb
+*.parquet
+
+# Secrets. The OpenRouter key and anything like it lives in the environment.
+.env
+.env.*
+
+# Local state. The predictions store is derived and rebuildable; the committed
+# ledger is the durable, tamper-evident record.
+*.sqlite
+*.sqlite3
+*.db
+
+# Account-specific operational values, referenced from docs/runbooks/.
+*.local.md
+
+# Build and tooling output
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+cdk.out/
+dist/
+node_modules/
+.DS_Store
+
+# Deliberately NOT ignored: config.yaml.
+# The spike ignored its config and its filled labelling sheets, which is why its
+# headline numbers now rest on files nobody else can open. Config here carries no
+# secrets — those stay in the environment — so it is tracked.
