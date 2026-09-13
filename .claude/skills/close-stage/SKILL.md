@@ -26,8 +26,9 @@ tone, no personal names, and every number taken from a committed script or resul
   plan is deleted before they could be ticked). List the unticked steps and stop. Steps of the
   close-out task before that point (for example verifying Done-means, opening the pull request)
   must be ticked.
-- The current branch is main (git branch --show-current prints main), or no open pull request
-  exists for this branch (gh pr view fails). Report and stop.
+- The current branch is main (git branch --show-current prints main), or this branch
+  has no open pull request (gh pr view --json state --jq .state does not print OPEN).
+  Report and stop.
 - `make check` fails, or CI on the pull request is not green
   (`gh pr checks`). Report and stop.
 - A Done-means condition has no evidence (below). Report which one and stop, EXCEPT the

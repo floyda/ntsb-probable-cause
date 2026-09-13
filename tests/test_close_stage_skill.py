@@ -19,6 +19,6 @@ def test_skill_runs_the_documentation_check() -> None:
 def test_skill_exempts_its_own_close_out_steps() -> None:
     text = SKILL.read_text()
     assert "that runs `/close-stage` onward" in text
-    assert "no open pull request" in text
-    assert "exists for this branch" in text
+    assert "has no open pull request" in text
+    assert "gh pr view --json state --jq .state" in text
     assert "git branch --show-current" in text
