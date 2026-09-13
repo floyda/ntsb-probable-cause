@@ -4135,7 +4135,7 @@ Tell Andy the runbook is ready; tick this step only after he confirms it is appl
 - Consumes: `scripts.check_docs.AS_BUILT_PARTS`, `scripts.check_docs.SPEC_STATUSES` (Task 3).
 - Produces: a project skill invoked as `/close-stage` in Claude Code, used by Task 16 and by every later stage.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/test_close_stage_skill.py`:
 
@@ -4161,7 +4161,7 @@ def test_skill_runs_the_documentation_check() -> None:
 Run: `uv run pytest tests/test_close_stage_skill.py -v --no-cov`
 Expected: FAIL with `FileNotFoundError`.
 
-- [ ] **Step 2: Write the skill**
+- [x] **Step 2: Write the skill**
 
 `.claude/skills/close-stage/SKILL.md`:
 
@@ -4271,12 +4271,12 @@ git push
 ```
 ````
 
-- [ ] **Step 3: Run tests and checks**
+- [x] **Step 3: Run tests and checks**
 
 Run: `uv run pytest tests/test_close_stage_skill.py -v --no-cov && uv run python -m scripts.check_docs && make check`
 Expected: PASS. (`check_docs` only scans `README.md`, `CLAUDE.md` and `docs/`, so the skill's example links are not checked.)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .claude/skills/close-stage/SKILL.md tests/test_close_stage_skill.py docs/plans/2026-09-13-s0-foundation.md
