@@ -476,7 +476,7 @@ Expected: all three jobs succeed. If Dependabot rejects `package-ecosystem: uv` 
 - Consumes: nothing from the library.
 - Produces: `scripts.check_docs.check(root: Path) -> list[str]` (one human-readable problem per string; empty means clean) and `python -m scripts.check_docs [root]` exiting 1 on problems. Constants `SPEC_STATUSES` and `AS_BUILT_PARTS` are used verbatim by the close-stage skill (Task 15).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_check_docs.py`:
 
@@ -612,7 +612,7 @@ def test_plan_without_spec_line(tmp_path: Path) -> None:
 Run: `uv run pytest tests/test_check_docs.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.check_docs'`.
 
-- [ ] **Step 2: Implement the check**
+- [x] **Step 2: Implement the check**
 
 `scripts/check_docs.py`:
 
@@ -797,7 +797,12 @@ if __name__ == "__main__":
 Run: `uv run pytest tests/test_check_docs.py -v --no-cov`
 Expected: PASS. If `test_this_repository_is_clean` fails, read each problem: fix genuine broken links or references in the docs; if a pattern is a false positive (for example a four-digit number that is not a decision), tighten the regex and add a test for it. Record either kind of change under Deviations.
 
-- [ ] **Step 4: Add the pre-commit hook**
+- [x] **Step 3: Run the tests**
+
+Run: `uv run pytest tests/test_check_docs.py -v --no-cov`
+Expected: PASS. If `test_this_repository_is_clean` fails, read each problem: fix genuine broken links or references in the docs; if a pattern is a false positive (for example a four-digit number that is not a decision), tighten the regex and add a test for it. Record either kind of change under Deviations.
+
+- [x] **Step 4: Add the pre-commit hook**
 
 Append under `repo: local` → `hooks` in `.pre-commit-config.yaml`:
 
@@ -808,7 +813,7 @@ Append under `repo: local` → `hooks` in `.pre-commit-config.yaml`:
 Run: `uv run pre-commit run check-docs --all-files && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/check_docs.py tests/test_check_docs.py .pre-commit-config.yaml docs/plans/2026-09-13-s0-foundation.md
@@ -4358,4 +4363,5 @@ moves these into the specification's As-built section when S0 closes.
 - Task 1, step 1 (review fix round 1): added `force-exclude = true` to `[tool.ruff]` — Task 2's pre-commit hooks invoke ruff with explicit filenames, and ruff ignores `extend-exclude` for paths passed explicitly unless `force-exclude` is set, which would have let `docs/**.md` and `scripts/exploratory/*.py` back into pre-commit's ruff run despite the exclude added above. Also added `exclude = ["scripts/exploratory"]` to `[tool.vulture]` (vulture's `pyproject.toml` config supports it) so every tool treats the frozen exploratory script the same way. No decision record.
 - Task 2, step 2: the `typos` hook flagged `mis` (from the hyphenated "mis-pointed" in `docs/decisions/0016-layered-leakage-guard-and-model-boundary.md:47`) as a misspelling. Rather than edit the committed decision record's content, added `mis = "mis"` to `[tool.typos.default.extend-words]` in `pyproject.toml` with a comment. Not an NTSB abbreviation as the brief's example anticipated, but the same mechanism (a documented false-positive allowlist entry) applies. No decision record.
 - Task 2, step 2: the `trailing-whitespace` hook fixed trailing whitespace in `docs/specs/2026-09-13-s0-design-measurements.txt`; a pure whitespace/EOF fix on a pre-existing file, not a content change, so applied without stopping.
+- Task 3, step 2: the decision reference regex `_DECISION_REF` in the brief had lookahead `(?![\d.])` which prevented matching decision numbers followed by periods (e.g. at sentence ends like "decision 0017."). Changed to `(?!\d)` to allow periods while preventing digit sequences (e.g. "00420"); this matches the intent of the test `test_dangling_decision_reference`. No decision record (bug fix in the plan's code, not a change of approach).
 - Task 2, step 4 (review fix round 1): the brief's `gitleaks` pre-commit hook and `check-added-large-files` hook are staged-only — gitleaks' upstream hook runs `gitleaks git --pre-commit --staged`, and `check-added-large-files` without `--enforce-all` only checks staged additions. In CI's `pre-commit run --all-files`, a fresh checkout has nothing staged, so both hooks report success while checking nothing (gitleaks: "0 commits scanned"). Fixed by adding, to the `lint` job in `.github/workflows/ci.yml`: (1) `fetch-depth: 0` on the checkout, a step downloading the `gitleaks` v8.30.1 `linux_x64` release tarball, verifying its sha256 (`551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`, resolved from the release's own `gitleaks_8.30.1_checksums.txt` and cross-checked by downloading and hashing the tarball directly) against a hard-coded value in the workflow, then running `gitleaks git --redact --verbose .` over the full history; and (2) a second `check-added-large-files-all` local hook in `.pre-commit-config.yaml` with `args: [--maxkb=500, --enforce-all]` and `stages: [manual]`, run explicitly in CI as `pre-commit run --hook-stage manual check-added-large-files-all --all-files`. Both steps stay inside the existing `lint` job — no new job name, so Task 14's required-context list (`lint`/`test`/`audit`) is unaffected. No decision record (fixing a real gap the plan's hook config left open, not a change of approach).
