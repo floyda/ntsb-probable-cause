@@ -61,6 +61,11 @@ def test_month_parse_rejects_bad_text() -> None:
         Month.parse("2020-13")
 
 
+def test_months_between_rejects_reversed_range() -> None:
+    with pytest.raises(ValueError, match=r"2019-11.*2020-02"):
+        months_between("2020-02", "2019-11")
+
+
 def test_fetch_writes_pages_verbatim_and_a_manifest_line(tmp_path: Path) -> None:
     pages = [page(1, ["A", "B"], True), page(2, ["C"], False)]
     source = FakeSource({date(2016, 8, 1): pages})
@@ -114,6 +119,14 @@ def test_verify_detects_changed_file(tmp_path: Path) -> None:
     (entry,) = fetch_months(source, [Month(2016, 8)], tmp_path)
     (month_dir(tmp_path, "2016-08") / "page-01.json").write_bytes(b"{}")
     with pytest.raises(ManifestError, match="sha256"):
+        verify_entry(tmp_path, entry)
+
+
+def test_verify_detects_missing_file(tmp_path: Path) -> None:
+    source = FakeSource({date(2016, 8, 1): [page(1, ["A"], False)]})
+    (entry,) = fetch_months(source, [Month(2016, 8)], tmp_path)
+    (month_dir(tmp_path, "2016-08") / "page-01.json").unlink()
+    with pytest.raises(ManifestError, match="missing"):
         verify_entry(tmp_path, entry)
 
 

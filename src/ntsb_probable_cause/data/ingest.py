@@ -62,6 +62,8 @@ class Month:
 def months_between(first: str, last: str) -> list[Month]:
     """Every month from ``first`` to ``last`` inclusive."""
     current, final = Month.parse(first), Month.parse(last)
+    if final < current:
+        raise ValueError(f"last month {last!r} is before first month {first!r}")
     months: list[Month] = []
     while current <= final:
         months.append(current)
