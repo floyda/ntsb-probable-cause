@@ -2,7 +2,9 @@ import json
 
 import pytest
 
+from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.model import client as model_client
 from ntsb_probable_cause.model.client import ModelSettings, Payload, RecordingFakeClient
 from ntsb_probable_cause.records.evidence import Evidence
 
@@ -41,6 +43,27 @@ def test_excluded_roles_are_not_rendered() -> None:
 def test_payload_cannot_be_constructed_directly() -> None:
     with pytest.raises(TypeError, match="from_evidence"):
         Payload('{"probable_cause": "leak"}', _token=object())
+
+
+def test_payload_is_immutable_after_construction() -> None:
+    payload = Payload.from_evidence(EVIDENCE)
+    with pytest.raises(AttributeError):
+        payload._text = "tampered"
+    with pytest.raises(AttributeError):
+        del payload._text
+
+
+def test_render_check_error_names_the_offending_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A role that overlaps a withheld name must be named in the error, not print an empty list.
+
+    Realistic mutation: a name added to a withheld role set collides with an existing evidence
+    role. Before the fix, the error's key list was always computed as ``keys - _EVIDENCE_NAMES``,
+    which is empty whenever every sent key is already a legitimate evidence role -- exactly this
+    case -- so the message printed ``[]`` instead of naming the offending role.
+    """
+    monkeypatch.setattr(model_client, "WITHHELD_ROLE_NAMES", frozenset({"aircraft_make"}))
+    with pytest.raises(LeakageError, match=r"\['aircraft_make'\]"):
+        Payload.from_evidence(EVIDENCE)
 
 
 def test_recording_fake_records_payloads_and_replays_replies() -> None:

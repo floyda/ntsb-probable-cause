@@ -10,6 +10,7 @@ from ntsb_probable_cause.records.guard import find_leaks
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.sources import docket_url
 
 Splitter = Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]]
 
@@ -50,8 +51,10 @@ def assert_boundary_holds(raw: Mapping[str, object], split: Splitter = split_rec
         )
 
     assert str(raw.get("ntsbNumber")) not in sent.text, "bookkeeping: case number was sent"
-    if evidence.docket_url:
-        assert evidence.docket_url not in sent.text, "bookkeeping: docket URL was sent"
+    mkey = raw.get("mKey")
+    expected_docket_url = docket_url(mkey) if isinstance(mkey, int) else None
+    if expected_docket_url:
+        assert expected_docket_url not in sent.text, "bookkeeping: docket URL was sent"
 
     withheld = {
         "factual_narrative": fields.factual_narrative(raw),

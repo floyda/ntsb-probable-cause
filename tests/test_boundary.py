@@ -1,9 +1,11 @@
+import copy
 from collections.abc import Mapping
 
 import pytest
 from tests.boundary import assert_boundary_holds
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
@@ -26,7 +28,7 @@ def test_boundary_test_fails_when_the_splitter_leaks(
         return leaked, synthesis, verdict
 
     raw = next(r for r in record_fixtures if fields.factual_narrative(r))
-    with pytest.raises(AssertionError, match=r"provenance|tripwire"):
+    with pytest.raises(AssertionError, match=r"^provenance"):
         assert_boundary_holds(raw, leaky_split)
 
 
@@ -41,31 +43,29 @@ def test_boundary_test_fails_when_a_value_comes_from_the_wrong_place(
             verdict,
         )
 
-    with pytest.raises(AssertionError, match="provenance"):
+    with pytest.raises(AssertionError, match=r"^provenance"):
         assert_boundary_holds(record_fixtures[0], swapped_split)
 
 
-def test_boundary_test_fails_for_a_hand_built_evidence_carrying_withheld_text(
+def test_boundary_fails_when_only_the_tripwire_can_catch_a_leak(
     record_fixtures: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Mutation test: coverage does not depend on split_record's own construction path.
+    """Mutation test: prove the tripwire layer itself can fail, not just provenance.
 
-    A splitter that never calls ``split_record`` at all -- it builds an ``Evidence`` by hand,
-    with withheld text placed directly in a free-text evidence role -- must still be caught.
+    The other two mutation tests above both fail on provenance, because their mutated evidence
+    disagrees with what the real extractor reads from the raw record. This test mutates the raw
+    record itself so an evidence extractor's own faithful reading equals the record's probable
+    cause -- provenance holds -- and disables ``split_record``'s own leakage guard, so only
+    ``assert_boundary_holds``'s tripwire block can catch the leak.
     """
+    raw = next(r for r in record_fixtures if fields.probable_cause(r))
+    mutated = copy.deepcopy(raw)
+    aircrafts = mutated["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftMake"] = fields.probable_cause(raw)
 
-    def hand_built_split(raw: Mapping[str, object]) -> tuple[Evidence, Synthesis, Verdict]:
-        _, synthesis, verdict = split_record(raw)
-        case_id = raw["ntsbNumber"]
-        assert isinstance(case_id, str)
-        assert synthesis.factual_narrative is not None
-        evidence = Evidence(
-            case_id=case_id,
-            docket_url=None,
-            prelim_narrative=synthesis.factual_narrative,
-        )
-        return evidence, synthesis, verdict
+    monkeypatch.setattr(split_module, "find_leaks", lambda *_a, **_k: [])
 
-    raw = next(r for r in record_fixtures if fields.factual_narrative(r))
-    with pytest.raises(AssertionError, match=r"provenance|tripwire"):
-        assert_boundary_holds(raw, hand_built_split)
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_boundary_holds(mutated)

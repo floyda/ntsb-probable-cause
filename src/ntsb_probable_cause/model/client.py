@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Protocol, final
 
 from pydantic import BaseModel, ConfigDict
 
@@ -14,15 +14,27 @@ _CONSTRUCTION_TOKEN = object()
 _EVIDENCE_NAMES = frozenset(role.value for role in EvidenceRole)
 
 
+@final
 class Payload:
-    """The exact text a model would receive. Built only by ``Payload.from_evidence``."""
+    """The exact text a model would receive. Built only by ``Payload.from_evidence``.
+
+    Immutable: ``__setattr__``/``__delattr__`` refuse any change after construction, and
+    ``@final`` closes off subclassing, which would otherwise bypass the construction token.
+    """
 
     __slots__ = ("_text",)
+    _text: str
 
     def __init__(self, text: str, *, _token: object) -> None:
         if _token is not _CONSTRUCTION_TOKEN:
             raise TypeError("Payload is built only by Payload.from_evidence")
-        self._text = text
+        object.__setattr__(self, "_text", text)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"Payload is immutable: cannot set {name!r}")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"Payload is immutable: cannot delete {name!r}")
 
     @classmethod
     def from_evidence(cls, evidence: Evidence) -> Payload:
@@ -34,9 +46,9 @@ class Payload:
         }
         keys = set(values)
         if not keys <= _EVIDENCE_NAMES or keys & WITHHELD_ROLE_NAMES:
+            offending = (keys - _EVIDENCE_NAMES) | (keys & WITHHELD_ROLE_NAMES)
             raise LeakageError(
-                f"{evidence.case_id}: payload keys outside evidence roles: "
-                f"{sorted(keys - _EVIDENCE_NAMES)}"
+                f"{evidence.case_id}: payload keys outside evidence roles: {sorted(offending)}"
             )
         return cls(
             json.dumps(values, indent=1, sort_keys=True, ensure_ascii=False),
