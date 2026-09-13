@@ -1,0 +1,244 @@
+"""Field roles and the raw paths each role reads (decisions 0013 and 0016).
+
+Method constants carried from the spike's config.yaml field map, less the factual narrative,
+which is synthesis. Change only with a decision record.
+"""
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+
+from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.paths import is_under, resolve_path
+
+Raw = Mapping[str, object]
+EvidenceValue = str | float | tuple[str, ...] | None
+
+
+class EvidenceRole(StrEnum):
+    """Observations. The only roles rendered into a model payload."""
+
+    PRELIM_NARRATIVE = "prelim_narrative"
+    AIRCRAFT_MAKE = "aircraft_make"
+    AIRCRAFT_MODEL = "aircraft_model"
+    REGISTRATION = "registration"
+    ENGINE_TYPE = "engine_type"
+    PILOT_CERTIFICATES = "pilot_certificates"
+    PILOT_TOTAL_HOURS = "pilot_total_hours"
+    PILOT_HOURS_IN_TYPE = "pilot_hours_in_type"
+    WEATHER_CONDITION = "weather_condition"
+    WEATHER_METAR = "weather_metar"
+    PHASE_OF_FLIGHT = "phase_of_flight"
+    INJURY_LEVEL = "injury_level"
+
+
+class SynthesisRole(StrEnum):
+    """The investigator's write-up. Withheld."""
+
+    FACTUAL_NARRATIVE = "factual_narrative"
+    ANALYSIS_NARRATIVE = "analysis_narrative"
+
+
+class VerdictRole(StrEnum):
+    """The determination. Withheld; used for scoring."""
+
+    PROBABLE_CAUSE = "probable_cause"
+    OCCURRENCE_CODES = "occurrence_codes"
+    FINDING_CODES = "finding_codes"
+
+
+WITHHELD_ROLE_NAMES = frozenset({*SynthesisRole, *VerdictRole})
+
+WITHHELD_SUBTREES = (
+    "narratives[].concatenatedFactualNarrative",
+    "narratives[].analysisNarrative",
+    "narratives[].probableCause",
+    "aircrafts[].events[]",
+    "aircrafts[].findings[]",
+    "richNarratives",
+)
+
+PATH_CHECK_EXCEPTIONS: Mapping[tuple[EvidenceRole, str], str] = {
+    (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].events[]"): (
+        "decision 0016: open cases carry the coded event sequence from day 1; "
+        "spike ablation: at most 2.5 points of one-shot top-1"
+    ),
+}
+
+
+@dataclass(frozen=True)
+class EvidenceField:
+    """One evidence role, every raw path it reads, and how to read it."""
+
+    role: EvidenceRole
+    sources: tuple[str, ...]
+    extract: Callable[[Raw], EvidenceValue]
+
+
+def _dicts(value: object) -> list[Mapping[str, object]]:
+    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
+
+
+def _text_at(path: str) -> Callable[[Raw], EvidenceValue]:
+    def extract(raw: Raw) -> EvidenceValue:
+        value = resolve_path(raw, path)
+        return value if isinstance(value, str) and value.strip() else None
+
+    return extract
+
+
+def _strings_at(path: str) -> Callable[[Raw], EvidenceValue]:
+    def extract(raw: Raw) -> EvidenceValue:
+        value = resolve_path(raw, path)
+        items = tuple(v for v in value if isinstance(v, str)) if isinstance(value, list) else ()
+        return items or None
+
+    return extract
+
+
+def _pilot_hours(craft: str) -> Callable[[Raw], EvidenceValue]:
+    def extract(raw: Raw) -> EvidenceValue:
+        rows = _dicts(resolve_path(raw, "aircrafts[0].crewAndOccupants[0].pilotsFlightTimeMatrix"))
+        for row in rows:
+            hours = row.get("flightHours")
+            if row.get("flightTimeType") == "Total" and row.get("flightTimeCraft") == craft:
+                return float(hours) if isinstance(hours, int | float) else None
+        return None
+
+    return extract
+
+
+def _sequence(event: Mapping[str, object]) -> int:
+    value = event.get("sequenceNumber")
+    return value if isinstance(value, int) else 0
+
+
+def _finding_number(finding: Mapping[str, object]) -> int:
+    value = finding.get("findingNumber")
+    return value if isinstance(value, int) else 0
+
+
+def _ordered_events(raw: Raw) -> list[Mapping[str, object]]:
+    events = _dicts(resolve_path(raw, "aircrafts[0].events"))
+    defining = [e for e in events if e.get("isDefiningEvent") is True]
+    rest = sorted((e for e in events if e.get("isDefiningEvent") is not True), key=_sequence)
+    return defining + rest
+
+
+def _phase_of_flight(raw: Raw) -> EvidenceValue:
+    events = _dicts(resolve_path(raw, "aircrafts[0].events"))
+    defining = [e for e in events if e.get("isDefiningEvent") is True]
+    ordered = defining or sorted(events, key=_sequence)
+    phase = ordered[0].get("cicttPhaseSOEGroup") if ordered else None
+    return phase if isinstance(phase, str) and phase.strip() else None
+
+
+_MATRIX = "aircrafts[0].crewAndOccupants[0].pilotsFlightTimeMatrix[]"
+
+EVIDENCE_FIELDS: tuple[EvidenceField, ...] = (
+    EvidenceField(
+        EvidenceRole.PRELIM_NARRATIVE,
+        ("narratives[0].prelimNarrative",),
+        _text_at("narratives[0].prelimNarrative"),
+    ),
+    EvidenceField(
+        EvidenceRole.AIRCRAFT_MAKE,
+        ("aircrafts[0].aircraftMake",),
+        _text_at("aircrafts[0].aircraftMake"),
+    ),
+    EvidenceField(
+        EvidenceRole.AIRCRAFT_MODEL,
+        ("aircrafts[0].aircraftModel",),
+        _text_at("aircrafts[0].aircraftModel"),
+    ),
+    EvidenceField(
+        EvidenceRole.REGISTRATION,
+        ("aircrafts[0].aircraftRegistrationNumber",),
+        _text_at("aircrafts[0].aircraftRegistrationNumber"),
+    ),
+    EvidenceField(
+        EvidenceRole.ENGINE_TYPE,
+        ("aircrafts[0].engines[0].engineType",),
+        _text_at("aircrafts[0].engines[0].engineType"),
+    ),
+    EvidenceField(
+        EvidenceRole.PILOT_CERTIFICATES,
+        ("aircrafts[0].crewAndOccupants[0].pilotCertificates",),
+        _strings_at("aircrafts[0].crewAndOccupants[0].pilotCertificates"),
+    ),
+    EvidenceField(
+        EvidenceRole.PILOT_TOTAL_HOURS,
+        (f"{_MATRIX}.flightTimeType", f"{_MATRIX}.flightTimeCraft", f"{_MATRIX}.flightHours"),
+        _pilot_hours("All AC"),
+    ),
+    EvidenceField(
+        EvidenceRole.PILOT_HOURS_IN_TYPE,
+        (f"{_MATRIX}.flightTimeType", f"{_MATRIX}.flightTimeCraft", f"{_MATRIX}.flightHours"),
+        _pilot_hours("Make and Model"),
+    ),
+    EvidenceField(
+        EvidenceRole.WEATHER_CONDITION,
+        ("weatherConditions[0].accidentSiteCondition",),
+        _text_at("weatherConditions[0].accidentSiteCondition"),
+    ),
+    EvidenceField(
+        EvidenceRole.WEATHER_METAR,
+        ("weatherConditions[0].metar",),
+        _text_at("weatherConditions[0].metar"),
+    ),
+    EvidenceField(
+        EvidenceRole.PHASE_OF_FLIGHT,
+        (
+            "aircrafts[0].events[].isDefiningEvent",
+            "aircrafts[0].events[].sequenceNumber",
+            "aircrafts[0].events[].cicttPhaseSOEGroup",
+        ),
+        _phase_of_flight,
+    ),
+    EvidenceField(
+        EvidenceRole.INJURY_LEVEL, ("highestInjuryLevel",), _text_at("highestInjuryLevel")
+    ),
+)
+
+
+def check_evidence_paths(fields: Sequence[EvidenceField] = EVIDENCE_FIELDS) -> None:
+    """Raise LeakageError if any evidence source lies under a withheld subtree (guard layer 2)."""
+    for field in fields:
+        for source in field.sources:
+            for subtree in WITHHELD_SUBTREES:
+                if is_under(source, subtree) and (field.role, subtree) not in PATH_CHECK_EXCEPTIONS:
+                    raise LeakageError(
+                        f"evidence role {field.role} reads {source}, under withheld {subtree}"
+                    )
+
+
+def factual_narrative(raw: Raw) -> str | None:
+    """Synthesis: the factual narrative."""
+    value = _text_at("narratives[0].concatenatedFactualNarrative")(raw)
+    return value if isinstance(value, str) else None
+
+
+def analysis_narrative(raw: Raw) -> str | None:
+    """Synthesis: the analysis narrative."""
+    value = _text_at("narratives[0].analysisNarrative")(raw)
+    return value if isinstance(value, str) else None
+
+
+def probable_cause(raw: Raw) -> str | None:
+    """Verdict: the probable-cause text."""
+    value = _text_at("narratives[0].probableCause")(raw)
+    return value if isinstance(value, str) else None
+
+
+def occurrence_codes(raw: Raw) -> tuple[str, ...]:
+    """Verdict: event codes, defining event first, then by sequence number."""
+    return tuple(code for e in _ordered_events(raw) if isinstance(code := e.get("eventCode"), str))
+
+
+def finding_codes(raw: Raw) -> tuple[str, ...]:
+    """Verdict: finding codes ordered by finding number."""
+    findings = sorted(_dicts(resolve_path(raw, "aircrafts[0].findings")), key=_finding_number)
+    return tuple(code for f in findings if isinstance(code := f.get("findingCode"), str))
+
+
+check_evidence_paths()

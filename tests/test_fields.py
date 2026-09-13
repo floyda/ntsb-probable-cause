@@ -1,0 +1,141 @@
+import pytest
+
+from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.fields import (
+    EVIDENCE_FIELDS,
+    EvidenceField,
+    EvidenceRole,
+    check_evidence_paths,
+    finding_codes,
+    occurrence_codes,
+)
+
+RAW: dict[str, object] = {
+    "highestInjuryLevel": "Fatal",
+    "narratives": [{"prelimNarrative": None, "probableCause": "Cause.", "analysisNarrative": "A."}],
+    "weatherConditions": [{"accidentSiteCondition": "Visual (VMC)", "metar": "KABC 011200Z"}],
+    "aircrafts": [
+        {
+            "aircraftMake": "CESSNA",
+            "aircraftModel": "172SP",
+            "aircraftRegistrationNumber": "N2228L",
+            "engines": [{"engineType": "Reciprocating"}],
+            "crewAndOccupants": [
+                {
+                    "pilotCertificates": ["Private"],
+                    "pilotsFlightTimeMatrix": [
+                        {
+                            "flightTimeType": "Total",
+                            "flightTimeCraft": "All AC",
+                            "flightHours": 250,
+                        },
+                        {
+                            "flightTimeType": "Total",
+                            "flightTimeCraft": "Make and Model",
+                            "flightHours": 40,
+                        },
+                        {
+                            "flightTimeType": "24 Hours",
+                            "flightTimeCraft": "All AC",
+                            "flightHours": 2,
+                        },
+                    ],
+                }
+            ],
+            "events": [
+                {
+                    "eventCode": "300300",
+                    "sequenceNumber": 2,
+                    "isDefiningEvent": False,
+                    "cicttPhaseSOEGroup": "Takeoff",
+                },
+                {
+                    "eventCode": "300230",
+                    "sequenceNumber": 1,
+                    "isDefiningEvent": True,
+                    "cicttPhaseSOEGroup": "Initial Climb",
+                },
+                {
+                    "eventCode": "400100",
+                    "sequenceNumber": 3,
+                    "isDefiningEvent": False,
+                    "cicttPhaseSOEGroup": "Landing",
+                },
+            ],
+            "findings": [
+                {"findingCode": "0203000046", "findingNumber": 2},
+                {"findingCode": "0106202020", "findingNumber": 1},
+            ],
+        }
+    ],
+}
+
+
+def extracted() -> dict[EvidenceRole, object]:
+    return {f.role: f.extract(RAW) for f in EVIDENCE_FIELDS}
+
+
+def test_every_evidence_role_has_one_field() -> None:
+    assert sorted(f.role for f in EVIDENCE_FIELDS) == sorted(EvidenceRole)
+
+
+def test_simple_extractions() -> None:
+    values = extracted()
+    assert values[EvidenceRole.AIRCRAFT_MAKE] == "CESSNA"
+    assert values[EvidenceRole.REGISTRATION] == "N2228L"
+    assert values[EvidenceRole.ENGINE_TYPE] == "Reciprocating"
+    assert values[EvidenceRole.WEATHER_METAR] == "KABC 011200Z"
+    assert values[EvidenceRole.INJURY_LEVEL] == "Fatal"
+    assert values[EvidenceRole.PRELIM_NARRATIVE] is None
+    assert values[EvidenceRole.PILOT_CERTIFICATES] == ("Private",)
+
+
+def test_pilot_hours_from_matrix() -> None:
+    values = extracted()
+    assert values[EvidenceRole.PILOT_TOTAL_HOURS] == 250.0
+    assert values[EvidenceRole.PILOT_HOURS_IN_TYPE] == 40.0
+
+
+def test_phase_of_flight_uses_defining_event() -> None:
+    assert extracted()[EvidenceRole.PHASE_OF_FLIGHT] == "Initial Climb"
+
+
+def test_phase_of_flight_falls_back_to_first_by_sequence() -> None:
+    aircraft = {
+        "events": [
+            {"sequenceNumber": 2, "isDefiningEvent": False, "cicttPhaseSOEGroup": "Landing"},
+            {"sequenceNumber": 1, "isDefiningEvent": False, "cicttPhaseSOEGroup": "Approach"},
+        ]
+    }
+    field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+    assert field.extract({"aircrafts": [aircraft]}) == "Approach"
+
+
+def test_verdict_codes_are_ordered() -> None:
+    assert occurrence_codes(RAW) == ("300230", "300300", "400100")
+    assert finding_codes(RAW) == ("0106202020", "0203000046")
+
+
+def test_extractors_tolerate_empty_record() -> None:
+    assert all(f.extract({}) is None for f in EVIDENCE_FIELDS)
+    assert occurrence_codes({}) == ()
+
+
+def test_real_field_map_passes_path_check() -> None:
+    check_evidence_paths()
+
+
+def test_path_check_rejects_role_pointed_at_withheld_field() -> None:
+    bad = EvidenceField(
+        EvidenceRole.AIRCRAFT_MAKE, ("narratives[0].analysisNarrative",), lambda _: None
+    )
+    with pytest.raises(LeakageError, match="analysisNarrative"):
+        check_evidence_paths((bad,))
+
+
+def test_path_check_exception_applies_only_to_phase_of_flight() -> None:
+    bad = EvidenceField(
+        EvidenceRole.INJURY_LEVEL, ("aircrafts[0].events[].eventCode",), lambda _: None
+    )
+    with pytest.raises(LeakageError, match="events"):
+        check_evidence_paths((bad,))

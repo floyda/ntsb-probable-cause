@@ -1084,7 +1084,7 @@ git commit -m "S0: splits by event date, cited source constants, settings, error
   - `fields.check_evidence_paths(fields: Sequence[EvidenceField] = EVIDENCE_FIELDS) -> None` (raises `LeakageError`; runs at import).
   - Withheld extractors: `fields.factual_narrative(raw) -> str | None`, `fields.analysis_narrative(raw) -> str | None`, `fields.probable_cause(raw) -> str | None`, `fields.occurrence_codes(raw) -> tuple[str, ...]`, `fields.finding_codes(raw) -> tuple[str, ...]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_paths.py`:
 
@@ -1245,7 +1245,7 @@ def test_path_check_exception_applies_only_to_phase_of_flight() -> None:
 Run: `uv run pytest tests/test_paths.py tests/test_fields.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 2: Implement `paths.py`**
+- [x] **Step 2: Implement `paths.py`**
 
 ```python
 """Resolve dotted JSON paths against nested case records."""
@@ -1285,7 +1285,7 @@ def is_under(path: str, subtree: str) -> bool:
     return parts[: len(prefix)] == prefix
 ```
 
-- [ ] **Step 3: Implement `fields.py`**
+- [x] **Step 3: Implement `fields.py`**
 
 ```python
 """Field roles and the raw paths each role reads (decisions 0013 and 0016).
@@ -1488,12 +1488,12 @@ check_evidence_paths()
 
 If ruff's line length rejects the long `EvidenceField(...)` lines, run `uv run ruff format src/ntsb_probable_cause/fields.py` (formatting only).
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_paths.py tests/test_fields.py -v --no-cov && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/paths.py src/ntsb_probable_cause/fields.py tests/test_paths.py tests/test_fields.py docs/plans/2026-09-13-s0-foundation.md
@@ -4362,3 +4362,6 @@ moves these into the specification's As-built section when S0 closes.
 - Task 3, step 2: the fenced-code regex `_FENCE` in the brief used `^```.*?^````, which does not track backtick count and pairs any opening fence with the first closing fence of three backticks — breaking on nested fences (e.g. four-backtick block containing three-backtick block). Changed to `^(`{3,})[^\n]*\n.*?^\1`*[ \t]*$` which matches the opening backtick run (3+), strips the block with the same or more backticks at closing, and handles nesting. Added tests `test_nested_code_fences_not_scanned`, `test_decision_reference_allows_sentence_final_period`, `test_decimal_numbers_not_flagged_as_decisions`. No decision record (bug fix in the plan's code, not a change of approach).
 - Task 3, step 2: the decision reference regex lookahead was `(?![\d.])` per the brief, which rejected periods and digits after a decision number (preventing "0017." at sentence ends); changed to `(?!\.\d)` which rejects only periods followed by digits (preventing "0123.4" decimals while allowing "0017." sentences). The brief's original intent was to reject decimals; the lookahead `(?![\d.])` incorrectly rejected sentence-final periods. Added tests and fixed the deviation explanation. No decision record (bug fix in the plan's code, not a change of approach).
 - Task 4, step 3 (review fix round 1): Settings now uses `env_prefix="NTSB_"` in model config, so environment variable names are `NTSB_DATA_DIR` and `NTSB_REQUESTS_PER_MINUTE`. The API key field uses `validation_alias="NTSB_API_KEY"` to prevent doubling as `NTSB_NTSB_API_KEY`. Tests use autouse fixture clearing all related env vars and construct `Settings` with `_env_file=None` in every test. Added tests verifying that NTSB-prefixed vars are honored and unprefixed vars (bare `DATA_DIR`, `REQUESTS_PER_MINUTE`) are ignored. Plan fix: generic `DATA_DIR` and `REQUESTS_PER_MINUTE` from the shell previously overrode defaults because `Settings` had no prefix; the product's own data paths could be accidentally redirected. No decision record (fixing a plan bug, not a change of approach).
+- Task 5, step 2: shortened `resolve_path`'s docstring from the brief's wording (105 chars) to fit ruff's 100-char line limit (`E501`), which the brief's own code did not satisfy verbatim. Wording only, no behaviour change. No decision record.
+- Task 5, step 2/3: ran `uv run ruff format` on `fields.py` and `tests/test_fields.py` as the brief anticipated ("If ruff's line length rejects the long `EvidenceField(...)` lines, run `uv run ruff format`") — reformats several multi-arg calls and nested literals onto multiple lines; formatting only, no behaviour change.
+- Task 5: real-data verification against three dev-split months (2016-08, 2017-03, 2018-05; n=473) from `../ntsb-spike/data/raw/fetched=2026-09-11/`: every `EvidenceRole` and withheld extractor returned the expected type on every record it touched. `weather_metar` was non-null on 0/473 records — not a bug: `../ntsb-spike/config.yaml:91` documents that V2 records embed the accident-site METAR "from ~2019 on," and all three sampled months predate that. Field map and path check left unchanged.
