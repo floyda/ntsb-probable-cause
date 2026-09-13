@@ -1,3 +1,5 @@
+from types import MappingProxyType
+
 import pytest
 
 from ntsb_probable_cause.errors import LeakageError
@@ -5,14 +7,28 @@ from ntsb_probable_cause.fields import (
     EVIDENCE_FIELDS,
     EvidenceField,
     EvidenceRole,
+    analysis_narrative,
     check_evidence_paths,
+    check_path_exceptions,
+    factual_narrative,
     finding_codes,
     occurrence_codes,
+    probable_cause,
 )
 
 RAW: dict[str, object] = {
     "highestInjuryLevel": "Fatal",
-    "narratives": [{"prelimNarrative": None, "probableCause": "Cause.", "analysisNarrative": "A."}],
+    "narratives": [
+        {
+            "prelimNarrative": None,
+            "probableCause": "Cause.",
+            "analysisNarrative": "A.",
+            "concatenatedFactualNarrative": (
+                "The airplane departed controlled flight during the approach and impacted "
+                "terrain in a wooded area short of the runway."
+            ),
+        }
+    ],
     "weatherConditions": [{"accidentSiteCondition": "Visual (VMC)", "metar": "KABC 011200Z"}],
     "aircrafts": [
         {
@@ -121,8 +137,21 @@ def test_extractors_tolerate_empty_record() -> None:
     assert occurrence_codes({}) == ()
 
 
+def test_withheld_text_extractors_on_raw() -> None:
+    assert factual_narrative(RAW) == (
+        "The airplane departed controlled flight during the approach and impacted "
+        "terrain in a wooded area short of the runway."
+    )
+    assert analysis_narrative(RAW) == "A."
+    assert probable_cause(RAW) == "Cause."
+
+
 def test_real_field_map_passes_path_check() -> None:
     check_evidence_paths()
+
+
+def test_real_exceptions_are_not_stale() -> None:
+    check_path_exceptions()
 
 
 def test_path_check_rejects_role_pointed_at_withheld_field() -> None:
@@ -133,9 +162,48 @@ def test_path_check_rejects_role_pointed_at_withheld_field() -> None:
         check_evidence_paths((bad,))
 
 
-def test_path_check_exception_applies_only_to_phase_of_flight() -> None:
+def test_phase_of_flight_exception_does_not_cover_event_code() -> None:
     bad = EvidenceField(
-        EvidenceRole.INJURY_LEVEL, ("aircrafts[0].events[].eventCode",), lambda _: None
+        EvidenceRole.PHASE_OF_FLIGHT, ("aircrafts[0].events[].eventCode",), lambda _: None
     )
-    with pytest.raises(LeakageError, match="events"):
+    with pytest.raises(LeakageError, match="eventCode"):
         check_evidence_paths((bad,))
+
+
+def test_exception_is_specific_to_role_not_just_path() -> None:
+    bad = EvidenceField(
+        EvidenceRole.INJURY_LEVEL, ("aircrafts[0].events[].isDefiningEvent",), lambda _: None
+    )
+    with pytest.raises(LeakageError, match="isDefiningEvent"):
+        check_evidence_paths((bad,))
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "aircrafts[0].events",
+        "aircrafts[0]",
+        "narratives[0]",
+        "richNarratives[0].x",
+    ],
+)
+def test_path_check_rejects_parent_paths(source: str) -> None:
+    bad = EvidenceField(EvidenceRole.INJURY_LEVEL, (source,), lambda _: None)
+    with pytest.raises(LeakageError):
+        check_evidence_paths((bad,))
+
+
+def test_path_check_rejects_malformed_source() -> None:
+    bad = EvidenceField(EvidenceRole.INJURY_LEVEL, ("aircrafts[0.events",), lambda _: None)
+    with pytest.raises(LeakageError, match="malformed"):
+        check_evidence_paths((bad,))
+
+
+def test_check_path_exceptions_detects_a_stale_entry() -> None:
+    stale = MappingProxyType(
+        {
+            (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].engines[].engineType"): "not withheld",
+        }
+    )
+    with pytest.raises(LeakageError, match="stale"):
+        check_path_exceptions(stale)

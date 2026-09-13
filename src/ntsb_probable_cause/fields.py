@@ -7,9 +7,10 @@ which is synthesis. Change only with a decision record.
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from types import MappingProxyType
 
 from ntsb_probable_cause.errors import LeakageError
-from ntsb_probable_cause.paths import is_under, resolve_path
+from ntsb_probable_cause.paths import is_well_formed, normalise_path, overlaps, resolve_path
 
 Raw = Mapping[str, object]
 EvidenceValue = str | float | tuple[str, ...] | None
@@ -58,12 +59,26 @@ WITHHELD_SUBTREES = (
     "richNarratives",
 )
 
-PATH_CHECK_EXCEPTIONS: Mapping[tuple[EvidenceRole, str], str] = {
-    (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].events[]"): (
-        "decision 0016: open cases carry the coded event sequence from day 1; "
-        "spike ablation: at most 2.5 points of one-shot top-1"
-    ),
-}
+_PHASE_OF_FLIGHT_CITATION = (
+    "decision 0016: open cases carry the coded event sequence from day 1; "
+    "spike ablation: at most 2.5 points of one-shot top-1"
+)
+
+# Keyed on (role, the source's exact normalised leaf path) — never a whole subtree — so an
+# exception covers only the paths decision 0016 names, not every path under their parent.
+PATH_CHECK_EXCEPTIONS: Mapping[tuple[EvidenceRole, str], str] = MappingProxyType(
+    {
+        (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].events[].isDefiningEvent"): (
+            _PHASE_OF_FLIGHT_CITATION
+        ),
+        (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].events[].sequenceNumber"): (
+            _PHASE_OF_FLIGHT_CITATION
+        ),
+        (EvidenceRole.PHASE_OF_FLIGHT, "aircrafts[].events[].cicttPhaseSOEGroup"): (
+            _PHASE_OF_FLIGHT_CITATION
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -202,14 +217,39 @@ EVIDENCE_FIELDS: tuple[EvidenceField, ...] = (
 
 
 def check_evidence_paths(fields: Sequence[EvidenceField] = EVIDENCE_FIELDS) -> None:
-    """Raise LeakageError if any evidence source lies under a withheld subtree (guard layer 2)."""
+    """Raise LeakageError if a source overlaps a withheld subtree, or is malformed (guard layer 2).
+
+    "Overlaps" means the source lies under the subtree OR is a parent of it: reading a parent
+    reads the withheld subtree too (e.g. ``aircrafts[0].events`` reads every event, including
+    the withheld ``eventCode``).
+    """
     for field in fields:
         for source in field.sources:
+            if not is_well_formed(source):
+                raise LeakageError(
+                    f"evidence role {field.role} has a malformed source path: {source}"
+                )
+            key = (field.role, normalise_path(source))
             for subtree in WITHHELD_SUBTREES:
-                if is_under(source, subtree) and (field.role, subtree) not in PATH_CHECK_EXCEPTIONS:
+                if overlaps(source, subtree) and key not in PATH_CHECK_EXCEPTIONS:
                     raise LeakageError(
                         f"evidence role {field.role} reads {source}, under withheld {subtree}"
                     )
+
+
+def check_path_exceptions(
+    exceptions: Mapping[tuple[EvidenceRole, str], str] = PATH_CHECK_EXCEPTIONS,
+) -> None:
+    """Raise LeakageError if a declared exception no longer overlaps any withheld subtree.
+
+    Catches a stale entry: an exception that was valid when written but whose path has since
+    moved, or whose withheld subtree was removed, so it would silently stop protecting anything.
+    """
+    for role, path in exceptions:
+        if not any(overlaps(path, subtree) for subtree in WITHHELD_SUBTREES):
+            raise LeakageError(
+                f"stale path-check exception: {role} / {path} is not under any withheld subtree"
+            )
 
 
 def factual_narrative(raw: Raw) -> str | None:
@@ -241,4 +281,5 @@ def finding_codes(raw: Raw) -> tuple[str, ...]:
     return tuple(code for f in findings if isinstance(code := f.get("findingCode"), str))
 
 
+check_path_exceptions()
 check_evidence_paths()
