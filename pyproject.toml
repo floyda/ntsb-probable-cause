@@ -68,6 +68,22 @@ type = "forbidden"
 source_modules = ["ntsb_probable_cause"]
 forbidden_modules = ["apps"]
 
+[[tool.importlinter.contracts]]
+name = "Only the splitter constructs synthesis and verdict"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.data",
+    "ntsb_probable_cause.fields",
+    "ntsb_probable_cause.paths",
+    "ntsb_probable_cause.splits",
+    "ntsb_probable_cause.sources",
+    "ntsb_probable_cause.settings",
+    "ntsb_probable_cause.errors",
+    "ntsb_probable_cause.records.evidence",
+    "ntsb_probable_cause.records.guard",
+]
+forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
+
 [tool.deptry]
 known_first_party = ["ntsb_probable_cause", "apps", "scripts"]
 extend_exclude = ["scripts/exploratory"]

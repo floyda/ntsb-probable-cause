@@ -2688,7 +2688,7 @@ git commit -m "S0: redacted development-split record fixtures, API page fixture,
   - `guard.MIN_SENTENCE_CHARS: int`; `guard.normalise_text(text: str) -> str`; `guard.Leak` (frozen dataclass: `evidence_role: str`, `kind: str` in `{"text", "sentence", "code"}`, `source: str`, `fragment: str`); `guard.find_leaks(evidence: Mapping[str, EvidenceValue], withheld_text: Mapping[str, str | None], codes: Iterable[str], *, min_sentence_chars: int = MIN_SENTENCE_CHARS) -> list[Leak]`.
   - `split.split_record(raw: Mapping[str, object], *, exclude: frozenset[EvidenceRole] = frozenset(), min_sentence_chars: int = MIN_SENTENCE_CHARS) -> tuple[Evidence, Synthesis, Verdict]` (raises `LeakageError`; `ValueError` if `ntsbNumber` is missing).
 
-- [ ] **Step 1: Write the failing guard tests**
+- [x] **Step 1: Write the failing guard tests**
 
 `tests/test_guard.py`:
 
@@ -2762,7 +2762,7 @@ def test_any_withheld_text_inserted_into_any_role_is_found(role: EvidenceRole, w
 Run: `uv run pytest tests/test_guard.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 2: Implement the guard**
+- [x] **Step 2: Implement the guard**
 
 `src/ntsb_probable_cause/records/__init__.py`: `"""Splitting a case record into evidence, synthesis and verdict (decisions 0013, 0016)."""`
 
@@ -2842,7 +2842,7 @@ def find_leaks(
 Run: `uv run pytest tests/test_guard.py -v --no-cov`
 Expected: PASS. (`test_single_sentence_is_found` expects exactly `["sentence"]`: the whole analysis text is not in the evidence, only its second sentence.)
 
-- [ ] **Step 3: Write the failing record tests**
+- [x] **Step 3: Write the failing record tests**
 
 `tests/test_records.py`:
 
@@ -2913,7 +2913,7 @@ def test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence(record_f
 Run: `uv run pytest tests/test_records.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 4: Implement the three types and `split_record`**
+- [x] **Step 4: Implement the three types and `split_record`**
 
 `src/ntsb_probable_cause/records/evidence.py`:
 
@@ -3050,7 +3050,7 @@ def split_record(
     return evidence, synthesis, verdict
 ```
 
-- [ ] **Step 5: Add the import-linter contracts**
+- [x] **Step 5: Add the import-linter contracts**
 
 Append to `pyproject.toml`:
 
@@ -3080,12 +3080,12 @@ forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cau
 
 The guard takes plain mappings, so it needs neither module; `split` is the only library importer until `scoring` arrives in S1. The spec's §7.4 lists `records.guard` as permitted; it does not need the permission, so it is not granted (already recorded under Deviations).
 
-- [ ] **Step 6: Run tests and checks**
+- [x] **Step 6: Run tests and checks**
 
 Run: `uv run pytest tests/test_guard.py tests/test_records.py -v --no-cov && make check`
 Expected: PASS. If `split_record` raises `LeakageError` on a real fixture, **stop**: print the leak, inspect the fixture, and record what was found under Deviations before changing anything. Do not lower the guard to make a fixture pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/records tests/test_guard.py tests/test_records.py pyproject.toml docs/plans/2026-09-13-s0-foundation.md
@@ -4554,3 +4554,6 @@ moves these into the specification's As-built section when S0 closes.
 - Task 8, step 4 (review fix round 1, important): `ingest.iter_raw_records` gained a keyword-only `include: Callable[[ManifestEntry], bool] | None = None` parameter, applied before `verify_entry` and before any page file of an excluded month is opened — an excluded month's files are now never hashed or read, not just excluded from the final dict. `scripts/make_fixture.py` gained `_is_dev_month(entry) -> bool` (`split_of(date.fromisoformat(entry.start)) is Split.DEV`) and passes it as `include=_is_dev_month`; the `e.month <= "2019-12"` literal is gone. Added `test_iter_raw_records_include_filter_skips_reading_excluded_months`, which corrupts an excluded month's page file and asserts the excluded month contributes no records and no exception is raised — if the file were opened or verified, the corrupted bytes would raise. `iter_raw_records`'s existing two positional/keyword parameters and its return type are unchanged; this is an additive, backward-compatible signature change approved for this fix. No decision record.
 - Task 8, step 7 (review fix round 1, minor): `scripts/copy_eval_ids.py` now writes each output CSV with `csv.writer(handle, lineterminator="\n")`, so a rerun reproduces the committed LF files without depending on the `mixed-line-ending` pre-commit hook to fix them up (see the CRLF entry above). Also, before writing each list, every case's event date is now checked with `split_of()` and the run fails loudly (printing the offending IDs, exit 1) if any case is not held-out by event date, rather than writing a list that could silently include a dev or open case. No decision record.
 - Task 8, step 6 (review fix round 1, minor): `scripts/make_fixture.py`'s `records <id>` subcommand previously raised a bare `KeyError` for an unknown or non-development-split case id (since `records` is built only from development-split entries). It now raises `FixtureError(f"{case_id}: not found in the development split")` naming the id, matching this script's other user-facing failures. No decision record.
+- Task 9, step 5: the brief's first import-linter contract ("The model boundary cannot see synthesis or verdict") names `source_modules = ["ntsb_probable_cause.model"]`, which does not exist yet — `ntsb_probable_cause.model` is created in Task 10. `lint-imports` fails loudly if a named module does not exist, so this contract is deferred to Task 10's brief/commit rather than added now against an empty placeholder package; only the second contract ("Only the splitter constructs synthesis and verdict") is added in this commit. No decision record (sequencing, per this task's own brief note).
+- Task 9, step 6 (lint/type fixes, no behaviour change): `uv run ruff format` reformatted the brief's verbatim multi-line calls/literals in `records/evidence.py`, `records/guard.py`, `records/split.py`, `tests/test_guard.py`, `tests/test_records.py` to fit the 100-char line limit — wrapping only. Ruff `E501` on `records/guard.py`'s module docstring (104 chars verbatim): shortened to fit. Ruff `PT018` on `test_every_fixture_has_withheld_content_to_protect`'s compound `assert a and b`: split into two `assert` statements, no assertion content change. `mypy --strict`: three of the brief's test dict literals (`text = {"analysis_narrative": ...}` etc.) were inferred as `dict[str, str]`, which `Mapping`'s key/value invariance in `find_leaks`'s `Mapping[str, str | None] | None` parameter rejects; annotated each as `dict[str, str | None]`. `split_record` passed `evidence.role_values()` (`dict[EvidenceRole, EvidenceValue]`) directly to `find_leaks(evidence: Mapping[str, EvidenceValue], ...)`; `EvidenceRole` is a `StrEnum` but `Mapping` is invariant in its key type, so mypy rejected it — added a one-line dict comprehension in `split_record` converting keys to `.value` before the call. No decision record (lint/type compliance in the plan's own code, per implementer-common's "no blanket ignores" rule); no public name or signature changed.
+- Task 9, step 6: `split_record` raised no `LeakageError` on any of the 9 development-split record fixtures (`test_split_matches_field_extractors_on_every_fixture`, `test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence` passed as written) — no real leak found to report.
