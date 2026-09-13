@@ -3469,7 +3469,7 @@ git commit -m "S0: held-out contamination tests, keyed on event date"
   - `build.build_processed(raw_dir: Path, processed_dir: Path, *, now: Callable[[], datetime] = ...) -> BuildResult` — writes `cases.parquet` and `cases.meta.json`.
   - CLI: `ntsb-ingest build`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_build.py`:
 
@@ -3572,7 +3572,7 @@ Note: `write_month` writes all fixtures into one month partition regardless of t
 Run: `uv run pytest tests/test_build.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 2: Implement `data/build.py`**
+- [x] **Step 2: Implement `data/build.py`**
 
 ```python
 """Build the processed file: index columns plus the raw record (decision 0014)."""
@@ -3709,7 +3709,7 @@ def build_processed(raw_dir: Path, processed_dir: Path, *, now: Callable[[], dat
     return result
 ```
 
-- [ ] **Step 3: Add `build` to the CLI**
+- [x] **Step 3: Add `build` to the CLI**
 
 In `apps/ingest/__main__.py`, add the subcommand and dispatch. Replace the body after `args = parser.parse_args(argv)` with:
 
@@ -3747,12 +3747,12 @@ def test_cli_build_runs_without_an_api_key(tmp_path: Path, monkeypatch: pytest.M
     assert (tmp_path / "processed" / "cases.parquet").is_file()
 ```
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_build.py tests/test_ingest.py -v --no-cov && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Implement `scripts/reconcile_spike.py`**
+- [x] **Step 5: Implement `scripts/reconcile_spike.py`**
 
 ```python
 """Case-level reconciliation of this repository's processed file against the spike's (S0 spec §6.2).
@@ -3802,7 +3802,7 @@ if __name__ == "__main__":
 
 Cases only in the spike are absent from this build's processed file; to explain them, look each up in the raw store (`uv run python -c` over `iter_raw_records`) and write one sentence per group under Deviations (for example "N cases now `completionStatus` ≠ Completed"), not per case.
 
-- [ ] **Step 6: Run the full fetch and the build**
+- [x] **Step 6: Run the full fetch and the build**
 
 The fetch is resumable; months fetched in Task 7 are skipped. Run it in the background and continue with Task 13 while it runs:
 
@@ -3823,7 +3823,7 @@ head -5 docs/results/s0-reconciliation.txt
 
 Expected: build prints `reconciliation dev: this build …, spike 13560, difference …` and the same for heldout. Any non-zero difference must be explained in Deviations using the reconciliation file (spec §13 condition 2). Check the results file contains only case numbers, dates, statuses and regulation parts — no narrative text.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/data/build.py apps/ingest/__main__.py scripts/reconcile_spike.py tests/test_build.py tests/test_ingest.py docs/results/s0-reconciliation.txt docs/plans/2026-09-13-s0-foundation.md
@@ -4507,6 +4507,11 @@ moves these into the specification's As-built section when S0 closes.
 - Task 1, step 1: added `extend-exclude = ["docs", "scripts/exploratory"]` to `[tool.ruff]`, not in the brief — `ruff format` reformats Python code fences inside Markdown by default, and reformatting `docs/plans/2026-09-13-s0-foundation.md` and the specs would rewrite content this task does not own; `scripts/exploratory/s0_design_measurements.py` predates this task, is documented as one-off and run under the spike's own virtual environment, and its printed numbers are quoted in decision records 0013-0016, so it is excluded from both formatting and linting rather than reformatted or fixed. No decision record (tooling configuration, not a change of approach).
 - Task 1, step 1: added `extend_exclude = ["scripts/exploratory"]` to `[tool.deptry]` and `exclude = ["^scripts/exploratory/"]` to `[tool.mypy]`, for the same reason as the ruff excludes above — `scripts/exploratory/s0_design_measurements.py` imports `pandas` and the frozen spike's `ntsb_spike` package, neither of which are (or should become) dependencies of this project. No decision record.
 - Task 1, step 6: added `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` — the brief's step 6 anticipated this exact fix ("If deptry reports `pydantic` unused, that is expected until Task 4; add `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` now"). Also added `.coverage` to `.gitignore`, not in the brief's file list — `uv run pytest` writes it via pytest-cov and it was untracked after `make check`; it is a local artifact and must not be committed. No decision record.
+- Task 12, step 2/3/5: fixed ruff findings the brief's code did not pass as written — split three over-length lines (`build.py`'s docstring, `apps/ingest/__main__.py`'s reconciliation `print`, `scripts/reconcile_spike.py`'s docstring, usage comment and `far=` print) under the 100-column limit, split two `and`-joined asserts in `tests/test_build.py` (PT018), removed the redundant local `import apps.ingest.__main__ as cli` in `tests/test_ingest.py`'s new CLI test (PLC0415; the module is already imported at file scope as `cli`), and replaced the magic `2023` in `reconcile_spike.py` with a named constant `_HELDOUT_MAX_YEAR` (PLR2004). No behaviour changed. No decision record.
+- Task 12, step 3: the brief's CLI test used `monkeypatch.setenv("DATA_DIR", ...)`; `Settings` reads `NTSB_DATA_DIR` (`NTSB_` env prefix, Task 4), so `test_cli_build_runs_without_an_api_key` uses `NTSB_DATA_DIR`, matching the existing `test_cli_fetch_uses_settings_and_client`. No decision record (bug fix, not a change of approach).
+- Task 12, step 6: the full fetch was already done in Task 7 (see its deviation); only the build and reconciliation ran here. `data/raw/v2` held 212 months (2009-01..2026-08, manifest verified) before this task started; `uv run ntsb-ingest build` and `uv run python -m scripts.reconcile_spike` ran against it directly, and `data/fetch.log` was not created.
+- Task 12, step 6: reconciliation against the spike's `filtered.parquet` (event years ≤2023) found zero differences — 17,801 cases in both, dev 13,560/13,560, heldout 4,241/4,241, `only in this build (0)` and `only in the spike (0)` — so `docs/results/s0-reconciliation.txt` has no per-case rows to explain; the build's own `reconciliation dev`/`reconciliation heldout` lines printed by `ntsb-ingest build` likewise show `difference +0` for both splits. No decision record.
+- Task 12: `make check`'s pre-existing, unrelated failure in `tests/test_guard.py::test_any_withheld_text_without_its_final_punctuation_is_still_found` (a Hypothesis property test) was confirmed present on the base commit before this task's changes (verified by stashing this task's work and rerunning `tests/test_guard.py` alone) and is out of this task's scope; `tests/test_build.py` and `tests/test_ingest.py` pass in full, and `make check`'s coverage gate (97.39%, ≥90% required) is met including this failure. Not fixed here; flagged for follow-up.
 - Task 1, step 1 (review fix round 1): added `"T20"` to `[tool.ruff.lint]` `select` and `"apps/**" = ["T201"]` to `[tool.ruff.lint.per-file-ignores]` — the plan's own `"scripts/**" = ["T201"]` ignore implied the global "library never prints" constraint was meant to be enforced by the T20 rule set, but `select` omitted it, leaving the ignore dead and the constraint unenforced. `apps/**` gets the same ignore because the apps CLI (a later task) prints by design; `tests/**` gets no ignore because nothing there prints yet. Decision-adjacent bug fix in the plan itself, not a change of approach; no separate decision record.
 - Task 1, step 1 (review fix round 1): added `force-exclude = true` to `[tool.ruff]` — Task 2's pre-commit hooks invoke ruff with explicit filenames, and ruff ignores `extend-exclude` for paths passed explicitly unless `force-exclude` is set, which would have let `docs/**.md` and `scripts/exploratory/*.py` back into pre-commit's ruff run despite the exclude added above. Also added `exclude = ["scripts/exploratory"]` to `[tool.vulture]` (vulture's `pyproject.toml` config supports it) so every tool treats the frozen exploratory script the same way. No decision record.
 - Task 2, step 2: the `typos` hook flagged `mis` (from the hyphenated "mis-pointed" in `docs/decisions/0016-layered-leakage-guard-and-model-boundary.md:47`) as a misspelling. Rather than edit the committed decision record's content, added `mis = "mis"` to `[tool.typos.default.extend-words]` in `pyproject.toml` with a comment. Not an NTSB abbreviation as the brief's example anticipated, but the same mechanism (a documented false-positive allowlist entry) applies. No decision record.

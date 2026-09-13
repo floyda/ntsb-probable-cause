@@ -181,3 +181,26 @@ def test_iter_raw_records_include_filter_skips_reading_excluded_months(tmp_path:
         for _, record in iter_raw_records(tmp_path, include=lambda e: e.month == "2016-08")
     ]
     assert ids == ["A1"]
+
+
+def test_cli_build_runs_without_an_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    source = FakeSource(
+        {
+            date(2016, 8, 1): [
+                Page(
+                    1,
+                    json.dumps({"data": record_fixtures}).encode(),
+                    tuple(record_fixtures),
+                    False,
+                    None,
+                )
+            ]
+        }
+    )
+    fetch_months(source, [Month(2016, 8)], tmp_path / "raw")
+    monkeypatch.delenv("NTSB_API_KEY", raising=False)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    assert cli.main(["build"]) == 0
+    assert (tmp_path / "processed" / "cases.parquet").is_file()
