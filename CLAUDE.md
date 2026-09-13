@@ -9,7 +9,10 @@ investigator-gathered evidence, scored against the NTSB's own published verdict.
 the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 `../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
 "Evaluation plan" and §7 "What a build repo needs that this one does not have"). **Nothing exists
-here yet.** Read build-brief §7 before writing any code — it is the spec for this repo.
+here yet.** Read build-brief §7 before writing any code, then
+`docs/specs/2026-09-12-architecture-and-roadmap.md` and the current stage's specification
+(S0: `docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they
+differ.
 
 ## Required components (build-brief §7)
 
@@ -22,7 +25,8 @@ here yet.** Read build-brief §7 before writing any code — it is the spec for 
   codes with their meanings, not free text, so scoring is exact-match. Seed the code lookup
   table from the spike's `decidability_form.build_code_lookups()`.
 - **Eval harness**: one command, fixed case list, ablation flags, per-slice reporting
-  (narrative / no-narrative), confidence intervals, cost per run. The spike's `baseline.py` and
+  (by investigation class; narrative presence no longer applies, 0013), confidence intervals,
+  cost per run. The spike's `baseline.py` and
   `oneshot.py` are numerical anchors, not a harness.
 - **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
   document lists with first-seen timestamps; resolution outcomes.
@@ -38,15 +42,18 @@ here yet.** Read build-brief §7 before writing any code — it is the spec for 
 
 ## Rules that carry from the spike
 
-1. **Evidence/answer split in one function with an assertion.** Analysis narrative, probable
-   cause, occurrence codes and finding codes are answer fields, never passed to a model except
-   for scoring. The spike's `oneshot.build_evidence()` + `assert_no_answer_fields()` is the seed
-   for this repo's equivalent, which needs a test. Never a second payload assembler.
+1. **Evidence / synthesis / verdict split in one function, with a layered guard.** Factual
+   narrative and analysis narrative are synthesis; probable cause, occurrence codes and finding
+   codes are verdict. Neither is ever passed to a model except for scoring (0013). The split is
+   `records/split.py:split_record()`, guarded as in 0016; the spike's
+   `assert_no_answer_fields()` only checked key names and is not the model to copy. Never a
+   second payload assembler.
 2. **Never guess API details.** Endpoints, params, field paths come from the NTSB's OpenAPI spec
    (`../ntsb-spike/public.yaml`) or a saved real response, not invention.
 3. **Every reported number comes from a script.** No numbers from memory.
 4. **Raw data never goes in git.** Keep `data/raw/`, `data/processed/`, `*.zip`, `*.mdb` ignored.
-5. **Splits are fixed**: dev ≤2019, held-out 2020–2023, open ≥2024. Held-out is touched rarely;
+5. **Splits are fixed**: dev ≤2019, held-out 2020–2023, open ≥2024, **by event date — never by
+   case number**, whose year is the federal fiscal year (0015). Held-out is touched rarely;
    open cases feed the live board only. Filter live cases on `completionStatus == "Ongoing"`,
    not `!= "Completed"` (foreign `N/A` cases carry verdicts).
 6. **Clinical tone.** These are fatalities. No victim names in any output; nothing that reads as
@@ -67,22 +74,26 @@ here yet.** Read build-brief §7 before writing any code — it is the spec for 
    the one it replaces, and the old record stays in place. Format:
    `docs/decisions/README.md`.
 
-## What to carry over from the spike as-is
+## What to carry over from the spike
 
-- The field map in `../ntsb-spike/config.yaml`.
-- The evidence/answer field roles.
-- `build_evidence()` and its leakage assertion.
+- The field paths in `../ntsb-spike/config.yaml`, as typed constants (0012) — there is no
+  `config.yaml` here.
+- The field roles, **changed**: the factual narrative moves from evidence to synthesis (0013).
+- The idea of `build_evidence()` as the only payload assembler; its assertion is replaced by
+  the layered guard (0016).
 - The split definitions (dev / held-out / open, above).
 - The two labelling sheets (`../ntsb-spike/labelling/leakage.filled.csv`,
   `../ntsb-spike/labelling/decidability.filled.csv`) as regression fixtures.
 
 ## Eval bars to beat (build-brief §6, held-out split)
 
-**These are the spike's numbers, measured on free-text output through the `claude` CLI.
-Output is now code-constrained (0006) and the transport is now OpenRouter (0009), so the
-57% is a historical reference, not the bar. S1 re-measures the ceiling on the stack that
-will actually run, and that figure becomes the bar. The baseline, the 88/12 narrative
-split and the cost ceiling are unaffected in kind.**
+**These are the spike's numbers, measured on free-text output through the `claude` CLI,
+with the factual narrative as evidence. Output is now code-constrained (0006), the transport
+is OpenRouter (0009), and the factual narrative is withheld (0013). None of the one-shot
+figures below is a bar, and the 88/12 narrative split no longer exists: every case lacks a
+narrative. The nearest precedent is 12% (n=16). S1 re-measures the ceiling on the stack that
+will actually run and sets the bars. The baseline is unaffected; the cost ceiling is
+re-measured because every case now reads the docket.**
 
 | metric | baseline (n=1,000) | one-shot ceiling (n=40) |
 |---|---|---|
@@ -91,7 +102,8 @@ split and the cost ceiling are unaffected in kind.**
 | no-narrative cases, top-1 | not computed | 12% (n=16) |
 | cost per case | — | £0.034 measured |
 
-"The agent wins" means: ≥50% top-1 on no-narrative cases (below ~30% means the docket tool
+*Historical — the build brief's definition, written against the narrative split and replaced
+by the bars S1 sets:* "The agent wins" means: ≥50% top-1 on no-narrative cases (below ~30% means the docket tool
 isn't delivering); overall held-out top-1 above 57%, first like-for-like on the same 40 cases
 then a larger sample; an ablation (docket tool on/off) shows the drop concentrated in
 no-narrative cases; abstention falls on no-narrative cases as the docket supplies evidence but
@@ -118,7 +130,7 @@ Two consequences to hold on to:
 - The spike's £0.034/case and 57% top-1 were measured on a different transport. They are
   historical reference points, not bars. The bar is whatever S1 measures on this stack.
 - `../ntsb-spike/config.yaml` prices Sonnet 5 at $3/$15 per MTok. It is $2/$10 (that is
-  Sonnet 4.6's rate). Correct it in S0.
+  Sonnet 4.6's rate). S0 records the correct price in `sources.py` (0012).
 
 The £0.05/case cap is enforced in code, not just measured, because these calls are metered.
 

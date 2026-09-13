@@ -46,8 +46,14 @@ under `docs/specs/` and the record links to it.
 | [0003](0003-static-site-as-pure-function-of-store.md) | The public site is a pure function of the store | Accepted |
 | [0004](0004-scheduled-fargate-and-sqlite.md) | Scheduled Fargate task, SQLite in S3 | Accepted |
 | [0005](0005-cdk-python-for-infrastructure.md) | AWS CDK in Python for infrastructure | Accepted |
-| [0006](0006-code-constrained-output.md) | Code-constrained output with a graded lay explanation | Accepted |
+| [0006](0006-code-constrained-output.md) | Code-constrained output with a graded lay explanation | Accepted; amended by 0013 |
 | [0007](0007-build-order-recorder-pulled-forward.md) | Build order, with the recorder pulled forward | Accepted |
 | [0008](0008-record-decisions.md) | Record every significant decision | Accepted |
 | [0009](0009-model-access-via-openrouter.md) | Evaluation and live model calls go through OpenRouter | Accepted |
 | [0010](0010-separate-aws-account.md) | The project runs in its own AWS account under Organizations | Accepted |
+| [0011](0011-tooling-uv-hatchling-strict-analysis.md) | Tooling: uv on hatchling, Python 3.14, strict static analysis | Accepted |
+| [0012](0012-typed-constants-replace-config-yaml.md) | Typed constants and settings replace `config.yaml` | Accepted |
+| [0013](0013-evidence-synthesis-verdict.md) | Evidence, synthesis and verdict: the factual narrative is withheld and the agent writes its own | Accepted |
+| [0014](0014-processed-file-index-plus-raw-record.md) | The processed file holds index columns and the raw record | Accepted |
+| [0015](0015-fixtures-redacted-real-dev-records.md) | Fixtures are redacted real development records | Accepted |
+| [0016](0016-layered-leakage-guard-and-model-boundary.md) | A layered leakage guard, and a request-side model boundary | Accepted |

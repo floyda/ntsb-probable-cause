@@ -1,6 +1,10 @@
 # Architecture and build roadmap
 
-*Drafted 2026-09-12. Status: awaiting Andy's sign-off. This document records
+*Drafted 2026-09-12. Amended 2026-09-13 by the S0 design
+(`docs/specs/2026-09-13-s0-foundation-design.md`, decision records 0011–0016): the factual
+narrative is withheld from the model and the agent writes its own (0013), which removes the
+narrative router and changes the bars, slices and leakage plan below; the package is renamed
+`ntsb_probable_cause`; S-0 is complete. Status: awaiting Andy's sign-off. This document records
 architecture decisions and the order work will be done in. It does not design any
 individual component; each numbered stage below gets its own specification before it
 is built.*
@@ -26,6 +30,15 @@ has a written **factual narrative** and 12% when it does not, and only about 52%
 was sitting in the case's **docket**. The agent exists to go and read the docket.
 Nothing beyond that is justified by measurement yet.
 
+**Amended 2026-09-13 (0013).** Those numbers were measured with the factual narrative as
+evidence. It is not evidence: an investigator writes it at the end of the investigation as a
+summary of what was found, directed toward the cause they reached, and a live case never has
+one. The agent is therefore given observations only (**evidence**); the factual and analysis
+narratives are **synthesis** and the cause and codes are **verdict**, both withheld. The agent
+writes its own evidence narrative, then its probable cause. Every case now needs the docket,
+not about half of them, so the case for an agent is stronger; the 88% and 57% figures stop
+being references, and the nearest precedent is the 12% on cases without a narrative.
+
 This document covers how that agent is packaged, tested, deployed and published.
 
 ---
@@ -35,8 +48,8 @@ This document covers how that agent is packaged, tested, deployed and published.
 **Decision: two repositories, no more.**
 
 - `ntsb-spike` — frozen. It is the citable record: an assumptions register, a report,
-  labelling sheets, and a script behind every number. No new work goes here. One piece
-  of housekeeping is owed (section 11, stage S-0).
+  labelling sheets, and a script behind every number. No new work goes here. The one
+  piece of housekeeping owed (section 11, stage S-0) is done.
 - `ntsb-probable-cause` — the build. One repository containing a library, several thin
   entrypoints, infrastructure code, and the static site generator.
 
@@ -65,11 +78,13 @@ scripts with product code and weaken the claim that the spike's record is frozen
 The repository is split by **responsibility**, not by where code runs.
 
 ```
-src/ntsb_pc/          the library. no command-line entrypoints, no AWS, no printing
-  data/               ingestion, record loading, evidence/answer split + assertion
+src/ntsb_probable_cause/   the library. no command-line entrypoints, no AWS, no printing
+  data/               API client, ingestion, processed-file build
+  records/            evidence / synthesis / verdict split + leakage guard
+  model/              model-client seam
   codes/              NTSB code tables, code-constrained output schema
   tools/              docket client, PDF classification and extraction  (weather later)
-  agent/              loop, router, step budget, cost cap, trajectory log
+  agent/              loop, step budget, cost cap, trajectory log
   scoring/            scoring layers, per-slice reporting, confidence intervals
   store/              SQLite schema and repository functions
 apps/
@@ -227,7 +242,7 @@ must be replaced with billed figures once the stack runs:
 | Fargate, roughly 20 minutes a day at 0.25 vCPU | under £1 |
 | S3 and CloudFront for a small static site | under £1 |
 | Container registry and scheduling | pennies |
-| Model calls, a handful of agent runs a day at £0.034 each | roughly £5 |
+| Model calls, a handful of agent runs a day at £0.034 each (the spike's rate; every case now reads the docket, so re-measured in S1 and S3) | roughly £5 |
 
 Model calls dominate. The total is expected to sit well inside £20 a month. A budget
 alarm is set separately from the per-case cap in code, because the two fail differently:
@@ -237,10 +252,11 @@ the cap stops one runaway case, the alarm catches a pattern.
 
 ## 7. The output schema
 
-The agent's answer carries seven fields:
+The agent's answer carries eight fields:
 
 | field | purpose |
 |---|---|
+| evidence narrative | the agent's own account of what the evidence shows, written first (0013) |
 | occurrence code | the NTSB category for *what happened*, chosen from a supplied list |
 | finding codes | the NTSB categories for *why*, chosen from a supplied list |
 | probable cause | one or two sentences, in the style the NTSB writes |
@@ -264,12 +280,15 @@ published unchecked, because free text going public without a quality measure is
 kind of shortcut this project exists to avoid.
 
 **A consequence to plan for.** The 57% ceiling was measured on free text scored by a
-human. A model choosing from 58 occurrence codes is doing a measurably different task.
-The 57% is therefore *not* a like-for-like bar for the new agent, and the comparison
-must be re-measured: a one-shot run under the code-constrained schema, on the same 40
-cases, before the agent is allowed to claim it beat anything. Cost: about £1.34 through
-the API (`scripts/oneshot_summary.py` rate) or nothing on the subscription. This is
-scheduled into stage S1 rather than discovered later.
+human, with the factual narrative in the evidence. Neither holds now: output is
+code-constrained, and the narrative is withheld (0013). The 57% is therefore not a bar or a
+reference. The comparison is re-measured in S1: a one-shot run under the code-constrained
+schema, without synthesis, on the same 40 cases, before the agent is allowed to claim it beat
+anything. The spike's 12% on its 16 cases without a narrative is the nearest precedent.
+
+**The evidence narrative** is compared against the NTSB's factual narrative. How it is graded
+is decided in S1 together with the lay explanation, because both face the same unreliable-judge
+problem.
 
 ---
 
@@ -298,13 +317,18 @@ anywhere, and nothing on the page may read as a game or a scoreboard contest.
 
 Four checks, each guarding a failure that cannot be caught by reading output:
 
-- **The leakage assertion, as a test.** One function assembles everything a model sees,
-  and asserts that no answer field is present. Analysis narrative, probable cause,
-  occurrence codes and finding codes are answer fields. There is never a second payload
-  assembler. This is the single rule the project's credibility rests on.
+- **The leakage guard, as tests.** One function splits a record into evidence, synthesis
+  and verdict, and a layered guard (0016) fails closed if synthesis or verdict content reaches
+  what the model sees. Factual narrative, analysis narrative, probable cause, occurrence codes
+  and finding codes are withheld. There is never a second payload assembler. A mutation test
+  proves the guard's boundary test can fail. This is the single rule the project's credibility
+  rests on.
 - **Held-out contamination.** A test that cases from the held-out years never appear in
-  development fixtures. Tuning on the cases you report on makes the numbers meaningless,
-  and the mistake is invisible once made.
+  development fixtures, judged by event date — never by case number, whose year is the
+  federal fiscal year. Tuning on the cases you report on makes the numbers meaningless, and
+  the mistake is invisible once made.
+- **Docket synthesis documents** (from S2). A closed case's docket can contain NTSB-written
+  factual reports. A test that documents classified as synthesis never reach the model.
 - **Docket parser fixtures.** Saved real responses, so the parser is tested without the
   network and a change in the NTSB's page structure fails loudly rather than silently
   returning nothing.
@@ -340,7 +364,11 @@ Each of these was considered and rejected on evidence, not on effort:
 Each stage gets its own specification before it is built. "Done means" is the condition
 for moving on.
 
-### S-0. Spike housekeeping *(short, in the spike repository)*
+### S-0. Spike housekeeping *(short, in the spike repository)* — done
+
+**Complete**: spike commit `9760e42` tracks both filled sheets. The `config.yaml` question
+no longer applies to this repository, which has no `config.yaml` (0012). The original text
+follows.
 
 The spike's `.gitignore` excludes `labelling/*.filled.csv`. Confirmed by `git ls-files`:
 `decidability.filled.csv` and `leakage.filled.csv` are not in version control. Those two
@@ -357,10 +385,14 @@ to a file a stranger can open.
 
 ### S0. Foundation
 
-Repository skeleton and tooling. Configuration and split definitions carried over from
-the spike. Ingestion producing a processed file, with raw data kept out of version
-control. The evidence/answer split function and its leakage test. The held-out
-contamination test. Continuous integration. The model-client seam.
+Specified in `docs/specs/2026-09-13-s0-foundation-design.md`, which supersedes this summary
+where they differ.
+
+Repository skeleton and tooling. Field roles and split definitions carried over from
+the spike as typed constants. Ingestion producing a processed file, with raw data kept out of
+version control. The evidence/synthesis/verdict split function and its leakage guard and
+tests. The held-out contamination test. Continuous integration. The request side of the
+model-client seam, with a recording fake.
 
 *Deliberately excluded, with where each went:* code lookup tables (S1 — nothing in S0
 reads them); the SQLite schema (S2.5 — nothing in S0 writes to it, and designing a
@@ -369,17 +401,24 @@ incremental ingestion (S2.5 — incrementality is a live-board requirement); tra
 logging and cost accounting (S3 — nothing in S0 takes a step or spends money).
 
 *Done means:* ingestion runs; the test suite is green in continuous integration; the
-leakage test fails if an answer field is smuggled into the evidence payload.
+leakage test fails if withheld content is smuggled into what the model sees. Full conditions
+in the S0 specification, §13.
 
 ### S1. Scoring and the evaluation harness
 
 Code lookup tables, seeded from the spike's `decidability_form.build_code_lookups()`.
 The code-constrained output schema, including the lay explanation. Exact-match scoring
-for occurrence and finding codes. Per-slice reporting (narrative present / absent),
-confidence intervals, cost per run, ablation flags.
+for occurrence and finding codes. Per-slice reporting — by investigation class (C / L /
+F) rather than narrative presence, which no longer applies (0013) — confidence intervals,
+cost per run, ablation flags, including the aircraft registration.
 
 Then two measurements: reproduce the 16.2% baseline through the new harness, and
-establish the real code-constrained one-shot ceiling on the same 40 cases.
+establish the real code-constrained one-shot ceiling, without synthesis, on the same 40 cases.
+
+Decisions this stage takes: the bars the agent must beat (the build brief's figures were set
+against the narrative split); the headline metric for live cases, since the occurrence code is
+often public from day 1; how the evidence narrative and lay explanation are graded; how
+memorisation of published reports is measured.
 
 *Why reproduce a known number:* it is a correctness check on new code, not a
 re-opening of the spike's finding. If the harness cannot reproduce a number that is
@@ -392,7 +431,10 @@ cost, and the ceiling figure is the bar recorded for the agent.
 
 Docket client, HTML table parser, document downloader, classification by characters of
 text per page, born-digital text extraction, caching, and offline fixtures built from
-the 14 dockets already probed in the spike.
+the 14 dockets already probed in the spike. A filter that classifies documents as
+evidence or synthesis by type and title, with a reviewed allow-list and a measured error
+rate: a closed case's docket can contain NTSB-written factual reports, and text matching
+cannot separate them because the factual narrative quotes genuine evidence documents.
 
 *Done means:* given a case identifier, the module returns extracted text and a manifest
 of what it could and could not read; the tests run without network access.
@@ -415,9 +457,9 @@ agent, so it does not have to wait for one.
 
 ### S3. The agent loop
 
-Deterministic router — factual narrative present sends the case down a cheap
-single-call path, absent sends it down the tool path. Tool interface, step budget,
-abstain path, hard cost cap enforced in code, trajectory log.
+Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.
+The deterministic narrative router planned here is removed (0013): no case carries a
+narrative, so every case takes the tool path.
 
 *The tool interface is designed at the start of this stage, not now.* Designing it from
 14 probed dockets would be guessing at shapes we are about to be able to observe
@@ -430,10 +472,11 @@ the 38% figure: the share of cases where *going and fetching* changes the answer
 the metric to publish is tool steps per case — and if it turns out the agent almost
 never takes more than one, that belongs on the Methods page rather than in a drawer.
 
-*Done means:* the five conditions from build brief §6, each produced by a script — at
-least 50% top-1 on no-narrative cases, overall top-1 above the S1 ceiling, an ablation
-showing the docket tool's contribution concentrated in no-narrative cases, sensible
-abstention, and average cost under £0.05 per case.
+*Done means:* the conditions set in S1, each produced by a script. They replace the build
+brief §6 conditions, which were written against the narrative split (at least 50% top-1 on
+no-narrative cases, ablation loss concentrated there). What carries over in kind: top-1 above
+the S1 ceiling, an ablation showing the docket tool's contribution, sensible abstention, and
+average cost under a per-case cap enforced in code.
 
 ### S4. Predictions and resolution
 
@@ -470,7 +513,10 @@ guess at what was weighed. Rule 8 in `CLAUDE.md`; format in `docs/decisions/READ
 |---|---|---|
 | Tool interface and loop mechanics | S3 | needs real docket shapes, not the 14 probed |
 | Store schema | S2.5 | the recorder is the first writer and should shape it |
-| Grading method for the lay explanation | S1 | belongs with the rest of the scoring design |
+| Grading method for the lay explanation and the evidence narrative | S1 | belongs with the rest of the scoring design |
+| The bars the agent must beat, and the slices | S1 | the build brief's bars assumed narratives as evidence (0013) |
+| Headline metric for live cases | S1 | the occurrence code is often public from day 1 |
+| Evidence / synthesis classification of docket documents | S2 | needs the docket client and real document titles |
 | OCR for handwritten forms | phase 2 | a probe with a written result, not a build stage |
 | Weather tool | after S3 | one of 17 misses; parameters already verified in the spike |
 
@@ -485,11 +531,10 @@ Route 53 — so the domain question is settled (`ntsb.floyda.dev`) and the isola
 is decided in 0010. Model access is decided in 0009; no Anthropic key is needed. The AWS
 CLI (2.36.44) and CDK (2.1141.0) are installed locally.
 
-Still open:
+Answered since (`docs/runbooks/aws-setup.md`): region `eu-west-2`; a $30 monthly budget
+alerting at 50% actual and 100% forecast. The `config.yaml` question is closed by 0012.
 
-- Preferred AWS region.
-- A monthly spend ceiling for the budget alarm, and the address alarms should reach.
-- Whether `config.yaml` should be tracked in the spike repository (S-0).
+Still open: none.
 
 ---
 
@@ -497,7 +542,10 @@ Still open:
 
 | risk | why it matters | how it is handled |
 |---|---|---|
-| The 57% bar is not comparable | The headline claim is "beats the one-shot ceiling"; if the ceiling was measured on a different task, the claim is empty | Re-measure under the code-constrained schema in S1, before the agent exists |
+| The 57% bar is not comparable | The headline claim is "beats the one-shot ceiling"; the 57% was measured on free text with the narrative as evidence | Re-measure under the code-constrained schema, without synthesis, in S1, before the agent exists |
+| Synthesis re-enters through the docket | A closed docket can hold NTSB factual reports; the agent would be reading the answer's first half | Document classification and a leakage test in S2 |
+| Memorisation of published reports | Held-out scores could measure recall rather than reasoning | Case number kept out of the payload; registration ablated; live cases act as the control (S1, S3) |
+| Held-out and live evidence differ | Complete dockets but no preliminary narrative in evaluation | Stated on the Methods page before results; time-sliced evaluation once the recorder has data |
 | The loop turns out to be a pipeline | The whole project rests on agency being warranted | Publish tool steps per case, including if it embarrasses the design (S3) |
 | Docket page structure changes | Silent wrong answers rather than a visible outage | Parser fixtures in continuous integration; failures are loud |
 | The live board has too few resolutions to mean anything | Median time to close is 140 days; the first six months will yield a handful | Say so on the page first. The held-out numbers carry the weight; the board is the narrative device |
@@ -525,11 +573,14 @@ Scores 16.2%.
 
 **Docket.** The NTSB's public folder of supporting documents for one investigation.
 
-**Evidence half / answer half.** The split of each record. Evidence is what the agent
-may see. Answer is what it must not. Enforced in one function with an assertion.
+**Evidence / synthesis / verdict.** The split of each record (0013). Evidence is what the
+agent may see: observations. Synthesis is the investigator's write-up. Verdict is the cause and
+codes. Synthesis and verdict are withheld, enforced in one function with a layered guard (0016).
+The spike used two halves, evidence and answer, with the factual narrative as evidence.
 
-**Factual narrative.** The written account of the facts in the final report. Present on
-about 82% of cases overall, but only about 52% of those from 2020 to 2023.
+**Factual narrative.** The investigator's written account of what was found, published with
+the final report. Synthesis, not evidence. Present on about 82% of cases overall, but only
+about 52% of those from 2020 to 2023.
 
 **Finding codes.** The NTSB's categories for why an accident happened.
 
