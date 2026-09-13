@@ -1,6 +1,6 @@
 ---
 name: close-stage
-description: Use when a build stage of ntsb-probable-cause is finished and its pull request is ready — appends the As-built record to the stage specification, marks the specification Implemented and the roadmap stage done, deletes the implementation plan, and runs the documentation check (decision 0017).
+description: Use when a build stage of ntsb-probable-cause is finished and its pull request is ready — appends the As-built record to the stage specification, marks the specification Implemented and the roadmap stage done, deletes the implementation plan, sets the release version, and runs the documentation check (decision 0017).
 ---
 
 # Close a build stage
@@ -34,7 +34,8 @@ tone, no personal names, and every number taken from a committed script or resul
 - A Done-means condition has no evidence (below). Report which one and stop, EXCEPT the
   close-out condition itself (specification status Implemented, As-built section complete,
   roadmap stage marked done, plan deleted), which is recorded with evidence "this pull
-  request's close-out commit; `uv run python -m scripts.check_docs` clean".
+  request's close-out commit; `uv run python -m scripts.check_docs` clean". Never write a
+  condition as met without evidence.
 
 ## 3. Gather evidence
 
@@ -98,6 +99,15 @@ Decision records added in this pull request, one line each with a link. "None." 
   and one line under it: `As built: see the stage specification's As-built section.`
   with a relative link to the specification.
 - `git rm docs/plans/<plan-file>`
+- Set the release version (decision 0018). Find the previous release tag:
+
+  ```bash
+  git describe --tags --abbrev=0 --match 'v*'
+  ```
+
+  If there is none, the version is `0.1.0`. Otherwise increase the tag's minor version by one
+  and set the patch to 0 (`v0.1.0` → `0.2.0`). Set `version = "<version>"` in
+  `pyproject.toml` if it differs, then run `uv lock` so `uv.lock` records the same version.
 
 ## 6. Check, show, commit
 
@@ -110,7 +120,20 @@ Both must pass. Confirm the close-out condition's evidence now holds: check_docs
 Show the user the As-built section and the status changes, and wait for approval. Then:
 
 ```bash
-git add -A docs
+git add -A docs pyproject.toml uv.lock
 git commit -m "Close out <stage>: As-built record, plan removed (decision 0017)"
 git push
 ```
+
+## 7. After the merge — tell Andy
+
+The skill ends at the push. Tell Andy, in these words, what to run once the pull request is
+squash-merged (decision 0018):
+
+```bash
+gh release create v<version> --target main --generate-notes --title "<stage>: <name>"
+```
+
+For example `gh release create v0.1.0 --target main --generate-notes --title "S0: foundation"`.
+This creates the tag on the merged commit and a release listing the pull requests merged since
+the previous tag. The release page is the project's changelog; there is no `CHANGELOG.md`.

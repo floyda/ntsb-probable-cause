@@ -4300,7 +4300,7 @@ git commit -m "S0: close-stage skill (decision 0017)"
 - Consumes: the `close-stage` skill (Task 15), the runbook (Task 14), decision 0018.
 - Produces: repository merge settings for Andy to apply; a close-out that sets `version` in `pyproject.toml`; the post-merge release command used by Task 16.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/test_close_stage_skill.py`:
 
@@ -4324,7 +4324,7 @@ def test_pull_request_template_carries_the_release_steps() -> None:
 Run: `uv run pytest tests/test_close_stage_skill.py -v --no-cov`
 Expected: the two new tests FAIL (assertion errors); the existing three pass.
 
-- [ ] **Step 2: Add the merge settings to the runbook**
+- [x] **Step 2: Add the merge settings to the runbook**
 
 In `docs/runbooks/github-branch-protection.md`, change the title line to ``# Runbook — branch protection and merge settings on `main` ``, add `and decision 0018 (squash merges)` to the italic decision line, and insert this section immediately before `## Glossary`:
 
@@ -4361,7 +4361,7 @@ Add to the glossary:
 branch. The original commits stay visible on the pull request.
 ```
 
-- [ ] **Step 3: Add the version bump and the release step to the skill**
+- [x] **Step 3: Add the version bump and the release step to the skill**
 
 In `.claude/skills/close-stage/SKILL.md`:
 
@@ -4400,7 +4400,7 @@ This creates the tag on the merged commit and a release listing the pull request
 the previous tag. The release page is the project's changelog; there is no `CHANGELOG.md`.
 ````
 
-- [ ] **Step 4: Add the release lines to the pull-request template**
+- [x] **Step 4: Add the release lines to the pull-request template**
 
 In `.github/pull_request_template.md`, under the stage close-out list, after the `check_docs` line, add:
 
@@ -4409,7 +4409,7 @@ In `.github/pull_request_template.md`, under the stage close-out list, after the
 - [ ] After merge (Andy): `gh release create v<version> --target main --generate-notes --title "<stage>: <name>"`
 ```
 
-- [ ] **Step 5: Add rule 11 to `CLAUDE.md`**
+- [x] **Step 5: Add rule 11 to `CLAUDE.md`**
 
 After rule 10 in the "Rules that start here" list, add:
 
@@ -4421,7 +4421,7 @@ After rule 10 in the "Rules that start here" list, add:
     and whether the tree had uncommitted changes.
 ```
 
-- [ ] **Step 6: Run tests and checks**
+- [x] **Step 6: Run tests and checks**
 
 Run each separately:
 `uv run pytest tests/test_close_stage_skill.py -v --no-cov`
@@ -4429,7 +4429,7 @@ Run each separately:
 `make check`
 Expected: all pass; `check_docs` prints nothing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Stage the five files above and the plan, and commit with subject
 `S0: squash-only merges and tag-only releases (decision 0018)`.
@@ -4537,3 +4537,4 @@ moves these into the specification's As-built section when S0 closes.
 - Task 14, step 2: runbook committed; applying it is pending Andy (it changes repository settings) — step left unticked until he confirms.
 - Task 15, step 2 (review fix rounds 1–3): the skill as briefed would halt during its own close-out, so its stop conditions changed — unticked steps are allowed only in the close-out task from the step that runs /close-stage onward; the close-out Done-means condition's evidence is the close-out commit plus a clean check_docs, written in section 4 and confirmed in section 6. Added (not in the brief): a stop when the branch is main or has no open pull request; a fourth evidence kind, a named command with its output quoted in the pull request; an example of a link relative to docs/specs/; "Commits: first..last commit before the close-out commit". tests/test_close_stage_skill.py gained test_skill_exempts_its_own_close_out_steps, asserting the exemption, the open-pull-request check and git branch --show-current. No decision record (implements 0017).
 - Task 17 (added 2026-09-13): squash-only merges and tag-only releases were added to S0 at Andy's request after the specification was approved — not in the specification — decision 0018. Task 16, step 4 gains the post-merge release command.
+- Task 17, step 3: restored the sentence "Never write a condition as met without evidence." to the end of `.claude/skills/close-stage/SKILL.md` section 2's "A Done-means condition has no evidence" bullet — a Task 15 fix round had accidentally dropped it. Not in the Task 17 brief's listed edits; directed by Andy. No decision record (restoring reviewed text, not a change of approach).

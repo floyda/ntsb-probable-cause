@@ -87,6 +87,11 @@ differ.
     in `docs/plans/`, not the superpowers default. Tick plan tasks in the same commit as their
     code and log deviations in the plan. The pull request that finishes a stage runs the
     `close-stage` skill; `scripts/check_docs.py` fails CI if the close-out is missing.
+11. **Squash merges; each closed stage is a tagged release** (0018). Pull requests are
+    squash-merged only, titled `<stage>: <name>`. The close-out sets `version` in
+    `pyproject.toml`; after the merge Andy runs `gh release create --generate-notes`. There is
+    no `CHANGELOG.md`. From S1, every evaluation run and prediction row records the commit SHA
+    and whether the tree had uncommitted changes.
 
 ## What to carry over from the spike
 

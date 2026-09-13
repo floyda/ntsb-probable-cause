@@ -14,3 +14,5 @@
 - [ ] Roadmap stage entry marked done and linked
 - [ ] Plan file deleted; permalink to its last commit recorded in the As-built section
 - [ ] `uv run python -m scripts.check_docs` passes
+- [ ] `version` in `pyproject.toml` set to the release version (decision 0018)
+- [ ] After merge (Andy): `gh release create v<version> --target main --generate-notes --title "<stage>: <name>"`
