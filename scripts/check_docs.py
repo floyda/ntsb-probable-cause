@@ -24,9 +24,9 @@ AS_BUILT_PARTS = (
 )
 
 _INDEX_ROW = re.compile(r"^\| \[(\d{4})\]\(([^)]+)\) \| .+ \| (.+) \|$")
-_DECISION_REF = re.compile(r"(?<![\d.])\b(0\d{3})\b(?!\d)")
+_DECISION_REF = re.compile(r"(?<![\d.])\b(0\d{3})\b(?!\.\d)")
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-_FENCE = re.compile(r"^```.*?^```[^\n]*$", re.MULTILINE | re.DOTALL)
+_FENCE = re.compile(r"^(`{3,})[^\n]*\n.*?^\1`*[ \t]*$", re.MULTILINE | re.DOTALL)
 _SPEC_STATUS = re.compile(r"Status:\s*(" + "|".join(SPEC_STATUSES) + r")\b")
 _PLAN_SPEC = re.compile(r"^\*\*Spec:\*\*\s*(\S+)", re.MULTILINE)
 _DECISION_STATUS = re.compile(r"^## Status\s*\n+\s*(\S.*)$", re.MULTILINE)

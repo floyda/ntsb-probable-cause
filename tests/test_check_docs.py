@@ -127,3 +127,40 @@ def test_plan_without_spec_line(tmp_path: Path) -> None:
     root = make_repo(tmp_path)
     (root / "docs/plans/2026-09-13-s0.md").write_text("# Plan\n\n## Deviations\n")
     assert any("**Spec:**" in p for p in check(root))
+
+
+def test_nested_code_fences_not_scanned(tmp_path: Path) -> None:
+    root = make_repo(tmp_path)
+    (root / SPEC).write_text(
+        "# S0\n\n*Status: Approved.*\n\n"
+        "````python\n"
+        "# Prose after nested block: [broken](nowhere.md)\n"
+        "```inner\n"
+        "echo 0042 [x](inside.md)\n"
+        "```\n"
+        "````\n"
+        "\n"
+        "[broken](after-outer.md)\n"
+    )
+    problems = check(root)
+    assert any("after-outer.md" in p for p in problems)
+    assert not any("inside.md" in p for p in problems)
+    assert not any("0042" in p for p in problems)
+
+
+def test_decision_reference_allows_sentence_final_period(tmp_path: Path) -> None:
+    root = make_repo(tmp_path)
+    (root / SPEC).write_text(
+        "# S0\n\n*Status: Approved.*\n\nThe decision in 0042. It was important.\n"
+    )
+    assert any("0042" in p for p in check(root))
+
+
+def test_decimal_numbers_not_flagged_as_decisions(tmp_path: Path) -> None:
+    root = make_repo(tmp_path)
+    (root / SPEC).write_text(
+        "# S0\n\n*Status: Approved.*\n\nThe mass is 0123.4 kg, per decision 0001.\n"
+    )
+    problems = check(root)
+    assert not any("0123" in p for p in problems)
+    assert not any("Deviations" in p for p in problems)
