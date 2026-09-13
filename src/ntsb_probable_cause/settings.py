@@ -11,9 +11,11 @@ from ntsb_probable_cause.errors import ConfigurationError
 class Settings(BaseSettings):
     """Values that may change between runs. Recorded with each run's output."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="NTSB_", extra="ignore", frozen=True
+    )
 
-    ntsb_api_key: SecretStr | None = Field(default=None, alias="NTSB_API_KEY")
+    ntsb_api_key: SecretStr | None = Field(default=None, validation_alias="NTSB_API_KEY")
     requests_per_minute: int = Field(default=30, gt=0)
     data_dir: Path = Path("data")
 
