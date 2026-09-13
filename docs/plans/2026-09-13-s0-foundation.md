@@ -1514,11 +1514,11 @@ git commit -m "S0: path resolution, field roles with declared sources, path chec
   - `api.Page` (frozen dataclass: `number: int`, `content: bytes`, `records: tuple[dict[str, object], ...]`, `has_more: bool`, `next_marker: str | None`).
   - `api.NtsbClient(api_key: str, *, requests_per_minute: int = 30, transport: httpx.BaseTransport | None = None, sleep: Callable[[float], None] = time.sleep, max_attempts: int = 5, backoff_seconds: float = 2.0)`; context manager; `cases_by_date_range(start: date, end: date) -> Iterator[Page]`.
 
-- [ ] **Step 1: Add dependencies**
+- [x] **Step 1: Add dependencies**
 
 Run: `uv add httpx`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/test_redaction.py`:
 
@@ -1670,7 +1670,7 @@ def test_malformed_payload_raises(respx_mock: respx.MockRouter) -> None:
 Run: `uv run pytest tests/test_redaction.py tests/test_api.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ntsb_probable_cause/data/__init__.py`: `"""Ingestion: API client, raw store, processed-file build."""`
 
@@ -1831,12 +1831,12 @@ class NtsbClient:
         )
 ```
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_redaction.py tests/test_api.py -v --no-cov && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/data tests/test_redaction.py tests/test_api.py pyproject.toml uv.lock docs/plans/2026-09-13-s0-foundation.md
@@ -4368,3 +4368,8 @@ moves these into the specification's As-built section when S0 closes.
 - Task 5, step 2 (review fix round 1): `paths.is_under` compared segments including their brackets, so a source with no brackets (`aircrafts[0].events`) or the withheld subtree's exact parent (`aircrafts[0]`, `narratives[0]`) passed `check_evidence_paths` with no `LeakageError`, even though reading a parent reads the withheld subtree beneath it. Fixed by comparing bracket-stripped segment names (new `paths._bare_parts`) in `is_under`, and adding `paths.overlaps(path, subtree) -> bool` (`is_under(path, subtree) or is_under(subtree, path)`) so `check_evidence_paths` catches both directions. Checked every current `EVIDENCE_FIELDS` source against the real withheld subtrees under the new bidirectional rule: none newly overlaps (each real source's second path segment — `aircraftMake`, `engines`, `crewAndOccupants`, `weatherConditions`, or one of the three `PHASE_OF_FLIGHT` leaves under `events`, which stay exempted below — differs from `events`/`findings`/the `narratives[]` leaves, or terminates strictly inside its own subtree), so no NEEDS_CONTEXT was warranted. Also added `paths.is_well_formed(path) -> bool` (dot-separated `name`/`name[N]`/`name[]` segments) and made `check_evidence_paths` raise `LeakageError` on a source that fails it. `is_under`'s public signature and its existing tests are unchanged. Decision 0016 (layered guard) motivates the fix; no new decision record (bug fix in the plan's own code, per spec S7.3's intent for layer 2).
 - Task 5, step 3 (review fix round 1): `PATH_CHECK_EXCEPTIONS` keyed the whole `aircrafts[].events[]` subtree to `PHASE_OF_FLIGHT`, so any path under that subtree — including `aircrafts[0].events[].eventCode`, the verdict's occurrence code — was silently exempted for that role. Reworked the mapping to key on `(role, normalised leaf path)` for exactly the three paths `PHASE_OF_FLIGHT` reads (`isDefiningEvent`, `sequenceNumber`, `cicttPhaseSOEGroup`), wrapped in `types.MappingProxyType`; `check_evidence_paths` now looks up `(field.role, normalise_path(source))` instead of `(field.role, subtree)`. Added `fields.check_path_exceptions()`, run at import alongside `check_evidence_paths()`, which raises `LeakageError` if a declared exception path no longer overlaps any withheld subtree (stale-entry guard). Type of `PATH_CHECK_EXCEPTIONS` (`Mapping[tuple[EvidenceRole, str], str]`) and its citation string are unchanged. No decision record (bug fix, per spec S7.3).
 - Task 5, step 1 (review fix round 1, minor): added `test_withheld_text_extractors_on_raw`, asserting `factual_narrative`, `analysis_narrative` and `probable_cause` against `RAW` — previously untested even though they are the scoring ground truth. Added `narratives[0].concatenatedFactualNarrative` to `RAW` with invented clinical text (no names) since it had none. No decision record.
+- Task 6, step 3: ruff `PLR0913` flagged `NtsbClient.__init__` (6 args including `self`) — its parameter list is fixed verbatim by this task's Interfaces block, so it cannot be reduced. Added a scoped `# noqa: PLR0913` on the `def __init__(` line with a comment naming the reason, per the brief's "no blanket ignores" rule (this is a single-line, single-rule ignore, not a project-wide one). No decision record.
+- Task 6, step 3: ruff `PLR2004` flagged the magic value `400` in `response.status_code < 400`; added a module-level constant `_CLIENT_ERROR_THRESHOLD = 400` and used it in the comparison instead. Behaviour unchanged. No decision record (bug fix in the plan's code).
+- Task 6, step 3: ruff `E501` flagged the final `ApiError` message in `NtsbClient._get` (101 > 100 chars); wrapped the f-string across two adjacent string literals with no text change. No decision record.
+- Task 6, step 3: vulture flagged the unused `kind`/`tb` parameters of `NtsbClient.__exit__` (the third, `value`, was already read as `_value`-shaped by convention but also unused) — renamed all three unused parameters to `_kind`, `_value`, `_tb`; vulture recognises the leading-underscore convention for intentionally-unused names. Signature order, types and the context-manager protocol are unchanged. No decision record.
+- Task 6, step 2: ran `uv run ruff format .` after writing the brief's test files verbatim — the brief's own multi-line dict/list literals in `tests/test_api.py` and `tests/test_redaction.py` and the `REDACTED_FIELDS`/error-message literals in `src/ntsb_probable_cause/data/{redaction,api}.py` did not match this project's ruff formatter output (line-wrapping of dict/list literals and the `frozenset({...})` call). Formatting only, no behaviour or assertion change. No decision record.

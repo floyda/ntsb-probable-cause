@@ -1,0 +1,100 @@
+from datetime import date
+
+import httpx
+import pytest
+import respx
+
+from ntsb_probable_cause.data.api import NtsbClient, Page
+from ntsb_probable_cause.errors import ApiError
+
+URL = "https://api.ntsb.gov/public/api/Common/v2/GetCasesByDateRange/"
+
+
+def body(data: list[dict[str, object]], has_more: bool, marker: str | None) -> dict[str, object]:
+    return {
+        "startDate": "2016-08-01",
+        "endDate": "2016-08-31",
+        "pageSize": len(data),
+        "hasMore": has_more,
+        "nextMarker": marker,
+        "data": data,
+    }
+
+
+def client(sleeps: list[float]) -> NtsbClient:
+    return NtsbClient("key-1", sleep=sleeps.append, backoff_seconds=1.0)
+
+
+def fetch(c: NtsbClient) -> list[Page]:
+    return list(c.cases_by_date_range(date(2016, 8, 1), date(2016, 8, 31)))
+
+
+def test_pages_until_has_more_is_false(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.get(URL).mock(
+        side_effect=[
+            httpx.Response(200, json=body([{"ntsbNumber": "A"}], True, "m1")),
+            httpx.Response(200, json=body([{"ntsbNumber": "B"}], False, None)),
+        ]
+    )
+    sleeps: list[float] = []
+    with client(sleeps) as c:
+        pages = list(c.cases_by_date_range(date(2016, 8, 1), date(2016, 8, 31)))
+    assert [p.number for p in pages] == [1, 2]
+    assert [r["ntsbNumber"] for p in pages for r in p.records] == ["A", "B"]
+    first, second = (call.request for call in route.calls)
+    assert first.url.params["startDate"] == "2016-08-01"
+    assert first.url.params["endDate"] == "2016-08-31"
+    assert first.url.params["mode"] == "aviation"
+    assert "marker" not in first.url.params
+    assert second.url.params["marker"] == "m1"
+    assert first.headers["Ocp-Apim-Subscription-Key"] == "key-1"
+    assert sleeps == [2.0]  # 60 / 30 requests per minute, between requests
+
+
+def test_page_content_is_kept_byte_for_byte(respx_mock: respx.MockRouter) -> None:
+    raw = b'{"hasMore": false, "nextMarker": null, "data": [{"ntsbNumber": "A"}]}'
+    respx_mock.get(URL).mock(return_value=httpx.Response(200, content=raw))
+    with client([]) as c:
+        (page,) = fetch(c)
+    assert page.content == raw
+
+
+def test_no_content_yields_one_empty_page(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(204))
+    with client([]) as c:
+        (page,) = fetch(c)
+    assert page.records == ()
+    assert page.has_more is False
+
+
+def test_retries_429_and_503_with_backoff(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(
+        side_effect=[
+            httpx.Response(429),
+            httpx.Response(503),
+            httpx.Response(200, json=body([], False, None)),
+        ]
+    )
+    sleeps: list[float] = []
+    with client(sleeps) as c:
+        fetch(c)
+    assert sleeps == [1.0, 2.0, 2.0, 2.0]  # backoff 1, rate gap, backoff 2, rate gap
+
+
+def test_gives_up_after_max_attempts(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(500))
+    with client([]) as c, pytest.raises(ApiError, match="500"):
+        fetch(c)
+
+
+def test_client_error_is_not_retried(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.get(URL).mock(return_value=httpx.Response(401))
+    with client([]) as c, pytest.raises(ApiError, match="401"):
+        fetch(c)
+    assert route.call_count == 1
+
+
+def test_malformed_payload_raises(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(200, json={"data": "not a list"}))
+    with client([]) as c, pytest.raises(ApiError, match="data"):
+        fetch(c)
