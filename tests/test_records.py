@@ -48,11 +48,12 @@ def test_every_fixture_has_withheld_content_to_protect(
 
 
 def test_exclude_removes_a_role_for_ablation(record_fixtures: list[dict[str, object]]) -> None:
-    evidence, _, _ = split_record(
-        record_fixtures[0], exclude=frozenset({EvidenceRole.REGISTRATION})
-    )
+    raw = record_fixtures[0]
+    evidence, _, _ = split_record(raw, exclude=frozenset({EvidenceRole.REGISTRATION}))
     assert evidence.registration is None
     assert EvidenceRole.REGISTRATION not in evidence.role_values()
+    assert evidence.case_id == raw["ntsbNumber"]
+    assert evidence.docket_url == f"https://data.ntsb.gov/Docket?ProjectID={raw['mKey']}"
 
 
 def test_missing_case_number_is_rejected() -> None:
@@ -65,6 +66,10 @@ def test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence(
 ) -> None:
     raw = copy.deepcopy(record_fixtures[0])
     narratives = cast("list[dict[str, object]]", raw["narratives"])
-    narratives[0]["prelimNarrative"] = narratives[0]["probableCause"]
-    with pytest.raises(LeakageError, match="probable_cause"):
+    probable_cause = cast("str", narratives[0]["probableCause"])
+    narratives[0]["prelimNarrative"] = probable_cause
+    with pytest.raises(LeakageError, match="probable_cause") as exc_info:
         split_record(raw)
+    message = str(exc_info.value)
+    assert probable_cause.lower() not in message.lower()
+    assert exc_info.value.leaks

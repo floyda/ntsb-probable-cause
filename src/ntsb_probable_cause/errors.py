@@ -1,5 +1,7 @@
 """Exception hierarchy for the library."""
 
+from collections.abc import Sequence
+
 
 class NtsbError(Exception):
     """Base class for every error this library raises."""
@@ -22,4 +24,13 @@ class FixtureError(NtsbError):
 
 
 class LeakageError(NtsbError):
-    """Withheld synthesis or verdict content reached evidence (decision 0016)."""
+    """Withheld synthesis or verdict content reached evidence (decision 0016).
+
+    ``message`` must never contain the withheld text itself — only role, kind and source. Callers
+    that need the structured detail (tests, an audit trail) can read ``leaks``, typed loosely here
+    (``Sequence[object]``) so this foundational module never depends on ``records.guard.Leak``.
+    """
+
+    def __init__(self, message: str, *, leaks: Sequence[object] = ()) -> None:
+        super().__init__(message)
+        self.leaks: Sequence[object] = tuple(leaks)

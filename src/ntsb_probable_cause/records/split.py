@@ -47,5 +47,6 @@ def split_record(
         role_values, withheld, verdict.codes(), min_sentence_chars=min_sentence_chars
     )
     if leaks:
-        raise LeakageError(f"{case_id}: " + "; ".join(str(leak) for leak in leaks[:5]))
+        summary = "; ".join(str(leak) for leak in leaks[:5])
+        raise LeakageError(f"{case_id}: {summary}", leaks=leaks)
     return evidence, synthesis, verdict

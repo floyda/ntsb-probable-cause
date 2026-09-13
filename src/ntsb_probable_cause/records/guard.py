@@ -1,6 +1,7 @@
 """Guard layer 4: withheld text or codes must never appear in evidence (decision 0016)."""
 
 import re
+import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
@@ -10,14 +11,43 @@ from ntsb_probable_cause.fields import EvidenceValue
 MIN_SENTENCE_CHARS = 20
 
 _WHITESPACE = re.compile(r"\s+")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
-# The only probable-cause sentences found verbatim in development factual narratives (M5).
-_BOILERPLATE = re.compile(r"^\W*this report was modified on\b")
+# Break on ".", "!", "?" or ";" followed by whitespace, and also on ".", "!" or "?" directly
+# followed by a letter with no space (a trivial edit that would otherwise hide a sentence).
+_SENTENCE_END = re.compile(r"(?<=[.!?;])\s+|(?<=[.!?])(?=[A-Za-z])")
+# Trailing sentence punctuation and closing quotes/brackets, stripped from every needle so a
+# dropped or appended final mark cannot defeat a match.
+_TRAILING_PUNCT = re.compile(r"[.!?;:'\")\]}]+$")
+# Curly quote variants folded to their straight ASCII form. The keys are the actual characters
+# being matched (ruff's ambiguous-character check would otherwise flag every one; noqa is scoped
+# to this one rule, on this one construct, not a blanket ignore).
+_QUOTE_FOLD = str.maketrans(
+    {
+        "‘": "'",  # noqa: RUF001 - left single quotation mark
+        "’": "'",  # noqa: RUF001 - right single quotation mark
+        "‚": "'",  # noqa: RUF001 - single low-9 quotation mark
+        "‛": "'",  # noqa: RUF001 - single high-reversed-9 quotation mark
+        "“": '"',
+        "”": '"',
+        "„": '"',
+        "‟": '"',
+    }
+)
+# The exact boilerplate sentence found verbatim in development narratives (M5; verified against
+# real records in data/raw/v2/2014-06 and data/raw/v2/2016-08): "**This report was modified on
+# <date>.**", date as "Month D, YYYY" or "M/D/YYYY", wrapped in **/*** and optional quotes.
+# Matched only against a single split-out sentence, never the whole withheld text.
+_BOILERPLATE_SENTENCE = re.compile(
+    r"^\W*this report was modified on (?:[a-z]+ \d{1,2}, \d{4}|\d{1,2}/\d{1,2}/\d{4})\W*$"
+)
 
 
 @dataclass(frozen=True)
 class Leak:
-    """Withheld content found in one evidence value."""
+    """Withheld content found in one evidence value.
+
+    ``fragment`` is kept for callers that need the structured detail (tests, an audit trail),
+    but ``__str__`` never renders it -- from S3 an error message could reach a model or a board.
+    """
 
     evidence_role: str
     kind: str
@@ -25,12 +55,18 @@ class Leak:
     fragment: str
 
     def __str__(self) -> str:
-        return f"{self.kind} from {self.source} in {self.evidence_role}: {self.fragment!r}"
+        chars = len(self.fragment)
+        return f"{self.kind} from {self.source} in {self.evidence_role} ({chars} chars withheld)"
 
 
 def normalise_text(text: str) -> str:
-    """Collapse whitespace and lower-case, so formatting differences cannot hide a copy."""
-    return _WHITESPACE.sub(" ", text).strip().lower()
+    """Fold Unicode compatibility forms and curly quotes, collapse whitespace, lower-case."""
+    folded = unicodedata.normalize("NFKC", text).translate(_QUOTE_FOLD)
+    return _WHITESPACE.sub(" ", folded).strip().lower()
+
+
+def _strip_trailing_punct(text: str) -> str:
+    return _TRAILING_PUNCT.sub("", text)
 
 
 def _as_text(value: EvidenceValue) -> str:
@@ -53,22 +89,26 @@ def find_leaks(
         if not text:
             continue
         whole = normalise_text(text)
-        if len(whole) >= min_sentence_chars and not _BOILERPLATE.match(whole):
-            needles.append(("text", source, whole))
-        needles.extend(
-            ("sentence", source, sentence)
-            for sentence in _SENTENCE_END.split(whole)
-            if len(sentence) >= min_sentence_chars
-            and sentence != whole
-            and not _BOILERPLATE.match(sentence)
-        )
+        whole_stripped = _strip_trailing_punct(whole)
+        # Never exempted for boilerplate: only a single isolated sentence can be boilerplate.
+        if len(whole_stripped) >= min_sentence_chars:
+            needles.append(("text", source, whole_stripped))
+        for sentence in _SENTENCE_END.split(whole):
+            stripped = _strip_trailing_punct(sentence)
+            if (
+                len(stripped) >= min_sentence_chars
+                and stripped != whole_stripped
+                and not _BOILERPLATE_SENTENCE.match(stripped)
+            ):
+                needles.append(("sentence", source, stripped))
     patterns = [
-        (code, re.compile(rf"(?<!\d){re.escape(code)}(?!\d)")) for code in dict.fromkeys(codes)
+        (code, re.compile(rf"\b{re.escape(code)}\b"))
+        for code in dict.fromkeys(code for code in codes if code and code.strip())
     ]
     found: list[Leak] = []
     for role, haystack in haystacks.items():
         found.extend(
-            Leak(role, kind, source, needle[:80])
+            Leak(role, kind, source, needle)
             for kind, source, needle in needles
             if needle in haystack
         )
