@@ -5,21 +5,36 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from ntsb_probable_cause.fields import EvidenceValue
+from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
 
-# Provisional until Task 13 sets it from docs/results/s0-corpus-scan.txt.
+# Measured: the smallest candidate minimum sentence length with zero tripwire hits over the
+# whole corpus, after decision 0019's weather_metar/factual_narrative sentence exemption.
+# Source: docs/results/s0-corpus-scan.txt (scripts/corpus_scan.py). Change only by re-running
+# the scan.
 MIN_SENTENCE_CHARS = 20
+
+# Decision 0019: in the weather report field only, sentences taken from the factual narrative
+# are not compared. In the cases measured, those matches were the narrative quoting the weather
+# observation. Sentences from the analysis and the probable cause, whole texts and codes are
+# still compared there. Accepted gap: a factual-narrative sentence placed in a plain-English
+# weather value would pass unseen.
+SENTENCE_CHECK_EXEMPTIONS: frozenset[tuple[str, str]] = frozenset(
+    {(EvidenceRole.WEATHER_METAR.value, "factual_narrative")}
+)
 
 _WHITESPACE = re.compile(r"\s+")
 # Break on ".", "!", "?" or ";" followed by whitespace, and also on ".", "!" or "?" directly
 # followed by a letter with no space (a trivial edit that would otherwise hide a sentence).
 _SENTENCE_END = re.compile(r"(?<=[.!?;])\s+|(?<=[.!?])(?=[A-Za-z])")
-# Trailing sentence punctuation, closing quotes/brackets, and any whitespace mixed in with them
-# (e.g. a space left behind once a final mark is stripped), stripped from every needle so a
-# dropped or appended final mark -- or the whitespace it leaves -- cannot defeat a match. A
-# single character class with "+" already consumes any run of these mixed together, so no
-# separate repeat-until-stable step is needed.
-_NEEDLE_EDGE = re.compile(r"[\s.!?;:'\")\]}]+$")
+# Trailing sentence punctuation, closing quotes/brackets, the comma of a dropped clause, and any
+# whitespace mixed in with them (e.g. a space left behind once a final mark is stripped), stripped
+# from every needle so a dropped or appended final mark -- or the whitespace it leaves -- cannot
+# defeat a match. A single character class with "+" already consumes any run of these mixed
+# together, so no separate repeat-until-stable step is needed.
+_NEEDLE_EDGE = re.compile(r"[\s.!?;:,'\")\]}]+$")
+# Leading opening quotes/brackets and whitespace, stripped the same way from the front of every
+# needle so a dropped or added opening mark cannot defeat a match either.
+_NEEDLE_LEADING_EDGE = re.compile(r"""^[\s"'(\[{]+""")
 # Curly quote variants folded to their straight ASCII form. The keys are the actual characters
 # being matched (ruff's ambiguous-character check would otherwise flag every one; noqa is scoped
 # to this one rule, on this one construct, not a blanket ignore).
@@ -69,8 +84,8 @@ def normalise_text(text: str) -> str:
 
 
 def _strip_needle(text: str) -> str:
-    """Strip leading whitespace and trailing punctuation/closing marks/whitespace from a needle."""
-    return _NEEDLE_EDGE.sub("", text.lstrip())
+    """Strip leading opening marks/whitespace and trailing punctuation/closing marks/whitespace."""
+    return _NEEDLE_EDGE.sub("", _NEEDLE_LEADING_EDGE.sub("", text))
 
 
 def _as_text(value: EvidenceValue) -> str:
@@ -85,6 +100,7 @@ def find_leaks(
     codes: Iterable[str],
     *,
     min_sentence_chars: int = MIN_SENTENCE_CHARS,
+    exemptions: frozenset[tuple[str, str]] = SENTENCE_CHECK_EXEMPTIONS,
 ) -> list[Leak]:
     """Return every place withheld text, sentence or code appears in an evidence value."""
     haystacks = {role: normalise_text(_as_text(value)) for role, value in evidence.items()}
@@ -114,7 +130,7 @@ def find_leaks(
         found.extend(
             Leak(role, kind, source, needle)
             for kind, source, needle in needles
-            if needle in haystack
+            if not (kind == "sentence" and (role, source) in exemptions) and needle in haystack
         )
         found.extend(
             Leak(role, "code", "codes", code)

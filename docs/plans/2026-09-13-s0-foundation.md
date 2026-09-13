@@ -3849,7 +3849,7 @@ git commit -m "S0: processed file (index + raw record), ntsb-ingest build, recon
   - `scripts.corpus_scan.duplication_share(analysis: str | None, factual: str | None, min_chars: int = 40) -> float`.
   - `scripts.corpus_scan.THRESHOLD_LINE = "chosen minimum sentence length: "` — the results file contains exactly one line starting with it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_corpus_scan.py`:
 
@@ -3893,7 +3893,7 @@ def test_guard_threshold_is_the_value_the_scan_recorded() -> None:
 Run: `uv run pytest tests/test_corpus_scan.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.corpus_scan'`.
 
-- [ ] **Step 2: Implement `scripts/corpus_scan.py`**
+- [x] **Step 2: Implement `scripts/corpus_scan.py`**
 
 ```python
 """Guard statistics over the whole processed corpus (S0 spec §10). Counts only; no record text.
@@ -4014,7 +4014,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 3: Run the scan and set the threshold**
+- [x] **Step 3: Run the scan and set the threshold**
 
 Run (after the Task 12 build):
 
@@ -4037,12 +4037,12 @@ MIN_SENTENCE_CHARS = N
 
 replacing `N` with the recorded value, and removing the "Provisional" comment.
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_corpus_scan.py -v --no-cov && make check`
 Expected: PASS. Check that `docs/results/s0-corpus-scan.txt` holds counts only.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/corpus_scan.py tests/test_corpus_scan.py docs/results/s0-corpus-scan.txt src/ntsb_probable_cause/records/guard.py docs/plans/2026-09-13-s0-foundation.md
@@ -4579,3 +4579,8 @@ moves these into the specification's As-built section when S0 closes.
 - Task 10, step 3 (review fix round 1, minor): `assert_boundary_holds`'s bookkeeping check trusted `evidence.docket_url` as the expected docket URL, rather than deriving it independently from the raw record — a splitter bug that put the wrong URL on `Evidence` would go unnoticed. Changed to compute `expected_docket_url = docket_url(mkey) if isinstance(mkey, int) else None` from `raw["mKey"]` via `ntsb_probable_cause.sources.docket_url`, and check that value against the sent text instead. The case-number check is unchanged. No decision record (test hardening, ruled Minor-include by review); no public name or signature changed.
 - Task 10, step 2/tests (review fix round 1, mypy fixes, no behaviour change): `mypy --strict` rejected `object.__setattr__(self, "_text", text)` in `Payload.__init__` without a declared attribute type (`Returning Any from function declared to return "str"` on the `text` property, and `"Payload" has no attribute "_text"` at every read site) — fixed by the `_text: str` slot annotation noted above. Also rejected `model_client.LeakageError` in the new render-check test (`Module "ntsb_probable_cause.model.client" does not explicitly export attribute "LeakageError"`, since `client.py` imports it only for internal use) — changed the test to `from ntsb_probable_cause.errors import LeakageError` directly instead of reaching through the `model_client` module alias. No decision record (lint/type compliance, per implementer-common's "no blanket ignores" rule).
 - Task 9, step 2 (review fix round 2): a later task's full run found fix round 1's own hypothesis property, `test_any_withheld_text_without_its_final_punctuation_is_still_found`, itself failing — falsifying example `withheld='AAAAAAAAAAAAAAAAAAAA '` (trailing space), `final_punct='.'`, `prefix=''`, `suffix=''`. Cause confirmed: `_strip_trailing_punct`'s regex (`[.!?;:'")\]}]+$`) stripped only the trailing punctuation mark, not the whitespace that mark's removal exposed (`"aaaa... ."` → `"aaaa... "`, trailing space left in), so the needle no longer matched an evidence copy with neither the space nor the mark. Fixed in `records/guard.py`: renamed the function `_strip_needle` and its regex `_NEEDLE_EDGE`, adding `\s` to the trailing character class (`[\s.!?;:'")\]}]+$`, one class with `+` already consumes any run of mixed whitespace/punctuation, no separate repeat-until-stable loop needed) and adding `text.lstrip()` before the trailing strip, for leading whitespace. The `len(...) >= min_sentence_chars` check and the `sentence != whole` de-duplication already ran on the stripped needle (unchanged, confirmed correct per the follow-up brief's item 2). Added an `@example(role=EvidenceRole.PRELIM_NARRATIVE, withheld="AAAAAAAAAAAAAAAAAAAA ", final_punct=".", prefix="", suffix="")` regression directly on the property in `tests/test_guard.py`, confirmed to fail against the pre-fix code (`AssertionError: assert []`, same falsifying example) and pass after. Ran the full property suite with `--hypothesis-seed=0`, `=1`, `=2`, `=42`: all 23 tests in `tests/test_guard.py` passed on every seed, no further counterexample found. Reconfirmed no `LeakageError` on any real fixture (`tests/test_records.py::test_split_matches_field_extractors_on_every_fixture`, `tests/test_boundary.py::test_boundary_holds_for_every_fixture`, both pass). No decision record (bug fix in the plan's own fix-round-1 code, ruled a real tripwire gap by a later task's review).
+- Task 13, step 0 (controller-directed, before running the scan): two more trivial-edit gaps in the guard's needle stripping, found before the corpus scan and fixed so the threshold is measured on the final matching logic. (1) `_NEEDLE_EDGE` (trailing strip) did not include `,`, so a withheld needle ending in a dropped comma (e.g. "..., ") was not found once the comma was removed from the evidence copy — added `,` to the class. (2) Needles kept a leading opening quote or bracket (`"`, `'`, `(`, `[`, `{`), so a withheld sentence wrapped in parentheses or quotes (e.g. `"(the engine lost power during the climb.)"`) was not found once the evidence copy dropped the marks — added `_NEEDLE_LEADING_EDGE = re.compile(r'^[\s"\'(\[{]+')` and changed `_strip_needle` to strip it before the existing trailing strip (`text.lstrip()` is no longer needed separately, since the new leading regex already consumes whitespace). Added three tests to `tests/test_guard.py` (parenthesised text, quoted text, trailing comma), each confirmed to fail on the pre-fix code with the same evidence/withheld pair, then pass after the fix. Reconfirmed no `LeakageError` on any real fixture (`tests/test_records.py`, `tests/test_boundary.py`, `tests/test_fixtures.py`, `tests/test_contamination.py`, 25 tests, all pass). No decision record (bug fix to guard matching, not a change of approach); no public name or signature changed other than the new `_NEEDLE_LEADING_EDGE` module-private constant.
+- Task 13, step 2: reflowed the brief's `scripts/corpus_scan.py` (line wraps, a `columns` local, and one `if/else` rewritten as a conditional expression) to satisfy `ruff format`, `ruff check` (E501 line length; PLR2004 magic value, fixed by adding the module-private constant `_DUPLICATION_THRESHOLD = 0.5` for the brief's inline `0.5`) and `mypy --strict` (narrowed `analysis: str | None` before passing it to `normalise_text` with `normalise_text(analysis) in normalise_text(factual) if analysis else False` instead of the brief's `bool(analysis) and normalise_text(analysis) in normalise_text(factual)`, which mypy does not narrow). Confirmed byte-for-byte identical `docs/results/s0-corpus-scan.txt` output before and after the reflow (`diff` empty) — no behaviour change. No decision record (lint/type compliance, per implementer-common's "no blanket ignores" rule); no public name or signature changed.
+- Task 13, step 3: the first scan found no clearing length (weather quotes ×3, manufacturer-name fragments ×2 at length 10 only); weather role exempted from the sentence comparison per decision 0019; re-run chose 20 with 0 LeakageError.
+- Task 13, step 3 (review fix round 1): decision 0019 narrowed to `SENTENCE_CHECK_EXEMPTIONS: frozenset[tuple[str, str]] = {("weather_metar", "factual_narrative")}` — only factual-narrative sentences are exempt in the weather field; analysis and probable-cause sentences are still compared there, as is every comparison in every other role. `find_leaks` gained an `exemptions=` parameter (default this constant; `split_record` keeps the default; the scan's re-run passes an empty set alongside it to report "without exemption" figures for comparison). The scan now also prints sentence matches and the cases carrying them by split/role/source/length, with and without the exemption, and the `weather_metar` field's coded-vs-plain-English composition, so 0019's Context numbers are checked against the committed results file rather than a one-off script: all matched exactly (3 matches/2 cases for weather, 4,774/4,739/35 for field composition, 2 matches/10 chars for the manufacturer name). Re-run chose 20 with 0 LeakageError, unchanged from the wider exemption's result.
+- Task 13, step 3 (review fix round 2): the comment above `SENTENCE_CHECK_EXEMPTIONS` in `records/guard.py` still claimed a match "can only be the narrative quoting the observation … never a conclusion", which decision 0019 does not claim — for plain-English values the direction cannot be told, and 0019 accepts that as a gap. Replaced with the coordinator's exact wording, ending "Accepted gap: a factual-narrative sentence placed in a plain-English weather value would pass unseen." Checked `guard.py`, `split.py` and `corpus_scan.py` for the same "can only be / never" phrasing elsewhere; none found. The scan's "without exemption" sentence-match breakdown now labels `weather_metar` matches `coded` or `plain` (e.g. `dev/weather_metar/factual_narrative/117/coded: 1`), so decision 0019's coded/plain claims are checkable from the committed results file: the re-run confirms the development match is coded (117 chars) and both held-out matches are plain (223 and 55 chars), threshold still 20, still 0 LeakageError. No parsing in `tests/test_corpus_scan.py` reads the per-match breakdown, so no test changes were needed.

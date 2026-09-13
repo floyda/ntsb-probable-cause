@@ -1,10 +1,17 @@
 import string
 
+import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
 from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
-from ntsb_probable_cause.records.guard import MIN_SENTENCE_CHARS, Leak, find_leaks, normalise_text
+from ntsb_probable_cause.records.guard import (
+    MIN_SENTENCE_CHARS,
+    SENTENCE_CHECK_EXEMPTIONS,
+    Leak,
+    find_leaks,
+    normalise_text,
+)
 
 CAUSE = "The pilot's failure to remove the airplane's tow bar before takeoff."
 # Invented clinical text, not from any real record; used only to test the guard's matching.
@@ -188,3 +195,101 @@ def test_any_withheld_text_without_its_final_punctuation_is_still_found(
     punctuated = withheld + final_punct
     evidence = {role.value: f"{prefix} {withheld} {suffix}"}
     assert find_leaks(evidence, {"factual_narrative": punctuated}, ())
+
+
+# --- Task 13, step 0 (controller-directed): leading open quote/bracket, trailing comma ---
+
+
+def test_parenthesised_withheld_text_is_found_when_evidence_drops_the_parens() -> None:
+    withheld = "(the engine lost power during the climb.)"
+    evidence: dict[str, EvidenceValue] = {
+        "prelim_narrative": "the engine lost power during the climb"
+    }
+    assert "text" in leaks(evidence, {"factual_narrative": withheld})
+
+
+def test_quoted_withheld_text_is_found_when_evidence_drops_the_quotes() -> None:
+    withheld = '"the engine lost power during the climb."'
+    evidence: dict[str, EvidenceValue] = {
+        "prelim_narrative": "the engine lost power during the climb"
+    }
+    assert "text" in leaks(evidence, {"factual_narrative": withheld})
+
+
+def test_withheld_text_ending_in_a_comma_is_found_when_evidence_drops_the_comma() -> None:
+    withheld = "the pilot continued the approach despite deteriorating weather, "
+    evidence: dict[str, EvidenceValue] = {
+        "prelim_narrative": "the pilot continued the approach despite deteriorating weather"
+    }
+    assert "text" in leaks(evidence, {"factual_narrative": withheld})
+
+
+# --- Decision 0019 (review fix round 1): weather_metar is exempt from the sentence
+# comparison only for sentences sourced from the factual narrative ---
+
+_WEATHER_WITHHELD = (
+    "The weather was clear at the time of the accident. "
+    "The engine lost power during the initial climb after takeoff."
+)
+_WEATHER_SENTENCE = "the engine lost power during the initial climb after takeoff"
+
+_NON_WEATHER_ROLES = [role for role in EvidenceRole if role is not EvidenceRole.WEATHER_METAR]
+
+
+def test_factual_narrative_sentence_in_weather_metar_gives_no_leak() -> None:
+    text: dict[str, str | None] = {"factual_narrative": _WEATHER_WITHHELD}
+    assert leaks({"weather_metar": _WEATHER_SENTENCE}, text) == []
+
+
+def test_analysis_sentence_in_weather_metar_is_still_caught() -> None:
+    text: dict[str, str | None] = {"analysis_narrative": _WEATHER_WITHHELD}
+    assert leaks({"weather_metar": _WEATHER_SENTENCE}, text) == ["sentence"]
+
+
+def test_probable_cause_sentence_embedded_in_weather_metar_is_caught() -> None:
+    narrative = "The airplane departed controlled flight during the approach. " + CAUSE
+    evidence: dict[str, EvidenceValue] = {
+        "weather_metar": f"KABC 121453Z 27008KT 10SM CLR 24/08 A3002 {CAUSE} RMK AO2"
+    }
+    assert "sentence" in leaks(evidence, {"probable_cause": narrative})
+
+
+@pytest.mark.parametrize("role", _NON_WEATHER_ROLES, ids=lambda role: role.value)
+def test_factual_narrative_sentence_is_caught_in_every_other_role(role: EvidenceRole) -> None:
+    text: dict[str, str | None] = {"factual_narrative": _WEATHER_WITHHELD}
+    assert "sentence" in leaks({role.value: _WEATHER_SENTENCE}, text)
+
+
+def test_sentence_check_exemptions_is_exactly_weather_metar_factual_narrative() -> None:
+    assert frozenset({("weather_metar", "factual_narrative")}) == SENTENCE_CHECK_EXEMPTIONS
+
+
+def test_whole_probable_cause_in_weather_metar_is_still_caught() -> None:
+    assert leaks({"weather_metar": CAUSE}) == ["text"]
+
+
+def test_code_in_weather_metar_is_still_caught() -> None:
+    assert leaks({"weather_metar": "occurrence 300230."}, codes=("300230",)) == ["code"]
+
+
+# --- Minor: opening marks, as a property rather than fixed examples ---
+
+_OPENING_CLOSING = {'"': '"', "'": "'", "(": ")", "[": "]", "{": "}"}
+
+
+@given(
+    opening=st.sampled_from(sorted(_OPENING_CLOSING)),
+    final_punct=st.sampled_from(list(".!?")),
+    withheld=st.text(alphabet=string.ascii_letters + " ", min_size=MIN_SENTENCE_CHARS).filter(
+        lambda s: len(normalise_text(s)) >= MIN_SENTENCE_CHARS
+    ),
+)
+def test_withheld_text_wrapped_in_an_opening_mark_is_found_when_evidence_drops_the_marks(
+    opening: str, final_punct: str, withheld: str
+) -> None:
+    closing = _OPENING_CLOSING[opening]
+    wrapped = f"{opening}{withheld}{final_punct}{closing}"
+    evidence: dict[str, EvidenceValue] = {"prelim_narrative": withheld}
+    assert find_leaks(
+        evidence, {"analysis_narrative": wrapped}, (), min_sentence_chars=MIN_SENTENCE_CHARS
+    )

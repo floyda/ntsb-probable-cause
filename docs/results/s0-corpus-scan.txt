@@ -1,0 +1,54 @@
+# S0 corpus scan (scripts/corpus_scan.py) — counts only
+cases: 19641; by split: {'dev': 13560, 'heldout': 4241, 'open': 1840}
+by split/class: {'dev/C': 6126, 'dev/F': 2030, 'dev/G': 3, 'dev/I': 135, 'dev/L': 5137, 'dev/M': 22, 'dev/T': 107, 'heldout/C': 397, 'heldout/F': 531, 'heldout/I': 1, 'heldout/L': 3308, 'heldout/M': 2, 'heldout/T': 2, 'open/F': 111, 'open/L': 1729}
+multi-aircraft cases by split: {'dev': 162, 'heldout': 39, 'open': 23}
+
+## tripwire hits by minimum sentence length (split/kind)
+10: total 2 {'dev/sentence': 2}
+20: total 0 {}
+40: total 0 {}
+80: total 0 {}
+
+## weather_metar field composition (decision 0019): 4774 non-empty values, 4739 with a coded time group, 35 plain-English
+
+## tripwire sentence matches by minimum sentence length (split/role/source/length), with and without decision 0019's exemption — counts only
+10 without exemption: total 5 {'dev/aircraft_make/factual_narrative/10': 2, 'dev/weather_metar/factual_narrative/117/coded': 1, 'heldout/weather_metar/factual_narrative/223/plain': 1, 'heldout/weather_metar/factual_narrative/55/plain': 1}
+10 with exemption: total 2 {'dev/aircraft_make/factual_narrative/10': 2}
+20 without exemption: total 3 {'dev/weather_metar/factual_narrative/117/coded': 1, 'heldout/weather_metar/factual_narrative/223/plain': 1, 'heldout/weather_metar/factual_narrative/55/plain': 1}
+20 with exemption: total 0 {}
+40 without exemption: total 3 {'dev/weather_metar/factual_narrative/117/coded': 1, 'heldout/weather_metar/factual_narrative/223/plain': 1, 'heldout/weather_metar/factual_narrative/55/plain': 1}
+40 with exemption: total 0 {}
+80 without exemption: total 2 {'dev/weather_metar/factual_narrative/117/coded': 1, 'heldout/weather_metar/factual_narrative/223/plain': 1}
+80 with exemption: total 0 {}
+
+## cases with a sentence match by minimum sentence length (split/role/source), with and without decision 0019's exemption — counts only, no case numbers
+10 without exemption: total 4 {'dev/aircraft_make/factual_narrative': 2, 'dev/weather_metar/factual_narrative': 1, 'heldout/weather_metar/factual_narrative': 1}
+10 with exemption: total 2 {'dev/aircraft_make/factual_narrative': 2}
+20 without exemption: total 2 {'dev/weather_metar/factual_narrative': 1, 'heldout/weather_metar/factual_narrative': 1}
+20 with exemption: total 0 {}
+40 without exemption: total 2 {'dev/weather_metar/factual_narrative': 1, 'heldout/weather_metar/factual_narrative': 1}
+40 with exemption: total 0 {}
+80 without exemption: total 2 {'dev/weather_metar/factual_narrative': 1, 'heldout/weather_metar/factual_narrative': 1}
+80 with exemption: total 0 {}
+
+chosen minimum sentence length: 20
+
+## reported, not guarded: factual narrative statistics by split/class
+split/class: with factual narrative | >=50% analysis sentences verbatim | whole analysis contained | give-away phrase
+dev/C: 6121 | 3795 | 1986 | 890
+dev/F: 2029 | 3 | 1 | 314
+dev/G: 3 | 0 | 0 | 0
+dev/I: 135 | 6 | 0 | 31
+dev/L: 5136 | 115 | 5 | 966
+dev/M: 22 | 10 | 8 | 1
+dev/T: 105 | 4 | 0 | 23
+heldout/C: 202 | 97 | 78 | 29
+heldout/F: 529 | 2 | 0 | 117
+heldout/I: 1 | 0 | 0 | 0
+heldout/L: 1465 | 59 | 4 | 314
+heldout/M: 1 | 0 | 0 | 0
+heldout/T: 2 | 0 | 0 | 0
+open/F: 110 | 1 | 0 | 20
+open/L: 303 | 13 | 0 | 65
+
+split_record at the chosen length: 0 LeakageError across 19641 cases
