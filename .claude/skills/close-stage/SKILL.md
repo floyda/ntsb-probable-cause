@@ -21,11 +21,17 @@ tone, no personal names, and every number taken from a committed script or resul
 
 ## 2. Stop conditions — check before writing anything
 
-- Any unticked `- [ ]` step in the plan. List them and stop.
+- Any unticked `- [ ]` step in the plan, EXCEPT steps in the close-out task (the task that runs
+  `/close-stage`). List any unticked steps before that task and stop. Do not stop on unticked
+  steps in or after the close-out task (they will be ticked once this skill completes).
+- Current branch is `main`, or an open pull request exists for this branch (`gh pr view` succeeds).
+  Stop in either case — this work is meant for a branch.
 - `make check` fails, or CI on the pull request is not green
   (`gh pr checks`). Report and stop.
-- A Done-means condition has no evidence (below). Report which one and stop. Never write a
-  condition as met without evidence.
+- A Done-means condition has no evidence (below). Report which one and stop, EXCEPT the
+  close-out condition itself (specification status Implemented, As-built section complete,
+  roadmap stage marked done, plan deleted), which is recorded with evidence "this pull
+  request's close-out commit; `uv run python -m scripts.check_docs` clean".
 
 ## 3. Gather evidence
 
@@ -40,12 +46,14 @@ The last command gives the commit for the plan permalink:
 `https://github.com/floyda/ntsb-probable-cause/blob/<sha>/docs/plans/<plan-file>`.
 
 For each Done-means condition, find its evidence: a test node id (`tests/test_x.py::test_y`),
-a script with its committed output under `docs/results/`, or a CI run URL.
+a script with its committed output under `docs/results/`, a CI run URL, or a named command
+with its output quoted in this pull request's description.
 
 ## 4. Write the As-built section
 
 Append to the end of the specification, before its glossary if it has one at the end, using
-exactly these headings:
+exactly these headings. Links are relative to the specification file; for example,
+`[0017](../decisions/0017-spec-lifecycle-as-built-and-plan-deletion.md)`.
 
 ```markdown
 ## As built
@@ -59,7 +67,7 @@ What exists now, by component, in a few bullets. Name modules and commands.
 ### Done means, with evidence
 
 One bullet per condition in the Done-means section, in the same order:
-condition — met — evidence (test node id, script and results file, or CI run).
+condition — met — evidence (test node id, script and results file, CI run URL, or command output in pull request #N).
 
 ### Departures from this specification
 
@@ -74,7 +82,7 @@ Decision records added in this pull request, one line each with a link. "None." 
 
 - Pull request: #N (URL)
 - Plan, at its last commit: permalink
-- Commits: first..last short hashes
+- Commits: first..last commit before the close-out commit (short hashes)
 ```
 
 ## 5. Update statuses and delete the plan

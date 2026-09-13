@@ -14,3 +14,8 @@ def test_skill_names_every_as_built_part_exactly() -> None:
 
 def test_skill_runs_the_documentation_check() -> None:
     assert "uv run python -m scripts.check_docs" in SKILL.read_text()
+
+
+def test_skill_exempts_its_own_close_out_steps() -> None:
+    text = SKILL.read_text()
+    assert "close-out task" in text
