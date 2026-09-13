@@ -11,6 +11,7 @@ from ntsb_probable_cause.data.api import Page
 from ntsb_probable_cause.data.ingest import (
     Month,
     fetch_months,
+    iter_raw_records,
     latest_entries,
     manifest_path,
     month_dir,
@@ -151,3 +152,32 @@ def test_cli_fetch_uses_settings_and_client(
     monkeypatch.setattr(cli, "NtsbClient", FakeClient)
     assert cli.main(["fetch", "2016-08", "2016-08"]) == 0
     assert len(read_manifest(tmp_path / "raw")) == 1
+
+
+def test_iter_raw_records_reads_latest_entries_in_month_order(tmp_path: Path) -> None:
+    source = FakeSource(
+        {
+            date(2016, 9, 1): [page(1, ["S1"], False)],
+            date(2016, 8, 1): [page(1, ["A1", "A2"], True), page(2, ["A3"], False)],
+        }
+    )
+    fetch_months(source, [Month(2016, 9), Month(2016, 8)], tmp_path)
+    ids = [record["ntsbNumber"] for _, record in iter_raw_records(tmp_path)]
+    assert ids == ["A1", "A2", "A3", "S1"]
+
+
+def test_iter_raw_records_include_filter_skips_reading_excluded_months(tmp_path: Path) -> None:
+    source = FakeSource(
+        {
+            date(2016, 8, 1): [page(1, ["A1"], False)],
+            date(2020, 1, 1): [page(1, ["B1"], False)],
+        }
+    )
+    fetch_months(source, [Month(2016, 8), Month(2020, 1)], tmp_path)
+    # Corrupt the excluded month's page file; if it were opened or verified, this would raise.
+    (month_dir(tmp_path, "2020-01") / "page-01.json").write_bytes(b"not valid json")
+    ids = [
+        record["ntsbNumber"]
+        for _, record in iter_raw_records(tmp_path, include=lambda e: e.month == "2016-08")
+    ]
+    assert ids == ["A1"]

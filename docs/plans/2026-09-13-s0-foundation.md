@@ -2279,11 +2279,11 @@ git commit -m "S0: month-partitioned raw store with hashed manifest; ntsb-ingest
   - `scripts.make_fixture.make_record_fixture(record: Mapping[str, object], fetched_at: datetime) -> dict[str, object]` (raises `FixtureError` if the event year is after 2019); fixture file shape `{"fixture": {"source": ..., "fetched_at": ..., "redacted_fields": [...]}, "record": {...}}`.
   - `tests.conftest`: pytest fixtures `record_fixtures() -> list[dict[str, object]]` (the `record` part of each file, sorted by file name) and `eval_ids() -> dict[str, dict[str, str]]` (list name → case_id → event_date); plain function `load_record_fixtures() -> list[dict[str, object]]` for use outside pytest fixtures.
 
-- [ ] **Step 1: Add dependency**
+- [x] **Step 1: Add dependency**
 
 Run: `uv add pyarrow`
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `tests/test_ingest.py`:
 
@@ -2361,7 +2361,7 @@ def test_make_record_fixture_redacts_and_records_provenance() -> None:
 Run: `uv run pytest tests/test_ingest.py tests/test_fixtures.py -v --no-cov`
 Expected: FAIL (`ImportError` for `iter_raw_records` and `scripts.make_fixture`; missing `record_fixtures` fixture).
 
-- [ ] **Step 3: Implement `iter_raw_records`**
+- [x] **Step 3: Implement `iter_raw_records`**
 
 Append to `src/ntsb_probable_cause/data/ingest.py` (add `import json` and `Iterator` to the imports):
 
@@ -2377,7 +2377,7 @@ def iter_raw_records(raw_dir: Path, *, verify: bool = True) -> Iterator[tuple[Ma
             yield from ((entry, record) for record in data if isinstance(record, dict))
 ```
 
-- [ ] **Step 4: Implement `scripts/make_fixture.py`**
+- [x] **Step 4: Implement `scripts/make_fixture.py`**
 
 ```python
 """Create redacted development-split fixtures from this repository's raw data (decision 0015).
@@ -2526,7 +2526,7 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 5: Implement `scripts/check_fixtures_redacted.py`, `scripts/copy_eval_ids.py` and `tests/conftest.py`**
+- [x] **Step 5: Implement `scripts/check_fixtures_redacted.py`, `scripts/copy_eval_ids.py` and `tests/conftest.py`**
 
 `scripts/check_fixtures_redacted.py`:
 
@@ -2644,7 +2644,7 @@ Add the hook under `repo: local` in `.pre-commit-config.yaml`:
       - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/.*\.json$}
 ```
 
-- [ ] **Step 6: Generate the fixtures from real data**
+- [x] **Step 6: Generate the fixtures from real data**
 
 Requires the three months fetched in Task 7 and the spike checkout at `../ntsb-spike` relative to the main repository (in a worktree use the absolute path `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-spike`).
 
@@ -2659,12 +2659,12 @@ Expected: `auto` prints one line per criterion (if a criterion has no match in t
 
 Read every generated record fixture's narratives before committing: they must contain no personal names (NTSB narratives normally say "the pilot"). If one does, choose a different case with `make_fixture records <id>` and delete the offending file; note it under Deviations without quoting the name.
 
-- [ ] **Step 7: Run tests and checks**
+- [x] **Step 7: Run tests and checks**
 
 Run: `uv run pytest tests/test_ingest.py tests/test_fixtures.py -v --no-cov && make check`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/data/ingest.py scripts/make_fixture.py scripts/copy_eval_ids.py scripts/check_fixtures_redacted.py tests/conftest.py tests/test_fixtures.py tests/test_ingest.py tests/fixtures .pre-commit-config.yaml pyproject.toml uv.lock docs/plans/2026-09-13-s0-foundation.md
@@ -4541,3 +4541,16 @@ moves these into the specification's As-built section when S0 closes.
 - Task 7, step 2 (review wrap-up): `months_between` returned `[]` when `last` was before `first`, so swapped CLI arguments silently "succeeded" with 0 months instead of failing. Changed to raise `ValueError` naming both months. Added `test_months_between_rejects_reversed_range` (ruff `RUF043` flagged its `match=` pattern as an unescaped metacharacter string; made it a raw string, no behaviour change). No decision record (bug fix, directed by review).
 - Task 7, step 5 (review wrap-up): the plan's own verify snippet iterated `read_manifest(r)` directly, which re-verifies every historical entry (including ones superseded by a `--refresh`) and would raise on a stale, no-longer-present page file after any refresh. Changed it to iterate `latest_entries(read_manifest(r)).values()`, matching `fetch_months`' own notion of the authoritative entry per month; plan text only, no code change. No decision record.
 - Task 7, step 4 (review wrap-up): added `test_verify_detects_missing_file`, covering `verify_entry`'s missing-file branch (previously only its sha256-mismatch branch had a test). No decision record.
+- Task 8, step 4: the full 212-month raw corpus (2009-01..2026-08) is present in this worktree, not just the three months the brief anticipated. `scripts/make_fixture.py`'s `main()` originally called `iter_raw_records(RAW)` with no filter and only excluded held-out/open months afterwards, in the dict comprehension that built `records` (`if e.month <= "2019-12"`). This entry originally, and wrongly, claimed that held-out and open records were "never read into memory" by this script — they were: `iter_raw_records` itself still verified every month's page hashes and opened and parsed every month's page files, including held-out and open ones, before that filter ran. Corrected in review fix round 1, below. No decision record (data-availability handling, not a change of approach).
+- Task 8, step 6: all nine `CRITERIA` in `scripts/make_fixture.py` matched on the first attempt against the full development-split corpus (2009-01..2019-12), so no extra month fetch was needed. All nine chosen cases came from the Anchorage regional office (three-letter office prefix), because `select()` picks the lexicographically first eligible case number per criterion and this office's prefix sorts first among the dev-split cases present; a side effect of case-number ordering, not a chosen bias. Superseded by review fix round 1, below: two of these nine records (the F-class and F-class-second criteria) were later found to carry a name risk and were replaced.
+- Task 8, step 6: this entry originally, and wrongly, claimed that every generated record fixture's narrative fields were read in full before committing and that none contained a personal name. That review was incomplete: it checked only `probableCause`, `concatenatedFactualNarrative` and `analysisNarrative`, and missed that one record's `aircrafts[0].aircraftMake` held an individual's name — an amateur-built aircraft is registered under its builder's name in NTSB data, and decision 0015's redacted-field list does not cover this field (flagged for Andy). The same name also appeared twice more inside that record's own factual narrative, which the review read but did not catch. The name was committed to this branch's HEAD commit (`0311950`, unpushed) and removed by amending that commit in review fix round 1, below, before any push; `git log` over every commit reachable from this branch's HEAD and over `origin/worktree-s0-foundation-spec..HEAD` was checked afterwards and found clean of it. No decision record for this correction.
+- Task 8, step 7: `check_fixtures_redacted.py`'s module docstring at the brief's exact wording was 105 characters (ruff `E501`, 100-char limit); shortened to fit. Wording only, no behaviour change.
+- Task 8, step 7: `copy_eval_ids.py`'s single `# noqa: S603, S607` on the `.stdout.strip()` line (per the brief) became unresolvable once `ruff format` line-wrapped the `subprocess.run(...)` call — ruff attributes S603/S607 to the `subprocess.run(` and argv-list lines, not the trailing `.stdout.strip()` line, so the original single-line noqa was reported unused (`RUF100`). Moved to two per-line `# noqa` comments with reasons (fixed argv, no shell for S603; `git` resolved via PATH by design for S607) on the lines ruff actually flags. No decision record (tooling/formatting fix, not a change of approach).
+- Task 8, step 7: added a module-level constant `_MIN_SEVERAL = 2` in `scripts/make_fixture.py` and used it in place of the two literal `2`s in the "L-class, several events and findings" criterion — ruff's `PLR2004` (magic value in comparison) rejected the brief's literals verbatim. No decision record.
+- Task 8, step 7: `mypy --strict` rejected `import pyarrow.parquet as pq` in `scripts/copy_eval_ids.py` (`import-untyped`: pyarrow ships no `py.typed` marker or stubs). Added `[[tool.mypy.overrides]] module = "pyarrow.*" ignore_missing_imports = true` to `pyproject.toml` — a narrow, named override for one third-party dependency, not a blanket ignore in code. No decision record.
+- Task 8, step 7: the `typos` pre-commit hook flagged real NTSB regional-office and case-number substrings and airport/engine abbreviations in the generated fixtures as false-positive misspellings, as the brief anticipated. Per the brief's own guidance, added `[tool.typos.files] extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", "tests/fixtures/eval/*.csv"]` to `pyproject.toml` rather than allowlisting each token individually. This alone was not enough: `uv run typos` (no args, as run manually) honours the config's `files.extend-exclude` and passes clean, but the `typos` pre-commit hook (`.pre-commit-config.yaml`) passes each changed filename as an explicit argument, and `typos` applies its config-file excludes only when it walks a directory itself, not to paths named explicitly on its command line — the same class of gap Task 1's `force-exclude` deviation fixed for `ruff`. Added `exclude: ^tests/fixtures/(records|api)/.*\.json$|^tests/fixtures/eval/.*\.csv$` to the `typos` hook definition in `.pre-commit-config.yaml` so pre-commit itself never passes these fixture paths to `typos`. No decision record.
+- Task 8, step 7: the `mixed-line-ending --fix=lf` pre-commit hook rewrote `tests/fixtures/eval/decidability_ids.csv` and `leakage_ids.csv` from CRLF to LF — Python's `csv.writer` on this platform writes `\r\n` by default when a file is opened with `newline=""` (as `copy_eval_ids.py` does, correctly, to avoid `csv`'s own double-newline bug on Windows-style line endings). A pure line-ending fix on freshly generated files, not a content change; re-staged and committed as fixed.
+- Task 8, step 6 (review fix round 1, critical): a private individual's name was committed in two fixtures of fatal accidents — an amateur-built aircraft's `aircraftMake` field held its builder's name, and the same name appeared twice more in that record's own factual narrative; the same shape of problem was also present in the API page fixture's first record. Fixed at the source, not just in these two files: added `scripts.make_fixture._amateur_built_name_risk(record)`, which returns true if any of a record's `aircrafts[]` has `aircraftAmateurBuilt` set, or if that aircraft's lower-cased `aircraftMake` (3+ characters) appears in any of the record's narrative fields (`probableCause`, and each `narratives[].analysisNarrative`/`concatenatedFactualNarrative`). Wired into `_eligible()` (so `select()`/`auto` skip such records) and into the `api` command (screens `payload["data"]` before slicing to `--records`). Added unit tests `test_amateur_built_flag_is_a_name_risk_even_with_no_narrative_match`, `test_make_naming_the_builder_in_a_narrative_is_a_name_risk`, `test_ordinary_manufacturer_with_no_narrative_match_is_not_a_name_risk` in `tests/test_fixtures.py`, using an invented placeholder name, never the real one. Deleted all nine previous record fixtures and reran `scripts.make_fixture auto`: the screen additionally excluded two records that had already been committed under other criteria (L-class/several-events-and-findings, multi-aircraft) — both had `aircraftAmateurBuilt` set with no narrative name match, so the flag alone was conservative enough to exclude them too; `select()` chose the next eligible case for all four affected criteria (F-class, F-class-second, L-class/several-events-and-findings, multi-aircraft). Regenerated `tests/fixtures/api/page.json` from 2016-08, which also excluded its previously-committed first record on the same screen. Reviewed every field of every new record fixture and every new `page.json` record with a throwaway proper-noun scanner (`/Users/floyda/.claude/jobs/7455c879/tmp/name_scan.py`, printing only JSON paths and counts, never values) followed by manual reading of every flagged field's value. By criterion, candidates reviewed / persons found: F-class 9/0, F-class-second 23/0, L-class-several-events-and-findings 25/0, multi-aircraft 8/0; `page.json`'s three records: 22/0, 28/0, 15/0; the five record fixtures unaffected by this round's replacements were re-checked too, 28/0, 4/0, 16/0, 24/0, 7/0 (C-class-duplicated, no-METAR, C-class-not-duplicated, L-class-any, no-pilot-flight-time-matrix respectively). All flagged candidates were place names, airport names, manufacturer or agency names, or flight-time-matrix category strings ("All AC", "Make and Model", etc.) — none was a person. No decision record for the fix mechanism; decision 0015's redacted-field list not covering a builder's name in `aircraftMake`, and the fact that a registration number can be looked up to find an owner, are both flagged for Andy.
+- Task 8, step 4 (review fix round 1, important): `ingest.iter_raw_records` gained a keyword-only `include: Callable[[ManifestEntry], bool] | None = None` parameter, applied before `verify_entry` and before any page file of an excluded month is opened — an excluded month's files are now never hashed or read, not just excluded from the final dict. `scripts/make_fixture.py` gained `_is_dev_month(entry) -> bool` (`split_of(date.fromisoformat(entry.start)) is Split.DEV`) and passes it as `include=_is_dev_month`; the `e.month <= "2019-12"` literal is gone. Added `test_iter_raw_records_include_filter_skips_reading_excluded_months`, which corrupts an excluded month's page file and asserts the excluded month contributes no records and no exception is raised — if the file were opened or verified, the corrupted bytes would raise. `iter_raw_records`'s existing two positional/keyword parameters and its return type are unchanged; this is an additive, backward-compatible signature change approved for this fix. No decision record.
+- Task 8, step 7 (review fix round 1, minor): `scripts/copy_eval_ids.py` now writes each output CSV with `csv.writer(handle, lineterminator="\n")`, so a rerun reproduces the committed LF files without depending on the `mixed-line-ending` pre-commit hook to fix them up (see the CRLF entry above). Also, before writing each list, every case's event date is now checked with `split_of()` and the run fails loudly (printing the offending IDs, exit 1) if any case is not held-out by event date, rather than writing a list that could silently include a dev or open case. No decision record.
+- Task 8, step 6 (review fix round 1, minor): `scripts/make_fixture.py`'s `records <id>` subcommand previously raised a bare `KeyError` for an unknown or non-development-split case id (since `records` is built only from development-split entries). It now raises `FixtureError(f"{case_id}: not found in the development split")` naming the id, matching this script's other user-facing failures. No decision record.

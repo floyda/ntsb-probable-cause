@@ -1,0 +1,668 @@
+{
+  "fixture": {
+    "fetched_at": "2026-09-13T19:44:26.904761+00:00",
+    "redacted_fields": [
+      "operatorAddress",
+      "operatorCertificateNumber",
+      "operatorDoingBusinessAs",
+      "operatorIndividual",
+      "operatorName",
+      "operatorZip",
+      "ownerAddress",
+      "ownerIndividual",
+      "ownerZip",
+      "registeredOwner"
+    ],
+    "source": "GetCasesByDateRangeV2"
+  },
+  "record": {
+    "aircrafts": [
+      {
+        "additionalEquipment": [],
+        "aircraftAccidents": [
+          {
+            "damageLevel": "Substantial",
+            "explosionType": "None",
+            "fireType": "None",
+            "unknownNumberofOccupants": false
+          }
+        ],
+        "aircraftAmateurBuilt": false,
+        "aircraftAtTimeOfAccident": false,
+        "aircraftCabinCrewSeats": null,
+        "aircraftCategory": "Airplane",
+        "aircraftCommercialSpaceFlight": false,
+        "aircraftEltActivated": false,
+        "aircraftEltAidedLocatingAccident": false,
+        "aircraftEltConnectedAntenna": null,
+        "aircraftEltInstalled": true,
+        "aircraftEltManufacturer": null,
+        "aircraftEltModelPart": null,
+        "aircraftEltReasonOther": null,
+        "aircraftEltStillMounted": null,
+        "aircraftElttsoNumber": "C126",
+        "aircraftFlightCrewSeats": null,
+        "aircraftFromLastInspectionHours": 5,
+        "aircraftFuelOnBoard": null,
+        "aircraftIfrEquippedAndCertified": false,
+        "aircraftLandingGearFormation": null,
+        "aircraftLastInspection": true,
+        "aircraftLastInspectionDate": "2010-05-14",
+        "aircraftLastInspectionType": "100 hour",
+        "aircraftMake": "DEHAVILLAND",
+        "aircraftManufacturer": null,
+        "aircraftMaxGrossWeight": 5090,
+        "aircraftMissing": false,
+        "aircraftModel": "BEAVER DHC-2 MK.1",
+        "aircraftNumber": 1,
+        "aircraftNumberOfEngines": 1,
+        "aircraftNumberOfSeats": 8,
+        "aircraftPassengerSeats": null,
+        "aircraftRegistrationNumber": "N4793C",
+        "aircraftRetractableLandingGear": false,
+        "aircraftSerialNumber": "296",
+        "aircraftSeries": null,
+        "aircraftUnmanned": false,
+        "airframeTotalTimeHours": 95109,
+        "airports": [],
+        "airspaces": [],
+        "airworthinessCertificates": [
+          {
+            "airworthinessCertificate": "Normal",
+            "airworthinessCertificateType": "Standard"
+          }
+        ],
+        "approaches": [
+          {
+            "ifrapproach": "None",
+            "pre1982ApproachType": null,
+            "vfrapproachLanding": "Touch and go"
+          }
+        ],
+        "cabinCrewFatal": null,
+        "cabinCrewMinor": null,
+        "cabinCrewNone": null,
+        "cabinCrewSerious": null,
+        "crewAndOccupants": [
+          {
+            "age": 70,
+            "availableRestraintType": null,
+            "childRestraint": null,
+            "crewCategory": "Pilot",
+            "crewOccupantNumber": 1,
+            "dateOfLastFlightReview": null,
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": false,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": null,
+            "injuryLevel": "None",
+            "medicalCertLimitations": null,
+            "medicalCertificate": "Class 2",
+            "medicalCertificateStatus": "Without waivers/limitations",
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": "No",
+            "pilotCertificates": [
+              "Commercial"
+            ],
+            "pilotFlying": null,
+            "pilotRatingForAirplanes": [
+              "Single-engine land",
+              "Multi-engine land",
+              "Single-engine sea"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 2,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "24 Hours"
+              },
+              {
+                "flightHours": 2,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "24 Hours"
+              },
+              {
+                "flightHours": 20,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 40,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 1350,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 350,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 3,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 1350,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 1455,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 400,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 11,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 1400,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": null,
+            "rowNumber": null,
+            "seatOccupied": "Left",
+            "sex": "Male",
+            "toxicologyPerformed": false
+          },
+          {
+            "age": 74,
+            "availableRestraintType": null,
+            "childRestraint": null,
+            "crewCategory": "Flight instructor",
+            "crewOccupantNumber": 2,
+            "dateOfLastFlightReview": "2010-04-17",
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": false,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": null,
+            "injuryLevel": "None",
+            "medicalCertLimitations": null,
+            "medicalCertificate": "Class 2",
+            "medicalCertificateStatus": "With waivers/limitations",
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": "No",
+            "pilotCertificates": [
+              "Commercial"
+            ],
+            "pilotFlying": null,
+            "pilotRatingForAirplanes": [
+              "Single-engine land",
+              "Single-engine sea"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 6,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "24 Hours"
+              },
+              {
+                "flightHours": 4,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "24 Hours"
+              },
+              {
+                "flightHours": 18,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 0,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 48,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 0,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 2700,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 140,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 5400,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 750,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 6800,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 800,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": null,
+            "rowNumber": null,
+            "seatOccupied": "Right",
+            "sex": "Male",
+            "toxicologyPerformed": false
+          }
+        ],
+        "eltReasons": [],
+        "engines": [
+          {
+            "engineFromLastInspectionHours": null,
+            "engineFuelSystem": "Carburetor",
+            "engineManufacturer": "P&W",
+            "engineModelSeries": "R-985 SERIES",
+            "engineNumbers": 1,
+            "enginePropellerMake": null,
+            "enginePropellerModel": null,
+            "enginePropellerSerialNumber": null,
+            "enginePropellerType": null,
+            "engineRatedPower": 450,
+            "engineRatedPowerType": "Horsepower",
+            "engineSerialNumber": null,
+            "engineTotalTime": null,
+            "engineType": "Reciprocating"
+          }
+        ],
+        "events": [
+          {
+            "cicttEventSOEGroup": "LossOfControl(Ground)",
+            "cicttPhaseSOEGroup": "Landing",
+            "eventCode": "551230",
+            "eventNumber": 1,
+            "eventTier1Name": "Landing-flare/touchdown",
+            "eventTier2Name": "Loss of control on ground",
+            "isDefiningEvent": true,
+            "sequenceNumber": 1,
+            "tier1Number": "551",
+            "tier2Number": "230"
+          },
+          {
+            "cicttEventSOEGroup": "AbnormalRunwayContact",
+            "cicttPhaseSOEGroup": "Landing",
+            "eventCode": "552096",
+            "eventNumber": 2,
+            "eventTier1Name": "Landing-landing roll",
+            "eventTier2Name": "Nose over/nose down",
+            "isDefiningEvent": false,
+            "sequenceNumber": 2,
+            "tier1Number": "552",
+            "tier2Number": "096"
+          }
+        ],
+        "findings": [
+          {
+            "findingCode": "0303404091",
+            "findingDescription": "Environmental issues-Conditions/weather/phenomena-Wind-Crosswind-Contributed to outcome",
+            "findingNumber": 3,
+            "findingReportText": "Environmental issues - Conditions/weather/phenomena - Wind - Contributed to outcome",
+            "inProbableCause": false,
+            "modifierName": "Contributed to outcome",
+            "modifierNumber": "91",
+            "tier1Name": "Environmental issues",
+            "tier1Number": "03",
+            "tier2Name": "Conditions/weather/phenomena",
+            "tier2Number": "03",
+            "tier3Name": "Wind",
+            "tier3Number": "40",
+            "tier4Name": "Crosswind",
+            "tier4Number": "40"
+          },
+          {
+            "findingCode": "0106203011",
+            "findingDescription": "Aircraft-Aircraft oper/perf/capability-Performance/control parameters-Crosswind correction-Incorrect use/operation - C",
+            "findingNumber": 2,
+            "findingReportText": "Aircraft - Aircraft oper/perf/capability - Performance/control parameters - Incorrect use/operation",
+            "inProbableCause": true,
+            "modifierName": "Incorrect use/operation",
+            "modifierNumber": "11",
+            "tier1Name": "Aircraft",
+            "tier1Number": "01",
+            "tier2Name": "Aircraft oper/perf/capability",
+            "tier2Number": "06",
+            "tier3Name": "Performance/control parameters",
+            "tier3Number": "20",
+            "tier4Name": "Crosswind correction",
+            "tier4Number": "30"
+          },
+          {
+            "findingCode": "0206304044",
+            "findingDescription": "Personnel issues-Task performance-Use of equip/info-Aircraft control-Pilot - C",
+            "findingNumber": 1,
+            "findingReportText": "Personnel issues - Task performance - Use of equip/info - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Task performance",
+            "tier2Number": "06",
+            "tier3Name": "Use of equip/info",
+            "tier3Number": "30",
+            "tier4Name": "Aircraft control",
+            "tier4Number": "40"
+          },
+          {
+            "findingCode": "0202153540",
+            "findingDescription": "Personnel issues-Psychological-Attention/monitoring-Monitoring other person-Instructor/check pilot - F",
+            "findingNumber": 4,
+            "findingReportText": "Personnel issues - Psychological - Attention/monitoring - Instructor/check pilot",
+            "inProbableCause": true,
+            "modifierName": "Instructor/check pilot",
+            "modifierNumber": "40",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Psychological",
+            "tier2Number": "02",
+            "tier3Name": "Attention/monitoring",
+            "tier3Number": "15",
+            "tier4Name": "Monitoring other person",
+            "tier4Number": "35"
+          }
+        ],
+        "flightCrewFatal": 0,
+        "flightCrewMinor": 0,
+        "flightCrewNone": 2,
+        "flightCrewSerious": 0,
+        "injuries": [
+          {
+            "aircraftNumber": 1,
+            "cabinCrewFatal": null,
+            "cabinCrewMinor": null,
+            "cabinCrewNone": null,
+            "cabinCrewSerious": null,
+            "cabinCrewTotal": null,
+            "flightCrewFatal": 0,
+            "flightCrewMinor": 0,
+            "flightCrewNone": 2,
+            "flightCrewSerious": 0,
+            "flightCrewTotal": 0,
+            "lapChildrenFatal": null,
+            "lapChildrenMinor": null,
+            "lapChildrenNone": null,
+            "lapChildrenSerious": null,
+            "lapChildrenTotal": null,
+            "mkey": 76124,
+            "passengersFatal": null,
+            "passengersMinor": null,
+            "passengersNone": 1,
+            "passengersSerious": null,
+            "passengersTotal": null
+          }
+        ],
+        "itinerary": [
+          {
+            "departureAirportId": "LHD",
+            "departureCity": "Anchoarge",
+            "departureCountry": "USA",
+            "departureIsUtc": false,
+            "departureStateOrRegion": "AK",
+            "departureTimeUtc": "22:20:00",
+            "departureTimeUtcOffsetHours": -3,
+            "destination": null,
+            "destinationAirportId": null,
+            "destinationCity": "Anchorage",
+            "destinationCountry": "USA",
+            "destinationIsUtc": false,
+            "destinationStateOrRegion": "AK",
+            "destinationTimeUtc": null,
+            "destinationTimeUtcOffsetHours": null,
+            "flightPlan": "Company VFR",
+            "flightPlanSpecification": "Yes",
+            "lastDeparture": null
+          }
+        ],
+        "landingGear": [
+          "Float"
+        ],
+        "lapChildrenFatal": null,
+        "lapChildrenMinor": null,
+        "lapChildrenNone": null,
+        "lapChildrenSerious": null,
+        "occurrences": [],
+        "operatingCertificates": [
+          "None"
+        ],
+        "operatorScopes": [],
+        "ownerOperators": [
+          {
+            "airMedical": false,
+            "airMedicalType": null,
+            "flightOperationType": "Instructional",
+            "flightScheduledType": null,
+            "flightServiceType": null,
+            "flightTerminalType": null,
+            "hasOperatingCertificates": null,
+            "operatorCity": "MAXWELL AFB",
+            "operatorCountry": "USA",
+            "operatorDesignatorCode": null,
+            "operatorStateOrRegion": "AL",
+            "ownerCity": "MAXWELL AFB",
+            "ownerCountry": "USA",
+            "ownerStateOrRegion": "AL",
+            "regulationFlightConductedUnder": "091",
+            "revenueSightseeing": false,
+            "secondPilotPresent": true
+          }
+        ],
+        "passengersFatal": null,
+        "passengersMinor": null,
+        "passengersNone": 1,
+        "passengersSerious": null,
+        "totalFatal": 0,
+        "totalMinor": 0,
+        "totalNone": 3,
+        "totalSerious": 0,
+        "yearOfManufacture": null
+      }
+    ],
+    "boardMeetingDate": null,
+    "boardMemberLaunch": false,
+    "caseClosed": true,
+    "caseCreatedDateTimeUtc": "2010-05-26T13:00:00",
+    "caseType": "Limited",
+    "completionStatus": "Completed",
+    "docketOpenDate": null,
+    "docketPage": null,
+    "eventCity": "Anchorage",
+    "eventCollisionWithOtherAircraft": "None",
+    "eventCountry": "USA",
+    "eventDate": "2010-05-24",
+    "eventEnvironmentalDamage": null,
+    "eventHazmatInvolved": false,
+    "eventIsUtc": false,
+    "eventLatLongEstimated": true,
+    "eventLatitude": 61.300277,
+    "eventLocation": null,
+    "eventLongitude": -150.60028,
+    "eventPropertyDamage": null,
+    "eventStateOrRegion": "AK",
+    "eventTimeUtc": "04:00:00",
+    "eventTimeUtcOffsetHours": -8,
+    "eventType": "Accident",
+    "eventZipcode": "99502",
+    "factualFinalReportFlavor": "Standard report",
+    "factualPublishedDate": "2010-11-30",
+    "hasSafetyRecommendation": false,
+    "highestInjuryLevel": "None",
+    "investigatingParties": [
+      "National Transportation Safety Board",
+      "Federal Aviation Administration (Operations)"
+    ],
+    "investigationClass": null,
+    "investigationPage": null,
+    "isPost2008": true,
+    "isPre1982": false,
+    "isStudy": false,
+    "lastRevisionDate": null,
+    "launchType": null,
+    "leadAgency": "NTSB",
+    "mKey": 76124,
+    "mode": "Aviation",
+    "narratives": [
+      {
+        "aircraftNumber": 1,
+        "analysisNarrative": "The certificated flight instructor/check pilot was providing an annual corporate flight proficiency check ride to the commercial pilot in a float-equipped airplane. The commercial pilot receiving the proficiency review was appropriately rated and current by Federal Aviation Administration standards to operate float-equipped airplanes. After the commercial pilot completed a series of practice touch-and-go takeoffs and landings to the south, the check pilot asked him to land to the west, which would require a correction for a left crosswind. The check pilot reported that, just after touchdown, the airplane veered immediately to the left, the right float submerged, and the airplane abruptly nosed over. The airplane sustained substantial damage to the wings and fuselage during the accident. Examination of the airplane revealed no preaccident mechanical anomalies.",
+        "concatenatedFactualNarrative": "On May 23, 2010, about 2000 Alaska daylight time, a float-equipped de Havilland DHC-2 (Beaver) airplane, N4793C, sustained substantial damage while landing on Figure Eight Lake, about 18 miles northwest of Anchorage, Alaska. The airplane was being operated as a visual flight rules (VFR) local area proficiency check flight under Title 14, CFR Part 91, when the accident occurred. The airplane was operated by the Civil Air Patrol Inc. (CAP), Anchorage, Alaska. The three people aboard, a commercial pilot in the left seat, the certificated flight instructor/check pilot in the right seat, and a pilot-rated passenger, were not injured. Visual meteorological conditions prevailed, and CAP flight following procedures were in effect. The flight originated at the Lake Hood Seaplane Base, Anchorage, about 1920.\r\n\r\nDuring a telephone conversation with the National Transportation Safety Board (NTSB) investigator-in-charge (IIC) on May 24, the chief of flight safety for the CAP reported that the purpose of the flight was to accomplish a \"Form 5\" proficiency check of the commercial pilot, in a float-equipped de Havilland DHC-2 airplane. He said that the CAP has an annual check ride, in addition to the Federal Aviation Administration's requirements, for CAP pilots who wish to fly CAP aircraft. He noted that the commercial pilot's most recent biennial flight review was on May 31, 2009.\r\n\r\nDuring a telephone conversation with the NTSB IIC on May 26, the check pilot reported that after the commercial pilot completed a series of touch-and-go landings to the south, he asked him to land to the west, which would require a correction for a 6 knot left crosswind. The check pilot reported that just after touchdown, the airplane veered immediately to the left, the right float submerged, and the right wing struck the water. The airplane nosed over abruptly, and the cabin rapidly filled with water. He said that all three occupants struggled to free themselves from their seat belts while upside-down and submerged in cold lake water. He said that just before the airplane's cabin sank, all three were able to exit the airplane just as a float-equipped Cessna 185 arrived on-scene, which took the three occupants to shore. \r\n\r\nThe airplane sustained substantial damage to the wings and fuselage during the accident.\r\n\r\nAccording to the CAP's chief of flight safety, all three occupants had attended underwater egress training, which benefited them during their escape from the submerged cabin. \r\n\r\nOn June 11, 2010, following recovery of the airplane\u2019s wreckage to Anchorage, a wreckage examination was done under the direction of the NTSB IIC, and an additional senior NTSB air safety investigator. Also present were two members of the CAP\u2019s safety assessment team. During the wreckage examination, a CAP safety assessment team member reported finding a 2-inch elliptical-shaped dent on the toe of the accident airplane's left float, but the source of the dent is unknown and inconclusive. No preaccident mechanical anomalies were discovered during the wreckage exam.",
+        "prelimNarrative": null,
+        "probableCause": "The commercial pilot\u2019s loss of airplane control while landing in a crosswind, resulting in a nose-over. Contributing to the accident was the check pilot's inadequate supervision of the commercial pilot while landing."
+      }
+    ],
+    "ntsbNumber": "ANC10LA044",
+    "onboardFatal": 0,
+    "onboardMinor": 0,
+    "onboardNone": 3,
+    "onboardSerious": 0,
+    "ongroundFatal": null,
+    "ongroundMinor": null,
+    "ongroundSerious": null,
+    "originalPublishedDate": "2011-04-12",
+    "publishDateTime": "2020-09-25T16:42:27.608",
+    "publishProfile": "DirectorApprovedBriefFinal",
+    "region": "Alaska Regional Office",
+    "reportDate": "2011-04-12",
+    "reportNumber": null,
+    "reportPage": null,
+    "reportType": "Approved by Office Director",
+    "richNarratives": null,
+    "topicMode": "Aviation",
+    "totalFatal": 0,
+    "totalMinor": 0,
+    "totalNone": 3,
+    "totalSerious": 0,
+    "weatherConditions": [
+      {
+        "accidentSiteCondition": "Visual (VMC)",
+        "barometricSettingMmHg": 29.7,
+        "cloudCondition": "Clear",
+        "cloudCoverage": null,
+        "daylightCondition": "Day",
+        "dewPointF": 35.6,
+        "icingActualAmount": null,
+        "icingActualType": null,
+        "icingForecastAmount": null,
+        "icingForecastType": null,
+        "investigationWeatherSource": "Pilot",
+        "lowestCeiling": "None",
+        "lowestCeilingFtAgl": null,
+        "lowestCloudConditionFtAgl": null,
+        "metar": null,
+        "observationDate": "2010-05-23",
+        "observationFacilityDirectionDeg": null,
+        "observationFacilityDistanceNm": null,
+        "observationFacilityElevationFt": null,
+        "observationFacilityId": null,
+        "observationFacilityName": null,
+        "observationTimeUtc": null,
+        "observationUtcOffsetHours": null,
+        "pilotWeatherSource": "National weather service",
+        "precipitationNa": true,
+        "remarks": null,
+        "runwayVisualRangeFt": null,
+        "temperatureF": 48.2,
+        "turbulenceActualSeverity": null,
+        "turbulenceActualType": null,
+        "turbulenceForecastSeverity": null,
+        "turbulenceForecastType": null,
+        "visibilitySm": 10,
+        "weatherSource": null,
+        "windCalm": false,
+        "windDirectionDeg": 180,
+        "windDirectionVariable": false,
+        "windGustKts": null,
+        "windGustsAbsent": true,
+        "windSpeedKts": 6,
+        "windSpeedVariable": false
+      },
+      {
+        "accidentSiteCondition": "Visual (VMC)",
+        "barometricSettingMmHg": 29.7,
+        "cloudCondition": "Clear",
+        "cloudCoverage": null,
+        "daylightCondition": "Day",
+        "dewPointF": 35.6,
+        "icingActualAmount": null,
+        "icingActualType": null,
+        "icingForecastAmount": null,
+        "icingForecastType": null,
+        "investigationWeatherSource": "Pilot",
+        "lowestCeiling": "None",
+        "lowestCeilingFtAgl": null,
+        "lowestCloudConditionFtAgl": null,
+        "metar": null,
+        "observationDate": "2010-05-23",
+        "observationFacilityDirectionDeg": null,
+        "observationFacilityDistanceNm": null,
+        "observationFacilityElevationFt": null,
+        "observationFacilityId": null,
+        "observationFacilityName": null,
+        "observationTimeUtc": null,
+        "observationUtcOffsetHours": null,
+        "pilotWeatherSource": "Internet",
+        "precipitationNa": true,
+        "remarks": null,
+        "runwayVisualRangeFt": null,
+        "temperatureF": 48.2,
+        "turbulenceActualSeverity": null,
+        "turbulenceActualType": null,
+        "turbulenceForecastSeverity": null,
+        "turbulenceForecastType": null,
+        "visibilitySm": 10,
+        "weatherSource": null,
+        "windCalm": false,
+        "windDirectionDeg": 180,
+        "windDirectionVariable": false,
+        "windGustKts": null,
+        "windGustsAbsent": true,
+        "windSpeedKts": 6,
+        "windSpeedVariable": false
+      }
+    ],
+    "weatherPrecipitations": []
+  }
+}

@@ -11,6 +11,7 @@ license = "MIT"
 requires-python = "==3.14.*"
 dependencies = [
     "httpx>=0.28.1",
+    "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
 ]
@@ -49,6 +50,10 @@ exclude = ["^scripts/exploratory/"]
 mypy_path = "src"
 explicit_package_bases = true
 
+[[tool.mypy.overrides]]
+module = "pyarrow.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 addopts = "--disable-socket --cov=ntsb_probable_cause --cov-branch --cov-report=term-missing --cov-fail-under=90"
 pythonpath = ["."]
@@ -75,6 +80,11 @@ min_confidence = 80
 [tool.typos.default.extend-words]
 # NTSB abbreviations that are not misspellings go here, one per line, with a comment.
 mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016; not a misspelling
+
+[tool.typos.files]
+# Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false
+# positives; these are redacted, verbatim NTSB record fixtures, not authored text (decision 0015).
+extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", "tests/fixtures/eval/*.csv"]
 
 [dependency-groups]
 dev = [

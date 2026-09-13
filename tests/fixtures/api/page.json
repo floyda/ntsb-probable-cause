@@ -1,0 +1,1915 @@
+{
+  "startDate": "2016-08-01",
+  "endDate": "2016-08-31",
+  "pageSize": 3,
+  "hasMore": false,
+  "nextMarker": null,
+  "data": [
+    {
+      "mKey": 93738,
+      "isPost2008": true,
+      "isPre1982": false,
+      "ntsbNumber": "GAA16CA407",
+      "completionStatus": "Completed",
+      "hasSafetyRecommendation": false,
+      "leadAgency": "NTSB",
+      "boardMemberLaunch": false,
+      "boardMeetingDate": null,
+      "docketOpenDate": null,
+      "launchType": "None",
+      "reportType": "Approved by Office Director",
+      "reportNumber": null,
+      "reportDate": "2016-09-22",
+      "eventType": "Accident",
+      "highestInjuryLevel": "None",
+      "investigationClass": null,
+      "factualFinalReportFlavor": "Basic (no factual)",
+      "originalPublishedDate": "2016-09-22",
+      "publishDateTime": "2020-09-25T15:01:28.482",
+      "publishProfile": "DirectorApprovedBriefFinal",
+      "investigationPage": null,
+      "docketPage": null,
+      "reportPage": null,
+      "caseClosed": true,
+      "caseCreatedDateTimeUtc": "2016-08-02T13:00:00",
+      "factualPublishedDate": "2016-09-01",
+      "isStudy": false,
+      "lastRevisionDate": null,
+      "mode": "Aviation",
+      "eventDate": "2016-08-01",
+      "eventTimeUtc": "23:00:00",
+      "eventTimeUtcOffsetHours": -7,
+      "eventIsUtc": false,
+      "eventCity": "Scappoose",
+      "eventStateOrRegion": "OR",
+      "eventZipcode": "97056",
+      "eventCountry": "USA",
+      "eventLocation": null,
+      "eventLatLongEstimated": true,
+      "eventLatitude": 45.777221,
+      "eventLongitude": -122.863609,
+      "eventPropertyDamage": null,
+      "eventHazmatInvolved": false,
+      "eventCollisionWithOtherAircraft": "None",
+      "eventEnvironmentalDamage": null,
+      "caseType": "Data Collection",
+      "region": "General Aviation Accidents",
+      "totalFatal": 0,
+      "totalSerious": 0,
+      "totalMinor": 0,
+      "totalNone": 1,
+      "ongroundFatal": null,
+      "ongroundSerious": null,
+      "ongroundMinor": null,
+      "onboardFatal": 0,
+      "onboardSerious": 0,
+      "onboardMinor": 0,
+      "onboardNone": 1,
+      "topicMode": "Aviation",
+      "investigatingParties": [
+        "FAA"
+      ],
+      "weatherConditions": [
+        {
+          "pilotWeatherSource": "National weather service",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Day",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 0,
+          "observationFacilityDistanceNm": 0,
+          "observationFacilityElevationFt": 58,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 20,
+          "windDirectionVariable": false,
+          "windGustKts": 15,
+          "windGustsAbsent": false,
+          "windSpeedKts": 11,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 30,
+          "cloudCoverage": null,
+          "dewPointF": 55.4,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-01",
+          "observationTimeUtc": "22:53:00",
+          "observationUtcOffsetHours": 0,
+          "observationFacilityId": "KSPB",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 78.8,
+          "visibilitySm": 10
+        },
+        {
+          "pilotWeatherSource": "Internet",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Day",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 0,
+          "observationFacilityDistanceNm": 0,
+          "observationFacilityElevationFt": 58,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 20,
+          "windDirectionVariable": false,
+          "windGustKts": 15,
+          "windGustsAbsent": false,
+          "windSpeedKts": 11,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 30,
+          "cloudCoverage": null,
+          "dewPointF": 55.4,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-01",
+          "observationTimeUtc": "22:53:00",
+          "observationUtcOffsetHours": 0,
+          "observationFacilityId": "KSPB",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 78.8,
+          "visibilitySm": 10
+        },
+        {
+          "pilotWeatherSource": "Automated report",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Day",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 0,
+          "observationFacilityDistanceNm": 0,
+          "observationFacilityElevationFt": 58,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 20,
+          "windDirectionVariable": false,
+          "windGustKts": 15,
+          "windGustsAbsent": false,
+          "windSpeedKts": 11,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 30,
+          "cloudCoverage": null,
+          "dewPointF": 55.4,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-01",
+          "observationTimeUtc": "22:53:00",
+          "observationUtcOffsetHours": 0,
+          "observationFacilityId": "KSPB",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 78.8,
+          "visibilitySm": 10
+        }
+      ],
+      "weatherPrecipitations": [],
+      "aircrafts": [
+        {
+          "aircraftNumber": 1,
+          "aircraftCategory": "Airplane",
+          "aircraftRegistrationNumber": "N49276",
+          "aircraftMake": "CESSNA",
+          "aircraftManufacturer": null,
+          "aircraftModel": "152",
+          "aircraftSeries": "NO SERIES",
+          "airframeTotalTimeHours": 18015.8,
+          "aircraftAmateurBuilt": false,
+          "aircraftAtTimeOfAccident": true,
+          "aircraftCabinCrewSeats": null,
+          "aircraftCommercialSpaceFlight": false,
+          "aircraftEltActivated": false,
+          "aircraftEltAidedLocatingAccident": null,
+          "aircraftEltConnectedAntenna": true,
+          "aircraftEltInstalled": true,
+          "aircraftEltManufacturer": "Artex",
+          "aircraftEltModelPart": "ME-406",
+          "aircraftEltReasonOther": null,
+          "aircraftEltStillMounted": true,
+          "aircraftFlightCrewSeats": 1,
+          "aircraftFromLastInspectionHours": null,
+          "aircraftFuelOnBoard": 20,
+          "aircraftIfrEquippedAndCertified": false,
+          "aircraftLandingGearFormation": "Tricycle",
+          "aircraftLastInspection": false,
+          "aircraftLastInspectionDate": "2016-07-29",
+          "aircraftLastInspectionType": "100 hour",
+          "aircraftMaxGrossWeight": 1670,
+          "aircraftMissing": false,
+          "aircraftNumberOfEngines": 1,
+          "aircraftNumberOfSeats": 2,
+          "aircraftPassengerSeats": 1,
+          "aircraftRetractableLandingGear": false,
+          "aircraftSerialNumber": "15281217",
+          "yearOfManufacture": 1977,
+          "aircraftElttsoNumber": "C126",
+          "aircraftUnmanned": false,
+          "totalFatal": 0,
+          "totalSerious": 0,
+          "totalMinor": 0,
+          "totalNone": 1,
+          "flightCrewFatal": 0,
+          "flightCrewSerious": 0,
+          "flightCrewMinor": 0,
+          "flightCrewNone": 1,
+          "cabinCrewFatal": null,
+          "cabinCrewSerious": null,
+          "cabinCrewMinor": null,
+          "cabinCrewNone": null,
+          "passengersFatal": null,
+          "passengersSerious": null,
+          "passengersMinor": null,
+          "passengersNone": null,
+          "lapChildrenFatal": null,
+          "lapChildrenSerious": null,
+          "lapChildrenMinor": null,
+          "lapChildrenNone": null,
+          "aircraftAccidents": [
+            {
+              "damageLevel": "Substantial",
+              "fireType": "None",
+              "explosionType": "None",
+              "unknownNumberofOccupants": false
+            }
+          ],
+          "eltReasons": [
+            "Unknown"
+          ],
+          "landingGear": [],
+          "engines": [
+            {
+              "engineNumbers": 1,
+              "engineSerialNumber": "L-19488-15",
+              "engineTotalTime": null,
+              "engineFromLastInspectionHours": 15.9,
+              "engineType": "Reciprocating",
+              "engineFuelSystem": "Carburetor",
+              "engineManufacturer": "LYCOMING",
+              "engineModelSeries": "O-235-L2C",
+              "enginePropellerMake": "McCauley",
+              "enginePropellerModel": "1A103/TCM6958",
+              "enginePropellerSerialNumber": null,
+              "enginePropellerType": "Fixed pitch",
+              "engineRatedPower": 115,
+              "engineRatedPowerType": "Horsepower"
+            }
+          ],
+          "ownerOperators": [
+            {
+              "airMedical": false,
+              "airMedicalType": null,
+              "flightOperationType": "Instructional",
+              "flightScheduledType": null,
+              "flightServiceType": null,
+              "flightTerminalType": null,
+              "hasOperatingCertificates": null,
+              "operatorCity": "HILLSBORO",
+              "operatorCountry": "USA",
+              "operatorDesignatorCode": null,
+              "operatorStateOrRegion": "OR",
+              "ownerCity": "HILLSBORO",
+              "ownerCountry": "USA",
+              "ownerStateOrRegion": "OR",
+              "regulationFlightConductedUnder": "091",
+              "revenueSightseeing": false,
+              "secondPilotPresent": false
+            }
+          ],
+          "operatingCertificates": [
+            "Pilot school (141)"
+          ],
+          "operatorScopes": [],
+          "airworthinessCertificates": [
+            {
+              "airworthinessCertificate": "Normal",
+              "airworthinessCertificateType": "Standard"
+            }
+          ],
+          "additionalEquipment": [
+            "Satellite tracking device"
+          ],
+          "crewAndOccupants": [
+            {
+              "crewOccupantNumber": 1,
+              "age": 18,
+              "sex": "Male",
+              "injuryLevel": "None",
+              "crewCategory": "Student pilot",
+              "availableRestraintType": "3-point",
+              "childRestraint": null,
+              "inflatableRestraintDeployed": null,
+              "inflatableRestraintInstalled": "No",
+              "dateOfLastFlightReview": null,
+              "faaUniqueId": null,
+              "medicalCertificate": "Class 3",
+              "medicalCertificateStatus": "Without waivers/limitations",
+              "medicalCertLimitations": null,
+              "mostRecentFaaMedicalCertificate": null,
+              "occupationalPilot": "No",
+              "pilotFlying": true,
+              "restraintUsed": "3-point",
+              "rowNumber": null,
+              "seatOccupied": "Left",
+              "toxicologyPerformed": false,
+              "pilotCertificates": [
+                "Student"
+              ],
+              "pilotsFlightTimeMatrix": [
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 20
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 20
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 2
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 20
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 25
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 2
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 25
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 2
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 25
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 1
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 25
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 2
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 25
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 2
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 25
+                }
+              ],
+              "pilotRatingForAirplanes": [
+                "None"
+              ],
+              "pilotRatingsForInstruments": [
+                "None"
+              ],
+              "flightTimeSummary": [
+                {
+                  "estimated": true,
+                  "incomplete": false,
+                  "flightTimesAsofDate": "2016-08-05"
+                }
+              ]
+            }
+          ],
+          "airspaces": [
+            "Class G"
+          ],
+          "airports": [
+            {
+              "airportArpDirectionDeg": 349,
+              "airportArpDistanceNm": 0,
+              "airportArpElevationFtMsl": 58,
+              "airportFacilityName": "SCAPPOOSE INDUSTRIAL AIRPARK",
+              "airportLocationId": "SPB",
+              "airportOnAirportAirstrip": "Yes",
+              "airportRunwayId": "33",
+              "airportRunwayLengthFt": 5100,
+              "airportRunwayNa": false,
+              "airportRunwayWidthFt": 100,
+              "airportLandingSurfaceCondition": "Dry",
+              "airportLandingSurfaceType": "Asphalt"
+            }
+          ],
+          "approaches": [
+            {
+              "ifrapproach": "None",
+              "vfrapproachLanding": "Full stop, Go around, Traffic pattern",
+              "pre1982ApproachType": null
+            }
+          ],
+          "itinerary": [
+            {
+              "lastDeparture": null,
+              "departureAirportId": "SPB",
+              "departureCity": "Scappoose",
+              "departureCountry": "USA",
+              "departureIsUtc": false,
+              "departureStateOrRegion": "OR",
+              "departureTimeUtc": "23:00:00",
+              "departureTimeUtcOffsetHours": -7,
+              "destination": null,
+              "destinationAirportId": "SPB",
+              "destinationCity": "Scappoose",
+              "destinationCountry": "USA",
+              "destinationIsUtc": false,
+              "destinationStateOrRegion": "OR",
+              "destinationTimeUtc": null,
+              "destinationTimeUtcOffsetHours": null,
+              "flightPlan": "Company VFR",
+              "flightPlanSpecification": "Yes"
+            }
+          ],
+          "events": [
+            {
+              "eventNumber": 3,
+              "sequenceNumber": 3,
+              "eventCode": "552094",
+              "tier1Number": "552",
+              "eventTier1Name": "Landing-landing roll",
+              "tier2Number": "094",
+              "eventTier2Name": "Landing gear collapse",
+              "cicttPhaseSOEGroup": "Landing",
+              "cicttEventSOEGroup": "AbnormalRunwayContact",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 1,
+              "sequenceNumber": 1,
+              "eventCode": "551400",
+              "tier1Number": "551",
+              "eventTier1Name": "Landing-flare/touchdown",
+              "tier2Number": "400",
+              "eventTier2Name": "Other weather encounter",
+              "cicttPhaseSOEGroup": "Landing",
+              "cicttEventSOEGroup": "Weather",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 2,
+              "sequenceNumber": 2,
+              "eventCode": "551090",
+              "tier1Number": "551",
+              "eventTier1Name": "Landing-flare/touchdown",
+              "tier2Number": "090",
+              "eventTier2Name": "Abnormal runway contact",
+              "cicttPhaseSOEGroup": "Landing",
+              "cicttEventSOEGroup": "AbnormalRunwayContact",
+              "isDefiningEvent": true
+            }
+          ],
+          "findings": [
+            {
+              "findingNumber": 4,
+              "findingCode": "0303404586",
+              "findingReportText": "Environmental issues - Conditions/weather/phenomena - Wind - Ability to respond/compensate",
+              "findingDescription": "Environmental issues-Conditions/weather/phenomena-Wind-Gusts-Ability to respond/compensate",
+              "modifierNumber": "86",
+              "inProbableCause": false,
+              "tier1Number": "03",
+              "tier1Name": "Environmental issues",
+              "tier2Number": "03",
+              "tier2Name": "Conditions/weather/phenomena",
+              "tier3Number": "40",
+              "tier3Name": "Wind",
+              "tier4Number": "45",
+              "tier4Name": "Gusts",
+              "modifierName": "Ability to respond/compensate"
+            },
+            {
+              "findingNumber": 2,
+              "findingCode": "0106202220",
+              "findingReportText": "Aircraft - Aircraft oper/perf/capability - Performance/control parameters - Not attained/maintained",
+              "findingDescription": "Aircraft-Aircraft oper/perf/capability-Performance/control parameters-Pitch control-Not attained/maintained - C",
+              "modifierNumber": "20",
+              "inProbableCause": true,
+              "tier1Number": "01",
+              "tier1Name": "Aircraft",
+              "tier2Number": "06",
+              "tier2Name": "Aircraft oper/perf/capability",
+              "tier3Number": "20",
+              "tier3Name": "Performance/control parameters",
+              "tier4Number": "22",
+              "tier4Name": "Pitch control",
+              "modifierName": "Not attained/maintained"
+            },
+            {
+              "findingNumber": 3,
+              "findingCode": "0303404086",
+              "findingReportText": "Environmental issues - Conditions/weather/phenomena - Wind - Ability to respond/compensate",
+              "findingDescription": "Environmental issues-Conditions/weather/phenomena-Wind-Crosswind-Ability to respond/compensate",
+              "modifierNumber": "86",
+              "inProbableCause": false,
+              "tier1Number": "03",
+              "tier1Name": "Environmental issues",
+              "tier2Number": "03",
+              "tier2Name": "Conditions/weather/phenomena",
+              "tier3Number": "40",
+              "tier3Name": "Wind",
+              "tier4Number": "40",
+              "tier4Name": "Crosswind",
+              "modifierName": "Ability to respond/compensate"
+            },
+            {
+              "findingNumber": 1,
+              "findingCode": "0206304046",
+              "findingReportText": "Personnel issues - Task performance - Use of equip/info - Student/instructed pilot",
+              "findingDescription": "Personnel issues-Task performance-Use of equip/info-Aircraft control-Student/instructed pilot - C",
+              "modifierNumber": "46",
+              "inProbableCause": true,
+              "tier1Number": "02",
+              "tier1Name": "Personnel issues",
+              "tier2Number": "06",
+              "tier2Name": "Task performance",
+              "tier3Number": "30",
+              "tier3Name": "Use of equip/info",
+              "tier4Number": "40",
+              "tier4Name": "Aircraft control",
+              "modifierName": "Student/instructed pilot"
+            }
+          ],
+          "occurrences": [],
+          "injuries": [
+            {
+              "mkey": 93738,
+              "aircraftNumber": 1,
+              "flightCrewFatal": 0,
+              "flightCrewSerious": 0,
+              "flightCrewMinor": 0,
+              "flightCrewNone": 1,
+              "cabinCrewFatal": null,
+              "cabinCrewSerious": null,
+              "cabinCrewMinor": null,
+              "cabinCrewNone": null,
+              "passengersFatal": null,
+              "passengersSerious": null,
+              "passengersMinor": null,
+              "passengersNone": null,
+              "lapChildrenFatal": null,
+              "lapChildrenSerious": null,
+              "lapChildrenMinor": null,
+              "lapChildrenNone": null,
+              "flightCrewTotal": 0,
+              "cabinCrewTotal": null,
+              "passengersTotal": null,
+              "lapChildrenTotal": null
+            }
+          ]
+        }
+      ],
+      "narratives": [
+        {
+          "aircraftNumber": 1,
+          "probableCause": "The student pilot's failure to maintain pitch control during the landing flare in gusty crosswind conditions, which resulted in a hard landing/abnormal runway contact, a partial nose wheel collapse and substantial damage to the firewall.",
+          "prelimNarrative": null,
+          "analysisNarrative": "The solo student pilot reported that during the third landing of his first solo, the airplane was a \"little high\" on final approach. He further reported that during the landing flare, the right wing was lifted by a crosswind and the airplane bounced nose wheel first on the runway. Subsequently, the nose wheel partially collapsed, the propeller struck the runway, and the airplane skidded to a stop on the runway.\r\n\r\nThe firewall sustained substantial damage.\r\n\r\nThe student pilot did not report any mechanical malfunctions or failures with the airplane that would have precluded normal operation. \r\n\r\nThe automated weather observing system (AWOS) at the airport about 7 minutes before the accident recorded the wind at 020 degrees true at 11 knots, gusting to 15 knots. The AWOS at the airport about 53 minutes after the accident recorded the wind at 330 degrees true at 8 knots. The student pilot reported that the landing was on runway 33.",
+          "concatenatedFactualNarrative": "The solo student pilot reported that during the third landing of his first solo, the airplane was a \"little high\" on final approach. He further reported that during the landing flare, the right wing was lifted by a crosswind and the airplane bounced nose wheel first on the runway. Subsequently, the nose wheel partially collapsed, the propeller struck the runway, and the airplane skidded to a stop on the runway.\r\n\r\nThe firewall sustained substantial damage.\r\n\r\nThe student pilot did not report any mechanical malfunctions or failures with the airplane that would have precluded normal operation. \r\n\r\nThe automated weather observing system (AWOS) at the airport about 7 minutes before the accident recorded the wind at 020 degrees true at 11 knots, gusting to 15 knots. The AWOS at the airport about 53 minutes after the accident recorded the wind at 330 degrees true at 8 knots. The student pilot reported that the landing was on runway 33."
+        }
+      ],
+      "richNarratives": null
+    },
+    {
+      "mKey": 93750,
+      "isPost2008": true,
+      "isPre1982": false,
+      "ntsbNumber": "GAA16CA411",
+      "completionStatus": "Completed",
+      "hasSafetyRecommendation": false,
+      "leadAgency": "NTSB",
+      "boardMemberLaunch": false,
+      "boardMeetingDate": null,
+      "docketOpenDate": null,
+      "launchType": "None",
+      "reportType": "Approved by Office Director",
+      "reportNumber": null,
+      "reportDate": "2017-01-18",
+      "eventType": "Accident",
+      "highestInjuryLevel": "None",
+      "investigationClass": null,
+      "factualFinalReportFlavor": "Basic (no factual)",
+      "originalPublishedDate": "2017-01-18",
+      "publishDateTime": "2020-09-25T15:01:34.335",
+      "publishProfile": "DirectorApprovedBriefFinal",
+      "investigationPage": null,
+      "docketPage": null,
+      "reportPage": null,
+      "caseClosed": true,
+      "caseCreatedDateTimeUtc": "2016-08-03T13:00:00",
+      "factualPublishedDate": "2016-11-08",
+      "isStudy": false,
+      "lastRevisionDate": null,
+      "mode": "Aviation",
+      "eventDate": "2016-08-01",
+      "eventTimeUtc": "07:45:00",
+      "eventTimeUtcOffsetHours": -7,
+      "eventIsUtc": false,
+      "eventCity": "Blythe",
+      "eventStateOrRegion": "CA",
+      "eventZipcode": "92225",
+      "eventCountry": "USA",
+      "eventLocation": null,
+      "eventLatLongEstimated": true,
+      "eventLatitude": 33.631942,
+      "eventLongitude": -114.716941,
+      "eventPropertyDamage": null,
+      "eventHazmatInvolved": false,
+      "eventCollisionWithOtherAircraft": "None",
+      "eventEnvironmentalDamage": null,
+      "caseType": "Data Collection",
+      "region": "General Aviation Accidents",
+      "totalFatal": 0,
+      "totalSerious": 0,
+      "totalMinor": 0,
+      "totalNone": 3,
+      "ongroundFatal": null,
+      "ongroundSerious": null,
+      "ongroundMinor": null,
+      "onboardFatal": 0,
+      "onboardSerious": 0,
+      "onboardMinor": 0,
+      "onboardNone": 3,
+      "topicMode": "Aviation",
+      "investigatingParties": [
+        "FAA"
+      ],
+      "weatherConditions": [
+        {
+          "pilotWeatherSource": "Flight service station",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Night",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 169,
+          "observationFacilityDistanceNm": 1,
+          "observationFacilityElevationFt": 392,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 200,
+          "windDirectionVariable": false,
+          "windGustKts": null,
+          "windGustsAbsent": true,
+          "windSpeedKts": 7,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 29.8,
+          "cloudCoverage": null,
+          "dewPointF": 71.6,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-01",
+          "observationTimeUtc": "07:52:00",
+          "observationUtcOffsetHours": 0,
+          "observationFacilityId": "KBLH",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 89.6,
+          "visibilitySm": 10
+        },
+        {
+          "pilotWeatherSource": "Automated report",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Night",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 169,
+          "observationFacilityDistanceNm": 1,
+          "observationFacilityElevationFt": 392,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 200,
+          "windDirectionVariable": false,
+          "windGustKts": null,
+          "windGustsAbsent": true,
+          "windSpeedKts": 7,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 29.8,
+          "cloudCoverage": null,
+          "dewPointF": 71.6,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-01",
+          "observationTimeUtc": "07:52:00",
+          "observationUtcOffsetHours": 0,
+          "observationFacilityId": "KBLH",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 89.6,
+          "visibilitySm": 10
+        }
+      ],
+      "weatherPrecipitations": [],
+      "aircrafts": [
+        {
+          "aircraftNumber": 1,
+          "aircraftCategory": "Airplane",
+          "aircraftRegistrationNumber": "N6728X",
+          "aircraftMake": "BEECH",
+          "aircraftManufacturer": null,
+          "aircraftModel": "F33",
+          "aircraftSeries": "A",
+          "airframeTotalTimeHours": 1951.39,
+          "aircraftAmateurBuilt": false,
+          "aircraftAtTimeOfAccident": false,
+          "aircraftCabinCrewSeats": null,
+          "aircraftCommercialSpaceFlight": false,
+          "aircraftEltActivated": true,
+          "aircraftEltAidedLocatingAccident": false,
+          "aircraftEltConnectedAntenna": true,
+          "aircraftEltInstalled": true,
+          "aircraftEltManufacturer": "Ameri-King",
+          "aircraftEltModelPart": "AK-450",
+          "aircraftEltReasonOther": null,
+          "aircraftEltStillMounted": true,
+          "aircraftFlightCrewSeats": 1,
+          "aircraftFromLastInspectionHours": null,
+          "aircraftFuelOnBoard": 46,
+          "aircraftIfrEquippedAndCertified": true,
+          "aircraftLandingGearFormation": "Tricycle",
+          "aircraftLastInspection": false,
+          "aircraftLastInspectionDate": "2015-12-12",
+          "aircraftLastInspectionType": "Annual",
+          "aircraftMaxGrossWeight": 3400,
+          "aircraftMissing": false,
+          "aircraftNumberOfEngines": 1,
+          "aircraftNumberOfSeats": 5,
+          "aircraftPassengerSeats": 4,
+          "aircraftRetractableLandingGear": true,
+          "aircraftSerialNumber": "CE-1023",
+          "yearOfManufacture": 1983,
+          "aircraftElttsoNumber": "C91A",
+          "aircraftUnmanned": false,
+          "totalFatal": 0,
+          "totalSerious": 0,
+          "totalMinor": 0,
+          "totalNone": 3,
+          "flightCrewFatal": 0,
+          "flightCrewSerious": 0,
+          "flightCrewMinor": 0,
+          "flightCrewNone": 1,
+          "cabinCrewFatal": null,
+          "cabinCrewSerious": null,
+          "cabinCrewMinor": null,
+          "cabinCrewNone": null,
+          "passengersFatal": null,
+          "passengersSerious": null,
+          "passengersMinor": null,
+          "passengersNone": 2,
+          "lapChildrenFatal": null,
+          "lapChildrenSerious": null,
+          "lapChildrenMinor": null,
+          "lapChildrenNone": null,
+          "aircraftAccidents": [
+            {
+              "damageLevel": "Substantial",
+              "fireType": "None",
+              "explosionType": "None",
+              "unknownNumberofOccupants": false
+            }
+          ],
+          "eltReasons": [],
+          "landingGear": [],
+          "engines": [
+            {
+              "engineNumbers": 1,
+              "engineSerialNumber": "578018",
+              "engineTotalTime": 1951.39,
+              "engineFromLastInspectionHours": 36.51,
+              "engineType": "Reciprocating",
+              "engineFuelSystem": "Fuel injected",
+              "engineManufacturer": "Continental",
+              "engineModelSeries": "IO-520BB",
+              "enginePropellerMake": "McCauley",
+              "enginePropellerModel": "3A32C406B",
+              "enginePropellerSerialNumber": null,
+              "enginePropellerType": "Controllable pitch",
+              "engineRatedPower": 285,
+              "engineRatedPowerType": "Horsepower"
+            }
+          ],
+          "ownerOperators": [
+            {
+              "airMedical": false,
+              "airMedicalType": null,
+              "flightOperationType": "Personal",
+              "flightScheduledType": null,
+              "flightServiceType": null,
+              "flightTerminalType": null,
+              "hasOperatingCertificates": null,
+              "operatorCity": "HENDERSON",
+              "operatorCountry": "USA",
+              "operatorDesignatorCode": null,
+              "operatorStateOrRegion": "NV",
+              "ownerCity": "HENDERSON",
+              "ownerCountry": "USA",
+              "ownerStateOrRegion": "NV",
+              "regulationFlightConductedUnder": "091",
+              "revenueSightseeing": false,
+              "secondPilotPresent": false
+            }
+          ],
+          "operatingCertificates": [
+            "None"
+          ],
+          "operatorScopes": [],
+          "airworthinessCertificates": [
+            {
+              "airworthinessCertificate": "Normal",
+              "airworthinessCertificateType": "Standard"
+            }
+          ],
+          "additionalEquipment": [
+            "Auto-pilot",
+            "Stall warning system"
+          ],
+          "crewAndOccupants": [
+            {
+              "crewOccupantNumber": 1,
+              "age": 60,
+              "sex": "Female",
+              "injuryLevel": "None",
+              "crewCategory": "Pilot",
+              "availableRestraintType": "3-point",
+              "childRestraint": null,
+              "inflatableRestraintDeployed": null,
+              "inflatableRestraintInstalled": "No",
+              "dateOfLastFlightReview": "2015-12-09",
+              "faaUniqueId": null,
+              "medicalCertificate": "Class 2",
+              "medicalCertificateStatus": "With waivers/limitations",
+              "medicalCertLimitations": "Must wear corrective lenses.",
+              "mostRecentFaaMedicalCertificate": null,
+              "occupationalPilot": "No",
+              "pilotFlying": true,
+              "restraintUsed": "3-point",
+              "rowNumber": null,
+              "seatOccupied": "Left",
+              "toxicologyPerformed": false,
+              "pilotCertificates": [
+                "Flight instructor",
+                "Commercial"
+              ],
+              "pilotsFlightTimeMatrix": [
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 1.3
+                },
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 1.3
+                },
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 1.3
+                },
+                {
+                  "flightTimeType": "24 Hours",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 1.3
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 33.2
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 3.9
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 4
+                },
+                {
+                  "flightTimeType": "30 Days",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 33.2
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 105.6
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Instrument Actual",
+                  "flightHours": 0.5
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 14.8
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 6.5
+                },
+                {
+                  "flightTimeType": "90 Days",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 104
+                },
+                {
+                  "flightTimeType": "Instructor",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 920
+                },
+                {
+                  "flightTimeType": "Instructor",
+                  "flightTimeCraft": "Instrument Actual",
+                  "flightHours": 4.1
+                },
+                {
+                  "flightTimeType": "Instructor",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 68
+                },
+                {
+                  "flightTimeType": "Instructor",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 22
+                },
+                {
+                  "flightTimeType": "Instructor",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 920
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 2132.6
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "Instrument Actual",
+                  "flightHours": 19.7
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 33.7
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 513
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "ME Airplane",
+                  "flightHours": 50
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 101.9
+                },
+                {
+                  "flightTimeType": "PIC",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 2262.3
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 2329.5
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Instrument Actual",
+                  "flightHours": 19.7
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Instrument Sim",
+                  "flightHours": 33.7
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Make and Model",
+                  "flightHours": 513
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "ME Airplane",
+                  "flightHours": 67
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "Night",
+                  "flightHours": 105.9
+                },
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "SE Airplane",
+                  "flightHours": 2262.3
+                }
+              ],
+              "pilotRatingForAirplanes": [
+                "Single-engine land",
+                "Multi-engine land"
+              ],
+              "pilotRatingsForInstruments": [
+                "Airplane"
+              ],
+              "flightTimeSummary": [
+                {
+                  "estimated": true,
+                  "incomplete": false,
+                  "flightTimesAsofDate": "2016-08-10"
+                }
+              ]
+            },
+            {
+              "crewOccupantNumber": 2,
+              "age": 27,
+              "sex": "Male",
+              "injuryLevel": "None",
+              "crewCategory": "Passenger",
+              "availableRestraintType": "3-point",
+              "childRestraint": null,
+              "inflatableRestraintDeployed": null,
+              "inflatableRestraintInstalled": "No",
+              "dateOfLastFlightReview": null,
+              "faaUniqueId": null,
+              "medicalCertificate": null,
+              "medicalCertificateStatus": null,
+              "medicalCertLimitations": null,
+              "mostRecentFaaMedicalCertificate": null,
+              "occupationalPilot": "No",
+              "pilotFlying": false,
+              "restraintUsed": "3-point",
+              "rowNumber": null,
+              "seatOccupied": "Right",
+              "toxicologyPerformed": false,
+              "pilotCertificates": [
+                "Student"
+              ],
+              "pilotsFlightTimeMatrix": [],
+              "pilotRatingForAirplanes": [],
+              "pilotRatingsForInstruments": [],
+              "flightTimeSummary": [
+                {
+                  "estimated": false,
+                  "incomplete": false,
+                  "flightTimesAsofDate": null
+                }
+              ]
+            },
+            {
+              "crewOccupantNumber": 3,
+              "age": null,
+              "sex": "Male",
+              "injuryLevel": "None",
+              "crewCategory": "Passenger",
+              "availableRestraintType": "3-point",
+              "childRestraint": null,
+              "inflatableRestraintDeployed": null,
+              "inflatableRestraintInstalled": "No",
+              "dateOfLastFlightReview": null,
+              "faaUniqueId": null,
+              "medicalCertificate": null,
+              "medicalCertificateStatus": null,
+              "medicalCertLimitations": null,
+              "mostRecentFaaMedicalCertificate": null,
+              "occupationalPilot": "No",
+              "pilotFlying": false,
+              "restraintUsed": "3-point",
+              "rowNumber": 2,
+              "seatOccupied": "Right",
+              "toxicologyPerformed": false,
+              "pilotCertificates": [],
+              "pilotsFlightTimeMatrix": [],
+              "pilotRatingForAirplanes": [],
+              "pilotRatingsForInstruments": [],
+              "flightTimeSummary": [
+                {
+                  "estimated": false,
+                  "incomplete": false,
+                  "flightTimesAsofDate": null
+                }
+              ]
+            }
+          ],
+          "airspaces": [
+            "Class E"
+          ],
+          "airports": [
+            {
+              "airportArpDirectionDeg": 360,
+              "airportArpDistanceNm": 1,
+              "airportArpElevationFtMsl": 399,
+              "airportFacilityName": "BLYTHE",
+              "airportLocationId": "BLH",
+              "airportOnAirportAirstrip": "Yes",
+              "airportRunwayId": "17",
+              "airportRunwayLengthFt": 5800,
+              "airportRunwayNa": false,
+              "airportRunwayWidthFt": 100,
+              "airportLandingSurfaceCondition": "Dry",
+              "airportLandingSurfaceType": "Asphalt"
+            }
+          ],
+          "approaches": [
+            {
+              "ifrapproach": "None",
+              "vfrapproachLanding": "None",
+              "pre1982ApproachType": null
+            }
+          ],
+          "itinerary": [
+            {
+              "lastDeparture": null,
+              "departureAirportId": "BLH",
+              "departureCity": "Blythe",
+              "departureCountry": "USA",
+              "departureIsUtc": false,
+              "departureStateOrRegion": "CA",
+              "departureTimeUtc": "19:45:00",
+              "departureTimeUtcOffsetHours": -7,
+              "destination": null,
+              "destinationAirportId": "HND",
+              "destinationCity": "LAS VEGAS",
+              "destinationCountry": "USA",
+              "destinationIsUtc": false,
+              "destinationStateOrRegion": "NV",
+              "destinationTimeUtc": null,
+              "destinationTimeUtcOffsetHours": null,
+              "flightPlan": "None",
+              "flightPlanSpecification": "No"
+            }
+          ],
+          "events": [
+            {
+              "eventNumber": 3,
+              "sequenceNumber": 3,
+              "eventCode": "350470",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "470",
+              "eventTier2Name": "Collision with terr/obj (non-CFIT) ",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "Other",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 1,
+              "sequenceNumber": 1,
+              "eventCode": "350241",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "241",
+              "eventTier2Name": "Aerodynamic stall/spin",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "LossOfControl(Inflight)",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 2,
+              "sequenceNumber": 2,
+              "eventCode": "350240",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "240",
+              "eventTier2Name": "Loss of control in flight",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "LossOfControl(Inflight)",
+              "isDefiningEvent": true
+            }
+          ],
+          "findings": [
+            {
+              "findingNumber": 1,
+              "findingCode": "0106204208",
+              "findingReportText": "Aircraft - Aircraft oper/perf/capability - Performance/control parameters - Capability exceeded",
+              "findingDescription": "Aircraft-Aircraft oper/perf/capability-Performance/control parameters-Angle of attack-Capability exceeded - C",
+              "modifierNumber": "08",
+              "inProbableCause": true,
+              "tier1Number": "01",
+              "tier1Name": "Aircraft",
+              "tier2Number": "06",
+              "tier2Name": "Aircraft oper/perf/capability",
+              "tier3Number": "20",
+              "tier3Name": "Performance/control parameters",
+              "tier4Number": "42",
+              "tier4Name": "Angle of attack",
+              "modifierName": "Capability exceeded"
+            },
+            {
+              "findingNumber": 2,
+              "findingCode": "0206304044",
+              "findingReportText": "Personnel issues - Task performance - Use of equip/info - Pilot",
+              "findingDescription": "Personnel issues-Task performance-Use of equip/info-Aircraft control-Pilot - C",
+              "modifierNumber": "44",
+              "inProbableCause": true,
+              "tier1Number": "02",
+              "tier1Name": "Personnel issues",
+              "tier2Number": "06",
+              "tier2Name": "Task performance",
+              "tier3Number": "30",
+              "tier3Name": "Use of equip/info",
+              "tier4Number": "40",
+              "tier4Name": "Aircraft control",
+              "modifierName": "Pilot"
+            },
+            {
+              "findingNumber": 3,
+              "findingCode": "0303602083",
+              "findingReportText": "Environmental issues - Conditions/weather/phenomena - Light condition - Effect on personnel",
+              "findingDescription": "Environmental issues-Conditions/weather/phenomena-Light condition-Dark-Effect on personnel",
+              "modifierNumber": "83",
+              "inProbableCause": false,
+              "tier1Number": "03",
+              "tier1Name": "Environmental issues",
+              "tier2Number": "03",
+              "tier2Name": "Conditions/weather/phenomena",
+              "tier3Number": "60",
+              "tier3Name": "Light condition",
+              "tier4Number": "20",
+              "tier4Name": "Dark",
+              "modifierName": "Effect on personnel"
+            }
+          ],
+          "occurrences": [],
+          "injuries": [
+            {
+              "mkey": 93750,
+              "aircraftNumber": 1,
+              "flightCrewFatal": 0,
+              "flightCrewSerious": 0,
+              "flightCrewMinor": 0,
+              "flightCrewNone": 1,
+              "cabinCrewFatal": null,
+              "cabinCrewSerious": null,
+              "cabinCrewMinor": null,
+              "cabinCrewNone": null,
+              "passengersFatal": null,
+              "passengersSerious": null,
+              "passengersMinor": null,
+              "passengersNone": 2,
+              "lapChildrenFatal": null,
+              "lapChildrenSerious": null,
+              "lapChildrenMinor": null,
+              "lapChildrenNone": null,
+              "flightCrewTotal": 0,
+              "cabinCrewTotal": null,
+              "passengersTotal": null,
+              "lapChildrenTotal": null
+            }
+          ]
+        }
+      ],
+      "narratives": [
+        {
+          "aircraftNumber": 1,
+          "probableCause": "The pilot's failure to attain adequate airspeed to climb and her exceedance of the airplane's critical angle-of-attack during takeoff initial climb at night, which resulted in an aerodynamic stall at low altitude.",
+          "prelimNarrative": null,
+          "analysisNarrative": "The pilot was conducting a night, visual meteorological conditions flight from a rural desert airport, and reported that prior to the flight, she did a weight and balance, checked the temperature, and did performance calculations.\r\n\r\nThe pilot reported that after rotation, the airplane was not producing \"sufficient power and not climbing as anticipated\" and the stall warning horn was audible. She lowered the airplane's nose, and the stall warning horn silenced. The pilot further reported that she heard \"scraping\" [ground impact] against the airplane, but she could not see the terrain due to the night conditions. Subsequently, the airplane impacted the ground off of the airport, which resulted in substantial damage to the fuselage.\r\n\r\nIn a follow up email conversation with the pilot's attorney, the attorney said that the pilot reported that the engine was producing power at the time that the aerodynamic stall warning horn was audible and just before impact, but noted that the power was not sufficient. \r\n\r\nA photograph of the accident airplane provided by the FAA inspector that responded to the accident, showed all three blades exhibited tip curl, torsional twisting and S-bending, consistent with the engine producing power at the time of impact.\r\n\r\nThe airplane performance and weight and balance calculations that the pilot performed prior to the accident flight were requested by the National Transportation Safety Board investigator-in-charge (IIC), but were not provided. \r\n\r\nThe pilot stated she was unaware of any preaccident mechanical malfunctions or failures with the airplane that would have precluded normal operation.\r\n\r\nIt is likely that the pilot exceeded the critical angle of attack during takeoff at night resulting in an aerodynamic stall. \r\n\r\nThe Federal Aviation Administration has published the Airplane Flying Handbook FAA-H-8083-3A (2004). This handbook discusses aerodynamic stalls and states in part:\r\n\r\nThe key to stall awareness is the pilot's ability to visualize the wing's angle of attack in any particular circumstance, and thereby be able to estimate his/her margin of safety above stall. This is a learned skill that must be acquired early in flight training and carried through the pilot's entire flying career. The pilot must understand and appreciate factors such as airspeed, pitch attitude, load factor, relative wind, power setting, and aircraft configuration in order to develop a reasonably accurate mental picture of the wing's angle of attack at any particular time. It is essential to flight safety that a pilot takes into consideration this visualization of the wing's angle of attack prior to entering any flight maneuver.\r\n\r\nStall accidents usually result from an inadvertent stall at a low altitude in which a recovery was not accomplished prior to contact with the surface.",
+          "concatenatedFactualNarrative": "\"***This report was modified on December 22, 2016. Please see the docket for this accident to view the original report.***\r\n\r\nThe pilot was conducting a night, visual meteorological conditions flight from a rural desert airport, and reported that prior to the flight, she did a weight and balance, checked the temperature, and did performance calculations.\r\n\r\nThe pilot reported that after rotation, the airplane was not producing \"sufficient power and not climbing as anticipated\" and the stall warning horn was audible. She lowered the airplane's nose, and the stall warning horn silenced. The pilot further reported that she heard \"scraping\" [ground impact] against the airplane, but she could not see the terrain due to the night conditions. Subsequently, the airplane impacted the ground off of the airport, which resulted in substantial damage to the fuselage.\r\n\r\nIn a follow up email conversation with the pilot's attorney, the attorney said that the pilot reported that the engine was producing power at the time that the aerodynamic stall warning horn was audible and just before impact, but noted that the power was not sufficient. \r\n\r\nA photograph of the accident airplane provided by the FAA inspector that responded to the accident, showed all three blades exhibited tip curl, torsional twisting and S-bending, consistent with the engine producing power at the time of impact.\r\n\r\nThe airplane performance and weight and balance calculations that the pilot performed prior to the accident flight were requested by the National Transportation Safety Board investigator-in-charge (IIC), but were not provided. \r\n\r\nThe pilot stated she was unaware of any preaccident mechanical malfunctions or failures with the airplane that would have precluded normal operation.\r\n\r\nThe Federal Aviation Administration has published the Airplane Flying Handbook FAA-H-8083-3A (2004). This handbook discusses aerodynamic stalls and states in part:\r\n\r\nThe key to stall awareness is the pilot's ability to visualize the wing's angle of attack in any particular circumstance, and thereby be able to estimate his/her margin of safety above stall. This is a learned skill that must be acquired early in flight training and carried through the pilot's entire flying career. The pilot must understand and appreciate factors such as airspeed, pitch attitude, load factor, relative wind, power setting, and aircraft configuration in order to develop a reasonably accurate mental picture of the wing's angle of attack at any particular time. It is essential to flight safety that a pilot takes into consideration this visualization of the wing's angle of attack prior to entering any flight maneuver.\r\n\r\nStall accidents usually result from an inadvertent stall at a low altitude in which a recovery was not accomplished prior to contact with the surface."
+        }
+      ],
+      "richNarratives": null
+    },
+    {
+      "mKey": 93745,
+      "isPost2008": true,
+      "isPre1982": false,
+      "ntsbNumber": "WPR16FA157",
+      "completionStatus": "Completed",
+      "hasSafetyRecommendation": false,
+      "leadAgency": "NTSB",
+      "boardMemberLaunch": false,
+      "boardMeetingDate": null,
+      "docketOpenDate": null,
+      "launchType": "None",
+      "reportType": "Approved by Office Director",
+      "reportNumber": null,
+      "reportDate": "2018-06-12",
+      "eventType": "Accident",
+      "highestInjuryLevel": "Fatal",
+      "investigationClass": null,
+      "factualFinalReportFlavor": "Detailed (ICAO headers)",
+      "originalPublishedDate": "2018-06-12",
+      "publishDateTime": "2020-09-25T15:01:31.764",
+      "publishProfile": "DirectorApprovedBriefFinal",
+      "investigationPage": null,
+      "docketPage": null,
+      "reportPage": null,
+      "caseClosed": true,
+      "caseCreatedDateTimeUtc": "2016-08-02T13:00:00",
+      "factualPublishedDate": "2018-06-06",
+      "isStudy": false,
+      "lastRevisionDate": null,
+      "mode": "Aviation",
+      "eventDate": "2016-08-02",
+      "eventTimeUtc": "20:22:00",
+      "eventTimeUtcOffsetHours": -7,
+      "eventIsUtc": false,
+      "eventCity": "Van Nuys",
+      "eventStateOrRegion": "CA",
+      "eventZipcode": "91406",
+      "eventCountry": "USA",
+      "eventLocation": null,
+      "eventLatLongEstimated": false,
+      "eventLatitude": 34.198055,
+      "eventLongitude": -118.485275,
+      "eventPropertyDamage": null,
+      "eventHazmatInvolved": false,
+      "eventCollisionWithOtherAircraft": "None",
+      "eventEnvironmentalDamage": null,
+      "caseType": "Field - Launch",
+      "region": "Western Pacific Region",
+      "totalFatal": 1,
+      "totalSerious": 0,
+      "totalMinor": 0,
+      "totalNone": 0,
+      "ongroundFatal": null,
+      "ongroundSerious": null,
+      "ongroundMinor": null,
+      "onboardFatal": 1,
+      "onboardSerious": 0,
+      "onboardMinor": 0,
+      "onboardNone": 0,
+      "topicMode": "Aviation",
+      "investigatingParties": [
+        "Arion Aircraft",
+        "Federal Aviation Administration"
+      ],
+      "weatherConditions": [
+        {
+          "pilotWeatherSource": "Unknown",
+          "accidentSiteCondition": "Visual (VMC)",
+          "cloudCondition": "Clear",
+          "daylightCondition": "Day",
+          "icingActualAmount": "None",
+          "icingActualType": "N/A",
+          "icingForecastAmount": "None",
+          "icingForecastType": "N/A",
+          "investigationWeatherSource": "Observation facility",
+          "lowestCeiling": "None",
+          "observationFacilityDirectionDeg": 336,
+          "observationFacilityDistanceNm": 1,
+          "observationFacilityElevationFt": 802,
+          "runwayVisualRangeFt": null,
+          "turbulenceActualSeverity": "N/A",
+          "turbulenceActualType": "None",
+          "turbulenceForecastSeverity": null,
+          "turbulenceForecastType": null,
+          "weatherSource": null,
+          "windCalm": false,
+          "windDirectionDeg": 150,
+          "windDirectionVariable": false,
+          "windGustKts": null,
+          "windGustsAbsent": true,
+          "windSpeedKts": 8,
+          "windSpeedVariable": false,
+          "barometricSettingMmHg": 29.97,
+          "cloudCoverage": null,
+          "dewPointF": 51.8,
+          "lowestCeilingFtAgl": null,
+          "lowestCloudConditionFtAgl": null,
+          "metar": null,
+          "observationDate": "2016-08-02",
+          "observationTimeUtc": "19:51:00",
+          "observationUtcOffsetHours": -7,
+          "observationFacilityId": "VNY",
+          "observationFacilityName": null,
+          "precipitationNa": true,
+          "remarks": null,
+          "temperatureF": 87.8,
+          "visibilitySm": 10
+        }
+      ],
+      "weatherPrecipitations": [],
+      "aircrafts": [
+        {
+          "aircraftNumber": 1,
+          "aircraftCategory": "Airplane",
+          "aircraftRegistrationNumber": "N341AL",
+          "aircraftMake": "ARION AIRCRAFT LLC",
+          "aircraftManufacturer": null,
+          "aircraftModel": "LIGHTNING LS-1",
+          "aircraftSeries": "NO SERIES",
+          "airframeTotalTimeHours": 46.3,
+          "aircraftAmateurBuilt": false,
+          "aircraftAtTimeOfAccident": true,
+          "aircraftCabinCrewSeats": null,
+          "aircraftCommercialSpaceFlight": false,
+          "aircraftEltActivated": true,
+          "aircraftEltAidedLocatingAccident": false,
+          "aircraftEltConnectedAntenna": true,
+          "aircraftEltInstalled": true,
+          "aircraftEltManufacturer": "ACK",
+          "aircraftEltModelPart": "E-04",
+          "aircraftEltReasonOther": null,
+          "aircraftEltStillMounted": true,
+          "aircraftFlightCrewSeats": 1,
+          "aircraftFromLastInspectionHours": null,
+          "aircraftFuelOnBoard": null,
+          "aircraftIfrEquippedAndCertified": false,
+          "aircraftLandingGearFormation": "Tricycle",
+          "aircraftLastInspection": false,
+          "aircraftLastInspectionDate": "2015-12-01",
+          "aircraftLastInspectionType": "Annual",
+          "aircraftMaxGrossWeight": 1320,
+          "aircraftMissing": false,
+          "aircraftNumberOfEngines": 1,
+          "aircraftNumberOfSeats": 2,
+          "aircraftPassengerSeats": 1,
+          "aircraftRetractableLandingGear": false,
+          "aircraftSerialNumber": "166",
+          "yearOfManufacture": 2014,
+          "aircraftElttsoNumber": "C126",
+          "aircraftUnmanned": false,
+          "totalFatal": 1,
+          "totalSerious": 0,
+          "totalMinor": 0,
+          "totalNone": 0,
+          "flightCrewFatal": 1,
+          "flightCrewSerious": 0,
+          "flightCrewMinor": 0,
+          "flightCrewNone": 0,
+          "cabinCrewFatal": null,
+          "cabinCrewSerious": null,
+          "cabinCrewMinor": null,
+          "cabinCrewNone": null,
+          "passengersFatal": null,
+          "passengersSerious": null,
+          "passengersMinor": null,
+          "passengersNone": null,
+          "lapChildrenFatal": null,
+          "lapChildrenSerious": null,
+          "lapChildrenMinor": null,
+          "lapChildrenNone": null,
+          "aircraftAccidents": [
+            {
+              "damageLevel": "Substantial",
+              "fireType": "None",
+              "explosionType": "None",
+              "unknownNumberofOccupants": false
+            }
+          ],
+          "eltReasons": [],
+          "landingGear": [],
+          "engines": [
+            {
+              "engineNumbers": 1,
+              "engineSerialNumber": "33A2618",
+              "engineTotalTime": 46.3,
+              "engineFromLastInspectionHours": null,
+              "engineType": "Reciprocating",
+              "engineFuelSystem": "Carburetor",
+              "engineManufacturer": "Jabiru",
+              "engineModelSeries": "3300A",
+              "enginePropellerMake": "Sensenich",
+              "enginePropellerModel": "W60ZK-57G",
+              "enginePropellerSerialNumber": null,
+              "enginePropellerType": "Ground adjustable",
+              "engineRatedPower": 120,
+              "engineRatedPowerType": "Horsepower"
+            }
+          ],
+          "ownerOperators": [
+            {
+              "airMedical": false,
+              "airMedicalType": null,
+              "flightOperationType": "Personal",
+              "flightScheduledType": null,
+              "flightServiceType": null,
+              "flightTerminalType": null,
+              "hasOperatingCertificates": null,
+              "operatorCity": "Malibu",
+              "operatorCountry": "USA",
+              "operatorDesignatorCode": null,
+              "operatorStateOrRegion": "CA",
+              "ownerCity": "SHELBYVILLE",
+              "ownerCountry": "USA",
+              "ownerStateOrRegion": "TN",
+              "regulationFlightConductedUnder": "091",
+              "revenueSightseeing": false,
+              "secondPilotPresent": false
+            }
+          ],
+          "operatingCertificates": [
+            "None"
+          ],
+          "operatorScopes": [],
+          "airworthinessCertificates": [
+            {
+              "airworthinessCertificate": "Special light-sport (Special)",
+              "airworthinessCertificateType": "Special"
+            },
+            {
+              "airworthinessCertificate": "Normal",
+              "airworthinessCertificateType": "Standard"
+            }
+          ],
+          "additionalEquipment": [
+            "Angle of attack indicator",
+            "Data recorder",
+            "Electronic primary flight display"
+          ],
+          "crewAndOccupants": [
+            {
+              "crewOccupantNumber": 1,
+              "age": 78,
+              "sex": "Male",
+              "injuryLevel": "Fatal",
+              "crewCategory": "Pilot",
+              "availableRestraintType": "3-point",
+              "childRestraint": null,
+              "inflatableRestraintDeployed": null,
+              "inflatableRestraintInstalled": "No",
+              "dateOfLastFlightReview": "2016-02-15",
+              "faaUniqueId": null,
+              "medicalCertificate": "Class 3",
+              "medicalCertificateStatus": "Unknown",
+              "medicalCertLimitations": "none",
+              "mostRecentFaaMedicalCertificate": null,
+              "occupationalPilot": "No",
+              "pilotFlying": true,
+              "restraintUsed": "3-point",
+              "rowNumber": null,
+              "seatOccupied": "Left",
+              "toxicologyPerformed": true,
+              "pilotCertificates": [
+                "Private"
+              ],
+              "pilotsFlightTimeMatrix": [
+                {
+                  "flightTimeType": "Total",
+                  "flightTimeCraft": "All AC",
+                  "flightHours": 927
+                }
+              ],
+              "pilotRatingForAirplanes": [
+                "Single-engine land"
+              ],
+              "pilotRatingsForInstruments": [
+                "Airplane"
+              ],
+              "flightTimeSummary": [
+                {
+                  "estimated": false,
+                  "incomplete": true,
+                  "flightTimesAsofDate": "2012-09-12"
+                }
+              ]
+            }
+          ],
+          "airspaces": [
+            "Class D"
+          ],
+          "airports": [
+            {
+              "airportArpDirectionDeg": 189,
+              "airportArpDistanceNm": 1,
+              "airportArpElevationFtMsl": 802,
+              "airportFacilityName": "VAN NUYS",
+              "airportLocationId": "VNY",
+              "airportOnAirportAirstrip": "No",
+              "airportRunwayId": "16L",
+              "airportRunwayLengthFt": 4013,
+              "airportRunwayNa": false,
+              "airportRunwayWidthFt": 75,
+              "airportLandingSurfaceCondition": "Dry",
+              "airportLandingSurfaceType": "Asphalt"
+            }
+          ],
+          "approaches": [
+            {
+              "ifrapproach": "None",
+              "vfrapproachLanding": "Touch and go, Traffic pattern",
+              "pre1982ApproachType": null
+            }
+          ],
+          "itinerary": [
+            {
+              "lastDeparture": null,
+              "departureAirportId": "SMO",
+              "departureCity": "SANTA MONICA",
+              "departureCountry": "USA",
+              "departureIsUtc": false,
+              "departureStateOrRegion": "CA",
+              "departureTimeUtc": "20:15:00",
+              "departureTimeUtcOffsetHours": -7,
+              "destination": null,
+              "destinationAirportId": "VNY",
+              "destinationCity": "Van Nuys",
+              "destinationCountry": "USA",
+              "destinationIsUtc": false,
+              "destinationStateOrRegion": "CA",
+              "destinationTimeUtc": null,
+              "destinationTimeUtcOffsetHours": null,
+              "flightPlan": "None",
+              "flightPlanSpecification": "No"
+            }
+          ],
+          "events": [
+            {
+              "eventNumber": 3,
+              "sequenceNumber": 3,
+              "eventCode": "350240",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "240",
+              "eventTier2Name": "Loss of control in flight",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "LossOfControl(Inflight)",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 2,
+              "sequenceNumber": 2,
+              "eventCode": "350241",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "241",
+              "eventTier2Name": "Aerodynamic stall/spin",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "LossOfControl(Inflight)",
+              "isDefiningEvent": true
+            },
+            {
+              "eventNumber": 4,
+              "sequenceNumber": 4,
+              "eventCode": "350470",
+              "tier1Number": "350",
+              "eventTier1Name": "Initial climb",
+              "tier2Number": "470",
+              "eventTier2Name": "Collision with terr/obj (non-CFIT) ",
+              "cicttPhaseSOEGroup": "InitialClimb",
+              "cicttEventSOEGroup": "Other",
+              "isDefiningEvent": false
+            },
+            {
+              "eventNumber": 1,
+              "sequenceNumber": 1,
+              "eventCode": "551090",
+              "tier1Number": "551",
+              "eventTier1Name": "Landing-flare/touchdown",
+              "tier2Number": "090",
+              "eventTier2Name": "Abnormal runway contact",
+              "cicttPhaseSOEGroup": "Landing",
+              "cicttEventSOEGroup": "AbnormalRunwayContact",
+              "isDefiningEvent": false
+            }
+          ],
+          "findings": [
+            {
+              "findingNumber": 4,
+              "findingCode": "0201201044",
+              "findingReportText": "Personnel issues - Physical - Impairment/incapacitation - Pilot",
+              "findingDescription": "Personnel issues-Physical-Impairment/incapacitation-Illness/injury-Pilot - F",
+              "modifierNumber": "44",
+              "inProbableCause": true,
+              "tier1Number": "02",
+              "tier1Name": "Personnel issues",
+              "tier2Number": "01",
+              "tier2Name": "Physical",
+              "tier3Number": "20",
+              "tier3Name": "Impairment/incapacitation",
+              "tier4Number": "10",
+              "tier4Name": "Illness/injury",
+              "modifierName": "Pilot"
+            },
+            {
+              "findingNumber": 2,
+              "findingCode": "0106201020",
+              "findingReportText": "Aircraft - Aircraft oper/perf/capability - Performance/control parameters - Not attained/maintained",
+              "findingDescription": "Aircraft-Aircraft oper/perf/capability-Performance/control parameters-Airspeed-Not attained/maintained - C",
+              "modifierNumber": "20",
+              "inProbableCause": true,
+              "tier1Number": "01",
+              "tier1Name": "Aircraft",
+              "tier2Number": "06",
+              "tier2Name": "Aircraft oper/perf/capability",
+              "tier3Number": "20",
+              "tier3Name": "Performance/control parameters",
+              "tier4Number": "10",
+              "tier4Name": "Airspeed",
+              "modifierName": "Not attained/maintained"
+            },
+            {
+              "findingNumber": 1,
+              "findingCode": "0206304044",
+              "findingReportText": "Personnel issues - Task performance - Use of equip/info - Pilot",
+              "findingDescription": "Personnel issues-Task performance-Use of equip/info-Aircraft control-Pilot - C",
+              "modifierNumber": "44",
+              "inProbableCause": true,
+              "tier1Number": "02",
+              "tier1Name": "Personnel issues",
+              "tier2Number": "06",
+              "tier2Name": "Task performance",
+              "tier3Number": "30",
+              "tier3Name": "Use of equip/info",
+              "tier4Number": "40",
+              "tier4Name": "Aircraft control",
+              "modifierName": "Pilot"
+            },
+            {
+              "findingNumber": 5,
+              "findingCode": "0201204544",
+              "findingReportText": "Personnel issues - Physical - Impairment/incapacitation - Pilot",
+              "findingDescription": "Personnel issues-Physical-Impairment/incapacitation-Neurological-Pilot - F",
+              "modifierNumber": "44",
+              "inProbableCause": true,
+              "tier1Number": "02",
+              "tier1Name": "Personnel issues",
+              "tier2Number": "01",
+              "tier2Name": "Physical",
+              "tier3Number": "20",
+              "tier3Name": "Impairment/incapacitation",
+              "tier4Number": "45",
+              "tier4Name": "Neurological",
+              "modifierName": "Pilot"
+            },
+            {
+              "findingNumber": 3,
+              "findingCode": "0106204220",
+              "findingReportText": "Aircraft - Aircraft oper/perf/capability - Performance/control parameters - Not attained/maintained",
+              "findingDescription": "Aircraft-Aircraft oper/perf/capability-Performance/control parameters-Angle of attack-Not attained/maintained - C",
+              "modifierNumber": "20",
+              "inProbableCause": true,
+              "tier1Number": "01",
+              "tier1Name": "Aircraft",
+              "tier2Number": "06",
+              "tier2Name": "Aircraft oper/perf/capability",
+              "tier3Number": "20",
+              "tier3Name": "Performance/control parameters",
+              "tier4Number": "42",
+              "tier4Name": "Angle of attack",
+              "modifierName": "Not attained/maintained"
+            }
+          ],
+          "occurrences": [],
+          "injuries": [
+            {
+              "mkey": 93745,
+              "aircraftNumber": 1,
+              "flightCrewFatal": 1,
+              "flightCrewSerious": 0,
+              "flightCrewMinor": 0,
+              "flightCrewNone": 0,
+              "cabinCrewFatal": null,
+              "cabinCrewSerious": null,
+              "cabinCrewMinor": null,
+              "cabinCrewNone": null,
+              "passengersFatal": null,
+              "passengersSerious": null,
+              "passengersMinor": null,
+              "passengersNone": null,
+              "lapChildrenFatal": null,
+              "lapChildrenSerious": null,
+              "lapChildrenMinor": null,
+              "lapChildrenNone": null,
+              "flightCrewTotal": 1,
+              "cabinCrewTotal": null,
+              "passengersTotal": null,
+              "lapChildrenTotal": null
+            }
+          ]
+        }
+      ],
+      "narratives": [
+        {
+          "aircraftNumber": 1,
+          "probableCause": "The pilot's loss of airplane control due to an exceedance of the airplane's critical angle of attack, which resulted in an accelerated stall and subsequent impact with a building. Contributing to the accident was the pilot's unreported physiological impairment from traumatic brain injury, which impaired his ability to safety operate the airplane.",
+          "prelimNarrative": null,
+          "analysisNarrative": "The pilot of the light sport airplane contacted the tower controller at his destination airport, where he planned to complete several touch-and-go maneuvers. The airplane touched down hard on the runway, and during the subsequent takeoff, the pilot reported to the controller that he heard a \"banging\" sound. The controller observed the left main landing gear \"dangling\" from the airplane. The pilot advised the controller that he planned to return to the airport for landing; however, as the airplane reached the airport boundary, it began a left turn that gradually progressed into a 70\u00b0 bank angle. The airplane's bank angle increased further before the airplane entered a nose-down attitude and impacted a building, consistent with an aerodynamic stall.\r\n\r\nA normal standard-rate turn would have allowed the pilot to rejoin the downwind leg of the traffic pattern and provided additional time to configure the airplane for a normal landing. However, the aggressive bank angle increased the airplane's stall speed and likely contributed to the pilot's exceedance of the airplane's critical angle of attack. \r\n\r\nExaminations of the airframe and engine did not reveal any mechanical malfunctions or anomalies that would have precluded normal operation, although the engine ran about 200 rpm below its maximum power output during the engine run. Although the source of this power loss could not be confirmed, it may have been the result of a reduction in fuel flow from a torn carburetor diaphragm and bent float. Data obtained from the airplane's engine monitor revealed that the engine achieved rated power throughout the accident flight, which suggested that the damage observed to the carburetor was the result of impact. A witness reported hearing the engine sputtering seconds before the airplane impacted the ground, and recorded engine data showed a corresponding decrease to idle power. It could not be determined why the pilot may have retarded the throttle to idle power.\r\n\r\nThe pilot allowed his Federal Aviation Administration (FAA) medical certificate to expire about 2 years before the accident, a few months after he sustained traumatic injuries, including a traumatic brain injury, in a car accident. Although his personal medical records did not show any permanent neurocognitive or physiological defects, formal testing was not documented. However, acquaintances and flight instructors who flew with the pilot stated that his ability to control the airplane and his decision-making capacity were affected by his injuries. \u00a0The pilot continued to fly and was involved in three incidents that resulted in damage to the accident airplane; evidence suggested the pilot's physiological condition remained unchanged until the day of the accident. Thus, it is likely that the pilot's injuries impaired his ability to safely operate the airplane and directly contributed to the accident. Furthermore, the pilot ignored recommendations from other pilots to stop flying and continued to operate the airplane with a known physiological impairment.",
+          "concatenatedFactualNarrative": "According to 14 CFR Part 61.53(b), for operations that do not require a medical certificate:\r\n\r\n\u2026a person shall not act as pilot in command, or in any other capacity as a required pilot flight crewmember, while      that person knows or has reason to know of any medical condition that would make the person unable to operator      the aircraft in a safe manner. The airplane was powered by a Jabiru 3300 normally-aspirated, direct drive, air-cooled, 120-horsepower engine. The pilot's service facility provided the original logbooks, which revealed that the airplane's most recent annual inspection was completed on December 1, 2015, at an airplane and engine time of 46 hours. The airplane was equipped with a Dynon SV-D1000T primary flight display designed for experimental and light sport aircraft, which captured airplane and engine performance data. According to the recovered data, the airplane began its takeoff roll from SMO about 1308:53 and entered a climb to the southwest. The airplane then changed course to a northern heading and crossed the Santa Monica Mountains toward VNY. Following the airplane's touch-and-go landing on runway 16L about 1321:32, the data showed that the airplane maintained a slow climb on runway heading. The airplane began a slight left turn as it reached the southern end of the airport. At 1322:34, the airplane slowed as its left turn bank angle increased to about 70\u00b0. In the 3 seconds that followed, the airplane entered a steep left turn with a maximum recorded left roll of 95\u00b0 and a 55\u00ba nose-down pitch attitude. The engine rpm, exhaust gas temperature (EGT), and fuel flow were steady during the airplane's climb out. As the airplane's bank angle increased, the engine power decreased from about 2,200 rpm to about 1,200 rpm. It momentarily returned to 2,000 rpm before decreasing to about 1,100 rpm at 1322:43, when the air and position data stopped recording. During this time, the fuel flow and EGT values decreased slightly. On August 2, 2016, about 1322 Pacific daylight time, an Arion Aircraft Lightning LS-1 light-sport airplane, N341AL, was substantially damaged after it impacted a building during its departure from Van Nuys Airport (VNY), Van Nuys, California. The private pilot was fatally injured. The airplane was owned and operated by the pilot under the provisions of Title 14 Code of Federal Regulations Part 91. Visual meteorological conditions prevailed, and no flight plan was filed for the local flight, which departed Santa Monica Municipal Airport (SMO), Santa Monica, California, at 1308.\r\n\r\nAccording to an acquaintance, the pilot planned to complete several touch-and-go takeoffs and landings at VNY on the day of the accident. Air traffic control (ATC) information from the Federal Aviation Administration (FAA) revealed that the pilot contacted the VNY tower controller and requested a full-stop landing on runway 16L. The pilot subsequently advised the controller that he was not familiar with the area and made multiple requests for navigation assistance, including a request for the controller to announce his base leg turn. Once the controller instructed the pilot to turn for the base leg, the pilot requested to extend his downwind leg to descend further and also requested a touch-and-go landing. According to the controller, the airplane touched down hard about 1,500 ft down the runway and subsequently took off.\r\n\r\nShortly into the airplane's climb, the pilot reported to the controller that he heard a \"banging\" sound, and the controller informed the pilot that his left main landing gear appeared to be \"dangling.\" The tower controller advised the pilot that he could return to VNY or proceed to another airport at his discretion. The pilot stated that he planned to return to VNY; the tower controller observed the airplane immediately veer to the left and descend. Another pilot reported over the tower frequency that an airplane had crashed east of the airport.\r\n\r\nSeveral witnesses observed the airplane during its departure from VNY. One witness (Witness 3 in Figure 1) observed a piece of the left main landing gear hanging from the airplane as it climbed from runway 16L. The airplane then began a left turn from the departure end of the runway that initially looked normal, but then the airplane decelerated. At this time, two witnesses who had listened to the exchange between the pilot and the controller (Witnesses 1 & 2), reported that, seconds after the pilot's final communication, they observed the airplane enter a hard left turn. One witness described the turn as a \"knife edge.\" The airplane's nose yawed left to a nose-down attitude and the airplane rapidly descended toward the ground. Witness 5, who was a passenger in a helicopter at the time of the accident, reported that the airplane entered the descent from an altitude about 350 ft above ground level and impacted an industrial park below. Witness 4 reported hearing a sputtering engine about 7 seconds before the airplane impacted the ground.\r\n\r\n\r\n\r\n\r\n\r\nFigure 1 \u2013 Witness Locations The County of Los Angeles, Department of Medical Examiner-Coroner, Los Angeles, California, conducted an autopsy on the pilot. The cause of death was listed as \"multiple traumatic injuries.\" The pilot's autopsy documented 60-70% narrowing of the left anterior descending coronary artery, but there was no evidence of new or old ischemic damage to the heart muscle.\r\n\r\nThe FAA's Bioaeronautical Sciences Research Laboratory, Oklahoma City, Oklahoma, performed toxicology testing on specimens of the pilot. Testing identified amlodipine and gabapentin in samples of urine and cavity blood. Amlodipine is a blood pressure control medication that is not generally considered impairing. Gabapentin is a central nervous system (CNS) depressant anti-seizure medication that is also used to treat peripheral neuropathy. The medication carries the precaution, \"patients should be advised that [gabapentin] may cause dizziness, somnolence and other symptoms and signs to CNS depression. Accordingly, they should be advised neither to drive a car nor to operate other complex machinery until they have gained sufficient experience on [gabapentin] to gauge whether or not it affects their mental and/or motor performance adversely.\"\r\n\r\nPersonal medical records showed a history of high blood pressure, elevated lipids, a clotting disorder with a history of deep vein thrombosis and placement of an inferior vena cava filter, asthma, hypothyroidism, and borderline diabetes. Additionally, the pilot was involved in a car accident in May 2014 that resulted in a traumatic brain injury and a spinal cord injury. The traumatic brain injury did not result in any documented significant loss of cognitive function, with the exception of some memory loss around the time of the accident. However, the spinal cord injury resulted in arm pain and weakness that had reportedly resolved by the pilot's September 2015 personal medical examination. The 1351 recorded weather observation at VNY included wind from 120\u00b0 true at 8 knots, visibility 10 statute miles, clear skies, temperature 32\u00b0C, dew point 11\u00b0C, and an altimeter setting of 29.96 inches of mercury. The pilot, age 78, held a private pilot certificate with ratings for airplane single-engine land and instrument airplane. His most recent third-class medical certificate was issued on September 12, 2012, with no limitations. During the exam, the pilot reported that he had accumulated 908 total hours of flight experience, 60 hours of which were in the previous 6 months. The pilot's medical certificate was not valid after September 30, 2014.\r\n\r\nThe pilot's most recent logbook records showed that he had accumulated a total of 19.6 hours from October 14, 2015 to February 2, 2016. His flight experience before 2015 was captured in a logbook that spanned from 2005 to 2008. His most recent flight review was completed on February 15, 2016. According to an acquaintance, in 2014, the pilot was involve"
+        }
+      ],
+      "richNarratives": null
+    }
+  ]
+}

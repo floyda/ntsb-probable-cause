@@ -2,10 +2,11 @@
 
 import calendar
 import hashlib
+import json
 import logging
 import re
 import shutil
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -200,3 +201,26 @@ def fetch_months(
         )
         written.append(entry)
     return written
+
+
+def iter_raw_records(
+    raw_dir: Path,
+    *,
+    verify: bool = True,
+    include: Callable[[ManifestEntry], bool] | None = None,
+) -> Iterator[tuple[ManifestEntry, dict[str, object]]]:
+    """Yield every record from the latest fetch of each month, in month then page order.
+
+    ``include``, if given, is applied to each month's manifest entry before ``verify_entry``
+    runs and before any of that month's page files are opened, so an excluded month's files are
+    never read or hashed.
+    """
+    for label, entry in sorted(latest_entries(read_manifest(raw_dir)).items()):
+        if include is not None and not include(entry):
+            continue
+        if verify:
+            verify_entry(raw_dir, entry)
+        for page in entry.pages:
+            payload = json.loads((month_dir(raw_dir, label) / page.file).read_bytes() or b"{}")
+            data = payload.get("data", []) if isinstance(payload, dict) else []
+            yield from ((entry, record) for record in data if isinstance(record, dict))
