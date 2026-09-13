@@ -99,7 +99,7 @@ docs/runbooks/github-branch-protection.md
 - Consumes: nothing.
 - Produces: an installable package `ntsb_probable_cause` with `__version__: str`; `uv run pytest`, `uv run ruff`, `uv run mypy`, `uv run lint-imports`, `uv run deptry`, `uv run vulture` all runnable; `make check` runs them all.
 
-- [ ] **Step 1: Pin Python and create the project file**
+- [x] **Step 1: Pin Python and create the project file**
 
 Run: `uv python pin 3.14`
 Expected: `.python-version` contains `3.14`.
@@ -175,7 +175,7 @@ min_confidence = 80
 # NTSB abbreviations that are not misspellings go here, one per line, with a comment.
 ```
 
-- [ ] **Step 2: Add development dependencies and lock**
+- [x] **Step 2: Add development dependencies and lock**
 
 Run:
 ```bash
@@ -188,7 +188,7 @@ Expected: `uv.lock` created; `uv run python --version` prints `Python 3.14.x`.
 Verify each tool resolves: `uv run ruff --version && uv run mypy --version && uv run lint-imports --help && uv run deptry --version && uv run vulture --version && uv run typos --version && uv run actionlint --version && uv run zizmor --version && uv run check-yaml --help`
 Expected: every command prints version or help. If ruff rejects `target-version = "py314"`, set `py313`, and record it under Deviations.
 
-- [ ] **Step 3: Write the failing smoke test**
+- [x] **Step 3: Write the failing smoke test**
 
 `tests/test_smoke.py`:
 
@@ -203,7 +203,7 @@ def test_package_exposes_version() -> None:
 Run: `uv run pytest tests/test_smoke.py -v --no-cov`
 Expected: FAIL (`ModuleNotFoundError` or `AttributeError: __version__`).
 
-- [ ] **Step 4: Create the package files**
+- [x] **Step 4: Create the package files**
 
 `src/ntsb_probable_cause/__init__.py`:
 
@@ -220,7 +220,7 @@ Create empty `src/ntsb_probable_cause/py.typed`. Create `apps/__init__.py` and `
 Run: `uv sync && uv run pytest tests/test_smoke.py -v --no-cov`
 Expected: PASS.
 
-- [ ] **Step 5: Repository hygiene files**
+- [x] **Step 5: Repository hygiene files**
 
 `.editorconfig`:
 
@@ -289,12 +289,12 @@ scan:
 	uv run python -m scripts.corpus_scan
 ```
 
-- [ ] **Step 6: Run every check**
+- [x] **Step 6: Run every check**
 
 Run: `make check`
 Expected: all pass. Coverage passes because the package is one line and fully executed. If deptry reports `pydantic` unused, that is expected until Task 4; add `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` now and remove it in Task 4 (note both in Deviations only if the removal is forgotten).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml uv.lock .python-version .editorconfig .env.example SECURITY.md Makefile src apps scripts/__init__.py tests/test_smoke.py docs/plans/2026-09-13-s0-foundation.md
@@ -4351,3 +4351,6 @@ change: `- Task N, step M: what differs — why — decision record, if any.` Th
 moves these into the specification's As-built section when S0 closes.
 
 - Task 9, step 5: import-linter does not grant `records.guard` access to `records.synthesis` / `records.verdict`, which spec §7.4 permits — the guard takes plain mappings and does not need it; a narrower permission is safer. No decision record (tightening, not a change of approach).
+- Task 1, step 1: added `extend-exclude = ["docs", "scripts/exploratory"]` to `[tool.ruff]`, not in the brief — `ruff format` reformats Python code fences inside Markdown by default, and reformatting `docs/plans/2026-09-13-s0-foundation.md` and the specs would rewrite content this task does not own; `scripts/exploratory/s0_design_measurements.py` predates this task, is documented as one-off and run under the spike's own virtual environment, and its printed numbers are quoted in decision records 0013-0016, so it is excluded from both formatting and linting rather than reformatted or fixed. No decision record (tooling configuration, not a change of approach).
+- Task 1, step 1: added `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` and `extend_exclude = ["scripts/exploratory"]` to `[tool.deptry]`, and `exclude = ["^scripts/exploratory/"]` to `[tool.mypy]`, for the same reason — `pydantic` has no consumer until Task 4 (anticipated by the brief's step 6), and `scripts/exploratory/s0_design_measurements.py` imports `pandas` and the frozen spike's `ntsb_spike` package, neither of which are (or should become) dependencies of this project. No decision record.
+- Task 1, step 6: added `.coverage` to `.gitignore`, not in the brief's file list — `uv run pytest` writes it via pytest-cov and it was untracked after `make check`; it is a local artifact and must not be committed. No decision record.
