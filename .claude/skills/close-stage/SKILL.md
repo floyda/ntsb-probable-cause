@@ -21,11 +21,13 @@ tone, no personal names, and every number taken from a committed script or resul
 
 ## 2. Stop conditions — check before writing anything
 
-- Any unticked `- [ ]` step in the plan, EXCEPT steps in the close-out task (the task that runs
-  `/close-stage`). List any unticked steps before that task and stop. Do not stop on unticked
-  steps in or after the close-out task (they will be ticked once this skill completes).
-- Current branch is `main`, or an open pull request exists for this branch (`gh pr view` succeeds).
-  Stop in either case — this work is meant for a branch.
+- Any unticked `- [ ]` step in the plan, except steps in the stage's close-out task from the step
+  that runs `/close-stage` onward (those are finished by this skill and the final CI check; the
+  plan is deleted before they could be ticked). List the unticked steps and stop. Steps of the
+  close-out task before that point (for example verifying Done-means, opening the pull request)
+  must be ticked.
+- The current branch is main (git branch --show-current prints main), or no open pull request
+  exists for this branch (gh pr view fails). Report and stop.
 - `make check` fails, or CI on the pull request is not green
   (`gh pr checks`). Report and stop.
 - A Done-means condition has no evidence (below). Report which one and stop, EXCEPT the
@@ -69,6 +71,8 @@ What exists now, by component, in a few bullets. Name modules and commands.
 One bullet per condition in the Done-means section, in the same order:
 condition — met — evidence (test node id, script and results file, CI run URL, or command output in pull request #N).
 
+For the condition that the stage is closed out (status Implemented, As-built section, roadmap marked done, plan deleted), write: met — this pull request's close-out commit; uv run python -m scripts.check_docs clean.
+
 ### Departures from this specification
 
 Every entry from the plan's Deviations section, rewritten plainly: what differs, why, and the
@@ -101,8 +105,8 @@ uv run python -m scripts.check_docs
 make check
 ```
 
-Both must pass. Show the user the As-built section and the status changes, and wait for
-approval. Then:
+Both must pass. Confirm the close-out condition's evidence now holds: check_docs printed nothing.
+Show the user the As-built section and the status changes, and wait for approval. Then:
 
 ```bash
 git add -A docs
