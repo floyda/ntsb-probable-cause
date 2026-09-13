@@ -8,8 +8,9 @@ The agent itself: it determines the probable cause of a US general-aviation acci
 investigator-gathered evidence, scored against the NTSB's own published verdict. It is built on
 the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 `../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
-"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **Nothing exists
-here yet.** Read build-brief §7 before writing any code, then
+"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **No code
+exists here yet**; the architecture, the S0 specification and decision records do. Read
+build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md` and the current stage's specification
 (S0: `docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they
 differ.
@@ -32,11 +33,15 @@ differ.
   document lists with first-seen timestamps; resolution outcomes.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
   predictions (design notes suggest committing hashed rows to git for tamper-evidence).
-- **Tests and CI**: the leakage assertion as a test, docket parser fixtures, a check that
-  held-out cases never appear in development fixtures, and a retrieval-contamination test if
-  similar-case search is ever added.
-- **Data ingestion as an incremental job** (not `fetch.py <start> <end>`): updates by docket
-  date and status, raw data kept out of git, processed file rebuilt.
+- **Tests and CI**: the layered leakage guard's tests, including a mutation test that proves
+  the boundary test can fail (0016); docket parser fixtures; a check that held-out cases never
+  appear in development fixtures, judged by event date; a redaction check on fixtures (0015);
+  from S2, a test that docket documents classified as synthesis never reach the model; and a
+  retrieval-contamination test if similar-case search is ever added.
+- **Data ingestion as a job** (not `fetch.py <start> <end>`): S0 fetches by event month into a
+  hashed manifest and rebuilds one processed file of index columns plus the raw record (0014);
+  incremental updates by modification date and status arrive with the recorder in S2.5. Raw
+  data kept out of git.
 - **Live board**: the public surface — a page for open cases and a trajectory view of the
   agent's steps and costs, in the clinical tone the design notes require.
 
@@ -73,6 +78,11 @@ differ.
    considered. Records are append-only — a superseded decision gets a new record naming
    the one it replaces, and the old record stays in place. Format:
    `docs/decisions/README.md`.
+9. **The toolchain is strict from the first commit** (0011): uv on hatchling with a committed
+   `uv.lock`, Python 3.14, ruff, `mypy --strict`, import-linter contracts, deptry, pip-audit,
+   and pre-commit hooks run the same checks locally. The library package is
+   `ntsb_probable_cause`. Fixture records are real development-split records, redacted of owner
+   and operator fields, made only by `scripts/make_fixture.py` (0015).
 
 ## What to carry over from the spike
 
@@ -127,15 +137,18 @@ model choice is a harness parameter, not a constant. Evaluation runs use the `:b
 (half price, no latency requirement); the live path does not.
 
 Two consequences to hold on to:
-- The spike's £0.034/case and 57% top-1 were measured on a different transport. They are
-  historical reference points, not bars. The bar is whatever S1 measures on this stack.
+- The spike's £0.034/case and 57% top-1 were measured on a different transport, with the
+  factual narrative as evidence. They are historical reference points, not bars. The bar is
+  whatever S1 measures on this stack.
 - `../ntsb-spike/config.yaml` prices Sonnet 5 at $3/$15 per MTok. It is $2/$10 (that is
   Sonnet 4.6's rate). S0 records the correct price in `sources.py` (0012).
 
-The £0.05/case cap is enforced in code, not just measured, because these calls are metered.
+A per-case cost cap is enforced in code, not just measured, because these calls are metered.
+The spike's line was £0.05/case; it is re-measured in S1 and S3, because every case now reads
+the docket (0013).
 
 
 ## Note
 
 No code exists yet in this repo — there are no commands to run here. Set up structure per
-build-brief §7 before adding any "how to run" section to this file.
+the S0 specification before adding any "how to run" section to this file.
