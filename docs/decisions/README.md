@@ -58,3 +58,4 @@ under `docs/specs/` and the record links to it.
 | [0015](0015-fixtures-redacted-real-dev-records.md) | Fixtures are redacted real development records | Accepted |
 | [0016](0016-layered-leakage-guard-and-model-boundary.md) | A layered leakage guard, and a request-side model boundary | Accepted |
 | [0017](0017-spec-lifecycle-as-built-and-plan-deletion.md) | Specifications close with an As-built record; plans are deleted at merge | Accepted |
+| [0018](0018-squash-merges-and-tag-only-releases.md) | Squash merges, and tag-only releases at stage close | Accepted |

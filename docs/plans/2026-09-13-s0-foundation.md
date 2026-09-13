@@ -4285,6 +4285,159 @@ git commit -m "S0: close-stage skill (decision 0017)"
 
 ---
 
+### Task 17: Squash-only merges and tag-only releases (decision 0018)
+
+*Added 2026-09-13 at Andy's request, after the plan was approved; runs before Task 16. Not in the S0 specification — recorded under Deviations and in decision 0018.*
+
+**Files:**
+- Modify: `docs/runbooks/github-branch-protection.md` (merge settings section)
+- Modify: `.claude/skills/close-stage/SKILL.md` (version bump; release step after merge)
+- Modify: `.github/pull_request_template.md` (version and release lines)
+- Modify: `CLAUDE.md` (rule 11)
+- Test: `tests/test_close_stage_skill.py`
+
+**Interfaces:**
+- Consumes: the `close-stage` skill (Task 15), the runbook (Task 14), decision 0018.
+- Produces: repository merge settings for Andy to apply; a close-out that sets `version` in `pyproject.toml`; the post-merge release command used by Task 16.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `tests/test_close_stage_skill.py`:
+
+```python
+TEMPLATE = Path(".github/pull_request_template.md")
+
+
+def test_skill_sets_the_release_version_and_names_the_release_command() -> None:
+    text = SKILL.read_text()
+    assert "git describe --tags --abbrev=0 --match 'v*'" in text
+    assert "uv lock" in text
+    assert "gh release create v<version> --target main --generate-notes" in text
+
+
+def test_pull_request_template_carries_the_release_steps() -> None:
+    text = TEMPLATE.read_text()
+    assert "`version` in `pyproject.toml`" in text
+    assert "gh release create v<version> --target main --generate-notes" in text
+```
+
+Run: `uv run pytest tests/test_close_stage_skill.py -v --no-cov`
+Expected: the two new tests FAIL (assertion errors); the existing three pass.
+
+- [ ] **Step 2: Add the merge settings to the runbook**
+
+In `docs/runbooks/github-branch-protection.md`, change the title line to ``# Runbook — branch protection and merge settings on `main` ``, add `and decision 0018 (squash merges)` to the italic decision line, and insert this section immediately before `## Glossary`:
+
+````markdown
+## Merge settings (decision 0018)
+
+Pull requests are squash-merged only. Each stage lands on `main` as one commit whose title is
+the pull-request title (GitHub appends ` (#N)`) and whose body lists the branch's commit
+messages. A release tag then points at exactly one commit per stage.
+
+```bash
+gh api --method PATCH repos/floyda/ntsb-probable-cause \
+  -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false \
+  -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=COMMIT_MESSAGES
+```
+
+Verify:
+
+```bash
+gh api repos/floyda/ntsb-probable-cause \
+  --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, squash_merge_commit_title, squash_merge_commit_message}'
+```
+
+Expected values: `allow_squash_merge` true, `allow_merge_commit` false, `allow_rebase_merge`
+false, `squash_merge_commit_title` `PR_TITLE`, `squash_merge_commit_message` `COMMIT_MESSAGES`.
+
+In the merge dialog, do not retype the title: it is the pull-request title by setting.
+````
+
+Add to the glossary:
+
+```markdown
+**Squash merge.** Combining all of a pull request's commits into one new commit on the target
+branch. The original commits stay visible on the pull request.
+```
+
+- [ ] **Step 3: Add the version bump and the release step to the skill**
+
+In `.claude/skills/close-stage/SKILL.md`:
+
+(a) In the frontmatter `description`, after `deletes the implementation plan,` insert `sets the release version,`.
+
+(b) In section 5, after the `git rm` bullet, add:
+
+````markdown
+- Set the release version (decision 0018). Find the previous release tag:
+
+  ```bash
+  git describe --tags --abbrev=0 --match 'v*'
+  ```
+
+  If there is none, the version is `0.1.0`. Otherwise increase the tag's minor version by one
+  and set the patch to 0 (`v0.1.0` → `0.2.0`). Set `version = "<version>"` in
+  `pyproject.toml` if it differs, then run `uv lock` so `uv.lock` records the same version.
+````
+
+(c) In section 6, change the staging command `git add -A docs` to `git add -A docs pyproject.toml uv.lock`.
+
+(d) Append a new section at the end of the file:
+
+````markdown
+## 7. After the merge — tell Andy
+
+The skill ends at the push. Tell Andy, in these words, what to run once the pull request is
+squash-merged (decision 0018):
+
+```bash
+gh release create v<version> --target main --generate-notes --title "<stage>: <name>"
+```
+
+For example `gh release create v0.1.0 --target main --generate-notes --title "S0: foundation"`.
+This creates the tag on the merged commit and a release listing the pull requests merged since
+the previous tag. The release page is the project's changelog; there is no `CHANGELOG.md`.
+````
+
+- [ ] **Step 4: Add the release lines to the pull-request template**
+
+In `.github/pull_request_template.md`, under the stage close-out list, after the `check_docs` line, add:
+
+```markdown
+- [ ] `version` in `pyproject.toml` set to the release version (decision 0018)
+- [ ] After merge (Andy): `gh release create v<version> --target main --generate-notes --title "<stage>: <name>"`
+```
+
+- [ ] **Step 5: Add rule 11 to `CLAUDE.md`**
+
+After rule 10 in the "Rules that start here" list, add:
+
+```markdown
+11. **Squash merges; each closed stage is a tagged release** (0018). Pull requests are
+    squash-merged only, titled `<stage>: <name>`. The close-out sets `version` in
+    `pyproject.toml`; after the merge Andy runs `gh release create --generate-notes`. There is
+    no `CHANGELOG.md`. From S1, every evaluation run and prediction row records the commit SHA
+    and whether the tree had uncommitted changes.
+```
+
+- [ ] **Step 6: Run tests and checks**
+
+Run each separately:
+`uv run pytest tests/test_close_stage_skill.py -v --no-cov`
+`uv run python -m scripts.check_docs`
+`make check`
+Expected: all pass; `check_docs` prints nothing.
+
+- [ ] **Step 7: Commit**
+
+Stage the five files above and the plan, and commit with subject
+`S0: squash-only merges and tag-only releases (decision 0018)`.
+
+Tell Andy the merge settings are in the runbook for him to apply. Do not run the PATCH.
+
+---
+
 ### Task 16: Pull request and S0 close-out
 
 **Files:**
@@ -4340,7 +4493,7 @@ gh pr checks --watch
 gh pr ready
 ```
 
-Expected: green. Andy reviews and merges; branch protection (Task 14) enforces the checks.
+Expected: green. Andy reviews and merges; branch protection (Task 14) enforces the checks. After the squash merge, Andy runs `gh release create v0.1.0 --target main --generate-notes --title "S0: foundation"` (decision 0018, Task 17).
 
 ---
 
@@ -4383,3 +4536,4 @@ moves these into the specification's As-built section when S0 closes.
 - Task 7, step 5 (BLOCKED): could not run the real fetch. Two independent environment restrictions blocked both routes to the NTSB API key: (1) `zsh -ic 'load_env_keys && ...'`, exactly as the brief specifies, is refused by this session's worktree sandbox with "this command runs zsh in a plain command; what it reads or is handed as shell text cannot be shown not to run git" — reproduced with and without `dangerouslyDisableSandbox`; (2) reading the key directly (`pass show api/ntsb`, `export NTSB_API_KEY=$(pass show api/ntsb)`, even `env | grep -i ntsb`) is refused by a separate "Credential Materialization" auto-mode classifier denial, independent of the worktree restriction. Steps 1-4 (tests, `data/ingest.py`, the CLI, `make check`) are complete and committed; step 5's real fetch of 2014-07, 2016-08 and 2019-06 and step 6's fetch-derived manifest verification are not done and their checkboxes are left unticked. This needs either running Step 5 from a non-worktree-isolated session or an explicit permission grant for `pass`/`zsh -ic` in this session before it can complete; reported BLOCKED per the task's own contingency instruction rather than working around either denial.
 - Task 14, step 2: runbook committed; applying it is pending Andy (it changes repository settings) — step left unticked until he confirms.
 - Task 15, step 2 (review fix rounds 1–3): the skill as briefed would halt during its own close-out, so its stop conditions changed — unticked steps are allowed only in the close-out task from the step that runs /close-stage onward; the close-out Done-means condition's evidence is the close-out commit plus a clean check_docs, written in section 4 and confirmed in section 6. Added (not in the brief): a stop when the branch is main or has no open pull request; a fourth evidence kind, a named command with its output quoted in the pull request; an example of a link relative to docs/specs/; "Commits: first..last commit before the close-out commit". tests/test_close_stage_skill.py gained test_skill_exempts_its_own_close_out_steps, asserting the exemption, the open-pull-request check and git branch --show-current. No decision record (implements 0017).
+- Task 17 (added 2026-09-13): squash-only merges and tag-only releases were added to S0 at Andy's request after the specification was approved — not in the specification — decision 0018. Task 16, step 4 gains the post-merge release command.

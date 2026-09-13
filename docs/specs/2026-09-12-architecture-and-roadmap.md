@@ -62,7 +62,9 @@ is built to avoid.
 
 With one repository, every prediction row records the commit identifier of the code
 that produced it. A reader can check out that commit and re-run the case. The property
-is enforced by structure, not by discipline.
+is enforced by structure, not by discipline. Each closed stage is also tagged as a release,
+and every evaluation run and prediction row records the commit SHA and whether the working
+tree had uncommitted changes (0018).
 
 **What was rejected.** Splitting the agent into a published package consumed by a
 separate deployment repository is cleaner on paper and is how a team with several
@@ -411,7 +413,8 @@ Code lookup tables, seeded from the spike's `decidability_form.build_code_lookup
 The code-constrained output schema, including the lay explanation. Exact-match scoring
 for occurrence and finding codes. Per-slice reporting — by investigation class (C / L /
 F) rather than narrative presence, which no longer applies (0013) — confidence intervals,
-cost per run, ablation flags, including the aircraft registration.
+cost per run, ablation flags, including the aircraft registration. Every run record carries
+the commit SHA and a flag for uncommitted changes (0018).
 
 Then two measurements: reproduce the 16.2% baseline through the new harness, and
 establish the real code-constrained one-shot ceiling, without synthesis, on the same 40 cases.
