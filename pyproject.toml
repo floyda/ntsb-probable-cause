@@ -11,6 +11,7 @@ license = "MIT"
 requires-python = "==3.14.*"
 dependencies = [
     "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
 ]
 
 [project.scripts]
@@ -64,9 +65,6 @@ forbidden_modules = ["apps"]
 [tool.deptry]
 known_first_party = ["ntsb_probable_cause", "apps", "scripts"]
 extend_exclude = ["scripts/exploratory"]
-
-[tool.deptry.per_rule_ignores]
-DEP002 = ["pydantic"]
 
 [tool.vulture]
 paths = ["src", "apps", "scripts"]

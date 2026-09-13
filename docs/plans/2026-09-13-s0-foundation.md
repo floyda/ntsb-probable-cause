@@ -830,11 +830,11 @@ git commit -m "S0: documentation consistency check (decision 0017)"
   - `sources.NTSB_BASE_URL`, `sources.CASES_BY_DATE_RANGE_V2`, `sources.MODE_AVIATION`, `sources.MAX_PAGE_SIZE`, `sources.docket_url(mkey: int) -> str`, `sources.ModelPrice` (frozen dataclass: `model_id: str`, `input_usd_per_mtok: float`, `output_usd_per_mtok: float`, `source: str`), `sources.SONNET_5`, `sources.SONNET_5_BATCH`.
   - `settings.Settings` (pydantic-settings): `ntsb_api_key: SecretStr | None` (env `NTSB_API_KEY`), `requests_per_minute: int = 30`, `data_dir: Path = Path("data")`; method `require_api_key() -> str` raising `ConfigurationError`.
 
-- [ ] **Step 1: Add dependencies**
+- [x] **Step 1: Add dependencies**
 
 Run: `uv add pydantic-settings` and remove the temporary `DEP002` deptry ignore for `pydantic` if Task 1 added it.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/test_splits.py`:
 
@@ -919,7 +919,7 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 Run: `uv run pytest tests/test_splits.py tests/test_sources_settings.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ntsb_probable_cause/errors.py`:
 
@@ -1053,12 +1053,12 @@ class Settings(BaseSettings):
         return self.ntsb_api_key.get_secret_value()
 ```
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_splits.py tests/test_sources_settings.py -v --no-cov && make check`
 Expected: PASS. (`Settings(_env_file=None)` may need `# type: ignore[call-arg]` under mypy strict; if so add it and nothing else.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause tests/test_splits.py tests/test_sources_settings.py pyproject.toml uv.lock docs/plans/2026-09-13-s0-foundation.md
