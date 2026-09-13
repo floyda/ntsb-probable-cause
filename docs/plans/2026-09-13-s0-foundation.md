@@ -3388,7 +3388,7 @@ git commit -m "S0: Payload rendered only from Evidence, recording fake client, b
 - Consumes: `tests.conftest.record_fixtures`, `tests.conftest.eval_ids`, `splits.split_of`, `splits.Split`, `tests/fixtures/api/page.json`.
 - Produces: nothing new; guards the rule that held-out cases never appear in development fixtures.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 `tests/test_contamination.py`:
 
@@ -3443,7 +3443,7 @@ Expected: PASS (the fixtures and lists already exist from Task 8). If `test_case
 
 Then prove the tests can fail: copy one evaluation case's event date into a record fixture's `eventDate` locally (`2023-11-04`), run the file, confirm `test_record_fixtures_are_development_split_by_their_own_event_date` fails, and revert with `git checkout tests/fixtures/records`.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add tests/test_contamination.py docs/plans/2026-09-13-s0-foundation.md
