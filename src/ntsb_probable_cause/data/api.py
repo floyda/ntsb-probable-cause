@@ -15,7 +15,6 @@ from ntsb_probable_cause.errors import ApiError
 
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _USER_AGENT = "ntsb-probable-cause (https://github.com/floyda/ntsb-probable-cause)"
-_CLIENT_ERROR_THRESHOLD = 400
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,7 @@ class Page:
 class NtsbClient:
     """Marker-paginated, rate-limited, retrying client. One instance per run."""
 
-    def __init__(  # noqa: PLR0913 -- signature is fixed by the S0 spec's Interfaces block.
+    def __init__(  # noqa: PLR0913 -- signature is fixed by the S0 plan's Interfaces block.
         self,
         api_key: str,
         *,
@@ -80,8 +79,15 @@ class NtsbClient:
         while True:
             page = self._parse(number, self._get(params))
             yield page
-            if not page.has_more or not page.next_marker:
+            if not page.has_more:
                 return
+            if not page.next_marker:
+                raise ApiError(f"page {number}: hasMore is true but nextMarker is missing")
+            if page.next_marker == params.get("marker"):
+                raise ApiError(
+                    f"page {number}: nextMarker {page.next_marker!r} repeats the marker "
+                    "just sent; pagination would loop forever"
+                )
             params["marker"] = page.next_marker
             number += 1
 
@@ -95,7 +101,7 @@ class NtsbClient:
             except httpx.TransportError as error:
                 status: object = type(error).__name__
             else:
-                if response.status_code < _CLIENT_ERROR_THRESHOLD:
+                if response.is_success:
                     return response.content
                 status = response.status_code
                 if response.status_code not in _RETRY_STATUSES:
@@ -111,7 +117,10 @@ class NtsbClient:
 
     @staticmethod
     def _parse(number: int, content: bytes) -> Page:
-        payload = json.loads(content) if content.strip() else {}
+        try:
+            payload = json.loads(content) if content.strip() else {}
+        except ValueError as error:
+            raise ApiError(f"page {number}: not JSON") from error
         if not isinstance(payload, dict):
             raise ApiError(f"page {number}: expected a JSON object")
         data = payload.get("data", [])

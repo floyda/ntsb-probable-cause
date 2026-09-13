@@ -98,3 +98,45 @@ def test_malformed_payload_raises(respx_mock: respx.MockRouter) -> None:
     respx_mock.get(URL).mock(return_value=httpx.Response(200, json={"data": "not a list"}))
     with client([]) as c, pytest.raises(ApiError, match="data"):
         fetch(c)
+
+
+def test_raises_when_has_more_is_true_and_marker_is_missing(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get(URL).mock(
+        return_value=httpx.Response(200, json=body([{"ntsbNumber": "A"}], True, None))
+    )
+    with client([]) as c, pytest.raises(ApiError, match="nextMarker"):
+        fetch(c)
+
+
+def test_raises_when_next_marker_repeats_the_marker_just_sent(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get(URL).mock(
+        return_value=httpx.Response(200, json=body([{"ntsbNumber": "A"}], True, "m1"))
+    )
+    with client([]) as c, pytest.raises(ApiError, match="repeats"):
+        fetch(c)
+
+
+def test_redirect_status_is_not_treated_as_success(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(302))
+    with client([]) as c, pytest.raises(ApiError, match="302"):
+        fetch(c)
+
+
+def test_non_json_response_raises(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(200, content=b"<html>Bad Gateway</html>"))
+    with client([]) as c, pytest.raises(ApiError, match="not JSON"):
+        fetch(c)
+
+
+def test_retries_transport_error_then_succeeds(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(
+        side_effect=[httpx.ConnectError("boom"), httpx.Response(200, json=body([], False, None))]
+    )
+    sleeps: list[float] = []
+    with client(sleeps) as c:
+        fetch(c)
+    assert sleeps == [1.0, 2.0]  # backoff 1 after the transport error, then the rate gap
