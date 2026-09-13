@@ -1,6 +1,7 @@
 # S0 — Foundation: design
 
-*Drafted 2026-09-13 from a design session with Andy. Status: awaiting Andy's sign-off.
+*Drafted 2026-09-13 from a design session with Andy. Status: Approved (Andy, 2026-09-13).
+Amended the same day, before implementation, to add the close-out process of decision 0017.
 This is the specification for build stage S0 in
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S0 builds, why,
 and the condition for moving on. The implementation plan is written from it separately.*
@@ -167,6 +168,10 @@ tests/
 .github/dependabot.yml
 .pre-commit-config.yaml
 Makefile  .editorconfig  .env.example  SECURITY.md
+.github/pull_request_template.md   close-out checklist (0017)
+.claude/skills/close-stage/        project skill: drafts As built, updates statuses, deletes the plan
+scripts/check_docs.py              documentation consistency check (0017)
+docs/plans/                        implementation plans; each is deleted when its stage closes
 ```
 
 **The package is `ntsb_probable_cause`**, not `ntsb_pc` as the roadmap had it. It matches
@@ -556,6 +561,22 @@ cache is used. Dependabot opens updates for Python dependencies and for Actions.
 **Branch protection** on `main` — required status checks, changes by pull request — is a
 repository setting on Andy's account. S0 adds the steps to a runbook; Andy applies them.
 
+**Documentation checks** (decision 0017). `scripts/check_docs.py` runs as a pre-commit hook,
+so it is part of the lint job. It fails when:
+
+- a decision file and `docs/decisions/README.md` disagree on existence or status;
+- a decision reference (`0013`) or a relative document link resolves to nothing;
+- a specification has no status line of `Draft`, `Approved`, `Implemented` or `Superseded`;
+- an `Implemented` specification lacks any of the five As-built parts;
+- a plan in `docs/plans/` names an `Implemented` specification, or has no Deviations section.
+
+Its tests use small document fixtures, one per failure.
+
+**The pull-request template** carries the close-out checklist. **The `close-stage` skill**
+drafts the As-built section from the specification, the plan, the git log and decision records
+added during the stage; marks the specification `Implemented` and the roadmap stage done;
+deletes the plan; and runs the check. S0 is the first stage closed with it.
+
 ---
 
 ## 12. Build order within S0
@@ -572,6 +593,10 @@ A thin slice that puts the leakage test into continuous integration first:
    at 30 requests per minute), and let it run while the next step is written.
 7. The build, the reconciliation check and the contamination test.
 8. The corpus scan; commit `docs/results/s0-corpus-scan.txt`.
+9. The `close-stage` skill; close S0 out with it in the pull request that finishes the stage.
+
+`check_docs.py` and the pull-request template are part of step 1, so every later step is
+checked.
 
 ---
 
@@ -588,6 +613,9 @@ A thin slice that puts the leakage test into continuous integration first:
 6. The contamination and redaction tests pass.
 7. `docs/results/s0-corpus-scan.txt` is committed and the guard's minimum sentence length
    cites it.
+8. The documentation check is green in continuous integration, and this specification is
+   closed out: status `Implemented`, an As-built section with all five parts, the roadmap's S0
+   entry marked done, and the S0 plan deleted.
 
 ---
 
@@ -601,6 +629,7 @@ A thin slice that puts the leakage test into continuous integration first:
 | 0014 | The processed file holds index columns and the raw record |
 | 0015 | Fixtures are redacted real development records |
 | 0016 | The layered leakage guard, and the request-side model boundary |
+| 0017 | Specifications close with an As-built record; plans are deleted at merge |
 
 The roadmap (`2026-09-12-architecture-and-roadmap.md`), `README.md` and `CLAUDE.md` are
 amended in the same commit so that no document describes the narrative router. The
@@ -639,6 +668,10 @@ separately.
 
 **Ablation.** Re-running an evaluation with one input removed, to measure what it was
 contributing.
+
+**As built.** The section appended to a specification when its stage finishes: what was
+delivered, the evidence for each done-means condition, departures, decisions taken, and the
+implementation record (0017).
 
 **Allow-list.** A list of what is permitted. Anything not on it is excluded by default.
 

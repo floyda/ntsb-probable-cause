@@ -4,7 +4,7 @@
 (`docs/specs/2026-09-13-s0-foundation-design.md`, decision records 0011–0016): the factual
 narrative is withheld from the model and the agent writes its own (0013), which removes the
 narrative router and changes the bars, slices and leakage plan below; the package is renamed
-`ntsb_probable_cause`; S-0 is complete. Status: awaiting Andy's sign-off. This document records
+`ntsb_probable_cause`; S-0 is complete. Status: Draft (awaiting Andy's sign-off). This document records
 architecture decisions and the order work will be done in. It does not design any
 individual component; each numbered stage below gets its own specification before it
 is built.*
@@ -362,7 +362,8 @@ Each of these was considered and rejected on evidence, not on effort:
 ## 11. Build order
 
 Each stage gets its own specification before it is built. "Done means" is the condition
-for moving on.
+for moving on. The pull request that finishes a stage closes its specification out with an
+As-built section and deletes its implementation plan (0017).
 
 ### S-0. Spike housekeeping *(short, in the spike repository)* — done
 

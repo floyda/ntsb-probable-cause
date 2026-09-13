@@ -83,6 +83,10 @@ differ.
    and pre-commit hooks run the same checks locally. The library package is
    `ntsb_probable_cause`. Fixture records are real development-split records, redacted of owner
    and operator fields, made only by `scripts/make_fixture.py` (0015).
+10. **Specifications close with an As-built record; plans are deleted at merge** (0017). Plans go
+    in `docs/plans/`, not the superpowers default. Tick plan tasks in the same commit as their
+    code and log deviations in the plan. The pull request that finishes a stage runs the
+    `close-stage` skill; `scripts/check_docs.py` fails CI if the close-out is missing.
 
 ## What to carry over from the spike
 
