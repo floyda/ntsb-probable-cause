@@ -454,7 +454,7 @@ updates:
 - [ ] `uv run python -m scripts.check_docs` passes
 ```
 
-- [ ] **Step 6: Push and confirm CI**
+- [x] **Step 6: Push and confirm CI**
 
 ```bash
 git add .pre-commit-config.yaml .github pyproject.toml docs/plans/2026-09-13-s0-foundation.md
