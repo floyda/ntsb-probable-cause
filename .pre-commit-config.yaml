@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - {id: check-added-large-files, name: check-added-large-files, entry: uv run check-added-large-files --maxkb=500, language: system, types: [file]}
+      - {id: check-yaml, name: check-yaml, entry: uv run check-yaml, language: system, types: [yaml]}
+      - {id: check-toml, name: check-toml, entry: uv run check-toml, language: system, types: [toml]}
+      - {id: check-json, name: check-json, entry: uv run check-json, language: system, types: [json]}
+      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text]}
+      - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text]}
+      - {id: check-merge-conflict, name: check-merge-conflict, entry: uv run check-merge-conflict, language: system, types: [text]}
+      - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text]}
+      - {id: no-commit-to-branch, name: no-commit-to-branch, entry: uv run no-commit-to-branch --branch main, language: system, pass_filenames: false, always_run: true}
+      - {id: no-data-files, name: no files under data/, entry: "sh -c 'echo \"refusing to commit files under data/: $*\"; exit 1' --", language: system, files: ^data/}
+      - {id: ruff-format, name: ruff format, entry: uv run ruff format, language: system, types: [python]}
+      - {id: ruff-check, name: ruff check, entry: uv run ruff check --fix, language: system, types: [python]}
+      - {id: mypy, name: mypy, entry: uv run mypy, language: system, pass_filenames: false, types: [python]}
+      - {id: import-linter, name: import-linter, entry: uv run lint-imports, language: system, pass_filenames: false, types: [python]}
+      - {id: deptry, name: deptry, entry: uv run deptry ., language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock|src/|apps/|scripts/)}
+      - {id: vulture, name: vulture, entry: uv run vulture, language: system, pass_filenames: false, types: [python]}
+      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text]}
+      - {id: actionlint, name: actionlint, entry: uv run actionlint, language: system, files: ^\.github/workflows/}
+      - {id: zizmor, name: zizmor, entry: uv run zizmor, language: system, files: ^\.github/workflows/}
+      - {id: uv-lock-check, name: uv lock --check, entry: uv lock --check, language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock)$}

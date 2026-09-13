@@ -312,12 +312,12 @@ git commit -m "S0: project skeleton, uv on hatchling, strict local quality tools
 - Consumes: Task 1 tool configuration.
 - Produces: CI jobs named `lint`, `test`, `audit` (branch protection in Task 14 requires these exact names). Local hooks call `uv run`; later tasks add hooks `check-docs` and `check-fixtures-redacted` to this file.
 
-- [ ] **Step 1: Find the latest gitleaks tag**
+- [x] **Step 1: Find the latest gitleaks tag**
 
 Run: `git ls-remote --tags --refs https://github.com/gitleaks/gitleaks | awk -F/ '{print $3}' | sort -V | tail -1`
 Expected: a tag such as `v8.x.y`. Use it as `<GITLEAKS_TAG>` below.
 
-- [ ] **Step 2: Write `.pre-commit-config.yaml`**
+- [x] **Step 2: Write `.pre-commit-config.yaml`**
 
 Every hook except gitleaks is local and runs through uv, so versions come from `uv.lock`:
 
@@ -354,7 +354,7 @@ repos:
 Run: `uv run pre-commit install && uv run pre-commit run --all-files`
 Expected: hooks pass, or fixers modify files. Re-run until clean. If `typos` flags a real NTSB term (for example an abbreviation), add it to `[tool.typos.default.extend-words]` in `pyproject.toml` with a comment.
 
-- [ ] **Step 3: Resolve Action commit SHAs**
+- [x] **Step 3: Resolve Action commit SHAs**
 
 Run, for each of `actions/checkout` and `astral-sh/setup-uv`:
 ```bash
@@ -363,7 +363,7 @@ TAG=$(gh release view --repo astral-sh/setup-uv --json tagName --jq .tagName); e
 ```
 Expected: a tag and a 40-character SHA for each. Use them as `<CHECKOUT_SHA> # <CHECKOUT_TAG>` and `<SETUP_UV_SHA> # <SETUP_UV_TAG>`.
 
-- [ ] **Step 4: Write `.github/workflows/ci.yml`**
+- [x] **Step 4: Write `.github/workflows/ci.yml`**
 
 ```yaml
 name: ci
@@ -416,7 +416,7 @@ jobs:
 Run: `uv run actionlint && uv run zizmor .github/workflows/ci.yml`
 Expected: no findings. If zizmor reports cache-poisoning for `enable-cache` on a workflow with no release artefacts, set `enable-cache: false` and note it under Deviations.
 
-- [ ] **Step 5: Dependabot and the pull-request template**
+- [x] **Step 5: Dependabot and the pull-request template**
 
 `.github/dependabot.yml`:
 
@@ -4356,3 +4356,5 @@ moves these into the specification's As-built section when S0 closes.
 - Task 1, step 6: added `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` — the brief's step 6 anticipated this exact fix ("If deptry reports `pydantic` unused, that is expected until Task 4; add `[tool.deptry.per_rule_ignores] DEP002 = ["pydantic"]` now"). Also added `.coverage` to `.gitignore`, not in the brief's file list — `uv run pytest` writes it via pytest-cov and it was untracked after `make check`; it is a local artifact and must not be committed. No decision record.
 - Task 1, step 1 (review fix round 1): added `"T20"` to `[tool.ruff.lint]` `select` and `"apps/**" = ["T201"]` to `[tool.ruff.lint.per-file-ignores]` — the plan's own `"scripts/**" = ["T201"]` ignore implied the global "library never prints" constraint was meant to be enforced by the T20 rule set, but `select` omitted it, leaving the ignore dead and the constraint unenforced. `apps/**` gets the same ignore because the apps CLI (a later task) prints by design; `tests/**` gets no ignore because nothing there prints yet. Decision-adjacent bug fix in the plan itself, not a change of approach; no separate decision record.
 - Task 1, step 1 (review fix round 1): added `force-exclude = true` to `[tool.ruff]` — Task 2's pre-commit hooks invoke ruff with explicit filenames, and ruff ignores `extend-exclude` for paths passed explicitly unless `force-exclude` is set, which would have let `docs/**.md` and `scripts/exploratory/*.py` back into pre-commit's ruff run despite the exclude added above. Also added `exclude = ["scripts/exploratory"]` to `[tool.vulture]` (vulture's `pyproject.toml` config supports it) so every tool treats the frozen exploratory script the same way. No decision record.
+- Task 2, step 2: the `typos` hook flagged `mis` (from the hyphenated "mis-pointed" in `docs/decisions/0016-layered-leakage-guard-and-model-boundary.md:47`) as a misspelling. Rather than edit the committed decision record's content, added `mis = "mis"` to `[tool.typos.default.extend-words]` in `pyproject.toml` with a comment. Not an NTSB abbreviation as the brief's example anticipated, but the same mechanism (a documented false-positive allowlist entry) applies. No decision record.
+- Task 2, step 2: the `trailing-whitespace` hook fixed trailing whitespace in `docs/specs/2026-09-13-s0-design-measurements.txt`; a pure whitespace/EOF fix on a pre-existing file, not a content change, so applied without stopping.

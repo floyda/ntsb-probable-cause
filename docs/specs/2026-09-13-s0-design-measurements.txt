@@ -27,7 +27,7 @@ C-class cases sharing >= 1 analysis sentence: 5647 of 6121; median share of anal
 == M6 dev split: duplicated narratives (>= 50% of analysis sentences verbatim in factual)
 duplicated: 3933 of 13551; by class: {'C': 3796, 'L': 114, 'M': 10, 'I': 6, 'T': 4, 'F': 3}
 cls      C     L     F
-year                  
+year
 2009  0.80  0.06  0.01
 2010  0.54  0.02  0.01
 2011  0.36  0.03  0.00
@@ -42,7 +42,7 @@ year
 
 give-away phrase rate in factual narrative, by class and duplication:
            size   mean
-cls dup               
+cls dup
 C   False  2325  0.123
     True   3796  0.159
 L   False  5022  0.188
@@ -53,7 +53,7 @@ F   False  2026  0.155
 == M7 dev split: report flavour, investigationClass and richNarratives
 factualFinalReportFlavor by case-number class letter:
 cls                          C     L     F
-factualFinalReportFlavor                  
+factualFinalReportFlavor
 <null>                       0     0    14
 Basic (no factual)        6126     1     0
 Detailed (ICAO headers)      0   460  1107
