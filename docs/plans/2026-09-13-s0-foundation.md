@@ -3109,7 +3109,7 @@ git commit -m "S0: evidence/synthesis/verdict types, tripwire guard, split_recor
   - `client.RecordingFakeClient(replies: Sequence[str] = ("",))`: `payloads: list[Payload]`; `complete(...)` records the payload and returns the next scripted reply (the last one repeats).
   - `tests.boundary.assert_boundary_holds(raw: Mapping[str, object], split: Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]] = split_record) -> None` (raises `AssertionError` on any provenance, bookkeeping or tripwire failure).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_model_client.py`:
 
@@ -3206,7 +3206,7 @@ def test_boundary_test_fails_when_a_value_comes_from_the_wrong_place(record_fixt
 Run: `uv run pytest tests/test_model_client.py tests/test_boundary.py -v --no-cov`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 2: Implement the model boundary**
+- [x] **Step 2: Implement the model boundary**
 
 `src/ntsb_probable_cause/model/__init__.py`: `"""The model-client seam: request side only until S1 (decision 0016)."""`
 
@@ -3304,7 +3304,7 @@ class RecordingFakeClient:
         return ModelReply(text=self._replies[min(len(self.payloads), len(self._replies)) - 1])
 ```
 
-- [ ] **Step 3: Implement the boundary helper**
+- [x] **Step 3: Implement the boundary helper**
 
 `tests/boundary.py`:
 
@@ -3366,12 +3366,12 @@ def assert_boundary_holds(raw: Mapping[str, object], split: Splitter = split_rec
     assert not leaks, "tripwire: " + "; ".join(str(leak) for leak in leaks)
 ```
 
-- [ ] **Step 4: Run tests and checks**
+- [x] **Step 4: Run tests and checks**
 
 Run: `uv run pytest tests/test_model_client.py tests/test_boundary.py -v --no-cov && make check`
 Expected: PASS, including both mutation tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/model tests/boundary.py tests/test_model_client.py tests/test_boundary.py docs/plans/2026-09-13-s0-foundation.md
@@ -4563,3 +4563,8 @@ moves these into the specification's As-built section when S0 closes.
 - Task 9, step 2 (review fix round 1, minor): the code-matching regex `(?<!\d)code(?!\d)` only excluded adjacent digits, so a code matched inside a METAR time group (`250200Z`) or a longer alphanumeric token (`A300230B`) whenever the adjacent character was a non-digit word character. Changed to `\b{code}\b` (word-boundary anchored), which correctly fails to match when the adjacent character is any word character (a letter as well as a digit), not just a digit. Also, an empty or whitespace-only code previously matched every evidence value (`re.escape("")` compiles to a pattern that matches everywhere); `dict.fromkeys(...)` now filters `code for code in codes if code and code.strip()` before building patterns. Added `test_code_matched_as_whole_token`, `test_code_not_matched_inside_a_metar_time_group`, `test_code_not_matched_inside_a_trailing_letter_suffix`, `test_blank_and_whitespace_codes_are_skipped`; renamed the prior `test_code_token_is_found_but_not_inside_a_longer_number` into `test_code_matched_as_whole_token` plus `test_code_not_matched_inside_a_longer_number`. No decision record (bug fix, ruled Minor-include by review).
 - Task 9, step 3 (review fix round 1, minor): `test_exclude_removes_a_role_for_ablation` only asserted the excluded role was removed; it did not check that bookkeeping fields survive exclusion. Added assertions that `evidence.case_id` and `evidence.docket_url` are unchanged. No decision record (test coverage, ruled Minor-include by review).
 - Task 9, step 2 (review fix round 1): two of `_QUOTE_FOLD`'s literal curly-quote dictionary keys (`‘ ’ ‚ ‛`) triggered ruff `RUF001` (ambiguous Unicode character); added scoped `# noqa: RUF001` on each of those four lines (the four curly double-quote keys `“ ” „ ‟` were not flagged and carry none) — the mapping's whole purpose is to hold these exact characters as dict keys, so an escape or rewrite was not an option. Two of the new guard tests hold a real curly apostrophe/quote character in a string literal for the same reason; same scoped noqa. No decision record (lint compliance, single-rule scoped ignores per implementer-common's "no blanket ignores" rule).
+- Task 10, step 2 (lint/type fixes, no behaviour change): ruff `UP037` on `Payload.from_evidence`'s brief-verbatim quoted return annotation `-> "Payload":` — Python 3.14 (PEP 649 deferred annotation evaluation, this project's `requires-python`) allows the unquoted forward reference `-> Payload:` inside the class's own body, so the quotes were removed (auto-fixed by `ruff check --fix`). Ruff `E501` on the same method's brief-verbatim docstring (101 chars): shortened "never bookkeeping fields (guard layer 1)" to "never bookkeeping (guard layer 1)" to fit the 100-char limit; meaning unchanged. No decision record (lint compliance in the plan's own code, per implementer-common's "no blanket ignores" rule); no public name or signature changed.
+- Task 10, step 1 (lint fix, no behaviour change): ruff `RUF043` on `tests/test_boundary.py`'s two brief-verbatim `pytest.raises(..., match="provenance|tripwire")` calls (the `|` is an unescaped regex metacharacter) — changed to raw strings (`match=r"provenance|tripwire"`); matching behaviour unchanged (the pattern is still the alternation, which is what both tests intend). No decision record.
+- Task 10, additional work item 1 (deferred import-linter contract from Task 9): added the "The model boundary cannot see synthesis or verdict" contract and `ntsb_probable_cause.model` to "Only the splitter constructs synthesis and verdict"'s `source_modules`, verbatim as directed. `lint-imports` reports 3 contracts kept, 0 broken.
+- Task 10, additional work item 2 (allow-list import test): added `grimp` as an explicit dev dependency (`uv add --dev grimp`, resolved to `grimp>=3.17` in `pyproject.toml`/`uv.lock`) and `tests/test_import_boundaries.py`, asserting the set of `ntsb_probable_cause` modules that directly import `records.synthesis` or `records.verdict` is a subset of `{"ntsb_probable_cause.records.split"}`. Negative check performed as directed: temporarily added `from ntsb_probable_cause.records.verdict import Verdict` to `src/ntsb_probable_cause/fields.py` (backed up first, not committed) and confirmed `test_only_the_splitter_imports_synthesis_or_verdict` failed with `AssertionError: modules importing synthesis/verdict outside the allow-list: ['ntsb_probable_cause.fields']`; reverted `fields.py` from the backup (`git diff` empty afterward) and re-ran the test to confirm it passes again. A comment in the test notes S1's `scoring` module will be added to the allow-list by decision.
+- Task 10, additional work item 3 (mutation test on a hand-built Evidence): added `test_boundary_test_fails_for_a_hand_built_evidence_carrying_withheld_text` to `tests/test_boundary.py` — a splitter that never calls `split_record` at all, but constructs an `Evidence` directly with the factual narrative placed in `prelim_narrative` (a free-text evidence role); asserts `assert_boundary_holds` raises `AssertionError` matching `provenance|tripwire`. Confirmed passing (the boundary helper's provenance/tripwire checks already cover this path; no helper change was needed).

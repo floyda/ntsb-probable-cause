@@ -81,8 +81,19 @@ source_modules = [
     "ntsb_probable_cause.errors",
     "ntsb_probable_cause.records.evidence",
     "ntsb_probable_cause.records.guard",
+    "ntsb_probable_cause.model",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
+
+[[tool.importlinter.contracts]]
+name = "The model boundary cannot see synthesis or verdict"
+type = "forbidden"
+source_modules = ["ntsb_probable_cause.model"]
+forbidden_modules = [
+    "ntsb_probable_cause.records.synthesis",
+    "ntsb_probable_cause.records.verdict",
+    "ntsb_probable_cause.records.split",
+]
 
 [tool.deptry]
 known_first_party = ["ntsb_probable_cause", "apps", "scripts"]
@@ -106,6 +117,7 @@ extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", 
 dev = [
     "actionlint-py>=1.7.12.24",
     "deptry>=0.25.1",
+    "grimp>=3.17",
     "hypothesis>=6.168.0",
     "import-linter>=2.15",
     "mypy>=2.3.1",

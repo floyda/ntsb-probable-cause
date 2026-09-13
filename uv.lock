@@ -661,6 +661,7 @@ dependencies = [
 dev = [
     { name = "actionlint-py" },
     { name = "deptry" },
+    { name = "grimp" },
     { name = "hypothesis" },
     { name = "import-linter" },
     { name = "mypy" },
@@ -689,6 +690,7 @@ requires-dist = [
 dev = [
     { name = "actionlint-py", specifier = ">=1.7.12.24" },
     { name = "deptry", specifier = ">=0.25.1" },
+    { name = "grimp", specifier = ">=3.17" },
     { name = "hypothesis", specifier = ">=6.168.0" },
     { name = "import-linter", specifier = ">=2.15" },
     { name = "mypy", specifier = ">=2.3.1" },
