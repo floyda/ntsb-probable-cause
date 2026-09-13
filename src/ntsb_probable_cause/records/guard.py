@@ -14,9 +14,12 @@ _WHITESPACE = re.compile(r"\s+")
 # Break on ".", "!", "?" or ";" followed by whitespace, and also on ".", "!" or "?" directly
 # followed by a letter with no space (a trivial edit that would otherwise hide a sentence).
 _SENTENCE_END = re.compile(r"(?<=[.!?;])\s+|(?<=[.!?])(?=[A-Za-z])")
-# Trailing sentence punctuation and closing quotes/brackets, stripped from every needle so a
-# dropped or appended final mark cannot defeat a match.
-_TRAILING_PUNCT = re.compile(r"[.!?;:'\")\]}]+$")
+# Trailing sentence punctuation, closing quotes/brackets, and any whitespace mixed in with them
+# (e.g. a space left behind once a final mark is stripped), stripped from every needle so a
+# dropped or appended final mark -- or the whitespace it leaves -- cannot defeat a match. A
+# single character class with "+" already consumes any run of these mixed together, so no
+# separate repeat-until-stable step is needed.
+_NEEDLE_EDGE = re.compile(r"[\s.!?;:'\")\]}]+$")
 # Curly quote variants folded to their straight ASCII form. The keys are the actual characters
 # being matched (ruff's ambiguous-character check would otherwise flag every one; noqa is scoped
 # to this one rule, on this one construct, not a blanket ignore).
@@ -65,8 +68,9 @@ def normalise_text(text: str) -> str:
     return _WHITESPACE.sub(" ", folded).strip().lower()
 
 
-def _strip_trailing_punct(text: str) -> str:
-    return _TRAILING_PUNCT.sub("", text)
+def _strip_needle(text: str) -> str:
+    """Strip leading whitespace and trailing punctuation/closing marks/whitespace from a needle."""
+    return _NEEDLE_EDGE.sub("", text.lstrip())
 
 
 def _as_text(value: EvidenceValue) -> str:
@@ -89,12 +93,12 @@ def find_leaks(
         if not text:
             continue
         whole = normalise_text(text)
-        whole_stripped = _strip_trailing_punct(whole)
+        whole_stripped = _strip_needle(whole)
         # Never exempted for boilerplate: only a single isolated sentence can be boilerplate.
         if len(whole_stripped) >= min_sentence_chars:
             needles.append(("text", source, whole_stripped))
         for sentence in _SENTENCE_END.split(whole):
-            stripped = _strip_trailing_punct(sentence)
+            stripped = _strip_needle(sentence)
             if (
                 len(stripped) >= min_sentence_chars
                 and stripped != whole_stripped

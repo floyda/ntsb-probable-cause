@@ -1,6 +1,6 @@
 import string
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
@@ -169,6 +169,16 @@ def test_any_withheld_text_inserted_into_any_role_is_found(
     final_punct=st.sampled_from(list(".!?;:\"')]}")),
     prefix=st.text(alphabet=string.printable, max_size=30),
     suffix=st.text(alphabet=string.printable, max_size=30),
+)
+# Regression for fix round 2: a withheld needle ending "<letters> ." (space then punctuation)
+# used to strip only the punctuation, leaving a trailing space that never matched the evidence
+# copy (which has neither the space nor the punctuation).
+@example(
+    role=EvidenceRole.PRELIM_NARRATIVE,
+    withheld="AAAAAAAAAAAAAAAAAAAA ",
+    final_punct=".",
+    prefix="",
+    suffix="",
 )
 def test_any_withheld_text_without_its_final_punctuation_is_still_found(
     role: EvidenceRole, withheld: str, final_punct: str, prefix: str, suffix: str
