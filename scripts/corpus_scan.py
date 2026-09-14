@@ -61,7 +61,7 @@ _DUPLICATION_THRESHOLD = 0.5
 # misses a break where sentence-final punctuation is immediately followed by a closing quote,
 # "**" or ")" and then whitespace (the regex's lookbehind sees only the single character before
 # the whitespace, and the letter-no-space rule does not cover a closing mark in between), and it
-# misses a ";" with no following space or letter at all. This is a diagnostic pattern for
+# misses a ";" directly followed by a letter (no space). This is a diagnostic pattern for
 # counting how often that remaining gap is actually present in real withheld text — it does not
 # change guard matching.
 _MISSED_BREAK = re.compile(
