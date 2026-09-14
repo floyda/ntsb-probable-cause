@@ -386,7 +386,10 @@ subscription key must stay out of version control either way.
 *Done means:* the sheets are tracked, and every number in the spike report can be traced
 to a file a stranger can open.
 
-### S0. Foundation
+### S0. Foundation — done
+
+As built: see the stage specification's
+[As-built section](2026-09-13-s0-foundation-design.md#as-built).
 
 Specified in `docs/specs/2026-09-13-s0-foundation-design.md`, which supersedes this summary
 where they differ.
