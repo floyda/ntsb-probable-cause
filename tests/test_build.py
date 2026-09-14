@@ -106,6 +106,78 @@ def test_build_rejects_a_changed_raw_file(
         build_processed(raw, out)
 
 
+def test_build_deduplicates_across_month_partitions_by_fetched_at(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    base = record_fixtures[0]
+
+    # Case A: two month partitions, the newer fetch (later fetched_at, later month label) is
+    # Ongoing. The newer copy must win before filtering (excluded as "not completed"), and the
+    # replacement must be counted exactly once.
+    raw_a, out_a = tmp_path / "raw-a", tmp_path / "out-a"
+    write_month(
+        raw_a,
+        Month(2016, 8),
+        [variant(base, "CEN16LA020", eventDate="2016-08-02")],
+        "2026-09-13T10:00:00",
+    )
+    write_month(
+        raw_a,
+        Month(2016, 9),
+        [variant(base, "CEN16LA020", eventDate="2016-08-02", completionStatus="Ongoing")],
+        "2026-09-14T10:00:00",
+    )
+    result_a = build_processed(raw_a, out_a)
+    assert result_a.excluded == {"not completed": 1}
+    assert result_a.duplicates_replaced == 1
+    assert pq.read_table(out_a / "cases.parquet").to_pylist() == []
+
+    # Case B: the newer copy is Completed, with a changed field — the newer value wins.
+    raw_b, out_b = tmp_path / "raw-b", tmp_path / "out-b"
+    write_month(
+        raw_b,
+        Month(2016, 8),
+        [variant(base, "CEN16LA021", eventDate="2016-08-02")],
+        "2026-09-13T10:00:00",
+    )
+    write_month(
+        raw_b,
+        Month(2016, 9),
+        [variant(base, "CEN16LA021", eventDate="2016-08-02", highestInjuryLevel="Serious")],
+        "2026-09-14T10:00:00",
+    )
+    result_b = build_processed(raw_b, out_b)
+    assert result_b.duplicates_replaced == 1
+    rows_b = pq.read_table(out_b / "cases.parquet").to_pylist()
+    assert len(rows_b) == 1
+    assert json.loads(rows_b[0]["raw_json"])["highestInjuryLevel"] == "Serious"
+
+    # Case C: a *stale* entry is encountered after the newest is already kept — month "2016-07"
+    # (alphabetically first, so iterated first) carries the newer fetched_at and the value that
+    # should win; month "2016-08" (iterated second) carries an older fetched_at and a stale
+    # value. This is a duplicate *seen* but never actually applied, so it must not count as a
+    # replacement.
+    raw_c, out_c = tmp_path / "raw-c", tmp_path / "out-c"
+    write_month(
+        raw_c,
+        Month(2016, 7),
+        [variant(base, "CEN16LA022", eventDate="2016-07-02", highestInjuryLevel="Fatal")],
+        "2026-09-14T10:00:00",
+    )
+    write_month(
+        raw_c,
+        Month(2016, 8),
+        [variant(base, "CEN16LA022", eventDate="2016-07-02", highestInjuryLevel="Minor")],
+        "2026-09-13T10:00:00",
+    )
+    result_c = build_processed(raw_c, out_c)
+    assert result_c.duplicates_replaced == 0
+    assert result_c.duplicates_seen == 1
+    rows_c = pq.read_table(out_c / "cases.parquet").to_pylist()
+    assert len(rows_c) == 1
+    assert json.loads(rows_c[0]["raw_json"])["highestInjuryLevel"] == "Fatal"
+
+
 def test_every_processed_row_splits_cleanly(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:

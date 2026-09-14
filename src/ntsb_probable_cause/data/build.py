@@ -44,6 +44,7 @@ class BuildResult:
 
     rows: int
     duplicates_replaced: int
+    duplicates_seen: int
     excluded: Mapping[str, int]
     counts_by_split: Mapping[str, int]
     counts_by_class: Mapping[str, int]
@@ -102,15 +103,17 @@ def build_processed(
 ) -> BuildResult:
     """Verify the raw store, keep the newest copy of each case, filter, and write the file."""
     newest: dict[str, tuple[datetime, dict[str, object]]] = {}
+    seen = 0
     replaced = 0
     for entry, record in iter_raw_records(raw_dir):
         number = record.get("ntsbNumber")
         if not isinstance(number, str):
             continue
         if number in newest:
-            replaced += 1
+            seen += 1
             if entry.fetched_at <= newest[number][0]:
                 continue
+            replaced += 1
         newest[number] = (entry.fetched_at, record)
 
     excluded: Counter[str] = Counter()
@@ -132,6 +135,7 @@ def build_processed(
     result = BuildResult(
         rows=len(rows),
         duplicates_replaced=replaced,
+        duplicates_seen=seen,
         excluded=dict(excluded),
         counts_by_split=dict(sorted(Counter(str(r["split"]) for r in rows).items())),
         counts_by_class=dict(sorted(Counter(str(r["investigation_class"]) for r in rows).items())),
