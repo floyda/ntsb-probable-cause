@@ -4112,7 +4112,7 @@ Expected: `{"checks": ["lint", "test", "audit"], "pr": true}`.
 **Required status check.** A CI job that must succeed on a pull request before it can merge.
 ````
 
-- [ ] **Step 2: Check and commit**
+- [x] **Step 2: Check and commit**
 
 Run: `uv run python -m scripts.check_docs`
 Expected: no output, exit 0.
@@ -4539,7 +4539,7 @@ moves these into the specification's As-built section when S0 closes.
 - Task 7, step 2: ran `uv run ruff format` on `apps/ingest/__main__.py`, `src/ntsb_probable_cause/data/ingest.py` and `tests/test_ingest.py` after writing the brief's code verbatim — same reformatting pattern as Task 6, step 2 (wraps multi-arg calls and long literals onto multiple lines). Formatting only, no behaviour change. No decision record.
 - Task 7, step 2/3 (lint fixes): ruff `E501` on the CLI's final `print` f-string — split the record count into a local variable before the `print` call, wording unchanged. Ruff `UP037` on `Month.parse`'s and `Month.next`'s forward-reference return annotations (`-> "Month"`) — this project targets Python 3.14, which defers annotation evaluation natively (PEP 649), so the quotes are unnecessary; removed them (`-> Month`). Ruff `PLR2004` on the magic value `12` in `Month.next`'s December check — added a module constant `_DECEMBER = 12` and used it, and rewrote the one-line conditional as an if/return for line length. Ruff `PT018` on the test's compound `assert entry.start == ... and entry.end == ...` — split into two `assert` statements, no assertion content change. Ruff `PLC0415` on the CLI test's function-local `import apps.ingest.__main__ as cli` — moved the import to the test module's top level (auto-fixed import ordering with `ruff check --fix`); `monkeypatch.setattr(cli, "NtsbClient", ...)` still patches the same module object, so the test's behaviour is unchanged. No decision record (bug fixes / lint compliance in the plan's own code, per the implementer-common "no blanket ignores" rule); no public name or signature changed.
 - Task 7, step 5: the real fetch was run by Andy in his own terminal (the session sandbox does not give subagents the API key), over the full range 2009-01..2026-08 rather than three single months, which also covers Task 12's full fetch — 212 months, 29,383 records, every manifest entry verified.
-- Task 14, step 2: runbook committed; applying it is pending Andy (it changes repository settings) — step left unticked until he confirms.
+- Task 14, step 2: applied by Andy on 2026-09-14 and verified with the runbook's read-only commands; the merge settings from Task 17 were applied at the same time.
 - Task 15, step 2 (review fix rounds 1–3): the skill as briefed would halt during its own close-out, so its stop conditions changed — unticked steps are allowed only in the close-out task from the step that runs /close-stage onward; the close-out Done-means condition's evidence is the close-out commit plus a clean check_docs, written in section 4 and confirmed in section 6. Added (not in the brief): a stop when the branch is main or has no open pull request; a fourth evidence kind, a named command with its output quoted in the pull request; an example of a link relative to docs/specs/; "Commits: first..last commit before the close-out commit". tests/test_close_stage_skill.py gained test_skill_exempts_its_own_close_out_steps, asserting the exemption, the open-pull-request check and git branch --show-current. No decision record (implements 0017).
 - Task 17 (added 2026-09-13): squash-only merges and tag-only releases were added to S0 at Andy's request after the specification was approved — not in the specification — decision 0018. Task 16, step 4 gains the post-merge release command.
 - Task 17, step 3: restored the sentence "Never write a condition as met without evidence." to the end of `.claude/skills/close-stage/SKILL.md` section 2's "A Done-means condition has no evidence" bullet — a Task 15 fix round had accidentally dropped it. Not in the Task 17 brief's listed edits; directed by Andy. No decision record (restoring reviewed text, not a change of approach).
@@ -4652,7 +4652,7 @@ moves these into the specification's As-built section when S0 closes.
   `later_probable_cause_differs()` (whether a later `narratives[]` entry's probable cause
   disagrees with the first) and `multi_aircraft_with_codes()` (more than one `aircrafts[]`
   entry carrying an event or finding code); (c) `prelim_narrative` should be empty in every
-  processed case — added `has_nonempty_prelim_narrative()` to confirm it. Added 15 tests to
+  processed case — added `has_nonempty_prelim_narrative()` to confirm it. Added 11 tests to
   `tests/test_corpus_scan.py` (pure functions, no I/O — hand-built dicts and the existing
   `record_fixtures` fixture), confirmed to fail on the pre-fix code (`ImportError`, the
   functions did not exist; RED) and pass after (GREEN); one bug found and fixed during GREEN
@@ -4670,10 +4670,86 @@ moves these into the specification's As-built section when S0 closes.
   `narratives[]` entry in `{'dev': 148}` cases (development split only), of which `{'dev': 60}`
   carry a later, differing probable cause; more than one aircraft carrying codes in `{'dev':
   162, 'heldout': 39, 'open': 23}` cases (identical to the existing multi-aircraft-cases-by-split
-  count already printed in the header, as expected — every fixture's multi-aircraft case in
-  this corpus happens to carry codes on more than one aircraft); a non-empty prelim narrative in
+  count already printed in the header, as expected — the counts are equal in the corpus (dev 162,
+  heldout 39, open 23): every multi-aircraft case has codes on more than one aircraft); a
+  non-empty prelim narrative in
   `{}` cases (confirms item (c) exactly: zero, every split). `make check` and `CI=true make
   check` both pass (exit 0, 212 tests each, 98.31% coverage); `uv run python -m
   scripts.check_docs` clean. No decision record (measurement reporting only, no guard-logic
   change, ruled required by the final review); no public name or signature of any existing
   function changed.
+- Task 16 prep, item A (final review residual): `scripts/make_fixture.py`'s `records <id>`
+  refusal for a screened record was dead code — `_eligible()` already folds in
+  `_amateur_built_name_risk()`, so a screened record always failed the `not _eligible(record)`
+  check first and was reported with the generic "not eligible (completion status, regulation or
+  split)" reason, never reaching the screen-specific branch below it. Reordered `main()`'s
+  `records` loop to check `_amateur_built_name_risk(record)` first, raising `FixtureError`
+  naming "screened out: make appears in a narrative or aircraft is amateur-built", before the
+  `_eligible()` check. Updated `test_records_command_refuses_a_screened_record` to match on
+  `"screened out"` and `test_records_command_refuses_an_ineligible_record` to match on
+  `"not eligible"`; confirmed the screened test failed on the pre-fix code (actual message:
+  "CEN16LA901: not eligible (completion status, regulation or split)") and the ineligible test
+  already passed on the pre-fix code (its record fails only the completion-status check, never
+  the screen, so the pre-fix ordering already gave the right reason for that case); both pass
+  after the fix. No decision record (bug fix, not a change of approach).
+- Task 16 prep, item B (final review residual): `scripts/corpus_scan.py`'s "tripwire coverage
+  limits" section printed each count as a Python dict via `dict(sorted(counter.items()))`, which
+  silently omits any split/source combination with zero hits (e.g. no split ever showed
+  `probable_cause` for the missed-break count, and a split with 0 for the other four counts was
+  absent rather than shown as 0). Rewrote `_print_tripwire_coverage_limits` to iterate every
+  split (`ntsb_probable_cause.splits.Split`) explicitly, and every missed-break source
+  (`factual`/`analysis`/`probable_cause`) explicitly, printing one line per combination
+  including zeros. Also corrected the module comment above `_MISSED_BREAK` (previously said the
+  guard's `_SENTENCE_END` splits only on punctuation-then-whitespace, which is no longer true —
+  Task 9's review fix round 1 added a second rule, splitting on `.`/`!`/`?` directly followed by
+  a letter with no space; the comment now describes both rules and names only the residual gap
+  the diagnostic pattern still measures). Re-ran
+  `uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt` in the foreground
+  (`echo "exit $?"` → 0); `diff` against the pre-change file shows only the tripwire-coverage
+  section's formatting changed line-for-line into the same data (no count changed) — the chosen
+  minimum sentence length (20) and "0 LeakageError across 19641 cases" are byte-for-byte
+  unchanged elsewhere in the file. No helper functions changed shape, so
+  `tests/test_corpus_scan.py` needed no changes; all 15 of its tests still pass. No decision
+  record (bug fix / reporting completeness, not a change of approach).
+- Task 16 prep, item C (final review residual): `.claude/skills/close-stage/SKILL.md` determined
+  the release version (`git fetch --tags origin`, `git describe --tags --abbrev=0 --match 'v*'`,
+  the no-tag/no-tag-with-version-already-set rules, and the increment rule) in section 5, after
+  section 4 already needed that same version for the As-built "Release:" line, and the no-tag
+  stop condition was reachable only after section 4's writing had already happened. Moved the
+  whole version-determination block (commands, rules, and the stop condition for a version
+  already above `0.1.0` with no matching tag) into section 2 ("Stop conditions — check before
+  writing anything") as a new bullet, "Determine the release version before writing anything
+  (decision 0018)"; section 5 now only sets `version` in `pyproject.toml` from the version
+  section 2 already determined, and runs `uv lock`. `tests/test_close_stage_skill.py` asserts by
+  substring only (e.g. `"git fetch --tags origin" in SKILL.read_text()`), not by section
+  placement, so no test changes were needed; all 9 of its tests still pass. No decision record
+  (documentation fix, not a change of approach).
+- Task 16 prep, item D (final review residual): corrected two stale numbers in the plan's own
+  Deviations log, checked against the current corpus scan and `make check` output rather than
+  memory. Final review item F's entry said "Added 15 tests to `tests/test_corpus_scan.py`" —
+  the file has 15 tests in total (verified: `git show d7ef566:tests/test_corpus_scan.py` — the
+  commit immediately before item F — already had 4), so item F itself added 11, not 15; corrected
+  the entry to "Added 11 tests". Final review item E2's entry said "`make check` and `CI=true
+  make check` both pass (exit 0, 201 tests each)" — checked against item F's own later entry
+  (212 tests, added after E2's commit) and this task's own re-run of `make check` (212 tests,
+  98.31% coverage, both pass): 212 − 11 (item F's addition) = 201, so E2's "201 tests each" is
+  the correct count for the state of the suite at the time E2's commit ran and needed no change;
+  left as written. Also corrected item F's aircraft-count wording, which claimed "every
+  fixture's multi-aircraft case in this corpus happens to carry codes on more than one
+  aircraft" — "fixture" was wrong (this is the whole processed corpus, not the nine committed
+  fixtures) — to "the counts are equal in the corpus (dev 162, heldout 39, open 23): every
+  multi-aircraft case has codes on more than one aircraft", checked against this task's own
+  re-run of `docs/results/s0-corpus-scan.txt` (dev 162, heldout 39, open 23 in both the header's
+  multi-aircraft-by-split line and the new coverage-limits section). No decision record
+  (correcting the plan's own record-keeping, not a change of approach).
+- Task 16 prep, item E (final review residual): Task 14, step 2 (applying the branch-protection
+  runbook) was left unticked pending Andy, since it changes repository settings this session
+  cannot apply. Andy applied it on 2026-09-14; this task re-ran the runbook's two read-only
+  verification commands, `gh api repos/floyda/ntsb-probable-cause/branches/main/protection` and
+  `gh api repos/floyda/ntsb-probable-cause`, and confirmed: required status checks `lint`,
+  `test`, `audit`, `strict: true`; a pull request is required to merge; `allow_force_pushes:
+  false`, `allow_deletions: false`; and, from Task 17's settings applied at the same time,
+  `allow_squash_merge: true` with `allow_merge_commit: false` and `allow_rebase_merge: false`
+  (squash-only), `squash_merge_commit_title: "PR_TITLE"`, `squash_merge_commit_message:
+  "COMMIT_MESSAGES"`. Ticked Task 14's step 2 and replaced its Deviations line accordingly. No
+  decision record (confirming a decision already recorded, 0018, not a new one).
