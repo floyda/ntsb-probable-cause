@@ -18,6 +18,7 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.records.guard import SENTENCE_CHECK_EXEMPTIONS, find_leaks, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.settings import Settings
+from ntsb_probable_cause.splits import Split
 
 CANDIDATE_LENGTHS = (10, 20, 40, 80)
 THRESHOLD_LINE = "chosen minimum sentence length: "
@@ -54,12 +55,15 @@ _GIVEAWAY = re.compile("|".join(GIVEAWAY), re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _DUPLICATION_THRESHOLD = 0.5
 
-# Item F / decision 0019 context (b): `records/guard.py`'s `_SENTENCE_END` splits only after
-# ".", "!", "?" or ";" directly followed by whitespace, so it misses a break where sentence-final
-# punctuation is immediately followed by a closing quote, "**" or ")" and then whitespace (the
-# regex's lookbehind sees only the single character before the whitespace), and misses a ";"
-# with no following space at all. This is a diagnostic pattern for counting how often that gap
-# is actually present in real withheld text — it does not change guard matching.
+# Item F / decision 0019 context (b): `records/guard.py`'s `_SENTENCE_END` splits on ".", "!",
+# "?" or ";" directly followed by whitespace, and also on ".", "!" or "?" directly followed by a
+# letter with no space in between (a trivial edit that would otherwise hide a sentence). It still
+# misses a break where sentence-final punctuation is immediately followed by a closing quote,
+# "**" or ")" and then whitespace (the regex's lookbehind sees only the single character before
+# the whitespace, and the letter-no-space rule does not cover a closing mark in between), and it
+# misses a ";" with no following space or letter at all. This is a diagnostic pattern for
+# counting how often that remaining gap is actually present in real withheld text — it does not
+# change guard matching.
 _MISSED_BREAK = re.compile(
     r"""[.!?]['"’”]\s(?=[A-Z0-9])"""  # noqa: RUF001 - closing quote (curly variants included)
     r"""|[.!?]\*\*\s(?=[A-Z0-9])"""  # sentence end, "**", space, new sentence
@@ -71,6 +75,7 @@ _MISSED_BREAK_SOURCES: tuple[tuple[str, Callable[[Mapping[str, object]], str | N
     ("analysis", fields.analysis_narrative),
     ("probable_cause", fields.probable_cause),
 )
+_SPLITS: tuple[str, ...] = tuple(s.value for s in Split)
 
 
 def leak_kinds(raw: Mapping[str, object], min_sentence_chars: int) -> Counter[str]:
@@ -309,26 +314,27 @@ def _print_hits(state: ScanState, totals: Mapping[int, int]) -> None:
 
 def _print_tripwire_coverage_limits(state: ScanState) -> None:
     print("\n## tripwire coverage limits (fixed in S2) — counts only")
-    print(
-        "(a) cases whose withheld texts contain at least one missed sentence break"
-        f" (split/source): {dict(sorted(state.missed_break.items()))}"
-    )
-    print(
-        "(b) cases with more than one narratives[] entry, by split:"
-        f" {dict(sorted(state.multi_narrative.items()))}"
-    )
+    print("(a) cases whose withheld texts contain at least one missed sentence break, by split")
+    print("    and source (every split x source shown, including zero):")
+    for split in _SPLITS:
+        for source, _ in _MISSED_BREAK_SOURCES:
+            key = f"{split}/{source}"
+            print(f"    {key}: {state.missed_break[key]}")
+    print("(b) cases with more than one narratives[] entry, by split (every split shown):")
+    for split in _SPLITS:
+        print(f"    {split}: {state.multi_narrative[split]}")
     print(
         "    of those, cases whose later narratives[] entry carries a different probable"
-        f" cause, by split: {dict(sorted(state.multi_narrative_pc_differs.items()))}"
+        " cause, by split (every split shown):"
     )
-    print(
-        "(b) cases with more than one aircraft carrying codes, by split:"
-        f" {dict(sorted(state.multi_aircraft_codes.items()))}"
-    )
-    print(
-        "(c) cases with a non-empty prelim narrative, by split:"
-        f" {dict(sorted(state.nonempty_prelim.items()))}"
-    )
+    for split in _SPLITS:
+        print(f"    {split}: {state.multi_narrative_pc_differs[split]}")
+    print("(b) cases with more than one aircraft carrying codes, by split (every split shown):")
+    for split in _SPLITS:
+        print(f"    {split}: {state.multi_aircraft_codes[split]}")
+    print("(c) cases with a non-empty prelim narrative, by split (every split shown):")
+    for split in _SPLITS:
+        print(f"    {split}: {state.nonempty_prelim[split]}")
 
 
 def _print_weather_composition(state: ScanState) -> None:
