@@ -44,14 +44,21 @@ def _is_dev_month(entry: ManifestEntry) -> bool:
     return split_of(date.fromisoformat(entry.start)) is Split.DEV
 
 
+_NARRATIVE_TEXT_KEYS = (
+    "concatenatedFactualNarrative",
+    "analysisNarrative",
+    "probableCause",
+    "prelimNarrative",
+)
+
+
 def _narrative_texts(record: Record) -> list[str]:
-    """Every free-text field a builder's name could appear in."""
-    texts = [str(record.get("probableCause") or "")]
+    """Every free-text field a builder's name could appear in, from every narratives[] entry."""
+    texts: list[str] = []
     narratives = record.get("narratives")
     for narrative in narratives if isinstance(narratives, list) else []:
         if isinstance(narrative, dict):
-            texts.append(str(narrative.get("analysisNarrative") or ""))
-            texts.append(str(narrative.get("concatenatedFactualNarrative") or ""))
+            texts.extend(str(narrative.get(key) or "") for key in _NARRATIVE_TEXT_KEYS)
     return texts
 
 
@@ -216,6 +223,10 @@ def main(argv: list[str]) -> int:
         if case_id not in records:
             raise FixtureError(f"{case_id}: not found in the development split")
         entry, record = records[case_id]
+        if not _eligible(record):
+            raise FixtureError(f"{case_id}: not eligible (completion status, regulation or split)")
+        if _amateur_built_name_risk(record):
+            raise FixtureError(f"{case_id}: screened out by the amateur-built name risk check")
         print(_write(record, entry.fetched_at))
     return 0
 

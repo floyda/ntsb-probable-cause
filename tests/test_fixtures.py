@@ -1,15 +1,18 @@
 import json
 from collections import Counter
-from datetime import UTC, datetime
+from collections.abc import Iterable, Iterator
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
 
 import httpx
 import pytest
 import respx
-from scripts.make_fixture import _amateur_built_name_risk, make_record_fixture
+from scripts import make_fixture
+from scripts.make_fixture import _amateur_built_name_risk, main, make_record_fixture
 
-from ntsb_probable_cause.data.api import NtsbClient
+from ntsb_probable_cause.data.api import NtsbClient, Page
+from ntsb_probable_cause.data.ingest import Month, fetch_months
 from ntsb_probable_cause.data.redaction import find_redacted_fields
 from ntsb_probable_cause.errors import FixtureError
 
@@ -82,3 +85,82 @@ def test_ordinary_manufacturer_with_no_narrative_match_is_not_a_name_risk() -> N
         "narratives": [{"concatenatedFactualNarrative": "The pilot landed short of the runway."}],
     }
     assert _amateur_built_name_risk(record) is False
+
+
+def test_make_naming_the_builder_only_in_probable_cause_is_a_name_risk() -> None:
+    record = {
+        "aircrafts": [{"aircraftAmateurBuilt": False, "aircraftMake": "Example Builder"}],
+        "narratives": [
+            {
+                "concatenatedFactualNarrative": "The pilot landed short of the runway.",
+                "probableCause": "The EXAMPLE BUILDER RV-7's engine lost power.",
+            }
+        ],
+    }
+    assert _amateur_built_name_risk(record) is True
+
+
+def test_make_naming_the_builder_only_in_prelim_narrative_is_a_name_risk() -> None:
+    record = {
+        "aircrafts": [{"aircraftAmateurBuilt": False, "aircraftMake": "Example Builder"}],
+        "narratives": [{"prelimNarrative": "The pilot was flying an EXAMPLE BUILDER RV-7."}],
+    }
+    assert _amateur_built_name_risk(record) is True
+
+
+def _fake_source(records: list[dict[str, object]]) -> object:
+    class FakeSource:
+        def cases_by_date_range(self, start: date, end: date) -> Iterable[Page]:
+            return self._pages()
+
+        def _pages(self) -> Iterator[Page]:
+            content = json.dumps({"hasMore": False, "nextMarker": None, "data": records}).encode()
+            yield Page(1, content, tuple(records), False, None)
+
+    return FakeSource()
+
+
+def _write_dev_month(raw: Path, records: list[dict[str, object]]) -> None:
+    fetch_months(
+        _fake_source(records),  # type: ignore[arg-type]
+        [Month(2016, 8)],
+        raw,
+        now=lambda: datetime(2026, 9, 13, tzinfo=UTC),
+    )
+
+
+def test_records_command_refuses_an_ineligible_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    record = dict(record_fixtures[0])
+    record["ntsbNumber"] = "CEN16LA900"
+    record["eventDate"] = "2016-08-05"
+    record["completionStatus"] = "Ongoing"
+    raw = tmp_path / "raw"
+    _write_dev_month(raw, [record])
+    monkeypatch.setattr(make_fixture, "RAW", raw)
+    monkeypatch.setattr(make_fixture, "RECORDS", tmp_path / "fixtures")
+    with pytest.raises(FixtureError, match="CEN16LA900"):
+        main(["records", "CEN16LA900"])
+
+
+def test_records_command_refuses_a_screened_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    record = dict(record_fixtures[0])
+    record["ntsbNumber"] = "CEN16LA901"
+    record["eventDate"] = "2016-08-05"
+    record["completionStatus"] = "Completed"
+    record["aircrafts"] = [
+        {
+            "aircraftAmateurBuilt": True,
+            "aircraftMake": "EXAMPLE BUILDER",
+            "ownerOperators": [{"regulationFlightConductedUnder": "091"}],
+        }
+    ]
+    raw = tmp_path / "raw"
+    _write_dev_month(raw, [record])
+    monkeypatch.setattr(make_fixture, "RAW", raw)
+    monkeypatch.setattr(make_fixture, "RECORDS", tmp_path / "fixtures")
+    with pytest.raises(FixtureError, match="CEN16LA901"):
+        main(["records", "CEN16LA901"])
