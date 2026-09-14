@@ -4640,3 +4640,40 @@ moves these into the specification's As-built section when S0 closes.
   conftest has already loaded once per test session. Confirmed `make check` and `CI=true make
   check` both pass (exit 0, 201 tests each). No decision record (test-suite hardening, ruled
   Include by the final review); no production code outside `tests/` changed.
+- Final review, item F: added a "tripwire coverage limits (fixed in S2)" section to
+  `scripts/corpus_scan.py`, printing counts only, by split, for the three known gaps: (a)
+  `records/guard.py`'s `_SENTENCE_END` splits only after `.`/`!`/`?`/`;` directly followed by
+  whitespace, so it misses a break where that punctuation is immediately followed by a closing
+  quote, `**` or `)` and then whitespace, and misses a `;` with no following space at all —
+  added `has_missed_break()` (a diagnostic pattern for the four cases, not a change to guard
+  matching) and `missed_break_sources()`, reporting cases with at least one missed break by
+  split and by source (factual/analysis/probable_cause); (b) the guard compares only
+  `narratives[0]` texts and `aircrafts[0]` codes — added `narratives_count()`,
+  `later_probable_cause_differs()` (whether a later `narratives[]` entry's probable cause
+  disagrees with the first) and `multi_aircraft_with_codes()` (more than one `aircrafts[]`
+  entry carrying an event or finding code); (c) `prelim_narrative` should be empty in every
+  processed case — added `has_nonempty_prelim_narrative()` to confirm it. Added 15 tests to
+  `tests/test_corpus_scan.py` (pure functions, no I/O — hand-built dicts and the existing
+  `record_fixtures` fixture), confirmed to fail on the pre-fix code (`ImportError`, the
+  functions did not exist; RED) and pass after (GREEN); one bug found and fixed during GREEN
+  (the `_MISSED_BREAK` regex's alternation was missing a `|` before its final branch, silently
+  merging the `)`-then-space and `;`-with-no-space cases into one over-constrained pattern that
+  matched neither correctly — caught by
+  `test_has_missed_break_after_a_closing_paren_then_space` and
+  `test_has_missed_break_after_a_semicolon_with_no_space` failing before the `|` was added).
+  Re-ran `uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt` in the
+  foreground (`echo "exit $?"` → 0); `diff` against the pre-change committed file shows only
+  the new section appended — every existing count, the chosen threshold (20) and "0
+  LeakageError across 19641 cases" are byte-for-byte unchanged. New section's counts: missed
+  breaks present in `{'dev/analysis': 1852, 'dev/factual': 3470, 'heldout/analysis': 525,
+  'heldout/factual': 864, 'open/analysis': 152, 'open/factual': 146}` cases; more than one
+  `narratives[]` entry in `{'dev': 148}` cases (development split only), of which `{'dev': 60}`
+  carry a later, differing probable cause; more than one aircraft carrying codes in `{'dev':
+  162, 'heldout': 39, 'open': 23}` cases (identical to the existing multi-aircraft-cases-by-split
+  count already printed in the header, as expected — every fixture's multi-aircraft case in
+  this corpus happens to carry codes on more than one aircraft); a non-empty prelim narrative in
+  `{}` cases (confirms item (c) exactly: zero, every split). `make check` and `CI=true make
+  check` both pass (exit 0, 212 tests each, 98.31% coverage); `uv run python -m
+  scripts.check_docs` clean. No decision record (measurement reporting only, no guard-logic
+  change, ruled required by the final review); no public name or signature of any existing
+  function changed.

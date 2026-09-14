@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import pyarrow.parquet as pq
@@ -53,6 +53,24 @@ GIVEAWAY = (
 _GIVEAWAY = re.compile("|".join(GIVEAWAY), re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _DUPLICATION_THRESHOLD = 0.5
+
+# Item F / decision 0019 context (b): `records/guard.py`'s `_SENTENCE_END` splits only after
+# ".", "!", "?" or ";" directly followed by whitespace, so it misses a break where sentence-final
+# punctuation is immediately followed by a closing quote, "**" or ")" and then whitespace (the
+# regex's lookbehind sees only the single character before the whitespace), and misses a ";"
+# with no following space at all. This is a diagnostic pattern for counting how often that gap
+# is actually present in real withheld text — it does not change guard matching.
+_MISSED_BREAK = re.compile(
+    r"""[.!?]['"’”]\s(?=[A-Z0-9])"""  # noqa: RUF001 - closing quote (curly variants included)
+    r"""|[.!?]\*\*\s(?=[A-Z0-9])"""  # sentence end, "**", space, new sentence
+    r"""|[.!?]\)\s(?=[A-Z0-9])"""  # sentence end, ")", space, new sentence
+    r"""|;(?=[A-Za-z])"""  # ";" with no following space
+)
+_MISSED_BREAK_SOURCES: tuple[tuple[str, Callable[[Mapping[str, object]], str | None]], ...] = (
+    ("factual", fields.factual_narrative),
+    ("analysis", fields.analysis_narrative),
+    ("probable_cause", fields.probable_cause),
+)
 
 
 def leak_kinds(raw: Mapping[str, object], min_sentence_chars: int) -> Counter[str]:
@@ -107,6 +125,83 @@ def duplication_share(analysis: str | None, factual: str | None, min_chars: int 
     return sum(s in haystack for s in sentences) / len(sentences) if sentences else 0.0
 
 
+def has_missed_break(text: str) -> bool:
+    """True if ``text`` contains a sentence boundary the guard's ``_SENTENCE_END`` misses."""
+    return bool(_MISSED_BREAK.search(text))
+
+
+def missed_break_sources(raw: Mapping[str, object]) -> list[str]:
+    """Which withheld texts (factual, analysis, probable_cause) carry a missed sentence break."""
+    return [
+        name
+        for name, extract in _MISSED_BREAK_SOURCES
+        if (text := extract(raw)) and has_missed_break(text)
+    ]
+
+
+def _narrative_entries(raw: Mapping[str, object]) -> list[Mapping[str, object]]:
+    value = raw.get("narratives")
+    return [n for n in value if isinstance(n, dict)] if isinstance(value, list) else []
+
+
+def narratives_count(raw: Mapping[str, object]) -> int:
+    """Number of entries in ``narratives[]`` (item F(b): the guard compares only entry 0)."""
+    value = raw.get("narratives")
+    return len(value) if isinstance(value, list) else 0
+
+
+_MIN_NARRATIVES_TO_COMPARE = 2
+
+
+def later_probable_cause_differs(raw: Mapping[str, object]) -> bool:
+    """True if a ``narratives[]`` entry after the first carries a different, non-empty cause."""
+    entries = _narrative_entries(raw)
+    if len(entries) < _MIN_NARRATIVES_TO_COMPARE:
+        return False
+    first = normalise_text(str(entries[0].get("probableCause") or ""))
+    return any(
+        (later := normalise_text(str(entry.get("probableCause") or ""))) and later != first
+        for entry in entries[1:]
+    )
+
+
+def _aircraft_carries_codes(aircraft: Mapping[str, object]) -> bool:
+    events = aircraft.get("events")
+    findings = aircraft.get("findings")
+    has_event_code = isinstance(events, list) and any(
+        isinstance(e, dict) and isinstance(e.get("eventCode"), str) and e.get("eventCode")
+        for e in events
+    )
+    has_finding_code = isinstance(findings, list) and any(
+        isinstance(f, dict) and isinstance(f.get("findingCode"), str) and f.get("findingCode")
+        for f in findings
+    )
+    return has_event_code or has_finding_code
+
+
+def multi_aircraft_with_codes(raw: Mapping[str, object]) -> bool:
+    """True if more than one ``aircrafts[]`` entry carries an event or finding code.
+
+    Item F(b): the guard compares only ``aircrafts[0]``'s codes.
+    """
+    aircrafts = raw.get("aircrafts")
+    if not isinstance(aircrafts, list):
+        return False
+    carrying = sum(1 for a in aircrafts if isinstance(a, dict) and _aircraft_carries_codes(a))
+    return carrying > 1
+
+
+def has_nonempty_prelim_narrative(raw: Mapping[str, object]) -> bool:
+    """True if any ``narratives[]`` entry has a non-blank ``prelimNarrative``.
+
+    Item F(c): reported to confirm it is empty in every processed case.
+    """
+    return any(
+        isinstance(v := e.get("prelimNarrative"), str) and v.strip()
+        for e in _narrative_entries(raw)
+    )
+
+
 @dataclass
 class ScanState:
     """Everything the scan accumulates across the corpus. Counts only; no record text."""
@@ -133,6 +228,12 @@ class ScanState:
             length: {mode: defaultdict(set) for mode, _ in _MODES} for length in CANDIDATE_LENGTHS
         }
     )
+    # Item F: tripwire coverage limits (fixed in S2) — counts only.
+    missed_break: Counter[str] = field(default_factory=Counter)
+    multi_narrative: Counter[str] = field(default_factory=Counter)
+    multi_narrative_pc_differs: Counter[str] = field(default_factory=Counter)
+    multi_aircraft_codes: Counter[str] = field(default_factory=Counter)
+    nonempty_prelim: Counter[str] = field(default_factory=Counter)
 
 
 def _weather_label(raw: Mapping[str, object]) -> str | None:
@@ -181,6 +282,16 @@ def _accumulate_row(state: ScanState, index: int, row: Mapping[str, object]) -> 
     if weather_label is not None:
         state.weather_nonempty += 1
         state.weather_coded += weather_label == "coded"
+    for source in missed_break_sources(raw):
+        state.missed_break[f"{split}/{source}"] += 1
+    if narratives_count(raw) > 1:
+        state.multi_narrative[split] += 1
+        if later_probable_cause_differs(raw):
+            state.multi_narrative_pc_differs[split] += 1
+    if multi_aircraft_with_codes(raw):
+        state.multi_aircraft_codes[split] += 1
+    if has_nonempty_prelim_narrative(raw):
+        state.nonempty_prelim[split] += 1
 
 
 def _print_header(state: ScanState, case_count: int) -> None:
@@ -194,6 +305,30 @@ def _print_hits(state: ScanState, totals: Mapping[int, int]) -> None:
     print("\n## tripwire hits by minimum sentence length (split/kind)")
     for length in CANDIDATE_LENGTHS:
         print(f"{length}: total {totals[length]} {dict(sorted(state.hits[length].items()))}")
+
+
+def _print_tripwire_coverage_limits(state: ScanState) -> None:
+    print("\n## tripwire coverage limits (fixed in S2) — counts only")
+    print(
+        "(a) cases whose withheld texts contain at least one missed sentence break"
+        f" (split/source): {dict(sorted(state.missed_break.items()))}"
+    )
+    print(
+        "(b) cases with more than one narratives[] entry, by split:"
+        f" {dict(sorted(state.multi_narrative.items()))}"
+    )
+    print(
+        "    of those, cases whose later narratives[] entry carries a different probable"
+        f" cause, by split: {dict(sorted(state.multi_narrative_pc_differs.items()))}"
+    )
+    print(
+        "(b) cases with more than one aircraft carrying codes, by split:"
+        f" {dict(sorted(state.multi_aircraft_codes.items()))}"
+    )
+    print(
+        "(c) cases with a non-empty prelim narrative, by split:"
+        f" {dict(sorted(state.nonempty_prelim.items()))}"
+    )
 
 
 def _print_weather_composition(state: ScanState) -> None:
@@ -267,6 +402,7 @@ def main() -> int:
     _print_sentence_matches(state)
     print(f"\n{THRESHOLD_LINE}{chosen if chosen is not None else 'NONE'}")
     _print_factual_narrative_stats(state)
+    _print_tripwire_coverage_limits(state)
 
     if chosen is None:
         print(

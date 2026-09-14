@@ -51,4 +51,11 @@ heldout/T: 2 | 0 | 0 | 0
 open/F: 110 | 1 | 0 | 20
 open/L: 303 | 13 | 0 | 65
 
+## tripwire coverage limits (fixed in S2) — counts only
+(a) cases whose withheld texts contain at least one missed sentence break (split/source): {'dev/analysis': 1852, 'dev/factual': 3470, 'heldout/analysis': 525, 'heldout/factual': 864, 'open/analysis': 152, 'open/factual': 146}
+(b) cases with more than one narratives[] entry, by split: {'dev': 148}
+    of those, cases whose later narratives[] entry carries a different probable cause, by split: {'dev': 60}
+(b) cases with more than one aircraft carrying codes, by split: {'dev': 162, 'heldout': 39, 'open': 23}
+(c) cases with a non-empty prelim narrative, by split: {}
+
 split_record at the chosen length: 0 LeakageError across 19641 cases
