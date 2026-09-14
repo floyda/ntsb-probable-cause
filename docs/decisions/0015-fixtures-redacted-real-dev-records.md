@@ -48,3 +48,5 @@ event year, including 16 of the 70 labelled cases (M2). Detail:
 ## Status
 
 Accepted, 2026-09-13.
+Amended by 0020 (2026-09-14): redaction extends to evidence — the make and model of amateur-built
+aircraft are replaced with a fixed label.

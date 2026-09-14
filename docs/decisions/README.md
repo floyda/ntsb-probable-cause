@@ -55,8 +55,9 @@ under `docs/specs/` and the record links to it.
 | [0012](0012-typed-constants-replace-config-yaml.md) | Typed constants and settings replace `config.yaml` | Accepted |
 | [0013](0013-evidence-synthesis-verdict.md) | Evidence, synthesis and verdict: the factual narrative is withheld and the agent writes its own | Accepted |
 | [0014](0014-processed-file-index-plus-raw-record.md) | The processed file holds index columns and the raw record | Accepted |
-| [0015](0015-fixtures-redacted-real-dev-records.md) | Fixtures are redacted real development records | Accepted |
+| [0015](0015-fixtures-redacted-real-dev-records.md) | Fixtures are redacted real development records | Accepted; amended by 0020 |
 | [0016](0016-layered-leakage-guard-and-model-boundary.md) | A layered leakage guard, and a request-side model boundary | Accepted |
 | [0017](0017-spec-lifecycle-as-built-and-plan-deletion.md) | Specifications close with an As-built record; plans are deleted at merge | Accepted |
 | [0018](0018-squash-merges-and-tag-only-releases.md) | Squash merges, and tag-only releases at stage close | Accepted |
 | [0019](0019-tripwire-skips-sentence-check-on-weather-report.md) | In the weather report field, the tripwire skips sentences from the factual narrative | Accepted |
+| [0020](0020-amateur-built-make-and-model-replaced-in-evidence.md) | The make and model of amateur-built aircraft are replaced in evidence | Accepted |
