@@ -20,7 +20,7 @@ already on the roadmap.
 
 1. Every agency result is reported for three **arms**, with the same model, price variant,
    cases and per-case cost cap
-   ([agency design §4.1](../specs/2026-09-14-agency-hypothesis-trail-design.md)):
+   ([agency design §6.1](../specs/2026-09-14-agency-hypothesis-trail-design.md)):
    - **A** — start facts only, one call;
    - **B** — every available tool in a fixed order, then one call;
    - **C** — the loop (0021).
@@ -31,12 +31,28 @@ already on the roadmap.
    docket module exists and before any loop code is written; its score is recorded as a bar
    for the loop.
 4. The loop is warranted only if arm C beats arm B on accuracy at equal cost, or matches it
-   at lower cost. Four results are published as evidence against the loop, whichever way the
-   other results go: C calls every tool on most cases; C matches B only at the same or
-   greater cost; intermediate hypotheses are not calibrated; stated and actual effects do not
-   agree.
-5. Six predictions (design §4.5) are fixed before any measurement and published whichever
-   way they come out. They are stated by fatal / non-fatal, not by investigation class.
+   at lower cost. **Any one of these results counts against the loop**, and each is published
+   whichever way the others go; if one holds, the published result is that retrieval was
+   warranted and the loop was not:
+   - arm C calls every tool on most cases;
+   - arm C matches arm B only at the same or greater cost;
+   - the intermediate hypotheses are not calibrated;
+   - stated and actual effects do not agree.
+5. **Six predictions are fixed here, before any measurement,** and published whichever way
+   they come out. They are stated by fatal / non-fatal, not by investigation class. This
+   record is append-only, so they cannot be edited after a result is seen.
+
+   | # | prediction |
+   |---|---|
+   | P1 | Fatal cases take more steps than non-fatal cases. |
+   | P2 | In the full condition, arm C matches arm B's accuracy at lower cost on non-fatal cases. |
+   | P3 | Any accuracy advantage of C over B is concentrated in fatal cases. |
+   | P4 | In the masked condition, C abstains more often than in the full condition, and asks for the missing evidence. |
+   | P5 | On average, the probability on the true codes rises with each step. |
+   | P6 | Stated and actual effects agree more often than chance. |
+
+   P1 and P3 rest on fatal dockets being larger in every class the spike sampled; P2 rests on
+   development-era docket sizes, which S2 re-measures for the current era (0024).
 
 ## Why
 
@@ -63,6 +79,9 @@ already on the roadmap.
   comparison.
 - **Predictions by investigation class.** Matches the spike's strata. Rejected for reason 4;
   class is still reported, second.
+- **Predictions kept in the design specification.** Next to the detail they refer to.
+  Rejected because a specification can be edited; a prediction written in advance is only
+  worth something if nobody can change it afterwards.
 
 Cost: arm B roughly doubles evaluation spend on the cases it runs, and the filter needs its
 own development-split measurement in S2.

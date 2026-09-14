@@ -22,7 +22,7 @@ narrative is empty in all 19,641 processed cases, which are all closed
    registration unless S1's ablation removes it. Everything else comes through tools grouped
    by source: pilot details, the record's weather fields, the preliminary narrative, the
    docket listing, and one docket document
-   ([agency design §3.1](../specs/2026-09-14-agency-hypothesis-trail-design.md)).
+   ([agency design §5.1](../specs/2026-09-14-agency-hypothesis-trail-design.md)).
 2. A field goes behind a tool only when it is measured to arrive late or, for docket
    documents, measured to be large enough that choosing is a real decision. Day-1 fields are
    never put behind a tool.
@@ -32,9 +32,10 @@ narrative is empty in all 19,641 processed cases, which are all closed
 4. Two **availability conditions** are reported. **Full**: everything the closed case holds in
    evidence roles, and the docket at closure. **Masked**: only what a live case would have at
    day *N*, from the spike's structured-field profile until the recorder (S2.5) measures
-   structured-field and docket arrival on ongoing cases.
-5. The preliminary narrative is absent from every offline evaluation. The recorder stores it
-   each time it sees it, so that masked evaluation can include it for captured cases.
+   structured-field and docket arrival on ongoing cases. What the mask takes from the
+   recorder is numbers only: days from the event to first appearance (0024).
+5. The preliminary narrative is absent from every evaluation, in both conditions. The
+   recorder stores it for the live board only (0024).
 6. Event date and location are not evidence and not start facts. The weather archive, after
    S3, may use them as bookkeeping that is never rendered, and archive values need their own
    provenance rule before they reach a model.

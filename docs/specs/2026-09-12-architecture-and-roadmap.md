@@ -5,11 +5,12 @@
 narrative is withheld from the model and the agent writes its own (0013), which removes the
 narrative router and changes the bars, slices and leakage plan below; the package is renamed
 `ntsb_probable_cause`; S-0 is complete. Amended 2026-09-14 by the agency design
-(`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, decision records 0021–0023), after
+(`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, decision records 0021–0024), after
 S0 closed: agency is measured as a scored hypothesis trail, the loop must beat a
 call-every-tool arm at equal cost, and evidence arrives by source with availability masked
-from measured arrival. This changes the S1, S2, S2.5, S3 and S5 entries, the public surface,
-the deferred decisions and the risks. Status: Draft (awaiting Andy's sign-off). This document records
+from measured arrival; open-split cases enter measurements only as numbers. This changes the
+S1, S2, S2.5, S3 and S5 entries, the public surface, the deferred decisions and the risks.
+Status: Draft (awaiting Andy's sign-off). This document records
 architecture decisions and the order work will be done in. It does not design any
 individual component; each numbered stage below gets its own specification before it
 is built.*
@@ -307,7 +308,12 @@ answer, which is why it is settled before the store is designed.
 1. **Home** — what the system does, the headline numbers, and the caveats stated
    *before* the results rather than after them.
 2. **Live board** — open investigations, the agent's standing prediction, its
-   confidence, and when it last changed.
+   confidence, and when it last changed. Every case opens its trajectory. The board also
+   shows the statistics that drive the agent's decisions across its live runs — steps and
+   tool calls, stop reasons, abstain rate, cost against the cap, how far each call moved the
+   hypothesis, stated versus observed effect — with the count each rests on, and adds
+   verdict-based scores as cases close (0021; agency design §7.2). Live and held-out numbers
+   are never shown in one figure.
 3. **Case view** — the evidence-arrival timeline, every prediction ever made with its
    timestamp, and the NTSB's verdict beside them once it publishes.
 4. **Trajectory view** — one case's steps, tool calls and costs. The demo criteria call
@@ -358,7 +364,7 @@ Each of these was considered and rejected on evidence, not on effort:
 - **Similar-case search, regulation lookup, airframe history.** Andy labelled what would
   have fixed each of the 17 one-shot misses. None of them needed these. Building a
   retrieval tool nothing asked for would weaken the argument that agency was added only
-  where it was measured to be warranted. *Amended 2026-09-14:* the agency design (§7)
+  where it was measured to be warranted. *Amended 2026-09-14:* the agency design
   allows similar-case search only as a declared experiment, stated before it runs, limited
   to earlier accidents, and with the retrieval-contamination test in section 9.
 - **Reconstructing historical preliminary reports.** The API deletes preliminary text
@@ -368,6 +374,13 @@ Each of these was considered and rejected on evidence, not on effort:
   the build decision does not depend on it. It is a phase-2 item and, when it comes,
   it is a *probe* with a written result rather than a build stage.
 - **Any request-serving tier.** See section 5.
+- **A separate route for fatal cases.** *Added 2026-09-14 (0021).* The stopping rule should
+  let class and fatality differences emerge as step counts. It stays a fallback if the loop
+  costs too much on small cases.
+- **Event date and location as evidence.** *Added 2026-09-14 (0023).* Both are handles for
+  recalling a published report; adding either needs its own decision and an ablation.
+- **Airfield accident history.** *Added 2026-09-14.* Possibly useful context for a lay
+  reader, but a location's history does not establish a cause, so it is not a verdict input.
 
 ---
 
@@ -475,7 +488,7 @@ gaps in S0's As-built record are closed before any document reaches a model. The
 filter decides the role of party submissions. Scanned documents that cannot be read are
 reported as unavailable, not skipped. Arm B's document filter is chosen on the development
 split and published. Docket shape is re-measured on dockets from 2020 or later; the design
-proposes closed open-split cases for this, which needs Andy's written exception to rule 5.
+uses closed open-split cases for this, storing numbers only and keeping no documents (0024).
 Arm B with the docket runs at the end of the stage, before any loop code exists, and its score
 is recorded as a bar for the loop.
 
@@ -500,9 +513,10 @@ agent, so it does not have to wait for one.
 *From the agency design (0023), amended 2026-09-14.* S0's processed file holds closed cases
 only, so ongoing cases are first ingested here. On each poll the recorder also snapshots an
 ongoing case's structured evidence fields, so their arrival is measured rather than taken
-from the spike's profile, and stores the preliminary narrative whenever it is present: S0's
-corpus scan found it empty in all 19,641 closed cases, because the API deletes it at closure.
-These observations become the masked condition's arrival profile.
+from the spike's profile, and stores the preliminary narrative whenever it is present, for the
+live board only: S0's corpus scan found it empty in all 19,641 closed cases, because the API
+deletes it at closure. The masked condition's arrival profile takes only numbers from these
+observations — days from the event to first appearance — and no text (0024).
 
 *Done means:* running on a schedule and accumulating first-seen timestamps for docket
 documents, structured-field snapshots and preliminary narratives.
@@ -542,8 +556,8 @@ brief §6 conditions, which were written against the narrative split (at least 5
 no-narrative cases, ablation loss concentrated there). What carries over in kind: top-1 above
 the S1 ceiling, an ablation showing the docket tool's contribution, sensible abstention, and
 average cost under a per-case cap enforced in code. Added by 0022: arm C against arm B at equal
-cost, with the four results that would count against the loop (agency design §4.6) and the six
-predictions (§4.5), each reported whichever way it comes out.
+cost, with the four results that would count against the loop (0022) and the six
+predictions (0022), each reported whichever way it comes out.
 
 ### S4. Predictions and resolution
 
@@ -559,8 +573,9 @@ intervening.
 
 CDK stack, scheduled Fargate task, S3 and CloudFront, the static site generator, and the
 five pages. The trajectory view presents the hypothesis trail; the Methods page shows the
-per-step scores, the three arms and the two availability conditions (0021, 0022). Whether the
-live board shows every step or a summary is decided here.
+per-step scores, the three arms and the two availability conditions (0021, 0022). The live
+board opens every case's full trajectory and shows the decision statistics of the agency
+design §7.2 (0021).
 
 *Done means:* a public URL, rebuilt from the store, with hosting cost that does not move
 with traffic.
@@ -589,11 +604,11 @@ guess at what was weighed. Rule 8 in `CLAUDE.md`; format in `docs/decisions/READ
 | Whether the registration is a start fact | S1 | decided by the registration ablation (0023) |
 | Evidence / synthesis classification of docket documents | S2 | needs the docket client and real document titles |
 | Arm B's document filter | S2, published before any held-out run | chosen on the development split (0022) |
-| Docket shape on dockets from 2020 or later, and whether closed open-split cases may be used | S2; the exception to rule 5 is Andy's | the spike measured 2015–2019 only (0022, 0023) |
-| How the live board shows the trail | S5 | a presentation choice, with the trail's scores fixed earlier |
+| Docket shape on dockets from 2020 or later, and whether closed open-split cases may be used | S2 | the spike measured 2015–2019 only; closed open-split cases, as numbers only (0024) |
+| Layout of the trajectory view and the live statistics | S5 | what is shown is fixed by 0021; how it is laid out is a presentation choice |
 | OCR for handwritten forms | phase 2 | a probe with a written result, not a build stage |
 | Weather tool | S3 for the record's weather fields; the archive after S3 | one of 17 misses; parameters already verified in the spike; an archive value needs its own provenance rule (0023) |
-| Similar-case search, as a declared experiment | after S3 | no measured demand on complete records; allowed only as the agency design §7 states |
+| Similar-case search, as a declared experiment | after S3 | no measured demand on complete records; allowed only as a declared experiment: stated before it runs, earlier accidents only, with the retrieval-contamination test |
 
 ---
 
@@ -625,6 +640,9 @@ Still open: none.
 | Docket shape and class mix differ by era | "About four in five dockets fit one call" was measured on 2015–2019 dockets, a C-heavy era; held-out and live cases are mostly L-class (S0 corpus scan) | Docket shape re-measured on 2020+ dockets in S2; predictions and proposed slices by fatal / non-fatal rather than class (0022) |
 | The masked condition is thin offline | The preliminary narrative is absent from every closed case, and the archive weather comes after S3 | Stated on the Methods page; the recorder captures preliminary narratives and field arrival from S2.5 (0023) |
 | Per-step calls raise cost | Each step is a structured call with a growing context | Cost per step in every step record; the cap re-measured in S1 and S3 (0021) |
+| The agent's stated reasons are unfaithful | The trail could read well and mean nothing | Stated versus actual is scored and shown; the trail is described as what was recorded, not as reasoning (0021) |
+| The stopping threshold or arm B's filter is tuned on the wrong cases | Held-out scores become meaningless, and the live board stops being a control | Both chosen on the development split; live statistics published and never used for tuning (0021, 0024) |
+| Live statistics are read as evaluation results | Live cases have partial dockets and small, slowly closing samples | Every statistic shows its count; live and held-out numbers never share a figure (agency design §7.2) |
 | Docket page structure changes | Silent wrong answers rather than a visible outage | Parser fixtures in continuous integration; failures are loud |
 | The live board has too few resolutions to mean anything | Median time to close is 140 days; the first six months will yield a handful | Say so on the page first. The held-out numbers carry the weight; the board is the narrative device |
 | Cost runs away on a pathological case | Real money once scheduled jobs use the API | Hard per-case cap in code, plus a separate account budget alarm |

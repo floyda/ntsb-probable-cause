@@ -64,3 +64,4 @@ under `docs/specs/` and the record links to it.
 | [0021](0021-agency-measured-as-hypothesis-trail.md) | Agency is measured as a scored hypothesis trail | Accepted |
 | [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted |
 | [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted |
+| [0024](0024-open-split-enters-measurements-only-as-numbers.md) | Open-split cases enter a measurement only as numbers | Accepted |

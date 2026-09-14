@@ -67,8 +67,11 @@ takes a part of), and the current stage's specification (S0, closed:
 4. **Raw data never goes in git.** Keep `data/raw/`, `data/processed/`, `*.zip`, `*.mdb` ignored.
 5. **Splits are fixed**: dev ≤2019, held-out 2020–2023, open ≥2024, **by event date — never by
    case number**, whose year is the federal fiscal year (0015). Held-out is touched rarely;
-   open cases feed the live board only. Filter live cases on `completionStatus == "Ongoing"`,
-   not `!= "Completed"` (foreign `N/A` cases carry verdicts).
+   open cases feed the live board only. An open-split case, closed or ongoing, may enter a
+   measurement only as numbers — counts and distributions, no case numbers, no text, no cached
+   documents — so nothing from it can reach development or evaluation work (0024). Filter live
+   cases on `completionStatus == "Ongoing"`, not `!= "Completed"` (foreign `N/A` cases carry
+   verdicts).
 6. **Clinical tone.** These are fatalities. No victim names in any output; nothing that reads as
    a game.
 7. **Documents Andy must sign off** (briefs, plans, reports) are written in simplified technical
@@ -148,8 +151,7 @@ The first like-for-like evaluation set is the 40 case IDs in
 answer — at equal cost, in both availability conditions. Arm A is start facts only; S1's
 one-shot ceiling is arm B without the docket; arm B with the docket runs before any loop code
 exists. The four results that count against the loop and the six predictions are fixed in
-`docs/specs/2026-09-14-agency-hypothesis-trail-design.md` §4.5–4.6 and are published whichever
-way they come out.
+decision 0022 and are published whichever way they come out.
 
 ## Model access
 

@@ -12,7 +12,7 @@ chooses documents has nothing to choose.
 The roadmap planned a trajectory log in S3 and "tool steps per case" as the metric. A count
 of steps says how busy the agent was, not whether any step was a good decision. Full
 reasoning: [the agency design](../specs/2026-09-14-agency-hypothesis-trail-design.md),
-sections 2 to 4.
+sections 3 to 7.
 
 ## Decision
 
@@ -20,17 +20,27 @@ sections 2 to 4.
    codes with probabilities, the finding codes it believes with probabilities, a
    one-sentence working cause, the reason for the call, the effect it expected, and the
    effect it observed. The sequence of these records is the **hypothesis trail**.
-2. Each step is one stored row (design §3.4), carrying the arm, the availability condition,
+2. Each step is one stored row (design §5.4), carrying the arm, the availability condition,
    cost, and the commit SHA with an uncommitted-changes flag (0018). These rows are the S3
    trajectory log.
 3. The trail is scored step by step against the NTSB's verdict: occurrence top-1 and top-3,
    finding-code precision and recall, probability on the true codes, calibration,
-   information gain per call, and stated versus actual effect (design §4.3).
+   information gain per call, and stated versus actual effect (design §6.3).
 4. The agent stops and answers at a confidence threshold, and stops and abstains at the
    step budget, the cost cap, or when nothing more is available. The threshold is chosen on
    the development split only.
 5. The public name is "the hypothesis trail": *the agent's working hypothesis after each
    piece of evidence*. It is not presented as the model's reasoning.
+6. **The trail is published in full.** Every case on the live board opens its trajectory:
+   each step's tool, reason, expected and observed effect, hypothesis, stop reason and cost.
+   Once the NTSB publishes, the same view shows each step scored against the verdict.
+7. **The live board shows the statistics that drive the agent's decisions**, across its live
+   runs: steps and tool calls per case, stop reasons, abstain rate, confidence at stop, cost
+   against the cap, how much each tool call moved the hypothesis, and how often the stated
+   effect matched the observed one. Scores that need a verdict (accuracy, calibration,
+   information gain on the true codes) are added as cases close, with the count they rest on.
+   The results that count against the loop (0022) are shown, whichever way they come out.
+   These statistics are published and never used for tuning (0024).
 
 ## Why
 
@@ -45,7 +55,11 @@ sections 2 to 4.
    can be trusted, which is what a sceptical reader would ask.
 4. **It is the most legible artefact the demo can publish.** The demo criteria call the
    trajectory view the most compelling artefact; a trail of scored hypotheses explains it to
-   a reader with no domain knowledge.
+   a reader with no domain knowledge. Being able to open any case's trail shows the reader
+   that the agent is doing something, rather than asking them to believe it.
+5. **The statistics are the talking points, above all when they disappoint.** A live abstain
+   rate, or tool calls that do not move the hypothesis, say more about when an agent is
+   warranted than a headline score. The demo criteria require negative results to be shown.
 
 ## What this rules out
 
@@ -58,6 +72,8 @@ sections 2 to 4.
   because it claims something the project cannot show.
 - **Choosing the threshold on held-out cases.** Rejected: it makes the held-out scores
   meaningless.
+- **A summary on the board, with the trail kept internal.** A cleaner page. Rejected by
+  reasons 4 and 5.
 
 Cost: every step is a structured model call with a growing context, so cost per case rises.
 The cap is re-measured in S1 and S3.
