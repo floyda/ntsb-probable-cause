@@ -27,12 +27,14 @@ def test_boundary_holds_and_hides_the_builder_name_for_amateur_built_aircraft(
     assert isinstance(aircrafts, list)
     aircrafts[0]["aircraftAmateurBuilt"] = True
     aircrafts[0]["aircraftMake"] = "INVENTED BUILDER"
+    aircrafts[0]["aircraftModel"] = "INVENTED MODEL"
 
     assert_boundary_holds(raw)
 
     evidence, _, _ = split_record(raw)
     payload = Payload.from_evidence(evidence)
     assert "INVENTED BUILDER" not in payload.text
+    assert "INVENTED MODEL" not in payload.text
 
 
 def test_boundary_test_fails_when_the_splitter_leaks(

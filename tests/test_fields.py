@@ -134,6 +134,20 @@ def test_non_amateur_built_keeps_recorded_make_and_model(flag: bool | None) -> N
     assert model_field.extract(raw) == "172SP"
 
 
+@pytest.mark.parametrize("flag", ["true", 1])
+def test_non_boolean_amateur_built_flag_still_gives_the_label(flag: object) -> None:
+    """Decision 0020, review fix: fail closed — any non-`False`/`None` value gives the label."""
+    make_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MAKE)
+    model_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MODEL)
+    raw = copy.deepcopy(RAW)
+    aircraft = raw["aircrafts"][0]  # type: ignore[index]
+    aircraft["aircraftAmateurBuilt"] = flag
+    aircraft["aircraftMake"] = "INVENTED BUILDER"
+    aircraft["aircraftModel"] = "INVENTED BUILDER MODEL"
+    assert make_field.extract(raw) == AMATEUR_BUILT_LABEL
+    assert model_field.extract(raw) == AMATEUR_BUILT_LABEL
+
+
 def test_amateur_built_flag_is_a_declared_source() -> None:
     make_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MAKE)
     model_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MODEL)

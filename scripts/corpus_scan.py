@@ -214,8 +214,13 @@ _AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
 
 
 def is_amateur_built(raw: Mapping[str, object]) -> bool:
-    """True if the raw record's amateur-built flag is set (decision 0020)."""
-    return resolve_path(raw, _AMATEUR_BUILT_FLAG) is True
+    """True unless the amateur-built flag is `False` or absent/`None` (decision 0020).
+
+    This is `fields.py`'s fail-closed rule: every real value is a JSON boolean, so this agrees
+    with `fields.py` on the processed corpus, but does not repeat its narrower `is True` check.
+    """
+    flag = resolve_path(raw, _AMATEUR_BUILT_FLAG)
+    return flag is not False and flag is not None
 
 
 def raw_aircraft_make(raw: Mapping[str, object]) -> str | None:

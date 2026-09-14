@@ -52,7 +52,9 @@ WITHHELD_ROLE_NAMES = frozenset({*SynthesisRole, *VerdictRole})
 
 # Decision 0020: on an amateur-built aircraft the recorded make (and sometimes model) usually
 # holds the builder's own name, copied from the registration, and the builder is often the
-# pilot or owner. Both evidence roles hold this fixed label instead when the flag is set.
+# pilot or owner. Both evidence roles hold this fixed label instead when the flag is set. The
+# check fails closed: the label is used unless the flag is exactly `False` or absent/`None`; any
+# other value, including a non-boolean one, gives the label rather than the recorded value.
 AMATEUR_BUILT_LABEL = "Amateur-built"
 
 WITHHELD_SUBTREES = (
@@ -111,12 +113,17 @@ _AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
 
 
 def _amateur_built_or_text_at(path: str) -> Callable[[Raw], EvidenceValue]:
-    """Decision 0020: the fixed label when the amateur-built flag is set, else the value at path."""
+    """Decision 0020: the fixed label unless the amateur-built flag is `False` or absent/`None`.
+
+    Fails closed: any value other than `False`/`None` (including a non-boolean, truthy-looking
+    value such as the string "true") gives the label, never the recorded make or model.
+    """
 
     def extract(raw: Raw) -> EvidenceValue:
-        if resolve_path(raw, _AMATEUR_BUILT_FLAG) is True:
-            return AMATEUR_BUILT_LABEL
-        return _text_at(path)(raw)
+        flag = resolve_path(raw, _AMATEUR_BUILT_FLAG)
+        if flag is False or flag is None:
+            return _text_at(path)(raw)
+        return AMATEUR_BUILT_LABEL
 
     return extract
 

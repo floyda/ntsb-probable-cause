@@ -153,6 +153,12 @@ def test_is_amateur_built_reads_the_flag() -> None:
     assert is_amateur_built({}) is False
 
 
+def test_is_amateur_built_fails_closed_for_a_non_boolean_flag() -> None:
+    """Agrees with fields.py's fail-closed rule: only `False`/absent/`None` is not amateur-built."""
+    assert is_amateur_built({"aircrafts": [{"aircraftAmateurBuilt": "true"}]}) is True
+    assert is_amateur_built({"aircrafts": [{"aircraftAmateurBuilt": 1}]}) is True
+
+
 def test_raw_aircraft_make_and_model_read_the_recorded_values() -> None:
     raw = {"aircrafts": [{"aircraftMake": "INVENTED BUILDER", "aircraftModel": "  "}]}
     assert raw_aircraft_make(raw) == "INVENTED BUILDER"
