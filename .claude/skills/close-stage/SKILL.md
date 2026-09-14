@@ -1,0 +1,149 @@
+---
+name: close-stage
+description: Use when a build stage of ntsb-probable-cause is finished and its pull request is ready — appends the As-built record to the stage specification, marks the specification Implemented and the roadmap stage done, deletes the implementation plan, sets the release version, and runs the documentation check (decision 0017).
+---
+
+# Close a build stage
+
+Decision 0017: a specification keeps its approved body unchanged and gains an **As built**
+record when its stage finishes; the implementation plan is deleted. This skill does that work.
+The documentation check (`scripts/check_docs.py`) fails CI if it is skipped.
+
+The As-built section is a document Andy signs off: simplified technical English, clinical
+tone, no personal names, and every number taken from a committed script or results file.
+
+## 1. Find the stage
+
+- List `docs/plans/*.md`. Each has a `**Spec:** <path>` line. Confirm with the user which
+  stage is closing.
+- Read the specification in full, especially its **Done means** section, and the plan in full,
+  especially its **Deviations** section.
+
+## 2. Stop conditions — check before writing anything
+
+- Any unticked `- [ ]` step line **outside code fences** in the plan (a fenced code block, such
+  as a PR template with its own checkboxes, is not step text and is never checked), except steps
+  in the stage's close-out task from the step that runs `/close-stage` onward (those are finished
+  by this skill and the final CI check; the plan is deleted before they could be ticked). List the
+  unticked steps and stop. Steps of the close-out task before that point (for example verifying
+  Done-means, opening the pull request) must be ticked.
+- The current branch is main (git branch --show-current prints main), or this branch
+  has no open pull request (gh pr view --json state --jq .state does not print OPEN).
+  Report and stop.
+- `make check` fails, or CI on the pull request is not green
+  (`gh pr checks`). Report and stop.
+- A Done-means condition has no evidence (below). Report which one and stop, EXCEPT the
+  close-out condition itself (specification status Implemented, As-built section complete,
+  roadmap stage marked done, plan deleted), which is recorded with evidence "this pull
+  request's close-out commit; `uv run python -m scripts.check_docs` clean". Never write a
+  condition as met without evidence.
+- Determine the release version before writing anything (decision 0018), since the As-built
+  section's "Release:" line (section 4) needs it. Fetch tags, then find the previous release
+  tag:
+
+  ```bash
+  git fetch --tags origin
+  git describe --tags --abbrev=0 --match 'v*'
+  ```
+
+  Exit 128 with "No names found, cannot describe anything" means there is no release tag yet.
+  In that case the version is `0.1.0` — unless `pyproject.toml` already holds a version above
+  `0.1.0`, which means a release happened without the matching tag reaching this checkout; stop
+  and report that instead of guessing a version. Otherwise (a tag was found), increase the tag's
+  minor version by one and set the patch to 0 (`v0.1.0` → `0.2.0`).
+
+## 3. Gather evidence
+
+```bash
+gh pr view --json number,url
+git log --oneline origin/main..HEAD
+git diff --name-status --diff-filter=A origin/main...HEAD -- docs/decisions/ docs/results/
+git log -1 --format=%H -- docs/plans/<plan-file>
+```
+
+The last command gives the commit for the plan permalink:
+`https://github.com/floyda/ntsb-probable-cause/blob/<sha>/docs/plans/<plan-file>`.
+
+For each Done-means condition, find its evidence: a test node id (`tests/test_x.py::test_y`),
+a script with its committed output under `docs/results/`, a CI run URL, or a named command
+with its output quoted in this pull request's description.
+
+## 4. Write the As-built section
+
+Append to the end of the specification, before its glossary if it has one at the end, using
+exactly these headings. Links are relative to the specification file; for example,
+`[0017](../decisions/0017-spec-lifecycle-as-built-and-plan-deletion.md)`.
+
+```markdown
+## As built
+
+*Closed YYYY-MM-DD in pull request #N.*
+
+### Delivered
+
+What exists now, by component, in a few bullets. Name modules and commands.
+
+### Done means, with evidence
+
+One bullet per condition in the Done-means section, in the same order:
+condition — met — evidence (test node id, script and results file, CI run URL, or command output in pull request #N).
+
+For the condition that the stage is closed out (status Implemented, As-built section, roadmap marked done, plan deleted), write: met — this pull request's close-out commit; uv run python -m scripts.check_docs clean.
+
+### Departures from this specification
+
+Every entry from the plan's Deviations section, rewritten plainly: what differs, why, and the
+decision record if one was written. "None." if there were none.
+
+### Decisions taken during the stage
+
+Decision records added in this pull request, one line each with a link. "None." if none.
+
+### Implementation record
+
+- Pull request: #N (URL)
+- Plan, at its last commit: permalink
+- Commits: first..last commit before the close-out commit (short hashes)
+- Release: v<version> (tag created by Andy after the squash merge; decision 0018)
+```
+
+## 5. Update statuses and delete the plan
+
+- In the specification's first lines, change `Status: Approved (...)` to
+  `Status: Implemented (YYYY-MM-DD, pull request #N)`. Change nothing else in the body.
+- In `docs/specs/2026-09-12-architecture-and-roadmap.md`, add ` — done` to the stage's heading
+  and one line under it: `As built: see the stage specification's As-built section.`
+  with a relative link to the specification.
+- `git rm docs/plans/<plan-file>`
+- Using the release version determined in section 2 (decision 0018), set
+  `version = "<version>"` in `pyproject.toml` if it differs, then run `uv lock` so `uv.lock`
+  records the same version.
+
+## 6. Check, show, commit
+
+```bash
+uv run python -m scripts.check_docs
+make check
+```
+
+Both must pass. Confirm the close-out condition's evidence now holds: check_docs printed nothing.
+Show the user the As-built section and the status changes, and wait for approval. Then:
+
+```bash
+git add -A docs pyproject.toml uv.lock
+git commit -m "Close out <stage>: As-built record, plan removed (decision 0017)"
+git push
+```
+
+## 7. After the merge — tell Andy
+
+The skill ends at the push. Tell Andy, in these words, what to run once the pull request is
+squash-merged (decision 0018):
+
+```bash
+gh release create v<version> --target main --generate-notes --title "<stage>: <name>"
+```
+
+For example `gh release create v0.1.0 --target main --generate-notes --title "S0: foundation"`.
+This creates the tag on the merged commit and a release listing the pull requests merged since
+the previous tag. The release page is the project's changelog; there is no `CHANGELOG.md`.

@@ -9,20 +9,23 @@ Safety Board later publishes.
 > authoritative ground truth: **nobody here labels anything**, so the evaluation cannot
 > become an argument with itself.
 >
-> The agent reads the evidence for a case and returns a cause, chosen from the NTSB's own
-> codes so scoring is exact match with no judge in the loop. Where the case file is thin it
-> goes and fetches the investigation's public document folder — which is the one place a
-> measurement showed an agent earns its keep, rather than the one place it looked
-> impressive.
+> The agent reads the evidence for a case, writes its own account of what that evidence
+> shows, and returns a cause, chosen from the NTSB's own codes so scoring is exact match
+> with no judge in the loop. The structured case record is thin, so it goes and fetches the
+> investigation's public document folder — which is the one place a measurement showed an
+> agent earns its keep, rather than the one place it looked impressive.
 >
 > It will run on **open** investigations, publishing timestamped predictions that the NTSB
 > scores months later by publishing its own verdict. Predictions are append-only and hashed,
 > so "it predicted this on day 3" is checkable by a stranger rather than something they have
 > to take on trust.
 >
-> **Status: not built yet.** This repository holds the architecture, the build order, and
-> the decisions behind both. The measurement work that justifies building it is complete and
-> frozen at [floyda/ntsb-spike](https://github.com/floyda/ntsb-spike).
+> **Status: S0 (foundation) built; no agent yet.** The repository has strict tooling, data
+> ingestion, the evidence/synthesis/verdict split with its layered leakage guard, and a model
+> seam — see "Commands" below to run it. The agent loop, the docket tool and the evaluation
+> harness are not built yet. The architecture, the build order, and the decisions behind both
+> are also here. The measurement work that justifies building at all is complete and frozen at
+> [floyda/ntsb-spike](https://github.com/floyda/ntsb-spike).
 
 ---
 
@@ -55,11 +58,14 @@ agent only does the second half.** It never sees the wreckage; it sees what the
 investigators wrote down. That keeps the claim honest and matches what the data can
 actually support.
 
-**The split that makes the evaluation honest.** The factual narrative and the docket are
-*evidence* the agent may read. The analysis, the probable cause and the codes are the
-*answer*, and are never passed to a model except to score it. That boundary is enforced in
-one function with an assertion and a test — not by convention, because convention is what
-fails silently.
+**The split that makes the evaluation honest.** Each record is split three ways. The
+structured observations and the docket's evidence documents are *evidence* the agent may
+read. The factual narrative and the analysis are *synthesis*: the investigator's write-up,
+produced at the end of the investigation and directed toward the cause they reached. The
+probable cause and the codes are the *verdict*. Synthesis and verdict are never passed to a
+model except to score it. A live case has no factual narrative yet, so writing one is part
+of the agent's job, not an input to it. That boundary is enforced in one function with a
+layered guard and tests — not by convention, because convention is what fails silently.
 
 ## Why this dataset, for a demonstration
 
@@ -104,7 +110,13 @@ misses examined by hand, none were cases where the model misread evidence it had
 given.
 
 So the agent exists to go and read the docket. Nothing beyond that is justified by
-measurement, and nothing beyond that is being built. Similar-case retrieval, regulation
+measurement, and nothing beyond that is being built.
+
+**One change since the spike.** Those figures treated the factual narrative as evidence. The
+build does not: the narrative is the investigator's summary, written once the cause is known,
+and a live case never has one. Withholding it means every case depends on the docket rather
+than about half, which strengthens the argument above — and it means the 57% and 88% figures
+are history, not bars. The nearest precedent for what the agent faces is the 12%. Similar-case retrieval, regulation
 lookup and airframe history were all considered and dropped, because the labelled failures
 never asked for them.
 
@@ -115,21 +127,18 @@ then [the build brief](https://github.com/floyda/ntsb-spike/blob/main/docs/build
 
 ## What the agent has to beat
 
-Stated in advance, so the result can be checked rather than narrated:
+Stated in advance, so the result can be checked rather than narrated. The exact figures
+are set in build stage S1, before the agent exists, because the spike's bars were written
+against the narrative split that no longer applies. What they will require, in kind:
 
-- At least **50% top-1** on no-narrative cases, up from 12%. Below about 30% would mean the
-  docket tool is not delivering the evidence the labels said was there.
-- Overall held-out top-1 above the one-shot ceiling, measured like-for-like.
-- An **ablation** with the docket tool removed must show the loss concentrated in
-  no-narrative cases. If it does not, the tool is not doing what is claimed.
+- Held-out top-1 above a **one-shot ceiling re-measured on this stack**: code-constrained
+  output, no factual narrative, the same 40 cases first.
+- An **ablation** with the docket tool removed must show a real loss. If it does not, the
+  tool is not doing what is claimed.
 - **Abstention stays sensible**: it should fall as the docket supplies evidence, but hold
   where only physical evidence could decide the case.
-- Average cost under **£0.05 per case**, enforced by a cap in code rather than watched.
-
-The one-shot ceiling is being re-measured before the agent is built. The 57% above was
-scored on free text by a human; output here is constrained to NTSB codes so scoring needs
-no judge, and that is a different enough task that the old number is a reference point
-rather than a bar.
+- Average cost per case under a **cap enforced in code** rather than watched. The spike's
+  £0.05 line is re-measured, because every case now reads the docket.
 
 ## How it will be checkable in public
 
@@ -149,9 +158,8 @@ system runs unattended and can be proved wrong.
 ## Architecture in one paragraph
 
 One library with thin entrypoints over it, so the agent that is evaluated and the agent
-that is deployed are the same code with the same commit identifier. A deterministic router
-sends cases with a narrative down a cheap single-call path and the rest into a tool loop
-with a step budget and a hard cost cap. Scheduled work runs as a single container task in
+that is deployed are the same code with the same commit identifier. Every case goes through a tool loop with a step budget and a hard cost
+cap. Scheduled work runs as a single container task in
 its own AWS account, writing to a single-writer store. The public site is a pure function
 of that store — generated files, no server, no request-time database — so hosting cost does
 not move with traffic.
@@ -160,7 +168,7 @@ not move with traffic.
 
 | stage | what it delivers |
 |---|---|
-| S0 | repository foundation, ingestion, the evidence/answer split and its leakage test, CI |
+| S0 | repository foundation, ingestion, the evidence / synthesis / verdict split and its leakage guard, CI |
 | S1 | code-constrained output, judge-free scoring, evaluation harness, the re-measured ceiling |
 | S2 | docket client, PDF classification and text extraction |
 | S2.5 | the recorder — polls open dockets and timestamps when each document first appears |
@@ -178,13 +186,50 @@ Detail: [`docs/specs/2026-09-12-architecture-and-roadmap.md`](docs/specs/2026-09
 ## Repository layout
 
 ```
-docs/specs/       architecture and build order
-docs/decisions/   numbered decision records — context, choice, reasoning, alternatives
-docs/runbooks/    operational procedures
+src/ntsb_probable_cause/   the library: settings, data ingestion, field roles, the
+                            evidence/synthesis/verdict split and its leakage guard, model seam
+apps/                       thin entrypoints over the library (e.g. apps/ingest)
+scripts/                    one-off and maintenance scripts (fixtures, the corpus scan,
+                            documentation checks) — not part of the library
+tests/                      unit tests and fixtures
+docs/specs/                 architecture and build order
+docs/decisions/             numbered decision records — context, choice, reasoning, alternatives
+docs/plans/                 implementation plans for the stage currently in progress
+docs/results/               committed output of scripts that report a number
+docs/runbooks/              operational procedures
 ```
 
 Every significant decision is written down with what it rules out, including the ones that
 turned out to be wrong. See [`docs/decisions/`](docs/decisions/).
+
+## Commands
+
+Requires [`uv`](https://docs.astral.sh/uv/). `uv sync` installs the project and its dev
+dependencies.
+
+```bash
+make check   # lint, type-check (mypy --strict) and test — what CI runs
+make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
+make type    # mypy
+make test    # pytest
+make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
+make build   # build data/processed/cases.parquet from the raw store
+make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
+```
+
+Other scripts, run with `uv run python -m scripts.<name>`:
+
+- `scripts.make_fixture` — create redacted development-split fixtures (decision 0015); see
+  its module docstring for the `records` / `auto` / `api` subcommands.
+- `scripts.check_docs` — the documentation check decision 0017's stage close-out depends on.
+
+Settings are read from the environment (`NTSB_` prefix, decision 0012), or a local `.env`
+file:
+
+- `NTSB_API_KEY` — the NTSB Enterprise API key. Required for `make ingest`; never printed or
+  committed.
+- `NTSB_DATA_DIR` — where raw and processed data live (default `data`). Nothing under it is
+  committed.
 
 ## A note on tone
 

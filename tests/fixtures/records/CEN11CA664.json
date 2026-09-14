@@ -1,0 +1,712 @@
+{
+  "fixture": {
+    "fetched_at": "2026-09-13T19:48:03.342681+00:00",
+    "redacted_fields": [
+      "operatorAddress",
+      "operatorCertificateNumber",
+      "operatorDoingBusinessAs",
+      "operatorIndividual",
+      "operatorName",
+      "operatorZip",
+      "ownerAddress",
+      "ownerIndividual",
+      "ownerZip",
+      "registeredOwner"
+    ],
+    "source": "GetCasesByDateRangeV2"
+  },
+  "record": {
+    "aircrafts": [
+      {
+        "additionalEquipment": [],
+        "aircraftAccidents": [
+          {
+            "damageLevel": "Substantial",
+            "explosionType": null,
+            "fireType": "None",
+            "unknownNumberofOccupants": false
+          }
+        ],
+        "aircraftAmateurBuilt": false,
+        "aircraftAtTimeOfAccident": false,
+        "aircraftCabinCrewSeats": null,
+        "aircraftCategory": "Airplane",
+        "aircraftCommercialSpaceFlight": false,
+        "aircraftEltActivated": null,
+        "aircraftEltAidedLocatingAccident": null,
+        "aircraftEltConnectedAntenna": null,
+        "aircraftEltInstalled": null,
+        "aircraftEltManufacturer": null,
+        "aircraftEltModelPart": null,
+        "aircraftEltReasonOther": null,
+        "aircraftEltStillMounted": null,
+        "aircraftElttsoNumber": null,
+        "aircraftFlightCrewSeats": null,
+        "aircraftFromLastInspectionHours": null,
+        "aircraftFuelOnBoard": null,
+        "aircraftIfrEquippedAndCertified": false,
+        "aircraftLandingGearFormation": "Tailwheel",
+        "aircraftLastInspection": false,
+        "aircraftLastInspectionDate": null,
+        "aircraftLastInspectionType": null,
+        "aircraftMake": "BOEING",
+        "aircraftManufacturer": null,
+        "aircraftMaxGrossWeight": null,
+        "aircraftMissing": false,
+        "aircraftModel": "E75",
+        "aircraftNumber": 1,
+        "aircraftNumberOfEngines": 1,
+        "aircraftNumberOfSeats": 2,
+        "aircraftPassengerSeats": null,
+        "aircraftRegistrationNumber": "N54087",
+        "aircraftRetractableLandingGear": false,
+        "aircraftSerialNumber": "75-1148",
+        "aircraftSeries": null,
+        "aircraftUnmanned": false,
+        "airframeTotalTimeHours": null,
+        "airports": [
+          {
+            "airportArpDirectionDeg": null,
+            "airportArpDistanceNm": null,
+            "airportArpElevationFtMsl": null,
+            "airportFacilityName": "Ellington Field",
+            "airportLandingSurfaceCondition": null,
+            "airportLandingSurfaceType": null,
+            "airportLocationId": "EFD",
+            "airportOnAirportAirstrip": "Yes",
+            "airportRunwayId": null,
+            "airportRunwayLengthFt": null,
+            "airportRunwayNa": true,
+            "airportRunwayWidthFt": null
+          }
+        ],
+        "airspaces": [],
+        "airworthinessCertificates": [
+          {
+            "airworthinessCertificate": "Normal",
+            "airworthinessCertificateType": "Standard"
+          }
+        ],
+        "approaches": [
+          {
+            "ifrapproach": "None",
+            "pre1982ApproachType": null,
+            "vfrapproachLanding": "None"
+          }
+        ],
+        "cabinCrewFatal": null,
+        "cabinCrewMinor": null,
+        "cabinCrewNone": null,
+        "cabinCrewSerious": null,
+        "crewAndOccupants": [
+          {
+            "age": 72,
+            "availableRestraintType": null,
+            "childRestraint": null,
+            "crewCategory": "Pilot",
+            "crewOccupantNumber": 1,
+            "dateOfLastFlightReview": null,
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": false,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": null,
+            "injuryLevel": null,
+            "medicalCertLimitations": null,
+            "medicalCertificate": "Class 2",
+            "medicalCertificateStatus": null,
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": null,
+            "pilotCertificates": [
+              "Airline transport",
+              "Flight instructor"
+            ],
+            "pilotFlying": null,
+            "pilotRatingForAirplanes": [
+              "Multi-engine land",
+              "Single-engine land"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 32000,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 1200,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": null,
+            "rowNumber": null,
+            "seatOccupied": null,
+            "sex": "Male",
+            "toxicologyPerformed": false
+          }
+        ],
+        "eltReasons": [],
+        "engines": [
+          {
+            "engineFromLastInspectionHours": null,
+            "engineFuelSystem": "Carburetor",
+            "engineManufacturer": "CONT MOTOR",
+            "engineModelSeries": "W670 SERIES",
+            "engineNumbers": 1,
+            "enginePropellerMake": null,
+            "enginePropellerModel": null,
+            "enginePropellerSerialNumber": null,
+            "enginePropellerType": null,
+            "engineRatedPower": 250,
+            "engineRatedPowerType": "Horsepower",
+            "engineSerialNumber": null,
+            "engineTotalTime": null,
+            "engineType": "Reciprocating"
+          }
+        ],
+        "events": [
+          {
+            "cicttEventSOEGroup": "GroundCollision",
+            "cicttPhaseSOEGroup": "Taxi",
+            "eventCode": "250200",
+            "eventNumber": 1,
+            "eventTier1Name": "Taxi",
+            "eventTier2Name": "Ground collision",
+            "isDefiningEvent": true,
+            "sequenceNumber": 1,
+            "tier1Number": "250",
+            "tier2Number": "200"
+          }
+        ],
+        "findings": [
+          {
+            "findingCode": "0204101544",
+            "findingDescription": "Personnel issues-Action/decision-Action-Incorrect action performance-Pilot - C",
+            "findingNumber": 1,
+            "findingReportText": "Personnel issues - Action/decision - Action - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Action/decision",
+            "tier2Number": "04",
+            "tier3Name": "Action",
+            "tier3Number": "10",
+            "tier4Name": "Incorrect action performance",
+            "tier4Number": "15"
+          }
+        ],
+        "flightCrewFatal": 0,
+        "flightCrewMinor": 0,
+        "flightCrewNone": 1,
+        "flightCrewSerious": 0,
+        "injuries": [
+          {
+            "aircraftNumber": 1,
+            "cabinCrewFatal": null,
+            "cabinCrewMinor": null,
+            "cabinCrewNone": null,
+            "cabinCrewSerious": null,
+            "cabinCrewTotal": null,
+            "flightCrewFatal": 0,
+            "flightCrewMinor": 0,
+            "flightCrewNone": 1,
+            "flightCrewSerious": 0,
+            "flightCrewTotal": 0,
+            "lapChildrenFatal": null,
+            "lapChildrenMinor": null,
+            "lapChildrenNone": null,
+            "lapChildrenSerious": null,
+            "lapChildrenTotal": null,
+            "mkey": 81892,
+            "passengersFatal": null,
+            "passengersMinor": null,
+            "passengersNone": null,
+            "passengersSerious": null,
+            "passengersTotal": null
+          }
+        ],
+        "itinerary": [
+          {
+            "departureAirportId": "EFD",
+            "departureCity": "Houston",
+            "departureCountry": "USA",
+            "departureIsUtc": false,
+            "departureStateOrRegion": "TX",
+            "departureTimeUtc": null,
+            "departureTimeUtcOffsetHours": null,
+            "destination": null,
+            "destinationAirportId": "EFD",
+            "destinationCity": "Houston",
+            "destinationCountry": "USA",
+            "destinationIsUtc": false,
+            "destinationStateOrRegion": "TX",
+            "destinationTimeUtc": null,
+            "destinationTimeUtcOffsetHours": null,
+            "flightPlan": "Unknown",
+            "flightPlanSpecification": null,
+            "lastDeparture": null
+          }
+        ],
+        "landingGear": [],
+        "lapChildrenFatal": null,
+        "lapChildrenMinor": null,
+        "lapChildrenNone": null,
+        "lapChildrenSerious": null,
+        "occurrences": [],
+        "operatingCertificates": [
+          "None"
+        ],
+        "operatorScopes": [],
+        "ownerOperators": [
+          {
+            "airMedical": false,
+            "airMedicalType": null,
+            "flightOperationType": "Instructional",
+            "flightScheduledType": null,
+            "flightServiceType": null,
+            "flightTerminalType": null,
+            "hasOperatingCertificates": null,
+            "operatorCity": "WILMINGTON",
+            "operatorCountry": "USA",
+            "operatorDesignatorCode": null,
+            "operatorStateOrRegion": "DE",
+            "ownerCity": "WILMINGTON",
+            "ownerCountry": "USA",
+            "ownerStateOrRegion": "DE",
+            "regulationFlightConductedUnder": "091",
+            "revenueSightseeing": false,
+            "secondPilotPresent": null
+          }
+        ],
+        "passengersFatal": null,
+        "passengersMinor": null,
+        "passengersNone": null,
+        "passengersSerious": null,
+        "totalFatal": 0,
+        "totalMinor": 0,
+        "totalNone": 1,
+        "totalSerious": 0,
+        "yearOfManufacture": null
+      },
+      {
+        "additionalEquipment": [],
+        "aircraftAccidents": [
+          {
+            "damageLevel": "Substantial",
+            "explosionType": null,
+            "fireType": "None",
+            "unknownNumberofOccupants": false
+          }
+        ],
+        "aircraftAmateurBuilt": false,
+        "aircraftAtTimeOfAccident": false,
+        "aircraftCabinCrewSeats": null,
+        "aircraftCategory": "Airplane",
+        "aircraftCommercialSpaceFlight": false,
+        "aircraftEltActivated": null,
+        "aircraftEltAidedLocatingAccident": null,
+        "aircraftEltConnectedAntenna": null,
+        "aircraftEltInstalled": null,
+        "aircraftEltManufacturer": null,
+        "aircraftEltModelPart": null,
+        "aircraftEltReasonOther": null,
+        "aircraftEltStillMounted": null,
+        "aircraftElttsoNumber": null,
+        "aircraftFlightCrewSeats": null,
+        "aircraftFromLastInspectionHours": null,
+        "aircraftFuelOnBoard": null,
+        "aircraftIfrEquippedAndCertified": false,
+        "aircraftLandingGearFormation": "Tricycle",
+        "aircraftLastInspection": false,
+        "aircraftLastInspectionDate": null,
+        "aircraftLastInspectionType": null,
+        "aircraftMake": "CESSNA",
+        "aircraftManufacturer": null,
+        "aircraftMaxGrossWeight": null,
+        "aircraftMissing": false,
+        "aircraftModel": "172R",
+        "aircraftNumber": 2,
+        "aircraftNumberOfEngines": 1,
+        "aircraftNumberOfSeats": 4,
+        "aircraftPassengerSeats": null,
+        "aircraftRegistrationNumber": "N72566",
+        "aircraftRetractableLandingGear": false,
+        "aircraftSerialNumber": "17281012",
+        "aircraftSeries": null,
+        "aircraftUnmanned": false,
+        "airframeTotalTimeHours": null,
+        "airports": [
+          {
+            "airportArpDirectionDeg": null,
+            "airportArpDistanceNm": null,
+            "airportArpElevationFtMsl": null,
+            "airportFacilityName": "Ellington Field",
+            "airportLandingSurfaceCondition": null,
+            "airportLandingSurfaceType": null,
+            "airportLocationId": "EFD",
+            "airportOnAirportAirstrip": "Yes",
+            "airportRunwayId": null,
+            "airportRunwayLengthFt": null,
+            "airportRunwayNa": true,
+            "airportRunwayWidthFt": null
+          }
+        ],
+        "airspaces": [],
+        "airworthinessCertificates": [
+          {
+            "airworthinessCertificate": "Normal",
+            "airworthinessCertificateType": "Standard"
+          }
+        ],
+        "approaches": [
+          {
+            "ifrapproach": "None",
+            "pre1982ApproachType": null,
+            "vfrapproachLanding": null
+          }
+        ],
+        "cabinCrewFatal": null,
+        "cabinCrewMinor": null,
+        "cabinCrewNone": null,
+        "cabinCrewSerious": null,
+        "crewAndOccupants": [
+          {
+            "age": 57,
+            "availableRestraintType": null,
+            "childRestraint": null,
+            "crewCategory": "Flight instructor",
+            "crewOccupantNumber": 1,
+            "dateOfLastFlightReview": null,
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": false,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": null,
+            "injuryLevel": "None",
+            "medicalCertLimitations": null,
+            "medicalCertificate": "Class 1",
+            "medicalCertificateStatus": null,
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": null,
+            "pilotCertificates": [
+              "Airline transport",
+              "Private",
+              "Commercial",
+              "Flight instructor"
+            ],
+            "pilotFlying": null,
+            "pilotRatingForAirplanes": [
+              "Multi-engine land",
+              "Single-engine land"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 23000,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 92,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": null,
+            "rowNumber": null,
+            "seatOccupied": null,
+            "sex": "Male",
+            "toxicologyPerformed": false
+          }
+        ],
+        "eltReasons": [],
+        "engines": [
+          {
+            "engineFromLastInspectionHours": null,
+            "engineFuelSystem": "Fuel injected",
+            "engineManufacturer": "Lycoming",
+            "engineModelSeries": "IO-360",
+            "engineNumbers": 1,
+            "enginePropellerMake": null,
+            "enginePropellerModel": null,
+            "enginePropellerSerialNumber": null,
+            "enginePropellerType": null,
+            "engineRatedPower": 180,
+            "engineRatedPowerType": "Horsepower",
+            "engineSerialNumber": null,
+            "engineTotalTime": null,
+            "engineType": "Reciprocating"
+          }
+        ],
+        "events": [
+          {
+            "cicttEventSOEGroup": "GroundCollision",
+            "cicttPhaseSOEGroup": "Standing",
+            "eventCode": "153200",
+            "eventNumber": 1,
+            "eventTier1Name": "Standing-engine(s) operating",
+            "eventTier2Name": "Ground collision",
+            "isDefiningEvent": true,
+            "sequenceNumber": 1,
+            "tier1Number": "153",
+            "tier2Number": "200"
+          }
+        ],
+        "findings": [
+          {
+            "findingCode": "0204101545",
+            "findingDescription": "Personnel issues-Action/decision-Action-Incorrect action performance-Pilot of other aircraft - C",
+            "findingNumber": 1,
+            "findingReportText": "Personnel issues - Action/decision - Action - Pilot of other aircraft",
+            "inProbableCause": true,
+            "modifierName": "Pilot of other aircraft",
+            "modifierNumber": "45",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Action/decision",
+            "tier2Number": "04",
+            "tier3Name": "Action",
+            "tier3Number": "10",
+            "tier4Name": "Incorrect action performance",
+            "tier4Number": "15"
+          }
+        ],
+        "flightCrewFatal": 0,
+        "flightCrewMinor": 0,
+        "flightCrewNone": 2,
+        "flightCrewSerious": 0,
+        "injuries": [
+          {
+            "aircraftNumber": 2,
+            "cabinCrewFatal": null,
+            "cabinCrewMinor": null,
+            "cabinCrewNone": null,
+            "cabinCrewSerious": null,
+            "cabinCrewTotal": null,
+            "flightCrewFatal": 0,
+            "flightCrewMinor": 0,
+            "flightCrewNone": 2,
+            "flightCrewSerious": 0,
+            "flightCrewTotal": 0,
+            "lapChildrenFatal": null,
+            "lapChildrenMinor": null,
+            "lapChildrenNone": null,
+            "lapChildrenSerious": null,
+            "lapChildrenTotal": null,
+            "mkey": 81892,
+            "passengersFatal": null,
+            "passengersMinor": null,
+            "passengersNone": null,
+            "passengersSerious": null,
+            "passengersTotal": null
+          }
+        ],
+        "itinerary": [
+          {
+            "departureAirportId": "EFD",
+            "departureCity": "Houston",
+            "departureCountry": "USA",
+            "departureIsUtc": false,
+            "departureStateOrRegion": "TX",
+            "departureTimeUtc": null,
+            "departureTimeUtcOffsetHours": null,
+            "destination": null,
+            "destinationAirportId": "EFD",
+            "destinationCity": "Houston",
+            "destinationCountry": "USA",
+            "destinationIsUtc": false,
+            "destinationStateOrRegion": "TX",
+            "destinationTimeUtc": null,
+            "destinationTimeUtcOffsetHours": null,
+            "flightPlan": "Unknown",
+            "flightPlanSpecification": null,
+            "lastDeparture": null
+          }
+        ],
+        "landingGear": [],
+        "lapChildrenFatal": null,
+        "lapChildrenMinor": null,
+        "lapChildrenNone": null,
+        "lapChildrenSerious": null,
+        "occurrences": [],
+        "operatingCertificates": [
+          "None"
+        ],
+        "operatorScopes": [],
+        "ownerOperators": [
+          {
+            "airMedical": false,
+            "airMedicalType": null,
+            "flightOperationType": "Instructional",
+            "flightScheduledType": null,
+            "flightServiceType": null,
+            "flightTerminalType": null,
+            "hasOperatingCertificates": null,
+            "operatorCity": "HOUSTON",
+            "operatorCountry": "USA",
+            "operatorDesignatorCode": null,
+            "operatorStateOrRegion": "TX",
+            "ownerCity": "HOUSTON",
+            "ownerCountry": "USA",
+            "ownerStateOrRegion": "TX",
+            "regulationFlightConductedUnder": "091",
+            "revenueSightseeing": false,
+            "secondPilotPresent": null
+          }
+        ],
+        "passengersFatal": null,
+        "passengersMinor": null,
+        "passengersNone": null,
+        "passengersSerious": null,
+        "totalFatal": 0,
+        "totalMinor": 0,
+        "totalNone": 2,
+        "totalSerious": 0,
+        "yearOfManufacture": null
+      }
+    ],
+    "boardMeetingDate": null,
+    "boardMemberLaunch": false,
+    "caseClosed": true,
+    "caseCreatedDateTimeUtc": "2011-09-26T13:00:00",
+    "caseType": "Data Collection",
+    "completionStatus": "Completed",
+    "docketOpenDate": null,
+    "docketPage": null,
+    "eventCity": "Houston",
+    "eventCollisionWithOtherAircraft": "None",
+    "eventCountry": "USA",
+    "eventDate": "2011-09-24",
+    "eventEnvironmentalDamage": null,
+    "eventHazmatInvolved": false,
+    "eventIsUtc": false,
+    "eventLatLongEstimated": true,
+    "eventLatitude": 29.604444,
+    "eventLocation": null,
+    "eventLongitude": -95.155281,
+    "eventPropertyDamage": null,
+    "eventStateOrRegion": "TX",
+    "eventTimeUtc": "18:30:00",
+    "eventTimeUtcOffsetHours": -5,
+    "eventType": "Accident",
+    "eventZipcode": "77059",
+    "factualFinalReportFlavor": "Basic (no factual)",
+    "factualPublishedDate": "2011-09-29",
+    "hasSafetyRecommendation": false,
+    "highestInjuryLevel": "None",
+    "investigatingParties": [
+      "FAA/FSDO"
+    ],
+    "investigationClass": null,
+    "investigationPage": null,
+    "isPost2008": true,
+    "isPre1982": false,
+    "isStudy": false,
+    "lastRevisionDate": null,
+    "launchType": null,
+    "leadAgency": "NTSB",
+    "mKey": 81892,
+    "mode": "Aviation",
+    "narratives": [
+      {
+        "aircraftNumber": 2,
+        "analysisNarrative": "After landing, the certified flight instructor and the student pilot turned off the runway, passed over the hold short lines, and stopped on the taxiway to perform the after-landing checklist. While performing these duties, the airplane was struck from behind by another airplane and sustained substantial damage to the vertical stabilizer, rudder, horizontal stabilizer, and empennage. The other airplane sustained substantial damage to the lower right wing spar.",
+        "concatenatedFactualNarrative": "After landing, the certified flight instructor and the student pilot turned off the runway, passed over the hold short lines, and stopped on the taxiway to perform the after-landing check list. While performing these duties, the airplane was struck from behind by another airplane and sustained substantial damage to the vertical stabilizer, the rudder, the horizontal stabilizer, and the empennage. The other airplane sustained substantial damage to the lower right wing spar.",
+        "prelimNarrative": null,
+        "probableCause": "The pilot of the other airplane\u2019s failure to maintain visual contact while taxiing."
+      },
+      {
+        "aircraftNumber": 1,
+        "analysisNarrative": "After landing, the pilot was cleared to taxi his tailwheel-equipped airplane to the ramp and was aware that another airplane would be in front of him as he taxied. As he crossed over an active runway onto the taxiway, he steered straight ahead and did not perform any s-turns to maintain visual contact of the airplane ahead of him. As he cleared the runway, he looked down to change his radio frequency and suddenly realized that he needed to look out for the airplane in front of him. When he looked up, he saw the right wingtip of the other airplane and did not have time to stop before he collided into its tail. The collision resulted in substantial damage to the lower right wing spar. The other airplane sustained substantial damage to the entire tail section including the vertical stabilizer, the rudder, the horizontal stabilizer, and the empennage.",
+        "concatenatedFactualNarrative": "After landing, the pilot was cleared to taxi his tail-wheel equipped airplane to the ramp and was aware that another airplane would be in front of him as he taxied. As he crossed over an active runway onto the taxiway, he steered straight ahead and did not perform any s-turns to maintain visual contact of the airplane ahead of him. As he cleared the runway, he looked down to change his radio frequency and suddenly realized that he needed to look out for the airplane in front of him. When he looked up, he saw the right wing tip of the other airplane and did not have time to stop before he collided into its tail. The collision resulted in substantial damage to the lower right wing spar.  The other airplane sustained substantial damage to the entire tail section including the vertical stabilizer, the rudder, the horizontal stabilizer, and the empennage.",
+        "prelimNarrative": null,
+        "probableCause": "The pilot\u2019s failure to maintain visual contact while taxiing."
+      }
+    ],
+    "ntsbNumber": "CEN11CA664",
+    "onboardFatal": 0,
+    "onboardMinor": 0,
+    "onboardNone": 3,
+    "onboardSerious": 0,
+    "ongroundFatal": null,
+    "ongroundMinor": null,
+    "ongroundSerious": null,
+    "originalPublishedDate": "2011-11-03",
+    "publishDateTime": "2020-09-25T17:15:45.552",
+    "publishProfile": "DirectorApprovedBriefFinal",
+    "region": "Central Region",
+    "reportDate": "2011-11-03",
+    "reportNumber": null,
+    "reportPage": null,
+    "reportType": "Approved by Office Director",
+    "richNarratives": null,
+    "topicMode": "Aviation",
+    "totalFatal": 0,
+    "totalMinor": 0,
+    "totalNone": 3,
+    "totalSerious": 0,
+    "weatherConditions": [
+      {
+        "accidentSiteCondition": "Visual (VMC)",
+        "barometricSettingMmHg": 30.02,
+        "cloudCondition": null,
+        "cloudCoverage": null,
+        "daylightCondition": "Day",
+        "dewPointF": 69.8,
+        "icingActualAmount": null,
+        "icingActualType": null,
+        "icingForecastAmount": null,
+        "icingForecastType": null,
+        "investigationWeatherSource": "Observation facility",
+        "lowestCeiling": "Broken",
+        "lowestCeilingFtAgl": 3500,
+        "lowestCloudConditionFtAgl": null,
+        "metar": null,
+        "observationDate": "2011-09-24",
+        "observationFacilityDirectionDeg": null,
+        "observationFacilityDistanceNm": null,
+        "observationFacilityElevationFt": 32,
+        "observationFacilityId": "EFD",
+        "observationFacilityName": null,
+        "observationTimeUtc": "20:50:00",
+        "observationUtcOffsetHours": -5,
+        "pilotWeatherSource": "Automated report",
+        "precipitationNa": false,
+        "remarks": null,
+        "runwayVisualRangeFt": null,
+        "temperatureF": 84.2,
+        "turbulenceActualSeverity": null,
+        "turbulenceActualType": null,
+        "turbulenceForecastSeverity": null,
+        "turbulenceForecastType": null,
+        "visibilitySm": 10,
+        "weatherSource": null,
+        "windCalm": false,
+        "windDirectionDeg": 260,
+        "windDirectionVariable": false,
+        "windGustKts": null,
+        "windGustsAbsent": true,
+        "windSpeedKts": 3,
+        "windSpeedVariable": false
+      }
+    ],
+    "weatherPrecipitations": []
+  }
+}

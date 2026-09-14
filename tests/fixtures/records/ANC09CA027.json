@@ -1,0 +1,507 @@
+{
+  "fixture": {
+    "fetched_at": "2026-09-13T19:39:34.050314+00:00",
+    "redacted_fields": [
+      "operatorAddress",
+      "operatorCertificateNumber",
+      "operatorDoingBusinessAs",
+      "operatorIndividual",
+      "operatorName",
+      "operatorZip",
+      "ownerAddress",
+      "ownerIndividual",
+      "ownerZip",
+      "registeredOwner"
+    ],
+    "source": "GetCasesByDateRangeV2"
+  },
+  "record": {
+    "aircrafts": [
+      {
+        "additionalEquipment": [],
+        "aircraftAccidents": [
+          {
+            "damageLevel": "Substantial",
+            "explosionType": "None",
+            "fireType": "None",
+            "unknownNumberofOccupants": false
+          }
+        ],
+        "aircraftAmateurBuilt": false,
+        "aircraftAtTimeOfAccident": false,
+        "aircraftCabinCrewSeats": null,
+        "aircraftCategory": "Airplane",
+        "aircraftCommercialSpaceFlight": false,
+        "aircraftEltActivated": false,
+        "aircraftEltAidedLocatingAccident": false,
+        "aircraftEltConnectedAntenna": null,
+        "aircraftEltInstalled": true,
+        "aircraftEltManufacturer": null,
+        "aircraftEltModelPart": null,
+        "aircraftEltReasonOther": null,
+        "aircraftEltStillMounted": null,
+        "aircraftElttsoNumber": "C91",
+        "aircraftFlightCrewSeats": null,
+        "aircraftFromLastInspectionHours": 60,
+        "aircraftFuelOnBoard": null,
+        "aircraftIfrEquippedAndCertified": false,
+        "aircraftLandingGearFormation": null,
+        "aircraftLastInspection": true,
+        "aircraftLastInspectionDate": "2008-08-25",
+        "aircraftLastInspectionType": "Annual",
+        "aircraftMake": "CESSNA",
+        "aircraftManufacturer": null,
+        "aircraftMaxGrossWeight": 3190,
+        "aircraftMissing": false,
+        "aircraftModel": "180K",
+        "aircraftNumber": 1,
+        "aircraftNumberOfEngines": 1,
+        "aircraftNumberOfSeats": 4,
+        "aircraftPassengerSeats": null,
+        "aircraftRegistrationNumber": "N2801K",
+        "aircraftRetractableLandingGear": false,
+        "aircraftSerialNumber": "18053072",
+        "aircraftSeries": null,
+        "aircraftUnmanned": false,
+        "airframeTotalTimeHours": 8913,
+        "airports": [],
+        "airspaces": [],
+        "airworthinessCertificates": [
+          {
+            "airworthinessCertificate": "Normal",
+            "airworthinessCertificateType": "Standard"
+          }
+        ],
+        "approaches": [
+          {
+            "ifrapproach": "None",
+            "pre1982ApproachType": null,
+            "vfrapproachLanding": "None"
+          }
+        ],
+        "cabinCrewFatal": null,
+        "cabinCrewMinor": null,
+        "cabinCrewNone": null,
+        "cabinCrewSerious": null,
+        "crewAndOccupants": [
+          {
+            "age": 53,
+            "availableRestraintType": null,
+            "childRestraint": null,
+            "crewCategory": "Pilot",
+            "crewOccupantNumber": 1,
+            "dateOfLastFlightReview": "2007-07-11",
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": false,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": null,
+            "injuryLevel": "None",
+            "medicalCertLimitations": null,
+            "medicalCertificate": "Class 3",
+            "medicalCertificateStatus": "With waivers/limitations",
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": "No",
+            "pilotCertificates": [
+              "Commercial"
+            ],
+            "pilotFlying": null,
+            "pilotRatingForAirplanes": [
+              "Single-engine land",
+              "Single-engine sea"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 2,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "24 Hours"
+              },
+              {
+                "flightHours": 9,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 17,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 1640,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 10,
+                "flightTimeCraft": "Instrument Actual",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 190,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 12,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 44,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 1628,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 1671,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 10,
+                "flightTimeCraft": "Instrument Actual",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 22,
+                "flightTimeCraft": "Instrument Sim",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 190,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 12,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 44,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 1669,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": null,
+            "rowNumber": null,
+            "seatOccupied": "Left",
+            "sex": "Male",
+            "toxicologyPerformed": false
+          }
+        ],
+        "eltReasons": [],
+        "engines": [
+          {
+            "engineFromLastInspectionHours": null,
+            "engineFuelSystem": "Carburetor",
+            "engineManufacturer": "CONT MOTOR",
+            "engineModelSeries": "O-470 SERIES",
+            "engineNumbers": 1,
+            "enginePropellerMake": null,
+            "enginePropellerModel": null,
+            "enginePropellerSerialNumber": null,
+            "enginePropellerType": null,
+            "engineRatedPower": 230,
+            "engineRatedPowerType": "Horsepower",
+            "engineSerialNumber": null,
+            "engineTotalTime": null,
+            "engineType": "Reciprocating"
+          }
+        ],
+        "events": [
+          {
+            "cicttEventSOEGroup": "AbnormalRunwayContact",
+            "cicttPhaseSOEGroup": "Landing",
+            "eventCode": "550090",
+            "eventNumber": 1,
+            "eventTier1Name": "Landing",
+            "eventTier2Name": "Abnormal runway contact",
+            "isDefiningEvent": true,
+            "sequenceNumber": 1,
+            "tier1Number": "550",
+            "tier2Number": "090"
+          },
+          {
+            "cicttEventSOEGroup": "AbnormalRunwayContact",
+            "cicttPhaseSOEGroup": "Landing",
+            "eventCode": "552094",
+            "eventNumber": 2,
+            "eventTier1Name": "Landing-landing roll",
+            "eventTier2Name": "Landing gear collapse",
+            "isDefiningEvent": false,
+            "sequenceNumber": 2,
+            "tier1Number": "552",
+            "tier2Number": "094"
+          }
+        ],
+        "findings": [
+          {
+            "findingCode": "0204152044",
+            "findingDescription": "Personnel issues-Action/decision-Info processing/decision-Decision making/judgment-Pilot - C",
+            "findingNumber": 1,
+            "findingReportText": "Personnel issues - Action/decision - Info processing/decision - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Action/decision",
+            "tier2Number": "04",
+            "tier3Name": "Info processing/decision",
+            "tier3Number": "15",
+            "tier4Name": "Decision making/judgment",
+            "tier4Number": "20"
+          },
+          {
+            "findingCode": "0302101591",
+            "findingDescription": "Environmental issues-Physical environment-Terrain-Rough terrain-Contributed to outcome",
+            "findingNumber": 2,
+            "findingReportText": "Environmental issues - Physical environment - Terrain - Contributed to outcome",
+            "inProbableCause": false,
+            "modifierName": "Contributed to outcome",
+            "modifierNumber": "91",
+            "tier1Name": "Environmental issues",
+            "tier1Number": "03",
+            "tier2Name": "Physical environment",
+            "tier2Number": "02",
+            "tier3Name": "Terrain",
+            "tier3Number": "10",
+            "tier4Name": "Rough terrain",
+            "tier4Number": "15"
+          }
+        ],
+        "flightCrewFatal": 0,
+        "flightCrewMinor": 0,
+        "flightCrewNone": 1,
+        "flightCrewSerious": 0,
+        "injuries": [
+          {
+            "aircraftNumber": 1,
+            "cabinCrewFatal": null,
+            "cabinCrewMinor": null,
+            "cabinCrewNone": null,
+            "cabinCrewSerious": null,
+            "cabinCrewTotal": null,
+            "flightCrewFatal": 0,
+            "flightCrewMinor": 0,
+            "flightCrewNone": 1,
+            "flightCrewSerious": 0,
+            "flightCrewTotal": 0,
+            "lapChildrenFatal": null,
+            "lapChildrenMinor": null,
+            "lapChildrenNone": null,
+            "lapChildrenSerious": null,
+            "lapChildrenTotal": null,
+            "mkey": 73612,
+            "passengersFatal": null,
+            "passengersMinor": null,
+            "passengersNone": null,
+            "passengersSerious": null,
+            "passengersTotal": null
+          }
+        ],
+        "itinerary": [
+          {
+            "departureAirportId": "PAFA",
+            "departureCity": "Fairbanks",
+            "departureCountry": "USA",
+            "departureIsUtc": false,
+            "departureStateOrRegion": "AK",
+            "departureTimeUtc": "17:45:00",
+            "departureTimeUtcOffsetHours": -3,
+            "destination": null,
+            "destinationAirportId": null,
+            "destinationCity": "Bettles",
+            "destinationCountry": "USA",
+            "destinationIsUtc": false,
+            "destinationStateOrRegion": "AK",
+            "destinationTimeUtc": null,
+            "destinationTimeUtcOffsetHours": null,
+            "flightPlan": "VFR",
+            "flightPlanSpecification": "Yes",
+            "lastDeparture": null
+          }
+        ],
+        "landingGear": [
+          "Ski"
+        ],
+        "lapChildrenFatal": null,
+        "lapChildrenMinor": null,
+        "lapChildrenNone": null,
+        "lapChildrenSerious": null,
+        "occurrences": [],
+        "operatingCertificates": [
+          "None"
+        ],
+        "operatorScopes": [],
+        "ownerOperators": [
+          {
+            "airMedical": false,
+            "airMedicalType": null,
+            "flightOperationType": "Personal",
+            "flightScheduledType": null,
+            "flightServiceType": null,
+            "flightTerminalType": null,
+            "hasOperatingCertificates": null,
+            "operatorCity": "NORTH POLE",
+            "operatorCountry": "USA",
+            "operatorDesignatorCode": null,
+            "operatorStateOrRegion": "AK",
+            "ownerCity": "NORTH POLE",
+            "ownerCountry": "USA",
+            "ownerStateOrRegion": "AK",
+            "regulationFlightConductedUnder": "091",
+            "revenueSightseeing": false,
+            "secondPilotPresent": false
+          }
+        ],
+        "passengersFatal": null,
+        "passengersMinor": null,
+        "passengersNone": null,
+        "passengersSerious": null,
+        "totalFatal": 0,
+        "totalMinor": 0,
+        "totalNone": 1,
+        "totalSerious": 0,
+        "yearOfManufacture": null
+      }
+    ],
+    "boardMeetingDate": null,
+    "boardMemberLaunch": false,
+    "caseClosed": true,
+    "caseCreatedDateTimeUtc": "2009-04-07T13:00:00",
+    "caseType": "Data Collection",
+    "completionStatus": "Completed",
+    "docketOpenDate": null,
+    "docketPage": null,
+    "eventCity": "Bettles",
+    "eventCollisionWithOtherAircraft": "None",
+    "eventCountry": "USA",
+    "eventDate": "2009-04-03",
+    "eventEnvironmentalDamage": null,
+    "eventHazmatInvolved": false,
+    "eventIsUtc": false,
+    "eventLatLongEstimated": true,
+    "eventLatitude": 66.913887,
+    "eventLocation": null,
+    "eventLongitude": -151.528884,
+    "eventPropertyDamage": null,
+    "eventStateOrRegion": "AK",
+    "eventTimeUtc": "01:00:00",
+    "eventTimeUtcOffsetHours": -8,
+    "eventType": "Accident",
+    "eventZipcode": "99726",
+    "factualFinalReportFlavor": "Basic (no factual)",
+    "factualPublishedDate": "2009-05-18",
+    "hasSafetyRecommendation": false,
+    "highestInjuryLevel": "None",
+    "investigatingParties": [
+      "Federal Aviation Administration (Airworthiness)"
+    ],
+    "investigationClass": null,
+    "investigationPage": null,
+    "isPost2008": true,
+    "isPre1982": false,
+    "isStudy": false,
+    "lastRevisionDate": null,
+    "launchType": null,
+    "leadAgency": "NTSB",
+    "mKey": 73612,
+    "mode": "Aviation",
+    "narratives": [
+      {
+        "aircraftNumber": 1,
+        "analysisNarrative": "The commercial pilot reported that he was landing on the frozen snow-covered lake in a ski-equipped airplane. During the landing roll the airplane's main landing gear skis encountered a snowdrift, which stripped the nuts that connect the skis to the main landing gear axle. Both skis separated and the airplane's left main landing gear leg collapsed. The left wing struck the snow-covered frozen lake. The airplane sustained substantial damage to the left wing and fuselage. The pilot said that there were no preaccident mechanical problems with the airplane, and noted in his report to the NTSB that he should have inspected the landing site before landing, then selected a better area to land on.",
+        "concatenatedFactualNarrative": "The commercial pilot reported that he was landing on the frozen snow-covered lake in a ski-equipped airplane. During the landing roll the airplane's main landing gear skis encountered a snowdrift, which stripped the nuts that connect the skis to the main landing gear axle. Both skis separated and the airplane's left main landing gear leg collapsed. The left wing struck the snow-covered frozen lake. The airplane sustained substantial damage to the left wing and fuselage. The pilot said there were no preaccident mechanical problems with the airplane, and noted in his report to the NTSB that he should have inspected the landing site before landing, then selected a better area to land on.",
+        "prelimNarrative": null,
+        "probableCause": "The pilot's selection of an unsuitable landing area."
+      }
+    ],
+    "ntsbNumber": "ANC09CA027",
+    "onboardFatal": 0,
+    "onboardMinor": 0,
+    "onboardNone": 1,
+    "onboardSerious": 0,
+    "ongroundFatal": null,
+    "ongroundMinor": null,
+    "ongroundSerious": null,
+    "originalPublishedDate": "2009-07-28",
+    "publishDateTime": "2020-09-25T18:33:19.57",
+    "publishProfile": "DirectorApprovedBriefFinal",
+    "region": "Alaska Regional Office",
+    "reportDate": "2009-07-28",
+    "reportNumber": null,
+    "reportPage": null,
+    "reportType": "Approved by Office Director",
+    "richNarratives": null,
+    "topicMode": "Aviation",
+    "totalFatal": 0,
+    "totalMinor": 0,
+    "totalNone": 1,
+    "totalSerious": 0,
+    "weatherConditions": [
+      {
+        "accidentSiteCondition": "Visual (VMC)",
+        "barometricSettingMmHg": null,
+        "cloudCondition": "Clear",
+        "cloudCoverage": null,
+        "daylightCondition": "Day",
+        "dewPointF": null,
+        "icingActualAmount": null,
+        "icingActualType": null,
+        "icingForecastAmount": null,
+        "icingForecastType": null,
+        "investigationWeatherSource": "Pilot",
+        "lowestCeiling": "None",
+        "lowestCeilingFtAgl": null,
+        "lowestCloudConditionFtAgl": null,
+        "metar": null,
+        "observationDate": "2009-04-02",
+        "observationFacilityDirectionDeg": null,
+        "observationFacilityDistanceNm": null,
+        "observationFacilityElevationFt": null,
+        "observationFacilityId": null,
+        "observationFacilityName": null,
+        "observationTimeUtc": null,
+        "observationUtcOffsetHours": null,
+        "pilotWeatherSource": "Flight service station",
+        "precipitationNa": false,
+        "remarks": null,
+        "runwayVisualRangeFt": null,
+        "temperatureF": 19.4,
+        "turbulenceActualSeverity": null,
+        "turbulenceActualType": null,
+        "turbulenceForecastSeverity": null,
+        "turbulenceForecastType": null,
+        "visibilitySm": 10,
+        "weatherSource": null,
+        "windCalm": true,
+        "windDirectionDeg": null,
+        "windDirectionVariable": false,
+        "windGustKts": null,
+        "windGustsAbsent": false,
+        "windSpeedKts": null,
+        "windSpeedVariable": false
+      }
+    ],
+    "weatherPrecipitations": []
+  }
+}

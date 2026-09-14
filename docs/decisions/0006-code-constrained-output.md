@@ -43,3 +43,5 @@ the agent can claim to have beaten anything. Scheduled into stage S1.
 ## Status
 
 Accepted. See `docs/specs/2026-09-12-architecture-and-roadmap.md` §7.
+Amended by 0013 (2026-09-13): the output gains an evidence narrative, and the consequence
+above is superseded — the ceiling is re-measured without the factual narrative.

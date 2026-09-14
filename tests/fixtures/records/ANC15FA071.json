@@ -1,0 +1,638 @@
+{
+  "fixture": {
+    "fetched_at": "2026-09-13T19:56:58.171080+00:00",
+    "redacted_fields": [
+      "operatorAddress",
+      "operatorCertificateNumber",
+      "operatorDoingBusinessAs",
+      "operatorIndividual",
+      "operatorName",
+      "operatorZip",
+      "ownerAddress",
+      "ownerIndividual",
+      "ownerZip",
+      "registeredOwner"
+    ],
+    "source": "GetCasesByDateRangeV2"
+  },
+  "record": {
+    "aircrafts": [
+      {
+        "additionalEquipment": [
+          "Stall warning system"
+        ],
+        "aircraftAccidents": [
+          {
+            "damageLevel": "Substantial",
+            "explosionType": "None",
+            "fireType": "None",
+            "unknownNumberofOccupants": false
+          }
+        ],
+        "aircraftAmateurBuilt": false,
+        "aircraftAtTimeOfAccident": false,
+        "aircraftCabinCrewSeats": null,
+        "aircraftCategory": "Airplane",
+        "aircraftCommercialSpaceFlight": false,
+        "aircraftEltActivated": false,
+        "aircraftEltAidedLocatingAccident": null,
+        "aircraftEltConnectedAntenna": true,
+        "aircraftEltInstalled": true,
+        "aircraftEltManufacturer": null,
+        "aircraftEltModelPart": null,
+        "aircraftEltReasonOther": null,
+        "aircraftEltStillMounted": true,
+        "aircraftElttsoNumber": "C91A",
+        "aircraftFlightCrewSeats": 1,
+        "aircraftFromLastInspectionHours": null,
+        "aircraftFuelOnBoard": null,
+        "aircraftIfrEquippedAndCertified": false,
+        "aircraftLandingGearFormation": null,
+        "aircraftLastInspection": true,
+        "aircraftLastInspectionDate": "2015-07-25",
+        "aircraftLastInspectionType": "100 hour",
+        "aircraftMake": "DEHAVILLAND",
+        "aircraftManufacturer": null,
+        "aircraftMaxGrossWeight": 8367,
+        "aircraftMissing": false,
+        "aircraftModel": "DHC 3T",
+        "aircraftNumber": 1,
+        "aircraftNumberOfEngines": 1,
+        "aircraftNumberOfSeats": 11,
+        "aircraftPassengerSeats": null,
+        "aircraftRegistrationNumber": "N928RK",
+        "aircraftRetractableLandingGear": false,
+        "aircraftSerialNumber": "61",
+        "aircraftSeries": null,
+        "aircraftUnmanned": false,
+        "airframeTotalTimeHours": 15436,
+        "airports": [],
+        "airspaces": [
+          "Class G"
+        ],
+        "airworthinessCertificates": [
+          {
+            "airworthinessCertificate": "Normal",
+            "airworthinessCertificateType": "Standard"
+          }
+        ],
+        "approaches": [
+          {
+            "ifrapproach": "None",
+            "pre1982ApproachType": null,
+            "vfrapproachLanding": "None"
+          }
+        ],
+        "cabinCrewFatal": null,
+        "cabinCrewMinor": null,
+        "cabinCrewNone": null,
+        "cabinCrewSerious": null,
+        "crewAndOccupants": [
+          {
+            "age": 54,
+            "availableRestraintType": "4-point",
+            "childRestraint": null,
+            "crewCategory": "Pilot",
+            "crewOccupantNumber": 1,
+            "dateOfLastFlightReview": null,
+            "faaUniqueId": null,
+            "flightTimeSummary": [
+              {
+                "estimated": true,
+                "flightTimesAsofDate": null,
+                "incomplete": false
+              }
+            ],
+            "inflatableRestraintDeployed": null,
+            "inflatableRestraintInstalled": "No",
+            "injuryLevel": "Serious",
+            "medicalCertLimitations": "Must have available glasses for near vision.",
+            "medicalCertificate": "Class 2",
+            "medicalCertificateStatus": "With waivers/limitations",
+            "mostRecentFaaMedicalCertificate": null,
+            "occupationalPilot": "Yes",
+            "pilotCertificates": [
+              "Flight instructor",
+              "Airline transport",
+              "Commercial"
+            ],
+            "pilotFlying": true,
+            "pilotRatingForAirplanes": [
+              "Single-engine land",
+              "Multi-engine land",
+              "Single-engine sea",
+              "Multi-engine sea"
+            ],
+            "pilotRatingsForInstruments": [
+              "Airplane"
+            ],
+            "pilotsFlightTimeMatrix": [
+              {
+                "flightHours": 70,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 70,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 2,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 70,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "30 Days"
+              },
+              {
+                "flightHours": 200,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 200,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 3,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 200,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "90 Days"
+              },
+              {
+                "flightHours": 1800,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 10,
+                "flightTimeCraft": "Instrument Actual",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 100,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 50,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 1700,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "Instructor"
+              },
+              {
+                "flightHours": 11100,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 300,
+                "flightTimeCraft": "Instrument Actual",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 70,
+                "flightTimeCraft": "Instrument Sim",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 440,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 2600,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 800,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 40,
+                "flightTimeCraft": "Rotor",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 6500,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "PIC"
+              },
+              {
+                "flightHours": 11300,
+                "flightTimeCraft": "All AC",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 480,
+                "flightTimeCraft": "Instrument Actual",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 70,
+                "flightTimeCraft": "Instrument Sim",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 450,
+                "flightTimeCraft": "Make and Model",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 4600,
+                "flightTimeCraft": "ME Airplane",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 1250,
+                "flightTimeCraft": "Night",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 80,
+                "flightTimeCraft": "Rotor",
+                "flightTimeType": "Total"
+              },
+              {
+                "flightHours": 6700,
+                "flightTimeCraft": "SE Airplane",
+                "flightTimeType": "Total"
+              }
+            ],
+            "restraintUsed": "4-point",
+            "rowNumber": null,
+            "seatOccupied": "Left",
+            "sex": "Male",
+            "toxicologyPerformed": true
+          }
+        ],
+        "eltReasons": [
+          "Unknown"
+        ],
+        "engines": [
+          {
+            "engineFromLastInspectionHours": 100,
+            "engineFuelSystem": "Fuel injected",
+            "engineManufacturer": "Honeywell",
+            "engineModelSeries": "TPE33112JR702",
+            "engineNumbers": 1,
+            "enginePropellerMake": "Hartzell",
+            "enginePropellerModel": "HC-B4TN-5NL",
+            "enginePropellerSerialNumber": null,
+            "enginePropellerType": "Controllable pitch",
+            "engineRatedPower": 1000,
+            "engineRatedPowerType": "Horsepower",
+            "engineSerialNumber": "P-123168",
+            "engineTotalTime": 400,
+            "engineType": "Turbo prop"
+          }
+        ],
+        "events": [
+          {
+            "cicttEventSOEGroup": "LossOfControl(Inflight)",
+            "cicttPhaseSOEGroup": "InitialClimb",
+            "eventCode": "350240",
+            "eventNumber": 1,
+            "eventTier1Name": "Initial climb",
+            "eventTier2Name": "Loss of control in flight",
+            "isDefiningEvent": true,
+            "sequenceNumber": 1,
+            "tier1Number": "350",
+            "tier2Number": "240"
+          }
+        ],
+        "findings": [
+          {
+            "findingCode": "0206304044",
+            "findingDescription": "Personnel issues-Task performance-Use of equip/info-Aircraft control-Pilot - C",
+            "findingNumber": 2,
+            "findingReportText": "Personnel issues - Task performance - Use of equip/info - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Task performance",
+            "tier2Number": "06",
+            "tier3Name": "Use of equip/info",
+            "tier3Number": "30",
+            "tier4Name": "Aircraft control",
+            "tier4Number": "40"
+          },
+          {
+            "findingCode": "0206101544",
+            "findingDescription": "Personnel issues-Task performance-Planning/preparation-Weight/balance calculations-Pilot - F",
+            "findingNumber": 5,
+            "findingReportText": "Personnel issues - Task performance - Planning/preparation - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Task performance",
+            "tier2Number": "06",
+            "tier3Name": "Planning/preparation",
+            "tier3Number": "10",
+            "tier4Name": "Weight/balance calculations",
+            "tier4Number": "15"
+          },
+          {
+            "findingCode": "0106104020",
+            "findingDescription": "Aircraft-Aircraft oper/perf/capability-Aircraft capability-CG/weight distribution-Not attained/maintained - F",
+            "findingNumber": 6,
+            "findingReportText": "Aircraft - Aircraft oper/perf/capability - Aircraft capability - Not attained/maintained",
+            "inProbableCause": true,
+            "modifierName": "Not attained/maintained",
+            "modifierNumber": "20",
+            "tier1Name": "Aircraft",
+            "tier1Number": "01",
+            "tier2Name": "Aircraft oper/perf/capability",
+            "tier2Number": "06",
+            "tier3Name": "Aircraft capability",
+            "tier3Number": "10",
+            "tier4Name": "CG/weight distribution",
+            "tier4Number": "40"
+          },
+          {
+            "findingCode": "0202202544",
+            "findingDescription": "Personnel issues-Psychological-Perception/orientation/illusion-Spatial disorientation-Pilot - C",
+            "findingNumber": 4,
+            "findingReportText": "Personnel issues - Psychological - Perception/orientation/illusion - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Psychological",
+            "tier2Number": "02",
+            "tier3Name": "Perception/orientation/illusion",
+            "tier3Number": "20",
+            "tier4Name": "Spatial disorientation",
+            "tier4Number": "25"
+          },
+          {
+            "findingCode": "0303602084",
+            "findingDescription": "Environmental issues-Conditions/weather/phenomena-Light condition-Dark-Decision related to condition - C",
+            "findingNumber": 3,
+            "findingReportText": "Environmental issues - Conditions/weather/phenomena - Light condition - Decision related to condition",
+            "inProbableCause": true,
+            "modifierName": "Decision related to condition",
+            "modifierNumber": "84",
+            "tier1Name": "Environmental issues",
+            "tier1Number": "03",
+            "tier2Name": "Conditions/weather/phenomena",
+            "tier2Number": "03",
+            "tier3Name": "Light condition",
+            "tier3Number": "60",
+            "tier4Name": "Dark",
+            "tier4Number": "20"
+          },
+          {
+            "findingCode": "0204152044",
+            "findingDescription": "Personnel issues-Action/decision-Info processing/decision-Decision making/judgment-Pilot - C",
+            "findingNumber": 1,
+            "findingReportText": "Personnel issues - Action/decision - Info processing/decision - Pilot",
+            "inProbableCause": true,
+            "modifierName": "Pilot",
+            "modifierNumber": "44",
+            "tier1Name": "Personnel issues",
+            "tier1Number": "02",
+            "tier2Name": "Action/decision",
+            "tier2Number": "04",
+            "tier3Name": "Info processing/decision",
+            "tier3Number": "15",
+            "tier4Name": "Decision making/judgment",
+            "tier4Number": "20"
+          }
+        ],
+        "flightCrewFatal": 0,
+        "flightCrewMinor": 0,
+        "flightCrewNone": 0,
+        "flightCrewSerious": 1,
+        "injuries": [
+          {
+            "aircraftNumber": 1,
+            "cabinCrewFatal": null,
+            "cabinCrewMinor": null,
+            "cabinCrewNone": null,
+            "cabinCrewSerious": null,
+            "cabinCrewTotal": null,
+            "flightCrewFatal": 0,
+            "flightCrewMinor": 0,
+            "flightCrewNone": 0,
+            "flightCrewSerious": 1,
+            "flightCrewTotal": 1,
+            "lapChildrenFatal": null,
+            "lapChildrenMinor": null,
+            "lapChildrenNone": null,
+            "lapChildrenSerious": null,
+            "lapChildrenTotal": null,
+            "mkey": 91981,
+            "passengersFatal": 3,
+            "passengersMinor": 2,
+            "passengersNone": null,
+            "passengersSerious": 4,
+            "passengersTotal": 9
+          }
+        ],
+        "itinerary": [
+          {
+            "departureAirportId": null,
+            "departureCity": "Iliamna",
+            "departureCountry": "USA",
+            "departureIsUtc": false,
+            "departureStateOrRegion": "AK",
+            "departureTimeUtc": null,
+            "departureTimeUtcOffsetHours": null,
+            "destination": null,
+            "destinationAirportId": null,
+            "destinationCity": "Kodiak",
+            "destinationCountry": "USA",
+            "destinationIsUtc": false,
+            "destinationStateOrRegion": "AK",
+            "destinationTimeUtc": null,
+            "destinationTimeUtcOffsetHours": null,
+            "flightPlan": "None",
+            "flightPlanSpecification": "No",
+            "lastDeparture": null
+          }
+        ],
+        "landingGear": [
+          "Float"
+        ],
+        "lapChildrenFatal": null,
+        "lapChildrenMinor": null,
+        "lapChildrenNone": null,
+        "lapChildrenSerious": null,
+        "occurrences": [],
+        "operatingCertificates": [
+          "None"
+        ],
+        "operatorScopes": [],
+        "ownerOperators": [
+          {
+            "airMedical": false,
+            "airMedicalType": null,
+            "flightOperationType": "Other work use",
+            "flightScheduledType": null,
+            "flightServiceType": null,
+            "flightTerminalType": null,
+            "hasOperatingCertificates": null,
+            "operatorCity": "LEMOORE",
+            "operatorCountry": "USA",
+            "operatorDesignatorCode": null,
+            "operatorStateOrRegion": "CA",
+            "ownerCity": "LEMOORE",
+            "ownerCountry": "USA",
+            "ownerStateOrRegion": "CA",
+            "regulationFlightConductedUnder": "091",
+            "revenueSightseeing": false,
+            "secondPilotPresent": false
+          }
+        ],
+        "passengersFatal": 3,
+        "passengersMinor": 2,
+        "passengersNone": null,
+        "passengersSerious": 4,
+        "totalFatal": 3,
+        "totalMinor": 2,
+        "totalNone": 0,
+        "totalSerious": 5,
+        "yearOfManufacture": 1954
+      }
+    ],
+    "boardMeetingDate": null,
+    "boardMemberLaunch": false,
+    "caseClosed": true,
+    "caseCreatedDateTimeUtc": "2015-09-15T13:00:00",
+    "caseType": "Field - Launch",
+    "completionStatus": "Completed",
+    "docketOpenDate": null,
+    "docketPage": null,
+    "eventCity": "Iliamna",
+    "eventCollisionWithOtherAircraft": "None",
+    "eventCountry": "USA",
+    "eventDate": "2015-09-15",
+    "eventEnvironmentalDamage": null,
+    "eventHazmatInvolved": false,
+    "eventIsUtc": false,
+    "eventLatLongEstimated": null,
+    "eventLatitude": 59.777778,
+    "eventLocation": null,
+    "eventLongitude": -154.91777,
+    "eventPropertyDamage": null,
+    "eventStateOrRegion": "AK",
+    "eventTimeUtc": "14:06:00",
+    "eventTimeUtcOffsetHours": -8,
+    "eventType": "Accident",
+    "eventZipcode": "99606",
+    "factualFinalReportFlavor": "Detailed (ICAO headers)",
+    "factualPublishedDate": "2017-08-02",
+    "hasSafetyRecommendation": false,
+    "highestInjuryLevel": "Fatal",
+    "investigatingParties": [
+      "FAA"
+    ],
+    "investigationClass": null,
+    "investigationPage": null,
+    "isPost2008": true,
+    "isPre1982": false,
+    "isStudy": false,
+    "lastRevisionDate": null,
+    "launchType": "Yes",
+    "leadAgency": "NTSB",
+    "mKey": 91981,
+    "mode": "Aviation",
+    "narratives": [
+      {
+        "aircraftNumber": 1,
+        "analysisNarrative": "The airline transport pilot and nine passengers departed in a float-equipped airplane in dark night, visual meteorological conditions on a 14 Code of Federal Regulations Part 91 other work use flight from a fishing lodge to a remote fishing location. The pilot reported that, before the flight departed, the front and center fuel tanks were filled, and the aft fuel tank had \"residual\" fuel. He did not weigh the cargo nor did he document any weight and balance calculations. When asked how he calculated the airplane's weight and balance before departure, the pilot said he \"guesstimated\" it.\r\n\r\nAccording to a witness, after liftoff, the airplane began to climb and then descended, and the floats subsequently struck the water's surface. The airplane then became airborne again and veered right, but he lost sight of it behind an area of rising terrain. The pilot reported that he heard a noise from the left side of the airplane shortly after liftoff, which was likely the floats impacting the water. According to the automatic dependent surveillance-broadcast data, the airplane then began a gradual right turn before reaching a maximum altitude of 175 ft above the water. The airplane then descended toward the water's surface, flew low over the water and terrain, and then climbed briefly again before it impacted terrain. The pilot stated that he did not know that the airplane touched the water's surface after the initial liftoff or that the airplane then turned right.\r\n\r\nImpact signatures were consistent with a right-wing-low attitude at impact. The entire airplane was accounted for at the wreckage site. Disassembly and examination of the engine and propeller revealed that both were operating during impact. Examination of the airframe and flight control systems found no preimpact malfunctions or failures that would have precluded normal operation. \r\n\r\nA postaccident weight and balance study using the passenger weights, weighed cargo, and fuel load showed that the airplane exceeded its maximum gross weight of 8,367 lbs by about 508.6 lbs and that the center of gravity (CG) was 4.08 inches aft of the aft CG limit. Data from the airplane's automatic dependent surveillance-broadcast (ADS-B) showed that the airplane was at or below the stall speeds listed in the airplane flight manual during both the initial and second climbs. The ADS-B data show that, because the pilot failed to determine the airplane's actual preflight weight and CG and loaded and operated outside of the weight and CG limits, the airplane did not attain a proper airspeed to climb, and it experienced an aerodynamic stall.\r\n\r\nThe pilot departed during dark night conditions over water and was relying on external visual cues and not the airplane's instrumentation to control the airplane. There were insufficient external cues available to the pilot to reliably control the airplane, and he was likely experiencing spatial disorientation after takeoff and the subsequent maneuvering.",
+        "concatenatedFactualNarrative": "Weight and Balance Guidance\r\n\r\nFAA-H-8083-1A, \"Aircraft Weight and Balance Handbook,\" stated the following: \r\n\r\nImproper loading cuts down the efficiency of an aircraft from the standpoint of altitude, maneuverability, rate of climb, and speed. It may even be the cause of failure to complete the flight, or for that matter, start the flight. Because of abnormal stresses placed upon the structure of an improperly loaded aircraft, or because of changed flying characteristics of the aircraft, loss of life and destruction of valuable equipment may result.\r\n\r\nThe pilot in command of the aircraft has the responsibility on every flight to know the maximum allowable weight of the aircraft and its CG limits. This allows the pilot to determine on the preflight inspection that the aircraft is loaded in such a way that the CG is within the allowable limits.\r\n\r\nExcessive weight reduces the efficiency of an aircraft and the safety margin available if an emergency condition should arise. Some of the problems caused by overloading an aircraft are:\r\n\r\n\r\n\r\n    The aircraft will have a higher takeoff speed, which results in a longer takeoff run.\r\n\r\n            Both the rate and angle of climb will be reduced.\r\n\r\n            Maneuverability will be decreased.\r\n\r\n    An important part of careful preflight planning includes a check of these charts to determine the aircraft is loaded so the proposed flight can be safely made. If the CG is too far aft, it will be too near the center of lift and the airplane will be unstable, and difficult to recover from a stall.\r\n\r\n    Federal Aviation Regulations \r\n\r\n    Title 14 CFR Part 91.9, \"Civil aircraft flight manual, marking, and placard requirements,\" stated the following: \r\n\r\n    (a) Except as provided in paragraph (d) of this section, no person may operate a civil aircraft without complying with the operating limitations specified in the approved Airplane or Rotorcraft Flight Manual, markings, and placards, or as otherwise prescribed by the certificating authority of the country of registry.\r\n\r\n    Part 91.103 Preflight action: Each pilot in command shall, before beginning a flight, become familiar with all available information concerning that flight. This information must include\u2014 \r\n\r\n    (2) For civil aircraft other than those specified in paragraph (b)(1) of this section, other reliable information appropriate to the aircraft, relating to aircraft performance under expected values of airport elevation and runway slope, aircraft gross weight, and wind and temperature. \r\n\r\n    Spatial Disorientation\r\n\r\n    The FAA's \"Pilot's Handbook of Aeronautical Knowledge\" (FAA-H-8083-25), stated, \"Spatial disorientation specifically refers to the lack of orientation with regard to the position, attitude, or movement of the airplane in space.\" The handbook also contained the following guidance:\r\n\r\n    under normal flight conditions, when there is a visual reference to the horizon and ground, the sensory system in the inner ear helps to identify the pitch, roll, and yaw movements of the airplane. When visual contact with the horizon is lost, the vestibular system becomes unreliable. Without visual references outside the airplane, there are many situations where combinations of normal motions and forces can create convincing illusions that are difficult to overcome.\r\n\r\n    FAA Publication \"Spatial Disorientation Visual Illusions\" (OK-11-1550), stated, in part, the following:\r\n\r\n    false visual reference illusions may cause you to orient your aircraft in relation to a false horizon; these illusions are caused by flying over a banked cloud, night flying over featureless terrain with ground lights that are indistinguishable from a dark sky with stars, or night flying over a featureless terrain with a clearly defined pattern of ground lights and a dark starless sky. \r\n\r\n    The FAA publication Medical Facts for Pilots (AM-400-03/1) described several vestibular illusions associated with the operation of aircraft in low-visibility conditions. Somatogravic illusions, which involve the utricle and saccule of the vestibular system, were generally placed into one of three categories, one of which was \"the head-up illusion.\" According to the publication, the head-up illusion involves a forward linear acceleration, such as takeoff, where the pilot perceives that the aircraft's nose is pitching up. The pilot's response to this illusion would be to push the control yoke forward to pitch the aircraft's nose. It added, \"A night takeoff from a well-lit airport into a totally dark sky (black hole)\u2026can also lead to this illusion, and could result in a crash.\" The accident airplane was a high-wing, float-equipped, single-pilot, de Havilland DHC-3T, N928RK, serial number 61, manufactured in 1954. It was powered by a Honeywell TPE 331-12JR-702TT turboprop engine per a Texas Turbine Conversions, Inc., supplemental type certificate (STC). It was equipped with a Hartzell model HC-B4TN-5NL four-bladed propeller.\r\n\r\nIn April 2014, the airplane was sent to Recon Air Corporation in Geraldton, Ontario, Canada, for a major overhaul and the turbine conversion. The airplane's US registry was changed to N928RK. The airplane was also modified with a Baron STOL kit and an upgross kit per an STC to improve its performance. The upgross kit increased the maximum gross weight of the airplane from 8,000 lbs to 8,367 lbs. The airplane was configured to carry one pilot and 10 passengers and cargo.\r\n\r\nOn May 24, 2014, after the overhaul, a new weight and balance calculation was performed, which showed that the airplane's basic empty weight on wheels was 4,345 lbs. \r\n\r\nOn May 30, 2014, an 800-hour inspection of the airplane and special inspection items was completed. The records indicated that all applicable airworthiness directives were complied with at this time. According to maintenance records, the airplane's last inspection was a 100-hour inspection on July 25, 2015, at which time, the airframe had accumulated 15,436 total hours, and the engine had accumulated 384 total hours.\r\n\r\nOn June 11, 2014, another weight and balance calculation was performed, which indicated that the airplane's empty weight on floats was 4926.8 lbs with a useful load of 3,073.2 lbs and that its center of gravity (CG) was 131.79 inches. A maximum gross weight of 8,000 lbs was used for the computation, not the adjusted weight of 8,367 lbs. The installation of the upgross kit was noted in the equipment list, but the increase of the maximum gross weight was not reflected in the final weight and balance paperwork.\r\n\r\nOn August 30, 2015, a 150-hour engine inspection was conducted with no defects or leaks noted. At the time of inspection, the engine had a total of 430.3 hours.\r\n\r\nWeight and Balance Study\r\n\r\nThe accident airplane was configured to carry 62 gallons of fuel in the forward tank, 102 gallons of fuel in the center tank, and 51 gallons of fuel in the aft tank. The Texas Turbine Conversions, Inc., Airplane Flight Manual (AFM) supplement instructs the operator to burn fuel from the forward tank during takeoff and, after takeoff, from the aft tank forward to leave as much fuel in the forward tank as possible for landing. The minimum amount of fuel for takeoff is 20 gallons in each of the three tanks to prevent introduction of air into the fuel system. The pilot stated the center and forward tanks were full, and there was \"residual\" fuel in the aft tank. \r\n\r\nRainbow King Lodge had no procedures in place or equipment available for calculating preflight weight and balance. Pilots should calculate the airplane's actual weight and balance using the procedures contained in the original DHC-3 Otter AFM, published by de Havilland Canada, along with the information in the various flight manual supplements for the STCs installed on the airplane. The entire flight manual and all of its supplements were carried in the airplane during the accident flight. When asked how he calculated the weight and balance for t",
+        "prelimNarrative": null,
+        "probableCause": "The pilot's decision to depart in dark night, visual meteorological conditions over water, which resulted in his subsequent spatial disorientation and loss of airplane control. Contributing to the accident was the pilot's failure to determine the airplane's actual preflight weight and balance and center of gravity (CG), which led to the airplane being loaded and operated outside of the weight and CG limits and to a subsequent aerodynamic stall."
+      }
+    ],
+    "ntsbNumber": "ANC15FA071",
+    "onboardFatal": 3,
+    "onboardMinor": 2,
+    "onboardNone": 0,
+    "onboardSerious": 5,
+    "ongroundFatal": null,
+    "ongroundMinor": null,
+    "ongroundSerious": null,
+    "originalPublishedDate": "2017-08-09",
+    "publishDateTime": "2020-09-25T14:45:51.113",
+    "publishProfile": "DirectorApprovedBriefFinal",
+    "region": "Alaska Regional Office",
+    "reportDate": "2017-08-09",
+    "reportNumber": null,
+    "reportPage": null,
+    "reportType": "Approved by Office Director",
+    "richNarratives": null,
+    "topicMode": "Aviation",
+    "totalFatal": 3,
+    "totalMinor": 2,
+    "totalNone": 0,
+    "totalSerious": 5,
+    "weatherConditions": [
+      {
+        "accidentSiteCondition": "Visual (VMC)",
+        "barometricSettingMmHg": 29.6,
+        "cloudCondition": "Scattered",
+        "cloudCoverage": null,
+        "daylightCondition": "Night",
+        "dewPointF": 46.4,
+        "icingActualAmount": null,
+        "icingActualType": null,
+        "icingForecastAmount": null,
+        "icingForecastType": null,
+        "investigationWeatherSource": "Observation facility",
+        "lowestCeiling": "Overcast",
+        "lowestCeilingFtAgl": 4400,
+        "lowestCloudConditionFtAgl": 700,
+        "metar": null,
+        "observationDate": "2015-09-15",
+        "observationFacilityDirectionDeg": 180,
+        "observationFacilityDistanceNm": 1,
+        "observationFacilityElevationFt": 192,
+        "observationFacilityId": "PAIL",
+        "observationFacilityName": null,
+        "observationTimeUtc": "13:53:00",
+        "observationUtcOffsetHours": 0,
+        "pilotWeatherSource": null,
+        "precipitationNa": true,
+        "remarks": null,
+        "runwayVisualRangeFt": null,
+        "temperatureF": 48.2,
+        "turbulenceActualSeverity": null,
+        "turbulenceActualType": null,
+        "turbulenceForecastSeverity": null,
+        "turbulenceForecastType": null,
+        "visibilitySm": 10,
+        "weatherSource": null,
+        "windCalm": false,
+        "windDirectionDeg": 240,
+        "windDirectionVariable": false,
+        "windGustKts": null,
+        "windGustsAbsent": true,
+        "windSpeedKts": 7,
+        "windSpeedVariable": false
+      }
+    ],
+    "weatherPrecipitations": []
+  }
+}

@@ -1,0 +1,63 @@
+
+== M1 raw fetch: does GetCasesByDateRangeV2 filter on eventDate?
+raw records: 29418; eventDate outside requested range: 0
+
+== M2 case number year vs event year (filtered closed GA cases, all splits)
+filtered cases: 19641; case-number year != event year: 3796
+labelled cases: 70 (found 70); event years {2020: 21, 2021: 11, 2022: 14, 2023: 24}; case-number year != event year: 16
+
+== M3 personal-data fields present in raw records (one month sample, 2016-08)
+distinct leaf paths: 332; mean bytes/record: 17431
+personal-data paths: ['.aircrafts[].ownerOperators[].operatorAddress', '.aircrafts[].ownerOperators[].operatorCertificateNumber', '.aircrafts[].ownerOperators[].operatorDoingBusinessAs', '.aircrafts[].ownerOperators[].operatorIndividual', '.aircrafts[].ownerOperators[].operatorName', '.aircrafts[].ownerOperators[].operatorZip', '.aircrafts[].ownerOperators[].ownerAddress', '.aircrafts[].ownerOperators[].ownerIndividual', '.aircrafts[].ownerOperators[].ownerZip', '.aircrafts[].ownerOperators[].registeredOwner']
+
+== M4 dev split: investigation class
+dev cases: 13560
+cases by class: {'C': 6126, 'L': 5137, 'F': 2030, 'I': 135, 'T': 107, 'M': 22, 'G': 3}
+share fatal by class: {'C': 0.0, 'F': 0.931, 'G': 0.667, 'I': 0.007, 'L': 0.103, 'M': 1.0, 'T': 0.0}
+dev cases with preliminary narrative text: 0
+dev cases with factual narrative: 13551
+
+== M5 dev split: synthesis and verdict text found verbatim in the factual narrative
+sentences >= 40 chars (analysis + cause) found verbatim: 27607 across 7793 cases
+whole analysis text contained in factual narrative: 1999
+probable-cause sentences (>= 20 chars) found verbatim: 3 -> ['this report was modified on september 10, 2010.', '***this report was modified on november 15, 2012.', '**this report was modified on 4/21/2016.']
+occurrence/finding code whole-token hits in factual, prelim or METAR text: 0
+C-class cases sharing >= 1 analysis sentence: 5647 of 6121; median share of analysis sentences found: 0.60
+
+== M6 dev split: duplicated narratives (>= 50% of analysis sentences verbatim in factual)
+duplicated: 3933 of 13551; by class: {'C': 3796, 'L': 114, 'M': 10, 'I': 6, 'T': 4, 'F': 3}
+cls      C     L     F
+year
+2009  0.80  0.06  0.01
+2010  0.54  0.02  0.01
+2011  0.36  0.03  0.00
+2012  0.27  0.03  0.00
+2013  0.76  0.01  0.00
+2014  0.99  0.00  0.00
+2015  0.99  0.01  0.00
+2016  0.87  0.01  0.01
+2017  0.50  0.00  0.00
+2018  0.49  0.01  0.00
+2019  0.31  0.05  0.00
+
+give-away phrase rate in factual narrative, by class and duplication:
+           size   mean
+cls dup
+C   False  2325  0.123
+    True   3796  0.159
+L   False  5022  0.188
+    True    114  0.175
+F   False  2026  0.155
+    True      3  0.000
+
+== M7 dev split: report flavour, investigationClass and richNarratives
+factualFinalReportFlavor by case-number class letter:
+cls                          C     L     F
+factualFinalReportFlavor
+<null>                       0     0    14
+Basic (no factual)        6126     1     0
+Detailed (ICAO headers)      0   460  1107
+Standard report              0  4676   909
+investigationClass non-null: 945 of 13560
+duplicated share by report flavour: {'<null>': 0.29, 'Basic (no factual)': 0.62, 'Detailed (ICAO headers)': 0.0, 'Standard report': 0.02}
+raw records (all splits) with non-empty richNarratives: 0

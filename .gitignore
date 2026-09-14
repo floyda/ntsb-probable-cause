@@ -10,6 +10,7 @@ data/processed/
 # Secrets. The OpenRouter key and anything like it lives in the environment.
 .env
 .env.*
+!.env.example
 
 # Local state. The predictions store is derived and rebuildable; the committed
 # ledger is the durable, tamper-evident record.
@@ -29,12 +30,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
 cdk.out/
 dist/
 node_modules/
 .DS_Store
+.claude/worktrees/
 
-# Deliberately NOT ignored: config.yaml.
+# There is no config.yaml (decision 0012): field roles, splits and API facts are
+# typed constants in the library, and per-run values come from the environment.
 # The spike ignored its config and its filled labelling sheets, which is why its
-# headline numbers now rest on files nobody else can open. Config here carries no
-# secrets — those stay in the environment — so it is tracked.
+# headline numbers once rested on files nobody else could open. Everything a number
+# depends on is tracked here; only secrets stay in the environment.

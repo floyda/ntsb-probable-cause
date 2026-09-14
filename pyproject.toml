@@ -1,0 +1,135 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ntsb-probable-cause"
+version = "0.1.0"
+description = "An agent that determines the probable cause of US general-aviation accidents, scored against NTSB verdicts."
+readme = "README.md"
+license = "MIT"
+requires-python = "==3.14.*"
+dependencies = [
+    "httpx>=0.28.1",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+]
+
+[project.scripts]
+ntsb-ingest = "apps.ingest.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ntsb_probable_cause", "apps"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "apps", "scripts", "tests"]
+extend-exclude = ["docs", "scripts/exploratory"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "PT", "D", "PL", "RUF", "N", "C4", "PTH", "TRY", "ERA", "T20"]
+ignore = ["D105", "D107", "TRY003"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101", "PLR2004"]
+"scripts/**" = ["T201"]
+"apps/**" = ["T201"]
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+plugins = ["pydantic.mypy"]
+files = ["src", "apps", "scripts", "tests"]
+exclude = ["^scripts/exploratory/"]
+mypy_path = "src"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = "pyarrow.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--disable-socket --cov=ntsb_probable_cause --cov-branch --cov-report=term-missing --cov-fail-under=90"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.importlinter]
+root_packages = ["ntsb_probable_cause", "apps"]
+
+[[tool.importlinter.contracts]]
+name = "The library never imports apps"
+type = "forbidden"
+source_modules = ["ntsb_probable_cause"]
+forbidden_modules = ["apps"]
+
+[[tool.importlinter.contracts]]
+name = "Only the splitter constructs synthesis and verdict"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.data",
+    "ntsb_probable_cause.fields",
+    "ntsb_probable_cause.paths",
+    "ntsb_probable_cause.splits",
+    "ntsb_probable_cause.sources",
+    "ntsb_probable_cause.settings",
+    "ntsb_probable_cause.errors",
+    "ntsb_probable_cause.records.evidence",
+    "ntsb_probable_cause.records.guard",
+    "ntsb_probable_cause.model",
+]
+forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
+
+[[tool.importlinter.contracts]]
+name = "The model boundary cannot see synthesis or verdict"
+type = "forbidden"
+source_modules = ["ntsb_probable_cause.model"]
+forbidden_modules = [
+    "ntsb_probable_cause.records.synthesis",
+    "ntsb_probable_cause.records.verdict",
+    "ntsb_probable_cause.records.split",
+]
+
+[tool.deptry]
+known_first_party = ["ntsb_probable_cause", "apps", "scripts"]
+extend_exclude = ["scripts/exploratory"]
+
+[tool.vulture]
+paths = ["src", "apps", "scripts"]
+exclude = ["scripts/exploratory"]
+min_confidence = 80
+
+[tool.typos.default.extend-words]
+# NTSB abbreviations that are not misspellings go here, one per line, with a comment.
+mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016; not a misspelling
+
+[tool.typos.files]
+# Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false
+# positives; these are redacted, verbatim NTSB record fixtures, not authored text (decision 0015).
+extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", "tests/fixtures/eval/*.csv"]
+
+[dependency-groups]
+dev = [
+    "actionlint-py>=1.7.12.24",
+    "deptry>=0.25.1",
+    "grimp>=3.17",
+    "hypothesis>=6.168.0",
+    "import-linter>=2.15",
+    "mypy>=2.3.1",
+    "pip-audit>=2.10.1",
+    "pre-commit>=4.6.2",
+    "pre-commit-hooks>=6.0.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.1",
+    "respx>=0.23.1",
+    "ruff>=0.16.7",
+    "typos>=1.50.1",
+    "vulture>=2.16",
+    "zizmor>=1.30.1",
+]
