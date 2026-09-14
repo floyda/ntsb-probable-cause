@@ -8,9 +8,11 @@ The agent itself: it determines the probable cause of a US general-aviation acci
 investigator-gathered evidence, scored against the NTSB's own published verdict. It is built on
 the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 `../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
-"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **No code
-exists here yet**; the architecture, the S0 specification and decision records do. Read
-build-brief §7 before writing any code, then
+"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **S0
+(foundation) is built**: strict tooling, data ingestion, the evidence/synthesis/verdict split
+with its layered leakage guard, and a model seam — see "Commands" below. The agent loop, the
+docket tool and the evaluation harness are not built yet. Read build-brief §7 before writing
+any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md` and the current stage's specification
 (S0: `docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they
 differ.
@@ -79,8 +81,8 @@ differ.
    the one it replaces, and the old record stays in place. Format:
    `docs/decisions/README.md`.
 9. **The toolchain is strict from the first commit** (0011): uv on hatchling with a committed
-   `uv.lock`, Python 3.14, ruff, `mypy --strict`, import-linter contracts, deptry, pip-audit,
-   and pre-commit hooks run the same checks locally. The library package is
+   `uv.lock`, Python 3.14, ruff, `mypy --strict`, import-linter contracts, deptry, vulture,
+   pip-audit, and pre-commit hooks run the same checks locally. The library package is
    `ntsb_probable_cause`. Fixture records are real development-split records, redacted of owner
    and operator fields, made only by `scripts/make_fixture.py` (0015).
 10. **Specifications close with an As-built record; plans are deleted at merge** (0017). Plans go
@@ -157,7 +159,20 @@ The spike's line was £0.05/case; it is re-measured in S1 and S3, because every 
 the docket (0013).
 
 
-## Note
+## Commands
 
-No code exists yet in this repo — there are no commands to run here. Set up structure per
-the S0 specification before adding any "how to run" section to this file.
+```bash
+make check   # lint, mypy --strict and pytest — what CI runs
+make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
+make type    # mypy
+make test    # pytest
+make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
+make build   # build data/processed/cases.parquet from the raw store
+make scan    # uv run python -m scripts.corpus_scan — guard statistics, counts only
+```
+
+`uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
+`uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
+close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
+`NTSB_API_KEY` (the NTSB Enterprise API key, required for `make ingest`, never printed or
+committed) and `NTSB_DATA_DIR` (default `data`; nothing under it is committed).

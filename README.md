@@ -20,9 +20,12 @@ Safety Board later publishes.
 > so "it predicted this on day 3" is checkable by a stranger rather than something they have
 > to take on trust.
 >
-> **Status: not built yet.** This repository holds the architecture, the build order, and
-> the decisions behind both. The measurement work that justifies building it is complete and
-> frozen at [floyda/ntsb-spike](https://github.com/floyda/ntsb-spike).
+> **Status: S0 (foundation) built; no agent yet.** The repository has strict tooling, data
+> ingestion, the evidence/synthesis/verdict split with its layered leakage guard, and a model
+> seam — see "Commands" below to run it. The agent loop, the docket tool and the evaluation
+> harness are not built yet. The architecture, the build order, and the decisions behind both
+> are also here. The measurement work that justifies building at all is complete and frozen at
+> [floyda/ntsb-spike](https://github.com/floyda/ntsb-spike).
 
 ---
 
@@ -183,13 +186,50 @@ Detail: [`docs/specs/2026-09-12-architecture-and-roadmap.md`](docs/specs/2026-09
 ## Repository layout
 
 ```
-docs/specs/       architecture and build order
-docs/decisions/   numbered decision records — context, choice, reasoning, alternatives
-docs/runbooks/    operational procedures
+src/ntsb_probable_cause/   the library: settings, data ingestion, field roles, the
+                            evidence/synthesis/verdict split and its leakage guard, model seam
+apps/                       thin entrypoints over the library (e.g. apps/ingest)
+scripts/                    one-off and maintenance scripts (fixtures, the corpus scan,
+                            documentation checks) — not part of the library
+tests/                      unit tests and fixtures
+docs/specs/                 architecture and build order
+docs/decisions/             numbered decision records — context, choice, reasoning, alternatives
+docs/plans/                 implementation plans for the stage currently in progress
+docs/results/               committed output of scripts that report a number
+docs/runbooks/              operational procedures
 ```
 
 Every significant decision is written down with what it rules out, including the ones that
 turned out to be wrong. See [`docs/decisions/`](docs/decisions/).
+
+## Commands
+
+Requires [`uv`](https://docs.astral.sh/uv/). `uv sync` installs the project and its dev
+dependencies.
+
+```bash
+make check   # lint, type-check (mypy --strict) and test — what CI runs
+make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
+make type    # mypy
+make test    # pytest
+make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
+make build   # build data/processed/cases.parquet from the raw store
+make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
+```
+
+Other scripts, run with `uv run python -m scripts.<name>`:
+
+- `scripts.make_fixture` — create redacted development-split fixtures (decision 0015); see
+  its module docstring for the `records` / `auto` / `api` subcommands.
+- `scripts.check_docs` — the documentation check decision 0017's stage close-out depends on.
+
+Settings are read from the environment (`NTSB_` prefix, decision 0012), or a local `.env`
+file:
+
+- `NTSB_API_KEY` — the NTSB Enterprise API key. Required for `make ingest`; never printed or
+  committed.
+- `NTSB_DATA_DIR` — where raw and processed data live (default `data`). Nothing under it is
+  committed.
 
 ## A note on tone
 
