@@ -50,6 +50,11 @@ class VerdictRole(StrEnum):
 
 WITHHELD_ROLE_NAMES = frozenset({*SynthesisRole, *VerdictRole})
 
+# Decision 0020: on an amateur-built aircraft the recorded make (and sometimes model) usually
+# holds the builder's own name, copied from the registration, and the builder is often the
+# pilot or owner. Both evidence roles hold this fixed label instead when the flag is set.
+AMATEUR_BUILT_LABEL = "Amateur-built"
+
 WITHHELD_SUBTREES = (
     "narratives[].concatenatedFactualNarrative",
     "narratives[].analysisNarrative",
@@ -98,6 +103,20 @@ def _text_at(path: str) -> Callable[[Raw], EvidenceValue]:
     def extract(raw: Raw) -> EvidenceValue:
         value = resolve_path(raw, path)
         return value if isinstance(value, str) and value.strip() else None
+
+    return extract
+
+
+_AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
+
+
+def _amateur_built_or_text_at(path: str) -> Callable[[Raw], EvidenceValue]:
+    """Decision 0020: the fixed label when the amateur-built flag is set, else the value at path."""
+
+    def extract(raw: Raw) -> EvidenceValue:
+        if resolve_path(raw, _AMATEUR_BUILT_FLAG) is True:
+            return AMATEUR_BUILT_LABEL
+        return _text_at(path)(raw)
 
     return extract
 
@@ -158,13 +177,13 @@ EVIDENCE_FIELDS: tuple[EvidenceField, ...] = (
     ),
     EvidenceField(
         EvidenceRole.AIRCRAFT_MAKE,
-        ("aircrafts[0].aircraftMake",),
-        _text_at("aircrafts[0].aircraftMake"),
+        ("aircrafts[0].aircraftMake", _AMATEUR_BUILT_FLAG),
+        _amateur_built_or_text_at("aircrafts[0].aircraftMake"),
     ),
     EvidenceField(
         EvidenceRole.AIRCRAFT_MODEL,
-        ("aircrafts[0].aircraftModel",),
-        _text_at("aircrafts[0].aircraftModel"),
+        ("aircrafts[0].aircraftModel", _AMATEUR_BUILT_FLAG),
+        _amateur_built_or_text_at("aircrafts[0].aircraftModel"),
     ),
     EvidenceField(
         EvidenceRole.REGISTRATION,

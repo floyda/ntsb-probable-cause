@@ -84,7 +84,9 @@ differ.
    `uv.lock`, Python 3.14, ruff, `mypy --strict`, import-linter contracts, deptry, vulture,
    pip-audit, and pre-commit hooks run the same checks locally. The library package is
    `ntsb_probable_cause`. Fixture records are real development-split records, redacted of owner
-   and operator fields, made only by `scripts/make_fixture.py` (0015).
+   and operator fields, made only by `scripts/make_fixture.py` (0015). On amateur-built
+   aircraft, the make and model evidence fields hold the label `Amateur-built`, never the
+   recorded values, which are usually the builder's name (0020).
 10. **Specifications close with an As-built record; plans are deleted at merge** (0017). Plans go
     in `docs/plans/`, not the superpowers default. Tick plan tasks in the same commit as their
     code and log deviations in the plan. The pull request that finishes a stage runs the

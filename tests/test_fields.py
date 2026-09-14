@@ -1,9 +1,11 @@
+import copy
 from types import MappingProxyType
 
 import pytest
 
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import (
+    AMATEUR_BUILT_LABEL,
     EVIDENCE_FIELDS,
     EvidenceField,
     EvidenceRole,
@@ -104,6 +106,39 @@ def test_simple_extractions() -> None:
     assert values[EvidenceRole.INJURY_LEVEL] == "Fatal"
     assert values[EvidenceRole.PRELIM_NARRATIVE] is None
     assert values[EvidenceRole.PILOT_CERTIFICATES] == ("Private",)
+
+
+def test_amateur_built_flag_replaces_make_and_model() -> None:
+    make_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MAKE)
+    model_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MODEL)
+    raw = copy.deepcopy(RAW)
+    aircraft = raw["aircrafts"][0]  # type: ignore[index]
+    aircraft["aircraftAmateurBuilt"] = True
+    aircraft["aircraftMake"] = "INVENTED BUILDER"
+    aircraft["aircraftModel"] = "INVENTED BUILDER MODEL"
+    assert make_field.extract(raw) == AMATEUR_BUILT_LABEL
+    assert model_field.extract(raw) == AMATEUR_BUILT_LABEL
+
+
+@pytest.mark.parametrize("flag", [False, None])
+def test_non_amateur_built_keeps_recorded_make_and_model(flag: bool | None) -> None:
+    make_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MAKE)
+    model_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MODEL)
+    raw = copy.deepcopy(RAW)
+    aircraft = raw["aircrafts"][0]  # type: ignore[index]
+    if flag is None:
+        aircraft.pop("aircraftAmateurBuilt", None)
+    else:
+        aircraft["aircraftAmateurBuilt"] = flag
+    assert make_field.extract(raw) == "CESSNA"
+    assert model_field.extract(raw) == "172SP"
+
+
+def test_amateur_built_flag_is_a_declared_source() -> None:
+    make_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MAKE)
+    model_field = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.AIRCRAFT_MODEL)
+    assert "aircrafts[0].aircraftAmateurBuilt" in make_field.sources
+    assert "aircrafts[0].aircraftAmateurBuilt" in model_field.sources
 
 
 def test_pilot_hours_from_matrix() -> None:

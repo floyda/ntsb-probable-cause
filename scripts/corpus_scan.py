@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.paths import resolve_path
 from ntsb_probable_cause.records.guard import SENTENCE_CHECK_EXEMPTIONS, find_leaks, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.settings import Settings
@@ -207,6 +208,33 @@ def has_nonempty_prelim_narrative(raw: Mapping[str, object]) -> bool:
     )
 
 
+# --- amateur-built aircraft (decision 0020) — pure functions over the raw record ---
+
+_AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
+
+
+def is_amateur_built(raw: Mapping[str, object]) -> bool:
+    """True if the raw record's amateur-built flag is set (decision 0020)."""
+    return resolve_path(raw, _AMATEUR_BUILT_FLAG) is True
+
+
+def raw_aircraft_make(raw: Mapping[str, object]) -> str | None:
+    """The recorded make, before decision 0020's evidence-role substitution."""
+    value = resolve_path(raw, "aircrafts[0].aircraftMake")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def raw_aircraft_model(raw: Mapping[str, object]) -> str | None:
+    """The recorded model, before decision 0020's evidence-role substitution."""
+    value = resolve_path(raw, "aircrafts[0].aircraftModel")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def model_contains_make(make: str | None, model: str | None) -> bool:
+    """True if the recorded model text contains the recorded make text."""
+    return bool(make and model and make.lower() in model.lower())
+
+
 @dataclass
 class ScanState:
     """Everything the scan accumulates across the corpus. Counts only; no record text."""
@@ -239,6 +267,11 @@ class ScanState:
     multi_narrative_pc_differs: Counter[str] = field(default_factory=Counter)
     multi_aircraft_codes: Counter[str] = field(default_factory=Counter)
     nonempty_prelim: Counter[str] = field(default_factory=Counter)
+    # amateur-built aircraft (decision 0020) — counts only, no make/model values printed.
+    amateur_built: Counter[str] = field(default_factory=Counter)
+    amateur_built_makes: Counter[str] = field(default_factory=Counter)
+    amateur_built_models: Counter[str] = field(default_factory=Counter)
+    amateur_built_model_contains_make: int = 0
 
 
 def _weather_label(raw: Mapping[str, object]) -> str | None:
@@ -297,6 +330,16 @@ def _accumulate_row(state: ScanState, index: int, row: Mapping[str, object]) -> 
         state.multi_aircraft_codes[split] += 1
     if has_nonempty_prelim_narrative(raw):
         state.nonempty_prelim[split] += 1
+    if is_amateur_built(raw):
+        state.amateur_built[split] += 1
+        make, model = raw_aircraft_make(raw), raw_aircraft_model(raw)
+        # Counted case-insensitively: the same builder or kit name is sometimes recorded in a
+        # different case, which would otherwise inflate the distinct-value counts.
+        if make is not None:
+            state.amateur_built_makes[make.strip().casefold()] += 1
+        if model is not None:
+            state.amateur_built_models[model.strip().casefold()] += 1
+        state.amateur_built_model_contains_make += model_contains_make(make, model)
 
 
 def _print_header(state: ScanState, case_count: int) -> None:
@@ -381,6 +424,26 @@ def _print_factual_narrative_stats(state: ScanState) -> None:
         )
 
 
+def _print_amateur_built(state: ScanState) -> None:
+    print("\n## amateur-built aircraft (decision 0020) — counts only, no make/model values")
+    print("cases with the flag set, by split (every split shown):")
+    for split in _SPLITS:
+        print(f"    {split}: {state.amateur_built[split]}")
+    make_counts = state.amateur_built_makes
+    model_counts = state.amateur_built_models
+    make_singletons = sum(1 for n in make_counts.values() if n == 1)
+    model_singletons = sum(1 for n in model_counts.values() if n == 1)
+    print(
+        f"distinct make values: {len(make_counts)}; occurring in exactly one case:"
+        f" {make_singletons}"
+    )
+    print(
+        f"distinct model values: {len(model_counts)}; occurring in exactly one case:"
+        f" {model_singletons}"
+    )
+    print(f"cases whose model contains the make: {state.amateur_built_model_contains_make}")
+
+
 def _count_leakage_errors(rows: list[Mapping[str, object]], chosen: int) -> int:
     failures = 0
     for row in rows:
@@ -409,6 +472,7 @@ def main() -> int:
     print(f"\n{THRESHOLD_LINE}{chosen if chosen is not None else 'NONE'}")
     _print_factual_narrative_stats(state)
     _print_tripwire_coverage_limits(state)
+    _print_amateur_built(state)
 
     if chosen is None:
         print(

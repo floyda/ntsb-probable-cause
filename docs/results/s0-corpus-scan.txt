@@ -80,4 +80,13 @@ open/L: 303 | 13 | 0 | 65
     heldout: 0
     open: 0
 
+## amateur-built aircraft (decision 0020) — counts only, no make/model values
+cases with the flag set, by split (every split shown):
+    dev: 2146
+    heldout: 645
+    open: 318
+distinct make values: 2438; occurring in exactly one case: 2257
+distinct model values: 1611; occurring in exactly one case: 1199
+cases whose model contains the make: 61
+
 split_record at the chosen length: 0 LeakageError across 19641 cases

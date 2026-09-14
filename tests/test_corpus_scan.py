@@ -8,11 +8,15 @@ from scripts.corpus_scan import (
     duplication_share,
     has_missed_break,
     has_nonempty_prelim_narrative,
+    is_amateur_built,
     later_probable_cause_differs,
     leak_kinds,
     missed_break_sources,
+    model_contains_make,
     multi_aircraft_with_codes,
     narratives_count,
+    raw_aircraft_make,
+    raw_aircraft_model,
 )
 
 from ntsb_probable_cause.records import guard
@@ -137,6 +141,30 @@ def test_has_nonempty_prelim_narrative_reads_every_narratives_entry() -> None:
         )
         is True
     )
+
+
+# --- amateur-built aircraft (decision 0020) — pure functions ---
+
+
+def test_is_amateur_built_reads_the_flag() -> None:
+    assert is_amateur_built({"aircrafts": [{"aircraftAmateurBuilt": True}]}) is True
+    assert is_amateur_built({"aircrafts": [{"aircraftAmateurBuilt": False}]}) is False
+    assert is_amateur_built({"aircrafts": [{}]}) is False
+    assert is_amateur_built({}) is False
+
+
+def test_raw_aircraft_make_and_model_read_the_recorded_values() -> None:
+    raw = {"aircrafts": [{"aircraftMake": "INVENTED BUILDER", "aircraftModel": "  "}]}
+    assert raw_aircraft_make(raw) == "INVENTED BUILDER"
+    assert raw_aircraft_model(raw) is None
+
+
+def test_model_contains_make_is_case_insensitive() -> None:
+    assert model_contains_make("Vans", "RV-8 Vans Kit") is True
+    assert model_contains_make("Vans", "rv-8 vans kit") is True
+    assert model_contains_make("Vans", "RV-8") is False
+    assert model_contains_make(None, "RV-8") is False
+    assert model_contains_make("Vans", None) is False
 
 
 def test_all_fixtures_have_no_missed_break_prelim_or_multi_aircraft_codes(

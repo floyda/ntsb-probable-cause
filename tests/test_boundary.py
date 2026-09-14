@@ -5,6 +5,7 @@ import pytest
 from tests.boundary import assert_boundary_holds
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
@@ -15,6 +16,23 @@ from ntsb_probable_cause.records.verdict import Verdict
 def test_boundary_holds_for_every_fixture(record_fixtures: list[dict[str, object]]) -> None:
     for raw in record_fixtures:
         assert_boundary_holds(raw)
+
+
+def test_boundary_holds_and_hides_the_builder_name_for_amateur_built_aircraft(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Decision 0020: an invented builder name in aircraftMake never reaches the payload."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftAmateurBuilt"] = True
+    aircrafts[0]["aircraftMake"] = "INVENTED BUILDER"
+
+    assert_boundary_holds(raw)
+
+    evidence, _, _ = split_record(raw)
+    payload = Payload.from_evidence(evidence)
+    assert "INVENTED BUILDER" not in payload.text
 
 
 def test_boundary_test_fails_when_the_splitter_leaks(

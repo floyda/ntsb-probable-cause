@@ -4452,30 +4452,30 @@ Tell Andy the merge settings are in the runbook for him to apply. Do not run the
 - Consumes: `fields.EVIDENCE_FIELDS`, `fields.check_evidence_paths`, `paths.resolve_path`, `tests.boundary.assert_boundary_holds`, decision 0020.
 - Produces: `fields.AMATEUR_BUILT_LABEL: str = "Amateur-built"`; `aircraft_make` and `aircraft_model` evidence values equal the label when `aircrafts[0].aircraftAmateurBuilt` is `True`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_fields.py`: for a record with `aircrafts[0].aircraftAmateurBuilt: true` and invented make/model strings, both the `aircraft_make` and `aircraft_model` extractors return `AMATEUR_BUILT_LABEL`; with the flag `false` or absent, they return the recorded values; both fields' declared `sources` include `aircrafts[0].aircraftAmateurBuilt`; `check_evidence_paths()` still passes. In `tests/test_boundary.py`: a deep copy of a fixture with the flag set and an invented make passes `assert_boundary_holds`, and the invented make string does not appear in the recorded payload text.
 
 Run: `uv run pytest tests/test_fields.py tests/test_boundary.py -v --no-cov`
 Expected: the new tests FAIL.
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 In `fields.py`, add `AMATEUR_BUILT_LABEL = "Amateur-built"` with a comment citing decision 0020, and a small typed helper that returns the label when `resolve_path(record, "aircrafts[0].aircraftAmateurBuilt") is True`, otherwise the text at the field's own path. Use it for the `aircraft_make` and `aircraft_model` fields, whose `sources` become `("aircrafts[0].aircraftMake", "aircrafts[0].aircraftAmateurBuilt")` and `("aircrafts[0].aircraftModel", "aircrafts[0].aircraftAmateurBuilt")`.
 
-- [ ] **Step 3: Scan counts and re-run**
+- [x] **Step 3: Scan counts and re-run**
 
 Add to `scripts/corpus_scan.py` a counts-only section "amateur-built aircraft (decision 0020)" printing, by split, cases with the flag set; and over those cases, the number of distinct make values, of make values occurring in exactly one case, of distinct model values, of model values occurring in exactly one case, and of cases whose model contains the make. No values are printed. Re-run in the foreground: `uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt; echo "exit $?"`. Expected: exit 0; threshold 20; 0 `LeakageError`; the new section matches decision 0020's Context (3,109 = 2,146 / 645 / 318; 2,438 and 2,257; 1,611 and 1,199; 61). Report any difference; do not edit the decision.
 
-- [ ] **Step 4: CLAUDE.md**
+- [x] **Step 4: CLAUDE.md**
 
 In rule 9, after the fixture sentence, add: "On amateur-built aircraft, the make and model evidence fields hold the label `Amateur-built`, never the recorded values, which are usually the builder's name (0020)."
 
-- [ ] **Step 5: Run tests and checks**
+- [x] **Step 5: Run tests and checks**
 
 Run each separately: the touched test files; `make check`; `uv run python -m scripts.check_docs`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Commit the files above and this plan with subject `S0: amateur-built make and model replaced in evidence (decision 0020)`.
 
@@ -4797,3 +4797,4 @@ moves these into the specification's As-built section when S0 closes.
   "COMMIT_MESSAGES"`. Ticked Task 14's step 2 and replaced its Deviations line accordingly. No
   decision record (confirming a decision already recorded, 0018, not a new one).
 - Task 18 (added 2026-09-14): after the final review, Andy decided the make and model of amateur-built aircraft are replaced with the label `Amateur-built` in evidence, because those fields usually hold the builder's name — not in the specification — decision 0020 (amends 0015).
+- Task 18, step 3: the scan's make/model counters compare values case-insensitively (`.strip().casefold()`) before counting distinct values and singletons. Without this the same builder or kit name recorded in a different case counted as two different values, giving 2,521/1,763 distinct make/model values instead of decision 0020's Context figures (2,438/1,611); the by-split flag counts and the "model contains make" count matched exactly without any change. No decision record (fixes the scan's counting to match the already-decided figures, not a new choice).
