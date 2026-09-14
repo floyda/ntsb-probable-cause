@@ -37,6 +37,20 @@ tone, no personal names, and every number taken from a committed script or resul
   roadmap stage marked done, plan deleted), which is recorded with evidence "this pull
   request's close-out commit; `uv run python -m scripts.check_docs` clean". Never write a
   condition as met without evidence.
+- Determine the release version before writing anything (decision 0018), since the As-built
+  section's "Release:" line (section 4) needs it. Fetch tags, then find the previous release
+  tag:
+
+  ```bash
+  git fetch --tags origin
+  git describe --tags --abbrev=0 --match 'v*'
+  ```
+
+  Exit 128 with "No names found, cannot describe anything" means there is no release tag yet.
+  In that case the version is `0.1.0` — unless `pyproject.toml` already holds a version above
+  `0.1.0`, which means a release happened without the matching tag reaching this checkout; stop
+  and report that instead of guessing a version. Otherwise (a tag was found), increase the tag's
+  minor version by one and set the patch to 0 (`v0.1.0` → `0.2.0`).
 
 ## 3. Gather evidence
 
@@ -101,19 +115,9 @@ Decision records added in this pull request, one line each with a link. "None." 
   and one line under it: `As built: see the stage specification's As-built section.`
   with a relative link to the specification.
 - `git rm docs/plans/<plan-file>`
-- Set the release version (decision 0018). Fetch tags, then find the previous release tag:
-
-  ```bash
-  git fetch --tags origin
-  git describe --tags --abbrev=0 --match 'v*'
-  ```
-
-  Exit 128 with "No names found, cannot describe anything" means there is no release tag yet.
-  In that case the version is `0.1.0` — unless `pyproject.toml` already holds a version above
-  `0.1.0`, which means a release happened without the matching tag reaching this checkout; stop
-  and report that instead of guessing a version. Otherwise (a tag was found), increase the tag's
-  minor version by one and set the patch to 0 (`v0.1.0` → `0.2.0`). Set `version = "<version>"`
-  in `pyproject.toml` if it differs, then run `uv lock` so `uv.lock` records the same version.
+- Using the release version determined in section 2 (decision 0018), set
+  `version = "<version>"` in `pyproject.toml` if it differs, then run `uv lock` so `uv.lock`
+  records the same version.
 
 ## 6. Check, show, commit
 
