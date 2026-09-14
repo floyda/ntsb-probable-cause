@@ -13,24 +13,30 @@ the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 with its layered leakage guard, and a model seam — see "Commands" below. The agent loop, the
 docket tool and the evaluation harness are not built yet. Read build-brief §7 before writing
 any code, then
-`docs/specs/2026-09-12-architecture-and-roadmap.md` and the current stage's specification
-(S0: `docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they
-differ.
+`docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
+(`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
+takes a part of), and the current stage's specification (S0, closed:
+`docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they differ.
 
 ## Required components (build-brief §7)
 
 - **Agent loop and tool interface**, with a step budget, an abstain path, and a log of every
-  step and its cost. Tool #1 is the docket; weather (Iowa Mesonet ASOS, params already verified
-  in the spike's `config.yaml`) comes later.
+  step and its cost. Each step records the agent's hypothesis as codes with probabilities, and
+  the trail is scored per step (0021). Tools are grouped by source and measured arrival; day-1
+  fields are start facts, and every tool result goes through `split_record` with the other
+  roles excluded, never a second assembler (0023). Tool #1 is the docket; the record's weather
+  fields are a tool in S3; the Iowa Mesonet archive (params already verified in the spike's
+  `config.yaml`) comes later, with its own provenance rule.
 - **Docket client and PDF classifier/extractor** as an importable module with test fixtures
   (the spike's probe scripts hard-code temporary paths and are not reusable as-is).
 - **Code-constrained output**: the model picks from a supplied list of NTSB occurrence/finding
   codes with their meanings, not free text, so scoring is exact-match. Seed the code lookup
   table from the spike's `decidability_form.build_code_lookups()`.
 - **Eval harness**: one command, fixed case list, ablation flags, per-slice reporting
-  (by investigation class; narrative presence no longer applies, 0013), confidence intervals,
-  cost per run. The spike's `baseline.py` and
-  `oneshot.py` are numerical anchors, not a harness.
+  (slices decided in S1; narrative presence no longer applies, 0013; fatal / non-fatal is
+  proposed before investigation class, whose mix differs by era), confidence intervals,
+  cost per run, the three arms (0022) and the full and masked availability conditions (0023).
+  The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness.
 - **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
   document lists with first-seen timestamps; resolution outcomes.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
@@ -135,6 +141,15 @@ average including tool calls, enforced by a hard cap in code.
 
 The first like-for-like evaluation set is the 40 case IDs in
 `../ntsb-spike/labelling/decidability.filled.csv`.
+
+**Beating the ceiling is not enough to show agency** (0022). The spike's docket-shape addendum
+(report §10) found about four in five development-era dockets readable in one call, so the loop
+(arm C) must also beat arm B — every tool called in a fixed order, a fixed document filter, one
+answer — at equal cost, in both availability conditions. Arm A is start facts only; S1's
+one-shot ceiling is arm B without the docket; arm B with the docket runs before any loop code
+exists. The four results that count against the loop and the six predictions are fixed in
+`docs/specs/2026-09-14-agency-hypothesis-trail-design.md` §4.5–4.6 and are published whichever
+way they come out.
 
 ## Model access
 
