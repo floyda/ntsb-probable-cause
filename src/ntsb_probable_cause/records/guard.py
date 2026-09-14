@@ -3,7 +3,7 @@
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
 
@@ -70,7 +70,7 @@ class Leak:
     evidence_role: str
     kind: str
     source: str
-    fragment: str
+    fragment: str = field(repr=False)
 
     def __str__(self) -> str:
         chars = len(self.fragment)

@@ -4599,3 +4599,44 @@ moves these into the specification's As-built section when S0 closes.
   confirmed clean after the edit. No decision record (documentation catch-up, ruled Important
   by the final review); rules 1-11 and the ordering/numbering of `CLAUDE.md`'s other sections
   are unchanged.
+- Final review, item D: `.claude/skills/close-stage/SKILL.md` had three gaps found on a
+  whole-branch read. (1) Section 2's unticked-step rule did not say it applies only outside
+  code fences, so a plan's own PR-template checkboxes inside a fenced block would be
+  misread as unticked steps; scoped the rule to "step line **outside code fences**" and noted
+  a fenced block is not step text. (2) Section 4's As-built "Implementation record" template
+  had no line for the release tag; added `- Release: v<version> (tag created by Andy after the
+  squash merge; decision 0018)`. (3) Section 5's version step ran `git describe --tags` without
+  first fetching tags, so a checkout without a local fetch of the remote's tags could wrongly
+  conclude there is no release yet; added `git fetch --tags origin` before the `describe` call,
+  named exit 128 "No names found, cannot describe anything" as meaning no tag, and added a stop
+  condition: no tag found but `pyproject.toml` already holds a version above `0.1.0` (a release
+  happened without the tag reaching this checkout) — report rather than guess. Added
+  `test_skill_states_the_evidence_sentence` (normalising whitespace before the substring check,
+  since "Never write a condition as met without evidence." is wrapped across two lines in the
+  file), `test_skill_scopes_the_unticked_step_rule_to_outside_code_fences`,
+  `test_skill_as_built_template_names_the_release_line` and
+  `test_skill_fetches_tags_before_describing_them` to `tests/test_close_stage_skill.py`; three
+  of the four confirmed to fail on the pre-fix skill text (RED; the evidence-sentence test
+  already passed, since that sentence was already present) and all four pass after (GREEN).
+  No decision record (documentation fix, not a change of approach).
+- Final review, item E1: `records/guard.py`'s `Leak` dataclass rendered the withheld fragment
+  in its default `repr()` (only `__str__` was overridden to withhold it) — a stray `repr(leak)`
+  in a log or debugger, from S3 onward, could put withheld text where a model or board might
+  see it. Added `= field(repr=False)` to `Leak.fragment`. Added
+  `test_leak_repr_does_not_render_the_fragment_text` to `tests/test_guard.py`, confirmed to
+  fail on the pre-fix code (the fragment text was found inside `repr(leak)`) and pass after.
+  No decision record (hardening, ruled Include by the final review); no public name or
+  signature changed, `__str__`'s behaviour is unaffected.
+- Final review, item E2: registered a hypothesis settings profile `"ci"` (`derandomize=True`)
+  in `tests/conftest.py`, loaded when the `CI` environment variable is set (GitHub Actions sets
+  it), so a hypothesis property failure in CI is reproducible rather than depending on that
+  run's random seed; local runs are unaffected (no `CI` variable, so the ambient `"default"`
+  profile stays in force, still exploring new examples each run). Added
+  `tests/test_hypothesis_profile.py` (three tests: the profile is registered with
+  `derandomize=True`; setting `CI` and reloading `tests.conftest` loads it; leaving `CI` unset
+  keeps the default profile), using `importlib.reload` on the `tests.conftest` module (a valid
+  namespace-package import here, confirmed against this project's `pythonpath = ["."]` pytest
+  config) since a module-level environment check cannot otherwise be exercised after the real
+  conftest has already loaded once per test session. Confirmed `make check` and `CI=true make
+  check` both pass (exit 0, 201 tests each). No decision record (test-suite hardening, ruled
+  Include by the final review); no production code outside `tests/` changed.

@@ -96,6 +96,11 @@ def test_leak_str_does_not_render_the_fragment_text() -> None:
     assert str(len(CAUSE)) in rendered
 
 
+def test_leak_repr_does_not_render_the_fragment_text() -> None:
+    leak = Leak("prelim_narrative", "sentence", "analysis_narrative", CAUSE)
+    assert CAUSE not in repr(leak)
+
+
 # --- Boilerplate: exempts only the exact isolated boilerplate sentence, never the whole text ---
 
 

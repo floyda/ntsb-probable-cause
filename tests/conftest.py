@@ -1,10 +1,18 @@
 import csv
 import json
+import os
 from pathlib import Path
 
 import pytest
+from hypothesis import settings
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+# Final review, item E2: derandomize hypothesis under CI so a flaky-looking failure there is
+# reproducible, without changing local runs (which keep exploring new examples each run).
+settings.register_profile("ci", derandomize=True)
+if os.environ.get("CI"):
+    settings.load_profile("ci")
 
 
 def load_record_fixtures() -> list[dict[str, object]]:

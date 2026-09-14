@@ -21,11 +21,12 @@ tone, no personal names, and every number taken from a committed script or resul
 
 ## 2. Stop conditions — check before writing anything
 
-- Any unticked `- [ ]` step in the plan, except steps in the stage's close-out task from the step
-  that runs `/close-stage` onward (those are finished by this skill and the final CI check; the
-  plan is deleted before they could be ticked). List the unticked steps and stop. Steps of the
-  close-out task before that point (for example verifying Done-means, opening the pull request)
-  must be ticked.
+- Any unticked `- [ ]` step line **outside code fences** in the plan (a fenced code block, such
+  as a PR template with its own checkboxes, is not step text and is never checked), except steps
+  in the stage's close-out task from the step that runs `/close-stage` onward (those are finished
+  by this skill and the final CI check; the plan is deleted before they could be ticked). List the
+  unticked steps and stop. Steps of the close-out task before that point (for example verifying
+  Done-means, opening the pull request) must be ticked.
 - The current branch is main (git branch --show-current prints main), or this branch
   has no open pull request (gh pr view --json state --jq .state does not print OPEN).
   Report and stop.
@@ -89,6 +90,7 @@ Decision records added in this pull request, one line each with a link. "None." 
 - Pull request: #N (URL)
 - Plan, at its last commit: permalink
 - Commits: first..last commit before the close-out commit (short hashes)
+- Release: v<version> (tag created by Andy after the squash merge; decision 0018)
 ```
 
 ## 5. Update statuses and delete the plan
@@ -99,15 +101,19 @@ Decision records added in this pull request, one line each with a link. "None." 
   and one line under it: `As built: see the stage specification's As-built section.`
   with a relative link to the specification.
 - `git rm docs/plans/<plan-file>`
-- Set the release version (decision 0018). Find the previous release tag:
+- Set the release version (decision 0018). Fetch tags, then find the previous release tag:
 
   ```bash
+  git fetch --tags origin
   git describe --tags --abbrev=0 --match 'v*'
   ```
 
-  If there is none, the version is `0.1.0`. Otherwise increase the tag's minor version by one
-  and set the patch to 0 (`v0.1.0` → `0.2.0`). Set `version = "<version>"` in
-  `pyproject.toml` if it differs, then run `uv lock` so `uv.lock` records the same version.
+  Exit 128 with "No names found, cannot describe anything" means there is no release tag yet.
+  In that case the version is `0.1.0` — unless `pyproject.toml` already holds a version above
+  `0.1.0`, which means a release happened without the matching tag reaching this checkout; stop
+  and report that instead of guessing a version. Otherwise (a tag was found), increase the tag's
+  minor version by one and set the patch to 0 (`v0.1.0` → `0.2.0`). Set `version = "<version>"`
+  in `pyproject.toml` if it differs, then run `uv lock` so `uv.lock` records the same version.
 
 ## 6. Check, show, commit
 
