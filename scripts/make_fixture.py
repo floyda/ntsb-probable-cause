@@ -223,10 +223,12 @@ def main(argv: list[str]) -> int:
         if case_id not in records:
             raise FixtureError(f"{case_id}: not found in the development split")
         entry, record = records[case_id]
+        if _amateur_built_name_risk(record):
+            raise FixtureError(
+                f"{case_id}: screened out: make appears in a narrative or aircraft is amateur-built"
+            )
         if not _eligible(record):
             raise FixtureError(f"{case_id}: not eligible (completion status, regulation or split)")
-        if _amateur_built_name_risk(record):
-            raise FixtureError(f"{case_id}: screened out by the amateur-built name risk check")
         print(_write(record, entry.fetched_at))
     return 0
 

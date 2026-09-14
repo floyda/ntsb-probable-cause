@@ -140,7 +140,7 @@ def test_records_command_refuses_an_ineligible_record(
     _write_dev_month(raw, [record])
     monkeypatch.setattr(make_fixture, "RAW", raw)
     monkeypatch.setattr(make_fixture, "RECORDS", tmp_path / "fixtures")
-    with pytest.raises(FixtureError, match="CEN16LA900"):
+    with pytest.raises(FixtureError, match="not eligible"):
         main(["records", "CEN16LA900"])
 
 
@@ -162,5 +162,5 @@ def test_records_command_refuses_a_screened_record(
     _write_dev_month(raw, [record])
     monkeypatch.setattr(make_fixture, "RAW", raw)
     monkeypatch.setattr(make_fixture, "RECORDS", tmp_path / "fixtures")
-    with pytest.raises(FixtureError, match="CEN16LA901"):
+    with pytest.raises(FixtureError, match="screened out"):
         main(["records", "CEN16LA901"])
