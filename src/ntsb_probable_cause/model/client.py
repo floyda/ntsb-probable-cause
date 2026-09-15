@@ -157,6 +157,7 @@ class RecordingFakeClient:
     def __init__(self, replies: Sequence[str] = ("",), usage: Sequence[Usage] = ()) -> None:
         self.payloads: list[Payload] = []
         self.histories: list[tuple[Turn, ...]] = []
+        self.systems: list[str] = []
         self._replies = tuple(replies) or ("",)
         self._usage = tuple(usage)
 
@@ -168,9 +169,10 @@ class RecordingFakeClient:
         system: str = "",
         history: Sequence[Turn] = (),
     ) -> ModelReply:
-        """Record the payload and history; return the next reply, repeating the last."""
+        """Record the payload, system text and history; return the next reply, repeating last."""
         self.payloads.append(payload)
         self.histories.append(tuple(history))
+        self.systems.append(system)
         text = self._replies[min(len(self.payloads), len(self._replies)) - 1]
         if self._usage:
             usage = self._usage[min(len(self.payloads), len(self._usage)) - 1]
