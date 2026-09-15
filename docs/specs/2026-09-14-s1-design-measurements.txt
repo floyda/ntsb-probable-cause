@@ -1,0 +1,119 @@
+filtered closed GA cases: 19641; development 13560; held-out 4241
+
+== M1 occurrence codes: vocabulary from the development split, coverage of held-out
+distinct primary (defining-event) codes, development: 829; any position: 1206
+labelled codes in development: 1213
+distinct primary codes, held-out: 564
+held-out cases whose primary code is in the development vocabulary: 4132 of 4241 (97.4%)
+share of held-out cases in the 10 most common primary codes: 27.7%
+most common held-out primary code: 552230 (Landing-landing roll — Loss of control on ground) 8.0%
+development cases with no occurrence code: 0; held-out: 0
+
+== M2 finding codes: vocabulary from the development split, coverage of held-out
+distinct 10-digit finding codes, development: 2928; held-out: 1615
+distinct 8-digit prefixes (tiers 1-4), development: 678; 6-digit (tiers 1-3): 126; 4-digit (tiers 1-2): 21
+held-out finding-code instances in the development vocabulary: 11405 of 11852 (96.2%)
+  at 6 digits: 100.0%
+held-out cases whose every finding code is in the development vocabulary: 3861 of 4241 (91.0%)
+development finding codes seen once: 1241 of 2928; seen 5+ times: 844
+held-out finding-code instances covered by codes seen 5+ times in development: 89.6%
+
+== M3 findings per case and the in-probable-cause flag
+development: findings per case median 3, p90 5, max 19, zero 0
+held-out: findings per case median 3, p90 4, max 12, zero 0
+all splits: cases with findings 19641; findings 59051; flagged in probable cause 49969 (84.6%)
+cases with at least one flagged finding: 19446 (99.0%); with every finding flagged: 13180 (67.1%)
+cases with more than one aircraft: 224 (1.1%)
+
+== M4 held-out: fatal / non-fatal by investigation class (the slices)
+fatal  fatal  non-fatal   All
+cls
+C          0        397   397
+F        515         16   531
+I          0          1     1
+L        211       3097  3308
+M          1          1     2
+T          0          2     2
+All      727       3514  4241
+development, same table:
+fatal  fatal  non-fatal    All
+cls
+C          0       6126   6126
+F       1890        140   2030
+G          2          1      3
+I          1        134    135
+L        529       4608   5137
+M         22          0     22
+T          0        107    107
+All     2444      11116  13560
+
+== M5 held-out: report flavour and factual-narrative presence by class (S0 open question)
+factualFinalReportFlavor  Basic (no factual)  Detailed (ICAO headers)  Standard report   All
+cls
+C                                        397                        0                0   397
+F                                          0                      421              110   531
+I                                          0                        0                1     1
+L                                       1851                      185             1272  3308
+M                                          0                        2                0     2
+T                                          0                        0                2     2
+All                                     2248                      608             1385  4241
+factual narrative present, by class:
+narratives[0].concatenatedFactualNarrative  absent  present   All
+cls
+C                                              195      202   397
+F                                                2      529   531
+I                                                0        1     1
+L                                             1843     1465  3308
+M                                                1        1     2
+T                                                0        2     2
+All                                           2041     2200  4241
+factual narrative present, by flavour:
+narratives[0].concatenatedFactualNarrative  absent  present   All
+factualFinalReportFlavor
+Basic (no factual)                            2035      213  2248
+Detailed (ICAO headers)                          2      606   608
+Standard report                                  4     1381  1385
+All                                           2041     2200  4241
+
+== M6 size of the code lists rendered for the model (characters / 4)
+occurrence list, primary codes with labels: 829 lines, ~10645 tokens
+finding list, every 10-digit code with description: 2928 lines, ~75693 tokens
+finding list, codes seen 5+ times: 844 lines, ~21883 tokens
+finding list at 6 digits (tiers 1-3) with names: 126 lines, ~1985 tokens
+distinct modifiers (last 2 digits): 72; most common: [('99', 235), ('01', 170), ('11', 140), ('13', 140), ('44', 137)]
+
+== M7 the 40 like-for-like cases: slices they fall into
+found 40 of 40
+fatal  fatal  non-fatal  All
+cls
+C          0          5    5
+F          8          1    9
+L          3         23   26
+All       11         29   40
+
+== M8 start-fact purity on the development split: does one value fix the occurrence code?
+derived.phaseOfFlight: values 12; values (n>=20) where one code takes 90%+: 0; highest single-code share among values with n>=20: 40.0%
+highestInjuryLevel: values 4; values (n>=20) where one code takes 90%+: 0; highest single-code share among values with n>=20: 12.2%
+aircrafts[0].engines[0].engineType: values 8; values (n>=20) where one code takes 90%+: 0; highest single-code share among values with n>=20: 13.1%
+development cases with a phase of flight value: 13560 of 13560
+
+== M9 occurrence code = phase prefix + event suffix: the two tables
+distinct 3-digit prefixes among development primary codes: 43; distinct 3-digit suffixes: 81
+prefixes with exactly one tier-1 (phase) label: 45 of 45
+suffixes with exactly one tier-2 (event) label: 96 of 96
+possible prefix x suffix combinations: 3483; seen as a primary code in development: 829
+held-out cases whose primary code is composable from the development tables: 99.8%
+phase table ~259 tokens; event table ~558 tokens
+share of held-out cases in the 10 most common event suffixes: 62.9%
+
+== M10 the NTSB's public data dictionary as the source of the code tables
+dictionary rows: 4574
+finding items (8 digits): 1019; distinct 6-digit categories among them: 130; 4-digit: 21
+modifiers: 73; occurrence events (3-digit suffix): 94
+items per 6-digit category: median 6, max 41
+development 8-digit items in the official list: 677 of 678
+held-out finding-code instances composable from official item + modifier: 99.8%
+held-out primary occurrence codes whose event suffix is in the official list: 99.5%
+development event suffixes in the official list: 78 of 81
+official item list ~22055 tokens; modifier list ~405 tokens; event list ~637 tokens
+a stage-2 list for 3 chosen categories at the median: ~18 rows
