@@ -67,6 +67,16 @@ def test_abstained_case_scores_zero_on_accuracy() -> None:
     assert s.abstained
     assert not s.occurrence_top1
     assert s.pair_unseen is True
+    # spec §4.1: abstention is not a free pass; every finding column scores 0, not None,
+    # because the verdict has codes to score against.
+    assert s.finding_precision_10 == 0.0
+    assert s.finding_recall_10 == 0.0
+    assert s.finding_precision_8 == 0.0
+    assert s.finding_recall_8 == 0.0
+    assert s.finding_precision_6 == 0.0
+    assert s.finding_recall_6 == 0.0
+    assert s.finding_precision_all_10 == 0.0
+    assert s.finding_recall_all_10 == 0.0
 
 
 def test_trail_scores_by_hand() -> None:
@@ -116,3 +126,7 @@ def test_stated_versus_actual() -> None:
     )
     assert agreement == 0.75
     assert 0 < chance < 1
+
+
+def test_stated_versus_actual_on_no_steps() -> None:
+    assert metrics.stated_versus_actual([], []) == (0.0, 0.0)

@@ -3431,3 +3431,23 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   expected value changed. Also added an explicit `-> Hypothesis` return annotation on the test
   helper `hyp()`, required by mypy `--strict` (`no-untyped-def`) and not spelled out in the
   brief's Step 1 snippet.
+- 2026-09-15, Task 7 fix round 1 (review finding, plan-mandated, controller-resolved in favour
+  of the approved spec): the plan's own Step 3 snippet for `score_case` gave an abstained case
+  `predicted = ()`, so every `finding_precision_*` read `None` (indistinguishable from an
+  answered case that gave no codes) and `finding_recall_*` read `0.0` only incidentally — a
+  later mean over cases would silently drop abstained cases from precision instead of counting
+  them against the model. Spec §4.1 (`docs/specs/2026-09-14-s1-scoring-and-evaluation-design.md`
+  around line 267) is explicit: "an abstained case scores 0 on every accuracy column" —
+  abstention is not a free pass. The spec governs. Added an `abstained` flag to
+  `_precision_recall` in `metrics.py`: when true, precision is `0.0` when the verdict side has
+  codes and `None` only when it does not (recall already computed to `0.0` in the abstained
+  case without change, since `predicted` is empty and the verdict side is non-empty in every
+  case this task scores). `score_case` now passes `abstained=hypothesis.abstain` to all four
+  `_precision_recall` calls. Updated `CaseScores`' docstring to state the rule. Extended
+  `test_abstained_case_scores_zero_on_accuracy` to assert all eight finding precision/recall
+  columns are `0.0`. Flagged for Andy: the plan text itself needs the same correction wherever
+  a later task's own snippet repeats the old `None`-on-abstain assumption.
+- 2026-09-15, Task 7 fix round 1 (minor, cheap): `stated_versus_actual` divided by `n` with no
+  guard for empty input (`ZeroDivisionError` on `observed=[]`). Added an `n == 0` guard
+  returning `(0.0, 0.0)`, matching the empty-input behaviour of `wilson` and `bootstrap_mean`.
+  Added `test_stated_versus_actual_on_no_steps`.

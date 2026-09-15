@@ -15,7 +15,13 @@ _SIGN = {"confirmed": 1, "weakened": -1, "unchanged": 0}
 
 @dataclass(frozen=True)
 class CaseScores:
-    """The §4.1 columns for one case. An abstained case scores False on every accuracy column."""
+    """The §4.1 columns for one case.
+
+    Abstention is not a free pass (spec §4.1): an abstained case scores ``False`` on the
+    occurrence columns, and ``0.0`` — not ``None`` — on every finding precision and recall
+    column where the verdict side has codes to score against. A column stays ``None`` only
+    when the verdict side itself has no codes (nothing to score).
+    """
 
     occurrence_top1: bool
     occurrence_top3: bool
@@ -39,11 +45,18 @@ def primary_occurrence(verdict: Verdict) -> str | None:
 
 
 def _precision_recall(
-    predicted: Sequence[str], truth: Sequence[str], digits: int
+    predicted: Sequence[str], truth: Sequence[str], digits: int, *, abstained: bool = False
 ) -> tuple[float | None, float | None]:
+    """Precision/recall at ``digits`` digits.
+
+    Abstention scores 0, not None, when the verdict side has codes (spec §4.1): an
+    abstained case never gives codes, so ``predicted`` is always empty, and without this
+    ``abstained`` flag precision would read ``None`` (indistinguishable from an answered
+    case that gave no codes) instead of counting against the model.
+    """
     p = {c[:digits] for c in predicted}
     t = {c[:digits] for c in truth}
-    precision = len(p & t) / len(p) if p else None
+    precision = (0.0 if t else None) if abstained else (len(p & t) / len(p) if p else None)
     recall = len(p & t) / len(t) if t else None
     return precision, recall
 
@@ -57,10 +70,11 @@ def score_case(
     top1 = codes[0]
     answered = not hypothesis.abstain
     predicted = hypothesis.finding_codes(tables) if answered else ()
-    p10, r10 = _precision_recall(predicted, verdict.finding_codes_in_cause, 10)
-    p8, r8 = _precision_recall(predicted, verdict.finding_codes_in_cause, 8)
-    p6, r6 = _precision_recall(predicted, verdict.finding_codes_in_cause, 6)
-    pa, ra = _precision_recall(predicted, verdict.finding_codes, 10)
+    abstained = hypothesis.abstain
+    p10, r10 = _precision_recall(predicted, verdict.finding_codes_in_cause, 10, abstained=abstained)
+    p8, r8 = _precision_recall(predicted, verdict.finding_codes_in_cause, 8, abstained=abstained)
+    p6, r6 = _precision_recall(predicted, verdict.finding_codes_in_cause, 6, abstained=abstained)
+    pa, ra = _precision_recall(predicted, verdict.finding_codes, 10, abstained=abstained)
     return CaseScores(
         occurrence_top1=answered and top1 == truth,
         occurrence_top3=answered and truth in codes,
@@ -211,6 +225,8 @@ def stated_versus_actual(observed: Sequence[str], gains: Sequence[float]) -> tup
     stated = [_SIGN[o] for o in observed]
     actual = [(g > 0) - (g < 0) for g in gains]
     n = len(stated)
+    if n == 0:
+        return 0.0, 0.0
     agreement = sum(s == a for s, a in zip(stated, actual, strict=True)) / n
     chance = sum((stated.count(v) / n) * (actual.count(v) / n) for v in (-1, 0, 1))
     return agreement, chance
