@@ -3382,12 +3382,17 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   corpus (`docs/results/s1-code-tables.txt`): development split (13,560 cases) has 204 (1.50%)
   with a non-composable primary occurrence code and 37 with a non-composable flagged finding;
   held-out (4,241 cases) has 77 (1.82%) and 20. That caps occurrence top-1 at about 98.5% on
-  development and 98.2% on held-out, before the model gets a chance to be wrong. The missing
-  parts, ranked by case count across both splits: phase prefixes `553` (Landing-Landing Roll
-  family, 135 cases) and `601` (113 cases) are absent from the dictionary's `Events_Sequence`
-  rows entirely; modifier `27` (50 findings) and `98` (4) are absent from its `Findings` rows;
-  event suffixes `850`, `284`, `282`, `281` (20, 5, 4, 4 cases) and item `01011100` (9 cases) are
-  likewise undefined. The tables are left exactly as Task 5 built them from the dictionary — S1
+  development and 98.2% on held-out, before the model gets a chance to be wrong. The build script
+  ranks the two kinds of missing part separately, in different units, across both splits, because
+  a case has one primary occurrence code but can carry several flagged findings: missing phase or
+  event parts are ranked by CASE count (each case contributes at most one to a given part) —
+  phase prefixes `553` (Landing-Landing Roll family, 135 cases) and `601` (113 cases) are absent
+  from the dictionary's `Events_Sequence` rows entirely, and event suffixes `850`, `284`, `282`,
+  `281` (20, 5, 4, 4 cases) are likewise undefined; missing item or modifier parts are ranked by
+  FINDING count (a case with two flagged findings needing the same missing part contributes 2) —
+  modifier `27` (50 findings, from fewer than 50 cases) and `98` (4 findings) are absent from the
+  dictionary's `Findings` rows, and item `01011100` (9 findings) is likewise undefined. The tables
+  are left exactly as Task 5 built them from the dictionary — S1
   does not extend them from corpus observation — and this gap is reported alongside the S1 bars
   rather than silently lowering the ceiling. Extending the tables with codes observed in the
   corpus (a `codes in use but not in the tables` list of 159, already printed by the existing

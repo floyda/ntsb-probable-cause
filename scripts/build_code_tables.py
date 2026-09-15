@@ -124,21 +124,34 @@ def _missing_finding_parts(code: str, tables: CodeTables) -> list[str]:
     return parts
 
 
-def coverage_check(
-    raws: Iterable[tuple[str, Raw]], tables: CodeTables
-) -> tuple[dict[str, SplitCoverage], list[tuple[str, int]]]:
-    """Per-split case coverage over ``(split, raw)`` pairs, and missing parts ranked by case count.
+@dataclass(frozen=True)
+class CoverageResult:
+    """Per-split case coverage, plus the two missing-part rankings and their counting units."""
+
+    by_split: dict[str, SplitCoverage]
+    missing_occurrence_parts: list[tuple[str, int]]
+    """Missing phase/event parts ranked by CASE count: one primary occurrence code per case."""
+    missing_finding_parts: list[tuple[str, int]]
+    """Missing item/modifier parts ranked by FINDING count: one flagged finding can add more
+    than one to the same part (two findings in a case needing the same modifier count as 2)."""
+
+
+def coverage_check(raws: Iterable[tuple[str, Raw]], tables: CodeTables) -> CoverageResult:
+    """Per-split case coverage over ``(split, raw)`` pairs, and two missing-part rankings.
 
     Only ``dev`` and ``heldout`` splits are counted (spec §5, task 5b); other splits are ignored.
     A case's primary occurrence code is the first of ``fields.occurrence_codes(raw)``; a case
     counts under "finding not composable" if any finding flagged in the probable cause
-    (``fields.finding_codes_in_cause(raw)``) has an item or modifier the tables lack. The ranking
-    counts every occurrence of a missing part: once per case for a missing phase or event (a case
-    has one primary code), once per flagged finding that needs it for a missing item or modifier
-    (a case with two such findings needing the same modifier counts it twice).
+    (``fields.finding_codes_in_cause(raw)``) has an item or modifier the tables lack.
+
+    The two rankings use different counting units, since they come from different things: a
+    missing phase or event is ranked by how many CASES hit it (a case has one primary occurrence
+    code), while a missing item or modifier is ranked by how many FLAGGED FINDINGS need it (a
+    case with two such findings needing the same modifier counts it twice).
     """
     counts = {split: [0, 0, 0] for split in COVERAGE_SPLITS}
-    missing_part_counts: Counter[str] = Counter()
+    missing_occurrence_counts: Counter[str] = Counter()
+    missing_finding_counts: Counter[str] = Counter()
     for split, raw in raws:
         if split not in counts:
             continue
@@ -147,32 +160,38 @@ def coverage_check(
         occurrence = fields.occurrence_codes(raw)
         if occurrence and (parts := _missing_occurrence_parts(occurrence[0], tables)):
             row[1] += 1
-            missing_part_counts.update(parts)
+            missing_occurrence_counts.update(parts)
         finding_flagged = False
         for code in fields.finding_codes_in_cause(raw):
             if parts := _missing_finding_parts(code, tables):
                 finding_flagged = True
-                missing_part_counts.update(parts)
+                missing_finding_counts.update(parts)
         if finding_flagged:
             row[2] += 1
     stats = {split: SplitCoverage(*row) for split, row in counts.items()}
-    return stats, missing_part_counts.most_common()
+    return CoverageResult(
+        stats, missing_occurrence_counts.most_common(), missing_finding_counts.most_common()
+    )
 
 
 def _coverage_lines(cases_path: Path, tables: CodeTables) -> list[str]:
-    """The per-split coverage lines and the ranked missing-parts line."""
+    """The per-split coverage lines and the two labelled, ranked missing-parts lines."""
     table = pq.read_table(cases_path, columns=["raw_json", "split"])
     raws = ((str(row["split"]), json.loads(str(row["raw_json"]))) for row in table.to_pylist())
-    stats, ranked = coverage_check(raws, tables)
+    result = coverage_check(raws, tables)
     lines = [
         f"{split}: {s.cases} cases; primary occurrence code not composable: "
         f"{s.primary_not_composable} ({s.primary_not_composable_pct:.2f}%); cases with a "
         f"flagged finding not composable: {s.finding_not_composable}"
-        for split, s in stats.items()
+        for split, s in result.by_split.items()
     ]
     lines.append(
-        "missing parts (dev+heldout), ranked by case count: "
-        + "; ".join(f"{part} {count}" for part, count in ranked)
+        "missing parts of primary occurrence codes (dev+heldout, by case count): "
+        + "; ".join(f"{part} {count}" for part, count in result.missing_occurrence_parts)
+    )
+    lines.append(
+        "missing parts of flagged findings (dev+heldout, by finding count): "
+        + "; ".join(f"{part} {count}" for part, count in result.missing_finding_parts)
     )
     return lines
 
