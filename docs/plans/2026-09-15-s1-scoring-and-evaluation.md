@@ -3583,3 +3583,23 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   draw, not the stratification rule (per-stratum share of `n`, floor of one) that determines
   the resulting occurrence-code mix; Task 13/15, which run the baseline on real data, should
   re-confirm the reproduction lands within the one-point band and log there if it does not.
+- 2026-09-15, Task 10 fix round 1: review found that `predict`'s finding prediction was
+  conditioned on each case's own key-conditioned top-1 occurrence code
+  (`model.findings_by_code.get(occ[0], ())`), but the spike's `finding_code_baseline`
+  (`ntsb_spike/src/ntsb_spike/baseline.py:44-58`) predicts one fixed top-3 finding set for
+  every case in the sample: the finding codes most common among cases whose primary
+  occurrence code equals the single sample-wide modal code
+  (`df[occ_col].value_counts().index[0]`), never a per-key code. `fit`'s `findings_by_code`
+  already accumulates, per primary code, the finding codes of every case with that primary
+  code regardless of key — exactly what the spike computes for the modal code — so only
+  `predict` needed to change, to `model.findings_by_code.get(model.fallback[0], ())`
+  (`model.fallback[0]` is the sample-wide modal primary code, since `fallback` is built from
+  the unconditioned `overall` counter). The occurrence prediction stays key-conditioned;
+  only findings follow the spike's single sample-wide code, so the finding-baseline
+  reproduction is like-for-like with the spike's 17.0%/19.0% precision/recall. Added
+  `test_finding_prediction_is_the_sample_wide_modal_codes_not_per_key`, a hand-computed
+  synthetic-record test (not built with the implementation's own `Counter`/`most_common`)
+  showing two cases with different phase|weather keys get different occurrence predictions
+  but the identical finding prediction. Noted on
+  `test_fit_and_predict_on_fixtures_by_hand` that it is a wiring test, since it shares
+  `Counter.most_common` with the implementation and would not have caught this bug.
