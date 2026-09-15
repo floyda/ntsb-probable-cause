@@ -74,6 +74,12 @@ def runner(
     )
 
 
+def _run_id(sample: str = "dev-400", arm: str = "ceiling") -> str:
+    """The deterministic run id every test's fixed ``now``/commit produce, given sample/arm."""
+    started = datetime(2026, 9, 15, tzinfo=UTC)
+    return f"{started:%Y%m%dT%H%M%S}-abc1234-{sample}-{arm}"
+
+
 def test_over_cap_case_is_failed_without_a_call(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -218,7 +224,16 @@ def test_sync_case_that_abstains_skips_stage_two(
 def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    client = RecordingFakeClient([GOOD, "not json", "still not json"])
+    """Real cost accounting (fix round 1, Important 3): ``RecordingFakeClient`` now carries
+    non-zero usage per call, so this asserts the hand-computed dollar amount of all three
+    calls (stage 1, plus both rejected stage-2 attempts) rather than a ``>= 0.0`` bound that
+    a $0 accounting bug would also satisfy."""
+    usage = [
+        Usage(prompt_tokens=300, completion_tokens=40),  # stage 1 (accepted)
+        Usage(prompt_tokens=150, completion_tokens=10),  # stage 2, first attempt (rejected)
+        Usage(prompt_tokens=160, completion_tokens=12),  # stage 2, retry (also rejected)
+    ]
+    client = RecordingFakeClient([GOOD, "not json", "still not json"], usage=usage)
     run = runner(tmp_path, client).run(
         RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
         record_fixtures[:1],
@@ -228,7 +243,35 @@ def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
     assert case.failure is not None
     assert case.failure.startswith("schema")
     assert case.scores is None
-    assert case.cost_usd >= 0.0  # replies made before the failure are still priced
+    # Luna batch price (sources.py): $0.10 / M input tokens, $0.60 / M output tokens.
+    expected = sum((u.prompt_tokens * 0.10 + u.completion_tokens * 0.60) / 1e6 for u in usage)
+    assert case.cost_usd == pytest.approx(expected)
+
+
+def test_sync_cost_reflects_both_replies_when_the_retry_succeeds(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A stage-1 schema failure followed by a successful retry must price BOTH calls, by
+    hand-computed dollars (fix round 1, Important 3), and the totals must roll up correctly:
+    RunRecord.cost_usd is the sum over its (one) case, and the one StepRecord's
+    cumulative_cost_usd matches too."""
+    usage = [
+        Usage(prompt_tokens=200, completion_tokens=20),  # stage 1, rejected
+        Usage(prompt_tokens=210, completion_tokens=5),  # stage 1, retry — accepted, abstains
+    ]
+    client = RecordingFakeClient(["not json", ABSTAIN], usage=usage)
+    run = runner(tmp_path, client).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    expected = sum((u.prompt_tokens * 0.10 + u.completion_tokens * 0.60) / 1e6 for u in usage)
+    folder = tmp_path / "runs" / run.run_id
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    (step,) = read_jsonl(folder / "steps.jsonl", StepRecord)
+    assert case.failure is None
+    assert case.cost_usd == pytest.approx(expected)
+    assert step.cumulative_cost_usd == pytest.approx(expected)
+    assert run.cost_usd == pytest.approx(expected)  # RunRecord sums over its one case
 
 
 class _RaisingClient:
@@ -464,6 +507,10 @@ def test_batch_reply_that_fails_schema_is_retried_once_then_recorded(
     assert case.failure is not None
     assert case.failure.startswith("schema")
     assert case.scores is None
+    # Both attempts carry the fixture's 100/50-token usage (fix round 1, Important 3): a
+    # failed case's priced cost, not just its non-negativity.
+    expected = 2 * (100 * 0.10 + 50 * 0.60) / 1e6
+    assert case.cost_usd == pytest.approx(expected)
 
 
 def test_batch_ending_failed_raises_model_error_naming_the_batch_id(
@@ -486,20 +533,47 @@ def test_batch_ending_failed_raises_model_error_naming_the_batch_id(
 def test_batch_records_batch_ids_before_waiting(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
+    """Fix round 1, Minor 6: the fake's own ``wait`` asserts the id is already on disk when
+    it is called, so this actually tests the ordering (record-before-wait), not just the
+    end state — which would pass even if the write happened after every batch finished."""
+    folder = tmp_path / "runs" / _run_id()
+
+    def stage1(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        assert f'"batch_id": "{bid}"' in (folder / "batches.jsonl").read_text()
+        return _status(bid, reqs, GOOD, reported_cost=0.01)
+
+    def stage2(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        assert f'"batch_id": "{bid}"' in (folder / "batches.jsonl").read_text()
+        return _status(bid, reqs, REFINE, reported_cost=0.02)
+
+    fake = FakeBatchClient(handlers=[stage1, stage2])
+    runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    lines = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [row["stage"] for row in lines] == ["stage1", "stage2"]
+    assert [row["batch_id"] for row in lines] == ["b1", "b2"]
+
+
+def test_batch_status_goes_to_stderr_not_stdout(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Minor 7: ``on_status`` writes to stderr only (controller resolution 7)."""
     fake = FakeBatchClient(
         handlers=[
             lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
             lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),
         ]
     )
-    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+    runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
         RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
         record_fixtures[:1],
     )
-    folder = tmp_path / "runs" / run.run_id
-    lines = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
-    assert [row["stage"] for row in lines] == ["stage1", "stage2"]
-    assert [row["batch_id"] for row in lines] == ["b1", "b2"]
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "stage1" in captured.err
+    assert "stage2" in captured.err
 
 
 def test_batch_writes_the_same_three_files_as_sync(
@@ -559,6 +633,13 @@ def test_batch_stage1_retry_recovers_and_the_case_still_completes(
     (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
     assert case.failure is None
     assert case.scores is not None
+    # Three calls (rejected stage-1 attempt, accepted retry, stage-2), each the fixture's
+    # 100/50-token usage (fix round 1, Important 3).
+    expected = 3 * (100 * 0.10 + 50 * 0.60) / 1e6
+    assert case.cost_usd == pytest.approx(expected)
+    # The first batch reported no cost at all, so the total is honestly unknown, not a
+    # partial sum presented as the whole (fix round 1, Minor 4).
+    assert run.reported_batch_cost_usd is None
 
 
 def test_batch_stage_two_schema_failure_is_retried_once_then_recorded(
@@ -614,3 +695,98 @@ def test_batch_stage_two_no_reply_is_retried_once_then_recorded_as_model_failure
     assert case.failure is not None
     assert case.failure.startswith("model:")
     assert case.scores is None
+
+
+def test_batch_stage2_retry_replays_the_stage1_content_not_the_rejected_reply(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1, Important 1: on a stage-2 retry batch, the assistant history must carry
+    the accepted stage-1 reply (GOOD), never the rejected first stage-2 attempt's text."""
+    captured_history: list[tuple[Turn, ...]] = []
+
+    def stage2_first(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        captured_history.append(reqs[0].history)
+        return _status(bid, reqs, "not json")  # rejected: forces a stage-2 retry batch
+
+    def stage2_retry(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        captured_history.append(reqs[0].history)
+        return _status(bid, reqs, REFINE, reported_cost=0.02)
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            stage2_first,
+            stage2_retry,
+        ]
+    )
+    runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert len(captured_history) == 2
+    for history in captured_history:
+        assert history[0].content == GOOD
+
+
+def test_batch_stage1_retry_records_its_own_error_not_pass_ones(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1, Minor 5: a case that fails schema on the first stage-1 attempt but then
+    fails with a model error on retry must be filed as ``model: ...``, not ``schema: ...``
+    from the first attempt."""
+
+    def retry_no_reply(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(custom_id=r.custom_id, reply=None, error="retry-specific failure")
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+        )
+
+    fake = FakeBatchClient(
+        handlers=[lambda bid, reqs: _status(bid, reqs, "not json"), retry_no_reply]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    folder = tmp_path / "runs" / run.run_id
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("model:")
+    assert "retry-specific failure" in case.failure
+    assert "schema" not in case.failure
+
+
+def test_batch_abort_on_stage_two_failure_still_records_stage_one_spend(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1, Important 2: a stage-2 batch that ends ``expired`` after the stage-1
+    batch was billed must not make that stage-1 spend invisible — cases.jsonl/run.jsonl are
+    still written, with the accrued cost, before the ModelError is re-raised."""
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            lambda bid, reqs: BatchStatus(
+                batch_id=bid, status="expired", results=(), reported_cost_usd=None
+            ),
+        ]
+    )
+    with pytest.raises(ModelError, match="expired"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            record_fixtures[:1],
+        )
+    folder = tmp_path / "runs" / _run_id()
+    (record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert record.finished is None
+    expected_stage1_cost = 100 * 0.10 / 1e6 + 50 * 0.60 / 1e6  # the billed stage-1 reply
+    assert record.cost_usd == pytest.approx(expected_stage1_cost)
+    assert record.reported_batch_cost_usd == pytest.approx(0.01)
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("aborted:")
+    assert case.cost_usd == pytest.approx(expected_stage1_cost)
