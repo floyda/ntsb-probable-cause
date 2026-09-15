@@ -1,5 +1,6 @@
 """Tests for the OpenRouter batch client (submit, poll, collect)."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -108,6 +109,55 @@ def test_poll_handles_a_result_with_no_body(respx_mock: respx.MockRouter) -> Non
     assert result.reply is None
     assert result.error is not None
     assert "request timed out" in result.error
+
+
+def test_poll_records_a_non_2xx_result_as_error_without_aborting_the_batch(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """A per-result status_code outside 2xx must become reply=None, not an exception,
+    and must not stop the other results in the same poll from parsing."""
+    results = copy.deepcopy(FIX["response"]["results"])
+    bad = results[0]
+    bad["response"]["status_code"] = 429
+    bad["response"]["body"] = {"error": {"message": "rate limited by upstream provider"}}
+    broken = {**FIX["response"], "results": results}
+    respx_mock.get(f"{BASE}/b5").mock(return_value=httpx.Response(200, json=broken))
+
+    status = client().poll("b5")
+
+    assert len(status.results) == len(results)
+    failed = status.results[0]
+    assert failed.custom_id == bad["custom_id"]
+    assert failed.reply is None
+    assert failed.error is not None
+    assert "429" in failed.error
+    assert "rate limited by upstream provider" in failed.error
+    others = status.results[1:]
+    assert any(r.reply is not None for r in others)
+
+
+def test_poll_records_a_2xx_result_with_unparsable_body_as_error(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """A 2xx result whose body is not a valid chat completion (no ``choices``) must become
+    reply=None with the ModelError text, never an uncaught exception out of poll()."""
+    results = copy.deepcopy(FIX["response"]["results"])
+    bad = results[0]
+    bad["response"]["status_code"] = 200
+    bad["response"]["body"] = {"error": {"message": "malformed upstream response"}}
+    broken = {**FIX["response"], "results": results}
+    respx_mock.get(f"{BASE}/b6").mock(return_value=httpx.Response(200, json=broken))
+
+    status = client().poll("b6")
+
+    assert len(status.results) == len(results)
+    failed = status.results[0]
+    assert failed.custom_id == bad["custom_id"]
+    assert failed.reply is None
+    assert failed.error is not None
+    assert "not a chat completion" in failed.error
+    others = status.results[1:]
+    assert any(r.reply is not None for r in others)
 
 
 def test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate(

@@ -1,5 +1,6 @@
 """OpenRouter's batch service: submit, poll, collect (spec §7.2, read 2026-09-15)."""
 
+import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 
@@ -17,6 +18,8 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.model.openrouter import OpenRouterClient, request_body
 
 TERMINAL = frozenset({"completed", "failed", "expired", "cancelled"})
+_HTTP_OK_MIN = 200
+_HTTP_OK_MAX = 300
 
 
 class BatchRequest(BaseModel):
@@ -66,13 +69,35 @@ def _as_sequence(value: object) -> Sequence[object]:
 
 
 def _result_from_item(item: Mapping[str, object]) -> BatchResult:
-    """Parse one entry of ``results``: a reply on success, an error string otherwise."""
+    """Parse one entry of ``results``: a reply on success, an error string otherwise.
+
+    Never raises: a non-2xx ``status_code``, a malformed body, or a body that fails
+    ``parse_chat_completion`` (e.g. an error payload with no ``choices``) all become
+    ``BatchResult(reply=None, error=...)`` instead of propagating out of ``poll``/``wait`` and
+    aborting the rest of the batch.
+    """
     custom_id = str(item["custom_id"])
     response = item.get("response")
-    body = _as_mapping(response).get("body") if isinstance(response, Mapping) else None
-    if isinstance(body, Mapping):
+    if not isinstance(response, Mapping):
+        return BatchResult(
+            custom_id=custom_id, reply=None, error=str(item.get("error") or response)
+        )
+
+    status_code = response.get("status_code")
+    body = response.get("body")
+    if isinstance(status_code, int) and not (_HTTP_OK_MIN <= status_code < _HTTP_OK_MAX):
+        excerpt = json.dumps(body)[:200] if body is not None else str(item.get("error"))
+        return BatchResult(
+            custom_id=custom_id, reply=None, error=f"status {status_code}: {excerpt}"
+        )
+    if not isinstance(body, Mapping):
+        return BatchResult(
+            custom_id=custom_id, reply=None, error=str(item.get("error") or response)
+        )
+    try:
         return BatchResult(custom_id=custom_id, reply=parse_chat_completion(body), error=None)
-    return BatchResult(custom_id=custom_id, reply=None, error=str(item.get("error") or response))
+    except ModelError as error:
+        return BatchResult(custom_id=custom_id, reply=None, error=str(error))
 
 
 class BatchClient:
