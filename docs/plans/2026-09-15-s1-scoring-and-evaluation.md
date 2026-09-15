@@ -3542,3 +3542,25 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   per-class `round()` quota (spec §5.3/0026 keep the method as specified rather than
   re-tuning to hit 400 exactly): `fatal=False`: C 113, F 3, L 85 = 201; `fatal=True`: F 156,
   L 44 = 200.
+- 2026-09-15, Task 9 fix round 1, point 2 (decision 0026 point 1's "the exclusion is
+  stated"): `draw`'s docstring now names the class-I/M/T exclusion, and
+  `scripts/draw_samples.py` gained `_excluded_counts` and now also prints, per split, how
+  many cases of classes outside C/F/L were excluded in each fatal/non-fatal slice (counts
+  only, never case IDs). Re-ran `NTSB_DATA_DIR=.../data uv run python -m
+  scripts.draw_samples` after this change and after the point-1 fix below; the two committed
+  CSVs came back byte-identical to the versions already in the commit (checked with `diff`
+  against copies saved before the re-run, and `git status --porcelain` on
+  `tests/fixtures/eval` showed no changes) — the exclusion count is a new read-only report,
+  not a change to what is drawn. Printed exclusion counts: `heldout-400`: 4 non-fatal, 1
+  fatal cases outside C/F/L excluded; `dev-400`: 242 non-fatal, 25 fatal.
+- 2026-09-15, Task 9 fix round 1, point 1 (bug found while writing the new unit tests for
+  `draw`): `draw` divided by `len(pool)` for each of the fatal and non-fatal slices with no
+  guard for an empty pool, so a split/fatal combination with zero cases in classes C/F/L
+  raised `ZeroDivisionError` instead of contributing zero cases to that slice. The real
+  processed file never hits this (both fatal states have cases in dev and heldout), which is
+  why it went unnoticed in Step 5, but `tests/test_samples.py`'s new
+  `test_draw_excludes_classes_outside_c_f_l` (a fatal-only pool, so the non-fatal slice is
+  empty) reproduced it immediately. Added `if not pool: continue` before the per-class quota
+  computation in `samples.draw`. Confirmed this does not change the committed samples: the
+  fatal x class counts and the two CSVs from a fresh `scripts.draw_samples` run after the fix
+  are identical to the pre-fix ones (see the point-2 entry above, same re-run).

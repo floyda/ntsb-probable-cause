@@ -32,6 +32,21 @@ def _counts(processed: Path, ids: list[str]) -> Counter[tuple[bool, str]]:
     return Counter((by_id[i][1], by_id[i][0]) for i in ids)
 
 
+def _excluded_counts(processed: Path, split: Split) -> Counter[bool]:
+    """How many cases of classes outside C/F/L (decision 0026 point 1) draw() excluded.
+
+    Counted per fatal/non-fatal slice, for the split being drawn -- numbers only, never
+    case IDs.
+    """
+    columns = ["investigation_class", "raw_json", "split"]
+    table = pq.read_table(processed / "cases.parquet", columns=columns)
+    return Counter(
+        json.loads(r)["highestInjuryLevel"] == "Fatal"
+        for c, r, s in zip(*(table[col].to_pylist() for col in columns), strict=True)
+        if s == split.value and c not in {"C", "F", "L"}
+    )
+
+
 def main(argv: list[str]) -> int:
     """Draw both samples, write their ID/date CSVs, print fatal x class counts."""
     del argv
@@ -47,6 +62,9 @@ def main(argv: list[str]) -> int:
         print(f"{name}: {len(drawn)} cases")
         for (fatal, cls), n in sorted(counts.items()):
             print(f"  fatal={fatal} class={cls}: {n}")
+        excluded = _excluded_counts(processed, split)
+        for fatal, n in sorted(excluded.items()):
+            print(f"  excluded (class outside C/F/L) fatal={fatal}: {n}")
     return 0
 
 
