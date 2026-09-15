@@ -2067,7 +2067,7 @@ def refuse_if_heldout_and_dirty(sample: str, dirty: bool) -> None   # raises Con
 def seen_pairs(processed: Path) -> frozenset[str]                  # primary occurrence codes seen in the development split (the "pair unseen" column)
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_samples.py
@@ -2132,9 +2132,9 @@ def test_s1_samples_are_split_pure_and_disjoint(eval_ids: dict[str, dict[str, st
 
 (Until the files exist the test passes vacuously on empty dicts; it bites once Step 5 commits them.)
 
-- [ ] **Step 2: Run to verify failure** — FAIL on imports.
+- [x] **Step 2: Run to verify failure** — FAIL on imports.
 
-- [ ] **Step 3: Implement `records.py`, `samples.py`, `ledger.py`**
+- [x] **Step 3: Implement `records.py`, `samples.py`, `ledger.py`**
 
 `records.py`: the three models exactly as in Interfaces, plus
 
@@ -2299,9 +2299,9 @@ def append_row(ledger: Path, run: RunRecord, results_file: str) -> None:
 
 `scripts/draw_samples.py`: calls `draw` for `Split.HELDOUT` and `Split.DEV`, writes the two CSVs with header `case_id,event_date`, prints the fatal/class counts. `scripts/copy_eval_ids.py`: add copying of the two full sheets to `decidability_full.csv` and `leakage_full.csv` and update its README text (replace "Case IDs only — the full sheets are copied in S1." with "The full sheets are `*_full.csv`; their NTSB code and cause columns are withheld data and never enter a payload.").
 
-- [ ] **Step 4: Run tests and `make check`** — PASS.
+- [x] **Step 4: Run tests and `make check`** — PASS.
 
-- [ ] **Step 5: Build the processed file if absent, draw the samples, copy the sheets**
+- [x] **Step 5: Build the processed file if absent, draw the samples, copy the sheets**
 
 ```bash
 make ingest && make build          # if data/processed/cases.parquet is absent
@@ -2312,7 +2312,7 @@ uv run pytest tests/test_contamination.py -v
 
 Record the fatal × class counts of both samples in the Deviations section (they are numbers a spec reader will want).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/records.py src/ntsb_probable_cause/scoring/samples.py src/ntsb_probable_cause/scoring/ledger.py scripts/draw_samples.py scripts/copy_eval_ids.py tests/fixtures/eval tests/test_samples.py tests/test_ledger.py tests/test_contamination.py tests/conftest.py
@@ -3451,3 +3451,94 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   guard for empty input (`ZeroDivisionError` on `observed=[]`). Added an `n == 0` guard
   returning `(0.0, 0.0)`, matching the empty-input behaviour of `wilson` and `bootstrap_mean`.
   Added `test_stated_versus_actual_on_no_steps`.
+- 2026-09-15, Task 9 (controller resolution, no deviation needed but noted here for the
+  record): `seen_pairs(processed)` lives in `samples.py`, not `ledger.py` as the brief's
+  Interfaces block lists it — followed the code block, which puts it in `samples.py` (also
+  what Task 13 expects). `ledger.py` does not re-export it.
+- 2026-09-15, Task 9 (controller resolution, `tests/conftest.py`'s `eval_ids` fixture): changed
+  the glob from `*.csv` to `*_ids.csv` so it loads only the four case-id-and-event-date lists
+  (`decidability_ids`, `leakage_ids`, `heldout_400_ids`, `dev_400_ids`) and never the new
+  `*_full.csv` regression sheets, which carry extra, withheld columns
+  (`test_both_evaluation_lists_are_present` and every other existing `eval_ids` consumer are
+  unaffected, since they only ever read the `*_ids.csv` lists by name).
+- 2026-09-15, Task 9 (controller resolution, `test_evaluation_cases_are_held_out_by_event_date`):
+  excluded `dev_400_ids` by name from this assertion — it is the one development-split list
+  among the eval id lists (spec §5.3) — and added
+  `test_s1_samples_are_split_pure_and_disjoint` (brief's Step 1) to assert `dev_400_ids` is
+  development, `heldout_400_ids` is held-out, the two are disjoint, and neither overlaps the
+  record fixtures.
+- 2026-09-15, Task 9 (found while running the extended contamination suite against the real
+  drawn samples, Step 5): `test_case_number_year_would_misclassify_labelled_cases` iterated
+  `eval_ids.values()` and asserted the mismatch count is exactly 16 — M2's own measurement of
+  the spike's original 70 labelled cases (`decidability_ids` + `leakage_ids`). Once
+  `heldout_400_ids` (400 cases) and `dev_400_ids` (401 cases) are committed, the same loop over
+  every list counts 189 mismatches, because the case-number/fiscal-year mismatch rate applies
+  to any large sample, not only the labelled 70. This is not a regression: the test's own
+  docstring names the fixed measurement ("M2: 16 of 70"). Scoped the loop to
+  `("decidability_ids", "leakage_ids")` only, so the test keeps checking the number M2 measured
+  and does not turn into a moving target as more samples are added; docstring extended to say
+  so explicitly. No other existing assertion in `tests/test_contamination.py` was changed.
+- 2026-09-15, Task 9 (`draw`, deviation from the brief's literal code, per the task's own
+  context note): the brief's `draw` zips `*(table[col].to_pylist() for col in table.column_names)`
+  against a `columns=[...]` list in a different order; `pq.read_table`'s returned column order
+  is not guaranteed to match the requested list. Built an explicit `columns` list once and
+  indexed `table[col]` by name for each of those names (`by_column = {col: table[col].to_pylist()
+  for col in columns}`, then zipped `by_column[col] for col in columns`) so the tuple unpacking
+  `(n, d, s, c, r)` always lines up with `(ntsb_number, event_date, split, investigation_class,
+  raw_json)` regardless of the table's physical column order. Same fix applied in
+  `scripts/draw_samples.py`'s own `_counts` helper. Behaviour on the actual processed file is
+  unchanged (its columns happened to come back in request order), but the code no longer
+  depends on that.
+- 2026-09-15, Task 9 (ruff `--strict`/lint, mechanical, no behaviour change): `records.py`'s
+  `read_jsonl` used a module-level `TypeVar("T", bound=BaseModel)` per the brief; ruff's `UP047`
+  (Python 3.14 target) requires the PEP 695 syntax instead, so it is now
+  `def read_jsonl[T: BaseModel](path: Path, model: type[T]) -> list[T]`. `ledger.py`'s two
+  `subprocess.run` calls had a single combined `# noqa: S603,S607` on the `subprocess.run(`
+  line; ruff reported `S607` unused there because the partial-executable-path violation is
+  actually raised on the argv list's own line, so each call now carries `# noqa: S603` on the
+  call line and `# noqa: S607` on the list-literal line. `samples.py`'s day-14 threshold is now
+  the named constant `MASK_LIFTS_AT_DAY = 14` (ruff `PLR2004`), and its `seen_pairs` docstring
+  was shortened to fit the 100-column limit; wording only. `test_ledger.py`'s
+  `sum(l.startswith(...) for l in lines)` (ruff `E741`, ambiguous name `l`) is now
+  `sum(row.startswith(...) for row in lines)` in a separate `assert`, splitting the brief's
+  combined `and` assertion (also required by `PT018`, hit again in `test_samples.py`'s day-1
+  mask test). None of these change what is asserted.
+- 2026-09-15, Task 9 (import-linter, per controller resolution): added
+  `ntsb_probable_cause.scoring.samples` to the `source_modules` of "Only the splitter
+  constructs synthesis and verdict" (`pyproject.toml`) — confirmed `lint-imports` still passes
+  with it added, since `samples.py` imports only `fields`, `splits` and `pyarrow`. Did not add
+  `scoring.records` or `scoring.ledger`: both import `scoring.metrics.CaseScores`, which
+  imports `records.verdict`, so a `forbidden` contract (which import-linter checks
+  transitively) would immediately break; `tests/test_import_boundaries.py`'s grimp allow-list
+  test already covers them (neither imports `records.verdict`/`records.synthesis` directly, so
+  neither needs to be on that allow-list either).
+- 2026-09-15, Task 9 (fixture-guard check, controller resolution item 3): before committing the
+  spike's full labelling sheets, checked `scripts/check_fixtures_redacted.py` (scans
+  `tests/fixtures/**/*.json` only — the sheets are CSV, so it does not touch them, and running
+  it after adding the files is still clean: `uv run python -m scripts.check_fixtures_redacted`
+  exits 0), `.pre-commit-config.yaml` (no hook scans fixture CSVs for withheld text), decision
+  0015 (redaction is about personal-data fields in JSON record fixtures, not about this copy),
+  and `tests/test_contamination.py`/`tests/conftest.py` (the `eval_ids` fixture now loads only
+  `*_ids.csv`, so `decidability_full.csv`/`leakage_full.csv` — which do carry the spike's own
+  NTSB code and cause columns, and `leakage_full.csv`'s `factual_account` column — are never
+  read by that fixture, by `samples.sample_ids` (`_FILES` names only the three `*_ids.csv`
+  files), or by any payload builder). This matches spec §5.4's own instruction to copy them "as
+  regression fixtures... kept out of any payload by the same guard as everything else." No
+  guard rejected them and no test reads verdict/synthesis text out of them, so they were
+  committed; `scripts/copy_eval_ids.py`'s README note now says so explicitly.
+- 2026-09-15, Task 9 (typos, found when running `uv run typos .` after Step 5): the generated
+  `tests/fixtures/eval/README.md` embeds a short git SHA from the spike repository, and the
+  one drawn at this commit reads as two letters `typos` treats as a misspelled word (it
+  suggests two three-letter replacements). This is the same class of false
+  positive already excluded for the other fixture directories (base64 blobs, NTSB abbreviations
+  in real records), not an authored typo, and will recur on some future spike commit's own SHA
+  regardless of wording. Added `tests/fixtures/eval/README.md` to
+  `[tool.typos.files] extend-exclude` in `pyproject.toml` and to the `typos` hook's `exclude`
+  pattern in `.pre-commit-config.yaml`.
+- 2026-09-15, Task 9 (Step 5, drawn sample counts, from `scripts.draw_samples`'s printed
+  output, `NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data`):
+  `heldout-400` came out at exactly 400 (`fatal=False`: C 23, F 1, L 176 = 200;
+  `fatal=True`: F 142, L 58 = 200). `dev-400` came out at 401, one over target, from the
+  per-class `round()` quota (spec §5.3/0026 keep the method as specified rather than
+  re-tuning to hit 400 exactly): `fatal=False`: C 113, F 3, L 85 = 201; `fatal=True`: F 156,
+  L 44 = 200.
