@@ -2341,7 +2341,7 @@ def predict(model: BaselineModel, raw: Mapping[str, object]) -> tuple[tuple[str,
 def stratified_draw(rows: Sequence[tuple[str, str]], n: int, seed: int = 7) -> list[str]   # (case_id, primary code) -> ids, the spike's rule
 ```
 
-- [ ] **Step 1: Write the failing test on the fixtures, worked by hand**
+- [x] **Step 1: Write the failing test on the fixtures, worked by hand**
 
 ```python
 # tests/test_baseline.py
@@ -2369,9 +2369,9 @@ def test_stratified_draw_is_deterministic_and_proportional() -> None:
     assert sum(1 for i in ids if int(i[1:]) < 80) == 8
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [x] **Step 2: Run to verify failure** — FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 """The spike's phase-and-weather modal baseline, ported by method (spec §6.3)."""
@@ -2448,9 +2448,9 @@ def stratified_draw(rows: Sequence[tuple[str, str]], n: int, seed: int = 7) -> l
 
 Note in the Deviations log: the spike used pandas' `sample(random_state=7)`, whose stream differs from `random.Random(7)`, so the reproduction matches by method, not by identical draw; the spec's done-means already allows "within one point or explained".
 
-- [ ] **Step 4: Run tests and `make check`** — PASS.
+- [x] **Step 4: Run tests and `make check`** — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/baseline.py tests/test_baseline.py
@@ -3564,3 +3564,22 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   computation in `samples.draw`. Confirmed this does not change the committed samples: the
   fatal x class counts and the two CSVs from a fresh `scripts.draw_samples` run after the fix
   are identical to the pre-fix ones (see the point-2 entry above, same re-run).
+- 2026-09-15, Task 10 (`scoring/baseline.py`): the spike's `stratified_sample`
+  (`ntsb_spike/src/ntsb_spike/common.py`) samples each stratum with pandas'
+  `df[...].sample(min(k, count), random_state=seed)`, which pandas seeds as a *fresh*
+  `numpy.random.RandomState(seed)` on every call, so each stratum's draw (and the final
+  `sample(frac=1, random_state=seed)` reshuffle) is independent of the order strata are
+  visited and independent of every other stratum's draw. The brief's port instead threads one
+  continuing `random.Random(seed)` through every stratum and the final shuffle, so (a) the
+  exact ids drawn differ from a literal re-implementation of the spike's RNG calls (already
+  noted in the brief itself: "the spike used pandas' `sample(random_state=7)`, whose stream
+  differs from `random.Random(7)`, so the reproduction matches by method, not by identical
+  draw"), and (b) unlike the spike, the draw is sensitive to the order strata are processed,
+  because they share one advancing RNG state. Mitigated by iterating strata in a fixed
+  (`sorted`) order so the port is at least deterministic run to run, but this is a second,
+  narrower way the port's random stream diverges from the spike's beyond the single sentence
+  the brief flagged. Per spec §6.3's done-means ("within one point... or the results file
+  explains the difference"), this affects only which specific case ids land in the 1,000-case
+  draw, not the stratification rule (per-stratum share of `n`, floor of one) that determines
+  the resulting occurrence-code mix; Task 13/15, which run the baseline on real data, should
+  re-confirm the reproduction lands within the one-point band and log there if it does not.
