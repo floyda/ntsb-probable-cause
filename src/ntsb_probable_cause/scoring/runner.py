@@ -225,10 +225,14 @@ class Runner:
         """Run every case, write three JSON-lines files, append the ledger for held-out samples.
 
         On any exception once answering has started — a batch ending badly, a
-        ``LeakageError`` partway through a sync run, anything — the cases and cost paid so
-        far are still written (``finished=None`` marks the run incomplete) before the
-        exception is re-raised, so a crashed run's spend is never invisible to the next
-        run's budget check (fix round 1, Important 2).
+        ``LeakageError`` partway through a sync run, a ``KeyboardInterrupt`` while a real
+        batch's ``wait`` is polling, anything, ``BaseException`` included — the cases and
+        cost paid so far are still written (``finished=None`` marks the run incomplete)
+        before the exception is re-raised, so a crashed or interrupted run's spend is never
+        invisible to the next run's budget check (fix round 1, Important 2; widened to
+        ``BaseException`` in fix round 2, Minor 1, since Ctrl-C during a long real-run
+        ``wait`` is the most likely real mid-run abort and ``except Exception`` does not
+        catch it).
         """
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
@@ -277,7 +281,7 @@ class Runner:
                     ]
                     batch_ids = tuple(batch_run.batch_ids)
                     reported_batch_cost = self._reported_total(batch_run.costs)
-        except Exception:
+        except BaseException:
             self._write_files(folder, results)
             write_jsonl(folder / "run.jsonl", [build_record(None)])
             raise
@@ -461,7 +465,14 @@ class Runner:
     def _submit_and_wait(
         self, requests: Sequence[BatchRequest], run: _BatchRun, stage: str
     ) -> BatchStatus:
-        """Submit one batch, record its id, wait for a terminal status; status to stderr."""
+        """Submit one batch, record its id, wait for a terminal status; status to stderr.
+
+        The batch id and its (possibly ``None``) reported cost are appended to ``run``
+        before the status is checked, so a batch that ends anything but ``completed`` still
+        contributes its honest entry — a ``None`` cost, not a missing one silently treated
+        as zero — instead of vanishing from the run's totals, and its id still shows up in
+        the aborted ``RunRecord.batch_ids`` (fix round 2, Minor 2).
+        """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
         batch_id = self._batch.submit(requests)
@@ -470,6 +481,8 @@ class Runner:
             batch_id,
             on_status=lambda s: self._log_status(stage, batch_id, s),
         )
+        run.batch_ids.append(status.batch_id)
+        run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
             raise ModelError(f"batch {batch_id} ended {status.status}")
         return status
@@ -492,7 +505,7 @@ class Runner:
                     self._finish_case(cid, hypothesis, run)
             if stage2_ids:
                 self._stage2(stage2_ids, run)
-        except Exception as error:
+        except BaseException as error:
             self._abort_unresolved(run, error)
             raise
 
@@ -571,8 +584,6 @@ class Runner:
             for cid in ids
         ]
         status = self._submit_and_wait(requests, run, stage)
-        run.batch_ids.append(status.batch_id)
-        run.costs.append(status.reported_cost_usd)
         by_id = {r.custom_id: r for r in status.results}
         need_retry: dict[str, str] = {}
         for cid in ids:
@@ -625,8 +636,6 @@ class Runner:
             for cid in ids
         ]
         status = self._submit_and_wait(requests, run, stage)
-        run.batch_ids.append(status.batch_id)
-        run.costs.append(status.reported_cost_usd)
         by_id = {r.custom_id: r for r in status.results}
         need_retry: dict[str, str] = {}
         for cid in ids:

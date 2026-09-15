@@ -3754,3 +3754,40 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   in the entry above (about the *previous* commit, `830148c`); that disagreement between
   `global-constraints.md` and the live session reminder is still unresolved for any future
   commit that does not carry an explicit per-commit instruction.
+- 2026-09-16, Task 11 fix round 2 (commit `2a56821` re-reviewed; both Minors folded in
+  before Tasks 14-15 spend real money):
+  - **Minor — `except Exception` does not catch `KeyboardInterrupt`/`SystemExit`.**
+    `Runner.run` and `_answer_batch` caught `Exception`, so a Ctrl-C during a real batch's
+    `wait` (which polls for a long time — the most likely real mid-run abort) would skip
+    the partial-write path entirely and leave the stage-1 spend invisible to the next run's
+    budget guard. Widened both clauses to `except BaseException`, unchanged otherwise
+    (still re-raises); `_abort_unresolved` was already typed `error: BaseException` so no
+    change there. Corrected `Runner.run`'s docstring, which said "on any exception" without
+    saying `BaseException` is what is actually caught. Test:
+    `test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend` — a fake
+    batch client whose stage-2 `wait` handler raises `KeyboardInterrupt` after stage 1 was
+    billed; asserts `run.jsonl`'s `RunRecord` has `finished is None` and `cost_usd` equal to
+    the billed stage-1 reply, `cases.jsonl` has one `aborted: ...` case with the same cost,
+    and the `KeyboardInterrupt` itself still propagates out of `.run()`.
+  - **Minor — an aborted run reported a partial batch total as the whole.**
+    `_submit_and_wait` raised `ModelError` on a non-`"completed"` status *before* its caller
+    appended anything to `run.batch_ids`/`run.costs`, so a failing batch contributed
+    nothing — an aborted run whose one prior batch reported `0.01` showed
+    `reported_batch_cost_usd == 0.01`, silently presenting a one-batch sum as the whole
+    run's total, and the failing batch's id was missing from `RunRecord.batch_ids` even
+    though `batches.jsonl` already had it. Fixed by moving the
+    `run.batch_ids.append(status.batch_id)` / `run.costs.append(status.reported_cost_usd)`
+    calls into `_submit_and_wait` itself, right after `wait()` returns and before the
+    status check — so both are recorded (the cost as `None` when the batch did not
+    complete) regardless of whether the status was terminal-good or terminal-bad, and
+    removed the now-duplicate appends from `_run_stage1_pass`/`_run_stage2_pass`. This also
+    gave the "if `batch_ids` can carry the failing batch's id too" request for free: it now
+    does, since the append happens unconditionally before the raise.
+    `test_batch_abort_on_stage_two_failure_still_records_stage_one_spend` (from round 1) now
+    asserts `record.reported_batch_cost_usd is None` (was `pytest.approx(0.01)`) and
+    `record.batch_ids == ("b1", "b2")` (was unchecked).
+  Files touched: `src/ntsb_probable_cause/scoring/runner.py`, `tests/test_runner.py`.
+  `uv run pytest tests/test_runner.py -v` — 32 passed; full suite — 338 passed, 97.11%
+  coverage (gate 90%), `runner.py` 98%. `make check` all green. Commit trailer lines exactly
+  as given in `global-constraints.md`, per the coordinator's explicit instruction (as in fix
+  round 1).
