@@ -1336,7 +1336,7 @@ def tables_block(tables: CodeTables, *, case_number: str | None = None) -> str  
 def refine_message(hypothesis: Hypothesis, tables: CodeTables) -> str            # stage-1 findings + children lists
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_hypothesis.py
@@ -1400,9 +1400,9 @@ def test_schema_is_strict_and_tables_block_holds_tables() -> None:
     assert "02063040" in refine_message(h, load_tables())
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL on imports.
+- [x] **Step 2: Run to verify failure** — FAIL on imports.
 
-- [ ] **Step 3: Implement `hypothesis.py`**
+- [x] **Step 3: Implement `hypothesis.py`**
 
 ```python
 """The model's answer: one Hypothesis for a one-shot pass and for every step of a trail (spec §3.4)."""
@@ -1529,7 +1529,7 @@ def parse_refinement(text: str, tables: CodeTables, hypothesis: Hypothesis) -> H
 
 If the provider's strict mode rejects pydantic's schema (for example `$defs`), inline the definitions with `pydantic.json_schema.GenerateJsonSchema(ref_template=...)` or a small resolver, and log a deviation.
 
-- [ ] **Step 4: Implement `prompt.py`**
+- [x] **Step 4: Implement `prompt.py`**
 
 ```python
 """System prompts and message rendering. Versioned: the run record carries PROMPT_VERSION (spec §3.5)."""
@@ -1585,9 +1585,9 @@ def refine_message(hypothesis: Hypothesis, tables: CodeTables) -> str:
 
 The system text is therefore `SYSTEM_ANSWER + "\n\n" + tables_block(...)`, and the user message is the Payload text alone. Because the tables are identical in every call, they sit in the system text where the provider's prompt cache, if the probe showed it is honoured, keeps them cheap.
 
-- [ ] **Step 5: Run tests and `make check`** — Expected: PASS.
+- [x] **Step 5: Run tests and `make check`** — Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/hypothesis.py src/ntsb_probable_cause/scoring/prompt.py tests/test_hypothesis.py
@@ -3310,3 +3310,26 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
     `test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate` (carried from
     Task 3's review: the `cost_usd` "priced" branch was untested elsewhere, and every batch
     reply hits it since per-result `usage` has no `cost` key, confirmed against the fixture).
+- 2026-09-15, Task 6 (`hypothesis.py`, `prompt.py`): resolved the brief's own open item ("if the
+  provider's strict mode rejects pydantic's schema... log a deviation") before any live call,
+  per the controller's instruction. Added `_strict`/`_strict_schema` — a small recursive
+  converter run over `Hypothesis.model_json_schema()` / `Refinement.model_json_schema()` — that
+  sets `additionalProperties: false` and completes `required` to every property (pydantic's
+  `extra="forbid"` already gives the former; only the optional `item8` field, expressed by
+  pydantic as `anyOf: [string, null]` with `default: null`, needed adding to `required`) and
+  drops every `default` and `title` key, on the top-level schema and every node under `$defs`.
+  Kept `$ref`/`$defs` (not inlined) since OpenAI strict mode accepts them, per the brief's
+  suggestion this was simpler. `description` keys from docstrings are left in (strict mode
+  accepts them; brief only named `default` and `title` as noise). Added
+  `test_strict_schemas_are_openai_compatible`, walking both schemas recursively to assert every
+  object has `additionalProperties is False`, `required == properties`, and no `default`
+  anywhere, plus four more error-path tests (malformed JSON at both stages, unknown finding
+  category, unknown modifier, refinement index out of range) that the brief's own test list
+  did not cover, to keep `hypothesis.py` itself at 100% coverage rather than resting on the
+  repo-wide 90% gate. Dropped the brief's unused `Payload` import from `prompt.py` (ruff/vulture,
+  per the controller's instruction). Reflowed `SYSTEM_ANSWER`, `SYSTEM_REFINE`, the module
+  docstrings, and `tables_block`'s literal (content unchanged, only where the line breaks fall)
+  to fit the 100-character line limit; `tables_block`'s asserted output format
+  (`"## Phase prefixes"` prefix, `"552  "`, `"44  Pilot"`, the case-number suffix) is unchanged.
+  Test's modifier-not-in-table example uses `"97"` rather than the brief's implied `"99"`, which
+  the real table already defines as a modifier — confirmed against `tables/modifiers.csv`.
