@@ -3333,3 +3333,41 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   (`"## Phase prefixes"` prefix, `"552  "`, `"44  Pilot"`, the case-number suffix) is unchanged.
   Test's modifier-not-in-table example uses `"97"` rather than the brief's implied `"99"`, which
   the real table already defines as a modifier — confirmed against `tables/modifiers.csv`.
+- 2026-09-15, Task 6 fix round 1 (live smoke test + review, three findings):
+  1. The controller's live smoke test against `openai/gpt-5.6-luna` found both strict schemas
+     accepted (finish `stop`; stage 1 parsed), but at stage 2 the model returned `item8` as the
+     full rendered `refine_message` line (`"02063040  Personnel issues — ... — Aircraft
+     control"`) instead of the bare code, so `parse_refinement` raised "is not a child" — a live
+     defect, not a hypothetical one. Fix: added `Field(pattern=...)` to every code field —
+     `OccurrenceGuess.phase`/`.event` (`^[0-9]{3}$`), `FindingGuess.category6` (`^[0-9]{6}$`),
+     `FindingGuess.modifier` (`^[0-9]{2}$`), `FindingGuess.item8` (`^[0-9]{8}$`, still nullable
+     via `default=None`), `RefinedItem.item8` (`^[0-9]{8}$`, required). Verified first, via
+     `test_every_table_code_matches_its_field_pattern`, that every code in all five committed
+     tables (`phases` 47, `events` 93, `categories` 130, `items` 1019, `modifiers` 73) matches
+     its pattern — no offenders, so no pattern needed loosening. Pydantic raises
+     `ValidationError` on a pattern mismatch, already caught and re-raised as `SchemaError` by
+     the existing `try`/`except` in `parse_hypothesis`/`parse_refinement`; added
+     `test_rendered_item_label_in_item8_is_a_schema_error`, reproducing the smoke test's exact
+     bad reply. Reworded `SYSTEM_REFINE` to say "Return only its eight-digit item code, never
+     its label text" — kept short, clinical tone preserved. `PROMPT_VERSION` stays `"s1-v1"`:
+     no evaluation run has used it yet, so the wording change needs no version bump.
+  2. Review: `parse_hypothesis` validated `category6`/`modifier` against the tables but never
+     `item8` on stage-1 findings, so a non-null stage-1 `item8` under the wrong category would
+     silently compose a wrong 10-digit code (`finding_codes`), or raise a `SchemaError` far from
+     where the bad value entered (inside `tables.compose_finding`, only if `finding_codes` is
+     later called). Fix: `parse_hypothesis` now rejects any finding whose `item8` is not `None`
+     and not a member of `tables.items_under(g.category6)`, in the same loop as the
+     category/modifier checks. Added `test_stage1_item8_must_be_a_child_of_its_own_category`
+     (valid child accepted and composes; wrong-category item rejected). The Task 6 report's
+     self-review claim that `parse_hypothesis` validates every code before returning was wrong
+     for this one field; corrected in the fix report appended to `task-6-report.md`.
+  3. Review: `occurrence_distribution`'s dict comprehension keys by composed code, so two
+     occurrence guesses that happen to compose to the same six-digit code would silently drop
+     all but the last one's probability — a real risk once Task 7's `prob_on_true`/movement
+     metrics read this distribution, not just a hypothetical. Fix: `parse_hypothesis` now
+     raises `SchemaError` when `len(set(codes)) != len(codes)` over the composed occurrence
+     codes, in the same place as the probability-sum check. Added
+     `test_duplicate_occurrence_codes_are_a_schema_error`.
+  All three fixes and their tests are in commit (see report); `uv run pytest
+  tests/test_hypothesis.py -v` and `make check` both pass (264 total tests, 96.76% coverage,
+  `scoring/hypothesis.py` and `scoring/prompt.py` both 100%).

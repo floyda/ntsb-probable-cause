@@ -22,8 +22,9 @@ cause, set abstain to true and say why in the narrative. Reply only with JSON ma
 schema."""
 
 SYSTEM_REFINE = """You chose finding categories for this case. For each, choose the single most
-specific item from the list of that category's items given in the message. Reply only with JSON
-matching the schema: one entry per finding index."""
+specific item from the list of that category's items given in the message. Return only its
+eight-digit item code, never its label text. Reply only with JSON matching the schema: one
+entry per finding index."""
 
 
 def tables_block(tables: CodeTables, *, case_number: str | None = None) -> str:

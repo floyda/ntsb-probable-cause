@@ -17,8 +17,8 @@ class OccurrenceGuess(BaseModel):
     """One ranked occurrence guess."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    phase: str
-    event: str
+    phase: str = Field(pattern=r"^[0-9]{3}$")
+    event: str = Field(pattern=r"^[0-9]{3}$")
     probability: float = Field(ge=0, le=1)
 
 
@@ -26,10 +26,10 @@ class FindingGuess(BaseModel):
     """One finding guess at stage 1 (category + modifier) and, after stage 2, its item."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    category6: str
-    modifier: str
+    category6: str = Field(pattern=r"^[0-9]{6}$")
+    modifier: str = Field(pattern=r"^[0-9]{2}$")
     probability: float = Field(ge=0, le=1)
-    item8: str | None = None
+    item8: str | None = Field(default=None, pattern=r"^[0-9]{8}$")
 
 
 class Hypothesis(BaseModel):
@@ -80,7 +80,7 @@ class RefinedItem(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     index: int = Field(ge=0)
-    item8: str
+    item8: str = Field(pattern=r"^[0-9]{8}$")
 
 
 class Refinement(BaseModel):
@@ -130,12 +130,16 @@ def parse_hypothesis(text: str, tables: CodeTables) -> Hypothesis:
         raise SchemaError(f"reply is not a Hypothesis: {error}") from error
     if sum(g.probability for g in hypothesis.occurrence) > 1.0 + 1e-9:
         raise SchemaError("occurrence probabilities sum to more than 1")
-    hypothesis.occurrence_codes(tables)
+    codes = hypothesis.occurrence_codes(tables)
+    if len(set(codes)) != len(codes):
+        raise SchemaError(f"duplicate occurrence code among guesses: {codes}")
     for g in hypothesis.findings:
         if g.category6 not in tables.categories:
             raise SchemaError(f"unknown finding category {g.category6!r}")
         if g.modifier not in tables.modifiers:
             raise SchemaError(f"unknown modifier {g.modifier!r}")
+        if g.item8 is not None and g.item8 not in tables.items_under(g.category6):
+            raise SchemaError(f"{g.item8!r} is not a child of category {g.category6!r}")
     return hypothesis
 
 

@@ -1,6 +1,7 @@
 """Tests for the Hypothesis schema, two-stage parsing, and prompt rendering (S1 Task 6)."""
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -102,6 +103,57 @@ def test_refinement_index_out_of_range_and_malformed_json_are_schema_errors() ->
         parse_refinement("not json", t, h)
     with pytest.raises(SchemaError, match="no finding"):
         parse_refinement(json.dumps({"items": [{"index": 5, "item8": "02063040"}]}), t, h)
+
+
+def test_every_table_code_matches_its_field_pattern() -> None:
+    """Fix-round precondition: the digit patterns must accept every code the tables define."""
+    t = load_tables()
+    patterns = {
+        "phases": r"^[0-9]{3}$",
+        "events": r"^[0-9]{3}$",
+        "categories": r"^[0-9]{6}$",
+        "items": r"^[0-9]{8}$",
+        "modifiers": r"^[0-9]{2}$",
+    }
+    for name, pattern in patterns.items():
+        table = getattr(t, name)
+        offenders = [code for code in table if not re.match(pattern, code)]
+        assert offenders == [], f"{name} has codes that do not match {pattern!r}: {offenders}"
+
+
+def test_rendered_item_label_in_item8_is_a_schema_error() -> None:
+    """The live smoke test saw the model return 'code  label' for item8; the pattern rejects it."""
+    t = load_tables()
+    h = parse_hypothesis(json.dumps(GOOD), t)
+    bad_reply = json.dumps(
+        {"items": [{"index": 0, "item8": "02063040  Personnel issues — Aircraft control"}]}
+    )
+    with pytest.raises(SchemaError, match="not a Refinement"):
+        parse_refinement(bad_reply, t, h)
+
+
+def test_stage1_item8_must_be_a_child_of_its_own_category() -> None:
+    t = load_tables()
+    finding = {"category6": "020630", "modifier": "44", "probability": 0.7}
+    good_child = {**GOOD, "findings": [{**finding, "item8": "02063040"}]}
+    h = parse_hypothesis(json.dumps(good_child), t)
+    assert h.finding_codes(t) == ("0206304044",)
+
+    wrong_category_item = {**GOOD, "findings": [{**finding, "item8": "01022214"}]}
+    with pytest.raises(SchemaError, match="child"):
+        parse_hypothesis(json.dumps(wrong_category_item), t)
+
+
+def test_duplicate_occurrence_codes_are_a_schema_error() -> None:
+    bad = {
+        **GOOD,
+        "occurrence": [
+            {"phase": "552", "event": "230", "probability": 0.5},
+            {"phase": "552", "event": "230", "probability": 0.1},
+        ],
+    }
+    with pytest.raises(SchemaError, match="duplicate"):
+        parse_hypothesis(json.dumps(bad), load_tables())
 
 
 def test_schema_is_strict_and_tables_block_holds_tables() -> None:
