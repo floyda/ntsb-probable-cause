@@ -2487,7 +2487,7 @@ The case-number probe path: `case_payload` raises `LeakageError` unless `split_o
 
 The cap: before any call, `over_cap` estimates the prompt at one token per four characters of payload plus system text, prices it at the model's input price, and if that exceeds `cap_usd` the case is recorded as failed with reason `cap` and no call is made (spec §11).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_runner.py
@@ -2585,9 +2585,9 @@ def test_heldout_run_appends_ledger_row(tmp_path: Path, record_fixtures: list[di
 
 The fixtures are development records; the runner takes the raw records it is given, so `heldout-40` in the test is only a label for the ledger path. The boundary test in Task 12 covers real held-out behaviour by split of event date.
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [x] **Step 2: Run to verify failure** — FAIL (`ModuleNotFoundError: No module named 'ntsb_probable_cause.scoring.runner'`).
 
-- [ ] **Step 3: Implement `runner.py`**
+- [x] **Step 3: Implement `runner.py`**
 
 ```python
 """One evaluation run: cases → payloads → answering pass → scored results (spec §6)."""
@@ -2767,9 +2767,16 @@ Note the boundary: the tables and the case-number line travel in the **system** 
 
 Add `from ntsb_probable_cause import sources` to the imports. Add `_result` and `_failed` helpers building `CaseResult` with `split=split_of(event).value`, `fatal=raw["highestInjuryLevel"]=="Fatal"`, `investigation_class(evidence.case_id)`, `report_flavour=raw.get("factualFinalReportFlavor")`, the verdict tuples, `scores`, `cost_usd`, `failure`. Add `_answer_batch`: build one `BatchRequest` per case for stage 1 (custom_id = case id), `submit`, `wait` (log status to stderr), parse each; for cases needing stage 2 build a second batch with `history`; parse; assemble the same `CaseResult`s; put the batch ids in `RunRecord.batch_ids` and the summed `reported_cost_usd` in `reported_batch_cost_usd`. Cases whose batch item carries an error get `failure="model: ..."`. A batch that ends `expired`/`failed` raises `ModelError` naming the batch id (resume is a follow-up: `ntsb-eval resume <run id>` is out of S1's plan unless it is needed in practice — log a deviation if added).
 
-- [ ] **Step 4: Run tests and `make check`** — PASS (the batch path is covered by a test in Task 13 through the app with respx and `batch.json`).
+- [x] **Step 4: Run tests and `make check`** — PASS. The batch path is tested here, not deferred
+  to Task 13 (controller resolution 2): `tests/test_runner.py` adds a scripted `FakeBatchClient`
+  covering two batches with every custom_id, abstain/no-findings skipping stage 2, batch-priced
+  per-case cost, `batch_ids`/`reported_batch_cost_usd`, schema and model-error retries at both
+  stages, a `failed`/`expired`/`cancelled` batch raising `ModelError` naming the batch id, and
+  the same three files as sync. 332 tests pass, 97.16% coverage (gate 90%); `runner.py` itself is
+  99% covered. `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy
+  --strict, pytest) all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py
@@ -3603,3 +3610,71 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   but the identical finding prediction. Noted on
   `test_fit_and_predict_on_fixtures_by_hand` that it is a wiring test, since it shares
   `Counter.most_common` with the implementation and would not have caught this bug.
+- 2026-09-15/16, Task 11 (`scoring/runner.py`): the brief's own Step 1 test,
+  `test_case_number_probe_refused_off_dev`, runs `include_case_number=True` against
+  `sample="heldout-40"` but hands it a `record_fixtures[:1]` case, and every committed
+  record fixture has a development-split event date (2009–2015). The brief's Step 3
+  `case_payload` gates the probe on `split_of(event_date)` alone, which for that fixture is
+  `Split.DEV`, so the given implementation does not raise — confirmed by running the given
+  test, which failed with "DID NOT RAISE LeakageError". Spec §6.2's table reads "development
+  split only, refused on any other **sample**", so the gate needs the run's requested sample
+  too, not only the record's real date: `case_payload` now refuses unless *both*
+  `_sample_split(spec.sample) is Split.DEV` and `split_of(event)` is `Split.DEV`. Checking
+  only the sample would let a `dev-400` run leak a case number on a record that turns out not
+  to be development-dated; checking only the date is what the brief wrote and it fails the
+  brief's own test. Added `test_case_number_probe_included_on_a_development_sample_and_case`
+  (calls `case_payload` directly) to cover the allowed path, since the brief's tests exercise
+  only the refusal.
+- 2026-09-15/16, Task 11: the brief's `_two_turns` returned the accumulated `replies` list
+  only on a successful return, so a case that made two real, billable calls and then raised
+  `SchemaError` (both the original and the retry failed to parse) was recorded with
+  `cost_usd=0.0` — silently wrong cost accounting for exactly the failure mode the task
+  description calls out ("correctness of ... cost accounting ... matters more than anywhere
+  else"). Changed `_two_turns`/`_run_stage1_pass`/`_run_stage2_pass` to append every reply —
+  including ones from calls whose parse then fails — to the case's reply list (`ctx.replies`
+  in the sync path, `run.contexts[cid].replies` in the batch path) as soon as each call
+  returns, before any parsing is attempted, so `_cost`/`_fail_case` always price a failed case
+  from every call actually made for it. As a related consequence, the stage-2 history turn
+  now carries the content of whichever stage-1 reply actually parsed (`ctx.replies[-1]`),
+  rather than the brief's `first.content`, which would have replayed a rejected ("not json")
+  stage-1 reply as assistant history whenever the first attempt failed and the retry
+  succeeded.
+- 2026-09-15/16, Task 11 (controller resolution 2): the brief defers the batch path to
+  Task 13's app-level `respx`/`batch.json` test, but real held-out money moves through this
+  path in Tasks 14–15, so per the controller's resolution the batch path is unit-tested here
+  with a scripted fake satisfying a small `BatchRunner` `Protocol` (not the brief's
+  `BatchClient` type on the constructor) — `submit`/`wait` only, so `BatchClient` still
+  satisfies it structurally. Schema and missing-reply failures in batch mode are retried once
+  per stage exactly as sync does (resolution 3: system text carries "Your previous reply was
+  rejected: <error>"), capping every run at four batches (stage 1, stage 1 retry, stage 2,
+  stage 2 retry); a batch ending anywhere but `completed` raises `ModelError` naming the
+  batch id; batch ids are appended to `runs_dir/<run id>/batches.jsonl` with stage and time
+  immediately after `submit`, before `wait` (resolution 4); `on_status` writes to stderr, not
+  stdout (resolution 7, via `Runner._log_status`, since `sys.stderr.write` returns an `int`
+  and the `Callable[[str], None]` the batch client expects does not accept that). Not built:
+  a `resume` command reading `batches.jsonl` to continue an interrupted run by polling
+  (resolution 4 says this is out of scope unless needed in practice; it was not needed here).
+- 2026-09-15/16, Task 11: read spec §11 ("a call whose prompt estimate exceeds the cap is
+  recorded as failed with reason `cap`") and §14 (the cost bound is a pre-run/pre-call
+  estimate, never a post-hoc reconciliation) as specifying only the brief's pre-call
+  `over_cap` estimate from character counts; neither section asks for a second check against
+  a case's *actual* spend after the calls are made. Implemented only the brief's pre-call
+  cap (controller resolution 5's first branch); did not add a post-hoc actual-cost flag,
+  since the spec does not ask for one and resolution 5 says not to invent extra behaviour it
+  doesn't ask for.
+- 2026-09-15/16, Task 11: refactored the brief's flat per-call parameter lists (many methods
+  threading `spec`, `folder`, `batch_ids`, `costs`, `contexts`, `results` separately) into two
+  small dataclasses, `_CaseContext` (one case's payload/system/verdict/spec/replies, reused
+  by both the sync and batch paths) and `_BatchRun` (the batch pass's shared mutable state:
+  folder, contexts, results, per-stage hypotheses, batch ids, costs), because the brief's
+  literal parameter lists tripped ruff's `PLR0913`/`PLR0917` (more than five arguments) on
+  most of the batch-path helpers once they were fleshed out. Behaviour is unchanged; this is
+  a structural cleanup, not a semantic departure, done to pass `make check` without `noqa`
+  comments scattered across the batch path.
+- 2026-09-15/16, Task 11: the attribution trailer in this plan's own "Commit messages end
+  with" rule and in `global-constraints.md` ("Co-Authored-By: Claude Opus 5 (1M context)")
+  disagrees with the live session's attribution instruction for this task
+  ("Co-Authored-By: Claude Sonnet 5"), which is explicitly stated to supersede a previous
+  copy of the same reminder and names the same session URL. Used the live session's trailer
+  (Claude Sonnet 5) as the more specific, current instruction; flagging here since the two
+  disagree and a future session should reconcile which is authoritative.
