@@ -508,9 +508,10 @@ OpenRouter with one committed fixture record and saves the raw responses under
 3. a two-turn exchange: the tool result returned, then the structured answer.
 
 The probe also records what the usage block contains — whether the provider reports cost
-directly or only tokens, whether the `:batch` variant (0009) and the prompt cache are
-honoured — and then runs the answering pass on ten `dev-400` cases with each of the two
-Luna variants (0031), and prints the cost per case. Every later type is written from the
+directly or only tokens, and whether the prompt cache is honoured — submits one small batch
+of the same ten cases to the batch service and saves its response shape as a fourth
+fixture, and runs the answering pass on ten `dev-400` cases with each of the two Luna
+variants (0031), printing the cost per case from tokens and the batch total side by side. Every later type is written from the
 saved files, the tests parse them, and every later run is projected from that cost.
 
 ### 7.2 The client
@@ -528,6 +529,23 @@ Structured output is requested the way the probe shows works. If the provider ca
 enforce a schema, the harness validates on parse and retries once (§3.4); the probe decides
 which path is real.
 
+**Batch.** OpenRouter's batch service (`https://openrouter.ai/docs/batch-quickstart`,
+read 2026-09-15) is asynchronous: a run submits an array of requests, each with a
+`custom_id`, receives a batch id, polls until the status is `completed`, and reads the
+results inline, within a 24-hour window, at half the token price. A JSON schema on the
+reply is supported. Cost is reported per batch, not per request, so **per-case cost is
+computed from each response's token counts and the price table, and the batch total is the
+check** the run record stores beside it. The two-stage answering pass is therefore two
+batches per run: every case's answering turn in one batch, then every case's refinement
+turn in a second. The runner is written as submit, poll, collect: the run record keeps the
+batch ids, so an interrupted run resumes by polling rather than re-submitting, and a
+`--sync` flag runs the same cases one call at a time for the probe and for small checks.
+OpenRouter keeps batch inputs and results for 30 days; the inputs are evidence payloads
+that hold no withheld text, and the judge's batch holds NTSB narrative that is public. A
+trail (S3) cannot be batched within a case, because each step depends on the last, but one
+step across many cases can; that is S3's design question, noted here so the runner's
+submit-poll-collect shape is kept general.
+
 Tests never reach the network (`pytest-socket`); they replay the saved responses through
 `respx`, as the NTSB client's tests do. The `RecordingFakeClient` stays for scoring tests
 and gains the ability to replay a scripted Hypothesis.
@@ -535,6 +553,18 @@ and gains the ability to replay a scripted Hypothesis.
 ### 7.3 One client, two roles, and the default model
 
 The judge of §8 uses the same client with a different model. There is no second transport.
+
+**Another provider.** The OpenRouter client is one implementation of the `ModelClient`
+protocol S0 defined; the recording fake is another. The saved probe responses are the
+contract the rest of the code is written to. A client for another provider — the OpenAI
+API directly, say — would slot in at the same seam, and scoring, records and the harness
+would not know. It would need its own probe and saved responses, its own price entries and
+cost path (OpenRouter can report cost per call; most providers report tokens only), a
+decision reversing 0009, and a re-measured bar, because a bar measured through one
+provider is not the bar for another. An agent framework is not used: the trail needs a
+structured record after every step, tools that are exclusion sets over one payload builder,
+and cost per step, which a framework tends to hide. The question is asked properly when the
+tool interface is designed at the start of S3 (roadmap §13).
 
 The default model is `openai/gpt-5.6-luna`, batch variant, at $0.10 per million input
 tokens and $0.60 per million output tokens on OpenRouter's public list (checked 2026-09-15,
@@ -689,8 +719,9 @@ docs/results/s1-code-tables.txt, s1-bars.txt, heldout-ledger.md
 
 ## 13. Done means
 
-1. `tests/fixtures/openrouter/` holds the three saved responses, and every model type is
-   parsed from them in tests; the probe's cost per case is recorded.
+1. `tests/fixtures/openrouter/` holds the three saved responses and the saved batch
+   response, and every model type is parsed from them in tests; the probe's cost per case
+   is recorded.
 2. `ntsb-eval baseline` reproduces 16.2% and 32.2% on the spike's draw rule within one
    point, or the results file explains the difference; and reports the honest baseline on
    the full held-out split.
@@ -767,7 +798,8 @@ that document is marked Superseded when S3's specification is Approved, as it sa
 
 | item | why it matters | handling |
 |---|---|---|
-| **The probe shows a response shape the design did not expect** (no schema enforcement, no cost in usage, no batch variant, no prompt cache). | Types and cost accounting rest on it. | The probe runs first (§12) and the plan adapts before any type is written; cost falls back to `sources.py` prices and says so. |
+| **The probe shows a response shape the design did not expect** (no schema enforcement, no cost in usage, no prompt cache). | Types and cost accounting rest on it. | The probe runs first (§12) and the plan adapts before any type is written; cost falls back to `sources.py` prices and says so. |
+| **A batch takes hours or expires.** The window is 24 hours and a batch can end `failed` or `expired`. | A run is not a single sitting. | Submit, poll, collect with the batch ids in the run record; an expired batch is re-submitted for its missing cases only; `--sync` for anything small. |
 | **The cheap model cannot follow the two-stage task.** | The bar would be set on a model that fails the format, not the task. | The probe's ten cases show the failure rate; the Sonnet 5 comparison on `dev-400` shows the accuracy gap; Andy decides before any held-out run. |
 | **Composed codes that never occur.** | A valid-looking miss. | The "pair unseen" column; the tables are not restricted to seen pairs. |
 | **Ten-digit finding scores are low.** | The modifier alone can turn a right item into a miss. | The eight- and six-digit columns explain the misses, and the baseline has a floor at each. |

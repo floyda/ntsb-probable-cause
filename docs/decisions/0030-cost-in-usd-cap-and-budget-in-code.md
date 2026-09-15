@@ -12,8 +12,10 @@ roadmap says the cap is re-measured in S1 and S3.
 ## Decision
 
 1. Cost is recorded per call in US dollars, from the provider's usage block where it reports
-   cost and from the prices in `sources.py` where it does not; the record says which. No
-   currency conversion appears in code or results.
+   cost and from the prices in `sources.py` where it does not; the record says which. The
+   batch service reports cost per batch, so per-case cost there is tokens times price, and
+   the batch total is stored as the check. No currency conversion appears in code or
+   results.
 2. Every run carries a per-case cap (`--cap-usd`) and a budget (`--budget-usd`, default
    $25). A call whose prompt estimate exceeds the cap is not made and the case is recorded
    as failed with reason `cap`. A run whose projected cost — cases times the measured cost
