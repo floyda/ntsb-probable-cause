@@ -889,61 +889,17 @@ class BatchClient:
     def wait(self, batch_id: str, *, every_seconds: float = 60.0, sleep: Callable[[float], None] = time.sleep, on_status: Callable[[str], None] = lambda s: None) -> BatchStatus   # until TERMINAL
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
-```python
-# tests/test_batch.py
-import json
-from pathlib import Path
+Implemented as `tests/test_batch.py`, with three additional tests beyond the brief's two (see
+the Deviations section): `test_submit_rejects_mixed_model_ids`, `test_poll_reports_batch_level_cost`,
+`test_poll_handles_a_result_with_no_body`, and
+`test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate` (carried from Task
+3's review — the `cost_usd` "priced" branch).
 
-import httpx
-import respx
+- [x] **Step 2: Run to verify failure** — `uv run pytest tests/test_batch.py -v` → FAIL, module missing.
 
-from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
-from ntsb_probable_cause.model.client import ModelSettings, Payload
-from ntsb_probable_cause.model.openrouter import OpenRouterClient
-from ntsb_probable_cause.records.evidence import Evidence
-
-FIX = json.loads(Path("tests/fixtures/openrouter/batch.json").read_text())
-BASE = "https://openrouter.ai/api/beta/batches"
-EVIDENCE = Evidence(case_id="X", docket_url=None, aircraft_make="PIPER")
-
-
-def client() -> BatchClient:
-    return BatchClient(OpenRouterClient("k", sleep=lambda _s: None))
-
-
-def test_submit_sends_one_request_per_case_with_batch_model(respx_mock: respx.MockRouter) -> None:
-    route = respx_mock.post(BASE).mock(return_value=httpx.Response(202, json={**FIX["response"], "status": "validating", "results": []}))
-    reqs = [
-        BatchRequest(custom_id=f"case-{i}", payload=Payload.from_evidence(EVIDENCE), settings=ModelSettings(model="openai/gpt-5.6-luna"))
-        for i in range(3)
-    ]
-    batch_id = client().submit(reqs)
-    assert batch_id == "redacted"
-    sent = json.loads(route.calls[0].request.content)
-    assert sent["endpoint"] == "/v1/chat/completions"
-    assert sent["model"] == "openai/gpt-5.6-luna:batch"
-    assert [r["custom_id"] for r in sent["requests"]] == ["case-0", "case-1", "case-2"]
-    assert sent["requests"][0]["body"]["messages"][-1]["role"] == "user"
-
-
-def test_wait_polls_until_terminal_and_parses_results(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(f"{BASE}/b1").mock(side_effect=[
-        httpx.Response(200, json={**FIX["response"], "status": "in_progress", "results": []}),
-        httpx.Response(200, json=FIX["response"]),
-    ])
-    sleeps: list[float] = []
-    status = client().wait("b1", every_seconds=5.0, sleep=sleeps.append)
-    assert status.status == "completed" and sleeps == [5.0]
-    assert len(status.results) == len(FIX["response"]["results"])
-    ok = [r for r in status.results if r.reply is not None]
-    assert ok and ok[0].reply is not None and ok[0].reply.usage.prompt_tokens > 0
-```
-
-- [ ] **Step 2: Run to verify failure** — `uv run pytest tests/test_batch.py -v` → FAIL, module missing.
-
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 """OpenRouter's batch service: submit, poll, collect (spec §7.2, read 2026-09-15)."""
@@ -1051,9 +1007,14 @@ class BatchClient:
 
 If the saved `batch.json` nests results differently (for example a `body` under `response` versus inline), follow the fixture and log a deviation.
 
-- [ ] **Step 4: Run tests and `make check`** — Expected: PASS.
+The saved `batch.json` nests results as `results[].response.body` (a `body` under `response`),
+matching the brief — no deviation needed there. `poll`/`_result_from_item` were implemented with
+`isinstance`-narrowing helpers (`_as_mapping`, `_as_sequence`), per Task 3's precedent, instead of
+the brief's `# type: ignore[union-attr]` comments.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run tests and `make check`** — Expected: PASS.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/model/batch.py tests/test_batch.py
@@ -3331,3 +3292,21 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   file records `"corpus check: data/processed/cases.parquet not present; not run"`. The
   controller should re-run `uv run python -m scripts.build_code_tables ...` once that file
   exists, to get the real corpus-check line.
+
+- 2026-09-15, Task 4 (`model/batch.py`, `tests/test_batch.py`): implementation deviations from
+  the brief, all confirmed against the saved `tests/fixtures/openrouter/batch.json`:
+  - `poll`/`_result_from_item` use `isinstance`-narrowing helpers (`_as_mapping`, `_as_sequence`)
+    instead of the brief's `# type: ignore[union-attr]` comments, matching Task 3's precedent
+    for mypy `--strict`; behaviour is unchanged.
+  - The saved fixture nests one result as `results[].response.body` (a `body` under `response`),
+    which is what the brief already assumed — no shape deviation.
+  - The brief's own two tests combine unrelated assertions with `and` in a single `assert`
+    (e.g. `assert status.status == "completed" and sleeps == [5.0]`); ruff's `PT018` rejects
+    that. Split each into one `assert` per condition; the checks themselves are unchanged.
+  - Added four tests beyond the brief's two: `test_submit_rejects_mixed_model_ids` (the brief's
+    `submit` code path raises `ModelError` on mixed model ids but the brief supplied no test for
+    it), `test_poll_reports_batch_level_cost`, `test_poll_handles_a_result_with_no_body` (a
+    result with no `body`, from the task prompt's carried instruction), and
+    `test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate` (carried from
+    Task 3's review: the `cost_usd` "priced" branch was untested elsewhere, and every batch
+    reply hits it since per-result `usage` has no `cost` key, confirmed against the fixture).
