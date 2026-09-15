@@ -197,7 +197,7 @@ git commit -m "S1: OpenRouter settings, model prices, model errors"
 
 The probe uses `httpx` directly, not the client (which does not exist yet). It builds the payload the only allowed way: `split_record` on a fixture record, `Payload.from_evidence`. It sends a minimal schema (top-1 phase and event as strings, a confidence) — the full Hypothesis schema arrives in Task 6; the probe's job is the response shape, not the task.
 
-- [ ] **Step 1: Write the failing test for the redaction helper**
+- [x] **Step 1: Write the failing test for the redaction helper**
 
 ```python
 # tests/test_openrouter_probe.py
@@ -214,11 +214,11 @@ def test_redact_replaces_ids_and_keys_recursively() -> None:
     assert out["usage"]["cost"] == 0.0001
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_openrouter_probe.py -v` — Expected: FAIL, module not found.
 
-- [ ] **Step 3: Write the probe**
+- [x] **Step 3: Write the probe**
 
 ```python
 """One-off probe of OpenRouter's response shapes (spec §7.1). Costs under $1. Needs a key.
@@ -379,7 +379,7 @@ if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 4: Run the helper test; run `make check`**
+- [x] **Step 4: Run the helper test; run `make check`**
 
 Run: `uv run pytest tests/test_openrouter_probe.py -v && make check` — Expected: PASS.
 
@@ -3184,4 +3184,12 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
 
-- (none yet)
+- 2026-09-15, Task 2 (steps 1–4): under mypy `--strict`, the brief's `structured` and `body`
+  dict literals in `scripts/openrouter_probe.py` inferred a narrower value type than
+  `dict[str, object]` (e.g. `dict[str, Sequence[Collection[str]]]`), which failed the calls to
+  `_post`/`_save` (dict's value type is invariant). Added explicit `dict[str, object]`
+  annotations on those two literals instead of the brief's `# type: ignore[index]` comments,
+  which mypy strict reported as unused (the actual errors were `arg-type` on the two call
+  sites, not `index`). Also reformatted the final `print("sync usage:", ...)` line, which
+  exceeded the 100-character line length, by extracting the redacted usage block into a local
+  variable first. Behaviour is unchanged from the brief.
