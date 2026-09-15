@@ -111,15 +111,20 @@ def _strict(node: object) -> None:
             _strict(item)
 
 
-def _strict_schema(model: type[BaseModel]) -> dict[str, object]:
-    """Build an OpenAI-strict JSON schema from a pydantic model."""
+def strict_schema(model: type[BaseModel]) -> dict[str, object]:
+    """Build an OpenAI-strict JSON schema from a pydantic model.
+
+    Shared with ``scoring/judge.py`` (fix round 1, Important 1): every caller that sends a
+    ``json_schema`` to the provider gets exactly the treatment confirmed live against
+    OpenRouter, not a hand-rolled approximation of it.
+    """
     schema: dict[str, Any] = model.model_json_schema()
     _strict(schema)
     return schema
 
 
-HYPOTHESIS_SCHEMA: dict[str, object] = _strict_schema(Hypothesis)
-REFINEMENT_SCHEMA: dict[str, object] = _strict_schema(Refinement)
+HYPOTHESIS_SCHEMA: dict[str, object] = strict_schema(Hypothesis)
+REFINEMENT_SCHEMA: dict[str, object] = strict_schema(Refinement)
 
 
 def parse_hypothesis(text: str, tables: CodeTables) -> Hypothesis:

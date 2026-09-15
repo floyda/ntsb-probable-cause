@@ -18,7 +18,7 @@ from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring.codes import CodeTables
-from ntsb_probable_cause.scoring.hypothesis import Hypothesis
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, strict_schema
 from ntsb_probable_cause.scoring.metrics import CaseScores
 
 JUDGE_MODEL = "anthropic/claude-haiku-4.5"
@@ -42,8 +42,7 @@ class JudgeLabels(BaseModel):
     lay: Literal["explains_chosen_codes", "does_not"]
 
 
-JUDGE_SCHEMA: dict[str, object] = JudgeLabels.model_json_schema()
-JUDGE_SCHEMA["additionalProperties"] = False
+JUDGE_SCHEMA: dict[str, object] = strict_schema(JudgeLabels)
 
 
 def judge_text(
@@ -71,6 +70,14 @@ def judge_text(
     )
 
 
+def _parse_judge_reply(content: str | None) -> JudgeLabels:
+    """Parse one judge reply's content, or raise ``SchemaError`` for the caller to retry on."""
+    try:
+        return JudgeLabels.model_validate(json.loads(content or ""))
+    except (ValueError, ValidationError) as error:
+        raise SchemaError(f"judge reply is not JudgeLabels: {error}") from error
+
+
 def judge_case(  # noqa: PLR0913 -- interface fixed by spec §8 / decision 0028.
     client: ModelClient,
     hypothesis: Hypothesis,
@@ -79,25 +86,39 @@ def judge_case(  # noqa: PLR0913 -- interface fixed by spec §8 / decision 0028.
     tables: CodeTables,
     *,
     price_variant: Literal["batch", "standard"] = "batch",
+    max_output_tokens: int = 2000,
 ) -> tuple[JudgeLabels, ModelReply]:
-    """One judge call. The payload is empty by construction; everything is in the system text."""
+    """One judge call, retried once on a schema error; the payload is empty by construction.
+
+    ``max_output_tokens`` defaults to ``ModelSettings``'s own default (fix round 1, Important
+    2): the judge's reply is a few tokens of JSON, so a generous cap costs nothing, while a
+    tight one risks the answering model's own measured failure mode -- reasoning tokens
+    consuming the cap and leaving an empty, unparsable reply (``finish_reason: "length"``) --
+    for which there is no fixture on this judge model. One retry, with the rejection noted in
+    the system text, mirrors ``Runner._two_turns``'s handling of the same failure mode; only
+    the retry's reply is returned, so a case that needed a retry is priced from that reply
+    alone, not both attempts (see Task 12 report for why the signature stays a single
+    ``ModelReply``).
+    """
     empty = Payload.from_evidence(Evidence(case_id="judge", docket_url=None))
     settings = ModelSettings(
         model=JUDGE_MODEL,
         price_variant=price_variant,
         json_schema=JUDGE_SCHEMA,
         schema_name="judge",
-        max_output_tokens=200,
+        max_output_tokens=max_output_tokens,
     )
-    reply = client.complete(
-        empty,
-        settings,
-        system=f"{SYSTEM_JUDGE}\n\n{judge_text(hypothesis, synthesis, verdict, tables)}",
-    )
+    system = f"{SYSTEM_JUDGE}\n\n{judge_text(hypothesis, synthesis, verdict, tables)}"
+    reply = client.complete(empty, settings, system=system)
     try:
-        return JudgeLabels.model_validate(json.loads(reply.content or "")), reply
-    except (ValueError, ValidationError) as error:
-        raise SchemaError(f"judge reply is not JudgeLabels: {error}") from error
+        return _parse_judge_reply(reply.content), reply
+    except SchemaError as error:
+        retry = client.complete(
+            empty,
+            settings,
+            system=f"{system}\n\nYour previous reply was rejected: {error}",
+        )
+        return _parse_judge_reply(retry.content), retry
 
 
 def agreement_table(
