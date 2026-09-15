@@ -1961,7 +1961,7 @@ git commit -m "S1: per-case and per-step metrics with intervals; scoring may rea
 
 **Interfaces:** consumes `RecordingFakeClient`, `parse_hypothesis`, `score_trail`.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```python
 # tests/test_scripted_trail.py
@@ -2009,9 +2009,9 @@ def test_three_step_trail_is_scored_step_by_step() -> None:
     assert len(client.payloads) == 3
 ```
 
-- [ ] **Step 2: Run** — `uv run pytest tests/test_scripted_trail.py -v` → PASS (everything it needs exists). If it fails, the bug is in Task 7; fix there.
+- [x] **Step 2: Run** — `uv run pytest tests/test_scripted_trail.py -v` → PASS (everything it needs exists). If it fails, the bug is in Task 7; fix there.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_scripted_trail.py
