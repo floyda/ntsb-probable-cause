@@ -559,6 +559,10 @@ average cost under a per-case cap enforced in code. Added by 0022: arm C against
 cost, with the four results that would count against the loop (0022) and the six
 predictions (0022), each reported whichever way it comes out.
 
+*Amended 2026-09-15 (0031).* The model axis of §4 — which model gains most from reading the
+docket — is measured after this stage, once arms B and C exist, as a separate table labelled
+by model. The bar and the agent always share one model, the default set in 0031.
+
 ### S4. Predictions and resolution
 
 Predictions store with case, evidence fingerprint, timestamp, answer, cost and commit
