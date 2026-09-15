@@ -66,9 +66,9 @@ def test_render_check_error_names_the_offending_role(monkeypatch: pytest.MonkeyP
         Payload.from_evidence(EVIDENCE)
 
 
-def test_recording_fake_records_payloads_and_replays_replies() -> None:
+def test_fake_replays_scripted_replies() -> None:
     client = RecordingFakeClient(replies=("first", "second"))
     payload = Payload.from_evidence(EVIDENCE)
-    replies = [client.complete(payload, ModelSettings()).text for _ in range(3)]
+    replies = [client.complete(payload, ModelSettings()).content for _ in range(3)]
     assert replies == ["first", "second", "second"]
     assert client.payloads == [payload, payload, payload]

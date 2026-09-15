@@ -464,7 +464,7 @@ class OpenRouterClient:            # model/openrouter.py
     def request_body(payload, settings, *, system, history) -> dict[str, object]   # the exact JSON sent; reused by the batch client
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_openrouter.py
@@ -560,11 +560,11 @@ def test_client_does_not_retry_a_400(respx_mock: respx.MockRouter) -> None:
 
 Also update `tests/test_model_client.py`: replace `RecordingFakeClient()` usages so `test_fake_replays_scripted_replies` asserts `client.complete(payload, ModelSettings()).content == "first"` then `"second"` then `"second"`.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `uv run pytest tests/test_openrouter.py tests/test_model_client.py -v` — Expected: FAIL on imports.
 
-- [ ] **Step 3: Implement `model/client.py` changes**
+- [x] **Step 3: Implement `model/client.py` changes**
 
 Replace `ModelSettings`, `ModelReply`, `ModelClient`, `RecordingFakeClient` with:
 
@@ -709,7 +709,7 @@ def cost_usd(reply: ModelReply, settings: ModelSettings) -> tuple[float, str]:
 
 Add imports: `from typing import Literal`, `from collections.abc import Mapping`, `from ntsb_probable_cause import sources`, `from ntsb_probable_cause.errors import LeakageError, ModelError`.
 
-- [ ] **Step 4: Implement `model/openrouter.py`**
+- [x] **Step 4: Implement `model/openrouter.py`**
 
 ```python
 """The OpenRouter chat-completions client: one implementation of ModelClient (spec §7.2)."""
@@ -838,11 +838,11 @@ class OpenRouterClient:
 
 `tests/boundary.py` needs no change: `complete(payload, settings)` still works.
 
-- [ ] **Step 5: Run tests and `make check`**
+- [x] **Step 5: Run tests and `make check`**
 
 Run: `uv run pytest tests/test_openrouter.py tests/test_model_client.py tests/test_boundary.py -v && make check` — Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/model tests/test_openrouter.py tests/test_model_client.py
@@ -3238,6 +3238,43 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   pattern (added `openrouter` to the `tests/fixtures/(records|api)/` alternation), matching
   the pattern already used for the other fixture directories. `uv run typos .` is clean after
   the change.
+
+- 2026-09-15, Task 3 (Step 2's test, resolved by the controller before implementation): the
+  brief's `test_client_retries_then_raises` expects `sleeps.count(1.0) == 1 and
+  sleeps.count(2.0) == 1` with `max_attempts=3, backoff_seconds=1.0` and the default 60
+  requests/minute (gap 1.0s), but the brief's `request_json` also sleeps the 1.0s rate-limit
+  gap before every request after the first, through the same `sleep` function, which would
+  make `count(1.0) == 3`. Resolved as directed: `request_json` no longer stacks the gap sleep
+  on top of a retry backoff that already spaced the requests -- after a backoff sleep of `b`
+  seconds, the next gap sleep is `max(0, gap - b)`, skipped when zero or negative; with no
+  preceding backoff, the full gap applies. Added
+  `test_client_applies_rate_limit_gap_between_successful_calls` (two successful `complete()`
+  calls record exactly one gap sleep of `60/rpm`) to cover the case the brief's own test does
+  not exercise.
+- 2026-09-15, Task 3 (Step 3/4, mypy `--strict`): the brief's `parse_chat_completion` used a
+  single `# type: ignore[index]` on `body["choices"][0]` and otherwise indexed the untyped
+  JSON body directly (`message.get("tool_calls")`, `usage["prompt_tokens"]`, etc.). Under
+  `--strict` that produced further `[index]`/`[attr-defined]`/`[arg-type]` errors beyond the
+  one ignored (an object is not indexable, `int()`/`float()` do not accept `object`), and the
+  one ignore comment itself would have been flagged unused once those were fixed by narrowing
+  instead. Replaced the single ignore with explicit runtime-narrowing helpers
+  (`_as_mapping`, `_first_choice`, `_as_int`, `_as_float`) that `isinstance`-check each
+  untyped JSON value before use; a value of the wrong shape raises `TypeError`, still caught
+  by the existing `except (KeyError, IndexError, TypeError, ValueError)` block and translated
+  to `ModelError`, so behaviour for malformed replies is unchanged from the brief's intent.
+  `tests/test_openrouter.py`'s `saved()`/`saved_response()` helpers needed the same treatment
+  (`json.loads` returns `Any`): added an explicit `cast` in `saved()` and a `saved_response()`
+  helper that casts `saved(name)["response"]` to `Mapping[str, object]`, used at each call
+  site instead of the brief's inline `saved("name")["response"]`. No behaviour change; the
+  saved fixtures and assertions are otherwise verbatim.
+- 2026-09-15, Task 3 (Step 3/4, ruff): the brief's combined-condition assertions in
+  `tests/test_openrouter.py` (e.g. `assert reply.content and json.loads(...)["phase"]`,
+  `assert how == "reported" and dollars == ...`) trip ruff's `PT018` ("assertion should be
+  broken down into multiple parts"). Split each into separate `assert` statements with the
+  same checks, in the same order; no test loosened or removed. One `TRY301` ("abstract raise
+  to an inner function") on the choices-list narrowing in `parse_chat_completion` was
+  resolved the same way as the mypy fix above, by moving that check into the `_first_choice`
+  helper, rather than a `noqa`.
 
 - 2026-09-15, Task 5 (step 3): inspected the real `avall.mdb` schema (mdbtools) before writing
   the script, per the project's "never guess data details" rule. Table and column names
