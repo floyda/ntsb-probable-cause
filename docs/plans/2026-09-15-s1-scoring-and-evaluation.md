@@ -3371,3 +3371,24 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   All three fixes and their tests are in commit (see report); `uv run pytest
   tests/test_hypothesis.py -v` and `make check` both pass (264 total tests, 96.76% coverage,
   `scoring/hypothesis.py` and `scoring/prompt.py` both 100%).
+- 2026-09-15, Task 5 follow-up (moving the controller's throwaway coverage measurement into
+  `scripts/build_code_tables.py`, so it comes from a committed script per CLAUDE.md): the NTSB
+  data dictionary that Task 5 built the tables from does not list every phase, event and modifier
+  the corpus actually uses. `coverage_check` in `scripts/build_code_tables.py` (tested in
+  `tests/test_build_code_tables.py`) counts, per split, cases whose primary occurrence code
+  (`fields.occurrence_codes(raw)[0]`) cannot be composed because its phase prefix or event suffix
+  is missing from the tables, and cases with at least one finding flagged in the probable cause
+  (`fields.finding_codes_in_cause`) whose item or modifier is missing. Measured on the full
+  corpus (`docs/results/s1-code-tables.txt`): development split (13,560 cases) has 204 (1.50%)
+  with a non-composable primary occurrence code and 37 with a non-composable flagged finding;
+  held-out (4,241 cases) has 77 (1.82%) and 20. That caps occurrence top-1 at about 98.5% on
+  development and 98.2% on held-out, before the model gets a chance to be wrong. The missing
+  parts, ranked by case count across both splits: phase prefixes `553` (Landing-Landing Roll
+  family, 135 cases) and `601` (113 cases) are absent from the dictionary's `Events_Sequence`
+  rows entirely; modifier `27` (50 findings) and `98` (4) are absent from its `Findings` rows;
+  event suffixes `850`, `284`, `282`, `281` (20, 5, 4, 4 cases) and item `01011100` (9 cases) are
+  likewise undefined. The tables are left exactly as Task 5 built them from the dictionary — S1
+  does not extend them from corpus observation — and this gap is reported alongside the S1 bars
+  rather than silently lowering the ceiling. Extending the tables with codes observed in the
+  corpus (a `codes in use but not in the tables` list of 159, already printed by the existing
+  corpus check) is a follow-up for Andy to decide, not part of this task.
