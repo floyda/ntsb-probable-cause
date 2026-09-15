@@ -84,7 +84,11 @@ def seen_pairs(processed: Path) -> frozenset[str]:
 def draw(
     processed: Path, split: Split, *, per_slice: int = 200, seed: int = 20260914
 ) -> list[tuple[str, str]]:
-    """200 fatal and 200 non-fatal, each stratified by class C/F/L in proportion (0026)."""
+    """200 fatal and 200 non-fatal, each stratified by class C/F/L in proportion (0026).
+
+    Classes I, M and T are excluded (decision 0026 point 1); ``scripts/draw_samples.py``
+    prints how many cases of those classes were excluded per split and fatal slice.
+    """
     columns = ["ntsb_number", "event_date", "split", "investigation_class", "raw_json"]
     table = pq.read_table(processed / "cases.parquet", columns=columns)
     by_column = {col: table[col].to_pylist() for col in columns}
@@ -97,6 +101,8 @@ def draw(
     chosen: list[tuple[str, str]] = []
     for fatal in (True, False):
         pool = [r for r in rows if r[3] is fatal]
+        if not pool:
+            continue
         by_class = {c: [r for r in pool if r[2] == c] for c in ("C", "F", "L")}
         quota = {c: round(per_slice * len(v) / len(pool)) for c, v in by_class.items()}
         for c, members in by_class.items():

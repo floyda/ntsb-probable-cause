@@ -12,6 +12,7 @@ from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, parse_hypothesis
+from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
     RunRecord,
@@ -115,6 +116,45 @@ def test_step_and_case_result_round_trip_through_jsonl(tmp_path: Path) -> None:
     path = tmp_path / "results.jsonl"
     write_jsonl(path, [result])
     assert read_jsonl(path, CaseResult) == [result]
+
+
+def test_case_result_with_populated_scores_round_trips_through_jsonl(tmp_path: Path) -> None:
+    scores = CaseScores(
+        occurrence_top1=True,
+        occurrence_top3=True,
+        event_match=True,
+        pair_unseen=False,
+        finding_precision_10=0.5,
+        finding_recall_10=0.25,
+        finding_precision_8=0.5,
+        finding_recall_8=0.25,
+        finding_precision_6=0.5,
+        finding_recall_6=0.25,
+        finding_precision_all_10=0.5,
+        finding_recall_all_10=0.25,
+        abstained=False,
+        confidence=0.9,
+    )
+    result = CaseResult(
+        case_id="WPR24LA029",
+        split="heldout",
+        fatal=False,
+        investigation_class="C",
+        report_flavour=None,
+        verdict_occurrence=("550000",),
+        verdict_findings=(),
+        verdict_findings_in_cause=(),
+        steps=(_step(),),
+        scores=scores,
+        cost_usd=0.001,
+        failure=None,
+    )
+    path = tmp_path / "results.jsonl"
+    write_jsonl(path, [result])
+    (loaded,) = read_jsonl(path, CaseResult)
+    assert loaded == result
+    assert loaded.scores == scores
+    assert isinstance(loaded.scores, CaseScores)
 
 
 def test_records_are_frozen_and_forbid_extra_fields() -> None:
