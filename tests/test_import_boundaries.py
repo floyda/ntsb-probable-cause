@@ -7,9 +7,17 @@ fails if any other library module does.
 
 import grimp
 
-# S1's `scoring` module will be added to this allow-list by decision, when it needs verdict for
-# grading a model's answer against the NTSB's published cause.
-ALLOWED_TO_IMPORT_SYNTHESIS_OR_VERDICT = frozenset({"ntsb_probable_cause.records.split"})
+# Decision 0025: the scoring modules that grade against the verdict, and the judge that also
+# reads synthesis. Everything else in scoring stays outside.
+ALLOWED_TO_IMPORT_SYNTHESIS_OR_VERDICT = frozenset(
+    {
+        "ntsb_probable_cause.records.split",
+        "ntsb_probable_cause.scoring.metrics",
+        "ntsb_probable_cause.scoring.runner",
+        "ntsb_probable_cause.scoring.judge",
+        "ntsb_probable_cause.scoring.report",
+    }
+)
 
 
 def test_only_the_splitter_imports_synthesis_or_verdict() -> None:
@@ -23,4 +31,15 @@ def test_only_the_splitter_imports_synthesis_or_verdict() -> None:
     assert importers <= ALLOWED_TO_IMPORT_SYNTHESIS_OR_VERDICT, (
         f"modules importing synthesis/verdict outside the allow-list: "
         f"{sorted(importers - ALLOWED_TO_IMPORT_SYNTHESIS_OR_VERDICT)}"
+    )
+
+
+def test_synthesis_is_imported_only_by_split_and_judge() -> None:
+    graph = grimp.build_graph("ntsb_probable_cause")
+    importers = graph.find_modules_that_directly_import("ntsb_probable_cause.records.synthesis") - {
+        "ntsb_probable_cause.records.synthesis"
+    }
+    allowed = frozenset({"ntsb_probable_cause.records.split", "ntsb_probable_cause.scoring.judge"})
+    assert importers <= allowed, (
+        f"modules importing records.synthesis outside split/judge: {sorted(importers - allowed)}"
     )

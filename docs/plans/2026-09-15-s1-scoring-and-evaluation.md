@@ -1630,7 +1630,7 @@ def calibration(confidences: Sequence[float], correct: Sequence[bool], *, bins: 
 def stated_versus_actual(observed: Sequence[str], gains: Sequence[float]) -> tuple[float, float]   # agreement, chance agreement
 ```
 
-- [ ] **Step 1: Write the failing tests, with hand-worked answers**
+- [x] **Step 1: Write the failing tests, with hand-worked answers**
 
 ```python
 # tests/test_metrics.py
@@ -1725,9 +1725,9 @@ def test_stated_versus_actual() -> None:
     assert agreement == 0.75 and 0 < chance < 1
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL on import.
+- [x] **Step 2: Run to verify failure** — FAIL on import.
 
-- [ ] **Step 3: Implement `metrics.py`**
+- [x] **Step 3: Implement `metrics.py`**
 
 ```python
 """Scores per case and per step, and the intervals they carry (spec §4). Pure functions."""
@@ -1923,7 +1923,7 @@ def stated_versus_actual(observed: Sequence[str], gains: Sequence[float]) -> tup
     return agreement, chance
 ```
 
-- [ ] **Step 4: Open the import boundary by decision 0025**
+- [x] **Step 4: Open the import boundary by decision 0025**
 
 `tests/test_import_boundaries.py`: replace the allow-list with
 
@@ -1943,9 +1943,9 @@ ALLOWED_TO_IMPORT_SYNTHESIS_OR_VERDICT = frozenset(
 
 and add a second test that `ntsb_probable_cause.records.synthesis` is imported only by `records.split` and `scoring.judge`. In `pyproject.toml`, the contract "Only the splitter constructs synthesis and verdict" lists source modules explicitly; add `"ntsb_probable_cause.scoring.codes"`, `"ntsb_probable_cause.scoring.hypothesis"`, `"ntsb_probable_cause.scoring.prompt"`, `"ntsb_probable_cause.scoring.samples"`, `"ntsb_probable_cause.scoring.records"`, `"ntsb_probable_cause.scoring.ledger"`, `"ntsb_probable_cause.scoring.baseline"` to its `source_modules`. The contract "The model boundary cannot see synthesis or verdict" gains `"ntsb_probable_cause.scoring"` in `forbidden_modules`.
 
-- [ ] **Step 5: Run tests and `make check`** — Expected: PASS.
+- [x] **Step 5: Run tests and `make check`** — Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/metrics.py tests/test_metrics.py tests/test_import_boundaries.py pyproject.toml
@@ -3392,3 +3392,37 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   rather than silently lowering the ceiling. Extending the tables with codes observed in the
   corpus (a `codes in use but not in the tables` list of 159, already printed by the existing
   corpus check) is a follow-up for Andy to decide, not part of this task.
+
+- 2026-09-15, Task 7 (Step 1's test, resolved by the controller before implementation): the
+  brief's `test_wilson_matches_published_value` asserted `(0.421, 0.715)` for
+  `wilson(23, 40)`. Hand-computed the standard Wilson score interval as written in Step 3
+  (`z=1.96, n=40, p=0.575`): centre ≈ 0.568232, half-width ≈ 0.146466, giving
+  `low ≈ 0.421766` and `high ≈ 0.714698`, which round to `(0.422, 0.715)`, not `(0.421, 0.715)`.
+  Kept the formula unchanged and corrected the test's expected low bound to `0.422`. Task 13
+  carries the same `0.421` value in a later test and needs the same fix.
+- 2026-09-15, Task 7 (Step 3, mypy `--strict`): under Python 3.14, `collections.abc` no longer
+  exports `AbstractSet` (only `typing.AbstractSet`, deprecated, and `collections.abc.Set`).
+  Importing `AbstractSet` from `collections.abc` as the brief's Step 3 does fails at import
+  time. Changed the import to `from collections.abc import Set as AbstractSet` so the
+  `seen_pairs: AbstractSet[str]` signatures are unchanged; behaviour is identical.
+- 2026-09-15, Task 7 (Step 4, contracts, controller-resolved before implementation): import-linter
+  `forbidden` contracts check transitive imports by default, so the brief's instruction to add
+  all seven scoring modules (`codes`, `hypothesis`, `prompt`, `samples`, `records`, `ledger`,
+  `baseline`) to "Only the splitter constructs synthesis and verdict"'s `source_modules` would
+  fail lint-imports for modules that do not exist yet. Added only the three that exist now and
+  do not reach `records.verdict`/`records.synthesis` even indirectly:
+  `ntsb_probable_cause.scoring.codes`, `ntsb_probable_cause.scoring.hypothesis`,
+  `ntsb_probable_cause.scoring.prompt`. `scoring.samples`, `scoring.ledger` and `scoring.baseline`
+  are added to that contract's `source_modules` as each is created in a later task, not now.
+  Noted for later: `scoring.records` and `scoring.ledger` (Task 9) will import
+  `metrics.CaseScores`, which imports `records.verdict`, so they cannot ever be listed in that
+  forbidden contract — the grimp allow-list test in `tests/test_import_boundaries.py` (direct
+  imports only) is what covers them instead. Added `"ntsb_probable_cause.scoring"` to
+  `forbidden_modules` of "The model boundary cannot see synthesis or verdict" as the brief says.
+- 2026-09-15, Task 7 (Step 3, ruff `PT018`/`RUF015`): the brief's hand-worked test assertions in
+  Step 1 combine multiple conditions with `and` (flagged by ruff `PT018`) and one bin lookup uses
+  `[...][0]` instead of `next(...)` (flagged by `RUF015`). Split each combined assertion into
+  separate `assert` statements and replaced the slice with `next(b for b in bins if ...)`; no
+  expected value changed. Also added an explicit `-> Hypothesis` return annotation on the test
+  helper `hyp()`, required by mypy `--strict` (`no-untyped-def`) and not spelled out in the
+  brief's Step 1 snippet.

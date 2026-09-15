@@ -82,6 +82,9 @@ source_modules = [
     "ntsb_probable_cause.records.evidence",
     "ntsb_probable_cause.records.guard",
     "ntsb_probable_cause.model",
+    "ntsb_probable_cause.scoring.codes",
+    "ntsb_probable_cause.scoring.hypothesis",
+    "ntsb_probable_cause.scoring.prompt",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
 
@@ -93,6 +96,7 @@ forbidden_modules = [
     "ntsb_probable_cause.records.synthesis",
     "ntsb_probable_cause.records.verdict",
     "ntsb_probable_cause.records.split",
+    "ntsb_probable_cause.scoring",
 ]
 
 [tool.deptry]
