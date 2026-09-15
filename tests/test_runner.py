@@ -785,7 +785,44 @@ def test_batch_abort_on_stage_two_failure_still_records_stage_one_spend(
     assert record.finished is None
     expected_stage1_cost = 100 * 0.10 / 1e6 + 50 * 0.60 / 1e6  # the billed stage-1 reply
     assert record.cost_usd == pytest.approx(expected_stage1_cost)
-    assert record.reported_batch_cost_usd == pytest.approx(0.01)
+    # Batch 2 never completed, so its cost is honestly unknown, not a one-batch sum
+    # (0.01) presented as the two-batch total (fix round 2, Minor 2).
+    assert record.reported_batch_cost_usd is None
+    # The failing batch's id is still on record, even though it never completed.
+    assert record.batch_ids == ("b1", "b2")
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("aborted:")
+    assert case.cost_usd == pytest.approx(expected_stage1_cost)
+
+
+def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2, Minor 1: a Ctrl-C during a real batch's ``wait`` (which polls for a long
+    time on a real run) is the most likely real mid-run abort. ``except Exception`` would
+    not catch ``KeyboardInterrupt``, leaving the billed stage-1 spend invisible to the next
+    run's budget guard; ``run()`` and ``_answer_batch`` now catch ``BaseException``."""
+
+    def stage2_interrupt(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise KeyboardInterrupt
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            stage2_interrupt,
+        ]
+    )
+    with pytest.raises(KeyboardInterrupt):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            record_fixtures[:1],
+        )
+    folder = tmp_path / "runs" / _run_id()
+    (record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert record.finished is None
+    expected_stage1_cost = 100 * 0.10 / 1e6 + 50 * 0.60 / 1e6  # the billed stage-1 reply
+    assert record.cost_usd == pytest.approx(expected_stage1_cost)
     (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
     assert case.failure is not None
     assert case.failure.startswith("aborted:")
