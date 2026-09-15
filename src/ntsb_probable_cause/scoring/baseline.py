@@ -96,7 +96,15 @@ def fit(raws: Iterable[Mapping[str, object]]) -> BaselineModel:
 def predict(
     model: BaselineModel, raw: Mapping[str, object]
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Predict top-3 occurrence codes for the case's key, and top-3 findings for the top-1 code.
+    """Predict top-3 occurrence codes for the case's key, and the sample-wide finding baseline.
+
+    The occurrence prediction is conditioned on the case's own phase|weather key. The finding
+    prediction is not: the spike's `finding_code_baseline`
+    (`ntsb_spike/src/ntsb_spike/baseline.py:44-58`) predicts the same fixed top-3 finding set
+    for every case in the sample — the finding codes most common among cases whose primary
+    occurrence code is the single sample-wide modal one (`model.fallback[0]`), never the
+    case's own key-conditioned top-1. This port follows that exactly (deviation logged in the
+    plan, Task 10 fix round 1).
 
     Args:
         model: a fitted `BaselineModel`.
@@ -104,10 +112,11 @@ def predict(
 
     Returns:
         A pair of (occurrence top-3, finding top-3). The occurrence prediction falls back to
-        the model's unconditional top-3 when the case's key was never seen while fitting.
+        the model's unconditional top-3 when the case's key was never seen while fitting. The
+        finding prediction is the same tuple for every case fit from the same model.
     """
     occ = model.top_by_key.get(key_of(raw), model.fallback)
-    findings = model.findings_by_code.get(occ[0], ()) if occ else ()
+    findings = model.findings_by_code.get(model.fallback[0], ()) if model.fallback else ()
     return occ, findings
 
 
