@@ -2811,7 +2811,7 @@ def pick_disagreements(case_ids, labels, scores, *, n=30, seed=20260914) -> list
 
 `judge_case` sends the text as the **system** prompt with an empty `Payload`? No: `Payload.from_evidence` needs an `Evidence`; the judge builds `Payload.from_evidence(Evidence(case_id=..., docket_url=None))`, an empty payload, and carries everything in `system`. The boundary test asserts that on every judge call the `Payload` is empty and the system text contains the factual narrative, and that no answering call's system text ever does.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_judge.py
@@ -2848,9 +2848,9 @@ def test_judge_case_parses_labels_and_sends_empty_payload() -> None:
 
 Extend `tests/test_boundary.py` with a test that runs `Runner` over the fixtures with the fake and asserts, for every recorded answering call, that neither the factual narrative nor the probable cause of that case appears in the system text the fake saw. To see system text, add `self.systems: list[str]` to `RecordingFakeClient` (Task 3's class; extend it here and log nothing — it is test support).
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [x] **Step 2: Run to verify failure** — FAIL.
 
-- [ ] **Step 3: Implement `judge.py`**
+- [x] **Step 3: Implement `judge.py`**
 
 ```python
 """The judge: labels for the prose outputs, validated before use, never a bar (decision 0028).
@@ -2944,9 +2944,9 @@ def pick_disagreements(case_ids: Sequence[str], labels: Sequence[JudgeLabels], s
     return sorted(rng.sample(candidates, min(n, len(candidates))))
 ```
 
-- [ ] **Step 4: Run tests and `make check`** — PASS, including the extended boundary test.
+- [x] **Step 4: Run tests and `make check`** — PASS, including the extended boundary test.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/judge.py src/ntsb_probable_cause/model/client.py tests/test_judge.py tests/boundary.py tests/test_boundary.py
@@ -3152,6 +3152,38 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
 
+- 2026-09-16, Task 12 (step 1): the confirmed price entry `HAIKU_45_BATCH` for
+  `anthropic/claude-haiku-4.5:batch` ($0.50/$2.50 per MTok, OpenRouter models API,
+  checked 2026-09-15) already existed in `sources.py` from an earlier task's addition, so no
+  change to `sources.py` was needed for this task — verified rather than added.
+- 2026-09-16, Task 12 (step 1): `test_synthesis_is_imported_only_by_split_and_judge` in
+  `tests/test_import_boundaries.py` and the `scoring.judge`/`scoring.report` allow-list
+  entries were already present (added ahead of time by an earlier task), so no changes to
+  `tests/test_import_boundaries.py` or `pyproject.toml` were needed for this task.
+- 2026-09-16, Task 12 (step 1): the brief's boundary-test extension is phrased as "assert, for
+  every recorded answering call, that neither the factual narrative nor the probable cause of
+  that case appears in the system text". Implemented instead as a stronger cross-product
+  check: every system string the fake `Runner` run produced is checked against every fixture's
+  factual narrative and probable cause, not only the matching case's own values. This is
+  strictly stronger (it also catches a leak of one case's withheld text into a different
+  case's system prompt, e.g. from a shared/cached fragment) and avoids a fragile pairing
+  between `client.systems` entries and fixtures, since the number of answering calls per case
+  varies (one call when a case abstains or has no findings, two when stage 2 runs, more on a
+  schema retry) so a fixed-stride zip (`client.systems[::2]`) would silently mispair as soon
+  as any fixture takes a different number of calls than another.
+- 2026-09-16, Task 12 (step 3): `JUDGE_SCHEMA` is built as the brief's literal code shows
+  (`JudgeLabels.model_json_schema()` plus a manual top-level `additionalProperties = False`)
+  rather than by calling `scoring/hypothesis.py`'s `_strict_schema` helper the task context
+  mentioned reusing. `JudgeLabels` has three flat `Literal[str]` fields and no nested
+  `BaseModel`, so pydantic's default schema already marks every property required and there
+  is no nested object node for the recursive helper to reach that the manual line does not
+  already cover; `test_judge_schema_is_openai_strict_compatible` asserts the same two
+  properties (`additionalProperties is False`, `required == properties`) that
+  `test_hypothesis.py`'s `test_strict_schemas_are_openai_compatible` checks for `Hypothesis`
+  and `Refinement`. `_strict_schema` was not imported because it is private
+  (leading-underscore) to `scoring/hypothesis.py` and reusing it across modules would need
+  either exporting it or a cross-module private-member access; not done since it would add
+  surface area with no behavioural difference for this schema.
 - 2026-09-15, Task 2 (steps 1–4): under mypy `--strict`, the brief's `structured` and `body`
   dict literals in `scripts/openrouter_probe.py` inferred a narrower value type than
   `dict[str, object]` (e.g. `dict[str, Sequence[Collection[str]]]`), which failed the calls to
