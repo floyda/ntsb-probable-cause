@@ -1,18 +1,30 @@
 """The judge: labels for the prose outputs against withheld text (spec §8, decision 0028)."""
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
 
 from ntsb_probable_cause.errors import SchemaError
-from ntsb_probable_cause.model.client import RecordingFakeClient
+from ntsb_probable_cause.model.client import (
+    ModelReply,
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+    Usage,
+)
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import judge
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
+
+GOOD_LABELS = json.dumps(
+    {"narrative": "consistent", "cause": "same_cause", "lay": "explains_chosen_codes"}
+)
 
 H = parse_hypothesis(
     json.dumps(
@@ -48,42 +60,113 @@ def test_judge_text_holds_the_withheld_narrative_and_cause() -> None:
 
 
 def test_judge_case_parses_labels_and_sends_empty_payload() -> None:
-    client = RecordingFakeClient(
-        [
-            json.dumps(
-                {"narrative": "consistent", "cause": "same_cause", "lay": "explains_chosen_codes"}
-            )
-        ]
-    )
+    client = RecordingFakeClient([GOOD_LABELS])
     labels, _ = judge.judge_case(client, H, S, V, load_tables())
     assert labels.cause == "same_cause"
     assert client.payloads[0].fields() == {}
 
 
 def test_judge_case_uses_the_judge_model_and_carries_the_text_as_system() -> None:
-    client = RecordingFakeClient(
-        [
-            json.dumps(
-                {"narrative": "consistent", "cause": "same_cause", "lay": "explains_chosen_codes"}
-            )
-        ]
-    )
+    client = RecordingFakeClient([GOOD_LABELS])
     judge.judge_case(client, H, S, V, load_tables())
     assert (
         client.systems[0] == f"{judge.SYSTEM_JUDGE}\n\n{judge.judge_text(H, S, V, load_tables())}"
     )
 
 
-def test_judge_case_raises_schema_error_on_a_bad_reply() -> None:
-    client = RecordingFakeClient(["not json"])
+def test_judge_case_defaults_to_a_generous_output_cap() -> None:
+    """Fix round 1, Important 2: 2000, not a magic 200 -- the reply is a few tokens of JSON."""
+    captured: list[ModelSettings] = []
+
+    class _Capture:
+        def complete(
+            self,
+            payload: Payload,
+            settings: ModelSettings,
+            *,
+            system: str = "",
+            history: Sequence[Turn] = (),
+        ) -> ModelReply:
+            captured.append(settings)
+            return ModelReply(
+                content=GOOD_LABELS,
+                usage=Usage(prompt_tokens=1, completion_tokens=1),
+                model=settings.model_id(),
+                response_id="fake",
+            )
+
+    judge.judge_case(_Capture(), H, S, V, load_tables())
+    assert captured[0].max_output_tokens == 2000
+    assert captured[0].model == judge.JUDGE_MODEL
+
+
+def test_judge_case_retries_once_after_a_truncated_reply() -> None:
+    """Fix round 1, Important 2: an empty, ``finish_reason: length`` reply gets one retry."""
+
+    class _TruncatedThenGood:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.systems: list[str] = []
+
+        def complete(
+            self,
+            payload: Payload,
+            settings: ModelSettings,
+            *,
+            system: str = "",
+            history: Sequence[Turn] = (),
+        ) -> ModelReply:
+            self.systems.append(system)
+            self.calls += 1
+            usage = Usage(prompt_tokens=10, completion_tokens=0 if self.calls == 1 else 5)
+            content = None if self.calls == 1 else GOOD_LABELS
+            finish_reason = "length" if self.calls == 1 else "stop"
+            return ModelReply(
+                content=content,
+                finish_reason=finish_reason,
+                usage=usage,
+                model=settings.model_id(),
+                response_id=f"fake-{self.calls}",
+            )
+
+    client = _TruncatedThenGood()
+    labels, reply = judge.judge_case(client, H, S, V, load_tables())
+    assert labels.cause == "same_cause"
+    assert client.calls == 2
+    assert reply.response_id == "fake-2"
+    assert "Your previous reply was rejected" in client.systems[1]
+
+
+def test_judge_case_raises_after_two_bad_replies() -> None:
+    client = RecordingFakeClient(["not json", "still not json"])
     with pytest.raises(SchemaError, match="judge reply is not JudgeLabels"):
         judge.judge_case(client, H, S, V, load_tables())
+    assert len(client.payloads) == 2
 
 
 def test_judge_schema_is_openai_strict_compatible() -> None:
     schema: dict[str, Any] = judge.JUDGE_SCHEMA
-    assert schema["additionalProperties"] is False
-    assert set(schema["required"]) == set(schema["properties"])
+    _assert_strict(schema)
+
+
+def _assert_strict(schema: dict[str, Any]) -> None:
+    """Every object node is ``additionalProperties: false`` with every property required;
+    ``title``/``default`` never appear anywhere (fix round 1, Important 1)."""
+
+    def visit(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object" and "properties" in node:
+                assert node["additionalProperties"] is False
+                assert set(node["required"]) == set(node["properties"])
+            assert "title" not in node
+            assert "default" not in node
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(schema)
 
 
 def test_agreement_table_counts_by_cause_label_and_top1() -> None:

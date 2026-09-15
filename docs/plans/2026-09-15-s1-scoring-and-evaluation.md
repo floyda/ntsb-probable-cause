@@ -3171,19 +3171,54 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   varies (one call when a case abstains or has no findings, two when stage 2 runs, more on a
   schema retry) so a fixed-stride zip (`client.systems[::2]`) would silently mispair as soon
   as any fixture takes a different number of calls than another.
-- 2026-09-16, Task 12 (step 3): `JUDGE_SCHEMA` is built as the brief's literal code shows
+- 2026-09-16, Task 12 (step 3), **superseded by the fix-round-1 entry below**: the first cut
+  of `JUDGE_SCHEMA` was built as the brief's literal code shows
   (`JudgeLabels.model_json_schema()` plus a manual top-level `additionalProperties = False`)
-  rather than by calling `scoring/hypothesis.py`'s `_strict_schema` helper the task context
-  mentioned reusing. `JudgeLabels` has three flat `Literal[str]` fields and no nested
-  `BaseModel`, so pydantic's default schema already marks every property required and there
-  is no nested object node for the recursive helper to reach that the manual line does not
-  already cover; `test_judge_schema_is_openai_strict_compatible` asserts the same two
-  properties (`additionalProperties is False`, `required == properties`) that
-  `test_hypothesis.py`'s `test_strict_schemas_are_openai_compatible` checks for `Hypothesis`
-  and `Refinement`. `_strict_schema` was not imported because it is private
-  (leading-underscore) to `scoring/hypothesis.py` and reusing it across modules would need
-  either exporting it or a cross-module private-member access; not done since it would add
-  surface area with no behavioural difference for this schema.
+  rather than by calling `scoring/hypothesis.py`'s strict-schema helper, on the reasoning that
+  `JudgeLabels` has no nested `BaseModel` so there was no nested object for the recursive
+  helper to reach that the manual line did not already cover. Review round 1 correctly
+  pointed out this only covers recursion, not `title`/`default`-stripping: the manual line
+  left `"title": "JudgeLabels"` and a `title` on every property in `JUDGE_SCHEMA`, which
+  `openrouter.py` forwards to the provider verbatim, unlike `HYPOTHESIS_SCHEMA`/
+  `REFINEMENT_SCHEMA`, whose stripped shape is the only one confirmed live. Fixed below.
+- 2026-09-16, Task 12 fix round 1 (Important 1, schema title-stripping): renamed
+  `scoring/hypothesis.py`'s private `_strict_schema` to a public `strict_schema` (its
+  recursive `_strict` helper stays private) and imported it into `scoring/judge.py`, so
+  `JUDGE_SCHEMA = strict_schema(JudgeLabels)` gets exactly the treatment
+  (`additionalProperties: false` on every object node, every property required, `title` and
+  `default` stripped throughout) confirmed live against OpenRouter for
+  `HYPOTHESIS_SCHEMA`/`REFINEMENT_SCHEMA`, instead of a hand-rolled approximation.
+  `test_judge_schema_is_openai_strict_compatible` now walks `JUDGE_SCHEMA` recursively
+  (mirroring `test_hypothesis.py`'s `_walk_objects`/`no_default` helpers) and asserts no
+  `title` or `default` key appears anywhere, not just the two top-level properties checked
+  before.
+- 2026-09-16, Task 12 fix round 1 (Important 2, no retry on a truncated judge reply):
+  `judge_case`'s `max_output_tokens` was a bare `200`, unspecified by the brief interface or
+  spec §8, with no retry on failure. The project's own probe measured the analogous failure
+  on the answering model: reasoning tokens consumed a 300-token cap and produced empty
+  content with `finish_reason: "length"` on 3 of 10 calls; there is no fixture or probe for
+  `anthropic/claude-haiku-4.5`, so the same failure mode is untested for the judge and would
+  have failed every case of Task 14's 400-case judged run with no way to recover. Fixed both
+  halves: (a) `max_output_tokens` is now a keyword parameter defaulting to `2000`
+  (`ModelSettings`'s own default) rather than a magic number — the judge's reply is a few
+  tokens of JSON, so a generous cap costs nothing while a tight one risks the whole run; (b)
+  `judge_case` now retries once on a `SchemaError` (which an empty/`None` content from a
+  `length` finish also raises, via the same `_parse_judge_reply` path used for the first
+  attempt), noting the rejection in the system text, mirroring `Runner._two_turns`'s handling
+  of the identical failure mode; it raises only if the retry also fails. The return type
+  stays `tuple[JudgeLabels, ModelReply]` per the brief's interface: on a retried case only the
+  retry's `ModelReply` is returned, so that case is priced from the retry's usage alone, not
+  both attempts' combined usage — the interface was not widened to
+  `tuple[JudgeLabels, tuple[ModelReply, ...]]` because no caller in this plan (Task 13's
+  `judge` CLI command, Task 14) was written yet to consume a tuple of replies, and widening
+  it now would be speculative; flagged for Andy/the reviewer in the Task 12 report as a
+  follow-up if judge-run cost accounting later needs the first attempt's tokens too. New
+  tests: `test_judge_case_defaults_to_a_generous_output_cap` (asserts `max_output_tokens ==
+  2000` via a settings-capturing scripted client), `test_judge_case_retries_once_after_a_
+  truncated_reply` (a scripted client returns `content=None, finish_reason="length"` first,
+  then a good reply; asserts one retry, the rejection text in the retry's system, and the
+  retry's `ModelReply` is what's returned), and `test_judge_case_raises_after_two_bad_replies`
+  (both replies unparsable; still raises `SchemaError`, two calls made).
 - 2026-09-15, Task 2 (steps 1–4): under mypy `--strict`, the brief's `structured` and `body`
   dict literals in `scripts/openrouter_probe.py` inferred a narrower value type than
   `dict[str, object]` (e.g. `dict[str, Sequence[Collection[str]]]`), which failed the calls to
