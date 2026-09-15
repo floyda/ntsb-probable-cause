@@ -2,7 +2,7 @@
 
 *Drafted 2026-09-14 and 2026-09-15 from a design session with Andy, after the merge of the
 agency design (pull request #3).
-Status: Draft (awaiting Andy's sign-off).
+Status: Approved (Andy, 2026-09-15, in the design session; carried by pull request #4).
 This is the specification for build stage S1 in
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S1 builds, why,
 the decisions S1 was asked to take, and the condition for moving on. It takes over §5.4,
@@ -111,10 +111,13 @@ against 96.2% and 97.4% from the development years alone (M1, M2, M10). No held-
 read to build a table, so there is nothing to argue about. And each item comes with a
 definition sentence the model can be shown when choosing between neighbours.
 
-The tables are built once by `scoring/codes.py` from the dictionary and committed as
-`docs/results/s1-code-tables.txt`, with the dataset's date. `scoring/codes.py` also checks
-them against the development corpus and reports any code in use that the dictionary lacks
-(M10 found one eight-digit item of 678, and 3 event suffixes of 81).
+The tables are built once by `scripts/build_code_tables.py` from the dictionary, committed
+as package data under `src/ntsb_probable_cause/scoring/tables/` (labels only; the model
+needs them at run time), and summarised with the dataset's date in
+`docs/results/s1-code-tables.txt`. `scoring/codes.py` loads them, composes and validates
+codes, and the build script checks the tables against the development corpus and reports
+any code in use that the dictionary lacks (M10 found one eight-digit item of 678, and 3
+event suffixes of 81).
 
 ### 3.2 Occurrence codes
 
@@ -472,7 +475,8 @@ stay out of git: the committed summaries are numbers.
 `apps/eval`, a thin wrapper (roadmap §3), installed as `ntsb-eval`:
 
 ```
-ntsb-eval probe                                        (§7.1)
+uv run python -m scripts.openrouter_probe              (§7.1; a script, because it runs
+                                                        before the types it produces exist)
 ntsb-eval baseline  [--sample heldout-400]
 ntsb-eval run       --arm ceiling|A --sample heldout-40|heldout-400|dev-400
                     [--exclude ROLE ...] [--include case_number]
@@ -498,7 +502,7 @@ the month's ledger total past the budget flag (0030).
 ### 7.1 The probe, first
 
 S0 left `ModelReply` provisional because the response shape must come from a real response,
-not a guess (0016). S1's first task is `ntsb-eval probe`, which makes three calls to
+not a guess (0016). S1's first task is `scripts/openrouter_probe.py`, which makes three calls to
 OpenRouter with one committed fixture record and saves the raw responses under
 `tests/fixtures/openrouter/`, with any request id or key material removed:
 
