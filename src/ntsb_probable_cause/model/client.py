@@ -146,12 +146,19 @@ class ModelClient(Protocol):
 
 
 class RecordingFakeClient:
-    """A ModelClient for tests: records what it was sent and replays scripted replies."""
+    """A ModelClient for tests: records what it was sent and replays scripted replies.
 
-    def __init__(self, replies: Sequence[str] = ("",)) -> None:
+    ``usage`` is optional and defaults to zero-token usage on every call (unchanged
+    behaviour for existing tests); pass a sequence to give each call its own token counts,
+    e.g. for asserting real (non-zero) cost accounting. Indexed the same way as ``replies``:
+    fewer usages than calls repeats the last one.
+    """
+
+    def __init__(self, replies: Sequence[str] = ("",), usage: Sequence[Usage] = ()) -> None:
         self.payloads: list[Payload] = []
         self.histories: list[tuple[Turn, ...]] = []
         self._replies = tuple(replies) or ("",)
+        self._usage = tuple(usage)
 
     def complete(
         self,
@@ -165,9 +172,13 @@ class RecordingFakeClient:
         self.payloads.append(payload)
         self.histories.append(tuple(history))
         text = self._replies[min(len(self.payloads), len(self._replies)) - 1]
+        if self._usage:
+            usage = self._usage[min(len(self.payloads), len(self._usage)) - 1]
+        else:
+            usage = Usage(prompt_tokens=0, completion_tokens=0)
         return ModelReply(
             content=text,
-            usage=Usage(prompt_tokens=0, completion_tokens=0),
+            usage=usage,
             model=settings.model_id(),
             response_id="fake",
         )

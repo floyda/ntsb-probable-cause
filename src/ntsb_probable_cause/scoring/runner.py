@@ -157,7 +157,14 @@ def over_cap(payload_text: str, system: str, spec: RunSpec) -> bool:
 
 @dataclass
 class _CaseContext:
-    """Per-case working state, kept from the payload build until the case has a result."""
+    """Per-case working state, kept from the payload build until the case has a result.
+
+    ``stage1_content`` pins the *accepted* stage-1 reply's text once, for the stage-2 turn's
+    history: a batch run may resubmit stage 2 as a retry batch, and ``replies[-1]`` at that
+    point is the *rejected* stage-2 reply, not the stage-1 hypothesis (fix round 1, Important
+    1). The sync path pins the same content into a local ``history`` tuple and reuses it for
+    both stage-2 attempts, so it never had this bug.
+    """
 
     raw: Mapping[str, object]
     evidence: Evidence
@@ -166,19 +173,26 @@ class _CaseContext:
     system: str
     spec: RunSpec
     replies: list[ModelReply] = field(default_factory=list)
+    stage1_content: str | None = None
 
 
 @dataclass
 class _BatchRun:
-    """Mutable state threaded through one batch answering pass (spec §7.2)."""
+    """Mutable state threaded through one batch answering pass (spec §7.2).
+
+    ``costs`` holds one entry per batch submitted, in order, ``None`` where that batch did
+    not report a cost — so the caller can tell a genuine total from a partial one (fix round
+    1, Minor 4) instead of silently summing only the batches that happened to report.
+    """
 
     folder: Path
-    contexts: dict[str, _CaseContext]
-    results: dict[str, CaseResult]
+    contexts: dict[str, _CaseContext] = field(default_factory=dict)
+    results: dict[str, CaseResult] = field(default_factory=dict)
+    order: list[str] = field(default_factory=list)
     hyps: dict[str, Hypothesis] = field(default_factory=dict)
     finals: dict[str, Hypothesis] = field(default_factory=dict)
     batch_ids: list[str] = field(default_factory=list)
-    costs: list[float] = field(default_factory=list)
+    costs: list[float | None] = field(default_factory=list)
 
 
 class Runner:
@@ -208,46 +222,87 @@ class Runner:
         self._now = now
 
     def run(self, spec: RunSpec, raws: Sequence[Mapping[str, object]]) -> RunRecord:
-        """Run every case, write three JSON-lines files, append the ledger for held-out samples."""
+        """Run every case, write three JSON-lines files, append the ledger for held-out samples.
+
+        On any exception once answering has started — a batch ending badly, a
+        ``LeakageError`` partway through a sync run, anything — the cases and cost paid so
+        far are still written (``finished=None`` marks the run incomplete) before the
+        exception is re-raised, so a crashed run's spend is never invisible to the next
+        run's budget check (fix round 1, Important 2).
+        """
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
         run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
         folder = self._runs_dir / run_id
+        results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
-        if spec.sync:
-            results = [self._answer_case(raw, spec) for raw in raws]
-        else:
-            results, batch_ids, reported_batch_cost = self._answer_batch(raws, spec, folder)
-        write_jsonl(folder / "cases.jsonl", results)
-        write_jsonl(folder / "steps.jsonl", (s for r in results for s in r.steps))
-        record = RunRecord(
-            run_id=run_id,
-            sample=spec.sample,
-            arm=spec.arm,
-            exclusions=tuple(sorted(e.value for e in spec.exclusions)),
-            includes=("case_number",) if spec.include_case_number else (),
-            prompt_version=prompt.PROMPT_VERSION,
-            model=spec.model,
-            price_variant=spec.price_variant,
-            cap_usd=spec.cap_usd,
-            budget_usd=spec.budget_usd,
-            commit_sha=self._sha,
-            dirty=self._dirty,
-            started=started,
-            finished=self._now(),
-            batch_ids=batch_ids,
-            cases=len(results),
-            cost_usd=sum(r.cost_usd for r in results),
-            reported_batch_cost_usd=reported_batch_cost,
-        )
+
+        def build_record(finished: datetime | None) -> RunRecord:
+            return RunRecord(
+                run_id=run_id,
+                sample=spec.sample,
+                arm=spec.arm,
+                exclusions=tuple(sorted(e.value for e in spec.exclusions)),
+                includes=("case_number",) if spec.include_case_number else (),
+                prompt_version=prompt.PROMPT_VERSION,
+                model=spec.model,
+                price_variant=spec.price_variant,
+                cap_usd=spec.cap_usd,
+                budget_usd=spec.budget_usd,
+                commit_sha=self._sha,
+                dirty=self._dirty,
+                started=started,
+                finished=finished,
+                batch_ids=batch_ids,
+                cases=len(results),
+                cost_usd=sum(r.cost_usd for r in results),
+                reported_batch_cost_usd=reported_batch_cost,
+            )
+
+        try:
+            if spec.sync:
+                for raw in raws:
+                    results.append(self._answer_case(raw, spec))
+            else:
+                batch_run = _BatchRun(folder=folder)
+                try:
+                    self._answer_batch(raws, spec, batch_run)
+                finally:
+                    results = [
+                        batch_run.results[cid]
+                        for cid in batch_run.order
+                        if cid in batch_run.results
+                    ]
+                    batch_ids = tuple(batch_run.batch_ids)
+                    reported_batch_cost = self._reported_total(batch_run.costs)
+        except Exception:
+            self._write_files(folder, results)
+            write_jsonl(folder / "run.jsonl", [build_record(None)])
+            raise
+
+        self._write_files(folder, results)
+        record = build_record(self._now())
         write_jsonl(folder / "run.jsonl", [record])
         if spec.sample.startswith("heldout"):
             append_row(self._ledger, record, str(folder / "cases.jsonl"))
         return record
 
     # --- shared helpers (sync and batch) ---
+
+    @staticmethod
+    def _write_files(folder: Path, results: Sequence[CaseResult]) -> None:
+        """cases.jsonl and steps.jsonl; called both on success and on a mid-run abort."""
+        write_jsonl(folder / "cases.jsonl", results)
+        write_jsonl(folder / "steps.jsonl", (s for r in results for s in r.steps))
+
+    @staticmethod
+    def _reported_total(costs: Sequence[float | None]) -> float | None:
+        """Sum of batch-level reported costs; ``None`` if any batch stayed silent (Minor 4)."""
+        if not costs or any(c is None for c in costs):
+            return None
+        return sum(c for c in costs if c is not None)
 
     def _cost(self, replies: Sequence[ModelReply], spec: RunSpec) -> float:
         """Dollars for a case, summed over every reply obtained for it (even failed ones)."""
@@ -420,30 +475,46 @@ class Runner:
         return status
 
     def _answer_batch(
-        self, raws: Sequence[Mapping[str, object]], spec: RunSpec, folder: Path
-    ) -> tuple[list[CaseResult], tuple[str, ...], float | None]:
-        """Two batches (stage 1, stage 2), each with one retry batch on failures (spec §7.2)."""
-        contexts, results, order = self._prepare_contexts(raws, spec)
-        run = _BatchRun(folder=folder, contexts=contexts, results=results)
-        self._stage1(run)
-        stage2_ids = [cid for cid, h in run.hyps.items() if not (h.abstain or not h.findings)]
-        for cid, hypothesis in run.hyps.items():
-            if cid not in stage2_ids:
-                self._finish_case(cid, hypothesis, run)
-        if stage2_ids:
-            self._stage2(stage2_ids, run)
-        reported_total = sum(run.costs) if run.costs else None
-        return [run.results[cid] for cid in order], tuple(run.batch_ids), reported_total
+        self, raws: Sequence[Mapping[str, object]], spec: RunSpec, run: _BatchRun
+    ) -> None:
+        """Two batches (stage 1, stage 2), each with one retry batch on failures (spec §7.2).
+
+        Populates ``run`` in place rather than returning, so the caller (``Runner.run``)
+        still has ``run.results``/``run.order``/``run.batch_ids``/``run.costs`` to write a
+        partial run from if this raises partway through (fix round 1, Important 2).
+        """
+        self._prepare_contexts(raws, spec, run)
+        try:
+            self._stage1(run)
+            stage2_ids = [cid for cid, h in run.hyps.items() if not (h.abstain or not h.findings)]
+            for cid, hypothesis in run.hyps.items():
+                if cid not in stage2_ids:
+                    self._finish_case(cid, hypothesis, run)
+            if stage2_ids:
+                self._stage2(stage2_ids, run)
+        except Exception as error:
+            self._abort_unresolved(run, error)
+            raise
+
+    def _abort_unresolved(self, run: _BatchRun, error: BaseException) -> None:
+        """Give every case with no result yet one, priced from whatever it already cost.
+
+        Reached when a batch ends ``expired``/``failed``/``cancelled`` (or any other
+        exception) partway through a run: cases that already had a stage-1 (or stage-2)
+        reply billed to them keep that cost instead of it vanishing (fix round 1,
+        Important 2).
+        """
+        for case_id, ctx in run.contexts.items():
+            if case_id not in run.results:
+                cost = self._cost(ctx.replies, ctx.spec)
+                run.results[case_id] = self._failed(ctx, f"aborted: {error}", cost)
 
     def _prepare_contexts(
-        self, raws: Sequence[Mapping[str, object]], spec: RunSpec
-    ) -> tuple[dict[str, _CaseContext], dict[str, CaseResult], list[str]]:
-        contexts: dict[str, _CaseContext] = {}
-        results: dict[str, CaseResult] = {}
-        order: list[str] = []
+        self, raws: Sequence[Mapping[str, object]], spec: RunSpec, run: _BatchRun
+    ) -> None:
         for raw in raws:
             payload, system, verdict, evidence = case_payload(raw, spec, self._tables)
-            order.append(evidence.case_id)
+            run.order.append(evidence.case_id)
             ctx = _CaseContext(
                 raw=raw,
                 evidence=evidence,
@@ -453,10 +524,9 @@ class Runner:
                 spec=spec,
             )
             if over_cap(payload.text, system, spec):
-                results[evidence.case_id] = self._failed(ctx, "cap", 0.0)
+                run.results[evidence.case_id] = self._failed(ctx, "cap", 0.0)
                 continue
-            contexts[evidence.case_id] = ctx
-        return contexts, results, order
+            run.contexts[evidence.case_id] = ctx
 
     def _finish_case(self, case_id: str, hypothesis: Hypothesis, run: _BatchRun) -> None:
         ctx = run.contexts[case_id]
@@ -474,10 +544,16 @@ class Runner:
         ids = [cid for cid in run.contexts if cid not in run.results]
         need_retry = self._run_stage1_pass(ids, run, "stage1", errors={})
         if need_retry:
-            self._run_stage1_pass(list(need_retry), run, "stage1-retry", errors=need_retry)
-            for cid in need_retry:
+            # The retry pass's own return value carries the retry's own error text, not
+            # pass 1's — using ``need_retry`` here instead would file a case that failed
+            # with a model error on retry as "schema: ..." from the first attempt (fix
+            # round 1, Minor 5).
+            still_failing = self._run_stage1_pass(
+                list(need_retry), run, "stage1-retry", errors=need_retry
+            )
+            for cid, error in still_failing.items():
                 if cid not in run.hyps and cid not in run.results:
-                    self._fail_case(cid, need_retry[cid], run)
+                    self._fail_case(cid, error, run)
 
     def _run_stage1_pass(
         self, ids: Sequence[str], run: _BatchRun, stage: str, *, errors: dict[str, str]
@@ -496,8 +572,7 @@ class Runner:
         ]
         status = self._submit_and_wait(requests, run, stage)
         run.batch_ids.append(status.batch_id)
-        if status.reported_cost_usd is not None:
-            run.costs.append(status.reported_cost_usd)
+        run.costs.append(status.reported_cost_usd)
         by_id = {r.custom_id: r for r in status.results}
         need_retry: dict[str, str] = {}
         for cid in ids:
@@ -507,18 +582,26 @@ class Runner:
                 continue
             run.contexts[cid].replies.append(result.reply)
             try:
-                run.hyps[cid] = parse_hypothesis(result.reply.content or "", self._tables)
+                hypothesis = parse_hypothesis(result.reply.content or "", self._tables)
             except SchemaError as error:
                 need_retry[cid] = f"schema: {error}"
+            else:
+                run.hyps[cid] = hypothesis
+                # Pinned once, so a stage-2 retry batch replays the accepted stage-1
+                # content, never a rejected stage-2 reply (fix round 1, Important 1).
+                run.contexts[cid].stage1_content = result.reply.content
         return need_retry
 
     def _stage2(self, ids: list[str], run: _BatchRun) -> None:
         need_retry = self._run_stage2_pass(ids, run, "stage2", errors={})
         if need_retry:
-            self._run_stage2_pass(list(need_retry), run, "stage2-retry", errors=need_retry)
-            for cid in need_retry:
+            # Same fix as _stage1: use the retry pass's own errors, not pass 1's (Minor 5).
+            still_failing = self._run_stage2_pass(
+                list(need_retry), run, "stage2-retry", errors=need_retry
+            )
+            for cid, error in still_failing.items():
                 if cid not in run.finals:
-                    self._fail_case(cid, need_retry[cid], run)
+                    self._fail_case(cid, error, run)
         for cid, hypothesis in run.finals.items():
             self._finish_case(cid, hypothesis, run)
 
@@ -534,14 +617,16 @@ class Runner:
                 payload=run.contexts[cid].payload,
                 settings=_settings(run.contexts[cid].spec, REFINEMENT_SCHEMA, "refinement"),
                 system=self._stage2_system(run.hyps[cid], errors.get(cid)),
-                history=(Turn(role="assistant", content=run.contexts[cid].replies[-1].content),),
+                # The accepted stage-1 content, pinned in _run_stage1_pass — never
+                # ``replies[-1]``, which on a stage-2 retry pass is the *rejected* stage-2
+                # reply, not the stage-1 hypothesis (fix round 1, Important 1).
+                history=(Turn(role="assistant", content=run.contexts[cid].stage1_content),),
             )
             for cid in ids
         ]
         status = self._submit_and_wait(requests, run, stage)
         run.batch_ids.append(status.batch_id)
-        if status.reported_cost_usd is not None:
-            run.costs.append(status.reported_cost_usd)
+        run.costs.append(status.reported_cost_usd)
         by_id = {r.custom_id: r for r in status.results}
         need_retry: dict[str, str] = {}
         for cid in ids:

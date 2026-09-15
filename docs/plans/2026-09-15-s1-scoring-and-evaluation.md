@@ -3678,3 +3678,79 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   copy of the same reminder and names the same session URL. Used the live session's trailer
   (Claude Sonnet 5) as the more specific, current instruction; flagging here since the two
   disagree and a future session should reconcile which is authoritative.
+- 2026-09-16, Task 11 fix round 1: the review (weighted to cost correctness, since Tasks
+  14-15 spend real money) found three Important problems and four Minors in commit
+  `830148c`, all fixed in one round:
+  - **Important — batch stage-2 retry replayed the wrong assistant turn.**
+    `_run_stage2_pass` built history from `run.contexts[cid].replies[-1].content`, which on
+    the *retry* pass is the just-rejected stage-2 reply, not the stage-1 hypothesis (the
+    sync path never had this bug: it pins `history` once in a local variable and reuses it
+    for both stage-2 attempts). Fixed by adding `_CaseContext.stage1_content`, set once in
+    `_run_stage1_pass` right after a stage-1 reply parses successfully, and read by
+    `_run_stage2_pass` for every stage-2 request instead of `replies[-1]`. Covered by
+    `test_batch_stage2_retry_replays_the_stage1_content_not_the_rejected_reply`, which
+    captures both stage-2 requests' `history` and asserts both carry the accepted stage-1
+    reply's text.
+  - **Important — a mid-run abort recorded no spend.** `cases.jsonl`/`run.jsonl` were
+    written only after every case finished, so a stage-2 batch ending
+    `expired`/`failed`/`cancelled` after the stage-1 batch for the whole sample was billed
+    (or a `LeakageError` on case *N* of a sync run) discarded every already-paid case:
+    `Runner.run`, which reports the month's spend to the next run's budget refusal, never
+    even wrote those files. Fixed by wrapping `Runner.run`'s answering step in
+    try/except: on any exception, `cases.jsonl`/`steps.jsonl` and a `RunRecord` with
+    `finished=None` (no new field added to `records.py` — `finished` was already optional)
+    are written from whatever was accumulated, before re-raising. For the batch path,
+    `_answer_batch` now populates a `_BatchRun` passed in by the caller (instead of
+    returning a tuple), and on any exception marks every case that never got a result as
+    `failed(..., f"aborted: {error}", cost)` priced from whatever replies it already
+    received, so the accrued cost surfaces in both the per-case and run-level totals rather
+    than vanishing. No `resume` command was added (out of scope, per the original Task 11
+    resolution 4). Covered by
+    `test_batch_abort_on_stage_two_failure_still_records_stage_one_spend`: a fake batch
+    client that ends the stage-2 wait `expired` leaves a `run.jsonl` whose `cost_usd` (and a
+    `cases.jsonl` entry) equal exactly the billed stage-1 reply.
+  - **Important — cost accounting was verified only by tests that cannot fail.**
+    `case.cost_usd >= 0.0` passes at `0.0`, and `RecordingFakeClient` hardcoded
+    zero-token `Usage`, so every sync-path cost assertion in the file was vacuous — the
+    suite would have passed identically with the $0 accounting bug Deviation 2 (commit
+    `830148c`) describes. Fixed by giving `RecordingFakeClient` an optional `usage`
+    parameter (`Sequence[Usage]`, defaulting to `()` — unchanged zero-usage behaviour for
+    every test that does not pass it) and rewriting the weak assertions to hand-computed
+    dollar amounts: `test_sync_stage_two_schema_failure_is_retried_once_then_recorded` now
+    prices all three calls by hand; a new
+    `test_sync_cost_reflects_both_replies_when_the_retry_succeeds` covers a stage-1 schema
+    failure whose retry succeeds, asserting `CaseResult.cost_usd`, `RunRecord.cost_usd` and
+    `StepRecord.cumulative_cost_usd` all equal the hand-computed price of both calls; and
+    the batch-path failure tests now assert cost from the fixture's existing 100/50-token
+    `Usage`.
+  - **Minor — `reported_batch_cost_usd` silently summed only the batches that reported a
+    cost**, presenting a partial total as "the batch total" the spec asks it to be. Changed
+    `_BatchRun.costs` to `list[float | None]` (one entry per batch, always appended, `None`
+    when a batch stayed silent) and `Runner._reported_total` returns `None` if any entry is
+    `None`. `test_batch_stage1_retry_recovers_and_the_case_still_completes` (whose first,
+    "not json", batch never reported a cost) now asserts `run.reported_batch_cost_usd is
+    None` instead of the old partial `0.03`.
+  - **Minor — a retry pass's failure text recorded pass 1's error.** `_stage1`/`_stage2`
+    discarded the retry pass's own returned error dict and reused the first pass's, so a
+    case that failed schema validation on attempt 1 but failed with a model error on retry
+    was filed `schema: ...` instead of `model: ...`. Fixed by capturing and iterating the
+    retry pass's own return value. Covered by
+    `test_batch_stage1_retry_records_its_own_error_not_pass_ones`.
+  - **Minor — `test_batch_records_batch_ids_before_waiting` only checked the end state.**
+    Rewritten so the fake's own `wait` handler asserts `batches.jsonl` already contains its
+    batch id when `wait` is called (before returning a status), which actually tests the
+    submit-before-wait ordering rather than only the final file contents.
+  - **Minor — no test asserted batch status stays off stdout.** Added
+    `test_batch_status_goes_to_stderr_not_stdout`, using `capsys` to assert `captured.out ==
+    ""` and that both stage names appear in `captured.err`.
+  Files touched: `src/ntsb_probable_cause/scoring/runner.py`,
+  `src/ntsb_probable_cause/model/client.py` (`RecordingFakeClient`'s new optional `usage`
+  parameter), `tests/test_runner.py`. `uv run pytest tests/test_runner.py -v` — 31 passed;
+  full suite — 337 passed, 97.11% coverage (gate 90%), `runner.py` itself 98%. `make check`
+  (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest) all pass.
+  This commit's trailer lines are the two exact lines from `global-constraints.md`
+  ("Claude Opus 5 (1M context)"), per the coordinator's explicit instruction for this fix
+  round, which is a narrower and more recent directive than the general disagreement noted
+  in the entry above (about the *previous* commit, `830148c`); that disagreement between
+  `global-constraints.md` and the live session reminder is still unresolved for any future
+  commit that does not carry an explicit per-commit instruction.
