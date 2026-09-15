@@ -1093,7 +1093,7 @@ def finding_codes_in_cause(raw: Raw) -> tuple[str, ...]
 class Verdict: ... finding_codes_in_cause: tuple[str, ...]
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_codes.py
@@ -1142,9 +1142,9 @@ def test_verdict_carries_flagged_findings(record_fixtures: list[dict[str, object
         assert list(verdict.finding_codes_in_cause) == flagged
 ```
 
-- [ ] **Step 2: Run to verify failure** — FAIL on imports.
+- [x] **Step 2: Run to verify failure** — FAIL on imports.
 
-- [ ] **Step 3: Write `scripts/build_code_tables.py`**
+- [x] **Step 3: Write `scripts/build_code_tables.py`**
 
 ```python
 """Build the code tables from the NTSB data dictionary in avall.zip (spec §3.1, decision 0025).
@@ -1235,7 +1235,7 @@ if __name__ == "__main__":
 
 Run it: `uv run python -m scripts.build_code_tables ../ntsb-spike/data/raw/avall.zip`. Check the counts against M10 (events 94, categories 130, items 1019, modifiers 73). Open `phases.csv` and confirm `552` reads "Landing-landing roll" and there are at least 43 rows. Add the corpus check from the spec: extend the script to also load `data/processed/cases.parquet` if present and print codes in use that the tables lack; append that line to the results file.
 
-- [ ] **Step 4: Write `scoring/codes.py`**
+- [x] **Step 4: Write `scoring/codes.py`**
 
 ```python
 """The code tables the model chooses from, and composition of its choices (decision 0025)."""
@@ -1307,7 +1307,7 @@ def load_tables() -> CodeTables:
 
 `scoring/__init__.py`: `"""Scoring: what the model must answer and how it is marked (S1)."""`.
 
-- [ ] **Step 5: Add `finding_codes_in_cause`**
+- [x] **Step 5: Add `finding_codes_in_cause`**
 
 `fields.py`, after `finding_codes`:
 
@@ -1324,9 +1324,9 @@ def finding_codes_in_cause(raw: Raw) -> tuple[str, ...]:
 
 `verdict.py`: add `finding_codes_in_cause: tuple[str, ...]` after `finding_codes`. `split.py`: pass `finding_codes_in_cause=fields.finding_codes_in_cause(raw)`. Fix any test that constructs `Verdict(...)` directly (`grep -rn "Verdict(" tests`).
 
-- [ ] **Step 6: Run tests and `make check`** — Expected: PASS, including `tests/test_boundary.py` (codes in the tripwire are unchanged: `codes()` already covers all findings).
+- [x] **Step 6: Run tests and `make check`** — Expected: PASS, including `tests/test_boundary.py` (codes in the tripwire are unchanged: `codes()` already covers all findings).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/build_code_tables.py src/ntsb_probable_cause/scoring docs/results/s1-code-tables.txt src/ntsb_probable_cause/fields.py src/ntsb_probable_cause/records tests/test_codes.py tests/test_records.py
@@ -3193,3 +3193,59 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   sites, not `index`). Also reformatted the final `print("sync usage:", ...)` line, which
   exceeded the 100-character line length, by extracting the redacted usage block into a local
   variable first. Behaviour is unchanged from the brief.
+
+- 2026-09-15, Task 5 (step 3): inspected the real `avall.mdb` schema (mdbtools) before writing
+  the script, per the project's "never guess data details" rule. Table and column names
+  (`eADMSPUB_DataDictionary`, `Table`, `Column`, `code_iaids`, `meaning`, `Question_Def`,
+  `Events_Sequence`, `Occurrence_Code`, `findings_code`, `modifier_no`) matched the brief
+  exactly. Two real departures found by inspection:
+  1. **Phases and events both come directly from the dictionary, not from parsing
+     `Events_Sequence`.** `eADMSPUB_DataDictionary` rows with `Table == "Events_Sequence"` and
+     `Column == "Occurrence_Code"` already encode phase codes: a code_iaids of `"<3 digits>xxx"`
+     (e.g. `"552xxx"`) is a phase, meaning "Landing-Landing Roll"; a code_iaids of
+     `"xxx<3 digits>"` (e.g. `"xxx230"`) is an event, meaning "Loss of control on ground". This
+     is simpler and more reliable than the brief's script, which loaded the `Events_Sequence`
+     *data* table and inferred phase labels by string-stripping each row's
+     `Occurrence_Description` and taking a `Counter.most_common()` majority vote — a heuristic
+     that is unneeded once the dictionary's own phase rows are used directly. `Events_Sequence`
+     is no longer exported at all.
+  2. **`len(t.events) == 94` (M10) does not hold; the true count is 93, and the test was
+     changed to assert 93.** The brief's literal events dict comprehension —
+     `{r["code_iaids"][-3:]: r["meaning"] for r in dictionary if Table=="Events_Sequence" and
+     Column=="Occurrence_Code"}` — takes the last three characters of *every* such row,
+     including the 47 phase rows (`"552xxx"`, `"401xxx"`, …), which all end in the literal
+     `"xxx"`. Those 47 rows collapse into one spurious dict entry at key `"xxx"` (last-writer-
+     wins), so the literal script's `events` table actually holds 93 real three-digit event
+     codes plus that one non-numeric artifact = 94, matching M10 by coincidence — M10 was
+     measured with this same bug. Shipping key `"xxx"` in the events table would let
+     `compose_occurrence` accept a nonsense event code and would render as a garbage line in
+     the prompt (`render("events")`), so the script filters events to rows whose code_iaids
+     starts with `"xxx"` **and does not also end with `"xxx"`**, giving the true count of 93.
+     `phases` (47, using the dictionary-direct method above; floor `>= 43` still holds),
+     `categories` (130), `items` (1019) and `modifiers` (73) all matched M10 exactly with the
+     brief's literal formulas — no other counts changed.
+
+  Also: `tests/test_records.py`'s `test_verdict_carries_flagged_findings`, as given in the
+  brief, compares `finding_codes_in_cause` (which is sorted by `findingNumber`, per its own
+  docstring and per the existing `finding_codes`) against `raw["aircrafts"][0]["findings"]` in
+  raw fixture order. Real fixtures are not stored in finding-number order (e.g. one fixture's
+  findings carry `findingNumber` values in the order `[4, 2, 1, 3]`), so the brief's test fails
+  against real data. Fixed the test to sort by `findingNumber` before comparing, matching the
+  documented, sorted contract of `finding_codes_in_cause`; used `cast` (as the rest of the file
+  does) rather than the brief's `# type: ignore[index]` to satisfy mypy `--strict`.
+
+  The committed `items.csv`/`modifiers.csv` tables are verbatim NTSB data-dictionary labels and
+  trip several `typos` false positives: navigation and gear-system abbreviations the checker
+  reads as truncated common words, plus a misspelling that is already present in the NTSB's own
+  source data. Added `src/ntsb_probable_cause/scoring/tables/*.csv` to
+  `[tool.typos.files] extend-exclude` in
+  `pyproject.toml` (same rationale as the existing fixture excludes, decision 0015) and to the
+  separate `exclude` regex on the `typos` hook in `.pre-commit-config.yaml`, which does not read
+  that pyproject.toml setting.
+
+  The corpus check (`_corpus_check_line`) is implemented and gated on
+  `Settings().data_dir / "processed/cases.parquet"` existing; the processed corpus is not yet
+  built in this worktree (an ingest is running elsewhere), so it was not run here — the results
+  file records `"corpus check: data/processed/cases.parquet not present; not run"`. The
+  controller should re-run `uv run python -m scripts.build_code_tables ...` once that file
+  exists, to get the real corpus-check line.

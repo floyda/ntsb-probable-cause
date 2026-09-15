@@ -111,7 +111,15 @@ mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016;
 [tool.typos.files]
 # Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false
 # positives; these are redacted, verbatim NTSB record fixtures, not authored text (decision 0015).
-extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", "tests/fixtures/eval/*.csv"]
+# The scoring/tables CSVs are verbatim labels from the NTSB data dictionary (avall.mdb), not
+# authored text either; they also trigger false positives (e.g. "VOR", "WAAS", "Unneccessary",
+# both spelled that way in the source data).
+extend-exclude = [
+    "tests/fixtures/records/*.json",
+    "tests/fixtures/api/*.json",
+    "tests/fixtures/eval/*.csv",
+    "src/ntsb_probable_cause/scoring/tables/*.csv",
+]
 
 [dependency-groups]
 dev = [

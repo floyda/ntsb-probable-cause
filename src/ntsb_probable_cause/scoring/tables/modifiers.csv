@@ -1,0 +1,74 @@
+code,label
+00,Unknown/Not determined
+01,Failure
+02,Malfunction
+03,Simulated malf/failure
+05,Damaged/degraded
+06,Fatigue/wear/corrosion
+07,Design
+08,Capability exceeded
+09,Unneccessary use/operation
+10,Not used/operated
+11,Incorrect use/operation
+12,Unintentional use/operation
+13,Incorrect service/maintenance
+14,Not serviced/maintained
+15,Inadequate inspection
+16,Not inspected
+17,Related operating info
+18,Related maintenance info
+19,Related records
+20,Not attained/maintained
+21,Attain/maintain not possible
+22,Fluid type
+23,Fluid condition
+24,Fluid level
+25,Fluid management
+26,Inoperative
+31,ATC personnel
+32,Cabin crew
+33,Copilot
+34,FAA or designated personnel
+35,Designated examiner
+36,Flight crew
+37,Flight service personnel
+38,Flt operations/dispatcher
+39,Ground crew
+40,Instructor/check pilot
+41,Maintenance personnel
+42,Other/unknown
+43,Passenger
+44,Pilot
+45,Pilot of other aircraft
+46,Student pilot
+47,Emergency services personnel
+48,Airport personnel
+49,Owner/builder
+61,Airport
+62,ATC
+63,Emergency services
+64,Flight service
+65,Maintenance provider
+66,Manufacturer
+67,Equipment supplier
+68,Meteorological service
+69,Operator
+70,FAA/Regulator
+71,Training organization
+72,Other government
+73,Other institution/organization
+81,Effect on equipment
+82,Effect on operation
+83,Effect on personnel
+84,Decision related to condition
+85,Response/compensation
+86,Ability to respond/compensate
+87,Awareness of condition
+88,Availability of related info
+89,Accuracy of related info
+90,Timing of related info
+91,Contributed to outcome
+92,Compliance w/ procedure
+93,Use of related info
+94,Other authority investigated
+99,Not specified

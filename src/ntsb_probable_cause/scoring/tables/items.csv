@@ -1,0 +1,1020 @@
+code,label
+01010000,Aircraft — Aircraft handling/service — (general) — (general)
+01010500,Aircraft — Aircraft handling/service — Maintenance/inspections — (general)
+01010510,Aircraft — Aircraft handling/service — Maintenance/inspections — Time limits
+01010520,Aircraft — Aircraft handling/service — Maintenance/inspections — Scheduled maint checks
+01010530,Aircraft — Aircraft handling/service — Maintenance/inspections — Return to service
+01010550,Aircraft — Aircraft handling/service — Maintenance/inspections — Unscheduled maint checks
+01010900,Aircraft — Aircraft handling/service — Towing and taxiing — (general)
+01010910,Aircraft — Aircraft handling/service — Towing and taxiing — Towing
+01010920,Aircraft — Aircraft handling/service — Towing and taxiing — Taxiing
+01011000,Aircraft — Aircraft handling/service — Parking/securing — (general)
+01011010,Aircraft — Aircraft handling/service — Parking/securing — Parking/storage
+01011020,Aircraft — Aircraft handling/service — Parking/securing — Tie-down/mooring
+01011500,Aircraft — Aircraft handling/service — Loading — (general)
+01020000,Aircraft — Aircraft systems — (general) — (general)
+01022100,Aircraft — Aircraft systems — Air conditioning system — (general)
+01022110,Aircraft — Aircraft systems — Air conditioning system — Compressor system
+01022120,Aircraft — Aircraft systems — Air conditioning system — Air distribution system
+01022121,Aircraft — Aircraft systems — Air conditioning system — Air distribution fan
+01022130,Aircraft — Aircraft systems — Air conditioning system — Pressurization control system
+01022131,Aircraft — Aircraft systems — Air conditioning system — Pressure controller
+01022132,Aircraft — Aircraft systems — Air conditioning system — Pressure indicator
+01022133,Aircraft — Aircraft systems — Air conditioning system — Regulator-outflow valve
+01022134,Aircraft — Aircraft systems — Air conditioning system — Pressure sensor
+01022140,Aircraft — Aircraft systems — Air conditioning system — Heating system
+01022150,Aircraft — Aircraft systems — Air conditioning system — Cooling sys (air/vapor cycle)
+01022160,Aircraft — Aircraft systems — Air conditioning system — Temperature control system
+01022161,Aircraft — Aircraft systems — Air conditioning system — Temperature controller
+01022162,Aircraft — Aircraft systems — Air conditioning system — Cabin temperature indicator
+01022163,Aircraft — Aircraft systems — Air conditioning system — Cabin temperature sensor
+01022170,Aircraft — Aircraft systems — Air conditioning system — Humidity control system
+01022197,Aircraft — Aircraft systems — Air conditioning system — Air cond sys wiring
+01022200,Aircraft — Aircraft systems — Auto flight system — (general)
+01022210,Aircraft — Aircraft systems — Auto flight system — Autopilot system
+01022211,Aircraft — Aircraft systems — Auto flight system — Autopilot computer
+01022212,Aircraft — Aircraft systems — Auto flight system — Altitude controller
+01022213,Aircraft — Aircraft systems — Auto flight system — Flight controller
+01022214,Aircraft — Aircraft systems — Auto flight system — Autopilot trim indicator
+01022215,Aircraft — Aircraft systems — Auto flight system — Autopilot main servo
+01022216,Aircraft — Aircraft systems — Auto flight system — Autopilot trim servo
+01022220,Aircraft — Aircraft systems — Auto flight system — Speed-attitude correction sys
+01022230,Aircraft — Aircraft systems — Auto flight system — Auto throttle system
+01022250,Aircraft — Aircraft systems — Auto flight system — Aerodynamic load alleviating
+01022297,Aircraft — Aircraft systems — Auto flight system — Autoflight sys wiring
+01022300,Aircraft — Aircraft systems — Communications system — (general)
+01022310,Aircraft — Aircraft systems — Communications system — HF communication system
+01022311,Aircraft — Aircraft systems — Communications system — UHF communication system
+01022312,Aircraft — Aircraft systems — Communications system — VHF communication system
+01022320,Aircraft — Aircraft systems — Communications system — Data transmission auto call
+01022330,Aircraft — Aircraft systems — Communications system — PA & entertainment system
+01022340,Aircraft — Aircraft systems — Communications system — Interphone
+01022350,Aircraft — Aircraft systems — Communications system — Audio integrating
+01022360,Aircraft — Aircraft systems — Communications system — Static discharge system
+01022370,Aircraft — Aircraft systems — Communications system — Audio & video monitoring
+01022397,Aircraft — Aircraft systems — Communications system — Comm sys wiring
+01022400,Aircraft — Aircraft systems — Electrical power system — (general)
+01022410,Aircraft — Aircraft systems — Electrical power system — Alternator-generator drive sys
+01022420,Aircraft — Aircraft systems — Electrical power system — AC generation system
+01022421,Aircraft — Aircraft systems — Electrical power system — AC generator-alternator
+01022422,Aircraft — Aircraft systems — Electrical power system — AC inverter
+01022423,Aircraft — Aircraft systems — Electrical power system — Phase adapter
+01022424,Aircraft — Aircraft systems — Electrical power system — AC regulator
+01022425,Aircraft — Aircraft systems — Electrical power system — AC indicating systems
+01022430,Aircraft — Aircraft systems — Electrical power system — DC generation system
+01022431,Aircraft — Aircraft systems — Electrical power system — Battery overheat warning sys
+01022432,Aircraft — Aircraft systems — Electrical power system — Battery/charger
+01022433,Aircraft — Aircraft systems — Electrical power system — DC rectifier-converter
+01022434,Aircraft — Aircraft systems — Electrical power system — DC generator-alternator
+01022435,Aircraft — Aircraft systems — Electrical power system — Starter-generator
+01022436,Aircraft — Aircraft systems — Electrical power system — DC regulator
+01022437,Aircraft — Aircraft systems — Electrical power system — DC indicating system
+01022440,Aircraft — Aircraft systems — Electrical power system — External power system
+01022450,Aircraft — Aircraft systems — Electrical power system — AC power distribution system
+01022460,Aircraft — Aircraft systems — Electrical power system — DC power distribution system
+01022497,Aircraft — Aircraft systems — Electrical power system — Electrical pwr sys wiring
+01022500,Aircraft — Aircraft systems — Equipment/furnishings — (general)
+01022510,Aircraft — Aircraft systems — Equipment/furnishings — Flight compartment equipment
+01022520,Aircraft — Aircraft systems — Equipment/furnishings — Passenger compartment equip
+01022530,Aircraft — Aircraft systems — Equipment/furnishings — Buffet/galleys
+01022540,Aircraft — Aircraft systems — Equipment/furnishings — Lavatories
+01022550,Aircraft — Aircraft systems — Equipment/furnishings — Cargo compartments
+01022551,Aircraft — Aircraft systems — Equipment/furnishings — Agricultural/external load sys
+01022560,Aircraft — Aircraft systems — Equipment/furnishings — Emergency equipment
+01022561,Aircraft — Aircraft systems — Equipment/furnishings — Life jacket
+01022562,Aircraft — Aircraft systems — Equipment/furnishings — Emergency locator beacon
+01022563,Aircraft — Aircraft systems — Equipment/furnishings — Parachute
+01022564,Aircraft — Aircraft systems — Equipment/furnishings — Life raft
+01022565,Aircraft — Aircraft systems — Equipment/furnishings — Escape slide
+01022570,Aircraft — Aircraft systems — Equipment/furnishings — Accessory compartments
+01022571,Aircraft — Aircraft systems — Equipment/furnishings — Battery box structure
+01022572,Aircraft — Aircraft systems — Equipment/furnishings — Electronic shelf section
+01022597,Aircraft — Aircraft systems — Equipment/furnishings — Equ/fur sys wiring
+01022600,Aircraft — Aircraft systems — Fire protection system — (general)
+01022610,Aircraft — Aircraft systems — Fire protection system — Detection system
+01022611,"Aircraft — Aircraft systems — Fire protection system — Smoke, detection"
+01022612,"Aircraft — Aircraft systems — Fire protection system — Fire, detection"
+01022613,"Aircraft — Aircraft systems — Fire protection system — Overheat, detection"
+01022620,Aircraft — Aircraft systems — Fire protection system — Extinguishing system
+01022621,"Aircraft — Aircraft systems — Fire protection system — Fire bottle, fixed"
+01022622,"Aircraft — Aircraft systems — Fire protection system — Fire bottle, portable"
+01022697,Aircraft — Aircraft systems — Fire protection system — Fire prot sys wiring
+01022700,Aircraft — Aircraft systems — Flight control system — (general)
+01022701,Aircraft — Aircraft systems — Flight control system — Control column section
+01022710,Aircraft — Aircraft systems — Flight control system — Aileron control system
+01022711,Aircraft — Aircraft systems — Flight control system — Aileron tab control system
+01022720,Aircraft — Aircraft systems — Flight control system — Rudder control system
+01022721,Aircraft — Aircraft systems — Flight control system — Rudder tab control system
+01022722,Aircraft — Aircraft systems — Flight control system — Rudder actuator
+01022730,Aircraft — Aircraft systems — Flight control system — Elevator control system
+01022731,Aircraft — Aircraft systems — Flight control system — Elevator tab control system
+01022740,Aircraft — Aircraft systems — Flight control system — Stabilizer control system
+01022741,Aircraft — Aircraft systems — Flight control system — Stabilizer position ind system
+01022742,Aircraft — Aircraft systems — Flight control system — Stabilizer actuator
+01022750,Aircraft — Aircraft systems — Flight control system — TE flap control system
+01022751,Aircraft — Aircraft systems — Flight control system — TE flap position ind system
+01022752,Aircraft — Aircraft systems — Flight control system — TE flap actuator
+01022760,Aircraft — Aircraft systems — Flight control system — Drag control system
+01022761,Aircraft — Aircraft systems — Flight control system — Drag control actuator
+01022770,Aircraft — Aircraft systems — Flight control system — Gust lock or damper
+01022780,Aircraft — Aircraft systems — Flight control system — LE flap control system
+01022781,Aircraft — Aircraft systems — Flight control system — LE flap position ind system
+01022782,Aircraft — Aircraft systems — Flight control system — LE flap actuator
+01022797,Aircraft — Aircraft systems — Flight control system — Flight control sys wiring
+01022800,Aircraft — Aircraft systems — Fuel system — (general)
+01022810,Aircraft — Aircraft systems — Fuel system — Fuel storage
+01022820,Aircraft — Aircraft systems — Fuel system — Fuel distribution
+01022821,Aircraft — Aircraft systems — Fuel system — Fuel filter-strainer
+01022822,Aircraft — Aircraft systems — Fuel system — Fuel pumps
+01022823,Aircraft — Aircraft systems — Fuel system — Fuel selector/shutoff valve
+01022824,Aircraft — Aircraft systems — Fuel system — Fuel transfer valve
+01022830,Aircraft — Aircraft systems — Fuel system — Fuel dump
+01022840,Aircraft — Aircraft systems — Fuel system — Fuel indication system
+01022841,Aircraft — Aircraft systems — Fuel system — Fuel quantity indicator
+01022842,Aircraft — Aircraft systems — Fuel system — Fuel quantity sensor
+01022843,Aircraft — Aircraft systems — Fuel system — Fuel temperature
+01022844,Aircraft — Aircraft systems — Fuel system — Fuel pressure
+01022897,Aircraft — Aircraft systems — Fuel system — Fuel sys wiring
+01022900,Aircraft — Aircraft systems — Hydraulic power system — (general)
+01022910,"Aircraft — Aircraft systems — Hydraulic power system — Hydraulic, main system"
+01022911,"Aircraft — Aircraft systems — Hydraulic power system — Accumulator, main"
+01022912,"Aircraft — Aircraft systems — Hydraulic power system — Filter, main"
+01022913,"Aircraft — Aircraft systems — Hydraulic power system — Pump, main"
+01022914,"Aircraft — Aircraft systems — Hydraulic power system — Handpump, main"
+01022915,"Aircraft — Aircraft systems — Hydraulic power system — Pressure relief, main"
+01022916,"Aircraft — Aircraft systems — Hydraulic power system — Reservoir, main"
+01022917,"Aircraft — Aircraft systems — Hydraulic power system — Pressure regulator, main"
+01022920,"Aircraft — Aircraft systems — Hydraulic power system — Hydraulic, auxiliary system"
+01022921,"Aircraft — Aircraft systems — Hydraulic power system — Accumulator, auxiliary"
+01022922,"Aircraft — Aircraft systems — Hydraulic power system — Filter, auxiliary"
+01022923,"Aircraft — Aircraft systems — Hydraulic power system — Pump, auxiliary"
+01022924,"Aircraft — Aircraft systems — Hydraulic power system — Handpump, auxiliary"
+01022925,"Aircraft — Aircraft systems — Hydraulic power system — Pressure relief, auxiliary"
+01022926,"Aircraft — Aircraft systems — Hydraulic power system — Reservoir, auxiliary"
+01022927,"Aircraft — Aircraft systems — Hydraulic power system — Pressure regulator, auxiliary"
+01022930,"Aircraft — Aircraft systems — Hydraulic power system — Hydraulic, indicating system"
+01022931,Aircraft — Aircraft systems — Hydraulic power system — Pressure indicator
+01022932,Aircraft — Aircraft systems — Hydraulic power system — Pressure sensor
+01022933,Aircraft — Aircraft systems — Hydraulic power system — Quantity indicator
+01022934,Aircraft — Aircraft systems — Hydraulic power system — Quantity sensor
+01022997,Aircraft — Aircraft systems — Hydraulic power system — Hyd pwr sys wiring
+01023000,Aircraft — Aircraft systems — Ice/rain protection system — (general)
+01023010,"Aircraft — Aircraft systems — Ice/rain protection system — Airfoil anti-ice, deice"
+01023020,"Aircraft — Aircraft systems — Ice/rain protection system — Intake anti-ice, deice"
+01023030,Aircraft — Aircraft systems — Ice/rain protection system — Pitot/static anti-ice
+01023040,Aircraft — Aircraft systems — Ice/rain protection system — Windows/windshields & doors
+01023050,Aircraft — Aircraft systems — Ice/rain protection system — Antenna/radome anti-ice
+01023060,"Aircraft — Aircraft systems — Ice/rain protection system — Prop/rotor anti-ice, deice"
+01023070,Aircraft — Aircraft systems — Ice/rain protection system — Water line anti-ice
+01023080,Aircraft — Aircraft systems — Ice/rain protection system — Ice detection
+01023097,Aircraft — Aircraft systems — Ice/rain protection system — Ice/rain prot sys wiring
+01023100,Aircraft — Aircraft systems — Indicating/recording systems — (general)
+01023110,Aircraft — Aircraft systems — Indicating/recording systems — Instrument panel
+01023120,"Aircraft — Aircraft systems — Indicating/recording systems — Indep instrument (clock, etc)"
+01023130,Aircraft — Aircraft systems — Indicating/recording systems — Data recorders (flight/maint)
+01023140,Aircraft — Aircraft systems — Indicating/recording systems — Central computers (e.g. EICAS)
+01023150,Aircraft — Aircraft systems — Indicating/recording systems — Central warning
+01023160,Aircraft — Aircraft systems — Indicating/recording systems — Central display
+01023170,Aircraft — Aircraft systems — Indicating/recording systems — Automatic data
+01023197,Aircraft — Aircraft systems — Indicating/recording systems — Instrument wiring
+01023200,Aircraft — Aircraft systems — Landing gear system — (general)
+01023201,Aircraft — Aircraft systems — Landing gear system — Landing gear/wheel fairing
+01023210,Aircraft — Aircraft systems — Landing gear system — Main landing gear
+01023211,Aircraft — Aircraft systems — Landing gear system — Main landing gear attach sec
+01023212,Aircraft — Aircraft systems — Landing gear system — Emergency floatation section
+01023213,Aircraft — Aircraft systems — Landing gear system — Main gear strut/axle/truck
+01023220,Aircraft — Aircraft systems — Landing gear system — Nose/tail landing gear
+01023221,Aircraft — Aircraft systems — Landing gear system — Nose/tail gear attach section
+01023222,Aircraft — Aircraft systems — Landing gear system — Nose/tail gear strut/axle
+01023230,Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys
+01023231,Aircraft — Aircraft systems — Landing gear system — Landing gear door retract sec
+01023232,Aircraft — Aircraft systems — Landing gear system — Landing gear door actuator
+01023233,Aircraft — Aircraft systems — Landing gear system — Landing gear actuator
+01023234,Aircraft — Aircraft systems — Landing gear system — Landing gear selector
+01023240,Aircraft — Aircraft systems — Landing gear system — Landing gear brakes system
+01023241,Aircraft — Aircraft systems — Landing gear system — Anti-skid section
+01023242,Aircraft — Aircraft systems — Landing gear system — Brake
+01023243,Aircraft — Aircraft systems — Landing gear system — Master cylinder/brake valve
+01023244,Aircraft — Aircraft systems — Landing gear system — Tire casing
+01023245,Aircraft — Aircraft systems — Landing gear system — Tube
+01023246,Aircraft — Aircraft systems — Landing gear system — Wheel/ski/float
+01023250,Aircraft — Aircraft systems — Landing gear system — Landing gear steering system
+01023251,Aircraft — Aircraft systems — Landing gear system — Steering unit
+01023252,Aircraft — Aircraft systems — Landing gear system — Shimmy damper
+01023260,Aircraft — Aircraft systems — Landing gear system — Gear position and warning
+01023270,Aircraft — Aircraft systems — Landing gear system — Aux gear (tail/rotorcrft skid)
+01023297,Aircraft — Aircraft systems — Landing gear system — Land gear sys wiring
+01023300,Aircraft — Aircraft systems — Lighting system — (general)
+01023310,Aircraft — Aircraft systems — Lighting system — Flight compartment lighting
+01023320,Aircraft — Aircraft systems — Lighting system — Passenger compartment lighting
+01023330,Aircraft — Aircraft systems — Lighting system — Cargo compartment lighting
+01023340,Aircraft — Aircraft systems — Lighting system — Exterior lighting
+01023350,Aircraft — Aircraft systems — Lighting system — Emergency lighting
+01023397,Aircraft — Aircraft systems — Lighting system — Light wiring
+01023400,Aircraft — Aircraft systems — Navigation system — (general)
+01023410,Aircraft — Aircraft systems — Navigation system — Flight environment data
+01023411,Aircraft — Aircraft systems — Navigation system — Pitot/static system
+01023412,Aircraft — Aircraft systems — Navigation system — Air temperature/thrust limit
+01023413,Aircraft — Aircraft systems — Navigation system — Rate of climb
+01023414,Aircraft — Aircraft systems — Navigation system — Airspeed/mach indicating
+01023415,Aircraft — Aircraft systems — Navigation system — High speed warning
+01023416,"Aircraft — Aircraft systems — Navigation system — Altimeter, barometric/encoder"
+01023417,Aircraft — Aircraft systems — Navigation system — Air data computer
+01023418,Aircraft — Aircraft systems — Navigation system — Stall warning system
+01023420,Aircraft — Aircraft systems — Navigation system — Attitude & direction
+01023421,Aircraft — Aircraft systems — Navigation system — Attitude gyro & indication
+01023422,Aircraft — Aircraft systems — Navigation system — Directional gyro & indication
+01023423,Aircraft — Aircraft systems — Navigation system — Magnetic compass
+01023424,Aircraft — Aircraft systems — Navigation system — Turn and bank/rate of turn
+01023425,Aircraft — Aircraft systems — Navigation system — Integrated flight director sys
+01023430,Aircraft — Aircraft systems — Navigation system — Landing and taxi aids
+01023431,Aircraft — Aircraft systems — Navigation system — Localizer/VOR system
+01023432,Aircraft — Aircraft systems — Navigation system — Glide slope system
+01023433,Aircraft — Aircraft systems — Navigation system — Microwave landing system
+01023434,Aircraft — Aircraft systems — Navigation system — Marker beacon system
+01023435,Aircraft — Aircraft systems — Navigation system — Heads up display system
+01023436,Aircraft — Aircraft systems — Navigation system — Wind shear detection system
+01023440,Aircraft — Aircraft systems — Navigation system — Indep position determining sys
+01023441,Aircraft — Aircraft systems — Navigation system — Inertial guidance system
+01023442,Aircraft — Aircraft systems — Navigation system — Weather radar system
+01023443,Aircraft — Aircraft systems — Navigation system — Doppler system
+01023444,Aircraft — Aircraft systems — Navigation system — Ground proximity system
+01023445,Aircraft — Aircraft systems — Navigation system — Air collision avoidance (TCAS)
+01023446,Aircraft — Aircraft systems — Navigation system — Non radar weather system
+01023450,Aircraft — Aircraft systems — Navigation system — Dependent position determining
+01023451,Aircraft — Aircraft systems — Navigation system — DME/TACAN system
+01023452,Aircraft — Aircraft systems — Navigation system — ATC transponder system
+01023453,Aircraft — Aircraft systems — Navigation system — LORAN system
+01023454,Aircraft — Aircraft systems — Navigation system — VOR system
+01023455,Aircraft — Aircraft systems — Navigation system — ADF system
+01023456,Aircraft — Aircraft systems — Navigation system — Omega navigation system
+01023457,Aircraft — Aircraft systems — Navigation system — Global positioning sys (GPS)
+01023460,Aircraft — Aircraft systems — Navigation system — Flt management computing sys
+01023461,Aircraft — Aircraft systems — Navigation system — Flt mgmt computing software
+01023497,Aircraft — Aircraft systems — Navigation system — Nav sys wiring
+01023500,Aircraft — Aircraft systems — Oxygen system — (general)
+01023510,Aircraft — Aircraft systems — Oxygen system — Crew oxygen system
+01023520,Aircraft — Aircraft systems — Oxygen system — Passenger oxygen system
+01023530,Aircraft — Aircraft systems — Oxygen system — Portable oxygen system
+01023597,Aircraft — Aircraft systems — Oxygen system — Oxygen sys wiring
+01023600,Aircraft — Aircraft systems — Pneumatic system — (general)
+01023610,Aircraft — Aircraft systems — Pneumatic system — Pneumatic distribution system
+01023620,Aircraft — Aircraft systems — Pneumatic system — Pneumatic indicating system
+01023697,Aircraft — Aircraft systems — Pneumatic system — Pneumatic sys wiring
+01023700,Aircraft — Aircraft systems — Vacuum system — (general)
+01023710,Aircraft — Aircraft systems — Vacuum system — Vacuum distribution system
+01023720,Aircraft — Aircraft systems — Vacuum system — Vacuum indicating system
+01023797,Aircraft — Aircraft systems — Vacuum system — Vacuum sys wiring
+01023800,Aircraft — Aircraft systems — Water and waste system — (general)
+01023810,Aircraft — Aircraft systems — Water and waste system — Potable water system
+01023820,Aircraft — Aircraft systems — Water and waste system — Wash water system
+01023830,Aircraft — Aircraft systems — Water and waste system — Waste disposal system
+01023840,Aircraft — Aircraft systems — Water and waste system — Air supply (water press sys)
+01023897,Aircraft — Aircraft systems — Water and waste system — Water/waste sys wiring
+01024500,Aircraft — Aircraft systems — Central maintenance computer — (general)
+01024597,Aircraft — Aircraft systems — Central maintenance computer — Cent maint cmp wiring
+01024900,Aircraft — Aircraft systems — Airborne APU system — (general)
+01024910,Aircraft — Aircraft systems — Airborne APU system — APU assembly and cowl
+01024920,Aircraft — Aircraft systems — Airborne APU system — APU core engine
+01024930,Aircraft — Aircraft systems — Airborne APU system — APU engine fuel and control
+01024940,Aircraft — Aircraft systems — Airborne APU system — APU start/ignition system
+01024950,Aircraft — Aircraft systems — Airborne APU system — APU bleed air system
+01024960,Aircraft — Aircraft systems — Airborne APU system — APU controls
+01024970,Aircraft — Aircraft systems — Airborne APU system — APU indicating system
+01024980,Aircraft — Aircraft systems — Airborne APU system — APU exhaust system
+01024990,Aircraft — Aircraft systems — Airborne APU system — APU oil system
+01024997,Aircraft — Aircraft systems — Airborne APU system — APU sys wiring
+01030000,Aircraft — Aircraft structures — (general) — (general)
+01035102,Aircraft — Aircraft structures — Balloon/dirigible structures — (general)
+01035200,Aircraft — Aircraft structures — Doors — (general)
+01035210,Aircraft — Aircraft structures — Doors — Passenger/crew doors
+01035220,Aircraft — Aircraft structures — Doors — Emergency exit
+01035230,Aircraft — Aircraft structures — Doors — Cargo/baggage doors
+01035240,Aircraft — Aircraft structures — Doors — Service doors
+01035241,Aircraft — Aircraft structures — Doors — Galley doors
+01035242,Aircraft — Aircraft structures — Doors — Elect/electronic comp doors
+01035243,Aircraft — Aircraft structures — Doors — Hydraulic compartment doors
+01035244,Aircraft — Aircraft structures — Doors — Accessory compartment doors
+01035245,Aircraft — Aircraft structures — Doors — Air conditioning comp doors
+01035246,Aircraft — Aircraft structures — Doors — Fluid service doors
+01035247,Aircraft — Aircraft structures — Doors — Auxiliary power unit door
+01035248,Aircraft — Aircraft structures — Doors — Tail cone door
+01035250,Aircraft — Aircraft structures — Doors — Fixed inner doors
+01035260,Aircraft — Aircraft structures — Doors — Entrance stairs
+01035270,Aircraft — Aircraft structures — Doors — Door warning
+01035280,Aircraft — Aircraft structures — Doors — Landing gear doors
+01035297,Aircraft — Aircraft structures — Doors — Door wiring
+01035300,Aircraft — Aircraft structures — Fuselage — (general)
+01035301,Aircraft — Aircraft structures — Fuselage — Aerial tow equipment section
+01035302,Aircraft — Aircraft structures — Fuselage — Rotorcraft tail boom
+01035310,Aircraft — Aircraft structures — Fuselage — Fuselage main structure
+01035311,Aircraft — Aircraft structures — Fuselage — Frames (main fuselage)
+01035312,Aircraft — Aircraft structures — Fuselage — Bulkheads (main fuselage)
+01035313,Aircraft — Aircraft structures — Fuselage — Longerons/stringers (main fus)
+01035314,Aircraft — Aircraft structures — Fuselage — Keels (main fuselage)
+01035315,Aircraft — Aircraft structures — Fuselage — Floor beams (main fuselage)
+01035320,Aircraft — Aircraft structures — Fuselage — Fuselage auxiliary structure
+01035321,Aircraft — Aircraft structures — Fuselage — Floor panels (aux fuselage)
+01035322,Aircraft — Aircraft structures — Fuselage — Internal mount struc (aux fus)
+01035323,Aircraft — Aircraft structures — Fuselage — Internal stairs (aux fus)
+01035324,Aircraft — Aircraft structures — Fuselage — Fixed partitions (aux fus)
+01035330,Aircraft — Aircraft structures — Fuselage — Plates/skins (aux fuselage)
+01035340,Aircraft — Aircraft structures — Fuselage — Fuselage attach fittings sys
+01035341,Aircraft — Aircraft structures — Fuselage — Wing attach fittings (on fus)
+01035342,Aircraft — Aircraft structures — Fuselage — Stab attach fittings (on fus)
+01035343,Aircraft — Aircraft structures — Fuselage — Gear attach fittings (on fus)
+01035344,Aircraft — Aircraft structures — Fuselage — Door hinge (on fuselage)
+01035345,Aircraft — Aircraft structures — Fuselage — Equip attach fittings (on fus)
+01035346,Aircraft — Aircraft structures — Fuselage — Engine attach fitting (on fus)
+01035347,Aircraft — Aircraft structures — Fuselage — Seat/cargo attach fitting
+01035350,Aircraft — Aircraft structures — Fuselage — Aerodynamic fairings structure
+01035397,Aircraft — Aircraft structures — Fuselage — Fuselage wiring
+01035400,Aircraft — Aircraft structures — Nacelles/pylons structure — (general)
+01035410,Aircraft — Aircraft structures — Nacelles/pylons structure — Main frame (on nacelles/pylon)
+01035411,Aircraft — Aircraft structures — Nacelles/pylons structure — Frames (on nacelles/pylon)
+01035412,Aircraft — Aircraft structures — Nacelles/pylons structure — Bulkhead/firewalls (nac/pylon)
+01035413,Aircraft — Aircraft structures — Nacelles/pylons structure — Longeron/stringers (nac/pylon)
+01035414,Aircraft — Aircraft structures — Nacelles/pylons structure — Plates/skins (nacelle/pylon)
+01035415,Aircraft — Aircraft structures — Nacelles/pylons structure — Attach fittings (nac/pylon)
+01035420,Aircraft — Aircraft structures — Nacelles/pylons structure — Nacelle/pylon misc structure
+01035497,Aircraft — Aircraft structures — Nacelles/pylons structure — Nacelle/pylon wiring
+01035500,Aircraft — Aircraft structures — Empennage structure — (general)
+01035510,Aircraft — Aircraft structures — Empennage structure — Horizontal stabilizer
+01035511,Aircraft — Aircraft structures — Empennage structure — Spars/ribs (horizontal stab)
+01035512,Aircraft — Aircraft structures — Empennage structure — Plates/skins (horizontal stab)
+01035513,Aircraft — Aircraft structures — Empennage structure — Tab struc (horizontal stab)
+01035514,Aircraft — Aircraft structures — Empennage structure — Horiz stab misc structure
+01035520,Aircraft — Aircraft structures — Empennage structure — Elevators
+01035521,Aircraft — Aircraft structures — Empennage structure — Spars/ribs (on elevator)
+01035522,Aircraft — Aircraft structures — Empennage structure — Plates/skins (on elevator)
+01035523,Aircraft — Aircraft structures — Empennage structure — Tab structure (on elevator)
+01035524,Aircraft — Aircraft structures — Empennage structure — Elevator misc structure
+01035530,Aircraft — Aircraft structures — Empennage structure — Vertical stabilizer
+01035531,Aircraft — Aircraft structures — Empennage structure — Spars/ribs (on vert stab)
+01035532,Aircraft — Aircraft structures — Empennage structure — Plates/skins (on vert stab)
+01035533,Aircraft — Aircraft structures — Empennage structure — Ventral struc (on vert stab)
+01035534,Aircraft — Aircraft structures — Empennage structure — Vertical stab misc structure
+01035540,Aircraft — Aircraft structures — Empennage structure — Rudder
+01035541,Aircraft — Aircraft structures — Empennage structure — Spars/ribs (on rudder)
+01035542,Aircraft — Aircraft structures — Empennage structure — Plates/skins (on rudder)
+01035543,Aircraft — Aircraft structures — Empennage structure — Tab structure (on rudder)
+01035544,Aircraft — Aircraft structures — Empennage structure — Rudder misc structure
+01035550,Aircraft — Aircraft structures — Empennage structure — Attach fittings (flt controls)
+01035551,Aircraft — Aircraft structures — Empennage structure — Horizontal stab attach fitting
+01035552,Aircraft — Aircraft structures — Empennage structure — Elevator/tab attach fitting
+01035553,Aircraft — Aircraft structures — Empennage structure — Vertical stab attach fitting
+01035554,Aircraft — Aircraft structures — Empennage structure — Rudder/tab attach fitting
+01035597,Aircraft — Aircraft structures — Empennage structure — Stabilizer sys wiring
+01035600,Aircraft — Aircraft structures — Windows-windshield system — (general)
+01035610,Aircraft — Aircraft structures — Windows-windshield system — Flight compartment windows
+01035620,Aircraft — Aircraft structures — Windows-windshield system — Passenger compartment windows
+01035630,Aircraft — Aircraft structures — Windows-windshield system — Door windows
+01035640,Aircraft — Aircraft structures — Windows-windshield system — Inspection windows
+01035697,Aircraft — Aircraft structures — Windows-windshield system — Window wiring
+01035700,Aircraft — Aircraft structures — Wing structure — (general)
+01035710,Aircraft — Aircraft structures — Wing structure — Main frame (on wing)
+01035711,Aircraft — Aircraft structures — Wing structure — Spar (on wing)
+01035712,Aircraft — Aircraft structures — Wing structure — Ribs/bulkheads (on wing)
+01035713,Aircraft — Aircraft structures — Wing structure — Longerons/stringers (on wing)
+01035714,Aircraft — Aircraft structures — Wing structure — Center wing box (on wing)
+01035720,Aircraft — Aircraft structures — Wing structure — Wing auxiliary structure
+01035730,Aircraft — Aircraft structures — Wing structure — Plates/skins (on wing)
+01035740,Aircraft — Aircraft structures — Wing structure — Attach fittings (on wing)
+01035741,Aircraft — Aircraft structures — Wing structure — Fus (attach fitting on wing)
+01035742,Aircraft — Aircraft structures — Wing structure — Nac/pylon (fitting on wing)
+01035743,Aircraft — Aircraft structures — Wing structure — Landing gear (fitting on wing)
+01035744,Aircraft — Aircraft structures — Wing structure — Cont surface (fitting on wing)
+01035750,Aircraft — Aircraft structures — Wing structure — Flight surfaces (wing)
+01035751,Aircraft — Aircraft structures — Wing structure — Ailerons
+01035752,Aircraft — Aircraft structures — Wing structure — Aileron tabs
+01035753,Aircraft — Aircraft structures — Wing structure — Trailing edge flaps
+01035754,Aircraft — Aircraft structures — Wing structure — Leading edge devices
+01035755,Aircraft — Aircraft structures — Wing structure — Spoilers
+01035797,Aircraft — Aircraft structures — Wing structure — Wing wiring
+01040000,Aircraft — Aircraft propeller/rotor — (general) — (general)
+01046100,Aircraft — Aircraft propeller/rotor — Propeller system — (general)
+01046110,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller assembly
+01046111,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller blade section
+01046112,Aircraft — Aircraft propeller/rotor — Propeller system — Prop deice boot section
+01046113,Aircraft — Aircraft propeller/rotor — Propeller system — Prop/spinner section
+01046114,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller hub section
+01046120,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller controlling system
+01046121,Aircraft — Aircraft propeller/rotor — Propeller system — Prop synchronizer section
+01046122,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller governor
+01046123,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller feather/reversing
+01046130,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller braking
+01046140,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller indicating system
+01046197,Aircraft — Aircraft propeller/rotor — Propeller system — Propeller/propulsor wiring
+01046200,Aircraft — Aircraft propeller/rotor — Main rotor system — (general)
+01046210,Aircraft — Aircraft propeller/rotor — Main rotor system — Main rotor blade system
+01046220,Aircraft — Aircraft propeller/rotor — Main rotor system — Main rotor head system
+01046230,Aircraft — Aircraft propeller/rotor — Main rotor system — Main rotor mast/swashplate
+01046240,Aircraft — Aircraft propeller/rotor — Main rotor system — Main rotor indicating system
+01046297,Aircraft — Aircraft propeller/rotor — Main rotor system — Main rotor sys wiring
+01046300,Aircraft — Aircraft propeller/rotor — Main rotor drive — (general)
+01046310,Aircraft — Aircraft propeller/rotor — Main rotor drive — Engine/transmission coupling
+01046320,Aircraft — Aircraft propeller/rotor — Main rotor drive — Main rotor gearbox
+01046321,Aircraft — Aircraft propeller/rotor — Main rotor drive — Main rotor brake
+01046322,Aircraft — Aircraft propeller/rotor — Main rotor drive — Rotorcraft cooling fan system
+01046330,Aircraft — Aircraft propeller/rotor — Main rotor drive — Main rotor trans mount
+01046340,Aircraft — Aircraft propeller/rotor — Main rotor drive — Rotor/drive indicating system
+01046397,Aircraft — Aircraft propeller/rotor — Main rotor drive — Main rotor drive wiring
+01046400,Aircraft — Aircraft propeller/rotor — Tail rotor — (general)
+01046410,Aircraft — Aircraft propeller/rotor — Tail rotor — Tail rotor blade
+01046420,Aircraft — Aircraft propeller/rotor — Tail rotor — Tail rotor head
+01046440,Aircraft — Aircraft propeller/rotor — Tail rotor — Tail rotor indicating system
+01046497,Aircraft — Aircraft propeller/rotor — Tail rotor — Tail rotor system wiring
+01046500,Aircraft — Aircraft propeller/rotor — Tail rotor drive system — (general)
+01046510,Aircraft — Aircraft propeller/rotor — Tail rotor drive system — Tail rotor drive shaft
+01046520,Aircraft — Aircraft propeller/rotor — Tail rotor drive system — Tail rotor gearbox
+01046540,Aircraft — Aircraft propeller/rotor — Tail rotor drive system — Tail rotor drive ind system
+01046597,Aircraft — Aircraft propeller/rotor — Tail rotor drive system — Tail rotor drive system wiring
+01046700,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — (general)
+01046710,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — Main rotor control
+01046711,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — Tilt rotor flight control
+01046720,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — Tail rotor control system
+01046730,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — Rotorcraft servo system
+01046797,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control — Rotors flt cntl sys wiring
+01050000,Aircraft — Aircraft power plant — (general) — (general)
+01057100,Aircraft — Aircraft power plant — Power plant — (general)
+01057110,Aircraft — Aircraft power plant — Power plant — Engine cowling system
+01057111,Aircraft — Aircraft power plant — Power plant — Cowl flap system (recip. only)
+01057112,Aircraft — Aircraft power plant — Power plant — Eng air baffle sec (recip.)
+01057120,Aircraft — Aircraft power plant — Power plant — Mounts
+01057130,Aircraft — Aircraft power plant — Power plant — Fireseals
+01057160,Aircraft — Aircraft power plant — Power plant — Air intake
+01057170,Aircraft — Aircraft power plant — Power plant — Engine drains
+01057197,Aircraft — Aircraft power plant — Power plant — Powerplant wiring
+01057200,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — (general)
+01057210,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Reduction gear and shaft
+01057220,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Air inlet section (core eng)
+01057230,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Compressor section
+01057240,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Combustion section
+01057250,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Turbine section
+01057260,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Accessory drives
+01057261,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Oil system
+01057270,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Bypass section
+01057297,Aircraft — Aircraft power plant — Engine (turbine/turboprop) — Turb eng wiring
+01057300,Aircraft — Aircraft power plant — Engine fuel and control — (general)
+01057310,Aircraft — Aircraft power plant — Engine fuel and control — Fuel distribution
+01057311,Aircraft — Aircraft power plant — Engine fuel and control — Fuel oil cooler
+01057312,Aircraft — Aircraft power plant — Engine fuel and control — Fuel heater
+01057313,Aircraft — Aircraft power plant — Engine fuel and control — Fuel injector nozzle
+01057314,Aircraft — Aircraft power plant — Engine fuel and control — Fuel pump
+01057320,Aircraft — Aircraft power plant — Engine fuel and control — Fuel controlling system
+01057321,Aircraft — Aircraft power plant — Engine fuel and control — Fuel control electronic
+01057322,Aircraft — Aircraft power plant — Engine fuel and control — Fuel control/carburetor
+01057323,Aircraft — Aircraft power plant — Engine fuel and control — Turbine governor
+01057324,Aircraft — Aircraft power plant — Engine fuel and control — Fuel divider
+01057330,Aircraft — Aircraft power plant — Engine fuel and control — Fuel indicating system
+01057331,Aircraft — Aircraft power plant — Engine fuel and control — Fuel flow indicating
+01057332,Aircraft — Aircraft power plant — Engine fuel and control — Fuel pressure indicating
+01057333,Aircraft — Aircraft power plant — Engine fuel and control — Fuel flow sensor
+01057334,Aircraft — Aircraft power plant — Engine fuel and control — Fuel press sensor
+01057397,Aircraft — Aircraft power plant — Engine fuel and control — Eng fuel sys wiring
+01057400,Aircraft — Aircraft power plant — Ignition system — (general)
+01057410,Aircraft — Aircraft power plant — Ignition system — Ignition power supply
+01057411,Aircraft — Aircraft power plant — Ignition system — Low tension coil
+01057412,Aircraft — Aircraft power plant — Ignition system — Exciter
+01057413,Aircraft — Aircraft power plant — Ignition system — Induction vibrator
+01057414,Aircraft — Aircraft power plant — Ignition system — Magneto/distributor
+01057420,Aircraft — Aircraft power plant — Ignition system — Dist (ignition harness)
+01057421,Aircraft — Aircraft power plant — Ignition system — Spark plugs/igniters
+01057430,Aircraft — Aircraft power plant — Ignition system — Switching
+01057497,Aircraft — Aircraft power plant — Ignition system — Ignition system wiring
+01057500,Aircraft — Aircraft power plant — Engine bleed air system — (general)
+01057510,Aircraft — Aircraft power plant — Engine bleed air system — Engine anti-icing system
+01057520,Aircraft — Aircraft power plant — Engine bleed air system — Engine cooling system
+01057530,Aircraft — Aircraft power plant — Engine bleed air system — Compressor bleed control
+01057531,Aircraft — Aircraft power plant — Engine bleed air system — Compressor bleed governor
+01057532,Aircraft — Aircraft power plant — Engine bleed air system — Compressor bleed valve
+01057540,Aircraft — Aircraft power plant — Engine bleed air system — Indicating system
+01057597,Aircraft — Aircraft power plant — Engine bleed air system — Bleed air system wiring
+01057600,Aircraft — Aircraft power plant — Engine controls — (general)
+01057601,Aircraft — Aircraft power plant — Engine controls — Engine synchronizing
+01057602,Aircraft — Aircraft power plant — Engine controls — Mixture control
+01057603,Aircraft — Aircraft power plant — Engine controls — Power lever
+01057620,Aircraft — Aircraft power plant — Engine controls — Emergency shutdown system
+01057697,Aircraft — Aircraft power plant — Engine controls — Eng cntl sys wiring
+01057700,Aircraft — Aircraft power plant — Engine indicating system — (general)
+01057710,Aircraft — Aircraft power plant — Engine indicating system — Power indicating system
+01057711,Aircraft — Aircraft power plant — Engine indicating system — Engine pressure ratio (EPR)
+01057712,Aircraft — Aircraft power plant — Engine indicating system — BMEP/torque
+01057713,Aircraft — Aircraft power plant — Engine indicating system — Manifold pressure (MP)
+01057714,Aircraft — Aircraft power plant — Engine indicating system — RPM
+01057720,Aircraft — Aircraft power plant — Engine indicating system — Temperature indicating system
+01057721,Aircraft — Aircraft power plant — Engine indicating system — Cylinder head temp (CHT)
+01057722,Aircraft — Aircraft power plant — Engine indicating system — EGT/TIT
+01057730,Aircraft — Aircraft power plant — Engine indicating system — Analyzers
+01057731,Aircraft — Aircraft power plant — Engine indicating system — Ignition analyzer
+01057732,Aircraft — Aircraft power plant — Engine indicating system — Vibration analyzer
+01057740,Aircraft — Aircraft power plant — Engine indicating system — Integrated engine inst system
+01057797,Aircraft — Aircraft power plant — Engine indicating system — Engine indication sys wiring
+01057800,Aircraft — Aircraft power plant — Engine exhaust — (general)
+01057810,Aircraft — Aircraft power plant — Engine exhaust — Collector/nozzle
+01057820,Aircraft — Aircraft power plant — Engine exhaust — Noise suppressor
+01057830,Aircraft — Aircraft power plant — Engine exhaust — Thrust reverser
+01057897,Aircraft — Aircraft power plant — Engine exhaust — Eng exhst sys wiring
+01057900,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — (general)
+01057910,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Oil storage (airframe furnish)
+01057920,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Eng oil dist (airframe furn)
+01057921,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Cooler
+01057922,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Temperature regulator
+01057923,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Off valve
+01057930,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Engine oil indicating system
+01057931,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Pressure
+01057932,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Quantity
+01057933,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Temperature
+01057997,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish) — Engine oil system wiring
+01058000,Aircraft — Aircraft power plant — Engine starting — (general)
+01058010,Aircraft — Aircraft power plant — Engine starting — Cranking
+01058011,Aircraft — Aircraft power plant — Engine starting — Starter
+01058012,Aircraft — Aircraft power plant — Engine starting — Valves/controls
+01058097,Aircraft — Aircraft power plant — Engine starting — Engine starting system wiring
+01058100,Aircraft — Aircraft power plant — Turbocharging (recip only) — (general)
+01058110,Aircraft — Aircraft power plant — Turbocharging (recip only) — Power recovery turbine
+01058120,Aircraft — Aircraft power plant — Turbocharging (recip only) — Turbocharger
+01058197,Aircraft — Aircraft power plant — Turbocharging (recip only) — Turbocharger system wiring
+01058200,Aircraft — Aircraft power plant — Water injection — (general)
+01058297,Aircraft — Aircraft power plant — Water injection — Water inj sys wiring
+01058300,Aircraft — Aircraft power plant — Accessory gear-boxes — (general)
+01058397,Aircraft — Aircraft power plant — Accessory gear-boxes — Accessory gearbox wiring
+01058500,Aircraft — Aircraft power plant — Engine (reciprocating) — (general)
+01058510,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng front section
+01058520,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip engine power section
+01058530,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng cyl section
+01058540,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng rear section
+01058550,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng oil sys
+01058560,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng supercharger
+01058570,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng liquid cooling
+01058597,Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng wiring
+01060000,Aircraft — Aircraft oper/perf/capability — (general) — (general)
+01061000,Aircraft — Aircraft oper/perf/capability — Aircraft capability — (general)
+01061010,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Climb capability
+01061015,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Maximum crosswind component
+01061020,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Engine out capability
+01061025,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Takeoff distance
+01061030,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Landing distance
+01061035,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Maximum weight
+01061040,Aircraft — Aircraft oper/perf/capability — Aircraft capability — CG/weight distribution
+01061050,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Braking capability
+01061055,Aircraft — Aircraft oper/perf/capability — Aircraft capability — Instrument flight capability
+01062000,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general)
+01062010,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+01062012,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude
+01062017,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Configuration
+01062020,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control
+01062022,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Pitch control
+01062023,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Lateral/bank control
+01062024,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Yaw control
+01062025,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Engine out control
+01062027,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Glide
+01062030,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Crosswind correction
+01062032,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Dynamic load
+01062035,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Climb rate
+01062037,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent rate
+01062040,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path
+01062041,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare
+01062042,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack
+01062045,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Surface speed/braking
+01062047,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Heading/course
+01062050,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Powerplant parameters
+01062052,Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Prop/rotor parameters
+01070000,Aircraft — Fluids/misc hardware — (general) — (general)
+01071000,Aircraft — Fluids/misc hardware — Fluids — (general)
+01071010,Aircraft — Fluids/misc hardware — Fluids — Fuel
+01071015,Aircraft — Fluids/misc hardware — Fluids — Hydraulic fluid
+01071020,Aircraft — Fluids/misc hardware — Fluids — Oil
+01071025,Aircraft — Fluids/misc hardware — Fluids — Coolant
+01071030,Aircraft — Fluids/misc hardware — Fluids — Water
+01071035,Aircraft — Fluids/misc hardware — Fluids — Grease
+01071040,Aircraft — Fluids/misc hardware — Fluids — Fuel additive
+01071045,Aircraft — Fluids/misc hardware — Fluids — Oil additive
+01071050,Aircraft — Fluids/misc hardware — Fluids — Anti-ice/de-ice fluid
+01071055,Aircraft — Fluids/misc hardware — Fluids — Lavatory fluid
+01071400,Aircraft — Fluids/misc hardware — Misc hardware — (general)
+01071410,Aircraft — Fluids/misc hardware — Misc hardware — Hoses and tubes
+01071420,Aircraft — Fluids/misc hardware — Misc hardware — Electrical connectors
+01071430,Aircraft — Fluids/misc hardware — Misc hardware — Fasteners
+01071497,Aircraft — Fluids/misc hardware — Misc hardware — Misc wiring
+02010000,Personnel issues — Physical — (general) — (general)
+02011000,Personnel issues — Physical — Physical characteristic — (general)
+02011010,Personnel issues — Physical — Physical characteristic — Size
+02011015,Personnel issues — Physical — Physical characteristic — Reach
+02011020,Personnel issues — Physical — Physical characteristic — Strength
+02011025,Personnel issues — Physical — Physical characteristic — Weight
+02011030,Personnel issues — Physical — Physical characteristic — Physical limitation
+02011500,Personnel issues — Physical — Sensory ability/limitation — (general)
+02011510,Personnel issues — Physical — Sensory ability/limitation — Visual function
+02011515,Personnel issues — Physical — Sensory ability/limitation — Use of corrective lens
+02011520,Personnel issues — Physical — Sensory ability/limitation — Color-vision
+02011525,Personnel issues — Physical — Sensory ability/limitation — Hearing
+02011530,Personnel issues — Physical — Sensory ability/limitation — Vestibular function
+02011535,Personnel issues — Physical — Sensory ability/limitation — Tactile function
+02012000,Personnel issues — Physical — Impairment/incapacitation — (general)
+02012010,Personnel issues — Physical — Impairment/incapacitation — Illness/injury
+02012015,Personnel issues — Physical — Impairment/incapacitation — Alcohol
+02012020,Personnel issues — Physical — Impairment/incapacitation — Illicit drug
+02012025,Personnel issues — Physical — Impairment/incapacitation — Prescription medication
+02012030,Personnel issues — Physical — Impairment/incapacitation — OTC medication
+02012035,Personnel issues — Physical — Impairment/incapacitation — Hypoxia/anoxia
+02012040,Personnel issues — Physical — Impairment/incapacitation — Carbon monoxide
+02012045,Personnel issues — Physical — Impairment/incapacitation — Neurological
+02012050,Personnel issues — Physical — Impairment/incapacitation — Cardiovascular
+02012055,Personnel issues — Physical — Impairment/incapacitation — Other loss of consciousness
+02013000,Personnel issues — Physical — Health/Fitness — (general)
+02013010,Personnel issues — Physical — Health/Fitness — Physical fitness
+02013015,Personnel issues — Physical — Health/Fitness — Diet
+02013020,Personnel issues — Physical — Health/Fitness — Use of medication/drugs
+02013025,Personnel issues — Physical — Health/Fitness — Use of alcohol
+02013030,Personnel issues — Physical — Health/Fitness — Smoking
+02013035,Personnel issues — Physical — Health/Fitness — Predisposing condition
+02013500,Personnel issues — Physical — Alertness/Fatigue — (general)
+02013510,Personnel issues — Physical — Alertness/Fatigue — Lack of sleep
+02013515,Personnel issues — Physical — Alertness/Fatigue — Circadian rhythms or jetlag
+02013520,Personnel issues — Physical — Alertness/Fatigue — Fatigue due to work schedule
+02020000,Personnel issues — Psychological — (general) — (general)
+02021000,Personnel issues — Psychological — Personality/attitude — (general)
+02021010,Personnel issues — Psychological — Personality/attitude — Self confidence
+02021015,Personnel issues — Psychological — Personality/attitude — Confidence/reliance on equip
+02021020,Personnel issues — Psychological — Personality/attitude — Complacency
+02021025,Personnel issues — Psychological — Personality/attitude — Motivation/respond to pressure
+02021030,Personnel issues — Psychological — Personality/attitude — Personality
+02021500,Personnel issues — Psychological — Attention/monitoring — (general)
+02021510,Personnel issues — Psychological — Attention/monitoring — Attention
+02021520,Personnel issues — Psychological — Attention/monitoring — Task monitoring/vigilance
+02021525,Personnel issues — Psychological — Attention/monitoring — Monitoring equip/instruments
+02021530,Personnel issues — Psychological — Attention/monitoring — Monitoring communications
+02021535,Personnel issues — Psychological — Attention/monitoring — Monitoring other person
+02021540,Personnel issues — Psychological — Attention/monitoring — Monitoring other aircraft
+02021545,Personnel issues — Psychological — Attention/monitoring — Monitoring environment
+02022000,Personnel issues — Psychological — Perception/orientation/illusion — (general)
+02022015,Personnel issues — Psychological — Perception/orientation/illusion — Visual illusion/disorientation
+02022020,Personnel issues — Psychological — Perception/orientation/illusion — Temporal disorientation
+02022025,Personnel issues — Psychological — Perception/orientation/illusion — Spatial disorientation
+02022030,Personnel issues — Psychological — Perception/orientation/illusion — Geographic disorient (lost)
+02022035,Personnel issues — Psychological — Perception/orientation/illusion — Situational awareness
+02022040,Personnel issues — Psychological — Perception/orientation/illusion — Perception
+02022500,Personnel issues — Psychological — Mental/emotional state — (general)
+02022510,Personnel issues — Psychological — Mental/emotional state — Stress
+02022515,Personnel issues — Psychological — Mental/emotional state — Anxiety/panic
+02022520,Personnel issues — Psychological — Mental/emotional state — Confusion
+02022525,Personnel issues — Psychological — Mental/emotional state — Boredom
+02022530,Personnel issues — Psychological — Mental/emotional state — Apprehension
+02022535,Personnel issues — Psychological — Mental/emotional state — Denial
+02023000,Personnel issues — Psychological — Cognitive limitation — (general)
+02023010,Personnel issues — Psychological — Cognitive limitation — Memory limit
+02023015,Personnel issues — Psychological — Cognitive limitation — Cognitive overload
+02030000,Personnel issues — Experience/knowledge — (general) — (general)
+02031000,Personnel issues — Experience/knowledge — Experience/qualifications — (general)
+02031010,Personnel issues — Experience/knowledge — Experience/qualifications — Qualification/certification
+02031015,Personnel issues — Experience/knowledge — Experience/qualifications — Total experience
+02031020,Personnel issues — Experience/knowledge — Experience/qualifications — Total experience in position
+02031025,Personnel issues — Experience/knowledge — Experience/qualifications — Total experience w/ equipment
+02031030,Personnel issues — Experience/knowledge — Experience/qualifications — Total instrument experience
+02031035,Personnel issues — Experience/knowledge — Experience/qualifications — Recent experience
+02031040,Personnel issues — Experience/knowledge — Experience/qualifications — Recent experience in position
+02031045,Personnel issues — Experience/knowledge — Experience/qualifications — Recent experience w/ equipment
+02031050,Personnel issues — Experience/knowledge — Experience/qualifications — Recent instrument experience
+02031500,Personnel issues — Experience/knowledge — Training — (general)
+02031510,Personnel issues — Experience/knowledge — Training — Total instruct/training recvd
+02031515,Personnel issues — Experience/knowledge — Training — Initial instruct/training
+02031520,Personnel issues — Experience/knowledge — Training — Recurrent instruct/training
+02031525,Personnel issues — Experience/knowledge — Training — Recent instruct/training recvd
+02031530,Personnel issues — Experience/knowledge — Training — Training with equipment
+02031535,Personnel issues — Experience/knowledge — Training — Type/qual of instruct/training
+02032000,Personnel issues — Experience/knowledge — Knowledge — (general)
+02032010,Personnel issues — Experience/knowledge — Knowledge — Knowledge of procedures
+02032015,Personnel issues — Experience/knowledge — Knowledge — Knowledge of equipment
+02032020,Personnel issues — Experience/knowledge — Knowledge — Knowledge of meteorologic cond
+02032025,Personnel issues — Experience/knowledge — Knowledge — Knowledge of regulatory reqs
+02032030,Personnel issues — Experience/knowledge — Knowledge — Knowledge of geographic area
+02032035,Personnel issues — Experience/knowledge — Knowledge — Aeronautical knowledge
+02032040,Personnel issues — Experience/knowledge — Knowledge — Transfer of knowledge
+02032045,Personnel issues — Experience/knowledge — Knowledge — Reading/language comprehension
+02040000,Personnel issues — Action/decision — (general) — (general)
+02041000,Personnel issues — Action/decision — Action — (general)
+02041010,Personnel issues — Action/decision — Action — Incorrect action selection
+02041015,Personnel issues — Action/decision — Action — Incorrect action performance
+02041020,Personnel issues — Action/decision — Action — Incorrect action sequence
+02041025,Personnel issues — Action/decision — Action — Delayed action
+02041030,Personnel issues — Action/decision — Action — Lack of action
+02041035,Personnel issues — Action/decision — Action — Forgotten action/omission
+02041040,Personnel issues — Action/decision — Action — Incomplete action
+02041045,Personnel issues — Action/decision — Action — Unneccessary action
+02041500,Personnel issues — Action/decision — Info processing/decision — (general)
+02041510,Personnel issues — Action/decision — Info processing/decision — Identification/recognition
+02041515,Personnel issues — Action/decision — Info processing/decision — Understanding/comprehension
+02041520,Personnel issues — Action/decision — Info processing/decision — Decision making/judgment
+02041525,Personnel issues — Action/decision — Info processing/decision — Expectation/assumption
+02050000,Personnel issues — Miscellaneous — (general) — (general)
+02051000,Personnel issues — Miscellaneous — Intentional act — (general)
+02051010,Personnel issues — Miscellaneous — Intentional act — Sabotage
+02051015,Personnel issues — Miscellaneous — Intentional act — Suicide
+02051020,Personnel issues — Miscellaneous — Intentional act — Stolen/unauthorized
+02051025,Personnel issues — Miscellaneous — Intentional act — Hijack
+02051030,Personnel issues — Miscellaneous — Intentional act — Criminal/illegal act
+02051035,Personnel issues — Miscellaneous — Intentional act — Interference
+02060000,Personnel issues — Task performance — (general) — (general)
+02061000,Personnel issues — Task performance — Planning/preparation — (general)
+02061010,Personnel issues — Task performance — Planning/preparation — Performance calculations
+02061015,Personnel issues — Task performance — Planning/preparation — Weight/balance calculations
+02061020,Personnel issues — Task performance — Planning/preparation — Weather planning
+02061025,Personnel issues — Task performance — Planning/preparation — Flight planning/navigation
+02061030,Personnel issues — Task performance — Planning/preparation — Fuel planning
+02061500,Personnel issues — Task performance — Inspection — (general)
+02061510,Personnel issues — Task performance — Inspection — Preflight inspection
+02061515,Personnel issues — Task performance — Inspection — Post maintenance inspection
+02061520,Personnel issues — Task performance — Inspection — Scheduled/routine inspection
+02062000,Personnel issues — Task performance — Maintenance — (general)
+02062010,Personnel issues — Task performance — Maintenance — Scheduled/routine maintenance
+02062015,Personnel issues — Task performance — Maintenance — Repair
+02062020,Personnel issues — Task performance — Maintenance — Replacement
+02062025,Personnel issues — Task performance — Maintenance — Fabrication
+02062030,Personnel issues — Task performance — Maintenance — Modification/alteration
+02062035,Personnel issues — Task performance — Maintenance — Installation
+02062040,Personnel issues — Task performance — Maintenance — Unauthorized maint/repair
+02062500,Personnel issues — Task performance — Record-keeping — (general)
+02062510,Personnel issues — Task performance — Record-keeping — Flight log/manifest
+02062515,Personnel issues — Task performance — Record-keeping — Aircraft/maintenance logs
+02062520,Personnel issues — Task performance — Record-keeping — Pilot logs
+02063000,Personnel issues — Task performance — Use of equip/info — (general)
+02063010,Personnel issues — Task performance — Use of equip/info — Use of automation
+02063015,Personnel issues — Task performance — Use of equip/info — Use of equip/system
+02063020,Personnel issues — Task performance — Use of equip/info — Use of manual
+02063025,Personnel issues — Task performance — Use of equip/info — Use of charts
+02063030,Personnel issues — Task performance — Use of equip/info — Use of checklist
+02063032,Personnel issues — Task performance — Use of equip/info — Use of policy/procedure
+02063035,Personnel issues — Task performance — Use of equip/info — Use of available resources
+02063040,Personnel issues — Task performance — Use of equip/info — Aircraft control
+02063500,Personnel issues — Task performance — Communication (personnel) — (general)
+02063510,Personnel issues — Task performance — Communication (personnel) — Lack of communication
+02063515,Personnel issues — Task performance — Communication (personnel) — Accuracy of communication
+02063520,Personnel issues — Task performance — Communication (personnel) — Common phraseology
+02063525,Personnel issues — Task performance — Communication (personnel) — Language/accent
+02063530,Personnel issues — Task performance — Communication (personnel) — Interpretation/understanding
+02063535,Personnel issues — Task performance — Communication (personnel) — Readback
+02063537,Personnel issues — Task performance — Communication (personnel) — Following instructions
+02063538,Personnel issues — Task performance — Communication (personnel) — Issuing instructions
+02063540,Personnel issues — Task performance — Communication (personnel) — CRM/MRM techniques
+02063545,Personnel issues — Task performance — Communication (personnel) — Crew/duty change-over
+02064000,Personnel issues — Task performance — Workload management — (general)
+02064010,Personnel issues — Task performance — Workload management — Task scheduling
+02064015,Personnel issues — Task performance — Workload management — Task load shedding
+02064020,Personnel issues — Task performance — Workload management — Task allocation
+02064025,Personnel issues — Task performance — Workload management — Task overload
+03010000,Environmental issues — Operating environment — (general) — (general)
+03011000,Environmental issues — Operating environment — En route navaid coverage/avail — (general)
+03011010,Environmental issues — Operating environment — En route navaid coverage/avail — DME
+03011015,Environmental issues — Operating environment — En route navaid coverage/avail — VOR
+03011020,Environmental issues — Operating environment — En route navaid coverage/avail — GPS
+03011025,Environmental issues — Operating environment — En route navaid coverage/avail — NDB
+03011030,Environmental issues — Operating environment — En route navaid coverage/avail — LORAN
+03011035,Environmental issues — Operating environment — En route navaid coverage/avail — Other en route navaid
+03012000,Environmental issues — Operating environment — Approach aid coverage/avail — (general)
+03012010,Environmental issues — Operating environment — Approach aid coverage/avail — ASR
+03012015,Environmental issues — Operating environment — Approach aid coverage/avail — Approach lighting
+03012020,Environmental issues — Operating environment — Approach aid coverage/avail — Localizer
+03012025,Environmental issues — Operating environment — Approach aid coverage/avail — Glideslope
+03012030,Environmental issues — Operating environment — Approach aid coverage/avail — LDA
+03012035,Environmental issues — Operating environment — Approach aid coverage/avail — Marker beacon
+03012040,Environmental issues — Operating environment — Approach aid coverage/avail — NDB
+03012045,Environmental issues — Operating environment — Approach aid coverage/avail — PAR
+03012050,Environmental issues — Operating environment — Approach aid coverage/avail — SDF
+03012055,Environmental issues — Operating environment — Approach aid coverage/avail — VOR/TVOR
+03012060,Environmental issues — Operating environment — Approach aid coverage/avail — GPS
+03012065,Environmental issues — Operating environment — Approach aid coverage/avail — GPS WAAS
+03012070,Environmental issues — Operating environment — Approach aid coverage/avail — Visual approach aid
+03013000,Environmental issues — Operating environment — Meteorological services — (general)
+03013010,Environmental issues — Operating environment — Meteorological services — Meteo equip coverage/avail
+03013015,Environmental issues — Operating environment — Meteorological services — FSS weather
+03013020,Environmental issues — Operating environment — Meteorological services — NWS weather
+03013025,Environmental issues — Operating environment — Meteorological services — Commercial weather
+03013030,Environmental issues — Operating environment — Meteorological services — Automated weather
+03013035,Environmental issues — Operating environment — Meteorological services — Other weather service
+03014000,Environmental issues — Operating environment — Air traffic/operating proc — (general)
+03014010,Environmental issues — Operating environment — Air traffic/operating proc — Airway/route system procedure
+03014015,Environmental issues — Operating environment — Air traffic/operating proc — Approach control procedure
+03014020,Environmental issues — Operating environment — Air traffic/operating proc — ATC clearance procedure
+03014025,Environmental issues — Operating environment — Air traffic/operating proc — Departure procedure
+03014030,Environmental issues — Operating environment — Air traffic/operating proc — Holding procedure
+03014035,Environmental issues — Operating environment — Air traffic/operating proc — Instrument approach procedure
+03014040,Environmental issues — Operating environment — Air traffic/operating proc — Instrument departure procedure
+03014045,Environmental issues — Operating environment — Air traffic/operating proc — Missed approach procedure
+03014050,Environmental issues — Operating environment — Air traffic/operating proc — Terminal arrival procedure
+03014055,Environmental issues — Operating environment — Air traffic/operating proc — Traffic pattern procedure
+03014060,Environmental issues — Operating environment — Air traffic/operating proc — Visual approach procedure
+03014065,Environmental issues — Operating environment — Air traffic/operating proc — Noise abatement procedure
+03014070,Environmental issues — Operating environment — Air traffic/operating proc — Traffic congestion
+03015000,Environmental issues — Operating environment — Radar services/coverage — (general)
+03015010,Environmental issues — Operating environment — Radar services/coverage — Surface/taxi
+03015015,Environmental issues — Operating environment — Radar services/coverage — Approach/departure
+03015020,Environmental issues — Operating environment — Radar services/coverage — En route
+03015025,Environmental issues — Operating environment — Radar services/coverage — Weather radar
+03016000,Environmental issues — Operating environment — Communication system — (general)
+03016010,Environmental issues — Operating environment — Communication system — VHF/HF radio
+03016015,Environmental issues — Operating environment — Communication system — Transponder
+03016020,Environmental issues — Operating environment — Communication system — Datalink
+03016025,Environmental issues — Operating environment — Communication system — Written communication
+03016030,Environmental issues — Operating environment — Communication system — Visual communication
+03017000,Environmental issues — Operating environment — Airport facilities/design — (general)
+03017010,Environmental issues — Operating environment — Airport facilities/design — Airport lighting
+03017015,Environmental issues — Operating environment — Airport facilities/design — Runway lighting
+03017020,Environmental issues — Operating environment — Airport facilities/design — Taxiway lighting
+03017025,Environmental issues — Operating environment — Airport facilities/design — Obstruction markings/lighting
+03017030,Environmental issues — Operating environment — Airport facilities/design — Runway markings/signage
+03017035,Environmental issues — Operating environment — Airport facilities/design — Runway/landing area condition
+03017037,Environmental issues — Operating environment — Airport facilities/design — Runway/landing area length
+03017040,Environmental issues — Operating environment — Airport facilities/design — Taxiway markings/signage
+03017045,Environmental issues — Operating environment — Airport facilities/design — Taxiway condition
+03017050,Environmental issues — Operating environment — Airport facilities/design — Airport communication
+03017055,Environmental issues — Operating environment — Airport facilities/design — Ramp facilities
+03017060,Environmental issues — Operating environment — Airport facilities/design — Emergency/fire/rescue services
+03017065,Environmental issues — Operating environment — Airport facilities/design — Fuel service/equipment
+03017070,Environmental issues — Operating environment — Airport facilities/design — Ground support/equipment
+03017075,Environmental issues — Operating environment — Airport facilities/design — Snow removal service/equipment
+03017080,Environmental issues — Operating environment — Airport facilities/design — Security
+03020000,Environmental issues — Physical environment — (general) — (general)
+03021000,Environmental issues — Physical environment — Terrain — (general)
+03021010,Environmental issues — Physical environment — Terrain — Mountainous/hilly terrain
+03021015,Environmental issues — Physical environment — Terrain — Rough terrain
+03021017,Environmental issues — Physical environment — Terrain — Sloped/uneven
+03021020,Environmental issues — Physical environment — Terrain — Water
+03021025,Environmental issues — Physical environment — Terrain — High elevation
+03021030,Environmental issues — Physical environment — Terrain — Snowy/icy
+03021035,Environmental issues — Physical environment — Terrain — Wet/muddy
+03022000,Environmental issues — Physical environment — Object/animal/substance — (general)
+03022010,Environmental issues — Physical environment — Object/animal/substance — Pole
+03022012,Environmental issues — Physical environment — Object/animal/substance — Runway/taxi/approach light
+03022015,Environmental issues — Physical environment — Object/animal/substance — Sign/marker
+03022017,Environmental issues — Physical environment — Object/animal/substance — Tower/antenna (incl guy wires)
+03022020,Environmental issues — Physical environment — Object/animal/substance — Tree(s)
+03022022,Environmental issues — Physical environment — Object/animal/substance — Residence/building
+03022025,Environmental issues — Physical environment — Object/animal/substance — Ground vehicle
+03022027,Environmental issues — Physical environment — Object/animal/substance — Wall/barricade
+03022030,Environmental issues — Physical environment — Object/animal/substance — Wind sock
+03022032,Environmental issues — Physical environment — Object/animal/substance — Wire
+03022035,Environmental issues — Physical environment — Object/animal/substance — Person
+03022037,Environmental issues — Physical environment — Object/animal/substance — Bridge/overpass
+03022040,Environmental issues — Physical environment — Object/animal/substance — Aircraft
+03022042,Environmental issues — Physical environment — Object/animal/substance — Airport structure
+03022045,Environmental issues — Physical environment — Object/animal/substance — Animal(s)/bird(s)
+03022047,Environmental issues — Physical environment — Object/animal/substance — Fence/fence post
+03022050,Environmental issues — Physical environment — Object/animal/substance — Ground equipment
+03022052,Environmental issues — Physical environment — Object/animal/substance — Hidden/submerged object
+03022055,Environmental issues — Physical environment — Object/animal/substance — Debris/dirt/foreign object
+03022057,Environmental issues — Physical environment — Object/animal/substance — Water/moisture
+03022060,Environmental issues — Physical environment — Object/animal/substance — Snow/ice
+03023000,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — (general)
+03023010,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — Wet
+03023015,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — Snow/slush/ice covered
+03023020,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — Soft
+03023025,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — Glassy
+03023030,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface — Choppy
+03030000,Environmental issues — Conditions/weather/phenomena — (general) — (general)
+03031000,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — (general)
+03031010,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Low temperature
+03031015,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — High temperature
+03031020,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — High density altitude
+03031025,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Conducive to structural icing
+03031030,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Conducive to carburetor icing
+03031035,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Temperature inversion
+03031040,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Thermal lifting
+03032000,Environmental issues — Conditions/weather/phenomena — Turbulence — (general)
+03032010,Environmental issues — Conditions/weather/phenomena — Turbulence — Terrain induced turbulence
+03032015,Environmental issues — Conditions/weather/phenomena — Turbulence — Clear air turbulence
+03032020,Environmental issues — Conditions/weather/phenomena — Turbulence — Convective turbulence
+03032025,Environmental issues — Conditions/weather/phenomena — Turbulence — Wake turbulence
+03033000,Environmental issues — Conditions/weather/phenomena — Convective weather — (general)
+03033010,Environmental issues — Conditions/weather/phenomena — Convective weather — Thunderstorm
+03033015,Environmental issues — Conditions/weather/phenomena — Convective weather — Tornado
+03033020,Environmental issues — Conditions/weather/phenomena — Convective weather — Hurricane
+03033025,Environmental issues — Conditions/weather/phenomena — Convective weather — Lightning
+03033030,Environmental issues — Conditions/weather/phenomena — Convective weather — Hail
+03034000,Environmental issues — Conditions/weather/phenomena — Wind — (general)
+03034010,Environmental issues — Conditions/weather/phenomena — Wind — Sudden wind shift
+03034015,Environmental issues — Conditions/weather/phenomena — Wind — Tailwind
+03034020,Environmental issues — Conditions/weather/phenomena — Wind — Windshear
+03034025,Environmental issues — Conditions/weather/phenomena — Wind — Variable wind
+03034030,Environmental issues — Conditions/weather/phenomena — Wind — Updraft
+03034035,Environmental issues — Conditions/weather/phenomena — Wind — Downdraft
+03034040,Environmental issues — Conditions/weather/phenomena — Wind — Crosswind
+03034045,Environmental issues — Conditions/weather/phenomena — Wind — Gusts
+03034050,Environmental issues — Conditions/weather/phenomena — Wind — Microburst
+03034055,Environmental issues — Conditions/weather/phenomena — Wind — High wind
+03034060,Environmental issues — Conditions/weather/phenomena — Wind — Dust devil/whirlwind
+03035000,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — (general)
+03035010,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Low ceiling
+03035015,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Low visibility
+03035020,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Haze/smoke
+03035025,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Clouds
+03035030,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Obscuration
+03035035,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Rain
+03035040,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Freezing rain/sleet
+03035045,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Snow
+03035050,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Drizzle/mist
+03035055,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Fog
+03035060,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Whiteout
+03035065,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Sand/dust storm
+03035070,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Below approach minima
+03035075,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Below VFR minima
+03036000,Environmental issues — Conditions/weather/phenomena — Light condition — (general)
+03036010,Environmental issues — Conditions/weather/phenomena — Light condition — Bright light
+03036015,Environmental issues — Conditions/weather/phenomena — Light condition — Low light
+03036020,Environmental issues — Conditions/weather/phenomena — Light condition — Dark
+03036025,Environmental issues — Conditions/weather/phenomena — Light condition — Flat light
+03036030,Environmental issues — Conditions/weather/phenomena — Light condition — Glare
+03040000,Environmental issues — Task environment — (general) — (general)
+03041000,Environmental issues — Task environment — Physical workspace — (general)
+03041010,Environmental issues — Task environment — Physical workspace — Positioning/available space
+03041015,Environmental issues — Task environment — Physical workspace — Access to equipment/controls
+03041020,Environmental issues — Task environment — Physical workspace — Visibility
+03041025,Environmental issues — Task environment — Physical workspace — Air quality/dust/smoke
+03041030,Environmental issues — Task environment — Physical workspace — Temperature/humidity
+03041035,Environmental issues — Task environment — Physical workspace — Workspace lighting
+03041040,Environmental issues — Task environment — Physical workspace — Noise
+03041045,Environmental issues — Task environment — Physical workspace — Vibration
+03041050,Environmental issues — Task environment — Physical workspace — Controls and displays
+03041055,Environmental issues — Task environment — Physical workspace — Warnings/alarms
+03042000,Environmental issues — Task environment — Pressures/demands — (general)
+03042010,Environmental issues — Task environment — Pressures/demands — Time/schedule pressure
+03042015,Environmental issues — Task environment — Pressures/demands — Financial pressure
+03042020,Environmental issues — Task environment — Pressures/demands — Social pressure
+03042025,Environmental issues — Task environment — Pressures/demands — Regulatory pressure
+03042030,Environmental issues — Task environment — Pressures/demands — Equipment/operational
+03042035,Environmental issues — Task environment — Pressures/demands — Personal pressure
+03042040,Environmental issues — Task environment — Pressures/demands — Other pressure/demand
+04010000,Organizational issues — Development — (general) — (general)
+04011000,Organizational issues — Development — Design — (general)
+04011010,Organizational issues — Development — Design — Equipment design
+04011015,Organizational issues — Development — Design — Task design
+04011020,Organizational issues — Development — Design — Design of document/info
+04011025,Organizational issues — Development — Design — Policy/procedure development
+04011030,Organizational issues — Development — Design — Interface design
+04012000,Organizational issues — Development — Selection/certification/testing — (general)
+04012010,Organizational issues — Development — Selection/certification/testing — Personnel selection/training
+04012015,Organizational issues — Development — Selection/certification/testing — Equip certification/testing
+04012025,Organizational issues — Development — Selection/certification/testing — Document/info verification
+04013000,Organizational issues — Development — Manufacture/production — (general)
+04013010,Organizational issues — Development — Manufacture/production — Equipment manufacture
+04013015,Organizational issues — Development — Manufacture/production — Tool manufacture
+04013020,Organizational issues — Development — Manufacture/production — Document/info production
+04020000,Organizational issues — Management — (general) — (general)
+04021000,Organizational issues — Management — Policy/procedure — (general)
+04021010,Organizational issues — Management — Policy/procedure — Availability of policy/proc
+04021015,Organizational issues — Management — Policy/procedure — Adequacy of policy/proc
+04022000,Organizational issues — Management — Resources — (general)
+04022010,Organizational issues — Management — Resources — Availability of personnel
+04022015,Organizational issues — Management — Resources — Adequacy of personnel
+04022020,Organizational issues — Management — Resources — Availability of equipment
+04022025,Organizational issues — Management — Resources — Adequacy of equipment
+04022030,Organizational issues — Management — Resources — Availability of facilities
+04022035,Organizational issues — Management — Resources — Adequacy of facilities
+04022040,Organizational issues — Management — Resources — Availability of documents/info
+04022045,Organizational issues — Management — Resources — Adequacy of documents/info
+04023000,Organizational issues — Management — Scheduling — (general)
+04023010,Organizational issues — Management — Scheduling — Scheduling of personnel
+04023015,Organizational issues — Management — Scheduling — Crew/personnel pairing
+04023020,Organizational issues — Management — Scheduling — Equipment scheduling
+04023025,Organizational issues — Management — Scheduling — Maintenance scheduling
+04023030,Organizational issues — Management — Scheduling — Task scheduling/workload
+04024000,Organizational issues — Management — Culture — (general)
+04024010,Organizational issues — Management — Culture — Safety
+04024015,Organizational issues — Management — Culture — Standard operating practices
+04024020,Organizational issues — Management — Culture — Pressures/demands
+04025000,Organizational issues — Management — Communication (organizational) — (general)
+04025010,Organizational issues — Management — Communication (organizational) — Between individuals
+04025015,Organizational issues — Management — Communication (organizational) — Within group(s)/organization
+04025020,Organizational issues — Management — Communication (organizational) — Between groups/organizations
+04030000,Organizational issues — Support/oversight/monitoring — (general) — (general)
+04031000,Organizational issues — Support/oversight/monitoring — Training — (general)
+04031010,Organizational issues — Support/oversight/monitoring — Training — Initial training
+04031015,Organizational issues — Support/oversight/monitoring — Training — Recurrent training
+04031020,Organizational issues — Support/oversight/monitoring — Training — Upgrade training
+04031025,Organizational issues — Support/oversight/monitoring — Training — CRM/MRM training
+04031030,Organizational issues — Support/oversight/monitoring — Training — Emergency proc training
+04032000,Organizational issues — Support/oversight/monitoring — Oversight — (general)
+04032010,Organizational issues — Support/oversight/monitoring — Oversight — Oversight of personnel
+04032015,Organizational issues — Support/oversight/monitoring — Oversight — Oversight of operation
+04032020,Organizational issues — Support/oversight/monitoring — Oversight — Oversight of maintenance
+04032025,Organizational issues — Support/oversight/monitoring — Oversight — Equipment monitoring
+04032030,Organizational issues — Support/oversight/monitoring — Oversight — Parts/tools tracking
+04032035,Organizational issues — Support/oversight/monitoring — Oversight — Document revision tracking
+04032040,Organizational issues — Support/oversight/monitoring — Oversight — Oversight of reg compliance
+04033000,Organizational issues — Support/oversight/monitoring — Documentation/record keeping — (general)
+04033010,Organizational issues — Support/oversight/monitoring — Documentation/record keeping — Operation records
+04033015,Organizational issues — Support/oversight/monitoring — Documentation/record keeping — Personnel records
+04033020,Organizational issues — Support/oversight/monitoring — Documentation/record keeping — Testing records
+04033025,Organizational issues — Support/oversight/monitoring — Documentation/record keeping — Maintenance records
+04034000,Organizational issues — Support/oversight/monitoring — Enforcement — (general)
+04034010,Organizational issues — Support/oversight/monitoring — Enforcement — Personnel performance
+04034015,Organizational issues — Support/oversight/monitoring — Enforcement — Operational procedures
+04034020,Organizational issues — Support/oversight/monitoring — Enforcement — Regulatory requirements
+04034025,Organizational issues — Support/oversight/monitoring — Enforcement — Equipment requirements
+04034030,Organizational issues — Support/oversight/monitoring — Enforcement — Information design specs
+04034035,Organizational issues — Support/oversight/monitoring — Enforcement — Company/organization policy
+04035000,Organizational issues — Support/oversight/monitoring — Safety programs — (general)
+04035010,Organizational issues — Support/oversight/monitoring — Safety programs — Availability of safety program
+04035015,Organizational issues — Support/oversight/monitoring — Safety programs — Adequacy of safety program
+04035020,Organizational issues — Support/oversight/monitoring — Safety programs — Adherence to safety program
+05000000,Not determined — Not determined — (general) — (general)

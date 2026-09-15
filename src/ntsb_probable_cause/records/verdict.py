@@ -11,6 +11,7 @@ class Verdict(BaseModel):
     probable_cause: str | None
     occurrence_codes: tuple[str, ...]
     finding_codes: tuple[str, ...]
+    finding_codes_in_cause: tuple[str, ...]
 
     def codes(self) -> tuple[str, ...]:
         """Occurrence then finding codes."""
