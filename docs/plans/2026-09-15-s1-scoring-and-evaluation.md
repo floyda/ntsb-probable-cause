@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
 Run: `uv run pytest tests/test_openrouter_probe.py -v && make check` — Expected: PASS.
 
-- [ ] **Step 5: Andy runs the probe**
+- [x] **Step 5: Andy runs the probe**
 
 ```bash
 export OPENROUTER_API_KEY=...   # never in git
@@ -393,7 +393,7 @@ uv run python -m scripts.openrouter_probe --model openai/gpt-5.6-luna-pro --case
 
 Read the four files. Record in the Deviations section: which usage fields exist (`prompt_tokens`, `completion_tokens`, `cost`?), whether `response_format` was honoured (content is valid JSON matching the mini schema), whether the batch reached `completed` and how long it took, and which Luna variant is chosen, with the reason (both cost the same; prefer the one whose ten replies all parsed; if both, prefer `luna`). Keep only the chosen variant's fixtures.
 
-- [ ] **Step 6: Commit the fixtures**
+- [x] **Step 6: Commit the fixtures**
 
 ```bash
 git add scripts/openrouter_probe.py tests/test_openrouter_probe.py tests/fixtures/openrouter/
@@ -3193,6 +3193,51 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   sites, not `index`). Also reformatted the final `print("sync usage:", ...)` line, which
   exceeded the 100-character line length, by extracting the redacted usage block into a local
   variable first. Behaviour is unchanged from the brief.
+- 2026-09-15, Task 2 (steps 5–6), redaction gap found in `two_turn.json`: the saved request's
+  tool message carried an unredacted `tool_call_id` (an OpenRouter-issued call id, not the
+  case's own `id` field, so it was not covered by the existing `_REDACT_KEYS`). Added
+  `"tool_call_id"` to `_REDACT_KEYS` in `scripts/openrouter_probe.py`, extended the redaction
+  test to cover a `tool_call_id` field, and hand-redacted that one value in the already-saved
+  `tests/fixtures/openrouter/two_turn.json` (no other byte in that file was changed).
+  Confirmed with `grep -rE "sk-or|Bearer|call_[A-Za-z0-9]" tests/fixtures/openrouter`: the only
+  match left is the field name `"tool_call_id"` itself (now holding the value `"redacted"`),
+  which the pattern's `call_[A-Za-z0-9]` fragment matches inside the key name `tool_call_id`
+  regardless of the value; no key material or live id remains.
+- 2026-09-15, Task 2 (step 5), probe results: sync usage fields are `prompt_tokens`,
+  `completion_tokens`, `total_tokens`, `cost` (USD), `completion_tokens_details.reasoning_tokens`,
+  `prompt_tokens_details.cached_tokens`. `response_format` json_schema strict was honoured
+  (every reply that finished with content parsed as the mini schema). Tool calls work
+  (`finish_reason: tool_calls`, arguments `"{}"`); the two-turn exchange with a tool message
+  works. Batch: submitted, first poll status null, then `in_progress`, `completed` after about
+  3 minutes (luna 20:53->20:56 UTC, luna-pro about 4 minutes); results under
+  `results[].response.body` (a chat completion), `response.status_code`; batch-level
+  `usage.cost` present ($0.0012243 for 10 luna requests) but per-result `body.usage.cost` is
+  null; batch `model` field is a dated id (`openai/gpt-5.6-luna-20260709`) while each body's
+  `model` is `openai/gpt-5.6-luna:batch`; `request_counts` reports `{total, completed, failed}`.
+  Both variants were run by the controller with Andy's key; total cost about $0.014.
+- 2026-09-15, Task 2 (step 5), variant chosen: `openai/gpt-5.6-luna`, departing from the plan's
+  stated rule ("prefer the one whose ten replies all parsed"). Luna's batch had 7 of 10 replies
+  parse; all 3 failures had `finish_reason: length` with empty content because reasoning
+  tokens used the probe's whole 300-token `max_tokens` (one reported 0 completion tokens).
+  Luna-pro's batch had 10 of 10 parse, but its sync structured call also ended `length` with
+  empty content, and it used about 15 times the prompt tokens (about 2,700-3,000 against 185
+  for the same messages) and about 7 times the cost (batch of 10: $0.0082 against $0.0012). The
+  rule's premise -- that the two variants cost the same -- does not hold in practice, so the
+  rule does not apply as written; `luna`'s failures are a `max_tokens` cap artefact, not a
+  model defect, and it is far cheaper. Only `luna`'s fixtures are kept under
+  `tests/fixtures/openrouter/`.
+- 2026-09-15, Task 2 (step 5), consequence for later tasks: reasoning tokens count against
+  `max_tokens`, so `ModelSettings.max_output_tokens` must stay generous (the plan's 2000), and
+  a reply with `finish_reason: length` and no content must be treated as a schema failure
+  (retried once), not parsed.
+- 2026-09-15, Task 2 (step 6), typos exclusion: `uv run typos` flagged many false positives in
+  `tests/fixtures/openrouter/batch.json`, all inside the base64-encoded batch-file payload
+  (`results[].response.body` blobs), the same class of problem Task 5 hit for the code-table
+  CSVs. Added `tests/fixtures/openrouter/*.json` to `[tool.typos.files] extend-exclude` in
+  `pyproject.toml` and mirrored it in `.pre-commit-config.yaml`'s `typos` hook `exclude`
+  pattern (added `openrouter` to the `tests/fixtures/(records|api)/` alternation), matching
+  the pattern already used for the other fixture directories. `uv run typos .` is clean after
+  the change.
 
 - 2026-09-15, Task 5 (step 3): inspected the real `avall.mdb` schema (mdbtools) before writing
   the script, per the project's "never guess data details" rule. Table and column names

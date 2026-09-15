@@ -1,0 +1,131 @@
+{
+ "request": {
+  "model": "openai/gpt-5.6-luna",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+   },
+   {
+    "role": "user",
+    "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+   },
+   {
+    "role": "assistant",
+    "content": null,
+    "refusal": null,
+    "reasoning": null,
+    "tool_calls": [
+     {
+      "type": "function",
+      "index": 0,
+      "id": "redacted",
+      "function": {
+       "name": "get_weather",
+       "arguments": "{}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "redacted",
+    "content": "{\"weather_condition\": \"VMC\"}"
+   }
+  ],
+  "temperature": 0,
+  "max_tokens": 300,
+  "usage": {
+   "include": true
+  },
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "mini",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "phase",
+      "event",
+      "confidence"
+     ],
+     "properties": {
+      "phase": {
+       "type": "string"
+      },
+      "event": {
+       "type": "string"
+      },
+      "confidence": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      }
+     }
+    }
+   }
+  },
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "get_weather",
+     "description": "Return the recorded weather for the case.",
+     "parameters": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+     }
+    }
+   }
+  ]
+ },
+ "response": {
+  "id": "redacted",
+  "object": "chat.completion",
+  "created": 1789505587,
+  "model": "openai/gpt-5.6-luna",
+  "provider": "OpenAI",
+  "system_fingerprint": null,
+  "service_tier": "default",
+  "choices": [
+   {
+    "index": 0,
+    "logprobs": null,
+    "finish_reason": "stop",
+    "native_finish_reason": "completed",
+    "message": {
+     "role": "assistant",
+     "content": "{\"phase\":\"Landing\",\"event\":\"Undetermined\",\"confidence\":0.62}",
+     "refusal": null,
+     "reasoning": null
+    }
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 250,
+   "completion_tokens": 23,
+   "total_tokens": 273,
+   "cost": 7.76e-05,
+   "is_byok": false,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "cost_details": {
+    "upstream_inference_cost": 7.76e-05,
+    "upstream_inference_prompt_cost": 5e-05,
+    "upstream_inference_completions_cost": 2.76e-05
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0,
+    "image_tokens": 0,
+    "audio_tokens": 0
+   }
+  }
+ }
+}

@@ -1,0 +1,110 @@
+{
+ "request": {
+  "model": "openai/gpt-5.6-luna",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+   },
+   {
+    "role": "user",
+    "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+   }
+  ],
+  "temperature": 0,
+  "max_tokens": 300,
+  "usage": {
+   "include": true
+  },
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "mini",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "phase",
+      "event",
+      "confidence"
+     ],
+     "properties": {
+      "phase": {
+       "type": "string"
+      },
+      "event": {
+       "type": "string"
+      },
+      "confidence": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      }
+     }
+    }
+   }
+  }
+ },
+ "response": {
+  "id": "redacted",
+  "object": "chat.completion",
+  "created": 1789505582,
+  "model": "openai/gpt-5.6-luna",
+  "provider": "OpenAI",
+  "system_fingerprint": null,
+  "service_tier": "default",
+  "choices": [
+   {
+    "index": 0,
+    "logprobs": null,
+    "finish_reason": "stop",
+    "native_finish_reason": "completed",
+    "message": {
+     "role": "assistant",
+     "content": "{\"phase\":\"Landing\",\"event\":\"Unspecified landing accident\",\"confidence\":0.38}",
+     "refusal": null,
+     "reasoning": "**Analyzing aircraft incident**\n\nI need to infer the event given that no injuries occurred during an aircraft landing. It might relate to NTSB's accident dataset, possibly involving a \"landing gear collapse.\" Is it a Beech 65-A90 King Air? Defining the event could include \"landing - runway excursion.\" Right now, we only have metadata and might assume it was a hard landing. I should output a JSON schema for phase and event. Given the information, calling it a \"landing accident\" seems safest, maybe \"landing gear failure.\" The best guess might be \"unspecified landing event\" with low confidence.",
+     "reasoning_details": [
+      {
+       "type": "reasoning.summary",
+       "summary": "**Analyzing aircraft incident**\n\nI need to infer the event given that no injuries occurred during an aircraft landing. It might relate to NTSB's accident dataset, possibly involving a \"landing gear collapse.\" Is it a Beech 65-A90 King Air? Defining the event could include \"landing - runway excursion.\" Right now, we only have metadata and might assume it was a hard landing. I should output a JSON schema for phase and event. Given the information, calling it a \"landing accident\" seems safest, maybe \"landing gear failure.\" The best guess might be \"unspecified landing event\" with low confidence.",
+       "format": "openai-responses-v1",
+       "index": 0
+      },
+      {
+       "type": "reasoning.encrypted",
+       "data": "gAAAAABqqbAxZF9UncJjyTAJTZnqFOdOL5Q83A1XZXIP1mGRLIMVBDiZbSGRlZdQU-TrsvHYtxOCfdaHOSqs-YeNynwyfKYpayk8lCXv-bIJjZiQvdtx5prH6-nz5ldq4f9Il0FiwKS3WbDfl_DB2j2AE-eqYOmDjdSdVg2Sp5r5HKZ-LLIq4UYMPWMhmWYvFhJyr77LGt_v2MnPaM612bY1ufb9bZEp5yfMPTgol1YJjUAKzsifgxLIBLZmigJNlsb9xVfRYfWdcPY2cyLkdhGdwZwlctHVZieydDLOMAE5o9oH4kPKWJK2QgJUuGVyQqy5dlkDffS7Sy5gcGJTUt5aWCmfJ_QOuJqdIsKpgIbtrt78pLOq2_1Zz3vvkgohgzzXfoyB2dwavriZJV-w4rSpp03ZYwrAbXbC3bbDtknlFYI0RytyQ5oa5fjFUtoCg5b9EZrG4ipO6f0FfiIbQhCM_y6alAocRu2sJch1lLmdBu8YfSuS90GC4wlWzaGULv7Y-vzwZo95ssZ48KUbnKsl4KCOVoz9rGNat6dXSFIwKcHxBoVKYy5sFJ74WlDAVVNVnEynbZnGNlzL-aTwXm6Xhh7gKTTzBmQcdflrHZbT03rTu5uGtvOo3CVKohJbuhSXEDxeX3T0np9a8TNYyS0bLx6Keglm2blLnGvfa4YMr1UtUKrZ3llvqhG10SSv7TS4JIpKm7vh0Wd6IVex5wS6CAF6tNEypEL0haAYrqwSuTniduJZZuGC3OKbb1KAiAAi7gwN-fHfq5E1RUgE1FnVFamxQ2gUVF-9RP-XTgzNcnv6DVH7bA7aowA7UIHc8wofiDGJ0XJFv5Ms8fuzTolLVavlOtbmEtobu6rkqXfXGbJT7QDc7hHjF4WYKJZjAI--csAHSUVw9jGUQCvSpN-ZAwOozdlKKBAePqFbX6eDOQ2One1abPyA29ebpfn_ricP9f_GPrBnoYU7UEHuc4zBSTrjZ5jJ9yhpAs3_hvcJz-I0m2BnNmUMwuJ8_nNwa4_F7XLPWhWn_qD7YYlYMUTxTqS68S_Nl3GO1j6DNYEyfWyT1523CYK88rSVM2Hw_s8QI0dVlFvl59XWCfuFLcVcLdHZgbvWv6g_OJlU-yEAjzzhdMjaabaz4f0UmjfJXP2jmDFspeR99uUo1ZJct5uTp3erqssI1Uc90cTfjMwN0LcFNzq3CevVmQJmIyB4USb7WV3UXRYJ3dDco4oDszhG-GkKlmCdf7uCRth3livuREXsZ3drcD7u9O6miv5SvmXL_iUCWPyyXagVB-mmXDvSWX5GyuIiJ8CePA4x4qX39Ric0hEqoC6aHa7CQmbAnGr2wFZJpaVUi9XJWUZ6wRJcKVyUam2f_pdqQHilBpGdus-i2HLTcVO22QoXiGhHDGy0w3QRHCyPwmpLosvUA5OtH4I0ysm0MkxkZNgKKLgFxsujwrapRVC6j5vgVnY8v3iPUuD8iUkerkSeh93rPnHWfCiUTeGgrbGY5lhipBpOAXPAFqjUL72jvm9wm3BzTn796Ll7YN2pD8yC4DxiXuEjnvWSzBAO9ft3JQiKvCYBG_dLNtKfG2u7p8DVHH6k56AQnl7MqfPaq0Jzc28oTDL3z--qvHIHXzXwTwp1Di0ctBYXxCDVNK7CauHGwv6vX5A0pS2ZdvwcxodnNgScNLvMTyAwvs8R2tEe4gqNOAzxSSHRVAXrWsOsp8Lq9lKEcgYBxMIb_aFP6cVHjbgRDAE1_lqSJxpR6oo2JMdyhyA-7DDqYHe533Xb7D43DNDOdeT7UZbgEdtKSaU-x5-VcWrDHxw7s1e93_ywnLnvZs636vCjvlhpIu5hdW7i1goae5s9myNqxT3jJkMuIzd9cpnxrHYILGx2nGphzq-bDDpJQ63hwfgQddZNJrWnVzQnVV3Zh6hB-E4Pcmi5nC7yqjGMdBT5ZPJ3nBuwtbr2MPChSW2-iXg8pwELzUK9H9POFZdqZSr6zSMbgraE5BEaPKV53UtxHKa57IfFrmFrEXCwmyO0fBsGVpA_7x78gl7KNAGXkAX9TN4OpH_LRQKYvoldfKLIYV1YXdtU6S6IAwaG6-2EyCCny3JmRr6PWazw6dqFlmSeJRTirICbcGAR7tdLsvAVmqy9uTcHCnDzk_DBBi3WvYK5Pbs0mHn6O62h1_yU_OgsXgDQ7SNBk-9u8dzUmKIznLOGE8Hq_hMEohbuw2w1Hxcd-yAwYHd8zvfEScnPE8VjvR3oJIdV_JLMYYY7h5H-fLI25E7rKvT6KmTkjJrhvXhlnef4BlEWBBtM-asOmaW4ua0C8FOm4Yo5Jd6P75Y4_uDKx-NTEREiPLq5pkPDvf4zP26Jx6lXrKNoudJ6i7GTapUGx_RTtzWOZORZErfdORdziw==.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC01LjYtbHVuYS0yMDI2MDcwOXxvcGVuYWkifQ",
+       "format": "openai-responses-v1",
+       "id": "redacted",
+       "index": 1
+      }
+     ]
+    }
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 185,
+   "completion_tokens": 188,
+   "total_tokens": 373,
+   "cost": 0.0002626,
+   "is_byok": false,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "cost_details": {
+    "upstream_inference_cost": 0.0002626,
+    "upstream_inference_prompt_cost": 3.7e-05,
+    "upstream_inference_completions_cost": 0.0002256
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 161,
+    "image_tokens": 0,
+    "audio_tokens": 0
+   }
+  }
+ }
+}

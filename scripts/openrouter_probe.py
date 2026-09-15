@@ -24,7 +24,9 @@ from ntsb_probable_cause.settings import Settings
 
 OUT = Path("tests/fixtures/openrouter")
 FIXTURE = Path("tests/fixtures/records/ANC09CA020.json")
-_REDACT_KEYS = frozenset({"id", "authorization", "x-api-key", "api_key", "request_id"})
+_REDACT_KEYS = frozenset(
+    {"id", "authorization", "x-api-key", "api_key", "request_id", "tool_call_id"}
+)
 SYSTEM = (
     "You are an aviation accident analyst. From the evidence, name the phase of flight and the "
     "event that define the accident. Reply only with JSON matching the schema."

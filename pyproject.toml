@@ -113,11 +113,14 @@ mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016;
 # positives; these are redacted, verbatim NTSB record fixtures, not authored text (decision 0015).
 # The scoring/tables CSVs are verbatim labels from the NTSB data dictionary (avall.mdb), not
 # authored text either; they also trigger false positives (e.g. "VOR", "WAAS", "Unneccessary",
-# both spelled that way in the source data).
+# both spelled that way in the source data). The openrouter fixtures are verbatim, saved
+# OpenRouter responses (scripts/openrouter_probe.py); batch.json's base64 batch-file payload
+# trips many false positives.
 extend-exclude = [
     "tests/fixtures/records/*.json",
     "tests/fixtures/api/*.json",
     "tests/fixtures/eval/*.csv",
+    "tests/fixtures/openrouter/*.json",
     "src/ntsb_probable_cause/scoring/tables/*.csv",
 ]
 
