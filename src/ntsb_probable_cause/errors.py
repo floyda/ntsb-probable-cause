@@ -34,3 +34,15 @@ class LeakageError(NtsbError):
     def __init__(self, message: str, *, leaks: Sequence[object] = ()) -> None:
         super().__init__(message)
         self.leaks: Sequence[object] = tuple(leaks)
+
+
+class ModelError(NtsbError):
+    """The model provider returned an unusable response after retries."""
+
+
+class SchemaError(NtsbError):
+    """A model reply did not parse as the requested schema, or named a code not in the tables."""
+
+
+class BudgetError(NtsbError):
+    """A run or call would exceed the per-case cap or the monthly budget (decision 0030)."""

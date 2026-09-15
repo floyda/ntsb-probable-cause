@@ -33,3 +33,27 @@ SONNET_5 = ModelPrice("anthropic/claude-sonnet-5", 2.0, 10.0, "OpenRouter models
 SONNET_5_BATCH = ModelPrice(
     "anthropic/claude-sonnet-5:batch", 1.0, 5.0, "OpenRouter models API, 2026-09-12"
 )
+
+# https://openrouter.ai/api/v1/models, checked 2026-09-15 (decision 0031). Luna and Luna-pro
+# are listed at the same price; the probe picks one and the plan records why.
+LUNA = ModelPrice("openai/gpt-5.6-luna", 0.20, 1.20, "OpenRouter models API, 2026-09-15")
+LUNA_BATCH = ModelPrice(
+    "openai/gpt-5.6-luna:batch", 0.10, 0.60, "OpenRouter models API, 2026-09-15"
+)
+HAIKU_45_BATCH = ModelPrice(
+    "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
+)
+
+_PRICES = {p.model_id: p for p in (SONNET_5, SONNET_5_BATCH, LUNA, LUNA_BATCH, HAIKU_45_BATCH)}
+
+
+def price_of(model_id: str) -> ModelPrice:
+    """The price entry for a model id; KeyError if the project has not recorded one."""
+    return _PRICES[model_id]
+
+
+# https://openrouter.ai/docs (decision 0009) and https://openrouter.ai/docs/batch-quickstart,
+# read 2026-09-15. Confirmed by the saved responses under tests/fixtures/openrouter/.
+OPENROUTER_BASE_URL = "https://openrouter.ai"
+CHAT_COMPLETIONS = "/api/v1/chat/completions"
+BATCHES = "/api/beta/batches"

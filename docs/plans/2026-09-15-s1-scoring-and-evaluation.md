@@ -66,7 +66,7 @@
 **Interfaces:**
 - Produces: `Settings.openrouter_api_key: SecretStr | None`, `Settings.openrouter_base_url: str`, `Settings.runs_dir: Path`, `Settings.monthly_budget_usd: float`, `Settings.require_openrouter_key() -> str`; `sources.LUNA`, `LUNA_BATCH`, `HAIKU_45_BATCH`, `OPENROUTER_BASE_URL`, `CHAT_COMPLETIONS`, `BATCHES`, `price_of(model_id) -> ModelPrice`; `errors.ModelError`, `SchemaError`, `BudgetError`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_sources_settings.py`:
 
@@ -104,12 +104,12 @@ def test_new_errors_are_ntsb_errors() -> None:
         assert issubclass(kind, NtsbError)
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_sources_settings.py -v`
 Expected: FAIL with `ImportError` / `AttributeError` on the new names.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `settings.py`, inside `Settings`:
 
@@ -171,12 +171,12 @@ class BudgetError(NtsbError):
 
 `.env.example`: confirm `OPENROUTER_API_KEY=` is present; add `NTSB_MONTHLY_BUDGET_USD=25`.
 
-- [ ] **Step 4: Run tests and `make check`**
+- [x] **Step 4: Run tests and `make check`**
 
 Run: `uv run pytest tests/test_sources_settings.py -v && make check`
 Expected: PASS; lint clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/settings.py src/ntsb_probable_cause/sources.py src/ntsb_probable_cause/errors.py .env.example tests/test_sources_settings.py docs/plans/2026-09-15-s1-scoring-and-evaluation.md

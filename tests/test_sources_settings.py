@@ -1,6 +1,15 @@
+from pathlib import Path
+
 import pytest
 
-from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause import sources
+from ntsb_probable_cause.errors import (
+    BudgetError,
+    ConfigurationError,
+    ModelError,
+    NtsbError,
+    SchemaError,
+)
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import SONNET_5, SONNET_5_BATCH, docket_url
 
@@ -65,3 +74,31 @@ def test_unprefixed_env_vars_are_ignored(monkeypatch: pytest.MonkeyPatch) -> Non
     settings = Settings(_env_file=None)
     assert settings.requests_per_minute == 30
     assert str(settings.data_dir) == "data"
+
+
+def test_openrouter_key_is_required_when_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+        Settings(_env_file=None).require_openrouter_key()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+    assert Settings(_env_file=None).require_openrouter_key() == "or-key"
+
+
+def test_openrouter_defaults() -> None:
+    s = Settings(_env_file=None)
+    assert s.openrouter_base_url == "https://openrouter.ai"
+    assert s.runs_dir == Path("data/runs")
+    assert s.monthly_budget_usd == 25.0
+
+
+def test_price_of_known_and_unknown_model() -> None:
+    assert sources.price_of("openai/gpt-5.6-luna:batch") is sources.LUNA_BATCH
+    assert sources.LUNA_BATCH.input_usd_per_mtok == 0.10
+    assert sources.LUNA_BATCH.output_usd_per_mtok == 0.60
+    with pytest.raises(KeyError):
+        sources.price_of("nobody/nothing")
+
+
+def test_new_errors_are_ntsb_errors() -> None:
+    for kind in (ModelError, SchemaError, BudgetError):
+        assert issubclass(kind, NtsbError)
