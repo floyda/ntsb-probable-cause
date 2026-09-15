@@ -19,6 +19,12 @@ SHEETS = {
     "decidability_ids.csv": "labelling/decidability.filled.csv",
     "leakage_ids.csv": "labelling/leakage.filled.csv",
 }
+# The full sheets carry the spike's own columns verbatim: NTSB codes and cause text are
+# withheld data (decision 0013) and never enter a payload -- see the README note below.
+FULL_SHEETS = {
+    "decidability_full.csv": "labelling/decidability.filled.csv",
+    "leakage_full.csv": "labelling/leakage.filled.csv",
+}
 
 
 def main(argv: list[str]) -> int:
@@ -58,12 +64,17 @@ def main(argv: list[str]) -> int:
             writer.writerow(["case_id", "event_date"])
             writer.writerows((i, dates[i]) for i in ids)
         print(f"{OUT / name}: {len(ids)} cases")
+    for name, sheet in FULL_SHEETS.items():
+        (OUT / name).write_text((spike / sheet).read_text())
+        print(f"{OUT / name}: copied verbatim from {sheet}")
     (OUT / "README.md").write_text(
         "# Evaluation case lists\n\n"
         f"Copied by `scripts/copy_eval_ids.py` from the spike repository at commit `{commit}`: "
         "`labelling/decidability.filled.csv` (the 40-case like-for-like set) and "
         "`labelling/leakage.filled.csv`. Event dates come from the spike's processed file. "
-        "All cases are held-out by event date. Case IDs only — the full sheets are copied in S1.\n"
+        "All cases are held-out by event date. "
+        "The full sheets are `*_full.csv`; their NTSB code and cause columns are withheld "
+        "data and never enter a payload.\n"
     )
     return 0
 

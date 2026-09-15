@@ -85,6 +85,7 @@ source_modules = [
     "ntsb_probable_cause.scoring.codes",
     "ntsb_probable_cause.scoring.hypothesis",
     "ntsb_probable_cause.scoring.prompt",
+    "ntsb_probable_cause.scoring.samples",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
 
@@ -124,6 +125,9 @@ extend-exclude = [
     "tests/fixtures/records/*.json",
     "tests/fixtures/api/*.json",
     "tests/fixtures/eval/*.csv",
+    # README.md's provenance line embeds a generated short git SHA (decision 0015), which
+    # occasionally spells a false positive (e.g. "1f768ba" contains "ba").
+    "tests/fixtures/eval/README.md",
     "tests/fixtures/openrouter/*.json",
     "src/ntsb_probable_cause/scoring/tables/*.csv",
 ]
