@@ -1139,14 +1139,13 @@ def test_resume_consumes_recorded_batches_by_stage_and_in_order(
     assert case.scores is not None
 
 
-def test_resume_refuses_a_reused_batch_that_answers_different_cases(
+def test_resume_refuses_a_reused_batch_that_answers_cases_it_never_asked_about(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    """The replay assumption, checked against what the provider actually holds.
+    """An unexpected id is evidence of the wrong batch: the replay was not reproduced.
 
-    If the recorded batch's replies do not cover the cases this pass replayed, the requests
-    were not reproduced, and carrying on would score replies against the wrong records and
-    pay for a retry batch covering the difference.
+    Carrying on would score one case's replies against another's record, so this refuses
+    rather than continuing.
     """
     dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
 
@@ -1162,11 +1161,49 @@ def test_resume_refuses_a_reused_batch_that_answers_different_cases(
     resumed = FakeBatchClient(
         handlers=[answers_someone_else], prefix="c", preloaded={"b1": dead.submitted[0]}
     )
-    with pytest.raises(ConfigurationError, match="recorded batch b1 answers"):
+    with pytest.raises(ConfigurationError, match="never asked about"):
         runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
             BATCH_SPEC, record_fixtures[:1], resume=_run_id()
         )
     assert resumed.submitted == []  # refused rather than quietly retried at full price
+
+
+def test_resume_retries_a_case_the_reused_batch_did_not_answer(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A missing reply is retried, exactly as the fresh path retries it -- never refused.
+
+    ``_run_stage1_pass`` already files a custom id with no result row as ``model: no
+    reply`` and puts it in the retry batch. Holding a reused batch to a stricter standard
+    would make a partly-delivered batch unresumable *deterministically* -- every attempt
+    failing identically -- which is the recovery this feature was built to perform: the
+    stranded dev-400 batch has 3 of its 401 replies unusable.
+    """
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:2])
+    answered, unanswered = (str(raw["ntsbNumber"]) for raw in record_fixtures[:2])
+
+    def one_case_short(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        kept = [request for request in reqs if request.custom_id == answered]
+        return _status(bid, kept, GOOD, reported_cost=0.01)
+
+    resumed = FakeBatchClient(
+        handlers=[
+            one_case_short,  # b1 replayed: one of the two cases has no reply
+            lambda bid, reqs: _status(bid, reqs, GOOD),  # stage1-retry, submitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE),  # stage2, both cases
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:2], resume=_run_id()
+    )
+    assert record.finished is not None
+    # The retry batch carries exactly the case the reused batch left out.
+    assert [request.custom_id for request in resumed.submitted[0]] == [unanswered]
+    cases = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    assert {case.case_id for case in cases} == {answered, unanswered}
+    assert all(case.failure is None and case.scores is not None for case in cases)
 
 
 def test_resume_refuses_a_run_that_already_finished(
@@ -1190,6 +1227,110 @@ def test_resume_refuses_a_run_that_already_finished(
     # The finished run is untouched: nothing was set aside, nothing was rewritten.
     assert not (folder / "cases.aborted-1.jsonl").exists()
     assert read_jsonl(folder / "run.jsonl", RunRecord)[0].finished is not None
+
+
+def test_resume_refuses_a_folder_carrying_a_finished_judge_pass(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A judged folder is refused, and the message names this run, not ``<run-id>-judge``.
+
+    The judge pass's row is a second ``RunRecord`` in the same file, with its own synthetic
+    id; a resume would set it aside with the rest and never rewrite it, taking that spend
+    out of the month for good.
+    """
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    path = tmp_path / "runs" / _run_id() / "run.jsonl"
+    (answering,) = path.read_text().splitlines()
+    judge = json.loads(answering)
+    judge["run_id"] = f"{_run_id()}-judge"
+    judge["finished"] = "2026-09-15T00:00:00Z"
+    path.write_text(f"{answering}\n{json.dumps(judge)}\n")
+    with pytest.raises(ConfigurationError, match="carries a finished judge pass") as excinfo:
+        runner(tmp_path, RecordingFakeClient([]), batch=FakeBatchClient(handlers=[])).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert "-judge" not in str(excinfo.value)  # names a run id an operator can act on
+
+
+def test_resume_of_a_folder_with_only_batches_jsonl(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The recovery this feature was built for, in the shape the folder is actually in.
+
+    A SIGKILL bypasses the abort path, so the killed run wrote no ``run.jsonl``, no
+    ``cases.jsonl`` and no ``steps.jsonl`` — only ``spec.json``, written before the first
+    call, and ``batches.jsonl``, appended before the wait began. A folder in that state is
+    not "finished", has nothing to set aside, and resumes from its recorded batch.
+    """
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    folder = tmp_path / "runs" / _run_id()
+    for name in ("run.jsonl", "cases.jsonl", "steps.jsonl"):
+        (folder / name).unlink()
+    assert sorted(p.name for p in folder.iterdir()) == ["batches.jsonl", "spec.json"]
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.26),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.01),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1"]
+    assert len(resumed.submitted) == 1  # only stage 2 was paid for again
+    assert record.finished is not None
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    assert case.scores is not None
+
+
+def test_a_resume_that_aborts_does_not_erase_the_dead_runs_recorded_spend(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The record written never reports less than the record it supersedes.
+
+    The dead run was billed for its stage-1 batch. If the resume aborts before re-reading
+    those replies, its own cases cost nothing — and the superseded ``run.jsonl`` has been
+    renamed out of ``month_spent``'s glob, so a $0 record would erase real spending from
+    the month. The floor is the dead run's own figure.
+    """
+    dead = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.26),  # stage 1, billed
+            lambda bid, reqs: BatchStatus(  # stage 2 never returns
+                batch_id=bid, status="expired", results=(), reported_cost_usd=None
+            ),
+        ]
+    )
+    with pytest.raises(ModelError, match="expired"):
+        runner(tmp_path, RecordingFakeClient([]), batch=dead).run(BATCH_SPEC, record_fixtures[:1])
+    folder = tmp_path / "runs" / _run_id()
+    (before,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    billed = before.cost_usd
+    assert billed > 0.0  # or the rest of this test proves nothing
+
+    def wait_fails(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(batch_id=bid, status="failed", results=(), reported_cost_usd=None)
+
+    resumed = FakeBatchClient(
+        handlers=[wait_fails],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    with pytest.raises(ModelError, match="failed"):
+        runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    (after,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert after.finished is None
+    assert after.cases == 1
+    assert sum(case.cost_usd for case in read_jsonl(folder / "cases.jsonl", CaseResult)) == 0.0
+    assert after.cost_usd == pytest.approx(billed)  # the floor, not the $0 this attempt read
+    # The superseded record is still there to read, it is just no longer the run's own.
+    assert read_jsonl(folder / "run.aborted-1.jsonl", RunRecord)[0].cost_usd == billed
 
 
 def test_resume_refuses_a_half_written_batches_line(

@@ -4264,7 +4264,11 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
 - 2026-09-16, Task 14 (step 2), the same review's minors, all fixed. `spec.json` records
   `dirty` beside `commit_sha` and the resume checks it — **the controller's ruling**: 0032
   §4 names only the sha, but a dirty tree means the code is not the sha, so this enforces
-  that record's stated reason rather than changing it. `recorded_batches` and the
+  that record's stated reason rather than changing it. It is strictly better than the sha
+  alone and not a guarantee: recording `dirty` proves the tree *was* dirty, not that it is
+  the *same* dirt, so a run started dirty can still be resumed from a differently dirty tree
+  at the same sha. What it does catch is the common case — a clean run resumed from an
+  edited tree, or the reverse. `recorded_batches` and the
   `run.jsonl` reader now go through a guarded JSON-lines reader that refuses a damaged line
   by file and line number instead of raising `JSONDecodeError` past the command's own
   handler — a half-written final line is precisely what a killed process leaves behind, and
@@ -4274,3 +4278,28 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   `data/runs/` is now git-ignored: it was not, and this work adds `spec.json`, whose
   `case_ids` on a held-out run is the ordered held-out case list. `--resume`'s help text
   names the `--sync` incompatibility.
+- 2026-09-16, Task 14 (step 2), re-review of the resume path — two further Important
+  findings, both demonstrated with probes rather than argued, both fixed. (a) A resume that
+  aborted *before* re-reading the dead run's replies erased that run's recorded spend:
+  `write_outputs` renamed the superseded `run.jsonl` aside and wrote a $0 record in its
+  place, and the renamed file is outside `month_spent`'s glob (`4e-05 → 0.0` in two
+  independent shapes). **The controller's correction to their own earlier ruling**: that
+  ruling held for the success path and was incomplete as a general invariant. The fix is a
+  floor, not a wider glob — globbing the aborted files would double-count on the success
+  path, which is why the rename exists. A resumed run's record now never reports less
+  `cost_usd` than the record it supersedes, which is correct accounting rather than a fudge:
+  it is the same run id, and that money was spent against batches this run owns. Inert on
+  the success path, since the resumed run re-prices every reply the dead one read.
+  `reported_batch_cost_usd` is deliberately left alone — it is a provider cross-check whose
+  `None` means "unknown", which a floor would corrupt. (b) `refuse_replay_mismatch` was
+  strictly stricter than the fresh path: `_run_stage1_pass` tolerates a custom id with no
+  result row (files it as `model: no reply` and retries it), while the reused path aborted
+  the whole resume on the same condition — which would have made a partly-delivered batch
+  unresumable *deterministically*, every attempt failing identically, and that is the
+  batch this feature was built to recover (3 of its 401 replies do not parse). It now
+  refuses only on *unexpected* ids, which are evidence of the wrong batch, and lets missing
+  ids fall through to the retry the fresh path already performs. Also: `refuse_finished`'s
+  message names the folder's own run and says a judge pass is present, instead of quoting
+  the judge's synthetic `<run-id>-judge`. A `run.jsonl` damaged mid-write now blocks the
+  resume where before it was never parsed — accepted, with the controller's ruling that the
+  guarded reader is right and the message is hand-recoverable.

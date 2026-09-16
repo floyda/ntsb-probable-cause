@@ -242,7 +242,14 @@ def refuse_finished(folder: Path) -> None:
     longer holds those batches (they expire), the folder is left reporting ``finished=None``
     and a real result drops out of ``report --latest``, ``make bars`` and the month's spend.
     A judged folder is worse: the judge pass's own ``RunRecord`` row goes aside with the
-    rest and nothing rewrites it, so that spend goes permanently invisible.
+    rest and nothing rewrites it, so that spend goes permanently invisible. Every row is
+    checked, so a folder whose answering run never finished but which carries a finished
+    judge pass is refused too — and the message names this folder's own run rather than the
+    judge's synthetic ``<run-id>-judge``, which is not an id anyone can act on.
+
+    A folder with **no** ``run.jsonl`` is not finished and is not refused: that is what a
+    process killed before it could write anything leaves behind, which is the case this
+    whole feature exists to recover.
 
     Args:
         folder: the run folder named by ``--resume``.
@@ -255,25 +262,35 @@ def refuse_finished(folder: Path) -> None:
         return
     for _number, row in _json_lines(path):
         finished = row.get("finished")
-        if finished is not None:
-            raise ConfigurationError(
-                f"cannot resume {folder.name}: run {row.get('run_id')!r} already finished "
-                f"at {finished}. Resuming it would set its results aside to write them "
-                "again. Start a new run instead."
-            )
+        if finished is None:
+            continue
+        what = (
+            f"already finished at {finished}"
+            if row.get("run_id") == folder.name
+            else f"carries a finished judge pass, recorded at {finished}"
+        )
+        raise ConfigurationError(
+            f"cannot resume {folder.name}: it {what}. Resuming it would set its results "
+            "aside to write them again. Start a new run instead."
+        )
 
 
 def refuse_replay_mismatch(
     batch_id: str, requests: Sequence[BatchRequest], status: BatchStatus
 ) -> None:
-    """Refuse a reused batch whose replies are not the ones this pass asked for.
+    """Refuse a reused batch that answers cases this pass never asked about.
 
-    A resume rests on the replay reproducing the dead run's requests exactly (0032's Why),
-    and the custom ids are the one place that assumption is checkable against what the
-    provider actually holds. If they differ, the cases this pass believes it has answers
-    for are not the cases that were answered, and carrying on would score replies against
-    the wrong records — and pay for a retry batch covering the difference. Same strictness
-    as 0032 point 4, for the same reason.
+    An *unexpected* id is evidence of the wrong batch: the replay is supposed to reproduce
+    the dead run's requests exactly (0032's Why), and a reply for a case this pass does not
+    know about means it did not. Carrying on would score replies against the wrong records.
+
+    A *missing* id is not that, and is deliberately not refused. The fresh path already
+    tolerates it — ``_run_stage1_pass`` finds no result row for a custom id, files the case
+    as ``model: no reply`` and retries it in the next batch — and a reused batch must not be
+    held to a stricter standard than the batch it stands in for. Refusing here would make a
+    partly-delivered batch unresumable *deterministically*: every retry would fail the same
+    way, which is precisely the recovery this feature exists to perform (the stranded
+    dev-400 batch has 3 of its 401 replies unusable).
 
     Args:
         batch_id: the recorded batch that was waited on instead of submitting.
@@ -281,19 +298,16 @@ def refuse_replay_mismatch(
         status: the terminal status returned for the recorded batch.
 
     Raises:
-        ConfigurationError: the reply ids and the request ids are not the same set.
+        ConfigurationError: the batch answers ids this pass did not ask for.
     """
     wanted = {request.custom_id for request in requests}
-    answered = {result.custom_id for result in status.results}
-    if answered == wanted:
+    unexpected = sorted({result.custom_id for result in status.results} - wanted)
+    if not unexpected:
         return
-    missing = sorted(wanted - answered)
-    unexpected = sorted(answered - wanted)
     raise ConfigurationError(
-        f"cannot resume: recorded batch {batch_id} answers {len(answered)} cases, not the "
-        f"{len(wanted)} this pass replayed ({len(missing)} missing, e.g. {missing[:3]}; "
-        f"{len(unexpected)} unexpected, e.g. {unexpected[:3]}). The replay does not "
-        "reproduce the requests that batch was submitted for."
+        f"cannot resume: recorded batch {batch_id} answers {len(unexpected)} cases this "
+        f"pass never asked about (e.g. {unexpected[:3]}), so it is not the batch this "
+        f"replay reproduces. It was waited on for {len(wanted)} cases."
     )
 
 
@@ -374,7 +388,7 @@ def recorded_batches(folder: Path) -> list[tuple[str, str]]:
 RESULT_FILES = ("cases.jsonl", "steps.jsonl", RUN_FILE)
 
 
-def set_aside_aborted_outputs(folder: Path) -> None:
+def set_aside_aborted_outputs(folder: Path) -> float:
     """Rename a dead run's result files out of the way, just before the resume writes its own.
 
     Every one of these files is appended to, and a resumed run re-derives all three from the
@@ -397,7 +411,14 @@ def set_aside_aborted_outputs(folder: Path) -> None:
 
     Args:
         folder: the run folder being resumed.
+
+    Returns:
+        The dollars the superseded ``run.jsonl`` reported, which the replacement record must
+        not report less than. The renamed file is outside ``month_spent``'s glob, so without
+        that floor a resume that aborted before re-reading the dead run's replies would file
+        a $0 record over a record of real spending and erase it from the month.
     """
+    superseded = _superseded_cost(folder)
     for name in RESULT_FILES:
         path = folder / name
         if not path.is_file():
@@ -407,6 +428,31 @@ def set_aside_aborted_outputs(folder: Path) -> None:
         while (target := folder / f"{stem}.aborted-{attempt}.jsonl").exists():
             attempt += 1
         path.rename(target)
+    return superseded
+
+
+def _superseded_cost(folder: Path) -> float:
+    """What the run records this resume is about to replace already reported spending.
+
+    Read before the rename, since afterwards the file is no longer where anything looks for
+    it. Every row counts, because every row is a row ``month_spent`` was counting.
+
+    Args:
+        folder: the run folder being resumed.
+
+    Returns:
+        The total ``cost_usd`` of the folder's current ``run.jsonl``, or ``0.0`` where there
+        is none — a process killed before it wrote anything leaves no record to preserve.
+    """
+    path = folder / RUN_FILE
+    if not path.is_file():
+        return 0.0
+    total = 0.0
+    for _number, row in _json_lines(path):
+        cost = row.get("cost_usd")
+        if isinstance(cost, int | float):
+            total += float(cost)
+    return total
 
 
 class BatchRunner(Protocol):
@@ -603,7 +649,9 @@ class Runner:
         invisible to the next run's budget check (fix round 1, Important 2; widened to
         ``BaseException`` in fix round 2, Minor 1, since Ctrl-C during a long real-run
         ``wait`` is the most likely real mid-run abort and ``except Exception`` does not
-        catch it).
+        catch it). On a resume that holds for the superseded attempt's spend as well: the
+        record written never reports less ``cost_usd`` than the record it replaces, so the
+        handover from one attempt to the next cannot lose money either.
 
         Args:
             spec: what varies between runs.
@@ -649,7 +697,7 @@ class Runner:
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
 
-        def build_record(finished: datetime | None) -> RunRecord:
+        def build_record(finished: datetime | None, cost_floor: float) -> RunRecord:
             return RunRecord(
                 run_id=run_id,
                 sample=spec.sample,
@@ -667,7 +715,14 @@ class Runner:
                 finished=finished,
                 batch_ids=batch_ids,
                 cases=len(results),
-                cost_usd=sum(r.cost_usd for r in results),
+                # Never less than the record this one supersedes (``cost_floor``): a
+                # resumed run carries the same run id, and the batches the superseded
+                # attempt paid for belong to it. Without the floor, a resume that aborted
+                # before re-reading those replies would file a $0 record over a record of
+                # real spending, and ``month_spent`` — which globs ``*/run.jsonl`` and so
+                # cannot see the renamed file — would lose it. On the ordinary path the
+                # floor is inert: this run re-prices every reply the dead one read.
+                cost_usd=max(sum(r.cost_usd for r in results), cost_floor),
                 reported_batch_cost_usd=reported_batch_cost,
             )
 
@@ -677,12 +732,12 @@ class Runner:
             The set-aside happens here, a moment before the replacement files are written,
             and not at the top of the resume: until this point the dead run's ``run.jsonl``
             is the only record of what it paid, and a resume that is killed in its turn
-            must not be the thing that loses it.
+            must not be the thing that loses it. What that record reported becomes the
+            floor under this one, so the handover never loses money either.
             """
-            if resume is not None:
-                set_aside_aborted_outputs(folder)
+            cost_floor = set_aside_aborted_outputs(folder) if resume is not None else 0.0
             self._write_files(folder, results)
-            record = build_record(finished)
+            record = build_record(finished, cost_floor)
             write_jsonl(folder / RUN_FILE, [record])
             return record
 

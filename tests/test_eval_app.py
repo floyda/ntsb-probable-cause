@@ -428,6 +428,43 @@ def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
     capsys.readouterr()
 
 
+def test_a_resume_that_aborts_leaves_the_dead_runs_spend_in_month_spent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The other half of the handover: a resume that fails must not erase what was paid.
+
+    The dead run was billed for its stage-1 batch. Its ``run.jsonl`` is renamed aside the
+    moment the resume writes its own — and the renamed file is outside ``month_spent``'s
+    glob. So if the resume aborts before re-reading those replies, its own cases cost
+    nothing, and without a floor under the record it writes the month would forget real
+    spending. Measured the way it is spent: through ``month_spent``, before and after.
+    """
+    _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    # stage 1 answered and billed, stage 2 lost its waiter; then the resume dies on the
+    # reused stage-1 batch, before anything it could be billed for.
+    batch = _ScriptedBatchClient([GOOD, None, None])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([]), cast(BatchRunner, batch)
+
+    with pytest.raises(ModelError, match="waiter died"):
+        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
+    (run_folder,) = list(runs_dir.iterdir())
+    billed = month_spent(runs_dir, now=datetime.now(UTC))
+    assert billed > 0.0  # or the rest of this test proves nothing
+
+    with pytest.raises(ModelError, match="waiter died"):
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", run_folder.name],
+            client_factory=factory,
+        )
+    assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(billed)
+    capsys.readouterr()
+
+
 def test_run_flags_reach_runspec_and_month_spent_reaches_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
 ) -> None:
