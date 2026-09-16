@@ -79,6 +79,43 @@ def test_judge_text_holds_the_withheld_narrative_and_cause() -> None:
     assert "failure to maintain directional control" in text
 
 
+def test_judge_text_shows_the_occurrence_codes_it_asks_about() -> None:
+    """The judge is asked whether the lay text explains "the codes the analyst chose".
+
+    It must therefore be shown them. An earlier version rendered only the finding codes, so
+    the occurrence code -- the model's primary prediction -- was never shown, and a case
+    whose findings carried no item rendered the bare word "none". The first real judge pass
+    labelled ``lay="does_not"`` on 158 of 178 cases as a result. Note ``H`` itself has no
+    item code, so this test would have failed against that version.
+    """
+    text = judge.judge_text(H, S, V, load_tables())
+    assert "552230" in text  # the composed occurrence code
+    assert "occurrence:" in text
+    assert "none chosen\nfindings" not in text  # an occurrence was chosen; do not say none
+
+
+def test_judge_text_says_none_chosen_only_for_the_kind_that_is_missing() -> None:
+    """An abstaining case still chose an occurrence code, and the judge must see it."""
+    abstained = parse_hypothesis(
+        json.dumps(
+            {
+                "evidence_narrative": "The record says nothing about what happened.",
+                "probable_cause": "Could not be determined.",
+                "lay_explanation": "There is not enough evidence to say.",
+                "confidence": 0.1,
+                "abstain": True,
+                "evidence_used": [],
+                "occurrence": [{"phase": "552", "event": "230", "probability": 0.2}],
+                "findings": [],
+            }
+        ),
+        load_tables(),
+    )
+    text = judge.judge_text(abstained, S, V, load_tables())
+    assert "occurrence: 552230" in text
+    assert "findings: none chosen" in text
+
+
 def test_judge_case_parses_labels_and_sends_empty_payload() -> None:
     client = RecordingFakeClient([GOOD_LABELS])
     labels, _ = judge.judge_case(client, H, S, V, load_tables())

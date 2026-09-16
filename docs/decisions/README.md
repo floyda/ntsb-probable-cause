@@ -74,4 +74,5 @@ under `docs/specs/` and the record links to it.
 | [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted |
 | [0032](0032-a-batch-run-is-resumable-from-its-recorded-batches.md) | A batch run is resumable from the batches it already paid for | Accepted |
 | [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
-| [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 2.5 Flash, not Sonnet 5 | Accepted |
+| [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
+| [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
