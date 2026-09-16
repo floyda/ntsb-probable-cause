@@ -62,9 +62,26 @@ def sample_ids(name: str) -> tuple[str, ...]:
 
 
 def load_cases(processed: Path, ids: Sequence[str]) -> list[dict[str, object]]:
-    """Raw records for the given IDs from cases.parquet, in the IDs' order (decision 0014)."""
-    table = pq.read_table(processed / "cases.parquet", columns=["ntsb_number", "raw_json"])
-    by_id = dict(zip(table["ntsb_number"].to_pylist(), table["raw_json"].to_pylist(), strict=True))
+    """Raw records for the given IDs from cases.parquet, in the IDs' order (decision 0014).
+
+    Streams row batches instead of ``pq.read_table`` + ``to_pylist()`` over the whole
+    ``raw_json`` column: reading all 19,641 rows to keep 401 held ~1750 MB resident for an
+    evaluation run's whole 30-100 minute life. Batch streaming with only the wanted rows kept
+    measured 259 MB for the same query (``filters=`` was measured too, at 1021 MB, and
+    rejected: pyarrow still reads whole row groups, which ``dev-400`` spans). Do not revert
+    this to ``read_table``.
+    """
+    wanted = set(ids)
+    by_id: dict[str, str] = {}
+    parquet_file = pq.ParquetFile(processed / "cases.parquet")
+    for batch in parquet_file.iter_batches(batch_size=256, columns=["ntsb_number", "raw_json"]):
+        for ntsb_number, raw_json in zip(
+            batch.column("ntsb_number").to_pylist(),
+            batch.column("raw_json").to_pylist(),
+            strict=True,
+        ):
+            if ntsb_number in wanted:
+                by_id[ntsb_number] = raw_json
     missing = [i for i in ids if i not in by_id]
     if missing:
         raise ValueError(f"cases not in the processed file: {missing[:5]}")
@@ -72,13 +89,23 @@ def load_cases(processed: Path, ids: Sequence[str]) -> list[dict[str, object]]:
 
 
 def seen_pairs(processed: Path) -> frozenset[str]:
-    """Every primary occurrence code in the development split (a top-1 outside it is unseen)."""
-    table = pq.read_table(processed / "cases.parquet", columns=["split", "raw_json"])
-    return frozenset(
-        codes[0]
-        for s, r in zip(table["split"].to_pylist(), table["raw_json"].to_pylist(), strict=True)
-        if s == Split.DEV.value and (codes := fields.occurrence_codes(json.loads(r)))
-    )
+    """Every primary occurrence code in the development split (a top-1 outside it is unseen).
+
+    Streams row batches for the same reason as ``load_cases``: reading the whole ``raw_json``
+    column to accumulate 829 codes held ~600 MB resident for the run's whole life. Batch
+    streaming measured +43.5 MB. Do not revert this to ``read_table``.
+    """
+    seen: set[str] = set()
+    parquet_file = pq.ParquetFile(processed / "cases.parquet")
+    for batch in parquet_file.iter_batches(batch_size=512, columns=["split", "raw_json"]):
+        for split_value, raw_json in zip(
+            batch.column("split").to_pylist(), batch.column("raw_json").to_pylist(), strict=True
+        ):
+            if split_value == Split.DEV.value and (
+                codes := fields.occurrence_codes(json.loads(raw_json))
+            ):
+                seen.add(codes[0])
+    return frozenset(seen)
 
 
 def draw(
