@@ -13,6 +13,7 @@ from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
+from ntsb_probable_cause.splits import Split
 
 _SCHEMA = pa.schema(
     [
@@ -301,6 +302,30 @@ def _raw(
         ],
         "weatherConditions": [{"accidentSiteCondition": weather}],
     }
+
+
+def test_raws_of_split_crosses_a_batch_boundary(tmp_path: Path) -> None:
+    # _raws_of_split streams in batches of 256 rows; dev rows on both sides of that boundary,
+    # interleaved with heldout rows, is the property streaming is most likely to break.
+    rows = [
+        (
+            f"D{i}" if i % 2 == 0 else f"H{i}",
+            "2018-01-01" if i % 2 == 0 else "2021-01-01",
+            "dev" if i % 2 == 0 else "heldout",
+            "L",
+            _raw(
+                f"D{i}" if i % 2 == 0 else f"H{i}",
+                phase="TAKEOFF",
+                weather="VMC",
+                primary_code="AAAAAA",
+            ),
+        )
+        for i in range(600)
+    ]
+    processed = _write_cases(tmp_path, rows)
+    dev_rows = report._raws_of_split(processed, Split.DEV)
+    assert len(dev_rows) == 300
+    assert {r["ntsbNumber"] for r in dev_rows} == {f"D{i}" for i in range(0, 600, 2)}
 
 
 def test_baseline_report_reproduces_and_scores_the_honest_floor(tmp_path: Path) -> None:
