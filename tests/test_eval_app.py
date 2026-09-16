@@ -1,7 +1,7 @@
 """The ``ntsb-eval`` command: subcommand wiring and one real, fake-client end-to-end run."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
@@ -251,10 +251,13 @@ class _ScriptedBatchClient:
     waiter that dies with the batch still in flight -- the failure decision 0032 exists for.
     """
 
-    def __init__(self, replies: Sequence[str | None]) -> None:
+    def __init__(
+        self, replies: Sequence[str | None], *, on_wait: Callable[[str], None] | None = None
+    ) -> None:
         self.replies = list(replies)
         self.requests: dict[str, list[object]] = {}
         self.waits: list[str] = []
+        self.on_wait = on_wait
 
     def submit(self, requests: Sequence[object]) -> str:
         batch_id = f"b{len(self.requests) + 1}"
@@ -263,6 +266,8 @@ class _ScriptedBatchClient:
 
     def wait(self, batch_id: str, *, on_status: object = None) -> BatchStatus:
         self.waits.append(batch_id)
+        if self.on_wait is not None:
+            self.on_wait(batch_id)
         content = self.replies[len(self.waits) - 1]
         if content is None:
             raise ModelError("the waiter died")
@@ -299,12 +304,13 @@ def test_run_resume_refuses_a_different_limit(
     for -- so it is checked through the command line rather than argued about.
     """
     _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0], record_fixtures[1])
-    batch = _ScriptedBatchClient([GOOD, REFINE])
+    batch = _ScriptedBatchClient([GOOD, None])  # dies in the stage-2 wait, leaving a resumable run
 
     def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
         return RecordingFakeClient([]), cast(BatchRunner, batch)
 
-    assert main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory) == 0
+    with pytest.raises(ModelError, match="waiter died"):
+        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
     (run_folder,) = list(runs_dir.iterdir())
     capsys.readouterr()
 
@@ -370,6 +376,55 @@ def test_resumed_run_spend_reaches_month_spent_for_the_next_run(
     expected = 2 * (100 * 0.10 + 50 * 0.60) / 1e6
     assert record.cost_usd == pytest.approx(expected)
     assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(expected)
+    capsys.readouterr()
+
+
+def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The invariant a resume must not break for the 30-100 minutes it is running.
+
+    A run that died in its stage-2 wait has already been billed for stage 1, and its
+    ``run.jsonl`` is the only record of it. The resume replaces that record -- but if it
+    did so on the way in, and was then killed itself (the very failure 0032 exists for),
+    the spend would be invisible to the next run's budget guard. So the check is made
+    *while the resume is in flight*: the dead run's record is still countable then, and
+    only stops being so in the moment the replacement is written.
+    """
+    _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    seen_mid_flight: list[float] = []
+
+    def watch(_batch_id: str) -> None:
+        seen_mid_flight.append(month_spent(runs_dir, now=datetime.now(UTC)))
+
+    batch = _ScriptedBatchClient([GOOD, None, GOOD, REFINE], on_wait=watch)
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([]), cast(BatchRunner, batch)
+
+    with pytest.raises(ModelError, match="waiter died"):
+        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
+    (run_folder,) = list(runs_dir.iterdir())
+    one_reply = (100 * 0.10 + 50 * 0.60) / 1e6  # the stage-1 reply the dead run was billed
+    billed = month_spent(runs_dir, now=datetime.now(UTC))
+    assert billed == pytest.approx(one_reply)
+
+    seen_mid_flight.clear()
+    assert (
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", run_folder.name],
+            client_factory=factory,
+        )
+        == 0
+    )
+    # Every wait the resume made: the dead run's spend was countable throughout.
+    assert len(seen_mid_flight) == 2
+    assert all(spend == pytest.approx(billed) for spend in seen_mid_flight)
+    # And afterwards it is counted exactly once, as the resumed run's own two replies.
+    assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(2 * one_reply)
     capsys.readouterr()
 
 

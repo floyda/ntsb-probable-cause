@@ -4242,3 +4242,35 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   command line: a resume with a different `--limit` is refused, and a resumed run's spend
   (the reused batch's replies included, counted once) reaches `month_spent` for the next
   run's budget guard.
+- 2026-09-16, Task 14 (step 2), independent review of the resume path — three Important
+  findings fixed, with the controller's rulings. (a) The set-aside ran at the *top* of a
+  resume, which left the whole 30-to-100 minutes of the run with the dead run's spend
+  renamed out of `month_spent`'s sight: a resume killed in its turn — the exact failure
+  0032 exists for — would have lost it. It now runs immediately before the replacement
+  files are written, on the success path and the abort path alike, and a test asserts the
+  dead run's spend is still countable at every wait the resume makes. The rejected
+  alternative was making `month_spent` also count `run.aborted-*.jsonl`: the resumed run
+  re-prices the reused batch's replies into its own `cost_usd`, so counting both rows would
+  double-count the same tokens, and the rename is what makes the count exactly one.
+  (b) Nothing refused resuming a run that had already *finished*. A mis-pasted completed
+  run id passed every check, and the set-aside would then have renamed a real result aside;
+  for a judged folder the judge pass's own `RunRecord` row would have gone with it and never
+  been rewritten, making that spend permanently invisible. `refuse_finished` now refuses,
+  naming the run id and its finish time. (c) The queue discipline had no test that could
+  fail: every test recorded a single batch, so "the first row matching this stage" and "the
+  only row" were indistinguishable. There is now an end-to-end test with four stages and
+  three recorded ids, plus a focused test of the rule itself including the case a whole-run
+  test cannot reach (a queue whose head is a different stage).
+- 2026-09-16, Task 14 (step 2), the same review's minors, all fixed. `spec.json` records
+  `dirty` beside `commit_sha` and the resume checks it — **the controller's ruling**: 0032
+  §4 names only the sha, but a dirty tree means the code is not the sha, so this enforces
+  that record's stated reason rather than changing it. `recorded_batches` and the
+  `run.jsonl` reader now go through a guarded JSON-lines reader that refuses a damaged line
+  by file and line number instead of raising `JSONDecodeError` past the command's own
+  handler — a half-written final line is precisely what a killed process leaves behind, and
+  these are the files a resume reads. A reused batch whose replies do not cover exactly the
+  cases the pass replayed is refused (`refuse_replay_mismatch`), since the custom ids are
+  the only checkable evidence that the replay reproduced the dead run's requests.
+  `data/runs/` is now git-ignored: it was not, and this work adds `spec.json`, whose
+  `case_ids` on a held-out run is the ordered held-out case list. `--resume`'s help text
+  names the `--sync` incompatibility.
