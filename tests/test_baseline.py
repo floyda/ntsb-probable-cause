@@ -25,6 +25,19 @@ def test_fit_and_predict_on_fixtures_by_hand(record_fixtures: list[dict[str, obj
         assert occ == expected
 
 
+def test_fit_consumes_a_one_shot_iterator(record_fixtures: list[dict[str, object]]) -> None:
+    """`fit` must make exactly one pass over `raws`: `report._stream_raws_of_split` hands it a
+    generator it can never rewind or re-consume, so a caller passing a plain `iter(...)` here
+    (which raises `StopIteration` and yields nothing on a second pass) is the regression this
+    guards -- if `fit` were ever changed to read `raws` twice, this would produce an
+    empty/wrong model instead of a loud failure, and only this test would catch it.
+    """
+    model = baseline.fit(iter(record_fixtures))
+    assert model.top_by_key
+    assert model.findings_by_code
+    assert model.fallback
+
+
 def _case(
     phase: str, weather: str, primary_code: str, finding_codes: tuple[str, ...]
 ) -> dict[str, object]:
