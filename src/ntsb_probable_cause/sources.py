@@ -44,7 +44,30 @@ HAIKU_45_BATCH = ModelPrice(
     "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
 )
 
-_PRICES = {p.model_id: p for p in (SONNET_5, SONNET_5_BATCH, LUNA, LUNA_BATCH, HAIKU_45_BATCH)}
+# https://openrouter.ai/api/v1/models, checked 2026-09-16. S1's cross-model sanity check
+# (0031 point 3, amended by 0034): a different model family, to tell "the task is hard" from
+# "Luna is weak". Sonnet 5 batch prices a dev-400 run at $6.26 against this model's $0.87.
+# Gemini 3.5 and newer reject our stage-2 shape (a request ending on the model's own turn);
+# 3.1-flash-lite is the newest Gemini that accepts it (probed 2026-09-16, see 0034).
+GEMINI_31_FLASH_LITE = ModelPrice(
+    "google/gemini-3.1-flash-lite", 0.25, 1.50, "OpenRouter models API, 2026-09-16"
+)
+GEMINI_31_FLASH_LITE_BATCH = ModelPrice(
+    "google/gemini-3.1-flash-lite:batch", 0.12, 0.75, "OpenRouter models API, 2026-09-16"
+)
+
+_PRICES = {
+    p.model_id: p
+    for p in (
+        SONNET_5,
+        SONNET_5_BATCH,
+        LUNA,
+        LUNA_BATCH,
+        HAIKU_45_BATCH,
+        GEMINI_31_FLASH_LITE,
+        GEMINI_31_FLASH_LITE_BATCH,
+    )
+}
 
 
 def price_of(model_id: str) -> ModelPrice:
