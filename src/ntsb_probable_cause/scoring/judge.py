@@ -49,9 +49,12 @@ JUDGE_EXPECTED_COST_PER_CASE_USD: dict[Literal["batch", "standard"], float] = {
 }
 SYSTEM_JUDGE = """You are grading an analyst's written outputs against the official record. \
 Return labels only.
-narrative: is the analyst's evidence narrative consistent with the official factual \
-narrative, does it contradict it, or does it add facts the official narrative does not \
-support?
+narrative: compare the analyst's evidence narrative with the official factual narrative. \
+Use "consistent" when they agree. Use "less_detailed" when the analyst's narrative says less \
+than the official one but nothing in it conflicts -- the analyst worked from a thinner record \
+and left things out, which is not the same as being wrong. Use "contradicts" only when the \
+two actually disagree about a fact. Use "adds_unsupported_facts" when the analyst asserts \
+something the official narrative does not support.
 cause: does the analyst's probable cause name the same cause as the official one, a \
 related one, or a different one?
 lay: does the lay explanation explain, in plain language, the codes the analyst chose?
@@ -62,7 +65,7 @@ class JudgeLabels(BaseModel):
     """The three labels the judge returns (spec §8)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    narrative: Literal["consistent", "contradicts", "adds_unsupported_facts"]
+    narrative: Literal["consistent", "less_detailed", "contradicts", "adds_unsupported_facts"]
     cause: Literal["same_cause", "related", "different"]
     lay: Literal["explains_chosen_codes", "does_not"]
 
@@ -75,16 +78,25 @@ def judge_text(
 ) -> str:
     """The comparison text: withheld narrative and cause beside the analyst's outputs.
 
+    Both code kinds are rendered. An earlier version showed only the finding codes, so the
+    judge was asked whether the lay explanation explained "the codes the analyst chose" while
+    never being shown the occurrence codes -- the model's primary prediction -- and was shown
+    the bare word "none" whenever no finding carried an item. On the first real judge pass
+    that produced ``lay="does_not"`` on 158 of 178 cases, which measured our own rendering
+    rather than the prose.
+
     The only function in the project allowed to render withheld ``Synthesis``/``Verdict``
     text for a model to read (decision 0028). Its result is carried as a system prompt by
     ``judge_case``, never as a ``Payload``.
     """
-    chosen = (
-        ", ".join(
-            f"{c} {tables.categories.get(c[:6], '')}" for c in hypothesis.finding_codes(tables)
-        )
-        or "none"
+    occurrence = ", ".join(
+        f"{code} {tables.phases.get(code[:3], '')} / {tables.events.get(code[3:], '')}"
+        for code in hypothesis.occurrence_codes(tables)
     )
+    findings = ", ".join(
+        f"{c} {tables.categories.get(c[:6], '')}" for c in hypothesis.finding_codes(tables)
+    )
+    chosen = f"occurrence: {occurrence or 'none chosen'}\nfindings: {findings or 'none chosen'}"
     return (
         f"## Official factual narrative\n{synthesis.factual_narrative or '(none)'}\n\n"
         f"## Official probable cause\n{verdict.probable_cause or '(none)'}\n\n"
