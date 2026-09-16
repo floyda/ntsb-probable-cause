@@ -4133,3 +4133,34 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   (`tests/test_runner.py::test_sync_run_writes_three_files_and_one_step_per_case`).
   `uv run pytest` -- 390 passed, 97.68% coverage (gate 90%). `make check` (ruff format, ruff
   check, lint-imports, deptry, vulture, mypy --strict, pytest) all pass.
+- 2026-09-16, Task 14 (step 2), third prompt iteration on `dev-400` only (never on a
+  held-out sample): `s1-v3` worked well -- a fresh 10-case real run scored top-1 25% (was
+  0%), event match 25%, non-zero finding precision/recall, one exact occurrence hit
+  (predicted `552230`, true `552230`), abstain 25%, cost $0.0029/case at the standard price.
+  But 2 of 10 cases (20%, over the plan's 5% failure-rate threshold) failed with the
+  identical stage-2 schema error: `schema: '02041044' is not a child of category
+  '020410'`. The model built the item code by gluing the six-digit category to the
+  two-digit modifier (`020410` + `44` = `02041044`) instead of choosing one of the
+  eight-digit item codes listed under that category in the refine message; the runner's one
+  retry made the same mistake. Fixed wording and rendering only (no schema, parsing, or
+  metrics change): rewrote `SYSTEM_REFINE` in `src/ntsb_probable_cause/scoring/prompt.py`
+  to say plainly that the modifier is already settled and not part of what is chosen now,
+  that the message lists the eight-digit item codes belonging to each finding's category,
+  that the analyst must choose one of those listed codes exactly as written, and explicitly
+  that the item code is not the category code and never the category code with the modifier
+  appended -- keeping the existing "return only the eight-digit code, never its label text"
+  instruction. Also reworked `refine_message`'s rendering: each finding's heading now reads
+  "Finding N: category CCCCCC (label), modifier MM already chosen" -- separating the
+  category and the already-chosen modifier from each other and from the item list below,
+  with its own line, "Item codes for this finding (choose one, exactly as listed):", so
+  nothing in the rendering pairs a category digit string directly against a modifier digit
+  string the way the concatenation mistake did; the item lines themselves are unchanged
+  (`<8-digit code>  <label>`). Bumped `PROMPT_VERSION` to `"s1-v4"` (no results run has used
+  `"s1-v3"`; only this iteration's own cost checks did). Updated the one test that pinned
+  the version string
+  (`tests/test_runner.py::test_sync_run_writes_three_files_and_one_step_per_case`);
+  `tests/test_hypothesis.py::test_schema_is_strict_and_tables_block_holds_tables`'s
+  `refine_message` assertion (`"02063040" in refine_message(...)`) needed no change, since
+  the item-line format is unchanged. `uv run pytest` -- 390 passed, 97.68% coverage (gate
+  90%). `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict,
+  pytest) all pass.
