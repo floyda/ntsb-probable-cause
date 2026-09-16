@@ -8,7 +8,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from apps.eval.__main__ import main, month_spent, resolve_latest
+from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
 
 from ntsb_probable_cause.model.client import ModelClient, RecordingFakeClient
 from ntsb_probable_cause.scoring import samples
@@ -137,6 +137,15 @@ def test_month_spent_sums_every_runrecord_in_a_run_jsonl_not_only_the_first(
     judged = RunRecord(**_RUN_KWARGS, run_id="r1-judge", started=now, finished=now, cost_usd=0.5)
     write_jsonl(tmp_path / "r1" / "run.jsonl", [answering, judged])
     assert month_spent(tmp_path, now=now) == pytest.approx(1.5)
+
+
+def test_answering_run_record_is_the_first_row_even_after_a_judge_pass(tmp_path: Path) -> None:
+    """A judged run's ``run.jsonl`` holds two rows; report/judge must not choke on the second."""
+    now = datetime(2026, 9, 15, tzinfo=UTC)
+    answering = RunRecord(**_RUN_KWARGS, run_id="r1", started=now, finished=now, cost_usd=1.0)
+    judged = RunRecord(**_RUN_KWARGS, run_id="r1-judge", started=now, finished=now, cost_usd=0.5)
+    write_jsonl(tmp_path / "r1" / "run.jsonl", [answering, judged])
+    assert answering_run_record(tmp_path / "r1") == answering
 
 
 def test_month_spent_of_a_missing_runs_dir_is_zero(tmp_path: Path) -> None:

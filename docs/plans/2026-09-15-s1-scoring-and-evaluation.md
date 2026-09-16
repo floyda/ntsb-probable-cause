@@ -3994,3 +3994,15 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   round (as in the Task 11 fix rounds); the disagreement between `global-constraints.md` and
   the live session reminder, noted in this task's own first entry above, is still otherwise
   unresolved for any future commit without an explicit per-commit instruction.
+- 2026-09-16, Task 13 fix round 1, self-review addendum (found while writing the fix report
+  for `f5ace7e`, before any further review): appending the judge pass's cost as a second
+  `RunRecord` into the same run's `run.jsonl` (fix 1 above) broke every other reader that
+  assumed exactly one row -- `apps/eval/__main__.resolve_latest` (`(record,) = read_jsonl(...)`),
+  `_cmd_report` and `_cmd_judge` (`(run_record,) = read_jsonl(...)`) would all raise
+  `ValueError: too many values to unpack` the first time `report`/`judge`/`--latest` touched a
+  folder that had already been judged, or the second time `judge` was run on the same folder.
+  Added `answering_run_record(folder) -> RunRecord` (the first row of `run.jsonl`, which is
+  always the answering run's own record since the judge row is only ever appended after it
+  exists) and used it in all three places instead of tuple-destructuring. Test:
+  `test_answering_run_record_is_the_first_row_even_after_a_judge_pass`. Second commit of this
+  fix round, same trailer lines, same reason.
