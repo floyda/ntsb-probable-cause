@@ -1,12 +1,16 @@
 """System prompts and message rendering. Versioned: the run record carries PROMPT_VERSION.
 
+PROMPT_VERSION names everything that elicits the answer, not only the text here: v5 differs
+from v4 in the stage-1 JSON schema (``item8`` removed -- see ``hypothesis._stage1_schema``),
+with the prompt text unchanged.
+
 Spec §3.5.
 """
 
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
-PROMPT_VERSION = "s1-v4"
+PROMPT_VERSION = "s1-v5"
 
 SYSTEM_ANSWER = """You are an aviation accident analyst working from the evidence investigators
 recorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,
