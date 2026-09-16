@@ -211,6 +211,30 @@ def test_run_over_budget_exits_one_line_not_a_traceback(
     assert "Traceback" not in err
 
 
+def test_run_resume_reaches_the_runner_and_refuses_an_unknown_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--resume`` is wired through to ``Runner.run``, and its refusal is one line (0032)."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    fake = RecordingFakeClient([GOOD, REFINE])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(
+        ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", "no-such-run"],
+        client_factory=factory,
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "cannot resume: no run folder" in err
+    assert "Traceback" not in err
+    assert fake.payloads == []
+
+
 def test_run_flags_reach_runspec_and_month_spent_reaches_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -223,9 +247,12 @@ def test_run_flags_reach_runspec_and_month_spent_reaches_runner(
         def __init__(self, _client: object, **kwargs: object) -> None:
             captured["month_spent_usd"] = kwargs["month_spent_usd"]
 
-        def run(self, spec: RunSpec, raws: Sequence[object]) -> RunRecord:
+        def run(
+            self, spec: RunSpec, raws: Sequence[object], *, resume: str | None = None
+        ) -> RunRecord:
             captured["spec"] = spec
             captured["n_raws"] = len(raws)
+            captured["resume"] = resume
             base = {
                 k: v
                 for k, v in _RUN_KWARGS.items()
@@ -281,6 +308,7 @@ def test_run_flags_reach_runspec_and_month_spent_reaches_runner(
     assert spec.expected_cost_per_case_usd == pytest.approx(0.001)
     assert captured["n_raws"] == 1  # --limit 1
     assert captured["month_spent_usd"] == pytest.approx(7.5)
+    assert captured["resume"] is None  # no --resume: a new run, today's behaviour
 
 
 def test_run_sync_then_report_end_to_end(
