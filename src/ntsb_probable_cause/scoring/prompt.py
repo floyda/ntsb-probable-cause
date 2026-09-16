@@ -6,7 +6,7 @@ Spec §3.5.
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
-PROMPT_VERSION = "s1-v1"
+PROMPT_VERSION = "s1-v2"
 
 SYSTEM_ANSWER = """You are an aviation accident analyst working from the evidence investigators
 recorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,
@@ -17,9 +17,14 @@ each a phase prefix and an event suffix with a probability; the probabilities ma
 than 1. For the findings in the probable cause, give one or more six-digit categories, each with
 a modifier (who or what) and a probability. Write the probable cause in one or two sentences in
 the NTSB's style, and a lay explanation a reader with no aviation knowledge can follow. State
-your confidence that your first occurrence guess is right. If the evidence is too thin to name a
-cause, set abstain to true and say why in the narrative. Reply only with JSON matching the
-schema."""
+your confidence that your first occurrence guess is right.
+
+Name the most probable cause the evidence supports, even when the evidence is thin. Thin
+evidence is expressed through low probabilities and a low confidence value, not through
+declining to answer: a partial or ambiguous record still favors some causes over others, and
+that is what the analyst is asked to report. Set abstain to true only when the evidence supports
+no cause at all -- for example, no occurrence or finding information was recorded -- and say why
+in the narrative. Reply only with JSON matching the schema."""
 
 SYSTEM_REFINE = """You chose finding categories for this case. For each, choose the single most
 specific item from the list of that category's items given in the message. Return only its

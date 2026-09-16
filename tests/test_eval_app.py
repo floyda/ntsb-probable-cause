@@ -258,6 +258,8 @@ def test_run_flags_reach_runspec_and_month_spent_reaches_runner(
             "--sample",
             "dev-400",
             "--sync",
+            "--price-variant",
+            "standard",
             "--cap-usd",
             "0.02",
             "--budget-usd",
@@ -296,7 +298,8 @@ def test_run_sync_then_report_end_to_end(
         return fake, None
 
     exit_code = main(
-        ["run", "--arm", "ceiling", "--sample", "dev-400", "--sync"], client_factory=factory
+        ["run", "--arm", "ceiling", "--sample", "dev-400", "--sync", "--price-variant", "standard"],
+        client_factory=factory,
     )
     assert exit_code == 0
     (run_folder,) = list(runs_dir.iterdir())

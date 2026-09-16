@@ -106,6 +106,24 @@ def refuse_over_budget(projected: float, month_spent: float, budget: float) -> N
         )
 
 
+def refuse_sync_with_batch_price(spec: RunSpec) -> None:
+    """A sync run cannot use the ``batch`` price variant: it is a different API endpoint.
+
+    ``--sync`` sends every case straight to the chat-completions endpoint. The ``batch``
+    price variant names a model id (``...:batch``) that the provider serves only through
+    its separate batch-submission API, so a sync call against it fails every case with a
+    404 after real requests have already gone out. Caught here, before any model call,
+    alongside the budget and dirty-tree refusals -- so it cannot be bypassed by a caller
+    that skips some other entry point.
+    """
+    if spec.sync and spec.price_variant == "batch":
+        raise ConfigurationError(
+            "--sync cannot use --price-variant batch: the batch model id is only served "
+            "through the batch API. Pass --price-variant standard for a sync run, or drop "
+            "--sync to use the batch service."
+        )
+
+
 def _settings(spec: RunSpec, schema: dict[str, object], name: str) -> ModelSettings:
     """Model settings for one call; ``schema`` and ``name`` vary between the two stages."""
     return ModelSettings(
@@ -235,6 +253,7 @@ class Runner:
         catch it).
         """
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
+        refuse_sync_with_batch_price(spec)
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
         run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"

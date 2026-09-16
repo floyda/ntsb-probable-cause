@@ -4066,3 +4066,44 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   pytest) all pass. Commit trailer lines exactly as given in `global-constraints.md`
   ("Claude Opus 5 (1M context)"), per the coordinator's explicit instruction for this fix
   round (as in fix round 1 and Task 11's fix rounds).
+- 2026-09-16, Task 14 (step 2), the controller's first paid run: a 10-case ceiling-arm run on
+  `dev-400` with real calls (`openai/gpt-5.6-luna`, cost $0.0074) abstained on 10 of 10 cases,
+  scoring 0% top-1 and 0% on every finding column. Because the evidence payload never carries
+  the factual narrative (decision 0013) and S1 has no docket tool, thin structured-field
+  evidence is the normal case, not the exception, and `SYSTEM_ANSWER`'s closing line ("If the
+  evidence is too thin to name a cause, set abstain to true") invited abstention on every
+  case. Per spec §4.1 ("Abstention is a claim, not a free pass") and §9 (the stopping
+  threshold converts low *stated* confidence into abstention after the run, on a rule chosen
+  on `dev-400` -- the model's own reticence must not pre-empt that rule), rewrote
+  `SYSTEM_ANSWER`'s closing guidance in `src/ntsb_probable_cause/scoring/prompt.py`: the
+  analyst now names its most probable cause even on thin evidence, expresses uncertainty
+  through the occurrence/finding probabilities and the confidence value, and abstains only
+  when the evidence supports no cause at all. Bumped `PROMPT_VERSION` to `"s1-v2"` (no
+  results run has used `"s1-v1"`; only the controller's throwaway cost checks did). Updated
+  the one test that pinned the version string
+  (`tests/test_runner.py::test_sync_run_writes_three_files_and_one_step_per_case`). No schema
+  or parsing change.
+- 2026-09-16, Task 14 (step 2), the same paid run: `ntsb-eval run --sync` with the default
+  `--price-variant batch` sent every case to the chat-completions endpoint under the
+  `:batch` model id and got a 404 ("This model is only available through the Batch API. Use
+  the /api/beta/batches endpoint instead.") on all 10 cases, recorded as `model:` failures --
+  no cost, but indistinguishable from the harness being broken. Added
+  `refuse_sync_with_batch_price` to `src/ntsb_probable_cause/scoring/runner.py`, called from
+  `Runner.run` immediately after `refuse_if_heldout_and_dirty` and before
+  `refuse_over_budget` (the same place the other pre-flight refusals live, so no caller can
+  reach a model call while bypassing it): a sync run whose `price_variant` is `"batch"` now
+  raises `ConfigurationError` naming the fix (`--price-variant standard` for a sync run, or
+  drop `--sync` to use the batch service) before any request is built. `apps/eval/__main__.py`
+  already caught `ConfigurationError` generically and prints it as one line, so no CLI change
+  was needed. New test
+  `tests/test_runner.py::test_sync_with_batch_price_variant_is_refused_before_any_call`
+  asserts the error and that `client.payloads == []`. Every other test that ran `sync=True`
+  with the (previously default) `batch` price variant now passes `price_variant="standard"`
+  explicitly (`tests/test_runner.py`, `tests/test_boundary.py`, `tests/test_eval_app.py`);
+  the two cost-accounting tests that hand-compute dollars from Luna's per-token price
+  (`test_sync_stage_two_schema_failure_is_retried_once_then_recorded`,
+  `test_sync_cost_reflects_both_replies_when_the_retry_succeeds`) were updated to Luna's
+  standard rate ($0.20/$1.20 per MTok) instead of the batch rate ($0.10/$0.60 per MTok), since
+  they now run at that price. `uv run pytest` -- 390 passed, 97.68% coverage (gate 90%).
+  `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest)
+  all pass.

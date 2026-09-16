@@ -122,7 +122,13 @@ def test_runner_never_sends_withheld_text_as_system_text(
     ``scoring/runner.py`` or ``scoring/prompt.py`` were changed to include withheld text.
     """
     client = RecordingFakeClient([_GOOD_STAGE1, _GOOD_REFINE] * len(record_fixtures))
-    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001)
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
     run = Runner(
         client,
         batch=None,
