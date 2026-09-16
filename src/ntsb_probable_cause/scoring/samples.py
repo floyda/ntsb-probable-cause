@@ -73,15 +73,15 @@ def load_cases(processed: Path, ids: Sequence[str]) -> list[dict[str, object]]:
     """
     wanted = set(ids)
     by_id: dict[str, str] = {}
-    parquet_file = pq.ParquetFile(processed / "cases.parquet")
-    for batch in parquet_file.iter_batches(batch_size=256, columns=["ntsb_number", "raw_json"]):
-        for ntsb_number, raw_json in zip(
-            batch.column("ntsb_number").to_pylist(),
-            batch.column("raw_json").to_pylist(),
-            strict=True,
-        ):
-            if ntsb_number in wanted:
-                by_id[ntsb_number] = raw_json
+    with pq.ParquetFile(processed / "cases.parquet") as parquet_file:
+        for batch in parquet_file.iter_batches(batch_size=256, columns=["ntsb_number", "raw_json"]):
+            for ntsb_number, raw_json in zip(
+                batch.column("ntsb_number").to_pylist(),
+                batch.column("raw_json").to_pylist(),
+                strict=True,
+            ):
+                if ntsb_number in wanted:
+                    by_id[ntsb_number] = raw_json
     missing = [i for i in ids if i not in by_id]
     if missing:
         raise ValueError(f"cases not in the processed file: {missing[:5]}")
@@ -96,15 +96,17 @@ def seen_pairs(processed: Path) -> frozenset[str]:
     streaming measured +43.5 MB. Do not revert this to ``read_table``.
     """
     seen: set[str] = set()
-    parquet_file = pq.ParquetFile(processed / "cases.parquet")
-    for batch in parquet_file.iter_batches(batch_size=512, columns=["split", "raw_json"]):
-        for split_value, raw_json in zip(
-            batch.column("split").to_pylist(), batch.column("raw_json").to_pylist(), strict=True
-        ):
-            if split_value == Split.DEV.value and (
-                codes := fields.occurrence_codes(json.loads(raw_json))
+    with pq.ParquetFile(processed / "cases.parquet") as parquet_file:
+        for batch in parquet_file.iter_batches(batch_size=512, columns=["split", "raw_json"]):
+            for split_value, raw_json in zip(
+                batch.column("split").to_pylist(),
+                batch.column("raw_json").to_pylist(),
+                strict=True,
             ):
-                seen.add(codes[0])
+                if split_value == Split.DEV.value and (
+                    codes := fields.occurrence_codes(json.loads(raw_json))
+                ):
+                    seen.add(codes[0])
     return frozenset(seen)
 
 

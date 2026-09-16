@@ -1,6 +1,7 @@
 """The three fixed samples, arms as exclusion sets, and the day-N mask (spec §5, §6.1)."""
 
 import json
+import tracemalloc
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -111,6 +112,48 @@ def test_load_cases_raises_on_missing_ids(tmp_path: Path) -> None:
         samples.load_cases(processed, ["A1", "X9"])
 
 
+def test_load_cases_truncates_missing_ids_to_five(tmp_path: Path) -> None:
+    # Pins the brief's explicit `missing[:5]` truncation: with 7 missing ids, only the first
+    # 5 (in `ids` order) may appear in the message and the last 2 must not.
+    processed = _write_cases(tmp_path, [("A1", "2018-01-01", "dev", "C", _raw(fatal=False))])
+    missing = [f"X{i}" for i in range(7)]
+    with pytest.raises(ValueError, match="cases not in the processed file") as excinfo:
+        samples.load_cases(processed, ["A1", *missing])
+    message = str(excinfo.value)
+    for case_id in missing[:5]:
+        assert case_id in message
+    for case_id in missing[5:]:
+        assert case_id not in message
+
+
+def test_load_cases_does_not_retain_the_whole_corpus_in_memory(tmp_path: Path) -> None:
+    # Guards the memory property itself, not just correctness: dropping the
+    # `if ntsb_number in wanted` filter would still return the right 2 records (every other
+    # test here would stay green) while retaining every row's raw_json in `by_id`. Padding
+    # each row's raw_json to 5 KB and using 2,000 rows makes that retention plainly visible
+    # in peak Python-heap use: the correct code's peak is roughly one in-flight 256-row batch
+    # (~1.3 MB) plus the 2 wanted rows; the bug's peak is roughly all 2,000 rows (~10 MB).
+    filler = "x" * 5_000
+    rows = [
+        (
+            f"R{i}",
+            "2018-01-01",
+            "dev",
+            "C",
+            json.dumps({"highestInjuryLevel": "Minor", "aircrafts": [], "pad": filler}),
+        )
+        for i in range(2_000)
+    ]
+    processed = _write_cases(tmp_path, rows)
+    tracemalloc.start()
+    try:
+        samples.load_cases(processed, ["R0", "R1"])
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 3_000_000
+
+
 def test_load_cases_crosses_a_batch_boundary(tmp_path: Path) -> None:
     # load_cases streams in batches of 256 rows; a wanted id sitting past the first batch is
     # the property streaming is most likely to break, so use enough rows to cross it.
@@ -143,6 +186,36 @@ def test_seen_pairs_returns_only_dev_primary_codes(tmp_path: Path) -> None:
     # Only the dev case's primary (defining-event) code is seen; its own non-primary code
     # ("222000") and the heldout/open rows' codes are excluded.
     assert samples.seen_pairs(processed) == frozenset({"111000"})
+
+
+def test_seen_pairs_crosses_a_batch_boundary(tmp_path: Path) -> None:
+    # seen_pairs streams in batches of 512 rows; a code that appears only in rows past the
+    # first batch is the property most likely to break if the loop were truncated to one
+    # batch. 512 dev rows carry "AAA000" (entirely inside the first batch); a further 88 dev
+    # rows past the boundary carry "BBB000" only, so both sides of the boundary are dev rows
+    # and truncating the loop would silently drop "BBB000" from the seen set.
+    rows = [
+        (
+            f"A{i}",
+            "2018-01-01",
+            "dev",
+            "C",
+            _raw(fatal=False, occurrence_codes=[("AAA000", True, 1)]),
+        )
+        for i in range(512)
+    ]
+    rows += [
+        (
+            f"B{i}",
+            "2018-01-01",
+            "dev",
+            "C",
+            _raw(fatal=False, occurrence_codes=[("BBB000", True, 1)]),
+        )
+        for i in range(88)
+    ]
+    processed = _write_cases(tmp_path, rows)
+    assert samples.seen_pairs(processed) == frozenset({"AAA000", "BBB000"})
 
 
 def test_draw_is_deterministic_for_a_fixed_seed(tmp_path: Path) -> None:
