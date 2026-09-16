@@ -188,10 +188,22 @@ make test    # pytest
 make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
 make build   # build data/processed/cases.parquet from the raw store
 make scan    # uv run python -m scripts.corpus_scan — guard statistics, counts only
+make probe   # uv run python -m scripts.openrouter_probe — the S1 fixture-recording probe (§7.1)
+make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (§6.5)
 ```
+
+`ntsb-eval` is the S1 evaluation harness (spec §6.5): `ntsb-eval baseline|run|report|judge|threshold`,
+each with `--out PATH` to also write the printed text to a file; `run` takes `--arm`, `--sample`,
+`--exclude ROLE`, `--include case_number`, `--limit N`, `--sync`, `--cap-usd`, `--budget-usd`;
+`report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest` to compare;
+`judge` refuses a non-`dev-400` run without `--validated` (§8).
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
 `NTSB_API_KEY` (the NTSB Enterprise API key, required for `make ingest`, never printed or
-committed) and `NTSB_DATA_DIR` (default `data`; nothing under it is committed).
+committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
+`OPENROUTER_API_KEY` (the model access decision 0009 uses), `NTSB_RUNS_DIR` (default
+`data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 25) and
+`NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
+cost cap).

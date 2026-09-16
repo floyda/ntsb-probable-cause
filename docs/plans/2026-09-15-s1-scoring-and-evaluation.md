@@ -2983,7 +2983,7 @@ def baseline_report(processed: Path, sample_ids: Sequence[str] | None, tables) -
 
 `compare`'s paired difference uses occurrence top-1 by default and prints finding recall too. `summarise` prints Markdown tables; the app writes them to stdout and, with `--out docs/results/<name>.txt`, to a file.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_report.py
@@ -3021,9 +3021,9 @@ def test_help_lists_subcommands(capsys) -> None:
 
 Plus one end-to-end test of `run --sync` on the fixtures with the fake client injected (add a `client_factory` parameter to `main` defaulting to the real one), asserting the run folder exists and `report <run id>` prints an "occurrence top-1" row.
 
-- [ ] **Step 2: Run to verify failure** — FAIL.
+- [x] **Step 2: Run to verify failure** — FAIL.
 
-- [ ] **Step 3: Implement `report.py`** with the functions above. `summarise`:
+- [x] **Step 3: Implement `report.py`** with the functions above. `summarise`:
 
 ```python
 def fmt(cell: Cell) -> str:
@@ -3071,7 +3071,7 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
 
 `slices` yields `"all"`, `"fatal"`, `"non-fatal"`, `"class C"`, `"class F"`, `"class L"`, and one `"flavour ..."` per report flavour present, in that order; `weighted_headline` combines the fatal and non-fatal top-1 cells as `0.1714 × fatal + 0.8286 × non-fatal` with the interval from the same weighting of the bootstrap draws (write it as a bootstrap over the two slices' per-case flags, weighted). `compare` prints, for the shared case ids, the paired difference in top-1, top-3 and finding recall at 10 digits, each as `mean [low, high] on n cases`. `threshold_curve` implements the rule in spec §9 exactly: score +1 right, −1 wrong, 0 abstained-or-below-t, mean over all cases, for t in `[i/20 for i in range(1, 20)]`.
 
-- [ ] **Step 4: Implement `apps/eval/__main__.py`**
+- [x] **Step 4: Implement `apps/eval/__main__.py`**
 
 Thin argparse wiring only. `run` builds `Settings()`, `OpenRouterClient(settings.require_openrouter_key(), base_url=settings.openrouter_base_url)`, `BatchClient(http)`, computes `month_spent` by summing `cost_usd` over `RunRecord`s under `runs_dir` whose `started` is in the current month, reads the sample's raw records with `samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))`, passes `seen_pairs=samples.seen_pairs(settings.data_dir / "processed")`, and calls `Runner.run`. `report` prints `summarise` (and `compare` with `--against`). `judge` runs `judge_case` over a run's cases (dev-400 only unless `--validated` is passed, which the plan's Task 15 sets after Andy's check), writes `judge.jsonl` beside the run and prints `agreement_table` and `pick_disagreements`. `threshold` prints the curve and the chosen value. `baseline` prints `baseline_report`. `--out` writes the printed text to a file.
 
@@ -3091,9 +3091,9 @@ bars:
 
 (`--latest ARM SAMPLE` resolves the newest run folder for that arm and sample; implement it in the app.)
 
-- [ ] **Step 5: Run tests and `make check`** — PASS.
+- [x] **Step 5: Run tests and `make check`** — PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/report.py apps/eval pyproject.toml Makefile README.md CLAUDE.md tests/test_report.py tests/test_eval_app.py
@@ -3858,3 +3858,42 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   coverage (gate 90%), `runner.py` 98%. `make check` all green. Commit trailer lines exactly
   as given in `global-constraints.md`, per the coordinator's explicit instruction (as in fix
   round 1).
+- 2026-09-16, Task 13 (controller resolution 1): the brief's
+  `test_proportion_cell_has_wilson_interval` asserts `round(cell.low, 3) == 0.421` for
+  `proportion([True] * 23 + [False] * 17)`. Evaluating `scoring.metrics.wilson(23, 40)`
+  (unchanged since Task 7, which made the same correction) gives a low bound of
+  `0.4217...`, which rounds to `0.422`, not `0.421`. Implemented the test with `0.422`, per
+  the controller's resolution, rather than changing the (already-verified) Wilson formula
+  to match an arithmetic slip in the brief.
+- 2026-09-16, Task 13 (controller resolutions 2-3): implemented `--limit N` on `run` (first
+  N sample cases, as Task 14 step 1 needs), and added `--cap-usd`/
+  `--expected-cost-per-case-usd` flags plus `Settings.expected_cost_per_case_usd`
+  (`NTSB_EXPECTED_COST_PER_CASE_USD`, default `None`), documented in `.env.example`, so
+  `RunSpec.expected_cost_per_case_usd` can be fed from either the flag or the environment
+  once Task 14 step 1 has measured a number (the flag wins when both are set).
+- 2026-09-16, Task 13: `baseline_report`'s `tables: CodeTables` parameter is accepted for
+  interface symmetry with the model-scoring commands (`report`, `threshold`) but not used:
+  `scoring/baseline.py`'s `fit`/`predict` work on already-composed codes read straight from
+  the raw record (`fields.occurrence_codes`/`finding_codes`/`finding_codes_in_cause`), so no
+  code-table composition is needed to score a baseline prediction. Documented in the
+  function's docstring; the parameter is explicitly `del`eted at the top of the function
+  body so it is not flagged as unused.
+- 2026-09-16, Task 13: `apps/eval/__main__.py`'s `report` command additionally prints
+  `weighted_headline` (spec §5.2's fatal-share-weighted top-1) whenever the run's own sample
+  is `heldout-400`, beside `summarise`'s unweighted per-slice table. This is not spelled out
+  in the brief's Step 4 prose, but spec §5.2 says the weighted headline is "shown beside" the
+  unweighted number for that specific sample, and Task 13 is the only task that builds
+  `weighted_headline`, so wiring it into the one command that prints per-run numbers was the
+  only way to satisfy that spec sentence within this task rather than leaving the function
+  unused by the app until a later task.
+- 2026-09-16, Task 13: this task's commit uses the two attribution trailer lines given by
+  the live coordinating session's system reminder ("Claude Sonnet 5" /
+  `session_0166iU7TDYoS14D2oiw5zzG8`), not the "Claude Opus 5 (1M context)" lines in
+  `global-constraints.md`. The disagreement between the two sources was already flagged as
+  unresolved in the Task 11 fix-round-1 entry above; those two commits used the
+  `global-constraints.md` lines only because the coordinator gave an explicit per-commit
+  instruction to do so at the time. No such override was given for this task, and the
+  current system reminder states it supersedes an earlier copy of the same reminder embedded
+  in project text (which is what `global-constraints.md`'s trailer lines are: attribution
+  text from a prior session, not a CLAUDE.md or memory rule from Andy), so this commit
+  follows the live reminder instead.

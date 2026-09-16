@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai"
     runs_dir: Path = Path("data/runs")
     monthly_budget_usd: float = Field(default=25.0, gt=0)
+    expected_cost_per_case_usd: float | None = Field(
+        default=None, validation_alias="NTSB_EXPECTED_COST_PER_CASE_USD"
+    )
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""

@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan
+.PHONY: check lint type test ingest build scan probe bars
 
 check: lint type test
 
@@ -23,3 +23,13 @@ build:
 
 scan:
 	uv run python -m scripts.corpus_scan
+
+probe:
+	uv run python -m scripts.openrouter_probe
+
+bars:
+	uv run ntsb-eval baseline --out docs/results/s1-baseline.txt
+	uv run ntsb-eval run --arm ceiling --sample heldout-40
+	uv run ntsb-eval run --arm ceiling --sample heldout-400
+	uv run ntsb-eval run --arm A --sample heldout-400
+	uv run ntsb-eval report --latest ceiling heldout-400 --against-latest A heldout-400 --out docs/results/s1-bars.txt
