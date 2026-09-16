@@ -6,7 +6,7 @@ Spec §3.5.
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
-PROMPT_VERSION = "s1-v2"
+PROMPT_VERSION = "s1-v3"
 
 SYSTEM_ANSWER = """You are an aviation accident analyst working from the evidence investigators
 recorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,
@@ -24,7 +24,17 @@ evidence is expressed through low probabilities and a low confidence value, not 
 declining to answer: a partial or ambiguous record still favors some causes over others, and
 that is what the analyst is asked to report. Set abstain to true only when the evidence supports
 no cause at all -- for example, no occurrence or finding information was recorded -- and say why
-in the narrative. Reply only with JSON matching the schema."""
+in the narrative.
+
+The official record names a specific occurrence and specific findings. The codes that mean
+"unknown", "undetermined" or "not determined" -- event suffix 000, finding category 050000 and
+item 05000000, modifier 00 -- are a last resort, not a safe default: they are marked wrong
+whenever the official record names something specific, which is most of the time. Choose the
+most specific event suffix that names what actually happened and the most specific finding
+category that names a real factor, and put your doubt into the probabilities and the confidence
+value instead of retreating to an undetermined code. Use an undetermined code only when the
+official record itself would have nothing more specific to say. Reply only with JSON matching
+the schema."""
 
 SYSTEM_REFINE = """You chose finding categories for this case. For each, choose the single most
 specific item from the list of that category's items given in the message. Return only its
