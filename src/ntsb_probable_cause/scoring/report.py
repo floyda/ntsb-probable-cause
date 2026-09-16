@@ -250,13 +250,31 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
 
 
 def _raws_of_split(processed: Path, split: Split) -> list[dict[str, object]]:
-    """Every raw record of one split, read directly from the processed file."""
-    table = pq.read_table(processed / "cases.parquet", columns=["split", "raw_json"])
-    return [
-        json.loads(r)
-        for s, r in zip(table["split"].to_pylist(), table["raw_json"].to_pylist(), strict=True)
-        if s == split.value
-    ]
+    """Every raw record of one split, read directly from the processed file.
+
+    Streams row batches instead of ``pq.read_table`` + ``to_pylist()`` over the whole
+    ``raw_json`` column, for the same reason as ``scoring/samples.py``'s ``load_cases`` and
+    ``seen_pairs``: ``baseline_report`` (``ntsb-eval baseline``, the first line of ``make
+    bars``) calls this once each for dev and held-out, and each call otherwise materialises an
+    Arrow table plus a Python list over all 19,641 rows to keep ~13,560 (dev) or ~4,241
+    (held-out) of them. Streaming skips that Arrow/``to_pylist`` intermediate for every row of
+    the *other* two splits (open, and whichever of dev/held-out isn't wanted this call); the
+    returned, json-decoded rows themselves cannot shrink further, since dev+held-out is ~91%
+    of the corpus and the caller (``_honest_model_and_all``) keeps both lists alive at once to
+    fit on one and score on the other. Measured on the real corpus, resident after both calls:
+    2912.2 MB before this change, 1879.5 MB after. Do not revert this to ``read_table``.
+    """
+    rows: list[dict[str, object]] = []
+    with pq.ParquetFile(processed / "cases.parquet") as parquet_file:
+        for batch in parquet_file.iter_batches(batch_size=256, columns=["split", "raw_json"]):
+            for split_value, raw_json in zip(
+                batch.column("split").to_pylist(),
+                batch.column("raw_json").to_pylist(),
+                strict=True,
+            ):
+                if split_value == split.value:
+                    rows.append(json.loads(raw_json))
+    return rows
 
 
 def _finding_pr(
