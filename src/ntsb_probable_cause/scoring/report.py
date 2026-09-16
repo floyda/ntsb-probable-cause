@@ -7,7 +7,7 @@ and the stopping threshold is read off a curve, not chosen (§9).
 
 import json
 import random
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -249,22 +249,20 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
     return "\n".join(lines)
 
 
-def _raws_of_split(processed: Path, split: Split) -> list[dict[str, object]]:
-    """Every raw record of one split, read directly from the processed file.
+def _stream_raws_of_split(processed: Path, split: Split) -> Iterator[dict[str, object]]:
+    """Every raw record of one split, read directly from the processed file, one at a time.
 
     Streams row batches instead of ``pq.read_table`` + ``to_pylist()`` over the whole
     ``raw_json`` column, for the same reason as ``scoring/samples.py``'s ``load_cases`` and
-    ``seen_pairs``: ``baseline_report`` (``ntsb-eval baseline``, the first line of ``make
-    bars``) calls this once each for dev and held-out, and each call otherwise materialises an
-    Arrow table plus a Python list over all 19,641 rows to keep ~13,560 (dev) or ~4,241
-    (held-out) of them. Streaming skips that Arrow/``to_pylist`` intermediate for every row of
-    the *other* two splits (open, and whichever of dev/held-out isn't wanted this call); the
-    returned, json-decoded rows themselves cannot shrink further, since dev+held-out is ~91%
-    of the corpus and the caller (``_honest_model_and_all``) keeps both lists alive at once to
-    fit on one and score on the other. Measured on the real corpus, resident after both calls:
-    2912.2 MB before this change, 1879.5 MB after. Do not revert this to ``read_table``.
+    ``seen_pairs``. This is the single-pass form: ``_raws_of_split`` wraps it into a list for
+    callers (the held-out path) that genuinely need one -- indexing, ``len``, or more than one
+    pass. ``baseline.fit`` needs neither: it consumes ``raws`` in one ``for raw in raws:`` loop
+    and never re-reads it, so ``_honest_model_and_all`` fits the development split straight off
+    this generator and never materialises its ~13,560 records at all. Do not revert this to
+    ``read_table``, and do not give ``fit`` a reason to need a second pass over ``raws`` --
+    that would silently break on this generator (see ``test_fit_consumes_a_one_shot_iterator``
+    in ``tests/test_baseline.py``).
     """
-    rows: list[dict[str, object]] = []
     with pq.ParquetFile(processed / "cases.parquet") as parquet_file:
         for batch in parquet_file.iter_batches(batch_size=256, columns=["split", "raw_json"]):
             for split_value, raw_json in zip(
@@ -273,8 +271,21 @@ def _raws_of_split(processed: Path, split: Split) -> list[dict[str, object]]:
                 strict=True,
             ):
                 if split_value == split.value:
-                    rows.append(json.loads(raw_json))
-    return rows
+                    yield json.loads(raw_json)
+
+
+def _raws_of_split(processed: Path, split: Split) -> list[dict[str, object]]:
+    """Every raw record of one split, read directly from the processed file, as a list.
+
+    For callers that need to index, take ``len``, or make more than one pass -- currently only
+    the held-out path, which ``baseline_report`` builds a ``by_id`` map from and scores.
+    Streams the same way as ``_stream_raws_of_split``; a caller that only needs one pass (such
+    as ``baseline.fit``) should use that generator directly instead of this list. See
+    ``_honest_model_and_all`` for the streamed fit path; measured on the real corpus, resident
+    after ``_honest_model_and_all`` returns: 1170.9 MB before that change (dev also a list,
+    freed on return), 523.2 MB after.
+    """
+    return list(_stream_raws_of_split(processed, split))
 
 
 def _finding_pr(
@@ -352,10 +363,16 @@ def _finding_lines(scores: _BaselineScores) -> list[str]:
 def _honest_model_and_all(
     processed: Path,
 ) -> tuple[baseline.BaselineModel, list[dict[str, object]], _BaselineScores]:
-    """Fit on development, score on the whole held-out split (§6.3's "honest baseline")."""
+    """Fit on development, score on the whole held-out split (§6.3's "honest baseline").
+
+    Fits from ``_stream_raws_of_split`` directly rather than ``_raws_of_split(..., Split.DEV)``:
+    ``baseline.fit`` only ever makes one pass over its argument, so development's ~13,560
+    records never need to exist as a list. Held-out is loaded after the fit, not before, so the
+    two splits' working sets don't overlap at the peak -- only the held-out list and the small
+    fitted model are resident once fitting finishes.
+    """
+    model = baseline.fit(_stream_raws_of_split(processed, Split.DEV))
     heldout = _raws_of_split(processed, Split.HELDOUT)
-    dev = _raws_of_split(processed, Split.DEV)
-    model = baseline.fit(dev)
     return model, heldout, _score_baseline(model, heldout)
 
 
