@@ -70,18 +70,27 @@ class RunSpec:
 
 SPEC_FILE = "spec.json"
 BATCHES_FILE = "batches.jsonl"
+RUN_FILE = "run.jsonl"
 
 
-def spec_json(spec: RunSpec, *, commit_sha: str, case_ids: Sequence[str]) -> dict[str, object]:
+def spec_json(
+    spec: RunSpec, *, commit_sha: str, dirty: bool, case_ids: Sequence[str]
+) -> dict[str, object]:
     """Everything a run folder must record about the spec that produced it (0032 point 1).
 
     The key order is the order a resume checks the fields in, so the first difference
     reported is the shortest useful one; ``case_ids`` is last because a 400-case list makes
     the longest message.
 
+    ``dirty`` is recorded beside the sha because a dirty tree means the code is *not* the
+    sha: two runs can carry the same commit and different working trees. 0032 point 4 names
+    only the sha, but its reason — that the replay is sound exactly when the spec and the
+    code are identical — is what this enforces.
+
     Args:
         spec: the spec the run was started with.
         commit_sha: the runner's commit sha — a resume on different code is refused.
+        dirty: whether the working tree carried uncommitted changes (0018).
         case_ids: the run's case ids, in order; what makes ``--limit`` safe to resume.
 
     Returns:
@@ -100,12 +109,13 @@ def spec_json(spec: RunSpec, *, commit_sha: str, case_ids: Sequence[str]) -> dic
         "expected_cost_per_case_usd": spec.expected_cost_per_case_usd,
         "prompt_version": prompt.PROMPT_VERSION,
         "commit_sha": commit_sha,
+        "dirty": dirty,
         "case_ids": list(case_ids),
     }
 
 
 def write_spec_json(
-    folder: Path, spec: RunSpec, *, commit_sha: str, case_ids: Sequence[str]
+    folder: Path, spec: RunSpec, *, commit_sha: str, dirty: bool, case_ids: Sequence[str]
 ) -> None:
     """Write ``spec.json`` into a run folder, creating the folder if it does not exist.
 
@@ -117,11 +127,48 @@ def write_spec_json(
         folder: the run folder.
         spec: the spec the run was started with.
         commit_sha: the runner's commit sha.
+        dirty: whether the working tree carried uncommitted changes.
         case_ids: the run's case ids, in order.
     """
     folder.mkdir(parents=True, exist_ok=True)
-    recorded = spec_json(spec, commit_sha=commit_sha, case_ids=case_ids)
+    recorded = spec_json(spec, commit_sha=commit_sha, dirty=dirty, case_ids=case_ids)
     (folder / SPEC_FILE).write_text(json.dumps(recorded, indent=2) + "\n")
+
+
+def _json_lines(path: Path) -> list[tuple[int, dict[str, object]]]:
+    """Every JSON object in a JSON-lines file, numbered, refusing a damaged line by name.
+
+    A half-written final line is exactly what a killed process leaves behind, and these are
+    the files a resume reads to find out what the dead run paid for. So a parse failure has
+    to be a refusal an operator can act on — naming the file and the line — rather than a
+    ``JSONDecodeError`` traceback past the command's own error handling.
+
+    Args:
+        path: the JSON-lines file to read.
+
+    Returns:
+        One ``(line number, object)`` pair per non-blank line, in order.
+
+    Raises:
+        ConfigurationError: a line is not readable JSON, or is not a JSON object.
+    """
+    rows: list[tuple[int, dict[str, object]]] = []
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ConfigurationError(
+                f"cannot resume: {path} line {number} is not readable JSON "
+                f"(a killed process leaves a half-written line behind): {error}"
+            ) from error
+        if not isinstance(row, dict):
+            raise ConfigurationError(
+                f"cannot resume: {path} line {number} does not hold a JSON object"
+            )
+        rows.append((number, row))
+    return rows
 
 
 def _nth(items: Sequence[object], index: int) -> object | None:
@@ -187,6 +234,69 @@ def refuse_sync_resume(spec: RunSpec, resume: str | None) -> None:
         )
 
 
+def refuse_finished(folder: Path) -> None:
+    """Refuse to resume a run that already finished, which is nothing but a mis-pasted id.
+
+    A completed run passes every other check — its spec matches, its batches are recorded —
+    and resuming it would set its results aside to write them again. If the provider no
+    longer holds those batches (they expire), the folder is left reporting ``finished=None``
+    and a real result drops out of ``report --latest``, ``make bars`` and the month's spend.
+    A judged folder is worse: the judge pass's own ``RunRecord`` row goes aside with the
+    rest and nothing rewrites it, so that spend goes permanently invisible.
+
+    Args:
+        folder: the run folder named by ``--resume``.
+
+    Raises:
+        ConfigurationError: the folder's ``run.jsonl`` already holds a finished record.
+    """
+    path = folder / RUN_FILE
+    if not path.is_file():
+        return
+    for _number, row in _json_lines(path):
+        finished = row.get("finished")
+        if finished is not None:
+            raise ConfigurationError(
+                f"cannot resume {folder.name}: run {row.get('run_id')!r} already finished "
+                f"at {finished}. Resuming it would set its results aside to write them "
+                "again. Start a new run instead."
+            )
+
+
+def refuse_replay_mismatch(
+    batch_id: str, requests: Sequence[BatchRequest], status: BatchStatus
+) -> None:
+    """Refuse a reused batch whose replies are not the ones this pass asked for.
+
+    A resume rests on the replay reproducing the dead run's requests exactly (0032's Why),
+    and the custom ids are the one place that assumption is checkable against what the
+    provider actually holds. If they differ, the cases this pass believes it has answers
+    for are not the cases that were answered, and carrying on would score replies against
+    the wrong records — and pay for a retry batch covering the difference. Same strictness
+    as 0032 point 4, for the same reason.
+
+    Args:
+        batch_id: the recorded batch that was waited on instead of submitting.
+        requests: the requests this pass replayed.
+        status: the terminal status returned for the recorded batch.
+
+    Raises:
+        ConfigurationError: the reply ids and the request ids are not the same set.
+    """
+    wanted = {request.custom_id for request in requests}
+    answered = {result.custom_id for result in status.results}
+    if answered == wanted:
+        return
+    missing = sorted(wanted - answered)
+    unexpected = sorted(answered - wanted)
+    raise ConfigurationError(
+        f"cannot resume: recorded batch {batch_id} answers {len(answered)} cases, not the "
+        f"{len(wanted)} this pass replayed ({len(missing)} missing, e.g. {missing[:3]}; "
+        f"{len(unexpected)} unexpected, e.g. {unexpected[:3]}). The replay does not "
+        "reproduce the requests that batch was submitted for."
+    )
+
+
 def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
     """Refuse a resume unless the folder records exactly the spec now being asked for.
 
@@ -207,6 +317,7 @@ def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
     """
     if not folder.is_dir():
         raise ConfigurationError(f"cannot resume: no run folder at {folder}")
+    refuse_finished(folder)
     path = folder / SPEC_FILE
     if not path.is_file():
         raise ConfigurationError(
@@ -242,24 +353,29 @@ def recorded_batches(folder: Path) -> list[tuple[str, str]]:
 
     Returns:
         One ``(stage, batch_id)`` pair per recorded batch, in the order they were submitted.
+
+    Raises:
+        ConfigurationError: a line is damaged or records no stage and batch id.
     """
     path = folder / BATCHES_FILE
     if not path.is_file():
         return []
     rows: list[tuple[str, str]] = []
-    for line in path.read_text().splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
-        rows.append((str(row["stage"]), str(row["batch_id"])))
+    for number, row in _json_lines(path):
+        stage, batch_id = row.get("stage"), row.get("batch_id")
+        if not isinstance(stage, str) or not isinstance(batch_id, str):
+            raise ConfigurationError(
+                f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
+            )
+        rows.append((stage, batch_id))
     return rows
 
 
-RESULT_FILES = ("cases.jsonl", "steps.jsonl", "run.jsonl")
+RESULT_FILES = ("cases.jsonl", "steps.jsonl", RUN_FILE)
 
 
 def set_aside_aborted_outputs(folder: Path) -> None:
-    """Rename a dead run's result files out of the way before its resume writes its own.
+    """Rename a dead run's result files out of the way, just before the resume writes its own.
 
     Every one of these files is appended to, and a resumed run re-derives all three from the
     same spec, the same code and the same replies. Left in place, the dead run's rows would
@@ -269,9 +385,15 @@ def set_aside_aborted_outputs(folder: Path) -> None:
     ``run.jsonl``, would go on reporting the run as incomplete after it had finished. None
     of that is what 0032 point 2 means by the resumed run being the same run.
 
-    They are renamed, not deleted. They are the only surviving record of what the dead run
-    paid for, and if the resume is itself killed before it writes anything, deleting them
-    would take that record with it.
+    **When** this happens matters as much as that it happens. Called at the top of a resume,
+    it would leave the 30-to-100 minutes of the run itself with the dead run's spend renamed
+    out of ``month_spent``'s sight — so a resume that was killed in its turn, which is the
+    exact failure 0032 exists for, would lose the record of what the first run paid. It is
+    therefore called immediately before the replacement files are written, on the success
+    path and the abort path alike, leaving a window of microseconds.
+
+    They are renamed, not deleted, for the same reason: they are the only surviving record
+    of what the dead run paid for.
 
     Args:
         folder: the run folder being resumed.
@@ -512,13 +634,17 @@ class Runner:
             folder = self._runs_dir / run_id
             # Before the first model call, so a folder that dies early still describes
             # itself (0032 point 1).
-            write_spec_json(folder, spec, commit_sha=self._sha, case_ids=case_ids)
+            write_spec_json(
+                folder, spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids
+            )
         else:
             run_id = resume
             folder = self._runs_dir / run_id
-            refuse_unresumable(folder, spec_json(spec, commit_sha=self._sha, case_ids=case_ids))
+            refuse_unresumable(
+                folder,
+                spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
+            )
             reusable = recorded_batches(folder)
-            set_aside_aborted_outputs(folder)
         results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
@@ -545,6 +671,21 @@ class Runner:
                 reported_batch_cost_usd=reported_batch_cost,
             )
 
+        def write_outputs(finished: datetime | None) -> RunRecord:
+            """The dead run's files aside (resume only), then this run's three files.
+
+            The set-aside happens here, a moment before the replacement files are written,
+            and not at the top of the resume: until this point the dead run's ``run.jsonl``
+            is the only record of what it paid, and a resume that is killed in its turn
+            must not be the thing that loses it.
+            """
+            if resume is not None:
+                set_aside_aborted_outputs(folder)
+            self._write_files(folder, results)
+            record = build_record(finished)
+            write_jsonl(folder / RUN_FILE, [record])
+            return record
+
         try:
             if spec.sync:
                 for raw in raws:
@@ -562,13 +703,10 @@ class Runner:
                     batch_ids = tuple(batch_run.batch_ids)
                     reported_batch_cost = self._reported_total(batch_run.costs)
         except BaseException:
-            self._write_files(folder, results)
-            write_jsonl(folder / "run.jsonl", [build_record(None)])
+            write_outputs(None)
             raise
 
-        self._write_files(folder, results)
-        record = build_record(self._now())
-        write_jsonl(folder / "run.jsonl", [record])
+        record = write_outputs(self._now())
         if spec.sample.startswith("heldout"):
             append_row(self._ledger, record, str(folder / "cases.jsonl"))
         return record
@@ -775,7 +913,10 @@ class Runner:
         A reused id is not appended to ``batches.jsonl`` a second time — it is already
         there. Everything after the wait is identical either way, so a reused batch's
         reported cost lands in the run record exactly as a fresh one's does, which is how
-        money already spent stays visible to the next run's budget check.
+        money already spent stays visible to the next run's budget check. The one addition
+        is ``refuse_replay_mismatch``: a reused batch's replies must cover exactly the
+        cases this pass replayed, which is the only checkable evidence that the replay
+        reproduced the dead run's requests.
 
         The batch id and its (possibly ``None``) reported cost are appended to ``run``
         before the status is checked, so a batch that ends anything but ``completed`` still
@@ -785,7 +926,8 @@ class Runner:
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
-        batch_id = self._take_reusable(run, stage)
+        reused = self._take_reusable(run, stage)
+        batch_id = reused
         if batch_id is None:
             batch_id = self._batch.submit(requests)
             self._record_batch_id(run.folder, batch_id, stage)
@@ -797,6 +939,8 @@ class Runner:
         run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
             raise ModelError(f"batch {batch_id} ended {status.status}")
+        if reused is not None:
+            refuse_replay_mismatch(reused, requests, status)
         return status
 
     def _answer_batch(

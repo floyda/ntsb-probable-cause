@@ -128,7 +128,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--resume",
         default=None,
         metavar="RUN_ID",
-        help="continue a run that died, reusing the batches it already paid for",
+        help="continue a run that died, reusing the batches it already paid for "
+        "(batch runs only: a --sync run records no batches to resume from)",
     )
     _add_common(run_p)
 
