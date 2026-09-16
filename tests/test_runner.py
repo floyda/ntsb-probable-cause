@@ -3,13 +3,13 @@
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
-from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
+from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
     ModelReply,
@@ -58,13 +58,14 @@ ABSTAIN = json.dumps(
 )
 
 
-def runner(
+def runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     tmp_path: Path,
     client: ModelClient,
     spent: float = 0.0,
     batch: BatchRunner | None = None,
     *,
     dirty: bool = False,
+    now: Callable[[], datetime] = lambda: datetime(2026, 9, 15, tzinfo=UTC),
 ) -> Runner:
     return Runner(
         client,
@@ -75,7 +76,7 @@ def runner(
         ledger_path=tmp_path / "ledger.md",
         month_spent_usd=spent,
         commit=("abc1234", dirty),
-        now=lambda: datetime(2026, 9, 15, tzinfo=UTC),
+        now=now,
     )
 
 
@@ -418,19 +419,21 @@ def _batch_result(
     )
 
 
-def _status(
+def _status(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     batch_id: str,
     requests: Sequence[BatchRequest],
     content: str | None,
     *,
     reported_cost: float | None = None,
     status: str = "completed",
+    counts: BatchCounts | None = None,
 ) -> BatchStatus:
     return BatchStatus(
         batch_id=batch_id,
         status=status,
         results=tuple(_batch_result(r, content) for r in requests),
         reported_cost_usd=reported_cost,
+        counts=counts if counts is not None else BatchCounts(None, None, None),
     )
 
 
@@ -458,13 +461,14 @@ class FakeBatchClient:
         return batch_id
 
     def wait(
-        self, batch_id: str, *, on_status: Callable[[str], None] = lambda _s: None
+        self, batch_id: str, *, on_status: Callable[[BatchStatus], None] = lambda _s: None
     ) -> BatchStatus:
         self.waited.append(batch_id)
-        on_status("completed")
         handler = self.handlers[len(self.waited) - 1]
         known = {**self.preloaded, **self._pending}
-        return handler(batch_id, known[batch_id])  # KeyError on an id from nowhere
+        status = handler(batch_id, known[batch_id])  # KeyError on an id from nowhere
+        on_status(status)
+        return status
 
 
 def test_batch_run_submits_two_batches_with_every_case_custom_id(
@@ -937,7 +941,7 @@ class _ExplodingBatchClient:
         raise RuntimeError("the provider was unreachable")
 
     def wait(
-        self, batch_id: str, *, on_status: Callable[[str], None] = lambda _s: None
+        self, batch_id: str, *, on_status: Callable[[BatchStatus], None] = lambda _s: None
     ) -> BatchStatus:
         raise AssertionError("never reached")
 
@@ -1373,12 +1377,15 @@ def test_recorded_batches_are_taken_by_stage_and_consumed_one_at_a_time() -> Non
     because "first not-yet-consumed row whose stage matches" is the rule the reuse rests on,
     not an accident of the order batches happen to be recorded in.
     """
-    run = _BatchRun(folder=Path("unused"), reusable=[("stage1", "b1"), ("stage2", "b2")])
-    assert Runner._take_reusable(run, "stage2") == "b2"  # looks past the stage1 row
-    assert run.reusable == [("stage1", "b1")]  # and consumes only the row it used
+    run = _BatchRun(
+        folder=Path("unused"),
+        reusable=[("stage1", "b1", "t1"), ("stage2", "b2", "t2")],
+    )
+    assert Runner._take_reusable(run, "stage2") == ("b2", "t2")  # looks past the stage1 row
+    assert run.reusable == [("stage1", "b1", "t1")]  # and consumes only the row it used
     assert Runner._take_reusable(run, "stage1-retry") is None  # no row: submit normally
-    assert run.reusable == [("stage1", "b1")]
-    assert Runner._take_reusable(run, "stage1") == "b1"
+    assert run.reusable == [("stage1", "b1", "t1")]
+    assert Runner._take_reusable(run, "stage1") == ("b1", "t1")
     assert Runner._take_reusable(run, "stage1") is None  # consumed: never handed out twice
     assert run.reusable == []
 
@@ -1563,3 +1570,181 @@ def test_resume_refuses_a_folder_that_does_not_exist(
         runner(tmp_path, RecordingFakeClient([]), batch=FakeBatchClient(handlers=[])).run(
             BATCH_SPEC, record_fixtures[:1], resume="20260101T000000-abc1234-dev-400-ceiling"
         )
+
+
+# --- the run log: elapsed, counts and cost per poll; reuse vs. fresh spend; the header ---
+
+
+def test_format_elapsed_pins_minutes_and_seconds() -> None:
+    assert Runner._format_elapsed(timedelta(minutes=18, seconds=11)) == "18m11s"
+    assert Runner._format_elapsed(timedelta(minutes=1, seconds=0)) == "1m00s"
+    assert Runner._format_elapsed(timedelta(minutes=13, seconds=42)) == "13m42s"
+
+
+def test_format_elapsed_crosses_the_hour_boundary() -> None:
+    assert Runner._format_elapsed(timedelta(minutes=59, seconds=59)) == "59m59s"
+    assert Runner._format_elapsed(timedelta(hours=1, minutes=0, seconds=0)) == "1h00m"
+    assert Runner._format_elapsed(timedelta(hours=1, minutes=1, seconds=1)) == "1h01m"
+    assert Runner._format_elapsed(timedelta(hours=2, minutes=5, seconds=59)) == "2h05m"
+
+
+def test_format_counts_known_values() -> None:
+    status = _status("b", [], None, counts=BatchCounts(total=401, completed=401, failed=0))
+    assert Runner._format_counts(status) == ("401/401", "0")
+
+
+def test_format_counts_dash_when_the_provider_sent_none() -> None:
+    """0032/brief: unknown must be distinguishable from zero, both in the type and the line."""
+    status = _status("b", [], None, counts=BatchCounts(total=None, completed=None, failed=None))
+    assert Runner._format_counts(status) == ("-/-", "-")
+
+
+def test_log_status_line_pins_the_briefs_completed_example(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 10, 22, tzinfo=UTC)
+    wait_started = now - timedelta(minutes=18, seconds=11)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    status = _status("bx", [], None, reported_cost=0.2384, counts=BatchCounts(401, 401, 0))
+    r._log_status("stage1", status, wait_started)
+    assert capsys.readouterr().err == (
+        "07:10:22 stage1       completed   401/401 failed=0 $0.2384 (18m11s)\n"
+    )
+
+
+def test_log_status_line_pins_the_briefs_retry_example_with_no_cost(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 11, 23, tzinfo=UTC)
+    wait_started = now - timedelta(minutes=1)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    status = _status(
+        "bx", [], None, status="in_progress", counts=BatchCounts(total=3, completed=0, failed=0)
+    )
+    r._log_status("stage1-retry", status, wait_started)
+    assert capsys.readouterr().err == (
+        "07:11:23 stage1-retry in_progress 0/3     failed=0 (1m00s)\n"
+    )
+
+
+def test_log_status_line_pins_the_briefs_stage2_example(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 24, 5, tzinfo=UTC)
+    wait_started = now - timedelta(minutes=13, seconds=42)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    status = _status(
+        "bx", [], None, status="in_progress", counts=BatchCounts(total=398, completed=143, failed=2)
+    )
+    r._log_status("stage2", status, wait_started)
+    assert capsys.readouterr().err == (
+        "07:24:05 stage2       in_progress 143/398 failed=2 (13m42s)\n"
+    )
+
+
+def test_log_status_line_shows_dashes_when_the_provider_sent_no_counts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 0, 0, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    status = _status("bx", [], None, status="in_progress")  # no counts, no cost
+    r._log_status("stage1", status, now)
+    err = capsys.readouterr().err
+    assert "-/-" in err
+    assert "failed=-" in err
+    assert "$" not in err
+
+
+def test_log_reused_pins_the_briefs_example(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 10, 21, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    r._log_reused("stage1", "batch-1789528868-uJRGBbMh4Hxp07qRRB9m", "2026-09-16T03:21:11+00:00")
+    assert capsys.readouterr().err == (
+        "07:10:21 stage1       REUSED    batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
+        "(recorded 03:21:11)\n"
+    )
+
+
+def test_log_reused_falls_back_to_unknown_for_an_unreadable_recorded_time(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A logging failure must never kill a run: an odd or missing ``time`` field is reported,
+    not raised, and the run log says so plainly (brief: "log what is known and carry on")."""
+    now = datetime(2026, 9, 16, 7, 10, 21, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    r._log_reused("stage1", "b1", "not a timestamp")
+    assert "(recorded unknown)" in capsys.readouterr().err
+    r._log_reused("stage1", "b1", None)
+    assert "(recorded unknown)" in capsys.readouterr().err
+
+
+def test_log_submitted_pins_the_briefs_example(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    now = datetime(2026, 9, 16, 7, 10, 23, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    r._log_submitted("stage1-retry", "batch-1789542619-7KCpMax2HcPd9lgJlg30", 3)
+    assert capsys.readouterr().err == (
+        "07:10:23 stage1-retry SUBMITTED batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
+    )
+
+
+def test_resume_logs_reused_for_the_recorded_batch_and_submitted_for_the_fresh_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """0032/brief §3: the reused stage logs no SUBMITTED and the fresh stage logs no REUSED."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    capsys.readouterr()  # discard the dead run's own log lines
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    lines = capsys.readouterr().err.splitlines()
+    reused_line = next(line for line in lines if "b1" in line and "REUSED" in line)
+    submitted_line = next(line for line in lines if "c1" in line and "SUBMITTED" in line)
+    assert "SUBMITTED" not in reused_line
+    assert "REUSED" not in submitted_line
+
+
+def test_run_header_logs_fresh_with_the_specs_facts(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeBatchClient(handlers=[lambda bid, reqs: _status(bid, reqs, ABSTAIN)])
+    runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
+    header = capsys.readouterr().err.splitlines()[0]
+    assert header == (
+        f"00:00:00 run {_run_id()} FRESH sample=dev-400 arm=ceiling cases=1 "
+        "model=openai/gpt-5.6-luna price=batch"
+    )
+
+
+def test_run_header_logs_resumed_with_the_specs_facts(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    capsys.readouterr()  # discard the dead run's own log lines
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    header = capsys.readouterr().err.splitlines()[0]
+    assert header == (
+        f"00:00:00 run {_run_id()} RESUMED sample=dev-400 arm=ceiling cases=1 "
+        "model=openai/gpt-5.6-luna price=batch"
+    )

@@ -89,6 +89,44 @@ def test_poll_reports_batch_level_cost(respx_mock: respx.MockRouter) -> None:
     assert status.reported_cost_usd == FIX["response"]["usage"]["cost"]
 
 
+def test_poll_parses_request_counts(respx_mock: respx.MockRouter) -> None:
+    """The provider's ``request_counts`` block (total/completed/failed), not discarded."""
+    respx_mock.get(f"{BASE}/b-counts").mock(return_value=httpx.Response(200, json=FIX["response"]))
+    status = client().poll("b-counts")
+    expected = FIX["response"]["request_counts"]
+    assert status.counts.total == expected["total"]
+    assert status.counts.completed == expected["completed"]
+    assert status.counts.failed == expected["failed"]
+
+
+def test_poll_treats_a_missing_request_counts_block_as_unknown_not_zero(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """0/401 (nothing done) and no block at all (the provider did not say) must differ."""
+    no_counts = {k: v for k, v in FIX["response"].items() if k != "request_counts"}
+    respx_mock.get(f"{BASE}/b-no-counts").mock(return_value=httpx.Response(200, json=no_counts))
+    status = client().poll("b-no-counts")
+    assert status.counts.total is None
+    assert status.counts.completed is None
+    assert status.counts.failed is None
+    assert status.counts.completed != 0  # unknown, never mistaken for zero
+
+
+def test_poll_treats_malformed_count_values_as_unknown_without_raising(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """A provider sending a non-integer count must not abort the poll (defensive parsing)."""
+    malformed = {
+        **FIX["response"],
+        "request_counts": {"total": "many", "completed": None, "failed": 2.5},
+    }
+    respx_mock.get(f"{BASE}/b-bad-counts").mock(return_value=httpx.Response(200, json=malformed))
+    status = client().poll("b-bad-counts")
+    assert status.counts.total is None
+    assert status.counts.completed is None
+    assert status.counts.failed is None
+
+
 def test_poll_handles_a_result_with_no_body(respx_mock: respx.MockRouter) -> None:
     broken = {
         **FIX["response"],

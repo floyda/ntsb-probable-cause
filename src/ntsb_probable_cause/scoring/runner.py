@@ -1,10 +1,11 @@
 """One evaluation run: cases → payloads → answering pass → scored results (spec §6)."""
 
+import contextlib
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -355,18 +356,22 @@ def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
             raise ConfigurationError(f"cannot resume {folder.name}: {detail}")
 
 
-def recorded_batches(folder: Path) -> list[tuple[str, str]]:
-    """The ``(stage, batch_id)`` rows of a run folder's ``batches.jsonl``, in order.
+def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
+    """The ``(stage, batch_id, recorded_time)`` rows of a run folder's ``batches.jsonl``.
 
     Every batch id is appended before its wait begins, so this is the complete list of
     batches the dead run paid for. An empty list where the file does not exist: a run that
     died before its first submit has nothing to reuse and simply runs from the start.
+    ``recorded_time`` is the row's own ``time`` field (the moment the batch was recorded,
+    used only to label a reused batch in the run log) and is ``None`` where a row predates
+    that field or does not carry a string there -- the reuse itself does not depend on it.
 
     Args:
         folder: the run folder.
 
     Returns:
-        One ``(stage, batch_id)`` pair per recorded batch, in the order they were submitted.
+        One ``(stage, batch_id, recorded_time)`` triple per recorded batch, in the order
+        they were submitted.
 
     Raises:
         ConfigurationError: a line is damaged or records no stage and batch id.
@@ -374,14 +379,15 @@ def recorded_batches(folder: Path) -> list[tuple[str, str]]:
     path = folder / BATCHES_FILE
     if not path.is_file():
         return []
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str | None]] = []
     for number, row in _json_lines(path):
         stage, batch_id = row.get("stage"), row.get("batch_id")
         if not isinstance(stage, str) or not isinstance(batch_id, str):
             raise ConfigurationError(
                 f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
             )
-        rows.append((stage, batch_id))
+        time = row.get("time")
+        rows.append((stage, batch_id, time if isinstance(time, str) else None))
     return rows
 
 
@@ -468,7 +474,7 @@ class BatchRunner(Protocol):
         ...
 
     def wait(
-        self, batch_id: str, *, on_status: Callable[[str], None] = lambda _s: None
+        self, batch_id: str, *, on_status: Callable[[BatchStatus], None] = lambda _s: None
     ) -> BatchStatus:
         """Poll until the batch is terminal."""
         ...
@@ -596,7 +602,7 @@ class _BatchRun:
     """
 
     folder: Path
-    reusable: list[tuple[str, str]] = field(default_factory=list)
+    reusable: list[tuple[str, str, str | None]] = field(default_factory=list)
     contexts: dict[str, _CaseContext] = field(default_factory=dict)
     results: dict[str, CaseResult] = field(default_factory=dict)
     order: list[str] = field(default_factory=list)
@@ -676,7 +682,7 @@ class Runner:
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
         case_ids = [case_payload(raw, spec, self._tables)[3].case_id for raw in raws]
-        reusable: list[tuple[str, str]] = []
+        reusable: list[tuple[str, str, str | None]] = []
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
             folder = self._runs_dir / run_id
@@ -693,6 +699,7 @@ class Runner:
                 spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
             )
             reusable = recorded_batches(folder)
+        self._log_header(spec, run_id, len(case_ids), resumed=resume is not None)
         results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
@@ -923,10 +930,98 @@ class Runner:
 
     # --- the batch path ---
 
+    _STAGE_WIDTH = 13  # the longest stage name ("stage1-retry"/"stage2-retry") plus a gap
+    _WORD_WIDTH = 10  # "SUBMITTED" (9 chars) plus a gap; "REUSED" pads out to match
+    _STATUS_WIDTH = 12  # "in_progress" (11 chars) plus a gap
+    _COUNTS_WIDTH = 8  # "999/999" (7 chars, the common case) plus a gap
+
+    def _log_header(self, spec: RunSpec, run_id: str, case_count: int, *, resumed: bool) -> None:
+        """One line naming a run as it starts: the same facts as ``spec.json`` (§4).
+
+        Written after the pre-flight refusals and the folder/spec bookkeeping, so a log
+        found later -- while the run is still in flight -- identifies itself the same way
+        the run folder does, without having to open ``spec.json``.
+        """
+        word = "RESUMED" if resumed else "FRESH"
+        self._write_log_line(
+            f"run {run_id} {word} sample={spec.sample} arm={spec.arm} cases={case_count} "
+            f"model={spec.model} price={spec.price_variant}"
+        )
+
+    def _write_log_line(self, body: str) -> None:
+        """Every run-log line: the wall clock, then ``body``, to stderr only.
+
+        Never lets a logging problem end the run (brief: "A logging failure must never kill
+        a run") -- ``self._now()`` is the runner's own injected clock and cannot fail in
+        practice, but writing is wrapped anyway since stderr can, in principle, be closed
+        out from under a long-running process.
+        """
+        with contextlib.suppress(OSError):
+            sys.stderr.write(f"{self._now():%H:%M:%S} {body}\n")
+
     @staticmethod
-    def _log_status(stage: str, batch_id: str, status: str) -> None:
-        """One line of batch status, to stderr, never stdout (controller resolution 7)."""
-        sys.stderr.write(f"{stage} {batch_id}: {status}\n")
+    def _format_counts(status: BatchStatus) -> tuple[str, str]:
+        """``completed/total`` and the failed count, each ``-`` where the provider did not say."""
+        counts = status.counts
+        completed = "-" if counts.completed is None else str(counts.completed)
+        total = "-" if counts.total is None else str(counts.total)
+        failed = "-" if counts.failed is None else str(counts.failed)
+        return f"{completed}/{total}", failed
+
+    @staticmethod
+    def _format_elapsed(elapsed: timedelta) -> str:
+        """``NmNNs``, or ``NhNNm`` once the elapsed time passes an hour (brief format)."""
+        total_seconds = max(0, int(elapsed.total_seconds()))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            return f"{hours}h{minutes:02d}m"
+        return f"{minutes}m{seconds:02d}s"
+
+    def _log_status(self, stage: str, status: BatchStatus, wait_started: datetime) -> None:
+        """One line per poll: status, counts, cost (if reported) and elapsed since waiting began.
+
+        ``wait_started`` is the moment ``_submit_and_wait`` began waiting on this batch, not
+        anything the provider reports (controller resolution 3), so elapsed is meaningful
+        even across a resume that waits on a batch recorded long before this process started.
+        """
+        counts_str, failed_str = self._format_counts(status)
+        elapsed = self._format_elapsed(self._now() - wait_started)
+        cost = "" if status.reported_cost_usd is None else f" ${status.reported_cost_usd:.4f}"
+        stage_field = stage.ljust(self._STAGE_WIDTH)
+        status_field = status.status.ljust(self._STATUS_WIDTH)
+        counts_field = counts_str.ljust(self._COUNTS_WIDTH)
+        self._write_log_line(
+            f"{stage_field}{status_field}{counts_field}failed={failed_str}{cost} ({elapsed})"
+        )
+
+    def _log_reused(self, stage: str, batch_id: str, recorded_time: str | None) -> None:
+        """One line when a stage waits on a recorded batch instead of submitting: no new money."""
+        recorded = self._format_recorded_time(recorded_time)
+        stage_field = stage.ljust(self._STAGE_WIDTH)
+        word_field = "REUSED".ljust(self._WORD_WIDTH)
+        self._write_log_line(f"{stage_field}{word_field}{batch_id} (recorded {recorded})")
+
+    def _log_submitted(self, stage: str, batch_id: str, request_count: int) -> None:
+        """One line when a stage submits a fresh batch (§3): new money, and how much of it."""
+        plural = "request" if request_count == 1 else "requests"
+        stage_field = stage.ljust(self._STAGE_WIDTH)
+        word_field = "SUBMITTED".ljust(self._WORD_WIDTH)
+        self._write_log_line(f"{stage_field}{word_field}{batch_id} {request_count} {plural}")
+
+    @staticmethod
+    def _format_recorded_time(recorded_time: str | None) -> str:
+        """The ``HH:MM:SS`` a batch was recorded at, or ``unknown`` for an unreadable value.
+
+        A malformed or missing ``time`` field (an old run folder, a hand-edited row) must
+        not raise out of the run log (brief: "log what is known and carry on").
+        """
+        if recorded_time is None:
+            return "unknown"
+        try:
+            return f"{datetime.fromisoformat(recorded_time):%H:%M:%S}"
+        except ValueError:
+            return "unknown"
 
     def _record_batch_id(self, folder: Path, batch_id: str, stage: str) -> None:
         """Append the batch id before waiting (spec §7.2: an interrupted run can resume)."""
@@ -936,8 +1031,8 @@ class Runner:
             handle.write(json.dumps(row) + "\n")
 
     @staticmethod
-    def _take_reusable(run: _BatchRun, stage: str) -> str | None:
-        """The first unconsumed recorded batch id for ``stage``, removed from the queue.
+    def _take_reusable(run: _BatchRun, stage: str) -> tuple[str, str | None] | None:
+        """The first unconsumed recorded ``(batch_id, recorded_time)`` for ``stage``.
 
         By stage name and order, not one row per stage: a retry pass can legitimately run
         twice across a resume (``stage1-retry`` in the dead run and again in the resumed
@@ -949,12 +1044,13 @@ class Runner:
             stage: the stage name the batch is for.
 
         Returns:
-            A batch id to wait on instead of submitting, or ``None`` to submit normally.
+            The batch id to wait on instead of submitting, and the time it was recorded (for
+            the run log only), or ``None`` to submit normally.
         """
-        for index, (recorded_stage, batch_id) in enumerate(run.reusable):
+        for index, (recorded_stage, batch_id, recorded_time) in enumerate(run.reusable):
             if recorded_stage == stage:
                 del run.reusable[index]
-                return batch_id
+                return batch_id, recorded_time
         return None
 
     def _submit_and_wait(
@@ -978,24 +1074,32 @@ class Runner:
         contributes its honest entry — a ``None`` cost, not a missing one silently treated
         as zero — instead of vanishing from the run's totals, and its id still shows up in
         the aborted ``RunRecord.batch_ids`` (fix round 2, Minor 2).
+
+        Before the wait begins, one line goes to the run log saying whether this batch is
+        reused (no new money) or freshly submitted (new money, and how much of it) -- the
+        money trail the brief calls out as currently invisible.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
         reused = self._take_reusable(run, stage)
-        batch_id = reused
-        if batch_id is None:
+        if reused is None:
             batch_id = self._batch.submit(requests)
             self._record_batch_id(run.folder, batch_id, stage)
+            self._log_submitted(stage, batch_id, len(requests))
+        else:
+            batch_id, recorded_time = reused
+            self._log_reused(stage, batch_id, recorded_time)
+        wait_started = self._now()
         status = self._batch.wait(
             batch_id,
-            on_status=lambda s: self._log_status(stage, batch_id, s),
+            on_status=lambda s: self._log_status(stage, s, wait_started),
         )
         run.batch_ids.append(status.batch_id)
         run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
             raise ModelError(f"batch {batch_id} ended {status.status}")
         if reused is not None:
-            refuse_replay_mismatch(reused, requests, status)
+            refuse_replay_mismatch(reused[0], requests, status)
         return status
 
     def _answer_batch(

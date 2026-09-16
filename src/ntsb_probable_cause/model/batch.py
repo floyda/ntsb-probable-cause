@@ -3,8 +3,9 @@
 import json
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ModelError
@@ -42,14 +43,29 @@ class BatchResult(BaseModel):
     error: str | None
 
 
+@dataclass(frozen=True)
+class BatchCounts:
+    """The provider's ``request_counts``, as last polled.
+
+    Each field is ``None`` when the provider's payload did not say -- distinct from ``0``,
+    which the provider does report once it has started work (``0/401`` means nothing done
+    yet; no counts at all means the provider gave none, e.g. before the batch is queued).
+    """
+
+    total: int | None
+    completed: int | None
+    failed: int | None
+
+
 class BatchStatus(BaseModel):
     """A batch as last polled."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
     batch_id: str
     status: str
     results: tuple[BatchResult, ...]
     reported_cost_usd: float | None
+    counts: BatchCounts = Field(default_factory=lambda: BatchCounts(None, None, None))
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
@@ -57,6 +73,16 @@ def _as_mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise TypeError(f"expected an object, got {type(value).__name__}")
     return value
+
+
+def _as_int(value: object) -> int | None:
+    """Narrow an untyped JSON value to an ``int``, or ``None`` if it isn't one.
+
+    Never raises: a provider that sends a non-integer count (a string, a float, absent
+    entirely) yields "unknown", the same as a missing ``request_counts`` block, rather than
+    aborting the poll (brief: "must not raise").
+    """
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _as_sequence(value: object) -> Sequence[object]:
@@ -133,11 +159,19 @@ class BatchClient:
         )
         usage = raw.get("usage")
         cost = _as_mapping(usage).get("cost") if isinstance(usage, Mapping) else None
+        counts_raw = raw.get("request_counts")
+        counts_map = _as_mapping(counts_raw) if isinstance(counts_raw, Mapping) else {}
+        counts = BatchCounts(
+            total=_as_int(counts_map.get("total")),
+            completed=_as_int(counts_map.get("completed")),
+            failed=_as_int(counts_map.get("failed")),
+        )
         return BatchStatus(
             batch_id=batch_id,
             status=str(raw.get("status")),
             results=results,
             reported_cost_usd=float(cost) if isinstance(cost, int | float) else None,
+            counts=counts,
         )
 
     def wait(  # noqa: PLR0913 -- every parameter is a seam a test needs (see the docstring).
@@ -146,7 +180,7 @@ class BatchClient:
         *,
         every_seconds: float = 60.0,
         sleep: Callable[[float], None] = time.sleep,
-        on_status: Callable[[str], None] = lambda _s: None,
+        on_status: Callable[[BatchStatus], None] = lambda _s: None,
         not_found_grace_seconds: float = 120.0,
         now: Callable[[], float] = time.monotonic,
     ) -> BatchStatus:
@@ -183,7 +217,7 @@ class BatchClient:
                 sleep(every_seconds)
                 continue
             not_found_deadline = None
-            on_status(status.status)
+            on_status(status)
             if status.status in TERMINAL:
                 return status
             sleep(every_seconds)
