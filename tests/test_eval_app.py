@@ -12,9 +12,16 @@ from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_
 
 from ntsb_probable_cause.model.client import ModelClient, RecordingFakeClient
 from ntsb_probable_cause.scoring import samples
-from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
+from ntsb_probable_cause.scoring.metrics import CaseScores
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, RunSpec
 from ntsb_probable_cause.settings import Settings
+
+GOOD_LABELS = json.dumps(
+    {"narrative": "consistent", "cause": "same_cause", "lay": "explains_chosen_codes"}
+)
 
 GOOD = json.dumps(
     {
@@ -303,3 +310,153 @@ def test_run_sync_then_report_end_to_end(
     assert "top-1" in out
     assert "| all |" in out
     assert case_id  # the fixture case id was used to build the sample
+
+
+def _write_judgeable_run(
+    runs_dir: Path, run_id: str, case_id: str, *, sample: str = "dev-400"
+) -> None:
+    """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    kwargs = {**_RUN_KWARGS, "sample": sample}
+    write_jsonl(
+        runs_dir / run_id / "run.jsonl",
+        [RunRecord(**kwargs, run_id=run_id, started=now, finished=now, cost_usd=1.0)],
+    )
+    hypothesis = parse_hypothesis(GOOD, load_tables())
+    step = StepRecord(
+        case_id=case_id,
+        step=0,
+        arm="ceiling",
+        condition="full",
+        day=None,
+        tool="none",
+        arguments={},
+        reason="",
+        expected_effect="",
+        returned_roles=(),
+        not_available=(),
+        payload_fingerprint="x",
+        hypothesis=hypothesis,
+        observed_effect="",
+        stop_reason="answered",
+        model="m",
+        price_variant="batch",
+        prompt_tokens=0,
+        completion_tokens=0,
+        cost_usd=0.0,
+        cumulative_cost_usd=0.0,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    scores = CaseScores(
+        occurrence_top1=True,
+        occurrence_top3=True,
+        event_match=True,
+        pair_unseen=False,
+        finding_precision_10=None,
+        finding_recall_10=None,
+        finding_precision_8=None,
+        finding_recall_8=None,
+        finding_precision_6=None,
+        finding_recall_6=None,
+        finding_precision_all_10=None,
+        finding_recall_all_10=None,
+        abstained=False,
+        confidence=0.7,
+    )
+    case = CaseResult(
+        case_id=case_id,
+        split="heldout" if sample.startswith("heldout") else "dev",
+        fatal=False,
+        investigation_class="C",
+        report_flavour=None,
+        verdict_occurrence=("552230",),
+        verdict_findings=(),
+        verdict_findings_in_cause=(),
+        steps=(step,),
+        scores=scores,
+        cost_usd=0.0,
+        failure=None,
+    )
+    write_jsonl(runs_dir / run_id / "cases.jsonl", [case])
+
+
+def test_judge_on_a_heldout_run_appends_a_ledger_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2, item 3: spec §13 item 8 -- every held-out run, judge passes included."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ledger_path = tmp_path / "heldout-ledger.md"
+    monkeypatch.setenv("NTSB_HELDOUT_LEDGER_PATH", str(ledger_path))
+    monkeypatch.setattr(
+        "ntsb_probable_cause.scoring.ledger.commit_state", lambda *_a, **_k: ("abc1234", False)
+    )
+    run_id = "20260101T000000-abc1234-heldout-40-ceiling"
+    _write_judgeable_run(runs_dir, run_id, case_id, sample="heldout-40")
+
+    fake = RecordingFakeClient([GOOD_LABELS])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(["judge", run_id, "--validated"], client_factory=factory)
+    assert exit_code == 0
+    ledger_text = ledger_path.read_text()
+    assert "| heldout-40 |" in ledger_text
+    assert "judge.jsonl" in ledger_text  # the row names the judge pass's own results file
+    assert "anthropic/claude-haiku-4.5" in ledger_text  # the judge model, not the run's model
+
+
+def test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2, item 3: a held-out judge pass is refused the same way a held-out run is."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ledger_path = tmp_path / "heldout-ledger.md"
+    monkeypatch.setenv("NTSB_HELDOUT_LEDGER_PATH", str(ledger_path))
+    monkeypatch.setattr(
+        "ntsb_probable_cause.scoring.ledger.commit_state", lambda *_a, **_k: ("abc1234", True)
+    )
+    run_id = "20260101T000000-abc1234-heldout-40-ceiling"
+    _write_judgeable_run(runs_dir, run_id, case_id, sample="heldout-40")
+
+    fake = RecordingFakeClient([GOOD_LABELS])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(["judge", run_id, "--validated"], client_factory=factory)
+    assert exit_code == 1
+    assert fake.payloads == []  # refused before any call
+    assert not ledger_path.exists()
+    assert not (runs_dir / run_id / "judge.jsonl").exists()
+
+
+def test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The app-level judge test the reviewer noted: it would have caught the unlink ordering.
+
+    Fix round 2, item 1: a re-judge that gets refused (or fails before its first label) must
+    not delete the previous pass's already-paid ``judge.jsonl`` rows.
+    """
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    run_id = "20260101T000000-abc1234-dev-400-ceiling"
+    _write_judgeable_run(runs_dir, run_id, case_id, sample="dev-400")
+
+    fake = RecordingFakeClient([GOOD_LABELS])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(["judge", run_id], client_factory=factory)
+    assert exit_code == 0
+    judge_path = runs_dir / run_id / "judge.jsonl"
+    original_content = judge_path.read_text()
+    assert case_id in original_content
+
+    # Force the second pass to be refused before it ever reaches a call.
+    monkeypatch.setattr("apps.eval.__main__.month_spent", lambda *_a, **_k: 1_000_000.0)
+    exit_code = main(["judge", run_id], client_factory=factory)
+    assert exit_code == 1
+    assert judge_path.read_text() == original_content  # untouched by the refused retry

@@ -242,7 +242,10 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
         ]
         lines.append(f"| {name} | {len(scored)} | " + " | ".join(cells) + " |")
     if floor:
-        lines.append("\nBaseline floor: " + ", ".join(f"{k} {v:.1%}" for k, v in floor.items()))
+        lines.append(
+            "\nBaseline floor (honest baseline, spec §6.3: fit on development, scored on "
+            "all 4,241 held-out cases): " + ", ".join(f"{k} {v:.1%}" for k, v in floor.items())
+        )
     return "\n".join(lines)
 
 

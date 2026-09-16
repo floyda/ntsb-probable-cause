@@ -118,7 +118,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--price-variant", choices=("batch", "standard"), default=RunSpec.price_variant
     )
     run_p.add_argument("--cap-usd", type=float, default=RunSpec.cap_usd)
-    run_p.add_argument("--budget-usd", type=float, default=RunSpec.budget_usd)
+    run_p.add_argument(
+        "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
+    )
     run_p.add_argument("--expected-cost-per-case-usd", type=float, default=None)
     run_p.add_argument("--sync", action="store_true")
     run_p.add_argument("--limit", type=int, default=None, help="only the first N sample cases")
@@ -135,6 +137,9 @@ def _build_parser() -> argparse.ArgumentParser:
     judge_p.add_argument("run_id")
     judge_p.add_argument(
         "--validated", action="store_true", help="allow judging a run on a non-dev-400 sample"
+    )
+    judge_p.add_argument(
+        "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
     _add_common(judge_p)
 
@@ -178,7 +183,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         model=args.model,
         price_variant=args.price_variant,
         cap_usd=args.cap_usd,
-        budget_usd=args.budget_usd,
+        budget_usd=args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd,
         sync=args.sync,
         expected_cost_per_case_usd=args.expected_cost_per_case_usd
         if args.expected_cost_per_case_usd is not None
@@ -200,13 +205,30 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
     _maybe_write(args.out, text)
 
 
+def _floor_for_report(settings: Settings, sample: str) -> tuple[dict[str, float] | None, str]:
+    """The honest baseline's floor, labelled, or a one-line reason it is not shown.
+
+    Omitted entirely for ``dev-400``: the floor is fit on development and scored on the
+    held-out split, so showing it beside a development table would compare a run against a
+    population it was not run on. A read-only command must not traceback just because
+    ``cases.parquet`` (or the split it needs) is missing -- that failure is reported as a
+    one-line note instead (fix round 2, items 4-5).
+    """
+    if sample == "dev-400":
+        return None, ""
+    try:
+        return report.honest_baseline_floor(settings.data_dir / "processed"), ""
+    except Exception as error:
+        return None, f"\n(baseline floor unavailable: {error})"
+
+
 def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_id = _resolve_run_id(settings.runs_dir, args.run_id, args.latest)
     folder = settings.runs_dir / run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     run_record = answering_run_record(folder)
-    floor = report.honest_baseline_floor(settings.data_dir / "processed")
-    text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor)
+    floor, floor_note = _floor_for_report(settings, run_record.sample)
+    text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
@@ -245,10 +267,20 @@ def _judge_items(
     return items
 
 
-def _record_judge_cost(
-    folder: Path, run_record: RunRecord, commit: tuple[str, bool], cost: float, cases: int
+def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fact it carries.
+    settings: Settings,
+    folder: Path,
+    run_record: RunRecord,
+    commit: tuple[str, bool],
+    cost: float,
+    cases: int,
 ) -> RunRecord:
-    """Append a second ``RunRecord`` for the judge pass, so ``month_spent`` counts it too."""
+    """Append a second ``RunRecord`` for the judge pass, and a held-out ledger row if due.
+
+    Spec §5.4/§13 item 8: the held-out ledger lists every run that touched a held-out
+    sample, and a judge pass on one reads withheld verdicts and spends money just as an
+    answering run does (fix round 2, item 3).
+    """
     now = datetime.now(UTC)
     judge_record = RunRecord(
         run_id=f"{run_record.run_id}-judge",
@@ -269,6 +301,8 @@ def _record_judge_cost(
         cost_usd=cost,
     )
     write_jsonl(folder / "run.jsonl", [judge_record])
+    if run_record.sample.startswith("heldout"):
+        ledger.append_row(settings.heldout_ledger_path, judge_record, str(folder / "judge.jsonl"))
     return judge_record
 
 
@@ -279,6 +313,10 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
         raise SystemExit(
             f"judge: refusing on sample {run_record.sample!r} without --validated (spec §8)"
         )
+    commit = ledger.commit_state()
+    # A held-out judge pass reads withheld verdicts and spends money exactly as a held-out
+    # `run` does, so it is refused from a dirty tree by the same rule (fix round 2, item 3).
+    ledger.refuse_if_heldout_and_dirty(run_record.sample, commit[1])
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     scorable_ids = [c.case_id for c in cases if c.scores is not None and c.steps]
     processed = settings.data_dir / "processed"
@@ -290,30 +328,44 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
 
     judge_path = folder / "judge.jsonl"
     judge_path.parent.mkdir(parents=True, exist_ok=True)
-    judge_path.unlink(missing_ok=True)  # a fresh file: this call's rows, not a prior one's.
     paid: list[float] = []
+    wrote_first_row = False
 
     def on_row(row: Mapping[str, object]) -> None:
-        # Written and flushed immediately -- an interrupt after case k keeps rows 0..k
-        # (fix round 1, Important 1), not only the ones a final, all-at-once write would.
-        with judge_path.open("a") as handle:
+        # The previous pass's file is only replaced once the budget guard has passed AND a
+        # first label is actually in hand -- a refusal, or a failure before any label, must
+        # never delete an earlier pass's already-paid rows (fix round 2, item 1; the bug this
+        # guards against is the same class fix round 1 already fixed for the write itself:
+        # written and flushed immediately, so an interrupt after case k keeps rows 0..k).
+        nonlocal wrote_first_row
+        mode = "a" if wrote_first_row else "w"
+        with judge_path.open(mode) as handle:
             handle.write(json.dumps(row) + "\n")
+        wrote_first_row = True
         paid.append(cast(float, row["cost_usd"]))
 
+    budget_usd = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
     spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
-    commit = ledger.commit_state()
     try:
         result = judge_run(
-            client, tables, items, price_variant="batch", month_spent_usd=spent, on_row=on_row
+            client,
+            tables,
+            items,
+            price_variant="batch",
+            budget_usd=budget_usd,
+            month_spent_usd=spent,
+            on_row=on_row,
         )
     except BaseException:
         # Whatever was paid for before the failure is still recorded, so the next run's
         # budget check is not blind to it (fix round 1, Important 1; mirrors the runner's
         # own partial-write-then-reraise, spec §6.4).
         if paid:
-            _record_judge_cost(folder, run_record, commit, sum(paid), len(paid))
+            _record_judge_cost(settings, folder, run_record, commit, sum(paid), len(paid))
         raise
-    judge_record = _record_judge_cost(folder, run_record, commit, result.cost_usd, len(paid))
+    judge_record = _record_judge_cost(
+        settings, folder, run_record, commit, result.cost_usd, len(paid)
+    )
     disagreements = pick_disagreements(
         list(result.case_ids), list(result.labels), list(result.scores)
     )

@@ -241,7 +241,8 @@ def test_summarise_prints_a_markdown_table_with_floor() -> None:
     assert text.startswith("| slice | n |")
     assert "| all | 1 |" in text  # the failed case has no scores and is excluded from n
     assert "1 of 2" in text  # failed column
-    assert "Baseline floor: top-1 16.2%" in text
+    assert "Baseline floor (honest baseline, spec §6.3" in text
+    assert "top-1 16.2%" in text
 
 
 def test_summarise_marks_answered_top1_dash_when_all_abstained() -> None:

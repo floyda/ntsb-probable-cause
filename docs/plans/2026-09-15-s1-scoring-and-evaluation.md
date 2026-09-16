@@ -4006,3 +4006,63 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   exists) and used it in all three places instead of tuple-destructuring. Test:
   `test_answering_run_record_is_the_first_row_even_after_a_judge_pass`. Second commit of this
   fix round, same trailer lines, same reason.
+- 2026-09-16, Task 13 fix round 2 (re-review of the second fix-round-1 commit; all ten
+  fix-round-1 findings confirmed addressed with no Critical/Important breakage):
+  1. **`judge.jsonl` unlink ordering.** `judge_path.unlink(missing_ok=True)` ran before
+     `judge_run`'s budget refusal, so a refused re-judge (or one that raised before its
+     first label) deleted the previous pass's already-paid rows -- the same class of loss
+     fix round 1 fixed for the write path, on a new path. Replaced the unconditional unlink
+     with a lazy truncate: `on_row` opens the file `"w"` only the first time it is actually
+     called (tracked by a `nonlocal wrote_first_row` flag) and `"a"` after, so a run that
+     never reaches a first label leaves the previous file untouched. Test:
+     `test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry` -- the
+     app-level judge test the reviewer asked for, which fails against the pre-fix code.
+  2. **`JUDGE_EXPECTED_COST_PER_CASE_USD` provenance and pricing.** Corrected the comment to
+     say exactly what was measured: one live call (2026-09-16, standard price,
+     anthropic/claude-haiku-4.5), 769 prompt / 24 completion tokens, $0.000889
+     provider-reported. The batch figure ($0.000445) is now labelled an estimate computed
+     from that same call's tokens against `sources.HAIKU_45_BATCH`'s confirmed price, not a
+     second measurement. Both dict values are set to spec §14's own conservative budget
+     (~$1/800 cases = $0.00125/case, about 3x the one measured call), with the choice and
+     reason stated in the comment. Separately, `price_variant="standard"` had no confirmed
+     OpenRouter price (`sources._PRICES` holds only the batch-suffixed judge model id), so a
+     standard call whose reply did not report its own cost would `KeyError` from inside
+     `cost_usd` after already being paid for. Added `judge._ensure_priced`, called before
+     the budget-checked loop, which raises `ConfigurationError` before any call if the
+     variant has no confirmed price, rather than inventing one (project rule: no API detail
+     is guessed). Tests:
+     `test_judge_expected_cost_per_case_uses_the_conservative_spec_budget`,
+     `test_judge_run_refuses_a_standard_priced_call_before_any_call`.
+  3. **A held-out judge pass must appear in the held-out ledger (spec §13 item 8).**
+     `_record_judge_cost` now appends a ledger row via `ledger.append_row` whenever the
+     judged run's own sample starts with `"heldout"`, using the judge `RunRecord` it already
+     builds and `judge.jsonl` as the results file. `_cmd_judge` also calls
+     `ledger.refuse_if_heldout_and_dirty(run_record.sample, commit[1])` before doing
+     anything else, the same rule `Runner.run` already applies to an answering run. Tests:
+     `test_judge_on_a_heldout_run_appends_a_ledger_row`,
+     `test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused` (both monkeypatch
+     `ledger.commit_state` rather than depending on the real repo's dirty state, which is
+     not reliable inside a test run).
+  4. **The floor line was unlabelled and always the held-out population.** `summarise`'s
+     floor line now says what it is: "honest baseline, spec §6.3: fit on development, scored
+     on all 4,241 held-out cases". `_cmd_report` omits the floor entirely when the reported
+     run's own sample is `dev-400`, since a held-out-fit floor beside a development table
+     compares against a population the run was not on.
+  5. **`report` must not traceback on a missing corpus.** Wrapped the floor computation in
+     `apps/eval/__main__._floor_for_report`: on any exception reading/fitting the baseline,
+     the report still prints, with a one-line `"(baseline floor unavailable: ...)"` note
+     instead of the floor. The per-invocation refit itself is left as is (acceptable cost on
+     real data), noted in `_floor_for_report`'s docstring.
+  6. **`Settings.monthly_budget_usd` was read by nothing.** `run --budget-usd` and the new
+     `judge --budget-usd` both default to `None` in argparse and fall back to
+     `settings.monthly_budget_usd` in `_cmd_run`/`_cmd_judge` when unset; an explicit flag
+     still wins. `test_run_flags_reach_runspec_and_month_spent_reaches_runner` (fix round 1)
+     still passes unchanged since it always passes `--budget-usd` explicitly.
+  Files touched: `src/ntsb_probable_cause/scoring/judge.py`,
+  `src/ntsb_probable_cause/scoring/report.py`, `apps/eval/__main__.py`,
+  `tests/test_judge.py`, `tests/test_report.py`, `tests/test_eval_app.py`.
+  `uv run pytest` -- 389 passed, 97.67% coverage (gate 90%); `report.py` and `judge.py` both
+  100%. `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict,
+  pytest) all pass. Commit trailer lines exactly as given in `global-constraints.md`
+  ("Claude Opus 5 (1M context)"), per the coordinator's explicit instruction for this fix
+  round (as in fix round 1 and Task 11's fix rounds).
