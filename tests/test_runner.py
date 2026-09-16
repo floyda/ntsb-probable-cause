@@ -1608,7 +1608,7 @@ def test_log_status_line_pins_the_briefs_completed_example(
     status = _status("bx", [], None, reported_cost=0.2384, counts=BatchCounts(401, 401, 0))
     r._log_status("stage1", status, wait_started)
     assert capsys.readouterr().err == (
-        "07:10:22 stage1       completed   401/401 failed=0 $0.2384 (18m11s)\n"
+        "07:10:22Z stage1       completed   401/401   failed=0 $0.2384 (18m11s)\n"
     )
 
 
@@ -1623,7 +1623,7 @@ def test_log_status_line_pins_the_briefs_retry_example_with_no_cost(
     )
     r._log_status("stage1-retry", status, wait_started)
     assert capsys.readouterr().err == (
-        "07:11:23 stage1-retry in_progress 0/3     failed=0 (1m00s)\n"
+        "07:11:23Z stage1-retry in_progress 0/3       failed=0 (1m00s)\n"
     )
 
 
@@ -1638,8 +1638,15 @@ def test_log_status_line_pins_the_briefs_stage2_example(
     )
     r._log_status("stage2", status, wait_started)
     assert capsys.readouterr().err == (
-        "07:24:05 stage2       in_progress 143/398 failed=2 (13m42s)\n"
+        "07:24:05Z stage2       in_progress 143/398   failed=2 (13m42s)\n"
     )
+
+
+def test_log_status_line_fits_a_four_digit_count_without_losing_the_column_gap() -> None:
+    """M6: ``_COUNTS_WIDTH`` must fit ``9999/9999`` (9 chars) with at least one gap column."""
+    counts_str, _ = Runner._format_counts(_status("b", [], None, counts=BatchCounts(9999, 9999, 0)))
+    assert counts_str == "9999/9999"
+    assert len(counts_str) < Runner._COUNTS_WIDTH
 
 
 def test_log_status_line_shows_dashes_when_the_provider_sent_no_counts(
@@ -1662,8 +1669,8 @@ def test_log_reused_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_reused("stage1", "batch-1789528868-uJRGBbMh4Hxp07qRRB9m", "2026-09-16T03:21:11+00:00")
     assert capsys.readouterr().err == (
-        "07:10:21 stage1       REUSED    batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
-        "(recorded 03:21:11)\n"
+        "07:10:21Z stage1       REUSED    batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
+        "(recorded 03:21:11Z)\n"
     )
 
 
@@ -1680,6 +1687,25 @@ def test_log_reused_falls_back_to_unknown_for_an_unreadable_recorded_time(
     assert "(recorded unknown)" in capsys.readouterr().err
 
 
+def test_write_log_line_survives_a_body_builder_that_raises(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, I1: the guard covers *construction*, not only the final ``write``.
+
+    The brief's own case -- writing to a closed file -- raises ``ValueError``, not
+    ``OSError``; a bug in a formatter (an ``AttributeError``, a ``KeyError``, anything) is
+    exactly as fatal to a paid batch mid-``wait()`` if it is allowed to propagate. Neither
+    may kill the run.
+    """
+    r = runner(tmp_path, RecordingFakeClient([]))
+
+    def exploding_body() -> str:
+        raise AttributeError("boom")
+
+    r._write_log_line(exploding_body)  # must not raise
+    assert capsys.readouterr().err == ""
+
+
 def test_log_submitted_pins_the_briefs_example(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1687,14 +1713,21 @@ def test_log_submitted_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_submitted("stage1-retry", "batch-1789542619-7KCpMax2HcPd9lgJlg30", 3)
     assert capsys.readouterr().err == (
-        "07:10:23 stage1-retry SUBMITTED batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
+        "07:10:23Z stage1-retry SUBMITTED batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
     )
 
 
-def test_resume_logs_reused_for_the_recorded_batch_and_submitted_for_the_fresh_one(
+def test_resume_logs_reused_for_the_recorded_batch_and_never_submitted_anywhere_for_it(
     tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """0032/brief §3: the reused stage logs no SUBMITTED and the fresh stage logs no REUSED."""
+    """0032/brief §3: check *every* line mentioning each batch id, not just one picked line.
+
+    Fix round 2, I3: the previous assertion picked the line containing REUSED and then
+    asserted it did not also contain SUBMITTED -- true by construction, since the line was
+    selected for containing REUSED. This checks every line mentioning the reused batch id
+    for a spurious SUBMITTED (new money claimed where none was spent) and every line
+    mentioning the fresh batch id for a spurious REUSED.
+    """
     dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
     capsys.readouterr()  # discard the dead run's own log lines
     resumed = FakeBatchClient(
@@ -1709,10 +1742,65 @@ def test_resume_logs_reused_for_the_recorded_batch_and_submitted_for_the_fresh_o
         BATCH_SPEC, record_fixtures[:1], resume=_run_id()
     )
     lines = capsys.readouterr().err.splitlines()
-    reused_line = next(line for line in lines if "b1" in line and "REUSED" in line)
-    submitted_line = next(line for line in lines if "c1" in line and "SUBMITTED" in line)
-    assert "SUBMITTED" not in reused_line
-    assert "REUSED" not in submitted_line
+    b1_lines = [line for line in lines if "b1" in line]
+    c1_lines = [line for line in lines if "c1" in line]
+    assert any("REUSED" in line for line in b1_lines)
+    assert not any("SUBMITTED" in line for line in b1_lines)
+    assert any("SUBMITTED" in line for line in c1_lines)
+    assert not any("REUSED" in line for line in c1_lines)
+
+
+class _AdvancingClock:
+    """A clock whose ``now()`` only moves when told to -- ``advance`` simulates real wait time
+    passing inside a fake batch client's handler, between the moment ``_submit_and_wait``
+    captures ``wait_started`` and the moment its ``on_status`` callback reads the clock again.
+    A runner test built on the fixed clock in ``runner()`` cannot exercise elapsed time at
+    all, since every call to ``self._now()`` then returns the same instant.
+    """
+
+    def __init__(self, start: datetime) -> None:
+        self.t = start
+
+    def now(self) -> datetime:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += timedelta(seconds=seconds)
+
+
+def test_batch_run_logs_a_per_poll_line_with_the_right_stage_and_real_elapsed_time(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, I2: drives the per-poll line through ``_submit_and_wait``, not the
+    formatters directly, so a wrong stage, a frozen ``wait_started`` (elapsed stuck at
+    ``0m00s``, defeating the whole point of spotting a stalled batch) or a no-op ``on_status``
+    would each be caught here.
+    """
+    clock = _AdvancingClock(datetime(2026, 9, 15, 7, 0, 0, tzinfo=UTC))
+
+    def stage1(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        clock.advance(65)  # 1m05s of "real" wait time before the terminal poll
+        return _status(bid, reqs, GOOD, reported_cost=0.01, counts=BatchCounts(1, 1, 0))
+
+    def stage2(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        clock.advance(5)
+        return _status(bid, reqs, REFINE, reported_cost=0.02, counts=BatchCounts(1, 1, 0))
+
+    fake = FakeBatchClient(handlers=[stage1, stage2])
+    runner(tmp_path, RecordingFakeClient([]), batch=fake, now=clock.now).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    err = capsys.readouterr().err
+    stage1_lines = [
+        line for line in err.splitlines() if line.split()[1:2] == ["stage1"] and "completed" in line
+    ]
+    assert len(stage1_lines) == 1
+    line = stage1_lines[0]
+    assert "completed" in line
+    assert "1/1" in line
+    assert "failed=0" in line
+    assert "(1m05s)" in line
 
 
 def test_run_header_logs_fresh_with_the_specs_facts(
@@ -1722,7 +1810,7 @@ def test_run_header_logs_fresh_with_the_specs_facts(
     runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
     header = capsys.readouterr().err.splitlines()[0]
     assert header == (
-        f"00:00:00 run {_run_id()} FRESH sample=dev-400 arm=ceiling cases=1 "
+        f"00:00:00Z run {_run_id()} FRESH sample=dev-400 arm=ceiling cases=1 "
         "model=openai/gpt-5.6-luna price=batch"
     )
 
@@ -1745,6 +1833,6 @@ def test_run_header_logs_resumed_with_the_specs_facts(
     )
     header = capsys.readouterr().err.splitlines()[0]
     assert header == (
-        f"00:00:00 run {_run_id()} RESUMED sample=dev-400 arm=ceiling cases=1 "
+        f"00:00:00Z run {_run_id()} RESUMED sample=dev-400 arm=ceiling cases=1 "
         "model=openai/gpt-5.6-luna price=batch"
     )

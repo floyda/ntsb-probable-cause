@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from ntsb_probable_cause.errors import ModelError
-from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
+from ntsb_probable_cause.model.batch import BatchClient, BatchRequest, BatchStatus
 from ntsb_probable_cause.model.client import ModelSettings, Payload, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.evidence import Evidence
@@ -83,6 +83,28 @@ def test_wait_polls_until_terminal_and_parses_results(respx_mock: respx.MockRout
     assert ok[0].reply.usage.prompt_tokens > 0
 
 
+def test_wait_calls_on_status_with_the_full_polled_batch_status(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Fix round 2, I1: ``on_status`` must receive the ``BatchStatus`` object, not its bare
+    ``status`` string.
+
+    Two survivors this test closes: reverting to ``on_status(status.status)`` -- the
+    recorded value would then be a ``str`` with no ``.counts``, so accessing ``.counts``
+    below raises ``AttributeError``, the exact failure the brief describes killing a paid
+    batch mid-flight in production; and deleting the ``on_status(status)`` call entirely --
+    ``received`` would stay empty.
+    """
+    respx_mock.get(f"{BASE}/b-onstatus").mock(
+        return_value=httpx.Response(200, json=FIX["response"])
+    )
+    received: list[BatchStatus] = []
+    status = client().wait("b-onstatus", on_status=received.append)
+    assert len(received) == 1
+    assert received[0].counts.total == FIX["response"]["request_counts"]["total"]
+    assert received[0].batch_id == status.batch_id
+
+
 def test_poll_reports_batch_level_cost(respx_mock: respx.MockRouter) -> None:
     respx_mock.get(f"{BASE}/b2").mock(return_value=httpx.Response(200, json=FIX["response"]))
     status = client().poll("b2")
@@ -90,13 +112,19 @@ def test_poll_reports_batch_level_cost(respx_mock: respx.MockRouter) -> None:
 
 
 def test_poll_parses_request_counts(respx_mock: respx.MockRouter) -> None:
-    """The provider's ``request_counts`` block (total/completed/failed), not discarded."""
-    respx_mock.get(f"{BASE}/b-counts").mock(return_value=httpx.Response(200, json=FIX["response"]))
+    """The provider's ``request_counts`` block (total/completed/failed), not discarded.
+
+    Fix round 2, I5: the fixture's own ``request_counts`` has ``total == completed`` (10/10),
+    so asserting against the fixture's values would still pass with ``total`` and
+    ``completed`` swapped. Pinned against a payload where all three numbers differ, and
+    against literal expected ints, not the fixture's own values.
+    """
+    payload = {**FIX["response"], "request_counts": {"total": 25, "completed": 18, "failed": 3}}
+    respx_mock.get(f"{BASE}/b-counts").mock(return_value=httpx.Response(200, json=payload))
     status = client().poll("b-counts")
-    expected = FIX["response"]["request_counts"]
-    assert status.counts.total == expected["total"]
-    assert status.counts.completed == expected["completed"]
-    assert status.counts.failed == expected["failed"]
+    assert status.counts.total == 25
+    assert status.counts.completed == 18
+    assert status.counts.failed == 3
 
 
 def test_poll_treats_a_missing_request_counts_block_as_unknown_not_zero(
