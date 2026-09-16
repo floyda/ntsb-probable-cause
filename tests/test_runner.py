@@ -88,6 +88,7 @@ def test_over_cap_case_is_failed_without_a_call(
         sample="dev-400",
         arm="ceiling",
         sync=True,
+        price_variant="standard",
         cap_usd=0.0000001,
         expected_cost_per_case_usd=0.0,
     )
@@ -101,7 +102,13 @@ def test_sync_run_writes_three_files_and_one_step_per_case(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
     client = RecordingFakeClient([GOOD, REFINE] * len(record_fixtures))
-    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001)
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
     run = runner(tmp_path, client).run(spec, record_fixtures)
     folder = tmp_path / "runs" / run.run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
@@ -111,7 +118,7 @@ def test_sync_run_writes_three_files_and_one_step_per_case(
     assert all(c.scores is not None and c.failure is None for c in cases)
     assert steps[0].tool == "none"
     assert steps[0].stop_reason == "answered"
-    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v1"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v2"
     assert len(client.payloads) == 2 * len(record_fixtures)  # two turns per case
 
 
@@ -120,7 +127,13 @@ def test_schema_failure_is_retried_once_then_recorded(
 ) -> None:
     client = RecordingFakeClient(["not json", "still not json"] + [GOOD, REFINE] * 10)
     run = runner(tmp_path, client).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
@@ -134,7 +147,13 @@ def test_arm_a_excludes_everything_but_start_facts(
 ) -> None:
     client = RecordingFakeClient([GOOD, REFINE] * 2)
     runner(tmp_path, client).run(
-        RunSpec(sample="dev-400", arm="A", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="A",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     sent = client.payloads[0].fields()
@@ -152,6 +171,7 @@ def test_case_number_probe_refused_off_dev(
                 sample="heldout-40",
                 arm="ceiling",
                 sync=True,
+                price_variant="standard",
                 include_case_number=True,
                 expected_cost_per_case_usd=0.001,
             ),
@@ -165,8 +185,34 @@ def test_budget_refusal_before_any_call(
     client = RecordingFakeClient([GOOD])
     with pytest.raises(BudgetError):
         runner(tmp_path, client, spent=24.99).run(
-            RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.01),
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=True,
+                price_variant="standard",
+                expected_cost_per_case_usd=0.01,
+            ),
             record_fixtures,
+        )
+    assert client.payloads == []
+
+
+def test_sync_with_batch_price_variant_is_refused_before_any_call(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A sync run against the batch model id 404s on the chat-completions endpoint; caught
+    before any call, the same way as the budget and dirty-tree refusals."""
+    client = RecordingFakeClient([GOOD])
+    with pytest.raises(ConfigurationError, match="price-variant standard"):
+        runner(tmp_path, client).run(
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=True,
+                price_variant="batch",
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
         )
     assert client.payloads == []
 
@@ -189,7 +235,13 @@ def test_heldout_run_appends_ledger_row(
     client = RecordingFakeClient([GOOD, REFINE] * 2)
     r = runner(tmp_path, client)
     r.run(
-        RunSpec(sample="heldout-40", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="heldout-40",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert (tmp_path / "ledger.md").read_text().count("| heldout-40 |") == 1
@@ -210,7 +262,13 @@ def test_sync_case_that_abstains_skips_stage_two(
 ) -> None:
     client = RecordingFakeClient([ABSTAIN])
     run = runner(tmp_path, client).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert len(client.payloads) == 1  # no stage-2 turn
@@ -235,7 +293,13 @@ def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
     ]
     client = RecordingFakeClient([GOOD, "not json", "still not json"], usage=usage)
     run = runner(tmp_path, client).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     folder = tmp_path / "runs" / run.run_id
@@ -243,8 +307,10 @@ def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
     assert case.failure is not None
     assert case.failure.startswith("schema")
     assert case.scores is None
-    # Luna batch price (sources.py): $0.10 / M input tokens, $0.60 / M output tokens.
-    expected = sum((u.prompt_tokens * 0.10 + u.completion_tokens * 0.60) / 1e6 for u in usage)
+    # Luna standard price (sources.py): $0.20 / M input tokens, $1.20 / M output tokens.
+    # A sync run cannot use the batch price variant (it 404s on chat-completions), so this
+    # test, run sync, prices at the standard rate rather than the batch rate.
+    expected = sum((u.prompt_tokens * 0.20 + u.completion_tokens * 1.20) / 1e6 for u in usage)
     assert case.cost_usd == pytest.approx(expected)
 
 
@@ -261,10 +327,19 @@ def test_sync_cost_reflects_both_replies_when_the_retry_succeeds(
     ]
     client = RecordingFakeClient(["not json", ABSTAIN], usage=usage)
     run = runner(tmp_path, client).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
-    expected = sum((u.prompt_tokens * 0.10 + u.completion_tokens * 0.60) / 1e6 for u in usage)
+    # Luna standard price (sources.py): $0.20 / M input tokens, $1.20 / M output tokens.
+    # A sync run cannot use the batch price variant (it 404s on chat-completions), so this
+    # test, run sync, prices at the standard rate rather than the batch rate.
+    expected = sum((u.prompt_tokens * 0.20 + u.completion_tokens * 1.20) / 1e6 for u in usage)
     folder = tmp_path / "runs" / run.run_id
     (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
     (step,) = read_jsonl(folder / "steps.jsonl", StepRecord)
@@ -292,7 +367,13 @@ def test_sync_model_error_is_recorded_without_a_retry(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
     run = runner(tmp_path, _RaisingClient()).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     folder = tmp_path / "runs" / run.run_id
