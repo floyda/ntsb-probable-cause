@@ -22,7 +22,7 @@ from ntsb_probable_cause.scoring.metrics import (
     paired_difference,
     wilson,
 )
-from ntsb_probable_cause.scoring.records import CaseResult
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
 from ntsb_probable_cause.splits import Split
 
 
@@ -147,8 +147,14 @@ _THRESHOLDS = tuple(i / 20 for i in range(1, 20))
 
 
 def threshold_curve(results: Sequence[CaseResult]) -> list[tuple[float, float]]:
-    """The stopping-threshold curve (spec §9): mean of +1/-1/0 for each candidate *t*."""
+    """The stopping-threshold curve (spec §9): mean of +1/-1/0 for each candidate *t*.
+
+    The mean is over every case passed in, scored or not (spec §9: "the mean score"; a
+    failed case has no hypothesis to threshold and so is neither answered nor abstained --
+    it contributes 0, same as an abstention, but counts in the denominator).
+    """
     scored = [r.scores for r in results if r.scores is not None]
+    n = len(results)
     curve: list[tuple[float, float]] = []
     for t in _THRESHOLDS:
         total = 0.0
@@ -156,7 +162,7 @@ def threshold_curve(results: Sequence[CaseResult]) -> list[tuple[float, float]]:
             if s.abstained or s.confidence < t:
                 continue
             total += 1.0 if s.occurrence_top1 else -1.0
-        curve.append((round(t, 2), total / len(scored) if scored else 0.0))
+        curve.append((round(t, 2), total / n if n else 0.0))
     return curve
 
 
@@ -170,6 +176,33 @@ def choose_threshold(results: Sequence[CaseResult]) -> float:
 def fmt(cell: Cell) -> str:
     """``57.5% [42.1, 71.5]``."""
     return f"{cell.value:.1%} [{cell.low:.1%}, {cell.high:.1%}]"
+
+
+def fmt_n(cell: Cell) -> str:
+    """``57.5% [42.1, 71.5] (n=40)``: a figure with no count is a bug (spec §4.3)."""
+    return f"{fmt(cell)} (n={cell.n})"
+
+
+def provenance(record: RunRecord) -> str:
+    """The header every printed table carries: what ran, on what commit, complete or not.
+
+    ``docs/results/*.txt`` is the only artefact of a run that survives in git (``data/runs``
+    is ignored), so it must be possible to tell a finished run's table from an aborted,
+    partial one without also having the run folder, and decision 0018 requires the commit
+    SHA on every reported number.
+    """
+    status = "complete" if record.finished is not None else "ABORTED (partial results)"
+    finished = record.finished.isoformat() if record.finished is not None else "-"
+    return (
+        f"run {record.run_id} [{status}]\n"
+        f"sample={record.sample} arm={record.arm} model={record.model} "
+        f"price_variant={record.price_variant}\n"
+        f"exclusions={','.join(record.exclusions) or '-'} "
+        f"includes={','.join(record.includes) or '-'}\n"
+        f"commit={record.commit_sha}{'*' if record.dirty else ''} "
+        f"started={record.started.isoformat()} finished={finished}\n"
+        f"cases={record.cases} total_cost_usd={record.cost_usd:.4f}\n"
+    )
 
 
 def _column(scored: Sequence[CaseResult], pick: Callable[[CaseScores], float | None]) -> Cell:
@@ -295,6 +328,31 @@ def _finding_lines(scores: _BaselineScores) -> list[str]:
     ]
 
 
+def _honest_model_and_all(
+    processed: Path,
+) -> tuple[baseline.BaselineModel, list[dict[str, object]], _BaselineScores]:
+    """Fit on development, score on the whole held-out split (§6.3's "honest baseline")."""
+    heldout = _raws_of_split(processed, Split.HELDOUT)
+    dev = _raws_of_split(processed, Split.DEV)
+    model = baseline.fit(dev)
+    return model, heldout, _score_baseline(model, heldout)
+
+
+def honest_baseline_floor(processed: Path) -> dict[str, float]:
+    """The honest baseline's headline figures: the floor every table shows (spec §6.3, §9).
+
+    Fits on development, scores on the whole held-out split, and returns plain floats
+    (``Cell.value``, no interval) keyed the way ``summarise``'s ``floor=`` argument expects.
+    """
+    _model, _heldout, scores = _honest_model_and_all(processed)
+    return {
+        "top-1": scores.top1.value,
+        "top-3": scores.top3.value,
+        "finding recall@10 (flagged)": scores.recall[10].value,
+        "finding recall@10 (all)": scores.recall_all[10].value,
+    }
+
+
 def baseline_report(processed: Path, sample_ids: Sequence[str] | None, tables: CodeTables) -> str:
     """Reproduce the spike's baseline and report the dev-fitted floor (spec §6.3).
 
@@ -303,7 +361,7 @@ def baseline_report(processed: Path, sample_ids: Sequence[str] | None, tables: C
     composition, so it is unused here.
     """
     del tables
-    heldout = _raws_of_split(processed, Split.HELDOUT)
+    honest_model, heldout, honest_all = _honest_model_and_all(processed)
     by_id = {str(raw["ntsbNumber"]): raw for raw in heldout}
     rows = [
         (str(raw["ntsbNumber"]), codes[0])
@@ -314,10 +372,6 @@ def baseline_report(processed: Path, sample_ids: Sequence[str] | None, tables: C
     repro_raws = [by_id[i] for i in drawn_ids]
     repro_model = baseline.fit(repro_raws)
     repro = _score_baseline(repro_model, repro_raws)
-
-    dev = _raws_of_split(processed, Split.DEV)
-    honest_model = baseline.fit(dev)
-    honest_all = _score_baseline(honest_model, heldout)
 
     lines = [
         "## Baseline (spec §6.3)",

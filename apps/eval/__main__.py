@@ -2,10 +2,13 @@
 
 import argparse
 import json
-from collections.abc import Callable, Sequence
+import sys
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
@@ -13,8 +16,14 @@ from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import ledger, report, samples
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.judge import agreement_table, judge_case, pick_disagreements
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
+from ntsb_probable_cause.scoring.judge import (
+    JUDGE_MODEL,
+    JudgeItem,
+    agreement_table,
+    judge_run,
+    pick_disagreements,
+)
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
@@ -30,7 +39,12 @@ def _default_client_factory(settings: Settings) -> tuple[ModelClient, BatchRunne
 
 
 def month_spent(runs_dir: Path, *, now: datetime) -> float:
-    """Cost of every run started in ``now``'s month, aborted runs included (controller res. 4)."""
+    """Cost of every run started in ``now``'s month, aborted runs included (controller res. 4).
+
+    A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` -- the answering run's
+    own record, and, if the run was later judged, a second record for the judge pass
+    (``apps.eval._cmd_judge``, fix round 1) -- and every one of them counts.
+    """
     if not runs_dir.exists():
         return 0.0
     total = 0.0
@@ -42,11 +56,25 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
 
 
 def resolve_latest(runs_dir: Path, arm: str, sample: str) -> str:
-    """The newest run id for one arm and sample, by the run id's leading timestamp."""
+    """The newest *completed* run id for one arm and sample.
+
+    An aborted run (``finished is None``) is skipped (fix round 1, item 9): ``make bars``
+    resolving ``--latest`` to a partial run would silently report and publish it as if it
+    were whole.
+    """
     suffix = f"-{sample}-{arm}"
-    candidates = sorted(p.name for p in runs_dir.glob(f"*{suffix}") if p.is_dir())
+    candidates: list[str] = []
+    for folder in sorted(runs_dir.glob(f"*{suffix}")):
+        run_file = folder / "run.jsonl"
+        if not folder.is_dir() or not run_file.exists():
+            continue
+        (record,) = read_jsonl(run_file, RunRecord)
+        if record.finished is not None:
+            candidates.append(folder.name)
     if not candidates:
-        raise SystemExit(f"no run found for arm={arm!r} sample={sample!r} under {runs_dir}")
+        raise SystemExit(
+            f"no completed run found for arm={arm!r} sample={sample!r} under {runs_dir}"
+        )
     return candidates[-1]
 
 
@@ -72,7 +100,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p = commands.add_parser("run", help="run one evaluation arm over a sample")
     run_p.add_argument("--arm", choices=("A", "ceiling"), required=True)
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
-    run_p.add_argument("--exclude", action="append", default=[], metavar="ROLE")
+    run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
     run_p.add_argument("--include", action="append", default=[], choices=("case_number",))
     run_p.add_argument("--model", default=RunSpec.model)
     run_p.add_argument(
@@ -134,7 +162,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
     spec = RunSpec(
         sample=args.sample,
         arm=args.arm,
-        exclusions=frozenset(EvidenceRole(e) for e in args.exclude),
+        exclusions=frozenset(args.exclude),
         include_case_number="case_number" in args.include,
         model=args.model,
         price_variant=args.price_variant,
@@ -151,7 +179,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         tables=load_tables(),
         seen_pairs=seen,
         runs_dir=settings.runs_dir,
-        ledger_path=Path("docs/results/heldout-ledger.md"),
+        ledger_path=settings.heldout_ledger_path,
         month_spent_usd=spent,
         commit=commit,
     )
@@ -166,10 +194,11 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     folder = settings.runs_dir / run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     (run_record,) = read_jsonl(folder / "run.jsonl", RunRecord)
-    text = report.summarise(cases)
+    floor = report.honest_baseline_floor(settings.data_dir / "processed")
+    text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor)
     if run_record.sample == "heldout-400":
-        headline = report.fmt(report.weighted_headline(cases))
-        text += f"\n\nweighted headline (fatal-share top-1): {headline}"
+        cell = report.weighted_headline(cases)
+        text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
     if args.against or args.against_latest:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
@@ -189,6 +218,49 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     _maybe_write(args.out, text)
 
 
+def _judge_items(
+    cases: Sequence[CaseResult],
+    raws: Mapping[str, Mapping[str, object]],
+    exclude: frozenset[EvidenceRole],
+) -> list[JudgeItem]:
+    """One judge item per scored, stepped case: id, hypothesis, synthesis, verdict, scores."""
+    items: list[JudgeItem] = []
+    for case in cases:
+        if case.scores is None or not case.steps:
+            continue
+        _, synthesis, verdict = split_record(raws[case.case_id], exclude=exclude)
+        hypothesis = case.steps[-1].hypothesis
+        items.append((case.case_id, hypothesis, synthesis, verdict, case.scores))
+    return items
+
+
+def _record_judge_cost(
+    folder: Path, run_record: RunRecord, commit: tuple[str, bool], cost: float, cases: int
+) -> RunRecord:
+    """Append a second ``RunRecord`` for the judge pass, so ``month_spent`` counts it too."""
+    now = datetime.now(UTC)
+    judge_record = RunRecord(
+        run_id=f"{run_record.run_id}-judge",
+        sample=run_record.sample,
+        arm=run_record.arm,
+        exclusions=run_record.exclusions,
+        includes=run_record.includes,
+        prompt_version=run_record.prompt_version,
+        model=JUDGE_MODEL,
+        price_variant="batch",
+        cap_usd=0.01,
+        budget_usd=run_record.budget_usd,
+        commit_sha=commit[0],
+        dirty=commit[1],
+        started=now,
+        finished=now,
+        cases=cases,
+        cost_usd=cost,
+    )
+    write_jsonl(folder / "run.jsonl", [judge_record])
+    return judge_record
+
+
 def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
     folder = settings.runs_dir / args.run_id
     (run_record,) = read_jsonl(folder / "run.jsonl", RunRecord)
@@ -196,37 +268,49 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
         raise SystemExit(
             f"judge: refusing on sample {run_record.sample!r} without --validated (spec §8)"
         )
-    cases = [c for c in read_jsonl(folder / "cases.jsonl", CaseResult) if c.scores and c.steps]
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    scorable_ids = [c.case_id for c in cases if c.scores is not None and c.steps]
     processed = settings.data_dir / "processed"
-    raws = dict(
-        zip(
-            [c.case_id for c in cases],
-            samples.load_cases(processed, [c.case_id for c in cases]),
-            strict=True,
-        )
-    )
+    raws = dict(zip(scorable_ids, samples.load_cases(processed, scorable_ids), strict=True))
     exclude = frozenset(EvidenceRole(e) for e in run_record.exclusions)
     tables = load_tables()
     client, _ = client_factory(settings)
-    rows: list[dict[str, object]] = []
-    labels = []
-    scores = []
-    ids: list[str] = []
-    for case in cases:
-        if case.scores is None:  # filtered by the comprehension above; narrows for mypy
-            continue
-        _, synthesis, verdict = split_record(raws[case.case_id], exclude=exclude)
-        hypothesis = case.steps[-1].hypothesis
-        label, _reply = judge_case(client, hypothesis, synthesis, verdict, tables)
-        rows.append({"case_id": case.case_id, **label.model_dump()})
-        labels.append(label)
-        scores.append(case.scores)
-        ids.append(case.case_id)
-    (folder / "judge.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
-    disagreements = pick_disagreements(ids, labels, scores)
+    items = _judge_items(cases, raws, exclude)
+
+    judge_path = folder / "judge.jsonl"
+    judge_path.parent.mkdir(parents=True, exist_ok=True)
+    judge_path.unlink(missing_ok=True)  # a fresh file: this call's rows, not a prior one's.
+    paid: list[float] = []
+
+    def on_row(row: Mapping[str, object]) -> None:
+        # Written and flushed immediately -- an interrupt after case k keeps rows 0..k
+        # (fix round 1, Important 1), not only the ones a final, all-at-once write would.
+        with judge_path.open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+        paid.append(cast(float, row["cost_usd"]))
+
+    spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
+    commit = ledger.commit_state()
+    try:
+        result = judge_run(
+            client, tables, items, price_variant="batch", month_spent_usd=spent, on_row=on_row
+        )
+    except BaseException:
+        # Whatever was paid for before the failure is still recorded, so the next run's
+        # budget check is not blind to it (fix round 1, Important 1; mirrors the runner's
+        # own partial-write-then-reraise, spec §6.4).
+        if paid:
+            _record_judge_cost(folder, run_record, commit, sum(paid), len(paid))
+        raise
+    judge_record = _record_judge_cost(folder, run_record, commit, result.cost_usd, len(paid))
+    disagreements = pick_disagreements(
+        list(result.case_ids), list(result.labels), list(result.scores)
+    )
     text = (
-        f"agreement table: {agreement_table(labels, scores)}\n"
-        f"disagreements sampled: {disagreements}"
+        f"agreement table: {agreement_table(result.labels, result.scores)}\n"
+        f"disagreements sampled: {disagreements}\n"
+        f"judge cost: ${result.cost_usd:.4f} over {len(result.case_ids)} cases "
+        f"(recorded as run {judge_record.run_id!r} for month_spent)"
     )
     print(text)
     _maybe_write(args.out, text)
@@ -237,19 +321,28 @@ def main(
     *,
     client_factory: ClientFactory = _default_client_factory,
 ) -> int:
-    """Parse arguments and run one eval command."""
+    """Parse arguments and run one eval command.
+
+    ``BudgetError``/``ConfigurationError`` are refusals Andy is expected to hit by hand
+    (an over-budget run, a held-out run from a dirty tree); printing one line to stderr and
+    exiting 1 is the right shape for that, not a traceback (fix round 1, item 10).
+    """
     args = _build_parser().parse_args(argv)
     settings = Settings()
-    if args.command == "baseline":
-        _cmd_baseline(args, settings)
-    elif args.command == "run":
-        _cmd_run(args, settings, client_factory)
-    elif args.command == "report":
-        _cmd_report(args, settings)
-    elif args.command == "judge":
-        _cmd_judge(args, settings, client_factory)
-    elif args.command == "threshold":
-        _cmd_threshold(args, settings)
+    try:
+        if args.command == "baseline":
+            _cmd_baseline(args, settings)
+        elif args.command == "run":
+            _cmd_run(args, settings, client_factory)
+        elif args.command == "report":
+            _cmd_report(args, settings)
+        elif args.command == "judge":
+            _cmd_judge(args, settings, client_factory)
+        elif args.command == "threshold":
+            _cmd_threshold(args, settings)
+    except (BudgetError, ConfigurationError) as error:
+        print(f"{args.command}: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

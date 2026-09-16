@@ -12,7 +12,7 @@ import pytest
 from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.metrics import CaseScores
-from ntsb_probable_cause.scoring.records import CaseResult
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
 
 _SCHEMA = pa.schema(
     [
@@ -83,6 +83,27 @@ def make_results(*, conf: Sequence[float], right: Sequence[bool]) -> list[CaseRe
     ]
 
 
+def test_fmt_n_includes_the_count() -> None:
+    cell = report.Cell(value=0.575, low=0.421, high=0.715, n=40)
+    assert report.fmt_n(cell) == f"{report.fmt(cell)} (n=40)"
+
+
+def test_provenance_shows_status_commit_and_totals(run_record: RunRecord) -> None:
+    text = report.provenance(run_record)
+    assert text.startswith(f"run {run_record.run_id} [complete]")
+    assert "sample=heldout-40 arm=ceiling model=openai/gpt-5.6-luna" in text
+    assert f"commit={run_record.commit_sha} " in text
+    assert "cases=40 total_cost_usd=1.2300" in text
+
+
+def test_provenance_marks_an_aborted_run_and_a_dirty_commit(run_record: RunRecord) -> None:
+    aborted = run_record.model_copy(update={"finished": None, "dirty": True})
+    text = report.provenance(aborted)
+    assert "[ABORTED (partial results)]" in text
+    assert f"commit={aborted.commit_sha}*" in text
+    assert "finished=-" in text
+
+
 def test_proportion_cell_has_wilson_interval() -> None:
     cell = report.proportion([True] * 23 + [False] * 17)
     # 0.4217... to four places; the Wilson formula itself gives 0.422 to three places, not
@@ -118,6 +139,17 @@ def test_threshold_curve_abstains_do_not_count_as_wrong() -> None:
     ]
     curve = dict(report.threshold_curve(results))
     assert curve[0.05] == 0.5  # the abstained case scores 0, not -1: (1 + 0) / 2
+
+
+def test_threshold_curve_divides_by_every_case_not_only_scored_ones() -> None:
+    # Spec §9: "the mean score" over the cases, not only the ones that produced a hypothesis.
+    # A failed case (no scores) contributes 0 to the numerator but still counts in n.
+    results = [
+        _case("right", top1=True, confidence=0.9),
+        _case("failed", top1=True, failure="model: no reply"),
+    ]
+    curve = dict(report.threshold_curve(results))
+    assert curve[0.05] == pytest.approx(0.5)  # (1 - 0) / 2, not (1 - 0) / 1
 
 
 def test_slices_are_ordered_fatal_class_then_flavour() -> None:
@@ -326,3 +358,45 @@ def test_baseline_report_adds_a_row_for_a_given_sample(tmp_path: Path) -> None:
 
     text = report.baseline_report(processed, ["H0", "H1"], load_tables())
     assert "Honest baseline on the given sample (n=2)" in text
+
+
+def test_honest_baseline_floor_returns_the_headline_figures_as_plain_floats(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        (
+            f"D{i}",
+            "2018-01-01",
+            "dev",
+            "L",
+            _raw(f"D{i}", phase="TAKEOFF", weather="VMC", primary_code="AAAAAA"),
+        )
+        for i in range(3)
+    ]
+    rows += [
+        (
+            f"H{i}",
+            "2021-01-01",
+            "heldout",
+            "L",
+            _raw(
+                f"H{i}",
+                phase="TAKEOFF",
+                weather="VMC",
+                primary_code="AAAAAA",
+                finding_codes=[("0206304044", True)],
+            ),
+        )
+        for i in range(3)
+    ]
+    processed = _write_cases(tmp_path, rows)
+
+    floor = report.honest_baseline_floor(processed)
+    assert floor["top-1"] == pytest.approx(1.0)  # every held-out case's key matches dev's
+    assert set(floor) == {
+        "top-1",
+        "top-3",
+        "finding recall@10 (flagged)",
+        "finding recall@10 (all)",
+    }
+    assert all(isinstance(v, float) for v in floor.values())

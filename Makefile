@@ -32,4 +32,5 @@ bars:
 	uv run ntsb-eval run --arm ceiling --sample heldout-40
 	uv run ntsb-eval run --arm ceiling --sample heldout-400
 	uv run ntsb-eval run --arm A --sample heldout-400
+	uv run ntsb-eval report --latest ceiling heldout-40 --out docs/results/s1-heldout-40.txt
 	uv run ntsb-eval report --latest ceiling heldout-400 --against-latest A heldout-400 --out docs/results/s1-bars.txt

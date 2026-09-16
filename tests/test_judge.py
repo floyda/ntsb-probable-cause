@@ -1,12 +1,12 @@
 """The judge: labels for the prose outputs against withheld text (spec §8, decision 0028)."""
 
 import json
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 import pytest
 
-from ntsb_probable_cause.errors import SchemaError
+from ntsb_probable_cause.errors import BudgetError, SchemaError
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
@@ -21,6 +21,26 @@ from ntsb_probable_cause.scoring import judge
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
+
+
+def _score(*, top1: bool = True) -> CaseScores:
+    return CaseScores(
+        occurrence_top1=top1,
+        occurrence_top3=top1,
+        event_match=top1,
+        pair_unseen=False,
+        finding_precision_10=None,
+        finding_recall_10=None,
+        finding_precision_8=None,
+        finding_recall_8=None,
+        finding_precision_6=None,
+        finding_recall_6=None,
+        finding_precision_all_10=None,
+        finding_recall_all_10=None,
+        abstained=False,
+        confidence=0.5,
+    )
+
 
 GOOD_LABELS = json.dumps(
     {"narrative": "consistent", "cause": "same_cause", "lay": "explains_chosen_codes"}
@@ -230,3 +250,51 @@ def test_pick_disagreements_is_seeded_and_bounded() -> None:
     assert len(picked) == 2
     assert picked == sorted(picked)
     assert set(picked) <= set(case_ids)
+
+
+def test_judge_run_refuses_over_budget_before_any_call() -> None:
+    """Fix round 1, Important 1: judge spend now goes through the same guard as a run."""
+    client = RecordingFakeClient([GOOD_LABELS])
+    items = [("case1", H, S, V, _score())]
+    with pytest.raises(BudgetError):
+        judge.judge_run(client, load_tables(), items, budget_usd=0.0001, month_spent_usd=0.0)
+    assert client.payloads == []  # refused before the first call, nothing spent
+
+
+def test_judge_run_prices_each_case_and_writes_rows_incrementally() -> None:
+    client = RecordingFakeClient(
+        [GOOD_LABELS, GOOD_LABELS], usage=[Usage(prompt_tokens=100, completion_tokens=20)]
+    )
+    items = [("case1", H, S, V, _score(top1=True)), ("case2", H, S, V, _score(top1=False))]
+    rows: list[Mapping[str, object]] = []
+    result = judge.judge_run(client, load_tables(), items, on_row=rows.append)
+    assert result.case_ids == ("case1", "case2")
+    assert [label.cause for label in result.labels] == ["same_cause", "same_cause"]
+    assert result.scores[0].occurrence_top1 is True
+    assert result.scores[1].occurrence_top1 is False
+    assert len(rows) == 2  # one row per case, as it was paid for -- not one write at the end
+    assert rows[0]["case_id"] == "case1"
+    assert rows[0]["cause"] == "same_cause"
+    assert sum(cast(float, r["cost_usd"]) for r in rows) == pytest.approx(result.cost_usd)
+    assert result.cost_usd > 0
+
+
+def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails() -> None:
+    """An interrupt/error partway through keeps every already-paid label (fix round 1)."""
+    client = RecordingFakeClient(
+        [GOOD_LABELS, "not json", "still not json"],
+        usage=[Usage(prompt_tokens=100, completion_tokens=20)],
+    )
+    items = [
+        ("case1", H, S, V, _score()),
+        ("case2", H, S, V, _score()),  # this one's two replies are both unparsable
+    ]
+    rows: list[Mapping[str, object]] = []
+    with pytest.raises(SchemaError):
+        judge.judge_run(client, load_tables(), items, on_row=rows.append)
+    assert len(rows) == 1  # case1's row survives even though case2 raised
+    assert rows[0]["case_id"] == "case1"
+
+
+def test_judge_expected_cost_per_case_matches_the_controllers_measurement() -> None:
+    assert judge.JUDGE_EXPECTED_COST_PER_CASE_USD == {"batch": 0.0004, "standard": 0.00089}
