@@ -1000,6 +1000,41 @@ def test_resume_scores_the_reused_batch_replies(
     assert record.cost_usd == pytest.approx(finished[0].cost_usd)
 
 
+def test_resume_sets_the_dead_runs_result_files_aside_and_writes_clean_ones(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The resumed run is the same run, so its folder holds one set of results, not two.
+
+    ``write_jsonl`` appends; without this the aborted rows would sit in front of the
+    resumed run's, double-counting the spend and leaving ``run.jsonl``'s first row —
+    the one ``report`` reads — saying the run never finished.
+    """
+    folder = tmp_path / "runs" / _run_id()
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    assert read_jsonl(folder / "cases.jsonl", CaseResult)[0].failure is not None
+    # An earlier recovery attempt already parked one set aside: the next is numbered 2.
+    (folder / "cases.aborted-1.jsonl").write_text("")
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    (case,) = read_jsonl(folder / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    (record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert record.finished is not None
+    # Nothing was destroyed: the dead run's own rows are still there to read.
+    assert read_jsonl(folder / "cases.aborted-2.jsonl", CaseResult)[0].failure is not None
+    assert read_jsonl(folder / "run.aborted-1.jsonl", RunRecord)[0].finished is None
+    assert (folder / "steps.aborted-1.jsonl").exists()
+
+
 def test_resume_counts_the_reused_batchs_reported_cost(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -1043,7 +1078,11 @@ def test_resume_of_a_run_that_died_before_its_first_submit_runs_every_stage(
         runner(tmp_path, RecordingFakeClient([]), batch=_ExplodingBatchClient()).run(
             BATCH_SPEC, record_fixtures[:1]
         )
-    assert not (tmp_path / "runs" / _run_id() / "batches.jsonl").exists()
+    folder = tmp_path / "runs" / _run_id()
+    assert not (folder / "batches.jsonl").exists()
+    # The real incident's folder shape: a SIGKILL bypasses the abort path, so some of the
+    # result files a normal abort leaves behind are simply not there to set aside.
+    (folder / "run.jsonl").unlink()
     resumed = FakeBatchClient(
         handlers=[
             lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
