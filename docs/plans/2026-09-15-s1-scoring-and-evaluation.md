@@ -4217,3 +4217,14 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   spec, commit sha or case-id list differs from `spec.json` is refused naming the first
   field that differs. No measurement changes: samples, prompts, schemas and scoring are
   untouched, and `resume=None` is exactly the previous behaviour.
+- 2026-09-16, Task 14 (step 2), **beyond both the plan and the resume brief, flagged for the
+  controller**: a resume renames the dead run's `cases.jsonl`, `steps.jsonl` and `run.jsonl`
+  to `<name>.aborted-<n>.jsonl` before answering. Neither decision 0032 nor the brief says
+  what to do with them, but `write_jsonl` appends, so leaving them would have made the
+  resumed folder hold each case twice (once as an `aborted: ...` failure), counted the same
+  spend twice in `month_spent` from two `RunRecord` rows, and left
+  `apps.eval.answering_run_record` — which reads the first row of `run.jsonl` — reporting a
+  finished run as incomplete, which would also hide it from `report --latest`. Renaming
+  rather than deleting keeps the dead run's own record readable, since it is the only
+  evidence of what that run paid for. Committed separately so it can be dropped on its own
+  if the controller wants it done differently.

@@ -190,6 +190,38 @@ def recorded_batches(folder: Path) -> list[tuple[str, str]]:
     return rows
 
 
+RESULT_FILES = ("cases.jsonl", "steps.jsonl", "run.jsonl")
+
+
+def set_aside_aborted_outputs(folder: Path) -> None:
+    """Rename a dead run's result files out of the way before its resume writes its own.
+
+    Every one of these files is appended to, and a resumed run re-derives all three from the
+    same spec, the same code and the same replies. Left in place, the dead run's rows would
+    be read ahead of the resumed run's: ``cases.jsonl`` would hold each case twice, once as
+    an ``aborted: ...`` failure; ``month_spent`` would count the same spend from two
+    ``RunRecord`` rows; and ``apps.eval.answering_run_record``, which takes the first row of
+    ``run.jsonl``, would go on reporting the run as incomplete after it had finished. None
+    of that is what 0032 point 2 means by the resumed run being the same run.
+
+    They are renamed, not deleted. They are the only surviving record of what the dead run
+    paid for, and if the resume is itself killed before it writes anything, deleting them
+    would take that record with it.
+
+    Args:
+        folder: the run folder being resumed.
+    """
+    for name in RESULT_FILES:
+        path = folder / name
+        if not path.is_file():
+            continue
+        stem = name.removesuffix(".jsonl")
+        attempt = 1
+        while (target := folder / f"{stem}.aborted-{attempt}.jsonl").exists():
+            attempt += 1
+        path.rename(target)
+
+
 class BatchRunner(Protocol):
     """The subset of ``BatchClient`` the runner uses.
 
@@ -419,6 +451,7 @@ class Runner:
             folder = self._runs_dir / run_id
             refuse_unresumable(folder, spec_json(spec, commit_sha=self._sha, case_ids=case_ids))
             reusable = recorded_batches(folder)
+            set_aside_aborted_outputs(folder)
         results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
