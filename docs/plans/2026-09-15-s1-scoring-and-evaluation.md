@@ -4107,3 +4107,29 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   they now run at that price. `uv run pytest` -- 390 passed, 97.68% coverage (gate 90%).
   `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest)
   all pass.
+- 2026-09-16, Task 14 (step 2), second prompt iteration on `dev-400` only (never on a
+  held-out sample): a fresh 10-case real run on `s1-v2` fixed the abstention problem
+  (abstained 0 of 10, was 10 of 10) but surfaced a new failure -- the model hedges to
+  placeholder codes on every case. All ten predicted event suffix `000` ("Unknown or
+  undetermined"); all ten chose finding category `050000` / item `05000000` ("Not
+  determined -- Not determined -- (general)") with modifier `00` ("Unknown/Not
+  determined"). Top-1 was 0 of 10 and every finding precision/recall column 0%, while top-3
+  was 20% (the phase prefix is often right; the undetermined event suffix is the miss) and
+  cost was $0.0012/case at the standard price. Examples from the run: predicted `450000`
+  against true `452470`; predicted `550000` against true `552230`; predicted `300000`
+  against true `300330` -- in each case the model had the right general area but retreated
+  to the undetermined suffix instead of naming the specific one. Fixed in the prompt only
+  (no schema, parsing, or metrics change): added a paragraph to `SYSTEM_ANSWER` in
+  `src/ntsb_probable_cause/scoring/prompt.py`, after the s1-v2 abstention wording (kept
+  unchanged, since it is working) and before the "Reply only with JSON" sentence, naming the
+  undetermined codes (event suffix `000`, finding category `050000`/item `05000000`,
+  modifier `00`) as a last resort rather than a safe default, directing the analyst to the
+  most specific event suffix and finding category the evidence supports, to express doubt
+  through the probabilities and confidence value rather than by choosing an undetermined
+  code, and reserving an undetermined code for when the official record itself would have
+  nothing more specific to say. Bumped `PROMPT_VERSION` to `"s1-v3"` (no results run has used
+  `"s1-v2"`; only this iteration's own cost checks did). Updated the one test that pinned
+  the version string
+  (`tests/test_runner.py::test_sync_run_writes_three_files_and_one_step_per_case`).
+  `uv run pytest` -- 390 passed, 97.68% coverage (gate 90%). `make check` (ruff format, ruff
+  check, lint-imports, deptry, vulture, mypy --strict, pytest) all pass.
