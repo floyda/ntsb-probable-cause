@@ -299,7 +299,9 @@ def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fac
         includes=run_record.includes,
         prompt_version=run_record.prompt_version,
         model=JUDGE_MODEL,
-        price_variant="batch",
+        # The judge calls chat-completions directly, so it pays the standard price; recording
+        # "batch" here would understate this pass's real spend by half.
+        price_variant="standard",
         cap_usd=0.01,
         budget_usd=run_record.budget_usd,
         commit_sha=commit[0],
@@ -360,7 +362,7 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
             client,
             tables,
             items,
-            price_variant="batch",
+            price_variant="standard",
             budget_usd=budget_usd,
             month_spent_usd=spent,
             on_row=on_row,

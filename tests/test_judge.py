@@ -267,7 +267,9 @@ def test_judge_run_prices_each_case_and_writes_rows_incrementally() -> None:
     )
     items = [("case1", H, S, V, _score(top1=True)), ("case2", H, S, V, _score(top1=False))]
     rows: list[Mapping[str, object]] = []
-    result = judge.judge_run(client, load_tables(), items, on_row=rows.append)
+    result = judge.judge_run(
+        client, load_tables(), items, price_variant="standard", on_row=rows.append
+    )
     assert result.case_ids == ("case1", "case2")
     assert [label.cause for label in result.labels] == ["same_cause", "same_cause"]
     assert result.scores[0].occurrence_top1 is True
@@ -291,7 +293,7 @@ def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails() -> None:
     ]
     rows: list[Mapping[str, object]] = []
     with pytest.raises(SchemaError):
-        judge.judge_run(client, load_tables(), items, on_row=rows.append)
+        judge.judge_run(client, load_tables(), items, price_variant="standard", on_row=rows.append)
     assert len(rows) == 1  # case1's row survives even though case2 raised
     assert rows[0]["case_id"] == "case1"
 
@@ -301,10 +303,28 @@ def test_judge_expected_cost_per_case_uses_the_conservative_spec_budget() -> Non
     assert judge.JUDGE_EXPECTED_COST_PER_CASE_USD == {"batch": 0.00125, "standard": 0.00125}
 
 
-def test_judge_run_refuses_a_standard_priced_call_before_any_call() -> None:
-    """Fix round 2, item 2: no confirmed OpenRouter price for the bare (non-batch) model id."""
+def test_judge_run_refuses_a_batch_priced_call_before_any_call() -> None:
+    """The judge calls chat-completions directly, which never serves a ':batch' model id.
+
+    Observed 2026-09-16 on the judge subcommand's first real use: every case 404s with
+    "This model is only available through the Batch API" *after* the run has started. The
+    refusal is here rather than in the app so no entry point can bypass it, mirroring
+    ``runner.refuse_sync_with_batch_price``. Replaces an earlier test that asserted the
+    opposite -- it pinned the absence of a standard price as if it were a rule.
+    """
     client = RecordingFakeClient([GOOD_LABELS])
     items = [("case1", H, S, V, _score())]
-    with pytest.raises(ConfigurationError, match="no confirmed OpenRouter price"):
-        judge.judge_run(client, load_tables(), items, price_variant="standard")
+    with pytest.raises(ConfigurationError, match="cannot use price_variant='batch'"):
+        judge.judge_run(client, load_tables(), items, price_variant="batch")
     assert client.payloads == []
+
+
+def test_judge_run_at_the_standard_price_makes_the_call() -> None:
+    """The standard price is confirmed in sources.py, so the judge runs at it."""
+    client = RecordingFakeClient(
+        [GOOD_LABELS], usage=[Usage(prompt_tokens=100, completion_tokens=20)]
+    )
+    items = [("case1", H, S, V, _score())]
+    result = judge.judge_run(client, load_tables(), items, price_variant="standard")
+    assert len(client.payloads) == 1
+    assert result.case_ids == ("case1",)

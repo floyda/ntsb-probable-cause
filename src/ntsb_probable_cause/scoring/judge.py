@@ -171,7 +171,16 @@ def _ensure_priced(price_variant: Literal["batch", "standard"]) -> None:
     avoids both the crash and inventing an unconfirmed price (project rule: no API detail is
     guessed).
     """
-    model_id = f"{JUDGE_MODEL}:batch" if price_variant == "batch" else JUDGE_MODEL
+    if price_variant == "batch":
+        raise ConfigurationError(
+            "the judge cannot use price_variant='batch': it calls the chat-completions "
+            "endpoint directly, and the provider serves a ':batch' model id only through "
+            "its separate batch-submission API, so every case 404s after the run has "
+            "started. Judge at the standard price, or route the judge through the batch "
+            "API first. (Observed 2026-09-16: the judge subcommand failed this way on its "
+            "first real use; the same class of fault as refuse_sync_with_batch_price.)"
+        )
+    model_id = JUDGE_MODEL
     try:
         sources.price_of(model_id)
     except KeyError as error:
