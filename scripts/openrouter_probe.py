@@ -41,6 +41,7 @@ MINI_SCHEMA = {
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     },
 }
+_HTTP_NOT_FOUND = 404
 TOOL = {
     "type": "function",
     "function": {
@@ -139,7 +140,16 @@ def main(argv: list[str]) -> int:
     submitted = _post(http, sources.BATCHES, body)
     batch_id = submitted["id"]
     while True:
-        status = http.get(f"{sources.BATCHES}/{batch_id}").json()
+        response = http.get(f"{sources.BATCHES}/{batch_id}")
+        if response.status_code == _HTTP_NOT_FOUND:
+            # A newly submitted batch id can 404 for a short time before it is readable
+            # (observed 2026-09-15/16 -- see the deviation this fixed in the real client);
+            # this probe just waits it out instead of printing a 404 body as "batch None".
+            print("batch not yet visible (404); waiting")
+            time.sleep(30)
+            continue
+        response.raise_for_status()
+        status = response.json()
         print(f"batch {status.get('status')}")
         if status.get("status") in {"completed", "failed", "expired", "cancelled"}:
             break

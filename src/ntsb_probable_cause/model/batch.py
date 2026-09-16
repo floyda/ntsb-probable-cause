@@ -140,17 +140,49 @@ class BatchClient:
             reported_cost_usd=float(cost) if isinstance(cost, int | float) else None,
         )
 
-    def wait(
+    def wait(  # noqa: PLR0913 -- every parameter is a seam a test needs (see the docstring).
         self,
         batch_id: str,
         *,
         every_seconds: float = 60.0,
         sleep: Callable[[float], None] = time.sleep,
         on_status: Callable[[str], None] = lambda _s: None,
+        not_found_grace_seconds: float = 120.0,
+        now: Callable[[], float] = time.monotonic,
     ) -> BatchStatus:
-        """Poll until the batch is terminal."""
+        """Poll until the batch is terminal.
+
+        A batch id that was just returned by ``submit`` can 404 on the very first poll:
+        OpenRouter needs a short time before a newly submitted batch is readable through
+        the GET endpoint, and the same 404 can also appear later, briefly, as a provider
+        blip (observed 2026-09-16: ``ModelError: /api/beta/batches/<id> returned 404:
+        {"error":{"message":"Batch job <id> not found.","code":404}}`` on the first poll of
+        a batch already recorded in ``batches.jsonl``). A 404 is tolerated for up to
+        ``not_found_grace_seconds`` -- sleeping and retrying rather than raising -- starting
+        from the first 404 seen; a poll that succeeds (any status, terminal or not) clears
+        the window, so a later blip gets its own fresh grace period. Only once the window
+        elapses without a successful poll does this raise ``ModelError`` naming the batch
+        id. Every other status behaviour (the ``TERMINAL`` set, ``expired``/``failed``
+        raising via ``_result_from_item`` on the caller's next step, per-result error
+        handling) is unchanged.
+        """
+        not_found_deadline: float | None = None
         while True:
-            status = self.poll(batch_id)
+            try:
+                status = self.poll(batch_id)
+            except ModelError as error:
+                if "returned 404" not in str(error):
+                    raise
+                if not_found_deadline is None:
+                    not_found_deadline = now() + not_found_grace_seconds
+                if now() >= not_found_deadline:
+                    raise ModelError(
+                        f"batch {batch_id}: still not found after "
+                        f"{not_found_grace_seconds:.0f}s: {error}"
+                    ) from error
+                sleep(every_seconds)
+                continue
+            not_found_deadline = None
             on_status(status.status)
             if status.status in TERMINAL:
                 return status

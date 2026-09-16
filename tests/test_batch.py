@@ -177,3 +177,79 @@ def test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate(
     )
     assert how == "priced"
     assert dollars == pytest.approx(expected)
+
+
+class _FakeClock:
+    """A deterministic clock/sleeper pair: ``sleep`` advances ``now`` instead of blocking.
+
+    Lets ``wait``'s grace-window arithmetic (``now() + not_found_grace_seconds``) be tested
+    without a real clock or a real sleep (no test may sleep for real).
+    """
+
+    def __init__(self) -> None:
+        self.t = 0.0
+        self.sleeps: list[float] = []
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.t += seconds
+
+
+def test_wait_tolerates_a_404_on_first_poll_then_succeeds(respx_mock: respx.MockRouter) -> None:
+    """OpenRouter's own behaviour, observed 2026-09-16: a batch id can 404 for a short time
+    right after ``submit`` returns it, before it is readable through GET."""
+    not_found = httpx.Response(
+        404, json={"error": {"message": "Batch job b7 not found.", "code": 404}}
+    )
+    respx_mock.get(f"{BASE}/b7").mock(
+        side_effect=[not_found, httpx.Response(200, json=FIX["response"])]
+    )
+    clock = _FakeClock()
+    status = client().wait(
+        "b7", every_seconds=5.0, sleep=clock.sleep, now=clock.now, not_found_grace_seconds=120.0
+    )
+    assert status.status == "completed"
+    assert clock.sleeps == [5.0]  # one retry sleep for the 404, none needed after
+
+
+def test_wait_raises_naming_the_batch_id_once_the_404_grace_window_elapses(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """A 404 that never resolves must eventually raise, not poll forever."""
+    not_found = httpx.Response(
+        404, json={"error": {"message": "Batch job b8 not found.", "code": 404}}
+    )
+    respx_mock.get(f"{BASE}/b8").mock(side_effect=[not_found, not_found, not_found])
+    clock = _FakeClock()
+    with pytest.raises(ModelError, match="b8"):
+        client().wait(
+            "b8",
+            every_seconds=60.0,
+            sleep=clock.sleep,
+            now=clock.now,
+            not_found_grace_seconds=120.0,
+        )
+    assert clock.sleeps == [60.0, 60.0]  # two retries inside the window, then raise on the third
+
+
+def test_wait_tolerates_a_later_404_blip_after_a_non_terminal_status_was_seen(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """A 404 after the batch was already seen in a non-terminal state (a provider blip, not
+    the not-yet-visible case) is tolerated the same way, then the batch completes."""
+    not_found = httpx.Response(
+        404, json={"error": {"message": "Batch job b9 not found.", "code": 404}}
+    )
+    in_progress = httpx.Response(200, json={**FIX["response"], "status": "in_progress"})
+    respx_mock.get(f"{BASE}/b9").mock(
+        side_effect=[in_progress, not_found, httpx.Response(200, json=FIX["response"])]
+    )
+    clock = _FakeClock()
+    status = client().wait(
+        "b9", every_seconds=10.0, sleep=clock.sleep, now=clock.now, not_found_grace_seconds=120.0
+    )
+    assert status.status == "completed"
+    assert clock.sleeps == [10.0, 10.0]

@@ -4164,3 +4164,43 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   the item-line format is unchanged. `uv run pytest` -- 390 passed, 97.68% coverage (gate
   90%). `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict,
   pytest) all pass.
+- 2026-09-16, Task 14 (step 2), found on the first real 400-case batch submission
+  (`ntsb-eval run --arm ceiling --sample dev-400`): observed provider fact -- a batch id
+  that `submit` just returned can 404 for a short time before it is readable through the
+  batch GET endpoint. The stage-1 batch submitted successfully (its id was recorded in
+  `batches.jsonl`), but the very first poll raised `ModelError:
+  /api/beta/batches/batch-1789521169-LFofWWoQzHwuChB7kK27 returned 404:
+  {"error":{"message":"Batch job batch-... not found.","code":404}}`, and the whole run
+  aborted with a 400-request stage-1 batch already in flight and paid for. The probe never
+  caught this because `scripts/openrouter_probe.py`'s polling loop read the GET response
+  with a bare `.json()` and no status check, so the same 404 body silently printed as
+  `batch None` instead of failing loudly. One 400-request stage-1 batch was orphaned by the
+  abort; its cost will be read from the provider and recorded in the results file by hand,
+  and the `dev-400` ceiling run will be re-submitted after this fix. Fixed in
+  `src/ntsb_probable_cause/model/batch.py`, where polling belongs: `BatchClient.wait` now
+  tolerates a 404 from `poll` for up to `not_found_grace_seconds` (default 120s, injectable),
+  sleeping and retrying rather than raising immediately; a poll that succeeds (any status)
+  clears the tolerance window, so a later 404 (a provider blip after the batch was already
+  seen in a non-terminal state, not just the not-yet-visible case) gets its own fresh grace
+  period rather than being tolerated forever; only once a window elapses with no successful
+  poll does `wait` raise `ModelError` naming the batch id. Every other status behaviour (the
+  `TERMINAL` set, `expired`/`failed` raising, per-result error handling in
+  `_result_from_item`) is unchanged. The 404 is detected by matching `"returned 404" in
+  str(error)` against the `ModelError` `OpenRouterClient.request_json` already raises for a
+  non-retry status, rather than adding a new exception type or reaching into `httpx`
+  internals. New tests in `tests/test_batch.py`, all instant (a `_FakeClock` advances a
+  fake `now()` inside `sleep()`, never a real clock or a real sleep):
+  `test_wait_tolerates_a_404_on_first_poll_then_succeeds`,
+  `test_wait_raises_naming_the_batch_id_once_the_404_grace_window_elapses`, and
+  `test_wait_tolerates_a_later_404_blip_after_a_non_terminal_status_was_seen`. Also fixed
+  the probe's silent hole: `scripts/openrouter_probe.py`'s batch-polling loop now checks the
+  GET's status code, treats 404 as "not yet visible" (prints a message and waits, rather
+  than printing `batch None`), and calls `raise_for_status()` on every other non-2xx
+  response, so the saved-response contract stays honest. `uv run pytest` -- 393 passed,
+  97.61% coverage (gate 90%). `make check` (ruff format, ruff check, lint-imports, deptry,
+  vulture, mypy --strict, pytest) all pass; two ruff findings surfaced by the new code
+  (`PLR2004` magic value `404` in the probe, `PLR0913` too many arguments on
+  `BatchClient.wait`) were fixed by naming the probe's constant `_HTTP_NOT_FOUND` and adding
+  a `noqa: PLR0913` on `wait` with the reason (every parameter is a seam a test needs, per
+  the method's own docstring), matching the project's existing style for that rule
+  (`OpenRouterClient.__init__`, `Runner.__init__`).
