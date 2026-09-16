@@ -60,7 +60,7 @@ class BatchCounts:
 class BatchStatus(BaseModel):
     """A batch as last polled."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True)
     batch_id: str
     status: str
     results: tuple[BatchResult, ...]

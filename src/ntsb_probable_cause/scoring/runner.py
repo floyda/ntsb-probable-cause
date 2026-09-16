@@ -933,7 +933,7 @@ class Runner:
     _STAGE_WIDTH = 13  # the longest stage name ("stage1-retry"/"stage2-retry") plus a gap
     _WORD_WIDTH = 10  # "SUBMITTED" (9 chars) plus a gap; "REUSED" pads out to match
     _STATUS_WIDTH = 12  # "in_progress" (11 chars) plus a gap
-    _COUNTS_WIDTH = 8  # "999/999" (7 chars, the common case) plus a gap
+    _COUNTS_WIDTH = 10  # "9999/9999" (9 chars, a large batch) plus a gap
 
     def _log_header(self, spec: RunSpec, run_id: str, case_count: int, *, resumed: bool) -> None:
         """One line naming a run as it starts: the same facts as ``spec.json`` (§4).
@@ -944,20 +944,26 @@ class Runner:
         """
         word = "RESUMED" if resumed else "FRESH"
         self._write_log_line(
-            f"run {run_id} {word} sample={spec.sample} arm={spec.arm} cases={case_count} "
-            f"model={spec.model} price={spec.price_variant}"
+            lambda: (
+                f"run {run_id} {word} sample={spec.sample} arm={spec.arm} cases={case_count} "
+                f"model={spec.model} price={spec.price_variant}"
+            )
         )
 
-    def _write_log_line(self, body: str) -> None:
-        """Every run-log line: the wall clock, then ``body``, to stderr only.
+    def _write_log_line(self, build_body: Callable[[], str]) -> None:
+        """Every run-log line: the wall clock (UTC, marked), then the built body, to stderr only.
 
-        Never lets a logging problem end the run (brief: "A logging failure must never kill
-        a run") -- ``self._now()`` is the runner's own injected clock and cannot fail in
-        practice, but writing is wrapped anyway since stderr can, in principle, be closed
-        out from under a long-running process.
+        ``build_body`` is called *inside* the guard, not by the caller before this is reached
+        (fix round 2, I1): the brief says "a logging failure must never kill a run", and a
+        defect in formatting -- not only in the final ``write`` -- is exactly the kind of
+        logging failure that must never reach ``wait()`` and abort a paid batch mid-flight.
+        Catching bare ``Exception`` is deliberate and total: ``OSError`` covers a closed
+        pipe, ``ValueError`` covers writing to a *closed* file object (the case the brief's
+        docstring names), and nothing narrower can promise "never" for code that will go on
+        changing after this fix.
         """
-        with contextlib.suppress(OSError):
-            sys.stderr.write(f"{self._now():%H:%M:%S} {body}\n")
+        with contextlib.suppress(Exception):
+            sys.stderr.write(f"{self._now():%H:%M:%S}Z {build_body()}\n")
 
     @staticmethod
     def _format_counts(status: BatchStatus) -> tuple[str, str]:
@@ -985,41 +991,53 @@ class Runner:
         anything the provider reports (controller resolution 3), so elapsed is meaningful
         even across a resume that waits on a batch recorded long before this process started.
         """
-        counts_str, failed_str = self._format_counts(status)
-        elapsed = self._format_elapsed(self._now() - wait_started)
-        cost = "" if status.reported_cost_usd is None else f" ${status.reported_cost_usd:.4f}"
-        stage_field = stage.ljust(self._STAGE_WIDTH)
-        status_field = status.status.ljust(self._STATUS_WIDTH)
-        counts_field = counts_str.ljust(self._COUNTS_WIDTH)
-        self._write_log_line(
-            f"{stage_field}{status_field}{counts_field}failed={failed_str}{cost} ({elapsed})"
-        )
+
+        def body() -> str:
+            counts_str, failed_str = self._format_counts(status)
+            elapsed = self._format_elapsed(self._now() - wait_started)
+            cost = "" if status.reported_cost_usd is None else f" ${status.reported_cost_usd:.4f}"
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            status_field = status.status.ljust(self._STATUS_WIDTH)
+            counts_field = counts_str.ljust(self._COUNTS_WIDTH)
+            return f"{stage_field}{status_field}{counts_field}failed={failed_str}{cost} ({elapsed})"
+
+        self._write_log_line(body)
 
     def _log_reused(self, stage: str, batch_id: str, recorded_time: str | None) -> None:
         """One line when a stage waits on a recorded batch instead of submitting: no new money."""
-        recorded = self._format_recorded_time(recorded_time)
-        stage_field = stage.ljust(self._STAGE_WIDTH)
-        word_field = "REUSED".ljust(self._WORD_WIDTH)
-        self._write_log_line(f"{stage_field}{word_field}{batch_id} (recorded {recorded})")
+
+        def body() -> str:
+            recorded = self._format_recorded_time(recorded_time)
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "REUSED".ljust(self._WORD_WIDTH)
+            return f"{stage_field}{word_field}{batch_id} (recorded {recorded})"
+
+        self._write_log_line(body)
 
     def _log_submitted(self, stage: str, batch_id: str, request_count: int) -> None:
         """One line when a stage submits a fresh batch (§3): new money, and how much of it."""
-        plural = "request" if request_count == 1 else "requests"
-        stage_field = stage.ljust(self._STAGE_WIDTH)
-        word_field = "SUBMITTED".ljust(self._WORD_WIDTH)
-        self._write_log_line(f"{stage_field}{word_field}{batch_id} {request_count} {plural}")
+
+        def body() -> str:
+            plural = "request" if request_count == 1 else "requests"
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "SUBMITTED".ljust(self._WORD_WIDTH)
+            return f"{stage_field}{word_field}{batch_id} {request_count} {plural}"
+
+        self._write_log_line(body)
 
     @staticmethod
     def _format_recorded_time(recorded_time: str | None) -> str:
-        """The ``HH:MM:SS`` a batch was recorded at, or ``unknown`` for an unreadable value.
+        """The ``HH:MM:SSZ`` a batch was recorded at, or ``unknown`` for an unreadable value.
 
         A malformed or missing ``time`` field (an old run folder, a hand-edited row) must
-        not raise out of the run log (brief: "log what is known and carry on").
+        not raise out of the run log (brief: "log what is known and carry on"). The stored
+        ``time`` is always UTC (``self._now().isoformat()`` in ``_record_batch_id``), so this
+        only reformats it -- it never converts a timezone.
         """
         if recorded_time is None:
             return "unknown"
         try:
-            return f"{datetime.fromisoformat(recorded_time):%H:%M:%S}"
+            return f"{datetime.fromisoformat(recorded_time):%H:%M:%S}Z"
         except ValueError:
             return "unknown"
 
