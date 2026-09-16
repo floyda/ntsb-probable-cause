@@ -56,6 +56,16 @@ GEMINI_31_FLASH_LITE_BATCH = ModelPrice(
     "google/gemini-3.1-flash-lite:batch", 0.12, 0.75, "OpenRouter models API, 2026-09-16"
 )
 
+# https://openrouter.ai/api/v1/models, checked 2026-09-16. A second, independent family for
+# the cross-model check (0034): three models agreeing costs $0.39 more than two. Probed on the
+# same day for our stage-2 shape; the reasoning-tier models of every family (GLM-5, Kimi K2.5,
+# DeepSeek Pro) spend the whole output budget thinking and return empty content, so only the
+# non-reasoning "flash" tiers are usable here.
+GLM_53_FLASH = ModelPrice("z-ai/glm-5.3-flash", 0.09, 0.30, "OpenRouter models API, 2026-09-16")
+GLM_53_FLASH_BATCH = ModelPrice(
+    "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
+)
+
 _PRICES = {
     p.model_id: p
     for p in (
@@ -66,6 +76,8 @@ _PRICES = {
         HAIKU_45_BATCH,
         GEMINI_31_FLASH_LITE,
         GEMINI_31_FLASH_LITE_BATCH,
+        GLM_53_FLASH,
+        GLM_53_FLASH_BATCH,
     )
 }
 
