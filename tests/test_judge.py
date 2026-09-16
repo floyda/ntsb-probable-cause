@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from ntsb_probable_cause.errors import BudgetError, SchemaError
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError, SchemaError
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
@@ -296,5 +296,15 @@ def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails() -> None:
     assert rows[0]["case_id"] == "case1"
 
 
-def test_judge_expected_cost_per_case_matches_the_controllers_measurement() -> None:
-    assert judge.JUDGE_EXPECTED_COST_PER_CASE_USD == {"batch": 0.0004, "standard": 0.00089}
+def test_judge_expected_cost_per_case_uses_the_conservative_spec_budget() -> None:
+    """Fix round 2: spec §14's ~$1/800 cases (~$0.00125), not the one measured live call."""
+    assert judge.JUDGE_EXPECTED_COST_PER_CASE_USD == {"batch": 0.00125, "standard": 0.00125}
+
+
+def test_judge_run_refuses_a_standard_priced_call_before_any_call() -> None:
+    """Fix round 2, item 2: no confirmed OpenRouter price for the bare (non-batch) model id."""
+    client = RecordingFakeClient([GOOD_LABELS])
+    items = [("case1", H, S, V, _score())]
+    with pytest.raises(ConfigurationError, match="no confirmed OpenRouter price"):
+        judge.judge_run(client, load_tables(), items, price_variant="standard")
+    assert client.payloads == []

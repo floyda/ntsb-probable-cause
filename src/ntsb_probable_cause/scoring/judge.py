@@ -13,7 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ntsb_probable_cause.errors import SchemaError
+from ntsb_probable_cause import sources
+from ntsb_probable_cause.errors import ConfigurationError, SchemaError
 from ntsb_probable_cause.model.client import (
     ModelClient,
     ModelReply,
@@ -30,12 +31,21 @@ from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.runner import RunSpec, project_cost, refuse_over_budget
 
 JUDGE_MODEL = "anthropic/claude-haiku-4.5"
-# Fix round 1 (Task 13, Important 1): the controller's own measured judge cost per case,
-# batch and standard, used as the projection `judge_run` refuses over budget with when the
-# caller has no better number (mirrors the runner's `project_cost`/`cap_usd` fallback, 0030).
+# Fix round 2 (Task 13): the controller made exactly ONE live judge call (2026-09-16,
+# anthropic/claude-haiku-4.5, standard price): 769 prompt tokens, 24 completion tokens,
+# provider-reported cost $0.000889. That single call is the only real measurement we have;
+# it is not a batch-priced measurement, and one call is not a distribution. The batch figure
+# below is *not* measured -- it is computed from that same call's token counts against
+# `sources.HAIKU_45_BATCH`'s confirmed price ($0.50/$2.50 per MTok):
+# 769 * 0.50 / 1e6 + 24 * 2.50 / 1e6 = $0.000445, i.e. about half the standard call, as the
+# batch discount implies. Spec §14 separately budgets about $1 for 800 judged cases, i.e.
+# about $0.00125/case -- three times the single measured call. `judge_run`'s default
+# projection uses this more conservative, spec-derived figure for both variants, not the one
+# call's own smaller number, because a budget guard should not under-count spend on the
+# strength of a single sample; a future measurement over many calls should replace it.
 JUDGE_EXPECTED_COST_PER_CASE_USD: dict[Literal["batch", "standard"], float] = {
-    "batch": 0.0004,
-    "standard": 0.00089,
+    "batch": 0.00125,
+    "standard": 0.00125,
 }
 SYSTEM_JUDGE = """You are grading an analyst's written outputs against the official record. \
 Return labels only.
@@ -149,6 +159,29 @@ class JudgeRunResult:
 JudgeItem = tuple[str, Hypothesis, Synthesis, Verdict, CaseScores]
 
 
+def _ensure_priced(price_variant: Literal["batch", "standard"]) -> None:
+    """Refuse before any call if this variant has no confirmed OpenRouter price (fix round 2).
+
+    `cost_usd` falls back to `sources.price_of` only when a reply carries no provider-reported
+    cost, but nothing guarantees a reply always reports one, and `sources._PRICES` currently
+    holds no entry for the bare (non-batch) judge model id -- only the batch-priced one,
+    confirmed from a saved OpenRouter response. Left unchecked, a standard-priced call whose
+    reply happens not to report a cost would raise ``KeyError`` from inside ``cost_usd``
+    *after* that call was already paid for. Refusing here instead, before the first call,
+    avoids both the crash and inventing an unconfirmed price (project rule: no API detail is
+    guessed).
+    """
+    model_id = f"{JUDGE_MODEL}:batch" if price_variant == "batch" else JUDGE_MODEL
+    try:
+        sources.price_of(model_id)
+    except KeyError as error:
+        raise ConfigurationError(
+            f"no confirmed OpenRouter price for {model_id!r}; add it to sources.py from a "
+            "saved response, or judge at batch price (already confirmed), before using "
+            f"price_variant={price_variant!r}"
+        ) from error
+
+
 def judge_run(  # noqa: PLR0913 -- the budget guard needs its own cap/budget/spent triple.
     client: ModelClient,
     tables: CodeTables,
@@ -188,6 +221,7 @@ def judge_run(  # noqa: PLR0913 -- the budget guard needs its own cap/budget/spe
         expected_cost_per_case_usd=JUDGE_EXPECTED_COST_PER_CASE_USD[price_variant],
     )
     refuse_over_budget(project_cost(spec, len(items)), month_spent_usd, budget_usd)
+    _ensure_priced(price_variant)
     settings = ModelSettings(
         model=JUDGE_MODEL,
         price_variant=price_variant,
