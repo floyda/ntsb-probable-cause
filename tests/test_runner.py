@@ -118,7 +118,7 @@ def test_sync_run_writes_three_files_and_one_step_per_case(
     assert all(c.scores is not None and c.failure is None for c in cases)
     assert steps[0].tool == "none"
     assert steps[0].stop_reason == "answered"
-    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v3"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v4"
     assert len(client.payloads) == 2 * len(record_fixtures)  # two turns per case
 
 

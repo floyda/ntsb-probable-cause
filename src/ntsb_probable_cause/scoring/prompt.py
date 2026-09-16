@@ -6,7 +6,7 @@ Spec §3.5.
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
-PROMPT_VERSION = "s1-v3"
+PROMPT_VERSION = "s1-v4"
 
 SYSTEM_ANSWER = """You are an aviation accident analyst working from the evidence investigators
 recorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,
@@ -36,10 +36,14 @@ value instead of retreating to an undetermined code. Use an undetermined code on
 official record itself would have nothing more specific to say. Reply only with JSON matching
 the schema."""
 
-SYSTEM_REFINE = """You chose finding categories for this case. For each, choose the single most
-specific item from the list of that category's items given in the message. Return only its
-eight-digit item code, never its label text. Reply only with JSON matching the schema: one
-entry per finding index."""
+SYSTEM_REFINE = """You already chose a finding category and a modifier for each finding in this
+case; the modifier is settled and is not part of what you choose now. For each finding, the
+message below lists the eight-digit item codes that belong to that finding's category, one per
+line as "item code, two spaces, label". Choose one of those listed item codes exactly as
+written. The item code is not the six-digit category code, and it is never the category code
+with the modifier appended -- it is one specific line from the list, copied exactly. Return
+only that eight-digit item code, never its label text. Reply only with JSON matching the
+schema: one entry per finding index."""
 
 
 def tables_block(tables: CodeTables, *, case_number: str | None = None) -> str:
@@ -65,11 +69,23 @@ def tables_block(tables: CodeTables, *, case_number: str | None = None) -> str:
 
 
 def refine_message(hypothesis: Hypothesis, tables: CodeTables) -> str:
-    """Render the stage-1 findings and, for each, its category's items with definitions."""
-    parts = ["## Your findings and the items available under each\n"]
+    """Render the stage-1 findings and, for each, its category's items with definitions.
+
+    Each finding's heading names its category and modifier as already chosen, separately
+    from the item list, and the list itself holds only the eight-digit item codes that are
+    valid choices -- nothing in this rendering pairs a category digit string with a modifier
+    digit string the way an ``item8 = category6 + modifier`` mistake would (Task 14 step 2,
+    third prompt iteration: the model built ``02041044`` from category ``020410`` and
+    modifier ``44`` instead of choosing a listed item).
+    """
+    parts = ["## For each finding, choose one item code from the list below\n"]
     for index, guess in enumerate(hypothesis.findings):
         label = tables.categories[guess.category6]
-        parts.append(f"### Finding {index}: {guess.category6}  {label}\n")
+        parts.append(
+            f"### Finding {index}: category {guess.category6} ({label}), "
+            f"modifier {guess.modifier} already chosen\n"
+        )
+        parts.append("Item codes for this finding (choose one, exactly as listed):\n")
         parts.extend(
             f"{code}  {text}" for code, text in sorted(tables.items_under(guess.category6).items())
         )
