@@ -5,7 +5,7 @@ Spec §3.4.
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -123,7 +123,25 @@ def strict_schema(model: type[BaseModel]) -> dict[str, object]:
     return schema
 
 
-HYPOTHESIS_SCHEMA: dict[str, object] = strict_schema(Hypothesis)
+def _stage1_schema() -> dict[str, object]:
+    """The stage-1 schema: the hypothesis schema with ``item8`` removed from each finding.
+
+    Item codes are stage 2's job. Stage 1 is never shown the item list for a category, so a
+    stage-1 reply cannot choose an item code -- it can only invent one, and offering the
+    field invited exactly that. On the first full development ceiling run 249 of 401 stage-1
+    replies were rejected, almost all of them for an ``item8`` built as ``category6 +
+    modifier`` (for example ``020410`` + ``44`` -> ``02041044``). Removing the field leaves
+    the model nothing to guess with; ``parse_hypothesis`` still validates an ``item8`` if one
+    somehow arrives.
+    """
+    schema = strict_schema(Hypothesis)
+    finding = cast(dict[str, Any], cast(dict[str, Any], schema["$defs"])["FindingGuess"])
+    del cast(dict[str, Any], finding["properties"])["item8"]
+    finding["required"] = [name for name in finding["required"] if name != "item8"]
+    return schema
+
+
+HYPOTHESIS_SCHEMA: dict[str, object] = _stage1_schema()
 REFINEMENT_SCHEMA: dict[str, object] = strict_schema(Refinement)
 
 

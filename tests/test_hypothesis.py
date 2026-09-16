@@ -156,6 +156,16 @@ def test_duplicate_occurrence_codes_are_a_schema_error() -> None:
         parse_hypothesis(json.dumps(bad), load_tables())
 
 
+def test_stage1_schema_does_not_offer_item8() -> None:
+    """Stage 1 never sees the item list, so the schema must not let it guess an item code."""
+    finding = HYPOTHESIS_SCHEMA["$defs"]["FindingGuess"]  # type: ignore[index]
+    assert "item8" not in finding["properties"]
+    assert "item8" not in finding["required"]
+    assert set(finding["properties"]) == {"category6", "modifier", "probability"}
+    # Stage 2 still chooses one, and the parser still validates a stray stage-1 item.
+    assert "item8" in REFINEMENT_SCHEMA["$defs"]["RefinedItem"]["properties"]  # type: ignore[index]
+
+
 def test_schema_is_strict_and_tables_block_holds_tables() -> None:
     assert HYPOTHESIS_SCHEMA["additionalProperties"] is False
     block = tables_block(load_tables())
