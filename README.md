@@ -215,7 +215,24 @@ make test    # pytest
 make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
 make build   # build data/processed/cases.parquet from the raw store
 make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
+make probe   # scripts/openrouter_probe.py — the S1 fixture-recording probe (spec §7.1)
+make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (spec §6.5)
 ```
+
+`ntsb-eval` (spec §6.5) is the S1 evaluation harness, installed by `uv sync`:
+
+```bash
+ntsb-eval baseline  [--sample heldout-400]                 # spec §6.3
+ntsb-eval run       --arm ceiling|A --sample heldout-40|heldout-400|dev-400
+                     [--exclude ROLE ...] [--include case_number] [--limit N]
+                     [--model ID] [--price-variant batch|standard]
+                     [--cap-usd 0.05] [--budget-usd 25] [--sync]
+ntsb-eval report     <run id>|--latest ARM SAMPLE [--against <run id>|--against-latest ARM SAMPLE]
+ntsb-eval judge      <run id> [--validated]                 # spec §8; dev-400 until validated
+ntsb-eval threshold  <run id>                                # spec §9
+```
+
+Every subcommand accepts `--out PATH` to also write the printed text to a file.
 
 Other scripts, run with `uv run python -m scripts.<name>`:
 
@@ -230,6 +247,12 @@ file:
   committed.
 - `NTSB_DATA_DIR` — where raw and processed data live (default `data`). Nothing under it is
   committed.
+- `OPENROUTER_API_KEY` — the OpenRouter key `ntsb-eval run`/`judge` call the model through
+  (decision 0009).
+- `NTSB_RUNS_DIR` — where evaluation runs are written (default `data/runs`); never committed.
+- `NTSB_MONTHLY_BUDGET_USD` — the monthly spend cap a run refuses to exceed (default 25).
+- `NTSB_EXPECTED_COST_PER_CASE_USD` — measured cost per case a run projects against the
+  budget from, once `make probe` has one; falls back to the cost cap when unset.
 
 ## A note on tone
 

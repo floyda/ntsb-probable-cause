@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 ntsb-ingest = "apps.ingest.__main__:main"
+ntsb-eval = "apps.eval.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ntsb_probable_cause", "apps"]
