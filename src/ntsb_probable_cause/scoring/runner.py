@@ -124,6 +124,69 @@ def write_spec_json(
     (folder / SPEC_FILE).write_text(json.dumps(recorded, indent=2) + "\n")
 
 
+def _nth(items: Sequence[object], index: int) -> object | None:
+    """``items[index]``, or ``None`` past the end.
+
+    So two lists can be compared position by position without minding which is longer.
+    """
+    return items[index] if index < len(items) else None
+
+
+def case_ids_mismatch(recorded: object, current: object) -> str:
+    """Why two case-id lists differ: the two counts, and the first index where they part.
+
+    Never the lists themselves. On ``dev-400`` that would be two 401-element lists inside an
+    exception message, and a refusal nobody can read is a refusal an operator works around
+    rather than acts on. The counts alone usually say it — a resume with a different
+    ``--limit`` is the case this check exists for — and the first differing index says it
+    for a same-length list in a different order.
+
+    Args:
+        recorded: the ``case_ids`` value read from ``spec.json``.
+        current: the ``case_ids`` of the run now asking to resume.
+
+    Returns:
+        One sentence naming the field and the difference.
+    """
+    if not isinstance(recorded, list) or not isinstance(current, list):
+        return f"case_ids: the run recorded {recorded!r}, which is not a list of case ids"
+    index = next(
+        position
+        for position in range(max(len(recorded), len(current)))
+        if _nth(recorded, position) != _nth(current, position)
+    )
+    return (
+        f"case_ids: the run recorded {len(recorded)} case ids and this one has "
+        f"{len(current)}; the first difference is at index {index}, where the run recorded "
+        f"{_nth(recorded, index)!r} and this one has {_nth(current, index)!r}"
+    )
+
+
+def refuse_sync_resume(spec: RunSpec, resume: str | None) -> None:
+    """A sync run has no batches to resume from, so ``--resume`` on one is refused.
+
+    What a resume reuses is a batch: one submitted, recorded, paid-for unit of work whose
+    replies the provider still holds (0032 point 3). The sync path buys its replies one call
+    at a time and records none of them, so adopting a run folder with ``--sync`` would
+    re-call and re-pay for every case while reading, to the operator, as a resume that cost
+    nothing. Refused here, beside the other pre-flight refusals, so it cannot be reached by
+    a caller that skips the command line.
+
+    Args:
+        spec: the spec the run was started with.
+        resume: the run id passed to ``--resume``, or ``None``.
+
+    Raises:
+        ConfigurationError: both ``--sync`` and ``--resume`` were given.
+    """
+    if resume is not None and spec.sync:
+        raise ConfigurationError(
+            f"--resume cannot be used with --sync: {resume} has no batches to resume from, "
+            "because a sync run buys its replies one case at a time and records none of "
+            "them. Drop --sync to resume a batch run, or start a new run."
+        )
+
+
 def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
     """Refuse a resume unless the folder records exactly the spec now being asked for.
 
@@ -159,10 +222,12 @@ def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
     for name, value in current.items():
         was = recorded.get(name)
         if was != value:
-            raise ConfigurationError(
-                f"cannot resume {folder.name}: {name} was {was!r} when the run started, "
-                f"and is {value!r} now"
+            detail = (
+                case_ids_mismatch(was, value)
+                if name == "case_ids"
+                else f"{name} was {was!r} when the run started, and is {value!r} now"
             )
+            raise ConfigurationError(f"cannot resume {folder.name}: {detail}")
 
 
 def recorded_batches(folder: Path) -> list[tuple[str, str]]:
@@ -431,11 +496,13 @@ class Runner:
             The run's own ``RunRecord``, also written to ``run.jsonl``.
 
         Raises:
-            ConfigurationError: a resume naming a folder that does not exist, records no
-                spec, or records a different spec than the one passed in.
+            ConfigurationError: a resume asked for alongside ``--sync``, or one naming a
+                folder that does not exist, records no spec, or records a different spec
+                than the one passed in.
         """
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
+        refuse_sync_resume(spec, resume)
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
         case_ids = [case_payload(raw, spec, self._tables)[3].case_id for raw in raws]

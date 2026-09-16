@@ -27,6 +27,7 @@ from ntsb_probable_cause.scoring.runner import (
     case_payload,
     project_cost,
     refuse_over_budget,
+    spec_json,
 )
 
 GOOD = json.dumps(
@@ -1114,6 +1115,13 @@ def test_resume_refuses_a_spec_json_that_is_not_a_readable_object(
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
             BATCH_SPEC, record_fixtures[:1], resume=_run_id()
         )
+    recorded = spec_json(BATCH_SPEC, commit_sha="abc1234", case_ids=["anything"])
+    recorded["case_ids"] = "not a list at all"
+    path.write_text(json.dumps(recorded))
+    with pytest.raises(ConfigurationError, match="not a list of case ids"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
     assert fake.submitted == []
 
 
@@ -1155,14 +1163,60 @@ def test_resume_refuses_a_different_model(
 def test_resume_refuses_a_different_case_list(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    """What makes ``--limit`` safe: a different number of cases is a different request set."""
+    """What makes ``--limit`` safe: a different number of cases is a different request set.
+
+    The message is counts and the first differing index, never the two lists: on
+    ``dev-400`` those are 401 ids each, and a refusal nobody can read is one an operator
+    works around instead of acting on.
+    """
     _died_waiting_on_stage1(tmp_path, record_fixtures[:2])
     other = FakeBatchClient(handlers=[])
-    with pytest.raises(ConfigurationError, match="case_ids"):
+    with pytest.raises(ConfigurationError) as excinfo:
         runner(tmp_path, RecordingFakeClient([]), batch=other).run(
             BATCH_SPEC, record_fixtures[:1], resume=_run_id()
         )
+    message = str(excinfo.value)
+    assert "case_ids: the run recorded 2 case ids and this one has 1" in message
+    assert "index 1" in message
+    assert repr(str(record_fixtures[1]["ntsbNumber"])) in message  # the id that went missing
+    assert "None" in message  # and nothing in its place
     assert other.submitted == []
+
+
+def test_resume_refuses_a_case_list_of_the_same_length_in_a_different_order(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Same count, different run: the first differing index is what names it."""
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:2])
+    other = FakeBatchClient(handlers=[])
+    with pytest.raises(ConfigurationError) as excinfo:
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            BATCH_SPEC, list(reversed(record_fixtures[:2])), resume=_run_id()
+        )
+    message = str(excinfo.value)
+    assert "recorded 2 case ids and this one has 2" in message
+    assert "index 0" in message
+    assert other.submitted == []
+
+
+def test_resume_is_refused_alongside_sync(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A sync run records no batches, so a ``--sync`` resume would silently re-buy the lot."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    with pytest.raises(ConfigurationError, match="no batches to resume from"):
+        runner(tmp_path, client).run(
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=True,
+                price_variant="standard",
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
+            resume=_run_id(),
+        )
+    assert client.payloads == []
 
 
 def test_resume_refuses_a_folder_written_before_the_spec_was_recorded(
