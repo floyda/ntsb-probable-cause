@@ -43,6 +43,9 @@ LUNA_BATCH = ModelPrice(
 HAIKU_45_BATCH = ModelPrice(
     "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
 )
+# The judge calls the chat-completions endpoint directly, which the provider does not serve
+# for a ``:batch`` model id, so the judge needs the standard price too (checked 2026-09-16).
+HAIKU_45 = ModelPrice("anthropic/claude-haiku-4.5", 1.00, 5.00, "OpenRouter models API, 2026-09-16")
 
 # https://openrouter.ai/api/v1/models, checked 2026-09-16. S1's cross-model sanity check
 # (0031 point 3, amended by 0034): a different model family, to tell "the task is hard" from
@@ -74,6 +77,7 @@ _PRICES = {
         LUNA,
         LUNA_BATCH,
         HAIKU_45_BATCH,
+        HAIKU_45,
         GEMINI_31_FLASH_LITE,
         GEMINI_31_FLASH_LITE_BATCH,
         GLM_53_FLASH,
