@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     expected_cost_per_case_usd: float | None = Field(
         default=None, validation_alias="NTSB_EXPECTED_COST_PER_CASE_USD"
     )
+    heldout_ledger_path: Path = Field(
+        default=Path("docs/results/heldout-ledger.md"),
+        validation_alias="NTSB_HELDOUT_LEDGER_PATH",
+    )
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""

@@ -3897,3 +3897,100 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   in project text (which is what `global-constraints.md`'s trailer lines are: attribution
   text from a prior session, not a CLAUDE.md or memory rule from Andy), so this commit
   follows the live reminder instead.
+- 2026-09-16, Task 13 fix round 1 (review of commit `454a43a`, before Task 14 spends money):
+  - **Important — the `judge` subcommand spent money outside every refusal.** `apps/eval/__main__._cmd_judge`
+    called `judge_case` per case with no budget check and no cap, discarded the reply as
+    `_reply` so no cost was ever priced, and wrote `judge.jsonl` once with `write_text` after
+    the whole loop, so an interrupt or a mid-loop `SchemaError` lost every already-paid label.
+    Fixed by moving the loop into `scoring/judge.py` as `judge_run(...)` (library code, inside
+    the coverage gate — `apps/eval` stays thin wiring): it refuses over budget first, using
+    the same `runner.project_cost`/`refuse_over_budget` pair a `run` uses, projected from a
+    new `JUDGE_EXPECTED_COST_PER_CASE_USD` table (`{"batch": 0.0004, "standard": 0.00089}`,
+    the controller's measured numbers); it prices each case with `model.client.cost_usd` and
+    calls `on_row` immediately after that case is paid for, so the app's `on_row` callback
+    (`apps.eval._cmd_judge`) appends the row to `judge.jsonl` and flushes it right away — an
+    interrupt after case *k* keeps rows 0..*k*. The judge run's total cost is recorded as a
+    second `RunRecord` appended to the same run's `run.jsonl` (`<run_id>-judge`), which
+    `month_spent` already sums correctly since it iterates every `RunRecord` a `run.jsonl`
+    holds, not just the first; on an exception partway through, `_cmd_judge` still records
+    whatever was paid (summed from the rows `on_row` already wrote) before re-raising, mirroring
+    the runner's own partial-write-then-reraise. The known gap stays documented in both
+    `judge_run`'s and `judge_case`'s docstrings: a case whose reply needs `judge_case`'s
+    internal retry is priced from the retry alone, so that case's cost omits the first
+    attempt's tokens. New tests: `test_judge_run_refuses_over_budget_before_any_call`,
+    `test_judge_run_prices_each_case_and_writes_rows_incrementally`,
+    `test_judge_run_keeps_rows_paid_for_before_a_later_case_fails`,
+    `test_judge_expected_cost_per_case_matches_the_controllers_measurement` (`tests/test_judge.py`),
+    plus `test_month_spent_sums_every_runrecord_in_a_run_jsonl_not_only_the_first`
+    (`tests/test_eval_app.py`).
+  - **Important — the baseline floor was never wired into a report.** `report.summarise`'s
+    `floor=` parameter existed but no command ever passed it, so `s1-bars.txt` would have
+    shown no floor despite spec §6.3 calling the honest baseline "the floor every table
+    shows". Added `report.honest_baseline_floor(processed) -> dict[str, float]` (fits on
+    development, scores on the whole held-out split, returns `Cell.value` floats keyed
+    `top-1`/`top-3`/`finding recall@10 (flagged)`/`finding recall@10 (all)`), refactored out
+    of `baseline_report`'s existing fit/score logic (`_honest_model_and_all`, shared by both).
+    `apps/eval._cmd_report` now always computes it and passes it to `summarise`. Test:
+    `test_honest_baseline_floor_returns_the_headline_figures_as_plain_floats`.
+  - **Important — the report output had no provenance.** `docs/results/*.txt` is the only
+    artefact of a run that survives in git; a table with no run id, sample, arm, model,
+    exclusions, commit SHA/dirty flag, timing or total cost cannot be told apart from a
+    different run's, or a complete run's from an aborted one (decision 0018 requires the
+    commit SHA). Added `report.provenance(record: RunRecord) -> str`, printed at the top of
+    `_cmd_report`'s output before `summarise`'s table; it marks `[complete]` or
+    `[ABORTED (partial results)]` from `record.finished`. Tests:
+    `test_provenance_shows_status_commit_and_totals`,
+    `test_provenance_marks_an_aborted_run_and_a_dirty_commit`.
+  - **`make bars` never reported `heldout-40`.** It ran `heldout-40` but never printed a
+    report for it, so spec §13 item 3's side-by-side with the spike's 57% was never produced.
+    Added a `report --latest ceiling heldout-40 --out docs/results/s1-heldout-40.txt` line to
+    the `bars` target. This is a departure from the plan's literal `Makefile` block (Task 13,
+    Step 4): logged here as the plan requires, not silently changed.
+  - **Minor (5) — nothing pinned that CLI flags actually reach `RunSpec`.** Added
+    `test_run_flags_reach_runspec_and_month_spent_reaches_runner`, a spy `Runner` class
+    (monkeypatched into `apps.eval.__main__`) capturing the constructed `RunSpec` and the
+    `month_spent_usd` the app computed, asserting `--cap-usd`, `--budget-usd`,
+    `--expected-cost-per-case-usd` and `--limit` all reach it and that the (monkeypatched)
+    `month_spent` return value reaches `Runner`.
+  - **Minor (6) — `threshold_curve` divided by `len(scored)`, not all cases.** Spec §9 says
+    "the mean score" over the cases; a failed case (no hypothesis at all) was previously
+    dropped from the denominator instead of counting as a 0, same as an abstention. Fixed the
+    divisor to `len(results)`; the chosen threshold is unaffected on every existing case (no
+    prior test had a failed case). Test:
+    `test_threshold_curve_divides_by_every_case_not_only_scored_ones`.
+  - **Minor (7) — the weighted headline printed no count.** Added `report.fmt_n(cell)`
+    (`fmt(cell) + " (n=...)"`) and used it in `_cmd_report`'s weighted-headline line, per
+    spec §4.3 ("a figure with no count is a bug"). Test: `test_fmt_n_includes_the_count`.
+  - **Minor (8) — the held-out ledger path was hardcoded relative to the cwd.** Added
+    `Settings.heldout_ledger_path` (`NTSB_HELDOUT_LEDGER_PATH`, default
+    `docs/results/heldout-ledger.md`, matching the prior hardcoded literal exactly, so
+    existing behaviour is unchanged unless the new variable is set) and used
+    `settings.heldout_ledger_path` in `_cmd_run` instead of a literal `Path(...)`. Documented
+    in `.env.example`.
+  - **Minor (9) — `resolve_latest` could return an aborted run.** Rewrote it to read each
+    candidate folder's `run.jsonl` and skip any run with `finished is None`, so `--latest`/
+    `--against-latest` (and therefore `make bars`) can never silently resolve to, and report,
+    a partial held-out run as if it were complete. Tests:
+    `test_resolve_latest_picks_the_newest_completed_matching_folder`,
+    `test_resolve_latest_skips_an_aborted_run_even_if_newest`; the
+    "raises when nothing matches" test's expected message was updated to
+    `"no completed run found"`.
+  - **Minor (10) — a bad `--exclude` value and a refused run both produced a raw traceback.**
+    `--exclude` now has `type=EvidenceRole`, so an unknown role is caught by argparse itself
+    (`invalid EvidenceRole value: ...`, exit code 2) instead of raising deep inside
+    `_cmd_run`. `main` now wraps its command dispatch in
+    `try/except (BudgetError, ConfigurationError)`, printing `"{command}: {error}"` to stderr
+    and returning 1, since both are refusals Andy is expected to hit by hand (an over-budget
+    run, a held-out run from a dirty tree) and a one-line message is the right shape, not a
+    traceback. Tests: `test_run_rejects_an_unknown_exclude_role_as_an_argparse_error`,
+    `test_run_over_budget_exits_one_line_not_a_traceback`.
+  Files touched: `src/ntsb_probable_cause/scoring/report.py`, `src/ntsb_probable_cause/scoring/judge.py`,
+  `src/ntsb_probable_cause/settings.py`, `.env.example`, `apps/eval/__main__.py`, `Makefile`,
+  `tests/test_report.py`, `tests/test_judge.py`, `tests/test_eval_app.py`.
+  `uv run pytest` — 384 passed, 97.66% coverage (gate 90%); `report.py` and `judge.py` both
+  100%. `make check` (ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict,
+  pytest) all pass. Commit trailer lines exactly as given in `global-constraints.md`
+  ("Claude Opus 5 (1M context)"), per the coordinator's explicit instruction for this fix
+  round (as in the Task 11 fix rounds); the disagreement between `global-constraints.md` and
+  the live session reminder, noted in this task's own first entry above, is still otherwise
+  unresolved for any future commit without an explicit per-commit instruction.
