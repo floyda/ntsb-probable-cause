@@ -111,6 +111,22 @@ def test_load_cases_raises_on_missing_ids(tmp_path: Path) -> None:
         samples.load_cases(processed, ["A1", "X9"])
 
 
+def test_load_cases_crosses_a_batch_boundary(tmp_path: Path) -> None:
+    # load_cases streams in batches of 256 rows; a wanted id sitting past the first batch is
+    # the property streaming is most likely to break, so use enough rows to cross it.
+    rows = [(f"R{i}", "2018-01-01", "dev", "C", _raw(fatal=i == 300)) for i in range(500)]
+    processed = _write_cases(tmp_path, rows)
+    cases = samples.load_cases(processed, ["R300", "R0"])
+    assert [c["highestInjuryLevel"] for c in cases] == ["Fatal", "Minor"]
+
+
+def test_load_cases_repeats_a_duplicate_requested_id(tmp_path: Path) -> None:
+    processed = _write_cases(tmp_path, [("A1", "2018-01-01", "dev", "C", _raw(fatal=True))])
+    cases = samples.load_cases(processed, ["A1", "A1"])
+    assert len(cases) == 2
+    assert cases[0] == cases[1]
+
+
 def test_seen_pairs_returns_only_dev_primary_codes(tmp_path: Path) -> None:
     dev_primary = _raw(
         fatal=False,
