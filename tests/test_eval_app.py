@@ -4,13 +4,16 @@ import json
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
 
-from ntsb_probable_cause.model.client import ModelClient, RecordingFakeClient
+from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
+from ntsb_probable_cause.model.client import ModelClient, ModelReply, RecordingFakeClient, Usage
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
@@ -74,19 +77,21 @@ def _write_run(
 
 
 def _eval_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: dict[str, object]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *raws: dict[str, object]
 ) -> tuple[str, Path]:
-    """Point ``dev-400`` and the processed file at one fixture record.
+    """Point ``dev-400`` and the processed file at one or more fixture records, in order.
 
     Returns:
-        The case id and the runs directory.
+        The first case id and the runs directory.
     """
-    case_id = str(raw["ntsbNumber"])
-    event_date = str(raw["eventDate"])[:10]
+    case_ids = [str(raw["ntsbNumber"]) for raw in raws]
+    event_dates = [str(raw["eventDate"])[:10] for raw in raws]
+    case_id = case_ids[0]
 
     ids_dir = tmp_path / "eval_ids"
     ids_dir.mkdir(exist_ok=True)
-    (ids_dir / "dev_ids.csv").write_text(f"case_id,event_date\n{case_id},{event_date}\n")
+    rows = "".join(f"{cid},{when}\n" for cid, when in zip(case_ids, event_dates, strict=True))
+    (ids_dir / "dev_ids.csv").write_text(f"case_id,event_date\n{rows}")
     monkeypatch.setattr(samples, "EVAL_DIR", ids_dir)
     monkeypatch.setitem(samples._FILES, "dev-400", "dev_ids.csv")
 
@@ -103,11 +108,13 @@ def _eval_env(
     )
     table = pa.table(
         {
-            "ntsb_number": pa.array([case_id], type=pa.string()),
-            "event_date": pa.array([date.fromisoformat(event_date)], type=pa.date32()),
-            "split": pa.array(["dev"], type=pa.string()),
-            "investigation_class": pa.array(["C"], type=pa.string()),
-            "raw_json": pa.array([json.dumps(raw)], type=pa.string()),
+            "ntsb_number": pa.array(case_ids, type=pa.string()),
+            "event_date": pa.array(
+                [date.fromisoformat(when) for when in event_dates], type=pa.date32()
+            ),
+            "split": pa.array(["dev"] * len(raws), type=pa.string()),
+            "investigation_class": pa.array(["C"] * len(raws), type=pa.string()),
+            "raw_json": pa.array([json.dumps(raw) for raw in raws], type=pa.string()),
         },
         schema=schema,
     )
@@ -233,6 +240,137 @@ def test_run_resume_reaches_the_runner_and_refuses_an_unknown_run_id(
     assert "cannot resume: no run folder" in err
     assert "Traceback" not in err
     assert fake.payloads == []
+
+
+class _ScriptedBatchClient:
+    """A batch client for the app-level resume tests: one scripted reply per ``wait``.
+
+    Requests are kept by batch id for the life of the object, so a ``wait`` on an id an
+    earlier, dead ``main()`` call submitted returns that batch's results exactly as the
+    provider would for a batch it has already completed and billed. A ``None`` reply is a
+    waiter that dies with the batch still in flight -- the failure decision 0032 exists for.
+    """
+
+    def __init__(self, replies: Sequence[str | None]) -> None:
+        self.replies = list(replies)
+        self.requests: dict[str, list[object]] = {}
+        self.waits: list[str] = []
+
+    def submit(self, requests: Sequence[object]) -> str:
+        batch_id = f"b{len(self.requests) + 1}"
+        self.requests[batch_id] = list(requests)
+        return batch_id
+
+    def wait(self, batch_id: str, *, on_status: object = None) -> BatchStatus:
+        self.waits.append(batch_id)
+        content = self.replies[len(self.waits) - 1]
+        if content is None:
+            raise ModelError("the waiter died")
+        return BatchStatus(
+            batch_id=batch_id,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=cast(BatchRequest, request).custom_id,
+                    reply=ModelReply(
+                        content=content,
+                        usage=Usage(prompt_tokens=100, completion_tokens=50),
+                        model=cast(BatchRequest, request).settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for request in self.requests[batch_id]
+            ),
+            reported_cost_usd=0.01,
+        )
+
+
+def test_run_resume_refuses_a_different_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--limit`` end to end: resuming with a different one is refused, not quietly obeyed.
+
+    The recorded case-id list is the only thing that can catch this -- the run id encodes
+    the sample and the arm, but not how many of the sample's cases the run actually asked
+    for -- so it is checked through the command line rather than argued about.
+    """
+    _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0], record_fixtures[1])
+    batch = _ScriptedBatchClient([GOOD, REFINE])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([]), cast(BatchRunner, batch)
+
+    assert main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory) == 0
+    (run_folder,) = list(runs_dir.iterdir())
+    capsys.readouterr()
+
+    exit_code = main(
+        [
+            "run",
+            "--arm",
+            "ceiling",
+            "--sample",
+            "dev-400",
+            "--limit",
+            "1",
+            "--resume",
+            run_folder.name,
+        ],
+        client_factory=factory,
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "case_ids: the run recorded 2 case ids and this one has 1" in err
+    assert "Traceback" not in err
+    assert len(batch.requests) == 2  # the refused resume submitted nothing
+
+
+def test_resumed_run_spend_reaches_month_spent_for_the_next_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The whole point: work already paid for stops being invisible to the budget guard.
+
+    ``month_spent`` sums ``RunRecord.cost_usd`` -- the per-case dollars priced from each
+    reply's own token usage -- over every run started this month, and that is what the next
+    run's budget check is handed. So what has to be true after a resume is that the reused
+    batch's replies are priced into the finished record, and priced exactly once: the dead
+    run's own ``run.jsonl`` row was set aside, or the same tokens would be counted twice.
+    """
+    _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    batch = _ScriptedBatchClient([None, GOOD, REFINE])  # dies in the stage-1 wait, then resumes
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([]), cast(BatchRunner, batch)
+
+    with pytest.raises(ModelError, match="waiter died"):
+        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
+    (run_folder,) = list(runs_dir.iterdir())
+    assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(0.0)  # nothing read yet
+
+    exit_code = main(
+        ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", run_folder.name],
+        client_factory=factory,
+    )
+    assert exit_code == 0
+    assert batch.waits == ["b1", "b1", "b2"]  # the paid batch, waited on again, then stage 2
+    assert len(batch.requests) == 2  # stage 1 was not submitted a second time
+
+    record = answering_run_record(run_folder)
+    assert record.finished is not None
+    assert record.batch_ids == ("b1", "b2")
+    assert record.reported_batch_cost_usd == pytest.approx(0.02)  # the reused batch's own cost
+    # Two replies, the reused stage-1 one and stage 2, at the Luna batch price (sources.py).
+    expected = 2 * (100 * 0.10 + 50 * 0.60) / 1e6
+    assert record.cost_usd == pytest.approx(expected)
+    assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(expected)
+    capsys.readouterr()
 
 
 def test_run_flags_reach_runspec_and_month_spent_reaches_runner(

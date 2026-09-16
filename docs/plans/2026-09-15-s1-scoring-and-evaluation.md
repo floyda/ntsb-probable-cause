@@ -4228,3 +4228,17 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   rather than deleting keeps the dead run's own record readable, since it is the only
   evidence of what that run paid for. Committed separately so it can be dropped on its own
   if the controller wants it done differently.
+- 2026-09-16, Task 14 (step 2), controller's rulings on the resume review: the set-aside
+  above is confirmed and kept; two refinements were asked for and made. (a) A `case_ids`
+  mismatch now reports the two counts and the first index where the lists part, with the
+  two ids at that index, instead of printing both lists — on `dev-400` that was two
+  401-element lists inside an exception, and a refusal nobody can read is one an operator
+  works around rather than acts on. Decision 0032 point 4's requirement is unchanged: the
+  refusal still names the field that differs. (b) `--resume` together with `--sync` is now
+  refused explicitly in `refuse_sync_resume`, beside the other pre-flight refusals, because
+  what a resume reuses is a batch: a sync run buys its replies one call at a time and
+  records none, so a `--sync` resume would quietly re-buy every case while reading as a
+  resume that cost nothing. Two further tests were asked for and added, both through the
+  command line: a resume with a different `--limit` is refused, and a resumed run's spend
+  (the reused batch's replies included, counted once) reaches `month_spent` for the next
+  run's budget guard.
