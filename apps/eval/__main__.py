@@ -55,6 +55,18 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
     return total
 
 
+def answering_run_record(folder: Path) -> RunRecord:
+    """The answering run's own ``RunRecord`` -- always the first row in ``run.jsonl``.
+
+    A judged run's ``run.jsonl`` holds a second row, the judge pass's own record
+    (``_record_judge_cost``, fix round 1), appended only after the answering run's row
+    already exists -- so the first row is always the answering run, whether or not the
+    folder has since been judged.
+    """
+    records = read_jsonl(folder / "run.jsonl", RunRecord)
+    return records[0]
+
+
 def resolve_latest(runs_dir: Path, arm: str, sample: str) -> str:
     """The newest *completed* run id for one arm and sample.
 
@@ -68,8 +80,7 @@ def resolve_latest(runs_dir: Path, arm: str, sample: str) -> str:
         run_file = folder / "run.jsonl"
         if not folder.is_dir() or not run_file.exists():
             continue
-        (record,) = read_jsonl(run_file, RunRecord)
-        if record.finished is not None:
+        if answering_run_record(folder).finished is not None:
             candidates.append(folder.name)
     if not candidates:
         raise SystemExit(
@@ -193,7 +204,7 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_id = _resolve_run_id(settings.runs_dir, args.run_id, args.latest)
     folder = settings.runs_dir / run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
-    (run_record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    run_record = answering_run_record(folder)
     floor = report.honest_baseline_floor(settings.data_dir / "processed")
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor)
     if run_record.sample == "heldout-400":
@@ -263,7 +274,7 @@ def _record_judge_cost(
 
 def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
     folder = settings.runs_dir / args.run_id
-    (run_record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    run_record = answering_run_record(folder)
     if run_record.sample != "dev-400" and not args.validated:
         raise SystemExit(
             f"judge: refusing on sample {run_record.sample!r} without --validated (spec §8)"
