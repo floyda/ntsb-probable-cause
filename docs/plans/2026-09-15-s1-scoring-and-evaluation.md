@@ -4204,3 +4204,16 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   a `noqa: PLR0913` on `wait` with the reason (every parameter is a seam a test needs, per
   the method's own docstring), matching the project's existing style for that rule
   (`OpenRouterClient.__init__`, `Runner.__init__`).
+- 2026-09-16, Task 14 (step 2), **addition beyond the plan, governed by decision 0032**: a
+  batch run is now resumable from the batches it already paid for. Three `dev-400` runs died
+  mid-wait and stranded paid batches (the last was killed by the operating system for low
+  memory, with nothing wrong with the code), so the plan's assumption that a 30-100 minute
+  waiting process holds a run together does not survive this machine. `Runner.run` writes
+  `spec.json` into the run folder before the first model call, making a run folder
+  self-describing; `ntsb-eval run --resume <run-id>` adopts that id and folder rather than
+  minting new ones; `_submit_and_wait` — the single point where a batch is submitted — waits
+  on an unconsumed recorded id for its stage instead of submitting, so a reused batch costs
+  nothing and its provider-reported cost still lands in the run record; and a resume whose
+  spec, commit sha or case-id list differs from `spec.json` is refused naming the first
+  field that differs. No measurement changes: samples, prompts, schemas and scoring are
+  untouched, and `resume=None` is exactly the previous behaviour.

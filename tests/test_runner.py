@@ -21,6 +21,7 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
+    BatchRunner,
     Runner,
     RunSpec,
     case_payload,
@@ -59,7 +60,7 @@ def runner(
     tmp_path: Path,
     client: ModelClient,
     spent: float = 0.0,
-    batch: FakeBatchClient | None = None,
+    batch: BatchRunner | None = None,
 ) -> Runner:
     return Runner(
         client,
@@ -431,15 +432,23 @@ def _status(
 
 @dataclass
 class FakeBatchClient:
-    """A scripted BatchClient stand-in: one handler per submit/wait pair, called in order."""
+    """A scripted BatchClient stand-in: one handler per submit/wait pair, called in order.
+
+    ``preloaded`` stands for batches the provider already holds from an earlier, dead run:
+    a resume waits on such an id without ever submitting it, so the fake needs the requests
+    from somewhere other than its own ``submit``. ``prefix`` keeps a resumed run's freshly
+    minted ids from colliding with the dead run's.
+    """
 
     handlers: list[Callable[[str, Sequence[BatchRequest]], BatchStatus]]
     submitted: list[list[BatchRequest]] = field(default_factory=list)
     waited: list[str] = field(default_factory=list)
+    prefix: str = "b"
+    preloaded: dict[str, list[BatchRequest]] = field(default_factory=dict)
     _pending: dict[str, list[BatchRequest]] = field(default_factory=dict)
 
     def submit(self, requests: Sequence[BatchRequest]) -> str:
-        batch_id = f"b{len(self.submitted) + 1}"
+        batch_id = f"{self.prefix}{len(self.submitted) + 1}"
         self.submitted.append(list(requests))
         self._pending[batch_id] = list(requests)
         return batch_id
@@ -450,7 +459,8 @@ class FakeBatchClient:
         self.waited.append(batch_id)
         on_status("completed")
         handler = self.handlers[len(self.waited) - 1]
-        return handler(batch_id, self._pending[batch_id])
+        known = {**self.preloaded, **self._pending}
+        return handler(batch_id, known[batch_id])  # KeyError on an id from nowhere
 
 
 def test_batch_run_submits_two_batches_with_every_case_custom_id(
@@ -908,3 +918,230 @@ def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
     assert case.failure is not None
     assert case.failure.startswith("aborted:")
     assert case.cost_usd == pytest.approx(expected_stage1_cost)
+
+
+# --- resume: a run continues from the batches it already paid for (0032) ---
+
+
+BATCH_SPEC = RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001)
+
+
+class _ExplodingBatchClient:
+    """A batch client that dies on its first submit: nothing is called, nothing is paid for."""
+
+    def submit(self, requests: Sequence[BatchRequest]) -> str:
+        raise RuntimeError("the provider was unreachable")
+
+    def wait(
+        self, batch_id: str, *, on_status: Callable[[str], None] = lambda _s: None
+    ) -> BatchStatus:
+        raise AssertionError("never reached")
+
+
+def _died_waiting_on_stage1(tmp_path: Path, raws: Sequence[dict[str, object]]) -> FakeBatchClient:
+    """A batch run whose stage-1 batch was submitted and recorded, then lost its waiter.
+
+    The real incident decision 0032 was written for: the process was killed while sitting in
+    ``wait``, so the provider went on to complete (and bill) a batch nobody read.
+    """
+
+    def die(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise ModelError("the waiter died")
+
+    fake = FakeBatchClient(handlers=[die])
+    with pytest.raises(ModelError, match="waiter died"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, raws)
+    return fake
+
+
+def _resume_after_stage1_death(
+    tmp_path: Path, raws: Sequence[dict[str, object]]
+) -> tuple[RunRecord, FakeBatchClient]:
+    """Kill a run in its stage-1 wait, then resume it; the stage-1 batch is there to reuse."""
+    dead = _died_waiting_on_stage1(tmp_path, raws)
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # the reused batch
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # a fresh stage 2
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, raws, resume=_run_id()
+    )
+    return record, resumed
+
+
+def test_resume_waits_on_the_recorded_batch_instead_of_submitting_it_again(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """0032 point 3: the stage with a recorded id skips the submit; stage 2 still submits."""
+    record, resumed = _resume_after_stage1_death(tmp_path, record_fixtures[:1])
+    assert resumed.waited == ["b1", "c1"]  # the paid batch first, then the fresh one
+    assert len(resumed.submitted) == 1  # stage 1 was never submitted a second time
+    assert resumed.submitted[0][0].settings.schema_name == "refinement"  # it was stage 2
+    assert record.batch_ids == ("b1", "c1")
+    assert record.finished is not None
+    assert record.cases == 1
+
+
+def test_resume_scores_the_reused_batch_replies(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The point of the exercise: the replies the dead run paid for produce the answers."""
+    record, _ = _resume_after_stage1_death(tmp_path, record_fixtures[:1])
+    cases = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    finished = [case for case in cases if case.failure is None]
+    assert len(finished) == 1
+    assert finished[0].scores is not None
+    # Two replies at the fixture's 100/50-token usage: the reused stage-1 one and stage 2.
+    assert finished[0].cost_usd == pytest.approx(2 * (100 * 0.10 + 50 * 0.60) / 1e6)
+    assert record.cost_usd == pytest.approx(finished[0].cost_usd)
+
+
+def test_resume_counts_the_reused_batchs_reported_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Money already spent stays visible: the reused batch reports its cost like a fresh one."""
+    record, _ = _resume_after_stage1_death(tmp_path, record_fixtures[:1])
+    assert record.reported_batch_cost_usd == pytest.approx(0.03)  # 0.01 reused + 0.02 fresh
+
+
+def test_resume_appends_no_second_row_for_the_reused_batch(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A reused id is already in ``batches.jsonl``; recording it again would double-count it."""
+    _resume_after_stage1_death(tmp_path, record_fixtures[:1])
+    path = tmp_path / "runs" / _run_id() / "batches.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"]) for row in rows] == [("stage1", "b1"), ("stage2", "c1")]
+
+
+def test_spec_json_is_written_before_the_first_call(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """0032 point 1: a folder that dies before its first batch still describes itself."""
+    with pytest.raises(RuntimeError, match="unreachable"):
+        runner(tmp_path, RecordingFakeClient([]), batch=_ExplodingBatchClient()).run(
+            BATCH_SPEC, record_fixtures[:1]
+        )
+    recorded = json.loads((tmp_path / "runs" / _run_id() / "spec.json").read_text())
+    assert recorded["sample"] == "dev-400"
+    assert recorded["arm"] == "ceiling"
+    assert recorded["model"] == BATCH_SPEC.model
+    assert recorded["prompt_version"] == "s1-v5"
+    assert recorded["commit_sha"] == "abc1234"
+    assert recorded["case_ids"] == [str(record_fixtures[0]["ntsbNumber"])]
+
+
+def test_resume_of_a_run_that_died_before_its_first_submit_runs_every_stage(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Nothing recorded, nothing to reuse: a stage with no recorded id is submitted normally."""
+    with pytest.raises(RuntimeError, match="unreachable"):
+        runner(tmp_path, RecordingFakeClient([]), batch=_ExplodingBatchClient()).run(
+            BATCH_SPEC, record_fixtures[:1]
+        )
+    assert not (tmp_path / "runs" / _run_id() / "batches.jsonl").exists()
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),
+        ]
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert len(resumed.submitted) == 2  # both stages paid for, none reused
+    assert record.batch_ids == ("b1", "b2")
+    assert record.finished is not None
+
+
+def test_resume_refuses_a_spec_json_that_is_not_a_readable_object(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A damaged record is refused like a missing one: it cannot prove the run is the same."""
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    path = tmp_path / "runs" / _run_id() / "spec.json"
+    fake = FakeBatchClient(handlers=[])
+    path.write_text("{not json at all")
+    with pytest.raises(ConfigurationError, match="not readable JSON"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    path.write_text("[]")
+    with pytest.raises(ConfigurationError, match="JSON object"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert fake.submitted == []
+
+
+def test_resume_refuses_a_different_arm(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """0032 point 4: replies bought under one configuration never answer for another."""
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    other = FakeBatchClient(handlers=[])
+    with pytest.raises(ConfigurationError, match="arm"):
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            RunSpec(sample="dev-400", arm="A", sync=False, expected_cost_per_case_usd=0.001),
+            record_fixtures[:1],
+            resume=_run_id(),
+        )
+    assert other.submitted == []
+
+
+def test_resume_refuses_a_different_model(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    other = FakeBatchClient(handlers=[])
+    with pytest.raises(ConfigurationError, match="model"):
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="anthropic/claude-sonnet-5",
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
+            resume=_run_id(),
+        )
+    assert other.submitted == []
+
+
+def test_resume_refuses_a_different_case_list(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """What makes ``--limit`` safe: a different number of cases is a different request set."""
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:2])
+    other = FakeBatchClient(handlers=[])
+    with pytest.raises(ConfigurationError, match="case_ids"):
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert other.submitted == []
+
+
+def test_resume_refuses_a_folder_written_before_the_spec_was_recorded(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """0032 point 5: no ``spec.json``, nothing to check against, so no resume."""
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    (tmp_path / "runs" / _run_id() / "spec.json").unlink()
+    with pytest.raises(ConfigurationError, match=r"spec\.json is missing"):
+        runner(tmp_path, RecordingFakeClient([]), batch=FakeBatchClient(handlers=[])).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+
+
+def test_resume_refuses_a_folder_that_does_not_exist(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    with pytest.raises(ConfigurationError, match="no run folder"):
+        runner(tmp_path, RecordingFakeClient([]), batch=FakeBatchClient(handlers=[])).run(
+            BATCH_SPEC, record_fixtures[:1], resume="20260101T000000-abc1234-dev-400-ceiling"
+        )

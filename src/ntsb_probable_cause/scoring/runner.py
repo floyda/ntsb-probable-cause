@@ -68,6 +68,128 @@ class RunSpec:
     expected_cost_per_case_usd: float | None = None
 
 
+SPEC_FILE = "spec.json"
+BATCHES_FILE = "batches.jsonl"
+
+
+def spec_json(spec: RunSpec, *, commit_sha: str, case_ids: Sequence[str]) -> dict[str, object]:
+    """Everything a run folder must record about the spec that produced it (0032 point 1).
+
+    The key order is the order a resume checks the fields in, so the first difference
+    reported is the shortest useful one; ``case_ids`` is last because a 400-case list makes
+    the longest message.
+
+    Args:
+        spec: the spec the run was started with.
+        commit_sha: the runner's commit sha — a resume on different code is refused.
+        case_ids: the run's case ids, in order; what makes ``--limit`` safe to resume.
+
+    Returns:
+        A JSON-serialisable object, one key per recorded field.
+    """
+    return {
+        "sample": spec.sample,
+        "arm": spec.arm,
+        "exclusions": sorted(role.value for role in spec.exclusions),
+        "include_case_number": spec.include_case_number,
+        "model": spec.model,
+        "price_variant": spec.price_variant,
+        "cap_usd": spec.cap_usd,
+        "budget_usd": spec.budget_usd,
+        "sync": spec.sync,
+        "expected_cost_per_case_usd": spec.expected_cost_per_case_usd,
+        "prompt_version": prompt.PROMPT_VERSION,
+        "commit_sha": commit_sha,
+        "case_ids": list(case_ids),
+    }
+
+
+def write_spec_json(
+    folder: Path, spec: RunSpec, *, commit_sha: str, case_ids: Sequence[str]
+) -> None:
+    """Write ``spec.json`` into a run folder, creating the folder if it does not exist.
+
+    The only writer of that file, so a folder repaired by hand (0032 point 5 calls that a
+    deliberate, recorded act of recovery) is written by the same code that reads it and
+    cannot drift from the reader's expectations.
+
+    Args:
+        folder: the run folder.
+        spec: the spec the run was started with.
+        commit_sha: the runner's commit sha.
+        case_ids: the run's case ids, in order.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    recorded = spec_json(spec, commit_sha=commit_sha, case_ids=case_ids)
+    (folder / SPEC_FILE).write_text(json.dumps(recorded, indent=2) + "\n")
+
+
+def refuse_unresumable(folder: Path, current: Mapping[str, object]) -> None:
+    """Refuse a resume unless the folder records exactly the spec now being asked for.
+
+    A resume replays the requests the dead run would have made and reads replies that run
+    already paid for. That is only sound if the spec and the code are identical, so anything
+    less than equality is refused rather than warned about (0032 point 4). A folder written
+    before 0032 has no ``spec.json`` and is refused too (0032 point 5): there is nothing to
+    check it against, and guessing the spec from the run id would put a permanently
+    unverifiable branch into the harness.
+
+    Args:
+        folder: the run folder named by ``--resume``.
+        current: ``spec_json`` for the spec and records this run was handed.
+
+    Raises:
+        ConfigurationError: the folder is missing, records no spec, or records a different
+            one -- naming the first field that differs and both values.
+    """
+    if not folder.is_dir():
+        raise ConfigurationError(f"cannot resume: no run folder at {folder}")
+    path = folder / SPEC_FILE
+    if not path.is_file():
+        raise ConfigurationError(
+            f"cannot resume: {path} is missing. A run folder written before decision 0032 "
+            "records no spec, so there is nothing to check this resume against."
+        )
+    try:
+        recorded = json.loads(path.read_text())
+    except json.JSONDecodeError as error:
+        raise ConfigurationError(f"cannot resume: {path} is not readable JSON: {error}") from error
+    if not isinstance(recorded, dict):
+        raise ConfigurationError(f"cannot resume: {path} does not hold a JSON object")
+    for name, value in current.items():
+        was = recorded.get(name)
+        if was != value:
+            raise ConfigurationError(
+                f"cannot resume {folder.name}: {name} was {was!r} when the run started, "
+                f"and is {value!r} now"
+            )
+
+
+def recorded_batches(folder: Path) -> list[tuple[str, str]]:
+    """The ``(stage, batch_id)`` rows of a run folder's ``batches.jsonl``, in order.
+
+    Every batch id is appended before its wait begins, so this is the complete list of
+    batches the dead run paid for. An empty list where the file does not exist: a run that
+    died before its first submit has nothing to reuse and simply runs from the start.
+
+    Args:
+        folder: the run folder.
+
+    Returns:
+        One ``(stage, batch_id)`` pair per recorded batch, in the order they were submitted.
+    """
+    path = folder / BATCHES_FILE
+    if not path.is_file():
+        return []
+    rows: list[tuple[str, str]] = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        rows.append((str(row["stage"]), str(row["batch_id"])))
+    return rows
+
+
 class BatchRunner(Protocol):
     """The subset of ``BatchClient`` the runner uses.
 
@@ -201,9 +323,15 @@ class _BatchRun:
     ``costs`` holds one entry per batch submitted, in order, ``None`` where that batch did
     not report a cost — so the caller can tell a genuine total from a partial one (fix round
     1, Minor 4) instead of silently summing only the batches that happened to report.
+
+    ``reusable`` is the resume queue: the ``(stage, batch_id)`` rows this run's folder
+    already recorded, emptied as ``_submit_and_wait`` consumes them (0032 point 3). It lives
+    here, not on ``Runner``, because a ``Runner`` is reused across runs and this queue
+    belongs to one answering pass.
     """
 
     folder: Path
+    reusable: list[tuple[str, str]] = field(default_factory=list)
     contexts: dict[str, _CaseContext] = field(default_factory=dict)
     results: dict[str, CaseResult] = field(default_factory=dict)
     order: list[str] = field(default_factory=list)
@@ -239,7 +367,13 @@ class Runner:
         self._sha, self._dirty = commit
         self._now = now
 
-    def run(self, spec: RunSpec, raws: Sequence[Mapping[str, object]]) -> RunRecord:
+    def run(
+        self,
+        spec: RunSpec,
+        raws: Sequence[Mapping[str, object]],
+        *,
+        resume: str | None = None,
+    ) -> RunRecord:
         """Run every case, write three JSON-lines files, append the ledger for held-out samples.
 
         On any exception once answering has started — a batch ending badly, a
@@ -251,13 +385,40 @@ class Runner:
         ``BaseException`` in fix round 2, Minor 1, since Ctrl-C during a long real-run
         ``wait`` is the most likely real mid-run abort and ``except Exception`` does not
         catch it).
+
+        Args:
+            spec: what varies between runs.
+            raws: the raw records to answer, in order.
+            resume: a run id to continue instead of starting a new run (0032). The recorded
+                id and folder are adopted, so the resumed run is the same run and not a
+                second one that duplicates it, and every batch already recorded for a stage
+                is waited on rather than submitted again. ``started`` is still this moment:
+                the run id already carries the original start time.
+
+        Returns:
+            The run's own ``RunRecord``, also written to ``run.jsonl``.
+
+        Raises:
+            ConfigurationError: a resume naming a folder that does not exist, records no
+                spec, or records a different spec than the one passed in.
         """
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
-        run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
-        folder = self._runs_dir / run_id
+        case_ids = [case_payload(raw, spec, self._tables)[3].case_id for raw in raws]
+        reusable: list[tuple[str, str]] = []
+        if resume is None:
+            run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
+            folder = self._runs_dir / run_id
+            # Before the first model call, so a folder that dies early still describes
+            # itself (0032 point 1).
+            write_spec_json(folder, spec, commit_sha=self._sha, case_ids=case_ids)
+        else:
+            run_id = resume
+            folder = self._runs_dir / run_id
+            refuse_unresumable(folder, spec_json(spec, commit_sha=self._sha, case_ids=case_ids))
+            reusable = recorded_batches(folder)
         results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
         reported_batch_cost: float | None = None
@@ -289,7 +450,7 @@ class Runner:
                 for raw in raws:
                     results.append(self._answer_case(raw, spec))
             else:
-                batch_run = _BatchRun(folder=folder)
+                batch_run = _BatchRun(folder=folder, reusable=reusable)
                 try:
                     self._answer_batch(raws, spec, batch_run)
                 finally:
@@ -478,13 +639,43 @@ class Runner:
         """Append the batch id before waiting (spec §7.2: an interrupted run can resume)."""
         folder.mkdir(parents=True, exist_ok=True)
         row = {"batch_id": batch_id, "stage": stage, "time": self._now().isoformat()}
-        with (folder / "batches.jsonl").open("a") as handle:
+        with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
+
+    @staticmethod
+    def _take_reusable(run: _BatchRun, stage: str) -> str | None:
+        """The first unconsumed recorded batch id for ``stage``, removed from the queue.
+
+        By stage name and order, not one row per stage: a retry pass can legitimately run
+        twice across a resume (``stage1-retry`` in the dead run and again in the resumed
+        one), so the queue hands out the earliest row for that stage that no call has taken
+        yet, and runs dry into a normal submit once they are used up.
+
+        Args:
+            run: the answering pass's state, whose ``reusable`` queue is consumed in place.
+            stage: the stage name the batch is for.
+
+        Returns:
+            A batch id to wait on instead of submitting, or ``None`` to submit normally.
+        """
+        for index, (recorded_stage, batch_id) in enumerate(run.reusable):
+            if recorded_stage == stage:
+                del run.reusable[index]
+                return batch_id
+        return None
 
     def _submit_and_wait(
         self, requests: Sequence[BatchRequest], run: _BatchRun, stage: str
     ) -> BatchStatus:
         """Submit one batch, record its id, wait for a terminal status; status to stderr.
+
+        The single point where a batch is submitted, and so the single point where a resume
+        reuses one (0032 point 3): a stage with an unconsumed recorded id skips the submit
+        and waits on that id, which returns at once for a batch that has already completed.
+        A reused id is not appended to ``batches.jsonl`` a second time — it is already
+        there. Everything after the wait is identical either way, so a reused batch's
+        reported cost lands in the run record exactly as a fresh one's does, which is how
+        money already spent stays visible to the next run's budget check.
 
         The batch id and its (possibly ``None``) reported cost are appended to ``run``
         before the status is checked, so a batch that ends anything but ``completed`` still
@@ -494,8 +685,10 @@ class Runner:
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
-        batch_id = self._batch.submit(requests)
-        self._record_batch_id(run.folder, batch_id, stage)
+        batch_id = self._take_reusable(run, stage)
+        if batch_id is None:
+            batch_id = self._batch.submit(requests)
+            self._record_batch_id(run.folder, batch_id, stage)
         status = self._batch.wait(
             batch_id,
             on_status=lambda s: self._log_status(stage, batch_id, s),

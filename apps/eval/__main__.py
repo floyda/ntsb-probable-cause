@@ -124,6 +124,12 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--expected-cost-per-case-usd", type=float, default=None)
     run_p.add_argument("--sync", action="store_true")
     run_p.add_argument("--limit", type=int, default=None, help="only the first N sample cases")
+    run_p.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_ID",
+        help="continue a run that died, reusing the batches it already paid for",
+    )
     _add_common(run_p)
 
     report_p = commands.add_parser("report", help="summarise one run, optionally against another")
@@ -199,7 +205,9 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         month_spent_usd=spent,
         commit=commit,
     )
-    record = runner.run(spec, raws)
+    # The operator re-supplies the original flags; the equality check inside `run` against
+    # the folder's own `spec.json` is what proves they supplied the right ones (0032 point 4).
+    record = runner.run(spec, raws, resume=args.resume)
     text = f"run {record.run_id}: {record.cases} cases, ${record.cost_usd:.4f}\n"
     print(text, end="")
     _maybe_write(args.out, text)
