@@ -79,3 +79,4 @@ under `docs/specs/` and the record links to it.
 | [0036](0036-heldout-text-purged-from-history-shas-map-forward.md) | Withheld held-out text is purged from git history; the runs' recorded SHAs map forward | Accepted |
 | [0037](0037-docket-fixtures-from-development-dockets-only.md) | Docket fixtures come from development-split dockets only | Accepted; amends the roadmap S2 entry |
 | [0038](0038-docket-documents-are-evidence-by-case-level-authorship.md) | Every docket document is evidence; the line is the NTSB's case-level write-up | Accepted; amends 0013 |
+| [0039](0039-filter-measured-by-tripwire-hits-and-a-title-hand-check.md) | The docket filter is measured by tripwire hits, and its type labels by a title hand-check | Accepted |
