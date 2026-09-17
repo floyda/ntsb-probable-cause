@@ -78,3 +78,4 @@ under `docs/specs/` and the record links to it.
 | [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
 | [0036](0036-docket-fixtures-from-development-dockets-only.md) | Docket fixtures come from development-split dockets only | Accepted; amends the roadmap S2 entry |
 | [0037](0037-docket-documents-are-evidence-by-case-level-authorship.md) | Every docket document is evidence; the line is the NTSB's case-level write-up | Accepted; amends 0013 |
+| [0038](0038-filter-measured-by-tripwire-hits-and-a-title-hand-check.md) | The docket filter is measured by tripwire hits, and its type labels by a title hand-check | Accepted |
