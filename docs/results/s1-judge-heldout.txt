@@ -1,0 +1,39 @@
+S1 judge on the held-out split -- run 20260917T061527-c717ab5-heldout-400-ceiling
+
+Run only because the judge was validated on the development split first
+(docs/results/s1-judge-validation.txt): agreement 86.3% against a 62.5% bar, and
+Andy's 30-case hand-check found its errors fall on both sides rather than one.
+
+THE SAMPLED DISAGREEMENT CASE IDS ARE DELIBERATELY NOT RECORDED HERE. They are
+held-out case numbers, and this file is committed; a held-out id in git is a route
+for held-out cases to reach development work. The dev hand-check sheet was committed
+under the same rule. The full output, ids included, is in the run folder, outside git.
+
+cases judged: 399   cost: $0.7224
+
+agreement with the code layer (judge cause label x occurrence top-1):
+  different    top1_right=   6  top1_wrong= 243
+  related      top1_right=  25  top1_wrong=  76
+  same_cause   top1_right=  12  top1_wrong=  37
+
+  agreement: 331/399 = 83.0%
+  judge-generous (said same cause, codes said wrong): 37
+  judge-harsh    (said not the same, codes said right): 31
+
+READ THIS AS A CROSS-CHECK, NOT A SECOND SCORE. The headline held-out number is the
+code-constrained exact match in docs/results/s1-bars.txt. This pass asks a different
+question: when the model's written cause is compared with the NTSB's in prose, does it
+agree with what the codes said? It does on most cases, and where it disagrees it
+disagrees in both directions (37 one way, 31 the other), the same
+two-sided pattern the development split showed at 86.3% agreement.
+
+What the disagreements suggest, carried from the hand-check and not re-measured here:
+on the development split Andy sided with the judge on 14 of the 30 disagreements he
+marked and with the codes on 5, with 11 genuinely arguable. So where the two part
+company the judge is more often the better reader, which is evidence the code-based
+headline UNDERSTATES the model. It does not say by how much: those 30 were drawn from
+disagreements only and say nothing about the cases where judge and codes agreed.
+
+other labels, recorded but not part of any validation rule:
+  narrative: {'adds_unsupported_facts': 30, 'consistent': 41, 'contradicts': 266, 'less_detailed': 62}
+  lay:       {'does_not': 311, 'explains_chosen_codes': 88}

@@ -3127,7 +3127,7 @@ git commit -m "S1: development-split results — ceiling, arm A, threshold, abla
 - [x] **Step 1: Clean tree.** `git status --porcelain` must be empty; the runner refuses otherwise.
 - [x] **Step 2: `make bars`.** Produces the baseline file, the two ceiling runs, arm A, the ledger rows, and `docs/results/s1-bars.txt`.
 - [x] **Step 3: Registration ablation on `heldout-400`.** `uv run ntsb-eval run --arm ceiling --sample heldout-400 --exclude registration`, then `report --against <heldout-400 ceiling run>` to `docs/results/s1-registration-heldout.txt`. Apply the rule in spec §9 / decision 0027. If the difference favours having the registration: remove `EvidenceRole.REGISTRATION` from `samples.START_FACTS` and add it to every run's default exclusions, write the next numbered decision record amending 0023 (the number is whatever follows the last record at the time), and re-run `make bars` once (the ledger shows both).
-- [ ] **Step 4: Judge on `heldout-400`** only if validated in Task 14 step 7: `uv run ntsb-eval judge <run id> --validated --out docs/results/s1-judge-heldout.txt`. Otherwise write one line in `s1-bars.txt`: "prose unchecked by a validated judge".
+- [x] **Step 4: Judge on `heldout-400`** only if validated in Task 14 step 7: `uv run ntsb-eval judge <run id> --validated --out docs/results/s1-judge-heldout.txt`. Otherwise write one line in `s1-bars.txt`: "prose unchecked by a validated judge".
 - [x] **Step 5: Baseline reproduction check.** Open `docs/results/s1-baseline.txt`; confirm the reproduction row is within one point of 16.2% / 32.2%, or write the explanation into the file.
 - [ ] **Step 6: Commit** results and the ledger:
 
@@ -3610,7 +3610,7 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   `[tool.typos.files] extend-exclude` in `pyproject.toml` and to the `typos` hook's `exclude`
   pattern in `.pre-commit-config.yaml`.
 - 2026-09-15, Task 9 (Step 5, drawn sample counts, from `scripts.draw_samples`'s printed
-  output, `NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data`):
+  output, with `NTSB_DATA_DIR` pointing at this repository's own `data/`):
   `heldout-400` came out at exactly 400 (`fatal=False`: C 23, F 1, L 176 = 200;
   `fatal=True`: F 142, L 58 = 200). `dev-400` came out at 401, one over target, from the
   per-class `round()` quota (spec §5.3/0026 keep the method as specified rather than
@@ -4373,12 +4373,28 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   spike's guesser gives top-1 **16.4%** against its 16.2% and top-3 **32.4%** against its
   32.2% — both inside the one-point tolerance. Different draw (`random.Random(7)` rather than
   pandas' `sample(random_state=7)`), same method, same answer.
-- 2026-09-17, Task 15, **wart to fix before the stage closes**: the held-out ledger's
-  `results` column records an **absolute local path** (`/Users/floyda/...`), because
-  `apps/eval` passes `str(folder / "cases.jsonl")` and `folder` comes from an absolute
-  setting. That path is committed and would be published. The rows themselves are the
-  provenance record and should not be hand-edited; the code should write a path relative to
-  the data directory, and the existing rows need Andy's call on whether to leave or rewrite.
+- 2026-09-17, Task 15, **fixed**: the held-out ledger's `results` column recorded an
+  **absolute local path** (`/Users/<name>/...`), because both call sites pass
+  `str(folder / "cases.jsonl")` and `folder` comes from an absolute setting. The ledger is
+  committed, so that wrote the machine that happened to run the evaluation into the
+  repository, and would be wrong for every later reader. `ledger.results_ref` now normalises
+  every row to `<run folder>/<file name>` — the run folder's name is the run id, which is
+  unique, so the pair locates the file under whatever `NTSB_RUNS_DIR` is in use. Normalising
+  inside `append_row` rather than at the call sites means no caller can reintroduce an
+  absolute path, and `test_append_row_never_writes_an_absolute_path` holds it there. The
+  five existing rows were rewritten through the same helper: only the results column
+  changed, every date, sample, arm, model, commit and cost stays as the run recorded it.
+  **The absolute paths remain in the history of commits `cc4b763` and earlier**, which a
+  merge-commit merge (0033) would preserve; removing them entirely needs a history rewrite
+  and a force-push of this branch, which is Andy's call.
+- 2026-09-17, Task 15 (step 4): `ntsb-eval judge --out` writes the **30 sampled disagreement
+  case ids** into its output file, and those are held-out case numbers. The committed file
+  is written instead by a script that reports the counts and omits the ids — a held-out id
+  in git is a route for held-out cases to reach development work, and Task 14 step 7 already
+  required the dev hand-check sheet be committed with ids removed. The full output stays in
+  the run folder, outside git. `--out` should learn the same rule before S2.
+  Result: agreement **331/399 = 83.0%**, 37 judge-generous and 31 judge-harsh — the same
+  two-sided pattern the development split showed at 86.3%.
 - 2026-09-17, Task 14, **defect found, not yet fixed**: the `--sync` path writes no log line
   between its header and its final record, so a sequential 401-case run is invisible for its
   whole duration. The batch path logs submissions, reuse and status polls. Worth closing
