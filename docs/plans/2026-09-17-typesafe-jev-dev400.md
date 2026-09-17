@@ -60,7 +60,7 @@
   - `def request_body(payload: Payload, questions: Mapping[str, Mapping[str, object]], *, model: str = DEFAULT_MODEL) -> dict[str, object]`
   - `def parse_reply(body: Mapping[str, object]) -> SystemOneReply`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_typesafe_client.py`:
 
@@ -150,12 +150,12 @@ def test_a_request_needs_a_question() -> None:
         request_body(Payload.from_evidence(EVIDENCE), {})
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_typesafe_client.py -q --no-cov`
 Expected: FAIL with `ModuleNotFoundError: No module named 'ntsb_probable_cause.model.typesafe'`
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 Create `src/ntsb_probable_cause/model/typesafe.py`:
 
@@ -266,12 +266,12 @@ def parse_reply(body: Mapping[str, object]) -> SystemOneReply:
         ) from error
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_typesafe_client.py -q --no-cov`
 Expected: 7 passed.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check`
 Expected: all lint, type and test steps pass; coverage stays at or above 90%.
