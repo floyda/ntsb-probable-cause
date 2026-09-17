@@ -433,7 +433,10 @@ logging and cost accounting (S3 — nothing in S0 takes a step or spends money).
 leakage test fails if withheld content is smuggled into what the model sees. Full conditions
 in the S0 specification, §13.
 
-### S1. Scoring and the evaluation harness
+### S1. Scoring and the evaluation harness — done
+
+As built: see the stage specification's
+[As-built section](2026-09-14-s1-scoring-and-evaluation-design.md#as-built).
 
 Code lookup tables, seeded from the spike's `decidability_form.build_code_lookups()`.
 The code-constrained output schema, including the lay explanation. Exact-match scoring

@@ -33,3 +33,66 @@ SONNET_5 = ModelPrice("anthropic/claude-sonnet-5", 2.0, 10.0, "OpenRouter models
 SONNET_5_BATCH = ModelPrice(
     "anthropic/claude-sonnet-5:batch", 1.0, 5.0, "OpenRouter models API, 2026-09-12"
 )
+
+# https://openrouter.ai/api/v1/models, checked 2026-09-15 (decision 0031). Luna and Luna-pro
+# are listed at the same price; the probe picks one and the plan records why.
+LUNA = ModelPrice("openai/gpt-5.6-luna", 0.20, 1.20, "OpenRouter models API, 2026-09-15")
+LUNA_BATCH = ModelPrice(
+    "openai/gpt-5.6-luna:batch", 0.10, 0.60, "OpenRouter models API, 2026-09-15"
+)
+HAIKU_45_BATCH = ModelPrice(
+    "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
+)
+# The judge calls the chat-completions endpoint directly, which the provider does not serve
+# for a ``:batch`` model id, so the judge needs the standard price too (checked 2026-09-16).
+HAIKU_45 = ModelPrice("anthropic/claude-haiku-4.5", 1.00, 5.00, "OpenRouter models API, 2026-09-16")
+
+# https://openrouter.ai/api/v1/models, checked 2026-09-16. S1's cross-model sanity check
+# (0031 point 3, amended by 0034): a different model family, to tell "the task is hard" from
+# "Luna is weak". Sonnet 5 batch prices a dev-400 run at $6.26 against this model's $0.87.
+# Gemini 3.5 and newer reject our stage-2 shape (a request ending on the model's own turn);
+# 3.1-flash-lite is the newest Gemini that accepts it (probed 2026-09-16, see 0034).
+GEMINI_31_FLASH_LITE = ModelPrice(
+    "google/gemini-3.1-flash-lite", 0.25, 1.50, "OpenRouter models API, 2026-09-16"
+)
+GEMINI_31_FLASH_LITE_BATCH = ModelPrice(
+    "google/gemini-3.1-flash-lite:batch", 0.12, 0.75, "OpenRouter models API, 2026-09-16"
+)
+
+# https://openrouter.ai/api/v1/models, checked 2026-09-16. A second, independent family for
+# the cross-model check (0034): three models agreeing costs $0.39 more than two. Probed on the
+# same day for our stage-2 shape; the reasoning-tier models of every family (GLM-5, Kimi K2.5,
+# DeepSeek Pro) spend the whole output budget thinking and return empty content, so only the
+# non-reasoning "flash" tiers are usable here.
+GLM_53_FLASH = ModelPrice("z-ai/glm-5.3-flash", 0.09, 0.30, "OpenRouter models API, 2026-09-16")
+GLM_53_FLASH_BATCH = ModelPrice(
+    "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
+)
+
+_PRICES = {
+    p.model_id: p
+    for p in (
+        SONNET_5,
+        SONNET_5_BATCH,
+        LUNA,
+        LUNA_BATCH,
+        HAIKU_45_BATCH,
+        HAIKU_45,
+        GEMINI_31_FLASH_LITE,
+        GEMINI_31_FLASH_LITE_BATCH,
+        GLM_53_FLASH,
+        GLM_53_FLASH_BATCH,
+    )
+}
+
+
+def price_of(model_id: str) -> ModelPrice:
+    """The price entry for a model id; KeyError if the project has not recorded one."""
+    return _PRICES[model_id]
+
+
+# https://openrouter.ai/docs (decision 0009) and https://openrouter.ai/docs/batch-quickstart,
+# read 2026-09-15. Confirmed by the saved responses under tests/fixtures/openrouter/.
+OPENROUTER_BASE_URL = "https://openrouter.ai"
+CHAT_COMPLETIONS = "/api/v1/chat/completions"
+BATCHES = "/api/beta/batches"

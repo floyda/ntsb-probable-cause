@@ -2,6 +2,9 @@
 # The corpus is ~950MB raw plus an ~85MB processed file, and this repo is public.
 data/raw/
 data/processed/
+# Run outputs, too: model text, per-case results, and the spec of each run — whose
+# case_ids, on a held-out run, is the ordered held-out case list (CLAUDE.md rule 4, 0026).
+data/runs/
 *.zip
 *.mdb
 *.accdb

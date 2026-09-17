@@ -1,0 +1,131 @@
+code,label
+010100,Aircraft — Aircraft handling/service — (general)
+010105,Aircraft — Aircraft handling/service — Maintenance/inspections
+010109,Aircraft — Aircraft handling/service — Towing and taxiing
+010110,Aircraft — Aircraft handling/service — Parking/securing
+010115,Aircraft — Aircraft handling/service — Loading
+010200,Aircraft — Aircraft systems — (general)
+010221,Aircraft — Aircraft systems — Air conditioning system
+010222,Aircraft — Aircraft systems — Auto flight system
+010223,Aircraft — Aircraft systems — Communications system
+010224,Aircraft — Aircraft systems — Electrical power system
+010225,Aircraft — Aircraft systems — Equipment/furnishings
+010226,Aircraft — Aircraft systems — Fire protection system
+010227,Aircraft — Aircraft systems — Flight control system
+010228,Aircraft — Aircraft systems — Fuel system
+010229,Aircraft — Aircraft systems — Hydraulic power system
+010230,Aircraft — Aircraft systems — Ice/rain protection system
+010231,Aircraft — Aircraft systems — Indicating/recording systems
+010232,Aircraft — Aircraft systems — Landing gear system
+010233,Aircraft — Aircraft systems — Lighting system
+010234,Aircraft — Aircraft systems — Navigation system
+010235,Aircraft — Aircraft systems — Oxygen system
+010236,Aircraft — Aircraft systems — Pneumatic system
+010237,Aircraft — Aircraft systems — Vacuum system
+010238,Aircraft — Aircraft systems — Water and waste system
+010245,Aircraft — Aircraft systems — Central maintenance computer
+010249,Aircraft — Aircraft systems — Airborne APU system
+010300,Aircraft — Aircraft structures — (general)
+010351,Aircraft — Aircraft structures — Balloon/dirigible structures
+010352,Aircraft — Aircraft structures — Doors
+010353,Aircraft — Aircraft structures — Fuselage
+010354,Aircraft — Aircraft structures — Nacelles/pylons structure
+010355,Aircraft — Aircraft structures — Empennage structure
+010356,Aircraft — Aircraft structures — Windows-windshield system
+010357,Aircraft — Aircraft structures — Wing structure
+010400,Aircraft — Aircraft propeller/rotor — (general)
+010461,Aircraft — Aircraft propeller/rotor — Propeller system
+010462,Aircraft — Aircraft propeller/rotor — Main rotor system
+010463,Aircraft — Aircraft propeller/rotor — Main rotor drive
+010464,Aircraft — Aircraft propeller/rotor — Tail rotor
+010465,Aircraft — Aircraft propeller/rotor — Tail rotor drive system
+010467,Aircraft — Aircraft propeller/rotor — Rotorcraft flight control
+010500,Aircraft — Aircraft power plant — (general)
+010571,Aircraft — Aircraft power plant — Power plant
+010572,Aircraft — Aircraft power plant — Engine (turbine/turboprop)
+010573,Aircraft — Aircraft power plant — Engine fuel and control
+010574,Aircraft — Aircraft power plant — Ignition system
+010575,Aircraft — Aircraft power plant — Engine bleed air system
+010576,Aircraft — Aircraft power plant — Engine controls
+010577,Aircraft — Aircraft power plant — Engine indicating system
+010578,Aircraft — Aircraft power plant — Engine exhaust
+010579,Aircraft — Aircraft power plant — Eng oil sys (airframe furnish)
+010580,Aircraft — Aircraft power plant — Engine starting
+010581,Aircraft — Aircraft power plant — Turbocharging (recip only)
+010582,Aircraft — Aircraft power plant — Water injection
+010583,Aircraft — Aircraft power plant — Accessory gear-boxes
+010585,Aircraft — Aircraft power plant — Engine (reciprocating)
+010600,Aircraft — Aircraft oper/perf/capability — (general)
+010610,Aircraft — Aircraft oper/perf/capability — Aircraft capability
+010620,Aircraft — Aircraft oper/perf/capability — Performance/control parameters
+010700,Aircraft — Fluids/misc hardware — (general)
+010710,Aircraft — Fluids/misc hardware — Fluids
+010714,Aircraft — Fluids/misc hardware — Misc hardware
+020100,Personnel issues — Physical — (general)
+020110,Personnel issues — Physical — Physical characteristic
+020115,Personnel issues — Physical — Sensory ability/limitation
+020120,Personnel issues — Physical — Impairment/incapacitation
+020130,Personnel issues — Physical — Health/Fitness
+020135,Personnel issues — Physical — Alertness/Fatigue
+020200,Personnel issues — Psychological — (general)
+020210,Personnel issues — Psychological — Personality/attitude
+020215,Personnel issues — Psychological — Attention/monitoring
+020220,Personnel issues — Psychological — Perception/orientation/illusion
+020225,Personnel issues — Psychological — Mental/emotional state
+020230,Personnel issues — Psychological — Cognitive limitation
+020300,Personnel issues — Experience/knowledge — (general)
+020310,Personnel issues — Experience/knowledge — Experience/qualifications
+020315,Personnel issues — Experience/knowledge — Training
+020320,Personnel issues — Experience/knowledge — Knowledge
+020400,Personnel issues — Action/decision — (general)
+020410,Personnel issues — Action/decision — Action
+020415,Personnel issues — Action/decision — Info processing/decision
+020500,Personnel issues — Miscellaneous — (general)
+020510,Personnel issues — Miscellaneous — Intentional act
+020600,Personnel issues — Task performance — (general)
+020610,Personnel issues — Task performance — Planning/preparation
+020615,Personnel issues — Task performance — Inspection
+020620,Personnel issues — Task performance — Maintenance
+020625,Personnel issues — Task performance — Record-keeping
+020630,Personnel issues — Task performance — Use of equip/info
+020635,Personnel issues — Task performance — Communication (personnel)
+020640,Personnel issues — Task performance — Workload management
+030100,Environmental issues — Operating environment — (general)
+030110,Environmental issues — Operating environment — En route navaid coverage/avail
+030120,Environmental issues — Operating environment — Approach aid coverage/avail
+030130,Environmental issues — Operating environment — Meteorological services
+030140,Environmental issues — Operating environment — Air traffic/operating proc
+030150,Environmental issues — Operating environment — Radar services/coverage
+030160,Environmental issues — Operating environment — Communication system
+030170,Environmental issues — Operating environment — Airport facilities/design
+030200,Environmental issues — Physical environment — (general)
+030210,Environmental issues — Physical environment — Terrain
+030220,Environmental issues — Physical environment — Object/animal/substance
+030230,Environmental issues — Physical environment — Runway/land/takeoff/taxi surface
+030300,Environmental issues — Conditions/weather/phenomena — (general)
+030310,Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure
+030320,Environmental issues — Conditions/weather/phenomena — Turbulence
+030330,Environmental issues — Conditions/weather/phenomena — Convective weather
+030340,Environmental issues — Conditions/weather/phenomena — Wind
+030350,Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip
+030360,Environmental issues — Conditions/weather/phenomena — Light condition
+030400,Environmental issues — Task environment — (general)
+030410,Environmental issues — Task environment — Physical workspace
+030420,Environmental issues — Task environment — Pressures/demands
+040100,Organizational issues — Development — (general)
+040110,Organizational issues — Development — Design
+040120,Organizational issues — Development — Selection/certification/testing
+040130,Organizational issues — Development — Manufacture/production
+040200,Organizational issues — Management — (general)
+040210,Organizational issues — Management — Policy/procedure
+040220,Organizational issues — Management — Resources
+040230,Organizational issues — Management — Scheduling
+040240,Organizational issues — Management — Culture
+040250,Organizational issues — Management — Communication (organizational)
+040300,Organizational issues — Support/oversight/monitoring — (general)
+040310,Organizational issues — Support/oversight/monitoring — Training
+040320,Organizational issues — Support/oversight/monitoring — Oversight
+040330,Organizational issues — Support/oversight/monitoring — Documentation/record keeping
+040340,Organizational issues — Support/oversight/monitoring — Enforcement
+040350,Organizational issues — Support/oversight/monitoring — Safety programs
+050000,Not determined — Not determined — (general)

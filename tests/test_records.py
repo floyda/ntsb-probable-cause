@@ -61,6 +61,17 @@ def test_missing_case_number_is_rejected() -> None:
         split_record({})
 
 
+def test_verdict_carries_flagged_findings(record_fixtures: list[dict[str, object]]) -> None:
+    for raw in record_fixtures:
+        _, _, verdict = split_record(raw)
+        assert set(verdict.finding_codes_in_cause) <= set(verdict.finding_codes)
+        aircrafts = cast("list[dict[str, object]]", raw["aircrafts"])
+        findings = cast("list[dict[str, object]]", aircrafts[0]["findings"])
+        ordered = sorted(findings, key=lambda f: cast("int", f.get("findingNumber") or 0))
+        flagged = [f["findingCode"] for f in ordered if f.get("inProbableCause")]
+        assert list(verdict.finding_codes_in_cause) == flagged
+
+
 def test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence(
     record_fixtures: list[dict[str, object]],
 ) -> None:

@@ -1,3 +1,3 @@
 # Evaluation case lists
 
-Copied by `scripts/copy_eval_ids.py` from the spike repository at commit `9760e42`: `labelling/decidability.filled.csv` (the 40-case like-for-like set) and `labelling/leakage.filled.csv`. Event dates come from the spike's processed file. All cases are held-out by event date. Case IDs only — the full sheets are copied in S1.
+Copied by `scripts/copy_eval_ids.py` from the spike repository at commit `1f768ba`: `labelling/decidability.filled.csv` (the 40-case like-for-like set) and `labelling/leakage.filled.csv`. Event dates come from the spike's processed file. **Case id and event date only.** Every case in both sheets is held-out by event date, and the 40-case sheet is the `heldout-40` sample itself, so the spike's own cause, finding-code and factual-account columns are withheld data (0013) and are not copied here at all. `scripts/check_fixtures_redacted.py` fails if a fixture CSV grows a column carrying them.

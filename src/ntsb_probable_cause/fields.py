@@ -307,5 +307,15 @@ def finding_codes(raw: Raw) -> tuple[str, ...]:
     return tuple(code for f in findings if isinstance(code := f.get("findingCode"), str))
 
 
+def finding_codes_in_cause(raw: Raw) -> tuple[str, ...]:
+    """Verdict: the finding codes the NTSB flagged as in the probable cause, by finding number."""
+    findings = sorted(_dicts(resolve_path(raw, "aircrafts[0].findings")), key=_finding_number)
+    return tuple(
+        code
+        for f in findings
+        if f.get("inProbableCause") is True and isinstance(code := f.get("findingCode"), str)
+    )
+
+
 check_path_exceptions()
 check_evidence_paths()

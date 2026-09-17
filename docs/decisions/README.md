@@ -72,3 +72,8 @@ under `docs/specs/` and the record links to it.
 | [0029](0029-live-headline-is-the-finding-score.md) | The live board's headline is the finding score | Accepted |
 | [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted |
 | [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted |
+| [0032](0032-a-batch-run-is-resumable-from-its-recorded-batches.md) | A batch run is resumable from the batches it already paid for | Accepted |
+| [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
+| [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
+| [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
+| [0036](0036-heldout-text-purged-from-history-shas-map-forward.md) | Withheld held-out text is purged from git history; the runs' recorded SHAs map forward | Accepted |

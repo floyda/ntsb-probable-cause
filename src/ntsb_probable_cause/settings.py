@@ -18,6 +18,19 @@ class Settings(BaseSettings):
     ntsb_api_key: SecretStr | None = Field(default=None, validation_alias="NTSB_API_KEY")
     requests_per_minute: int = Field(default=30, gt=0)
     data_dir: Path = Path("data")
+    openrouter_api_key: SecretStr | None = Field(
+        default=None, validation_alias="OPENROUTER_API_KEY"
+    )
+    openrouter_base_url: str = "https://openrouter.ai"
+    runs_dir: Path = Path("data/runs")
+    monthly_budget_usd: float = Field(default=25.0, gt=0)
+    expected_cost_per_case_usd: float | None = Field(
+        default=None, validation_alias="NTSB_EXPECTED_COST_PER_CASE_USD"
+    )
+    heldout_ledger_path: Path = Field(
+        default=Path("docs/results/heldout-ledger.md"),
+        validation_alias="NTSB_HELDOUT_LEDGER_PATH",
+    )
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""
@@ -26,3 +39,11 @@ class Settings(BaseSettings):
                 "NTSB_API_KEY is not set; export it or load it from the password store."
             )
         return self.ntsb_api_key.get_secret_value()
+
+    def require_openrouter_key(self) -> str:
+        """Return the OpenRouter key, or raise if it is not set (decision 0009)."""
+        if self.openrouter_api_key is None or not self.openrouter_api_key.get_secret_value():
+            raise ConfigurationError(
+                "OPENROUTER_API_KEY is not set; export it or load it from the password store."
+            )
+        return self.openrouter_api_key.get_secret_value()

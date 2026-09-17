@@ -1,0 +1,48 @@
+code,label
+100,Prior to Flight
+150,Standing
+151,Standing-Engine(s) Not Oper
+152,Standing-Engine(s) Start-up
+153,Standing-Engine(s) Operating
+154,Standing-Engine(s) Shutdown
+200,Pushback/Towing
+201,Pushback/Tow-Engine Not Oper
+202,Pushback/Tow-Engine Start-up
+203,Pushback/Tow-Engine Oper
+204,Pushback/Tow-Engine Shutdown
+250,Taxi
+251,Taxi-to Runway
+252,Taxi-into Takeoff Position
+253,Taxi-from Runway
+300,Takeoff
+301,Takeoff-Rejected Takeoff
+350,Initial Climb
+400,Enroute
+401,Enroute-Climb to cruise
+402,Enroute-Cruise
+403,Enroute-Change of cruise level
+404,Enroute-Descent
+405,Enroute-Holding (IFR)
+450,Maneuvering
+451,Maneuvering-Aerobatics
+452,Maneuvering-Low-alt flying
+453,Maneuvering-Hover
+500,Approach
+501,Approach-IFR Initial Approach
+502,Approach-IFR Final Approach
+503,Approach-Circling (IFR)
+504,Approach-IFR Missed Approach
+505,Approach-VFR Pattern Crosswind
+506,Approach-VFR Pattern Downwind
+507,Approach-VFR Pattern Base
+508,Approach-VFR Pattern Final
+509,Approach-VFR Go-Around
+550,Landing
+551,Landing-Flare/Touchdown
+552,Landing-Landing Roll
+600,Emergency Descent
+650,Uncontrolled Descent
+700,Post-Impact
+750,After Landing
+800,Other
+990,Unknown

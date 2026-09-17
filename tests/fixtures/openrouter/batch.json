@@ -1,0 +1,1127 @@
+{
+ "request": {
+  "endpoint": "/v1/chat/completions",
+  "model": "openai/gpt-5.6-luna:batch",
+  "requests": [
+   {
+    "custom_id": "probe-0",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-1",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-2",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-3",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-4",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-5",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-6",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-7",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-8",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "custom_id": "probe-9",
+    "body": {
+     "model": "openai/gpt-5.6-luna:batch",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are an aviation accident analyst. From the evidence, name the phase of flight and the event that define the accident. Reply only with JSON matching the schema."
+      },
+      {
+       "role": "user",
+       "content": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+      }
+     ],
+     "temperature": 0,
+     "max_tokens": 300,
+     "usage": {
+      "include": true
+     },
+     "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+       "name": "mini",
+       "strict": true,
+       "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "phase",
+         "event",
+         "confidence"
+        ],
+        "properties": {
+         "phase": {
+          "type": "string"
+         },
+         "event": {
+          "type": "string"
+         },
+         "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  ]
+ },
+ "response": {
+  "id": "redacted",
+  "object": "batch",
+  "endpoint": "/v1/chat/completions",
+  "model": "openai/gpt-5.6-luna-20260709",
+  "completion_window": "24h",
+  "status": "completed",
+  "created_at": 1789505589,
+  "finalized_at": 1789505776,
+  "request_counts": {
+   "total": 10,
+   "completed": 10,
+   "failed": 0
+  },
+  "usage": {
+   "prompt_tokens": 1665,
+   "completion_tokens": 1763,
+   "total_tokens": 3428,
+   "cost": 0.0012243,
+   "is_byok": false
+  },
+  "error": null,
+  "results": [
+   {
+    "id": "redacted",
+    "custom_id": "probe-0",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505716,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Landing accident (specific event not provided)\",\"confidence\":0.62}",
+         "refusal": null,
+         "reasoning": "**Defining event schema**\n\nI'm looking to create a JSON schema for a phase event related to an accident, particularly an aircraft landing, but the specifics aren't quite clear. It might involve a Beech King Air aircraft, but there's no reported injuries. I could label this as a \"runway excursion\" based on the context. Since the only clear information is the landing phase, I\u2019ll note the event as an unspecified landing accident and ensure the JSON schema reflects that clearly.",
+         "reasoning_details": [
+          {
+           "type": "reasoning.summary",
+           "summary": "**Defining event schema**\n\nI'm looking to create a JSON schema for a phase event related to an accident, particularly an aircraft landing, but the specifics aren't quite clear. It might involve a Beech King Air aircraft, but there's no reported injuries. I could label this as a \"runway excursion\" based on the context. Since the only clear information is the landing phase, I\u2019ll note the event as an unspecified landing accident and ensure the JSON schema reflects that clearly.",
+           "format": "openai-responses-v1",
+           "index": 0
+          },
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC4aVd8Kvv3Y3W4RPOxosnMGy59WLqitUcdlFNCBLwv_XLaixW4QxRw57vnbe1QWmGZydULURh6TwalUN9Z5f4wDDJ5zEE_Wxvw6HHAeCDKHJu--h59phtZ5KL_OmlN0c_yztaqr4MifA_e3wC1ush-U_tGWTfsms1no6AKMQlUeHjnib40eQjurxAwEd_Het2Mt3iwYYq6nLhwR0FcJClmJL5UuxBsJnGJnTmWaZy6YsArBgtep78um8SztvNzKxPd2EJWm2t5C-HZuOkX28SPTW1tGnMaEmTLsLo1QkdkACAT7I8AUP7SjCKgwejgo-2VwG-_u2pnNZdHVlDpYyDjF-Y7VqonCm-FxVV8AmXTYj9OB7ftLwWAUSblx8o8U886yZcQIVuHlmHaJyi1U-gKCEMhv-2jDTOq4MWuZRR_CrJtTRpMJBja72KfG0Ecj_A0nHLemaM_2sw4pZqUNw4aCdwnsJLvLafwQO6ZcRsZY6USzz6fCaVgQG9oSsITyGmW4dlEtfTTOgyX1OzE89WuGPbwdZ5KokgxJMW67vW9ANmngUxfipBG1_39nsx6ZJKPB7eSIBwenGg4jPq3sjevtc6zwhmA0b1KKGiXjvbyXV-nyPrH23L09LDtGaNv--lVai-kekTjxSPQBj4emOT5W0tFvJ0WOUHDSfon5KkeMtmBXJttogY8blzPoHwaLq1qBHssnXnyed1BdC-bE-jzq0r2w90XPAl6472Ph3REgOEePp1EQcNPYLFnPXS-fBmfAUMKQTnPocT0UFNwMqJAdhmtYSLCrztK-vDuLJY6SpeVoI92_zF5HfEIQ-Wa8KNPBJ3nv7S2ECABuUN1idiII5hK-9-KzeSbl_kKin6BETJP50H_r_tXqoRsFif44SVRt2faUboUwymXDsOGiG99bFKLLwj-YBB1lmOe1VRr1oBIT2YDTmST0jmqWW0yKMXmYzaxROhWGLW1EEQ5nkvZ38vq2wO6d8wUDb4G_O5FDv4GNg3HrueDtlFXT0yIihKwEn-Hm9xlzduTaitOafKevh3Gtgdur5QfG-lreXfdvbxWXHcZgRU8jNEWv-JEP1X6n_4HzSCbGpVeB3N1cOljXn2qS-hLAqgm3eAWVC7fALtokkBQJ-AKJHX7lskRm1ECmGS-w-3SK2Miiam2JFT88Nqi9Qt1TVVB6b5BIogWlKqadVkZITRYK2914I53mPCDE9yRuZyxX6TUKDHKPmgEngPQ81CW5DGQ5G9OsfjlBHaNoS4AT1gmH3_kuKvmCPk3LLMR0I_knDXlwjZ_M-AaZf21hqX6bPtEqCtmrOJYf6GBVukfAJSxal45gze6B1POoCFTuAw60z1JqQ_5jCQ8Sfoz-wWlRVunJ9xK0AfH5X_6y4GT5M7O0Hmx_DtnAV4HBDwJjGZF9O4HknnGU1tSfI5ltIFopQsiQLxlWPW4-ZDkXqVB9W1X7NqAvrsm4LIaiPKaTY0UvXEvu3-foq_xqEr6YpxeDmrVZSAFn5qhvChO_jb2iC7t4sKYzJq_o2G0OgELG_haJaKZ4s-mT-Qqs4j4w0zA3ve_QA_7FxtoID_0tmfbJ2mmuxCkCg1E5SJIXVSAvU9FasVwKGTHrFf_yQVAjkJFWrK-UAXfvOGEGaGohkDt-tmJQggXa9S3RNaxYGacUE3NVhMSSvEBh0xVm1neY9t2k8odVjkC2lZkUowhavbFtthJhtLTF1YYimuAGQFq-pIXmAlI4G2iw1PvK-sEUKqjj5nSS2FnGyt6o1ntW0qKUdxzxwUFALRSwRXYNkHCe_TYa4E9OQBb9WiM-w==",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 1
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 101,
+       "total_tokens": 286,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 70,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-1",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505716,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": null,
+         "refusal": null,
+         "reasoning": "**Evaluating an aviation accident**\n\nI need to determine the specifics of an incident, possibly a runway excursion. The data shows no injuries during the landing phase, but I wonder if it's a \"landing gear collapse\" or a \"hard landing.\" The event name is missing, but I might classify it as a landing accident. It seems I need to format this in a JSON schema, potentially marking it as an \"unknown landing occurrence.\" I'm considering looking into existing aviation accident datasets for more details on the Beech 65-A90-1 N418SP.**Identifying accident causes**\n\nI\u2019m considering a common NTSB probable cause: the pilot's failure to maintain directional control during landing, which can lead to a runway excursion. I wonder if the event could be classified as a \"ground loop\" for the King Air turbo prop, model Beech 65-A90-1. Given that there are no reported injuries, it might also be tied to a \"hard landing\" with gear collapse. My confidence level for this classification is moderate, leaning towards \"landing/runway excursion (loss of directional control).\"",
+         "reasoning_details": [
+          {
+           "type": "reasoning.summary",
+           "summary": "**Evaluating an aviation accident**\n\nI need to determine the specifics of an incident, possibly a runway excursion. The data shows no injuries during the landing phase, but I wonder if it's a \"landing gear collapse\" or a \"hard landing.\" The event name is missing, but I might classify it as a landing accident. It seems I need to format this in a JSON schema, potentially marking it as an \"unknown landing occurrence.\" I'm considering looking into existing aviation accident datasets for more details on the Beech 65-A90-1 N418SP.**Identifying accident causes**\n\nI\u2019m considering a common NTSB probable cause: the pilot's failure to maintain directional control during landing, which can lead to a runway excursion. I wonder if the event could be classified as a \"ground loop\" for the King Air turbo prop, model Beech 65-A90-1. Given that there are no reported injuries, it might also be tied to a \"hard landing\" with gear collapse. My confidence level for this classification is moderate, leaning towards \"landing/runway excursion (loss of directional control).\"",
+           "format": "openai-responses-v1",
+           "index": 0
+          },
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC9N2jr6ou94qbvpKJsp05fMmwrqVxUg_S5N-hHmm4p31I2ztVb9FlHQqu7YuATPZfquN4pCvhNQqSjqGbyXC_nHXkcxJ3mfBNmCGf0sfH1aKtAsXcKXNlV-qGFq399Y-IhqkOJDhD5DpcrwHQTG-lFs5jJCTNVPS8aSIPmRNdYpJeN_Yng2tEIajtK3E_k8I0tDLTzRimY67GbBlh0UBiXqRtxbmiuMo5KexKN-hi5b_r_JlQeVF75Np3bqVKBI8Ij7Gelgg9yLj8meJEoWEL77RWCS0PVkNvQflFAy74jOOPq_jKXymMyqIxKjz6vYNCefVTs6cf3MLMqXsp4Toc7cHXnFWiGV0bBVDp5gS4XMFD1HWNS_dq1gW_I7_OYUdeJlaeBk7ohHOZLtXGXL7jkalXuqqSgED3mmOCoJteFuM82e4mwhdUnrucVUThYutZfICxsdFlQEnCn2pveMcGOURtZF7P-dQKYs8DuaLf6SOkp1K8cJ0hVlpFRY6zkYoM0UOT_NEFiCelNtD6_T6MEC9j3CqURyuDvYLXJsvu6nyxh9m2BOt0mWrbpQsbGOrkUef-YUGJbXwgUq7Ts_i1OdONnB81dzfwlPEF4Aq9KzhN3-Gijf8rfOzioYA6txETiRrCYmFOYwoZQADgY_IZEJinXvzd67JCZaYSY-JHEdKaR3l_aUu4CFhibdp2dj9plVJjOaA4giSpRr4MsaLWId2AmWaKmoA_3EkhrnCZqBtP-LM9nbNDlv8Pl-SnyCGuPLILP94GNP2luXjgNh16MUgS-g4BazGUO1vvb-rvOlznxW49u14GAB1SUYYi6RLuNoArns7YWq1MwG2NewrE9sLpJG-irQVGHr6WdK6iMsPRn1TP5n1mCJkplXGtB3daPkVxT_cnHWP-V7R-gODOgmZt4ZwgcUGQB1HNnDeJtrF-6WcZFKQrEB7Dc9S7UGtSr_GfUQrzVuZQSSNnL3g0HnE5XLEkeKrai4gtEMVG4HO7f1GxoRfHdyck-TaoSIVzR5JdvYGi6VljFDJqh921oYaybwPncNtbHGFIUNaSXyN4R1M6_8pAVq6nWGqmEpropi1klQzR-XZ3s7S-YQfIpyRaHGrhBHSZ0HYMaCVl06Uq8Ks0HxnKw1rpHabICHVjNjQGnn1y3PNootwMCrkBTC82L33HVD5EoDuD-rueNh7TlvvVm7carAIlm2Tvl9UNyEOAAaSAyBDk9IqzYPJj2eeoY6e4xiViBDgcy9Hh58_-nLoBu0gsmV03b5vSlW58juZTlo_q78Gm_sdslhqTQuyMWCDU1dzDul1ADireQNazLw3p9RsK_qZo_Xsxxp6HKZCfiOEDUksLUNu8Z7QAdop5WBY780StDz67veK4iHyz6EXn-nj78T6_92AAU_fW_lZx8iBU_PaRDgl8OU_0VedUHK44BRRWdtkqSGEUsYL21a58qBn3meTFmP2mdWyJLcyF01UaTHCDn9XyIgHweC-fzeRVcYGS7rdn4Skv8rVQ545P63TX_6n2Qio4jt10MSwDpjiISzo8X-eHgIEI4tvjQzrT_C-q8BFVoXZzBJji9Tr6cmTVja8_2WYNGjOQYoiZQvNBoDnerXuR5kuKO9RVlFHKG24jPRZlcjO62QP-Vj77aInRhtjZN_3S2fUp88VcLBb3w_XnZPM_AlKdKQRNRLMgvQt1MSwXGPtR-myxZnZed1LXjFV3Kmf7QcV5kL8VzZwretZ9a9N3Td-P9_-YIuGEaEv3T__XI3B00WsaVntACH74HAeDWZwqAribqGKla9__Vk_e5Dvql36FLaIY8oeUZ7gj9CKNmbJltJsiVbzssHKRnFOqV3cAX0hyTyqDhVh29fEQuCje-oke_xaUzI0ZArxDs4Ucyhm3c-uG-6tZnqq-AFTNkJUqYHodLkjb_qCJ_ZgKpvt7Fx4NdCXQ5taKDZBXK95zW_giXV4dWWWBlbnvOYppU28vEBPblc6YchCjH5FRF8xRKk3RyvrIbPIuXsK1toSb-G3qnVpW8dKN6dYLhcuPLzdTE_5WcX4qY3T1ro1QHNja2Y_4dt3sfsUtkoU58Ajy1WF4JWjinzvASmphcYm1ibXuIQNVsO2pmY13I7-tFAT6G4zsi5fgXFz5h0X_007PVIzwNV87SOBOF9F0FcZ8CxCwilzcUEgYJpSx9O-hQhchxQwOBG7xfKxQZ50kqM0XEXkCbudpBb_KNk6YxYJ0R59jVa2hNEOsX3eZVqagsuzS6v6YLdaA7QVN0bTkOKzVE03u6qFzax_p99lajHXzuHBiXp1FC1fxfOqPILldHnVZFc1JwC9cPVoCmQ5yrP93LKIsVzsjot1fNiQkl6HWP6hkjMwOK7m79viBTfk2qfP4L7BFR6OJTO6yfjnIskKamUvaHnP16v9Bu3bZHEwoOFuUkSHCmfUEMZDzGUTKOTuvD4yHGTSHYodE9hi5eKcVMx2JvNAQhzXcRdVhEmtxUrJWCzdQPtau2PPvGuXRthpZlLPhATG0aqgyA7SmwfnZaYYgcdQEQCT3lrjiB8XrxFKVw4RURz8cGjvVHZM4O8Znnzd3XjljS2UBpMyk1LkKysqHDkgsOqsikansQzJli48CCSTpsUd3a7hUGq8_t61O6MadsgXrxIZYAa6vQgQ1D7AU6tqBn2NOIQydWdk6DQuU9zSJVrvooHeSSu5DhGJG7AozwFHxeSqFhC0izc0PLVU4-QoLktY0qZcuHZPaVoix_XUpnf699I2PKJf5S2POGxq2iPt0M3DBj4BMVEUVe6TmgIoU793hPRtgVqv7iZO7rUCKnLRjYQp5b8PJ4NPHMQlRswUD8jNxnNF-zAK1X6XH9NQSC1RbQ0hK9nhGl1G8Fw2BBxRFCRp9jmGi8Z1-Pr_3w0o1LIXi8ZSzfMGyNgIv7ONfYfrxGTST5ZbMN8znvc2nbaMZciYUEV_US9EjOyELhIhfr7cBGoCriDkSr9uPyAzwgYqluSv-v9uGho7o-7-t83BAbi75_XcOXK8An0zva16EwOLToBiwDWUAdJFcf7xJb7ztsMj4J3Qg0RNx38jLcaRqHdmaEQm6xIpcEQQe0UWgeG4sO_aGL8inAQg2ATarprV-pevPDhbMMFUuWCqeGlDp0eA-qUDZyKj5fQ3qX8oB8sNM5mqiiVMtc_UI6Lgz9QzMPcjO_jhtVx14yxTT5qj4jmPWPgD2DXyChjA_ALXpWHMsoX_zLIhnzsSwhFq4=",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 1
+          }
+         ]
+        },
+        "finish_reason": "length",
+        "native_finish_reason": "max_output_tokens",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 300,
+       "total_tokens": 485,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 300,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-2",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505656,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Landing accident\",\"confidence\":0.52}",
+         "refusal": null,
+         "reasoning": "**Determining event classification**\n\nI\u2019m trying to infer the appropriate event based on limited data. Right now, I have information for the landing phase and need to output a JSON schema that represents the event and its confidence level. It seems likely this could be a runway excursion with a Beech King Air, but thankfully there were no injuries. I should be cautious not to create details unnecessarily. I think \u201clanding accident\u201d might work as a generic event, with moderate confidence.",
+         "reasoning_details": [
+          {
+           "type": "reasoning.summary",
+           "summary": "**Determining event classification**\n\nI\u2019m trying to infer the appropriate event based on limited data. Right now, I have information for the landing phase and need to output a JSON schema that represents the event and its confidence level. It seems likely this could be a runway excursion with a Beech King Air, but thankfully there were no injuries. I should be cautious not to create details unnecessarily. I think \u201clanding accident\u201d might work as a generic event, with moderate confidence.",
+           "format": "openai-responses-v1",
+           "index": 0
+          },
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbB6Zuo9p6581iH0Ceg9YX47sRGciigHfbdKclMQnllkFBCgw05_jkW1M-4T6TOzU4GWWCdgeloGRB3MtKw771xOCzBP58Qxx362p7CP3u5qTvEmIeJSDztZIqWdCCK-M049Izf9M4cCw9r9vUIBRf-0Ty4oUxq0DCKnetQXEyoqXIFriIfL1zTj5Xn8UFxzrnyQwSMpY-Z0wDlKrbxNQNUv_Eo3yUqeuJrAJ77mePqk6wG6vAbfJVqmCwPTexa_zKOxTBc4rZU2mN4vXCMYgjbCMPJ4sIFvOflHuWUEUF93j1L303t_0M9BfK9Q4Ut96SFjF9kshljCzT1blS-SMYoGvwBK5hcZHiSal-a-hESCwpmgkq-3rY52ajztgXmtzjpMFUtao0V0J34UsuLu4jQ3dj3Q5Im9W5SfHcSshUvek8BWiSSGJNq6LAM35rnAVaFc9uTxf5dYMrL1aqorXIHw9SGWSOqhHiCKdUrtBPahXjyiGp0eO9vtrF1We0Th3IY8aQWYUsOqCXxpuymOQOBh7SacZQdtw3yLeTSRrsixKZKPoDUCoBnKJ1t1zPUyTj1f3MuY5OBQn_HoCpvNyxO99SjAdSkK6Xwiq41_qQD78FhsxaKj9EvSe2pQRCN-15VOXa-PSxEKnX4WK8Qcwfkhxv8b0dFgqDufr8Sil72_JbFcPKfG5iYOkzuAU-Ut-OAXNMEIKCGBGdBX8IIaM7_Fp8Ju88a7FtAgqemiRYMXZP38noqNlGgb3AXFtlQRagWur5a_eyq80QS8bWLjlCRf_qHWe5xgP9NJPgkxa02_V4n5-iSwsigMvPcARMXXOPQcbQoDeR8wL66Kd96tFXF91Q3S8zk_0u-DpMet0AEo3ZsyJYS8k9jYT06zYYLnaKjDe2jWTpQocIdUepNEW_3CalN_Hne83FRoUhVVxeCjH3mISaJUKeMl2Ksbwc_Qerd8zQynj8E3yM2GH-mJzqsUKd6zrcaOo3021x3JyXr1xMyTB3dOzs2rvvfHo1NfXq_dkrV3zcDQ2SadkXWa6WTyJhhwJfGFrmXzPSqD5I6zDmhFZT3IKCab5SWwo9jlEVNSMwMlijYu6SYeyx3oqL2GTs1mZKKQF5CVg6C_5Y1w-IhLy71VzkWU7SMWRXjmPi_1OHurTXG-Hts7qSNwMZCEmrTUTSkaASB93Bwh9b3uEoYnxJ0HHk7vaZJf7-nfoVnmbZS_MdXtLuI7mRAonbuSseb38jkH1hiti19SR2As0TkrpL8UIHX598H6dinqmsQH7vBLHU0CXzq8jCAtbDJKo8MZdLdVOZCtImj64gOvy3jcbIcXMMsI4DKeB1SLPK4MBIGwMI-W4JO5_7pGbc7vro2AONZFAwiNgjk2vXwRT-BcBtjNv_9fYBa7TqBtZPzQ5ZEMHfnRk9g-lh9TfXmx4IO-OXsE36MsxkyCz5J3dMAJXZVeIkd8j-XuU9CvnbxM3QQKTS0KKvw_afvxpOsnUVlkoKsN7hxBDKHGO6XgmWmGxrj9yT2Bm-ua-OgxRcDvm42JP7pH40-Y2uHjviZui_x__v0XC6YDzuP-Mh8VQ4eHw7ekyRhf3UGelqlNjzox8BgHSxO9D66pnRKHSU0ILG3yh7HRBmQr3o0t33ITBUkTyrYjZXu4jO631_v3yYNG5nlr7VyN8lTjJ37Wnld9qsWnRS8_wB8dFz2lrWoAogk3w_S9EXsqPaQk-PtnGqixw-8K56zebWIX8867rRI3mzK5gZbqVEd9hmTOn7fggSHabDB3ZErkPMUFb-k90DpuVCCxKa69RdKMJDrG8Zou0RV8muXJtjP3IB4FprT1B6W4VKqJykGHlblhBiZiT-sSTkRqPtFUc6CC5TUEmw3bXg==",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 1
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 108,
+       "total_tokens": 293,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 83,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-3",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505660,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": null,
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbCA_tRIkm4i4vsF0U0FaKc8Ve1H3bnQkx02tSz1CIzzVI6zdamMSYVuM_Gwp0TxQwnV7U-b5sdzR4HTfr1qNYrJmhFd_ieR_eienUiKOF_mOHOhew5o6c2KGwRnGzhLDI103cTM9yF7tQtsbZlULBbN3DC8Djikwdhkxt327Kr3BKYV0vvTvf4zEg8pHGv9mrUiJOJLF965np2HTCJaxnNpesWZyWH7drBYXTpUaWCoyyMm5Ta7TJRRSu6hhB-TppSKecMqcofWH3EqkKdHsIqX4UR_3w2IT4iOrpG6HrNn4m5GS9XU0DqFdZAb7nXIiwOFZSYo1l3yxC2kQOXrkImb-1Tz1ON42nM16b6UbTlD3IU5QxWf--_1zBHhGnbmuHl0apLy3tW_50zAaeBP21-zeFmZ6GZKkYfEu-2MVW0PyaAMHI56mUTdkS0fUyE3Xgj63ETMVNwdL-Jpkueiz1eIR2eLGUUKtDK_HaTxny-aOP37Tp0vaqUm58rg4RixKjjpiQcnApkCaR76CDB38VGC6ay7EpdeNkyDEyEH5toOqIEhyASiy0QVbPVIsC3plfQntg0emQPds2B8JZNgm_zWZe3DpxG_Z9CLon9dr4LM0Vqhgo8Dnj-Lg6ezMuTSUzLg4fvZVZ3SG971jT9oJdKgHtGpqD_qTyxtRuCK7oc4AzyEaTpO20dZQRxgGAuEwLQNOi7KZ5wb3qtJ3NZ7lRIgTYEwHeyQtcl1AiKWBkXRBocTETDT8Lrs3Z4EFpEMOGNZGPjPodyzVBsm783-Gd2ILWPAukNrmrhxAR4_XSIPYdRH7hlJjvL1lGMz7hKE3J4MhzOJksUy7xBD2ppGaOyOGTppB4ToM-VN1xv3flT8NA8hPeS9scvlgk0q8pgsZ10RXvpvgPK1WGLnuBLs5JNBCegNyh0dbF_ypcgBhWHzOiqcQOvA883nUu_pGaZLu9Jd8HQMjvoT945lBc1UOOXQfBtCI9dGUemfaoBKheDWHdL9xsqnl9mPO6ZAoBlrfXzPCsGg5SCMF-dhq1vOrjNHh_ORAuC95M6974CBhuv0Zq3V9ZawVIEDtyqveG_Fm3dXwcr7KZmuuBNZxtOQqyU3zrmNZYSOiETK67lngMxuQKrNML1A6izyEZ_yv94LnEHTmo13reaOb_QrHKfCOxSLaWAeCE1i4URvLbRyu5L7JUvilLqk1KBv1PBRrU8yjPk_OOn3ebFrot9QqWNyYuj96Qzgn9RzGZLQpqCWnyDy_N5PuOWgnEhSEWKOOoarwZF-nB1uaFv_EocqmTyGVlkN9A0zz4qprk-cgMHTNo7-kV3pD2GQWFcaPXOboRZl1CLM2KhF-yB3R9HDRtZDYpa6CWl7bOqt_taBDdOOJmc5OmFd9YP9weLLmh7o4AUeu7G2M93IbIOSp9mQ_tK91s9VO7QN-7enEfoasC-FuCVn2ypYybmwaogJ36NtyLmc4JLepp4DmcgyohPOtARkXTj-bFlR2OgOcwrTwBBV9dg8cnkZ0KFw2IdiTPLB2wei2JEA5lnxZrGOUybfN-gyDsahoo-HGoIixI6YQbrTjdS8JeRAhbIAcxHpAW_7PmML-xwzziCM1eeMxIfIH9jNlLzteK0ech_uHvONKPemPss5Y24pM72pNy7kZbef5q1LqIp0tZzYMgrZp_60EALPnm927_YVOZ9PphLiqgjKZFg8WIHtOxGHygNp6OeRXHlWEeX5EpK_l-xw5VpdMHgQmDXjlrsgmRpvn3pFdpy9ofR0M5NdVM-d6B2v0tBinume70hfRwP5O0uzMD6S4NBMr5Gs7FF_AZlLBj3iY__Oxsu_menF0QmXFlIgqTZx8Zx4WsYD_G7IdZabSiBD-QkdaDIZyb91UcxnWG8QUw1wy4BJCl9KD94B_m3Dn23o4sEhKrtDsUY0elFOf9lP6gIybDRNMD0Ledic0SOONDpL0-0pgig6SLutrT4UxbB7889ZQd-vgBYWVNJarK1kH3TsfQ2d2atBQgfD3WQgj0pgqe-OLWzEOtkejtuQPe-mwurfpbse7GFL3_iP7RXwb9-1MvL7V6J2ST488GruTuvznJYPC_vrNs53gE4q_SKZHnhd3-we07ri48dfJKQjU7HRMB6GsmC1SMN5y4Keu61w4d7-q3H-48_ltE4l1ntQ0BmKu8d-vC9d0NXwVxKMHKlGmtyAS-s4kGsiPqquq1eYB5iVyqEoTMH8B-J5WoQgX5Pzk2X_4V41XgVPUE29bIMNhF7DaxMxD5inQkT9kHed0gzLua08fYkvsJJ1yYLitr3I2ndD0EQZW40j9eh2EDNy6B-sm9bGNuiERrdYcC3sHe6jZwTvvG0RxIRkmrFPY9of4rrAqWESa4P2Z56QqAaFV50o163c82iRUcU3J_Dvcl6_QkcO1llAlosSxeJGmr2xbCaAWa_MQG4JppE4wWDL7-MQN7euOvCGGypb5uF9_LtCdud55MxK0ZjO8_ItbIXLko5c9AA041_jJ4Y_yNJ36Zr7YijXpMkPtdHG_qUb-IBLLQay1vkFUvZizst1Ds1issWXgBAoijBJh7Ui_RSEloK1fvb59bqF00qqTlGBa2B0eNIrPsWaKd8dkvZDIiW2MEZp9qtPyVLh95WZRCBdxjlp8wfZsPC3E8P03v9sJt6YjrQf5NqSmocbBv8CK4bs_5QOYEIk8Tdaf8lSMX3O9RtOw4dELzCo-NeFXeyPAiC_QGnuy8t4hCOPXdrp0GIdaC1ZwXYHmXuG9Vm_QmvvbvSuokKqghHTB9aVi2cWbqaa9DhUkz_Sz-hSgH1vzcUyNY-6yzgzTURxTuaMEmlC5V478o97cREUGNQhE93EAE96s0MR1lER_0gCdINruNb9P1mGAjBtV7fFhZbhaC4Js7scyGel--8Q9snrhFfS4rxNOH8TxyX43Zxo2C2caQ5Mkzf7rkZkcNiEuz0IeWYkMVCJac9MNNMgrxEKf3rxrvAm9ObyL9tQq0NxlPTUwllBpxfpn72yIl8-k2Vmde93phnZAXyxVZZEeUtAqTjTYXqLee_eYHxqtWt142Hty4L4GqbP4gdcbn48bdUUGXTJDZg8BfIwnvjvtupnyGK-WHE3WwIWhnx_UHGuv2NDR13kWiAl",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "length",
+        "native_finish_reason": "max_output_tokens",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 0,
+       "completion_tokens": 0,
+       "total_tokens": 0,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-4",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505716,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": null,
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC5n_UrXTu4uu9UvXgAxENzEWBANUZS9PNlbEudz1oD--7iBPnJS4OQNVnUkf7uWyO1VYL5N-BJQTKA7mtgKI85m8x2YqGZAmojhEv0fzqfx9cD2L_qn3843AY3ulA8w9eFUPP0tkGzX-pVhyIP2wKjewlVLyip3Tp_A5JtxcNzYuZS5qJpTriIllf347l4kY0D9sVTAduNlhtyHNZqS_T-pauZ31OpmDOhBjAYwv4-HkGoZNAThMsmwCfhZSiAHl4NiF4A3XP9o62Xi9Uwr3uD-kGjI3BDWR7cuwaGhAEKI3-bSYJiuWr-chR4Q0x3fslDOE4p0x2269U8wZL6rZdBAeN5vOROgn90sl0TxgYODKsTvVs_RtjgkN_ojkP_kJhg2VAYK0Gl00a1csVR2BXcGOfEYq6ogqjNVC1J5XCIsUcYk71hwiItjMM9alV2VrkwrtYmR_ws1a0ci46KuF0H5fjB01kD6V-l4lAAdNCP-6yRG1sFdAelDDObPigvQzQntboFKZJoRE7-GHOLvZfBu-3Icrg6p1RbQ71F8mHieRlTv9aC8a58JT0ZH-z9vKuhb2doZFCM060MqHuNRSa88sLnTPVJSMJxr3Vd60hdhQvZ-NiUtYNmM1eS8L_07lcvc3Ku_4CNr3NVs3vPy6T7HBVRuGXLFcrtGm7XCbR5PeR4Z6strQcyRjwC6TqaQ0XDKDMpQddQoqhfJvh44v39WYpru6baLlWqgftKmL6zvV5u06X5LXQDwOqqX3ljnYplOlEpMZMWyDbt93CuuS6IoLab-t4GEBUxM_ju2FSDK-N_D3zGC7ipXMrwokoRzhz2CBz8_W3E539JI2pNqeeumXt251-4rAv9NW41Emk6ShFnGpGwRQyFyTRlurfQBYDA_oKQPI0-Bnw1aVE-HY3UBCHo1WsyL_eTYIXXQfGMD5qWin0S-QsPh3fKncHyALJfHYDMYPnhFmzEJAJy752ET3S8C2fS8z5OfC85XO-QrjKUSb2lR4lmgno72YpGROVSXKGs8imliBm3L5PpJp5Ib50RmtLXoj2C69Jiy5XztH3aqv1eQQHxl--Y4-JSJm3fKwz_4ESx45vsFetv78Q5lVML3hkkSVy77bVxLdFv-Y2OQWKC9LJu9q5S064J8quFbvRjzcQge4GGs-a88kFFKGshE8jPV2FEDy21Y2LS_tCPLnqGRKpEDUI_HogxM__PffyNz6R62CjHWAEc-S5OnV6TLKATUe7YU-DnCyPJUqp6lgrhryeg8RF1fiJAwM-CdzK-HpVIOpkgQ_8AeNHqfpRJw6xb0OF2p64DNidjQgP-bygggoz9vfvex6ytkzxdDR5UpCxFJpJDfVfQT0IeBX_30CLP_E1ZcXzyl17iwCkqb-Fz8eLjO82Ud1h2rSEZtfC6aw4YQbBM04XWw-Cmsm_QySIqnTuO0odLoTDc7A_8UNHJhgQS3moWg4nSrPpmLnln1xsYRfTKytsFFUXoAOn7ajJHegssJT-JWKUDvM1epMARje8eRbqh79P_IJgFahk_ORm1eTVdAh9HPs6HLYeEiSWYGHrveItoDGRZ6fJ_Hwe9Kf6lDQD2rDxbm16p4w_AYZZKzkscTV2T_p8Rkqz-dqu55kRlVuoL_ZuST1LrPYWFmArUST8zRaQ00wpMuPGIxV27OJcluo0KQsxHvqKg4L0GNaTMSVa25H5hgDyGV2CwCrOA8MtrBF7Ymk4rEAc-ruZu_7tUwsBbg2_sHsBskBw5VdAev63Ql7nyk6BqKSlg0Li8LMTAFugcIiONmQSJKc7bT0ymECoXhOUJpq_UytImvobjudd8cE4dZTBnwjfKzX0D9UwdKmtT3uk0zfc21I67QW854RO7HV8f9eoHkY6HFZXuV0Ki2OUnWK4xek9if_5182XwpT_cNe8dNO7Qhs_c3nxX-if7OHSDgaoCBTsggMKvNijKct6aaf7DB-fGf9qkYWUIj7PevlkOOUYSW7TqTGtzbu9cuH0CqPFjBoXQYWhUelLl3ADO5xWoekmlBjcqGDFci31FsfzEKhmhdvpGTMPhQz5OlqbOKTYdZ-lPwJVRWoqr4M16lF1V96YxQzLxjRLctG2hwoKL-DIrG3S06Z2f8J6RzRJxXSAVO-wRIgFVD47ws1O6JAY7IMHavUMQrDlIce28H1R-LYS46XyaR3ixgwFhdPcOv4KnWPJja9bVoyWE8w5WwxowQ-IpjOyr9InsPe4L1zyWCzeUtnx4aIZSb-tOK4-NxQAoHxKEY8Ts9QZex6mo4UqExFHNMRJt8xm8XlDsOlcro1gbWJTvR6a8NLdbM5UVUTw4c8_rbAUf0k8IOc8-sT9aZ3I3Uqe-UT0fyYajN9ZqHcI4Gdgtn6ine-QveLcIjvdVglaUB5u44UAPODCV_iOg1kLlODUkIEJXsE_SqnqrofdcgODn6xd-660p6ntvbqVkK_MOc365AdaUbBHbDZHcGzA3HzetqE0UYIEw-kaDKd-jd-c2gfPM_ppI06c3lqe0tATdE2vBzK-afY869Y5arKjqAyn8pHXPoaVbNHfLeLPF75NLQsTuwOdBEDQoieSIkd3mSk0LVHtw3sN7NGcA0ND8mUxPTXAKnUQYV0qmSBhvcTh5s-f4F4AgmbNC-ckUpIWXdcCmWpWAsSUwTvQdINKbX_yC9e9iSjbygujfSow83SPlFxDqXEw8QlR86sdNQVTohX6uJpkq_5nNr7C4zTKpd4-rsjCv1RjoimyOLNUoAO4C8JTbbpKTf14rZXcQyz7HkBefzCC-3DMCtQPsoFx7t-Scp1qWXDF_SCMdXVYLP3dRs4SpJgcisp_ya8CxwcelRji-UInEvplweXu1WXB5vYGkyr2uGgq7B9eIe7QCD_NphlnXsZsjNiox7yvkuXijv_T0r4zzqNPn2TX6ffZ-PSJly9aZ1bPsTPk-Mlu0ua-ypjGOcZpr12CjleZtpB6W5KYvmkdgBwY_NpdnlT6HOXcq-7IdMIFyhgLC0Ye2nDJrC1tBqugXdrNAkqYvtbIUlT_0ciUx2u2iGmnAGKlsVCF8yFoypy4Wc97nZaSix8o8Kqyag7JcVlr66DAvtS6DHJ33zU_siunpLa8=",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "length",
+        "native_finish_reason": "max_output_tokens",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 300,
+       "total_tokens": 485,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 300,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-5",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505716,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Unspecified landing accident\",\"confidence\":0.62}",
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC30x5B-y3vOzOEqb3o1rwohQJqpX1UtL_NQlIpHBmhwpDKO8pgJWncR2KGTIuAQ9LTsGQqF7BNNezUDrCE9CiJ87Td4FjiZeeLx8Ev5ljd0oKpxKRDlahT2C0iXzgCRLtetPqVPVUrlXDjjXRXeUar_ebh4LcsRhU5YQsPyXNIJtwYA3tlUxle0eWoOQRirI3LzlTGUyV79eS4oWPLj2Nzf50hO8LDp6Ft2WG3AMdNnHETdJXl42jwa3nCIvarLH6yDw44K60rFQfo3caFSDvdoC3479BdOMaHMFP-ooLhMk9WbQ63pFwEkXuanaTZXas2t9cLIaskbcBcY3v0ENsxn3HXvUMR1BBJjXu-Eqa2N1mjXOgJNKwE0hU24XgNDkdTgrM15o2w0fLu83TuyFdglJFn3PyoPcYZali4gLR_zuwA43ozcZuvVD-kjPkDHw3m4JZyJKfJjNXJJYW3Vx-jjwNGeuZ98Mhwhf1uQwqmxzEmW7fuGZsNckIyOG0HLKryIaI0Jc4o5Q4RIy2IRLwaLqmNLpDsVqhhzy20vcSyw1NnCfcVbi1t3zvNVbWbWYfF7UPSu3p7nuzqoQJnGtJk1n08eC3fg1xRPcclP1QcHjH8NmJVBxOIE7KiN4zy1njR_Bb9dF9gfOA0zYOnQnpWtB5Rs7O2FyizS537AFT0lS5b38MXeZTrexb0l19SIY7PCL187Pe4b0hMct3LZkJfW19Tcga0IFe3Bhaxt0RmnudhZKm0udtZ8jdejlc7HpJmo5CMnq-BnBlFqX9W0qdquuAOn38hHNrfVkBbtUNbMKzMaOG6cCpYvxdO4bM_9NHlTg1nsWJvnm2g__BFiZuhPrBMv5Ip1vY7_uNDZ8L5PJ84d05FE3ZEp8OrKGokBOwaGqQkTpC8jIww2eXp2HNeUp0wQRC60wQK5qM5zIX-0tXTKICU-iXNftYbzg3ES9z1yosECTpoqvs9RnZHT5I7Zh-M5yys6rbUT_lrrxtZgd_z4tMOAJzbQQhvAYPjKNR1BkBxVzpsHl4JFRzOSbXo-OCKl8xl2a8gEou1GaUetfACP1C0x8uV3-apcQLZqzuegg5L15LM4yWcfbY95I4SG-VPAZpBr7sxAcbDHxmwKwiRQWPGNuhg_aSibb2kIx5wINPQs9MhDDS-EklN4ofs_Wl5mJGs4y_dn17KKZXNuQAykHj_777GEpgCtUt6gu8XPGBUnAd96NgjsI_cgA13Vb4HtTt7vnkMCqbAMDcW1WdeVpe1OzJrXtA1vfElC1Qm9V3JFJ9qrA84YV12CXSVQhNZSIcjPpum1GxkXth7jTZz2mqbzQ39b-WXH_uaPugmXUIxjlJG-vaFzQ9K8ajmfSh4PPJPRUYfD7oI95ceOdSdr6VkIk6oMHuYQBxbqxTagMFW0qIapnQP0M4S-o4Hyhhc-So-B0ZQ0jL5JvusRHtVXscH9aLvdQ12Q0yaihxWZTFzA-bon4uWjscCC2poG1etPAJabMHVqzc33viToYOo9dziiwjyYtTL5d3nckqVxLd8vLCHzYXk4TC9NFg4YZnfASlIwTP8dZXmeHrJX9yUrepKynK0fpZqVEdDpf6YdpPaULXtNCyY35vReJrGJvuNj4Y_xKDj4M2bjAZFhBxlkVC-tBjDy26hXXNsR-mzg0UCFmv3hVhcLWRZECoY1ofFTbcE15XLwcLRXwg1Iz2X_Q841wwdyVEgzV6GDuOEehABGqf71NaXAcwQGZPabxF4q6yT3qunUdKJxHhW1ZML8Y-T-44RqG1LmSxuji2nUag4mZ5UeTZoNC3Zv37hdZq83Y4__R3VCIVfgG5wGWv6u3GyIY5teEmqq2ixbMl7jPmDs4jKEh-aV0erxKpQOIg1jBTgZkrt5RqFuQ_8AU0Syi4BV6gN0GyIqIvrnxPTtd5GMCuTMuuRTn11HNzz5yg4s9eRMKBg1IY3R_bjyhcOG7N68WRN_oyQkNstO3Bx4PZQGCFRPjnU5BozTncvD69iIG7HEUdDm2DJPUmpja3uQAOSJFqE5TKjlB_I3oRT1LMzMLxZs4pgsqi18UWvK-0p0rKI3axoBC9poiU9ir0wMJEdT9gjQKyMQEe-Gi5MmzRtaFSMbWuzBOGkr4ER0IWqtzqW8syix_XL2bnizBPf9JfJvCOv4sBDKYE3UNbQ",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 156,
+       "total_tokens": 341,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 129,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-6",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505665,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Landing accident (specific event not provided)\",\"confidence\":0.62}",
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbCE9CYin9ZJSI2FW9fPXhlqTM09MikcPmxsZwX7L8xoNpv6T2PHV75qOBd0cKcNr1KCzTfhGUsU3_66Y46fQLyv4lc18FNTspLiAgZlUiXQu4YrC6rj3l-hpWO2ZkHkno-WzvLJXM44SVdvM4i2vGU0AJkBOz6IRIOhmiaR61hy9sLF1OPxdlmVLe1ZgWMqu5VJfqgfAIi0Lsor6eIKaL15sfz_NS4Gjd7mA3e5wxUW-k311j-L2LGLIywUvuTVfVMDpXPcR1znC_Txo4htk-hO_sh1iqZU0ETz-FNIIS18KYZ8Zh-zmsWAj3tGAdnrwbzRyzBvrUIOThwRjzc2DsL2snk4YK8X6wJ8vhzv7Tny-EMDcFVTpSTye6061S-XUpV7E0JVgS8WzC-fsSiNZ_Hb2YXuWp86v5mqWt3qNsUM41nrNjjt1r4aUMG5o_nBZrUaY8BwAVUc1iwbF2AV8ixVwiT0crs-Jg_X8c0ER0B_ypYSUK4Mu1_NCepJY4dEWhUWuz_w114f54p8VR2ZoLBeljjHcJIMh-4v_Ht5olIj_fNOJuSxTCSDDSGnxjW1fsyflw9syHZvzahiQpn_0csv8NMK55fv-7fJDWGzFw6wzgHoa1DkMSi9zJWml9qQ84sOqL5-1WTrzXFBw7ifiAcnGsjtBkv7Hz9KaVtPPmcjz6Og38L-2Q6i11unwV5kz0HMjhhVIZf7wxJswCk7SfbTUbXjK_BBmHSIfYuBBoznfAlekuN0xzbgOOxoi5-AXgBOXUHTPVH0x6_O8nDjWXpjLFizOXy4npmWRst9mFm0NFzjxNcOCxcmb6O6Eg8K9CpoXgLamW1gGgMmq8GuYsJul4q1YL9l2kKzsiy5B-sz7TlVlyreXzDjMeq9FZLhIftvDM5CJkJLJqGYNRuqSNOd-VuMopZqz7yAwDp7nfFgR1IxEbncuAdVlWKpkdZVANWIOmGlf2s1jfAxIXzv1qsewd0DuHeHzkxZb1ZXDxth7f6_fqsxcDUGtXZULKsB7blcaSOoSMcv5oszApbAHuCaP6vyGIkiDZ2SwOdk5b7Mua2g29N6mkSnSDwwKFwswYcZFN_9UXrMos99Si7znhcX8LI4eCQTWPNMCygQCZe2zddxPWUEcWlzTtogQOJ51RF2iKpEBTwTJiTOXHG0Y7CrkiO1MuTKmF1ARYjPPcbR61iMwnqeaMJ5Wa8-0py2UyaBEdvxLhalDMrBn4epkWLQH5LOSccyobLKas8K2ObJwB8INj_XLqRFlt2uEJMh1PfPh948yCrxOgiDJam7Sh7Nj45JTkYTA-RdsKF9rKznWCbQitumM0waidWMtvJj2A4ZLSReVmfVol53nM2DzY65TBdAMvy7tcg0YzZYyWNyD-i9I1RcG7CegflQKFaFTTxzRQxXTFjES9y7Rz0zdL45f6ygGhbnwRj_3fqTqKRWYC_p69Jcrq9__9oidSzSpi97ZDoq2hUevYOPDB8epOcklOhTNR8SRJ5RCIEwTTTgEKit_oDH8hiR9oBPn6V9es27cItIv2Fpce-_6-0KTWYsF8jtOdxilop7Fp15h7yelU4qpqORY0X7gY8utW4kOgx9ExecAAGog7y81fuRkuiGHt_5gwHpbf77jeSrpwQ_hCon9raAXeMI_C2Ikc7L7w9LCzBY5a9iuc4B-dVM6G_TZUMOnLZPDZzk5w1VLf_pbZcqAnAy1cnAdExI1TTlh6eVsA88jF0GKW30kWd97hN-gWu1xJJQatJtjs6x8vOQktsFYMgW0Vj2zHN3hYtvZHRKYDQJqPrZqh30l9EshWyUFRa-AoeCV5WlkSB6HQjn3jG5JR31oGpe1BsBy9TAJmj6aZLbYnJYZP9FkzYO0OJhGp3lpQPKi-l1zs5nRzqcvUpYgHe3VUYY4Lh1RoiteBFPiTcxQNj5707-XguGSGBh7Dtv8Jl-lHRxIHby4l59y7wSVfqH9yvx-BMjquHPdVUxwR59fw2EBrba6pDXtsj9K7z0-fbzamCJ0reh6vpcsX-cR4CG18hBlE_4o1clbiVMttGvBCzDUHMQS80fFoZJ6tdKvoXLpmF-1s1I-rcGmG4=",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 155,
+       "total_tokens": 340,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 124,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-7",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505716,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Landing incident (specific event not provided)\",\"confidence\":0.45}",
+         "refusal": null,
+         "reasoning": "**Evaluating landing incident evidence**\n\nI need to determine if we can infer that an event likely resulted in a hard landing. All I have is the JSON schema for the phase of the event and the confidence level, which seems low at .45. The evidence points toward a landing phase without explicitly defining an event. I'm considering the possibility of an accident involving a Beech King Air, potentially due to issues like a landing gear collapse or loss of control during landing. I'll work on outputting the exact JSON.",
+         "reasoning_details": [
+          {
+           "type": "reasoning.summary",
+           "summary": "**Evaluating landing incident evidence**\n\nI need to determine if we can infer that an event likely resulted in a hard landing. All I have is the JSON schema for the phase of the event and the confidence level, which seems low at .45. The evidence points toward a landing phase without explicitly defining an event. I'm considering the possibility of an accident involving a Beech King Air, potentially due to issues like a landing gear collapse or loss of control during landing. I'll work on outputting the exact JSON.",
+           "format": "openai-responses-v1",
+           "index": 0
+          },
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC3XKJlguyDHIVsG06rNH7ffVkrawP5xFlrHuJMUS0uK91PorTMDlBKdxs6iaAU-BBw-F7t-5gtdO8Vj3utcLgXdQk6eEvlXhwtahMjDNR6EQ-4M_jbXk3QYD5NzozeMt3DBZYlN4hZFGJKcpcOGoKWh5zzosmxQUoRG2Ne2SIB4FboFWThSmy9DDbWx20oaf9fjLZ3hj2VhAVsR70FnIKfw3rwinEbBU53EP7PtEmLQBJUZldIM662uFJ03UWVf02612DDst4sAeTxpIKOdvilzi5TQgjtOhUYqjmB_BIOEZUEJBkqgd0v12jC_l8LhBd5Jhpx4MMUsO56pYQ0ErbCK6kVIemgqZG-NlvHZIn-d4jKceLeOM8hSpeC6-47Rq_P1NVoIkpRwo10NTCEYVgzhaj4uoIgCTmvjCzSbPvSfvGIpZuhqXVj0CDaVL8ARE4Fbxd7a-c2k_tNAR-j6EXG6XLbttv4E9s5KNai4yTv-vaV24JwOBPQ0gFbfYhvvQkgkBzk8YCxwqkIF2ajquvbgT3wg0AL1-4n0o-wsL2kEUv_UtwLAutp7UEPN99K5Q5bA4WrJh2g327lplUP6YbzkoSmtSZl3m-YRhZAKZJuLDANNZD7T8x1wpTk-yFjFv4Jr1DqLQgmItWQj2LhpUIOZOmLNuUnlpBprqf9mbjdKTnAqDAKpBY6zwzCK92D_LgZNUIteiQWnu5PZeljl9ew7-SfUsFjK25wLxccGcNl-x1yTMYgsFM1Z-PbtNM1Kl_vJJtVW_HZ7lz0PLqfq3guXx9Q-EmjykZVvLp1EShRt_B-J6szIVFG7JOYa85X4-5-l8pAYgo4TlSL3tRF_GHvtYEXzOYZzcvLXyLFVW0V5ifFsxf7KXvND3D4n8frh3OZEPdyutXae7umuYEQZaw2bBNxHtvCu4emQ-lDuCDkPIezpuo3Nx6ras5-BwcIRsn6NVaYR8FiZsSZdTsCmlEBi3LszjDKxjZ81OPzwmbzRJQH7qao56a1fkG5EHKPnXrMg41r_y8aF36cbXqOXHMTO_APoo4gJ7SRjxoLMhDx7_6XgtBasYjVmBFVYmdYoREEiqezcc3-6_4Ns5Hc_BQSda6jSQcs3qOuqFAgLjL4ICep1eN0aQIPIz3g-4owzkkffzgF1PT2A5YS6gTXMW7UZQJO7n6oyYQ2fWdjKPKi_KUQVbyS_Xw1cffm2zI32zJkBiob1eD1SKOxnNXsv90Bbz0S_1CYHqOTRJYx8uY7ZNladUrgV84sW4Hn3JEewAwyF-dSfDiefStGJqoR-LnWaD-UL8uzLWPrWIU8M7tcxMTQj-RStr2TIw4eVCpVGOS0tgnwIgFp3xJKV7t0_28xf1pdu9x_yyhZd7B-dkLYEfRRbxc5FJ-0h-9dWDY_nljb2gNTH-tE8HJLgUShQFdIpt4ompqjyIpeG0iVQBNqkTwR_xowaRiML2gyUJ3NcgXQMUST3Y495_k5jKaJcQkgbQUn3wfnWpX0kbSoTW5f_VwZY4edE4-vjEb6VryfC5hAQs8eAjOYJCJEVRo71sBuzZvtspG8V2kBlR2_L6VVT6CsQ7Q0C7Q9-95INLtztY8f9FSaRJhC3GYDbjk58lb6itqrSROooGCXtHp0eB1AnHTy1Hpmmyb_jgTGbRPBWvJ3kJnAWJwFYuj33mTzSN9zAYIFlEPfJpqMWMJMI4x7u7uY1dwRGXxjQ-aWjIRSMPfWXPu0lwWFc4OEjr8YHlUmjEF1pKEPS_9ao6cVm3K-vPpY0W1OTf5CqL8tYhHoPvv-og3UWDg9MklzVdMcBx1k-kr7E4UW4DapZJ3DMwd4kDFocz3S0mYXK0pknF4wGYBaHAG6KDwMdV1x4m9Ll3i0jt8XVUEUiqdUc5Hn5HUs9UcOZokX9TVQisIWOYlU_AOzCkd8NTZNE4QjE_2Prm86Qa8-3zDJqDFd-NfcFNJcnU5YnmqXY3Qyq8S7s2wX9lhJTYFJtcSCxUQrOWDlRD8ObA==",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 1
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 132,
+       "total_tokens": 317,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 101,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-8",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505656,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Loss of control during landing\",\"confidence\":0.55}",
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbB8Ku2IsfHMt_ceFiDFFmSxQk3SsrgFhFa4neHbceMxO8nam3qgB2Q22njQAIhHwoMG7gaftxVUBvGu8Wy0H0sk-nskez9aHFxMAhsSpVwFv9qA7oIKQkrYWDOlMljGikgxXgV2FsxbyWk_tOPzFdIqG2L9VbKXH_OEgV8nM7V9OZLZTafk-ikKIPDWA5JpkzUFGpZVGlAhVwTEuPlWX5LTBgHLnRe6rAacESFshWgnmuytyoUnrmib5IdRCQ0VnbQcba6vBWQGsWeLUY94hdpK76q6Gn-tkTDG1WK6JQTKwPTBoIxSDXpxPNSiIocr5h1R1BHf6mE0rgfXP6xaydVbizybRu6Yla6hUuGTR69DuSnDfoBU3c5LruTae-1hi8aqXO8O3VI5gXCMjUJdnChWN9Z-50aH7TbXvAD5Be3N1AkE37MEL8q1_0Hq3MmGeOfmDRAbo7nbWNPCPD4RTylT9-Z5iSWNA3NDUc_uIJXIkamm9V7dxZBOntkmvxr9ipRXbvXE-YE88Ygp7i8RMZx5NvLzedA6GL-QR6EQFTWruQQbHfOnDgshjr-fejL0DKBCcYfWhM4QuidlNVTMBoE4e6p25DewKYVX9vfU2i2i5SqLdvBSsZd4sQiiBVNlp5aJmzMNGVyA4yT2tE19jGim5cuFREtg3RgUHJhBc4jD_qHnz9YEhBEoZJPP_kur1AUzrqHWHqSjja0aV7bi7ZdH-nxUD84ECCzhp8jm8FxlkH9frpBW0bFG-VM2OB-pBZlR32NkAx-dy-9Gnf5YVol8bmWSRMI-0t71bvYZSei59IuSs_6tRFkQENkH3zC_5Co_H0lZ76MDFDTZCAStQSD2srSyn8o2LMSe3OpBlko849ZGpWVuYiThI1TTZxnitzfnpuKuyqRegle7c03PvHa9dPpF0JrR7cuPFMi-7-DOYX0mpJruFLJLJhW0eV7lL9Qv-WlyDi9mBhrH8_5nnVTvqlhnFe0ZXeqe-37La7SiOI6X6pef2LF5ZSisyBZzQDhx6vH__NqhHjS87_DErp0pu0TGM3Dhv6cPxqSH1fGAUe96blNqYF27iYNEBakVLuJth5ZjT1xWArCweGhMIK6TdpJ8rgeMfJgEXJ5RDdH1HIgWUuXCMXSVVKGnpB4sW4MjLIhBBa26YSmtzKJo3jlrTNbsW9WToOToA0HFW3eCAGQp2o-VChf4nIorGB15yLrQQFmXU2CSEB-GFWP01Y9eMo48UZTP3pR5q61QF6ZH2nmyNwBcegtUNIgZFH-go3ZJuTG0gf-JRwbYgiVlVouR4u5oEUrJu9T22exSvbgO6X96lOGgW6z-NuoMFuVwkTX25_BDV0BUdT3RWatlbfMp0dthuy5Bu4NWztcOkXffv6ModkLWvFstl3GU_9UFtLbGnSFQuIHakYdJ-PBOrOyFdKD45GoPUHsx9USBTDwwZ0NnHlDrbQJbwc-wbDyq41exLE1TUjgj3uQCbOaZXQzlgbaBBEuCR6Frtxco8QFbFs09kixKbNJ8mbzM1f_aJ6m6vWO4Fi8Hgy1VrWZ83FOhWDjfJnqPBlYDmI5h-ePRWjVSZwWhy6IWPMBFRGcXqu2RPm124I7P7K7w9QuukpMhLQHfDEuDrVzTqGJsSZ4xvM-e6mY0qGnxjCuLaIEtmj7hODBs-Rl9huwCyDNbsPBd9z575XR-dgymvwvZnfu2x75OjAILbEO07D72FVoRWF8VUovKTXswC2lyxJW74FWjojjPdBaKjr07vRGIVqwPK2lajnsfbJTIIFZGu_UBsiMdQV4pGCct8Cq2ovqOZXSRbwl70EHUZgR4-z38uhSHZ_o20MAmeLIOVkKK34YZ9wA9SPHOGq6aCVDsI0A4m7g6JaMUYq028EFe0A1-xT4TJGNpUAEcwbwt-oUUnqFxKX_s9RZEGFOrpKrIpJVNp1TH6tQsHS490S1ZQzpzt2PzMXjwOEgd1YtumVKc0e24A6sE5yEw5F1A1x3Ob4SFY2pTjFk0QkkGYMYN8ePrBuHR0NBI__ZJW835RFhCjguqL9NCyY-2lyRwlLrU0HhjyNq2wTGJp9OovhcmPyhTPI7pnGKng1urpnvlUXfuFvIk1mZ4tbYyPcjXl-yljsyp6IEtzdvxN9aHLA865gThRNI375wwZ8xsuwKv_TIOrQsSgFqfTaSW-VCzbPal90ZwL1VoU-NLrLwjXBN0jEqyvGzhqWUutDBcWzwNkgpJG8FtuzrWfaZdIsO5s7mMy3bjliiHboCBtj4ChR6NoHY_lVPZUDXQQm9kggue3VcN6W3Ig2UiftmefPTdHhSnTfx898d2tYIfpWvEarqUi1UgXI8xq0-slVc5Ej50Yd5AOMff7G09-3j5FKNlMN9GgkAxVE6u_eudZ2KzOjjw0loEIjlcY78P3Ufqv67obHf4_NHaLG31ZNWkVBIVNL6rWXHZH5cQKaqFcTorKBQuP-ztStf9k-s7cCnZ7kxgP60PZaBMS0Vjb2UBfXjC0Z9W73vrot3EY0aDOL8b4aQJAtr438Lma-MKfFtOvDYVZoqxHJGiZW_QHjhXWyjFovarlntJ9YGNES_nLJtEnxDNKMsfn67ZjFo6GSdAzOFccc6fFrOMlSrTlQQofG5UhasbSENJ0egxIJrjL4buIHJOkyhAky1ko8PFvEmRI4xBXTWxGoBu7TPfuviWQKLmKxaJIusJ0mxMjRvuxXvht7vbUxFuezYVmVa-o3xUhF5P2oL7KMYavCJFlPE0fUkqNOOfy4FRYlMQqsLJZ0iHvPABsLW8mONa-Gk=",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 271,
+       "total_tokens": 456,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 243,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   },
+   {
+    "id": "redacted",
+    "custom_id": "probe-9",
+    "response": {
+     "status_code": 200,
+     "request_id": "redacted",
+     "body": {
+      "model": "openai/gpt-5.6-luna:batch",
+      "id": "redacted",
+      "created": 1789505720,
+      "system_fingerprint": null,
+      "object": "chat.completion",
+      "choices": [
+       {
+        "index": 0,
+        "message": {
+         "role": "assistant",
+         "content": "{\"phase\":\"Landing\",\"event\":\"Landing accident; specific event not provided\",\"confidence\":0.99}",
+         "refusal": null,
+         "reasoning": null,
+         "reasoning_details": [
+          {
+           "type": "reasoning.encrypted",
+           "data": "gAAAAABqqbC8crV1nnWBQur3uR4rF5yrW5mRqjqR1vnV8KIRl8jbPXXLLFN-UKjLttVB6SdYV-lAoYO-SpIm2AFPrCHGNcpX2rxzzR1EbfKP6RFI2wXot0tNBE_pwR9R48Y7O6Yv-MY_00sAHbnbg2XeH7wwQwYVr_X3v6bsdFoxiGTaGRXrueu4-DHKmFNdzgR_-CT_xEP41o7XXv9mvhE9BkRbrFlpuAnSQ9M6Lm2ErknSV19pXWITJrO8XY-jxKpFSo7RzwRt7e40XOCqhu55z2RYgnAI1qvhYcrB55OvnPgLuGTiPaZrKxqmhQkF0u5C2rt0KwBXtgAJWZ0iBiRd70dmCSkMui1B03xDhB2SaET2MxqpnKebvV8WpyHbNkXwyj-GxaiTTtIzdnzyDqceA39cewYzQ16IYcg1VNsXdyuXujvNdd5j5sWdrV_t4t1U-XRKOSCS3sw_t60STj3d0mkftU4Q26hc-Prr9hhjl3GxjONP2J1YfFpO8j-sapKP2En_hsHDesV85GX1WrBsWV3bSSyGEev9hVRuUhAcsMCZt3eOY3qSoPhXcpO3Bi8cKr64VLU58ehyn6Uve2qqZTIONWgCOqSNSl-peJnwxjBm_7ZfyNpvSm8ykmgyaM5Ca5Dv9S05M-NwaxBOMfw1F2HrZHmmemWBFjc7P3d4S5LUTk0nnjfc3zx5kKDzk3YNy5TaDPvEfF_hZmBdNIXr5S0CWRXiE7s2OvKxUJJp65GEo_Ab5xTPWWqWFA6fyGsV6BllS-xHvpScqssWfbCZQKvGl0Oi1fO_xJT7W_x2ydR4li2cmFs7AhTJZL5uFWrrx3zL7b4yGIceAAPQP6kyl86j2yZYF5s7GuH4LlCnkdbNdn70AiRR7n1jiwmGWkJCLa4YYKdWwszLlD6OvClHNJqiXNXFA6F3Mua1BA-PrALICrN9WhwUxVabSFQHrBao-N_F9epzFPspRno_25XoXp7aG3SZl3AGl-Lhr3ONuZ-PILJeFAr5_OwmMi9aAAnMkjJbnCZQsW_Hqk9zi2a2YaU4LyEOv17y_sB88di9iesnoBk6SSIpXz33oLtDYrUwWqnDUHE5dEWASDKm9AGKkRX5GSgKHk68AwhqTIpMa9f72Cq8EpD-noltKsMS56EXUHVcWWqKrTyZJvNKlpdep4jV_RLvkawZp6yBALM0LrZRgxwckDvdSEa9XG50dNnDy8bDfbcYT-SmHSnnX1z0rQLhyoZnX-Cq6duYf8E4OihEOzb5YqV80PboI1WzbV0Ey6pJeE4mgkP-RcUOC-me_shTEjb9pifwxnNk8yTdUl90Cb4qFe3U9t2q58ZI6LnRtwN3mUviAg1bfp70aafTM8qC03t-Eolkua9Hr0imrjm27-yLgUvUJh__JdhdzBaR98s78DqRBzqfn1o8UHcY_InQinAynFKLYrn6gLtiDiknnns8B5AdbhUwEYDsfr0kEJ0zRhxra7mStcvh4AU7dWg2QEgUBLrqfjZaGAMKCMZDkKF8Q026zLs0PFoyII4Krv-qPAULx5OyBgc3DbUU6bnH207zgUWTFVBTIcB2NTjJ2TQWaYnllleW7A2c6Mj6JGjJWj1FRJAUrGplWJ9qLKEwqPq2Vmrm9BYjm-xmVzzvWtBO42mXv7qdeilYXt-X6t4YrypCzh8Lc9OmYkbse74K16QV9HvAo18BjOtgXaJmqJpGMXyrUxBqDZw6Zy7F8lDipDsJRNcG2KlrJ7ih7IQefFlUp6e2xlA9Os6-AEoYTeqqsVt7tTRo5WdeMMaV5-fYoPSVdocYww5KrNz8jlAQ97mGBsv5y8hxcFeb6mfzNCU-GFWJ4_1Hdq0Pv-iLFim9eHI-NUfCGqG_aat9Oiu0sxV_D4598nv2AsBLI2YMdqsCWVEaw-2dlvSHgzg8GypO-XPwX9IUj1rVIzNB5I18CWAQC2p7Ja_pMApi-3ILwLB3WxPm-5iWx1_CH40Cc15EJOniWHPMkaNyxP2lcg2Odvc06j8t4azyVPsRVr0klhtiVWwsn_IGwkwTP4H7bnedStZUopy_amsMOhCfBpRlWhyTCbOi6XWTkkp_1Zhqx-hpisgWP3plIu3-2qCaTFm0b-LMwrHN53kDaF03ofDtd-az70BZipOyBPV5SdktPKMyShUpKKGoMMXF2gquJTA3jYcWFKQSWC5Y9pzMt19BOcf8UMoYjX2uUfJ5KkbNLHktJmcjbuzTNuxBpotvTD2CF7gIfZAF_gbi14HRflmlCbJkuN_-Cb8AtS1P0Uhk66JJ7UdGTtdeEfeSuz4vP767ZYxxb8fh3uUZuvD-AnDj1FO4s9k-l4c89xJx7F558YeKeujAHRx847YLs_gdi2UuaoD9lFfyYA1ZMkxKV5HAmd57jJS0NFGbKiURr-KU-mQVEJXZQuUj5nMAGg3JkBc9mG1e5prE1k-MAz9ZJBqnNK8Cw9ubNklrsb_7QOvgc7pE8aPNgzOKxezQqLuiMkuM2htMcoIwAmI0qklho4JpLobRS0iFIOEehOvtAHpOpctTMll4oQdeootnNGSTuiDJV7ZTrL4TlN4FPmdOUa9Id0P07D_fnqsrRXuxvg-3-wQ6rrQ-oSbjcOYZfVV8P47zVLGcZ5YeSEVpc3CxM7MpNzDcZg==",
+           "id": "redacted",
+           "format": "openai-responses-v1",
+           "index": 0
+          }
+         ]
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "completed",
+        "logprobs": null
+       }
+      ],
+      "service_tier": "default",
+      "usage": {
+       "prompt_tokens": 185,
+       "completion_tokens": 240,
+       "total_tokens": 425,
+       "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0,
+        "audio_tokens": 0,
+        "video_tokens": 0
+       },
+       "completion_tokens_details": {
+        "reasoning_tokens": 210,
+        "image_tokens": 0,
+        "audio_tokens": 0
+       }
+      },
+      "provider": "OpenAI"
+     }
+    },
+    "error": null
+   }
+  ]
+ }
+}

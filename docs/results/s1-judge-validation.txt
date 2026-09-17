@@ -1,0 +1,51 @@
+S1 judge validation -- run 20260916T032106-179520f-dev-400-ceiling
+
+The judge is a second model (anthropic/claude-haiku-4.5) that reads the analyst's
+written cause beside the NTSB's own and says whether they mean the same thing. It
+exists because two people can describe one accident in different words, which the
+code scoring would call a miss. Spec section 8 admits it as a secondary measure only
+if it clears two tests.
+
+cases judged: 401   cost: recorded in run.jsonl as 20260916T032106-179520f-dev-400-ceiling-judge
+
+TEST 1 -- agreement with the code layer
+  agreement: 346/401 = 86.3%   threshold 62.5%
+  PASS
+
+  confusion table (judge cause label x occurrence top-1):
+    different    top1_right=  10  top1_wrong= 246
+    related      top1_right=  12  top1_wrong=  87
+    same_cause   top1_right=  13  top1_wrong=  33
+
+  disagreements: 33 judge-generous (judge said same cause, codes said wrong),
+                 22 judge-harsh (judge said not the same, codes said right)
+
+TEST 2 -- are the judge's errors one-sided?
+  A judge wrong only ever in one direction shifts every score by a constant and
+  measures nothing. 30 of the disagreements were drawn at random with a fixed seed
+  and hand-marked by Andy, blind to which direction each came from.
+
+    judge-generous  n= 20   both_defensible=4  codes_right=4  judge_right=12
+    judge-harsh     n= 10   both_defensible=7  codes_right=1  judge_right=2
+
+  judge wrong (marked codes_right): generous=4  harsh=1
+  errors in both directions: yes
+  PASS
+
+RULING (spec section 8): VALIDATED
+  The judge may be reported as a secondary measure. The headline score stays the
+  code-constrained exact match, which needs no judge.
+
+CAVEAT, to be carried wherever this is cited: the hand-check is 30 cases and the
+'both directions' result rests on a single harsh error. It clears the bar as the
+spec writes it; it is not a strong pass. The 30 were sampled from disagreements
+only, so they say nothing about the cases where judge and codes already agreed.
+
+OTHER LABELS, recorded but not part of the validation rule:
+  narrative: {'adds_unsupported_facts': 25, 'consistent': 24, 'contradicts': 306, 'less_detailed': 46}
+  lay:       {'does_not': 342, 'explains_chosen_codes': 59}
+
+  The narrative dimension gained a fourth label, 'less_detailed', after the first
+  pass put 159 of 178 cases in 'contradicts' (decision 0035). A model with no docket
+  writes a vaguer cause than the official one rather than a conflicting one, and the
+  three original labels had nowhere to put that.

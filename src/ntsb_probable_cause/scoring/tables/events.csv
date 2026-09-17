@@ -1,0 +1,94 @@
+code,label
+000,Unknown or undetermined
+010,Aircraft loading event
+020,Aircraft servicing event
+030,Preflight or dispatch event
+040,Aircraft maintenance event
+050,Aircraft inspection event
+060,Attempted remediation/recovery
+070,Airport occurrence
+080,Ground handling event
+081,AC/prop/rotor contact w person
+082,Prop/jet/rotor blast/suction
+090,Abnormal runway contact
+091,Tailstrike
+092,Hard landing
+093,Dragged wing/rotor/float/other
+094,Landing gear collapse
+095,Landing gear not configured
+096,Nose over/nose down
+097,Roll over
+100,Air traffic event
+110,Cabin safety event
+120,Control flight into terr/obj
+130,Emergency descent initiated
+140,Engine shutdown
+150,Fire/smoke (non-impact)
+160,Explosion (non-impact)
+170,Fire/smoke (post-impact)
+180,Explosion (post-impact)
+190,Fuel related
+191,Fuel starvation
+192,Fuel exhaustion
+193,Fuel contamination
+194,Wrong fuel
+200,Ground collision
+210,Icing encounter
+220,Low altitude operations
+230,Loss of control on ground
+231,Dynamic Rollover
+232,Ground resonance
+240,Loss of control in flight
+241,Aerodynamic stall/spin
+242,Loss of tail rotor effectiveness
+243,Retreating blade stall
+244,Settling with power/vortex ring state
+245,Mast bumping
+250,Midair collision
+260,Near midair collision
+270,Abrupt maneuver
+271,Inflight upset
+280,Course deviation
+290,Altitude deviation
+300,Runway excursion
+310,Runway incursion animal
+320,Runway incursion veh/AC/person
+330,Sys/Comp malf/fail (non-power)
+331,Pressure/environ sys malf/fail
+332,Electrical system malf/failure
+333,Flight control sys malf/fail
+334,Flight instrument malf/fail
+335,Nav system malfunction/failure
+336,Comm system malf/failure
+337,Aircraft structural failure
+338,Part(s) separation from AC
+340,Powerplant sys/comp malf/fail
+341,Loss of engine power (total)
+342,Loss of engine power (partial)
+343,Uncontained engine failure
+350,Security/criminal event
+360,Turbulence encounter
+361,Aircraft wake turb encounter
+362,Clear air turbulence encounter
+370,Landing area undershoot
+380,Landing area overshoot
+390,Windshear or thunderstorm
+400,Other weather encounter
+401,VFR encounter with IMC
+402,Loss of visual reference
+410,Terrain avoidance alert
+420,Collision avoidance alert
+430,Stall warn/stick-shaker/pusher
+440,Off-field or emergency landing
+441,Ditching
+450,Hazardous material leak/spill
+460,Evacuation
+470,Collision with terr/obj (non-CFIT)
+480,External load event (Rotorcraft)
+490,Collision during takeoff/land
+500,Loss of lift
+510,Glider tow event
+600,Simulated/training event
+900,Miscellaneous/other
+901,Birdstrike
+990,Missing aircraft

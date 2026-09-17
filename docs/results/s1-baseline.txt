@@ -1,0 +1,8 @@
+## Baseline (spec §6.3)
+
+Reproduction (seed 7, in-sample fit, n=1000): top-1 16.4% [14.2%, 18.8%], top-3 32.4% [29.6%, 35.4%], finding precision@10 (all findings) 16.9% [15.4%, 18.4%], recall@10 (all findings) 18.4% [16.8%, 20.3%]. Spike (1,000-case draw): top-1 16.2%, top-3 32.2%, precision 17.0%, recall 19.0%.
+
+Honest baseline (fit on development, scored on all held-out, n=4241): top-1 17.7% [16.6%, 18.9%], top-3 35.7% [34.2%, 37.1%]
+  finding@10: precision(flagged) 17.9% [17.1%, 18.6%], recall(flagged) 23.2% [22.2%, 24.2%], precision(all) 18.9% [18.2%, 19.7%], recall(all) 21.0% [20.1%, 21.8%]
+  finding@8: precision(flagged) 28.5% [27.4%, 29.6%], recall(flagged) 24.7% [23.7%, 25.7%], precision(all) 30.2% [29.1%, 31.4%], recall(all) 22.5% [21.6%, 23.4%]
+  finding@6: precision(flagged) 46.8% [45.5%, 48.2%], recall(flagged) 41.3% [40.1%, 42.5%], precision(all) 50.0% [48.7%, 51.4%], recall(all) 38.4% [37.3%, 39.5%]

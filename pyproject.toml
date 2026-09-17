@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ntsb-probable-cause"
-version = "0.1.0"
+version = "0.2.0"
 description = "An agent that determines the probable cause of US general-aviation accidents, scored against NTSB verdicts."
 readme = "README.md"
 license = "MIT"
@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 ntsb-ingest = "apps.ingest.__main__:main"
+ntsb-eval = "apps.eval.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ntsb_probable_cause", "apps"]
@@ -82,6 +83,11 @@ source_modules = [
     "ntsb_probable_cause.records.evidence",
     "ntsb_probable_cause.records.guard",
     "ntsb_probable_cause.model",
+    "ntsb_probable_cause.scoring.baseline",
+    "ntsb_probable_cause.scoring.codes",
+    "ntsb_probable_cause.scoring.hypothesis",
+    "ntsb_probable_cause.scoring.prompt",
+    "ntsb_probable_cause.scoring.samples",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
 
@@ -93,6 +99,7 @@ forbidden_modules = [
     "ntsb_probable_cause.records.synthesis",
     "ntsb_probable_cause.records.verdict",
     "ntsb_probable_cause.records.split",
+    "ntsb_probable_cause.scoring",
 ]
 
 [tool.deptry]
@@ -104,6 +111,18 @@ paths = ["src", "apps", "scripts"]
 exclude = ["scripts/exploratory"]
 min_confidence = 80
 
+[tool.typos.default]
+# The provider's batch ids are opaque random strings quoted verbatim (decision 0032 names
+# four of them, and run notes name more). They are evidence of real spending, so they are
+# never reworded; "LFofWWoQzHwuChB7kK27" is not a misspelling of anything.
+extend-ignore-re = [
+    "batch-[0-9]+-[A-Za-z0-9]+",
+    # Short git SHAs, quoted verbatim wherever a run's provenance is recorded (0018) and
+    # throughout 0036's old -> new mapping table. Hex digits spell words by accident:
+    # `f93ba36` contains "ba", which the checker reads as a typo for "by".
+    "`[0-9a-f]{7,40}`",
+]
+
 [tool.typos.default.extend-words]
 # NTSB abbreviations that are not misspellings go here, one per line, with a comment.
 mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016; not a misspelling
@@ -111,7 +130,21 @@ mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016;
 [tool.typos.files]
 # Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false
 # positives; these are redacted, verbatim NTSB record fixtures, not authored text (decision 0015).
-extend-exclude = ["tests/fixtures/records/*.json", "tests/fixtures/api/*.json", "tests/fixtures/eval/*.csv"]
+# The scoring/tables CSVs are verbatim labels from the NTSB data dictionary (avall.mdb), not
+# authored text either; they also trigger false positives (e.g. "VOR", "WAAS", "Unneccessary",
+# both spelled that way in the source data). The openrouter fixtures are verbatim, saved
+# OpenRouter responses (scripts/openrouter_probe.py); batch.json's base64 batch-file payload
+# trips many false positives.
+extend-exclude = [
+    "tests/fixtures/records/*.json",
+    "tests/fixtures/api/*.json",
+    "tests/fixtures/eval/*.csv",
+    # README.md's provenance line embeds a generated short git SHA (decision 0015), which
+    # occasionally spells a false positive (e.g. "1f768ba" contains "ba").
+    "tests/fixtures/eval/README.md",
+    "tests/fixtures/openrouter/*.json",
+    "src/ntsb_probable_cause/scoring/tables/*.csv",
+]
 
 [dependency-groups]
 dev = [
