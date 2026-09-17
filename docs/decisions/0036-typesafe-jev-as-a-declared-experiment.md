@@ -159,14 +159,16 @@ and 2,994) but, per the vendor, not priced. The price itself is still self-repor
 **dev-400 row (2026-09-17).** Run `20260917T182646-adda233-dev-400-jev`, 401 of 401 answered,
 $0.0517 at the published price. Composed top-1 9.7% [7.2, 13.0], against the 17.7% baseline:
 **not above the baseline**, and level with Luna (+1.0% [-2.7, +4.7]) and Gemini (-2.7%
-[-6.2, +0.7]) case by case. Expected calibration error on the event confidence 0.318 against
+[-6.2, +0.7]) case by case on paired plain top-1, which counts an abstention as wrong; on
+`answered top-1`, the like-for-like column point 4 fixed, Jev (9.7%) is below both Luna
+(11.3%) and Gemini (12.7%). Expected calibration error on the event confidence 0.318 against
 a threshold of 0.10: **not calibrated**, overconfident in every bin. On the comparable figure
 — the composed top-1 product, table (c) of the report — Jev's error is 0.359, worse than
-Luna's own self-reported 0.279. Point 4 named the confidence column as the one this experiment
-exists for, and the
-specification fixed "not calibrated" as grounds for declining, so this record is put to Andy
-as **decline**. Details: `docs/results/typesafe-jev-dev400.md`; the printed tables are
-`docs/results/typesafe-jev-dev400.txt`. The judge test of point 5 has not run.
+Luna's own self-reported 0.279. Point 4 named the confidence column as the one this
+experiment exists for, and the specification fixed "not calibrated" as grounds for declining,
+so this record is put to Andy as **decline**. Details: `docs/results/typesafe-jev-dev400.md`;
+the printed tables are `docs/results/typesafe-jev-dev400.txt`. The judge test of point 5 has
+not run.
 
 ## Status
 

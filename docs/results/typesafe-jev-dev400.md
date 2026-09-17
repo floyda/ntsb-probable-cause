@@ -91,13 +91,18 @@ confidence and comparing with how often it was right:
 threshold for that verdict was 0.10, and the measured error is three times it. Every one of
 the nine bins is overconfident, and the worst is the top one (0.9–1.0, gap −0.645): when Jev
 says 95%, it is right 31% of the time. The gap does not simply widen as confidence rises,
-though — the 0.8–0.9 bin (gap −0.233) is closer to correct than every bin below it — so the
-honest statement is "overconfident everywhere, worst at the top," not a smooth trend.
+though — the 0.8–0.9 bin (gap −0.233) is closer to correct than the bins from 0.3–0.4 through
+0.7–0.8, though not than the 0.1–0.2 or 0.2–0.3 bins — so the honest statement is
+"overconfident everywhere, worst at the top," not a smooth trend.
 
 Using Jev's highest event probability instead of its confidence changes nothing (error
-0.334). On the composed code, Jev's error is 0.359, against **Luna's 0.279** — the language
-model's self-reported numbers, which nobody claims are calibrated, are closer to the truth
-than the model sold on calibration. Gemini is worse than both at 0.624.
+0.334). On the composed code, Jev's error is 0.359, against **Luna's 0.279** and Gemini's
+0.624 — both read off Luna's and Gemini's own first-guess probability, whether or not the
+model abstained, since table (c) deliberately ignores abstention for the language models: it
+is a second convention alongside the abstention-aware `answered top-1` column above, used on
+purpose because Jev has no abstention to control for. The language model's self-reported
+numbers, which nobody claims are calibrated, are closer to the truth than the model sold on
+calibration.
 
 **What this means for S3.** Decision 0022 says the loop is warranted only if its intermediate
 hypotheses are calibrated. The cheap route — buy calibration from a model class trained for
