@@ -50,7 +50,9 @@ case, and no new case is drawn. The held-out split is not touched.
   (`tests/fixtures/typesafe/README.md`). At the vendor's published $0.042 per million input
   tokens, 401 requests of that size cost about $0.07. The script stops before a request that
   would take the total above **$0.50** at the published price. The published price is
-  self-reported (`sources.py:JEV`).
+  self-reported (`sources.py:JEV`). Jev is in preview, so its price is reported for
+  comparison with the LLM rows only; no reading in §5 depends on it (Andy, 2026-09-17). The
+  cap stays, because every metered call has one in code.
 
 **Why no prompt.** Jev has no prompt. The only instructions are the question text and the
 label descriptions. The system prompt the LLMs were given is therefore not sent. This is the
