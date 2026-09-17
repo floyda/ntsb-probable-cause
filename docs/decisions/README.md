@@ -77,3 +77,4 @@ under `docs/specs/` and the record links to it.
 | [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
 | [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
 | [0036](0036-heldout-text-purged-from-history-shas-map-forward.md) | Withheld held-out text is purged from git history; the runs' recorded SHAs map forward | Accepted |
+| [0037](0037-docket-fixtures-from-development-dockets-only.md) | Docket fixtures come from development-split dockets only | Accepted; amends the roadmap S2 entry |
