@@ -6,16 +6,26 @@ from pathlib import Path
 
 import pytest
 from scripts.exploratory.jev_dev400 import (
+    CONDITIONED_STATEMENT,
+    LLM_RUNS,
+    SAMPLE,
+    TOKENS_PER_REQUEST_ESTIMATE,
+    ConditionedExchange,
     _example_count,
     accuracy_reading,
     ask_all,
     build_report,
     calibration_reading,
+    conditioned_hypothesis,
+    conditioned_state,
+    event_question,
     jev_hypothesis,
     llm_first_guesses,
+    phase_question,
     questions,
     ranked_pairs,
     read_rows,
+    score_conditioned_case,
     score_jev_case,
 )
 
@@ -34,6 +44,8 @@ from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import CaseResult, StepRecord, write_jsonl
+from ntsb_probable_cause.scoring.report import fmt_n, proportion
+from ntsb_probable_cause.scoring.runner import RunSpec, case_payload
 
 TABLES = load_tables()
 
@@ -90,6 +102,58 @@ def test_jev_answer_scores_like_any_hypothesis() -> None:
     assert case.event_top_probability == 0.7
     assert case.true_event_probability == 0.7
     assert case.top_events == (("092", 0.7), ("000", 0.3))
+
+
+def test_conditioned_state_is_the_payload_text_plus_exactly_one_sentence() -> None:
+    payload = Payload.from_evidence(Evidence(case_id="X9", docket_url=None, registration="X9"))
+    state = conditioned_state(payload, "240", TABLES)
+    assert state == (
+        payload.text
+        + "\n\n"
+        + "The defining occurrence of this accident has been determined to be event 240 "
+        "(Loss of control in flight)."
+    )
+    # The payload text is untouched; the sentence is the only text ever added to a state.
+    assert state.startswith(payload.text)
+    added = state.removeprefix(payload.text)
+    assert added == "\n\n" + CONDITIONED_STATEMENT.format(
+        code="240", label="Loss of control in flight"
+    )
+
+
+def test_event_and_phase_questions_are_asked_alone() -> None:
+    assert set(event_question(TABLES)) == {"event"}
+    assert set(phase_question(TABLES)) == {"phase"}
+
+
+def test_conditioned_composition_ranks_phases_within_the_chosen_event_only() -> None:
+    event_reply = _reply({"500": 1.0}, {"240": 0.9, "092": 0.1})
+    # phase call: "500" most probable, but the event never changes across the ranked list,
+    # unlike the unconditioned rule where a different phase can pair with a different event.
+    phase_reply = _reply({"500": 0.6, "550": 0.3, "300": 0.1}, {"240": 1.0})
+    hypothesis = conditioned_hypothesis(event_reply, phase_reply)
+    assert hypothesis.occurrence_codes(TABLES) == ("500240", "550240", "300240")
+    assert {g.event for g in hypothesis.occurrence} == {"240"}
+    assert abs(hypothesis.confidence - 0.9 * 0.6) < 1e-9
+
+
+def test_conditioned_case_scores_the_chained_answer() -> None:
+    event_reply = _reply({"500": 1.0}, {"240": 0.9, "092": 0.1})
+    phase_reply = _reply({"500": 0.6, "550": 0.3}, {"240": 1.0})
+    verdict = Verdict(
+        probable_cause=None,
+        occurrence_codes=("500240",),
+        finding_codes=(),
+        finding_codes_in_cause=(),
+    )
+    case = score_conditioned_case(
+        "X3", True, event_reply, phase_reply, verdict, TABLES, frozenset()
+    )
+    assert case.scores.occurrence_top1
+    assert case.scores.event_match
+    assert case.phase_match
+    assert case.event_confidence == event_reply.choice("event").confidence
+    assert abs(case.top1_probability - 0.9 * 0.6) < 1e-9
 
 
 def test_a_ruled_out_true_event_has_probability_zero() -> None:
@@ -324,3 +388,119 @@ def test_build_report_survives_a_run_with_no_answered_cases(tmp_path: Path) -> N
 def test_build_report_refuses_a_folder_with_no_meta_json(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match=r"meta\.json"):
         build_report(tmp_path, raws=[], ids=[], tables=TABLES, seen=frozenset(), runs_dir=tmp_path)
+
+
+def _real_case() -> tuple[dict[str, object], str]:
+    """One real development-split record, its own verdict already inside the reply's tables."""
+    raw = json.loads(Path("tests/fixtures/records/ANC09CA020.json").read_text())["record"]
+    _, _, _, evidence = case_payload(raw, RunSpec(sample=SAMPLE, arm="ceiling"), TABLES)
+    return raw, evidence.case_id
+
+
+def _empty_llm_runs(runs_dir: Path) -> None:
+    """Empty ``cases.jsonl`` for both S1 runs table (c) reads, so build_report need not skip it."""
+    for run in LLM_RUNS.values():
+        folder = runs_dir / run
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "cases.jsonl").write_text("")
+
+
+def test_conditioned_exchange_cost_is_the_sum_of_both_calls(tmp_path: Path) -> None:
+    replies = tmp_path / "replies.jsonl"
+    asked: list[str] = []
+
+    def ask(payload: Payload) -> ConditionedExchange:
+        asked.append(str(payload.fields()["registration"]))
+        return ConditionedExchange(
+            reply=SAVED, event_reply=SAVED, attempts=3, retried_statuses=("429",), seconds=0.4
+        )
+
+    reason = ask_all(replies, _cases(1), ask, cap_usd=10.0, usd_per_token=1e-6)
+    assert reason == "complete"
+    row = read_rows(replies)[0]
+    assert abs(float(str(row["cost_usd"])) - 2 * SAVED.usage.input_tokens * 1e-6) < 1e-12
+    assert row["attempts"] == 3
+    assert row["retried_statuses"] == ["429"]
+    assert row["seconds"] == 0.4
+    assert row["event_reply"] == SAVED.model_dump(mode="json")
+
+
+def test_conditioned_cap_check_doubles_the_per_request_estimate(tmp_path: Path) -> None:
+    replies = tmp_path / "replies.jsonl"
+    asked: list[str] = []
+    reason = ask_all(
+        replies,
+        _cases(2),
+        _fake_ask(asked),
+        cap_usd=0.05,
+        usd_per_token=1e-5,
+        concurrency=1,
+        tokens_per_request=TOKENS_PER_REQUEST_ESTIMATE * 2,
+    )
+    assert reason == "cap"
+    assert asked == []
+
+
+def test_an_unconditioned_run_folder_still_reports_by_the_old_rule(tmp_path: Path) -> None:
+    raw, case_id = _real_case()
+    folder = tmp_path / "run"
+    folder.mkdir()
+    (folder / "meta.json").write_text(
+        json.dumps({"model": "jev-latest", "commit": "abc1234", "dirty": False})
+    )
+    row = {
+        "case_id": case_id,
+        "ok": True,
+        "error": None,
+        "attempts": 1,
+        "retried_statuses": [],
+        "seconds": 0.25,
+        "cost_usd": 0.001,
+        "reply": SAVED.model_dump(mode="json"),
+    }
+    (folder / "replies.jsonl").write_text(json.dumps(row) + "\n")
+    _empty_llm_runs(tmp_path)
+    text = build_report(
+        folder, raws=[raw], ids=[case_id], tables=TABLES, seen=frozenset(), runs_dir=tmp_path
+    )
+    assert "composition rule: conditioned" not in text
+    assert "event-alone accuracy" not in text
+    _, _, verdict, _ = case_payload(raw, RunSpec(sample=SAMPLE, arm="ceiling"), TABLES)
+    expected = score_jev_case(
+        case_id, raw.get("highestInjuryLevel") == "Fatal", SAVED, verdict, TABLES, frozenset()
+    )
+    assert fmt_n(proportion([expected.scores.occurrence_top1])) in text
+
+
+def test_a_conditioned_run_folder_reports_the_new_rule_and_its_extra_lines(
+    tmp_path: Path,
+) -> None:
+    raw, case_id = _real_case()
+    folder = tmp_path / "run"
+    folder.mkdir()
+    (folder / "meta.json").write_text(
+        json.dumps(
+            {"model": "jev-latest", "commit": "abc1234", "dirty": False, "conditioned": True}
+        )
+    )
+    row = {
+        "case_id": case_id,
+        "ok": True,
+        "error": None,
+        "attempts": 2,
+        "retried_statuses": [],
+        "seconds": 0.5,
+        "cost_usd": 0.002,
+        "reply": SAVED.model_dump(mode="json"),
+        "event_reply": SAVED.model_dump(mode="json"),
+    }
+    (folder / "replies.jsonl").write_text(json.dumps(row) + "\n")
+    _empty_llm_runs(tmp_path)
+    text = build_report(
+        folder, raws=[raw], ids=[case_id], tables=TABLES, seen=frozenset(), runs_dir=tmp_path
+    )
+    assert "composition rule: conditioned" in text
+    assert "event-alone accuracy" in text
+    assert "phase accuracy given the conditioning" in text
+    assert "unseen-pair rate under the conditioned composition" in text
+    assert "chosen event probability x top conditioned phase probability" in text

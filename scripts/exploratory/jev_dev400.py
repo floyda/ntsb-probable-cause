@@ -75,6 +75,16 @@ TOKENS_PER_REQUEST_ESTIMATE = 5_000
 
 SAMPLE = "dev-400"
 RUN_SUFFIX = "dev-400-jev"
+# The follow-up of docs/plans/2026-09-17-typesafe-jev-dev400.md's Deviations section: chains
+# the two questions in two calls instead of composing them independently.
+RUN_SUFFIX_CONDITIONED = f"{RUN_SUFFIX}-conditioned"
+
+# The ONLY text ever appended to a payload's state, and only in ``--conditioned`` mode. This
+# is Jev's own event-call output fed back to it as the second call's state — never withheld
+# record data, and never anything from the verdict or synthesis (decisions 0013, 0016).
+CONDITIONED_STATEMENT = (
+    "The defining occurrence of this accident has been determined to be event {code} ({label})."
+)
 # Spec §4: the saved S1 runs the Jev row is compared with, case by case.
 LLM_RUNS = {
     "Luna": "20260916T032106-179520f-dev-400-ceiling",
@@ -88,6 +98,26 @@ def questions(tables: CodeTables) -> dict[str, dict[str, object]]:
     """Phase and event, worded exactly as the probe worded them."""
     every = choice_questions(tables)
     return {name: every[name] for name in QUESTION_NAMES}
+
+
+def event_question(tables: CodeTables) -> dict[str, dict[str, object]]:
+    """Call 1 of conditioned mode: the event question alone."""
+    return {"event": questions(tables)["event"]}
+
+
+def phase_question(tables: CodeTables) -> dict[str, dict[str, object]]:
+    """Call 2 of conditioned mode: the phase question alone."""
+    return {"phase": questions(tables)["phase"]}
+
+
+def conditioned_state(payload: Payload, event_code: str, tables: CodeTables) -> str:
+    """``payload.text`` plus the one sentence naming call 1's determined event.
+
+    The sentence is a statement of fact about the investigation's own conditioning, worded
+    in the project's clinical tone. It is the only text this script ever adds to a state.
+    """
+    label = tables.events[event_code]
+    return f"{payload.text}\n\n{CONDITIONED_STATEMENT.format(code=event_code, label=label)}"
 
 
 def ranked_pairs(
@@ -104,7 +134,12 @@ def ranked_pairs(
 
 
 def jev_hypothesis(reply: SystemOneReply) -> Hypothesis:
-    """Jev's answer in S1's shape, so ``score_case`` scores it exactly as it scored Luna."""
+    """Jev's answer in S1's shape, so ``score_case`` scores it exactly as it scored Luna.
+
+    Composition: ranks over the full 47x93 grid of independent phase x event pairs (decision
+    0036). This is the unconditioned rule; ``conditioned_hypothesis`` below is a different,
+    non-interchangeable rule for the two-call follow-up.
+    """
     top = ranked_pairs(reply.choice("phase"), reply.choice("event"))
     return Hypothesis(
         evidence_narrative="",
@@ -115,6 +150,39 @@ def jev_hypothesis(reply: SystemOneReply) -> Hypothesis:
         probable_cause="",
         lay_explanation="",
         confidence=min(1.0, top[0][2]),
+        abstain=False,
+        evidence_used=(),
+    )
+
+
+def conditioned_hypothesis(event_reply: SystemOneReply, phase_reply: SystemOneReply) -> Hypothesis:
+    """The chained answer: the event call 1 chose, with call 2's most probable phases.
+
+    Composition: top-1 is the chosen event with its single most probable phase; top-3 is
+    that same event with its three most probable phases, in order. This differs from
+    ``jev_hypothesis``'s unconditioned rule, which ranks over the full 47x93 grid of
+    independent pairs and so can (and does, 7.7% of the time) put a different event at
+    top-1 than at top-2 or top-3. Here the event never changes across the ranked list: it
+    was fixed by call 1 before call 2 ever ran. The two rules are not interchangeable and
+    are not compared against each other on the same footing.
+    """
+    event = event_reply.choice("event")
+    phase = phase_reply.choice("phase")
+    chosen_event = event.choice
+    event_probability = event.probabilities[chosen_event]
+    ranked_phases = sorted(phase.probabilities.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    return Hypothesis(
+        evidence_narrative="",
+        occurrence=tuple(
+            OccurrenceGuess(
+                phase=p, event=chosen_event, probability=min(1.0, event_probability * pp)
+            )
+            for p, pp in ranked_phases
+        ),
+        findings=(),
+        probable_cause="",
+        lay_explanation="",
+        confidence=min(1.0, event_probability * ranked_phases[0][1]),
         abstain=False,
         evidence_used=(),
     )
@@ -133,20 +201,24 @@ class JevCase:
     true_occurrence: str | None
     true_event_probability: float | None
     top_events: tuple[tuple[str, float], ...]
+    phase_match: bool | None
 
 
-def score_jev_case(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
+def _score_hypothesis_case(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     case_id: str,
     fatal: bool,
-    reply: SystemOneReply,
+    hypothesis: Hypothesis,
+    event: ChoiceAnswer,
     verdict: Verdict,
     tables: CodeTables,
     seen_pairs: AbstractSet[str],
 ) -> JevCase:
-    """Score one reply with S1's ``score_case`` and keep what calibration needs."""
-    hypothesis = jev_hypothesis(reply)
+    """Score one hypothesis with S1's ``score_case`` and keep what calibration needs.
+
+    Shared by ``score_jev_case`` (unconditioned) and ``score_conditioned_case``: the only
+    difference between the two modes is which hypothesis and which event answer they pass in.
+    """
     scores = score_case(hypothesis, verdict, tables, seen_pairs=seen_pairs)
-    event = reply.choice("event")
     truth = primary_occurrence(verdict)
     ranked = sorted(event.probabilities.items(), key=lambda kv: (-kv[1], kv[0]))
     return JevCase(
@@ -159,6 +231,38 @@ def score_jev_case(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
         true_occurrence=truth,
         true_event_probability=event.probabilities.get(truth[3:], 0.0) if truth else None,
         top_events=tuple(ranked[:5]),
+        phase_match=hypothesis.occurrence[0].phase == truth[:3] if truth else None,
+    )
+
+
+def score_jev_case(
+    case_id: str,
+    fatal: bool,
+    reply: SystemOneReply,
+    verdict: Verdict,
+    tables: CodeTables,
+    seen_pairs: AbstractSet[str],
+) -> JevCase:
+    """Score one unconditioned reply (``jev_hypothesis``'s 47x93-grid composition)."""
+    hypothesis = jev_hypothesis(reply)
+    return _score_hypothesis_case(
+        case_id, fatal, hypothesis, reply.choice("event"), verdict, tables, seen_pairs
+    )
+
+
+def score_conditioned_case(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
+    case_id: str,
+    fatal: bool,
+    event_reply: SystemOneReply,
+    phase_reply: SystemOneReply,
+    verdict: Verdict,
+    tables: CodeTables,
+    seen_pairs: AbstractSet[str],
+) -> JevCase:
+    """Score one conditioned case (``conditioned_hypothesis``'s chained composition)."""
+    hypothesis = conditioned_hypothesis(event_reply, phase_reply)
+    return _score_hypothesis_case(
+        case_id, fatal, hypothesis, event_reply.choice("event"), verdict, tables, seen_pairs
     )
 
 
@@ -230,8 +334,26 @@ def read_rows(replies: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in replies.read_text().splitlines() if line]
 
 
+@dataclass(frozen=True)
+class ConditionedExchange:
+    """Both calls of one conditioned case: call 2's reply, call 1's event reply, summed cost.
+
+    Duck-compatible with ``Exchange`` (same ``reply``, ``attempts``, ``retried_statuses``,
+    ``seconds``) plus ``event_reply``, so ``ask_all``'s per-case callable can return either
+    without ``ask_all`` itself needing to know which mode is running.
+    """
+
+    reply: SystemOneReply
+    event_reply: SystemOneReply
+    attempts: int
+    retried_statuses: tuple[str, ...]
+    seconds: float
+
+
 def _attempt(
-    case: tuple[str, Payload], ask: Callable[[Payload], Exchange], usd_per_token: float
+    case: tuple[str, Payload],
+    ask: Callable[[Payload], Exchange | ConditionedExchange],
+    usd_per_token: float,
 ) -> dict[str, object]:
     case_id, payload = case
     try:
@@ -241,33 +363,45 @@ def _attempt(
             "case_id": case_id, "ok": False, "error": str(error), "attempts": None,
             "retried_statuses": [], "seconds": None, "cost_usd": 0.0, "reply": None,
         }
-    return {
+    cost_usd = exchange.reply.usage.input_tokens * usd_per_token
+    row: dict[str, object] = {
         "case_id": case_id,
         "ok": True,
         "error": None,
         "attempts": exchange.attempts,
         "retried_statuses": list(exchange.retried_statuses),
         "seconds": round(exchange.seconds, 3),
-        "cost_usd": exchange.reply.usage.input_tokens * usd_per_token,
+        "cost_usd": cost_usd,
         "reply": exchange.reply.model_dump(mode="json"),
     }
+    if isinstance(exchange, ConditionedExchange):
+        # Spec: cost_usd is the sum of both calls' input tokens times the price.
+        row["cost_usd"] = cost_usd + exchange.event_reply.usage.input_tokens * usd_per_token
+        row["event_reply"] = exchange.event_reply.model_dump(mode="json")
+    return row
 
 
 def ask_all(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     replies: Path,
     cases: Sequence[tuple[str, Payload]],
-    ask: Callable[[Payload], Exchange],
+    ask: Callable[[Payload], Exchange | ConditionedExchange],
     *,
     cap_usd: float,
     usd_per_token: float,
     concurrency: int = CONCURRENCY,
+    tokens_per_request: int = TOKENS_PER_REQUEST_ESTIMATE,
 ) -> str:
-    """Ask every case without an answered row, ``concurrency`` at a time; stop before the cap."""
+    """Ask every case without an answered row, ``concurrency`` at a time; stop before the cap.
+
+    ``tokens_per_request`` is the per-case token estimate the cap is checked against before
+    any request in a chunk is sent; conditioned mode passes double the single-call estimate,
+    since ``ask`` there makes two calls per case (spec: cost accounting).
+    """
     rows = read_rows(replies)
     answered = {row["case_id"] for row in rows if row["ok"]}
     spent = sum(float(str(row["cost_usd"])) for row in rows)
     pending = [case for case in cases if case[0] not in answered]
-    estimate = TOKENS_PER_REQUEST_ESTIMATE * usd_per_token
+    estimate = tokens_per_request * usd_per_token
     replies.parent.mkdir(parents=True, exist_ok=True)
     attempt = partial(_attempt, ask=ask, usd_per_token=usd_per_token)
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -326,19 +460,37 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     # must never inflate token, cost or latency lines, or let "answered N of M" exceed M.
     ok = {i: all_ok[i] for i in ids if i in all_ok}
     meta = json.loads(meta_file.read_text())
+    # A folder without the key is an unconditioned run, reported exactly as it always was.
+    conditioned = bool(meta.get("conditioned", False))
     spec = RunSpec(sample=SAMPLE, arm="ceiling")
     cases: list[JevCase] = []
     for case_id, raw in zip(ids, raws, strict=True):
         if case_id not in ok:
             continue
         _, _, verdict, _ = case_payload(raw, spec, tables)
-        reply = parse_reply(cast("Mapping[str, object]", ok[case_id]["reply"]))
+        row = ok[case_id]
+        reply = parse_reply(cast("Mapping[str, object]", row["reply"]))
         fatal = raw.get("highestInjuryLevel") == "Fatal"
-        cases.append(score_jev_case(case_id, fatal, reply, verdict, tables, seen))
+        if conditioned:
+            event_reply = parse_reply(cast("Mapping[str, object]", row["event_reply"]))
+            cases.append(
+                score_conditioned_case(case_id, fatal, event_reply, reply, verdict, tables, seen)
+            )
+        else:
+            cases.append(score_jev_case(case_id, fatal, reply, verdict, tables, seen))
     replies = [parse_reply(cast("Mapping[str, object]", row["reply"])) for row in ok.values()]
+    # In conditioned rows this adds call 1's tokens; in unconditioned rows there is no
+    # "event_reply" key, so this is an empty list and every header number below is unchanged.
+    event_replies = [
+        parse_reply(cast("Mapping[str, object]", row["event_reply"]))
+        for row in ok.values()
+        if "event_reply" in row
+    ]
     seconds = [float(str(row["seconds"])) for row in ok.values()]
     retried = Counter(s for row in rows for s in cast("list[str]", row["retried_statuses"]))
-    input_tokens = sum(r.usage.input_tokens for r in replies)
+    input_tokens = sum(r.usage.input_tokens for r in replies) + sum(
+        r.usage.input_tokens for r in event_replies
+    )
     out: list[str] = []
     add = out.append
 
@@ -350,7 +502,10 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     add(f"model versions in replies: {dict(Counter(r.model for r in replies))}")
     failed_rows = sum(1 for r in rows if not r["ok"])
     add(f"cases answered {len(ok)} of {len(ids)}; failed rows {failed_rows}")
-    add(f"input tokens {input_tokens}; output tokens {sum(r.usage.output_tokens for r in replies)}")
+    output_tokens = sum(r.usage.output_tokens for r in replies) + sum(
+        r.usage.output_tokens for r in event_replies
+    )
+    add(f"input tokens {input_tokens}; output tokens {output_tokens}")
     per_case = input_tokens * USD_PER_TOKEN / max(1, len(ok))
     add(
         f"cost at the published, self-reported price: ${input_tokens * USD_PER_TOKEN:.4f} "
@@ -390,6 +545,25 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     top1 = [c.scores.occurrence_top1 for c in cases]
     add(f"reading (spec §5, bar {BASELINE_TOP1:.1%}): {accuracy_reading(top1)}")
 
+    if conditioned:
+        add(
+            "\ncomposition rule: conditioned — call 1 fixes the event; top-3 ranks call 2's "
+            "phases within that one event (conditioned_hypothesis; not the unconditioned "
+            "47x93-grid rule jev_hypothesis uses)"
+        )
+        event_alone = proportion([c.scores.event_match for c in cases])
+        phase_matches = [c.phase_match for c in cases if c.phase_match is not None]
+        unseen = proportion([c.scores.pair_unseen for c in cases])
+        add(
+            f"event-alone accuracy: {fmt_n(event_alone)} "
+            "(compare the unconditioned run's 17.7%, docs/results/typesafe-jev-dev400.md)"
+        )
+        add(
+            f"phase accuracy given the conditioning: {fmt_n(proportion(phase_matches))} "
+            f"(n={len(phase_matches)} cases with a scored verdict occurrence code)"
+        )
+        add(f"unseen-pair rate under the conditioned composition: {fmt_n(unseen)}")
+
     event_confidence = [c.event_confidence for c in cases]
     event_top_probability = [c.event_top_probability for c in cases]
     event_right = [c.scores.event_match for c in cases]
@@ -413,7 +587,10 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     )
     jev_top1 = [by_id[i].top1_probability for i in shared]
     jev_right = [by_id[i].scores.occurrence_top1 for i in shared]
-    add(calibration_block("(c) Jev top-1 product", jev_top1, jev_right))
+    jev_c_title = "(c) Jev top-1 product"
+    if conditioned:
+        jev_c_title += " (conditioned: chosen event probability x top conditioned phase probability)"
+    add(calibration_block(jev_c_title, jev_top1, jev_right))
     for name, g in guesses.items():
         probs = [g[i].probability for i in shared]
         rights = [g[i].right for i in shared]
@@ -454,6 +631,11 @@ def main(argv: Sequence[str]) -> int:
     run_cmd = sub.add_parser("run")
     run_cmd.add_argument("--resume", help="an existing run folder name under the runs directory")
     run_cmd.add_argument("--limit", type=int, help="first N cases only (smoke run)")
+    run_cmd.add_argument(
+        "--conditioned",
+        action="store_true",
+        help="two calls per case: event alone, then phase conditioned on the chosen event",
+    )
     report_cmd = sub.add_parser("report")
     report_cmd.add_argument("folder")
     report_cmd.add_argument("--out")
@@ -478,16 +660,21 @@ def main(argv: Sequence[str]) -> int:
         return 0
 
     sha, dirty = ledger.commit_state()
-    name = args.resume or f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{sha}-{RUN_SUFFIX}"
+    suffix = RUN_SUFFIX_CONDITIONED if args.conditioned else RUN_SUFFIX
+    name = args.resume or f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{sha}-{suffix}"
     folder = settings.runs_dir / name
     folder.mkdir(parents=True, exist_ok=True)
     meta_file = folder / "meta.json"
     if not meta_file.exists():
-        meta_file.write_text(json.dumps({
+        meta: dict[str, object] = {
             "sample": SAMPLE, "model": DEFAULT_MODEL, "questions": list(QUESTION_NAMES),
             "commit": sha, "dirty": dirty, "started": datetime.now(UTC).isoformat(),
             "cap_usd": CAP_USD, "limit": args.limit,
-        }, indent=1))
+        }
+        if args.conditioned:
+            # A folder without this key is an unconditioned run (report's backward path).
+            meta["conditioned"] = True
+        meta_file.write_text(json.dumps(meta, indent=1))
     spec = RunSpec(sample=SAMPLE, arm="ceiling")
     cases = []
     for case_id, raw in zip(ids, raws, strict=True):
@@ -495,13 +682,38 @@ def main(argv: Sequence[str]) -> int:
         if evidence.case_id != case_id:
             raise ValueError(f"sample order broken: {case_id} != {evidence.case_id}")
         cases.append((case_id, payload))
-    asked = questions(tables)
     client_key = settings.require_typesafe_key()
     with TypeSafeClient(client_key, base_url=settings.typesafe_base_url) as client:
-        reason = ask_all(
-            folder / "replies.jsonl", cases, lambda p: client.ask(p, asked),
-            cap_usd=CAP_USD, usd_per_token=USD_PER_TOKEN,
-        )
+        if args.conditioned:
+            event_q = event_question(tables)
+            phase_q = phase_question(tables)
+
+            def ask(payload: Payload) -> ConditionedExchange:
+                """Call 1: event alone. Call 2: phase, conditioned on call 1's answer."""
+                event_exchange = client.ask_state(payload.text, event_q)
+                event_code = event_exchange.reply.choice("event").choice
+                state = conditioned_state(payload, event_code, tables)
+                phase_exchange = client.ask_state(state, phase_q)
+                return ConditionedExchange(
+                    reply=phase_exchange.reply,
+                    event_reply=event_exchange.reply,
+                    attempts=event_exchange.attempts + phase_exchange.attempts,
+                    retried_statuses=event_exchange.retried_statuses
+                    + phase_exchange.retried_statuses,
+                    seconds=event_exchange.seconds + phase_exchange.seconds,
+                )
+
+            reason = ask_all(
+                folder / "replies.jsonl", cases, ask,
+                cap_usd=CAP_USD, usd_per_token=USD_PER_TOKEN,
+                tokens_per_request=TOKENS_PER_REQUEST_ESTIMATE * 2,
+            )
+        else:
+            asked = questions(tables)
+            reason = ask_all(
+                folder / "replies.jsonl", cases, lambda p: client.ask(p, asked),
+                cap_usd=CAP_USD, usd_per_token=USD_PER_TOKEN,
+            )
     rows = read_rows(folder / "replies.jsonl")
     print(
         f"{folder.name}: {reason}; answered {len(_latest_ok(rows))} of {len(ids)}; "

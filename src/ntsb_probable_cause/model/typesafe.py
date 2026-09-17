@@ -87,6 +87,22 @@ class SystemOneReply(BaseModel):
         return answer
 
 
+def _body(
+    state: str,
+    questions: Mapping[str, Mapping[str, object]],
+    *,
+    model: str,
+) -> dict[str, object]:
+    """The exact JSON sent, for either a ``Payload`` or a raw state string."""
+    if not questions:
+        raise ValueError("a System One request needs at least one question")
+    return {
+        "state": state,
+        "model": model,
+        "questions": {name: dict(question) for name, question in questions.items()},
+    }
+
+
 def request_body(
     payload: Payload,
     questions: Mapping[str, Mapping[str, object]],
@@ -94,13 +110,7 @@ def request_body(
     model: str = DEFAULT_MODEL,
 ) -> dict[str, object]:
     """The exact JSON sent. The payload text is the only state (decision 0016)."""
-    if not questions:
-        raise ValueError("a System One request needs at least one question")
-    return {
-        "state": payload.text,
-        "model": model,
-        "questions": {name: dict(question) for name, question in questions.items()},
-    }
+    return _body(payload.text, questions, model=model)
 
 
 def parse_reply(body: Mapping[str, object]) -> SystemOneReply:
@@ -166,8 +176,24 @@ class TypeSafeClient:
         *,
         model: str = DEFAULT_MODEL,
     ) -> Exchange:
-        """Send one request; retry rate limits, server errors and transport failures."""
-        body = request_body(payload, questions, model=model)
+        """Send one request; the payload text is the only state (decision 0016)."""
+        return self.ask_state(payload.text, questions, model=model)
+
+    def ask_state(
+        self,
+        state: str,
+        questions: Mapping[str, Mapping[str, object]],
+        *,
+        model: str = DEFAULT_MODEL,
+    ) -> Exchange:
+        """Send one request over a raw state string; retry as ``ask`` does.
+
+        For the conditioned two-call mode only (``scripts/exploratory/jev_dev400.py``): the
+        state there is the payload text plus one sentence of the model's own earlier output,
+        never a payload built any other way. ``ask`` is the normal path and stays the one
+        every other caller uses.
+        """
+        body = _body(state, questions, model=model)
         retried: list[str] = []
         started = self._clock()
         for attempt in range(1, self._max_attempts + 1):

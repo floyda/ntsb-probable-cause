@@ -1515,3 +1515,33 @@ The review also confirmed that the abstention threshold Jev would need (decision
 (added by the same review) uses the LLM runs' own abstention flags for Luna and Gemini and
 Jev's fact of never abstaining; it does not fit or apply any threshold to Jev's confidence,
 so no in-scope work depended on choosing one.
+
+Follow-up (2026-09-17, after the whole-branch review that closed this plan): the review
+raised whether the 9.7% composed top-1 (below both Luna and Gemini, §2 of the result) is a
+property of Jev or an artefact of composing two independent Choice answers by multiplying
+their probabilities — decision 0036's own worked example shows the correct event paired with
+the wrong phase on two cases where the event alone was right. This is outside the plan's
+scope (the plan and specification fix one call, two independent questions, composed by
+multiplication) and outside decision 0036, which was already written up and is not reopened.
+It was added as a `--conditioned` flag on the existing `run` and `report` subcommands rather
+than a new script, because every other piece — the client, the payload rule, the reply
+storage shape, the cap, the scoring helpers — carries over unchanged; only the composition
+and the two-call sequencing are new. Conditioned mode asks the event question alone, then
+asks the phase question alone with the payload text plus one sentence naming the event call's
+answer (`CONDITIONED_STATEMENT`, `conditioned_state`) — the only text ever added to a state,
+and it is Jev's own prior output, never withheld record data. The composition
+(`conditioned_hypothesis`) fixes the event from call 1 and ranks call 2's phases within it,
+which is a different, non-interchangeable rule from the unconditioned 47x93-grid ranking
+(`jev_hypothesis`); `report` reads a new `"conditioned"` key in `meta.json` to choose between
+the two, so every run folder saved before this change (no such key) still reports exactly as
+it did (`docs/results/typesafe-jev-dev400.txt` reproduces byte-for-byte). `TypeSafeClient`
+gained `ask_state` (a raw-text sibling of `ask`, which is now a thin wrapper over it) so the
+conditioned second call could carry the appended sentence without constructing a `Payload`
+by any route other than `Payload.from_evidence` — `Payload`'s construction guard (decision
+0016) is unchanged and untested-around. `ask_all`'s per-case callable may now return either
+`Exchange` or the new `ConditionedExchange` (duck-typed on `reply`/`attempts`/
+`retried_statuses`/`seconds`, plus `event_reply`); `_attempt` branches on `isinstance` to
+decide whether a row also carries `event_reply` and a doubled `cost_usd`, and `ask_all` grew
+an optional `tokens_per_request` (default unchanged) so the run command can double the cap
+estimate for the two-call mode. No run has been made yet; this records the code and its
+tests, not a result.
