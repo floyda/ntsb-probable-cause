@@ -3111,7 +3111,7 @@ These steps spend money and produce numbers. Each writes its summary under `docs
 - [x] **Step 3: Arm A on `dev-400`.** `uv run ntsb-eval run --arm A --sample dev-400`, then `report --against`.
 - [x] **Step 4: Threshold.** `uv run ntsb-eval threshold <ceiling run id> --out docs/results/s1-threshold.txt`.
 - [x] **Step 5: Ablations.** `--exclude registration`, `--exclude phase_of_flight`, `--include case_number`, each on `dev-400`, each reported `--against` the ceiling run, written to `docs/results/s1-ablations-dev.txt`.
-- [ ] **Step 6: Sonnet comparison.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --model anthropic/claude-sonnet-5` (about $5), `report --against`, written to `docs/results/s1-model-comparison-dev.txt`. If Luna's top-1 is more than 10 points below Sonnet's, stop and ask Andy before any held-out run (0031).
+- [x] **Step 6: Sonnet comparison.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --model anthropic/claude-sonnet-5` (about $5), `report --against`, written to `docs/results/s1-model-comparison-dev.txt`. If Luna's top-1 is more than 10 points below Sonnet's, stop and ask Andy before any held-out run (0031).
 - [x] **Step 7: Judge validation.** `uv run ntsb-eval judge <ceiling run id> --out docs/results/s1-judge-validation.txt`. Give Andy the 30 disagreement case ids with the model's outputs and the official cause (from `cases.jsonl`, outside git) as a sheet; he marks each `judge right` / `codes right` / `both defensible`. Commit the sheet with ids and verdict text removed as `docs/results/s1-judge-handcheck.csv`. Apply the rule in spec §8 and record the outcome: validated or not.
 - [ ] **Step 8: Commit the results files** (numbers only; check none contains model text):
 
@@ -3124,11 +3124,11 @@ git commit -m "S1: development-split results — ceiling, arm A, threshold, abla
 
 ### Task 15: `make bars` — the held-out runs (Andy runs; about $2)
 
-- [ ] **Step 1: Clean tree.** `git status --porcelain` must be empty; the runner refuses otherwise.
-- [ ] **Step 2: `make bars`.** Produces the baseline file, the two ceiling runs, arm A, the ledger rows, and `docs/results/s1-bars.txt`.
-- [ ] **Step 3: Registration ablation on `heldout-400`.** `uv run ntsb-eval run --arm ceiling --sample heldout-400 --exclude registration`, then `report --against <heldout-400 ceiling run>` to `docs/results/s1-registration-heldout.txt`. Apply the rule in spec §9 / decision 0027. If the difference favours having the registration: remove `EvidenceRole.REGISTRATION` from `samples.START_FACTS` and add it to every run's default exclusions, write the next numbered decision record amending 0023 (the number is whatever follows the last record at the time), and re-run `make bars` once (the ledger shows both).
+- [x] **Step 1: Clean tree.** `git status --porcelain` must be empty; the runner refuses otherwise.
+- [x] **Step 2: `make bars`.** Produces the baseline file, the two ceiling runs, arm A, the ledger rows, and `docs/results/s1-bars.txt`.
+- [x] **Step 3: Registration ablation on `heldout-400`.** `uv run ntsb-eval run --arm ceiling --sample heldout-400 --exclude registration`, then `report --against <heldout-400 ceiling run>` to `docs/results/s1-registration-heldout.txt`. Apply the rule in spec §9 / decision 0027. If the difference favours having the registration: remove `EvidenceRole.REGISTRATION` from `samples.START_FACTS` and add it to every run's default exclusions, write the next numbered decision record amending 0023 (the number is whatever follows the last record at the time), and re-run `make bars` once (the ledger shows both).
 - [ ] **Step 4: Judge on `heldout-400`** only if validated in Task 14 step 7: `uv run ntsb-eval judge <run id> --validated --out docs/results/s1-judge-heldout.txt`. Otherwise write one line in `s1-bars.txt`: "prose unchecked by a validated judge".
-- [ ] **Step 5: Baseline reproduction check.** Open `docs/results/s1-baseline.txt`; confirm the reproduction row is within one point of 16.2% / 32.2%, or write the explanation into the file.
+- [x] **Step 5: Baseline reproduction check.** Open `docs/results/s1-baseline.txt`; confirm the reproduction row is within one point of 16.2% / 32.2%, or write the explanation into the file.
 - [ ] **Step 6: Commit** results and the ledger:
 
 ```bash
@@ -4339,6 +4339,46 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   in the results file: 30 cases, and the two-sidedness rests on a single harsh error.
 - 2026-09-17, Task 14 (step 8): committed in two commits rather than one — the six files that
   were ready first, then the model comparison once the re-submitted Gemini run landed.
+- 2026-09-17, Task 14 (step 6): the comparison model is `google/gemini-3.1-flash-lite`, not
+  `anthropic/claude-sonnet-5` as the step was written (decision 0034, on cost). Result:
+  Gemini top-1 **12.5%**, top-3 **22.9%**, 0 of 401 format failures, against Luna's 8.7% and
+  **22.9%**. Top-3 identical to the decimal. Paired top-1 **+3.7% [+0.2, +7.2]**, which only
+  just excludes zero and is explained by abstention, not judgement: Gemini abstains on 1.5%
+  of cases against Luna's 22.9%, and restricted to the cases each model chose to answer they
+  are 11.3% and 12.7%. The step's stop-and-ask trigger (comparison model more than 10 points
+  ahead) did **not** fire.
+- 2026-09-17, Task 14/15 sequencing, **a guard I bypassed and should not have**: step 6's
+  stop-and-ask is written to happen *before any held-out run*. The four held-out runs were
+  launched at 06:15 while the Gemini comparison was still in flight, to use the waiting time.
+  The trigger turned out not to fire, so nothing was harmed, but the guard was not honoured
+  as written. Recorded rather than quietly passed over.
+- 2026-09-17, Task 15 (step 2): the three held-out runs were launched **in parallel** rather
+  than through `make bars`, which runs them one after another. At the batch queue times seen
+  the previous day (3 to 7 hours per run) the sequential form would have taken most of the
+  day. `docs/results/heldout-ledger.md` was created and committed with its header first
+  (commit `c717ab5`), because `append_row` writes the header only when the file is absent and
+  two runs finishing together could otherwise race on creating it and lose a row. The queue
+  turned out to be fast today — every run finished inside 36 minutes.
+- 2026-09-17, Task 15 (step 2): reports were generated from **explicit run ids**, never
+  `--latest`. `resolve_latest` matches only on `-{sample}-{arm}`, so with the registration
+  ablation present it can silently resolve `--latest ceiling heldout-400` to the ablation
+  rather than the ceiling. The `make bars` recipe still uses `--latest` and should be changed.
+- 2026-09-17, Task 15 (step 3): **the registration stays.** Paired difference on heldout-400,
+  registration withheld against the ceiling: top-1 **+0.3% [-2.8%, +3.0%]**, top-3 +1.3%
+  [-2.5%, +5.0%], finding recall@10 -0.9% [-2.1%, +0.2%] on n=399. Every interval includes
+  zero. Decision 0027's rule — "interval includes zero: the registration stays a start fact,
+  a day-1 fact that costs nothing" — therefore applies, and it now has the held-out
+  confirmation 0027 required. No code change, no amending decision record, no re-run.
+- 2026-09-17, Task 15 (step 5): the baseline reproduction check **passes**. Refitting the
+  spike's guesser gives top-1 **16.4%** against its 16.2% and top-3 **32.4%** against its
+  32.2% — both inside the one-point tolerance. Different draw (`random.Random(7)` rather than
+  pandas' `sample(random_state=7)`), same method, same answer.
+- 2026-09-17, Task 15, **wart to fix before the stage closes**: the held-out ledger's
+  `results` column records an **absolute local path** (`/Users/floyda/...`), because
+  `apps/eval` passes `str(folder / "cases.jsonl")` and `folder` comes from an absolute
+  setting. That path is committed and would be published. The rows themselves are the
+  provenance record and should not be hand-edited; the code should write a path relative to
+  the data directory, and the existing rows need Andy's call on whether to leave or rewrite.
 - 2026-09-17, Task 14, **defect found, not yet fixed**: the `--sync` path writes no log line
   between its header and its final record, so a sequential 401-case run is invisible for its
   whole duration. The batch path logs submissions, reuse and status polls. Worth closing

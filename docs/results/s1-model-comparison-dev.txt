@@ -1,0 +1,72 @@
+S1 cross-model check on the development split (dev-400)
+
+Why this exists (decision 0034): a single model scoring 8.7% could mean the task is hard or
+it could mean our model is weak. A second model from an unrelated family, given the same
+evidence and the same output format, separates the two. The check is not looking for a
+better model -- it is looking for evidence that the bar is the task.
+
+WHAT THE COMPARISON SAYS
+
+  Luna (openai/gpt-5.6-luna)      top-1  8.7%   top-3 22.9%   abstain 22.9%   0/401 failed
+  Gemini 3.1 Flash Lite           top-1 12.5%   top-3 22.9%   abstain  1.5%   0/401 failed
+
+  Top-3 is identical to the decimal. Two model families, trained separately, reach the same
+  place on the same evidence. That is the result the check was run for: 8.7% is the task
+  being hard, not Luna being weak.
+
+  The top-1 gap is temperament, not judgement. Gemini abstains on 1.5% of cases where Luna
+  abstains on 22.9%: it guesses where Luna declines. Restricted to the cases each model
+  chose to answer, they are 11.3% (Luna) and 12.7% (Gemini) -- the same within noise.
+
+  Cost is not comparable between the two rows. Gemini ran on the standard (immediate) price
+  because its batch submission sat unstarted for eleven hours; Luna ran on the batch price.
+  Per case: Luna $0.0011, Gemini $0.0024, roughly the 2x endpoint difference.
+
+TWO MODELS THAT COULD NOT RUN, recorded because the check's value depends on them
+
+  google/gemini-3.5-flash-lite  refused every request: "Requests ending with a model turn
+    are not supported". Our stage 2 sends the stage-1 reply back as an assistant turn and
+    asks for a refinement, so the request ends on a model turn. Gemini 3.1 Flash Lite
+    accepts the same shape; this is a version cut, not a family one.
+
+  z-ai/glm-5.3-flash  could not answer inside our 2,000-token output cap. 376 of 401
+    stage-1 replies were unusable: 287 finished at exactly the cap with EMPTY content,
+    89 truncated mid-answer, 25 clean. It deliberates internally and spends the whole
+    output budget before emitting anything. "flash" in a model name does not mean
+    non-reasoning. Not re-run at a raised cap: a model given a different token budget is
+    not a like-for-like comparison, and the point of the check is the bar, not the model.
+
+  The general lesson (0031 point 4): our output cap excludes far more of the market than
+  the word "reasoning" suggests, and neither the model's name nor its price predicts it.
+  Any future model comparison must probe finish_reason on a REPRESENTATIVE sample before
+  committing spend -- our smoke test took the FIRST 10 cases of a sorted file, which are
+  short enough to pass, and so reported 10/10 while the true failure rate was 94%.
+
+THE FULL REPORT FOLLOWS: Gemini 3.1 Flash Lite, compared case by case against the Luna
+ceiling run 20260916T032106-179520f-dev-400-ceiling.
+
+==============================================================================
+
+run 20260917T060746-c366a04-dev-400-ceiling [complete]
+sample=dev-400 arm=ceiling model=google/gemini-3.1-flash-lite price_variant=standard
+exclusions=- includes=-
+commit=c366a04 started=2026-09-17T06:07:46.709188+00:00 finished=2026-09-17T06:40:40.076133+00:00
+cases=401 total_cost_usd=0.9450
+
+| slice | n | top-1 | top-3 | event | pair unseen | abstain | answered top-1 | finding P@10 | R@10 | P@8 | R@8 | P@6 | R@6 | R@10 all | failed | cost/case USD |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all | 401 | 12.5% [9.6%, 16.1%] | 22.9% [19.1%, 27.3%] | 24.7% [20.7%, 29.1%] | 2.2% [1.2%, 4.2%] | 1.5% [0.7%, 3.2%] | 12.7% [9.7%, 16.3%] | 3.1% [1.9%, 4.5%] | 2.0% [1.1%, 3.1%] | 9.0% [7.0%, 11.2%] | 6.0% [4.5%, 7.8%] | 21.7% [18.7%, 24.9%] | 14.6% [12.3%, 16.9%] | 1.9% [1.1%, 2.7%] | 0 of 401 | 0.0024 |
+| fatal | 200 | 14.0% [9.9%, 19.5%] | 24.0% [18.6%, 30.4%] | 32.0% [25.9%, 38.8%] | 0.5% [0.1%, 2.8%] | 3.0% [1.4%, 6.4%] | 14.4% [10.2%, 20.1%] | 4.5% [2.2%, 7.0%] | 2.3% [1.1%, 3.9%] | 12.5% [9.2%, 16.0%] | 7.0% [5.2%, 9.3%] | 28.0% [24.0%, 32.8%] | 17.2% [14.6%, 20.3%] | 2.4% [1.4%, 3.5%] | 0 of 200 | 0.0024 |
+| non-fatal | 201 | 10.9% [7.3%, 16.0%] | 21.9% [16.7%, 28.1%] | 17.4% [12.8%, 23.3%] | 4.0% [2.0%, 7.7%] | 0.0% [0.0%, 1.9%] | 10.9% [7.3%, 16.0%] | 1.7% [0.5%, 3.2%] | 1.8% [0.5%, 3.5%] | 5.5% [3.2%, 8.2%] | 5.0% [2.8%, 7.5%] | 15.4% [11.7%, 19.9%] | 11.9% [8.8%, 15.3%] | 1.3% [0.3%, 2.6%] | 0 of 201 | 0.0023 |
+| class C | 113 | 8.0% [4.2%, 14.4%] | 15.9% [10.3%, 23.8%] | 15.0% [9.6%, 22.8%] | 2.7% [0.9%, 7.5%] | 0.0% [0.0%, 3.3%] | 8.0% [4.2%, 14.4%] | 1.3% [0.0%, 3.1%] | 1.3% [0.0%, 3.1%] | 7.1% [4.0%, 10.6%] | 5.8% [3.0%, 9.1%] | 15.5% [10.2%, 20.8%] | 12.3% [8.3%, 16.7%] | 0.7% [0.0%, 1.8%] | 0 of 113 | 0.0023 |
+| class F | 159 | 13.8% [9.3%, 20.1%] | 23.3% [17.4%, 30.4%] | 30.8% [24.2%, 38.4%] | 0.6% [0.1%, 3.5%] | 3.1% [1.4%, 7.1%] | 14.3% [9.6%, 20.7%] | 5.3% [2.8%, 8.5%] | 2.7% [1.2%, 4.6%] | 14.2% [10.1%, 18.6%] | 7.8% [5.4%, 10.3%] | 30.5% [25.5%, 36.2%] | 18.7% [15.4%, 22.1%] | 2.4% [1.3%, 3.6%] | 0 of 159 | 0.0024 |
+| class L | 129 | 14.7% [9.6%, 21.9%] | 28.7% [21.6%, 37.0%] | 25.6% [18.8%, 33.7%] | 3.9% [1.7%, 8.8%] | 0.8% [0.1%, 4.3%] | 14.8% [9.7%, 22.0%] | 1.9% [0.4%, 4.3%] | 1.8% [0.3%, 3.9%] | 4.3% [1.6%, 7.4%] | 4.1% [1.6%, 7.2%] | 16.3% [11.2%, 21.7%] | 11.5% [7.9%, 15.5%] | 2.2% [0.4%, 4.3%] | 0 of 129 | 0.0024 |
+| flavour Standard report | 176 | 15.9% [11.2%, 22.0%] | 29.0% [22.8%, 36.1%] | 27.8% [21.7%, 34.9%] | 2.8% [1.2%, 6.5%] | 1.1% [0.3%, 4.0%] | 16.1% [11.4%, 22.3%] | 2.8% [1.1%, 4.8%] | 2.4% [0.9%, 4.6%] | 7.1% [4.5%, 9.9%] | 5.8% [3.4%, 8.9%] | 21.6% [17.0%, 26.4%] | 15.2% [11.8%, 19.0%] | 2.5% [1.1%, 4.4%] | 0 of 176 | 0.0024 |
+| flavour Basic (no factual) | 113 | 8.0% [4.2%, 14.4%] | 15.9% [10.3%, 23.8%] | 15.0% [9.6%, 22.8%] | 2.7% [0.9%, 7.5%] | 0.0% [0.0%, 3.3%] | 8.0% [4.2%, 14.4%] | 1.3% [0.0%, 3.1%] | 1.3% [0.0%, 3.1%] | 7.1% [4.0%, 10.6%] | 5.8% [3.0%, 9.1%] | 15.5% [10.2%, 20.8%] | 12.3% [8.3%, 16.7%] | 0.7% [0.0%, 1.8%] | 0 of 113 | 0.0023 |
+| flavour Detailed (ICAO headers) | 110 | 11.8% [7.0%, 19.2%] | 20.9% [14.4%, 29.4%] | 30.0% [22.2%, 39.1%] | 0.9% [0.2%, 5.0%] | 1.8% [0.5%, 6.4%] | 12.0% [7.2%, 19.5%] | 5.5% [2.3%, 9.5%] | 2.2% [0.9%, 3.8%] | 14.1% [9.1%, 19.5%] | 6.8% [4.4%, 9.4%] | 28.6% [22.3%, 35.0%] | 16.2% [12.7%, 19.8%] | 2.0% [0.9%, 3.4%] | 0 of 110 | 0.0024 |
+
+against 20260916T032106-179520f-dev-400-ceiling:
+paired difference (a - b) on 401 shared, scored cases:
+- occurrence top-1: +3.7% [+0.2%, +7.2%] on n=401 cases
+- occurrence top-3: +0.0% [-4.2%, +4.2%] on n=401 cases
+- finding recall@10: -2.0% [-3.5%, -0.4%] on n=399 cases
