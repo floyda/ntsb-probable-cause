@@ -32,8 +32,9 @@ def record_fixtures() -> list[dict[str, object]]:
 @pytest.fixture
 def eval_ids() -> dict[str, dict[str, str]]:
     # Only the "*_ids.csv" lists: case id and event date, one row per case (spec §5). The
-    # "*_full.csv" regression sheets carry the spike's own withheld columns and are read by
-    # name where they are needed, never through this fixture.
+    # spike's full labelling sheets are not in this repository at all -- every case in them
+    # is held-out and their cause, code and factual-account columns are withheld data
+    # (0013). `scripts/check_fixtures_redacted.py` fails if such a column reappears.
     lists: dict[str, dict[str, str]] = {}
     for path in sorted((FIXTURES / "eval").glob("*_ids.csv")):
         with path.open(newline="") as handle:
