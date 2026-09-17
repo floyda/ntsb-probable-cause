@@ -160,8 +160,10 @@ and 2,994) but, per the vendor, not priced. The price itself is still self-repor
 $0.0517 at the published price. Composed top-1 9.7% [7.2, 13.0], against the 17.7% baseline:
 **not above the baseline**, and level with Luna (+1.0% [-2.7, +4.7]) and Gemini (-2.7%
 [-6.2, +0.7]) case by case. Expected calibration error on the event confidence 0.318 against
-a threshold of 0.10: **not calibrated**, overconfident in every bin, and worse than Luna's own
-self-reported 0.279. Point 4 named that column as the one this experiment exists for, and the
+a threshold of 0.10: **not calibrated**, overconfident in every bin. On the comparable figure
+— the composed top-1 product, table (c) of the report — Jev's error is 0.359, worse than
+Luna's own self-reported 0.279. Point 4 named the confidence column as the one this experiment
+exists for, and the
 specification fixed "not calibrated" as grounds for declining, so this record is put to Andy
 as **decline**. Details: `docs/results/typesafe-jev-dev400.md`; the printed tables are
 `docs/results/typesafe-jev-dev400.txt`. The judge test of point 5 has not run.
@@ -170,3 +172,7 @@ as **decline**. Details: `docs/results/typesafe-jev-dev400.md`; the printed tabl
 
 Proposed: written 2026-09-17 for Andy's acceptance. Becomes Accepted when the probe's
 fixtures are committed and the judge test of point 5 has run.
+
+The dev-400 row above records a **decline** on the calibration reading the decision was
+proposed for; Andy's acceptance of the record is separate from the accept/decline call on the
+row itself.

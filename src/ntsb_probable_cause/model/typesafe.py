@@ -178,12 +178,12 @@ class TypeSafeClient:
             else:
                 if response.is_success:
                     try:
-                        body = response.json()
+                        reply_body = response.json()
                     except json.JSONDecodeError as error:
                         raise ModelError(
                             f"{sources.TYPESAFE_SYSTEM_ONE} returned 200 with non-JSON reply"
                         ) from error
-                    reply = parse_reply(body)
+                    reply = parse_reply(reply_body)
                     return Exchange(reply, attempt, tuple(retried), self._clock() - started)
                 status = str(response.status_code)
                 if response.status_code not in _RETRY_STATUSES:

@@ -321,7 +321,10 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     if not meta_file.exists():
         raise FileNotFoundError(f"{folder}: no meta.json; is this a run folder?")
     rows = read_rows(folder / "replies.jsonl")
-    ok = _latest_ok(rows)
+    all_ok = _latest_ok(rows)
+    # Restrict to the sample's own ids: an off-sample row (a stale resume, a superset file)
+    # must never inflate token, cost or latency lines, or let "answered N of M" exceed M.
+    ok = {i: all_ok[i] for i in ids if i in all_ok}
     meta = json.loads(meta_file.read_text())
     spec = RunSpec(sample=SAMPLE, arm="ceiling")
     cases: list[JevCase] = []
@@ -345,11 +348,13 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
         f"commit={meta['commit']} dirty={meta['dirty']}"
     )
     add(f"model versions in replies: {dict(Counter(r.model for r in replies))}")
-    add(f"cases answered {len(ok)} of {len(ids)}; failed rows {sum(1 for r in rows if not r['ok'])}")
+    failed_rows = sum(1 for r in rows if not r["ok"])
+    add(f"cases answered {len(ok)} of {len(ids)}; failed rows {failed_rows}")
     add(f"input tokens {input_tokens}; output tokens {sum(r.usage.output_tokens for r in replies)}")
+    per_case = input_tokens * USD_PER_TOKEN / max(1, len(ok))
     add(
         f"cost at the published, self-reported price: ${input_tokens * USD_PER_TOKEN:.4f} "
-        f"(${input_tokens * USD_PER_TOKEN / max(1, len(ok)):.6f} per case; preview, comparison only)"
+        f"(${per_case:.6f} per case; preview, comparison only)"
     )
     # Fix round 1: a capped-or-all-failed run has no seconds to reduce; print the header
     # line anyway rather than let statistics.median/max crash on an empty sequence.
@@ -385,19 +390,34 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     top1 = [c.scores.occurrence_top1 for c in cases]
     add(f"reading (spec §5, bar {BASELINE_TOP1:.1%}): {accuracy_reading(top1)}")
 
+    event_confidence = [c.event_confidence for c in cases]
+    event_top_probability = [c.event_top_probability for c in cases]
     event_right = [c.scores.event_match for c in cases]
     add("\nCALIBRATION")
-    add(calibration_block("(a) Jev event confidence vs event right", [c.event_confidence for c in cases], event_right))
-    add(f"reading on (a) (spec §5): {calibration_reading([c.event_confidence for c in cases], event_right)}")
-    add(calibration_block("(b) Jev top event probability vs event right", [c.event_top_probability for c in cases], event_right))
+    add(calibration_block("(a) Jev event confidence vs event right", event_confidence, event_right))
+    add(f"reading on (a) (spec §5): {calibration_reading(event_confidence, event_right)}")
+    add(
+        calibration_block(
+            "(b) Jev top event probability vs event right", event_top_probability, event_right
+        )
+    )
 
     by_id = {c.case_id: c for c in cases}
-    guesses = {name: llm_first_guesses(runs_dir / run / "cases.jsonl") for name, run in LLM_RUNS.items()}
+    guesses = {
+        name: llm_first_guesses(runs_dir / run / "cases.jsonl") for name, run in LLM_RUNS.items()
+    }
     shared = sorted(set(by_id).intersection(*(set(g) for g in guesses.values())))
-    add(f"\n(c) first-guess probability vs first guess right, on the {len(shared)} cases all three scored")
-    add(calibration_block("(c) Jev top-1 product", [by_id[i].top1_probability for i in shared], [by_id[i].scores.occurrence_top1 for i in shared]))
+    add(
+        f"\n(c) first-guess probability vs first guess right, on the {len(shared)} "
+        "cases all three scored"
+    )
+    jev_top1 = [by_id[i].top1_probability for i in shared]
+    jev_right = [by_id[i].scores.occurrence_top1 for i in shared]
+    add(calibration_block("(c) Jev top-1 product", jev_top1, jev_right))
     for name, g in guesses.items():
-        add(calibration_block(f"(c) {name} first guess", [g[i].probability for i in shared], [g[i].right for i in shared]))
+        probs = [g[i].probability for i in shared]
+        rights = [g[i].right for i in shared]
+        add(calibration_block(f"(c) {name} first guess", probs, rights))
 
     add("\nPAIRED TOP-1 DIFFERENCE (Jev minus model, same cases, bootstrap 95%)")
     for name, g in guesses.items():
@@ -476,7 +496,8 @@ def main(argv: Sequence[str]) -> int:
             raise ValueError(f"sample order broken: {case_id} != {evidence.case_id}")
         cases.append((case_id, payload))
     asked = questions(tables)
-    with TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url) as client:
+    client_key = settings.require_typesafe_key()
+    with TypeSafeClient(client_key, base_url=settings.typesafe_base_url) as client:
         reason = ask_all(
             folder / "replies.jsonl", cases, lambda p: client.ask(p, asked),
             cap_usd=CAP_USD, usd_per_token=USD_PER_TOKEN,

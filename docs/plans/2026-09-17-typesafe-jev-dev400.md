@@ -1481,3 +1481,37 @@ rows are recorded with `ok` true. This surfaced one new mypy finding fixed in th
 `sorted(row["case_id"] for row in rows if row["ok"])` failed `mypy --strict`
 (`SupportsRichComparisonT` cannot be `object`, since `read_rows` returns
 `dict[str, object]`); fixed by wrapping in `str(...)` before sorting.
+
+Task 6 (whole-branch review, 2026-09-17): the review that closes this plan found four
+documentation gaps the tasks above did not cover.
+
+(a) The plan's Step 4 template lists seven report sections, including a standalone "Rate
+limits and latency" section (item 5). The built report has six: latency was folded into
+the "What was run" header instead of its own section, and the header line only stated the
+median. Fixed by adding the 90th percentile and max latency to that header line, so the
+information the standalone section would have carried is still in the report, just not as
+its own heading.
+
+(b) The plan's Step 4 glossary list (item 7) names six terms including "Choice" and "state";
+the built glossary had only four, omitting those two. Added both.
+
+(c) The plan's Step 5 template is three lines (folder, top-1, calibration reading, a pointer
+to the report). The row actually written to decision 0036 is a full paragraph — the two
+comparisons against Luna and Gemini, the two calibration readings, and a decline
+recommendation against point 4's own rule — because the specification's §5 readings needed
+stating in full to be checked, not just named. Recorded here rather than trimmed back to the
+template, since the longer row is what a reviewer checking §5's readings needs.
+
+(d) The plan's Interfaces block describes a saved row as the raw reply body plus an explicit
+success status; the row `_attempt` actually writes holds the parsed reply
+(`exchange.reply.model_dump(mode="json")`) plus `attempts`, `retried_statuses` and
+`cost_usd`, with `ok` as the status field. This was already true when Task 2 was implemented
+and working correctly (`ask_all`, `build_report` and the tests all read this shape
+consistently); the review found the plan's prose out of step with the code it describes, not
+a defect in the code.
+
+The review also confirmed that the abstention threshold Jev would need (decision 0036 point
+4) is out of scope for this run, per specification §7. The report's `answered top-1` column
+(added by the same review) uses the LLM runs' own abstention flags for Luna and Gemini and
+Jev's fact of never abstaining; it does not fit or apply any threshold to Jev's confidence,
+so no in-scope work depended on choosing one.
