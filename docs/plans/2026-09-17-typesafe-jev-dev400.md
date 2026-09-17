@@ -1419,4 +1419,4 @@ git commit -m "Jev dev-400: results and the row in decision 0036"
 
 ## Deviations
 
-None yet.
+Task 2: a non-JSON 200 reply raises ModelError, so the run loop records it as a failed case (review fix).

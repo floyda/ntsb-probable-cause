@@ -6,6 +6,7 @@ result). Where the vendor's SDK and those replies differ, the replies win. This 
 product transport (0009).
 """
 
+import json
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -176,7 +177,13 @@ class TypeSafeClient:
                 status = type(error).__name__
             else:
                 if response.is_success:
-                    reply = parse_reply(response.json())
+                    try:
+                        body = response.json()
+                    except json.JSONDecodeError as error:
+                        raise ModelError(
+                            f"{sources.TYPESAFE_SYSTEM_ONE} returned 200 with non-JSON reply"
+                        ) from error
+                    reply = parse_reply(body)
                     return Exchange(reply, attempt, tuple(retried), self._clock() - started)
                 status = str(response.status_code)
                 if response.status_code not in _RETRY_STATUSES:

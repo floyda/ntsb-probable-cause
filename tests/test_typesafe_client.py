@@ -135,3 +135,14 @@ def test_ask_gives_up_after_the_last_attempt() -> None:
         client.ask(Payload.from_evidence(EVIDENCE), QUESTIONS)
     assert route.call_count == 3
     assert slept == [2.0, 4.0]
+
+
+@respx.mock
+def test_ask_raises_model_error_on_non_json_200_reply() -> None:
+    route = respx.post(URL).mock(return_value=httpx.Response(200, content=b"not json"))
+    with (
+        TypeSafeClient("k", base_url=BASE) as client,
+        pytest.raises(ModelError, match="non-JSON"),
+    ):
+        client.ask(Payload.from_evidence(EVIDENCE), QUESTIONS)
+    assert route.call_count == 1
