@@ -118,7 +118,7 @@ BATCHES = "/api/beta/batches"
 
 # https://api.typesafe.ai/openapi.json, as generated into ``typesafe-sdk`` 0.6.0 on PyPI (read
 # 2026-09-17, decision 0036): one POST for every question, one GET for the model list. The
-# saved responses under tests/fixtures/typesafe/ confirm the shape once the probe has run.
+# saved responses under tests/fixtures/typesafe/ (probe of 2026-09-17) confirm the shape.
 TYPESAFE_SYSTEM_ONE = "/v1/systemone"
 TYPESAFE_MODELS = "/v1/models"
 # The vendor's documented ceiling on labels in one Choice question.

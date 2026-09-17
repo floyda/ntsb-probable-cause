@@ -151,6 +151,8 @@ extend-exclude = [
     # occasionally spells a false positive (e.g. "1f768ba" contains "ba").
     "tests/fixtures/eval/README.md",
     "tests/fixtures/openrouter/*.json",
+    # The typesafe fixtures send the code-table labels verbatim (decision 0036).
+    "tests/fixtures/typesafe/*.json",
     "src/ntsb_probable_cause/scoring/tables/*.csv",
 ]
 

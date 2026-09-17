@@ -27,10 +27,11 @@ POST https://api.typesafe.ai/v1/systemone      Authorization: Bearer <TYPESAFE_A
 {"state": <text|object|array>, "model": "jev-latest", "questions": {<name>: <question>}}
   question: {"type": "choice", "instructions": ..., "criteria": {<label>: <description|null>}}
             {"type": "score",  "instructions": ..., "criteria": [<level 0>, <level 1>, ...]}
-            {"type": "noul",   "instructions": ..., "criteria": {"true": ..., "false": ...}}
-reply:    {"model": ..., "usage": {"input_tokens", "output_tokens"}, "answers": {<name>:
+            {"type": "noul",   "instructions": ..., "criteria"?: {"true": ..., "false": ...}}
+reply:    {"model": <resolved version>, "usage": {"input_tokens", "output_tokens"}, "answers": {<name>:
             {"type": "choice", "choice", "confidence", "probabilities": {<label>: p}}
-            {"type": "score",  "score", "confidence", "legend", "probabilities": {<level>: p}}
+            {"type": "score",  "score": <expected level>, "confidence",
+                               "legend": {"0": <level 0>, ...}, "probabilities": {"0": p, ...}}
             {"type": "noul",   "noul": p}}}
 GET  https://api.typesafe.ai/v1/models        {"models": [{"name", "description", "release_date"}]}
 ```
@@ -125,6 +126,35 @@ fields (0021 §5.4). It can pick a next tool as a Choice; it cannot say why.
   disagree, the saved reply wins and this record is amended.
 - **Chaining an LLM behind Jev inside this experiment.** It would measure two models and
   attribute the result to one.
+
+## Probe result (2026-09-17)
+
+`scripts/typesafe_probe.py` ran once against `jev-latest` and saved its replies under
+`tests/fixtures/typesafe/`. The saved replies agree with the SDK's shape, and the wire block
+above now records five details the SDK does not state. Where they differ, the saved reply
+is the authority.
+
+1. **The reply names a resolved version** (`jev-1.13.0` for a request naming `jev-latest`).
+   Every run records the reply's `model`, not the requested name, for the same reason 0018
+   records the commit SHA. The model list also offers `jev-preview`.
+2. **Probabilities are rounded to two decimals.** A vector sums to 0.99 or 1.00, and most
+   labels are exactly 0. A log score or any probability on the true code therefore needs a
+   stated floor, and calibration bins finer than 0.01 are meaningless.
+3. **`confidence` is its own number, not the top probability** (0.84 against 0.85, 0.47
+   against 0.48, 0.30 against 0.32 in the probe). The calibration table bins on
+   `confidence` and reports the top probability beside it; neither is assumed to be the other.
+4. **A Score's `score` is not an integer.** The probe returned 1.29 with level
+   probabilities 0.06, 0.58 and 0.36, which is their expectation to rounding. The judge test
+   takes the level with the highest probability as the grade, and reports `score` beside it.
+   `legend` and `probabilities` are keyed by the level index as a string.
+5. **A Noul needs no `criteria`.** The probe sent none, and all 130 came back, each as a
+   bare float. Nothing was refused or truncated at 130 questions and about 7,000 input
+   tokens. In the probe no category was above 0.5 (the highest was 0.20), so the
+   believed-finding threshold of point 4 cannot be assumed to sit near 0.5. It is chosen
+   on `dev-400` as stated.
+
+The usage blocks are real: 4,344 and 7,154 input tokens. Output tokens are counted (1,911
+and 2,994) but, per the vendor, not priced. The price itself is still self-reported.
 
 ## Status
 

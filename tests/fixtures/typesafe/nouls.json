@@ -1,0 +1,1057 @@
+{
+ "request": {
+  "state": "{\n \"aircraft_make\": \"BEECH\",\n \"aircraft_model\": \"65-A90-1\",\n \"engine_type\": \"Turbo prop\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Airline transport\",\n  \"Flight instructor\"\n ],\n \"pilot_hours_in_type\": 1730.0,\n \"pilot_total_hours\": 14000.0,\n \"registration\": \"N418SP\",\n \"weather_condition\": \"Visual (VMC)\"\n}",
+  "model": "jev-latest",
+  "questions": {
+   "category_010100": {
+    "type": "noul",
+    "instructions": "Is the finding category 010100, 'Aircraft \u2014 Aircraft handling/service \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010105": {
+    "type": "noul",
+    "instructions": "Is the finding category 010105, 'Aircraft \u2014 Aircraft handling/service \u2014 Maintenance/inspections', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010109": {
+    "type": "noul",
+    "instructions": "Is the finding category 010109, 'Aircraft \u2014 Aircraft handling/service \u2014 Towing and taxiing', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010110": {
+    "type": "noul",
+    "instructions": "Is the finding category 010110, 'Aircraft \u2014 Aircraft handling/service \u2014 Parking/securing', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010115": {
+    "type": "noul",
+    "instructions": "Is the finding category 010115, 'Aircraft \u2014 Aircraft handling/service \u2014 Loading', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010200": {
+    "type": "noul",
+    "instructions": "Is the finding category 010200, 'Aircraft \u2014 Aircraft systems \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010221": {
+    "type": "noul",
+    "instructions": "Is the finding category 010221, 'Aircraft \u2014 Aircraft systems \u2014 Air conditioning system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010222": {
+    "type": "noul",
+    "instructions": "Is the finding category 010222, 'Aircraft \u2014 Aircraft systems \u2014 Auto flight system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010223": {
+    "type": "noul",
+    "instructions": "Is the finding category 010223, 'Aircraft \u2014 Aircraft systems \u2014 Communications system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010224": {
+    "type": "noul",
+    "instructions": "Is the finding category 010224, 'Aircraft \u2014 Aircraft systems \u2014 Electrical power system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010225": {
+    "type": "noul",
+    "instructions": "Is the finding category 010225, 'Aircraft \u2014 Aircraft systems \u2014 Equipment/furnishings', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010226": {
+    "type": "noul",
+    "instructions": "Is the finding category 010226, 'Aircraft \u2014 Aircraft systems \u2014 Fire protection system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010227": {
+    "type": "noul",
+    "instructions": "Is the finding category 010227, 'Aircraft \u2014 Aircraft systems \u2014 Flight control system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010228": {
+    "type": "noul",
+    "instructions": "Is the finding category 010228, 'Aircraft \u2014 Aircraft systems \u2014 Fuel system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010229": {
+    "type": "noul",
+    "instructions": "Is the finding category 010229, 'Aircraft \u2014 Aircraft systems \u2014 Hydraulic power system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010230": {
+    "type": "noul",
+    "instructions": "Is the finding category 010230, 'Aircraft \u2014 Aircraft systems \u2014 Ice/rain protection system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010231": {
+    "type": "noul",
+    "instructions": "Is the finding category 010231, 'Aircraft \u2014 Aircraft systems \u2014 Indicating/recording systems', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010232": {
+    "type": "noul",
+    "instructions": "Is the finding category 010232, 'Aircraft \u2014 Aircraft systems \u2014 Landing gear system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010233": {
+    "type": "noul",
+    "instructions": "Is the finding category 010233, 'Aircraft \u2014 Aircraft systems \u2014 Lighting system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010234": {
+    "type": "noul",
+    "instructions": "Is the finding category 010234, 'Aircraft \u2014 Aircraft systems \u2014 Navigation system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010235": {
+    "type": "noul",
+    "instructions": "Is the finding category 010235, 'Aircraft \u2014 Aircraft systems \u2014 Oxygen system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010236": {
+    "type": "noul",
+    "instructions": "Is the finding category 010236, 'Aircraft \u2014 Aircraft systems \u2014 Pneumatic system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010237": {
+    "type": "noul",
+    "instructions": "Is the finding category 010237, 'Aircraft \u2014 Aircraft systems \u2014 Vacuum system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010238": {
+    "type": "noul",
+    "instructions": "Is the finding category 010238, 'Aircraft \u2014 Aircraft systems \u2014 Water and waste system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010245": {
+    "type": "noul",
+    "instructions": "Is the finding category 010245, 'Aircraft \u2014 Aircraft systems \u2014 Central maintenance computer', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010249": {
+    "type": "noul",
+    "instructions": "Is the finding category 010249, 'Aircraft \u2014 Aircraft systems \u2014 Airborne APU system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010300": {
+    "type": "noul",
+    "instructions": "Is the finding category 010300, 'Aircraft \u2014 Aircraft structures \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010351": {
+    "type": "noul",
+    "instructions": "Is the finding category 010351, 'Aircraft \u2014 Aircraft structures \u2014 Balloon/dirigible structures', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010352": {
+    "type": "noul",
+    "instructions": "Is the finding category 010352, 'Aircraft \u2014 Aircraft structures \u2014 Doors', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010353": {
+    "type": "noul",
+    "instructions": "Is the finding category 010353, 'Aircraft \u2014 Aircraft structures \u2014 Fuselage', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010354": {
+    "type": "noul",
+    "instructions": "Is the finding category 010354, 'Aircraft \u2014 Aircraft structures \u2014 Nacelles/pylons structure', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010355": {
+    "type": "noul",
+    "instructions": "Is the finding category 010355, 'Aircraft \u2014 Aircraft structures \u2014 Empennage structure', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010356": {
+    "type": "noul",
+    "instructions": "Is the finding category 010356, 'Aircraft \u2014 Aircraft structures \u2014 Windows-windshield system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010357": {
+    "type": "noul",
+    "instructions": "Is the finding category 010357, 'Aircraft \u2014 Aircraft structures \u2014 Wing structure', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010400": {
+    "type": "noul",
+    "instructions": "Is the finding category 010400, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010461": {
+    "type": "noul",
+    "instructions": "Is the finding category 010461, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Propeller system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010462": {
+    "type": "noul",
+    "instructions": "Is the finding category 010462, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Main rotor system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010463": {
+    "type": "noul",
+    "instructions": "Is the finding category 010463, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Main rotor drive', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010464": {
+    "type": "noul",
+    "instructions": "Is the finding category 010464, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Tail rotor', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010465": {
+    "type": "noul",
+    "instructions": "Is the finding category 010465, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Tail rotor drive system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010467": {
+    "type": "noul",
+    "instructions": "Is the finding category 010467, 'Aircraft \u2014 Aircraft propeller/rotor \u2014 Rotorcraft flight control', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010500": {
+    "type": "noul",
+    "instructions": "Is the finding category 010500, 'Aircraft \u2014 Aircraft power plant \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010571": {
+    "type": "noul",
+    "instructions": "Is the finding category 010571, 'Aircraft \u2014 Aircraft power plant \u2014 Power plant', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010572": {
+    "type": "noul",
+    "instructions": "Is the finding category 010572, 'Aircraft \u2014 Aircraft power plant \u2014 Engine (turbine/turboprop)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010573": {
+    "type": "noul",
+    "instructions": "Is the finding category 010573, 'Aircraft \u2014 Aircraft power plant \u2014 Engine fuel and control', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010574": {
+    "type": "noul",
+    "instructions": "Is the finding category 010574, 'Aircraft \u2014 Aircraft power plant \u2014 Ignition system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010575": {
+    "type": "noul",
+    "instructions": "Is the finding category 010575, 'Aircraft \u2014 Aircraft power plant \u2014 Engine bleed air system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010576": {
+    "type": "noul",
+    "instructions": "Is the finding category 010576, 'Aircraft \u2014 Aircraft power plant \u2014 Engine controls', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010577": {
+    "type": "noul",
+    "instructions": "Is the finding category 010577, 'Aircraft \u2014 Aircraft power plant \u2014 Engine indicating system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010578": {
+    "type": "noul",
+    "instructions": "Is the finding category 010578, 'Aircraft \u2014 Aircraft power plant \u2014 Engine exhaust', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010579": {
+    "type": "noul",
+    "instructions": "Is the finding category 010579, 'Aircraft \u2014 Aircraft power plant \u2014 Eng oil sys (airframe furnish)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010580": {
+    "type": "noul",
+    "instructions": "Is the finding category 010580, 'Aircraft \u2014 Aircraft power plant \u2014 Engine starting', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010581": {
+    "type": "noul",
+    "instructions": "Is the finding category 010581, 'Aircraft \u2014 Aircraft power plant \u2014 Turbocharging (recip only)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010582": {
+    "type": "noul",
+    "instructions": "Is the finding category 010582, 'Aircraft \u2014 Aircraft power plant \u2014 Water injection', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010583": {
+    "type": "noul",
+    "instructions": "Is the finding category 010583, 'Aircraft \u2014 Aircraft power plant \u2014 Accessory gear-boxes', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010585": {
+    "type": "noul",
+    "instructions": "Is the finding category 010585, 'Aircraft \u2014 Aircraft power plant \u2014 Engine (reciprocating)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010600": {
+    "type": "noul",
+    "instructions": "Is the finding category 010600, 'Aircraft \u2014 Aircraft oper/perf/capability \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010610": {
+    "type": "noul",
+    "instructions": "Is the finding category 010610, 'Aircraft \u2014 Aircraft oper/perf/capability \u2014 Aircraft capability', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010620": {
+    "type": "noul",
+    "instructions": "Is the finding category 010620, 'Aircraft \u2014 Aircraft oper/perf/capability \u2014 Performance/control parameters', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010700": {
+    "type": "noul",
+    "instructions": "Is the finding category 010700, 'Aircraft \u2014 Fluids/misc hardware \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010710": {
+    "type": "noul",
+    "instructions": "Is the finding category 010710, 'Aircraft \u2014 Fluids/misc hardware \u2014 Fluids', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_010714": {
+    "type": "noul",
+    "instructions": "Is the finding category 010714, 'Aircraft \u2014 Fluids/misc hardware \u2014 Misc hardware', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020100": {
+    "type": "noul",
+    "instructions": "Is the finding category 020100, 'Personnel issues \u2014 Physical \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020110": {
+    "type": "noul",
+    "instructions": "Is the finding category 020110, 'Personnel issues \u2014 Physical \u2014 Physical characteristic', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020115": {
+    "type": "noul",
+    "instructions": "Is the finding category 020115, 'Personnel issues \u2014 Physical \u2014 Sensory ability/limitation', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020120": {
+    "type": "noul",
+    "instructions": "Is the finding category 020120, 'Personnel issues \u2014 Physical \u2014 Impairment/incapacitation', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020130": {
+    "type": "noul",
+    "instructions": "Is the finding category 020130, 'Personnel issues \u2014 Physical \u2014 Health/Fitness', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020135": {
+    "type": "noul",
+    "instructions": "Is the finding category 020135, 'Personnel issues \u2014 Physical \u2014 Alertness/Fatigue', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020200": {
+    "type": "noul",
+    "instructions": "Is the finding category 020200, 'Personnel issues \u2014 Psychological \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020210": {
+    "type": "noul",
+    "instructions": "Is the finding category 020210, 'Personnel issues \u2014 Psychological \u2014 Personality/attitude', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020215": {
+    "type": "noul",
+    "instructions": "Is the finding category 020215, 'Personnel issues \u2014 Psychological \u2014 Attention/monitoring', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020220": {
+    "type": "noul",
+    "instructions": "Is the finding category 020220, 'Personnel issues \u2014 Psychological \u2014 Perception/orientation/illusion', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020225": {
+    "type": "noul",
+    "instructions": "Is the finding category 020225, 'Personnel issues \u2014 Psychological \u2014 Mental/emotional state', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020230": {
+    "type": "noul",
+    "instructions": "Is the finding category 020230, 'Personnel issues \u2014 Psychological \u2014 Cognitive limitation', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020300": {
+    "type": "noul",
+    "instructions": "Is the finding category 020300, 'Personnel issues \u2014 Experience/knowledge \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020310": {
+    "type": "noul",
+    "instructions": "Is the finding category 020310, 'Personnel issues \u2014 Experience/knowledge \u2014 Experience/qualifications', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020315": {
+    "type": "noul",
+    "instructions": "Is the finding category 020315, 'Personnel issues \u2014 Experience/knowledge \u2014 Training', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020320": {
+    "type": "noul",
+    "instructions": "Is the finding category 020320, 'Personnel issues \u2014 Experience/knowledge \u2014 Knowledge', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020400": {
+    "type": "noul",
+    "instructions": "Is the finding category 020400, 'Personnel issues \u2014 Action/decision \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020410": {
+    "type": "noul",
+    "instructions": "Is the finding category 020410, 'Personnel issues \u2014 Action/decision \u2014 Action', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020415": {
+    "type": "noul",
+    "instructions": "Is the finding category 020415, 'Personnel issues \u2014 Action/decision \u2014 Info processing/decision', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020500": {
+    "type": "noul",
+    "instructions": "Is the finding category 020500, 'Personnel issues \u2014 Miscellaneous \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020510": {
+    "type": "noul",
+    "instructions": "Is the finding category 020510, 'Personnel issues \u2014 Miscellaneous \u2014 Intentional act', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020600": {
+    "type": "noul",
+    "instructions": "Is the finding category 020600, 'Personnel issues \u2014 Task performance \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020610": {
+    "type": "noul",
+    "instructions": "Is the finding category 020610, 'Personnel issues \u2014 Task performance \u2014 Planning/preparation', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020615": {
+    "type": "noul",
+    "instructions": "Is the finding category 020615, 'Personnel issues \u2014 Task performance \u2014 Inspection', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020620": {
+    "type": "noul",
+    "instructions": "Is the finding category 020620, 'Personnel issues \u2014 Task performance \u2014 Maintenance', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020625": {
+    "type": "noul",
+    "instructions": "Is the finding category 020625, 'Personnel issues \u2014 Task performance \u2014 Record-keeping', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020630": {
+    "type": "noul",
+    "instructions": "Is the finding category 020630, 'Personnel issues \u2014 Task performance \u2014 Use of equip/info', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020635": {
+    "type": "noul",
+    "instructions": "Is the finding category 020635, 'Personnel issues \u2014 Task performance \u2014 Communication (personnel)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_020640": {
+    "type": "noul",
+    "instructions": "Is the finding category 020640, 'Personnel issues \u2014 Task performance \u2014 Workload management', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030100": {
+    "type": "noul",
+    "instructions": "Is the finding category 030100, 'Environmental issues \u2014 Operating environment \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030110": {
+    "type": "noul",
+    "instructions": "Is the finding category 030110, 'Environmental issues \u2014 Operating environment \u2014 En route navaid coverage/avail', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030120": {
+    "type": "noul",
+    "instructions": "Is the finding category 030120, 'Environmental issues \u2014 Operating environment \u2014 Approach aid coverage/avail', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030130": {
+    "type": "noul",
+    "instructions": "Is the finding category 030130, 'Environmental issues \u2014 Operating environment \u2014 Meteorological services', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030140": {
+    "type": "noul",
+    "instructions": "Is the finding category 030140, 'Environmental issues \u2014 Operating environment \u2014 Air traffic/operating proc', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030150": {
+    "type": "noul",
+    "instructions": "Is the finding category 030150, 'Environmental issues \u2014 Operating environment \u2014 Radar services/coverage', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030160": {
+    "type": "noul",
+    "instructions": "Is the finding category 030160, 'Environmental issues \u2014 Operating environment \u2014 Communication system', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030170": {
+    "type": "noul",
+    "instructions": "Is the finding category 030170, 'Environmental issues \u2014 Operating environment \u2014 Airport facilities/design', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030200": {
+    "type": "noul",
+    "instructions": "Is the finding category 030200, 'Environmental issues \u2014 Physical environment \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030210": {
+    "type": "noul",
+    "instructions": "Is the finding category 030210, 'Environmental issues \u2014 Physical environment \u2014 Terrain', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030220": {
+    "type": "noul",
+    "instructions": "Is the finding category 030220, 'Environmental issues \u2014 Physical environment \u2014 Object/animal/substance', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030230": {
+    "type": "noul",
+    "instructions": "Is the finding category 030230, 'Environmental issues \u2014 Physical environment \u2014 Runway/land/takeoff/taxi surface', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030300": {
+    "type": "noul",
+    "instructions": "Is the finding category 030300, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030310": {
+    "type": "noul",
+    "instructions": "Is the finding category 030310, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Temp/humidity/pressure', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030320": {
+    "type": "noul",
+    "instructions": "Is the finding category 030320, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Turbulence', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030330": {
+    "type": "noul",
+    "instructions": "Is the finding category 030330, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Convective weather', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030340": {
+    "type": "noul",
+    "instructions": "Is the finding category 030340, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Wind', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030350": {
+    "type": "noul",
+    "instructions": "Is the finding category 030350, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Ceiling/visibility/precip', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030360": {
+    "type": "noul",
+    "instructions": "Is the finding category 030360, 'Environmental issues \u2014 Conditions/weather/phenomena \u2014 Light condition', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030400": {
+    "type": "noul",
+    "instructions": "Is the finding category 030400, 'Environmental issues \u2014 Task environment \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030410": {
+    "type": "noul",
+    "instructions": "Is the finding category 030410, 'Environmental issues \u2014 Task environment \u2014 Physical workspace', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_030420": {
+    "type": "noul",
+    "instructions": "Is the finding category 030420, 'Environmental issues \u2014 Task environment \u2014 Pressures/demands', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040100": {
+    "type": "noul",
+    "instructions": "Is the finding category 040100, 'Organizational issues \u2014 Development \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040110": {
+    "type": "noul",
+    "instructions": "Is the finding category 040110, 'Organizational issues \u2014 Development \u2014 Design', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040120": {
+    "type": "noul",
+    "instructions": "Is the finding category 040120, 'Organizational issues \u2014 Development \u2014 Selection/certification/testing', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040130": {
+    "type": "noul",
+    "instructions": "Is the finding category 040130, 'Organizational issues \u2014 Development \u2014 Manufacture/production', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040200": {
+    "type": "noul",
+    "instructions": "Is the finding category 040200, 'Organizational issues \u2014 Management \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040210": {
+    "type": "noul",
+    "instructions": "Is the finding category 040210, 'Organizational issues \u2014 Management \u2014 Policy/procedure', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040220": {
+    "type": "noul",
+    "instructions": "Is the finding category 040220, 'Organizational issues \u2014 Management \u2014 Resources', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040230": {
+    "type": "noul",
+    "instructions": "Is the finding category 040230, 'Organizational issues \u2014 Management \u2014 Scheduling', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040240": {
+    "type": "noul",
+    "instructions": "Is the finding category 040240, 'Organizational issues \u2014 Management \u2014 Culture', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040250": {
+    "type": "noul",
+    "instructions": "Is the finding category 040250, 'Organizational issues \u2014 Management \u2014 Communication (organizational)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040300": {
+    "type": "noul",
+    "instructions": "Is the finding category 040300, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040310": {
+    "type": "noul",
+    "instructions": "Is the finding category 040310, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 Training', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040320": {
+    "type": "noul",
+    "instructions": "Is the finding category 040320, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 Oversight', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040330": {
+    "type": "noul",
+    "instructions": "Is the finding category 040330, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 Documentation/record keeping', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040340": {
+    "type": "noul",
+    "instructions": "Is the finding category 040340, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 Enforcement', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_040350": {
+    "type": "noul",
+    "instructions": "Is the finding category 040350, 'Organizational issues \u2014 Support/oversight/monitoring \u2014 Safety programs', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   },
+   "category_050000": {
+    "type": "noul",
+    "instructions": "Is the finding category 050000, 'Not determined \u2014 Not determined \u2014 (general)', among the findings the NTSB would flag as being in the probable cause of this accident?"
+   }
+  }
+ },
+ "response": {
+  "model": "jev-1.13.0",
+  "answers": {
+   "category_010100": {
+    "type": "noul",
+    "noul": 0.16
+   },
+   "category_010105": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_010109": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010110": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010115": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010200": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_010221": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010222": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010223": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010224": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010225": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010226": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010227": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010228": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010229": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010230": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010231": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010232": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_010233": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010234": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010235": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010236": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010237": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010238": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010245": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010249": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010300": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_010351": {
+    "type": "noul",
+    "noul": 0.02
+   },
+   "category_010352": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010353": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010354": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010355": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010356": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010357": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010400": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_010461": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_010462": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010463": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010464": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010465": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010467": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010500": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_010571": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_010572": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_010573": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010574": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010575": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010576": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_010577": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010578": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010579": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010580": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_010581": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010582": {
+    "type": "noul",
+    "noul": 0.02
+   },
+   "category_010583": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_010585": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_010600": {
+    "type": "noul",
+    "noul": 0.14
+   },
+   "category_010610": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_010620": {
+    "type": "noul",
+    "noul": 0.17
+   },
+   "category_010700": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_010710": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_010714": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_020100": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_020110": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_020115": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020120": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020130": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020135": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_020200": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020210": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020215": {
+    "type": "noul",
+    "noul": 0.14
+   },
+   "category_020220": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_020225": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_020230": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_020300": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_020310": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_020315": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_020320": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_020400": {
+    "type": "noul",
+    "noul": 0.2
+   },
+   "category_020410": {
+    "type": "noul",
+    "noul": 0.16
+   },
+   "category_020415": {
+    "type": "noul",
+    "noul": 0.18
+   },
+   "category_020500": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_020510": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_020600": {
+    "type": "noul",
+    "noul": 0.18
+   },
+   "category_020610": {
+    "type": "noul",
+    "noul": 0.14
+   },
+   "category_020615": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_020620": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_020625": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_020630": {
+    "type": "noul",
+    "noul": 0.17
+   },
+   "category_020635": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_020640": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_030100": {
+    "type": "noul",
+    "noul": 0.14
+   },
+   "category_030110": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_030120": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_030130": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_030140": {
+    "type": "noul",
+    "noul": 0.18
+   },
+   "category_030150": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_030160": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_030170": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_030200": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "category_030210": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_030220": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_030230": {
+    "type": "noul",
+    "noul": 0.13
+   },
+   "category_030300": {
+    "type": "noul",
+    "noul": 0.11
+   },
+   "category_030310": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_030320": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_030330": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_030340": {
+    "type": "noul",
+    "noul": 0.1
+   },
+   "category_030350": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_030360": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_030400": {
+    "type": "noul",
+    "noul": 0.13
+   },
+   "category_030410": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_030420": {
+    "type": "noul",
+    "noul": 0.13
+   },
+   "category_040100": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_040110": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "category_040120": {
+    "type": "noul",
+    "noul": 0.08
+   },
+   "category_040130": {
+    "type": "noul",
+    "noul": 0.04
+   },
+   "category_040200": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_040210": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_040220": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_040230": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_040240": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_040250": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_040300": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_040310": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_040320": {
+    "type": "noul",
+    "noul": 0.09
+   },
+   "category_040330": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_040340": {
+    "type": "noul",
+    "noul": 0.06
+   },
+   "category_040350": {
+    "type": "noul",
+    "noul": 0.07
+   },
+   "category_050000": {
+    "type": "noul",
+    "noul": 0.14
+   }
+  },
+  "usage": {
+   "input_tokens": 7154,
+   "output_tokens": 2994
+  }
+ }
+}
