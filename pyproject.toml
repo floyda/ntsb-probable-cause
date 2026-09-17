@@ -115,7 +115,13 @@ min_confidence = 80
 # The provider's batch ids are opaque random strings quoted verbatim (decision 0032 names
 # four of them, and run notes name more). They are evidence of real spending, so they are
 # never reworded; "LFofWWoQzHwuChB7kK27" is not a misspelling of anything.
-extend-ignore-re = ["batch-[0-9]+-[A-Za-z0-9]+"]
+extend-ignore-re = [
+    "batch-[0-9]+-[A-Za-z0-9]+",
+    # Short git SHAs, quoted verbatim wherever a run's provenance is recorded (0018) and
+    # throughout 0036's old -> new mapping table. Hex digits spell words by accident:
+    # `f93ba36` contains "ba", which the checker reads as a typo for "by".
+    "`[0-9a-f]{7,40}`",
+]
 
 [tool.typos.default.extend-words]
 # NTSB abbreviations that are not misspellings go here, one per line, with a comment.
