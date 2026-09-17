@@ -3113,7 +3113,7 @@ These steps spend money and produce numbers. Each writes its summary under `docs
 - [x] **Step 5: Ablations.** `--exclude registration`, `--exclude phase_of_flight`, `--include case_number`, each on `dev-400`, each reported `--against` the ceiling run, written to `docs/results/s1-ablations-dev.txt`.
 - [x] **Step 6: Sonnet comparison.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --model anthropic/claude-sonnet-5` (about $5), `report --against`, written to `docs/results/s1-model-comparison-dev.txt`. If Luna's top-1 is more than 10 points below Sonnet's, stop and ask Andy before any held-out run (0031).
 - [x] **Step 7: Judge validation.** `uv run ntsb-eval judge <ceiling run id> --out docs/results/s1-judge-validation.txt`. Give Andy the 30 disagreement case ids with the model's outputs and the official cause (from `cases.jsonl`, outside git) as a sheet; he marks each `judge right` / `codes right` / `both defensible`. Commit the sheet with ids and verdict text removed as `docs/results/s1-judge-handcheck.csv`. Apply the rule in spec §8 and record the outcome: validated or not.
-- [ ] **Step 8: Commit the results files** (numbers only; check none contains model text):
+- [x] **Step 8: Commit the results files** (numbers only; check none contains model text):
 
 ```bash
 git add docs/results/s1-*.txt docs/results/s1-judge-handcheck.csv .env.example
@@ -3129,7 +3129,7 @@ git commit -m "S1: development-split results — ceiling, arm A, threshold, abla
 - [x] **Step 3: Registration ablation on `heldout-400`.** `uv run ntsb-eval run --arm ceiling --sample heldout-400 --exclude registration`, then `report --against <heldout-400 ceiling run>` to `docs/results/s1-registration-heldout.txt`. Apply the rule in spec §9 / decision 0027. If the difference favours having the registration: remove `EvidenceRole.REGISTRATION` from `samples.START_FACTS` and add it to every run's default exclusions, write the next numbered decision record amending 0023 (the number is whatever follows the last record at the time), and re-run `make bars` once (the ledger shows both).
 - [x] **Step 4: Judge on `heldout-400`** only if validated in Task 14 step 7: `uv run ntsb-eval judge <run id> --validated --out docs/results/s1-judge-heldout.txt`. Otherwise write one line in `s1-bars.txt`: "prose unchecked by a validated judge".
 - [x] **Step 5: Baseline reproduction check.** Open `docs/results/s1-baseline.txt`; confirm the reproduction row is within one point of 16.2% / 32.2%, or write the explanation into the file.
-- [ ] **Step 6: Commit** results and the ledger:
+- [x] **Step 6: Commit** results and the ledger:
 
 ```bash
 git add docs/results/s1-bars.txt docs/results/s1-baseline.txt docs/results/s1-registration-heldout.txt docs/results/heldout-ledger.md docs/results/s1-judge-heldout.txt
@@ -3140,7 +3140,7 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
 
 ### Task 16: Close-out
 
-- [ ] **Step 1: Retire the `CLAUDE.md` eval-bars table.** Replace the "Eval bars to beat" section with two sentences pointing at `docs/results/s1-bars.txt` and decision 0025.
+- [x] **Step 1: Retire the `CLAUDE.md` eval-bars table.** Replace the "Eval bars to beat" section with two sentences pointing at `docs/results/s1-bars.txt` and decision 0025.
 - [ ] **Step 2: Verify every Done-means condition in spec §13 has evidence** (test id, results file, or ledger). List them in the pull-request description.
 - [ ] **Step 3: Open the pull request** titled `S1: scoring and the evaluation harness`, with the template's checklist.
 - [ ] **Step 4: Run `/close-stage`** (the project skill): As-built section with five parts, status `Implemented`, roadmap S1 entry marked done, this plan deleted, `version = "0.2.0"`, `uv run python -m scripts.check_docs` clean.

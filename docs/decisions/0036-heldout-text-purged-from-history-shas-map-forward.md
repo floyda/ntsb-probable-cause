@@ -63,6 +63,11 @@ retrievable with `git show` by anyone who clones the repository.
    abandoned — and is listed only so the table covers every SHA a run folder names.
 4. The absolute local paths in the same history are **not** purged. They were fixed forward
    in `4791aa3` and reveal only a username the commit author line already carries.
+5. The purge covers this branch. A throwaway experiment branch, `typesafe-probe`, was taken
+   off this one before the rewrite and still carries both files in its own history; Andy's
+   ruling is that it is disposable and is left alone. The withheld text is therefore
+   recoverable until that branch is deleted, and deleting it is what completes this
+   decision. No branch intended to reach `main` carries the files.
 
 ## Why
 
