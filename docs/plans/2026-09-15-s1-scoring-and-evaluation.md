@@ -3106,13 +3106,13 @@ git commit -m "S1: report with intervals and slices, threshold rule, ntsb-eval c
 
 These steps spend money and produce numbers. Each writes its summary under `docs/results/` and the numbers go into the Deviations log and, at close-out, the As-built record. Nothing here touches a held-out sample.
 
-- [ ] **Step 1: Cost check.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --sync --limit 10 --cap-usd 0.05` (add `--limit N` to the app: first N cases of the sample). Read `report`'s cost per case. Set `NTSB_EXPECTED_COST_PER_CASE_USD` in `.env` (add the setting; default None) so later projections use it. Record the number.
-- [ ] **Step 2: Ceiling on `dev-400`, batch.** `uv run ntsb-eval run --arm ceiling --sample dev-400`. Read the failure rate (schema failures) and the abstain rate. If schema failures exceed 5%, fix the prompt or schema, bump `PROMPT_VERSION` to `s1-v2`, re-run. Freeze the prompt: record the version in the Deviations log and do not change it after this step.
-- [ ] **Step 3: Arm A on `dev-400`.** `uv run ntsb-eval run --arm A --sample dev-400`, then `report --against`.
-- [ ] **Step 4: Threshold.** `uv run ntsb-eval threshold <ceiling run id> --out docs/results/s1-threshold.txt`.
-- [ ] **Step 5: Ablations.** `--exclude registration`, `--exclude phase_of_flight`, `--include case_number`, each on `dev-400`, each reported `--against` the ceiling run, written to `docs/results/s1-ablations-dev.txt`.
+- [x] **Step 1: Cost check.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --sync --limit 10 --cap-usd 0.05` (add `--limit N` to the app: first N cases of the sample). Read `report`'s cost per case. Set `NTSB_EXPECTED_COST_PER_CASE_USD` in `.env` (add the setting; default None) so later projections use it. Record the number.
+- [x] **Step 2: Ceiling on `dev-400`, batch.** `uv run ntsb-eval run --arm ceiling --sample dev-400`. Read the failure rate (schema failures) and the abstain rate. If schema failures exceed 5%, fix the prompt or schema, bump `PROMPT_VERSION` to `s1-v2`, re-run. Freeze the prompt: record the version in the Deviations log and do not change it after this step.
+- [x] **Step 3: Arm A on `dev-400`.** `uv run ntsb-eval run --arm A --sample dev-400`, then `report --against`.
+- [x] **Step 4: Threshold.** `uv run ntsb-eval threshold <ceiling run id> --out docs/results/s1-threshold.txt`.
+- [x] **Step 5: Ablations.** `--exclude registration`, `--exclude phase_of_flight`, `--include case_number`, each on `dev-400`, each reported `--against` the ceiling run, written to `docs/results/s1-ablations-dev.txt`.
 - [ ] **Step 6: Sonnet comparison.** `uv run ntsb-eval run --arm ceiling --sample dev-400 --model anthropic/claude-sonnet-5` (about $5), `report --against`, written to `docs/results/s1-model-comparison-dev.txt`. If Luna's top-1 is more than 10 points below Sonnet's, stop and ask Andy before any held-out run (0031).
-- [ ] **Step 7: Judge validation.** `uv run ntsb-eval judge <ceiling run id> --out docs/results/s1-judge-validation.txt`. Give Andy the 30 disagreement case ids with the model's outputs and the official cause (from `cases.jsonl`, outside git) as a sheet; he marks each `judge right` / `codes right` / `both defensible`. Commit the sheet with ids and verdict text removed as `docs/results/s1-judge-handcheck.csv`. Apply the rule in spec §8 and record the outcome: validated or not.
+- [x] **Step 7: Judge validation.** `uv run ntsb-eval judge <ceiling run id> --out docs/results/s1-judge-validation.txt`. Give Andy the 30 disagreement case ids with the model's outputs and the official cause (from `cases.jsonl`, outside git) as a sheet; he marks each `judge right` / `codes right` / `both defensible`. Commit the sheet with ids and verdict text removed as `docs/results/s1-judge-handcheck.csv`. Apply the rule in spec §8 and record the outcome: validated or not.
 - [ ] **Step 8: Commit the results files** (numbers only; check none contains model text):
 
 ```bash
@@ -4303,3 +4303,45 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   the judge's synthetic `<run-id>-judge`. A `run.jsonl` damaged mid-write now blocks the
   resume where before it was never parsed — accepted, with the controller's ruling that the
   guarded reader is right and the message is hand-recoverable.
+- 2026-09-16, Task 14 (step 1): the measured cost per case was carried on the command line as
+  `--expected-cost-per-case-usd` rather than written to a `.env` file. There is no `.env` in
+  this worktree — the harness reads `NTSB_*` from the environment and the runs are launched
+  from a script that exports them — so a committed-and-ignored `.env` would have been a
+  second, silent source of the same number. `.env.example` documents the setting. Measured
+  ceiling cost: **$0.0011 per case** on `openai/gpt-5.6-luna` at the batch price.
+- 2026-09-16, Task 14 (step 2): **the prompt is frozen at `PROMPT_VERSION = "s1-v5"`.** The
+  first ceiling attempt failed its schema check on 249 of 401 cases (62%). Cause: the stage-1
+  JSON schema offered `item8`, the finding's item code, which stage 1 is never shown the list
+  for and so could not answer. `_stage1_schema()` now prunes `item8` from the stage-1 schema
+  only. Re-measured: **0 schema failures in 401**. The prompt *text* is unchanged from v4; the
+  version moved because the schema is part of what elicits an answer, and a run's replies are
+  not comparable across a schema change.
+- 2026-09-16, Task 14 (step 6): **not a comparison — a finding.** `z-ai/glm-5.3-flash` could
+  not answer inside our 2,000-token output cap: 376 of 401 stage-1 replies were unusable, 287
+  of them empty with `finish_reason="length"` at exactly the cap. It deliberates internally
+  and spends the whole output budget before emitting anything. Not re-run at a raised cap: a
+  model given a different token budget is not a like-for-like comparison, and the point of
+  the check is the bar, not the model. `google/gemini-3.5-flash-lite` was also attempted and
+  refused every request ("Requests ending with a model turn are not supported"), which our
+  stage-2 assistant-final shape triggers; `google/gemini-3.1-flash-lite` does not. The
+  comparison is carried by Gemini 3.1 Flash Lite (decision 0034).
+- 2026-09-17, Task 14 (step 6): the Gemini batch submitted at 18:57Z sat at **0 of 401
+  completed after 11 hours** with nothing failed — queued, never started. OpenRouter has no
+  cancel endpoint, so it was left in place and the same run was re-submitted on the standard
+  (immediate) price at Andy's explicit authorisation, to close S1 the same morning.
+- 2026-09-17, Task 14 (step 7): the validation file was built from the recorded `judge.jsonl`
+  by a script using the library's own `agreement_table`, **not** by re-running
+  `ntsb-eval judge --out`. That subcommand always re-calls the model, so producing the file
+  through it would have paid a second time for a measurement already recorded. Outcome:
+  agreement **346/401 = 86.3%** against a 62.5% threshold, and Andy's 30-case hand-check found
+  the judge's errors fall in **both** directions (4 generous, 1 harsh). **VALIDATED** as a
+  secondary measure; the headline score stays the code-constrained exact match. Caveat carried
+  in the results file: 30 cases, and the two-sidedness rests on a single harsh error.
+- 2026-09-17, Task 14 (step 8): committed in two commits rather than one — the six files that
+  were ready first, then the model comparison once the re-submitted Gemini run landed.
+- 2026-09-17, Task 14, **defect found, not yet fixed**: the `--sync` path writes no log line
+  between its header and its final record, so a sequential 401-case run is invisible for its
+  whole duration. The batch path logs submissions, reuse and status polls. Worth closing
+  before S2, together with the three already logged in the ledger (`resolve_latest` ignoring
+  exclusions, `baseline --sample dev-400` printing a table of `0.0%` figures, and `--limit N`
+  taking the first N cases rather than a seeded random N).
