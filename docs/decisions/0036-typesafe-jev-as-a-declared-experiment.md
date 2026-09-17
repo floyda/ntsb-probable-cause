@@ -1,0 +1,132 @@
+# 0036 — TypeSafe's Jev enters as a declared experiment on a second transport
+
+Amends [0009](0009-model-access-via-openrouter.md) (one transport) for one named model
+class only. Every other part of 0009 stands. Adds a row to the model axis of
+[0031](0031-default-model-gpt-luna-model-axis-after-s3.md); never touches the bar.
+
+## Context
+
+TypeSafe AI opened early access to Jev on 2026-09-15. Jev is a "System One" model: it
+generates no text. A request carries one `state` (text or JSON) and a map of typed
+questions; the reply carries a typed answer per question with probabilities. Three question
+shapes exist: **Choice** (one label from up to 255, with a probability per label and a
+confidence), **Score** (a position on an ordered rubric, with a probability per level and a
+confidence), and **Noul** (a yes/no claim, returning the probability it is true). The
+vendor's training claim is calibration: a stated 70% should be right about 70% of the time.
+Its published prices are $0.042 per million input tokens and nothing for output; its
+published accuracy figures are agreement with labels made by averaging two frontier
+models, on the vendor's own tasks, and say nothing about a task with a real verdict.
+
+The request shape is not chat completions, so Jev is not on OpenRouter and cannot be. The
+wire schema below is read from the vendor's Python SDK (`typesafe-sdk` 0.6.0 on PyPI),
+whose models are generated from `https://api.typesafe.ai/openapi.json`; the SDK itself is
+not a dependency of this project. Andy holds an early-access key.
+
+```
+POST https://api.typesafe.ai/v1/systemone      Authorization: Bearer <TYPESAFE_API_KEY>
+{"state": <text|object|array>, "model": "jev-latest", "questions": {<name>: <question>}}
+  question: {"type": "choice", "instructions": ..., "criteria": {<label>: <description|null>}}
+            {"type": "score",  "instructions": ..., "criteria": [<level 0>, <level 1>, ...]}
+            {"type": "noul",   "instructions": ..., "criteria": {"true": ..., "false": ...}}
+reply:    {"model": ..., "usage": {"input_tokens", "output_tokens"}, "answers": {<name>:
+            {"type": "choice", "choice", "confidence", "probabilities": {<label>: p}}
+            {"type": "score",  "score", "confidence", "legend", "probabilities": {<level>: p}}
+            {"type": "noul",   "noul": p}}}
+GET  https://api.typesafe.ai/v1/models        {"models": [{"name", "description", "release_date"}]}
+```
+
+Why this project should care, in the order that matters:
+
+1. **The answer format of 0025 is already a set of picks from short tables**, and every
+   table fits one Choice: 47 phases, 93 events, 130 finding categories, 73 modifiers
+   (`docs/results/s1-code-tables.txt`), against a limit of 255. The eight-digit item is
+   chosen among a category's children (median 6, max 41), which is a second, serial Choice.
+   The variable-sized set of findings, which Choice cannot return, is a Noul per category.
+2. **0021 scores the trail on probability on the true code, calibration, and a confidence
+   threshold.** Today those numbers are what an LLM writes into a JSON field. Jev returns
+   a probability vector over the 93 events on every call, and confidence is what it claims
+   to be trained for. The fourth result that counts against the loop in 0022 is "the
+   intermediate hypotheses are not calibrated". Jev is a direct test of whether calibration
+   can be bought from the model class rather than prompted for.
+3. **The bar is 17.7%, and both LLMs measured in S1 lost to it** (`docs/results/s1-bars.txt`,
+   `s1-model-comparison-dev.txt`). A model trained to output distributions may behave more
+   like a classifier than a writer here. That is the unknown worth a cheap measurement.
+4. **Two smaller fits.** Score on ordered levels is the judge of 0028, and the repo already
+   holds Andy's 30-case hand-check to validate it against. A Choice over document titles is
+   the evidence-versus-synthesis classifier S2 needs.
+
+What does not fit: Jev writes no evidence narrative, probable cause or lay explanation, and
+cannot state a reason for a tool call or an expected effect, all of which are step-record
+fields (0021 §5.4). It can pick a next tool as a Choice; it cannot say why.
+
+## Decision
+
+1. **Jev is a declared experiment, stated here before any measurement.** It is run as the
+   ceiling arm only (0022, as read by 0025 point 4), on `dev-400`, and reported as one row
+   of the model-axis table of 0031 point 2. The bar stays Luna's. No held-out case is sent
+   to Jev unless the development row earns it, and then only with a ledger entry (0026).
+2. **A second transport is admitted for this model class only.** `TYPESAFE_API_KEY` and a
+   base URL join `Settings`; the endpoint paths and the vendor's published price join
+   `sources.py`, dated and marked self-reported until a real usage block replaces the
+   estimate (0030). The OpenRouter rule of 0009 is unchanged for every chat model.
+3. **The first artefact is a saved real response, not code** (0009's own rule, and rule 2).
+   `scripts/typesafe_probe.py` sends the payload of one redacted development fixture, built
+   by `split_record` and `Payload.from_evidence` as every payload is (0016), with the phase,
+   event and modifier tables as Choices, one Noul per finding category, and one Score. It
+   saves the redacted request and reply under `tests/fixtures/typesafe/`. A client is
+   written only against those fixtures.
+4. **How the row is judged**, fixed now:
+   - the same evidence payload text is the `state`; no prompt, no schema;
+   - phase and event are two Choices and the harness composes the code, as 0025 does;
+     top-1 is the composed code with the highest joint probability, top-3 the next two;
+   - categories are 130 Nouls; a finding is "believed" above a threshold chosen on
+     `dev-400`, and precision and recall are read off that threshold;
+   - Jev never abstains, so abstention is a confidence threshold chosen on `dev-400`, and
+     `answered top-1` is the like-for-like column against the LLM rows;
+   - the calibration table of the S1 specification (expected calibration error per
+     confidence bin) is reported for Jev's event distribution beside Luna's and Gemini's
+     self-reported probabilities. This column, not top-1, is the one the experiment exists for.
+5. **The judge test runs first.** Score against the 30-case hand-check of 0028, on the
+   development split, before any answering run. It costs cents and needs no new case.
+6. **The prose columns are reported as absent** for the Jev row. No LLM is chained behind
+   Jev to write them inside this experiment; a hybrid arm, if the row earns one, is a
+   later decision.
+
+## Why
+
+1. **It is the cheapest test of the project's most exposed claim.** The loop is warranted
+   only if its intermediate hypotheses are calibrated (0022). If calibration is a property
+   of a model class rather than of prompting, the loop should be built on that class, and
+   the project should know before S3 writes it. A `dev-400` ceiling row at the published
+   price is about a cent.
+2. **The shape removes two failure modes S1 paid for.** No JSON to parse, no stage 2 that
+   ends on the model's turn. Two comparison models were lost to those in 0034.
+3. **A declared experiment is how this project admits anything unplanned** (roadmap §13
+   on similar-case search). Stating the arm, the sample, the columns and the threshold
+   rule before the run keeps the row from being tuned against its own result.
+4. **A second transport is a real cost to 0009's argument**, which was that the evaluated
+   agent and the deployed agent share one transport. Confining it to a declared experiment
+   on the development split keeps that argument intact for the product. If Jev ever enters
+   the product, that is a new record superseding 0009, not an extension of this one.
+
+## What this rules out
+
+- **Jev as the agent.** It cannot write the narrative, the cause, the lay explanation or a
+  reason for a call. A Jev-only trail would lose the columns 0021 uses to test whether
+  stated reasons can be trusted.
+- **Mixing the Jev row into the bar.** 0031 point 2 forbids it; the bar is one model, and
+  the agent is compared on the same model.
+- **A held-out run on the strength of the vendor's numbers.** Their accuracy is agreement
+  with two other models on their tasks, and their price is, in their own words, not shown
+  to be unsubsidised.
+- **Depending on `typesafe-sdk`.** It brings `httpx2`, `msgspec` and `tenacity` for one
+  POST with a five-key body. The wire shape is in this record and in the saved fixtures;
+  `httpx`, already a dependency, sends it. If the SDK's shape and the saved reply ever
+  disagree, the saved reply wins and this record is amended.
+- **Chaining an LLM behind Jev inside this experiment.** It would measure two models and
+  attribute the result to one.
+
+## Status
+
+Proposed: written 2026-09-17 for Andy's acceptance. Becomes Accepted when the probe's
+fixtures are committed and the judge test of point 5 has run.

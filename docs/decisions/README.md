@@ -100,3 +100,4 @@ under `docs/specs/` and the record links to it.
 | [0057](0057-unset-directory-settings-derive-from-data-dir.md) | An unset directory setting derives from `data_dir` | Accepted |
 | [0058](0058-ci-installs-the-word-list-the-title-check-needs.md) | Continuous integration installs the word list the title check needs | Accepted |
 | [0059](0059-every-script-states-its-status.md) | Every script in `scripts/` states its kind, its output and what has since changed, in its docstring | Accepted |
+| [0036](0036-typesafe-jev-as-a-declared-experiment.md) | TypeSafe's Jev enters as a declared experiment on a second transport | Proposed; amends 0009 |
