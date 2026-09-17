@@ -1,0 +1,31 @@
+row,judge_said,codes_said,andy_mark
+1,same cause,wrong,both_defensible
+2,same cause,wrong,judge_right
+3,same cause,wrong,judge_right
+4,different,right,both_defensible
+5,same cause,wrong,judge_right
+6,same cause,wrong,judge_right
+7,same cause,wrong,codes_right
+8,related,right,both_defensible
+9,different,right,judge_right
+10,same cause,wrong,codes_right
+11,related,right,both_defensible
+12,same cause,wrong,judge_right
+13,related,right,both_defensible
+14,same cause,wrong,judge_right
+15,different,right,both_defensible
+16,same cause,wrong,judge_right
+17,same cause,wrong,judge_right
+18,same cause,wrong,judge_right
+19,related,right,both_defensible
+20,related,right,both_defensible
+21,different,right,judge_right
+22,related,right,codes_right
+23,same cause,wrong,judge_right
+24,same cause,wrong,judge_right
+25,same cause,wrong,both_defensible
+26,same cause,wrong,judge_right
+27,same cause,wrong,codes_right
+28,same cause,wrong,codes_right
+29,same cause,wrong,both_defensible
+30,same cause,wrong,both_defensible
