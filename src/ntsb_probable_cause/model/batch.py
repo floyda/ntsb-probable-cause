@@ -148,7 +148,10 @@ class BatchClient:
                 for r in requests
             ],
         }
-        submitted = self._http.request_json(sources.BATCHES, method="POST", body=body)
+        # Never retried: a duplicate batch is billed in full and cannot be cancelled, and
+        # only the second id would come back, leaving the first invisible to `month_spent`
+        # and unreachable by a resume. See `request_json`'s note.
+        submitted = self._http.request_json(sources.BATCHES, method="POST", body=body, retry=False)
         return str(submitted["id"])
 
     def poll(self, batch_id: str) -> BatchStatus:

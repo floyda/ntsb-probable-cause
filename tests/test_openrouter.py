@@ -8,6 +8,7 @@ import pytest
 import respx
 
 from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
 from ntsb_probable_cause.model.client import (
     ModelSettings,
     Payload,
@@ -113,6 +114,43 @@ def test_client_retries_then_raises(respx_mock: respx.MockRouter) -> None:
         client.complete(Payload.from_evidence(EVIDENCE), ModelSettings())
     assert sleeps.count(1.0) == 1
     assert sleeps.count(2.0) == 1
+
+
+def test_request_json_sends_once_when_retry_is_off(respx_mock: respx.MockRouter) -> None:
+    """A non-idempotent request is sent exactly once, however retryable the failure looks.
+
+    The failure this prevents: a batch submission the server accepted, whose response then
+    times out, is posted again. Both batches are billed, only the second id is returned, and
+    OpenRouter has no cancel endpoint.
+    """
+    route = respx_mock.post("https://openrouter.ai/api/beta/batches").mock(
+        return_value=httpx.Response(503, text="down")
+    )
+    sleeps: list[float] = []
+    client = OpenRouterClient("k", sleep=sleeps.append, max_attempts=5, backoff_seconds=1.0)
+    with pytest.raises(ModelError, match="was not retried"):
+        client.request_json("/api/beta/batches", method="POST", body={}, retry=False)
+    assert route.call_count == 1
+    assert sleeps == []
+
+
+def test_batch_submit_is_never_retried(respx_mock: respx.MockRouter) -> None:
+    """The real call path: BatchClient.submit must not retry, whatever the client allows."""
+    route = respx_mock.post("https://openrouter.ai/api/beta/batches").mock(
+        side_effect=httpx.ConnectTimeout("timed out")
+    )
+    client = OpenRouterClient("k", sleep=lambda _s: None, max_attempts=5)
+    with pytest.raises(ModelError, match="was not retried"):
+        BatchClient(client).submit(
+            [
+                BatchRequest(
+                    custom_id="c1",
+                    payload=Payload.from_evidence(EVIDENCE),
+                    settings=ModelSettings(),
+                )
+            ]
+        )
+    assert route.call_count == 1
 
 
 def test_client_does_not_retry_a_400(respx_mock: respx.MockRouter) -> None:

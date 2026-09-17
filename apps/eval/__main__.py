@@ -67,26 +67,58 @@ def answering_run_record(folder: Path) -> RunRecord:
     return records[0]
 
 
-def resolve_latest(runs_dir: Path, arm: str, sample: str) -> str:
-    """The newest *completed* run id for one arm and sample.
+def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None = None) -> str:
+    """The newest *completed, unmodified* run id for one arm and sample.
 
     An aborted run (``finished is None``) is skipped (fix round 1, item 9): ``make bars``
     resolving ``--latest`` to a partial run would silently report and publish it as if it
     were whole.
+
+    **An ablation, a probe or a different model is skipped too.** The run id encodes only
+    time, commit, sample and arm -- never ``exclusions``, ``includes``, ``model`` or
+    ``price_variant`` -- so the registration ablation and the plain ceiling produce ids of
+    exactly the same shape and the glob cannot tell them apart. On the real held-out runs
+    of 2026-09-17 the ablation was submitted five seconds after the ceiling and sorted
+    last, so ``--latest ceiling heldout-400`` returned the ablation: ``make bars`` would
+    have written the ablation's numbers into ``docs/results/s1-bars.txt`` as the headline
+    bar. The bars published that day were generated from explicit run ids and are not
+    affected. The fix reads each candidate's own record rather than trusting its name,
+    which is also why the model filter is available: the cross-model comparison runs share
+    the ``dev-400-ceiling`` shape with the default-model ceiling.
     """
-    suffix = f"-{sample}-{arm}"
-    candidates: list[str] = []
-    for folder in sorted(runs_dir.glob(f"*{suffix}")):
-        run_file = folder / "run.jsonl"
-        if not folder.is_dir() or not run_file.exists():
+    candidates: list[tuple[str, str]] = []
+    for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
+        if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
-        if answering_run_record(folder).finished is not None:
-            candidates.append(folder.name)
+        record = answering_run_record(folder)
+        if record.finished is None:
+            continue
+        if record.sample != sample or record.arm != arm:
+            continue
+        if record.exclusions or record.includes:
+            continue
+        if model is not None and record.model != model:
+            continue
+        candidates.append((folder.name, record.model))
     if not candidates:
+        wanted = f"arm={arm!r} sample={sample!r}"
+        if model is not None:
+            wanted += f" model={model!r}"
         raise SystemExit(
-            f"no completed run found for arm={arm!r} sample={sample!r} under {runs_dir}"
+            f"no completed run found for {wanted} under {runs_dir} "
+            f"(runs with exclusions or includes are never resolved by --latest: name them)"
         )
-    return candidates[-1]
+    models = {m for _, m in candidates}
+    if model is None and len(models) > 1:
+        # The cross-model comparison runs share `dev-400-ceiling` with the default-model
+        # ceiling, so "the latest" is genuinely ambiguous. Refusing beats picking: the
+        # wrong pick here silently publishes another model's numbers as ours.
+        raise SystemExit(
+            f"{len(candidates)} completed runs match arm={arm!r} sample={sample!r} across "
+            f"{len(models)} models ({', '.join(sorted(models))}). Name the run id, or pass "
+            f"the model, rather than letting --latest choose between them."
+        )
+    return candidates[-1][0]
 
 
 def _maybe_write(out: str | None, text: str) -> None:
@@ -253,8 +285,24 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     folder = settings.runs_dir / args.run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     curve = report.threshold_curve(cases)
-    lines = [f"{t:.2f}\t{v:+.3f}" for t, v in curve]
-    lines.append(f"\nchosen threshold: {report.choose_threshold(cases):.2f}")
+    lines = ["threshold\tmean score\tcases answered"]
+    lines += [f"{t:.2f}\t{v:+.3f}\t{report.answered_at(cases, t)}" for t, v in curve]
+    chosen = report.choose_threshold(cases)
+    lines.append(f"\nchosen threshold: {chosen:.2f}")
+    if report.threshold_is_trivial(cases, chosen):
+        # Without this the reader takes 0.95 for a confident operating point. It is the
+        # opposite: nothing clears it, so the "best" policy is to answer nothing at all.
+        lines += [
+            "",
+            "NOT A USABLE THRESHOLD. No case is answered at this confidence, so the policy",
+            "answers nothing and scores exactly what always abstaining scores. The curve's",
+            "maximum is the trivial policy, not an operating point.",
+            "",
+            "This is structural rather than a quirk of one run: the mean score is",
+            "P(answer) x (2 x accuracy - 1), so while accuracy is below 50% every answer",
+            "costs more than it earns and answering nothing wins at every threshold. A",
+            "usable threshold can only come from a run that is right more often than not.",
+        ]
     text = "\n".join(lines)
     print(text)
     _maybe_write(args.out, text)
@@ -380,13 +428,25 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
     disagreements = pick_disagreements(
         list(result.case_ids), list(result.labels), list(result.scores)
     )
+    # The sampled ids go to the run folder, which is outside git, and never into the text
+    # `--out` writes. `--out` normally targets `docs/results/`, which is committed, and on a
+    # held-out run these are held-out case numbers: a committed held-out id is a route for
+    # held-out cases to reach development work. Held-out ids are not printed to the terminal
+    # either. On a development run they are, because that list IS the hand-check sheet.
+    ids_file = folder / "judge-disagreements.txt"
+    ids_file.write_text("\n".join(disagreements) + "\n")
     text = (
         f"agreement table: {agreement_table(result.labels, result.scores)}\n"
-        f"disagreements sampled: {disagreements}\n"
+        f"disagreements sampled: {len(disagreements)} "
+        f"(case ids written to {ids_file.name} in the run folder, never to --out)\n"
         f"judge cost: ${result.cost_usd:.4f} over {len(result.case_ids)} cases "
         f"(recorded as run {judge_record.run_id!r} for month_spent)"
     )
     print(text)
+    if run_record.sample.startswith("heldout"):
+        print(f"held-out sample: the {len(disagreements)} sampled case ids are not printed.")
+    else:
+        print(f"disagreement case ids: {disagreements}")
     _maybe_write(args.out, text)
 
 

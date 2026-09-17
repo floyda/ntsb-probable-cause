@@ -173,6 +173,34 @@ def choose_threshold(results: Sequence[CaseResult]) -> float:
     return next(t for t, v in curve if v == best)
 
 
+def answered_at(results: Sequence[CaseResult], t: float) -> int:
+    """How many cases the policy "answer only at confidence >= t" actually answers.
+
+    The curve alone cannot be read without this. On the first published run the chosen
+    threshold was 0.95, which looks like a confident operating point and is nothing of the
+    kind: the highest confidence any answered case carried was 0.90, so the rule answered
+    **no cases at all** and scored exactly 0 -- the same as always abstaining. Every other
+    grid point scored below 0, so the trivial policy won by default. A score printed without
+    the count it was computed over is the bug spec §4.3 names.
+    """
+    return sum(
+        1
+        for r in results
+        if r.scores is not None and not r.scores.abstained and r.scores.confidence >= t
+    )
+
+
+def threshold_is_trivial(results: Sequence[CaseResult], t: float) -> bool:
+    """True when *t* answers nothing, so its score is the always-abstain score.
+
+    Structural, not a quirk of one run: the mean score is P(answer) x (2 x accuracy - 1), so
+    while accuracy is below 50% every answer costs more than it earns and the objective is
+    maximised by answering nothing. A run whose accuracy is under a half can never yield a
+    usable threshold from this curve, and saying so is the only honest report.
+    """
+    return answered_at(results, t) == 0
+
+
 def fmt(cell: Cell) -> str:
     """``57.5% [42.1, 71.5]``."""
     return f"{cell.value:.1%} [{cell.low:.1%}, {cell.high:.1%}]"

@@ -4395,6 +4395,82 @@ git commit -m "S1: the bars — baseline, ceiling, arm A on the held-out samples
   the run folder, outside git. `--out` should learn the same rule before S2.
   Result: agreement **331/399 = 83.0%**, 37 judge-generous and 31 judge-harsh — the same
   two-sided pattern the development split showed at 86.3%.
+- 2026-09-17, **final whole-branch review**: three reviewers were run in parallel over the
+  branch diff, split by dimension (leakage and split discipline; scoring and metrics
+  correctness; runner, resume, cost and CLI), because a 16,240-line diff across 92 files is
+  more than one reviewer reads carefully. They returned 5 Critical and 8 Important findings.
+  Andy's ruling: fix five before merge, log the rest for S2. The five, all fixed and tested:
+
+  1. **Withheld text for 70 held-out cases was committed.**
+     `tests/fixtures/eval/decidability_full.csv` held the NTSB's probable cause and finding
+     codes (verdict) for 40 cases; `leakage_full.csv` held the investigator's factual
+     account (synthesis) for 30. Verified by event date: **all 70 are held-out**, and the 40
+     are `heldout-40` itself — the sample a bar was measured on the same morning. The files
+     were guarded only by a README sentence saying the columns "never enter a payload",
+     which is precisely the convention 0016 forbids; `check_fixtures_redacted.py` globbed
+     `*.json` and never looked at them. Nothing read them: `conftest.py` loads `*_ids.csv`
+     only, and a comment claiming the full sheets are "read by name where they are needed"
+     described an intent that never existed. Both files removed, `copy_eval_ids.py` no
+     longer copies them, and the check now fails on any fixture CSV carrying a withheld
+     column, matched case- and separator-insensitively.
+  2. **The published threshold was meaningless as reported.** `chosen threshold: 0.95` reads
+     as a confident operating point. Measured on the ceiling run: of 309 answered cases the
+     highest confidence is **0.90** and **none** reach 0.95, so the policy answers nothing
+     and scores exactly what always abstaining scores. Every other grid point is negative,
+     so the trivial policy wins by default. Structural, not a quirk: mean score is
+     P(answer) x (2 x accuracy - 1), so below 50% accuracy no threshold can be worth
+     answering at. `threshold` now prints a **cases answered** column beside every row and
+     says plainly when the chosen point answers nothing. `docs/results/s1-threshold.txt`
+     regenerated. Curve semantics unchanged — the defect was in the reporting, not spec §9.
+  3. **`resolve_latest` could not tell the ceiling from an ablation.** Confirmed against the
+     real runs: it returned the `--exclude registration` run for `--latest ceiling
+     heldout-400`, because run ids encode only time, commit, sample and arm. `make bars`
+     would have written the ablation's numbers into `s1-bars.txt` as the headline bar. It
+     now reads each candidate's own `RunRecord`, skips any run with exclusions or includes,
+     and **refuses** rather than guessing when candidates span several models (the
+     cross-model runs share `dev-400-ceiling` with the default-model ceiling). **The bars
+     published on 2026-09-17 are unaffected: they were generated from explicit run ids.**
+  4. **A batch submission could be sent, and billed, twice.** `request_json` retried every
+     POST on a transport error or a 5xx, with no idempotency key, and `BatchClient.submit`
+     went through it. A 400-request batch the server accepted but whose response timed out
+     would be submitted again: both billed, only the second id returned, the first invisible
+     to `month_spent`, unreachable by a resume, and **uncancellable**. `request_json` takes
+     `retry=False`, `submit` passes it, and the error says the request may still have been
+     accepted so the operator checks before resubmitting.
+  5. **`judge --out` wrote held-out case ids into a committed file.** The sampled
+     disagreement ids now go to `judge-disagreements.txt` inside the run folder, outside
+     git, never into the `--out` text; held-out ids are not printed to the terminal either,
+     while development ids still are, because that list is the hand-check sheet.
+     `docs/results/s1-judge-heldout.txt` had already been written by script to avoid this;
+     the rule is now in the code rather than in a person's memory.
+
+  464 tests pass, coverage 97.71%.
+- 2026-09-17, **logged for S2, not fixed** (Andy's ruling). In rough order of what they cost:
+  the monthly budget guard does not actually guard — `month_spent` is read once per process
+  with no lock and a run records its cost only when it finishes, so the four runs launched
+  seconds apart on 2026-09-17 each saw `spent=0` and each projected $20 against a $25 budget
+  (actual spend was ~$1.30, but nothing would have stopped them); the per-case cap is a
+  pre-flight prompt-size estimate that ignores output tokens entirely and is never compared
+  with a case's actual cost, so CLAUDE.md's "enforced in code" is currently untrue for
+  anything the model writes; a re-judge that dies mid-pass truncates the previous, fully-paid
+  `judge.jsonl` because `on_row` opens it with mode `w`; an expired recorded batch makes a
+  run permanently unresumable, and the resume then re-projects the full case count so the
+  budget guard refuses the very recovery 0032 exists for; a reused retry batch smaller than
+  the replay needs fails the extra cases as "no reply" instead of retrying them, silently
+  scoring fewer cases than a fresh run; precision and recall are averaged over different
+  denominators (394 and 381) while the row prints `n | 399` and no per-cell count, and an
+  answered case with no usable finding code is dropped from precision while an honest
+  abstention scores 0.0, so failing scores better than abstaining; failures are excluded from
+  every accuracy denominator, which is why the case-number ablation reads 12.1% over 396
+  cases with 5 failed; `--against` on two runs with no shared cases prints
+  `+0.0% [+0.0%, +0.0%] on n=0` and reads as a measured null; `baseline --sample dev-400`
+  prints a full table of `0.0%` figures with intervals over zero cases; `weighted_headline`
+  silently returns an unweighted proportion when a stratum is empty and its `fatal_share`
+  default has no scripted provenance; a resumed run's table shows two conflicting SHAs; the
+  `--sync` path writes no log line between its header and its final record; and `run()`
+  builds every case payload twice. The boundary test that proves withheld text never reaches
+  a system prompt covers only the sync path, though the batch path is the default — that one
+  should go first.
 - 2026-09-17, Task 14, **defect found, not yet fixed**: the `--sync` path writes no log line
   between its header and its final record, so a sequential 401-case run is invisible for its
   whole duration. The batch path logs submissions, reuse and status polls. Worth closing

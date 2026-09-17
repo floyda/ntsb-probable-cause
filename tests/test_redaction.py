@@ -1,4 +1,7 @@
+from pathlib import Path
 from typing import Any, cast
+
+from scripts.check_fixtures_redacted import main, withheld_columns_in
 
 from ntsb_probable_cause.data.redaction import REDACTED_FIELDS, find_redacted_fields, redact_record
 
@@ -52,3 +55,36 @@ def test_find_reports_paths_anywhere_in_the_document() -> None:
     assert find_redacted_fields({"record": {"list": [{"ownerZip": "1"}]}}) == [
         "record.list[0].ownerZip"
     ]
+
+
+def test_withheld_columns_are_found_however_the_header_is_spelled(tmp_path: Path) -> None:
+    """Verdict and synthesis columns trip the check whatever their casing or separator.
+
+    The two sheets this guards against were spelled `ntsb_probable_cause` and
+    `factual_account`; a re-export could as easily write `NTSB Probable Cause`.
+    """
+    path = tmp_path / "sheet.csv"
+    path.write_text("case_id,NTSB Probable Cause,Factual-Account,notes\nX,a,b,c\n")
+    assert withheld_columns_in(path) == ["Factual-Account", "NTSB Probable Cause"]
+
+
+def test_a_case_id_and_event_date_sheet_passes(tmp_path: Path) -> None:
+    path = tmp_path / "ids.csv"
+    path.write_text("case_id,event_date\nX,2021-01-01\n")
+    assert withheld_columns_in(path) == []
+    assert main([str(path)]) == 0
+
+
+def test_the_check_fails_on_a_sheet_carrying_a_withheld_column(tmp_path: Path) -> None:
+    """The regression this exists for: 70 held-out cases' cause and narrative text in git.
+
+    Both sheets sat under `tests/fixtures/eval/` guarded only by a README sentence saying
+    they never enter a payload. Decision 0016 requires the guard be code, not convention.
+    """
+    path = tmp_path / "decidability_full.csv"
+    path.write_text("case_id,ntsb_probable_cause\nX,the pilot's failure to maintain airspeed\n")
+    assert main([str(path)]) == 1
+
+
+def test_the_committed_fixtures_are_clean() -> None:
+    assert main([]) == 0

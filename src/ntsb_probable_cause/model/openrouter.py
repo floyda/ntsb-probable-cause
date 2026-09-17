@@ -120,16 +120,31 @@ class OpenRouterClient:
         )
 
     def request_json(
-        self, path: str, *, method: str, body: dict[str, object] | None = None
+        self,
+        path: str,
+        *,
+        method: str,
+        body: dict[str, object] | None = None,
+        retry: bool = True,
     ) -> dict[str, object]:
         """One retry loop for GET and POST, with the run's rate limit; the batch client uses it too.
 
         The rate-limit gap is not stacked on top of a retry backoff that already spaced the
         requests: after a backoff sleep of ``b`` seconds, the next gap sleep is ``gap - b`` if
         still positive, otherwise skipped. With no preceding backoff, the full gap applies.
+
+        ``retry=False`` sends exactly once. Use it for any request that is **not idempotent**
+        and whose duplicate costs money. A retried chat completion is safe -- the first one
+        was billed but we simply pay twice for a reply we then use. A retried batch
+        submission is not: a 400-request batch whose response times out after the server
+        accepted it gets submitted again, both are billed, and only the second id comes back.
+        The first is then invisible to our own accounting, never reused by a resume, and
+        **OpenRouter has no cancel endpoint**, so it cannot be stopped. There is no
+        idempotency key on this API to make the retry safe, so the retry has to go.
         """
         status: object = None
-        for attempt in range(1, self._max_attempts + 1):
+        attempts = self._max_attempts if retry else 1
+        for attempt in range(1, attempts + 1):
             if self._requested:
                 remaining_gap = self._gap - self._last_backoff_slept
                 if remaining_gap > 0:
@@ -147,8 +162,15 @@ class OpenRouterClient:
                 status = response.status_code
                 if response.status_code not in _RETRY_STATUSES:
                     raise ModelError(f"{path} returned {status}: {response.text[:200]}")
-            if attempt < self._max_attempts:
+            if attempt < attempts:
                 backoff = self._backoff * 2 ** (attempt - 1)
                 self._sleep(backoff)
                 self._last_backoff_slept = backoff
-        raise ModelError(f"{path} failed after {self._max_attempts} attempts; last status {status}")
+        if not retry:
+            raise ModelError(
+                f"{path} failed with {status} and was not retried, because a duplicate of "
+                f"this request would be billed and could not be cancelled. The request may "
+                f"still have been accepted: check the provider for a batch created just now "
+                f"before submitting again."
+            )
+        raise ModelError(f"{path} failed after {attempts} attempts; last status {status}")

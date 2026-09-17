@@ -19,12 +19,13 @@ SHEETS = {
     "decidability_ids.csv": "labelling/decidability.filled.csv",
     "leakage_ids.csv": "labelling/leakage.filled.csv",
 }
-# The full sheets carry the spike's own columns verbatim: NTSB codes and cause text are
-# withheld data (decision 0013) and never enter a payload -- see the README note below.
-FULL_SHEETS = {
-    "decidability_full.csv": "labelling/decidability.filled.csv",
-    "leakage_full.csv": "labelling/leakage.filled.csv",
-}
+# The spike's full sheets are deliberately NOT copied. They carry its columns verbatim:
+# `ntsb_probable_cause` and `ntsb_finding_codes` are verdict, `factual_account` is synthesis
+# (0013), and every case in both sheets is held-out by event date -- the 40-case sheet IS
+# `heldout-40`, the sample a bar was measured on. Copying them put the answer sheet for our
+# own exam in the repository, guarded only by a README sentence saying it "never enters a
+# payload". Decision 0016 forbids exactly that: guarded in code, never by convention. Nothing
+# ever read them. `scripts/check_fixtures_redacted.py` now fails if they come back.
 
 
 def main(argv: list[str]) -> int:
@@ -64,17 +65,16 @@ def main(argv: list[str]) -> int:
             writer.writerow(["case_id", "event_date"])
             writer.writerows((i, dates[i]) for i in ids)
         print(f"{OUT / name}: {len(ids)} cases")
-    for name, sheet in FULL_SHEETS.items():
-        (OUT / name).write_text((spike / sheet).read_text())
-        print(f"{OUT / name}: copied verbatim from {sheet}")
     (OUT / "README.md").write_text(
         "# Evaluation case lists\n\n"
         f"Copied by `scripts/copy_eval_ids.py` from the spike repository at commit `{commit}`: "
         "`labelling/decidability.filled.csv` (the 40-case like-for-like set) and "
         "`labelling/leakage.filled.csv`. Event dates come from the spike's processed file. "
-        "All cases are held-out by event date. "
-        "The full sheets are `*_full.csv`; their NTSB code and cause columns are withheld "
-        "data and never enter a payload.\n"
+        "**Case id and event date only.** Every case in both sheets is held-out by event "
+        "date, and the 40-case sheet is the `heldout-40` sample itself, so the spike's own "
+        "cause, finding-code and factual-account columns are withheld data (0013) and are "
+        "not copied here at all. `scripts/check_fixtures_redacted.py` fails if a fixture CSV "
+        "grows a column carrying them.\n"
     )
     return 0
 
