@@ -69,9 +69,16 @@ GLM_53_FLASH_BATCH = ModelPrice(
     "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
 )
 
+# TypeSafe AI's launch post (typesafe.ai/blog/introducing-system-one-models-and-jev), read
+# 2026-09-16: $0.042 per million input tokens, output unmetered. Self-reported and, in the
+# vendor's words, not shown to be unsubsidised; a real usage block from the probe replaces
+# the estimate (decisions 0030, 0036). ``jev-latest`` is the SDK's default model name.
+JEV = ModelPrice("jev-latest", 0.042, 0.0, "TypeSafe launch post, 2026-09-16, self-reported")
+
 _PRICES = {
     p.model_id: p
     for p in (
+        JEV,
         SONNET_5,
         SONNET_5_BATCH,
         LUNA,
@@ -96,3 +103,11 @@ def price_of(model_id: str) -> ModelPrice:
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 CHAT_COMPLETIONS = "/api/v1/chat/completions"
 BATCHES = "/api/beta/batches"
+
+# https://api.typesafe.ai/openapi.json, as generated into ``typesafe-sdk`` 0.6.0 on PyPI (read
+# 2026-09-17, decision 0036): one POST for every question, one GET for the model list. The
+# saved responses under tests/fixtures/typesafe/ confirm the shape once the probe has run.
+TYPESAFE_SYSTEM_ONE = "/v1/systemone"
+TYPESAFE_MODELS = "/v1/models"
+# The vendor's documented ceiling on labels in one Choice question.
+TYPESAFE_MAX_CHOICE_LABELS = 255

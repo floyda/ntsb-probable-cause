@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars
+.PHONY: check lint type test ingest build scan probe probe-typesafe bars
 
 check: lint type test
 
@@ -26,6 +26,9 @@ scan:
 
 probe:
 	uv run python -m scripts.openrouter_probe
+
+probe-typesafe:
+	uv run python -m scripts.typesafe_probe
 
 bars:
 	uv run ntsb-eval baseline --out docs/results/s1-baseline.txt

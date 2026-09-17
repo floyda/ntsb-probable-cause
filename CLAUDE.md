@@ -187,6 +187,7 @@ make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first
 make build   # build data/processed/cases.parquet from the raw store
 make scan    # uv run python -m scripts.corpus_scan — guard statistics, counts only
 make probe   # uv run python -m scripts.openrouter_probe — the S1 fixture-recording probe (§7.1)
+make probe-typesafe  # uv run python -m scripts.typesafe_probe — saves one real Jev reply (0036)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (§6.5)
 ```
 
@@ -201,7 +202,8 @@ each with `--out PATH` to also write the printed text to a file; `run` takes `--
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
 `NTSB_API_KEY` (the NTSB Enterprise API key, required for `make ingest`, never printed or
 committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
-`OPENROUTER_API_KEY` (the model access decision 0009 uses), `NTSB_RUNS_DIR` (default
+`OPENROUTER_API_KEY` (the model access decision 0009 uses), `TYPESAFE_API_KEY` (the declared
+experiment of 0036 only), `NTSB_RUNS_DIR` (default
 `data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 25) and
 `NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
 cost cap).

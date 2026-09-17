@@ -76,3 +76,4 @@ under `docs/specs/` and the record links to it.
 | [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
 | [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
 | [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
+| [0036](0036-typesafe-jev-as-a-declared-experiment.md) | TypeSafe's Jev enters as a declared experiment on a second transport | Proposed; amends 0009 |
