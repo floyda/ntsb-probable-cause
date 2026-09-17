@@ -117,33 +117,31 @@ takes a part of), and the current stage's specification (S0, closed:
 - The two labelling sheets (`../ntsb-spike/labelling/leakage.filled.csv`,
   `../ntsb-spike/labelling/decidability.filled.csv`) as regression fixtures.
 
-## Eval bars to beat (build-brief §6, held-out split)
+## Eval bars to beat (held-out split)
 
-**These are the spike's numbers, measured on free-text output through the `claude` CLI,
-with the factual narrative as evidence. Output is now code-constrained (0006), the transport
-is OpenRouter (0009), and the factual narrative is withheld (0013). None of the one-shot
-figures below is a bar, and the 88/12 narrative split no longer exists: every case lacks a
-narrative. The nearest precedent is 12% (n=16). S1 re-measures the ceiling on the stack that
-will actually run and sets the bars. The baseline is unaffected; the cost ceiling is
-re-measured because every case now reads the docket.**
+**S1 measured the bars; they live in `docs/results/s1-bars.txt`, with the scoring targets
+fixed by decision 0025 and the samples and ledger by 0026.** The spike's 57% / 65% one-shot
+figures are gone from this section: they were measured on free-text output through the
+`claude` CLI with the factual narrative as evidence, and the stack that runs now is
+code-constrained (0006), transported over OpenRouter (0009), and withholds the factual
+narrative from every case (0013).
 
-| metric | baseline (n=1,000) | one-shot ceiling (n=40) |
+The two numbers to hold in mind, both on `heldout-400` at commit `c717ab5`:
+
+| metric | honest baseline (no model) | one-shot ceiling |
 |---|---|---|
-| occurrence top-1 | 16.2% | 57% |
-| occurrence top-3 | 32.2% | 65% |
-| no-narrative cases, top-1 | not computed | 12% (n=16) |
-| cost per case | — | £0.034 measured |
+| occurrence top-1 | 17.7% [16.6, 18.9] | 10.8% [8.1, 14.2] |
+| occurrence top-3 | 35.7% [34.2, 37.1] | 20.3% [16.6, 24.5] |
 
-*Historical — the build brief's definition, written against the narrative split and replaced
-by the bars S1 sets:* "The agent wins" means: ≥50% top-1 on no-narrative cases (below ~30% means the docket tool
-isn't delivering); overall held-out top-1 above 57%, first like-for-like on the same 40 cases
-then a larger sample; an ablation (docket tool on/off) shows the drop concentrated in
-no-narrative cases; abstention falls on no-narrative cases as the docket supplies evidence but
-stays sensible where only physical evidence could decide it; cost stays under £0.05/case on
-average including tool calls, enforced by a hard cap in code.
+**The one-shot ceiling is below the no-model baseline.** That is the measured result and it
+is published as it stands. It also fixes what "the agent wins" has to mean: the bar is the
+baseline's 17.7%, not the ceiling's 10.8%. Arm A (start facts only) scores 8.0 points
+[4.8, 11.3] below the ceiling on paired cases, so the investigators' findings do carry
+information the model uses — which is the case for reading the docket at all.
 
 The first like-for-like evaluation set is the 40 case IDs in
-`../ntsb-spike/labelling/decidability.filled.csv`.
+`../ntsb-spike/labelling/decidability.filled.csv`; `heldout-40` is that set, and at n=40 its
+interval is far too wide to carry a claim on its own.
 
 **Beating the ceiling is not enough to show agency** (0022). The spike's docket-shape addendum
 (report §10) found about four in five development-era dockets readable in one call, so the loop
