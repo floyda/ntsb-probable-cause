@@ -2,7 +2,7 @@
 
 *Drafted 2026-09-14 and 2026-09-15 from a design session with Andy, after the merge of the
 agency design (pull request #3).
-Status: Approved (Andy, 2026-09-15, in the design session; carried by pull request #4).
+Status: Implemented (2026-09-17, pull request #5).
 This is the specification for build stage S1 in
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S1 builds, why,
 the decisions S1 was asked to take, and the condition for moving on. It takes over §5.4,
@@ -812,6 +812,205 @@ that document is marked Superseded when S3's specification is Approved, as it sa
 | **Held-out looks accumulate.** | Every run is a small tune. | The ledger, and the rule that nothing is settled outside `dev-400`. |
 | **Memorisation is not measurable by these two probes.** | A model can recall without the case number or registration. | Stated as a limit; live cases are the real control (S3, S5). |
 | **The dictionary lags the data.** | One development item and three event suffixes in use are not in the dictionary (M10). | `scoring/codes.py` reports them; they count as misses; the dataset date is recorded with the tables. |
+
+---
+
+## As built
+
+*Closed 2026-09-17 in pull request #5.*
+
+### Delivered
+
+- **`ntsb-eval`**, the evaluation command (`apps/eval/__main__.py`), with five subcommands:
+  `baseline`, `run`, `report`, `judge`, `threshold`. `run` takes `--arm`, `--sample`,
+  `--exclude ROLE`, `--include case_number`, `--limit`, `--sync`, `--price-variant`,
+  `--cap-usd`, `--budget-usd`, `--resume RUN_ID` and `--out`.
+- **The scoring library** under `src/ntsb_probable_cause/scoring/`: `hypothesis.py` (the
+  two-stage answer and its strict JSON schemas), `prompt.py` (frozen at `s1-v5`), `codes.py`
+  (the NTSB code tables), `metrics.py` (Wilson intervals, paired bootstrap differences,
+  top-1/top-3, finding precision and recall at 6, 8 and 10), `samples.py` (the three fixed
+  samples, streamed from the parquet store), `runner.py` (the run loop, the batch service,
+  resume), `report.py` (slice tables, comparisons, the threshold curve), `judge.py` (the
+  prose judge), `ledger.py` (the held-out ledger and the commit state every run records).
+- **The batch path** (`model/batch.py`): submit, poll, collect, at half price. Submission is
+  never retried, because a duplicate batch is billed and OpenRouter has no cancel endpoint.
+- **Resume** (0032): a run that died is continued from the batches it already paid for,
+  refusing where a replay would not be faithful.
+- **The held-out ledger**, `docs/results/heldout-ledger.md`: one row per run that touched the
+  held-out split, with its commit, cost and results file.
+- **The results**, all under `docs/results/`, all written by a command: `s1-baseline.txt`,
+  `s1-ceiling-dev.txt`, `s1-armA-dev.txt`, `s1-ablations-dev.txt`, `s1-threshold.txt`,
+  `s1-model-comparison-dev.txt`, `s1-judge-validation.txt`, `s1-judge-handcheck.csv`,
+  `s1-bars.txt`, `s1-heldout-40.txt`, `s1-armA-heldout.txt`, `s1-registration-heldout.txt`,
+  `s1-judge-heldout.txt`, `heldout-ledger.md`.
+
+**The bars, on `heldout-400` (399 scored of 400), at commit `c717ab5` (`f037b67` after the
+history rewrite, [0036](../decisions/0036-heldout-text-purged-from-history-shas-map-forward.md)):**
+
+| | top-1 | top-3 |
+|---|---|---|
+| honest baseline, no model | 17.7% [16.6, 18.9] | 35.7% [34.2, 37.1] |
+| one-shot ceiling | 10.8% [8.1, 14.2] | 20.3% [16.6, 24.5] |
+
+**The one-shot ceiling is below the no-model baseline, and is published as measured.** It
+fixes what "the agent wins" must mean: the bar is the baseline's 17.7%, not the ceiling's
+10.8%. Arm A (start facts only) is 8.0 points [4.8, 11.3] below the ceiling on paired cases,
+an interval excluding zero, so the investigators' findings do carry information the model
+uses — the first measured case for reading the docket at all.
+
+**Total S1 spend: $7.17**, from `month_spent` over every run record — the same accounting the
+budget guard reads, so the published figure cannot disagree with what was enforced. Against
+$25 a month and the specification's §14 estimate of about $14. Under, because the planned
+Sonnet 5 comparison (about $5) was replaced by Gemini 3.1 Flash Lite (about $1) under
+[0034](../decisions/0034-cross-model-check-uses-gemini-flash.md). Measured cost per case at
+the batch price: **$0.0011**.
+
+### Done means, with evidence
+
+1. **Saved responses parsed in tests; probe cost recorded** — met —
+   `tests/fixtures/openrouter/{structured,tool_call,two_turn,batch}.json`, parsed by
+   `tests/test_openrouter.py::test_parse_structured_reply_from_saved_response`,
+   `::test_parse_tool_call_reply_from_saved_response`,
+   `::test_parse_two_turn_reply_from_saved_response` and
+   `tests/test_batch.py::test_wait_polls_until_terminal_and_parses_results`. Probe cost per
+   case **$0.0011**, recorded above and in `tests/fixtures/openrouter/README.md`.
+2. **Baseline reproduces the spike within one point, and reports the honest baseline** — met
+   — `docs/results/s1-baseline.txt`: reproduction top-1 16.4% [14.2, 18.8] and top-3 32.4%
+   [29.6, 35.4] against the spike's 16.2% and 32.2%; honest baseline over all 4,241 held-out
+   cases, top-1 17.7%, top-3 35.7%. Written by `ntsb-eval baseline --out`.
+3. **`make bars` produces the three runs with counts, intervals and cost** — met —
+   `docs/results/s1-bars.txt` (heldout-400 ceiling, and the paired difference against arm A),
+   `docs/results/s1-heldout-40.txt` (heldout-40 ceiling), `docs/results/s1-armA-heldout.txt`
+   (arm A's own table). Each carries its run id, commit, per-slice counts, Wilson intervals
+   and cost. The three tables are in three files rather than one; see Departures.
+4. **Per-step scoring on the scripted trail** — met —
+   `tests/test_scripted_trail.py::test_three_step_trail_is_scored_step_by_step`, with
+   `tests/test_metrics.py::test_trail_scores_by_hand`.
+5. **Registration decided by the §9 rule; phase ablation, case-number probe and the model
+   comparison reported on `dev-400`** — met — `docs/results/s1-ablations-dev.txt` (phase
+   withheld, case number supplied) and `docs/results/s1-model-comparison-dev.txt`.
+   **The registration stays a start fact.** The rule in §9 and
+   [0027](../decisions/0027-registration-rule-and-case-number-probe.md) is "interval includes
+   zero: it stays"; withholding it moved top-1 by −2.0% [−5.2, +1.0] on `dev-400`
+   (`s1-ablations-dev.txt`) and +0.3% [−2.8, +3.0] on `heldout-400`
+   (`docs/results/s1-registration-heldout.txt`), every interval including zero. That is the
+   held-out confirmation 0027 required, and the decision is recorded here because the plan
+   that first carried it is deleted at close-out.
+6. **The threshold recorded with its curve, from `dev-400`** — met —
+   `docs/results/s1-threshold.txt`, which names its run and sample in a provenance header,
+   gives the full 0.05 to 0.95 curve with the number of cases answered at each point, and
+   states that the chosen threshold is **not a usable operating point**: no case is answered
+   at 0.95, so the policy answers nothing and scores what always abstaining scores. Below 50%
+   accuracy no threshold can be worth answering at.
+7. **Judge validation and the hand-check committed; prose reported on `heldout-400`** — met —
+   `docs/results/s1-judge-validation.txt` (agreement 346/401 = 86.3% against the 62.5%
+   threshold, and a 30-case hand-check whose marks put the judge's errors on both sides:
+   **validated**), `docs/results/s1-judge-handcheck.csv` (30 rows, case ids and verdict text
+   removed), `docs/results/s1-judge-heldout.txt` (399 cases, agreement 83.0%, 37 generous and
+   31 harsh). The judge is a secondary measure only ([0028](../decisions/0028-prose-graded-by-validated-judge-never-a-bar.md)).
+8. **The ledger lists every held-out run, and nothing else touched the split** — met —
+   `docs/results/heldout-ledger.md`, five rows. Enforced by
+   `scoring/ledger.py::refuse_if_heldout_and_dirty`, tested by
+   `tests/test_ledger.py::test_heldout_refused_when_dirty` and
+   `tests/test_eval_app.py::test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused`; sample
+   purity by `tests/test_contamination.py::test_s1_samples_are_split_pure_and_disjoint` and
+   `::test_evaluation_cases_are_held_out_by_event_date`; the case-number probe's double guard
+   (sample *and* the record's own event date) by
+   `tests/test_runner.py::test_case_number_probe_included_on_a_development_sample_and_case`.
+9. **No run exceeded its budget flag; the total spend is stated** — met — total **$7.17**,
+   stated above. Refusals tested by `tests/test_runner.py::test_budget_refusal_before_any_call`,
+   `::test_over_cap_case_is_failed_without_a_call`,
+   `tests/test_judge.py::test_judge_run_refuses_over_budget_before_any_call`. **Read with the
+   departure below**: the guard is per-process and does not hold across concurrent runs.
+10. **CI green, documentation check passes, closed out under 0017** — met — this pull
+    request's close-out commit; `uv run python -m scripts.check_docs` clean.
+
+### Departures from this specification
+
+- **The prompt was frozen at `s1-v5`, not `s1-v1`.** The first ceiling attempt failed its
+  schema check on 249 of 401 cases. The stage-1 schema offered `item8`, the finding's item
+  code, which stage 1 is never shown the list for and could not answer. `_stage1_schema()`
+  now prunes it. Re-measured: 0 schema failures in 401. The prompt *text* is unchanged from
+  v4; the version moved because the schema is part of what elicits an answer.
+- **The cross-model comparison used Gemini 3.1 Flash Lite, not Sonnet 5**, on cost
+  ([0034](../decisions/0034-cross-model-check-uses-gemini-flash.md)). Result: Gemini top-1
+  12.5%, top-3 **22.9%**, against Luna's 8.7% and **22.9%** — top-3 identical to the decimal,
+  no format failures on either. The task is hard, not the model weak, which is what the check
+  exists to establish. The top-1 gap is abstention, not judgement: Gemini abstains on 1.5% of
+  cases against Luna's 22.9%, and on the cases each chose to answer they are 11.3% and 12.7%.
+- **Two candidate models could not run at all**, and are recorded because the check's value
+  depends on what it rejected. `google/gemini-3.5-flash-lite` refused every request, because
+  our stage 2 ends on a model turn. `z-ai/glm-5.3-flash` could not answer inside the
+  2,000-token output cap: 376 of 401 stage-1 replies unusable, 287 of them empty at exactly
+  the cap. "Flash" in a model name does not mean non-reasoning.
+- **A smoke test drawn from the head of a sorted sample is not representative.** `--limit N`
+  takes the *first* N cases; the first ten `dev-400` cases are short enough to pass, so the
+  GLM check reported 10 of 10 while the true failure rate was 94%. Any future model
+  comparison must probe `finish_reason` on a random sample before committing spend.
+- **The three held-out runs were launched in parallel**, not sequentially as `make bars`
+  runs them. At the queue times seen the day before, sequential would have taken most of the
+  day. `heldout-ledger.md` was created and committed with its header first, because
+  `append_row` writes the header only when the file is absent and two runs finishing together
+  could otherwise race and lose a row.
+- **Reports were generated from explicit run ids, never `--latest`.** `resolve_latest`
+  matched only on sample and arm, so it returned the registration ablation for
+  `--latest ceiling heldout-400`; `make bars` would have published the ablation as the bar.
+  Fixed to read each candidate's own record, and to refuse rather than guess when candidates
+  span several models. The published bars were never affected.
+- **The three bars tables are in three files**, not one: `s1-bars.txt` carries the
+  heldout-400 ceiling and the paired difference against arm A, with `s1-heldout-40.txt` and
+  `s1-armA-heldout.txt` beside it. A paired difference carries no counts, intervals or cost,
+  so arm A needed its own table to satisfy §13.
+- **The judge's narrative dimension gained a fourth label**, `less_detailed`
+  ([0035](../decisions/0035-judge-narrative-gains-a-less-detailed-label.md)), after the first
+  pass put 159 of 178 cases in `contradicts`. A separate defect was fixed at the same time and
+  was a bug, not a decision: the judge was never shown the model's occurrence codes, so its
+  `lay` dimension measured our own rendering on 158 of 178 cases. The first pass was discarded.
+- **Withheld held-out text had been committed and is purged from history**
+  ([0036](../decisions/0036-heldout-text-purged-from-history-shas-map-forward.md)). Two fixture
+  sheets held the NTSB's cause and finding codes for 40 held-out cases and the investigator's
+  factual account for 30 — and the 40 are `heldout-40` itself. The purge rewrote every commit
+  after `2e647c0`, so 0036 carries the old-to-new SHA mapping and is the provenance record
+  where a recorded `commit_sha` no longer resolves.
+- **Stage pull requests are merged, not squashed**
+  ([0033](../decisions/0033-stage-pull-requests-keep-their-commits.md)), superseding
+  [0018](../decisions/0018-squash-merges-and-tag-only-releases.md) on that point and
+  the plan's own closing step. A squash would leave every recorded commit SHA unresolvable.
+- **Known defects, found by the close-out review and knowingly not fixed** (Andy's ruling:
+  fix five, log the rest). The monthly budget guard is per-process: `month_spent` is read once
+  at startup and a run records its cost only when it finishes, so runs launched together each
+  see zero spent — four launched seconds apart on 2026-09-17 each projected $20 against a $25
+  budget, though actual spend was about $1.30. The per-case cap estimates prompt size only and
+  ignores output tokens entirely. A re-judge that dies mid-pass truncates the previous paid
+  pass. An expired recorded batch makes a run permanently unresumable. Precision and recall
+  are averaged over different denominators (394 and 381) than the row's printed `n` (399), and
+  an answered case with no usable finding code is dropped from precision while an honest
+  abstention scores 0.0. Failures are excluded from every accuracy denominator. `--against` on
+  two runs with no shared cases prints `+0.0% [+0.0%, +0.0%] on n=0`. `baseline --sample
+  dev-400` prints a table of `0.0%` figures over zero cases. The boundary test that proves
+  withheld text never reaches a system prompt covers only the sync path, though the batch path
+  is the default — that one should be closed first in S2.
+
+### Decisions taken during the stage
+
+- [0032](../decisions/0032-a-batch-run-is-resumable-from-its-recorded-batches.md) — A batch run
+  is resumable from the batches it already paid for.
+- [0033](../decisions/0033-stage-pull-requests-keep-their-commits.md) — Stage pull requests are
+  merged, not squashed, so a recorded commit resolves.
+- [0034](../decisions/0034-cross-model-check-uses-gemini-flash.md) — The cross-model sanity
+  check uses Gemini 3.1 Flash Lite, not Sonnet 5.
+- [0035](../decisions/0035-judge-narrative-gains-a-less-detailed-label.md) — The judge's
+  narrative dimension gains a fourth label, "less detailed".
+- [0036](../decisions/0036-heldout-text-purged-from-history-shas-map-forward.md) — Withheld
+  held-out text is purged from git history; the runs' recorded SHAs map forward.
+
+### Implementation record
+
+- Pull request: #5 (https://github.com/floyda/ntsb-probable-cause/pull/5)
+- Plan, at its last commit:
+  https://github.com/floyda/ntsb-probable-cause/blob/dfd7127/docs/plans/2026-09-15-s1-scoring-and-evaluation.md
+- Commits: `ccbfe31`..`dfd7127`, plus this close-out commit
+- Release: v0.2.0 (tag created by Andy after the merge; 0018 as amended by 0033)
 
 ---
 

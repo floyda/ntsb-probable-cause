@@ -284,8 +284,13 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
 def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     folder = settings.runs_dir / args.run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    # The same provenance header `report` writes. Without it the committed curve names
+    # neither the run nor the sample it came from, so a reader cannot tell a development
+    # curve from a held-out one, and rule 3's "every reported number comes from a script"
+    # has nothing to point at (the close-out review found exactly this gap).
     curve = report.threshold_curve(cases)
-    lines = ["threshold\tmean score\tcases answered"]
+    lines = [report.provenance(answering_run_record(folder)), ""]
+    lines.append("threshold\tmean score\tcases answered")
     lines += [f"{t:.2f}\t{v:+.3f}\t{report.answered_at(cases, t)}" for t, v in curve]
     chosen = report.choose_threshold(cases)
     lines.append(f"\nchosen threshold: {chosen:.2f}")
