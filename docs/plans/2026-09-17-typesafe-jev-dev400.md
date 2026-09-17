@@ -503,7 +503,7 @@ git commit -m "Jev: System One client with retries, replayed with respx"
   - `def accuracy_reading(top1: Sequence[bool]) -> str` returning `"above the baseline"` or `"not above the baseline"`
   - `def calibration_block(title: str, confidences: Sequence[float], correct: Sequence[bool]) -> str`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_jev_dev400.py`:
 
@@ -677,12 +677,12 @@ def test_llm_first_guess_is_read_whether_or_not_the_model_abstained(tmp_path: Pa
 
 Check the second calibration test by hand before running it: the 0.5 bin has 20 cases, 16 right, so its gap is 0.30, above 0.10. The 0.0–0.1 bin has 380 cases at 0.05 with 19 right, gap 0. The error is 20/400 × 0.30 = 0.015, which is under 0.05, so the large-bin gap alone makes it "inconclusive" (the error is not above 0.10).
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_jev_dev400.py -q --no-cov`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.exploratory.jev_dev400'`. If the error names `scripts.exploratory` itself, add an empty `scripts/exploratory/__init__.py` and log a deviation.
 
-- [ ] **Step 3: Write the script's pure parts**
+- [x] **Step 3: Write the script's pure parts**
 
 Create `scripts/exploratory/jev_dev400.py`:
 
@@ -871,12 +871,12 @@ def calibration_block(title: str, confidences: Sequence[float], correct: Sequenc
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_jev_dev400.py -q --no-cov`
 Expected: 9 passed. If `test_accuracy_reading_uses_the_lower_bound` fails, print `wilson(100, 401)` and `wilson(75, 401)`: the first lower bound must be above 0.177 and the second below it. Adjust the counts in the test, not the threshold.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check`
 Expected: pass. mypy follows the test's import into the script even though the script is excluded from discovery, so the script must be mypy-clean.
@@ -1420,3 +1420,13 @@ git commit -m "Jev dev-400: results and the row in decision 0036"
 ## Deviations
 
 Task 2: a non-JSON 200 reply raises ModelError, so the run loop records it as a failed case (review fix).
+
+Task 3: no deviations. `scripts.exploratory` imports as a namespace package without an
+`__init__.py` (the error the plan anticipated, naming `scripts.exploratory` itself, never
+occurred; only the wanted submodule was missing), so no `__init__.py` was added. The script
+and test in the brief were used verbatim; `make check` (ruff format --check, ruff check,
+import-linter, deptry, vulture, mypy --strict, pytest) passed on the first attempt, including
+mypy --strict on the excluded-from-discovery script (followed via the test's import) and the
+90% coverage gate (97.80% total). Step 4's brief text says "Expected: 9 passed"; the test file
+has 8 test functions and 8 passed — a miscount in the brief's prose, not a code or test defect
+(nothing to fix: no hand-computed number in the test bodies was wrong).
