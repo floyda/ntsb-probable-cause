@@ -1360,7 +1360,7 @@ All commands in this task start with this prefix, written here as `$ENV`:
 NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data NTSB_RUNS_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/runs TYPESAFE_API_KEY="$(pass show api/typesafe | head -1)"
 ```
 
-- [ ] **Step 1: Smoke run on the first 8 cases**
+- [x] **Step 1: Smoke run on the first 8 cases**
 
 This checks the pipeline end to end, not whether the replies are representative. The S1 lesson (0031 point 4) was that the first cases of a sorted file can pass where the rest fail; here that risk is small, because Jev has no output budget to run out of and the probe already answered 130 questions on one state. Read the 8 replies by eye: every row `ok`, 47 phase and 93 event probabilities, a `jev-` model version.
 
@@ -1370,19 +1370,19 @@ Expected: `<folder>: complete; answered 8 of 8; spent $0.000... at the published
 Then: `$ENV uv run python -m scripts.exploratory.jev_dev400 report <folder>`
 Expected: the report prints without error. The shared-case count in (c) is 8.
 
-- [ ] **Step 2: Full run from a clean tree**
+- [x] **Step 2: Full run from a clean tree**
 
 Run `git status --short`; it must be empty, so `meta.json` records `dirty=false`. Leave the ticks for Steps 1 and 2 uncommitted until Step 6, or commit them first. Then:
 
 Run: `$ENV uv run python -m scripts.exploratory.jev_dev400 run`
 Expected: `<folder>: complete; answered 401 of 401; ...`. If it stops on `cap` or with failed rows, rerun with `--resume <folder>` once; if failures persist, stop and report them to Andy.
 
-- [ ] **Step 3: Save the report**
+- [x] **Step 3: Save the report**
 
 Run: `$ENV uv run python -m scripts.exploratory.jev_dev400 report <folder> --out docs/results/typesafe-jev-dev400.txt`
 Expected: the file is written; it shows 401 answered and the two readings.
 
-- [ ] **Step 4: Write the short report**
+- [x] **Step 4: Write the short report**
 
 Create `docs/results/typesafe-jev-dev400.md` in simplified technical English. Quote every number from `typesafe-jev-dev400.txt`; do not retype from memory. Sections:
 1. **What was run**: the sample, the two questions, the model version from the replies, the commit.
@@ -1393,7 +1393,7 @@ Create `docs/results/typesafe-jev-dev400.md` in simplified technical English. Qu
 6. **What this does not show**: findings, abstention, wording, the loop (0022).
 7. **Glossary**: calibrated, expected calibration error, top-1, top-3, Choice, state.
 
-- [ ] **Step 5: Record the row in 0036**
+- [x] **Step 5: Record the row in 0036**
 
 Add one line at the end of the "Probe result (2026-09-17)" section of `docs/decisions/0036-typesafe-jev-as-a-declared-experiment.md`:
 
@@ -1405,7 +1405,7 @@ test of point 5 has run.
 
 Fill `<folder>`, `<value>` and `<reading>` from `typesafe-jev-dev400.txt`.
 
-- [ ] **Step 6: Check and commit**
+- [x] **Step 6: Check and commit**
 
 Run: `make check` and `uv run python -m scripts.check_docs`
 Expected: both pass.
