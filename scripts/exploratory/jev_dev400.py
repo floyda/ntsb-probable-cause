@@ -303,6 +303,11 @@ def _pct(values: Sequence[float], q: float) -> float:
     return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
 
 
+def _example_count(n: int, wanted: int = 5) -> int:
+    """How many examples to sample: never more than there are cases (fix round 1)."""
+    return min(wanted, n)
+
+
 def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     folder: Path,
     raws: Sequence[Mapping[str, object]],
@@ -312,9 +317,12 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     runs_dir: Path,
 ) -> str:
     """Every table of spec §4 and both readings of spec §5, from saved files only."""
+    meta_file = folder / "meta.json"
+    if not meta_file.exists():
+        raise FileNotFoundError(f"{folder}: no meta.json; is this a run folder?")
     rows = read_rows(folder / "replies.jsonl")
     ok = _latest_ok(rows)
-    meta = json.loads((folder / "meta.json").read_text())
+    meta = json.loads(meta_file.read_text())
     spec = RunSpec(sample=SAMPLE, arm="ceiling")
     cases: list[JevCase] = []
     for case_id, raw in zip(ids, raws, strict=True):
@@ -332,7 +340,10 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     add = out.append
 
     add(f"run {folder.name}")
-    add(f"sample={SAMPLE} requested model={meta['model']} commit={meta['commit']} dirty={meta['dirty']}")
+    add(
+        f"sample={SAMPLE} requested model={meta['model']} "
+        f"commit={meta['commit']} dirty={meta['dirty']}"
+    )
     add(f"model versions in replies: {dict(Counter(r.model for r in replies))}")
     add(f"cases answered {len(ok)} of {len(ids)}; failed rows {sum(1 for r in rows if not r['ok'])}")
     add(f"input tokens {input_tokens}; output tokens {sum(r.usage.output_tokens for r in replies)}")
@@ -340,11 +351,21 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
         f"cost at the published, self-reported price: ${input_tokens * USD_PER_TOKEN:.4f} "
         f"(${input_tokens * USD_PER_TOKEN / max(1, len(ok)):.6f} per case; preview, comparison only)"
     )
-    add(
-        f"latency seconds: median {statistics.median(seconds):.2f}, 90th percentile "
-        f"{_pct(seconds, 0.9):.2f}, max {max(seconds):.2f}; requests needing a retry "
-        f"{sum(1 for r in ok.values() if int(str(r['attempts'])) > 1)}; retried statuses {dict(retried)}"
-    )
+    # Fix round 1: a capped-or-all-failed run has no seconds to reduce; print the header
+    # line anyway rather than let statistics.median/max crash on an empty sequence.
+    if seconds:
+        add(
+            f"latency seconds: median {statistics.median(seconds):.2f}, 90th percentile "
+            f"{_pct(seconds, 0.9):.2f}, max {max(seconds):.2f}; requests needing a retry "
+            f"{sum(1 for r in ok.values() if int(str(r['attempts'])) > 1)}; "
+            f"retried statuses {dict(retried)}"
+        )
+    else:
+        add("latency seconds: none (no answered cases)")
+
+    if not cases:
+        add("\nno answered cases were scored; accuracy, calibration and examples skipped")
+        return "\n".join(out) + "\n"
 
     add("\nACCURACY (composed top-1 and top-3; S1's score_case)")
     add("| slice | n | top-1 | top-3 | event | pair unseen |")
@@ -387,14 +408,17 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
 
     true_p = [c.true_event_probability for c in cases if c.true_event_probability is not None]
     add("\nPROBABILITY ON THE TRUE EVENT")
-    add(
-        f"median {statistics.median(true_p):.3f}; exactly 0 on "
-        f"{sum(1 for p in true_p if p == 0.0)} of {len(true_p)} "
-        f"({sum(1 for p in true_p if p == 0.0) / len(true_p):.1%})"
-    )
+    if true_p:
+        add(
+            f"median {statistics.median(true_p):.3f}; exactly 0 on "
+            f"{sum(1 for p in true_p if p == 0.0)} of {len(true_p)} "
+            f"({sum(1 for p in true_p if p == 0.0) / len(true_p):.1%})"
+        )
+    else:
+        add("none (no verdict occurrence code scored against)")
 
     add(f"\nEXAMPLES (seed {EXAMPLE_SEED}; codes and labels only)")
-    for c in random.Random(EXAMPLE_SEED).sample(cases, 5):
+    for c in random.Random(EXAMPLE_SEED).sample(cases, _example_count(len(cases))):
         truth = c.true_occurrence or "none"
         label = tables.events.get(truth[3:], "?") if c.true_occurrence else "-"
         add(f"{c.case_id}: true {truth} ({label}); Jev event confidence {c.event_confidence:.2f}")

@@ -1438,6 +1438,28 @@ says "Expected: 12 passed"; the test file had 11 test functions after Task 3's 8
 task's 3, and 11 passed — the same kind of prose miscount as Task 3's (nothing to fix: no
 hand-computed number in the test bodies was wrong).
 
+Task 5: no deviations at first implementation — the brief's own `build_report` and `main`
+were added verbatim, `make check` passed first try, and the saved Luna/Gemini runs both
+loaded 401 cases under today's record types.
+
+Task 5, fix round 1 (project owner approved, no longer plan-mandated): the brief's own
+`build_report` crashed on an empty answered-case set (`statistics.median`/`_pct`/`max` on an
+empty `seconds` list, and later on an empty `true_p` list) and on fewer than 5 answered cases
+(`random.Random(...).sample(cases, 5)` raising when `len(cases) < 5`). Fixed by: guarding the
+latency line behind `if seconds:` (printing "latency seconds: none (no answered cases)"
+otherwise); returning early, after the header, with a one-line note when no cases were
+scored, so accuracy/calibration/paired-difference/true-event/examples are skipped rather than
+crashed on; guarding the true-event-probability median behind `if true_p:`; and extracting
+`_example_count(n, wanted=5) -> int` (`min(wanted, n)`) for the examples sample size. Also
+added a `meta.json` existence check in `build_report` that raises `FileNotFoundError` naming
+the folder (the review's minor finding), since that code was already being touched. Two tests
+were added to `tests/test_jev_dev400.py`: `test_build_report_survives_a_run_with_no_answered_cases`
+(empty `replies.jsonl`, asserts the header prints and no crash) and
+`test_example_count_never_exceeds_the_cases_available` (the extracted sampling helper, per the
+"extract a tiny pure helper" guidance rather than building a heavy multi-case fixture); a third,
+`test_build_report_refuses_a_folder_with_no_meta_json`, covers the added existence check.
+`make check` passed after the fix, including the 90% coverage gate.
+
 `ask_all`'s `pool.map` takes `functools.partial(_attempt, ask=ask, usd_per_token=usd_per_token)`
 instead of the brief's `lambda case: _attempt(case, ask, usd_per_token)`, because the lambda
 closes over two names (`ask`, `usd_per_token`) that are rebound each call of `ask_all`, which

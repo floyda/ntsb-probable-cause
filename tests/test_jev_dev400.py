@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 from scripts.exploratory.jev_dev400 import (
+    _example_count,
     accuracy_reading,
     ask_all,
+    build_report,
     calibration_reading,
     jev_hypothesis,
     llm_first_guesses,
@@ -297,3 +299,28 @@ def test_an_unexpected_worker_error_still_saves_the_chunks_paid_replies(
         ask_all(replies, _cases(4), ask, cap_usd=1.0, usd_per_token=1e-6)
     rows = read_rows(replies)
     assert sorted(str(row["case_id"]) for row in rows if row["ok"]) == ["C0", "C1", "C3"]
+
+
+def test_example_count_never_exceeds_the_cases_available() -> None:
+    assert _example_count(0) == 0
+    assert _example_count(2) == 2
+    assert _example_count(10) == 5
+
+
+def test_build_report_survives_a_run_with_no_answered_cases(tmp_path: Path) -> None:
+    """Fix round 1: a capped-or-all-failed run must still print its header, not crash."""
+    folder = tmp_path / "run"
+    folder.mkdir()
+    (folder / "meta.json").write_text(
+        json.dumps({"model": "jev-latest", "commit": "abc1234", "dirty": False})
+    )
+    (folder / "replies.jsonl").write_text("")
+    text = build_report(folder, raws=[], ids=[], tables=TABLES, seen=frozenset(), runs_dir=tmp_path)
+    assert "cases answered 0 of 0; failed rows 0" in text
+    assert "latency seconds: none (no answered cases)" in text
+    assert "no answered cases were scored" in text
+
+
+def test_build_report_refuses_a_folder_with_no_meta_json(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match=r"meta\.json"):
+        build_report(tmp_path, raws=[], ids=[], tables=TABLES, seen=frozenset(), runs_dir=tmp_path)
