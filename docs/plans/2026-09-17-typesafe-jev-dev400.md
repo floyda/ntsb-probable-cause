@@ -903,7 +903,7 @@ git commit -m "Jev dev-400: composition, per-case scoring and the readings fixed
 
   Each row appended to `replies.jsonl` is one JSON object: `case_id`, `ok` (bool), `error` (str or null), `attempts`, `retried_statuses` (list), `seconds`, `cost_usd`, `reply` (the parsed reply dumped as JSON, or null).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_jev_dev400.py`. Add these imports at the top: `from collections.abc import Callable`, `from ntsb_probable_cause.errors import ModelError`, `from ntsb_probable_cause.model.client import Payload`, `from ntsb_probable_cause.model.typesafe import Exchange, parse_reply`, `from ntsb_probable_cause.records.evidence import Evidence`, and `ask_all`, `read_rows` from the script.
 
@@ -983,12 +983,12 @@ def test_a_failed_case_is_recorded_and_asked_again_on_resume(tmp_path: Path) -> 
     assert asked == ["C1"]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_jev_dev400.py -q --no-cov`
 Expected: FAIL with `ImportError: cannot import name 'ask_all'`.
 
-- [ ] **Step 3: Add the loop**
+- [x] **Step 3: Add the loop**
 
 In `scripts/exploratory/jev_dev400.py`, add to the imports:
 
@@ -1071,12 +1071,12 @@ def ask_all(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     return "complete"
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_jev_dev400.py -q --no-cov`
 Expected: 12 passed.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check`
 Expected: pass.
@@ -1430,3 +1430,15 @@ mypy --strict on the excluded-from-discovery script (followed via the test's imp
 90% coverage gate (97.80% total). Step 4's brief text says "Expected: 9 passed"; the test file
 has 8 test functions and 8 passed — a miscount in the brief's prose, not a code or test defect
 (nothing to fix: no hand-computed number in the test bodies was wrong).
+
+Task 4: no code deviations. The script and tests in the brief were used verbatim, including the
+fixture's 4,344 input tokens, which matched the cap test's hand-computed arithmetic exactly, so
+no expected numbers needed changing. The `pool.map(lambda case: ...)` call type-checked as
+written under `mypy --strict`, so the brief's fallback (`functools.partial`) was not needed to
+satisfy the type checker; `functools.partial` was used anyway, for readability, since a lambda
+capturing two closed-over names read worse than a named partial application — a stylistic
+choice, not a fix for a mypy failure. `make check` passed on the first attempt, including the
+90% coverage gate (97.80% total). Step 4's brief text says "Expected: 12 passed"; the test file
+has 11 test functions after Task 3's 8 plus this task's 3, and 11 passed — the same kind of
+prose miscount as Task 3's (nothing to fix: no hand-computed number in the test bodies was
+wrong).

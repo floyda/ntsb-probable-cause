@@ -14,12 +14,17 @@ Usage (from the worktree root; data lives in the main checkout):
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Callable, Sequence
 from collections.abc import Set as AbstractSet
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
-from ntsb_probable_cause.model.typesafe import ChoiceAnswer, SystemOneReply
+from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.model.client import Payload
+from ntsb_probable_cause.model.typesafe import ChoiceAnswer, Exchange, SystemOneReply
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
@@ -41,6 +46,12 @@ _CALIBRATED_ECE = 0.05
 _NOT_CALIBRATED_ECE = 0.10
 _MAX_BIN_GAP = 0.10
 _MIN_BIN_COUNT = 20
+
+# Spec §2: the hard stop, four requests at a time, and a per-request estimate above the
+# probe's 4,344 input tokens for its phase-event-modifier request.
+CAP_USD = 0.50
+CONCURRENCY = 4
+TOKENS_PER_REQUEST_ESTIMATE = 5_000
 
 
 def questions(tables: CodeTables) -> dict[str, dict[str, object]]:
@@ -180,3 +191,62 @@ def calibration_block(title: str, confidences: Sequence[float], correct: Sequenc
         if b.count
     )
     return "\n".join(lines)
+
+
+def read_rows(replies: Path) -> list[dict[str, object]]:
+    """Every row written so far, oldest first; none if the file does not exist yet."""
+    if not replies.exists():
+        return []
+    return [json.loads(line) for line in replies.read_text().splitlines() if line]
+
+
+def _attempt(
+    case: tuple[str, Payload], ask: Callable[[Payload], Exchange], usd_per_token: float
+) -> dict[str, object]:
+    case_id, payload = case
+    try:
+        exchange = ask(payload)
+    except ModelError as error:
+        return {
+            "case_id": case_id, "ok": False, "error": str(error), "attempts": None,
+            "retried_statuses": [], "seconds": None, "cost_usd": 0.0, "reply": None,
+        }
+    return {
+        "case_id": case_id,
+        "ok": True,
+        "error": None,
+        "attempts": exchange.attempts,
+        "retried_statuses": list(exchange.retried_statuses),
+        "seconds": round(exchange.seconds, 3),
+        "cost_usd": exchange.reply.usage.input_tokens * usd_per_token,
+        "reply": exchange.reply.model_dump(mode="json"),
+    }
+
+
+def ask_all(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
+    replies: Path,
+    cases: Sequence[tuple[str, Payload]],
+    ask: Callable[[Payload], Exchange],
+    *,
+    cap_usd: float,
+    usd_per_token: float,
+    concurrency: int = CONCURRENCY,
+) -> str:
+    """Ask every case without an answered row, ``concurrency`` at a time; stop before the cap."""
+    rows = read_rows(replies)
+    answered = {row["case_id"] for row in rows if row["ok"]}
+    spent = sum(float(str(row["cost_usd"])) for row in rows)
+    pending = [case for case in cases if case[0] not in answered]
+    estimate = TOKENS_PER_REQUEST_ESTIMATE * usd_per_token
+    replies.parent.mkdir(parents=True, exist_ok=True)
+    attempt = partial(_attempt, ask=ask, usd_per_token=usd_per_token)
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        for start in range(0, len(pending), concurrency):
+            chunk = pending[start : start + concurrency]
+            if spent + estimate * len(chunk) > cap_usd:
+                return "cap"
+            new = list(pool.map(attempt, chunk))
+            with replies.open("a") as handle:
+                handle.writelines(json.dumps(row) + "\n" for row in new)
+            spent += sum(float(str(row["cost_usd"])) for row in new)
+    return "complete"

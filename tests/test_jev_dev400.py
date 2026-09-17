@@ -1,19 +1,31 @@
 """The Jev dev-400 script's pure parts (docs/specs/2026-09-17-typesafe-jev-dev400-design.md)."""
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from scripts.exploratory.jev_dev400 import (
     accuracy_reading,
+    ask_all,
     calibration_reading,
     jev_hypothesis,
     llm_first_guesses,
     questions,
     ranked_pairs,
+    read_rows,
     score_jev_case,
 )
 
-from ntsb_probable_cause.model.typesafe import ChoiceAnswer, SystemOneReply, SystemOneUsage
+from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.model.client import Payload
+from ntsb_probable_cause.model.typesafe import (
+    ChoiceAnswer,
+    Exchange,
+    SystemOneReply,
+    SystemOneUsage,
+    parse_reply,
+)
+from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
@@ -198,3 +210,72 @@ def test_llm_first_guess_is_read_whether_or_not_the_model_abstained(tmp_path: Pa
     assert guesses["A"].right
     assert not guesses["A"].top1
     assert not guesses["B"].right
+
+
+SAVED = parse_reply(
+    json.loads(Path("tests/fixtures/typesafe/choices.json").read_text())["response"]
+)
+
+
+def _cases(n: int) -> list[tuple[str, Payload]]:
+    return [
+        (
+            f"C{i}",
+            Payload.from_evidence(Evidence(case_id=f"C{i}", docket_url=None, registration=f"C{i}")),
+        )
+        for i in range(n)
+    ]
+
+
+def _fake_ask(
+    asked: list[str], fail: frozenset[str] = frozenset()
+) -> Callable[[Payload], Exchange]:
+    def ask(payload: Payload) -> Exchange:
+        case_id = str(payload.fields()["registration"])
+        asked.append(case_id)
+        if case_id in fail:
+            raise ModelError("returned 503")
+        return Exchange(SAVED, attempts=1, retried_statuses=(), seconds=0.25)
+
+    return ask
+
+
+def test_ask_all_stops_before_the_cap(tmp_path: Path) -> None:
+    replies = tmp_path / "replies.jsonl"
+    asked: list[str] = []
+    # 1e-5 USD per token: the estimate is 0.05 per request. The first four fit under 0.25;
+    # they spend 4 x 4,344 x 1e-5 = 0.17376, and two more estimated at 0.10 would pass 0.25.
+    reason = ask_all(replies, _cases(6), _fake_ask(asked), cap_usd=0.25, usd_per_token=1e-5)
+    assert reason == "cap"
+    assert sorted(asked) == ["C0", "C1", "C2", "C3"]
+    rows = read_rows(replies)
+    assert len(rows) == 4
+    assert all(row["ok"] for row in rows)
+    assert abs(sum(float(str(r["cost_usd"])) for r in rows) - 0.17376) < 1e-9
+
+
+def test_ask_all_resumes_without_asking_again(tmp_path: Path) -> None:
+    replies = tmp_path / "replies.jsonl"
+    ask_all(replies, _cases(6), _fake_ask([]), cap_usd=0.25, usd_per_token=1e-5)
+    asked: list[str] = []
+    reason = ask_all(replies, _cases(6), _fake_ask(asked), cap_usd=10.0, usd_per_token=1e-5)
+    assert reason == "complete"
+    assert sorted(asked) == ["C4", "C5"]
+
+
+def test_a_failed_case_is_recorded_and_asked_again_on_resume(tmp_path: Path) -> None:
+    replies = tmp_path / "replies.jsonl"
+    ask_all(
+        replies,
+        _cases(2),
+        _fake_ask([], fail=frozenset({"C1"})),
+        cap_usd=1.0,
+        usd_per_token=1e-6,
+    )
+    failed = [row for row in read_rows(replies) if not row["ok"]]
+    assert [row["case_id"] for row in failed] == ["C1"]
+    assert failed[0]["cost_usd"] == 0.0
+    assert "503" in str(failed[0]["error"])
+    asked: list[str] = []
+    ask_all(replies, _cases(2), _fake_ask(asked), cap_usd=1.0, usd_per_token=1e-6)
+    assert asked == ["C1"]
