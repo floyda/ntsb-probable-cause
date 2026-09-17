@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from scripts.exploratory.jev_dev400 import (
     accuracy_reading,
     ask_all,
@@ -279,3 +280,20 @@ def test_a_failed_case_is_recorded_and_asked_again_on_resume(tmp_path: Path) -> 
     asked: list[str] = []
     ask_all(replies, _cases(2), _fake_ask(asked), cap_usd=1.0, usd_per_token=1e-6)
     assert asked == ["C1"]
+
+
+def test_an_unexpected_worker_error_still_saves_the_chunks_paid_replies(
+    tmp_path: Path,
+) -> None:
+    replies = tmp_path / "replies.jsonl"
+
+    def ask(payload: Payload) -> Exchange:
+        case_id = str(payload.fields()["registration"])
+        if case_id == "C2":
+            raise RuntimeError("boom")
+        return Exchange(SAVED, attempts=1, retried_statuses=(), seconds=0.25)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        ask_all(replies, _cases(4), ask, cap_usd=1.0, usd_per_token=1e-6)
+    rows = read_rows(replies)
+    assert sorted(str(row["case_id"]) for row in rows if row["ok"]) == ["C0", "C1", "C3"]

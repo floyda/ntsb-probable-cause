@@ -245,8 +245,20 @@ def ask_all(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
             chunk = pending[start : start + concurrency]
             if spent + estimate * len(chunk) > cap_usd:
                 return "cap"
-            new = list(pool.map(attempt, chunk))
-            with replies.open("a") as handle:
-                handle.writelines(json.dumps(row) + "\n" for row in new)
-            spent += sum(float(str(row["cost_usd"])) for row in new)
+            futures = [pool.submit(attempt, case) for case in chunk]
+            new: list[dict[str, object]] = []
+            first_error: BaseException | None = None
+            for future in futures:
+                try:
+                    new.append(future.result())
+                except Exception as error:  # noqa: BLE001 -- re-raised below, once every
+                    # already-completed sibling in the chunk has been collected and paid for.
+                    if first_error is None:
+                        first_error = error
+            if new:
+                with replies.open("a") as handle:
+                    handle.writelines(json.dumps(row) + "\n" for row in new)
+                spent += sum(float(str(row["cost_usd"])) for row in new)
+            if first_error is not None:
+                raise first_error
     return "complete"

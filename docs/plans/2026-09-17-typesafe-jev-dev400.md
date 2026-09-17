@@ -1431,14 +1431,31 @@ mypy --strict on the excluded-from-discovery script (followed via the test's imp
 has 8 test functions and 8 passed — a miscount in the brief's prose, not a code or test defect
 (nothing to fix: no hand-computed number in the test bodies was wrong).
 
-Task 4: no code deviations. The script and tests in the brief were used verbatim, including the
-fixture's 4,344 input tokens, which matched the cap test's hand-computed arithmetic exactly, so
-no expected numbers needed changing. The `pool.map(lambda case: ...)` call type-checked as
-written under `mypy --strict`, so the brief's fallback (`functools.partial`) was not needed to
-satisfy the type checker; `functools.partial` was used anyway, for readability, since a lambda
-capturing two closed-over names read worse than a named partial application — a stylistic
-choice, not a fix for a mypy failure. `make check` passed on the first attempt, including the
-90% coverage gate (97.80% total). Step 4's brief text says "Expected: 12 passed"; the test file
-has 11 test functions after Task 3's 8 plus this task's 3, and 11 passed — the same kind of
-prose miscount as Task 3's (nothing to fix: no hand-computed number in the test bodies was
-wrong).
+Task 4: the fixture's 4,344 input tokens matched the cap test's hand-computed arithmetic
+exactly, so no expected numbers needed changing. `make check` passed on the first attempt for
+the original Step 3 code, including the 90% coverage gate (97.80% total). Step 4's brief text
+says "Expected: 12 passed"; the test file had 11 test functions after Task 3's 8 plus this
+task's 3, and 11 passed — the same kind of prose miscount as Task 3's (nothing to fix: no
+hand-computed number in the test bodies was wrong).
+
+`ask_all`'s `pool.map` takes `functools.partial(_attempt, ask=ask, usd_per_token=usd_per_token)`
+instead of the brief's `lambda case: _attempt(case, ask, usd_per_token)`, because the lambda
+closes over two names (`ask`, `usd_per_token`) that are rebound each call of `ask_all`, which
+reads worse than a named partial application and is the kind of closure `ruff`'s loop-variable-
+binding checks flag in adjacent code in this repository — not a mypy failure, but a readability
+fix the controller's dispatch instructions allowed in place of the brief's exact line.
+
+Fix round 1 (review): `list(pool.map(attempt, chunk))` raised as soon as it reached a future
+whose worker raised something other than `ModelError`, discarding the whole chunk's rows —
+including calls that had already succeeded and been billed — so they were never written, `spent`
+was never updated for them, and they would have been asked (and billed) again on resume. Changed
+to submit the chunk's work with `pool.submit` and collect each future's result in chunk order,
+writing every row a worker produced (successful or `ModelError`-failed) and adding its cost to
+`spent` before re-raising the first unexpected exception, so a programming error still stops the
+run loudly without losing or re-billing the chunk's already-paid replies. Covered by
+`test_an_unexpected_worker_error_still_saves_the_chunks_paid_replies`, which raises `RuntimeError`
+for one of four cases and asserts the run raises `RuntimeError` while the other three cases'
+rows are recorded with `ok` true. This surfaced one new mypy finding fixed in the test itself:
+`sorted(row["case_id"] for row in rows if row["ok"])` failed `mypy --strict`
+(`SupportsRichComparisonT` cannot be `object`, since `read_rows` returns
+`dict[str, object]`); fixed by wrapping in `str(...)` before sorting.
