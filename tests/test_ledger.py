@@ -33,6 +33,23 @@ def test_append_row_marks_a_dirty_commit(tmp_path: Path, run_record: RunRecord) 
     assert f"{dirty.commit_sha}*" in path.read_text()
 
 
+def test_append_row_never_writes_an_absolute_path(tmp_path: Path, run_record: RunRecord) -> None:
+    """The ledger is committed, so a row must not carry the running machine's filesystem.
+
+    The first held-out rows recorded `/Users/<name>/Workspace/.../cases.jsonl`, because both
+    call sites pass `str(folder / ...)` and `folder` comes from an absolute setting.
+    """
+    path = tmp_path / "heldout-ledger.md"
+    ledger.append_row(path, run_record, str(tmp_path / "20260917T061527-x-heldout-400" / "c.jsonl"))
+    row = next(line for line in path.read_text().splitlines() if line.startswith("| 20"))
+    assert str(tmp_path) not in row
+    assert "| 20260917T061527-x-heldout-400/c.jsonl |" in row
+
+
+def test_results_ref_keeps_a_bare_file_name() -> None:
+    assert ledger.results_ref("cases.jsonl") == "cases.jsonl"
+
+
 def test_commit_state_returns_a_short_sha_and_a_dirty_flag() -> None:
     sha, dirty = ledger.commit_state()
     assert len(sha) >= 7
