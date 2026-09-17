@@ -295,7 +295,7 @@ git commit -m "Jev: System One reply types and request body, tested on the saved
   - `@dataclass(frozen=True) class Exchange`: `reply: SystemOneReply`, `attempts: int`, `retried_statuses: tuple[str, ...]`, `seconds: float`
   - `class TypeSafeClient`: `__init__(self, api_key: str, *, base_url: str, transport: httpx.BaseTransport | None = None, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic, max_attempts: int = 5, backoff_seconds: float = 2.0)`, a context manager, and `ask(self, payload: Payload, questions: Mapping[str, Mapping[str, object]], *, model: str = DEFAULT_MODEL) -> Exchange`. Safe to call from several threads at once.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_typesafe_client.py`. Add `import httpx` and `import respx` to the imports at the top, and add `TypeSafeClient` to the `ntsb_probable_cause.model.typesafe` import.
 
@@ -351,12 +351,12 @@ def test_ask_gives_up_after_the_last_attempt() -> None:
     assert slept == [2.0, 4.0]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_typesafe_client.py -q --no-cov`
 Expected: FAIL with `ImportError: cannot import name 'TypeSafeClient'`
 
-- [ ] **Step 3: Add the client**
+- [x] **Step 3: Add the client**
 
 In `src/ntsb_probable_cause/model/typesafe.py`, replace the import block with:
 
@@ -465,12 +465,12 @@ class TypeSafeClient:
         )
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_typesafe_client.py -q --no-cov`
 Expected: 10 passed.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check`
 Expected: pass.

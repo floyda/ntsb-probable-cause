@@ -6,15 +6,23 @@ result). Where the vendor's SDK and those replies differ, the replies win. This 
 product transport (0009).
 """
 
-from collections.abc import Mapping
-from typing import Annotated, Literal
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from types import TracebackType
+from typing import Annotated, Literal, Self
 
+import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.client import Payload
 
 DEFAULT_MODEL = "jev-latest"
+
+_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_USER_AGENT = "ntsb-probable-cause (https://github.com/floyda/ntsb-probable-cause)"
 
 
 class ChoiceAnswer(BaseModel):
@@ -102,3 +110,83 @@ def parse_reply(body: Mapping[str, object]) -> SystemOneReply:
         raise ModelError(
             f"unexpected System One reply shape: {error.error_count()} validation errors"
         ) from error
+
+
+@dataclass(frozen=True)
+class Exchange:
+    """One answered request, and what it took to get it (spike question 8)."""
+
+    reply: SystemOneReply
+    attempts: int
+    retried_statuses: tuple[str, ...]
+    seconds: float
+
+
+class TypeSafeClient:
+    """Retrying System One client. ``ask`` may be called from several threads at once."""
+
+    def __init__(  # noqa: PLR0913 -- fixed by the plan's Interfaces block, as for OpenRouterClient.
+        self,
+        api_key: str,
+        *,
+        base_url: str,
+        transport: httpx.BaseTransport | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        max_attempts: int = 5,
+        backoff_seconds: float = 2.0,
+    ) -> None:
+        self._http = httpx.Client(
+            base_url=base_url,
+            headers={"Authorization": f"Bearer {api_key}", "User-Agent": _USER_AGENT},
+            timeout=120.0,
+            transport=transport,
+        )
+        self._sleep = sleep
+        self._clock = clock
+        self._max_attempts = max_attempts
+        self._backoff = backoff_seconds
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        _kind: type[BaseException] | None,
+        _value: BaseException | None,
+        _tb: TracebackType | None,
+    ) -> None:
+        self._http.close()
+
+    def ask(
+        self,
+        payload: Payload,
+        questions: Mapping[str, Mapping[str, object]],
+        *,
+        model: str = DEFAULT_MODEL,
+    ) -> Exchange:
+        """Send one request; retry rate limits, server errors and transport failures."""
+        body = request_body(payload, questions, model=model)
+        retried: list[str] = []
+        started = self._clock()
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                response = self._http.post(sources.TYPESAFE_SYSTEM_ONE, json=body)
+            except httpx.TransportError as error:
+                status = type(error).__name__
+            else:
+                if response.is_success:
+                    reply = parse_reply(response.json())
+                    return Exchange(reply, attempt, tuple(retried), self._clock() - started)
+                status = str(response.status_code)
+                if response.status_code not in _RETRY_STATUSES:
+                    raise ModelError(
+                        f"{sources.TYPESAFE_SYSTEM_ONE} returned {status}: {response.text[:200]}"
+                    )
+            retried.append(status)
+            if attempt < self._max_attempts:
+                self._sleep(self._backoff * 2 ** (attempt - 1))
+        raise ModelError(
+            f"{sources.TYPESAFE_SYSTEM_ONE} failed after {self._max_attempts} attempts; "
+            f"statuses {retried}"
+        )
