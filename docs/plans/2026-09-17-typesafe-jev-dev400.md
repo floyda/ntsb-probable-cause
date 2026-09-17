@@ -1099,7 +1099,7 @@ git commit -m "Jev dev-400: the run loop, resumable, stopped before the cap"
 
 This task wires the tested parts to real data. It is exercised by the smoke run in Task 6, not by unit tests, because it only reads files and calls the tested functions.
 
-- [ ] **Step 1: Add the imports and constants**
+- [x] **Step 1: Add the imports and constants**
 
 Add to the imports of `scripts/exploratory/jev_dev400.py`:
 
@@ -1137,7 +1137,7 @@ EXAMPLE_SEED = 20260917
 USD_PER_TOKEN = sources.JEV.input_usd_per_mtok / 1_000_000
 ```
 
-- [ ] **Step 2: Add the report builder**
+- [x] **Step 2: Add the report builder**
 
 ```python
 def _latest_ok(rows: Sequence[Mapping[str, object]]) -> dict[str, Mapping[str, object]]:
@@ -1249,7 +1249,7 @@ def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
     return "\n".join(out) + "\n"
 ```
 
-- [ ] **Step 3: Add `main`**
+- [x] **Step 3: Add `main`**
 
 ```python
 def main(argv: Sequence[str]) -> int:
@@ -1318,12 +1318,12 @@ if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 4: Check it type-checks and the tests still pass**
+- [x] **Step 4: Check it type-checks and the tests still pass**
 
 Run: `make check`
 Expected: pass. Fix any mypy complaint in the script rather than adding `# type: ignore`.
 
-- [ ] **Step 5: Confirm the saved LLM runs load with today's record types**
+- [x] **Step 5: Confirm the saved LLM runs load with today's record types**
 
 Run:
 
@@ -1339,7 +1339,7 @@ for name, run in LLM_RUNS.items():
 
 Expected: `Luna 401` and `Gemini 401`. A validation error means the saved rows predate a record field: log a deviation and read the two fields needed straight from the JSON instead.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/exploratory/jev_dev400.py docs/plans/2026-09-17-typesafe-jev-dev400.md

@@ -14,28 +14,48 @@ Usage (from the worktree root; data lives in the main checkout):
 
 from __future__ import annotations
 
+import argparse
 import json
-from collections.abc import Callable, Sequence
+import random
+import statistics
+import sys
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
+from typing import cast
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.client import Payload
-from ntsb_probable_cause.model.typesafe import ChoiceAnswer, Exchange, SystemOneReply
+from ntsb_probable_cause.model.typesafe import (
+    DEFAULT_MODEL,
+    ChoiceAnswer,
+    Exchange,
+    SystemOneReply,
+    TypeSafeClient,
+    parse_reply,
+)
 from ntsb_probable_cause.records.verdict import Verdict
-from ntsb_probable_cause.scoring.codes import CodeTables
+from ntsb_probable_cause.scoring import ledger, samples
+from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.metrics import (
     CaseScores,
     calibration,
+    paired_difference,
     primary_occurrence,
     score_case,
     wilson,
 )
 from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.scoring.report import fmt_n, proportion
+from ntsb_probable_cause.scoring.runner import RunSpec, case_payload
+from ntsb_probable_cause.settings import Settings
 from scripts.typesafe_probe import choice_questions
 
 QUESTION_NAMES = ("phase", "event")
@@ -52,6 +72,16 @@ _MIN_BIN_COUNT = 20
 CAP_USD = 0.50
 CONCURRENCY = 4
 TOKENS_PER_REQUEST_ESTIMATE = 5_000
+
+SAMPLE = "dev-400"
+RUN_SUFFIX = "dev-400-jev"
+# Spec §4: the saved S1 runs the Jev row is compared with, case by case.
+LLM_RUNS = {
+    "Luna": "20260916T032106-179520f-dev-400-ceiling",
+    "Gemini": "20260917T060746-c366a04-dev-400-ceiling",
+}
+EXAMPLE_SEED = 20260917
+USD_PER_TOKEN = sources.JEV.input_usd_per_mtok / 1_000_000
 
 
 def questions(tables: CodeTables) -> dict[str, dict[str, object]]:
@@ -262,3 +292,178 @@ def ask_all(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
             if first_error is not None:
                 raise first_error
     return "complete"
+
+
+def _latest_ok(rows: Sequence[Mapping[str, object]]) -> dict[str, Mapping[str, object]]:
+    return {str(row["case_id"]): row for row in rows if row["ok"]}
+
+
+def _pct(values: Sequence[float], q: float) -> float:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
+
+
+def build_report(  # noqa: PLR0913 -- fixed by the plan's Interfaces block.
+    folder: Path,
+    raws: Sequence[Mapping[str, object]],
+    ids: Sequence[str],
+    tables: CodeTables,
+    seen: AbstractSet[str],
+    runs_dir: Path,
+) -> str:
+    """Every table of spec §4 and both readings of spec §5, from saved files only."""
+    rows = read_rows(folder / "replies.jsonl")
+    ok = _latest_ok(rows)
+    meta = json.loads((folder / "meta.json").read_text())
+    spec = RunSpec(sample=SAMPLE, arm="ceiling")
+    cases: list[JevCase] = []
+    for case_id, raw in zip(ids, raws, strict=True):
+        if case_id not in ok:
+            continue
+        _, _, verdict, _ = case_payload(raw, spec, tables)
+        reply = parse_reply(cast("Mapping[str, object]", ok[case_id]["reply"]))
+        fatal = raw.get("highestInjuryLevel") == "Fatal"
+        cases.append(score_jev_case(case_id, fatal, reply, verdict, tables, seen))
+    replies = [parse_reply(cast("Mapping[str, object]", row["reply"])) for row in ok.values()]
+    seconds = [float(str(row["seconds"])) for row in ok.values()]
+    retried = Counter(s for row in rows for s in cast("list[str]", row["retried_statuses"]))
+    input_tokens = sum(r.usage.input_tokens for r in replies)
+    out: list[str] = []
+    add = out.append
+
+    add(f"run {folder.name}")
+    add(f"sample={SAMPLE} requested model={meta['model']} commit={meta['commit']} dirty={meta['dirty']}")
+    add(f"model versions in replies: {dict(Counter(r.model for r in replies))}")
+    add(f"cases answered {len(ok)} of {len(ids)}; failed rows {sum(1 for r in rows if not r['ok'])}")
+    add(f"input tokens {input_tokens}; output tokens {sum(r.usage.output_tokens for r in replies)}")
+    add(
+        f"cost at the published, self-reported price: ${input_tokens * USD_PER_TOKEN:.4f} "
+        f"(${input_tokens * USD_PER_TOKEN / max(1, len(ok)):.6f} per case; preview, comparison only)"
+    )
+    add(
+        f"latency seconds: median {statistics.median(seconds):.2f}, 90th percentile "
+        f"{_pct(seconds, 0.9):.2f}, max {max(seconds):.2f}; requests needing a retry "
+        f"{sum(1 for r in ok.values() if int(str(r['attempts'])) > 1)}; retried statuses {dict(retried)}"
+    )
+
+    add("\nACCURACY (composed top-1 and top-3; S1's score_case)")
+    add("| slice | n | top-1 | top-3 | event | pair unseen |")
+    add("|---|---|---|---|---|---|")
+    for name, members in (
+        ("all", cases),
+        ("fatal", [c for c in cases if c.fatal]),
+        ("non-fatal", [c for c in cases if not c.fatal]),
+    ):
+        add(
+            f"| {name} | {len(members)} "
+            f"| {fmt_n(proportion([c.scores.occurrence_top1 for c in members]))} "
+            f"| {fmt_n(proportion([c.scores.occurrence_top3 for c in members]))} "
+            f"| {fmt_n(proportion([c.scores.event_match for c in members]))} "
+            f"| {fmt_n(proportion([c.scores.pair_unseen for c in members]))} |"
+        )
+    top1 = [c.scores.occurrence_top1 for c in cases]
+    add(f"reading (spec §5, bar {BASELINE_TOP1:.1%}): {accuracy_reading(top1)}")
+
+    event_right = [c.scores.event_match for c in cases]
+    add("\nCALIBRATION")
+    add(calibration_block("(a) Jev event confidence vs event right", [c.event_confidence for c in cases], event_right))
+    add(f"reading on (a) (spec §5): {calibration_reading([c.event_confidence for c in cases], event_right)}")
+    add(calibration_block("(b) Jev top event probability vs event right", [c.event_top_probability for c in cases], event_right))
+
+    by_id = {c.case_id: c for c in cases}
+    guesses = {name: llm_first_guesses(runs_dir / run / "cases.jsonl") for name, run in LLM_RUNS.items()}
+    shared = sorted(set(by_id).intersection(*(set(g) for g in guesses.values())))
+    add(f"\n(c) first-guess probability vs first guess right, on the {len(shared)} cases all three scored")
+    add(calibration_block("(c) Jev top-1 product", [by_id[i].top1_probability for i in shared], [by_id[i].scores.occurrence_top1 for i in shared]))
+    for name, g in guesses.items():
+        add(calibration_block(f"(c) {name} first guess", [g[i].probability for i in shared], [g[i].right for i in shared]))
+
+    add("\nPAIRED TOP-1 DIFFERENCE (Jev minus model, same cases, bootstrap 95%)")
+    for name, g in guesses.items():
+        mean, low, high = paired_difference(
+            [by_id[i].scores.occurrence_top1 for i in shared], [g[i].top1 for i in shared]
+        )
+        add(f"- Jev - {name}: {mean:+.1%} [{low:+.1%}, {high:+.1%}] on n={len(shared)}")
+
+    true_p = [c.true_event_probability for c in cases if c.true_event_probability is not None]
+    add("\nPROBABILITY ON THE TRUE EVENT")
+    add(
+        f"median {statistics.median(true_p):.3f}; exactly 0 on "
+        f"{sum(1 for p in true_p if p == 0.0)} of {len(true_p)} "
+        f"({sum(1 for p in true_p if p == 0.0) / len(true_p):.1%})"
+    )
+
+    add(f"\nEXAMPLES (seed {EXAMPLE_SEED}; codes and labels only)")
+    for c in random.Random(EXAMPLE_SEED).sample(cases, 5):
+        truth = c.true_occurrence or "none"
+        label = tables.events.get(truth[3:], "?") if c.true_occurrence else "-"
+        add(f"{c.case_id}: true {truth} ({label}); Jev event confidence {c.event_confidence:.2f}")
+        for code, p in c.top_events:
+            add(f"    {code} {tables.events[code]:<45} {p:.2f}")
+    return "\n".join(out) + "\n"
+
+
+def main(argv: Sequence[str]) -> int:
+    """``run`` asks Jev; ``report`` scores what was saved."""
+    parser = argparse.ArgumentParser(prog="jev_dev400")
+    sub = parser.add_subparsers(dest="command", required=True)
+    run_cmd = sub.add_parser("run")
+    run_cmd.add_argument("--resume", help="an existing run folder name under the runs directory")
+    run_cmd.add_argument("--limit", type=int, help="first N cases only (smoke run)")
+    report_cmd = sub.add_parser("report")
+    report_cmd.add_argument("folder")
+    report_cmd.add_argument("--out")
+    args = parser.parse_args(argv)
+
+    settings = Settings()
+    tables = load_tables()
+    processed = settings.data_dir / "processed"
+    ids = samples.sample_ids(SAMPLE)
+    if args.command == "run" and args.limit is not None:
+        ids = ids[: args.limit]
+    raws = samples.load_cases(processed, ids)
+
+    if args.command == "report":
+        text = build_report(
+            settings.runs_dir / args.folder, raws, ids, tables,
+            samples.seen_pairs(processed), settings.runs_dir,
+        )
+        print(text, end="")
+        if args.out:
+            Path(args.out).write_text(text)
+        return 0
+
+    sha, dirty = ledger.commit_state()
+    name = args.resume or f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{sha}-{RUN_SUFFIX}"
+    folder = settings.runs_dir / name
+    folder.mkdir(parents=True, exist_ok=True)
+    meta_file = folder / "meta.json"
+    if not meta_file.exists():
+        meta_file.write_text(json.dumps({
+            "sample": SAMPLE, "model": DEFAULT_MODEL, "questions": list(QUESTION_NAMES),
+            "commit": sha, "dirty": dirty, "started": datetime.now(UTC).isoformat(),
+            "cap_usd": CAP_USD, "limit": args.limit,
+        }, indent=1))
+    spec = RunSpec(sample=SAMPLE, arm="ceiling")
+    cases = []
+    for case_id, raw in zip(ids, raws, strict=True):
+        payload, _, _, evidence = case_payload(raw, spec, tables)
+        if evidence.case_id != case_id:
+            raise ValueError(f"sample order broken: {case_id} != {evidence.case_id}")
+        cases.append((case_id, payload))
+    asked = questions(tables)
+    with TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url) as client:
+        reason = ask_all(
+            folder / "replies.jsonl", cases, lambda p: client.ask(p, asked),
+            cap_usd=CAP_USD, usd_per_token=USD_PER_TOKEN,
+        )
+    rows = read_rows(folder / "replies.jsonl")
+    print(
+        f"{folder.name}: {reason}; answered {len(_latest_ok(rows))} of {len(ids)}; "
+        f"spent ${sum(float(str(r['cost_usd'])) for r in rows):.4f} at the published price"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
