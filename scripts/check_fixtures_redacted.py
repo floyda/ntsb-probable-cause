@@ -17,6 +17,7 @@ Three checks, all on `tests/fixtures`:
 import csv
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from ntsb_probable_cause.data.redaction import find_redacted_fields
@@ -53,26 +54,58 @@ def withheld_columns_in(path: Path) -> list[str]:
 DOCKET_FIXTURES = Path("tests/fixtures/docket")
 
 
+def _nearest_manifest_dir(start: Path, root: Path, manifests: Mapping[Path, object]) -> Path | None:
+    """The nearest directory at or above ``start``, no higher than ``root``, that has a manifest."""
+    current = start
+    while True:
+        if current in manifests:
+            return current
+        if current == root:
+            return None
+        current = current.parent
+
+
 def docket_fixture_problems(root: Path = DOCKET_FIXTURES) -> list[str]:
-    """Every docket text fixture must name its reviewer; every document file is listed (0037)."""
+    """Every docket document file is named by a manifest with a reviewer, wherever it sits (0037).
+
+    Fix round 1, finding 3: the previous version only ever looked at each case folder's
+    immediate children, so a document committed directly at ``root`` or nested inside a case
+    folder went unchecked, and a case folder with no ``manifest.json`` raised
+    ``FileNotFoundError`` instead of being reported. This walks the whole tree instead: every
+    ``manifest.json`` under ``root`` is read once (naturally skipping any folder that lacks
+    one -- ``Path.rglob`` only returns files that exist, so there is nothing left to raise),
+    and every committed ``.pdf``/``.txt`` is matched to the nearest manifest above it, however
+    deep it sits. A file with no manifest above it at all is reported as a problem, not raised
+    past. This check exists to stop unreviewed document text reaching a public repository, so
+    a hole in its own coverage has to fail loudly.
+    """
     problems: list[str] = []
     if not root.exists():
         return problems
-    for folder in sorted(p for p in root.iterdir() if p.is_dir()):
-        manifest = json.loads((folder / "manifest.json").read_text())
-        listed: set[str] = set()
+    manifests: dict[Path, dict[str, object]] = {}
+    listed: dict[Path, set[Path]] = {}
+    for manifest_path in sorted(root.rglob("manifest.json")):
+        case_dir = manifest_path.parent
+        manifest = json.loads(manifest_path.read_text())
+        manifests[case_dir] = manifest
+        names: set[Path] = set()
         for document in manifest.get("documents", []):
             for key in ("text_file", "pdf_file"):
                 name = document.get(key)
                 if name:
-                    listed.add(str(name))
+                    file_path = case_dir / str(name)
+                    names.add(file_path)
                     if not str(document.get("reviewed_by") or "").strip():
                         problems.append(
-                            f"{folder / name}: document text committed without reviewed_by (0037)"
+                            f"{file_path}: document text committed without reviewed_by (0037)"
                         )
-        for path in sorted(folder.iterdir()):
-            if path.suffix in {".pdf", ".txt"} and path.name not in listed:
-                problems.append(f"{path}: not listed in manifest.json with reviewed_by (0037)")
+        listed[case_dir] = names
+    for path in sorted({*root.rglob("*.pdf"), *root.rglob("*.txt")}):
+        governing = _nearest_manifest_dir(path.parent, root, manifests)
+        if governing is None:
+            problems.append(f"{path}: no manifest.json covers this file (0037)")
+        elif path not in listed[governing]:
+            problems.append(f"{path}: not listed in manifest.json with reviewed_by (0037)")
     return problems
 
 

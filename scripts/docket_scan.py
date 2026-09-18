@@ -18,9 +18,22 @@ replacement, added after this script's design):
    separately (``AttachResult.replacements`` is now the sum of both mechanisms), and both are
    reported under their own label -- the old single "amateur-built replacements" label would
    now be published over a number that is no longer only amateur-built hits.
+
+Fix round 1 (spec-compliance review) added three more corrections to this file, all about
+whether a reader can trust the numbers rather than about decision 0046:
+
+3. The report states its own denominator -- cases attempted, listing fetch failures and
+   mKey-missing skips, per stratum and overall -- so a reader can tell a complete run from a
+   partial one instead of every quantile silently being over an unstated population.
+4. A "Definitions and limits" section spells out four places where a figure's exact meaning
+   is not obvious from its label: what the name figures are counted over, "containing" vs.
+   "replaced", how tokens per docket are summed, and what "scanned pages" counts.
+5. `quantiles` now matches its own "nearest-rank" docstring: `math.ceil`, not `round`, which
+   at a half-integer rank was silently returning one rank low.
 """
 
 import argparse
+import math
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
@@ -46,11 +59,18 @@ _CHAR_BINS = ((0, 0), (1, 49), (50, 99), (100, 299), (300, 599), (600, 10**9))
 def quantiles(
     values: Sequence[float], qs: Sequence[float] = (0.5, 0.75, 0.9, 1.0)
 ) -> dict[float, float]:
-    """Nearest-rank quantiles; empty input gives an empty dict."""
+    """Nearest-rank quantiles; empty input gives an empty dict.
+
+    Fix round 1, finding 4: nearest-rank means ``math.ceil(q * n)`` (1-based rank), not
+    ``round(q * n)`` -- ``round`` is half-to-even, so at a half-integer rank with an even
+    floor it silently returns one rank low (n=5 at p90: rank 4, not 5; n=150 at p75: rank
+    112, not 113). It happened to be exact at n=400, so `s2-shape-dev.txt`'s overall row was
+    right and only the fatal/non-fatal strata rows were off by one rank.
+    """
     if not values:
         return {}
     ordered = sorted(values)
-    return {q: ordered[min(len(ordered) - 1, max(0, round(q * len(ordered)) - 1))] for q in qs}
+    return {q: ordered[min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))] for q in qs}
 
 
 def owner_names(raw: Mapping[str, object]) -> list[str]:
@@ -65,10 +85,24 @@ def owner_names(raw: Mapping[str, object]) -> list[str]:
     return list(owner_operator_values(raw))
 
 
+def _stratum(fatal: bool) -> str:
+    """The stratum key a case's ``highestInjuryLevel`` sorts into."""
+    return "fatal" if fatal else "non-fatal"
+
+
 @dataclass
 class ShapeState:
     """Everything the scan accumulates. Counts and per-docket numbers, never text or ids."""
 
+    # Fix round 1, finding 1: without these, `docs/results/s2-shape-dev.txt` cannot say
+    # whether it covers 400 dockets or 385 -- every quantile in it would be over a silently
+    # different population. Populated once per case, in `main`'s loop, before it is known
+    # whether the case's docket could be read at all; `dockets` below (already existed) is the
+    # count of cases that *did* succeed, so `cases_attempted - listing_failed - missing_mkey`
+    # should equal `dockets` for the same stratum.
+    cases_attempted: Counter[str] = field(default_factory=Counter)
+    listing_failed: Counter[str] = field(default_factory=Counter)
+    missing_mkey: Counter[str] = field(default_factory=Counter)
     dockets: Counter[str] = field(default_factory=Counter)
     docs_per_docket: defaultdict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     pages_per_docket: defaultdict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
@@ -103,11 +137,26 @@ def _bin(chars: int) -> str:
     return "?"
 
 
+def record_attempt(state: ShapeState, *, fatal: bool) -> None:
+    """One case the scan tried to read, before it is known whether the docket was readable."""
+    state.cases_attempted[_stratum(fatal)] += 1
+
+
+def record_missing_mkey(state: ShapeState, *, fatal: bool) -> None:
+    """A case skipped because the record holds no usable ``mKey``."""
+    state.missing_mkey[_stratum(fatal)] += 1
+
+
+def record_listing_failed(state: ShapeState, *, fatal: bool) -> None:
+    """A case whose docket listing could not be fetched after every retry."""
+    state.listing_failed[_stratum(fatal)] += 1
+
+
 def accumulate(
     state: ShapeState, docket: Docket, *, fatal: bool, raw: Mapping[str, object]
 ) -> None:
     """Add one docket's numbers to the state."""
-    stratum = "fatal" if fatal else "non-fatal"
+    stratum = _stratum(fatal)
     state.dockets[stratum] += 1
     readable = [r for r in docket.documents if r.status == "read"]
     non_photo = [r for r in docket.documents if not r.entry.is_photo_only()]
@@ -174,6 +223,30 @@ def _fmt_q(values: Sequence[float]) -> str:
 def report(state: ShapeState) -> str:
     """The results text, by stratum and overall."""
     lines = ["# S2 development docket shape (scripts/docket_scan.py) — counts and quantiles only"]
+    # Fix round 1, finding 2: stated once, up front, rather than repeated as a caveat on every
+    # affected line below -- this file is meant to sit beside the spike's own numbers, so
+    # where a definition differs from the spike's it has to say so, not let a reader assume
+    # the two match.
+    lines.append("\n## Definitions and limits")
+    lines.append(
+        "Owner/operator name figures are counted only over documents whose text was "
+        "extracted; a scanned document is never searched, so the count is a floor for that "
+        "reason as well as because names the record does not hold are not counted."
+    )
+    lines.append(
+        '"Containing" is a case-insensitive substring test; the replacement counts use '
+        "word-boundary anchored matching (decision 0046), so the two are not the same "
+        "measurement and a document can register on one without the other."
+    )
+    lines.append(
+        "Tokens per docket sums each document's own characters-divided-by-four floor; the "
+        "spike's own figures floored once over a docket's total characters instead, so the "
+        "two totals are not directly comparable for a docket with more than one document."
+    )
+    lines.append(
+        '"Scanned pages" counts every page of a document classified as a scan, because '
+        "readable pages are not computed for a document already classified as a scan."
+    )
     groups = {s: [s] for s in STRATA} | {"overall": list(STRATA)}
     for name, strata in groups.items():
         docs = [v for s in strata for v in state.docs_per_docket[s]]
@@ -182,6 +255,14 @@ def report(state: ShapeState) -> str:
         per_doc = [v for s in strata for v in state.tokens_per_doc[s]]
         n = sum(state.dockets[s] for s in strata)
         lines.append(f"\n## {name}: {n} dockets")
+        # Fix round 1, finding 1: the denominator this whole group's numbers are over -- a
+        # complete run has `cases attempted == dockets read + listing fetch failed +
+        # skipped for missing mKey` for every stratum.
+        lines.append(
+            f"cases attempted: {sum(state.cases_attempted[s] for s in strata)}; "
+            f"listing fetch failed: {sum(state.listing_failed[s] for s in strata)}; "
+            f"skipped for missing mKey: {sum(state.missing_mkey[s] for s in strata)}"
+        )
         lines.append(f"documents per docket: {_fmt_q(docs)}")
         lines.append(f"non-photo pages per docket: {_fmt_q(pages)}")
         lines.append(f"estimated readable tokens per docket: {_fmt_q(tokens)}")
@@ -267,18 +348,22 @@ def main(argv: list[str]) -> int:
         settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
     ) as client:
         for position, raw in enumerate(raws, start=1):
+            fatal = raw.get("highestInjuryLevel") == "Fatal"
+            record_attempt(state, fatal=fatal)
             mkey = raw.get("mKey")
             if not isinstance(mkey, int):
+                record_missing_mkey(state, fatal=fatal)
                 continue
             try:
                 docket = read_docket(client, mkey)
             except DocketError as error:
+                record_listing_failed(state, fatal=fatal)
                 print(
                     f"{position}/{len(raws)}: listing failed ({type(error).__name__})",
                     file=sys.stderr,
                 )
                 continue
-            accumulate(state, docket, fatal=raw.get("highestInjuryLevel") == "Fatal", raw=raw)
+            accumulate(state, docket, fatal=fatal, raw=raw)
             print(f"{position}/{len(raws)}: {len(docket.documents)} documents", file=sys.stderr)
     text = report(state)
     print(text)

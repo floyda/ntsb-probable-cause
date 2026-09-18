@@ -1,12 +1,29 @@
 """The development shape scan: counts and quantiles only (spec §8.1)."""
 
-from scripts.docket_scan import ShapeState, accumulate, owner_names, quantiles, report
+from scripts.docket_scan import (
+    ShapeState,
+    accumulate,
+    owner_names,
+    quantiles,
+    record_attempt,
+    record_listing_failed,
+    record_missing_mkey,
+    report,
+)
 from tests.test_attach import _docket as small_docket
 
 
 def test_quantiles_are_nearest_rank() -> None:
     assert quantiles([1, 2, 3, 4]) == {0.5: 2, 0.75: 3, 0.9: 4, 1.0: 4}
     assert quantiles([]) == {}
+
+
+def test_quantiles_round_up_at_a_half_integer_rank() -> None:
+    """Fix round 1, finding 4: nearest-rank is ``math.ceil(q * n)``, not half-to-even
+    ``round``, which silently returns one rank low at a half-integer rank with an even floor.
+    """
+    assert quantiles(list(range(1, 6)), qs=(0.9,)) == {0.9: 5}
+    assert quantiles(list(range(1, 151)), qs=(0.75,)) == {0.75: 113}
 
 
 def test_owner_names_reuses_the_attach_modules_selection_rule() -> None:
@@ -79,3 +96,31 @@ def test_accumulate_counts_amateur_built_and_owner_operator_replacements_separat
     text = report(state)
     assert "amateur-built replacements, by category" in text
     assert "owner or operator name replacements, by category" in text
+
+
+def test_report_states_the_denominator_a_reader_needs_to_trust_the_numbers() -> None:
+    """Fix round 1, finding 1: a reader cannot tell a complete run from a broken one unless the
+    report says how many cases were attempted and how many of those never became a docket.
+    """
+    state = ShapeState()
+    record_attempt(state, fatal=True)
+    record_attempt(state, fatal=True)
+    record_missing_mkey(state, fatal=True)
+    record_attempt(state, fatal=False)
+    record_listing_failed(state, fatal=False)
+    text = report(state)
+    assert "cases attempted: 2; listing fetch failed: 0; skipped for missing mKey: 1" in text
+    assert "cases attempted: 1; listing fetch failed: 1; skipped for missing mKey: 0" in text
+    assert "cases attempted: 3; listing fetch failed: 1; skipped for missing mKey: 1" in text
+
+
+def test_report_states_definitions_and_limits() -> None:
+    """Fix round 1, finding 2: the name figures, "containing" vs. "replaced", the token sum,
+    and "scanned pages" each need one plain sentence saying exactly what they measure.
+    """
+    text = report(ShapeState())
+    assert "## Definitions and limits" in text
+    assert "counted only over documents whose text was extracted" in text
+    assert "not the same measurement" in text
+    assert "characters-divided-by-four floor" in text
+    assert '"Scanned pages" counts every page of a document classified as a scan' in text
