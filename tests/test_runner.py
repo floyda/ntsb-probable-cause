@@ -5,11 +5,15 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import pytest
+from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.docket import filter as docket_filter
+from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
@@ -26,12 +30,15 @@ from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
     BatchRunner,
+    CachedDocketReader,
+    DocketReader,
     Runner,
     RunSpec,
     _BatchRun,
     case_payload,
     estimated_cost_usd,
     over_cap,
+    prepare_case,
     project_cost,
     refuse_over_budget,
     spec_json,
@@ -72,6 +79,7 @@ def runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     *,
     dirty: bool = False,
     now: Callable[[], datetime] = lambda: datetime(2026, 9, 15, tzinfo=UTC),
+    docket: DocketReader | None = None,
 ) -> Runner:
     return Runner(
         client,
@@ -83,6 +91,7 @@ def runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
         month_spent_usd=spent,
         commit=("abc1234", dirty),
         now=now,
+        docket=docket,
     )
 
 
@@ -1952,3 +1961,183 @@ def test_spec_json_records_the_docket_filter() -> None:
     assert (
         spec_json(spec, commit_sha="a", dirty=False, case_ids=[])["docket_filter"] == "unfiltered"
     )
+
+
+# --- arm B: the docket reader, the drop rule, the step record (Task 12, decision 0043) ---
+
+
+class FakeDocketReader:
+    def __init__(self, docket: Docket) -> None:
+        self.docket = docket
+        self.reads: list[int] = []
+
+    def read(self, mkey: int) -> Docket:
+        self.reads.append(mkey)
+        return self.docket
+
+
+def test_cached_docket_reader_delegates_to_read_docket_with_the_deny_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``CachedDocketReader`` is a thin seam: it calls ``manifest.read_docket`` with the
+    client it was built with and the filter module's deny-list predicate (spec §7.1)."""
+    captured: dict[str, object] = {}
+    docket = small_docket({1: "[page 1 of 3]\nx\n"})
+
+    def fake_read_docket(client: object, mkey: int, *, denied: object) -> Docket:
+        captured["client"] = client
+        captured["mkey"] = mkey
+        captured["denied"] = denied
+        return docket
+
+    monkeypatch.setattr("ntsb_probable_cause.scoring.runner.read_docket", fake_read_docket)
+    sentinel_client = object()
+    reader = CachedDocketReader(cast(DocketClient, sentinel_client))
+    result = reader.read(42)
+    assert captured == {"client": sentinel_client, "mkey": 42, "denied": docket_filter.is_denied}
+    assert result is docket
+
+
+def test_prepare_case_with_no_docket_matches_case_payload(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """``prepare_case(..., docket=None)`` is what ``case_payload`` now delegates to."""
+    raw = record_fixtures[0]
+    spec = RunSpec(sample="dev-400", arm="ceiling")
+    tables = load_tables()
+    prepared = prepare_case(raw, spec, tables, None)
+    payload, system, verdict, evidence = case_payload(raw, spec, tables)
+    assert prepared.payload == payload
+    assert prepared.system == system
+    assert prepared.verdict == verdict
+    assert prepared.evidence == evidence
+    assert prepared.attached == ()
+
+
+def test_prepare_case_arm_b_without_a_docket_raises(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ConfigurationError, match="docket"):
+        prepare_case(record_fixtures[0], RunSpec(sample="dev-400", arm="B"), load_tables(), None)
+
+
+def test_arm_b_without_a_docket_reader_is_refused_before_any_call(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(ConfigurationError, match="docket"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+
+
+def test_arm_b_attaches_the_filtered_documents_and_records_them(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    docket = small_docket(
+        {1: "[page 1 of 3]\nThe crankshaft was intact.\n", 2: "[page 1 of 3]\nWe submit.\n"}
+    )
+    reader = FakeDocketReader(docket)
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=reader).run(spec, record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    (step,) = case.steps
+    assert step.tool == "docket"
+    assert step.arguments == {"documents": [1, 2], "docket_filter": "published"}
+    assert step.documents_attached == ("1: exam_site, 10 tokens", "2: party_submission, 6 tokens")
+    assert step.not_available == ("3: unreadable: scan",)
+    assert "crankshaft" in client.payloads[0].text
+    assert reader.reads == [record_fixtures[0]["mKey"]]
+
+
+def test_arm_b_drops_whole_documents_in_rank_order_at_the_cap(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0043: stop before the first document that would break the cap; record it."""
+    big = "[page 1 of 3]\n" + "x" * 40_000 + "\n"
+    docket = small_docket({1: "[page 1 of 3]\nsmall\n", 2: big})
+    client = RecordingFakeClient([GOOD, REFINE])
+    # Sonnet 5 standard, measured (``estimated_cost_usd`` on this fixture and code tables):
+    # base + the 5-token small document costs about $0.0284; base + both documents (the big
+    # one adds 10,003 tokens) costs about $0.0484. A $0.04 cap sits between the two, so it
+    # admits the small document and refuses the big one. If the base prompt alone is over the
+    # cap the case fails "cap" before any document, which is the existing behaviour.
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        model="anthropic/claude-sonnet-5",
+        cap_usd=0.04,
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    (step,) = case.steps
+    assert step.documents_attached == ("1: exam_site, 5 tokens",)
+    assert step.documents_not_read == ("2: cap, 10003 tokens",)
+    assert "xxxx" not in client.payloads[0].text
+
+
+def test_arm_b_no_submissions_variant_leaves_out_party_submissions(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    docket = small_docket({1: "[page 1 of 3]\na\n", 2: "[page 1 of 3]\nWe submit.\n"})
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        docket_filter="no-submissions",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
+    assert "We submit." not in client.payloads[0].text
+
+
+def test_ceiling_and_arm_a_never_read_the_docket(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    reader = FakeDocketReader(small_docket({1: "[page 1 of 3]\na\n"}))
+    for arm in cast(tuple[Literal["A", "ceiling"], ...], ("A", "ceiling")):
+        client = RecordingFakeClient([GOOD, REFINE])
+        spec = RunSpec(
+            sample="dev-400",
+            arm=arm,
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        )
+        runner(tmp_path, client, docket=reader).run(spec, record_fixtures[:1])
+    assert reader.reads == []
+
+
+def test_batch_arm_b_attaches_documents_too(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),
+            lambda bid, reqs: _status(bid, reqs, REFINE),
+        ]
+    )
+    runner(tmp_path, RecordingFakeClient([]), batch=fake, docket=FakeDocketReader(docket)).run(
+        RunSpec(sample="dev-400", arm="B", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert "crankshaft" in fake.submitted[0][0].payload.text

@@ -11,7 +11,11 @@ from typing import Literal, Protocol
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.data.build import investigation_class
+from ntsb_probable_cause.docket import filter as docket_filter
+from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.filter import Variant
+from ntsb_probable_cause.docket.manifest import Docket, read_docket
 from ntsb_probable_cause.errors import (
     BudgetError,
     ConfigurationError,
@@ -545,10 +549,41 @@ def _sample_split(sample: str) -> Split:
     return Split.OPEN
 
 
-def case_payload(
-    raw: Mapping[str, object], spec: RunSpec, tables: CodeTables
-) -> tuple[Payload, str, Verdict, Evidence]:
-    """The only route to a payload; the case-number line exists on development cases alone.
+class DocketReader(Protocol):
+    """Where arm B (and later the loop) gets a case's docket from."""
+
+    def read(self, mkey: int) -> Docket:
+        """The docket for a case's internal key."""
+        ...
+
+
+class CachedDocketReader:
+    """The real reader: the client's cache, the deny-list applied (spec §7.1)."""
+
+    def __init__(self, client: DocketClient) -> None:
+        self._client = client
+
+    def read(self, mkey: int) -> Docket:
+        """The docket for a case's internal key, fetched (or read from cache) and classified."""
+        return read_docket(self._client, mkey, denied=docket_filter.is_denied)
+
+
+@dataclass(frozen=True)
+class Prepared:
+    """Everything one case needs before its first call, and what the attach step did."""
+
+    payload: Payload
+    system: str
+    verdict: Verdict
+    evidence: Evidence
+    attached: tuple[int, ...] = ()
+    not_read: tuple[str, ...] = ()
+    not_available: tuple[str, ...] = ()
+    documents_attached: tuple[str, ...] = ()
+
+
+def _system_text(raw: Mapping[str, object], spec: RunSpec, tables: CodeTables, case_id: str) -> str:
+    """The case-number line exists on development cases alone.
 
     The probe is refused unless *both* the run's sample name implies development and the
     record's own event date falls in the development split (spec §6.2: "development split
@@ -557,18 +592,77 @@ def case_payload(
     checking the date alone would not refuse a run explicitly requested against a held-out
     sample when it is (as in this module's own tests) handed a development-dated record.
     """
-    evidence, _, verdict = split_record(raw, exclude=spec.exclusions | arm_exclusions(spec.arm))
-    payload = Payload.from_evidence(evidence)
     case_number: str | None = None
     if spec.include_case_number:
         event = date.fromisoformat(str(raw["eventDate"])[:10])
         if _sample_split(spec.sample) is not Split.DEV or split_of(event) is not Split.DEV:
             raise LeakageError(
-                f"{evidence.case_id}: the case number may be included on development cases only"
+                f"{case_id}: the case number may be included on development cases only"
             )
-        case_number = evidence.case_id
-    system = f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables, case_number=case_number)}"
-    return payload, system, verdict, evidence
+        case_number = case_id
+    return f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables, case_number=case_number)}"
+
+
+def _split_and_render(
+    context: Mapping[str, object], spec: RunSpec
+) -> tuple[Evidence, Verdict, Payload]:
+    evidence, _, verdict = split_record(context, exclude=spec.exclusions | arm_exclusions(spec.arm))
+    return evidence, verdict, Payload.from_evidence(evidence)
+
+
+def prepare_case(
+    raw: Mapping[str, object], spec: RunSpec, tables: CodeTables, docket: Docket | None
+) -> Prepared:
+    """The only route to a payload. Arm B attaches documents whole, in rank order, up to the cap.
+
+    Decision 0043: documents are added one at a time; the first that would take the case
+    over the cap stops the loop, and it and every document after it are recorded as
+    ``not read: cap`` with their estimated tokens. Every trial context goes through the split,
+    so the tripwire runs on every document that is attached.
+    """
+    evidence, verdict, payload = _split_and_render(raw, spec)
+    system = _system_text(raw, spec, tables, evidence.case_id)
+    if spec.arm != "B":
+        return Prepared(payload, system, verdict, evidence)
+    if docket is None:
+        raise ConfigurationError("arm B needs a docket reader")
+    ordered = docket_filter.arm_b_documents(docket, variant=spec.docket_filter)
+    attached: list[int] = []
+    not_read: list[str] = []
+    result = attach_docket(raw, docket, documents=attached)
+    evidence, verdict, payload = _split_and_render(result.context, spec)
+    for position, index in enumerate(ordered):
+        trial = attach_docket(raw, docket, documents=[*attached, index])
+        trial_evidence, trial_verdict, trial_payload = _split_and_render(trial.context, spec)
+        if over_cap(trial_payload.text, system, spec):
+            not_read.extend(
+                f"{i}: cap, {docket.record(i).estimated_tokens} tokens" for i in ordered[position:]
+            )
+            break
+        attached.append(index)
+        result, evidence, verdict, payload = trial, trial_evidence, trial_verdict, trial_payload
+    documents_attached = tuple(
+        f"{i}: {docket.record(i).category}, {docket.record(i).estimated_tokens} tokens"
+        for i in attached
+    )
+    return Prepared(
+        payload,
+        system,
+        verdict,
+        evidence,
+        tuple(attached),
+        tuple(not_read),
+        result.not_available,
+        documents_attached,
+    )
+
+
+def case_payload(
+    raw: Mapping[str, object], spec: RunSpec, tables: CodeTables
+) -> tuple[Payload, str, Verdict, Evidence]:
+    """The one-call arms' payload; kept for callers that predate arm B."""
+    prepared = prepare_case(raw, spec, tables, None)
+    return prepared.payload, prepared.system, prepared.verdict, prepared.evidence
 
 
 def estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float:
@@ -608,6 +702,10 @@ class _CaseContext:
     payload: Payload
     system: str
     spec: RunSpec
+    attached: tuple[int, ...] = ()
+    not_read: tuple[str, ...] = ()
+    not_available: tuple[str, ...] = ()
+    documents_attached: tuple[str, ...] = ()
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
 
@@ -652,6 +750,7 @@ class Runner:
         month_spent_usd: float,
         commit: tuple[str, bool],
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        docket: DocketReader | None = None,
     ) -> None:
         self._client = client
         self._batch = batch
@@ -662,6 +761,7 @@ class Runner:
         self._spent = month_spent_usd
         self._sha, self._dirty = commit
         self._now = now
+        self._docket = docket
 
     def run(
         self,
@@ -705,7 +805,7 @@ class Runner:
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
         started = self._now()
-        case_ids = [case_payload(raw, spec, self._tables)[3].case_id for raw in raws]
+        case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
@@ -723,6 +823,8 @@ class Runner:
                 spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
             )
             reusable = recorded_batches(folder)
+        if spec.arm == "B" and self._docket is None:
+            raise ConfigurationError("arm B needs a docket reader")
         self._reserve_budget(spec, run_id, len(raws), started)
         self._log_header(spec, run_id, len(case_ids), resumed=resume is not None)
         results: list[CaseResult] = []
@@ -816,6 +918,19 @@ class Runner:
             refuse_over_budget(projected, spent, spec.budget_usd, reserved=reserved)
             reserve(self._runs_dir, run_id, projected, now=started)
 
+    def _prepare(self, raw: Mapping[str, object], spec: RunSpec) -> Prepared:
+        docket: Docket | None = None
+        if spec.arm == "B":
+            if self._docket is None:
+                raise ConfigurationError(
+                    "arm B needs a docket reader (--arm B reads the docket cache)"
+                )
+            mkey = raw.get("mKey")
+            if not isinstance(mkey, int):
+                raise ConfigurationError(f"{raw.get('ntsbNumber')}: no mKey, so no docket")
+            docket = self._docket.read(mkey)
+        return prepare_case(raw, spec, self._tables, docket)
+
     @staticmethod
     def _write_files(folder: Path, results: Sequence[CaseResult]) -> None:
         """cases.jsonl and steps.jsonl; called both on success and on a mid-run abort."""
@@ -835,18 +950,23 @@ class Runner:
         return sum(cost_usd(reply, settings)[0] for reply in replies)
 
     def _step(self, ctx: _CaseContext, hypothesis: Hypothesis, cost: float) -> StepRecord:
+        is_arm_b = ctx.spec.arm == "B"
         return StepRecord(
             case_id=ctx.evidence.case_id,
             step=0,
             arm=ctx.spec.arm,
             condition="full",
             day=None,
-            tool="none",
-            arguments={},
+            tool="docket" if is_arm_b else "none",
+            arguments={"documents": list(ctx.attached), "docket_filter": ctx.spec.docket_filter}
+            if is_arm_b
+            else {},
             reason="",
             expected_effect="",
             returned_roles=tuple(sorted(ctx.payload.fields())),
-            not_available=(),
+            not_available=ctx.not_available,
+            documents_attached=ctx.documents_attached,
+            documents_not_read=ctx.not_read,
             payload_fingerprint=fingerprint(ctx.payload),
             hypothesis=hypothesis,
             observed_effect="",
@@ -899,11 +1019,20 @@ class Runner:
     # --- the sync path ---
 
     def _answer_case(self, raw: Mapping[str, object], spec: RunSpec) -> CaseResult:
-        payload, system, verdict, evidence = case_payload(raw, spec, self._tables)
+        prepared = self._prepare(raw, spec)
         ctx = _CaseContext(
-            raw=raw, evidence=evidence, verdict=verdict, payload=payload, system=system, spec=spec
+            raw=raw,
+            evidence=prepared.evidence,
+            verdict=prepared.verdict,
+            payload=prepared.payload,
+            system=prepared.system,
+            spec=spec,
+            attached=prepared.attached,
+            not_read=prepared.not_read,
+            not_available=prepared.not_available,
+            documents_attached=prepared.documents_attached,
         )
-        if over_cap(payload.text, system, spec):
+        if over_cap(prepared.payload.text, prepared.system, spec):
             return self._failed(ctx, "cap", 0.0)
         hypothesis: Hypothesis | None = None
         failure: str | None = None
@@ -916,7 +1045,7 @@ class Runner:
         cost = self._cost(ctx.replies, spec)
         if failure is not None or hypothesis is None:
             return self._failed(ctx, failure or "model: no reply", cost)
-        scores = score_case(hypothesis, verdict, self._tables, seen_pairs=self._seen)
+        scores = score_case(hypothesis, ctx.verdict, self._tables, seen_pairs=self._seen)
         step = self._step(ctx, hypothesis, cost)
         return self._result(ctx, (step,), scores, cost)
 
@@ -1200,20 +1329,24 @@ class Runner:
         self, raws: Sequence[Mapping[str, object]], spec: RunSpec, run: _BatchRun
     ) -> None:
         for raw in raws:
-            payload, system, verdict, evidence = case_payload(raw, spec, self._tables)
-            run.order.append(evidence.case_id)
+            prepared = self._prepare(raw, spec)
+            run.order.append(prepared.evidence.case_id)
             ctx = _CaseContext(
                 raw=raw,
-                evidence=evidence,
-                verdict=verdict,
-                payload=payload,
-                system=system,
+                evidence=prepared.evidence,
+                verdict=prepared.verdict,
+                payload=prepared.payload,
+                system=prepared.system,
                 spec=spec,
+                attached=prepared.attached,
+                not_read=prepared.not_read,
+                not_available=prepared.not_available,
+                documents_attached=prepared.documents_attached,
             )
-            if over_cap(payload.text, system, spec):
-                run.results[evidence.case_id] = self._failed(ctx, "cap", 0.0)
+            if over_cap(prepared.payload.text, prepared.system, spec):
+                run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)
                 continue
-            run.contexts[evidence.case_id] = ctx
+            run.contexts[prepared.evidence.case_id] = ctx
 
     def _finish_case(self, case_id: str, hypothesis: Hypothesis, run: _BatchRun) -> None:
         ctx = run.contexts[case_id]

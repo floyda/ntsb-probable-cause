@@ -27,7 +27,13 @@ from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, write_jsonl
+from ntsb_probable_cause.scoring.records import (
+    CaseResult,
+    RunRecord,
+    StepRecord,
+    read_jsonl,
+    write_jsonl,
+)
 from ntsb_probable_cause.scoring.runner import BatchRunner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
@@ -584,12 +590,18 @@ def test_run_sync_then_report_end_to_end(
     assert case_id  # the fixture case id was used to build the sample
 
 
-def _write_judgeable_run(
-    runs_dir: Path, run_id: str, case_id: str, *, sample: str = "dev-400"
+def _write_judgeable_run(  # noqa: PLR0913 -- every parameter is a seam a test needs.
+    runs_dir: Path,
+    run_id: str,
+    case_id: str,
+    *,
+    sample: str = "dev-400",
+    arm: str = "ceiling",
+    docket_filter: str = "published",
 ) -> None:
     """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
-    kwargs = {**_RUN_KWARGS, "sample": sample}
+    kwargs = {**_RUN_KWARGS, "sample": sample, "arm": arm, "docket_filter": docket_filter}
     write_jsonl(
         runs_dir / run_id / "run.jsonl",
         [RunRecord(**kwargs, run_id=run_id, started=now, finished=now, cost_usd=1.0)],
@@ -732,6 +744,31 @@ def test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry(
     exit_code = main(["judge", run_id], client_factory=factory)
     assert exit_code == 1
     assert judge_path.read_text() == original_content  # untouched by the refused retry
+
+
+def test_judge_carries_the_answering_runs_docket_filter_into_its_own_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A judged arm-B run with a non-published filter must not write a judge record that
+    silently defaults ``docket_filter`` back to "published" (carried over from the runner
+    review, fixed alongside Task 12)."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    run_id = "20260101T000000-abc1234-dev-400-B"
+    _write_judgeable_run(
+        runs_dir, run_id, case_id, sample="dev-400", arm="B", docket_filter="unfiltered"
+    )
+
+    fake = RecordingFakeClient([GOOD_LABELS])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    assert main(["judge", run_id], client_factory=factory) == 0
+    records = read_jsonl(runs_dir / run_id / "run.jsonl", RunRecord)
+    answering, judged = records[0], records[1]
+    assert answering.docket_filter == "unfiltered"
+    assert judged.run_id == f"{run_id}-judge"
+    assert judged.docket_filter == "unfiltered"
 
 
 def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(

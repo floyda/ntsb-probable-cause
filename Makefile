@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars
+.PHONY: check lint type test ingest build scan probe bars armb
 
 check: lint type test
 
@@ -41,3 +41,9 @@ bars:
 # independent and can be run in parallel; on 2026-09-17 they were, which turned nine hours of
 # queue into thirty-six minutes. `docs/results/heldout-ledger.md` must exist with its header
 # first, or two runs finishing together race to create it and one row is lost.
+
+armb:
+	uv run ntsb-eval run --arm B --sample dev-400
+	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter unfiltered
+	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter no-submissions
+# The reports are generated from explicit run ids afterwards, never `--latest`, as S1 learned.

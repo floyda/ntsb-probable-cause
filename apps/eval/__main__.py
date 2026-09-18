@@ -1,6 +1,7 @@
 """``ntsb-eval``: baseline, run, report, judge, threshold (spec §6.5). Thin argparse wiring."""
 
 import argparse
+import contextlib
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -8,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
@@ -25,7 +27,7 @@ from ntsb_probable_cause.scoring.judge import (
     pick_disagreements,
 )
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
-from ntsb_probable_cause.scoring.runner import BatchRunner, Runner, RunSpec
+from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
 # ``month_spent`` moved to ``ntsb_probable_cause.scoring.budget`` (0045); tests still import
@@ -233,19 +235,27 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         if args.expected_cost_per_case_usd is not None
         else settings.expected_cost_per_case_usd,
     )
-    runner = Runner(
-        client,
-        batch=batch,
-        tables=load_tables(),
-        seen_pairs=seen,
-        runs_dir=settings.runs_dir,
-        ledger_path=settings.heldout_ledger_path,
-        month_spent_usd=spent,
-        commit=commit,
+    docket_cm = (
+        DocketClient(settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request)
+        if args.arm == "B"
+        else contextlib.nullcontext()
     )
-    # The operator re-supplies the original flags; the equality check inside `run` against
-    # the folder's own `spec.json` is what proves they supplied the right ones (0032 point 4).
-    record = runner.run(spec, raws, resume=args.resume)
+    with docket_cm as docket_client:
+        docket = CachedDocketReader(docket_client) if docket_client is not None else None
+        runner = Runner(
+            client,
+            batch=batch,
+            tables=load_tables(),
+            seen_pairs=seen,
+            runs_dir=settings.runs_dir,
+            ledger_path=settings.heldout_ledger_path,
+            month_spent_usd=spent,
+            commit=commit,
+            docket=docket,
+        )
+        # The operator re-supplies the original flags; the equality check inside `run` against
+        # the folder's own `spec.json` is what proves they supplied the right ones (0032 point 4).
+        record = runner.run(spec, raws, resume=args.resume)
     text = f"run {record.run_id}: {record.cases} cases, ${record.cost_usd:.4f}\n"
     print(text, end="")
     _maybe_write(args.out, text)
@@ -275,6 +285,8 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_record = answering_run_record(folder)
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
+    if run_record.arm == "B":
+        text += "\n\n" + report.cap_summary(cases)
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
@@ -368,6 +380,7 @@ def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fac
         arm=run_record.arm,
         exclusions=run_record.exclusions,
         includes=run_record.includes,
+        docket_filter=run_record.docket_filter,
         prompt_version=run_record.prompt_version,
         model=JUDGE_MODEL,
         # The judge calls chat-completions directly, so it pays the standard price; recording

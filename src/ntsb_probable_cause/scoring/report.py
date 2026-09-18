@@ -277,6 +277,23 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
     return "\n".join(lines)
 
 
+def cap_summary(results: Sequence[CaseResult]) -> str:
+    """How much of the docket the result was measured on (decision 0043 item 3)."""
+
+    def counts(rows: Sequence[CaseResult]) -> tuple[int, int]:
+        hit = [r for r in rows if any(s.documents_not_read for s in r.steps)]
+        dropped = sum(len(s.documents_not_read) for r in rows for s in r.steps)
+        return len(hit), dropped
+
+    cases_hit, docs = counts(results)
+    fatal_hit, fatal_docs = counts([r for r in results if r.fatal])
+    non_hit, non_docs = counts([r for r in results if not r.fatal])
+    return (
+        f"cap: {cases_hit} of {len(results)} cases hit the cap; {docs} documents not read "
+        f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
+    )
+
+
 def _stream_raws_of_split(processed: Path, split: Split) -> Iterator[dict[str, object]]:
     """Every raw record of one split, read directly from the processed file, one at a time.
 

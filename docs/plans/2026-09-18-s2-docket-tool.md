@@ -2764,7 +2764,7 @@ git commit -m "S2: replace the owner and operator names the record already holds
 - `Runner(..., docket: DocketReader | None = None)`; arm B with `docket=None` raises `ConfigurationError` before any call.
 - `report.cap_summary(results: Sequence[CaseResult]) -> str`: `"cap: N of M cases hit the cap; K documents not read (fatal a cases/b documents, non-fatal c/d)"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_runner.py`:
 
@@ -2882,12 +2882,12 @@ def test_cap_summary_counts_cases_and_documents_by_fatal() -> None:
 
 Write `_case(case_id, *, fatal, not_read=())` in `tests/test_report.py` returning a `CaseResult` with one `StepRecord` whose `documents_not_read=not_read`, `scores=None`, `failure=None`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py -q`
 Expected: ImportError on `prepare_case`, `CachedDocketReader`, `cap_summary`.
 
-- [ ] **Step 3: Implement the reader and `prepare_case`**
+- [x] **Step 3: Implement the reader and `prepare_case`**
 
 In `scoring/runner.py`, imports: `from ntsb_probable_cause.docket import filter as docket_filter`, `from ntsb_probable_cause.docket.attach import attach_docket`, `from ntsb_probable_cause.docket.client import DocketClient`, `from ntsb_probable_cause.docket.manifest import Docket, read_docket`.
 
@@ -2988,7 +2988,7 @@ def case_payload(
 
 Note the token figures in the tests: `estimated_tokens` is `chars // 4` of the test's document text (`len(text) // 4`), so `"1: exam_site, 10 tokens"` is `len("[page 1 of 3]\nThe crankshaft was intact.\n") // 4`; compute the exact values when the test is written and put those numbers in the assertions rather than the ones written above.
 
-- [ ] **Step 4: Thread it through the runner**
+- [x] **Step 4: Thread it through the runner**
 
 - `Runner.__init__` gains `docket: DocketReader | None = None`, stored as `self._docket`.
 - `_CaseContext` gains `prepared: Prepared` (replace the four separate fields with the one object, or add the three tuples `attached`, `not_read`, `not_available` and `documents_attached`; the smaller edit is to keep the four fields and add the tuples).
@@ -3011,7 +3011,7 @@ Note the token figures in the tests: `estimated_tokens` is `chars // 4` of the t
 - `_answer_case` and `_prepare_contexts`: call `self._prepare(raw, spec)` and build `_CaseContext` from it.
 - `_step`: `tool="docket" if ctx.spec.arm == "B" else "none"`, `arguments={"documents": list(ctx.attached), "docket_filter": ctx.spec.docket_filter} if ctx.spec.arm == "B" else {}`, `not_available=ctx.not_available`, `documents_attached=ctx.documents_attached`, `documents_not_read=ctx.not_read`, `stop_reason` unchanged.
 
-- [ ] **Step 5: The report and the command**
+- [x] **Step 5: The report and the command**
 
 `report.py`:
 
@@ -3048,12 +3048,12 @@ armb:
 
 (The reports are generated from explicit run ids afterwards, never `--latest`, as S1 learned.)
 
-- [ ] **Step 6: Run the tests and the full check**
+- [x] **Step 6: Run the tests and the full check**
 
 Run: `make check`
 Expected: green; coverage still over 90.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/runner.py src/ntsb_probable_cause/scoring/report.py apps/eval/__main__.py Makefile tests/test_runner.py tests/test_report.py tests/test_eval_app.py docs/plans/2026-09-18-s2-docket-tool.md
@@ -4095,6 +4095,12 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 - 2026-09-18, Task 8 fix round 1, Finding 1: `extract_pdf`'s reader-construction catch (`except (PyPdfError, ValueError, TypeError)`) is narrower than what `pypdf` can actually raise while building `reader.pages` -- confirmed with a real, hand-damaged file: an encrypted, empty-password PDF whose `/Pages` dict is missing `/Count` makes `pypdf` raise a bare `KeyError` from its encrypted-file page-count path, which escaped uncaught and would have killed the whole docket fetch. Widened to `except Exception`, matching the per-page catch already used a few lines below (`extract_pdf`'s contract is binary -- readable or not -- so a broad catch here is the honest one, not a lazy one). `KeyboardInterrupt` still propagates: `Exception`, not `BaseException`. Added `test_malformed_pdf_raises_docket_error_not_a_bare_keyerror` to `tests/test_docket_extract.py`, built from a real (if hand-damaged) PDF, not a mock.
 - 2026-09-18, Task 8 fix round 1, Finding 2: no test in `tests/test_docket_manifest.py` ever drove a document to `status == "read"` -- all three tests served blank PDFs, so every document landed on `unreadable: scan`, leaving `texts`, `readable_pages`, `estimated_tokens` and the born-digital/partial branches entirely unexercised. Added `test_read_documents_carry_text_scans_and_denied_do_not`, which drives one document through a hand-assembled PDF with real, exactly-known-length invented text (`_text_pdf`, since `PdfWriter` has no simple way to draw text) so it lands on `status == "read"` next to a scanned and a denied document, and asserts `texts` holds only the read document's index.
 - 2026-09-18, Task 8 fix round 1, Finding 3: the brief's literal `read_docket` folds a genuine fetch failure and a downloaded-but-unparsable file into the same `except DocketError: ... "fetch failed"` block around `extract_pdf(client.document(...))`, when `unreadable: not a pdf` exists precisely for the second case and otherwise only ever fires from the listing's own file-extension check. Split into two `try` blocks -- one around `client.document(...)` (a real fetch failure stays `fetch failed`), one around `extract_pdf(content)` (an unparsable download becomes `unreadable: not a pdf`) -- so the §8 results table counts each honestly. No existing test pinned the folded-together behaviour; added `test_downloaded_non_pdf_content_is_unreadable_not_fetch_failed` to cover it going forward.
+
+- 2026-09-18, Task 12: `tests/test_report.py` already carried a `_case(case_id, *, top1, ...)` builder from an earlier task, with a different shape than the brief's `_case(case_id, *, fatal, not_read=())` (it always sets `scores`, never `None`, unless `failure` is given). Rather than shadow it with an incompatible redefinition, extended it: `top1` now defaults to `True` (every existing call site still passes it explicitly, so no behaviour changed) and a new `not_read: tuple[str, ...] = ()` parameter attaches one `StepRecord` (via a small `_step` helper) carrying `documents_not_read=not_read` when non-empty, `steps=()` otherwise. `cap_summary` only reads `steps`, so the resulting cases' non-`None` `scores` (rather than the brief's `scores=None`) makes no difference to the test.
+- 2026-09-18, Task 12: the brief's `test_arm_b_drops_whole_documents_in_rank_order_at_the_cap` comment estimated the base prompt (code tables + system text) at "about 8,500 tokens" for Sonnet 5 standard, putting a $0.05 cap between the small and big documents. Measured directly against this repository's code tables and fixture (`estimated_cost_usd`), the base prompt is closer to 4,000 tokens: base+small costs about $0.0284, base+both documents about $0.0484 -- both under $0.05, so the big document was never dropped and the test failed. Lowered `cap_usd` to `0.04`, which still sits between the two measured costs, and rewrote the explanatory comment with the measured figures instead of the estimate. `documents_attached`/`documents_not_read` assertions are unchanged from the brief -- only `cap_usd` and the comment moved.
+- 2026-09-18, Task 12: added two tests not in the brief's Step 1 listing, to use (rather than leave as unused-import lint failures) the `CachedDocketReader` and `prepare_case` names the brief's import line names but never calls: `test_cached_docket_reader_delegates_to_read_docket_with_the_deny_list` (monkeypatches `runner.read_docket` and checks `CachedDocketReader.read` passes the client, the mkey and `docket_filter.is_denied` through) and `test_prepare_case_with_no_docket_matches_case_payload` / `test_prepare_case_arm_b_without_a_docket_raises` (direct-call coverage of `prepare_case`'s own guard, independent of `Runner`'s).
+- 2026-09-18, Task 12: found while in `apps/eval/__main__.py` per the task brief's carried-over item -- `_cmd_judge`'s `judge_record = RunRecord(...)` did not pass `docket_filter=run_record.docket_filter`, so a judged arm-B run with a non-`"published"` filter wrote a judge record defaulting to `"published"`. Fixed by adding the field; added `test_judge_carries_the_answering_runs_docket_filter_into_its_own_record` to `tests/test_eval_app.py`, and extended its `_write_judgeable_run` helper with `arm`/`docket_filter` parameters (defaulting to the previous hard-coded values, so no existing call site changed behaviour).
+- 2026-09-18, Task 12: `_cmd_run` builds `CachedDocketReader(DocketClient(...))` only for `--arm B`; used `contextlib.nullcontext()` for every other arm so one `with` block covers both cases (the brief said "a `with` block around the run" without specifying how to make it conditional). No test exercises the `--arm B` path through `main()` -- it would need a real (or extensively faked) `DocketClient`/HTTP layer, and the coverage gate (`--cov=ntsb_probable_cause`) does not measure `apps/`, so this is a gap worth flagging rather than one `make check` catches.
 
 ### Pre-flight corrections (2026-09-18, before Task 1)
 
