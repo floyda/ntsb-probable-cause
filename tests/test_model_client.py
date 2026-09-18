@@ -1,12 +1,14 @@
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model import client as model_client
-from ntsb_probable_cause.model.client import ModelSettings, Payload, RecordingFakeClient
+from ntsb_probable_cause.model.client import ModelSettings, Payload, RecordingFakeClient, Turn
 from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.records.split import split_record
 
 EVIDENCE = Evidence(
     case_id="CEN16LA999",
@@ -72,3 +74,29 @@ def test_fake_replays_scripted_replies() -> None:
     replies = [client.complete(payload, ModelSettings()).content for _ in range(3)]
     assert replies == ["first", "second", "second"]
     assert client.payloads == [payload, payload, payload]
+
+
+def _payload(record_fixtures: list[dict[str, object]]) -> Payload:
+    evidence, _, _ = split_record(record_fixtures[0])
+    return Payload.from_evidence(evidence)
+
+
+def test_tool_turn_carries_a_payload(record_fixtures: list[dict[str, object]]) -> None:
+    turn = Turn(role="tool", tool_call_id="c1", payload=_payload(record_fixtures))
+    assert turn.payload is not None
+    assert turn.content is None
+
+
+def test_tool_turn_refuses_plain_text() -> None:
+    with pytest.raises(ValidationError, match="Payload"):
+        Turn(role="tool", tool_call_id="c1", content="unchecked text")
+
+
+def test_tool_turn_without_a_payload_is_refused() -> None:
+    with pytest.raises(ValidationError, match="Payload"):
+        Turn(role="tool", tool_call_id="c1")
+
+
+def test_assistant_turn_refuses_a_payload(record_fixtures: list[dict[str, object]]) -> None:
+    with pytest.raises(ValidationError, match="assistant"):
+        Turn(role="assistant", content="ok", payload=_payload(record_fixtures))

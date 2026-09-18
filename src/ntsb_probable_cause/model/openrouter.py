@@ -43,8 +43,10 @@ def request_body(
                 ]
             messages.append(message)
         else:
+            if turn.payload is None:  # pragma: no cover -- Turn's validator refuses this
+                raise ModelError("a tool turn without a Payload cannot be sent")
             messages.append(
-                {"role": "tool", "tool_call_id": turn.tool_call_id, "content": turn.content}
+                {"role": "tool", "tool_call_id": turn.tool_call_id, "content": turn.payload.text}
             )
     body: dict[str, object] = {
         "model": settings.model_id(),

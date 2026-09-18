@@ -14,6 +14,7 @@ from ntsb_probable_cause.model.client import (
     ModelSettings,
     Payload,
     RecordingFakeClient,
+    ToolCall,
     Turn,
 )
 from ntsb_probable_cause.records import split as split_module
@@ -228,12 +229,31 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
 @pytest.mark.parametrize(
     "where",
-    ["system", "payload", "history"],
+    ["system", "payload", "history", "tool_payload", "tool_call_arguments"],
 )
 def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
     needle = "the pilot did not extend the landing gear"
     clean = Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN)
+    history: tuple[Turn, ...] = ()
+    if where == "history":
+        history = (Turn(role="assistant", content=needle),)
+    elif where == "tool_payload":
+        history = (
+            Turn(
+                role="tool",
+                tool_call_id="c1",
+                payload=Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN),
+            ),
+        )
+    elif where == "tool_call_arguments":
+        history = (
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="list_docket", arguments=needle),),
+            ),
+        )
     request = BatchRequest(
         custom_id="case-1",
         payload=(
@@ -243,7 +263,7 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
         ),
         settings=ModelSettings(),
         system=needle if where == "system" else "",
-        history=(Turn(role="assistant", content=needle),) if where == "history" else (),
+        history=history,
     )
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_requests_clean([request], [("factual narrative", needle)])
@@ -259,3 +279,21 @@ def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
         history=(Turn(role="assistant", content="a clean turn"),),
     )
     assert_requests_clean([request], [("factual narrative", "the pilot did not extend the gear")])
+
+
+def test_batch_boundary_assertion_reads_tool_turn_payloads(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """A tool turn's payload is one of the texts the batch assertion inspects."""
+    raw = next(r for r in record_fixtures if fields.factual_narrative(r))
+    evidence, synthesis, _ = split_record(raw)
+    leaked = evidence.model_copy(update={"prelim_narrative": synthesis.factual_narrative})
+    request = BatchRequest(
+        custom_id="x",
+        payload=Payload.from_evidence(evidence),
+        settings=ModelSettings(),
+        system="",
+        history=(Turn(role="tool", tool_call_id="c1", payload=Payload.from_evidence(leaked)),),
+    )
+    with pytest.raises(AssertionError, match=r"tool turn payload"):
+        assert_requests_clean([request], [("factual narrative", synthesis.factual_narrative or "")])

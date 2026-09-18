@@ -262,12 +262,12 @@ git commit -m "S2: batch-path boundary test with its mutation (spec §3.1)"
 **Interfaces:**
 - Produces: `Turn(role="tool", tool_call_id=..., payload=Payload)`; `Turn.content` is refused on a tool turn and `Turn.payload` on an assistant turn.
 
-- [ ] **Step 1: Find every tool turn built today**
+- [x] **Step 1: Find every tool turn built today**
 
 Run: `grep -rn 'role="tool"' src tests`
 Expected: the `request_body` branch in `openrouter.py`, and possibly a test that builds a tool turn from `tests/fixtures/openrouter/two_turn.json`. Note each hit: they are updated in Step 4.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `tests/test_model_client.py`:
 
@@ -325,12 +325,12 @@ def test_request_body_renders_a_tool_turn_from_its_payload(
 
 (Import `Payload`, `Turn`, `ToolCall`, `ModelSettings`, `request_body`, `split_record` at the top of that file if not already there.)
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_model_client.py tests/test_openrouter.py -q`
 Expected: the four `Turn` tests fail (no `payload` field / no validation), the body test fails on content.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 In `src/ntsb_probable_cause/model/client.py`, replace the `Turn` class:
 
@@ -374,7 +374,7 @@ In `src/ntsb_probable_cause/model/openrouter.py`, the tool branch of `request_bo
 
 Update every hit from Step 1 that built a tool turn with `content=` to build it with `payload=`.
 
-- [ ] **Step 5: Extend the boundary assertion to tool turns**
+- [x] **Step 5: Extend the boundary assertion to tool turns**
 
 `tests/boundary.py`'s `_request_texts` already reads `turn.payload` via `getattr`; replace the `getattr` with a direct `turn.payload` now that the field exists. Add to `tests/test_boundary.py`:
 
@@ -399,12 +399,20 @@ def test_batch_boundary_assertion_reads_tool_turn_payloads(
 
 (Import `BatchRequest`, `ModelSettings`, `Turn` in `tests/test_boundary.py`.)
 
-- [ ] **Step 6: Run the tests, then the full check**
+**Deviation (carried over from Task 1's review):** `_request_texts` used `getattr(turn, "payload", None)`
+before this task added the field; replaced with direct `turn.payload` access as required. Also added
+`turn.tool_calls[*].arguments` as a surface `_request_texts` inspects (labelled
+`f"{turn.role} turn tool call"`), and extended `test_assert_requests_clean_trips_on_every_surface`'s
+parameter list from `["system", "payload", "history"]` to add `"tool_payload"` and
+`"tool_call_arguments"`, so both new surfaces are independently proven to trip the assertion. Not in
+the brief's literal step text, but required by the "finding carried over from Task 1" instruction.
+
+- [x] **Step 6: Run the tests, then the full check**
 
 Run: `uv run pytest tests/test_model_client.py tests/test_openrouter.py tests/test_boundary.py tests/test_batch.py tests/test_runner.py -q` then `make check`
 Expected: green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/model tests/boundary.py tests/test_boundary.py tests/test_model_client.py tests/test_openrouter.py docs/plans/2026-09-18-s2-docket-tool.md

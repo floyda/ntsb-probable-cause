@@ -2,9 +2,9 @@
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import Literal, Protocol, final
+from typing import Literal, Protocol, Self, final
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import LeakageError, ModelError
@@ -121,13 +121,27 @@ class ModelSettings(BaseModel):
 
 
 class Turn(BaseModel):
-    """One earlier message in a multi-turn exchange (assistant or tool)."""
+    """One earlier message in a multi-turn exchange (assistant or tool).
 
-    model_config = ConfigDict(frozen=True)
+    A tool turn carries its result as a ``Payload`` (spec §3.2): the only text that can go
+    back to the model is text that passed the split and the guard. An assistant turn is the
+    model's own words and carries plain content.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
     role: Literal["assistant", "tool"]
     content: str | None = None
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
+    payload: Payload | None = None
+
+    @model_validator(mode="after")
+    def _tool_turns_carry_a_payload(self) -> Self:
+        if self.role == "tool" and (self.payload is None or self.content is not None):
+            raise ValueError("a tool turn carries its result as a Payload, never as text")
+        if self.role == "assistant" and self.payload is not None:
+            raise ValueError("an assistant turn carries content, not a Payload")
+        return self
 
 
 class ModelClient(Protocol):
