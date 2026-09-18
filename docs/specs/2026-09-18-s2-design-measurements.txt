@@ -7,10 +7,10 @@ anthropic/claude-sonnet-5:batch    output reserve $0.0100; prompt room 40,000 to
 anthropic/claude-sonnet-5          output reserve $0.0200; prompt room 15,000 tokens
 
 == M2: arm B cost per case at the median docket by stratum (spike medians + S1 prompt)
-openai/gpt-5.6-luna:batch          CA $0.0018; LA_nonfatal $0.0017; LA_fatal $0.0016; FA $0.0024
-openai/gpt-5.6-luna                CA $0.0036; LA_nonfatal $0.0034; LA_fatal $0.0032; FA $0.0049
-anthropic/claude-sonnet-5:batch    CA $0.0174; LA_nonfatal $0.0164; LA_fatal $0.0152; FA $0.0238
-anthropic/claude-sonnet-5          CA $0.0347; LA_nonfatal $0.0328; LA_fatal $0.0305; FA $0.0475
+openai/gpt-5.6-luna:batch          CA $0.0023; LA_nonfatal $0.0022; LA_fatal $0.0019; FA $0.0036
+openai/gpt-5.6-luna                CA $0.0047; LA_nonfatal $0.0043; LA_fatal $0.0038; FA $0.0072
+anthropic/claude-sonnet-5:batch    CA $0.0227; LA_nonfatal $0.0208; LA_fatal $0.0185; FA $0.0355
+anthropic/claude-sonnet-5          CA $0.0454; LA_nonfatal $0.0417; LA_fatal $0.0370; FA $0.0710
 
 == M3: does the cap bind? largest spike document plus the S1 prompt, by price
 openai/gpt-5.6-luna:batch          $0.0043 under the cap
@@ -19,13 +19,13 @@ anthropic/claude-sonnet-5:batch    $0.0415 under the cap
 anthropic/claude-sonnet-5          $0.0830 OVER the cap
 
 == M4: stage spend at the default price (Luna batch), whole-docket upper bound per case
-a case with a 10,000-token docket (share under: 0.89): $0.0023
-dev-400 arm B, filtered                                   400 cases  $0.91
-dev-400 arm B, unfiltered (0022: development only)        400 cases  $0.91
-dev-400 arm B without submissions (0038 item 4)           400 cases  $0.91
-dev-400 re-runs while the header and order settle         800 cases  $1.82
-heldout-400 arm B, once                                   400 cases  $0.91
-total, upper bound                                       2400 cases  $5.45
+a case with a 10,000-token docket (share under: 0.89): $0.0033
+dev-400 arm B, filtered                                   400 cases  $1.31
+dev-400 arm B, unfiltered (0022: development only)        400 cases  $1.31
+dev-400 arm B without submissions (0038 item 4)           400 cases  $1.31
+dev-400 re-runs while the header and order settle         800 cases  $2.62
+heldout-400 arm B, once                                   400 cases  $1.31
+total, upper bound                                       2400 cases  $7.85
 
 == M5: fetch time at one request every two seconds
 median docket: 400 listings + 1600 documents = 2000 requests, 1.1 h

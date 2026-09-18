@@ -4212,3 +4212,16 @@ then the rest.
   committed `docs/results/s2-name-coverage.txt` was not regenerated here (this worktree has no
   `data/processed/cases.parquet` -- 0014's raw data is never in git -- so the script cannot run
   locally; it should be re-run and re-committed once the numbers are next regenerated).
+- Finding 2 (`scripts/exploratory/s2_design_measurements.py`, not part of a numbered task --
+  it is exploratory scratch work feeding the design doc directly): `S1_PROMPT_TOKENS` is
+  documented as covering both answering turns, but the docket's own tokens
+  (`MEDIAN_TOKENS_BY_STRATUM`, the 10,000-token upper-bound figure) were added once in M2 and
+  M4, though the docket is in the payload on both turns like the rest of the prompt --
+  understating arm B's cost by roughly the docket's cost again, so spec §15's "$5.45 upper
+  bound" was a floor, not an upper bound. Both usages now count the docket's tokens twice
+  (`S1_PROMPT_TOKENS + 2 * tokens`); M1 and M3 are untouched (out of this finding's stated
+  scope; they price a single call, not a case, and are not the numbers §15 quotes). Re-ran the
+  script and overwrote `docs/specs/2026-09-18-s2-design-measurements.txt`; the new M4
+  whole-docket upper bound is $0.0033/case and the new 2,400-case total is $7.85 (was $5.45).
+  Full new M2/M4 figures are in that file and in this session's report to Andy, who owns §15's
+  text.

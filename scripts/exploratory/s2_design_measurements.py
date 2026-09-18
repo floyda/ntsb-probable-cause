@@ -51,10 +51,15 @@ def main() -> None:
         print(f"{p.model_id:34s} output reserve ${reserve:.4f}; prompt room {room:,.0f} tokens")
 
     section("M2: arm B cost per case at the median docket by stratum (spike medians + S1 prompt)")
+    # The docket is in the payload on both the stage-1 and stage-2 (refinement) turns, same
+    # as the rest of the prompt -- S1_PROMPT_TOKENS is already a both-turns figure (spec
+    # §14), but the docket's own tokens were being added once. Fix finding 2: count them on
+    # both turns too, or a case with a docket understates arm B by roughly the docket's cost
+    # again.
     for p in prices:
         parts = []
         for stratum, tokens in MEDIAN_TOKENS_BY_STRATUM.items():
-            usd = case_cost(p, S1_PROMPT_TOKENS + tokens, S1_OUTPUT_TOKENS)
+            usd = case_cost(p, S1_PROMPT_TOKENS + 2 * tokens, S1_OUTPUT_TOKENS)
             parts.append(f"{stratum} ${usd:.4f}")
         print(f"{p.model_id:34s} " + "; ".join(parts))
 
@@ -65,7 +70,8 @@ def main() -> None:
 
     section("M4: stage spend at the default price (Luna batch), whole-docket upper bound per case")
     p = sources.LUNA_BATCH
-    upper = case_cost(p, S1_PROMPT_TOKENS + 10_000, S1_OUTPUT_TOKENS)
+    # Same fix as M2: the 10,000-token docket is sent on both turns, not one.
+    upper = case_cost(p, S1_PROMPT_TOKENS + 2 * 10_000, S1_OUTPUT_TOKENS)
     print(f"a case with a 10,000-token docket (share under: {SHARE_UNDER_10K}): ${upper:.4f}")
     runs = {
         "dev-400 arm B, filtered": SAMPLE,
