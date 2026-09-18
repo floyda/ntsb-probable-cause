@@ -4,7 +4,6 @@ import io
 
 from pydantic import BaseModel, ConfigDict
 from pypdf import PdfReader
-from pypdf.errors import PyPdfError
 
 from ntsb_probable_cause.errors import DocketError
 
@@ -24,7 +23,7 @@ def extract_pdf(data: bytes) -> ExtractedDocument:
     try:
         reader = PdfReader(io.BytesIO(data))
         pages = list(reader.pages)
-    except (PyPdfError, ValueError, TypeError) as error:
+    except Exception as error:  # a readable PDF or not: no exception escapes this boundary
         raise DocketError(f"not a PDF: {error}") from error
     total = len(pages)
     counts: list[int] = []

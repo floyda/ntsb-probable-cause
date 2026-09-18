@@ -92,9 +92,14 @@ def read_docket(
             records.append(_record(entry, category, "unreadable: not a pdf"))
         else:
             try:
-                extracted = extract_pdf(client.document(mkey, entry.index, entry.href))
+                content = client.document(mkey, entry.index, entry.href)
             except DocketError:
                 records.append(_record(entry, category, "fetch failed"))
+                continue
+            try:
+                extracted = extract_pdf(content)
+            except DocketError:
+                records.append(_record(entry, category, "unreadable: not a pdf"))
                 continue
             kind = classify_pages(extracted.chars_by_page)
             readable = readable_pages(extracted.chars_by_page)
