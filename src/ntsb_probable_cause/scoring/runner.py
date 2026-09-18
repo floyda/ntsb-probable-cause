@@ -23,7 +23,12 @@ from ntsb_probable_cause.errors import (
     ModelError,
     SchemaError,
 )
-from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.fields import (
+    EvidenceRole,
+    finding_codes,
+    finding_codes_in_cause,
+    occurrence_codes,
+)
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -784,8 +789,9 @@ class Runner:
     ) -> RunRecord:
         """Run every case, write three JSON-lines files, append the ledger for held-out samples.
 
-        On any exception once answering has started — a batch ending badly, a
-        ``LeakageError`` partway through a sync run, a ``KeyboardInterrupt`` while a real
+        On any exception once answering has started — a batch ending badly, an arm A or
+        ceiling case's ``LeakageError`` (arm B's own docket tripwire fails the case, not the
+        run: see ``_leaked_case``, fix finding 4), a ``KeyboardInterrupt`` while a real
         batch's ``wait`` is polling, anything, ``BaseException`` included — the cases and
         cost paid so far are still written (``finished=None`` marks the run incomplete)
         before the exception is re-raised, so a crashed or interrupted run's spend is never
@@ -1033,10 +1039,67 @@ class Runner:
     ) -> CaseResult:
         return self._case_result(ctx, steps, scores, cost, None)
 
+    @staticmethod
+    def _leaked_case(raw: Mapping[str, object], error: LeakageError) -> CaseResult:
+        """An arm B case whose ``_prepare`` tripped the leakage guard: fails alone, closed (fix 4).
+
+        ``self._prepare`` runs ``split_record`` on the base payload and, for arm B, on every
+        trial payload as documents are attached in rank order -- so a hit can come from any
+        one document in a docket, not just the first. Spec §6.5's "a hit fails the case
+        closed" names the case, not the run: every arm B case reads a docket, and one false
+        trip on one document's prose must not abort a batch that has already paid for the
+        rest of it. Callers use this only for arm B (``_answer_case`` and
+        ``_prepare_contexts`` re-raise a ``LeakageError`` from any other arm): a ceiling or
+        arm A case never reads untrusted docket prose, so a leak there points at the
+        evidence fields themselves, not per-case variance in document text, and stays a
+        loud, run-aborting bug rather than a silent per-case failure.
+
+        Because ``split_record`` raised instead of returning, there is no ``Evidence`` or
+        ``Verdict`` object to read the report's fields from. This rebuilds only the verdict
+        fields the report needs, calling the same pure extraction functions
+        ``split_record`` already called before it decided to raise -- never re-run through
+        the guard, since nothing here is at risk of reaching a model. ``error.args[0]``
+        (``LeakageError``'s own message) names role, kind and source only, never the
+        withheld text (decision 0016), so it is safe to record in ``failure`` and, from
+        there, in a committed run folder.
+
+        Args:
+            raw: the case's raw record.
+            error: the ``LeakageError`` ``self._prepare`` raised.
+
+        Returns:
+            A ``CaseResult`` with no steps and no scores, ``cost_usd=0.0`` (no model call was
+            made), and ``failure`` prefixed ``"leak:"`` so it reads distinctly from ``"cap"``,
+            ``"schema:"`` and ``"model:"`` in a run's failure list.
+        """
+        case_id = str(raw["ntsbNumber"])
+        event = date.fromisoformat(str(raw["eventDate"])[:10])
+        flavour = raw.get("factualFinalReportFlavor")
+        return CaseResult(
+            case_id=case_id,
+            split=split_of(event).value,
+            fatal=raw.get("highestInjuryLevel") == "Fatal",
+            investigation_class=investigation_class(case_id),
+            report_flavour=str(flavour) if flavour is not None else None,
+            verdict_occurrence=occurrence_codes(raw),
+            verdict_findings=finding_codes(raw),
+            verdict_findings_in_cause=finding_codes_in_cause(raw),
+            steps=(),
+            scores=None,
+            cost_usd=0.0,
+            failure=f"leak: {error}",
+            documents_not_read=(),
+        )
+
     # --- the sync path ---
 
     def _answer_case(self, raw: Mapping[str, object], spec: RunSpec) -> CaseResult:
-        prepared = self._prepare(raw, spec)
+        try:
+            prepared = self._prepare(raw, spec)
+        except LeakageError as error:
+            if spec.arm != "B":
+                raise
+            return self._leaked_case(raw, error)
         ctx = _CaseContext(
             raw=raw,
             evidence=prepared.evidence,
@@ -1346,7 +1409,15 @@ class Runner:
         self, raws: Sequence[Mapping[str, object]], spec: RunSpec, run: _BatchRun
     ) -> None:
         for raw in raws:
-            prepared = self._prepare(raw, spec)
+            try:
+                prepared = self._prepare(raw, spec)
+            except LeakageError as error:
+                if spec.arm != "B":
+                    raise
+                case_id = str(raw["ntsbNumber"])
+                run.order.append(case_id)
+                run.results[case_id] = self._leaked_case(raw, error)
+                continue
             run.order.append(prepared.evidence.case_id)
             ctx = _CaseContext(
                 raw=raw,

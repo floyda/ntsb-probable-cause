@@ -4137,3 +4137,29 @@ plan defects and are corrected above; one was a false positive and the plan stan
    to `run.jsonl` and settles — decision 0045 point 2, "at the end, or on abort". Point 3's
    standing reservation is the run killed outright, where no handler runs and `release`
    is the only way back. The test, the module docstring and the decision agree.
+
+### Final whole-branch review, before merge (2026-09-18)
+
+Six Important findings and three smaller ones, found in a whole-branch review before the pull
+request and before the two paid S1-bars-equivalent evaluation runs (spec §8.5, §8.6). Fixed in
+this order: Finding 4 first (it is the one that can lose real money mid-run), then Finding 1,
+then the rest.
+
+- Task 12, Finding 4: `Runner._answer_case`/`Runner._prepare_contexts` called `self._prepare`
+  outside any `try`, so an arm B `LeakageError` -- from `split_record` on the base payload or
+  on any trial payload as a document is attached -- propagated to `run()`'s
+  `except BaseException`, which writes partial outputs and re-raises. Spec §6.5 says "a hit
+  fails the case closed", meaning the case, not the run, and the docket tripwire's sensitivity
+  has not yet been re-measured on real document prose, so one false trip in 400 cases would
+  have killed a batch that had already paid for the rest of it. Added `Runner._leaked_case`,
+  which rebuilds only the verdict fields a `CaseResult` needs directly from `raw` (the same
+  pure extraction `split_record` already ran before raising -- never re-run through the
+  guard), and catches `LeakageError` around `self._prepare` on both the sync and batch paths,
+  filing the case with `failure="leak: ..."`, `cost_usd=0.0`, `steps=()`. Scoped to
+  `spec.arm == "B"` only (re-raises otherwise): a ceiling or arm A case never reads untrusted
+  docket prose, so a leak there is a bug in the evidence fields themselves or in the
+  case-number probe (`_system_text`), not per-case variance in document text, and stays a
+  loud, run-aborting refusal -- `test_case_number_probe_refused_off_dev` (sync) and its new
+  batch-path counterpart both still expect that. Added
+  `test_sync_leaking_case_fails_alone_and_the_run_continues` and
+  `test_batch_leaking_case_fails_alone_and_the_run_continues`.

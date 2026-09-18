@@ -1,7 +1,7 @@
 """The runner: sync and batch answering passes, the cap, the budget (spec §6)."""
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -193,6 +193,25 @@ def test_case_number_probe_refused_off_dev(
                 sample="heldout-40",
                 arm="ceiling",
                 sync=True,
+                price_variant="standard",
+                include_case_number=True,
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
+        )
+
+
+def test_case_number_probe_refused_off_dev_on_the_batch_path(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix finding 4 is scoped to arm B: a non-arm-B ``LeakageError`` still aborts the whole
+    run, on the batch path (``_prepare_contexts``) just as it does on the sync path above."""
+    with pytest.raises(LeakageError, match="case number"):
+        runner(tmp_path, RecordingFakeClient([])).run(
+            RunSpec(
+                sample="heldout-40",
+                arm="ceiling",
+                sync=False,
                 price_variant="standard",
                 include_case_number=True,
                 expected_cost_per_case_usd=0.001,
@@ -1977,6 +1996,18 @@ class FakeDocketReader:
         return self.docket
 
 
+class _ByMkeyDocketReader:
+    """A DocketReader keyed by mKey: each case in a multi-case test gets its own docket."""
+
+    def __init__(self, by_mkey: Mapping[int, Docket]) -> None:
+        self._by_mkey = by_mkey
+        self.reads: list[int] = []
+
+    def read(self, mkey: int) -> Docket:
+        self.reads.append(mkey)
+        return self._by_mkey[mkey]
+
+
 def test_cached_docket_reader_delegates_to_read_docket_with_the_deny_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2037,6 +2068,47 @@ def test_prepare_case_fails_closed_when_an_attached_document_holds_the_narrative
     spec = RunSpec(sample="dev-400", arm="B")
     with pytest.raises(LeakageError, match="docket_documents"):
         prepare_case(raw, spec, load_tables(), docket)
+
+
+def test_sync_leaking_case_fails_alone_and_the_run_continues(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix 4: a tripwire hit on one case's docket must fail that case, not abort the run.
+
+    Before the fix, ``self._prepare``'s ``LeakageError`` propagated out of ``_answer_case``
+    to ``run()``'s ``except BaseException``, which writes partial outputs and re-raises --
+    aborting a paid run over one document. Two cases go in, one carrying a docket document
+    that holds its own withheld factual narrative; the other must still be answered and
+    scored, and the run must not raise.
+    """
+    leaking = next(r for r in record_fixtures if factual_narrative(r))
+    clean = next(r for r in record_fixtures if r["mKey"] != leaking["mKey"])
+    narrative = factual_narrative(leaking) or ""
+    leak_docket = small_docket({1: f"[page 1 of 3]\nAs the NTSB found: {narrative}\n"})
+    clean_docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+    reader = _ByMkeyDocketReader(
+        {leaking["mKey"]: leak_docket, clean["mKey"]: clean_docket}  # type: ignore[dict-item]
+    )
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=reader).run(spec, [leaking, clean])
+    results = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    by_id = {r.case_id: r for r in results}
+    leaking_result = by_id[str(leaking["ntsbNumber"])]
+    clean_result = by_id[str(clean["ntsbNumber"])]
+    assert leaking_result.failure is not None
+    assert leaking_result.failure.startswith("leak:")
+    assert leaking_result.cost_usd == 0.0
+    assert leaking_result.steps == ()
+    assert leaking_result.scores is None
+    assert clean_result.failure is None
+    assert clean_result.scores is not None
 
 
 def test_prepare_case_refuses_arm_b_when_a_docket_role_is_excluded(
@@ -2171,3 +2243,44 @@ def test_batch_arm_b_attaches_documents_too(
         record_fixtures[:1],
     )
     assert "crankshaft" in fake.submitted[0][0].payload.text
+
+
+def test_batch_leaking_case_fails_alone_and_the_run_continues(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix 4, batch path: the same guarantee as the sync test, for ``_prepare_contexts``.
+
+    Before the fix, a ``LeakageError`` here propagated out of ``_answer_batch`` (via
+    ``_prepare_contexts``) to ``run()``'s ``except BaseException`` -- aborting a batch that
+    may already have paid for the rest of its cases. Only the clean case reaches the batch
+    client; the leaking one is filed as failed before any request is ever built.
+    """
+    leaking = next(r for r in record_fixtures if factual_narrative(r))
+    clean = next(r for r in record_fixtures if r["mKey"] != leaking["mKey"])
+    narrative = factual_narrative(leaking) or ""
+    leak_docket = small_docket({1: f"[page 1 of 3]\nAs the NTSB found: {narrative}\n"})
+    clean_docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+    reader = _ByMkeyDocketReader(
+        {leaking["mKey"]: leak_docket, clean["mKey"]: clean_docket}  # type: ignore[dict-item]
+    )
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),
+            lambda bid, reqs: _status(bid, reqs, REFINE),
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake, docket=reader).run(
+        RunSpec(sample="dev-400", arm="B", sync=False, expected_cost_per_case_usd=0.001),
+        [leaking, clean],
+    )
+    results = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    by_id = {r.case_id: r for r in results}
+    leaking_result = by_id[str(leaking["ntsbNumber"])]
+    clean_result = by_id[str(clean["ntsbNumber"])]
+    assert leaking_result.failure is not None
+    assert leaking_result.failure.startswith("leak:")
+    assert leaking_result.cost_usd == 0.0
+    assert clean_result.failure is None
+    assert clean_result.scores is not None
+    submitted_ids = {req.custom_id for batch in fake.submitted for req in batch}
+    assert submitted_ids == {str(clean["ntsbNumber"])}
