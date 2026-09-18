@@ -4244,3 +4244,9 @@ then the rest.
   renders a value at or above 1,000,000 in scientific notation (`1.23457e+06`) -- exactly what
   makes a reader distrust a published results file. Added `_fmt_count` (thousands-separated
   integer) and routed every quantile figure through it.
+- Smaller finding, Task 14: `docket_shape_open.py`'s closing paragraph asserted a fixed "The
+  111 closed fatal open-split cases (docs/results/s0-corpus-scan.txt)", copied by hand from
+  another file's number and left to go stale as the corpus grows. Added `pool_sizes` (factored
+  out of `draw` via a shared `_pool` helper, so both read the same population) and changed the
+  report to "Drew N of M closed fatal ... and N of M closed non-fatal ...", both M's read live
+  from this run's own `cases.parquet`. Added `test_pool_sizes_matches_what_draw_samples_from`.

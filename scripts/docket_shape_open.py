@@ -13,6 +13,11 @@ can tell a complete run from a partial one) was never filled here -- ``main`` no
 ``record_attempt`` and ``record_listing_failed`` on the matching paths, as ``docket_scan.main``
 does. There is no missing-mKey path in this script: ``draw`` already resolves every case to an
 ``int`` mkey before ``main``'s loop ever runs.
+
+Final whole-branch review, smaller finding: the closing paragraph used to assert a fixed "111
+closed fatal open-split cases", copied by hand from ``docs/results/s0-corpus-scan.txt`` and
+left to go stale as the corpus grows. ``pool_sizes`` reads the same population ``draw`` samples
+from, and ``main`` now reports "drew N of M" for both strata from this run's own data.
 """
 
 import argparse
@@ -41,10 +46,15 @@ SEED = 20260918
 PER_STRATUM = 40
 
 
-def draw(
-    processed: Path, *, per_stratum: int = PER_STRATUM, seed: int = SEED
-) -> list[tuple[int, bool]]:
-    """(mkey, fatal) for up to ``per_stratum`` closed open-split cases per fatal stratum."""
+def _pool(processed: Path) -> dict[bool, list[int]]:
+    """Every closed open-split case's mkey, by fatal stratum -- the population ``draw`` samples.
+
+    Smaller finding (final whole-branch review): the report used to state a fixed "111 closed
+    fatal open-split cases", copied by hand from ``docs/results/s0-corpus-scan.txt`` and left
+    to go stale as the corpus grows. Both ``draw`` and ``pool_sizes`` read this same
+    population, so the reported "drew N of M" is always this run's own M, not a number that
+    belongs to another file.
+    """
     columns = ["mkey", "event_date", "completion_status", "raw_json"]
     table = pq.read_table(processed / "cases.parquet", columns=columns)
     pool: dict[bool, list[int]] = {True: [], False: []}
@@ -53,12 +63,25 @@ def draw(
         if status != COMPLETED_STATUS or event_date.year < OPEN_MIN_YEAR:
             continue
         pool[json.loads(raw_json)["highestInjuryLevel"] == "Fatal"].append(int(mkey))
+    return pool
+
+
+def draw(
+    processed: Path, *, per_stratum: int = PER_STRATUM, seed: int = SEED
+) -> list[tuple[int, bool]]:
+    """(mkey, fatal) for up to ``per_stratum`` closed open-split cases per fatal stratum."""
+    pool = _pool(processed)
     rng = random.Random(seed)  # noqa: S311 -- reproducible draw, not security
     drawn: list[tuple[int, bool]] = []
     for fatal in (True, False):
         members = sorted(pool[fatal])
         drawn.extend((m, fatal) for m in rng.sample(members, min(per_stratum, len(members))))
     return drawn
+
+
+def pool_sizes(processed: Path) -> dict[bool, int]:
+    """How many closed open-split cases exist per fatal stratum -- what ``draw`` samples from."""
+    return {fatal: len(members) for fatal, members in _pool(processed).items()}
 
 
 def main(argv: list[str]) -> int:
@@ -68,7 +91,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
     settings = Settings()
-    drawn = draw(settings.data_dir / "processed", per_stratum=args.per_stratum)
+    processed = settings.data_dir / "processed"
+    drawn = draw(processed, per_stratum=args.per_stratum)
+    sizes = pool_sizes(processed)
     state = ShapeState()
     with DocketClient(None, seconds_per_request=settings.docket_seconds_per_request) as client:
         for position, (mkey, fatal) in enumerate(drawn, start=1):
@@ -92,10 +117,14 @@ def main(argv: list[str]) -> int:
         "S2 development docket shape (scripts/docket_scan.py)",
         "S2 open-split docket shape (scripts/docket_shape_open.py; decision 0040)",
     )
+    drawn_fatal = sum(1 for _, fatal in drawn if fatal)
+    drawn_non_fatal = len(drawn) - drawn_fatal
     text += (
-        "\n\nThe 111 closed fatal open-split cases (docs/results/s0-corpus-scan.txt) are a small "
-        "population and a draw of 40 covers over a third of it; these figures describe that "
-        "population, not cases still open."
+        f"\n\nDrew {drawn_fatal} of {sizes[True]} closed fatal open-split cases and "
+        f"{drawn_non_fatal} of {sizes[False]} closed non-fatal open-split cases -- both pool "
+        "sizes read from this run's own cases.parquet, not copied from another file. Each is a "
+        "small population and this draw covers a large share of it, so these figures describe "
+        "that population, not cases still open."
     )
     text += (
         "\n\nName and amateur-built figures above are zero by construction: this script calls "

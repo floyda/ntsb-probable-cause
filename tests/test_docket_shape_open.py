@@ -9,7 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import respx
-from scripts.docket_shape_open import draw, main
+from scripts.docket_shape_open import draw, main, pool_sizes
 
 
 def _processed(tmp_path: Path) -> Path:
@@ -52,6 +52,15 @@ def _processed(tmp_path: Path) -> Path:
 def test_draw_takes_closed_open_split_cases_by_stratum(tmp_path: Path) -> None:
     drawn = draw(_processed(tmp_path), per_stratum=40)
     assert sorted(drawn) == [(1, True), (2, False)]
+
+
+def test_pool_sizes_matches_what_draw_samples_from(tmp_path: Path) -> None:
+    """Smaller finding (final whole-branch review): the report's population figure must come
+    from this same pool, not a number copied by hand from another file."""
+    processed = _processed(tmp_path)
+    assert pool_sizes(processed) == {True: 1, False: 1}
+    # A draw at or under each stratum's pool size takes every member of it.
+    assert sorted(draw(processed, per_stratum=40)) == [(1, True), (2, False)]
 
 
 def test_script_writes_nothing_under_data(
