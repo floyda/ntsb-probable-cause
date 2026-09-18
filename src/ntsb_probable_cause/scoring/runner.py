@@ -32,6 +32,13 @@ from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.scoring.budget import (
+    budget_lock,
+    month_spent,
+    open_reservations,
+    reserve,
+    settle,
+)
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import (
     HYPOTHESIS_SCHEMA,
@@ -490,12 +497,14 @@ def project_cost(spec: RunSpec, cases: int) -> float:
     return cases * per_case
 
 
-def refuse_over_budget(projected: float, month_spent: float, budget: float) -> None:
-    """Refuse a run that would take the month past its budget."""
-    if month_spent + projected > budget:
+def refuse_over_budget(
+    projected: float, month_spent: float, budget: float, *, reserved: float = 0.0
+) -> None:
+    """Refuse a run that would take the month past its budget, counting open reservations."""
+    if month_spent + reserved + projected > budget:
         raise BudgetError(
-            f"projected ${projected:.2f} plus ${month_spent:.2f} spent "
-            f"exceeds the ${budget:.2f} budget"
+            f"projected ${projected:.2f} plus ${month_spent:.2f} spent and ${reserved:.2f} "
+            f"reserved by other runs exceeds the ${budget:.2f} budget"
         )
 
 
@@ -679,7 +688,6 @@ class Runner:
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
-        refuse_over_budget(project_cost(spec, len(raws)), self._spent, spec.budget_usd)
         started = self._now()
         case_ids = [case_payload(raw, spec, self._tables)[3].case_id for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
@@ -699,6 +707,7 @@ class Runner:
                 spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
             )
             reusable = recorded_batches(folder)
+        self._reserve_budget(spec, run_id, len(raws), started)
         self._log_header(spec, run_id, len(case_ids), resumed=resume is not None)
         results: list[CaseResult] = []
         batch_ids: tuple[str, ...] = ()
@@ -746,6 +755,7 @@ class Runner:
             self._write_files(folder, results)
             record = build_record(finished, cost_floor)
             write_jsonl(folder / RUN_FILE, [record])
+            settle(self._runs_dir, run_id)
             return record
 
         try:
@@ -774,6 +784,20 @@ class Runner:
         return record
 
     # --- shared helpers (sync and batch) ---
+
+    def _reserve_budget(self, spec: RunSpec, run_id: str, cases: int, started: datetime) -> None:
+        """Refuse the run if its projected cost would bust the budget, then reserve it (0045).
+
+        Held under the runs directory's lock: the caller's ``self._spent`` figure is only a
+        floor, so ``month_spent`` is re-read here in case a run finished a moment ago, and
+        every other run's open reservation is added to what this run must fit under.
+        """
+        projected = project_cost(spec, cases)
+        with budget_lock(self._runs_dir):
+            spent = max(self._spent, month_spent(self._runs_dir, now=started))
+            reserved = sum(v for k, v in open_reservations(self._runs_dir).items() if k != run_id)
+            refuse_over_budget(projected, spent, spec.budget_usd, reserved=reserved)
+            reserve(self._runs_dir, run_id, projected, now=started)
 
     @staticmethod
     def _write_files(folder: Path, results: Sequence[CaseResult]) -> None:

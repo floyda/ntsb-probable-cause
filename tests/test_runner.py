@@ -18,6 +18,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
+from ntsb_probable_cause.scoring.budget import RESERVATION_FILE, open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
@@ -1836,3 +1837,57 @@ def test_run_header_logs_resumed_with_the_specs_facts(
         f"00:00:00Z run {_run_id()} RESUMED sample=dev-400 arm=ceiling cases=1 "
         "model=openai/gpt-5.6-luna price=batch"
     )
+
+
+def test_run_reserves_at_start_and_settles_at_the_end(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert not (tmp_path / "runs" / run.run_id / RESERVATION_FILE).exists()
+    assert open_reservations(tmp_path / "runs") == {}
+
+
+def test_run_is_refused_by_another_runs_open_reservation(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    reserve(tmp_path / "runs", "other-run", 24.99, now=datetime(2026, 9, 15, tzinfo=UTC))
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.05,
+    )
+    with pytest.raises(BudgetError, match="reserved"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+
+
+def test_an_aborted_run_settles_its_reservation(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    class Dies:
+        def complete(
+            self, payload: object, settings: object, *, system: str = "", history: object = ()
+        ) -> ModelReply:
+            raise KeyboardInterrupt
+
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(KeyboardInterrupt):
+        runner(tmp_path, Dies()).run(spec, record_fixtures[:1])
+    assert open_reservations(tmp_path / "runs") == {}

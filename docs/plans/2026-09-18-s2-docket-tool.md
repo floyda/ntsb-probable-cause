@@ -433,7 +433,7 @@ git commit -m "S2: a tool turn carries a Payload, never text (spec §3.2)"
 - Produces: `budget.month_spent(runs_dir: Path, *, now: datetime) -> float` (moved from `apps/eval/__main__.py`, which re-imports it so `apps.eval.__main__.month_spent` still resolves); `budget.budget_lock(runs_dir) -> ContextManager[None]`; `budget.reserve(runs_dir, run_id, projected_usd, *, now)`; `budget.settle(runs_dir, run_id)`; `budget.release(runs_dir, run_id) -> bool`; `budget.open_reservations(runs_dir) -> dict[str, float]`; `RESERVATION_FILE = "reservation.json"`.
 - `refuse_over_budget(projected, month_spent, budget, *, reserved=0.0)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_budget.py`:
 
@@ -565,12 +565,12 @@ def test_release_clears_a_dead_reservation(
     assert main(["release", "dead-run"]) == 1
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_budget.py tests/test_runner.py tests/test_eval_app.py -q`
 Expected: ImportError on `ntsb_probable_cause.scoring.budget`.
 
-- [ ] **Step 3: Write the budget module**
+- [x] **Step 3: Write the budget module**
 
 Create `src/ntsb_probable_cause/scoring/budget.py`:
 
@@ -659,7 +659,7 @@ def open_reservations(runs_dir: Path) -> dict[str, float]:
     return found
 ```
 
-- [ ] **Step 4: Wire the runner**
+- [x] **Step 4: Wire the runner**
 
 In `scoring/runner.py`:
 
@@ -692,7 +692,7 @@ The reservation is taken before `write_spec_json` on the fresh path is fine eith
 
 `set_aside_aborted_outputs(folder)` moves the dead run's output files aside on a resume; check it does not move `reservation.json` (it renames named files; if it globs, exclude the reservation).
 
-- [ ] **Step 5: Wire the command**
+- [x] **Step 5: Wire the command**
 
 In `apps/eval/__main__.py`: delete the local `month_spent` and add `from ntsb_probable_cause.scoring.budget import month_spent, open_reservations, release`. Add a subcommand:
 
@@ -722,17 +722,37 @@ dispatched in `main` (return its exit code). In `_cmd_report`, after the tables:
         )
 ```
 
-- [ ] **Step 6: Run the tests and the full check**
+- [x] **Step 6: Run the tests and the full check**
 
 Run: `make check`
 Expected: green. If `tests/test_eval_app.py::test_run_over_budget_exits_one_line_not_a_traceback` matches on the old message text, update its match to `"exceeds"`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/budget.py src/ntsb_probable_cause/scoring/runner.py apps/eval/__main__.py tests/test_budget.py tests/test_runner.py tests/test_eval_app.py docs/plans/2026-09-18-s2-docket-tool.md
 git commit -m "S2: the monthly budget is a reservation under a lock (decision 0045)"
 ```
+
+**Deviations from the brief, found while making `make check` green:**
+- `Runner.run` grew past ruff's statement limit (PLR0915) once the reservation block was
+  inlined. Extracted it into a private method `Runner._reserve_budget(spec, run_id, cases,
+  started)`, same behaviour, called from `run` in place of the inline block.
+- `.budget.lock` now lives directly under `runs_dir`, so five existing tests in
+  `test_eval_app.py` that unpacked `list(runs_dir.iterdir())` expecting exactly one entry
+  (the run folder) started failing once a run also created the lock file there. Changed each
+  to `[p for p in runs_dir.iterdir() if p.is_dir()]`, which is the one-run-folder assumption
+  those tests actually needed.
+- `apps/eval/__main__.py` re-imports `month_spent` from the new `budget` module rather than
+  defining it, and `mypy --strict`'s `no_implicit_reexport` then flagged
+  `apps.eval.__main__.month_spent` (which `tests/test_eval_app.py` imports directly) as not
+  exported. Added `__all__ = ["main", "month_spent"]` to the app module to make the
+  re-export explicit; this does not restrict access to the module's own locally defined
+  names (checked: `mypy` stayed clean with `answering_run_record` and `resolve_latest`,
+  neither of which is in `__all__`, still imported by the same test file).
+- `tests/test_runner.py`'s new import of `ntsb_probable_cause.scoring.budget` was placed
+  inline mid-file by the brief's literal text; moved it up to the file's top-level import
+  block (ruff E402) in its alphabetical place.
 
 ---
 

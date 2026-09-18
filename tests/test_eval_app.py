@@ -15,6 +15,7 @@ from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import ModelClient, ModelReply, RecordingFakeClient, Usage
 from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -311,7 +312,7 @@ def test_run_resume_refuses_a_different_limit(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     capsys.readouterr()
 
     exit_code = main(
@@ -357,7 +358,7 @@ def test_resumed_run_spend_reaches_month_spent_for_the_next_run(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(0.0)  # nothing read yet
 
     exit_code = main(
@@ -407,7 +408,7 @@ def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     one_reply = (100 * 0.10 + 50 * 0.60) / 1e6  # the stage-1 reply the dead run was billed
     billed = month_spent(runs_dir, now=datetime.now(UTC))
     assert billed == pytest.approx(one_reply)
@@ -452,7 +453,7 @@ def test_a_resume_that_aborts_leaves_the_dead_runs_spend_in_month_spent(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     billed = month_spent(runs_dir, now=datetime.now(UTC))
     assert billed > 0.0  # or the rest of this test proves nothing
 
@@ -560,7 +561,7 @@ def test_run_sync_then_report_end_to_end(
         client_factory=factory,
     )
     assert exit_code == 0
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     assert (run_folder / "cases.jsonl").exists()
 
     capsys.readouterr()  # discard the run command's own output
@@ -721,3 +722,15 @@ def test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry(
     exit_code = main(["judge", run_id], client_factory=factory)
     assert exit_code == 1
     assert judge_path.read_text() == original_content  # untouched by the refused retry
+
+
+def test_release_clears_a_dead_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs_dir = tmp_path / "runs"
+    reserve(runs_dir, "dead-run", 5.0, now=datetime(2026, 9, 18, tzinfo=UTC))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    assert main(["release", "dead-run"]) == 0
+    assert "released dead-run" in capsys.readouterr().out
+    assert open_reservations(runs_dir) == {}
+    assert main(["release", "dead-run"]) == 1

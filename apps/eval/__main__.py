@@ -15,6 +15,7 @@ from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import ledger, report, samples
+from ntsb_probable_cause.scoring.budget import month_spent, open_reservations, release
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.judge import (
     JUDGE_MODEL,
@@ -27,6 +28,10 @@ from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_json
 from ntsb_probable_cause.scoring.runner import BatchRunner, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
+# ``month_spent`` moved to ``ntsb_probable_cause.scoring.budget`` (0045); tests still import
+# it from here, so it is named explicitly to satisfy mypy's strict re-export check.
+__all__ = ["main", "month_spent"]
+
 ClientFactory = Callable[[Settings], tuple[ModelClient, BatchRunner | None]]
 
 
@@ -36,23 +41,6 @@ def _default_client_factory(settings: Settings) -> tuple[ModelClient, BatchRunne
         settings.require_openrouter_key(), base_url=settings.openrouter_base_url
     )
     return http, BatchClient(http)
-
-
-def month_spent(runs_dir: Path, *, now: datetime) -> float:
-    """Cost of every run started in ``now``'s month, aborted runs included (controller res. 4).
-
-    A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` -- the answering run's
-    own record, and, if the run was later judged, a second record for the judge pass
-    (``apps.eval._cmd_judge``, fix round 1) -- and every one of them counts.
-    """
-    if not runs_dir.exists():
-        return 0.0
-    total = 0.0
-    for run_file in sorted(runs_dir.glob("*/run.jsonl")):
-        for record in read_jsonl(run_file, RunRecord):
-            if record.started.year == now.year and record.started.month == now.month:
-                total += record.cost_usd
-    return total
 
 
 def answering_run_record(folder: Path) -> RunRecord:
@@ -186,6 +174,9 @@ def _build_parser() -> argparse.ArgumentParser:
     threshold_p.add_argument("run_id")
     _add_common(threshold_p)
 
+    release_p = commands.add_parser("release", help="clear a dead run's budget reservation")
+    release_p.add_argument("run_id")
+
     return parser
 
 
@@ -277,6 +268,11 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
         text += f"\n\nagainst {other_id}:\n{report.compare(cases, other_cases)}"
+    reservations = open_reservations(settings.runs_dir)
+    if reservations:
+        text += "\n\nopen budget reservations: " + ", ".join(
+            f"{k} ${v:.2f}" for k, v in sorted(reservations.items())
+        )
     print(text)
     _maybe_write(args.out, text)
 
@@ -311,6 +307,14 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     text = "\n".join(lines)
     print(text)
     _maybe_write(args.out, text)
+
+
+def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
+    if release(settings.runs_dir, args.run_id):
+        print(f"released {args.run_id}")
+        return 0
+    print(f"release: no open reservation for {args.run_id}", file=sys.stderr)
+    return 1
 
 
 def _judge_items(
@@ -479,6 +483,8 @@ def main(
             _cmd_judge(args, settings, client_factory)
         elif args.command == "threshold":
             _cmd_threshold(args, settings)
+        elif args.command == "release":
+            return _cmd_release(args, settings)
     except (BudgetError, ConfigurationError) as error:
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1
