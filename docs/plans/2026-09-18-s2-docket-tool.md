@@ -994,7 +994,7 @@ def test_server_error_is_retried_then_raised(tmp_path: Path, respx_mock: respx.M
     with DocketClient(tmp_path, sleep=sleeps.append, max_attempts=3, backoff_seconds=1.0) as client:
         with pytest.raises(DocketError, match="503"):
             client.listing_html(MKEY)
-    assert sleeps == [1.0, 2.0]
+    assert sleeps == [1.0, 1.0, 2.0]
 
 
 def test_not_found_is_not_retried(tmp_path: Path, respx_mock: respx.MockRouter) -> None:
@@ -1100,6 +1100,7 @@ class DocketClient:
         self._backoff = backoff_seconds
         self._now = now
         self._requested = False
+        self._last_backoff_slept = 0.0
         self._http = httpx.Client(
             headers={"User-Agent": sources.DOCKET_USER_AGENT},
             timeout=120.0,
@@ -1166,12 +1167,21 @@ class DocketClient:
         fetch_path.write_text(json.dumps(fetch, indent=1, sort_keys=True))
 
     def _get(self, url: str) -> bytes:
-        """One GET with the polite gap, retried with backoff on transport errors and 5xx."""
+        """One GET with the polite gap, retried with backoff on transport errors and 5xx.
+
+        The gap is net of any backoff already slept -- the rule ``openrouter.py``'s
+        ``request_json`` uses. A backoff of ``b`` seconds has already spaced the requests
+        by ``b``, so the next gap sleep is ``gap - b`` when that is positive and is skipped
+        otherwise. Without a preceding backoff the full gap applies.
+        """
         status: object = None
         for attempt in range(1, self._max_attempts + 1):
             if self._requested:
-                self._sleep(self._gap)
+                remaining_gap = self._gap - self._last_backoff_slept
+                if remaining_gap > 0:
+                    self._sleep(remaining_gap)
             self._requested = True
+            self._last_backoff_slept = 0.0
             try:
                 response = self._http.get(url)
             except httpx.TransportError as error:
@@ -1183,11 +1193,13 @@ class DocketClient:
                 if response.status_code not in _RETRY_STATUSES:
                     raise DocketError(f"{url} returned {status}")
             if attempt < self._max_attempts:
-                self._sleep(self._backoff * 2 ** (attempt - 1))
+                backoff = self._backoff * 2 ** (attempt - 1)
+                self._sleep(backoff)
+                self._last_backoff_slept = backoff
         raise DocketError(f"{url} failed after {self._max_attempts} attempts; last status {status}")
 ```
 
-Fix the `documents.update` typing without an ignore: narrow `fetch_update["documents"]` with `isinstance(..., dict)` before updating. `test_requests_are_two_seconds_apart` expects `[2.0]`: the gap sleep, and no backoff. `test_server_error_is_retried_then_raised` expects `[1.0, 2.0]` with `max_attempts=3`: three attempts, gap sleeps happen before attempts 2 and 3 as well, so the expected list is `[1.0, 2.0, 2.0, 4.0]`? No: order per attempt is gap-then-request-then-backoff: attempt 1 (no gap) → backoff 1.0; attempt 2 → gap 2.0, backoff 2.0; attempt 3 → gap 2.0, no backoff. Expected sleeps `[1.0, 2.0, 2.0, 2.0]`. Use the same net-of-backoff rule `openrouter.py`'s `request_json` uses (gap minus the backoff already slept), so the expected list is `[1.0, 1.0, 2.0]`: backoff 1.0, then gap 2.0−1.0=1.0, backoff 2.0, then gap 2.0−2.0=0 (skipped). Write the implementation with that rule and set the test's expectation to `[1.0, 1.0, 2.0]`.
+Fix the `documents.update` typing without an ignore: narrow `fetch_update["documents"]` with `isinstance(..., dict)` before updating. The sleep expectations follow from the net-of-backoff rule above, and the code block is written with it: `test_requests_are_two_seconds_apart` expects `[2.0]` (one full gap before the second request, no backoff), and `test_server_error_is_retried_then_raised` with `max_attempts=3`, `backoff_seconds=1.0` and the default 2.0s gap expects `[1.0, 1.0, 2.0]`: attempt 1 takes no gap and backs off 1.0; attempt 2 sleeps a gap of 2.0-1.0=1.0 and backs off 2.0; attempt 3 sleeps a gap of 2.0-2.0=0, which is skipped, and does not back off.
 
 `pyproject.toml`: add `"ntsb_probable_cause.docket"` to the `source_modules` list of the contract "Only the splitter constructs synthesis and verdict".
 
@@ -2063,7 +2075,7 @@ Replace the `type: ignore` in `_record` with explicit keyword arguments (write `
 - [ ] **Step 5: Run the tests and the full check**
 
 Run: `make check`
-Expected: green. If `vulture` flags `Docket.record`, it is used in Task 12; add it to the vulture allow-list only if the task order leaves it unused at this commit, and remove the entry in Task 12.
+Expected: green. If `vulture` flags `Docket.record`, it is used in Task 10 (`attach_docket` calls `docket.record(index)`); add it to the vulture allow-list only if the task order leaves it unused at this commit, and remove the entry in Task 10.
 
 - [ ] **Step 6: Commit**
 
@@ -3753,7 +3765,33 @@ def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 ```
 
-Subcommands: `draw [--write]`, `document <case_id> <index> --reviewed-by "Andy, YYYY-MM-DD"`, `handcheck`. Imports: `csv`, `re`, `Callable`, `Mapping`, `DocumentRecord`, `Docket`, `read_docket`, `parse_listing`, `document_category`, `amateur_built_replace`, `owner_names` (from `scripts.docket_scan`). A `document` PDF is the same document Andy reads; the PDF is committed so the extractor test runs on a real file, and the `.txt` is the expected extraction after redaction. (Titles hold no personal data; the manifest rows hold titles.)
+Wire the three into `main` beside Task 6's `listing` subparser, and add their dispatch
+branches to the same `try` block, so the four subcommands share one `FixtureError` handler:
+
+```python
+    draw_p = commands.add_parser("draw", help="draw the fixture pool against the criteria")
+    draw_p.add_argument("--write", action="store_true", help="write the fixtures, not just the candidates")
+    document_p = commands.add_parser("document", help="add one reviewed document to a drawn fixture")
+    document_p.add_argument("case_id")
+    document_p.add_argument("index", type=int)
+    document_p.add_argument("--reviewed-by", required=True, help='e.g. "Andy, 2026-09-21"')
+    commands.add_parser("handcheck", help="write the 60-title hand-check sheet")
+```
+
+and, in `main`'s `try` block after the `listing` branch:
+
+```python
+        if args.command == "draw":
+            return _cmd_draw(args, settings)
+        if args.command == "document":
+            return _cmd_document(args, settings)
+        if args.command == "handcheck":
+            return _cmd_handcheck(args, settings)
+```
+
+`argparse` turns `--reviewed-by` into `args.reviewed_by`. Every `_cmd_*` takes
+`(args: argparse.Namespace, settings: Settings) -> int`, as `_cmd_listing` does, even where
+it does not read `settings`. Imports: `csv`, `re`, `Callable`, `Mapping`, `DocumentRecord`, `Docket`, `read_docket`, `parse_listing`, `document_category`, `amateur_built_replace`, `owner_names` (from `scripts.docket_scan`). A `document` PDF is the same document Andy reads; the PDF is committed so the extractor test runs on a real file, and the `.txt` is the expected extraction after redaction. (Titles hold no personal data; the manifest rows hold titles.)
 
 The `document` subcommand's `reviewed_by` value is a statement by Andy that he has read the PDF and the `.txt` and found no personal name or non-NTSB text; the script cannot check that, which is why the check script requires the field.
 
@@ -3945,3 +3983,27 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 - 2026-09-18, plan: spec §5.3's status set names `unreadable: photos`; the plan folds it into `skipped: photo-only`. The listing already says which entries are photo sets, and a PDF of photographs with no text layer is classified `scan` like any other. One status fewer to explain.
 - 2026-09-18, plan: spec §8.2 and §8.3 name two results files from one pass; the plan has `corpus_scan.py --docket` write `s2-threshold.txt` (the curve) and `s2-filter.txt` (the filter table, the hand-check line, and, after Task 17, the submission rule and the published types and rank) in one run. Same numbers, one script.
 - 2026-09-18, plan: a reviewed document fixture is committed as the PDF plus its expected extraction (`.txt`), not the text alone (spec §4.4 says "as text"). The extractor test needs the file; the PDF is the document Andy reads. Both are named in the manifest with `reviewed_by`.
+
+### Pre-flight corrections (2026-09-18, before Task 1)
+
+A read-only consistency scan of this plan before execution found four items. Three were
+plan defects and are corrected above; one was a false positive and the plan stands.
+
+1. **Task 5, the retry sleeps** — the test's expected list, the code block and the trailing
+   note gave three different answers. Corrected to one: `_get` uses `openrouter.py`'s
+   net-of-backoff rule, the client keeps `_last_backoff_slept`, and the test expects
+   `[1.0, 1.0, 2.0]`.
+2. **Task 8, the vulture note** — said `Docket.record` is first used in Task 12. It is
+   first used in Task 10, by `attach_docket`. Corrected, so no allow-list entry is left
+   standing through Tasks 10 and 11.
+3. **Task 16, the fixture subcommands** — `_cmd_draw`, `_cmd_document` and `_cmd_handcheck`
+   were defined but never wired into `main`, while Step 4 runs them as subcommands. The
+   subparsers, their arguments and the dispatch branches are now written out in Step 3.
+4. **Task 3, the aborted run's reservation** — *not* a defect. The scan read
+   `settle` as reachable only on the success path and so read
+   `test_an_aborted_run_settles_its_reservation` as contradicting decision 0045's "a run
+   that dies leaves its reservation standing". `Runner.run` already calls `write_outputs`
+   from its `except BaseException:` handler, so a run that unwinds writes its partial cost
+   to `run.jsonl` and settles — decision 0045 point 2, "at the end, or on abort". Point 3's
+   standing reservation is the run killed outright, where no handler runs and `release`
+   is the only way back. The test, the module docstring and the decision agree.
