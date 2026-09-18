@@ -2123,7 +2123,7 @@ git commit -m "S2: extraction with page markers, classification, the type classi
 **Interfaces:**
 - Produces: `filter.DENY_LIST: frozenset[str] = frozenset()` (categories; filled only by hits, Task 16); `filter.ARM_B_TYPES: frozenset[str]` (initially every category except `photos`; re-set in Task 17 by the §10 rule); `filter.ARM_B_RANK: tuple[str, ...]` (initially listing order, expressed as the empty tuple meaning "by index"; re-set in Task 17 to the median-tokens order); `filter.Variant = Literal["published", "unfiltered", "no-submissions"]`; `filter.is_denied(category: str) -> bool`; `filter.arm_b_documents(docket: Docket, *, variant: Variant = "published") -> list[int]`: the listing indices of `read` documents arm B attaches, in rank order then index order; `unfiltered` admits every category in index order; `no-submissions` is `published` minus `party_submission` (0038 item 4).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_docket_filter.py`:
 
@@ -2183,12 +2183,12 @@ def test_rank_order_sorts_by_type_then_index(monkeypatch) -> None:  # type: igno
 
 Type the monkeypatch parameter as `pytest.MonkeyPatch` and drop the ignore.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_filter.py -q`
 Expected: ImportError.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 """Arm B's fixed document filter and the deny-list (spec §7, §9; decisions 0022, 0039, 0043).
@@ -2236,7 +2236,7 @@ def arm_b_documents(docket: Docket, *, variant: Variant = "published") -> list[i
     return [r.entry.index for r in chosen]
 ```
 
-- [ ] **Step 4: Run the tests and the full check, commit**
+- [x] **Step 4: Run the tests and the full check, commit**
 
 Run: `make check`
 Expected: green.
