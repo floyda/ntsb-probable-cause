@@ -1,4 +1,7 @@
-"""The one place docket text enters a record: the case context (decisions 0041, 0042, 0044)."""
+"""The one place docket text enters a record: the case context.
+
+Decisions 0041, 0042, 0044; 0046 (owner/operator names) is the largest thing in it.
+"""
 
 import copy
 import re

@@ -4250,3 +4250,6 @@ then the rest.
   out of `draw` via a shared `_pool` helper, so both read the same population) and changed the
   report to "Drew N of M closed fatal ... and N of M closed non-fatal ...", both M's read live
   from this run's own `cases.parquet`. Added `test_pool_sizes_matches_what_draw_samples_from`.
+- Smaller finding, Task 10/11b: `attach.py`'s module docstring credited decisions 0041, 0042
+  and 0044 only; 0046 (owner/operator names) is now the largest thing in the module. Added it
+  to the docstring's credit line.
