@@ -766,7 +766,7 @@ git commit -m "S2: the monthly budget is a reservation under a lock (decision 00
 **Interfaces:**
 - Produces: `runner.estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float`; `over_cap` unchanged in signature, now `estimated_cost_usd(...) > spec.cap_usd`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_runner.py`:
 
@@ -840,12 +840,12 @@ def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(
 
 `_write_judgeable_run` is the file's existing helper; check its signature and whether calling it twice appends a second case to `cases.jsonl` (it uses `write_jsonl`, which appends). Import `Payload`, `ModelSettings`, `Turn` from `model.client` and `Sequence` if missing.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_runner.py -k "estimated or cap_binds" tests/test_eval_app.py -k dies_mid_pass -q`
 Expected: ImportError on `estimated_cost_usd`; the judge test fails because `judge.jsonl` was truncated.
 
-- [ ] **Step 3: Implement the cap**
+- [x] **Step 3: Implement the cap**
 
 In `scoring/runner.py`, replace `over_cap`:
 
@@ -870,7 +870,7 @@ def over_cap(payload_text: str, system: str, spec: RunSpec) -> bool:
     return estimated_cost_usd(payload_text, system, spec) > spec.cap_usd
 ```
 
-- [ ] **Step 4: Implement the partial file**
+- [x] **Step 4: Implement the partial file**
 
 In `_cmd_judge`, replace `judge_path` handling:
 
@@ -898,12 +898,12 @@ and after `judge_run` returns successfully, before `_record_judge_cost`:
 
 Delete `wrote_first_row`.
 
-- [ ] **Step 5: Run the tests and the full check**
+- [x] **Step 5: Run the tests and the full check**
 
 Run: `make check`
 Expected: green. `test_over_cap_case_is_failed_without_a_call` still passes (its cap is below the output reserve).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/runner.py apps/eval/__main__.py tests/test_runner.py tests/test_eval_app.py docs/plans/2026-09-18-s2-docket-tool.md

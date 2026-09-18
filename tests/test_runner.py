@@ -9,6 +9,7 @@ from typing import cast
 
 import pytest
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
@@ -29,6 +30,8 @@ from ntsb_probable_cause.scoring.runner import (
     RunSpec,
     _BatchRun,
     case_payload,
+    estimated_cost_usd,
+    over_cap,
     project_cost,
     refuse_over_budget,
     spec_json,
@@ -1918,3 +1921,27 @@ def test_an_aborted_run_settles_its_reservation(
     with pytest.raises(KeyboardInterrupt):
         runner(tmp_path, Dies()).run(spec, record_fixtures[:1])
     assert open_reservations(tmp_path / "runs") == {}
+
+
+def test_estimated_cost_reserves_the_maximum_output_at_the_output_price() -> None:
+    spec = RunSpec(
+        sample="dev-400", arm="ceiling", model="anthropic/claude-sonnet-5", price_variant="standard"
+    )
+    price = sources.price_of("anthropic/claude-sonnet-5")
+    reserve = ModelSettings().max_output_tokens * price.output_usd_per_mtok / 1e6
+    assert estimated_cost_usd("", "", spec) == pytest.approx(reserve)
+    assert estimated_cost_usd("x" * 4000, "", spec) == pytest.approx(
+        reserve + 1000 * price.input_usd_per_mtok / 1e6
+    )
+
+
+def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
+    """M1: at Sonnet 5's standard price the output reserve is $0.02 of a $0.05 cap."""
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        model="anthropic/claude-sonnet-5",
+        price_variant="standard",
+        cap_usd=0.01,
+    )
+    assert over_cap("", "", spec)

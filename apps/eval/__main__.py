@@ -395,21 +395,16 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
     items = _judge_items(cases, raws, exclude)
 
     judge_path = folder / "judge.jsonl"
+    partial_path = folder / "judge.jsonl.partial"
     judge_path.parent.mkdir(parents=True, exist_ok=True)
+    partial_path.unlink(missing_ok=True)
     paid: list[float] = []
-    wrote_first_row = False
 
     def on_row(row: Mapping[str, object]) -> None:
-        # The previous pass's file is only replaced once the budget guard has passed AND a
-        # first label is actually in hand -- a refusal, or a failure before any label, must
-        # never delete an earlier pass's already-paid rows (fix round 2, item 1; the bug this
-        # guards against is the same class fix round 1 already fixed for the write itself:
-        # written and flushed immediately, so an interrupt after case k keeps rows 0..k).
-        nonlocal wrote_first_row
-        mode = "a" if wrote_first_row else "w"
-        with judge_path.open(mode) as handle:
+        # Rows go to a partial file; the previous pass's file is replaced only once this
+        # pass completes (spec §3.5), so a pass that dies mid-way destroys nothing paid for.
+        with partial_path.open("a") as handle:
             handle.write(json.dumps(row) + "\n")
-        wrote_first_row = True
         paid.append(cast(float, row["cost_usd"]))
 
     budget_usd = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
@@ -432,6 +427,8 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
         if paid:
             _record_judge_cost(settings, folder, run_record, commit, sum(paid), len(paid))
         raise
+    if paid:
+        partial_path.replace(judge_path)
     judge_record = _record_judge_cost(
         settings, folder, run_record, commit, result.cost_usd, len(paid)
     )

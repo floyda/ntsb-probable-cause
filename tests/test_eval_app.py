@@ -13,7 +13,15 @@ from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_
 
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
-from ntsb_probable_cause.model.client import ModelClient, ModelReply, RecordingFakeClient, Usage
+from ntsb_probable_cause.model.client import (
+    ModelClient,
+    ModelReply,
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+    Usage,
+)
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
@@ -722,6 +730,56 @@ def test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry(
     exit_code = main(["judge", run_id], client_factory=factory)
     assert exit_code == 1
     assert judge_path.read_text() == original_content  # untouched by the refused retry
+
+
+def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Spec §3.5: rows go to judge.jsonl.partial; the old file is replaced only when complete."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0], record_fixtures[1])
+    run_id = "20260101T000000-abc1234-dev-400-ceiling"
+    _write_judgeable_run(runs_dir, run_id, case_id, sample="dev-400")
+    second_id = str(record_fixtures[1]["ntsbNumber"])
+    _write_judgeable_run(runs_dir, run_id, second_id, sample="dev-400")
+
+    good = RecordingFakeClient([GOOD_LABELS, GOOD_LABELS])
+
+    def good_factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return good, None
+
+    assert main(["judge", run_id], client_factory=good_factory) == 0
+    judge_path = runs_dir / run_id / "judge.jsonl"
+    prior = judge_path.read_text()
+
+    class DiesAfterOne:
+        """One good label, then the provider falls over."""
+
+        def __init__(self) -> None:
+            self._inner = RecordingFakeClient([GOOD_LABELS])
+            self.calls = 0
+
+        def complete(
+            self,
+            payload: Payload,
+            settings: ModelSettings,
+            *,
+            system: str = "",
+            history: Sequence[Turn] = (),
+        ) -> ModelReply:
+            self.calls += 1
+            if self.calls > 1:
+                raise ModelError("boom")
+            return self._inner.complete(payload, settings, system=system, history=history)
+
+    dying = DiesAfterOne()
+
+    def dying_factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return dying, None
+
+    with pytest.raises(ModelError):
+        main(["judge", run_id], client_factory=dying_factory)
+    assert judge_path.read_text() == prior
+    assert (runs_dir / run_id / "judge.jsonl.partial").read_text().count("\n") == 1
 
 
 def test_release_clears_a_dead_reservation(

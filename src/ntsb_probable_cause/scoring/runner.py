@@ -568,11 +568,24 @@ def case_payload(
     return payload, system, verdict, evidence
 
 
+def estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float:
+    """Prompt at one token per four characters at the input price, plus the maximum output.
+
+    The output reserve is what the S1 cap ignored (spec §3.4): with the default model it
+    is a tenth of a cent, with Sonnet 5 at its standard price two cents of a five-cent cap.
+    """
+    settings = _settings(spec, HYPOTHESIS_SCHEMA, "hypothesis")
+    price = sources.price_of(settings.model_id())
+    prompt_tokens = (len(payload_text) + len(system)) / 4
+    return (
+        prompt_tokens * price.input_usd_per_mtok
+        + settings.max_output_tokens * price.output_usd_per_mtok
+    ) / 1e6
+
+
 def over_cap(payload_text: str, system: str, spec: RunSpec) -> bool:
-    """Would the prompt alone, at one token per four characters, cost more than the cap?"""
-    price = sources.price_of(_settings(spec, HYPOTHESIS_SCHEMA, "hypothesis").model_id())
-    estimated_tokens = (len(payload_text) + len(system)) / 4
-    return estimated_tokens * price.input_usd_per_mtok / 1e6 > spec.cap_usd
+    """Would the prompt plus the maximum output cost more than the cap?"""
+    return estimated_cost_usd(payload_text, system, spec) > spec.cap_usd
 
 
 @dataclass
