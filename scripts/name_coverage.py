@@ -148,9 +148,14 @@ def report(records: list[dict[str, object]]) -> str:
         "",
         "non-empty values per redacted field, and how many are bare digits",
         "(name-bearing fields marked *; the rest are the further fields above):",
+        # rstrip: a field with no bare-digit values would otherwise leave the marker's
+        # padding at the end of the line, so re-running the script would differ from the
+        # committed file by whitespace alone -- and every number here must be reproducible.
         *(
-            f"  {f:28s} {n:5d}{' *' if f in NAME_FIELDS else '  '}"
-            + (f"   ({numeric[f]} all digits)" if numeric[f] else "")
+            (
+                f"  {f:28s} {n:5d}{' *' if f in NAME_FIELDS else '  '}"
+                + (f"   ({numeric[f]} all digits)" if numeric[f] else "")
+            ).rstrip()
             for f, n in per_field.items()
         ),
     ]

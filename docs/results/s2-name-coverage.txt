@@ -12,14 +12,23 @@ words per name                            1: 6, 2: 506, 3: 208, 4: 80, 5: 21, 6:
 distinct person-looking surnames          96
   also ordinary dictionary words          27 (28%)
 
-non-empty values per redacted field, and how many are bare digits:
+name-bearing fields -- everything above (shortest string, words per name, surname
+collisions) is counted over these five fields only:
+  operatorDoingBusinessAs, operatorIndividual, operatorName, ownerIndividual, registeredOwner
+further owner/operator fields the docket replacement (decision 0046) also covers --
+addresses, zip codes, a certificate number; not name-bearing, no claim above is
+measured over these:
+  operatorAddress, operatorCertificateNumber, operatorZip, ownerAddress, ownerZip
+
+non-empty values per redacted field, and how many are bare digits
+(name-bearing fields marked *; the rest are the further fields above):
   operatorAddress                267
   operatorCertificateNumber      213
-  operatorDoingBusinessAs         12
-  operatorIndividual               0
-  operatorName                   408
-  operatorZip                    386   (285 all digits)
+  operatorDoingBusinessAs         12 *
+  operatorIndividual               0 *
+  operatorName                   408 *
+  operatorZip                    386     (285 all digits)
   ownerAddress                   277
-  ownerIndividual                  0
-  ownerZip                       395   (269 all digits)
-  registeredOwner                408
+  ownerIndividual                  0 *
+  ownerZip                       395     (269 all digits)
+  registeredOwner                408 *
