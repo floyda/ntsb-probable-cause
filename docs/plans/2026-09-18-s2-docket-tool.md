@@ -74,7 +74,7 @@
 - Consumes: `Runner`, `RunSpec` (`scoring/runner.py`), `BatchRequest`, `BatchResult`, `BatchStatus`, `BatchCounts` (`model/batch.py`), `ModelReply`, `Usage` (`model/client.py`).
 - Produces: `tests.boundary.RecordingBatchRunner(stage1: str, stage2: str)` with `.requests: list[BatchRequest]`; `tests.boundary.assert_requests_clean(requests: Sequence[BatchRequest], withheld: Sequence[tuple[str, str]]) -> None`, which Task 2 extends to tool turns.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_boundary.py`:
 
@@ -144,12 +144,12 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
 Add `from ntsb_probable_cause.scoring.codes import load_tables` is already imported; keep the existing imports.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_boundary.py -q`
 Expected: ImportError, `RecordingBatchRunner` not defined.
 
-- [ ] **Step 3: Write the recording batch runner and the assertion**
+- [x] **Step 3: Write the recording batch runner and the assertion**
 
 Append to `tests/boundary.py`:
 
@@ -235,12 +235,12 @@ def assert_requests_clean(
 
 Type the `on_status` parameter properly instead of the ignore: `on_status: Callable[[BatchStatus], None] = lambda _s: None` with `from collections.abc import Callable`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_boundary.py -q`
 Expected: PASS, including the mutation test.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check`
 Expected: green.

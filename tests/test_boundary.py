@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests.boundary import assert_boundary_holds
+from tests.boundary import RecordingBatchRunner, assert_boundary_holds, assert_requests_clean
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.model.client import Payload, RecordingFakeClient
@@ -14,6 +14,7 @@ from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring import runner as runner_module
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.runner import Runner, RunSpec
 
@@ -155,3 +156,63 @@ def test_runner_never_sends_withheld_text_as_system_text(
     for system in client.systems:
         for kind, text in withheld:
             assert text not in system, f"tripwire: {kind} reached an answering system prompt"
+
+
+def _withheld(record_fixtures: list[dict[str, object]]) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for raw in record_fixtures:
+        narrative = fields.factual_narrative(raw)
+        cause = fields.probable_cause(raw)
+        if narrative:
+            found.append(("factual narrative", narrative))
+        if cause:
+            found.append(("probable cause", cause))
+    return found
+
+
+def _batch_runner(tmp_path: Path, batch: RecordingBatchRunner) -> Runner:
+    return Runner(
+        RecordingFakeClient([]),
+        batch=batch,
+        tables=load_tables(),
+        seen_pairs=frozenset(),
+        runs_dir=tmp_path / "runs",
+        ledger_path=tmp_path / "ledger.md",
+        month_spent_usd=0.0,
+        commit=("abc1234", False),
+        now=lambda: datetime(2026, 9, 18, tzinfo=UTC),
+    )
+
+
+def test_batch_runner_never_sends_withheld_text_in_any_request(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The batch path is the default; it must be checked like the sync path (spec §3.1)."""
+    batch = RecordingBatchRunner(stage1=_GOOD_STAGE1, stage2=_GOOD_REFINE)
+    spec = RunSpec(sample="dev-400", arm="ceiling", expected_cost_per_case_usd=0.001)
+    _batch_runner(tmp_path, batch).run(spec, record_fixtures)
+
+    assert batch.requests, "the run should have submitted at least one batch request"
+    assert_requests_clean(batch.requests, _withheld(record_fixtures))
+
+
+def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
+    tmp_path: Path,
+    record_fixtures: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation test: the batch assertion must be able to fail (decision 0016)."""
+    leaked = next(
+        fields.factual_narrative(r) for r in record_fixtures if fields.factual_narrative(r)
+    )
+
+    def leaky_retry_system(system: str, error: str | None) -> str:
+        return f"{system}\n\n{leaked}"
+
+    monkeypatch.setattr(runner_module.Runner, "_retry_system", staticmethod(leaky_retry_system))
+    batch = RecordingBatchRunner(stage1=_GOOD_STAGE1, stage2=_GOOD_REFINE)
+    spec = RunSpec(sample="dev-400", arm="ceiling", expected_cost_per_case_usd=0.001)
+    _batch_runner(tmp_path, batch).run(spec, record_fixtures)
+
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_requests_clean(batch.requests, _withheld(record_fixtures))
