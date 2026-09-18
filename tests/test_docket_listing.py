@@ -19,9 +19,23 @@ def _saved_pages() -> list[tuple[Path, int]]:
     return pages
 
 
+def _read_page(page: Path) -> str:
+    """The fixture's own bytes, decoded explicitly -- never ``Path.read_text()``.
+
+    ``read_text()`` opens in text mode with universal newlines, which silently turns the
+    fixture's CRLF into LF before a single assertion runs. ``DocketClient.listing_html``
+    (``docket/client.py``) never does that: it decodes the raw response bytes as-is, so a
+    real fetch always hands the parser CRLF. Decoding bytes here keeps the test on the page
+    the parser will actually meet.
+    """
+    return page.read_bytes().decode("utf-8")
+
+
 @pytest.mark.parametrize(("page", "mkey"), _saved_pages())
 def test_saved_page_parses_and_the_item_count_agrees(page: Path, mkey: int) -> None:
-    listing = parse_listing(page.read_text(), mkey=mkey)
+    text = _read_page(page)
+    assert "\r\n" in text, "fixture is expected to be CRLF; a clean checkout would prove it"
+    listing = parse_listing(text, mkey=mkey)
     assert listing.mkey == mkey
     assert listing.declared_items == len(listing.entries)
     assert listing.entries, "a real docket has at least one document"
@@ -37,12 +51,26 @@ def test_doctored_page_with_a_missing_row_fails_loudly() -> None:
     # elements that never match _ROW -- so the first <tr> in the whole page is not a
     # document row. Anchor on the first document row itself (index "1") instead.
     page, mkey = _saved_pages()[0]
-    text = page.read_text()
+    text = _read_page(page)
     marker = text.index("<td><b>1</b></td>")
     first_row = text.rindex("<tr>", 0, marker)
     end = text.index("</tr>", first_row) + len("</tr>")
     with pytest.raises(DocketError, match="declared"):
         parse_listing(text[:first_row] + text[end:], mkey=mkey)
+
+
+def test_render_listing_of_the_real_page_leaks_nothing() -> None:
+    """render_listing goes to the model: it must hold titles and counts, nothing else."""
+    page, mkey = _saved_pages()[0]
+    manifest = json.loads((page.parent / "manifest.json").read_text())
+    case_id = str(manifest["fixture"]["case_id"])
+    listing = parse_listing(_read_page(page), mkey=mkey)
+    rendered = render_listing(listing)
+    assert "docBLOB" not in rendered
+    assert "href" not in rendered
+    assert "http" not in rendered
+    assert str(mkey) not in rendered
+    assert case_id not in rendered
 
 
 def test_photo_only_and_pdf_predicates() -> None:

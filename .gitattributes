@@ -1,0 +1,3 @@
+# A docket fixture is a saved real HTTP response (decision 0037): it must never be
+# line-ending-translated on checkout or commit, regardless of core.autocrlf.
+tests/fixtures/docket/** -text
