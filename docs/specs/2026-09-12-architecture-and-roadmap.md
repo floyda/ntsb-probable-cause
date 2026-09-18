@@ -499,6 +499,13 @@ is recorded as a bar for the loop.
 of what it could and could not read; the tests run without network access; the corpus scan,
 re-run with docket text, reports the tripwire threshold it used.
 
+*Amended 2026-09-18.* Restated by the S2 specification
+(`2026-09-18-s2-docket-tool-design.md`) under decisions 0037 to 0045: fixtures come from
+`dev-400`, not the spike's 14 dockets (0037); every document is evidence (0038); the filter is
+measured by tripwire hits (0039); shape is re-measured on closed open-split cases (0040); and
+document text enters through a case context before the split (0041, 0042). The original text
+above stays as written.
+
 ### S2.5. The recorder
 
 Poll open investigations, diff each docket's document listing against the last

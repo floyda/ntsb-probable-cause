@@ -81,3 +81,8 @@ under `docs/specs/` and the record links to it.
 | [0038](0038-docket-documents-are-evidence-by-case-level-authorship.md) | Every docket document is evidence; the line is the NTSB's case-level write-up | Accepted; amends 0013 |
 | [0039](0039-filter-measured-by-tripwire-hits-and-a-title-hand-check.md) | The docket filter is measured by tripwire hits, and its type labels by a title hand-check | Accepted |
 | [0040](0040-docket-shape-remeasured-on-closed-open-split-cases.md) | Docket shape is re-measured on closed open-split cases, 40 per stratum, numbers only | Accepted |
+| [0041](0041-docket-text-enters-through-a-case-context.md) | Docket text enters through a case context built by one attach step, before the split | Accepted |
+| [0042](0042-two-docket-roles-selection-when-the-context-is-built.md) | Two docket evidence roles; the documents attached are chosen when the context is built | Accepted |
+| [0043](0043-arm-b-adds-whole-documents-in-rank-order-up-to-the-cap.md) | Arm B adds whole documents in a published rank order and stops at the cap; omissions are recorded and counted | Accepted |
+| [0044](0044-amateur-built-replacement-applies-to-document-text.md) | The amateur-built replacement applies to document text, in the attach step, counted as a floor | Accepted; extends 0020 |
+| [0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) | The monthly budget is a reservation taken under a lock at run start and settled at the end | Accepted; fixes the 0030 guard |
