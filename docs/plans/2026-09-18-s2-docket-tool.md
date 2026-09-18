@@ -1266,7 +1266,7 @@ git commit -m "S2: the docket client, its cache and polite rate (spec §4.2)"
 
 The `documents` list is filled by Task 8's manifest (outcome only) and Task 16's `document` subcommand.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_docket_fixtures.py`:
 
@@ -1335,12 +1335,12 @@ def test_docket_fixtures_are_dev_400_cases_by_event_date(
         assert _split(dev[case_id]) is Split.DEV
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_fixtures.py tests/test_contamination.py -q`
 Expected: ImportError on `scripts.make_docket_fixture`.
 
-- [ ] **Step 3: Write the script's `listing` subcommand**
+- [x] **Step 3: Write the script's `listing` subcommand**
 
 Create `scripts/make_docket_fixture.py`:
 
@@ -1471,17 +1471,17 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 ```
 
-- [ ] **Step 4: Fetch the first listing (network, run locally)**
+- [x] **Step 4: Fetch the first listing (network, run locally)**
 
 Run: `uv run python -m scripts.make_docket_fixture listing`
 Expected: `wrote tests/fixtures/docket/<case_id>`. Open the HTML and confirm it holds a table with `Docket Items:` and rows; if the page shape differs from the spike's regular expression (Task 7), the parser is written against this page, which is the point of committing it. Add the folder to the typos hook's exclude in `.pre-commit-config.yaml` (`^tests/fixtures/docket/.*\.html$`).
 
-- [ ] **Step 5: Run the tests and the full check**
+- [x] **Step 5: Run the tests and the full check**
 
 Run: `make check`
 Expected: green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/make_docket_fixture.py tests/fixtures/docket tests/test_docket_fixtures.py tests/test_contamination.py .pre-commit-config.yaml docs/plans/2026-09-18-s2-docket-tool.md

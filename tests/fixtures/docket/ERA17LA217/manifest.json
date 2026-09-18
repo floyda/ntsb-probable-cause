@@ -1,0 +1,11 @@
+{
+ "fixture": {
+  "source": "https://data.ntsb.gov/Docket?ProjectID=95459",
+  "fetched_at": "2026-09-18T18:38:32.134591+00:00",
+  "case_id": "ERA17LA217",
+  "mkey": 95459,
+  "event_date": "2017-06-26",
+  "criterion": "first draw"
+ },
+ "documents": []
+}

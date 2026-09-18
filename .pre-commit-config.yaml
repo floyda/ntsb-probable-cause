@@ -22,7 +22,7 @@ repos:
       - {id: import-linter, name: import-linter, entry: uv run lint-imports, language: system, pass_filenames: false, types: [python]}
       - {id: deptry, name: deptry, entry: uv run deptry ., language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock|src/|apps/|scripts/)}
       - {id: vulture, name: vulture, entry: uv run vulture, language: system, pass_filenames: false, types: [python]}
-      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$}
+      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$|^tests/fixtures/docket/.*\.html$}
       - {id: actionlint, name: actionlint, entry: uv run actionlint, language: system, files: ^\.github/workflows/}
       - {id: zizmor, name: zizmor, entry: uv run zizmor, language: system, files: ^\.github/workflows/}
       - {id: check-docs, name: check-docs, entry: uv run python -m scripts.check_docs, language: system, pass_filenames: false, files: \.md$}
