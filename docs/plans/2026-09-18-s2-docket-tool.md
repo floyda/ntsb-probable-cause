@@ -4225,3 +4225,18 @@ then the rest.
   whole-docket upper bound is $0.0033/case and the new 2,400-case total is $7.85 (was $5.45).
   Full new M2/M4 figures are in that file and in this session's report to Andy, who owns §15's
   text.
+- Task 13, Finding 6: nothing checked committed docket listings or CSVs for a name. Spec §7.2's
+  "titles hold no personal data" was asserted, not measured, and NTSB docket titles routinely
+  name people ("Statement of ...", "Interview of ..."). Added
+  `docket_fixture_name_problems`/`title_looks_like_a_name` to `check_fixtures_redacted.py`,
+  wired into its `main()` (so the pre-commit hook enforces it): every committed `.html` listing
+  and `.csv` under `tests/fixtures/docket/` is checked two ways -- against the case's own
+  `owner_operator_values`, read from `data/processed/cases.parquet` where that file is
+  available locally (never in CI, where the check is simply skipped, not a crash or a
+  refusal -- 0014); and against a crude, explained name-shape heuristic over every title/cell
+  (two consecutive Title Case words after "of"/"by"/"with"/"from"/"signed"), which needs no
+  raw data and so is the only one of the two that runs in CI. Neither check prints what it
+  finds, only where (the same rule `name_coverage.py` follows) -- a developer reviews the file
+  by eye. The real committed fixture (`ERA17LA217/listing.html`) passes both checks clean.
+  Added seven tests to `tests/test_check_fixtures_redacted.py`, all on invented names, plus one
+  proving the real committed tree is clean.
