@@ -45,8 +45,18 @@ def _docket() -> Docket:
 
 
 def test_deny_list_starts_empty_and_nothing_is_denied() -> None:
+    # Empty default: the measurement populating this list (Task 16) has not run yet.
     assert frozenset() == DENY_LIST
     assert not is_denied("specialist_factual")
+
+
+def test_is_denied_checks_membership(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        filter_module, "DENY_LIST", frozenset(["specialist_factual", "medical_tox"])
+    )
+    assert is_denied("specialist_factual")
+    assert is_denied("medical_tox")
+    assert not is_denied("weather")
 
 
 def test_published_filter_admits_read_documents_of_admitted_types_in_index_order_when_unranked() -> (  # noqa: E501
@@ -68,3 +78,12 @@ def test_no_submissions_drops_party_submissions() -> None:
 def test_rank_order_sorts_by_type_then_index(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(filter_module, "ARM_B_RANK", ("weather", "exam_site", "party_submission"))
     assert arm_b_documents(_docket()) == [2, 4, 1]
+
+
+def test_rank_fallback_sinks_unranked_categories(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARM_B_RANK ranks SOME categories but omits party_submission. Ranked categories sort first
+    # by rank position, then unranked categories follow in index order.
+    monkeypatch.setattr(filter_module, "ARM_B_RANK", ("exam_site", "weather"))
+    # exam_site (index 4, rank 0) and weather (index 2, rank 1) come first;
+    # party_submission (index 1, unranked) follows.
+    assert arm_b_documents(_docket()) == [4, 2, 1]
