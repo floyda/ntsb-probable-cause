@@ -26,7 +26,7 @@ whether a reader can trust the numbers rather than about decision 0046:
    mKey-missing skips, per stratum and overall -- so a reader can tell a complete run from a
    partial one instead of every quantile silently being over an unstated population.
 4. A "Definitions and limits" section spells out four places where a figure's exact meaning
-   is not obvious from its label: what the name figures are counted over, "containing" vs.
+   is not obvious from its label: what the detail figures are counted over, "containing" vs.
    "replaced", how tokens per docket are summed, and what "scanned pages" counts.
 5. `quantiles` now matches its own "nearest-rank" docstring: `math.ceil`, not `round`, which
    at a half-integer rank was silently returning one rank low.
@@ -39,6 +39,17 @@ wrong (item 4 above added the section but misdescribed this one entry):
    document with a known ``kind`` (born-digital, partial or scan), so it also adds the
    individually-unreadable pages inside a partial-classified document, not only whole
    scan-classified ones. The sentence is corrected to describe that.
+
+Final whole-branch review (before merge, item 3) found the "name" labels themselves too narrow
+for what the code counts, not the counting:
+
+7. ``owner_names``/``redact_known_names`` (via ``attach.owner_operator_values``) reach every
+   ``REDACTED_FIELDS`` value -- addresses, zip codes, a certificate number, not only the five
+   name-bearing fields ``scripts/name_coverage.py`` measures. Publishing that broader count
+   under a "name" label overstates what was measured; decision 0046 keeps the broad scope
+   (an address is personal data too, and it carries no collision risk) but the label was
+   wrong. "documents containing ... name" and "... name replacements" are now "... detail" and
+   "... detail replacements" throughout this script's printed report.
 """
 
 import argparse
@@ -238,9 +249,11 @@ def report(state: ShapeState) -> str:
     # the two match.
     lines.append("\n## Definitions and limits")
     lines.append(
-        "Owner/operator name figures are counted only over documents whose text was "
-        "extracted; a scanned document is never searched, so the count is a floor for that "
-        "reason as well as because names the record does not hold are not counted."
+        "Owner/operator detail figures (addresses, zip codes, a certificate number, and "
+        "names -- decision 0046's full REDACTED_FIELDS scope, not name-bearing fields "
+        "alone) are counted only over documents whose text was extracted; a scanned "
+        "document is never searched, so the count is a floor for that reason as well as "
+        "because a detail the record does not hold is not counted."
     )
     lines.append(
         '"Containing" is a case-insensitive substring test; the replacement counts use '
@@ -306,7 +319,7 @@ def report(state: ShapeState) -> str:
             )
         )
         lines.append(
-            "documents containing the record's owner or operator name, by category: "
+            "documents containing an owner or operator detail from the record, by category: "
             + ", ".join(
                 f"{k.split('/', 1)[1]} {v}"
                 for k, v in sorted(state.name_hits.items())
@@ -315,7 +328,7 @@ def report(state: ShapeState) -> str:
         )
         lines.append(
             f"cases with such a document: {sum(state.name_cases[s] for s in strata)} "
-            "(a floor: names the record does not hold are not counted)"
+            "(a floor: a detail the record does not hold is not counted)"
         )
         lines.append(
             "amateur-built replacements, by category: "
@@ -326,7 +339,7 @@ def report(state: ShapeState) -> str:
             )
         )
         lines.append(
-            "owner or operator name replacements, by category: "
+            "owner or operator detail replacements, by category: "
             + ", ".join(
                 f"{k.split('/', 1)[1]} {v}"
                 for k, v in sorted(state.owner_operator_replacements.items())

@@ -67,7 +67,7 @@ def test_accumulate_counts_documents_pages_tokens_and_names() -> None:
     assert "documents per docket" in text
     assert "fatal" in text
     assert "non-fatal" in text
-    assert "owner or operator name" in text
+    assert "owner or operator detail" in text
     assert state.name_hits["fatal/exam_site"] == 1
     assert state.dockets["fatal"] == 1
 
@@ -95,7 +95,7 @@ def test_accumulate_counts_amateur_built_and_owner_operator_replacements_separat
     assert state.owner_operator_replacements["non-fatal/exam_site"] == 1
     text = report(state)
     assert "amateur-built replacements, by category" in text
-    assert "owner or operator name replacements, by category" in text
+    assert "owner or operator detail replacements, by category" in text
 
 
 def test_report_states_the_denominator_a_reader_needs_to_trust_the_numbers() -> None:

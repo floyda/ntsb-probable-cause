@@ -4192,3 +4192,23 @@ then the rest.
   unchanged; the new field and function are additions. Added
   `test_arm_b_records_a_readable_document_the_type_filter_excluded` and three
   `filter_summary` tests in `tests/test_report.py`.
+- Task 11b / Task 13, Finding 3: `attach.py`'s `redact_known_names` (via `owner_operator_values`)
+  correctly reaches every `REDACTED_FIELDS` value -- addresses, a certificate number,
+  hyphenated postcodes, not only the five name-bearing fields -- but `docket_scan.py` published
+  the count as "owner or operator name replacements/... name, by category", while decision
+  0046's justification (no recorded name under five characters, the 28% surname collision) is
+  measured over `scripts/name_coverage.py`'s five-field `NAME_FIELDS` subset only. The broad
+  replacement scope is right (an address or certificate number is personal data too, and 0046's
+  own measurement shows those further fields are never bare digits and always seven characters
+  or longer); the label and the record were wrong. Renamed every "name"/"name replacements"
+  occurrence in `docket_scan.py`'s printed report and module docstring to "detail"/"detail
+  replacements" (code unchanged -- `owner_names`/`redact_known_names` still call the same
+  broad-scope `owner_operator_values`); updated `tests/test_docket_scan.py`'s two assertions to
+  match. `scripts/name_coverage.py`'s `report()` now states explicitly which fields the
+  shortest-string/collision claims are measured over (`NAME_FIELDS`) and which further fields
+  the replacement also covers (`REDACTED_FIELDS - NAME_FIELDS`), and marks each per-field count
+  in the existing "non-empty values per redacted field" listing with `*` where it is
+  name-bearing. `docs/decisions/0046-*.md` is untouched (Andy is amending it himself); the
+  committed `docs/results/s2-name-coverage.txt` was not regenerated here (this worktree has no
+  `data/processed/cases.parquet` -- 0014's raw data is never in git -- so the script cannot run
+  locally; it should be re-run and re-committed once the numbers are next regenerated).

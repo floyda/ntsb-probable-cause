@@ -110,6 +110,12 @@ def report(records: list[dict[str, object]]) -> str:
         f: sum(1 for r in records for v in owner_operator_values(r, (f,)) if v.isdigit())
         for f in sorted(REDACTED_FIELDS)
     }
+    # Fix finding 3: 0046's justification (no recorded name under five characters, the 28%
+    # surname collision) rests on ``NAME_FIELDS`` alone, but the docket replacement it
+    # justifies (``attach.redact_known_names``) reaches every ``REDACTED_FIELDS`` value --
+    # addresses, zip codes, a certificate number too. Both scopes are reported below, by
+    # name rather than left for a reader to infer from the code.
+    further_fields = sorted(REDACTED_FIELDS - set(NAME_FIELDS))
 
     lines = [
         "owner and operator names in the development split (decision 0046)",
@@ -132,9 +138,19 @@ def report(records: list[dict[str, object]]) -> str:
         + (f" ({100 * len(collisions) / len(surnames):.0f}%)" if surnames else "")
         + ("" if words else "   [no system word list; not measured]"),
         "",
-        "non-empty values per redacted field, and how many are bare digits:",
+        "name-bearing fields -- everything above (shortest string, words per name, surname",
+        "collisions) is counted over these five fields only:",
+        "  " + ", ".join(sorted(NAME_FIELDS)),
+        "further owner/operator fields the docket replacement (decision 0046) also covers --",
+        "addresses, zip codes, a certificate number; not name-bearing, no claim above is",
+        "measured over these:",
+        "  " + ", ".join(further_fields),
+        "",
+        "non-empty values per redacted field, and how many are bare digits",
+        "(name-bearing fields marked *; the rest are the further fields above):",
         *(
-            f"  {f:28s} {n:5d}" + (f"   ({numeric[f]} all digits)" if numeric[f] else "")
+            f"  {f:28s} {n:5d}{' *' if f in NAME_FIELDS else '  '}"
+            + (f"   ({numeric[f]} all digits)" if numeric[f] else "")
             for f, n in per_field.items()
         ),
     ]
