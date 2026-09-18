@@ -3421,7 +3421,7 @@ git commit -m "S2: docket_scan for the dev-400 shape; docket text fixtures must 
 - `scripts.corpus_scan.main(["--docket", "--out", PATH])` runs over the `dev-400` cache only (no fetch: a missing cache entry is counted as `not cached` and skipped).
 - `scripts.docket_shape_open.draw(processed: Path, *, per_stratum: int = 40, seed: int = 20260918) -> list[tuple[int, bool]]` (mkey, fatal) over closed open-split cases, `completionStatus == "Completed"`, event date 2024 or later; `main(["--out", PATH])` with `DocketClient(None)`, reusing `docket_scan.ShapeState`, `accumulate` and `report`; prints nothing per case but a position.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_corpus_scan.py`:
 
@@ -3508,12 +3508,12 @@ def test_script_writes_nothing_under_data(tmp_path: Path, monkeypatch, respx_moc
 
 Type the fixtures (`pytest.MonkeyPatch`, `respx.MockRouter`) and drop the ignore. The processed-file columns must match `data/build.py`'s `SCHEMA` names.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_corpus_scan.py tests/test_docket_shape_open.py -q`
 Expected: ImportError.
 
-- [ ] **Step 3: The docket mode of the corpus scan**
+- [x] **Step 3: The docket mode of the corpus scan**
 
 Append to `scripts/corpus_scan.py`:
 
@@ -3609,7 +3609,7 @@ def docket_main(out: str | None) -> int:
 
 Wire `main`: parse `--docket` and `--out`; when `--docket` is set, return `docket_main(out)`. Import `MIN_SENTENCE_CHARS` from `records.guard` and `Path`. The cache check keeps the mode fetch-free: a docket not cached by Task 15's scan is skipped and counted (add a `not cached` count to the report). Also add to the existing scan's header: `guard MIN_SENTENCE_CHARS in force: {MIN_SENTENCE_CHARS}` (done-means 4: "the corpus scan reports the threshold it used").
 
-- [ ] **Step 4: The open-split shape script**
+- [x] **Step 4: The open-split shape script**
 
 Create `scripts/docket_shape_open.py`:
 
@@ -3707,7 +3707,7 @@ docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
 ```
 
-- [ ] **Step 5: Run the tests and the full check, commit**
+- [x] **Step 5: Run the tests and the full check, commit**
 
 Run: `make check`
 Expected: green.

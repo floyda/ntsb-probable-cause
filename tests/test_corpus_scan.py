@@ -1,10 +1,13 @@
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
 from scripts.corpus_scan import (
     THRESHOLD_LINE,
     choose_threshold,
+    docket_hits,
+    docket_report,
     duplication_share,
     has_missed_break,
     has_nonempty_prelim_narrative,
@@ -18,7 +21,9 @@ from scripts.corpus_scan import (
     raw_aircraft_make,
     raw_aircraft_model,
 )
+from tests.test_attach import _docket as small_docket
 
+from ntsb_probable_cause import fields
 from ntsb_probable_cause.records import guard
 
 RESULTS = Path("docs/results/s0-corpus-scan.txt")
@@ -183,3 +188,24 @@ def test_all_fixtures_have_no_missed_break_prelim_or_multi_aircraft_codes(
         assert isinstance(later_probable_cause_differs(raw), bool)
         assert isinstance(multi_aircraft_with_codes(raw), bool)
         assert isinstance(has_nonempty_prelim_narrative(raw), bool)
+
+
+# --- docket mode (spec §8.2, §8.3): the threshold on docket text, then the filter measurement ---
+
+
+def test_docket_hits_finds_a_withheld_sentence_in_a_document(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    raw = next(r for r in record_fixtures if fields.factual_narrative(r))
+    narrative = fields.factual_narrative(raw) or ""
+    docket = small_docket({1: f"[page 1 of 3]\n{narrative}\n"})
+    hits = docket_hits(raw, docket, min_sentence_chars=20)
+    assert hits["exam_site/text"] >= 1
+
+
+def test_docket_report_names_the_threshold_and_the_filter_table() -> None:
+    hits = {10: Counter({"exam_site/sentence": 2}), 20: Counter(), 40: Counter(), 80: Counter()}
+    text = docket_report(hits, cases=3, documents=7)
+    assert f"{THRESHOLD_LINE}20" in text
+    assert "misses" in text
+    assert "false denies" in text

@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb docket-scan
+.PHONY: check lint type test ingest build scan probe bars armb docket-scan scan-docket docket-shape-open
 
 check: lint type test
 
@@ -53,3 +53,13 @@ docket-scan:
 # Long-running (roughly 2,000 polite requests to data.ntsb.gov, one every two seconds) and
 # resumable: DocketClient's cache means an interrupted run picks up where it left off rather
 # than re-fetching. Launched by the project owner, not CI.
+
+scan-docket:
+	uv run python -m scripts.corpus_scan --docket --out docs/results/s2-threshold.txt
+# Reads the dev-400 cache docket-scan built; never fetches. A case not yet cached is skipped
+# and counted, not fetched here.
+
+docket-shape-open:
+	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
+# Read and discard (decision 0040): no cache, nothing written under data/. Roughly 500 polite
+# requests to data.ntsb.gov. Launched by the project owner, not CI.

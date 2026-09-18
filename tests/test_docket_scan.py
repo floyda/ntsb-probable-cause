@@ -123,4 +123,8 @@ def test_report_states_definitions_and_limits() -> None:
     assert "counted only over documents whose text was extracted" in text
     assert "not the same measurement" in text
     assert "characters-divided-by-four floor" in text
-    assert '"Scanned pages" counts every page of a document classified as a scan' in text
+    # Task 14 review, correction 6: the sentence must describe what the code at the
+    # `state.scan_pages` line actually sums -- pages minus readable pages over every
+    # document with a known kind, not only whole scan-classified documents.
+    assert '"Scanned pages" sums pages minus readable pages' in text
+    assert "individually-unreadable pages inside a partial-classified one" in text

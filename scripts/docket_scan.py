@@ -30,6 +30,15 @@ whether a reader can trust the numbers rather than about decision 0046:
    "replaced", how tokens per docket are summed, and what "scanned pages" counts.
 5. `quantiles` now matches its own "nearest-rank" docstring: `math.ceil`, not `round`, which
    at a half-integer rank was silently returning one rank low.
+
+Task 14 review found the "Definitions and limits" section's "scanned pages" sentence itself
+wrong (item 4 above added the section but misdescribed this one entry):
+
+6. "Scanned pages" was documented as counting every page of a scan-classified document. The
+   code at `accumulate`'s `state.scan_pages` line sums ``r.pages - r.readable_pages`` over every
+   document with a known ``kind`` (born-digital, partial or scan), so it also adds the
+   individually-unreadable pages inside a partial-classified document, not only whole
+   scan-classified ones. The sentence is corrected to describe that.
 """
 
 import argparse
@@ -244,8 +253,10 @@ def report(state: ShapeState) -> str:
         "two totals are not directly comparable for a docket with more than one document."
     )
     lines.append(
-        '"Scanned pages" counts every page of a document classified as a scan, because '
-        "readable pages are not computed for a document already classified as a scan."
+        '"Scanned pages" sums pages minus readable pages over every document with a known kind '
+        "(born-digital, partial or scan), so it counts every page of a scan-classified document "
+        "and also the individually-unreadable pages inside a partial-classified one, not only "
+        "whole scan-classified documents."
     )
     groups = {s: [s] for s in STRATA} | {"overall": list(STRATA)}
     for name, strata in groups.items():

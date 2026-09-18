@@ -2,22 +2,42 @@
 
 Usage:
     uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt
+    uv run python -m scripts.corpus_scan --docket --out docs/results/s2-threshold.txt
+
+The ``--docket`` mode (spec §8.2, §8.3) re-measures the tripwire's minimum sentence length on
+docket text, then measures which document categories the tripwire actually trips -- the only
+input decision 0039 allows for filling the deny-list. It reads the ``dev-400`` cache built by
+``scripts/docket_scan.py`` and never fetches: a case whose docket was not already cached is
+counted as not cached and skipped.
 """
 
+import argparse
 import json
 import re
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import httpx
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.docket import filter as docket_filter
+from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.manifest import Docket, read_docket
+from ntsb_probable_cause.errors import DocketError, LeakageError
 from ntsb_probable_cause.paths import resolve_path
-from ntsb_probable_cause.records.guard import SENTENCE_CHECK_EXEMPTIONS, find_leaks, normalise_text
+from ntsb_probable_cause.records.guard import (
+    MIN_SENTENCE_CHARS,
+    SENTENCE_CHECK_EXEMPTIONS,
+    find_leaks,
+    normalise_text,
+)
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import Split
 
@@ -349,6 +369,7 @@ def _accumulate_row(state: ScanState, index: int, row: Mapping[str, object]) -> 
 
 def _print_header(state: ScanState, case_count: int) -> None:
     print("# S0 corpus scan (scripts/corpus_scan.py) — counts only")
+    print(f"guard MIN_SENTENCE_CHARS in force: {MIN_SENTENCE_CHARS}")
     print(f"cases: {case_count}; by split: {dict(sorted(state.by_split.items()))}")
     print(f"by split/class: {dict(sorted(state.by_class.items()))}")
     print(f"multi-aircraft cases by split: {dict(sorted(state.multi_aircraft.items()))}")
@@ -459,7 +480,7 @@ def _count_leakage_errors(rows: list[Mapping[str, object]], chosen: int) -> int:
     return failures
 
 
-def main() -> int:
+def _scan_main() -> int:
     """Scan every case and print the counts."""
     columns = ["split", "investigation_class", "aircraft_count", "raw_json"]
     table = pq.read_table(Settings().data_dir / "processed/cases.parquet", columns=columns)
@@ -490,5 +511,132 @@ def main() -> int:
     return 1 if failures else 0
 
 
+# --- docket mode (spec §8.2, §8.3): the threshold on docket text, then the filter measurement ---
+
+
+def docket_hits(
+    raw: Mapping[str, object], docket: Docket, *, min_sentence_chars: int
+) -> Counter[str]:
+    """Tripwire hits by ``category/kind`` with every readable document attached, one at a time.
+
+    Documents are attached one at a time so a hit is attributed to the document's category.
+    """
+    withheld = {
+        "factual_narrative": fields.factual_narrative(raw),
+        "analysis_narrative": fields.analysis_narrative(raw),
+        "probable_cause": fields.probable_cause(raw),
+    }
+    codes = fields.occurrence_codes(raw) + fields.finding_codes(raw)
+    hits: Counter[str] = Counter()
+    for record in docket.documents:
+        if record.status != "read":
+            continue
+        context = attach_docket(raw, docket, documents=[record.entry.index]).context
+        evidence = {
+            f.role.value: f.extract(context)
+            for f in fields.EVIDENCE_FIELDS
+            if f.role in {fields.EvidenceRole.DOCKET_DOCUMENTS}
+        }
+        for leak in find_leaks(evidence, withheld, codes, min_sentence_chars=min_sentence_chars):
+            hits[f"{record.category}/{leak.kind}"] += 1
+    return hits
+
+
+def docket_report(hits_by_length: Mapping[int, Counter[str]], cases: int, documents: int) -> str:
+    """The threshold curve on docket text and the §8.3 table at the chosen length."""
+    lines = [
+        "# S2 docket tripwire scan (scripts/corpus_scan.py --docket) — counts only",
+        f"dev-400 cases with a cached docket: {cases}; readable documents: {documents}",
+    ]
+    lines.append("\n## tripwire hits on docket text by minimum sentence length (category/kind)")
+    totals = {length: sum(counter.values()) for length, counter in hits_by_length.items()}
+    for length in sorted(hits_by_length):
+        lines.append(
+            f"{length}: total {totals[length]} {dict(sorted(hits_by_length[length].items()))}"
+        )
+    chosen = choose_threshold(totals)
+    lines.append(f"\n{THRESHOLD_LINE}{chosen if chosen is not None else 'none'}")
+    at = chosen if chosen is not None else max(hits_by_length)
+    counter = hits_by_length[at]
+    hit_categories = {key.split("/")[0] for key in counter}
+    lines.append(f"\n## filter measurement at minimum sentence length {at} (decision 0039)")
+    lines.append(
+        f"hits by category: "
+        f"{dict(sorted(Counter(k.split('/')[0] for k in counter.elements()).items()))}"
+    )
+    misses = sorted(hit_categories - docket_filter.DENY_LIST)
+    lines.append(f"misses (hit, category not on the deny-list): {misses}")
+    false_denies = sorted(docket_filter.DENY_LIST - hit_categories)
+    lines.append(f"false denies (on the deny-list, no hit): {false_denies}")
+    lines.append(f"deny-list in force: {sorted(docket_filter.DENY_LIST) or 'empty'}")
+    return "\n".join(lines)
+
+
+def _refuse_network(request: httpx.Request) -> httpx.Response:
+    """Belt-and-braces: ``--docket`` mode reads the cache only and must never fetch.
+
+    A verified cache hit never reaches ``DocketClient``'s transport at all (``listing_html``
+    and ``document`` both return before calling ``self._http.get``), so this handler only ever
+    fires if a cache entry exists on disk without a matching, hash-verified manifest record --
+    which should not happen for a cache this script's own sibling (``docket_scan.py``) built,
+    but is not a chance worth taking against a real government site. A ``DocketError`` here is
+    caught by ``docket_main``'s own handler, so the case is simply counted as not cached.
+    """
+    raise DocketError(f"--docket mode never fetches; refused a request to {request.url}")
+
+
+def docket_main(out: str | None) -> int:
+    """Run the docket mode over the dev-400 cache; never fetch."""
+    settings = Settings()
+    processed = settings.data_dir / "processed"
+    raws = samples.load_cases(processed, samples.sample_ids("dev-400"))
+    hits_by_length: dict[int, Counter[str]] = {length: Counter() for length in CANDIDATE_LENGTHS}
+    cases = documents = not_cached = 0
+    stopped_by_category: Counter[str] = Counter()
+    transport = httpx.MockTransport(_refuse_network)
+    with DocketClient(settings.docket_dir, seconds_per_request=0.0, transport=transport) as client:
+        for raw in raws:
+            mkey = raw.get("mKey")
+            if (
+                not isinstance(mkey, int)
+                or not (settings.docket_dir / str(mkey) / "listing.html").is_file()
+            ):
+                not_cached += 1
+                continue
+            try:
+                docket = read_docket(client, mkey)
+            except DocketError:
+                not_cached += 1
+                continue
+            cases += 1
+            documents += sum(1 for r in docket.documents if r.status == "read")
+            for length in CANDIDATE_LENGTHS:
+                hits = docket_hits(raw, docket, min_sentence_chars=length)
+                hits_by_length[length].update(hits)
+                if length == MIN_SENTENCE_CHARS:
+                    stopped_by_category.update({k.split("/")[0]: 1 for k in hits})
+    text = docket_report(hits_by_length, cases, documents)
+    text += f"\n\nnot cached (skipped, never fetched): {not_cached} of {len(raws)}"
+    text += (
+        f"\n\ncases stopped by the tripwire at the guard's current threshold "
+        f"({MIN_SENTENCE_CHARS}), by document category: {dict(sorted(stopped_by_category.items()))}"
+    )
+    print(text)
+    if out:
+        Path(out).write_text(text + "\n")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the guard-statistics scan, or (``--docket``) the docket tripwire scan."""
+    parser = argparse.ArgumentParser(prog="corpus_scan")
+    parser.add_argument("--docket", action="store_true", help="scan dev-400 docket text instead")
+    parser.add_argument("--out", default=None, help="also write the report text to this path")
+    args = parser.parse_args(argv)
+    if args.docket:
+        return docket_main(args.out)
+    return _scan_main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
