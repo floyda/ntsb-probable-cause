@@ -77,7 +77,13 @@ def amateur_built_replace(text: str, raw: Mapping[str, object]) -> tuple[str, in
         value = resolve_path(raw, path)
         if not isinstance(value, str) or len(value.strip()) < _MIN_REPLACE_LEN:
             continue
-        pattern = re.compile(re.escape(value.strip()), re.IGNORECASE)
+        # Word-boundary anchored (fix round 1, finding 1): an unanchored pattern matches a
+        # builder surname that is also a substring of an ordinary word (a make of "Long"
+        # would otherwise corrupt "longitudinal"), which both mangles evidence and inflates
+        # ``replacements`` past being a floor on builder-name hits. The accepted trade-off is
+        # that a make of "RV-7" no longer matches inside a model of "RV-7X" -- the model
+        # field is still replaced whole, by its own pattern, so nothing is missed there.
+        pattern = re.compile(rf"(?<!\w){re.escape(value.strip())}(?!\w)", re.IGNORECASE)
         text, n = pattern.subn(AMATEUR_BUILT_LABEL, text)
         count += n
     return text, count

@@ -13,7 +13,7 @@ from ntsb_probable_cause.docket.attach import (
 )
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
-from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.errors import DocketError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole, factual_narrative
 from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.records.split import split_record
@@ -72,6 +72,15 @@ def test_context_carries_listing_and_selected_documents_under_the_docket_key(
     assert result.attached == (2,)
     assert result.not_available == ("3: unreadable: scan",)
     assert raw.get(DOCKET_KEY) is None, "the raw record is not mutated"
+
+    # Fix round 1, finding 2: the top-level check above only proves no key was added; it
+    # would still pass if the copy were shallow and a nested structure were shared. Mutate a
+    # nested structure inside the returned context and confirm the original record is unaffected.
+    original_make = raw["aircrafts"][0]["aircraftMake"]  # type: ignore[index]
+    context_aircrafts = result.context["aircrafts"]
+    assert isinstance(context_aircrafts, list)
+    context_aircrafts[0]["aircraftMake"] = "MUTATED-VIA-CONTEXT"
+    assert raw["aircrafts"][0]["aircraftMake"] == original_make  # type: ignore[index]
 
 
 def test_split_reads_the_docket_roles_and_the_payload_renders_them(
@@ -157,6 +166,52 @@ def test_no_replacement_on_a_factory_built_aircraft(
     text, count = amateur_built_replace(f"A {make} aircraft.", raw)
     assert count == 0
     assert make in text
+
+
+def test_amateur_built_replacement_does_not_corrupt_an_ordinary_word(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Fix round 1, finding 1: an unanchored pattern would turn "longitudinal" into a leak."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftAmateurBuilt"] = True
+    aircrafts[0]["aircraftMake"] = "Long"
+    aircrafts[0]["aircraftModel"] = "Invented Two-Seater"
+    text, count = amateur_built_replace("The longitudinal axis was undamaged.", raw)
+    assert count == 0
+    assert text == "The longitudinal axis was undamaged."
+
+
+def test_amateur_built_replacement_still_matches_the_standalone_make(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The word-boundary anchoring still catches the surname on its own."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftAmateurBuilt"] = True
+    aircrafts[0]["aircraftMake"] = "Long"
+    aircrafts[0]["aircraftModel"] = "Invented Two-Seater"
+    text, count = amateur_built_replace("A Long aircraft was examined at the site.", raw)
+    assert count == 1
+    assert text == "A Amateur-built aircraft was examined at the site."
+
+
+def test_record_raises_docket_error_for_an_index_the_docket_does_not_hold() -> None:
+    """Fix round 1, finding 3: a missing index is a clean DocketError, not a bare StopIteration."""
+    docket = _docket({1: "x"})
+    with pytest.raises(DocketError, match="99"):
+        docket.record(99)
+
+
+def test_attach_docket_surfaces_a_missing_index_as_a_docket_error(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The same failure, seen from attach_docket, which calls Docket.record per requested index."""
+    docket = _docket({1: "x"})
+    with pytest.raises(DocketError, match="99"):
+        attach_docket(record_fixtures[0], docket, documents=[99])
 
 
 def test_a_too_short_or_missing_make_or_model_is_never_used_as_a_replacement_pattern(

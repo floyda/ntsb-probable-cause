@@ -50,8 +50,16 @@ class Docket(BaseModel):
     texts: dict[int, str]
 
     def record(self, index: int) -> DocumentRecord:
-        """The record for a listing index."""
-        return next(r for r in self.documents if r.entry.index == index)
+        """The record for a listing index.
+
+        Raises ``DocketError`` rather than a bare ``StopIteration`` (fix round 1, finding 3):
+        from S3 the caller choosing ``index`` is a model, and a hallucinated index must come
+        back as a clean tool error the loop can report, not an opaque internal exception.
+        """
+        for candidate in self.documents:
+            if candidate.entry.index == index:
+                return candidate
+        raise DocketError(f"docket {self.mkey}: no document at index {index}")
 
 
 def _record(  # noqa: PLR0913 -- one outcome field per status; see the Interfaces block.
