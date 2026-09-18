@@ -112,8 +112,15 @@ def _owner_operator_values(raw: Mapping[str, object]) -> list[str]:
                 continue
             for field in REDACTED_FIELDS:
                 value = operator.get(field)
-                if isinstance(value, str) and len(value.strip()) >= _MIN_REPLACE_LEN:
-                    values.append(value.strip())
+                if not isinstance(value, str):
+                    continue
+                stripped = value.strip()
+                # Decision 0046 item 5: a bare digit string is never replaced, whatever field it
+                # came from -- a docket is full of standalone numbers (serial numbers, weights,
+                # tachometer readings) indistinguishable from a postcode by a word-boundary match.
+                # A hyphenated postcode (ZIP+4) is distinctive and stays in scope.
+                if len(stripped) >= _MIN_REPLACE_LEN and not stripped.isdigit():
+                    values.append(stripped)
     return values
 
 
@@ -129,7 +136,10 @@ def redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
     Longest value first, so a trading name that contains an operator's name is replaced whole
     rather than leaving a fragment of it behind.
     """
-    values = sorted(set(_owner_operator_values(raw)), key=len, reverse=True)
+    # Fix round 1, finding 2: a total order, not just length -- `set` iteration order over str
+    # is process-randomised, so two equal-length values would otherwise break the tie
+    # differently run to run, making the output and count non-reproducible for the same input.
+    values = sorted(set(_owner_operator_values(raw)), key=lambda v: (-len(v), v.lower()))
     count = 0
     for value in values:
         # Same anchoring as amateur_built_replace, for the same reason: a recorded name can

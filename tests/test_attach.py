@@ -355,6 +355,52 @@ def test_a_trading_name_containing_the_operator_name_is_replaced_whole_not_in_pi
     assert count == 1
 
 
+def test_a_bare_digit_postcode_does_not_replace_a_matching_number_in_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Decision 0046 item 5: a bare digit string is never used as a replacement pattern."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"ownerZip": "54321"}]
+    text, count = redact_known_names("The serial number was 54321.", raw)
+    assert count == 0
+    assert text == "The serial number was 54321."
+
+
+def test_a_hyphenated_postcode_is_still_replaced(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Decision 0046 item 5: a ZIP+4 is distinctive, unlike a bare digit string, and stays in
+    scope."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"ownerZip": "54321-6789"}]
+    text, count = redact_known_names("The postcode on file was 54321-6789.", raw)
+    assert count == 1
+    assert text == "The postcode on file was Owner or operator."
+
+
+def test_replacement_order_is_deterministic_for_two_equal_length_overlapping_values(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Fix round 1, finding 2: with two equal-length values whose matches in the text overlap
+    (here, on the shared word "Aviation"), the tie-break must be pinned, not left to `set`
+    iteration order -- otherwise which one wins, and so the resulting text, is non-reproducible.
+    """
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [
+        {"registeredOwner": "North Aviation"},
+        {"operatorName": "Aviation Group"},
+    ]
+    text, count = redact_known_names("North Aviation Group operated the flight.", raw)
+    assert count == 1
+    assert text == "North Owner or operator operated the flight."
+
+
 def test_no_replacement_when_the_record_holds_no_owner_or_operator_names(
     record_fixtures: list[dict[str, object]],
 ) -> None:
