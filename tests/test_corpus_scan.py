@@ -10,6 +10,7 @@ import pytest
 from scripts.corpus_scan import (
     THRESHOLD_LINE,
     _evidence_gap,
+    _sweep_lengths,
     choose_threshold,
     docket_hits,
     docket_main,
@@ -386,3 +387,35 @@ def test_docket_main_counts_a_refused_document_fetch_separately_from_a_cache_hit
     # Four non-photo PDF entries in the real fixture listing, none of them cached: every one is
     # refused rather than silently counted as an ordinary fetch failure.
     assert "refused network requests (blocked by the transport, never sent): 4" in out
+
+
+# --- fix round 2 (spec-compliance re-review): the operating threshold must always be swept ---
+
+
+def test_sweep_lengths_always_includes_the_guards_operating_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MIN_SENTENCE_CHARS is read fresh on every call, not frozen at import time: a future
+    re-measurement that re-sets it (the next task in the plan does exactly this) is picked up
+    without editing this file again.
+    """
+    monkeypatch.setattr("scripts.corpus_scan.MIN_SENTENCE_CHARS", 33)
+    assert _sweep_lengths() == (10, 20, 33, 40, 80)
+
+
+def test_docket_report_marks_and_prints_a_table_at_a_threshold_outside_the_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reproduces the landmine directly: with the operating threshold re-set to a value not in
+    CANDIDATE_LENGTHS, the swept hits_by_length docket_main would build (via _sweep_lengths)
+    includes a real entry there, and the report must mark and print its table -- not silently
+    print nothing while still claiming, in its preamble, to show it.
+    """
+    monkeypatch.setattr("scripts.corpus_scan.MIN_SENTENCE_CHARS", 33)
+    hits: dict[int, Counter[str]] = {length: Counter() for length in _sweep_lengths()}
+    hits[33] = Counter({"exam_site/sentence": 1})
+    text = docket_report(hits, cases=2, documents=4)
+    assert "33 *** table in force ***:" in text
+    forced_start = text.index("33 *** table in force ***:")
+    forced_end = text.index("\n40:", forced_start)
+    assert "exam_site" in text[forced_start:forced_end]

@@ -25,6 +25,17 @@ listing, which production also checks -- now covered under its own pseudo-catego
 per-document fetch failure under this mode's transport (which only ever refuses, never
 succeeds) was silently indistinguishable from an ordinary fetch failure -- both are now counted
 as refusals and printed.
+
+Fix round 2 corrected one landmine finding 1 left behind, plus two wording corrections:
+finding (1)'s "table in force" marker only ever appears for a length that is actually swept, so
+if the guard's operating threshold were re-set (the next task in the plan does exactly this,
+from this file's own measurement) to a value outside ``CANDIDATE_LENGTHS``, the table would
+silently go missing while the preamble still claimed to show it. ``_sweep_lengths()`` now
+always includes the current operating threshold, read fresh, not frozen at import time. The two
+wordings: "cases stopped by the tripwire ... by document category" could already include the
+``listing`` pseudo-category, which is not a document category; and a ``listing`` entry in a
+"misses" line now carries a note that it is not a deny-list candidate at all, since the deny-
+list filters documents and the listing is always rendered.
 """
 
 import argparse
@@ -642,6 +653,12 @@ def docket_report(hits_by_length: Mapping[int, Counter[str]], cases: int, docume
         lines.append(f"\n{length}{marker}:")
         lines.append(f"    hits by category: {by_category}")
         lines.append(f"    misses (hit, category not on the deny-list): {misses}")
+        if LISTING_CATEGORY in misses:
+            lines.append(
+                f"        note: '{LISTING_CATEGORY}' here is not a deny-list candidate -- the "
+                "deny-list filters documents, and the listing is always rendered, so a hit "
+                "there needs a different remedy, not an addition to this list"
+            )
         lines.append(f"    false denies (on the deny-list, no hit): {false_denies}")
     lines.append(f"\ndeny-list in force: {sorted(docket_filter.DENY_LIST) or 'empty'}")
     return "\n".join(lines)
@@ -669,12 +686,26 @@ def _refuse_network(request: httpx.Request) -> httpx.Response:
     raise _NetworkRefusedError(f"--docket mode never fetches; refused a request to {request.url}")
 
 
+def _sweep_lengths() -> tuple[int, ...]:
+    """Every candidate length, plus the guard's current operating threshold if not among them.
+
+    Fix round 2: ``MIN_SENTENCE_CHARS`` is read fresh on every call, not frozen into a
+    module-level constant, so the very next task's re-measurement (which resets it from this
+    file's own output) is picked up without editing this file again. Without this, a threshold
+    outside ``CANDIDATE_LENGTHS`` would never be measured at all, and ``docket_report``'s
+    "table in force" marker -- correct on whatever length it is given -- would mark nothing
+    and print no table, silently, for exactly the length the deny-list is supposed to use.
+    """
+    return tuple(sorted(set(CANDIDATE_LENGTHS) | {MIN_SENTENCE_CHARS}))
+
+
 def docket_main(out: str | None) -> int:
     """Run the docket mode over the dev-400 cache; never fetch."""
     settings = Settings()
     processed = settings.data_dir / "processed"
     raws = samples.load_cases(processed, samples.sample_ids("dev-400"))
-    hits_by_length: dict[int, Counter[str]] = {length: Counter() for length in CANDIDATE_LENGTHS}
+    sweep = _sweep_lengths()
+    hits_by_length: dict[int, Counter[str]] = {length: Counter() for length in sweep}
     cases = documents = not_cached = refused = 0
     stopped_by_category: Counter[str] = Counter()
     transport = httpx.MockTransport(_refuse_network)
@@ -703,7 +734,7 @@ def docket_main(out: str | None) -> int:
             # is _get, which this transport always refuses), so every one is a refused request,
             # not a silently shrunk population.
             refused += sum(1 for r in docket.documents if r.status == "fetch failed")
-            for length in CANDIDATE_LENGTHS:
+            for length in sweep:
                 hits = docket_hits(raw, docket, min_sentence_chars=length)
                 hits_by_length[length].update(hits)
                 if length == MIN_SENTENCE_CHARS:
@@ -713,7 +744,8 @@ def docket_main(out: str | None) -> int:
     text += f"\n\nrefused network requests (blocked by the transport, never sent): {refused}"
     text += (
         f"\n\ncases stopped by the tripwire at the guard's current threshold "
-        f"({MIN_SENTENCE_CHARS}), by document category: {dict(sorted(stopped_by_category.items()))}"
+        f"({MIN_SENTENCE_CHARS}), by category (a document category, or 'listing'): "
+        f"{dict(sorted(stopped_by_category.items()))}"
     )
     print(text)
     if out:
