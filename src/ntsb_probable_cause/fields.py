@@ -31,6 +31,8 @@ class EvidenceRole(StrEnum):
     WEATHER_METAR = "weather_metar"
     PHASE_OF_FLIGHT = "phase_of_flight"
     INJURY_LEVEL = "injury_level"
+    DOCKET_LISTING = "docket_listing"
+    DOCKET_DOCUMENTS = "docket_documents"
 
 
 class SynthesisRole(StrEnum):
@@ -238,6 +240,12 @@ EVIDENCE_FIELDS: tuple[EvidenceField, ...] = (
     ),
     EvidenceField(
         EvidenceRole.INJURY_LEVEL, ("highestInjuryLevel",), _text_at("highestInjuryLevel")
+    ),
+    # Decisions 0041, 0042: the docket subtree exists only in a case context built by
+    # ``docket.attach.attach_docket``; a raw API record has no ``docket`` key, so both are None.
+    EvidenceField(EvidenceRole.DOCKET_LISTING, ("docket.listing",), _text_at("docket.listing")),
+    EvidenceField(
+        EvidenceRole.DOCKET_DOCUMENTS, ("docket.documents[]",), _strings_at("docket.documents")
     ),
 )
 

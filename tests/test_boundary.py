@@ -6,8 +6,11 @@ from pathlib import Path
 
 import pytest
 from tests.boundary import RecordingBatchRunner, assert_boundary_holds, assert_requests_clean
+from tests.test_attach import _docket as _small_docket
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
 from ntsb_probable_cause.model.client import (
@@ -297,3 +300,25 @@ def test_batch_boundary_assertion_reads_tool_turn_payloads(
     )
     with pytest.raises(AssertionError, match=r"tool turn payload"):
         assert_requests_clean([request], [("factual narrative", synthesis.factual_narrative or "")])
+
+
+def test_boundary_holds_on_a_case_context_with_documents(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    docket = _small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+    context = attach_docket(record_fixtures[0], docket, documents=[1]).context
+    assert_boundary_holds(context)
+
+
+def test_synthesis_document_never_reaches_the_payload(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Roadmap §9 / spec §12: a document holding withheld text is stopped whatever its title."""
+    raw = next(r for r in record_fixtures if fields.probable_cause(r))
+    cause = fields.probable_cause(raw) or ""
+    docket = _small_docket({1: f"[page 1 of 3]\nFactual Report. {cause}\n"})
+    context = attach_docket(raw, docket, documents=[1]).context
+    with pytest.raises(LeakageError):
+        split_record(context)
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_boundary_holds(context, lambda r: split_record(r, min_sentence_chars=10**9))

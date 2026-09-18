@@ -2262,7 +2262,7 @@ git commit -m "S2: the filter: deny-list, arm B types and rank order (spec §7, 
 - `samples.masked_exclusions(day)` also excludes both docket roles; `samples.arm_exclusions("B")` excludes nothing.
 - `not_available` entries read `"<index>: <status>"` for every document not attached and not `read`, e.g. `"5: unreadable: scan"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_attach.py`:
 
@@ -2434,12 +2434,12 @@ def test_arm_a_excludes_the_docket_and_arm_b_excludes_nothing() -> None:
     assert arm_exclusions("B") == frozenset()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_attach.py tests/test_boundary.py tests/test_samples.py -q`
 Expected: ImportError on `docket.attach`; `EvidenceRole.DOCKET_LISTING` missing.
 
-- [ ] **Step 3: Add the roles and evidence fields**
+- [x] **Step 3: Add the roles and evidence fields**
 
 `fields.py`: add to `EvidenceRole`:
 
@@ -2463,7 +2463,7 @@ and to `EVIDENCE_FIELDS`:
 
 `scoring/samples.py`: `arm_exclusions(arm: Literal["A", "B", "ceiling"])` (unchanged body: only `A` excludes); `masked_exclusions` returns `frozenset(late | {EvidenceRole.PRELIM_NARRATIVE, EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS})` with a comment: the docket is absent in the masked condition until the recorder (S2.5) has arrival numbers (agency design §6.2).
 
-- [ ] **Step 4: Write the attach step**
+- [x] **Step 4: Write the attach step**
 
 `docket/attach.py`:
 
@@ -2574,17 +2574,33 @@ def attach_docket(
 
 `Docket.record(index)` from Task 8 is now used. The `attached` list inside the context is bookkeeping and is not an evidence path, so it never renders (guard layer 0 reads only declared paths).
 
-- [ ] **Step 5: Run the tests and the full check**
+- [x] **Step 5: Run the tests and the full check**
 
 Run: `make check`
 Expected: green. `tests/test_records.py::test_evidence_schema_is_exactly_the_evidence_roles_plus_bookkeeping` passes because both the role and the field were added. `tests/test_fields.py` path checks pass: `docket.*` overlaps no withheld subtree.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/docket/attach.py src/ntsb_probable_cause/fields.py src/ntsb_probable_cause/records/evidence.py src/ntsb_probable_cause/scoring/samples.py tests/test_attach.py tests/test_boundary.py tests/test_samples.py docs/plans/2026-09-18-s2-docket-tool.md
 git commit -m "S2: the attach step and the two docket evidence roles; the boundary holds on documents (0041, 0042, 0044)"
 ```
+
+**Deviations from the step text above, logged per house rules:**
+1. `masked_exclusions` now always excludes the two docket roles, so the pre-existing
+   `tests/test_mask_lifts_late_fields_at_day_14` assertion `day14 == frozenset({PRELIM_NARRATIVE})`
+   was no longer true; updated to include `DOCKET_LISTING`/`DOCKET_DOCUMENTS` in the expected set
+   (the brief only said to append new tests, not fix this one, but the change makes the old
+   assertion false).
+2. Added two tests beyond the brief's listed ones, to close two branches `attach_docket`/
+   `amateur_built_replace` left uncovered: `test_requesting_an_unreadable_document_leaves_it_unattached`
+   (a requested index whose status is not `read` is skipped, not attached blank) and
+   `test_a_too_short_or_missing_make_or_model_is_never_used_as_a_replacement_pattern` (a make/model
+   under the 3-character floor, or `None`, is never turned into a replacement pattern). Both pass;
+   `docket/attach.py` is at 100% branch coverage.
+3. `arm_exclusions`'s `Literal` grew a `"B"` member as the interface required, but `RunSpec.arm`
+   in `scoring/runner.py` (`Literal["A", "ceiling"]`) was left untouched — Task 11 is where `"B"`
+   is added there, per that task's own interface list.
 
 ---
 

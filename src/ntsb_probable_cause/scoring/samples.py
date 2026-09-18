@@ -44,15 +44,26 @@ _LATE_BEFORE_DAY_14 = frozenset(
 )
 
 
-def arm_exclusions(arm: Literal["A", "ceiling"]) -> frozenset[EvidenceRole]:
-    """Arm A keeps only the start facts; the ceiling excludes nothing (0022, 0023)."""
+def arm_exclusions(arm: Literal["A", "B", "ceiling"]) -> frozenset[EvidenceRole]:
+    """Arm A keeps only the start facts; B and the ceiling exclude nothing (0022, 0023)."""
     return frozenset(set(EvidenceRole) - START_FACTS) if arm == "A" else frozenset()
 
 
 def masked_exclusions(day: int) -> frozenset[EvidenceRole]:
-    """What a live case would not yet have at day N; the preliminary narrative never (0023)."""
+    """What a live case would not yet have at day N; the preliminary narrative never (0023).
+
+    The docket is excluded regardless of day: a provisional rule until the S2.5 recorder has
+    arrival numbers to mask by (agency design §6.2), not a claim that dockets never arrive early.
+    """
     late = _LATE_BEFORE_DAY_14 if day < MASK_LIFTS_AT_DAY else frozenset()
-    return frozenset(late | {EvidenceRole.PRELIM_NARRATIVE})
+    return frozenset(
+        late
+        | {
+            EvidenceRole.PRELIM_NARRATIVE,
+            EvidenceRole.DOCKET_LISTING,
+            EvidenceRole.DOCKET_DOCUMENTS,
+        }
+    )
 
 
 def sample_ids(name: str) -> tuple[str, ...]:
