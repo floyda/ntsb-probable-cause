@@ -5,13 +5,18 @@ import json
 from datetime import date
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from scripts.make_docket_fixture import (  # noqa: F401 -- interface import, exercised by Step 4.
+    _fetch_listing,
     first_dev_400_case,
     write_listing_fixture,
 )
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import FixtureError
+from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import Split, split_of
 
 DOCKET_FIXTURES = Path("tests/fixtures/docket")
@@ -48,6 +53,22 @@ def test_the_listing_fixture_is_byte_exact_as_received() -> None:
         assert b"\r\n" in data, folder
         manifest = json.loads((folder / "manifest.json").read_text())
         assert manifest["fixture"]["sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_fetching_a_held_out_case_makes_no_http_call(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    """Decisions 0026, 0037: the thing to prevent is the look, not merely the commit.
+
+    A refusal that happens only inside ``write_listing_fixture``, after the page has
+    already been fetched and cached, would satisfy "never committed" while still
+    violating "never looked at". The guard has to sit before ``DocketClient`` is even
+    constructed, on every path that resolves a case -- so the route must never be called.
+    """
+    route = respx_mock.get(sources.docket_url(1)).mock(return_value=httpx.Response(200, text="x"))
+    with pytest.raises(FixtureError, match="2021"):
+        _fetch_listing("X", 1, "2021-05-01", Settings(docket_dir=tmp_path))
+    assert route.call_count == 0
 
 
 def test_write_listing_fixture_refuses_a_held_out_case(tmp_path: Path) -> None:
