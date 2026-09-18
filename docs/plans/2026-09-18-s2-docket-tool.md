@@ -1499,7 +1499,7 @@ git commit -m "S2: the first docket listing fixture, a dev-400 page as received 
 **Interfaces:**
 - Produces: `ListingEntry(index: int, title: str, pages: int, photos: int, doc_type: str, extension: str, href: str)` with `.is_photo_only() -> bool` and `.is_pdf() -> bool`; `Listing(mkey: int, declared_items: int | None, entries: tuple[ListingEntry, ...])`; `parse_listing(page: str, *, mkey: int) -> Listing` (raises `DocketError` when the declared count and the parsed rows disagree); `render_listing(listing: Listing) -> str`, one line per entry: `"3. <title> (<doc_type>, 12 pages, 4 photos)"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_docket_listing.py`:
 
@@ -1566,12 +1566,12 @@ def test_render_listing_is_one_line_per_entry() -> None:
 
 Fix the awkward double negative in `test_photo_only_and_pdf_predicates`: assert `photos.is_photo_only() is True` and `photos.is_pdf() is True` (a photo set is still a PDF; `is_photo_only` is what skips it).
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_listing.py -q`
 Expected: ImportError.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/ntsb_probable_cause/docket/listing.py`, starting from the spike's regular expression and adjusting it to the saved page:
 
@@ -1669,12 +1669,12 @@ def render_listing(listing: Listing) -> str:
 
 If the saved page's rows differ from `_ROW` (a class attribute on `<tr>`, a different link target), change the pattern to match the page, never the page to match the pattern, and log the difference in Deviations.
 
-- [ ] **Step 4: Run the tests and the full check**
+- [x] **Step 4: Run the tests and the full check**
 
 Run: `make check`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/docket/listing.py tests/test_docket_listing.py docs/plans/2026-09-18-s2-docket-tool.md
@@ -4012,6 +4012,7 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 - 2026-09-18, plan: spec §8.2 and §8.3 name two results files from one pass; the plan has `corpus_scan.py --docket` write `s2-threshold.txt` (the curve) and `s2-filter.txt` (the filter table, the hand-check line, and, after Task 17, the submission rule and the published types and rank) in one run. Same numbers, one script.
 - 2026-09-18, plan: a reviewed document fixture is committed as the PDF plus its expected extraction (`.txt`), not the text alone (spec §4.4 says "as text"). The extractor test needs the file; the PDF is the document Andy reads. Both are named in the manifest with `reviewed_by`.
 - 2026-09-18, Task 5 fix round 1, Finding 4: the brief's `Settings.docket_seconds_per_request` used `Field(default=2.0, ge=0)`, which accepts `NTSB_DOCKET_SECONDS_PER_REQUEST=0` in production. The plan's own Global Constraints fix the docket rate at one request every two seconds to `data.ntsb.gov` -- a real government site -- so the constraint governs and the bound is corrected to `gt=0`. No test needs `0`; tests inject `sleep` instead of relying on the gap being zero.
+- 2026-09-18, Task 7, `test_doctored_page_with_a_missing_row_fails_loudly`: the saved real page has no `<tbody>`, and its two earlier info tables (mode/date/city and docket creation date) also contain `<tr>` elements that never match `_ROW`. The brief's fallback (`text.index("<tr>", ...)` from 0 when there is no `<tbody>`) therefore doctors one of those unrelated rows, not a document row, and the count check still agrees -- the test does not exercise the failure path against the real fixture. Anchored instead on the first document row by locating `<td><b>1</b></td>` and taking the nearest preceding `<tr>`. `_ROW` and `parse_listing` are unchanged from the brief; only the test's row-finding changed.
 
 ### Pre-flight corrections (2026-09-18, before Task 1)
 
