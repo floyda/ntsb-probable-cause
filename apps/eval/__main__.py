@@ -286,7 +286,7 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
     if run_record.arm == "B":
-        text += "\n\n" + report.cap_summary(cases)
+        text += "\n\n" + report.cap_summary(cases) + "\n" + report.filter_summary(cases)
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"

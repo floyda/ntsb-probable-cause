@@ -58,8 +58,8 @@ def _scores(*, top1: bool, confidence: float, abstained: bool = False) -> CaseSc
     )
 
 
-def _step(case_id: str, not_read: tuple[str, ...]) -> StepRecord:
-    """A minimal step, carrying only what ``cap_summary`` (decision 0043) reads."""
+def _step(case_id: str, not_read: tuple[str, ...], filtered: tuple[str, ...] = ()) -> StepRecord:
+    """A minimal step, carrying only what ``cap_summary``/``filter_summary`` reads."""
     return StepRecord(
         case_id=case_id,
         step=0,
@@ -73,6 +73,7 @@ def _step(case_id: str, not_read: tuple[str, ...]) -> StepRecord:
         returned_roles=(),
         not_available=(),
         documents_not_read=not_read,
+        documents_filtered=filtered,
         payload_fingerprint="x",
         hypothesis=_HYPOTHESIS,
         observed_effect="",
@@ -101,6 +102,7 @@ def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult f
     failure: str | None = None,
     scores: CaseScores | None = None,
     not_read: tuple[str, ...] = (),
+    filtered: tuple[str, ...] = (),
 ) -> CaseResult:
     return CaseResult(
         case_id=case_id,
@@ -112,15 +114,19 @@ def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult f
         verdict_findings=("0206304044",),
         verdict_findings_in_cause=("0206304044",),
         # A case that failed before any model call (mirroring ``_failed(ctx, "cap", 0.0)``,
-        # which always passes ``steps=()``) never gets a step either, even if it dropped
-        # documents -- ``documents_not_read`` below is the only place that survives for it.
-        steps=(_step(case_id, not_read),) if not_read and not failure else (),
+        # which always passes ``steps=()``) never gets a step either, even if it dropped or
+        # filtered out documents -- ``documents_not_read``/``documents_filtered`` below are
+        # the only place that survives for it.
+        steps=(_step(case_id, not_read, filtered),)
+        if (not_read or filtered) and not failure
+        else (),
         scores=None
         if failure
         else (scores or _scores(top1=top1, confidence=confidence, abstained=abstained)),
         cost_usd=cost,
         failure=failure,
         documents_not_read=not_read,
+        documents_filtered=filtered,
     )
 
 
@@ -499,3 +505,43 @@ def test_cap_summary_counts_a_case_that_failed_before_any_step() -> None:
         "cap: 1 of 1 cases hit the cap; 2 documents not read "
         "(fatal 1 cases/2 documents, non-fatal 0/0)"
     )
+
+
+def test_filter_summary_counts_cases_and_documents_by_fatal() -> None:
+    """Fix finding 5: distinct from ``cap_summary`` -- these documents were never weighed
+    against the cap at all, because the fixed type filter never admitted them."""
+    fatal_hit = _case("A", fatal=True, filtered=("2: filtered: party_submission",))
+    fatal_clear = _case("B", fatal=True)
+    non_fatal_hit = _case("C", fatal=False, filtered=("4: filtered: weather",))
+    text = report.filter_summary([fatal_hit, fatal_clear, non_fatal_hit])
+    assert text == (
+        "filter: 2 of 3 cases had a readable document the type filter excluded; "
+        "2 documents excluded (fatal 1 cases/1 documents, non-fatal 1/1)"
+    )
+
+
+def test_filter_summary_counts_a_case_that_failed_before_any_step() -> None:
+    """The filter exclusion is computed before the cap loop runs (``prepare_case``), so it
+    is set even on a case that fails "cap" before ever getting a step."""
+    failed_before_any_step = _case(
+        "Z", fatal=True, filtered=("2: filtered: party_submission",), failure="cap"
+    )
+    assert failed_before_any_step.steps == ()  # no model call was ever made
+    text = report.filter_summary([failed_before_any_step])
+    assert text == (
+        "filter: 1 of 1 cases had a readable document the type filter excluded; "
+        "1 documents excluded (fatal 1 cases/1 documents, non-fatal 0/0)"
+    )
+
+
+def test_filter_summary_is_distinguishable_from_cap_summary_on_the_same_case() -> None:
+    """A case can hit both: one document dropped by the cap, another never admitted by the
+    filter at all. Neither summary counts the other's document (add, not repurpose)."""
+    case = _case(
+        "M",
+        fatal=False,
+        not_read=("3: cap, 900 tokens",),
+        filtered=("2: filtered: party_submission",),
+    )
+    assert "1 documents not read" in report.cap_summary([case])
+    assert "1 documents excluded" in report.filter_summary([case])

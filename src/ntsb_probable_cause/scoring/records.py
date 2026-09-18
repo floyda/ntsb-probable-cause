@@ -57,6 +57,11 @@ class StepRecord(BaseModel):
     not_available: tuple[str, ...]
     documents_attached: tuple[str, ...] = ()
     documents_not_read: tuple[str, ...] = ()
+    # Readable documents the fixed type filter never admitted -- distinct from
+    # ``documents_not_read`` (cap drops): a document can be excluded by the filter without
+    # ever being weighed against the cap (fix finding 5). Added, not folded into the
+    # existing field, so neither count's string format or meaning changes.
+    documents_filtered: tuple[str, ...] = ()
     payload_fingerprint: str
     hypothesis: Hypothesis
     observed_effect: Literal["confirmed", "weakened", "unchanged", ""]
@@ -92,6 +97,9 @@ class CaseResult(BaseModel):
     # (``steps=()``): the docket outcome must not be invisible just because the case never
     # reached a model call (decision 0043; fix round 1, Finding 4).
     documents_not_read: tuple[str, ...] = ()
+    # Same reasoning, for the type filter rather than the cap (fix finding 5): computed
+    # before the cap loop runs, so it is set even on a case that never gets a step.
+    documents_filtered: tuple[str, ...] = ()
 
 
 def fingerprint(payload: Payload) -> str:

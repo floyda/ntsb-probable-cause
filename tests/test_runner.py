@@ -2220,6 +2220,33 @@ def test_arm_b_no_submissions_variant_leaves_out_party_submissions(
     assert "We submit." not in client.payloads[0].text
 
 
+def test_arm_b_records_a_readable_document_the_type_filter_excluded(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix finding 5: a readable document the type filter never admits is recorded as
+    ``documents_filtered``, distinct from a cap drop -- it was never weighed against the cap
+    at all. Before the fix it appeared in neither ``not_available`` (its status is "read")
+    nor ``documents_not_read`` (the cap loop never sees it, since ``arm_b_documents`` leaves
+    it out of ``ordered``), so it was invisible to the report.
+    """
+    docket = small_docket({1: "[page 1 of 3]\na\n", 2: "[page 1 of 3]\nWe submit.\n"})
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        docket_filter="no-submissions",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    (step,) = case.steps
+    assert step.documents_filtered == ("2: filtered: party_submission",)
+    assert step.documents_not_read == ()
+    assert case.documents_filtered == step.documents_filtered
+
+
 def test_ceiling_and_arm_a_never_read_the_docket(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:

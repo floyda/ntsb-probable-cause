@@ -4178,3 +4178,17 @@ then the rest.
   doubling the cap alongside the estimate preserves the same admit/refuse boundary the test
   demonstrates). Both changes make the cap bind *earlier* (fewer documents attached, lower
   real spend), which is the safe direction for a paid run.
+- Task 12, Finding 5: `attach.py`'s `not_available` only covers documents whose status is not
+  `"read"`, and `documents_not_read` only covers cap drops -- a readable document the fixed
+  type filter (`ARM_B_TYPES`/`docket_filter.arm_b_documents`) never admitted appeared in
+  neither, so it was invisible to the report. Today's type list admits everything but photos,
+  so the gap is near zero, but §8.3's own measurement exists to narrow that list. Added
+  `Prepared.filtered_out`/`_CaseContext.filtered_out`/`StepRecord.documents_filtered`/
+  `CaseResult.documents_filtered` (computed once in `prepare_case`, before the cap loop, from
+  the whole docket against `ordered`, so it is set even on a case that fails "cap" before any
+  document is attached -- same reasoning as `documents_not_read`'s own Finding 4 fix) and
+  `report.filter_summary`, wired into `apps/eval/__main__.py`'s `report` command alongside
+  `cap_summary`. Existing string formats (`cap:` line, `documents_not_read` entries) are
+  unchanged; the new field and function are additions. Added
+  `test_arm_b_records_a_readable_document_the_type_filter_excluded` and three
+  `filter_summary` tests in `tests/test_report.py`.

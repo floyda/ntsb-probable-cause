@@ -585,6 +585,7 @@ class Prepared:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    filtered_out: tuple[str, ...] = ()
 
 
 # The two evidence roles arm B is defined by (spec §7.1). Excluding either one leaves the
@@ -630,6 +631,11 @@ def prepare_case(
     over the cap stops the loop, and it and every document after it are recorded as
     ``not read: cap`` with their estimated tokens. Every trial context goes through the split,
     so the tripwire runs on every document that is attached.
+
+    Fix finding 5: a readable document the fixed type filter never admits is not weighed
+    against the cap at all, so it is recorded separately, as ``filtered_out`` -- computed once,
+    from the whole docket, before the cap loop runs, so it is set even on a case that fails
+    "cap" before that loop attaches anything.
     """
     evidence, verdict, payload = _split_and_render(raw, spec)
     system = _system_text(raw, spec, tables, evidence.case_id)
@@ -644,6 +650,12 @@ def prepare_case(
     if docket is None:
         raise ConfigurationError("arm B needs a docket reader")
     ordered = docket_filter.arm_b_documents(docket, variant=spec.docket_filter)
+    admitted = set(ordered)
+    filtered_out = tuple(
+        f"{r.entry.index}: filtered: {r.category}"
+        for r in docket.documents
+        if r.status == "read" and r.entry.index not in admitted
+    )
     attached: list[int] = []
     not_read: list[str] = []
     result = attach_docket(raw, docket, documents=attached)
@@ -671,6 +683,7 @@ def prepare_case(
         tuple(not_read),
         result.not_available,
         documents_attached,
+        filtered_out,
     )
 
 
@@ -737,6 +750,7 @@ class _CaseContext:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    filtered_out: tuple[str, ...] = ()
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
 
@@ -999,6 +1013,7 @@ class Runner:
             not_available=ctx.not_available,
             documents_attached=ctx.documents_attached,
             documents_not_read=ctx.not_read,
+            documents_filtered=ctx.filtered_out,
             payload_fingerprint=fingerprint(ctx.payload),
             hypothesis=hypothesis,
             observed_effect="",
@@ -1041,6 +1056,9 @@ class Runner:
             # step is built (``steps=()``), and that is exactly the case that dropped the
             # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
             documents_not_read=ctx.not_read,
+            # Same reasoning, for the type filter (fix finding 5): computed before the cap
+            # loop runs, so it is set on a "cap" failure too, not only on a scored case.
+            documents_filtered=ctx.filtered_out,
         )
 
     def _failed(
@@ -1125,6 +1143,7 @@ class Runner:
             not_read=prepared.not_read,
             not_available=prepared.not_available,
             documents_attached=prepared.documents_attached,
+            filtered_out=prepared.filtered_out,
         )
         if over_cap(prepared.payload.text, prepared.system, spec):
             return self._failed(ctx, "cap", 0.0)
@@ -1444,6 +1463,7 @@ class Runner:
                 not_read=prepared.not_read,
                 not_available=prepared.not_available,
                 documents_attached=prepared.documents_attached,
+                filtered_out=prepared.filtered_out,
             )
             if over_cap(prepared.payload.text, prepared.system, spec):
                 run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)
