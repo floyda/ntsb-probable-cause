@@ -6,6 +6,13 @@ Usage:
 
 Read and discard: the client has no cache, nothing is written under data/, and no case number
 is printed. The seed and the rule are here; the drawn list is not (0024).
+
+Fix round 1 (spec-compliance review), finding 4: ``report()``'s "cases attempted / listing
+fetch failed / skipped for missing mKey" denominator (added to ``docket_scan.py`` so a reader
+can tell a complete run from a partial one) was never filled here -- ``main`` now calls
+``record_attempt`` and ``record_listing_failed`` on the matching paths, as ``docket_scan.main``
+does. There is no missing-mKey path in this script: ``draw`` already resolves every case to an
+``int`` mkey before ``main``'s loop ever runs.
 """
 
 import argparse
@@ -22,7 +29,13 @@ from ntsb_probable_cause.docket.manifest import read_docket
 from ntsb_probable_cause.errors import DocketError
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import COMPLETED_STATUS, OPEN_MIN_YEAR
-from scripts.docket_scan import ShapeState, accumulate, report
+from scripts.docket_scan import (
+    ShapeState,
+    accumulate,
+    record_attempt,
+    record_listing_failed,
+    report,
+)
 
 SEED = 20260918
 PER_STRATUM = 40
@@ -59,9 +72,15 @@ def main(argv: list[str]) -> int:
     state = ShapeState()
     with DocketClient(None, seconds_per_request=settings.docket_seconds_per_request) as client:
         for position, (mkey, fatal) in enumerate(drawn, start=1):
+            # Fix round 1, finding 4: record_attempt/record_listing_failed, the same pair
+            # docket_scan.main calls, so this script's own "cases attempted" denominator
+            # (report(), inherited from ShapeState) is not left silently at zero -- there is
+            # no missing-mKey path here, since draw() already resolved every mkey to an int.
+            record_attempt(state, fatal=fatal)
             try:
                 docket = read_docket(client, mkey)
             except DocketError as error:
+                record_listing_failed(state, fatal=fatal)
                 print(
                     f"{position}/{len(drawn)}: listing failed ({type(error).__name__})",
                     file=sys.stderr,
