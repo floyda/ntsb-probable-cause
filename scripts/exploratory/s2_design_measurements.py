@@ -17,6 +17,7 @@ Usage (from the repository root):
 from __future__ import annotations
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.scoring.runner import ANSWERING_TURNS
 
 # Spike report §10 and agency design §3 (docket_shape_probe.py, weighted quantiles).
 MEDIAN_DOCS = 4
@@ -43,12 +44,23 @@ def case_cost(price: sources.ModelPrice, prompt_tokens: float, output_tokens: fl
 def main() -> None:
     prices = [sources.LUNA_BATCH, sources.LUNA, sources.SONNET_5_BATCH, sources.SONNET_5]
 
-    section("M1: the per-case cap in prompt tokens, after reserving the maximum output")
-    print(f"cap ${CAP_USD}; output reserve {MAX_OUTPUT_TOKENS} tokens at the output price")
+    section("M1: the per-case cap in prompt tokens, after reserving the maximum output twice")
+    # Re-review finding (S2 final review, round 2): the cap covers ANSWERING_TURNS calls, not
+    # one (fix finding 1) -- the same prompt is sent again on the stage-2 turn, and the output
+    # reserve applies to both turns too. So both the reserve and the cap budget available for
+    # the prompt are scaled by ANSWERING_TURNS, imported from the runner rather than restated
+    # as a literal 2, so this script and the real cap can never drift apart again.
+    print(
+        f"cap ${CAP_USD}; {ANSWERING_TURNS} answering calls, each reserving "
+        f"{MAX_OUTPUT_TOKENS} output tokens"
+    )
     for p in prices:
-        reserve = MAX_OUTPUT_TOKENS * p.output_usd_per_mtok / 1e6
-        room = (CAP_USD - reserve) / p.input_usd_per_mtok * 1e6
-        print(f"{p.model_id:34s} output reserve ${reserve:.4f}; prompt room {room:,.0f} tokens")
+        call_reserve = MAX_OUTPUT_TOKENS * p.output_usd_per_mtok / 1e6
+        room = (CAP_USD / ANSWERING_TURNS - call_reserve) / p.input_usd_per_mtok * 1e6
+        print(
+            f"{p.model_id:34s} output reserve ${call_reserve:.4f}/call "
+            f"(${ANSWERING_TURNS * call_reserve:.4f}/case); prompt room {room:,.0f} tokens"
+        )
 
     section("M2: arm B cost per case at the median docket by stratum (spike medians + S1 prompt)")
     # The docket is in the payload on both the stage-1 and stage-2 (refinement) turns, same
@@ -64,8 +76,11 @@ def main() -> None:
         print(f"{p.model_id:34s} " + "; ".join(parts))
 
     section("M3: does the cap bind? largest spike document plus the S1 prompt, by price")
+    # Same fix as M1: this is a case's cost (ANSWERING_TURNS calls), not one call's.
     for p in prices:
-        usd = case_cost(p, S1_PROMPT_TOKENS + LARGEST_SUBMISSION_TOKENS, MAX_OUTPUT_TOKENS)
+        usd = ANSWERING_TURNS * case_cost(
+            p, S1_PROMPT_TOKENS + LARGEST_SUBMISSION_TOKENS, MAX_OUTPUT_TOKENS
+        )
         print(f"{p.model_id:34s} ${usd:.4f} {'OVER' if usd > CAP_USD else 'under'} the cap")
 
     section("M4: stage spend at the default price (Luna batch), whole-docket upper bound per case")

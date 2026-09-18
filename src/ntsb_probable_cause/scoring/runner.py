@@ -1102,7 +1102,13 @@ class Runner:
         Returns:
             A ``CaseResult`` with no steps and no scores, ``cost_usd=0.0`` (no model call was
             made), and ``failure`` prefixed ``"leak:"`` so it reads distinctly from ``"cap"``,
-            ``"schema:"`` and ``"model:"`` in a run's failure list.
+            ``"schema:"`` and ``"model:"`` in a run's failure list. Unlike a "cap" failure
+            (fix round 1, Finding 4; fix finding 5), ``documents_not_read`` and
+            ``documents_filtered`` are both deliberately left empty here: ``self._prepare``
+            raised instead of returning a ``Prepared``, so whatever the cap loop had or had
+            not attached, dropped or filtered at the moment of the trip is not available to
+            read -- there is nothing truthful, rather than merely nothing, to put in either
+            field (re-review round 2, minor).
         """
         case_id = str(raw["ntsbNumber"])
         event = date.fromisoformat(str(raw["eventDate"])[:10])
@@ -1121,6 +1127,7 @@ class Runner:
             cost_usd=0.0,
             failure=f"leak: {error}",
             documents_not_read=(),
+            documents_filtered=(),
         )
 
     # --- the sync path ---

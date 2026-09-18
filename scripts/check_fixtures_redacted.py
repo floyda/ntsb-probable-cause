@@ -127,12 +127,14 @@ def docket_fixture_problems(root: Path = DOCKET_FIXTURES) -> list[str]:
 
 # Fix finding 6: a crude, explained heuristic for a docket title that names a person. NTSB
 # titles routinely read "Statement of <Name>" or "Interview of <Name>"; this looks for two or
-# three consecutive Title Case words right after one of a short list of person-introducing
+# three consecutive capitalised words right after one of a short list of person-introducing
 # words. It is neither sound nor complete -- a two-word organisation after "submitted by"
-# also matches, and a single-word or ALL CAPS name does not -- but a crude check that is
-# explained is better than a clever one that is not (the finding's own instruction), and a
-# false positive here costs a second look while a false negative costs a name reaching a
-# public repository.
+# also matches, and a single-word name does not (re-review round 2, minor: this pattern is
+# case-sensitive for the introducing word only, e.g. "of", not "OF" -- an ALL CAPS *name*
+# after a lowercase introducing word does match; the docstring previously claimed it did not)
+# -- but a crude check that is explained is better than a clever one that is not (the
+# finding's own instruction), and a false positive here costs a second look while a false
+# negative costs a name reaching a public repository.
 _NAME_SHAPED_TITLE = re.compile(
     r"\b(?:of|by|with|from|signed)\s+[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,2}\b"
 )
