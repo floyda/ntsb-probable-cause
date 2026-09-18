@@ -87,3 +87,4 @@ under `docs/specs/` and the record links to it.
 | [0044](0044-amateur-built-replacement-applies-to-document-text.md) | The amateur-built replacement applies to document text, in the attach step, counted as a floor | Accepted; extends 0020 |
 | [0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) | The monthly budget is a reservation taken under a lock at run start and settled at the end | Accepted; fixes the 0030 guard |
 | [0046](0046-known-owner-and-operator-names-are-replaced-in-document-text.md) | The owner and operator names the record already holds are replaced in document text; full strings only | Accepted; extends 0020, 0044 |
+| [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted |

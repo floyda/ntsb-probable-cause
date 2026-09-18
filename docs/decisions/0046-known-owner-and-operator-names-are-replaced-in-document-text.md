@@ -42,7 +42,7 @@ The full output is `docs/results/s2-name-coverage.txt`.
    never names.
 3. The count of replacements continues to be reported as a floor, for the same reason as 0044: a
    variant spelling passes through.
-5. **A value that is nothing but digits is not replaced.** Added 2026-09-18 after review, before
+4. **A value that is nothing but digits is not replaced.** Added 2026-09-18 after review, before
    any document was attached. `REDACTED_FIELDS` holds postcodes as well as names, and
    `docs/results/s2-name-coverage.txt` shows 269 of 395 owner postcodes and 285 of 386 operator
    postcodes are bare digit strings, most of them exactly five characters. A docket is full of
@@ -52,8 +52,19 @@ The full output is `docs/results/s2-name-coverage.txt`.
    on *name* replacements. A hyphenated postcode is distinctive and is still replaced; a bare
    number is not. This narrows item 1 deliberately: the measured basis of this decision covers
    names, so the rule now reaches no further than its evidence does.
-4. This does not change what may be committed. Decision 0037 still governs: document text enters
+5. This does not change what may be committed. Decision 0037 still governs: document text enters
    git only for NTSB-authored born-digital documents, after the scripted pass and Andy's read.
+6. **The rule covers every owner and operator detail; the published count says so.** Added
+   2026-09-18 at the close-out review. `REDACTED_FIELDS` holds addresses and an operator
+   certificate number as well as names, and the implementation replaces all of them — which is
+   right, because they are personal data too, and `docs/results/s2-name-coverage.txt` shows every
+   one of them is seven characters or longer and never a bare digit string, so none carries the
+   collision risk item 4 guards against. But the five-character and 28%-collision figures that
+   justify items 1 and 2 were measured over the **name-bearing fields only**. So the scope stands
+   and the *labelling* changes: the published figure is "owner or operator **detail**
+   replacements", not "name replacements", and `scripts/name_coverage.py` states which fields are
+   name-bearing and which further fields the replacement also covers. A count of street addresses
+   published under the word "name" would be the same defect as item 4 in a different place.
 
 ## Why
 
@@ -93,6 +104,9 @@ That framing sets the proportion. It says do the cheap, certain thing well and s
   a second model, needs its own error measurement, and is unnecessary for the names we already
   hold. Reconsider only for the names we do not.
 - **Treating the replacement as sufficient for publication.** It is one layer; 0037 is the gate.
+- **Reporting a broader replacement under a narrower name.** Item 6. The rule may cover more
+  than the measurement, so long as the extra scope carries no measured risk AND the published
+  number says what it actually counted.
 - **Replacing anything the measurement did not cover.** The first draft of this decision
   extended the rule to every field in `REDACTED_FIELDS` on the reasoning that the extra
   fields "cost nothing to replace". Review found that untrue for the postcodes, and the
