@@ -4163,3 +4163,18 @@ then the rest.
   batch-path counterpart both still expect that. Added
   `test_sync_leaking_case_fails_alone_and_the_run_continues` and
   `test_batch_leaking_case_fails_alone_and_the_run_continues`.
+- Task 12, Finding 1: `over_cap`/`estimated_cost_usd` priced one model call, but a case makes
+  two (stage 1, then stage 2 refinement, each sending the same payload and system text again,
+  each reserving the maximum output) -- so CLAUDE.md's "a per-case cost cap is enforced in
+  code" was not true, and the arm B drop rule (which decides how much of the docket the
+  published bar is measured on) was using a one-call estimate. Added `ANSWERING_TURNS = 2` and
+  multiplied `estimated_cost_usd`'s whole per-call figure by it, documented as a floor (retries
+  not counted). `test_estimated_cost_reserves_the_maximum_output_at_the_output_price` doubled
+  its expected reserve; `test_cap_binds_on_output_alone_for_a_dear_model`'s docstring corrected
+  to state the new two-turn reserve ($0.04 of the $0.05 default cap) -- its assertion was
+  already safe, since doubling only pushes it further over the cap it already exceeded.
+  `test_arm_b_drops_whole_documents_in_rank_order_at_the_cap`'s `cap_usd` doubled from `0.04`
+  to `0.08` (measured directly: base+small now costs about $0.0568, base+both about $0.0969 --
+  doubling the cap alongside the estimate preserves the same admit/refuse boundary the test
+  demonstrates). Both changes make the cap bind *earlier* (fewer documents attached, lower
+  real spend), which is the safe direction for a paid run.

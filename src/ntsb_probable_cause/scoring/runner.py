@@ -682,23 +682,37 @@ def case_payload(
     return prepared.payload, prepared.system, prepared.verdict, prepared.evidence
 
 
-def estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float:
-    """Prompt at one token per four characters at the input price, plus the maximum output.
+# A case is answered in two model calls, not one (spec §3.4 / fix finding 1): stage 1
+# (hypothesis) and stage 2 (refinement) each send the same payload and system text and
+# each reserve the same maximum output. Named so it is never scattered through the file as
+# a bare literal. Retries (one per stage, on a schema rejection) are not counted, so an
+# estimate built from this constant is a floor on what a case can cost, not a ceiling.
+ANSWERING_TURNS = 2
 
-    The output reserve is what the S1 cap ignored (spec §3.4): with the default model it
-    is a tenth of a cent, with Sonnet 5 at its standard price two cents of a five-cent cap.
+
+def estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float:
+    """The estimated cost of answering one case: ``ANSWERING_TURNS`` calls, not one.
+
+    One call is the prompt at one token per four characters at the input price, plus the
+    maximum output at the output price -- the output reserve is what the S1 cap ignored
+    (spec §3.4): with the default model it is a tenth of a cent, with Sonnet 5 at its
+    standard price two cents of a five-cent cap. A case pays that twice: the same payload
+    and system text are sent again on the stage-2 (refinement) turn, and the output reserve
+    applies to that turn too. Retries are not included, so this is a floor on a case's cost,
+    not the worst case.
     """
     settings = _settings(spec, HYPOTHESIS_SCHEMA, "hypothesis")
     price = sources.price_of(settings.model_id())
     prompt_tokens = (len(payload_text) + len(system)) / 4
-    return (
+    call_cost = (
         prompt_tokens * price.input_usd_per_mtok
         + settings.max_output_tokens * price.output_usd_per_mtok
     ) / 1e6
+    return ANSWERING_TURNS * call_cost
 
 
 def over_cap(payload_text: str, system: str, spec: RunSpec) -> bool:
-    """Would the prompt plus the maximum output cost more than the cap?"""
+    """Would answering the case (both calls) cost more than the cap?"""
     return estimated_cost_usd(payload_text, system, spec) > spec.cap_usd
 
 

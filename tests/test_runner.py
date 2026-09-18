@@ -30,6 +30,7 @@ from ntsb_probable_cause.scoring.budget import RESERVATION_FILE, open_reservatio
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
+    ANSWERING_TURNS,
     BatchRunner,
     CachedDocketReader,
     DocketReader,
@@ -1953,19 +1954,21 @@ def test_an_aborted_run_settles_its_reservation(
 
 
 def test_estimated_cost_reserves_the_maximum_output_at_the_output_price() -> None:
+    """Fix finding 1: the estimate is a case (``ANSWERING_TURNS`` calls), not one call."""
     spec = RunSpec(
         sample="dev-400", arm="ceiling", model="anthropic/claude-sonnet-5", price_variant="standard"
     )
     price = sources.price_of("anthropic/claude-sonnet-5")
-    reserve = ModelSettings().max_output_tokens * price.output_usd_per_mtok / 1e6
-    assert estimated_cost_usd("", "", spec) == pytest.approx(reserve)
+    call_reserve = ModelSettings().max_output_tokens * price.output_usd_per_mtok / 1e6
+    assert estimated_cost_usd("", "", spec) == pytest.approx(ANSWERING_TURNS * call_reserve)
     assert estimated_cost_usd("x" * 4000, "", spec) == pytest.approx(
-        reserve + 1000 * price.input_usd_per_mtok / 1e6
+        ANSWERING_TURNS * (call_reserve + 1000 * price.input_usd_per_mtok / 1e6)
     )
 
 
 def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
-    """M1: at Sonnet 5's standard price the output reserve is $0.02 of a $0.05 cap."""
+    """M1: at Sonnet 5's standard price the two-turn output reserve is $0.04 of a $0.05
+    default cap (fix finding 1: ``ANSWERING_TURNS`` doubles the single-call $0.02)."""
     spec = RunSpec(
         sample="dev-400",
         arm="ceiling",
@@ -2168,22 +2171,28 @@ def test_arm_b_attaches_the_filtered_documents_and_records_them(
 def test_arm_b_drops_whole_documents_in_rank_order_at_the_cap(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    """Decision 0043: stop before the first document that would break the cap; record it."""
+    """Decision 0043: stop before the first document that would break the cap; record it.
+
+    Fix finding 1: the cap now bounds a case (``ANSWERING_TURNS`` calls), not one call, so
+    the cap here is double the pre-fix value and the boundary it sits at is double too --
+    the ratio between "admits the small document" and "refuses the big one" is unchanged.
+    """
     big = "[page 1 of 3]\n" + "x" * 40_000 + "\n"
     docket = small_docket({1: "[page 1 of 3]\nsmall\n", 2: big})
     client = RecordingFakeClient([GOOD, REFINE])
-    # Sonnet 5 standard, measured (``estimated_cost_usd`` on this fixture and code tables):
-    # base + the 5-token small document costs about $0.0284; base + both documents (the big
-    # one adds 10,003 tokens) costs about $0.0484. A $0.04 cap sits between the two, so it
-    # admits the small document and refuses the big one. If the base prompt alone is over the
-    # cap the case fails "cap" before any document, which is the existing behaviour.
+    # Sonnet 5 standard, measured (``estimated_cost_usd`` on this fixture and code tables,
+    # now counting both answering turns): base + the 5-token small document costs about
+    # $0.0568; base + both documents (the big one adds 10,003 tokens) costs about $0.0969.
+    # A $0.08 cap sits between the two, so it admits the small document and refuses the big
+    # one. If the base prompt alone is over the cap the case fails "cap" before any
+    # document, which is the existing behaviour.
     spec = RunSpec(
         sample="dev-400",
         arm="B",
         sync=True,
         price_variant="standard",
         model="anthropic/claude-sonnet-5",
-        cap_usd=0.04,
+        cap_usd=0.08,
         expected_cost_per_case_usd=0.001,
     )
     run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
