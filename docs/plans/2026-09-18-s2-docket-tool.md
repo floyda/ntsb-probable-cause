@@ -4240,3 +4240,7 @@ then the rest.
   by eye. The real committed fixture (`ERA17LA217/listing.html`) passes both checks clean.
   Added seven tests to `tests/test_check_fixtures_redacted.py`, all on invented names, plus one
   proving the real committed tree is clean.
+- Smaller finding, Task 13: `docket_scan.py`'s `_fmt_q` used Python's `:g` format, which
+  renders a value at or above 1,000,000 in scientific notation (`1.23457e+06`) -- exactly what
+  makes a reader distrust a published results file. Added `_fmt_count` (thousands-separated
+  integer) and routed every quantile figure through it.

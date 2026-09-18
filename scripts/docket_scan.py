@@ -231,12 +231,24 @@ def _chars_by_page(text: str) -> list[int]:
     return counts
 
 
+def _fmt_count(value: float) -> str:
+    """A count as a thousands-separated integer, never ``:g``'s scientific notation.
+
+    Also from the final review's smaller findings: at or above 1,000,000, ``:g`` renders a
+    figure like ``1234567`` as ``1.23457e+06`` -- exactly what makes a reader distrust a
+    published results file. Every value here is a count (documents, pages, tokens), so an
+    integer with no decimal place is always the right rendering.
+    """
+    return f"{value:,.0f}"
+
+
 def _fmt_q(values: Sequence[float]) -> str:
     q = quantiles(values)
     return (
         "n=0"
         if not q
-        else f"n={len(values)} median={q[0.5]:g} p75={q[0.75]:g} p90={q[0.9]:g} max={q[1.0]:g}"
+        else f"n={len(values)} median={_fmt_count(q[0.5])} p75={_fmt_count(q[0.75])} "
+        f"p90={_fmt_count(q[0.9])} max={_fmt_count(q[1.0])}"
     )
 
 

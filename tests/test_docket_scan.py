@@ -2,6 +2,7 @@
 
 from scripts.docket_scan import (
     ShapeState,
+    _fmt_count,
     accumulate,
     owner_names,
     quantiles,
@@ -24,6 +25,14 @@ def test_quantiles_round_up_at_a_half_integer_rank() -> None:
     """
     assert quantiles(list(range(1, 6)), qs=(0.9,)) == {0.9: 5}
     assert quantiles(list(range(1, 151)), qs=(0.75,)) == {0.75: 113}
+
+
+def test_fmt_count_never_renders_scientific_notation() -> None:
+    """Also from the final review's smaller findings: ``:g`` switches a value at or above
+    1,000,000 to scientific notation (``1.23457e+06``), which is exactly what makes a reader
+    distrust a published results file. A thousands-separated integer instead."""
+    assert _fmt_count(1_234_567) == "1,234,567"
+    assert _fmt_count(500) == "500"
 
 
 def test_owner_names_reuses_the_attach_modules_selection_rule() -> None:
