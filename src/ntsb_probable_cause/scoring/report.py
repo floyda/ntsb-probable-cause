@@ -278,11 +278,17 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
 
 
 def cap_summary(results: Sequence[CaseResult]) -> str:
-    """How much of the docket the result was measured on (decision 0043 item 3)."""
+    """How much of the docket the result was measured on (decision 0043 item 3).
+
+    Reads each case's own ``documents_not_read`` rather than summing over ``steps``: a case
+    whose base prompt (with whatever documents made it in) is still over the cap fails
+    before a step is ever recorded (``steps=()``), and that is exactly the case that dropped
+    the most of the docket -- it must not be invisible in this count (fix round 1, Finding 4).
+    """
 
     def counts(rows: Sequence[CaseResult]) -> tuple[int, int]:
-        hit = [r for r in rows if any(s.documents_not_read for s in r.steps)]
-        dropped = sum(len(s.documents_not_read) for r in rows for s in r.steps)
+        hit = [r for r in rows if r.documents_not_read]
+        dropped = sum(len(r.documents_not_read) for r in rows)
         return len(hit), dropped
 
     cases_hit, docs = counts(results)

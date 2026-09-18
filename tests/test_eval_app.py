@@ -10,7 +10,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
+from tests.test_attach import _docket as small_docket
 
+from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
@@ -587,6 +589,57 @@ def test_run_sync_then_report_end_to_end(
     assert "sample=dev-400 arm=ceiling" in out
     assert "top-1" in out
     assert "| all |" in out
+    assert case_id  # the fixture case id was used to build the sample
+
+
+def test_run_arm_b_then_report_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Fix round 1, Finding 3: the coverage gate does not measure ``apps/``, so nothing
+    proved ``_cmd_run``'s real ``--arm B`` wiring (``DocketClient`` construction, the
+    ``contextlib.nullcontext()``/``with`` pairing, ``CachedDocketReader(docket_client) if
+    docket_client is not None else None``) ever produces a working run rather than raising
+    mid-run, after the budget reservation is already taken. ``CachedDocketReader`` is
+    stubbed (no socket needed) so the real ``DocketClient`` is still constructed, opened and
+    closed exactly as production does; only the docket *read* is faked. Also closes the
+    ``report`` command's ``if run_record.arm == "B":`` branch (the ``cap:`` line)."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+
+    class StubDocketReader:
+        """Stands in for ``CachedDocketReader``: same one-argument constructor, no HTTP."""
+
+        def __init__(self, client: object) -> None:
+            self.client = client
+
+        def read(self, mkey: int) -> Docket:
+            return docket
+
+    monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", StubDocketReader)
+    fake = RecordingFakeClient([GOOD, REFINE])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(
+        ["run", "--arm", "B", "--sample", "dev-400", "--sync", "--price-variant", "standard"],
+        client_factory=factory,
+    )
+    assert exit_code == 0
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    record = answering_run_record(run_folder)
+    assert record.arm == "B"
+    assert record.finished is not None
+    assert "crankshaft" in fake.payloads[0].text  # the stubbed docket really was read
+
+    capsys.readouterr()
+    main(["report", run_folder.name], client_factory=factory)
+    out = capsys.readouterr().out
+    assert "sample=dev-400 arm=B" in out
+    assert "cap:" in out  # report._cmd_report's arm-B-only branch
     assert case_id  # the fixture case id was used to build the sample
 
 

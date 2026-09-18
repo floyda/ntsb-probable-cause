@@ -111,12 +111,16 @@ def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult f
         verdict_occurrence=("111230",),
         verdict_findings=("0206304044",),
         verdict_findings_in_cause=("0206304044",),
-        steps=(_step(case_id, not_read),) if not_read else (),
+        # A case that failed before any model call (mirroring ``_failed(ctx, "cap", 0.0)``,
+        # which always passes ``steps=()``) never gets a step either, even if it dropped
+        # documents -- ``documents_not_read`` below is the only place that survives for it.
+        steps=(_step(case_id, not_read),) if not_read and not failure else (),
         scores=None
         if failure
         else (scores or _scores(top1=top1, confidence=confidence, abstained=abstained)),
         cost_usd=cost,
         failure=failure,
+        documents_not_read=not_read,
     )
 
 
@@ -479,4 +483,19 @@ def test_cap_summary_counts_cases_and_documents_by_fatal() -> None:
     assert text == (
         "cap: 2 of 3 cases hit the cap; 3 documents not read "
         "(fatal 1 cases/2 documents, non-fatal 1/1)"
+    )
+
+
+def test_cap_summary_counts_a_case_that_failed_before_any_step() -> None:
+    """Fix round 1, Finding 4: a base prompt already over the cap fails via ``_failed``
+    before any step is recorded (``steps=()``) -- the worst case, where nothing of the
+    docket was read, must not be invisible in the count."""
+    failed_before_any_step = _case(
+        "Z", fatal=True, not_read=("1: cap, 500 tokens", "2: cap, 300 tokens"), failure="cap"
+    )
+    assert failed_before_any_step.steps == ()  # no model call was ever made
+    text = report.cap_summary([failed_before_any_step])
+    assert text == (
+        "cap: 1 of 1 cases hit the cap; 2 documents not read "
+        "(fatal 1 cases/2 documents, non-fatal 0/0)"
     )

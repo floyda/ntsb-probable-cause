@@ -15,6 +15,7 @@ from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
+from ntsb_probable_cause.fields import EvidenceRole, factual_narrative
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -2019,6 +2020,35 @@ def test_prepare_case_arm_b_without_a_docket_raises(
 ) -> None:
     with pytest.raises(ConfigurationError, match="docket"):
         prepare_case(record_fixtures[0], RunSpec(sample="dev-400", arm="B"), load_tables(), None)
+
+
+def test_prepare_case_fails_closed_when_an_attached_document_holds_the_narrative(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Fix round 1, Finding 1: the leakage guard is only pinned in ``tests/test_attach.py``,
+    which calls ``split_record`` directly -- nothing proved ``prepare_case`` (the actual arm
+    B production path) also runs it over every attached document. It does: this drives
+    ``prepare_case`` itself with a docket document holding a fixture's own withheld factual
+    narrative, and asserts the guard fails closed at that call, not just inside the helper.
+    """
+    raw = next(r for r in record_fixtures if factual_narrative(r))
+    narrative = factual_narrative(raw) or ""
+    docket = small_docket({1: f"[page 1 of 3]\nAs the NTSB found: {narrative}\n"})
+    spec = RunSpec(sample="dev-400", arm="B")
+    with pytest.raises(LeakageError, match="docket_documents"):
+        prepare_case(raw, spec, load_tables(), docket)
+
+
+def test_prepare_case_refuses_arm_b_when_a_docket_role_is_excluded(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Fix round 1, Finding 2: an arm B run that excludes a docket role must be refused, not
+    silently run as arm B with an ever-growing ``documents_attached`` and a payload that
+    never actually grows -- ``masked_exclusions`` (spec §6.2) excludes both roles regardless
+    of day, and the masked condition arrives in the next stage."""
+    spec = RunSpec(sample="dev-400", arm="B", exclusions=frozenset({EvidenceRole.DOCKET_DOCUMENTS}))
+    with pytest.raises(ConfigurationError, match="docket_documents"):
+        prepare_case(record_fixtures[0], spec, load_tables(), None)
 
 
 def test_arm_b_without_a_docket_reader_is_refused_before_any_call(

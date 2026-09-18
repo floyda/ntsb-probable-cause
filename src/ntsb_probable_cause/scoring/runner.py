@@ -582,6 +582,12 @@ class Prepared:
     documents_attached: tuple[str, ...] = ()
 
 
+# The two evidence roles arm B is defined by (spec §7.1). Excluding either one leaves the
+# payload unable to grow as documents are attached, so the cap never binds and the loop
+# silently attaches everything while the model never sees any of it (fix round 1, Finding 2).
+_DOCKET_ROLES = frozenset({EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS})
+
+
 def _system_text(raw: Mapping[str, object], spec: RunSpec, tables: CodeTables, case_id: str) -> str:
     """The case-number line exists on development cases alone.
 
@@ -624,6 +630,12 @@ def prepare_case(
     system = _system_text(raw, spec, tables, evidence.case_id)
     if spec.arm != "B":
         return Prepared(payload, system, verdict, evidence)
+    excluded_docket_roles = (spec.exclusions | arm_exclusions(spec.arm)) & _DOCKET_ROLES
+    if excluded_docket_roles:
+        names = ", ".join(sorted(role.value for role in excluded_docket_roles))
+        raise ConfigurationError(
+            f"arm B cannot exclude the docket it is defined by: {names} excluded"
+        )
     if docket is None:
         raise ConfigurationError("arm B needs a docket reader")
     ordered = docket_filter.arm_b_documents(docket, variant=spec.docket_filter)
@@ -1004,6 +1016,11 @@ class Runner:
             scores=scores,
             cost_usd=cost,
             failure=failure,
+            # Set from ``ctx``, not from ``steps``: a case whose base prompt (with whatever
+            # documents made it in) is still over the cap fails via ``_failed`` before any
+            # step is built (``steps=()``), and that is exactly the case that dropped the
+            # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
+            documents_not_read=ctx.not_read,
         )
 
     def _failed(

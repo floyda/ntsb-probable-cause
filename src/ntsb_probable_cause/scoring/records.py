@@ -88,6 +88,10 @@ class CaseResult(BaseModel):
     scores: CaseScores | None
     cost_usd: float
     failure: str | None
+    # Set for every arm B case, including one that fails "cap" before any step is recorded
+    # (``steps=()``): the docket outcome must not be invisible just because the case never
+    # reached a model call (decision 0043; fix round 1, Finding 4).
+    documents_not_read: tuple[str, ...] = ()
 
 
 def fingerprint(payload: Payload) -> str:
