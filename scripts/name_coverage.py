@@ -103,6 +103,13 @@ def report(records: list[dict[str, object]]) -> str:
         f: sum(1 for r in records for _ in owner_operator_values(r, (f,)))
         for f in sorted(REDACTED_FIELDS)
     }
+    # Decision 0046 item 5: a value that is nothing but digits cannot be told apart from the
+    # many numbers a docket legitimately holds -- serials, weights, readings -- so replacing it
+    # would corrupt evidence and add non-name hits to a count published as a floor on names.
+    numeric = {
+        f: sum(1 for r in records for v in owner_operator_values(r, (f,)) if v.isdigit())
+        for f in sorted(REDACTED_FIELDS)
+    }
 
     lines = [
         "owner and operator names in the development split (decision 0046)",
@@ -125,8 +132,11 @@ def report(records: list[dict[str, object]]) -> str:
         + (f" ({100 * len(collisions) / len(surnames):.0f}%)" if surnames else "")
         + ("" if words else "   [no system word list; not measured]"),
         "",
-        "non-empty values per redacted field:",
-        *(f"  {f:28s} {n:5d}" for f, n in per_field.items()),
+        "non-empty values per redacted field, and how many are bare digits:",
+        *(
+            f"  {f:28s} {n:5d}" + (f"   ({numeric[f]} all digits)" if numeric[f] else "")
+            for f, n in per_field.items()
+        ),
     ]
     return "\n".join(lines)
 

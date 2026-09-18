@@ -42,6 +42,16 @@ The full output is `docs/results/s2-name-coverage.txt`.
    never names.
 3. The count of replacements continues to be reported as a floor, for the same reason as 0044: a
    variant spelling passes through.
+5. **A value that is nothing but digits is not replaced.** Added 2026-09-18 after review, before
+   any document was attached. `REDACTED_FIELDS` holds postcodes as well as names, and
+   `docs/results/s2-name-coverage.txt` shows 269 of 395 owner postcodes and 285 of 386 operator
+   postcodes are bare digit strings, most of them exactly five characters. A docket is full of
+   standalone numbers — serial numbers, weights, tachometer and Hobbs readings — and a
+   word-boundary match cannot tell one from a postcode. Replacing them would corrupt numbers the
+   model reasons about and would add non-name hits to a count this decision publishes as a floor
+   on *name* replacements. A hyphenated postcode is distinctive and is still replaced; a bare
+   number is not. This narrows item 1 deliberately: the measured basis of this decision covers
+   names, so the rule now reaches no further than its evidence does.
 4. This does not change what may be committed. Decision 0037 still governs: document text enters
    git only for NTSB-authored born-digital documents, after the scripted pass and Andy's read.
 
@@ -83,6 +93,11 @@ That framing sets the proportion. It says do the cheap, certain thing well and s
   a second model, needs its own error measurement, and is unnecessary for the names we already
   hold. Reconsider only for the names we do not.
 - **Treating the replacement as sufficient for publication.** It is one layer; 0037 is the gate.
+- **Replacing anything the measurement did not cover.** The first draft of this decision
+  extended the rule to every field in `REDACTED_FIELDS` on the reasoning that the extra
+  fields "cost nothing to replace". Review found that untrue for the postcodes, and the
+  claim had been asserted rather than measured. Item 5 is the correction; the general form
+  is that this rule may not reach further than the numbers behind it.
 - **Treating this as a compliance control.** It is not one, and calling it one would misdescribe
   both the risk and the remedy. The records are public; the duty is to the dead, not to a
   regulator.
