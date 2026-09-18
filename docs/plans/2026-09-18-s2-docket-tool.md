@@ -1695,12 +1695,12 @@ git commit -m "S2: the listing parser against the saved real page (spec §4.3)"
 - `classify.SCAN_PAGE_MAX_CHARS = 50`, `classify.BORN_DIGITAL_MIN_CHARS_PER_PAGE = 300`; `classify.Kind = Literal["born-digital", "scan", "partial"]`; `classify.classify_pages(chars_by_page: Sequence[int]) -> Kind`; `classify.readable_pages(chars_by_page) -> int`; `classify.estimated_tokens(chars: int) -> int` (`chars // 4`); `classify.CATEGORIES: tuple[tuple[str, str], ...]` (name, pattern), first match wins, `party_submission` first; `classify.document_category(title: str, doc_type: str) -> str` (`"other"` when nothing matches).
 - `manifest.Status = Literal["read", "unreadable: scan", "unreadable: not a pdf", "skipped: photo-only", "fetch failed", "denied: write-up"]`; `manifest.DocumentRecord(entry: ListingEntry, category: str, status: Status, pages: int, readable_pages: int, estimated_tokens: int, kind: Kind | None)`; `manifest.Docket(mkey: int, listing: Listing, documents: tuple[DocumentRecord, ...], texts: dict[int, str])` (`texts` holds page-marked text for `status == "read"` only); `manifest.read_docket(client: DocketClient, mkey: int, *, denied: Callable[[str], bool] = lambda _c: False) -> Docket`.
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 Run: `uv add pypdf` then `uv lock`.
 Expected: `pypdf` in `[project].dependencies`, lock updated. Record the version in Deviations if it is not `>=6`.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `tests/test_docket_classify.py` (pure functions; no fixtures needed):
 
@@ -1883,12 +1883,12 @@ def test_denied_category_is_never_fetched(tmp_path: Path, respx_mock: respx.Mock
     assert route.call_count == 0
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_classify.py tests/test_docket_extract.py tests/test_docket_manifest.py -q`
 Expected: ImportError.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `docket/extract.py`:
 
@@ -2100,12 +2100,12 @@ def read_docket(
 
 Replace the `type: ignore` in `_record` with explicit keyword arguments (write `_record` with typed optional parameters `pages`, `readable_pages`, `estimated_tokens`, `kind` instead of `**extra`). "unreadable: photos" from the spec is folded into "skipped: photo-only" (log in Deviations: the listing already says which entries are photo sets; a PDF of photos with no text is a scan).
 
-- [ ] **Step 5: Run the tests and the full check**
+- [x] **Step 5: Run the tests and the full check**
 
 Run: `make check`
 Expected: green. If `vulture` flags `Docket.record`, it is used in Task 10 (`attach_docket` calls `docket.record(index)`); add it to the vulture allow-list only if the task order leaves it unused at this commit, and remove the entry in Task 10.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml uv.lock src/ntsb_probable_cause/docket tests/test_docket_classify.py tests/test_docket_extract.py tests/test_docket_manifest.py docs/plans/2026-09-18-s2-docket-tool.md
@@ -4008,6 +4008,8 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
 
+- 2026-09-18, Task 8: the brief's literal `extract_pdf` body (`parts.append(marker + "\n" + text + "\n")`, joined with `"".join`) puts two trailing newlines after the last page's marker, not one, which fails `test_blank_pages_extract_to_zero_characters_with_markers`'s exact-text assertion for a 2-page blank PDF. Built each page's part as `marker + "\n" + text` (no per-page trailing newline) and joined pages with `"\n"` instead of `""` -- same page-marker format and per-page text, one join strategy instead of a trailing newline baked into every part. `PAGE_MARKER`, `ExtractedDocument`, and the non-PDF error path are unchanged from the brief.
+- 2026-09-18, Task 8: three lint-only fixes to the brief's literal code, no behaviour change: wrapped `classify.py`'s module docstring and the `pilot_form_6120` pattern onto multiple lines (both over the 100-column limit); dropped the brief's `# noqa: BLE001` on `extract.py`'s broad `except Exception` (`BLE` is not in this project's enabled ruff rule set, so the directive itself was flagged as unused); added `# noqa: PLR0913` to `manifest.py`'s `_record`, which the brief's rewrite (typed keyword-only parameters replacing `**extra`, asked for in the brief's own text below the code block) brings to 7 parameters, following `client.py`'s `DocketClient.__init__` precedent for a fixed, documented parameter list.
 - 2026-09-18, plan: spec §5.3's status set names `unreadable: photos`; the plan folds it into `skipped: photo-only`. The listing already says which entries are photo sets, and a PDF of photographs with no text layer is classified `scan` like any other. One status fewer to explain.
 - 2026-09-18, plan: spec §8.2 and §8.3 name two results files from one pass; the plan has `corpus_scan.py --docket` write `s2-threshold.txt` (the curve) and `s2-filter.txt` (the filter table, the hand-check line, and, after Task 17, the submission rule and the published types and rank) in one run. Same numbers, one script.
 - 2026-09-18, plan: a reviewed document fixture is committed as the PDF plus its expected extraction (`.txt`), not the text alone (spec §4.4 says "as text"). The extractor test needs the file; the PDF is the document Andy reads. Both are named in the manifest with `reviewed_by`.
