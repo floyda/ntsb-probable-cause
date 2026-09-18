@@ -923,7 +923,7 @@ git commit -m "S2: the cap counts output tokens; a re-judge writes a partial fil
 - Produces: `errors.DocketError(NtsbError)`; `Settings.docket_dir: Path = Path("data/docket")`, `Settings.docket_seconds_per_request: float = 2.0`; `sources.DOCKET_BASE_URL = "https://data.ntsb.gov"`, `sources.DOCKET_USER_AGENT`, `sources.docket_document_url(href: str) -> str`; `DocketClient(cache_dir: Path | None, *, seconds_per_request=2.0, sleep=time.sleep, transport=None, max_attempts=5, backoff_seconds=2.0)` with `.listing_html(mkey: int) -> str`, `.document(mkey: int, index: int, href: str) -> bytes`, and `.close()` / context manager. `cache_dir=None` means read and discard (0040).
 - Cache layout: `<cache_dir>/<mkey>/listing.html`, `<cache_dir>/<mkey>/<index>.bin`, `<cache_dir>/<mkey>/fetch.json` (`{"listing": {"time", "sha256"}, "documents": {"<index>": {"time", "sha256", "href"}}}`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_sources_settings.py`:
 
@@ -1033,12 +1033,12 @@ def test_not_found_is_not_retried(tmp_path: Path, respx_mock: respx.MockRouter) 
     assert route.call_count == 1
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_client.py tests/test_sources_settings.py -q`
 Expected: ImportError on `ntsb_probable_cause.docket.client`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `errors.py`, append:
 
@@ -1231,12 +1231,12 @@ Fix the `documents.update` typing without an ignore: narrow `fetch_update["docum
 
 `pyproject.toml`: add `"ntsb_probable_cause.docket"` to the `source_modules` list of the contract "Only the splitter constructs synthesis and verdict".
 
-- [ ] **Step 4: Run the tests and the full check**
+- [x] **Step 4: Run the tests and the full check**
 
 Run: `make check`
 Expected: green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/errors.py src/ntsb_probable_cause/settings.py src/ntsb_probable_cause/sources.py src/ntsb_probable_cause/docket .env.example pyproject.toml tests/test_docket_client.py tests/test_sources_settings.py docs/plans/2026-09-18-s2-docket-tool.md

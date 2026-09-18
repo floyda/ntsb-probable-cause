@@ -74,6 +74,7 @@ name = "Only the splitter constructs synthesis and verdict"
 type = "forbidden"
 source_modules = [
     "ntsb_probable_cause.data",
+    "ntsb_probable_cause.docket",
     "ntsb_probable_cause.fields",
     "ntsb_probable_cause.paths",
     "ntsb_probable_cause.splits",

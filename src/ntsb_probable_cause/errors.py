@@ -46,3 +46,7 @@ class SchemaError(NtsbError):
 
 class BudgetError(NtsbError):
     """A run or call would exceed the per-case cap or the monthly budget (decision 0030)."""
+
+
+class DocketError(NtsbError):
+    """The docket site returned an unusable page or file, or a listing did not parse."""

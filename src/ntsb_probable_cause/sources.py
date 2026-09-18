@@ -9,13 +9,25 @@ MODE_AVIATION = "aviation"
 MAX_PAGE_SIZE = 1000
 API_KEY_HEADER = "Ocp-Apim-Subscription-Key"
 
+# The docket is not in the Enterprise API (../ntsb-spike/public.yaml has no docket path). It is
+# a web page for people, scraped as the spike's probes did (../ntsb-spike/scripts/
+# docket_shape_probe.py). The saved real page under tests/fixtures/docket/ is the source for
+# its structure (rule 2, decision 0037).
+DOCKET_BASE_URL = "https://data.ntsb.gov"
+DOCKET_USER_AGENT = "ntsb-probable-cause (https://github.com/floyda/ntsb-probable-cause)"
+
 # docketPage is null on every record (spike session 5); the URL is built from mKey.
-_DOCKET_URL = "https://data.ntsb.gov/Docket?ProjectID={mkey}"
+_DOCKET_URL = DOCKET_BASE_URL + "/Docket?ProjectID={mkey}"
 
 
 def docket_url(mkey: int) -> str:
     """Return the public docket URL for a case's internal key."""
     return _DOCKET_URL.format(mkey=mkey)
+
+
+def docket_document_url(href: str) -> str:
+    """The absolute URL of a document link, as the listing page gives it (``/Docket/Document``)."""
+    return f"{DOCKET_BASE_URL}{href}"
 
 
 @dataclass(frozen=True)

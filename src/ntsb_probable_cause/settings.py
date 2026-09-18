@@ -31,6 +31,8 @@ class Settings(BaseSettings):
         default=Path("docs/results/heldout-ledger.md"),
         validation_alias="NTSB_HELDOUT_LEDGER_PATH",
     )
+    docket_dir: Path = Path("data/docket")
+    docket_seconds_per_request: float = Field(default=2.0, ge=0)
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""

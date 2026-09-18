@@ -102,3 +102,14 @@ def test_price_of_known_and_unknown_model() -> None:
 def test_new_errors_are_ntsb_errors() -> None:
     for kind in (ModelError, SchemaError, BudgetError):
         assert issubclass(kind, NtsbError)
+
+
+def test_docket_settings_have_polite_defaults() -> None:
+    settings = Settings()
+    assert settings.docket_dir == Path("data/docket")
+    assert settings.docket_seconds_per_request == 2.0
+
+
+def test_docket_document_url_joins_the_relative_href() -> None:
+    href = "/Docket/Document/docBLOB?ID=1&FileExtension=.pdf&FileName=x.pdf"
+    assert sources.docket_document_url(href) == "https://data.ntsb.gov" + href
