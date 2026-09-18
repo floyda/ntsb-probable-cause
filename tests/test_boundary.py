@@ -8,7 +8,14 @@ import pytest
 from tests.boundary import RecordingBatchRunner, assert_boundary_holds, assert_requests_clean
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.model.client import Payload, RecordingFakeClient
+from ntsb_probable_cause.model import client as client_module
+from ntsb_probable_cause.model.batch import BatchRequest
+from ntsb_probable_cause.model.client import (
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+)
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
@@ -167,6 +174,7 @@ def _withheld(record_fixtures: list[dict[str, object]]) -> list[tuple[str, str]]
             found.append(("factual narrative", narrative))
         if cause:
             found.append(("probable cause", cause))
+    assert found, "fixtures carry no withheld text: the boundary test would be vacuous"
     return found
 
 
@@ -216,3 +224,38 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_requests_clean(batch.requests, _withheld(record_fixtures))
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["system", "payload", "history"],
+)
+def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
+    """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
+    needle = "the pilot did not extend the landing gear"
+    clean = Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN)
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=(
+            Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN)
+            if where == "payload"
+            else clean
+        ),
+        settings=ModelSettings(),
+        system=needle if where == "system" else "",
+        history=(Turn(role="assistant", content=needle),) if where == "history" else (),
+    )
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_requests_clean([request], [("factual narrative", needle)])
+
+
+def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
+    """The negative case: a request with none of the withheld text passes."""
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="you are an investigator",
+        history=(Turn(role="assistant", content="a clean turn"),),
+    )
+    assert_requests_clean([request], [("factual narrative", "the pilot did not extend the gear")])
