@@ -4011,6 +4011,7 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 - 2026-09-18, plan: spec §5.3's status set names `unreadable: photos`; the plan folds it into `skipped: photo-only`. The listing already says which entries are photo sets, and a PDF of photographs with no text layer is classified `scan` like any other. One status fewer to explain.
 - 2026-09-18, plan: spec §8.2 and §8.3 name two results files from one pass; the plan has `corpus_scan.py --docket` write `s2-threshold.txt` (the curve) and `s2-filter.txt` (the filter table, the hand-check line, and, after Task 17, the submission rule and the published types and rank) in one run. Same numbers, one script.
 - 2026-09-18, plan: a reviewed document fixture is committed as the PDF plus its expected extraction (`.txt`), not the text alone (spec §4.4 says "as text"). The extractor test needs the file; the PDF is the document Andy reads. Both are named in the manifest with `reviewed_by`.
+- 2026-09-18, Task 5 fix round 1, Finding 4: the brief's `Settings.docket_seconds_per_request` used `Field(default=2.0, ge=0)`, which accepts `NTSB_DOCKET_SECONDS_PER_REQUEST=0` in production. The plan's own Global Constraints fix the docket rate at one request every two seconds to `data.ntsb.gov` -- a real government site -- so the constraint governs and the bound is corrected to `gt=0`. No test needs `0`; tests inject `sleep` instead of relying on the gap being zero.
 
 ### Pre-flight corrections (2026-09-18, before Task 1)
 

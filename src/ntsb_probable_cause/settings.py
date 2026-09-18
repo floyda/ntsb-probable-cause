@@ -32,7 +32,10 @@ class Settings(BaseSettings):
         validation_alias="NTSB_HELDOUT_LEDGER_PATH",
     )
     docket_dir: Path = Path("data/docket")
-    docket_seconds_per_request: float = Field(default=2.0, ge=0)
+    # `gt=0`, not `ge=0`: the plan's Global Constraints fix the docket rate at one request
+    # every two seconds to `data.ntsb.gov`, a real government site, and 0 would remove that
+    # floor in production. Tests never need 0 -- they inject `sleep` (fix round 1, Finding 4).
+    docket_seconds_per_request: float = Field(default=2.0, gt=0)
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""

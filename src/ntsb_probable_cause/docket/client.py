@@ -19,6 +19,44 @@ LISTING_FILE = "listing.html"
 FETCH_FILE = "fetch.json"
 
 
+def _load_manifest(cache: Path, mkey: int) -> dict[str, object]:
+    """The parsed ``fetch.json`` for a case, or ``{}`` if it is missing or not an object."""
+    fetch_path = cache / str(mkey) / FETCH_FILE
+    if not fetch_path.is_file():
+        return {}
+    loaded = json.loads(fetch_path.read_text())
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _read_verified(cache: Path, mkey: int, name: str, entry: dict[str, object]) -> bytes | None:
+    """The cached file's bytes, or ``None`` if missing or its hash disagrees with the manifest.
+
+    A hash mismatch is what a kill mid-write, or any other partial or corrupted file, looks
+    like -- the write path below never leaves such a file at this name, but a reader must not
+    trust a name alone (fix round 1, Finding 3).
+    """
+    path = cache / str(mkey) / name
+    if not path.is_file():
+        return None
+    content = path.read_bytes()
+    if entry.get("sha256") != hashlib.sha256(content).hexdigest():
+        return None
+    return content
+
+
+def _write_atomic(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` so a reader never observes a partial file.
+
+    Mirrors the judge run's ``judge.jsonl.partial`` -> ``judge.jsonl`` shape (spec §3.5): write
+    to a sibling name first, then rename into place. A kill mid-write leaves either the
+    previous complete file or nothing at ``path`` -- never a truncated one (fix round 1,
+    Finding 3). Renaming within one cache-entry directory is a same-filesystem move.
+    """
+    tmp_path = path.with_name(f"{path.name}.partial")
+    tmp_path.write_bytes(data)
+    tmp_path.replace(path)
+
+
 class DocketClient:
     """One request every ``seconds_per_request``; every fetch cached unless ``cache_dir`` is None.
 
@@ -68,19 +106,33 @@ class DocketClient:
 
     def listing_html(self, mkey: int) -> str:
         """The listing page for a case, from the cache or one polite fetch."""
-        cached = self._cached(mkey, LISTING_FILE)
-        if cached is not None:
-            return cached.decode("utf-8", "replace")
+        cache = self._cache
+        if cache is not None:
+            entry = _load_manifest(cache, mkey).get("listing")
+            if isinstance(entry, dict):
+                cached = _read_verified(cache, mkey, LISTING_FILE, entry)
+                if cached is not None:
+                    return cached.decode("utf-8", "replace")
         content = self._get(sources.docket_url(mkey))
         self._store(mkey, LISTING_FILE, content, {"listing": self._entry(content)})
         return content.decode("utf-8", "replace")
 
     def document(self, mkey: int, index: int, href: str) -> bytes:
-        """One document's bytes, from the cache or one polite fetch."""
+        """One document's bytes, from the cache or one polite fetch.
+
+        A cached entry whose recorded ``href`` disagrees with the one asked for is treated as
+        a miss and re-fetched: a docket gains documents over time, the listing order can
+        shift, and an index alone does not identify a document (fix round 1, Finding 2).
+        """
         name = f"{index}.bin"
-        cached = self._cached(mkey, name)
-        if cached is not None:
-            return cached
+        cache = self._cache
+        if cache is not None:
+            documents = _load_manifest(cache, mkey).get("documents")
+            entry = documents.get(str(index)) if isinstance(documents, dict) else None
+            if isinstance(entry, dict) and entry.get("href") == href:
+                cached = _read_verified(cache, mkey, name, entry)
+                if cached is not None:
+                    return cached
         content = self._get(sources.docket_document_url(href))
         self._store(
             mkey,
@@ -93,29 +145,20 @@ class DocketClient:
     def _entry(self, content: bytes) -> dict[str, str]:
         return {"time": self._now().isoformat(), "sha256": hashlib.sha256(content).hexdigest()}
 
-    def _cached(self, mkey: int, name: str) -> bytes | None:
-        if self._cache is None:
-            return None
-        path = self._cache / str(mkey) / name
-        return path.read_bytes() if path.is_file() else None
-
     def _store(self, mkey: int, name: str, content: bytes, fetch_update: dict[str, object]) -> None:
         if self._cache is None:
             return
         folder = self._cache / str(mkey)
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / name).write_bytes(content)
-        fetch_path = folder / FETCH_FILE
-        fetch: dict[str, object] = (
-            json.loads(fetch_path.read_text()) if fetch_path.is_file() else {}
-        )
+        _write_atomic(folder / name, content)
+        fetch = _load_manifest(self._cache, mkey)
         documents = fetch.get("documents")
         update = fetch_update.get("documents")
         if isinstance(documents, dict) and isinstance(update, dict):
             documents.update(update)
         else:
             fetch.update(fetch_update)
-        fetch_path.write_text(json.dumps(fetch, indent=1, sort_keys=True))
+        _write_atomic(folder / FETCH_FILE, json.dumps(fetch, indent=1, sort_keys=True).encode())
 
     def _get(self, url: str) -> bytes:
         """One GET with the polite gap, retried with backoff on transport errors and 5xx.
