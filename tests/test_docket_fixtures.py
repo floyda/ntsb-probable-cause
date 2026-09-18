@@ -1,5 +1,6 @@
 """Docket fixtures: development cases only, listing pages as received (decision 0037)."""
 
+import hashlib
 import json
 from datetime import date
 from pathlib import Path
@@ -30,6 +31,23 @@ def test_every_docket_fixture_has_a_listing_and_a_manifest() -> None:
         manifest = json.loads((folder / "manifest.json").read_text())
         assert manifest["fixture"]["case_id"] == folder.name
         assert split_of(date.fromisoformat(manifest["fixture"]["event_date"])) is Split.DEV
+
+
+def test_the_listing_fixture_is_byte_exact_as_received() -> None:
+    """A normalised fixture would let the parser be written against a page the NTSB never sent.
+
+    The listing pages this project fetches come back with CRLF line endings; committing a
+    fixture that has been rewritten to LF-only (by an editor, or by a pre-commit hook that
+    was not told to leave this tree alone) would let a parser regular expression pass every
+    test here and still meet CRLF text on every real fetch. Reading as bytes, not text, is
+    the point: a text-mode read can itself normalise line endings and hide the very thing
+    this test exists to catch.
+    """
+    for folder in docket_fixture_dirs():
+        data = (folder / "listing.html").read_bytes()
+        assert b"\r\n" in data, folder
+        manifest = json.loads((folder / "manifest.json").read_text())
+        assert manifest["fixture"]["sha256"] == hashlib.sha256(data).hexdigest()
 
 
 def test_write_listing_fixture_refuses_a_held_out_case(tmp_path: Path) -> None:

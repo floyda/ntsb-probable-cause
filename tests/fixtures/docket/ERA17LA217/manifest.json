@@ -5,7 +5,8 @@
   "case_id": "ERA17LA217",
   "mkey": 95459,
   "event_date": "2017-06-26",
-  "criterion": "first draw"
+  "criterion": "first draw",
+  "sha256": "b87e8b8ff878a249c5831fa50f00fe06d742ca4599c05315c203445eca0d9104"
  },
  "documents": []
 }

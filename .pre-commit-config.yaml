@@ -10,10 +10,14 @@ repos:
       - {id: check-yaml, name: check-yaml, entry: uv run check-yaml, language: system, types: [yaml]}
       - {id: check-toml, name: check-toml, entry: uv run check-toml, language: system, types: [toml]}
       - {id: check-json, name: check-json, entry: uv run check-json, language: system, types: [json]}
-      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text]}
-      - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text]}
+      # A docket fixture is a saved real response (decision 0037) and must stay byte-for-byte
+      # as received, or the parser is written against a page the NTSB never sent. Documents
+      # and PDFs land under the same tree in a later task, so the exclude covers all of it,
+      # not just the listing HTML.
+      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text], exclude: ^tests/fixtures/docket/}
+      - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text], exclude: ^tests/fixtures/docket/}
       - {id: check-merge-conflict, name: check-merge-conflict, entry: uv run check-merge-conflict, language: system, types: [text]}
-      - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text]}
+      - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text], exclude: ^tests/fixtures/docket/}
       - {id: no-commit-to-branch, name: no-commit-to-branch, entry: uv run no-commit-to-branch --branch main, language: system, pass_filenames: false, always_run: true}
       - {id: no-data-files, name: no files under data/, entry: "sh -c 'echo \"refusing to commit files under data/: $*\"; exit 1' --", language: system, files: ^data/}
       - {id: ruff-format, name: ruff format, entry: uv run ruff format, language: system, types: [python]}

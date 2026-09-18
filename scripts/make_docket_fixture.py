@@ -9,6 +9,7 @@ Later subcommands (Task 16): draw, document, handcheck.
 """
 
 import argparse
+import hashlib
 import json
 import random
 import sys
@@ -63,12 +64,19 @@ def write_listing_fixture(  # noqa: PLR0913, PLR0917 -- one argument per manifes
     *,
     root: Path = FIXTURES,
 ) -> Path:
-    """Write the listing page as received and a manifest; refuse anything outside development."""
+    """Write the listing page as received and a manifest; refuse anything outside development.
+
+    Writes bytes, not text: ``Path.write_bytes`` never translates line endings, so the file
+    on disk is exactly the encoded ``html`` string, byte for byte -- a docket fixture is a
+    saved real response (decision 0037), and the ``sha256`` recorded below states what was
+    actually received, not merely where it came from.
+    """
     if split_of(date.fromisoformat(event_date)) is not Split.DEV:
         raise FixtureError(f"{case_id}: event date {event_date} is not in the development split")
     folder = root / case_id
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "listing.html").write_text(html)
+    content = html.encode("utf-8")
+    (folder / "listing.html").write_bytes(content)
     manifest = {
         "fixture": {
             "source": f"https://data.ntsb.gov/Docket?ProjectID={mkey}",
@@ -77,6 +85,7 @@ def write_listing_fixture(  # noqa: PLR0913, PLR0917 -- one argument per manifes
             "mkey": mkey,
             "event_date": event_date,
             "criterion": criterion,
+            "sha256": hashlib.sha256(content).hexdigest(),
         },
         "documents": [],
     }
