@@ -10,6 +10,7 @@ from ntsb_probable_cause.docket.attach import (
     amateur_built_replace,
     attach_docket,
     header,
+    redact_known_names,
 )
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
@@ -229,3 +230,155 @@ def test_a_too_short_or_missing_make_or_model_is_never_used_as_a_replacement_pat
     text, count = amateur_built_replace("An NX aircraft, model unknown.", raw)
     assert count == 0
     assert text == "An NX aircraft, model unknown."
+
+
+def test_owner_named_as_two_words_is_replaced_in_a_document_and_counted(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Decision 0046: the recorded owner string, an invented name here, is replaced whole."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]
+    text, count = redact_known_names("The report was signed by Jordan Vale on site.", raw)
+    assert text == "The report was signed by Owner or operator on site."
+    assert count == 1
+
+
+def test_operator_name_is_replaced_in_the_listing_and_in_a_document(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """redact_known_names is applied to the rendered listing as well as to document text."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"operatorName": "Rimrock Aviation"}]
+    entry = _entry(1, "Rimrock Aviation - Party Submission")
+    record = DocumentRecord(
+        entry=entry,
+        category="party_submission",
+        status="read",
+        pages=3,
+        readable_pages=3,
+        estimated_tokens=10,
+        kind="born-digital",
+    )
+    listing = Listing(mkey=1, declared_items=1, entries=(entry,))
+    docket = Docket(
+        mkey=1,
+        listing=listing,
+        documents=(record,),
+        texts={1: "[page 1 of 3]\nRimrock Aviation submits this report.\n"},
+    )
+    result = attach_docket(raw, docket, documents=[1])
+    docket_part = result.context[DOCKET_KEY]
+    assert isinstance(docket_part, dict)
+    assert "Rimrock Aviation" not in str(docket_part)
+    assert "Owner or operator" in str(docket_part["listing"])
+    assert "Owner or operator" in docket_part["documents"][0]
+
+
+def test_a_name_embedded_in_an_ordinary_word_is_not_replaced(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The word-boundary property carried from amateur_built_replace."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"operatorIndividual": "Long"}]
+    text, count = redact_known_names("The longitudinal axis was undamaged.", raw)
+    assert count == 0
+    assert text == "The longitudinal axis was undamaged."
+
+
+def test_the_surname_alone_is_not_replaced_when_only_the_full_string_is_recorded(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Decision 0046 item 2: the full recorded string only, never its parts."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]
+    text, count = redact_known_names("Mr. Vale inspected the wreckage.", raw)
+    assert count == 0
+    assert text == "Mr. Vale inspected the wreckage."
+
+
+def test_a_malformed_owner_operator_entry_is_skipped_not_raised(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """A non-dict entry in ownerOperators (a malformed record) is ignored, not an error."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = ["not a dict", {"registeredOwner": "Jordan Vale"}]
+    text, count = redact_known_names("Jordan Vale filed the report.", raw)
+    assert text == "Owner or operator filed the report."
+    assert count == 1
+
+
+def test_names_from_a_second_aircraft_and_a_second_owner_operator_entry_are_both_replaced(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Unlike amateur_built_replace, every aircraft and every ownerOperators entry is read."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    first = copy.deepcopy(aircrafts[0])
+    second = copy.deepcopy(aircrafts[0])
+    first["ownerOperators"] = [
+        {"registeredOwner": "Jordan Vale"},
+        {"operatorName": "Rimrock Aviation"},
+    ]
+    second["ownerOperators"] = [{"registeredOwner": "Priya Okafor"}]
+    raw["aircrafts"] = [first, second]
+    text, count = redact_known_names(
+        "Jordan Vale, on behalf of Rimrock Aviation, flew with Priya Okafor.", raw
+    )
+    assert text == "Owner or operator, on behalf of Owner or operator, flew with Owner or operator."
+    assert count == 3
+
+
+def test_a_trading_name_containing_the_operator_name_is_replaced_whole_not_in_pieces(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Longest value first: no fragment of the trading name is left behind."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [
+        {"operatorName": "Rimrock Aviation"},
+        {"operatorDoingBusinessAs": "Rimrock Aviation Flight School"},
+    ]
+    text, count = redact_known_names("Rimrock Aviation Flight School operated the flight.", raw)
+    assert text == "Owner or operator operated the flight."
+    assert count == 1
+
+
+def test_no_replacement_when_the_record_holds_no_owner_or_operator_names(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Fixture records are already redacted of these fields (decision 0015): none to find."""
+    raw = record_fixtures[0]
+    text, count = redact_known_names("Nothing here identifies anyone.", raw)
+    assert count == 0
+    assert text == "Nothing here identifies anyone."
+
+
+def test_owner_operator_replacement_count_adds_to_the_amateur_built_count(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The two mechanisms count separately; neither replaces the other's count."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftAmateurBuilt"] = True
+    aircrafts[0]["aircraftMake"] = "Invented Builder"
+    aircrafts[0]["aircraftModel"] = "RV-7X"
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]
+    docket = _docket({1: "[page 1 of 3]\nInvented Builder logbook signed by Jordan Vale.\n"})
+    result = attach_docket(raw, docket, documents=[1])
+    assert result.replacements == 2
+    docket_part = result.context[DOCKET_KEY]
+    assert "Invented Builder" not in str(docket_part)
+    assert "Jordan Vale" not in str(docket_part)

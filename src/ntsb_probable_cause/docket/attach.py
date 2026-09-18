@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from ntsb_probable_cause.data.redaction import REDACTED_FIELDS
 from ntsb_probable_cause.docket.listing import render_listing
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
 from ntsb_probable_cause.fields import AMATEUR_BUILT_LABEL
@@ -37,6 +38,12 @@ _LABELS: Mapping[str, tuple[str, str]] = {
 
 _AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
 _MIN_REPLACE_LEN = 3
+
+# Decision 0046: the replacement label names the kind of thing removed, never the person. Kept
+# local to this module, unlike AMATEUR_BUILT_LABEL: that label is also used by fields.py as an
+# evidence value (the amateur-built make/model *is* the evidence field), while this label is
+# only ever a document-text replacement, never an evidence value in its own right.
+OWNER_OPERATOR_LABEL = "Owner or operator"
 
 
 @dataclass(frozen=True)
@@ -89,6 +96,50 @@ def amateur_built_replace(text: str, raw: Mapping[str, object]) -> tuple[str, in
     return text, count
 
 
+def _owner_operator_values(raw: Mapping[str, object]) -> list[str]:
+    """Every non-empty ``REDACTED_FIELDS`` value under every aircraft's owner/operator entries.
+
+    A record can hold more than one aircraft and more than one owner/operator entry per
+    aircraft (unlike ``amateur_built_replace``, which only reads ``aircrafts[0]``); every entry
+    is read here.
+    """
+    values: list[str] = []
+    aircrafts = raw.get("aircrafts")
+    for aircraft in aircrafts if isinstance(aircrafts, list) else []:
+        operators = aircraft.get("ownerOperators") if isinstance(aircraft, dict) else None
+        for operator in operators if isinstance(operators, list) else []:
+            if not isinstance(operator, dict):
+                continue
+            for field in REDACTED_FIELDS:
+                value = operator.get(field)
+                if isinstance(value, str) and len(value.strip()) >= _MIN_REPLACE_LEN:
+                    values.append(value.strip())
+    return values
+
+
+def redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
+    """Replace every owner/operator name the record already holds, counting replacements.
+
+    Decision 0046: the record holds the exact strings a docket's documents are likely to name
+    -- in general aviation the owner or operator is often the pilot. Matched as the full
+    recorded string only (item 2): a surname alone is never searched for, because 28% of the
+    person-looking surnames in the development split are also ordinary dictionary words, so
+    replacing surnames alone would corrupt real evidence roughly one time in four.
+
+    Longest value first, so a trading name that contains an operator's name is replaced whole
+    rather than leaving a fragment of it behind.
+    """
+    values = sorted(set(_owner_operator_values(raw)), key=len, reverse=True)
+    count = 0
+    for value in values:
+        # Same anchoring as amateur_built_replace, for the same reason: a recorded name can
+        # begin or end with punctuation, which `\b` handles inconsistently.
+        pattern = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
+        text, n = pattern.subn(OWNER_OPERATOR_LABEL, text)
+        count += n
+    return text, count
+
+
 def attach_docket(
     raw: Mapping[str, object], docket: Docket, *, documents: Sequence[int]
 ) -> AttachResult:
@@ -99,6 +150,8 @@ def attach_docket(
     left out by choice is not listed (the step record's ``arguments`` say what was chosen).
     """
     listing_text, replacements = amateur_built_replace(render_listing(docket.listing), raw)
+    listing_text, n = redact_known_names(listing_text, raw)
+    replacements += n
     rendered: list[str] = []
     attached: list[int] = []
     for index in documents:
@@ -106,6 +159,8 @@ def attach_docket(
         if record.status != "read":
             continue
         text, n = amateur_built_replace(render_document(record, docket.texts[index]), raw)
+        replacements += n
+        text, n = redact_known_names(text, raw)
         replacements += n
         rendered.append(text)
         attached.append(index)

@@ -2706,7 +2706,7 @@ settled before the runner attaches a document to anything. Measurement:
 - `attach_docket` applies it to the rendered listing and to every attached document, and adds its
   count into `AttachResult.replacements` alongside the amateur-built count.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_attach.py`, using invented names only:
 
@@ -2717,11 +2717,17 @@ In `tests/test_attach.py`, using invented names only:
 - a record with no owner/operator fields returns the text unchanged, count 0;
 - the count adds to, and does not replace, the amateur-built count on an amateur-built case.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+  Also added, beyond the brief's list: a malformed (non-dict) `ownerOperators` entry is
+  skipped, not raised; names from a second aircraft and a second owner/operator entry are
+  both replaced (the brief's "handle every entry" requirement, exercised directly); and a
+  trading name containing an operator name is replaced whole (the longest-first requirement,
+  exercised directly rather than only incidentally).
+
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_attach.py -v`
 
-- [ ] **Step 3: Write `redact_known_names` and wire it into `attach_docket`**
+- [x] **Step 3: Write `redact_known_names` and wire it into `attach_docket`**
 
 Reuse the anchoring and the label of `amateur_built_replace`; iterate `REDACTED_FIELDS` over every
 `aircrafts[].ownerOperators[]` entry, longest value first so a trading name containing an operator
@@ -2729,11 +2735,11 @@ name is replaced whole rather than in pieces. Replace with a label naming the ki
 removed, never the person: `"Owner or operator"`. Keep the length floor: a recorded value shorter
 than `_MIN_REPLACE_LEN` is skipped.
 
-- [ ] **Step 4: Run the tests and the full check**
+- [x] **Step 4: Run the tests and the full check**
 
 Run: `make check`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/docket/attach.py tests/test_attach.py docs/plans/2026-09-18-s2-docket-tool.md
