@@ -160,8 +160,10 @@ in git). One transport for both, so the evaluated agent and the deployed agent a
 at the transport layer too. Decision record: `docs/decisions/0009-model-access-via-openrouter.md`,
 which supersedes the spike's "Claude exclusively" rule.
 
-The agent's model starts at `anthropic/claude-sonnet-5` to keep continuity with the spike;
-model choice is a harness parameter, not a constant. Evaluation runs use the `:batch` variant
+The agent's model is `openai/gpt-5.6-luna`, batch variant for evaluation (decision 0031,
+which supersedes the earlier plan to start at `anthropic/claude-sonnet-5` for continuity with
+the spike). Model choice is a harness parameter, not a constant, and the model axis is measured
+after S3 — the bar and the agent are always compared on the same model (0022, 0031). Evaluation runs use the `:batch` variant
 (half price, no latency requirement); the live path does not.
 
 Two consequences to hold on to:
