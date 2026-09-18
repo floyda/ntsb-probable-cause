@@ -2689,6 +2689,59 @@ git commit -m "S2: arm B and the docket filter variant in records, spec and comm
 
 ---
 
+### Task 11b: Known owner and operator names are replaced in document text (decision 0046)
+
+Inserted 2026-09-18 on Andy's proposal, after Task 11 and before Task 12, so name handling is
+settled before the runner attaches a document to anything. Measurement:
+`docs/results/s2-name-coverage.txt` (`scripts/name_coverage.py`).
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/docket/attach.py`
+- Test: `tests/test_attach.py`
+
+**Interfaces:**
+- Produces: `attach.redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]`,
+  replacing every non-empty `REDACTED_FIELDS` value found under `aircrafts[].ownerOperators[]`,
+  matched as the exact recorded string, case-insensitively, anchored with `(?<!\w)`/`(?!\w)`.
+- `attach_docket` applies it to the rendered listing and to every attached document, and adds its
+  count into `AttachResult.replacements` alongside the amateur-built count.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/test_attach.py`, using invented names only:
+
+- an owner named as two words is replaced in a document, count 1;
+- an operator name is replaced in the rendered listing as well as in a document;
+- a name embedded in an ordinary word is NOT replaced (the word-boundary property, count 0);
+- the surname alone is NOT replaced when only the full string is recorded (decision 0046 item 2);
+- a record with no owner/operator fields returns the text unchanged, count 0;
+- the count adds to, and does not replace, the amateur-built count on an amateur-built case.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_attach.py -v`
+
+- [ ] **Step 3: Write `redact_known_names` and wire it into `attach_docket`**
+
+Reuse the anchoring and the label of `amateur_built_replace`; iterate `REDACTED_FIELDS` over every
+`aircrafts[].ownerOperators[]` entry, longest value first so a trading name containing an operator
+name is replaced whole rather than in pieces. Replace with a label naming the kind of thing
+removed, never the person: `"Owner or operator"`. Keep the length floor: a recorded value shorter
+than `_MIN_REPLACE_LEN` is skipped.
+
+- [ ] **Step 4: Run the tests and the full check**
+
+Run: `make check`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ntsb_probable_cause/docket/attach.py tests/test_attach.py docs/plans/2026-09-18-s2-docket-tool.md
+git commit -m "S2: replace the owner and operator names the record already holds (decision 0046)"
+```
+
+---
+
 ### Task 12: Arm B in the runner: the docket reader, the drop rule, the step record, the report (spec §9, decision 0043)
 
 **Files:**
