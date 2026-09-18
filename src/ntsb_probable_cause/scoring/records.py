@@ -20,9 +20,10 @@ class RunRecord(BaseModel):
 
     run_id: str
     sample: str
-    arm: Literal["A", "ceiling"]
+    arm: Literal["A", "B", "ceiling"]
     exclusions: tuple[str, ...]
     includes: tuple[str, ...]
+    docket_filter: str = "published"
     prompt_version: str
     model: str
     price_variant: str
@@ -54,6 +55,8 @@ class StepRecord(BaseModel):
     expected_effect: str
     returned_roles: tuple[str, ...]
     not_available: tuple[str, ...]
+    documents_attached: tuple[str, ...] = ()
+    documents_not_read: tuple[str, ...] = ()
     payload_fingerprint: str
     hypothesis: Hypothesis
     observed_effect: Literal["confirmed", "weakened", "unchanged", ""]

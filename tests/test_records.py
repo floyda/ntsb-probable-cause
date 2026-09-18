@@ -1,4 +1,5 @@
 import copy
+import json
 from typing import cast
 
 import pydantic
@@ -9,6 +10,9 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import WITHHELD_ROLE_NAMES, EvidenceRole
 from ntsb_probable_cause.records.evidence import BOOKKEEPING_FIELDS, Evidence
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
+from ntsb_probable_cause.scoring.records import RunRecord, StepRecord
 
 
 def test_evidence_schema_is_exactly_the_evidence_roles_plus_bookkeeping() -> None:
@@ -84,3 +88,49 @@ def test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence(
     message = str(exc_info.value)
     assert probable_cause.lower() not in message.lower()
     assert exc_info.value.leaks
+
+
+GOOD = json.dumps(
+    {
+        "evidence_narrative": "n",
+        "probable_cause": "p",
+        "lay_explanation": "l",
+        "confidence": 0.7,
+        "abstain": False,
+        "evidence_used": ["phase_of_flight"],
+        "occurrence": [{"phase": "552", "event": "230", "probability": 0.7}],
+        "findings": [{"category6": "020630", "modifier": "44", "probability": 0.6}],
+    }
+)
+
+
+def test_step_record_document_fields_default_empty(run_record: RunRecord) -> None:
+    hypothesis = parse_hypothesis(GOOD, load_tables())
+    step = StepRecord(
+        case_id="X",
+        step=0,
+        arm="B",
+        condition="full",
+        day=None,
+        tool="docket",
+        arguments={"documents": [1, 2]},
+        reason="",
+        expected_effect="",
+        returned_roles=(),
+        not_available=("3: unreadable: scan",),
+        payload_fingerprint="f",
+        hypothesis=hypothesis,
+        observed_effect="",
+        stop_reason="answered",
+        model="m",
+        price_variant="batch",
+        prompt_tokens=1,
+        completion_tokens=1,
+        cost_usd=0.0,
+        cumulative_cost_usd=0.0,
+        commit_sha="abc",
+        dirty=False,
+    )
+    assert step.documents_attached == ()
+    assert step.documents_not_read == ()
+    assert run_record.docket_filter == "published"

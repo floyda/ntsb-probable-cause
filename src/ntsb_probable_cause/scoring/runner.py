@@ -11,6 +11,7 @@ from typing import Literal, Protocol
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.data.build import investigation_class
+from ntsb_probable_cause.docket.filter import Variant
 from ntsb_probable_cause.errors import (
     BudgetError,
     ConfigurationError,
@@ -65,9 +66,10 @@ class RunSpec:
     """Everything that varies between runs (spec §2)."""
 
     sample: str
-    arm: Literal["A", "ceiling"]
+    arm: Literal["A", "B", "ceiling"]
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
+    docket_filter: Variant = "published"
     model: str = "openai/gpt-5.6-luna"
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
@@ -109,6 +111,7 @@ def spec_json(
         "arm": spec.arm,
         "exclusions": sorted(role.value for role in spec.exclusions),
         "include_case_number": spec.include_case_number,
+        "docket_filter": spec.docket_filter,
         "model": spec.model,
         "price_variant": spec.price_variant,
         "cap_usd": spec.cap_usd,
@@ -733,6 +736,7 @@ class Runner:
                 arm=spec.arm,
                 exclusions=tuple(sorted(e.value for e in spec.exclusions)),
                 includes=("case_number",) if spec.include_case_number else (),
+                docket_filter=spec.docket_filter,
                 prompt_version=prompt.PROMPT_VERSION,
                 model=spec.model,
                 price_variant=spec.price_variant,

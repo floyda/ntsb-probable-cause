@@ -2617,7 +2617,7 @@ git commit -m "S2: the attach step and the two docket evidence roles; the bounda
 - `resolve_latest` skips a run whose `docket_filter != "published"`.
 - CLI: `--arm {A,B,ceiling}`, `--docket-filter {published,unfiltered,no-submissions}` (default `published`; refused with any arm but `B`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_records.py`:
 
@@ -2664,12 +2664,12 @@ def test_resolve_latest_skips_an_unfiltered_arm_b_run(tmp_path: Path) -> None:
 
 `_write_run` uses `_RUN_KWARGS["arm"] == "ceiling"`; write the first run with `arm="B"` by the same pattern as the second (both explicit), so the test compares two arm-B runs.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_records.py tests/test_runner.py tests/test_eval_app.py -q`
 Expected: validation errors on `arm="B"`, missing `docket_filter`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `records.py`: `RunRecord.arm: Literal["A", "B", "ceiling"]`, add `docket_filter: str = "published"` after `includes`; `StepRecord` gains `documents_attached: tuple[str, ...] = ()` and `documents_not_read: tuple[str, ...] = ()` after `not_available`.
 
@@ -2677,7 +2677,7 @@ Expected: validation errors on `arm="B"`, missing `docket_filter`.
 
 `apps/eval/__main__.py`: `run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)`; `run_p.add_argument("--docket-filter", choices=("published", "unfiltered", "no-submissions"), default="published")`; in `_cmd_run`, before building the spec: `if args.docket_filter != "published" and args.arm != "B": raise SystemExit("--docket-filter applies to --arm B only")`; pass `docket_filter=args.docket_filter` to `RunSpec`. In `resolve_latest`, after the exclusions check: `if record.docket_filter != "published": continue`.
 
-- [ ] **Step 4: Run the tests and the full check, commit**
+- [x] **Step 4: Run the tests and the full check, commit**
 
 Run: `make check`
 Expected: green.

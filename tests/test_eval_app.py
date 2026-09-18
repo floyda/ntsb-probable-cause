@@ -64,13 +64,14 @@ _RUN_KWARGS = {
 }
 
 
-def _write_run(
+def _write_run(  # noqa: PLR0913
     runs_dir: Path,
     run_id: str,
     *,
     finished: datetime | None,
     started: datetime | None = None,
     cost_usd: float = 0.0,
+    arm: str | None = None,
 ) -> None:
     """A minimal, complete-or-aborted run folder, for ``resolve_latest``/``month_spent`` tests.
 
@@ -79,9 +80,10 @@ def _write_run(
     timestamp ``month_spent`` has to place it in a month.
     """
     when = started if started is not None else (finished or datetime(2026, 1, 1, tzinfo=UTC))
-    record = RunRecord(
-        **_RUN_KWARGS, run_id=run_id, started=when, finished=finished, cost_usd=cost_usd
-    )
+    kwargs = dict(_RUN_KWARGS)
+    if arm is not None:
+        kwargs["arm"] = arm
+    record = RunRecord(**kwargs, run_id=run_id, started=when, finished=finished, cost_usd=cost_usd)
     write_jsonl(runs_dir / run_id / "run.jsonl", [record])
 
 
@@ -792,3 +794,27 @@ def test_release_clears_a_dead_reservation(
     assert "released dead-run" in capsys.readouterr().out
     assert open_reservations(runs_dir) == {}
     assert main(["release", "dead-run"]) == 1
+
+
+def test_docket_filter_is_refused_with_any_arm_but_b(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["run", "--arm", "ceiling", "--sample", "dev-400", "--docket-filter", "unfiltered"])
+    assert "docket-filter" in capsys.readouterr().err
+
+
+def test_resolve_latest_skips_an_unfiltered_arm_b_run(tmp_path: Path) -> None:
+    _write_run(
+        tmp_path,
+        "20260101T000000-abc-dev-400-B",
+        finished=datetime(2026, 1, 1, tzinfo=UTC),
+        arm="B",
+    )
+    later = tmp_path / "20260102T000000-abc-dev-400-B"
+    record = RunRecord(
+        **{**_RUN_KWARGS, "arm": "B", "docket_filter": "unfiltered"},
+        run_id=later.name,
+        started=datetime(2026, 1, 2, tzinfo=UTC),
+        finished=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    write_jsonl(later / "run.jsonl", [record])
+    assert resolve_latest(tmp_path, "B", "dev-400") == "20260101T000000-abc-dev-400-B"
