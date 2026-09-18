@@ -47,13 +47,30 @@ The full output is `docs/results/s2-name-coverage.txt`.
 
 ## Why
 
-1. **It is mechanical and it is complete for the people it covers.** The strings are known
-   exactly, so this is a string replacement with no judgement and no model in the loop.
+**The reason is respect, not data protection.** Everything here is already a public record: the
+NTSB publishes the docket, and the owner's name is on the aircraft registry. Nothing is being
+kept secret and no legal duty is being discharged. The reason to take the name out is the one
+`CLAUDE.md` rule 6 already states — these are fatalities, and in general aviation the registered
+owner is often the pilot, who may have died in the accident this demonstration is analysing.
+Putting that person's name through a model, into a run output, or onto a public board so that a
+demonstration can show off is the thing to avoid. Andy set this out when accepting the decision
+(2026-09-18): *"I am most concerned about owner name because they may have died in the accident
+... This is only a demo on public records so it is more out of respect than data privacy."*
+
+That framing sets the proportion. It says do the cheap, certain thing well and stop:
+
+1. **Mechanical and certain for the people it covers.** The strings are known exactly, so this is
+   a string replacement with no judgement and no model in the loop. The registered owner — the
+   name of first concern — is present on every case in the development split.
 2. **It covers every case, not a minority.** The amateur-built rule fires on the small share of
    cases that are amateur-built; this fires on all of them.
 3. **It costs nothing in evidence quality.** No recorded name is under five characters, so the
    over-replacement risk that motivates the length floor in 0044 does not arise here.
-4. **The limit is stated rather than hidden.** It finds the people the record names. It cannot
+4. **It stops where certainty stops.** Full strings are replaced; surnames alone are not, and no
+   detector is added to guess at the names we do not hold. A measure taken out of respect should
+   not damage the evidence or overstate what it achieved, which is what surname matching (28%
+   collision with ordinary words) and a model-based detector would both do.
+5. **The limit is stated rather than hidden.** It finds the people the record names. It cannot
    find a witness, a mechanic, an inspector or a passenger, because we hold no string for them.
    That is why 0037's human read remains the gate on anything committed, and why the replacement
    count is published as a floor.
@@ -66,6 +83,9 @@ The full output is `docs/results/s2-name-coverage.txt`.
   a second model, needs its own error measurement, and is unnecessary for the names we already
   hold. Reconsider only for the names we do not.
 - **Treating the replacement as sufficient for publication.** It is one layer; 0037 is the gate.
+- **Treating this as a compliance control.** It is not one, and calling it one would misdescribe
+  both the risk and the remedy. The records are public; the duty is to the dead, not to a
+  regulator.
 
 ## Status
 
