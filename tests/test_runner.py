@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -14,6 +15,7 @@ from ntsb_probable_cause.model.client import (
     ModelClient,
     ModelReply,
     ModelSettings,
+    Payload,
     RecordingFakeClient,
     Turn,
     Usage,
@@ -1842,7 +1844,28 @@ def test_run_header_logs_resumed_with_the_specs_facts(
 def test_run_reserves_at_start_and_settles_at_the_end(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    client = RecordingFakeClient([GOOD, REFINE])
+    """The reservation must exist *while the run is in flight*, not merely be absent after.
+
+    Deleting the ``reserve(...)`` call from the runner would leave every other assertion in
+    this suite passing, since they only check the state before and after the run. The model
+    client is the seam that sees inside that window: it snapshots ``open_reservations`` on
+    every call, before returning its scripted reply.
+    """
+    inner = RecordingFakeClient([GOOD, REFINE])
+    snapshots: list[dict[str, float]] = []
+
+    class SnapshottingClient:
+        def complete(
+            self, payload: object, settings: object, *, system: str = "", history: object = ()
+        ) -> ModelReply:
+            snapshots.append(open_reservations(tmp_path / "runs"))
+            return inner.complete(
+                cast(Payload, payload),
+                cast(ModelSettings, settings),
+                system=system,
+                history=cast("Sequence[Turn]", history),
+            )
+
     spec = RunSpec(
         sample="dev-400",
         arm="ceiling",
@@ -1850,7 +1873,11 @@ def test_run_reserves_at_start_and_settles_at_the_end(
         price_variant="standard",
         expected_cost_per_case_usd=0.001,
     )
-    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    run = runner(tmp_path, SnapshottingClient()).run(spec, record_fixtures[:1])
+    projected = project_cost(spec, 1)
+    assert snapshots  # both turns saw a reservation; the loop below checks every one
+    for snapshot in snapshots:
+        assert snapshot == pytest.approx({run.run_id: projected})
     assert not (tmp_path / "runs" / run.run_id / RESERVATION_FILE).exists()
     assert open_reservations(tmp_path / "runs") == {}
 

@@ -419,6 +419,7 @@ def _cmd_judge(args: argparse.Namespace, settings: Settings, client_factory: Cli
             client,
             tables,
             items,
+            runs_dir=settings.runs_dir,
             price_variant="standard",
             budget_usd=budget_usd,
             month_spent_usd=spent,

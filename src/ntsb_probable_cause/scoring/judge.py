@@ -9,6 +9,7 @@ import json
 import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -25,6 +26,7 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring.budget import budget_lock, open_reservations
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, strict_schema
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -208,6 +210,7 @@ def judge_run(  # noqa: PLR0913 -- the budget guard needs its own cap/budget/spe
     tables: CodeTables,
     items: Sequence[JudgeItem],
     *,
+    runs_dir: Path,
     price_variant: Literal["batch", "standard"] = "batch",
     cap_usd: float = 0.01,
     budget_usd: float = 25.0,
@@ -232,6 +235,15 @@ def judge_run(  # noqa: PLR0913 -- the budget guard needs its own cap/budget/spe
     The known gap (fix round 1): a case whose `judge_case` call needs its internal retry is
     priced from the retry's reply alone, so that case's cost omits the first attempt's
     tokens (same limitation as `judge_case` itself, logged in Task 12).
+
+    Decision 0045's budget check is only half-applied here: a judge pass is a paid,
+    by-hand-launched pass that can run while an answering run is in flight, so this reads
+    every other run's open reservation under the lock and is refused if they would fill the
+    budget (the read half). It does **not** take a reservation of its own (the write half):
+    `reserve` would create a run folder for a synthetic id (`f"{run_id}-judge"`), and that
+    stray sibling folder would break every place that enumerates `runs_dir` expecting one
+    folder per real run (`resolve_latest`, the `is_dir()`-filtered listings in the eval
+    tests). The write half is deferred to a follow-up, recorded separately.
     """
     spec = RunSpec(
         sample="judge",
@@ -241,7 +253,10 @@ def judge_run(  # noqa: PLR0913 -- the budget guard needs its own cap/budget/spe
         budget_usd=budget_usd,
         expected_cost_per_case_usd=JUDGE_EXPECTED_COST_PER_CASE_USD[price_variant],
     )
-    refuse_over_budget(project_cost(spec, len(items)), month_spent_usd, budget_usd)
+    projected = project_cost(spec, len(items))
+    with budget_lock(runs_dir):
+        reserved = sum(open_reservations(runs_dir).values())
+        refuse_over_budget(projected, month_spent_usd, budget_usd, reserved=reserved)
     _ensure_priced(price_variant)
     settings = ModelSettings(
         model=JUDGE_MODEL,
