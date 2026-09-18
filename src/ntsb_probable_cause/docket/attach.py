@@ -96,12 +96,17 @@ def amateur_built_replace(text: str, raw: Mapping[str, object]) -> tuple[str, in
     return text, count
 
 
-def _owner_operator_values(raw: Mapping[str, object]) -> list[str]:
+def owner_operator_values(raw: Mapping[str, object]) -> list[str]:
     """Every non-empty ``REDACTED_FIELDS`` value under every aircraft's owner/operator entries.
 
     A record can hold more than one aircraft and more than one owner/operator entry per
     aircraft (unlike ``amateur_built_replace``, which only reads ``aircrafts[0]``); every entry
     is read here.
+
+    Public (not ``_``-prefixed) so that a measurement script (``scripts/docket_scan.py``) can
+    select the same strings this module replaces, rather than re-deriving the rule and risking
+    the two drifting apart -- the length floor and the digit-only exclusion are decision 0046
+    item 5, not incidental.
     """
     values: list[str] = []
     aircrafts = raw.get("aircrafts")
@@ -139,7 +144,7 @@ def redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
     # Fix round 1, finding 2: a total order, not just length -- `set` iteration order over str
     # is process-randomised, so two equal-length values would otherwise break the tie
     # differently run to run, making the output and count non-reproducible for the same input.
-    values = sorted(set(_owner_operator_values(raw)), key=lambda v: (-len(v), v.lower()))
+    values = sorted(set(owner_operator_values(raw)), key=lambda v: (-len(v), v.lower()))
     count = 0
     for value in values:
         # Same anchoring as amateur_built_replace, for the same reason: a recorded name can

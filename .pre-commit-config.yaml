@@ -30,5 +30,5 @@ repos:
       - {id: actionlint, name: actionlint, entry: uv run actionlint, language: system, files: ^\.github/workflows/}
       - {id: zizmor, name: zizmor, entry: uv run zizmor, language: system, files: ^\.github/workflows/}
       - {id: check-docs, name: check-docs, entry: uv run python -m scripts.check_docs, language: system, pass_filenames: false, files: \.md$}
-      - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/.*\.json$}
+      - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/, pass_filenames: false}
       - {id: uv-lock-check, name: uv lock --check, entry: uv lock --check, language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock)$}

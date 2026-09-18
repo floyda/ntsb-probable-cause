@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb
+.PHONY: check lint type test ingest build scan probe bars armb docket-scan
 
 check: lint type test
 
@@ -47,3 +47,9 @@ armb:
 	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter unfiltered
 	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter no-submissions
 # The reports are generated from explicit run ids afterwards, never `--latest`, as S1 learned.
+
+docket-scan:
+	uv run python -m scripts.docket_scan --out docs/results/s2-shape-dev.txt
+# Long-running (roughly 2,000 polite requests to data.ntsb.gov, one every two seconds) and
+# resumable: DocketClient's cache means an interrupted run picks up where it left off rather
+# than re-fetching. Launched by the project owner, not CI.

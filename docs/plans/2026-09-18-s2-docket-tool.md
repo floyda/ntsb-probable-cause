@@ -3074,7 +3074,7 @@ git commit -m "S2: arm B reads the docket and drops whole documents at the cap; 
 - Statistics per stratum (`fatal`, `non-fatal`) and overall, each a count or quantile: documents per docket; non-photo pages per docket; estimated tokens per docket and per document; share of dockets under 10,000 tokens; scanned pages and share of scan-only dockets; share of `pilot_form_6120` documents with a text layer (`kind != "scan"`); dockets with a party submission; non-PDF share of documents; category mix; characters-per-page histogram in bins `0, 1–49, 50–99, 100–299, 300–599, 600+`; documents and cases containing an owner or operator name, by category; amateur-built replacements by category; fetch failures.
 - `check_fixtures_redacted.py`: every `tests/fixtures/docket/*/manifest.json` document with a `text_file` must carry a non-empty `reviewed_by`, and every `.pdf`/`.txt` under `tests/fixtures/docket/` must be named by such a document.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_docket_scan.py`:
 
@@ -3142,12 +3142,12 @@ def test_reviewed_document_is_fine(tmp_path: Path) -> None:
     assert docket_fixture_problems(tmp_path) == []
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_docket_scan.py tests/test_check_fixtures_redacted.py -q`
 Expected: ImportError.
 
-- [ ] **Step 3: Write the scan**
+- [x] **Step 3: Write the scan**
 
 Create `scripts/docket_scan.py`:
 
@@ -3362,7 +3362,7 @@ if __name__ == "__main__":
 
 Progress lines go to stderr and carry a position, never a case number.
 
-- [ ] **Step 4: The fixture check and the hook**
+- [x] **Step 4: The fixture check and the hook**
 
 `scripts/check_fixtures_redacted.py`, add:
 
@@ -3395,7 +3395,7 @@ and in `main`, after the CSV loop: `for problem in docket_fixture_problems(): pr
 
 `.pre-commit-config.yaml`: change the `check-fixtures-redacted` hook's `files` to `^tests/fixtures/` and add `pass_filenames: false` so the docket check runs whenever any fixture changes. `Makefile`: `docket-scan:` → `uv run python -m scripts.docket_scan --out docs/results/s2-shape-dev.txt`.
 
-- [ ] **Step 5: Run the tests and the full check, commit**
+- [x] **Step 5: Run the tests and the full check, commit**
 
 Run: `make check`
 Expected: green.
@@ -4105,6 +4105,10 @@ Title `S2: the docket tool`. Merge, never squash (0033). After the merge Andy ru
 - 2026-09-18, Task 12 fix round 1, Finding 2: an arm B run whose effective exclusion set (`spec.exclusions | arm_exclusions(spec.arm)`) contains either docket role was silently arm B without the docket -- the payload never grows as documents are attached, so the cap never binds, the loop "attaches" everything, and `documents_attached` reports a full docket while the model sees none of it. `masked_exclusions` (spec §6.2) excludes both roles regardless of day, and the masked condition arrives in S2.5/S3. Fixed in `prepare_case`: after the `spec.arm != "B"` early return, refuse with `ConfigurationError` naming the excluded role(s) if `(spec.exclusions | arm_exclusions(spec.arm)) & {DOCKET_LISTING, DOCKET_DOCUMENTS}` is non-empty -- before the `docket is None` check, so a masked arm B call is refused for the right reason even when no docket reader was ever supplied. Added `test_prepare_case_refuses_arm_b_when_a_docket_role_is_excluded`.
 - 2026-09-18, Task 12 fix round 1, Finding 3: closed the disclosed gap (no test drove `_cmd_run --arm B` through `main()`) without a socket: `tests/test_eval_app.py`'s new `test_run_arm_b_then_report_end_to_end` monkeypatches `apps.eval.__main__.CachedDocketReader` with a one-argument stub whose `.read()` returns a canned `Docket` (built with `test_attach.py`'s `_docket` helper) -- the real `DocketClient` is still constructed, entered and closed by `_cmd_run`'s own `with` block exactly as production does; only the docket *read* is faked. Asserts the run completes with `record.arm == "B"` and the stubbed document's text reached the model payload, then runs `report` and asserts the `cap:` line appears -- closing both branches the coverage gate could not see.
 - 2026-09-18, Task 12 fix round 1, Finding 4: `cap_summary` summed `documents_not_read` over each case's `steps`, but a case whose base prompt (with whatever documents made it in) is still over the cap is returned by `_failed(ctx, "cap", 0.0)` with `steps=()` -- so the cases that dropped the *most* of the docket (potentially all of it) were invisible in the count, contradicting decision 0043's stated purpose. Fixed by adding a case-level `documents_not_read: tuple[str, ...] = ()` field to `CaseResult` (`scoring/records.py`), set from `ctx.not_read` in `Runner._case_result` -- the single assembler both `_failed` and `_result` already route through, so no call-site special-casing was needed -- and rewrote `cap_summary` to read `r.documents_not_read` directly instead of iterating `r.steps`. A case is distinguished from a clean one purely by `bool(r.documents_not_read)`: a clean case (nothing dropped) has an empty tuple regardless of whether it has steps; a dropped-everything case has a non-empty tuple with no steps at all. The output string format is byte-for-byte unchanged. Updated `tests/test_report.py`'s `_case` builder to set the new field (and to only attach a step when there is no `failure`, matching `_failed`'s real shape) and added `test_cap_summary_counts_a_case_that_failed_before_any_step`.
+- 2026-09-18, Task 13, correction 1 (decision 0046, made after this task's brief was written): the brief's `owner_names(raw)` re-derived its own selection rule -- REDACTED_FIELDS values of at least four characters, with no digit rule. Since 0046, `attach.py`'s `redact_known_names` (via its own `_owner_operator_values`) is the actual rule the code applies: minimum length 3, and a value that is nothing but digits is excluded regardless of field name (269 of 395 owner postcodes are bare five-digit strings indistinguishable from serial numbers or weights; a hyphenated ZIP+4 stays in scope). Rather than re-deriving a second rule that could drift from the first, `_owner_operator_values` was renamed to the public `owner_operator_values` in `attach.py` (docstring extended to say why it is public) and `docket_scan.py`'s `owner_names(raw)` is now a one-line wrapper: `list(owner_operator_values(raw))`. `tests/test_docket_scan.py`'s `test_owner_names_come_from_the_redacted_fields_only` was rewritten as `test_owner_names_reuses_the_attach_modules_selection_rule` (a bare-digit `ownerZip` is excluded by the digit rule, not by a "zip"-in-key-name check, and a 2-character value is still excluded by the length floor) plus a new `test_owner_names_keeps_a_hyphenated_postcode_in_scope` pinning the ZIP+4 case. No other test needed to change: the other `owner_names` and `accumulate` fixtures use names well over the floor and containing no digits.
+- 2026-09-18, Task 13, correction 2 (decision 0046): the brief's `ShapeState` had one `replacements: Counter[str]` fed only by `amateur_built_replace`, and `report()` printed it as "amateur-built replacements, by category". Since 0046, `AttachResult.replacements` (the number `attach_docket` actually produces) is the sum of two mechanisms -- the amateur-built make/model and the owner/operator details -- so publishing the old single counter under the old label would describe a number the code no longer produces. Split `replacements` into two counters, `amateur_built_replacements` and `owner_operator_replacements`, both fed inside `accumulate`'s per-document loop by chaining `amateur_built_replace` then `redact_known_names` on the same text in the same order `attach_docket` applies them (so a name only matchable after the amateur-built pass, or vice versa, is measured the way it is actually redacted, and neither mechanism's count leaks into the other's). `report()` now prints both lines: "amateur-built replacements, by category" and "owner or operator name replacements, by category". `test_accumulate_counts_amateur_built_and_owner_operator_replacements_separately` (new, not in the brief's Step 1 listing) pins both counters and both report lines on a case with one make/model hit and one owner hit.
+- 2026-09-18, Task 13: the brief's literal `docket_scan.py` imports `json` but never uses it (the script never calls `json.loads`/`json.dumps` directly -- `read_docket`/`samples.load_cases` do that internally). Dropped the unused import; `ruff check` would otherwise fail it.
+- 2026-09-18, Task 13: two lint-only fixes to the brief's literal code, no behaviour change: `ruff format` re-wrapped several over-100-column lines in `docket_scan.py` (the `quantiles`/`accumulate` signatures, a few `lines.append(...)` calls) and in the two new test files -- no logic changed, only line breaks. `docket_fixture_problems`'s docstring was shortened by one word to fit the 100-column limit (E501); `test_docket_scan.py`'s `assert "fatal" in text and "non-fatal" in text` was split into two `assert` statements (ruff `PT018`, assertion must not be a compound boolean).
 
 ### Pre-flight corrections (2026-09-18, before Task 1)
 
