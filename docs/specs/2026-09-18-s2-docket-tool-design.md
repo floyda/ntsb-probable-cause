@@ -1,7 +1,7 @@
 # S2 — The docket tool: design
 
 *Drafted 2026-09-17 and 2026-09-18 from a design session with Andy, after the release of S1
-(`v0.2.0`, pull request #5). Status: Draft.
+(`v0.2.0`, pull request #5). Status: Approved (2026-09-18, Andy).
 This is the specification for build stage S2 in
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11, restated here as decisions 0037 to
 0040 amend it. It records what S2 builds, why, the decisions S2 was asked to take, and the
