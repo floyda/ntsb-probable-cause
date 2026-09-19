@@ -42,14 +42,27 @@ was redundant:
    The category plays no part in the order. `ARM_B_RANK` is removed.
 2. **Ascending still means smallest first**, for 0043's reason unchanged: it fits the largest number
    of whole documents under the cap.
-3. **The category keeps exactly two jobs**: the photograph exclusion in `ARM_B_TYPES`, and the
-   deny-list. It is not consulted for selection, and no longer for order.
-4. **The hand-check (0039 item 3) measures those two jobs, not twelve-way agreement.** For each
-   sampled title Andy marks two questions — *is this a photograph?* and *could this document
-   contain the investigators' conclusions?* — rather than whether one of twelve labels is best. The
-   sample is stratified by category so the rare and the messy ones are actually measured; a flat
-   random 60 over twelve categories would have given about five each and none of the 12 party
-   submissions.
+3. **The category keeps exactly three jobs**: the photograph exclusion in `ARM_B_TYPES`, the
+   deny-list, and the provenance header (`attach.header`, decision 0038). It is not consulted for
+   selection, and no longer for order.
+
+   *Corrected the same day.* This item first said "exactly two jobs" and omitted the provenance
+   header, which reads `record.category` at `attach.py:67`. That was an error in this record, not
+   in the code, and it mattered: the header is the one use that puts words in front of the model,
+   so a misclassification there is active misinformation rather than a suboptimal ordering. It is
+   the most consequential of the three, and it is now measured as such.
+4. **The hand-check (0039 item 3) measures those three jobs, not twelve-way agreement.** For each
+   sampled title Andy marks three questions, one per job:
+   - *Is this a photograph?* — grades the `ARM_B_TYPES` exclusion.
+   - *Could this document contain the investigators' conclusions?* — grades the deny-list.
+   - *Who wrote it: the investigation, a party to it, an independent body, or can you not tell?* —
+     grades the provenance header directly, in the terms the header itself uses.
+
+   Each question maps to exactly one use, so each produces a number that decides something. None
+   of them asks whether one of twelve labels is the best fit, which would have produced one blurred
+   figure no decision rested on. The sample is stratified by category so the rare and the messy ones
+   are actually measured; a flat random 60 over twelve categories would have given about five each
+   and none of the 12 party submissions.
 
 ## Why
 
