@@ -88,3 +88,4 @@ under `docs/specs/` and the record links to it.
 | [0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) | The monthly budget is a reservation taken under a lock at run start and settled at the end | Accepted; fixes the 0030 guard |
 | [0046](0046-known-owner-and-operator-names-are-replaced-in-document-text.md) | The owner and operator names the record already holds are replaced in document text; full strings only | Accepted; extends 0020, 0044 |
 | [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted |
+| [0048](0048-arm-b-ranks-by-each-documents-measured-size.md) | Arm B ranks by each document's own measured size; the category keeps only the photo exclusion and the deny-list | Accepted; supersedes 0043 item 2 |
