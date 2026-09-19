@@ -1,0 +1,69 @@
+# S2 development docket shape (scripts/docket_scan.py) — counts and quantiles only
+
+## Definitions and limits
+Owner/operator detail figures (addresses, zip codes, a certificate number, and names -- decision 0046's full REDACTED_FIELDS scope, not name-bearing fields alone) are counted only over documents whose text was extracted; a scanned document is never searched, so the count is a floor for that reason as well as because a detail the record does not hold is not counted.
+"Containing" is a case-insensitive substring test; the replacement counts use word-boundary anchored matching (decision 0046), so the two are not the same measurement and a document can register on one without the other.
+Tokens per docket sums each document's own characters-divided-by-four floor; the spike's own figures floored once over a docket's total characters instead, so the two totals are not directly comparable for a docket with more than one document.
+"Scanned pages" sums pages minus readable pages over every document with a known kind (born-digital, partial or scan), so it counts every page of a scan-classified document and also the individually-unreadable pages inside a partial-classified one, not only whole scan-classified documents.
+
+## fatal: 200 dockets
+cases attempted: 200; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=200 median=13 p75=19 p90=25 max=89
+non-photo pages per docket: n=200 median=44 p75=77 p90=134 max=712
+estimated readable tokens per docket: n=200 median=11,811 p75=22,098 p90=38,634 max=123,188
+estimated tokens per readable document: n=1957 median=612 p75=1,585 p90=4,164 max=87,966
+dockets under 10000 tokens: 84 of 200
+scanned pages: 2711; scan-only dockets: 2
+pilot forms with a text layer: 104 of 136
+dockets with a party submission: 8
+non-PDF documents: 110 of 2918
+fetch failures: 0
+category mix: atc_radar_data 180, conversation_statement 306, exam_site 166, maintenance_records 158, manuals_reference 72, medical_tox 210, other 447, party_submission 11, photos 962, pilot_form_6120 136, specialist_factual 133, weather 137
+documents containing an owner or operator detail from the record, by category: atc_radar_data 5, conversation_statement 6, exam_site 10, maintenance_records 14, manuals_reference 5, medical_tox 1, other 10, party_submission 2, photos 6, pilot_form_6120 14, specialist_factual 13, weather 2
+cases with such a document: 51 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 5, conversation_statement 36, exam_site 16, maintenance_records 8, manuals_reference 1, medical_tox 9, other 45, party_submission 6, photos 41, pilot_form_6120 11, specialist_factual 74, weather 0
+owner or operator detail replacements, by category: atc_radar_data 7, conversation_statement 32, exam_site 12, maintenance_records 29, manuals_reference 30, medical_tox 0, other 12, party_submission 2, photos 15, pilot_form_6120 21, specialist_factual 19, weather 2
+
+## non-fatal: 201 dockets
+cases attempted: 201; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=201 median=3 p75=5 p90=9 max=33
+non-photo pages per docket: n=201 median=12 p75=16 p90=34 max=256
+estimated readable tokens per docket: n=201 median=5,505 p75=7,822 p90=13,724 max=91,793
+estimated tokens per readable document: n=630 median=682 p75=2,871 p90=5,816 max=49,751
+dockets under 10000 tokens: 163 of 201
+scanned pages: 752; scan-only dockets: 14
+pilot forms with a text layer: 157 of 199
+dockets with a party submission: 1
+non-PDF documents: 10 of 872
+fetch failures: 0
+category mix: atc_radar_data 17, conversation_statement 167, exam_site 46, maintenance_records 29, manuals_reference 26, medical_tox 2, other 114, party_submission 1, photos 184, pilot_form_6120 213, specialist_factual 19, weather 54
+documents containing an owner or operator detail from the record, by category: conversation_statement 8, exam_site 1, manuals_reference 1, other 6, pilot_form_6120 19, specialist_factual 2
+cases with such a document: 23 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 2, conversation_statement 14, exam_site 2, maintenance_records 0, manuals_reference 0, medical_tox 0, other 3, party_submission 0, photos 1, pilot_form_6120 24, specialist_factual 0, weather 0
+owner or operator detail replacements, by category: atc_radar_data 0, conversation_statement 20, exam_site 1, maintenance_records 0, manuals_reference 1, medical_tox 0, other 13, party_submission 0, photos 0, pilot_form_6120 36, specialist_factual 2, weather 0
+
+## overall: 401 dockets
+cases attempted: 401; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=401 median=7 p75=13 p90=21 max=89
+non-photo pages per docket: n=401 median=18 p75=48 p90=92 max=712
+estimated readable tokens per docket: n=401 median=6,676 p75=15,230 p90=30,679 max=123,188
+estimated tokens per readable document: n=2587 median=620 p75=1,769 p90=5,118 max=87,966
+dockets under 10000 tokens: 247 of 401
+scanned pages: 3463; scan-only dockets: 16
+pilot forms with a text layer: 261 of 335
+dockets with a party submission: 9
+non-PDF documents: 120 of 3790
+fetch failures: 0
+category mix: atc_radar_data 197, conversation_statement 473, exam_site 212, maintenance_records 187, manuals_reference 98, medical_tox 212, other 561, party_submission 12, photos 1146, pilot_form_6120 349, specialist_factual 152, weather 191
+documents containing an owner or operator detail from the record, by category: atc_radar_data 5, conversation_statement 14, exam_site 11, maintenance_records 14, manuals_reference 6, medical_tox 1, other 16, party_submission 2, photos 6, pilot_form_6120 33, specialist_factual 15, weather 2
+cases with such a document: 74 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 7, conversation_statement 50, exam_site 18, maintenance_records 8, manuals_reference 1, medical_tox 9, other 48, party_submission 6, photos 42, pilot_form_6120 35, specialist_factual 74, weather 0
+owner or operator detail replacements, by category: atc_radar_data 7, conversation_statement 52, exam_site 13, maintenance_records 29, manuals_reference 31, medical_tox 0, other 25, party_submission 2, photos 15, pilot_form_6120 57, specialist_factual 21, weather 2
+
+## characters per page, all readable documents (spec §5.2 thresholds at 50 and 300)
+0-0: 378
+1-49: 346
+50-99: 826
+100-299: 1374
+300-599: 1305
+600+: 9197
