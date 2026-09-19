@@ -3763,7 +3763,7 @@ Expected: `docs/results/s2-threshold.txt` with the hit curve and `chosen minimum
 
 From the same file: if any category has a hit at the chosen threshold, add it to `DENY_LIST` in `filter.py`, citing `docs/results/s2-threshold.txt`; re-run `make scan-docket` so the file's "false denies" line reflects the list in force. If there are no hits, `DENY_LIST` stays empty and the results file says so (0039 item 2). Update `tests/test_docket_filter.py::test_deny_list_starts_empty_and_nothing_is_denied` to assert the published value.
 
-- [ ] **Step 3: Write the `draw`, `document` and `handcheck` subcommands**
+- [x] **Step 3: Write the `draw`, `document` and `handcheck` subcommands**
 
 Extend `scripts/make_docket_fixture.py`:
 
@@ -4361,3 +4361,29 @@ then the rest.
   change when a document's category changes. Task 16 (the hand-check) is being rewritten by
   Andy separately per 0048 item 4 and is untouched here. See
   `docs/decisions/0048-arm-b-ranks-by-each-documents-measured-size.md`.
+- 2026-09-19, Task 16, per the Task 16 brief (five corrections A-E over this section's text,
+  see `.superpowers/sdd/2026-09-18-s2-docket-tool/task16-report.md` for the full account):
+  Step 3 (the `draw`, `document` and `handcheck` subcommands) is implemented in
+  `scripts/make_docket_fixture.py` with all five corrections, and covered by 12 new tests in
+  `tests/test_docket_fixtures.py` (648 -> 660, `make check` green, 97.81% coverage
+  maintained). Steps 1 and 2 (the threshold and the deny-list) are explicitly out of scope
+  for this session -- they set values Andy alone confirms -- and are untouched. `draw --write`
+  was run against the real dev-400 cache and found a candidate for all six criteria,
+  including a non-fatal case for "ntsb born-digital documents of two types" (Andy's ruling,
+  correction B) and `handcheck` produced a stratified sample of exactly 5 titles from each of
+  the 12 present categories (60 total). **Neither is committed.** The fixture name-check hook
+  (`scripts/check_fixtures_redacted.py`, finding 6) flagged titles in every one of the six
+  drawn listings and five rows of the hand-check sheet -- by eye, every flagged title is a
+  false positive of the documented kind (an administrative or organisational noun phrase
+  such as "Statement of Party Representatives to NTSB Investigation" or "Release of Aircraft
+  Wreckage, NTSB Form 6120.15", never an actual person's name), but per this session's
+  instructions a flagged title is stopped and reported, not judged and committed, by the
+  agent that drew it. The generated files were removed from the working tree (not just left
+  uncommitted) because the check also runs inside `make check`'s own test suite
+  (`tests/test_check_fixtures_redacted.py`, `tests/test_redaction.py`) against whatever is on
+  disk, flagged or not, and both commands are fully reproducible: `uv run python -m
+  scripts.make_docket_fixture draw --write` then `handcheck`, seeded, against the real
+  `NTSB_DOCKET_DIR` cache. Step 4's second half (Andy reading two or three documents and
+  running `document`), Step 5 (the reviewed-document extractor test) and Step 6 (Andy grading
+  the sheet, the hand-check line in the results file) all wait on Andy's two manual acts and
+  are untouched.
