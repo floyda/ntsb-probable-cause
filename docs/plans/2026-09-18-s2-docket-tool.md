@@ -4307,3 +4307,36 @@ then the rest.
 - Smaller finding, Task 10/11b: `attach.py`'s module docstring credited decisions 0041, 0042
   and 0044 only; 0046 (owner/operator names) is now the largest thing in the module. Added it
   to the docstring's credit line.
+- 2026-09-19, morning findings (post close-out, first real measurement over 401 dockets),
+  finding 1: `classify.py`'s `party_submission` pattern (`r"party submission|submission"`)
+  never matched real data -- measured 0 of 3,790 dev-400 titles contain "submission" in any
+  casing, so `docs/results/s2-shape-dev.txt` published zero party submissions even though the
+  category exists to be measured. Replaced with the NTSB's own explicit convention,
+  `report(s)? from part(y|ies) to the investigation` (measured 12 documents in 9 of 401
+  dockets, every one genuinely a submission), keeping the literal phrase "party submission" as
+  a fallback. A first version also matched an author named after "by", capitalised (e.g.
+  "Crash Site Diagrams By Teledyne Continental"), to catch party-authored documents under a
+  neutral title without a hard-coded manufacturer list; measured against all 3,790 titles it
+  also matched documents credited to a body that is not a party (a police department, the FAA,
+  a fuel vendor) and, decisively, a photo caption where "by" marks physical causation, not
+  authorship -- capitalisation cannot tell the two apart, and telling a genuine party's
+  contribution from an independent body's would need the hard-coded list this was meant to
+  avoid. Dropped; the limit is recorded in the pattern's own comment. Separately, "Statement of
+  Party Representatives to NTSB Investigation" (the administrative roster, 138 of 3,790 titles,
+  the third commonest document in the corpus) was being classified `conversation_statement` on
+  its own "statement" keyword -- an agent looking for an account of the accident was being
+  handed a list of party names. It now routes to `other` unconditionally, via `_ROSTER`,
+  checked before the category loop regardless of match order. `docs/results/s2-shape-dev.txt`
+  generated and committed for the first time (it did not previously exist in git). Added tests
+  to `tests/test_docket_classify.py`. Finding 2 of the same morning findings (provenance-label
+  consistency in `attach.py`) is out of scope here -- Andy is dispatching it separately.
+- 2026-09-19, morning findings, finding 3: `docket_scan.py`'s `report()` printed each category
+  twice in the "overall" group -- once per stratum, with that stratum's own count (e.g.
+  `atc_radar_data 180, ... weather 137, atc_radar_data 17, ... weather 54`) -- instead of once,
+  summed, because the four category-mix lines filtered `"<stratum>/<category>"` keys by
+  stratum and joined every surviving key as its own entry: correct for a single-stratum group,
+  wrong for "overall", which covers both. Added `_sum_by_category`, which sums a counter's
+  values by category over the given strata before the four lines are built; the per-stratum
+  sections were already correct and are unchanged. Added
+  `test_sum_by_category_sums_two_strata_into_one_entry_per_category` and
+  `test_report_overall_section_sums_the_strata_instead_of_concatenating`.
