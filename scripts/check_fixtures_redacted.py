@@ -12,14 +12,14 @@ Four checks, all on `tests/fixtures`:
   check now.
 * Docket document text committed under `tests/fixtures/docket/` names its reviewer, and no
   committed `.pdf`/`.txt` is left out of its manifest (0037).
-* Fix finding 6 (final whole-branch review): a committed docket listing (`.html`) or titles
-  sheet (`.csv`) under `tests/fixtures/docket/` never carries a name. Spec §7.2's "titles hold
-  no personal data" was asserted, not measured, and NTSB docket titles routinely name people
-  ("Statement of ...", "Interview of ..."). Two checks, neither printing what it finds (the
-  same rule ``scripts/name_coverage.py`` follows): the case's own recorded owner/operator
-  strings, searched for in the file's visible text where the raw record is available locally;
-  and a vocabulary check over every title, which needs no raw data and so is the only one of
-  the two that runs in CI.
+* Fix finding 6 (final whole-branch review), **narrowed by decision 0049**: a committed docket
+  listing (`.html`) or titles sheet (`.csv`) under `tests/fixtures/docket/` is checked for a
+  name. Spec §7.2's "titles hold no personal data" was asserted, not measured, and NTSB docket
+  titles routinely name people ("Statement of ...", "Interview of ..."). Two checks, neither
+  printing what it finds (the same rule ``scripts/name_coverage.py`` follows): the case's own
+  recorded owner/operator strings, searched for in the file's visible text where the raw record
+  is available locally; and a vocabulary check over every title, which needs no raw data and so
+  is the only one of the two that runs in CI.
 
   The vocabulary check replaces an earlier heuristic that matched ``of|by|with|from|signed``
   followed by Title Case words. Measured on real data it flagged 16 titles across six drawn
@@ -34,6 +34,24 @@ Four checks, all on `tests/fixtures`:
   commit, this flags 425 titles (11.2%) across 159 of 401 dockets, and the flagged tokens are
   the intended kind: surnames, place names and misspellings, not the old heuristic's uniform
   false positives. Never printed here -- names are not committed to this file's own history.
+
+  Applied to whole listing pages, that vocabulary check is far stricter than intended: measured
+  across all 401 development dockets, only 34 (8%) had a clean listing, and none of the 9
+  party-submission dockets did. Decision 0049 draws the line at this project's own public
+  surfaces, not an already-public NTSB page, and settles where each check binds:
+
+  - **Advisory, `.html` listing pages only**: the title-vocabulary check. A flagged title is
+    reported -- so it can still be checked by eye -- but never fails the run. The page is
+    committed as received either way (0037); this project is not the source of a name on it.
+  - **Blocking everywhere else**: the title-vocabulary check over a `.csv` this project
+    authors (the hand-check sheet, or any other titles sheet), and over committed document
+    text. These are artefacts this project writes, so 0049 item 2 applies in full.
+  - **Blocking always, `.html` and `.csv` alike**: the owner/operator record-match check. It is
+    not a heuristic -- it searches for the case's own recorded owner/operator strings -- and
+    0049 does not touch it.
+
+  The printed output tags every finding ``[advisory]`` or ``[blocking]`` so a run that passes
+  with warnings is not left unexplained.
 """
 
 import csv
@@ -43,6 +61,7 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from typing import NamedTuple
 
 import pyarrow.parquet as pq
 
@@ -88,6 +107,19 @@ def withheld_columns_in(path: Path) -> list[str]:
 
 
 DOCKET_FIXTURES = Path("tests/fixtures/docket")
+
+
+class Finding(NamedTuple):
+    """One name-check result: where, and whether it fails the run (decision 0049).
+
+    ``blocking`` is ``True`` for the owner/operator record-match check everywhere, and for the
+    title-vocabulary check on anything this project authors (a `.csv` titles sheet, document
+    text). It is ``False`` only for the title-vocabulary check on a committed `.html` listing
+    page -- an already-public NTSB page, reported for a by-eye look but never failing the run.
+    """
+
+    message: str
+    blocking: bool
 
 
 def _nearest_manifest_dir(start: Path, root: Path, manifests: Mapping[Path, object]) -> Path | None:
@@ -214,15 +246,19 @@ def _manifest_case_id(case_dir: Path) -> str | None:
     return case_id if isinstance(case_id, str) else None
 
 
-def _html_name_problems(path: Path, processed: Path, known: frozenset[str]) -> list[str]:
-    problems: list[str] = []
+def _html_name_problems(path: Path, processed: Path, known: frozenset[str]) -> list[Finding]:
+    """Findings for one committed listing page: the title check is advisory here (0049)."""
+    problems: list[Finding] = []
     text = path.read_text(encoding="utf-8")
     case_id = _manifest_case_id(path.parent)
     raw = _raw_record(case_id, processed) if case_id else None
     if raw is not None and _carries_a_known_detail(_visible_text(text), raw):
         problems.append(
-            f"{path}: visible text carries the case record's own owner/operator detail "
-            "(0046) -- check by eye before committing"
+            Finding(
+                f"{path}: visible text carries the case record's own owner/operator detail "
+                "(0046) -- check by eye before committing",
+                blocking=True,
+            )
         )
     try:
         listing = parse_listing(text, mkey=0)
@@ -231,22 +267,30 @@ def _html_name_problems(path: Path, processed: Path, known: frozenset[str]) -> l
     for entry in listing.entries:
         if title_looks_like_a_name(entry.title, known):
             problems.append(
-                f"{path}: title {entry.index} carries a word outside the vocabulary and "
-                "dictionary -- check by eye before committing (see title_looks_like_a_name)"
+                Finding(
+                    f"{path}: title {entry.index} carries a word outside the vocabulary and "
+                    "dictionary -- check by eye (see title_looks_like_a_name); advisory only "
+                    "on a committed listing page, an already-public NTSB page (0049)",
+                    blocking=False,
+                )
             )
     return problems
 
 
-def _csv_name_problems(path: Path, processed: Path, known: frozenset[str]) -> list[str]:
-    problems: list[str] = []
+def _csv_name_problems(path: Path, processed: Path, known: frozenset[str]) -> list[Finding]:
+    """Findings for one committed titles sheet: both checks block here (0049 item 2)."""
+    problems: list[Finding] = []
     with path.open(newline="", encoding="utf-8") as handle:
         for line, row in enumerate(csv.DictReader(handle), start=2):  # header is line 1
             for column, value in row.items():
                 if value and title_looks_like_a_name(value, known):
                     problems.append(
-                        f"{path}:{line}: column {column!r} carries a word outside the "
-                        "vocabulary and dictionary -- check by eye before committing "
-                        "(see title_looks_like_a_name)"
+                        Finding(
+                            f"{path}:{line}: column {column!r} carries a word outside the "
+                            "vocabulary and dictionary -- check by eye before committing "
+                            "(see title_looks_like_a_name)",
+                            blocking=True,
+                        )
                     )
             case_id = next((v for k, v in row.items() if k and "case" in k.lower() and v), None)
             raw = _raw_record(case_id, processed) if case_id else None
@@ -255,8 +299,11 @@ def _csv_name_problems(path: Path, processed: Path, known: frozenset[str]) -> li
             row_text = " | ".join(v for v in row.values() if v)
             if _carries_a_known_detail(row_text, raw):
                 problems.append(
-                    f"{path}:{line}: row carries the case record's own owner/operator detail "
-                    "(0046) -- check by eye before committing"
+                    Finding(
+                        f"{path}:{line}: row carries the case record's own owner/operator "
+                        "detail (0046) -- check by eye before committing",
+                        blocking=True,
+                    )
                 )
     return problems
 
@@ -265,7 +312,7 @@ def docket_fixture_name_problems(
     root: Path = DOCKET_FIXTURES,
     processed: Path | None = None,
     dictionary_path: Path = SYSTEM_DICTIONARY_PATH,
-) -> list[str]:
+) -> list[Finding]:
     """Every committed listing or titles sheet under ``root``, checked for a name (finding 6).
 
     Covers ``.html`` listings and ``.csv`` titles sheets. Never prints what it finds -- only
@@ -274,6 +321,11 @@ def docket_fixture_name_problems(
     dictionary is reported to stderr, not passed over in silence -- the check still runs, on
     the committed vocabulary alone, which only makes it stricter (a common word not yet in the
     vocabulary is a false positive, never a missed name).
+
+    Decision 0049: the title-vocabulary check is advisory on a `.html` listing page (an
+    already-public NTSB page) and blocking everywhere else; the owner/operator record-match
+    check is blocking everywhere. Each returned ``Finding`` says which it is -- callers decide
+    whether to fail on it.
     """
     if processed is None:
         processed = Settings().data_dir / "processed"
@@ -286,7 +338,7 @@ def docket_fixture_name_problems(
             "committed vocabulary alone (see title_vocab.known_title_words)",
             file=sys.stderr,
         )
-    problems: list[str] = []
+    problems: list[Finding] = []
     for path in sorted(root.rglob("*.html")):
         problems.extend(_html_name_problems(path, processed, known))
     for path in sorted(root.rglob("*.csv")):
@@ -316,11 +368,12 @@ def main(paths: list[str]) -> int:
             )
             failed = True
     for problem in docket_fixture_problems():
-        print(problem)
+        print(f"[blocking] {problem}")
         failed = True
-    for problem in docket_fixture_name_problems():
-        print(problem)
-        failed = True
+    for finding in docket_fixture_name_problems():
+        tag = "blocking" if finding.blocking else "advisory"
+        print(f"[{tag}] {finding.message}")
+        failed = failed or finding.blocking
     return 1 if failed else 0
 
 

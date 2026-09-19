@@ -6,9 +6,12 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from scripts import check_fixtures_redacted
 from scripts.check_fixtures_redacted import (
+    Finding,
     docket_fixture_name_problems,
     docket_fixture_problems,
+    main,
     title_looks_like_a_name,
 )
 
@@ -155,16 +158,19 @@ def test_docket_fixture_name_problems_warns_to_stderr_when_dictionary_is_missing
         processed=tmp_path / "no-such-dir",
         dictionary_path=tmp_path / "does-not-exist",
     )
-    assert any("title 1" in p and "X" in p for p in problems)
+    assert any("title 1" in p.message and "X" in p.message for p in problems)
     assert "no system dictionary" in capsys.readouterr().err
 
 
-def test_html_listing_with_a_name_shaped_title_is_a_problem(tmp_path: Path) -> None:
+def test_html_listing_with_a_name_shaped_title_is_advisory_only(tmp_path: Path) -> None:
+    """Decision 0049: a listing page is an already-public NTSB page, so a flagged title is
+    reported but does not block -- it stays committed as received (0037)."""
     _write_listing_fixture(tmp_path, "X", ["Statement of Thackerson"])
     problems = docket_fixture_name_problems(tmp_path, processed=tmp_path / "no-such-dir")
-    assert any("title 1" in p and "X" in p for p in problems)
+    assert any("title 1" in p.message and "X" in p.message for p in problems)
+    assert all(not p.blocking for p in problems)
     # The check reports where, never what (same rule as scripts/name_coverage.py).
-    assert not any("Thackerson" in p for p in problems)
+    assert not any("Thackerson" in p.message for p in problems)
 
 
 def test_html_listing_with_an_ordinary_title_is_fine(tmp_path: Path) -> None:
@@ -182,12 +188,13 @@ def test_no_raw_data_locally_skips_the_owner_operator_check_without_crashing(
     assert docket_fixture_name_problems(tmp_path, processed=tmp_path / "does-not-exist") == []
 
 
-def test_html_listing_carrying_the_records_own_owner_operator_detail_is_a_problem(
+def test_html_listing_carrying_the_records_own_owner_operator_detail_still_blocks(
     tmp_path: Path,
 ) -> None:
     """Where the raw record is available locally, its own recorded owner/operator strings
     (attach.py's ``owner_operator_values``) are searched for in the listing's visible text --
-    invented values here, never a real name."""
+    invented values here, never a real name. This check is not a heuristic (0049), so it
+    blocks even on a listing page."""
     processed = tmp_path / "processed"
     processed.mkdir()
     raw = {
@@ -210,22 +217,76 @@ def test_html_listing_carrying_the_records_own_owner_operator_detail_is_a_proble
         json.dumps({"fixture": {"case_id": "X"}, "documents": []})
     )
     problems = docket_fixture_name_problems(root, processed=processed)
-    assert any("owner/operator detail" in p for p in problems)
-    assert not any("Example Flying Club" in p for p in problems)
+    owner_findings = [p for p in problems if "owner/operator detail" in p.message]
+    assert owner_findings
+    assert all(p.blocking for p in owner_findings)
+    assert not any("Example Flying Club" in p.message for p in problems)
 
 
-def test_csv_titles_sheet_is_checked_too(tmp_path: Path) -> None:
+def test_csv_titles_sheet_title_check_blocks(tmp_path: Path) -> None:
+    """Decision 0049 item 2/3: a `.csv` this project authors is not a public NTSB page, so
+    its title check blocks like everything else this project writes."""
     root = tmp_path / "docket"
     root.mkdir()
     (root / "titles.csv").write_text(
         "case_id,title\nX,Statement of Thackerson\nY,Weather Study\n", encoding="utf-8"
     )
     problems = docket_fixture_name_problems(root, processed=tmp_path / "does-not-exist")
-    assert any("titles.csv:2" in p for p in problems)
-    assert not any("titles.csv:3" in p for p in problems)
+    row2 = [p for p in problems if "titles.csv:2" in p.message]
+    assert row2
+    assert all(p.blocking for p in row2)
+    assert not any("titles.csv:3" in p.message for p in problems)
 
 
-def test_the_committed_docket_fixtures_carry_no_name() -> None:
-    """The real, committed fixture tree -- proves the check runs clean on what is actually
-    in the repository today, not only on synthetic inputs."""
-    assert docket_fixture_name_problems() == []
+def test_the_committed_docket_fixtures_carry_no_blocking_name_finding() -> None:
+    """The real, committed fixture tree -- proves the check runs clean on what is actually in
+    the repository today, not only on synthetic inputs. A committed listing page may still
+    carry an advisory finding (decision 0049): only the blocking ones must be empty."""
+    assert [p for p in docket_fixture_name_problems() if p.blocking] == []
+
+
+# --- main(): advisory findings are printed but never fail the run (0049) ---
+
+
+def test_main_passes_with_only_advisory_findings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(check_fixtures_redacted, "docket_fixture_problems", lambda: [])
+    monkeypatch.setattr(
+        check_fixtures_redacted,
+        "docket_fixture_name_problems",
+        lambda: [Finding("a listing title, reported for a by-eye look", blocking=False)],
+    )
+    assert main([]) == 0
+    out = capsys.readouterr().out
+    assert "[advisory]" in out
+    assert "[blocking]" not in out
+
+
+def test_main_fails_on_a_blocking_name_finding(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(check_fixtures_redacted, "docket_fixture_problems", lambda: [])
+    monkeypatch.setattr(
+        check_fixtures_redacted,
+        "docket_fixture_name_problems",
+        lambda: [Finding("a titles.csv value this project authored", blocking=True)],
+    )
+    assert main([]) == 1
+    assert "[blocking]" in capsys.readouterr().out
+
+
+def test_main_fails_when_document_text_has_no_reviewer(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """0037's reviewer requirement is unrelated to the name check and stays blocking always."""
+    monkeypatch.setattr(
+        check_fixtures_redacted,
+        "docket_fixture_problems",
+        lambda: ["X/1.txt: document text committed without reviewed_by (0037)"],
+    )
+    monkeypatch.setattr(check_fixtures_redacted, "docket_fixture_name_problems", lambda: [])
+    assert main([]) == 1
+    out = capsys.readouterr().out
+    assert "[blocking]" in out
+    assert "reviewed_by" in out

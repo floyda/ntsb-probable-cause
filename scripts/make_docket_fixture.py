@@ -5,9 +5,10 @@ Usage:
         Fetch one dev-400 listing page (the seeded first case when no id is given) and
         commit it as received. Network; no key.
     uv run python -m scripts.make_docket_fixture draw [--write]
-        For each of six criteria, the first cached dev-400 docket in seeded order that
-        meets it. Prints the candidates; ``--write`` also commits a listing fixture (an
-        outcome-only manifest, never document text) per criterion. Reads the cache only.
+        For each of six criteria, the first cached dev-400 docket in seeded order that meets
+        it and whose listing carries no title word the redaction name check cannot vouch for.
+        Prints the candidates; ``--write`` also commits a listing fixture (an outcome-only
+        manifest, never document text) per criterion. Reads the cache only.
     uv run python -m scripts.make_docket_fixture document <case_id> <index> --reviewed-by "..."
         Commit one already-drawn case's document (PDF and redacted text) after Andy has
         read it and is prepared to attest to it with ``--reviewed-by``. Reads the cache only.
@@ -239,6 +240,17 @@ CRITERIA: tuple[tuple[str, Callable[[Docket, Mapping[str, object]], bool]], ...]
 )
 
 
+# A candidate-skip rule keyed on the title name-check used to sit here: a docket whose
+# listing carried a word the vocabulary/dictionary check could not vouch for was passed over
+# in favour of the next candidate. Measured across all 401 development dockets, only 34
+# (8%) had a clean listing, and none of the 9 party-submission dockets did -- so the "a party
+# submission" criterion could never be satisfied under that rule. Decision 0049 rules it out:
+# a docket listing is an already-public NTSB page, and 0037's byte-exactness already commits
+# it as received, names included. The line this project holds is its own public surfaces
+# (0049 item 2), not a page the NTSB itself publishes. Do not reintroduce a listing-title skip
+# here.
+
+
 def outcome_only(record: DocumentRecord) -> dict[str, object]:
     """A manifest row: the classification and extraction outcome, never text (0037 item 3)."""
     return {
@@ -265,6 +277,10 @@ def _cmd_draw(args: argparse.Namespace, settings: Settings) -> int:
     Correction B (Task 16 brief): a criterion may now need the case's own raw record, not
     only its docket -- ``highestInjuryLevel`` is not something a ``Docket`` carries. Raw
     records are loaded once, alongside the seeded id order ``_cases`` already keys by.
+
+    No candidate is skipped for what its listing's titles name (decision 0049): a docket
+    listing is committed as received, byte-exact (0037), and names in it are the NTSB's own
+    public page, not this project's to withhold.
     """
     processed = settings.data_dir / "processed"
     ids = list(samples.sample_ids("dev-400"))
@@ -279,21 +295,23 @@ def _cmd_draw(args: argparse.Namespace, settings: Settings) -> int:
                 if not (settings.docket_dir / str(mkey) / "listing.html").is_file():
                     continue
                 docket = read_docket(client, mkey)
-                if criterion(docket, raws[case_id]):
-                    taken[name] = case_id
-                    if args.write:
-                        folder = write_listing_fixture(
-                            case_id,
-                            mkey,
-                            event,
-                            client.listing_html(mkey),
-                            datetime.now(UTC).isoformat(),
-                            name,
-                        )
-                        manifest = json.loads((folder / "manifest.json").read_text())
-                        manifest["documents"] = [outcome_only(r) for r in docket.documents]
-                        (folder / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
-                    break
+                if not criterion(docket, raws[case_id]):
+                    continue
+                taken[name] = case_id
+                if args.write:
+                    folder = write_listing_fixture(
+                        case_id,
+                        mkey,
+                        event,
+                        client.listing_html(mkey),
+                        datetime.now(UTC).isoformat(),
+                        name,
+                        root=FIXTURES,
+                    )
+                    manifest = json.loads((folder / "manifest.json").read_text())
+                    manifest["documents"] = [outcome_only(r) for r in docket.documents]
+                    (folder / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+                break
     # Correction B: say plainly which case was drawn for Andy's read, and that it is non-fatal,
     # so the ruling's effect is visible in the draw's own output, not only in the code.
     for name, case_id in taken.items():
