@@ -41,6 +41,7 @@ from ntsb_probable_cause.docket.classify import document_category
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord, read_docket
+from ntsb_probable_cause.docket.title_vocab import known_title_words, redact_title
 from ntsb_probable_cause.errors import FixtureError
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.settings import Settings
@@ -429,6 +430,14 @@ def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
     random draw. The dev-400 mkeys, via the same ``_cases`` helper ``_cmd_draw`` uses: a cached
     mkey outside this set is skipped rather than sampled, so the sheet is dev-400 by
     construction (never by relying on the cache holding nothing else).
+
+    Every title is redacted before it is written (``title_vocab.redact_title``, the same
+    membership test ``check_fixtures_redacted.title_looks_like_a_name`` applies): running that
+    check over a real ~60-title draw flags genuine surnames of pilots, instructors and
+    witnesses alongside harmless words, and the two cannot be told apart automatically, so the
+    sheet has to redact everything the test flags rather than ship a sheet a human must clean
+    up by hand before it can be committed. ``doc_type`` and ``category`` are left alone -- both
+    are closed vocabularies, never free text a name could hide in.
     """
     cases = _cases(settings.data_dir / "processed", tuple(samples.sample_ids("dev-400")))
     allowed = {mkey for mkey, _event in cases.values()}
@@ -448,14 +457,24 @@ def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
                 rows_by_category[category].add((entry.title, entry.doc_type, category))
     rows_by_category_sorted = {c: sorted(rows) for c, rows in rows_by_category.items()}
     sample = _stratified_sample(rows_by_category_sorted, total=HANDCHECK_SAMPLE_SIZE, seed=SEED)
+    known, _dictionary_found = known_title_words()
+    redacted_sample: list[tuple[str, str, str]] = []
+    total_redactions = 0
+    for title, doc_type, category in sample:
+        redacted, count = redact_title(title, known)
+        total_redactions += count
+        redacted_sample.append((redacted, doc_type, category))
     with (FIXTURES / "title_handcheck.csv").open("w", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["title", "doc_type", "category", *HANDCHECK_QUESTIONS, "notes"])
-        writer.writerows((t, d, c, "", "", "", "") for t, d, c in sample)
+        writer.writerows((t, d, c, "", "", "", "") for t, d, c in redacted_sample)
     counts: dict[str, int] = defaultdict(int)
     for _title, _doc_type, category in sample:
         counts[category] += 1
-    print(f"wrote {FIXTURES / 'title_handcheck.csv'}: {len(sample)} titles")
+    print(
+        f"wrote {FIXTURES / 'title_handcheck.csv'}: {len(sample)} titles, "
+        f"{total_redactions} words redacted"
+    )
     for category in sorted(rows_by_category_sorted):
         available = len(rows_by_category_sorted[category])
         print(f"  {category}: {counts.get(category, 0)} (of {available} unique titles seen)")

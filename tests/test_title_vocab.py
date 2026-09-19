@@ -3,10 +3,12 @@
 from pathlib import Path
 
 from ntsb_probable_cause.docket.title_vocab import (
+    PROPER_NOUN_MARKER,
     capitalised_words,
     is_ordinary_word,
     known_title_words,
     load_title_vocabulary,
+    redact_title,
 )
 
 
@@ -62,3 +64,27 @@ def test_is_ordinary_word_is_plain_membership_case_insensitive() -> None:
     assert is_ordinary_word("Aircraft", known)
     assert is_ordinary_word("REPORT", known)
     assert not is_ordinary_word("Thackerson", known)
+
+
+# --- redact_title (invented names only, per house rules -- see the "Thackerson" tests above) ---
+
+
+def test_redact_title_replaces_a_word_outside_both_lists() -> None:
+    known = frozenset({"statement", "of"})
+    redacted, count = redact_title("Statement of Thackerson", known)
+    assert redacted == f"Statement of {PROPER_NOUN_MARKER}"
+    assert count == 1
+
+
+def test_redact_title_leaves_a_vocabulary_only_title_untouched() -> None:
+    known = frozenset({"airframe", "examination", "summary"})
+    redacted, count = redact_title("Airframe Examination Summary", known)
+    assert redacted == "Airframe Examination Summary"
+    assert count == 0
+
+
+def test_redact_title_counts_every_replacement() -> None:
+    known = frozenset({"statement", "of", "and"})
+    redacted, count = redact_title("Statement of Thackerson and Winsloe", known)
+    assert redacted == f"Statement of {PROPER_NOUN_MARKER} and {PROPER_NOUN_MARKER}"
+    assert count == 2

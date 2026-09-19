@@ -336,8 +336,12 @@ def test_handcheck_is_dev_400_only_by_construction_and_reports_the_skip(
             ("DEV0002", 2, "2016-01-01", {"ntsbNumber": "DEV0002", "mKey": 2}),
         ],
     )
+    # Both titles are made only of words the committed vocabulary carries (Weather, Study,
+    # Engine, Examination -- see src/ntsb_probable_cause/docket/vocab/title_words.txt), so this
+    # test's expected rows hold regardless of whether the machine running it has a system
+    # dictionary at all (``title_vocab.SYSTEM_DICTIONARY_PATH``): redaction never touches them.
     _cache_case(docket_dir, 1, [(1, "Weather Study", 1, 0, "Report", b"x")])
-    _cache_case(docket_dir, 2, [(1, "Powerplant Examination", 1, 0, "Report", b"x")])
+    _cache_case(docket_dir, 2, [(1, "Engine Examination", 1, 0, "Report", b"x")])
     # A cached mkey outside dev-400 (e.g. held-out or open) must be skipped, not sampled.
     outside = docket_dir / "999"
     outside.mkdir()
@@ -350,11 +354,50 @@ def test_handcheck_is_dev_400_only_by_construction_and_reports_the_skip(
 
     with (fixtures_root / "title_handcheck.csv").open(newline="") as handle:
         rows = list(csv.DictReader(handle))
-    assert {row["title"] for row in rows} == {"Weather Study", "Powerplant Examination"}
+    assert {row["title"] for row in rows} == {"Weather Study", "Engine Examination"}
     assert {row["category"] for row in rows} == {"weather", "exam_site"}
     for row in rows:
         assert row["is_photo"] == row["could_hold_conclusions"] == row["author"] == ""
     assert capsys.readouterr().err.strip() == "skipped 1 cached dockets outside dev-400"
+
+
+def test_handcheck_redacts_a_title_word_outside_the_vocabulary_and_dictionary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The sheet the command writes must be committable on its own -- see ``redact_title``.
+
+    Invented name only, per house rules (matches ``test_check_fixtures_redacted.py``):
+    "Thackerson" is absent from both the committed vocabulary and the system dictionary at
+    commit, so it stands in for a genuine surname the real corpus would carry.
+    """
+    docket_dir = _dev_env(
+        tmp_path,
+        monkeypatch,
+        [("DEV0001", 1, "2015-01-01", {"ntsbNumber": "DEV0001", "mKey": 1})],
+    )
+    _cache_case(docket_dir, 1, [(1, "Statement of Thackerson", 1, 0, "Report", b"x")])
+
+    fixtures_root = tmp_path / "fixtures"
+    fixtures_root.mkdir()
+    monkeypatch.setattr(mdf, "FIXTURES", fixtures_root)
+    assert _cmd_handcheck(argparse.Namespace(), Settings()) == 0
+
+    written = (fixtures_root / "title_handcheck.csv").read_text()
+    assert "Thackerson" not in written
+    with (fixtures_root / "title_handcheck.csv").open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows == [
+        {
+            "title": "Statement of [proper noun]",
+            "doc_type": "Report",
+            "category": "conversation_statement",
+            "is_photo": "",
+            "could_hold_conclusions": "",
+            "author": "",
+            "notes": "",
+        }
+    ]
+    assert "1 words redacted" in capsys.readouterr().out
 
 
 def test_document_command_writes_pdf_and_redacted_text_and_updates_the_manifest(

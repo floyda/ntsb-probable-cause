@@ -19,7 +19,10 @@ as ``Of`` or ``By`` does not either.
 script's own docstring says how and when to regenerate it. ``known_title_words`` adds the
 system dictionary at ``SYSTEM_DICTIONARY_PATH`` on top, when this machine has one.
 ``is_ordinary_word`` is the membership test itself. A title's capitalised word that fails it
-is what ``check_fixtures_redacted.title_looks_like_a_name`` flags.
+is what ``check_fixtures_redacted.title_looks_like_a_name`` flags, and what ``redact_title``
+replaces -- the hand-check sheet (``scripts/make_docket_fixture.py``'s ``handcheck``
+subcommand) cannot be committed with the flagged word left in place, since several of the
+words it flags on real titles are genuine surnames.
 
 **Deliberately not a stemmer.** A tried-and-rejected version of ``is_ordinary_word`` also
 accepted a word as ordinary when stripping a regular English plural ending ("-s", "-es",
@@ -66,6 +69,36 @@ def is_ordinary_word(word: str, known: frozenset[str]) -> bool:
     Plain membership -- see the module docstring's "Deliberately not a stemmer" note for why.
     """
     return word.lower() in known
+
+
+#: The literal marker a redacted word is replaced with (``scripts/make_docket_fixture.py``'s
+#: ``handcheck`` sheet). A marker, not a drop: dropping the word would make a title such as
+#: "Reports from Parties to the Investigation: Piper Propeller" read as if a word were simply
+#: missing, where the marker keeps the title gradeable for what the hand-check actually asks
+#: (is this a photograph, could it hold the investigators' conclusions, who wrote it).
+PROPER_NOUN_MARKER = "[proper noun]"
+
+
+def redact_title(title: str, known: frozenset[str]) -> tuple[str, int]:
+    """``title`` with every word ``is_ordinary_word`` rejects replaced by ``PROPER_NOUN_MARKER``.
+
+    The same test ``title_looks_like_a_name`` applies, turned into a replacement instead of a
+    yes/no check: every capitalised word (``capitalised_words``) absent from ``known`` is
+    redacted, brand names and misspellings along with genuine surnames alike (the module
+    docstring's "Deliberately not a stemmer" note explains why this test cannot tell the two
+    apart, and should not try to). Returns the redacted title and how many words were replaced.
+    """
+    count = 0
+
+    def _replace(match: re.Match[str]) -> str:
+        nonlocal count
+        word = match.group(0)
+        if is_ordinary_word(word, known):
+            return word
+        count += 1
+        return PROPER_NOUN_MARKER
+
+    return CAPITALISED_WORD.sub(_replace, title), count
 
 
 @cache
