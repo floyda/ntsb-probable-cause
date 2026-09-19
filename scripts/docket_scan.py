@@ -50,6 +50,19 @@ for what the code counts, not the counting:
    (an address is personal data too, and it carries no collision risk) but the label was
    wrong. "documents containing ... name" and "... name replacements" are now "... detail" and
    "... detail replacements" throughout this script's printed report.
+
+Morning findings 2026-09-19, finding 3 found a bug in the "overall" group's own arithmetic,
+not in the counting behind it:
+
+8. The four category-mix lines (category mix; owner/operator detail hits; amateur-built
+   replacements; owner/operator detail replacements) filtered ``"<stratum>/<category>"`` keys
+   by stratum and joined every surviving key as its own entry. For a single-stratum group that
+   is correct, but the "overall" group covers both strata, so each category appeared twice --
+   once per stratum, with that stratum's own count, never the two summed (e.g.
+   ``atc_radar_data 180, ... weather 137, atc_radar_data 17, ... weather 54`` instead of one
+   ``atc_radar_data 197, ... weather 191``). A new helper, ``_sum_by_category``, sums a
+   counter's values by category over the given strata before the four lines are built; the
+   per-stratum sections, already correct, are unaffected.
 """
 
 import argparse
@@ -242,6 +255,24 @@ def _fmt_count(value: float) -> str:
     return f"{value:,.0f}"
 
 
+def _sum_by_category(counter: Counter[str], strata: Sequence[str]) -> dict[str, int]:
+    """Sum a ``"<stratum>/<category>"`` counter's values by category, over the given strata.
+
+    Fix, morning findings 2026-09-19 finding 3: the four category-mix lines below used to
+    filter ``counter.items()`` by stratum and join every surviving ``"<stratum>/<category>"``
+    key as its own entry -- correct for a single-stratum group, but for the "overall" group
+    (both strata) it printed each category twice, once per stratum's own count, rather than
+    once with the two summed. This sums first, so every group -- one stratum or several --
+    prints each category exactly once with the total over the strata it covers.
+    """
+    totals: dict[str, int] = defaultdict(int)
+    for key, value in counter.items():
+        stratum, category = key.split("/", 1)
+        if stratum in strata:
+            totals[category] += value
+    return dict(totals)
+
+
 def _fmt_q(values: Sequence[float]) -> str:
     q = quantiles(values)
     return (
@@ -325,17 +356,13 @@ def report(state: ShapeState) -> str:
         lines.append(
             "category mix: "
             + ", ".join(
-                f"{k.split('/', 1)[1]} {v}"
-                for k, v in sorted(state.categories.items())
-                if k.split("/")[0] in strata
+                f"{k} {v}" for k, v in sorted(_sum_by_category(state.categories, strata).items())
             )
         )
         lines.append(
             "documents containing an owner or operator detail from the record, by category: "
             + ", ".join(
-                f"{k.split('/', 1)[1]} {v}"
-                for k, v in sorted(state.name_hits.items())
-                if k.split("/")[0] in strata
+                f"{k} {v}" for k, v in sorted(_sum_by_category(state.name_hits, strata).items())
             )
         )
         lines.append(
@@ -345,17 +372,19 @@ def report(state: ShapeState) -> str:
         lines.append(
             "amateur-built replacements, by category: "
             + ", ".join(
-                f"{k.split('/', 1)[1]} {v}"
-                for k, v in sorted(state.amateur_built_replacements.items())
-                if k.split("/")[0] in strata
+                f"{k} {v}"
+                for k, v in sorted(
+                    _sum_by_category(state.amateur_built_replacements, strata).items()
+                )
             )
         )
         lines.append(
             "owner or operator detail replacements, by category: "
             + ", ".join(
-                f"{k.split('/', 1)[1]} {v}"
-                for k, v in sorted(state.owner_operator_replacements.items())
-                if k.split("/")[0] in strata
+                f"{k} {v}"
+                for k, v in sorted(
+                    _sum_by_category(state.owner_operator_replacements, strata).items()
+                )
             )
         )
     lines.append(

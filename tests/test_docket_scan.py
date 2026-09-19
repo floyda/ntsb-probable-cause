@@ -1,8 +1,11 @@
 """The development shape scan: counts and quantiles only (spec §8.1)."""
 
+from collections import Counter
+
 from scripts.docket_scan import (
     ShapeState,
     _fmt_count,
+    _sum_by_category,
     accumulate,
     owner_names,
     quantiles,
@@ -63,6 +66,41 @@ def test_owner_names_keeps_a_hyphenated_postcode_in_scope() -> None:
     """
     raw = {"aircrafts": [{"ownerOperators": [{"ownerZip": "54321-6789"}]}]}
     assert owner_names(raw) == ["54321-6789"]
+
+
+def test_sum_by_category_sums_two_strata_into_one_entry_per_category() -> None:
+    """Fix, morning findings 2026-09-19 finding 3: the helper behind the overall section's
+    category lines must sum a category's counts over every included stratum, not list each
+    stratum's count as its own entry.
+    """
+    counter: Counter[str] = Counter({"fatal/weather": 137, "non-fatal/weather": 54})
+    assert _sum_by_category(counter, ("fatal", "non-fatal")) == {"weather": 191}
+    assert _sum_by_category(counter, ("fatal",)) == {"weather": 137}
+
+
+def test_report_overall_section_sums_the_strata_instead_of_concatenating() -> None:
+    """Fix, morning findings 2026-09-19 finding 3: before the fix, the "overall" group's
+    category-mix lines listed a category once per stratum with that stratum's own count (e.g.
+    "atc_radar_data 180, ... weather 137, atc_radar_data 17, ... weather 54") instead of once,
+    summed. The per-stratum sections were already correct and must stay that way.
+    """
+    state = ShapeState()
+    docket = small_docket({1: "[page 1 of 3]\nExample Flying Club report.\n"})
+    raw: dict[str, object] = {"aircrafts": []}
+    accumulate(state, docket, fatal=True, raw=raw)
+    accumulate(state, docket, fatal=False, raw=raw)
+    text = report(state)
+    overall = text.split("\n## overall:", 1)[1]
+    category_line = next(line for line in overall.splitlines() if line.startswith("category mix"))
+    # The fixture docket carries one exam_site document; accumulated once per stratum, the
+    # overall line must hold it exactly once, with the two strata's counts summed (1 + 1 = 2).
+    assert category_line.count("exam_site") == 1
+    assert "exam_site 2" in category_line
+    fatal = text.split("\n## fatal:", 1)[1].split("\n## non-fatal:", 1)[0]
+    fatal_category_line = next(
+        line for line in fatal.splitlines() if line.startswith("category mix")
+    )
+    assert "exam_site 1" in fatal_category_line
 
 
 def test_accumulate_counts_documents_pages_tokens_and_names() -> None:
