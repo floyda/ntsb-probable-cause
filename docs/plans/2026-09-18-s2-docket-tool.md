@@ -6,7 +6,7 @@
 
 **Goal:** Build the docket module (client, parser, extractor, classifier, manifest, filter), put docket documents behind the one split as evidence, close the four S1 gaps before any document reaches a model, measure the threshold, the filter and the docket shape on `dev-400` and on closed open-split cases, and run arm B with the docket once on `heldout-400` as the bar for S3.
 
-**Architecture:** A new `ntsb_probable_cause.docket` package turns a case's `mkey` into a `Docket`: a parsed listing, a per-document manifest, and the extracted text of every readable PDF, page-marked. One pure function, `attach_docket`, adds a `docket` subtree to the raw record to make the **case context**; `fields.py` declares two new evidence roles that read from that subtree, so `split_record`, the five guard layers and `Payload.from_evidence` are unchanged (0041, 0042). The runner gains arm `B`, which attaches documents in a published rank order until the cap, estimated with output tokens, would be exceeded (0043). The monthly budget becomes a reservation under a lock (0045). Every measurement is a script writing counts to `docs/results/`.
+**Architecture:** A new `ntsb_probable_cause.docket` package turns a case's `mkey` into a `Docket`: a parsed listing, a per-document manifest, and the extracted text of every readable PDF, page-marked. One pure function, `attach_docket`, adds a `docket` subtree to the raw record to make the **case context**; `fields.py` declares two new evidence roles that read from that subtree, so `split_record`, the five guard layers and `Payload.from_evidence` are unchanged (0041, 0042). The runner gains arm `B`, which attaches documents smallest measured size first until the cap, estimated with output tokens, would be exceeded (0043, 0048). The monthly budget becomes a reservation under a lock (0045). Every measurement is a script writing counts to `docs/results/`.
 
 **Tech Stack:** Python 3.14, uv + hatchling, pydantic v2, httpx + respx, `pypdf` (new), pyarrow, pytest + pytest-socket + hypothesis, ruff, mypy --strict, import-linter (all in `pyproject.toml` except `pypdf`).
 
@@ -4023,15 +4023,20 @@ git commit -m "S2: threshold re-measured on docket text, deny-list, fixture pool
 
 ---
 
-### Task 17: Arm B on `dev-400`, the filter and rank order chosen and published (spec §8.5, §10; Andy runs, about $3)
+### Task 17: Arm B on `dev-400`, the filter chosen and published (spec §8.5, §10; Andy runs, about $3)
 
 **Files:**
-- Modify: `src/ntsb_probable_cause/docket/filter.py` (`ARM_B_TYPES`, `ARM_B_RANK`), `docs/results/s2-filter.txt`, `docs/results/s2-armB-dev.txt`
+- Modify: `src/ntsb_probable_cause/docket/filter.py` (`ARM_B_TYPES`), `docs/results/s2-filter.txt`, `docs/results/s2-armB-dev.txt`
 - Test: `tests/test_docket_filter.py`
 
-- [ ] **Step 1: Set the rank order from the shape file**
+- [x] **Step 1: Void — decision 0048 removes the rank order this step set**
 
-From `docs/results/s2-shape-dev.txt` the per-document median tokens are reported per stratum only; the §10 rule needs them per category. Add to `docket_scan.py`'s report a line `median tokens per readable document by category: ...` (category → median), re-run `make docket-scan` (cache only, minutes), and set `ARM_B_RANK` to the categories in ascending order of that median, citing the file. Update the rank test to assert the published tuple is sorted by those medians (read the file in the test).
+This step measured each category's median `estimated_tokens` on `dev-400` and set the
+now-removed `ARM_B_RANK` from it. Decision 0048 replaced the rank order with sorting by each
+document's own `estimated_tokens` (a number already measured per document), so there is
+nothing left to measure or set here: the category plays no part in order any more, only in
+admission (`ARM_B_TYPES`) and the deny-list. See
+`docs/decisions/0048-arm-b-ranks-by-each-documents-measured-size.md`.
 
 - [ ] **Step 2: Run the three development arms**
 
@@ -4056,7 +4061,7 @@ Read off the §10 rules: party submissions stay unless the paired top-1 differen
 
 ```bash
 git add src/ntsb_probable_cause/docket/filter.py src/ntsb_probable_cause/scoring/report.py apps/eval/__main__.py scripts/docket_scan.py tests/test_docket_filter.py tests/test_report.py docs/results/s2-filter.txt docs/results/s2-armB-dev.txt docs/results/s2-shape-dev.txt docs/plans/2026-09-18-s2-docket-tool.md
-git commit -m "S2: arm B on dev-400; the filter and rank order chosen by the published rule (spec §10)"
+git commit -m "S2: arm B on dev-400; the filter chosen by the published rule (spec §10)"
 ```
 
 ---
@@ -4340,3 +4345,19 @@ then the rest.
   sections were already correct and are unchanged. Added
   `test_sum_by_category_sums_two_strata_into_one_entry_per_category` and
   `test_report_overall_section_sums_the_strata_instead_of_concatenating`.
+- 2026-09-19, Task 17, decision 0048: the first measurement over all 3,790 documents in the
+  401 development dockets found the title classifier weaker than 0043 item 2 assumed (one in
+  seven documents fall to `other`; several distinct misclassification kinds found by hand).
+  Rather than defend or improve the classifier, 0048 removed the job that depended on its
+  accuracy: `arm_b_documents` (`docket/filter.py`) now sorts by each document's own
+  `estimated_tokens`, ascending, then by listing index -- a number already measured per
+  document, not a category proxy for one. `ARM_B_RANK` is removed entirely, and the category
+  keeps exactly two jobs (the photograph exclusion in `ARM_B_TYPES`, and the deny-list); it is
+  consulted for neither selection nor order. Task 17 Step 1 (measure each category's median
+  `estimated_tokens` on `dev-400` and set `ARM_B_RANK` from it) is void and marked done as
+  voided; there is nothing left to measure. `tests/test_docket_filter.py`'s two rank tests
+  (which monkeypatched `ARM_B_RANK`) are replaced with three: smallest-measured-size-first,
+  a tie broken by listing index, and -- the property the decision buys -- the order does not
+  change when a document's category changes. Task 16 (the hand-check) is being rewritten by
+  Andy separately per 0048 item 4 and is untouched here. See
+  `docs/decisions/0048-arm-b-ranks-by-each-documents-measured-size.md`.

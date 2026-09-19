@@ -1,10 +1,11 @@
-"""Arm B's document filter: types, rank order, the deny-list (decisions 0022, 0038, 0039, 0043)."""
+"""Arm B's document filter: types, size order, the deny-list (decisions 0022, 0038, 0039, 0043,
+0048).
+"""
 
 import pytest
 
 from ntsb_probable_cause.docket import filter as filter_module
 from ntsb_probable_cause.docket.filter import (
-    ARM_B_RANK,
     ARM_B_TYPES,
     DENY_LIST,
     arm_b_documents,
@@ -20,14 +21,16 @@ def _entry(index: int, title: str) -> ListingEntry:
     )
 
 
-def _docket() -> Docket:
-    rows = [
-        (1, "Party Submission - engine maker", "party_submission", "read", 5000),
-        (2, "Weather Study", "weather", "read", 800),
-        (3, "Photographs", "photos", "skipped: photo-only", 0),
-        (4, "Powerplant Examination", "exam_site", "read", 1200),
-        (5, "Pilot Operator Report 6120", "pilot_form_6120", "unreadable: scan", 0),
-    ]
+_DEFAULT_ROWS = [
+    (1, "Party Submission - engine maker", "party_submission", "read", 5000),
+    (2, "Weather Study", "weather", "read", 800),
+    (3, "Photographs", "photos", "skipped: photo-only", 0),
+    (4, "Powerplant Examination", "exam_site", "read", 1200),
+    (5, "Pilot Operator Report 6120", "pilot_form_6120", "unreadable: scan", 0),
+]
+
+
+def _docket_with(rows: list[tuple[int, str, str, str, int]]) -> Docket:
     records = tuple(
         DocumentRecord(
             entry=_entry(i, t),
@@ -40,8 +43,13 @@ def _docket() -> Docket:
         )
         for i, t, c, s, tok in rows
     )
-    listing = Listing(mkey=1, declared_items=5, entries=tuple(r.entry for r in records))
-    return Docket(mkey=1, listing=listing, documents=records, texts={1: "a", 2: "b", 4: "c"})
+    listing = Listing(mkey=1, declared_items=len(rows), entries=tuple(r.entry for r in records))
+    texts = {i: chr(ord("a") + n) for n, (i, _, _, s, _) in enumerate(rows) if s == "read"}
+    return Docket(mkey=1, listing=listing, documents=records, texts=texts)
+
+
+def _docket() -> Docket:
+    return _docket_with(_DEFAULT_ROWS)
 
 
 def test_deny_list_starts_empty_and_nothing_is_denied() -> None:
@@ -59,31 +67,42 @@ def test_is_denied_checks_membership(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not is_denied("weather")
 
 
-def test_published_filter_admits_read_documents_of_admitted_types_in_index_order_when_unranked() -> (  # noqa: E501
-    None
-):
+def test_published_filter_admits_read_documents_of_admitted_types_smallest_first() -> None:
     assert "photos" not in ARM_B_TYPES
-    assert ARM_B_RANK == ()
-    assert arm_b_documents(_docket()) == [1, 2, 4]
+    # Read documents are index 1 (5000 tokens), 2 (800) and 4 (1200); smallest first.
+    assert arm_b_documents(_docket()) == [2, 4, 1]
 
 
 def test_unfiltered_admits_every_read_document() -> None:
-    assert arm_b_documents(_docket(), variant="unfiltered") == [1, 2, 4]
+    assert arm_b_documents(_docket(), variant="unfiltered") == [2, 4, 1]
 
 
 def test_no_submissions_drops_party_submissions() -> None:
     assert arm_b_documents(_docket(), variant="no-submissions") == [2, 4]
 
 
-def test_rank_order_sorts_by_type_then_index(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(filter_module, "ARM_B_RANK", ("weather", "exam_site", "party_submission"))
-    assert arm_b_documents(_docket()) == [2, 4, 1]
+def test_equal_size_documents_break_the_tie_by_listing_index() -> None:
+    # Three read documents of equal measured size: nothing but listing index can order them.
+    docket = _docket_with(
+        [
+            (1, "Party Submission - engine maker", "party_submission", "read", 900),
+            (2, "Weather Study", "weather", "read", 900),
+            (3, "Powerplant Examination", "exam_site", "read", 900),
+        ]
+    )
+    assert arm_b_documents(docket) == [1, 2, 3]
 
 
-def test_rank_fallback_sinks_unranked_categories(monkeypatch: pytest.MonkeyPatch) -> None:
-    # ARM_B_RANK ranks SOME categories but omits party_submission. Ranked categories sort first
-    # by rank position, then unranked categories follow in index order.
-    monkeypatch.setattr(filter_module, "ARM_B_RANK", ("exam_site", "weather"))
-    # exam_site (index 4, rank 0) and weather (index 2, rank 1) come first;
-    # party_submission (index 1, unranked) follows.
-    assert arm_b_documents(_docket()) == [4, 2, 1]
+def test_order_is_unaffected_by_a_documents_category() -> None:
+    # The property decision 0048 buys: a misclassification cannot move a document in the
+    # order, because the category is no longer consulted for it. Re-labelling every document
+    # to the same (admitted) category leaves the size-based order unchanged.
+    before = arm_b_documents(_docket())
+    relabelled = _docket_with(
+        [
+            (1, "Party Submission - engine maker", "exam_site", "read", 5000),
+            (2, "Weather Study", "exam_site", "read", 800),
+            (4, "Powerplant Examination", "exam_site", "read", 1200),
+        ]
+    )
+    assert arm_b_documents(relabelled) == before == [2, 4, 1]

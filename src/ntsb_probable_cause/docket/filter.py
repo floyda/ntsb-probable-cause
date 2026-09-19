@@ -1,4 +1,4 @@
-"""Arm B's fixed document filter and the deny-list (spec §7, §9; decisions 0022, 0039, 0043).
+"""Arm B's fixed document filter and the deny-list (spec §7, §9; decisions 0022, 0039, 0043, 0048).
 
 Every constant here is chosen on the development split and published before any held-out run.
 """
@@ -20,10 +20,6 @@ ARM_B_TYPES: frozenset[str] = frozenset(name for name, _ in CATEGORIES if name !
     "other"
 }
 
-# Rank order: types listed first are attached first (decision 0043). Empty means listing order.
-# Re-set to the ascending median-tokens order measured on dev-400; source: s2-filter.txt.
-ARM_B_RANK: tuple[str, ...] = ()
-
 
 def is_denied(category: str) -> bool:
     """True if the category is on the deny-list."""
@@ -31,13 +27,18 @@ def is_denied(category: str) -> bool:
 
 
 def arm_b_documents(docket: Docket, *, variant: Variant = "published") -> list[int]:
-    """Listing indices of the read documents arm B attaches, in rank order then index order."""
+    """Listing indices of the read documents arm B attaches, smallest measured size first.
+
+    Decision 0048: order is each document's own ``estimated_tokens``, ascending, so the
+    largest number of whole documents fit under the cap (0043's reason, unchanged). Ties
+    break by listing index, never by set iteration order. The category is not consulted for
+    order -- only for admission (``ARM_B_TYPES``) and the deny-list.
+    """
     admitted = (
         {name for name, _ in CATEGORIES} | {"other"}
         if variant == "unfiltered"
         else ARM_B_TYPES - ({"party_submission"} if variant == "no-submissions" else set())
     )
-    rank = {name: position for position, name in enumerate(ARM_B_RANK)}
     chosen = [r for r in docket.documents if r.status == "read" and r.category in admitted]
-    chosen.sort(key=lambda r: (rank.get(r.category, len(rank)), r.entry.index))
+    chosen.sort(key=lambda r: (r.estimated_tokens, r.entry.index))
     return [r.entry.index for r in chosen]

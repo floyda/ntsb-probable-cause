@@ -2161,17 +2161,23 @@ def test_arm_b_attaches_the_filtered_documents_and_records_them(
     (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
     (step,) = case.steps
     assert step.tool == "docket"
-    assert step.arguments == {"documents": [1, 2], "docket_filter": "published"}
-    assert step.documents_attached == ("1: exam_site, 10 tokens", "2: party_submission, 6 tokens")
+    # Decision 0048: order is by each document's own estimated_tokens, ascending -- document 2
+    # (6 tokens) is smaller than document 1 (10 tokens), so it is attached first.
+    assert step.arguments == {"documents": [2, 1], "docket_filter": "published"}
+    assert step.documents_attached == ("2: party_submission, 6 tokens", "1: exam_site, 10 tokens")
     assert step.not_available == ("3: unreadable: scan",)
     assert "crankshaft" in client.payloads[0].text
     assert reader.reads == [record_fixtures[0]["mKey"]]
 
 
-def test_arm_b_drops_whole_documents_in_rank_order_at_the_cap(
+def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
     """Decision 0043: stop before the first document that would break the cap; record it.
+
+    Decision 0048: the order documents are added in is by each document's own measured size,
+    smallest first, not a category rank -- the small document here is admitted and the big
+    one is refused because of their own token counts, not their categories.
 
     Fix finding 1: the cap now bounds a case (``ANSWERING_TURNS`` calls), not one call, so
     the cap here is double the pre-fix value and the boundary it sits at is double too --
