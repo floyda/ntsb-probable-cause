@@ -5,11 +5,14 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 from scripts.check_fixtures_redacted import (
     docket_fixture_name_problems,
     docket_fixture_problems,
     title_looks_like_a_name,
 )
+
+from ntsb_probable_cause.docket.title_vocab import known_title_words, load_title_vocabulary
 
 
 def test_docket_text_fixture_without_reviewed_by_is_a_problem(tmp_path: Path) -> None:
@@ -112,35 +115,70 @@ def _write_listing_fixture(root: Path, case_id: str, titles: list[str]) -> None:
     )
 
 
-def test_title_looks_like_a_name_matches_common_ntsb_patterns() -> None:
-    """Invented names only (house rules): never a real person, never printed by the check
-    that uses this rule."""
-    assert title_looks_like_a_name("Statement of Jordan Vale")
-    assert title_looks_like_a_name("Interview of Morgan Reyes")
-    assert not title_looks_like_a_name("Powerplant Examination Report")
-    assert not title_looks_like_a_name("Weather Study")
+def test_title_looks_like_a_name_passes_for_a_vocabulary_only_title() -> None:
+    """Every word here is in the committed vocabulary itself (not the dictionary), so this
+    holds regardless of whether this machine has a system dictionary."""
+    known = load_title_vocabulary()
+    assert not title_looks_like_a_name("Airframe Examination Summary", known)
+
+
+def test_title_looks_like_a_name_flags_an_invented_surname_outside_both_lists() -> None:
+    """Invented name only (house rules): never a real person, never printed by the check that
+    uses this rule. "Thackerson" is absent from both the committed vocabulary and the system
+    dictionary at commit (checked when this test was written)."""
+    known, _found = known_title_words()
+    assert title_looks_like_a_name("Statement of Thackerson", known)
+    assert not title_looks_like_a_name("Airframe Examination Summary", known)
+
+
+def test_known_title_words_falls_back_to_the_vocabulary_alone_when_no_dictionary(
+    tmp_path: Path,
+) -> None:
+    """A missing system dictionary is reported (``found`` is ``False``), and the combined set
+    falls back to the committed vocabulary alone rather than silently checking against
+    nothing -- an unknown word is still flagged, never waved through."""
+    known, found = known_title_words(dictionary_path=tmp_path / "does-not-exist")
+    assert found is False
+    assert known == load_title_vocabulary()
+    assert not title_looks_like_a_name("Airframe Examination Summary", known)
+    assert title_looks_like_a_name("Statement of Thackerson", known)
+
+
+def test_docket_fixture_name_problems_warns_to_stderr_when_dictionary_is_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The check still runs -- and still catches the invented surname -- on the committed
+    vocabulary alone; the missing dictionary is said, not passed over in silence."""
+    _write_listing_fixture(tmp_path, "X", ["Statement of Thackerson"])
+    problems = docket_fixture_name_problems(
+        tmp_path,
+        processed=tmp_path / "no-such-dir",
+        dictionary_path=tmp_path / "does-not-exist",
+    )
+    assert any("title 1" in p and "X" in p for p in problems)
+    assert "no system dictionary" in capsys.readouterr().err
 
 
 def test_html_listing_with_a_name_shaped_title_is_a_problem(tmp_path: Path) -> None:
-    _write_listing_fixture(tmp_path, "X", ["Statement of Jordan Vale"])
+    _write_listing_fixture(tmp_path, "X", ["Statement of Thackerson"])
     problems = docket_fixture_name_problems(tmp_path, processed=tmp_path / "no-such-dir")
     assert any("title 1" in p and "X" in p for p in problems)
     # The check reports where, never what (same rule as scripts/name_coverage.py).
-    assert not any("Jordan Vale" in p for p in problems)
+    assert not any("Thackerson" in p for p in problems)
 
 
 def test_html_listing_with_an_ordinary_title_is_fine(tmp_path: Path) -> None:
-    _write_listing_fixture(tmp_path, "X", ["Powerplant Examination Report"])
+    _write_listing_fixture(tmp_path, "X", ["Airframe Examination Summary"])
     assert docket_fixture_name_problems(tmp_path, processed=tmp_path / "no-such-dir") == []
 
 
 def test_no_raw_data_locally_skips_the_owner_operator_check_without_crashing(
     tmp_path: Path,
 ) -> None:
-    """CI and every pre-commit hook never have ``data/processed`` (0014) -- the name-shape
-    heuristic still runs; the raw-record search is simply skipped, not a crash or a refusal.
+    """CI and every pre-commit hook never have ``data/processed`` (0014) -- the vocabulary
+    check still runs; the raw-record search is simply skipped, not a crash or a refusal.
     """
-    _write_listing_fixture(tmp_path, "X", ["Powerplant Examination Report"])
+    _write_listing_fixture(tmp_path, "X", ["Airframe Examination Summary"])
     assert docket_fixture_name_problems(tmp_path, processed=tmp_path / "does-not-exist") == []
 
 
@@ -180,7 +218,7 @@ def test_csv_titles_sheet_is_checked_too(tmp_path: Path) -> None:
     root = tmp_path / "docket"
     root.mkdir()
     (root / "titles.csv").write_text(
-        "case_id,title\nX,Statement of Jordan Vale\nY,Weather Study\n", encoding="utf-8"
+        "case_id,title\nX,Statement of Thackerson\nY,Weather Study\n", encoding="utf-8"
     )
     problems = docket_fixture_name_problems(root, processed=tmp_path / "does-not-exist")
     assert any("titles.csv:2" in p for p in problems)
