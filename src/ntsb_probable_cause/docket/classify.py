@@ -15,11 +15,39 @@ BORN_DIGITAL_MIN_CHARS_PER_PAGE = 300
 
 Kind = Literal["born-digital", "scan", "partial"]
 
+# Fix, morning findings 2026-09-19 finding 1: general-aviation dockets never use the word
+# "submission" on its own (measured: 0 of 3,790 dev-400 titles), so the old
+# ``r"party submission|submission"`` pattern never fired. Replaced with the NTSB's own explicit
+# convention, ``Report(s) from Part(y|ies) to the Investigation`` (measured: 12 documents in 9
+# of 401 dockets, every one genuinely a party submission); the literal phrase "party submission"
+# is kept as an alternative in case it is ever used verbatim.
+#
+# Measured limit, not an apology (Andy's ruling, 2026-09-19): other party-authored documents do
+# exist under neutral titles -- a manufacturer's technical report, a diagram a manufacturer
+# provided -- and this pattern does not catch them; they are counted under whatever category
+# their own words put them in. A first version of this fix tried to catch them structurally, by
+# matching an author named after "by" wherever it was capitalised (e.g. "Crash Site Diagrams By
+# Teledyne Continental"). Measured across all 3,790 dev-400 titles, that shape also matched
+# documents credited to a body that is not a party to the investigation -- a police department,
+# the FAA, a fuel vendor -- and, decisively, "Photo 6)View of Recovered Tree Branches Cut by
+# Propeller Strikes.", where "by" marks physical causation, not authorship: capitalisation alone
+# cannot tell the two apart. Telling a genuine party's contribution from an independent body's
+# would need a list of organisation names, which is exactly what Andy ruled against (it would go
+# stale). So this category reports only the documents the NTSB itself labels as party
+# submissions.
+_PARTY_SUBMISSION = r"party submission|reports? from part(?:y|ies) to the investigation"
+# "Statement of Party Representatives to NTSB Investigation" is the administrative roster (138
+# of 3,790 titles): a list of who the parties are, not a submission and not a statement of
+# evidence. It must never reach party_submission, and -- left unhandled -- it would fall through
+# to conversation_statement's own "statement" match, so it is routed to "other" unconditionally.
+_ROSTER = re.compile(r"statement of party representatives")
+
 # Title categories, first match wins (../ntsb-spike/scripts/docket_shape_probe.py CATEGORIES,
-# plus party_submission). A judgement, not an NTSB taxonomy; the error rate is measured by
-# Andy's 60-title hand-check (decision 0039 item 3).
+# plus party_submission, first so a genuine submission is never shadowed by a later category).
+# A judgement, not an NTSB taxonomy; the error rate is measured by Andy's 60-title hand-check
+# (decision 0039 item 3).
 CATEGORIES: tuple[tuple[str, str], ...] = (
-    ("party_submission", r"party submission|submission"),
+    ("party_submission", _PARTY_SUBMISSION),
     (
         "pilot_form_6120",
         r"6120|pilot/operator|pilot operator|pilot.s aircraft accident"
@@ -78,8 +106,14 @@ def estimated_tokens(chars: int) -> int:
 
 
 def document_category(title: str, doc_type: str) -> str:
-    """The first category whose pattern matches the title or the page's type column."""
+    """The first category whose pattern matches the title or the page's type column.
+
+    The roster (finding 1c) is checked first and unconditionally: it must land on "other"
+    regardless of category order, not merely avoid being caught by ``party_submission``.
+    """
     text = f"{title} {doc_type}".lower()
+    if _ROSTER.search(text):
+        return "other"
     for name, pattern in _COMPILED:
         if pattern.search(text):
             return name
