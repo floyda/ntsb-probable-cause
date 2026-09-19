@@ -625,7 +625,7 @@ def _split_and_render(
 def prepare_case(
     raw: Mapping[str, object], spec: RunSpec, tables: CodeTables, docket: Docket | None
 ) -> Prepared:
-    """The only route to a payload. Arm B attaches documents whole, in rank order, up to the cap.
+    """The only route to a payload. Arm B attaches whole documents, smallest first, up to the cap.
 
     Decision 0043: documents are added one at a time; the first that would take the case
     over the cap stops the loop, and it and every document after it are recorded as
@@ -1076,7 +1076,7 @@ class Runner:
         """An arm B case whose ``_prepare`` tripped the leakage guard: fails alone, closed (fix 4).
 
         ``self._prepare`` runs ``split_record`` on the base payload and, for arm B, on every
-        trial payload as documents are attached in rank order -- so a hit can come from any
+        trial payload as documents are attached smallest first -- so a hit can come from any
         one document in a docket, not just the first. Spec §6.5's "a hit fails the case
         closed" names the case, not the run: every arm B case reads a docket, and one false
         trip on one document's prose must not abort a batch that has already paid for the
