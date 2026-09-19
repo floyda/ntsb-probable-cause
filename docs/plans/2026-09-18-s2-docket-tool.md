@@ -3772,7 +3772,14 @@ CRITERIA: tuple[tuple[str, Callable[[Docket], bool]], ...] = (
     ("photo-only and non-pdf entries", lambda d: any(e.is_photo_only() for e in d.listing.entries) and any(not e.is_pdf() for e in d.listing.entries)),
     ("a scanned document", lambda d: any(r.kind == "scan" for r in d.documents)),
     ("a partial document", lambda d: any(r.kind == "partial" for r in d.documents)),
-    ("over the cap at Sonnet 5 standard", lambda d: sum(r.estimated_tokens for r in d.documents if r.status == "read") > 15_000),
+    # CORRECTED 2026-09-19: this said "over the cap at Sonnet 5 standard" with a hard-coded
+    # 15,000-token line. Since the cap became honest (ANSWERING_TURNS, a case not a call), the
+    # Sonnet 5 standard output reserve alone is $0.04 of the $0.05 cap, leaving about 2,500
+    # prompt tokens across both calls -- less than the non-docket prompt. EVERY case is "over
+    # the cap" there with no docket attached, so the label measured nothing. Use the largest
+    # readable docket in the sample, named for what it is, and judge the cap with the real
+    # function against the project's actual model (Luna, decision 0031) if a cap case is wanted.
+    ("the largest readable docket in the sample", lambda d: sum(r.estimated_tokens for r in d.documents if r.status == "read") > 15_000),
     ("ntsb born-digital documents of two types", lambda d: len({r.category for r in d.documents if r.status == "read" and r.kind == "born-digital" and r.category in {"exam_site", "specialist_factual", "weather", "medical_tox"}}) >= 2),
     ("a party submission", lambda d: any(r.category == "party_submission" for r in d.documents)),
 )
@@ -3817,12 +3824,21 @@ def _cmd_draw(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def redact_text(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
-    """The scripted redaction pass: owner/operator name strings and the amateur-built rule."""
+    """The scripted redaction pass: exactly the two replacements the runtime performs.
+
+    CORRECTED 2026-09-19 after the Task 16 audit. This used to re-derive the owner/operator
+    replacement with ``re.subn(re.escape(name), "[redacted]", ...)`` -- a third implementation,
+    looser than both real ones: no word-boundary anchoring (so a surname that is a substring of
+    an ordinary word corrupts the committed text, the bug fixed in Task 10 round 1), no
+    bare-digits rule (so a five-digit postcode replaces a matching serial number, the bug fixed
+    in Task 11b round 1), and a different label. A committed fixture redacted by a different
+    rule than the agent reads is a fixture whose "expected extraction" the pipeline never
+    produces, and Andy's ``reviewed_by`` would attest to text no run will ever see.
+    Call the real functions; never re-derive them.
+    """
     text, count = amateur_built_replace(text, raw)
-    for name in owner_names(raw):
-        text, n = re.subn(re.escape(name), "[redacted]", text, flags=re.IGNORECASE)
-        count += n
-    return text, count
+    text, n = redact_known_names(text, raw)
+    return text, count + n
 
 
 def _cmd_document(args: argparse.Namespace, settings: Settings) -> int:
@@ -3851,11 +3867,28 @@ def _cmd_document(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
-    """A seeded sample of 60 titles with their category, for Andy to mark right or wrong."""
+    """A seeded sample of 60 titles with their category, for Andy to mark right or wrong.
+
+    CORRECTED 2026-09-19 after the Task 16 audit: this used to walk every directory under
+    ``docket_dir`` with no split check, unlike every sibling subcommand. It stayed safe only
+    because the cache happens to hold dev-400 and nothing else -- an assumption enforced by
+    task ordering rather than by code, which is exactly what ``CLAUDE.md`` rule 5 forbids
+    relying on. The sheet a person reads, and which is committed, must be drawn from the
+    development split by construction. Build the allowed set from ``sample_ids("dev-400")``
+    and skip any cached mkey not in it, counting the skips so a surprising number is visible.
+    """
+    # The dev-400 mkeys, via the same `_cases` helper `_cmd_draw` uses: a cached mkey outside
+    # this set is skipped rather than sampled, so the sheet is dev-400 by construction.
+    cases = _cases(settings.data_dir / "processed", tuple(samples.sample_ids("dev-400")))
+    allowed = {mkey for mkey, _event in cases.values()}
     rows: list[tuple[str, str, str]] = []
+    skipped = 0
     with DocketClient(settings.docket_dir, seconds_per_request=0.0) as client:
         for mkey_dir in sorted(settings.docket_dir.iterdir()):
             if not (mkey_dir / "listing.html").is_file():
+                continue
+            if int(mkey_dir.name) not in allowed:
+                skipped += 1
                 continue
             listing = parse_listing(client.listing_html(int(mkey_dir.name)), mkey=int(mkey_dir.name))
             rows.extend((e.title, e.doc_type, document_category(e.title, e.doc_type)) for e in listing.entries)
@@ -3865,6 +3898,8 @@ def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
         writer.writerow(["title", "doc_type", "category", "correct"])
         writer.writerows((t, d, c, "") for t, d, c in sample)
     print(f"wrote {FIXTURES / 'title_handcheck.csv'}: {len(sample)} titles")
+    if skipped:
+        print(f"skipped {skipped} cached dockets outside dev-400", file=sys.stderr)
     return 0
 ```
 
@@ -3898,6 +3933,25 @@ it does not read `settings`. Imports: `csv`, `re`, `Callable`, `Mapping`, `Docum
 
 The `document` subcommand's `reviewed_by` value is a statement by Andy that he has read the PDF and the `.txt` and found no personal name or non-NTSB text; the script cannot check that, which is why the check script requires the field.
 
+> **TWO DECISIONS ANDY MUST TAKE BEFORE STEP 4 RUNS** (raised by the Task 16 audit, 2026-09-19):
+>
+> 1. **The committed PDF is never redacted.** `_cmd_document` writes the document's bytes to
+>    `{index}.pdf` verbatim; only the sibling `.txt` goes through `redact_text`. The fixture name
+>    check added at the close-out review inspects `.html` and `.csv` only, so `.pdf` and `.txt`
+>    carry **no automated name check at all** — the sole protection is Andy's `reviewed_by`
+>    attestation. Committing the PDF was a deliberate deviation so the extractor test runs on a
+>    real file; nobody weighed it against an unredacted original sitting in a public repository.
+>    Options: commit only the redacted `.txt` and test the extractor on a verified or synthetic
+>    PDF; commit the PDF but make the sign-off explicitly about the PDF and not only its text; or
+>    drop committing originals. Do not run Step 4 until this is settled.
+> 2. **The "NTSB-authored" allow-list contradicts our own authorship labels.** Decision 0037
+>    permits committing text only from NTSB-authored documents, but this task's allow-list admits
+>    `weather`, `medical_tox` and `atc_radar_data`, which `attach.py`'s `_LABELS` attribute to
+>    "NTSB or a weather service", "a medical examiner or laboratory" and "the FAA or a data
+>    source" respectively. Three of the five permitted categories are not NTSB-authored by the
+>    project's own definition. Either narrow the list to `exam_site` and `specialist_factual`, or
+>    amend 0037 to say what "NTSB-authored" actually covers.
+
 - [ ] **Step 4: Draw and commit the fixtures (Andy reads the documents)**
 
 Run: `uv run python -m scripts.make_docket_fixture draw` (prints the candidate per criterion), then `--write`. Then for the "ntsb born-digital documents of two types" case, and for one more document of a different type in another drawn case, Andy reads each PDF; for each one he approves:
@@ -3906,7 +3960,7 @@ Run: `uv run python -m scripts.make_docket_fixture draw` (prints the candidate p
 uv run python -m scripts.make_docket_fixture document <case_id> <index> --reviewed-by "Andy, 2026-09-2N"
 ```
 
-Expected: about five listing fixtures with outcome-only manifests and two or three reviewed documents. Add `^tests/fixtures/docket/.*\.(html|txt|pdf|csv)$` to the typos hook's exclude and `tests/fixtures/docket/*.pdf` to `check-added-large-files`' consideration (a large PDF over 500 KB is refused by the hook; choose a smaller document).
+Expected: one listing fixture per `CRITERIA` entry -- six, not the "about five" this step used to say -- with outcome-only manifests, plus the reviewed documents Andy approves. CORRECTED 2026-09-19: the pre-commit changes this step described are already in place and must not be re-added -- the `typos` hook excludes the whole `^tests/fixtures/docket/` tree, and `check-added-large-files` already applies to every file with no docket exclusion. Still choose a document under 500 KB, because that hook will refuse a larger one.
 
 - [ ] **Step 5: Extend the extractor test to the reviewed documents**
 
@@ -3955,7 +4009,7 @@ def test_title_handcheck_is_complete_and_its_error_rate_is_published() -> None:
     assert f"title hand-check: {wrong} of 60 wrong" in published
 ```
 
-Write the hand-check line into `docs/results/s2-filter.txt` by a small addition to `corpus_scan.py --docket` (`_handcheck_line()` reads the CSV and formats the line; the test then holds by construction), and re-run `make scan-docket`. Note the file `s2-filter.txt` is produced by the same `--docket` run as `s2-threshold.txt`: have the mode write both (`--out` names the threshold file; the filter table goes to the sibling `s2-filter.txt`). Log this in Deviations if the split of the two files differs from spec §8.
+CORRECTED 2026-09-19: `docket_report` returns ONE combined string -- the hit curve, the chosen threshold, and the per-length filter table -- which `make scan-docket` writes to `docs/results/s2-threshold.txt`. There is no `s2-filter.txt`, and producing one is a refactor plus a Makefile change, not the "small addition" this step assumed. Write the hand-check line into the existing combined file by a small addition to `corpus_scan.py --docket` (`_handcheck_line()` reads the CSV and formats the line), point this step's test at `docs/results/s2-threshold.txt`, and re-run `make scan-docket`. Log the single-file outcome in Deviations against spec §8, which names two files.
 
 - [ ] **Step 7: Run the full check and commit**
 
