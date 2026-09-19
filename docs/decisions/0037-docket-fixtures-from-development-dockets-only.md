@@ -76,3 +76,19 @@ a paragraph, and rule 6 forbids victim names in any output, which a public repos
 
 Accepted, 2026-09-17 (Andy: "Any example dockets should come from the dev set, don't re-use
 any from held-out").
+
+**Partly superseded by [0049](0049-the-name-line-is-the-public-surface-not-the-repository.md),
+2026-09-19.** Item 2's conclusion stands — the listing page is still committed as a saved real
+response — but two things written here turned out to be wrong once measured, and are corrected
+there rather than edited here:
+
+- Item 2 says the listing "holds no personal text". It does. Document titles carry the surnames of
+  pilots, instructors and witnesses; 367 of 401 cached listings carry at least one word the title
+  check cannot vouch for, and real surnames were found in the first hand-check sheet drawn.
+- The context above says "rule 6 forbids victim names in any output, which a public repository is".
+  0049 narrows where "output" begins: a byte-exact copy of a page the NTSB already publishes is not
+  this project speaking, while the live board, a published results file and a prediction row are.
+  `CLAUDE.md` rule 6 itself is unchanged and absolute.
+
+Item 1 (development dockets only) and item 3 (document text only for NTSB-authored, born-digital
+documents after the scripted pass and a human read) are untouched.

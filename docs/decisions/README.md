@@ -89,3 +89,4 @@ under `docs/specs/` and the record links to it.
 | [0046](0046-known-owner-and-operator-names-are-replaced-in-document-text.md) | The owner and operator names the record already holds are replaced in document text; full strings only | Accepted; extends 0020, 0044 |
 | [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted |
 | [0048](0048-arm-b-ranks-by-each-documents-measured-size.md) | Arm B ranks by each document's own measured size; the category keeps only the photo exclusion and the deny-list | Accepted; supersedes 0043 item 2 |
+| [0049](0049-the-name-line-is-the-public-surface-not-the-repository.md) | Names may stay in committed NTSB listing pages; the guard is this project's own public surfaces | Accepted; supersedes 0037 item 2's reason and its "a public repository is an output"; extends 0020, 0044, 0046 |
