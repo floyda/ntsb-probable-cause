@@ -93,3 +93,4 @@ under `docs/specs/` and the record links to it.
 | [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) | In docket documents the tripwire skips factual-narrative sentences; refusals fall from 38.9% to 4.2% of cases | Accepted; extends 0019 |
 | [0051](0051-the-document-header-drops-the-provenance-clause.md) | The document header drops the provenance clause and states how many pages held readable text | Accepted; supersedes 0038 item 2, narrows 0048 item 4 |
 | [0052](0052-arm-b-attaches-every-readable-document.md) | Arm B attaches every document extraction found text in; the photograph exclusion and `ARM_B_TYPES` go | Accepted; supersedes 0048 item 4 and 0039's filter set |
+| [0053](0053-a-page-of-fifty-characters-is-readable.md) | A page with 50 or more characters is readable; "attached" now implies "has a readable page" by arithmetic | Accepted; resolves the defect 0052 records, adjusts 0047 |
