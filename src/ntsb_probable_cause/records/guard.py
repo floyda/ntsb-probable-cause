@@ -11,6 +11,9 @@ from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
 # whole corpus, after decision 0019's weather_metar/factual_narrative sentence exemption.
 # Source: docs/results/s0-corpus-scan.txt (scripts/corpus_scan.py). Change only by re-running
 # the scan.
+# Caveat, decision 0050: that scan runs with whatever SENTENCE_CHECK_EXEMPTIONS holds, which is
+# now two pairs rather than one, so a re-run no longer reproduces the recorded figure. The 20 is
+# still the number 0019 measured; it is no longer the number the scan would print today.
 MIN_SENTENCE_CHARS = 20
 
 # Sentence-level exemptions, one role/source pair each. In every listed role, sentences taken

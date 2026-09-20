@@ -93,3 +93,32 @@ states its own gap: this is the price of the exemption, and it is accepted knowi
 
 Accepted, 2026-09-20 (Andy, asked whether a sentence shared between a docket document and the
 factual narrative should count as a leak: "i would say no").
+
+## Clarification, 2026-09-20 (appended after review; nothing above is edited)
+
+The task review probed the committed guard directly and found that **item 4 above, read as a
+backstop, promises more than the code delivers.** It is literally true — an exact, complete copy
+of the factual narrative in a docket document still stops the case, as `kind == "text"` — but the
+whole-text needle is an exact contiguous substring match on the *entire* narrative. Drop one
+trailing sentence, or let PDF extraction insert a single stray character, and that needle no
+longer matches; every remaining sentence is then exempt and the near-complete copy passes unseen.
+
+This is not a defect introduced by the implementation, which is faithful to this record. It is
+the direct consequence of the exemption, and it is the same gap the "Accepted gap" section
+already states — N exempt sentences are still N exempt sentences, whether they arrive one at a
+time or nearly all at once. It is written down here so that no later reader takes item 4 for a
+safety net it is not.
+
+Two related facts, both verified against the code rather than assumed:
+
+- **Per-source matching holds under adversarial input.** A sentence present in both the factual
+  narrative and the probable cause, placed in a docket document, is still caught — as a
+  `probable_cause` match. The same is true for a sentence shared with the analysis narrative.
+  That is the claim "Why" item 1 rests on, and it survived direct testing.
+- **The exemption cannot widen by accident.** Membership is exact tuple matching, so an evidence
+  role whose name merely contains "docket" is not exempt, and `docket_listing` is not exempt.
+
+Layer note: `tests/boundary.py` calls `find_leaks` with the same default exemptions, so guard
+layer 5 is relaxed by exactly the same amount as layer 4. That is the intended design — one
+constant, one policy, no divergence — but for this specific case the layered guard has one fewer
+*independent* layer, and decision 0016's "layered" claim should be read with that in mind.
