@@ -151,6 +151,21 @@ _FORMER_LABELS = (
     "Docket document",
 )
 
+# The provenance phrasings decision 0051 removed, after Andy's hand-check measured the clause at
+# 58-72% accurate. Restored here (whole-branch review, Important 4): the 0055 rewrite replaced
+# the phrasing guard with a label guard, which left 0051's measured removal with no regression
+# test anywhere. Both are asserted now -- they were removed for different reasons, so a
+# reappearance of either is a distinct defect.
+_FORMER_PROVENANCE_PHRASINGS = (
+    "submitted by",
+    "written by",
+    "produced by",
+    "recorded at",
+    "kept by",
+    "published by",
+    "not stated",
+)
+
 
 def test_header_names_the_listing_index_and_pages_with_no_clause_when_fully_readable() -> None:
     """Decision 0055: a fully readable document's header ends after the page count."""
@@ -210,6 +225,8 @@ def test_no_header_carries_any_of_the_twelve_former_category_labels() -> None:
             assert "Docket item 1" in rendered
             for label in _FORMER_LABELS:
                 assert label not in rendered, (category, rendered)
+            for phrase in _FORMER_PROVENANCE_PHRASINGS:
+                assert phrase not in rendered, (category, rendered)
 
 
 def test_amateur_built_make_and_model_are_replaced_in_text_and_counted(

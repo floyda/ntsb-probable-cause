@@ -9,6 +9,7 @@ import respx
 from pypdf import PdfWriter
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.docket.classify import classify_pages, readable_pages
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.manifest import read_docket
@@ -182,3 +183,18 @@ def test_downloaded_non_pdf_content_is_unreadable_not_fetch_failed(
 
     assert docket.record(target.index).status == "unreadable: not a pdf"
     assert target.index not in docket.texts
+
+
+def test_a_read_record_always_has_at_least_one_readable_page() -> None:
+    """Decision 0053's invariant, at the level that matters: a document the agent is given.
+
+    ``readable_pages`` and ``classify_pages`` both compare against ``SCAN_PAGE_MAX_CHARS``, and
+    before 0053 they did so strictly in opposite directions, so a document averaging exactly the
+    threshold was status "read" with zero readable pages -- attached as evidence with no text,
+    under a header reading "of which 0 held readable text". The function-level test pins the
+    boundary; this pins the consequence, which is what a reader of ``header()`` relies on.
+    """
+    for chars_by_page in ([50], [50, 50], [51], [600, 0, 51, 50], [49, 51], [300] * 4):
+        if classify_pages(chars_by_page) == "scan":
+            continue
+        assert readable_pages(chars_by_page) >= 1, chars_by_page

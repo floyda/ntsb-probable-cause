@@ -366,7 +366,6 @@ def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fac
         arm=run_record.arm,
         exclusions=run_record.exclusions,
         includes=run_record.includes,
-        docket_filter=run_record.docket_filter,
         prompt_version=run_record.prompt_version,
         model=JUDGE_MODEL,
         # The judge calls chat-completions directly, so it pays the standard price; recording

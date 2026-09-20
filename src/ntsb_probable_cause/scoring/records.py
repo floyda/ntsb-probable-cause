@@ -23,12 +23,6 @@ class RunRecord(BaseModel):
     arm: Literal["A", "B", "ceiling"]
     exclusions: tuple[str, ...]
     includes: tuple[str, ...]
-    # Vestigial (decision 0054): the ``no-submissions`` run variant this recorded is retired
-    # and nothing sets a value other than the default any more. Kept, not removed, so a
-    # pre-0054 run folder's ``run.jsonl`` -- which does carry this key -- still deserialises;
-    # the model is frozen with ``extra="forbid"``, so dropping the field would refuse to read
-    # every run recorded before this change.
-    docket_filter: str = "published"
     prompt_version: str
     model: str
     price_variant: str
@@ -62,13 +56,6 @@ class StepRecord(BaseModel):
     not_available: tuple[str, ...]
     documents_attached: tuple[str, ...] = ()
     documents_not_read: tuple[str, ...] = ()
-    # Vestigial (decision 0054): used to hold the readable documents the ``no-submissions``
-    # variant excluded on purpose, distinct from a cap drop. That variant is retired and
-    # admission no longer excludes anything, so nothing sets this to a non-empty value any
-    # more. Kept, not removed, so a pre-0054 ``steps.jsonl`` row -- which does carry this key
-    # -- still deserialises; the model is frozen with ``extra="forbid"``, so dropping the
-    # field would refuse to read every step recorded before this change.
-    documents_filtered: tuple[str, ...] = ()
     payload_fingerprint: str
     hypothesis: Hypothesis
     observed_effect: Literal["confirmed", "weakened", "unchanged", ""]
@@ -104,9 +91,6 @@ class CaseResult(BaseModel):
     # (``steps=()``): the docket outcome must not be invisible just because the case never
     # reached a model call (decision 0043; fix round 1, Finding 4).
     documents_not_read: tuple[str, ...] = ()
-    # Vestigial (decision 0054): see ``StepRecord.documents_filtered``. Kept only so a
-    # pre-0054 ``cases.jsonl`` row still deserialises.
-    documents_filtered: tuple[str, ...] = ()
 
 
 def fingerprint(payload: Payload) -> str:

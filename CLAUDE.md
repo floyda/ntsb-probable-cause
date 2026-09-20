@@ -195,7 +195,7 @@ make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars
 `ntsb-eval` is the evaluation harness (S1 spec §6.5): `ntsb-eval baseline|run|report|judge|threshold|release`,
 each with `--out PATH` to also write the printed text to a file; `run` takes `--arm` (`A`, `B` or `ceiling`), `--sample`,
 `--exclude ROLE`, `--include case_number`, `--limit N`, `--sync`, `--cap-usd`, `--budget-usd`,
-and `--docket-filter` (arm `B` only, S2); `release RUN_ID` clears a dead run's budget
+and (arm `B` only, S2); `release RUN_ID` clears a dead run's budget
 reservation (0045);
 `report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest` to compare;
 `judge` refuses a non-`dev-400` run without `--validated` (§8).

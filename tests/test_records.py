@@ -133,4 +133,3 @@ def test_step_record_document_fields_default_empty(run_record: RunRecord) -> Non
     )
     assert step.documents_attached == ()
     assert step.documents_not_read == ()
-    assert run_record.docket_filter == "published"
