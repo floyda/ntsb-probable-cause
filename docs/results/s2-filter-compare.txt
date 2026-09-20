@@ -1,0 +1,24 @@
+arm B's category filter against 'attach everything readable'
+sample dev-400, 384 cases measured (no cached docket: 0; leakage tripwire: 17)
+model openai/gpt-5.6-luna (batch), per-case cap $0.05
+both rules run through runner.prepare_case -- the run's own cap loop, not a copy
+
+  documents attached per case
+    published    n=384 median=4 p75=8 p90=13 max=39
+    unfiltered   n=384 median=4 p75=9 p90=14 max=39
+
+  estimated tokens attached per case
+    published    n=384 median=6,482 p75=14,613 p90=30,016 max=123,188
+    unfiltered   n=384 median=6,488 p75=14,777 p90=30,016 max=123,188
+
+  cases whose whole admitted set fitted under the cap
+    published    384 of 384 (100%); stopped by the cap: 0
+    unfiltered   384 of 384 (100%); stopped by the cap: 0
+
+  cases where the two rules attach a different set   104 of 384 (27%)
+  documents 'unfiltered' attaches that 'published' does not   270
+
+  a case stopped by the cap has documents omitted; if neither rule ever stops, the
+  cap is not binding at this model's price and the drop rule (0043) is inert here
+
+  documents 'published' attaches that 'unfiltered' does not   0   (the cap displacing a larger document, not the filter)

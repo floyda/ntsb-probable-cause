@@ -142,6 +142,9 @@ makes "the evaluated agent is the deployed agent" true at the transport layer as
 the code layer.
 
 The agent's model starts at `anthropic/claude-sonnet-5`, for continuity with the spike.
+**Superseded by decision 0031**, 2026-09-20: the default is `openai/gpt-5.6-luna`, batch
+variant for evaluation, and the model axis is measured after S3. The sentence above stays
+as written, per the append-only rule.
 Model choice is a parameter of the harness rather than a constant, which makes accuracy
 against cost across models an evaluation axis the project can report rather than assume.
 
