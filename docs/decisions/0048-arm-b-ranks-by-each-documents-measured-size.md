@@ -55,8 +55,27 @@ was redundant:
    sampled title Andy marks three questions, one per job:
    - *Is this a photograph?* — grades the `ARM_B_TYPES` exclusion.
    - *Could this document contain the investigators' conclusions?* — grades the deny-list.
-   - *Who wrote it: the investigation, a party to it, an independent body, or can you not tell?* —
-     grades the provenance header directly, in the terms the header itself uses.
+   - *Whose account is this?* — one of **`investigation` / `party` / `independent` / `recorded` /
+     `unclear`** — grades the provenance header directly, in the terms the header itself uses.
+
+     *Fifth option added 2026-09-19, on Andy's question: "who constitutes each of the different
+     parties? i.e. where does an air traffic control transcript land?"* It exposed a real
+     ambiguity. Formally, the FAA **is** a party to an NTSB aviation investigation, so by status an
+     ATC transcript is a party document. But that is not what the label is for. A pilot's accident
+     report form is an interested person's *account*; a manufacturer's technical report is an
+     interested organisation's *analysis*; an ATC transcript is neither — it is a verbatim capture
+     of what was said at the time, in which nobody is arguing anything.
+
+     So the question is *whose account is this*, not *who holds party status*, and `recorded` names
+     the documents that are nobody's account: ATC audio and transcripts, radar and ADS-B tracks,
+     engine data downloads, photographs. The distinction is the one that matters most for weighing
+     a document, and collapsing it into `party` would lose it. It also decides the hard case
+     cleanly: a transcript is `recorded`, while an FAA inspector's written statement is `party`,
+     because there the FAA is telling you something.
+
+     The same five words are used by `attach.header`'s provenance line, so a mark and a label are
+     directly comparable. A vocabulary used for grading that differs from the vocabulary being
+     graded would measure nothing.
 
    Each question maps to exactly one use, so each produces a number that decides something. None
    of them asks whether one of twelve labels is the best fit, which would have produced one blurred
