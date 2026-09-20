@@ -44,7 +44,6 @@ bars:
 
 armb:
 	uv run ntsb-eval run --arm B --sample dev-400
-	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter unfiltered
 	uv run ntsb-eval run --arm B --sample dev-400 --docket-filter no-submissions
 # The reports are generated from explicit run ids afterwards, never `--latest`, as S1 learned.
 

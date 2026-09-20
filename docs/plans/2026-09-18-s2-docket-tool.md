@@ -4026,7 +4026,10 @@ git commit -m "S2: threshold re-measured on docket text, deny-list, fixture pool
 ### Task 17: Arm B on `dev-400`, the filter chosen and published (spec §8.5, §10; Andy runs, about $3)
 
 **Files:**
-- Modify: `src/ntsb_probable_cause/docket/filter.py` (`ARM_B_TYPES`), `docs/results/s2-filter.txt`, `docs/results/s2-armB-dev.txt`
+- Modify: `docs/results/s2-filter.txt`, `docs/results/s2-armB-dev.txt`
+- **Amended 2026-09-20 by decision 0052:** `ARM_B_TYPES` no longer exists. Arm B admits every
+  document extraction found text in, so there is no type list left for this task to set. What
+  remains to decide is the party-submission rule below.
 - Test: `tests/test_docket_filter.py`
 
 - [x] **Step 1: Void — decision 0048 removes the rank order this step set**
@@ -4046,16 +4049,25 @@ In a shell script that exports the key from `pass show api/openrouter` and never
 make armb
 ```
 
-Expected: three run folders under `data/runs/`, each under a dollar (M4). Note each run id from the terminal.
+Expected: **two** run folders under `data/runs/`, each under a dollar (M4). Note each run id from
+the terminal.
+
+**Amended 2026-09-20 by decision 0052:** the `unfiltered` variant was removed — it became a
+synonym for `published` — so `make armb` runs `published` and `no-submissions` only. The third
+invocation was deleted from the Makefile; left in, it aborted with `invalid choice: 'unfiltered'`
+*after* the first paid run had completed.
 
 - [ ] **Step 3: Reports and the submission rule**
 
 ```bash
 uv run ntsb-eval report <published-run-id> --against <no-submissions-run-id> --out docs/results/s2-armB-dev.txt
-uv run ntsb-eval report <unfiltered-run-id> --against <published-run-id> >> docs/results/s2-armB-dev.txt
 ```
 
-Read off the §10 rules: party submissions stay unless the paired top-1 difference "published minus no-submissions" on cases holding a submission has an interval entirely below zero. (`report --against` pairs on all shared cases; for the "cases holding a submission" restriction add `--only-with-documents CATEGORY` to `report`, which keeps cases whose steps attached a document of that category, with a test.) Set `ARM_B_TYPES` accordingly and append the decision line and both paired differences to `docs/results/s2-filter.txt`. Update the filter tests to the published values.
+Read off the §10 rules: party submissions stay unless the paired top-1 difference "published minus no-submissions" on cases holding a submission has an interval entirely below zero. (`report --against` pairs on all shared cases; for the "cases holding a submission" restriction add `--only-with-documents CATEGORY` to `report`, which keeps cases whose steps attached a document of that category, with a test.) **Amended 2026-09-20 by decision 0052:** there is no `ARM_B_TYPES` to set, and the second
+comparison is gone with the `unfiltered` variant. Append the decision line and the one paired
+difference to `docs/results/s2-filter.txt`. If the rule says drop submissions, that is a change
+to `arm_b_documents`'s `no-submissions` becoming the published behaviour, and it needs its own
+decision record rather than a constant edit.
 
 - [ ] **Step 4: Commit**
 

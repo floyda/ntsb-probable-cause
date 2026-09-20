@@ -321,7 +321,7 @@ def filter_summary(results: Sequence[CaseResult]) -> str:
     fatal_hit, fatal_docs = counts([r for r in results if r.fatal])
     non_hit, non_docs = counts([r for r in results if not r.fatal])
     return (
-        f"filter: {cases_hit} of {len(results)} cases had a readable document the type "
+        f"filter: {cases_hit} of {len(results)} cases had a readable document the docket "
         f"filter excluded; {docs} documents excluded "
         f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
     )

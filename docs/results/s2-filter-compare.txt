@@ -22,3 +22,8 @@ both rules run through runner.prepare_case -- the run's own cap loop, not a copy
   cap is not binding at this model's price and the drop rule (0043) is inert here
 
   documents 'published' attaches that 'unfiltered' does not   0   (the cap displacing a larger document, not the filter)
+
+provenance: produced by scripts/filter_compare.py at commit ea733ff, before decision 0052 removed
+the 'unfiltered' variant the script existed to compare against. The script was deleted with that
+variant (commit 3856a04); this file is kept because it is the evidence for 0052. To reproduce,
+check out ea733ff and run `uv run python -m scripts.filter_compare`.

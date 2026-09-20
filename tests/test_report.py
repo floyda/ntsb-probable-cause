@@ -509,13 +509,15 @@ def test_cap_summary_counts_a_case_that_failed_before_any_step() -> None:
 
 def test_filter_summary_counts_cases_and_documents_by_fatal() -> None:
     """Fix finding 5: distinct from ``cap_summary`` -- these documents were never weighed
-    against the cap at all, because the fixed type filter never admitted them."""
+    against the cap at all, because the docket filter never admitted them. After decision 0052
+    the only variant that excludes anything is ``no-submissions``; under ``published`` this
+    line always reports zero."""
     fatal_hit = _case("A", fatal=True, filtered=("2: filtered: party_submission",))
     fatal_clear = _case("B", fatal=True)
     non_fatal_hit = _case("C", fatal=False, filtered=("4: filtered: weather",))
     text = report.filter_summary([fatal_hit, fatal_clear, non_fatal_hit])
     assert text == (
-        "filter: 2 of 3 cases had a readable document the type filter excluded; "
+        "filter: 2 of 3 cases had a readable document the docket filter excluded; "
         "2 documents excluded (fatal 1 cases/1 documents, non-fatal 1/1)"
     )
 
@@ -529,7 +531,7 @@ def test_filter_summary_counts_a_case_that_failed_before_any_step() -> None:
     assert failed_before_any_step.steps == ()  # no model call was ever made
     text = report.filter_summary([failed_before_any_step])
     assert text == (
-        "filter: 1 of 1 cases had a readable document the type filter excluded; "
+        "filter: 1 of 1 cases had a readable document the docket filter excluded; "
         "1 documents excluded (fatal 1 cases/1 documents, non-fatal 0/0)"
     )
 
