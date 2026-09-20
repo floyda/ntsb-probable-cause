@@ -71,3 +71,17 @@ a known gap already carried in the S2 close-out list.
 
 Accepted, 2026-09-20 (Andy: "not worth it, we have a simple boundary so lets say >= 50 then a
 readable page, <50 likely a scan page").
+
+## Outcome, 2026-09-20 (appended)
+
+Both consequence files were regenerated after the change landed:
+
+- `docs/results/s2-doctype.txt` — **unchanged**, reproduces byte-for-byte.
+- `docs/results/s2-shape-dev.txt` — three lines move. Scanned pages fall from 3,463 to 3,435
+  across the corpus (fatal 2,711 to 2,689; non-fatal 752 to 746). **28 pages** held exactly 50
+  characters and are now counted readable. **No document changed status**, so nothing that was
+  attached stopped being attached and nothing new became attachable.
+
+That settles the frequency question this record declines to measure first. Andy's call was
+right on the numbers as well as on the principle: the effect is 28 pages in 3,463, and measuring
+it beforehand would have cost half an hour to learn that the fix was worth making anyway.

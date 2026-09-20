@@ -13,7 +13,7 @@ non-photo pages per docket: n=200 median=44 p75=77 p90=134 max=712
 estimated readable tokens per docket: n=200 median=11,811 p75=22,098 p90=38,634 max=123,188
 estimated tokens per readable document: n=1957 median=612 p75=1,585 p90=4,164 max=87,966
 dockets under 10000 tokens: 84 of 200
-scanned pages: 2711; scan-only dockets: 2
+scanned pages: 2689; scan-only dockets: 2
 pilot forms with a text layer: 104 of 136
 dockets with a party submission: 8
 non-PDF documents: 110 of 2918
@@ -31,7 +31,7 @@ non-photo pages per docket: n=201 median=12 p75=16 p90=34 max=256
 estimated readable tokens per docket: n=201 median=5,505 p75=7,822 p90=13,724 max=91,793
 estimated tokens per readable document: n=630 median=682 p75=2,871 p90=5,816 max=49,751
 dockets under 10000 tokens: 163 of 201
-scanned pages: 752; scan-only dockets: 14
+scanned pages: 746; scan-only dockets: 14
 pilot forms with a text layer: 157 of 199
 dockets with a party submission: 1
 non-PDF documents: 10 of 872
@@ -49,7 +49,7 @@ non-photo pages per docket: n=401 median=18 p75=48 p90=92 max=712
 estimated readable tokens per docket: n=401 median=6,676 p75=15,230 p90=30,679 max=123,188
 estimated tokens per readable document: n=2587 median=620 p75=1,769 p90=5,118 max=87,966
 dockets under 10000 tokens: 247 of 401
-scanned pages: 3463; scan-only dockets: 16
+scanned pages: 3435; scan-only dockets: 16
 pilot forms with a text layer: 261 of 335
 dockets with a party submission: 9
 non-PDF documents: 120 of 3790
