@@ -4108,14 +4108,20 @@ git commit -m "S2: docket shape on closed open-split cases, numbers only (decisi
 
 - [ ] **Step 1: Confirm the tree is clean and the filter is published**
 
-Run: `git status --short` (empty) and `grep -n "ARM_B_TYPES\|ARM_B_RANK\|DENY_LIST" src/ntsb_probable_cause/docket/filter.py` (each cites `s2-filter.txt`).
+**Amended 2026-09-20.** `ARM_B_TYPES`, `ARM_B_RANK` and `DENY_LIST` no longer exist — removed by
+decisions 0048, 0052 and 0056 — and `s2-filter.txt` was never produced. There is no filter to
+publish: arm B admits every document extraction found text in.
+
+Run instead: `git status --short` (empty), `make check` (green), and confirm
+`docs/results/s2-armB-dev.txt` exists — the development run this one is the held-out counterpart
+to.
 
 - [ ] **Step 2: Add the target and run**
 
-```make
-s2-bars:
-	uv run ntsb-eval run --arm B --sample heldout-400
-```
+**Amended 2026-09-20.** The target is now in the `Makefile` and carries
+`--expected-cost-per-case-usd 0.01`. Without it the budget guard projects the run at the per-case
+cap — 400 x $0.05 = $20 — and refuses it before any model call, which is the defect that would
+have stopped `make armb` had it not been caught first.
 
 Run `make s2-bars` from the key-exporting shell script. The held-out dockets are fetched into the cache during the run (about an hour of polite fetching before the batch is submitted; the run log shows the fetch positions). Then, from the explicit run id:
 

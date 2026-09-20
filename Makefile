@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb docket-scan scan-docket docket-shape-open
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open
 
 check: lint type test
 
@@ -62,6 +62,13 @@ scan-docket:
 	uv run python -m scripts.corpus_scan --docket --out docs/results/s2-threshold.txt
 # Reads the dev-400 cache docket-scan built; never fetches. A case not yet cached is skipped
 # and counted, not fetched here.
+
+# The held-out run: ONCE, and it appends a permanent row to docs/results/heldout-ledger.md.
+# --expected-cost-per-case-usd is required for the same reason as `armb` above: without it the
+# guard projects 400 x $0.05 = $20 and refuses the run. Held-out dockets have never been fetched,
+# so this spends one to two hours politely fetching before the batch is submitted.
+s2-bars:
+	uv run ntsb-eval run --arm B --sample heldout-400 --expected-cost-per-case-usd 0.01
 
 docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
