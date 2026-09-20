@@ -134,11 +134,27 @@ def test_requesting_an_unreadable_document_leaves_it_unattached(
     assert result.not_available == ("2: unreadable: scan", "3: unreadable: scan")
 
 
-def test_header_names_type_pages_and_whose_account_it_is() -> None:
+def test_header_names_type_and_pages_with_no_clause_when_fully_readable() -> None:
+    """Decision 0051: a fully readable document's header ends after the page count."""
     record = _docket({2: "x"}).record(2)
-    assert header(record) == "Party submission, 3 pages, submitted by a party to the investigation."
+    assert header(record) == "Party submission, 3 pages."
     exam = _docket({1: "x"}).record(1)
-    assert header(exam) == "Examination or site report, 3 pages, written by the investigation."
+    assert header(exam) == "Examination or site report, 3 pages."
+
+
+def test_header_reports_the_readable_page_count_when_partly_readable() -> None:
+    """Decision 0051 item 2: what was readable replaces the old provenance clause."""
+    entry = _entry(1, "Partly scanned report", pages=11)
+    record = DocumentRecord(
+        entry=entry,
+        category="exam_site",
+        status="read",
+        pages=11,
+        readable_pages=4,
+        estimated_tokens=100,
+        kind="partial",
+    )
+    assert header(record) == "Examination or site report, 11 pages, of which 4 held readable text."
 
 
 def test_header_uses_singular_page_for_a_one_page_document() -> None:
@@ -152,22 +168,46 @@ def test_header_uses_singular_page_for_a_one_page_document() -> None:
         estimated_tokens=1,
         kind="born-digital",
     )
-    assert header(record) == "Examination or site report, 1 page, written by the investigation."
+    assert header(record) == "Examination or site report, 1 page."
 
 
-def test_every_classify_category_plus_other_has_a_provenance_label() -> None:
-    """0048 item 4: a category added to ``classify.CATEGORIES`` without a label must not
-    silently fall back to "not stated" -- it must fail this test instead."""
+def test_every_classify_category_plus_other_has_a_label() -> None:
+    """0048 item 4, narrowed by 0051: a category added to ``classify.CATEGORIES`` without a
+    label must not silently fall back to "Docket document" -- it must fail this test instead."""
     expected = {name for name, _pattern in CATEGORIES} | {"other"}
     assert expected <= set(attach_module._LABELS)
 
 
-def test_every_provenance_phrase_answers_whose_account_it_is_in_plain_prose() -> None:
-    """The role phrase never states a bare vocabulary word (0048 item 4): it is prose that
-    resolves to one of investigation / party / independent / recorded / unclear."""
-    bare_words = {"investigation", "party", "independent", "recorded", "unclear"}
-    for label, role in attach_module._LABELS.values():
-        assert role.strip().lower() not in bare_words, (label, role)
+def test_no_header_carries_any_of_the_removed_provenance_phrasings() -> None:
+    """Decision 0051: the provenance clause and its five-word vocabulary are gone. Rendered
+    for every category, at both a fully readable and a partly readable page count, no header
+    may contain any of the phrasings that clause used to carry."""
+    removed_phrasings = (
+        "submitted by",
+        "written by",
+        "produced by",
+        "recorded at",
+        "kept by",
+        "published by",
+        "not stated",
+    )
+    categories = {name for name, _pattern in CATEGORIES} | {"other"}
+    for category in categories:
+        for pages, readable_pages in ((3, 3), (11, 4)):
+            entry = _entry(1, "Some document", pages=pages)
+            record = DocumentRecord(
+                entry=entry,
+                category=category,
+                status="read",
+                pages=pages,
+                readable_pages=readable_pages,
+                estimated_tokens=100,
+                kind="born-digital" if pages == readable_pages else "partial",
+            )
+            rendered = header(record)
+            assert attach_module._LABELS[category] in rendered
+            for phrase in removed_phrasings:
+                assert phrase not in rendered, (category, rendered)
 
 
 def test_amateur_built_make_and_model_are_replaced_in_text_and_counted(
