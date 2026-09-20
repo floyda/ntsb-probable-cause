@@ -13,10 +13,24 @@ For each row, fill in the four blank columns:
   about the cause, as opposed to the evidence they gathered? (`y`/`n`)
   Grades the deny-list: a document of that kind is refused before it is attached, so the case
   is still answered from the rest of the docket.
-- `author` -- who wrote it: `investigation` / `party` / `independent` / `unclear`
+- `author` -- **whose account is this** -- not who formally counts as a party to the
+  investigation, but whose telling of events the document carries. One of:
+  - `investigation` -- written by the NTSB or its investigators, e.g. an exam or factual report.
+  - `party` -- an account from a party to the investigation, e.g. the pilot, operator or a
+    manufacturer.
+  - `independent` -- an account from someone with no stake in the case, e.g. a medical examiner
+    or weather service.
+  - `recorded` -- nobody's account: a verbatim capture of what happened, not an argument or a
+    telling of it. The case that motivated this option: an ATC transcript. Formally the FAA is a
+    party to the investigation, but the transcript is not the FAA's account of anything -- it is
+    a recording of what was said at the time, the same as a radar track or a photograph.
+  - `unclear` -- the listing does not say.
+
   Grades the provenance header shown to the model (e.g. "Party submission, ... submitted by a
   party to the investigation"): the one place a misclassification puts words in front of it,
-  rather than only reordering or dropping a document.
+  rather than only reordering or dropping a document. The header uses this same vocabulary, in
+  prose rather than the bare word, so a mark and a label are directly comparable (decision 0048
+  item 4).
 - `notes` -- anything worth flagging; optional, free text.
 
 The sample is stratified by the classifier's own category (the `category` column) so that

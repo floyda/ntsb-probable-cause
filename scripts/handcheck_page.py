@@ -54,7 +54,22 @@ DEFAULT_OUT = Path("data/handcheck/index.html")
 CASE_DOCUMENTS_CASE_ID = "ERA19FA248"
 SHEET_PATH = FIXTURES / "title_handcheck.csv"
 MARK_COLUMNS = ("is_photo", "could_hold_conclusions", "author", "notes")
-AUTHOR_OPTIONS = ("investigation", "party", "independent", "unclear")
+# The provenance header's own vocabulary (decision 0048 item 4, 0038): the question is *whose
+# account is this*, not who holds formal party status. "recorded" was added 2026-09-19 for the
+# case that exposed the gap -- an ATC transcript is nobody's account, a verbatim capture of what
+# was said at the time.
+AUTHOR_OPTIONS = ("investigation", "party", "independent", "recorded", "unclear")
+# One-line gloss per option, in the owner's own terms, shown as each <option>'s tooltip.
+AUTHOR_GLOSSES: Mapping[str, str] = {
+    "investigation": "written by the NTSB or its investigators, e.g. an exam or factual report",
+    "party": "an account from a party to the investigation, e.g. the pilot, operator or a "
+    "manufacturer",
+    "independent": "an account from someone with no stake in the case, e.g. a medical examiner "
+    "or weather service",
+    "recorded": "nobody's account -- a verbatim capture of what happened, e.g. an ATC transcript "
+    "or a radar track",
+    "unclear": "the listing does not say",
+}
 MARKS_CSV_HEADER = ("row", *MARK_COLUMNS)
 
 
@@ -310,9 +325,12 @@ def _yes_no_fieldset(field: str, row_number: int, legend: str) -> str:
 
 def _author_fieldset(row_number: int) -> str:
     name = f"author-{row_number}"
-    options = "".join(f'<option value="{value}">{value}</option>' for value in AUTHOR_OPTIONS)
+    options = "".join(
+        f'<option value="{value}" title="{_esc(AUTHOR_GLOSSES[value])}">{value}</option>'
+        for value in AUTHOR_OPTIONS
+    )
     return (
-        '<fieldset data-field="author"><legend>Who wrote it</legend>'
+        '<fieldset data-field="author"><legend>Whose account is this?</legend>'
         f'<select name="{name}"><option value=""></option>{options}</select></fieldset>'
     )
 

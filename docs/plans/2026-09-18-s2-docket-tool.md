@@ -4387,3 +4387,38 @@ then the rest.
   running `document`), Step 5 (the reviewed-document extractor test) and Step 6 (Andy grading
   the sheet, the hand-check line in the results file) all wait on Andy's two manual acts and
   are untouched.
+- 2026-09-19/20, decision 0048 item 4 (the fifth option), finding 2 of the 2026-09-19 morning
+  findings above, dispatched separately: `attach.py`'s `_LABELS` answered inconsistent
+  questions per category (some a role, some an organisation, some a hedge). Reworked every
+  phrase to answer one question -- *whose account is this* -- in the shared five-word
+  vocabulary (`investigation` / `party` / `independent` / `recorded` / `unclear`), stated in
+  plain prose per 0038's neutral-provenance rule, never the bare word (checked by a new test,
+  `test_every_provenance_phrase_answers_whose_account_it_is_in_plain_prose`).
+  `exam_site`/`specialist_factual` -> "written by the investigation";
+  `party_submission`/`pilot_form_6120` -> a party's account, naming the pilot/operator where
+  the category implies it; `medical_tox` -> an independent examiner or laboratory;
+  `atc_radar_data`/`photos` -> "recorded at the time, not an account"; `maintenance_records`
+  and `weather` hedge honestly (party-or-independent; investigation-or-independent), as does
+  `conversation_statement` (party-or-independent, since an investigator's write-up of what a
+  witness or a party said is still that person's account, not a verbatim capture -- never
+  `recorded`); `manuals_reference` -> published by the manufacturer or a reference source;
+  `other` -> "not stated in the listing". Added
+  `test_every_classify_category_plus_other_has_a_provenance_label` so a category added to
+  `classify.CATEGORIES` without a label fails loudly instead of falling back to "not stated".
+  Fixed `header()`'s "1 pages" grammar (`test_header_uses_singular_page_for_a_one_page_document`).
+  `scripts/handcheck_page.py`'s `AUTHOR_OPTIONS` gained `recorded` (four options to five); the
+  author fieldset's legend changed from "Who wrote it" to "Whose account is this?", and each
+  `<option>` now carries a one-line gloss as its `title` tooltip (`AUTHOR_GLOSSES`).
+  `tests/fixtures/docket/title_handcheck.README.md`'s `author` entry rewritten around "whose
+  account is this", with the fifth option and the ATC-transcript case that motivated it.
+  `scripts/make_docket_fixture.py`'s Task 16 comment, which quoted the old label text verbatim
+  to justify `DOCUMENT_ALLOWED_CATEGORIES`, updated to match; its conclusion (only `exam_site`
+  and `specialist_factual` are the investigation's own work) is unchanged. The committed
+  `title_handcheck.csv`'s blank `author` column needed no data change (Andy has not graded it
+  yet); nothing else in the fixture pool assumes four options. Regenerated
+  `data/handcheck/index.html` (git-ignored, not committed) via `handcheck_page page` against
+  the real cache; confirmed by script that it still carries no external assets (every URL is
+  `https://data.ntsb.gov/...`) and that its CSV export block references row numbers and marks
+  only, never a title. `make check` green (711 tests, 97.84% coverage). See
+  `docs/decisions/0048-arm-b-ranks-by-each-documents-measured-size.md` item 4 and
+  `docs/decisions/0038-docket-documents-are-evidence-by-case-level-authorship.md`.

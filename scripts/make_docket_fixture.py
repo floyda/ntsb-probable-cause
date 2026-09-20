@@ -182,10 +182,12 @@ def _cmd_listing(args: argparse.Namespace, settings: Settings) -> int:
 
 # Task 16 brief, correction D: narrowed from the plan's original five categories (exam_site,
 # specialist_factual, weather, medical_tox, atc_radar_data) to the two that attach.py's own
-# provenance labels (_LABELS) actually attribute to NTSB or its investigators. The three
-# dropped: weather -> "NTSB or a weather service", medical_tox -> "a medical examiner or
-# laboratory", atc_radar_data -> "the FAA or a data source". Decision 0037 permits committing
-# text only from NTSB-authored documents; those three are not, by the project's own labels.
+# provenance labels (_LABELS) actually attribute to the investigation itself (0048 item 4:
+# "written by the investigation"). The three dropped are hedged or attributed elsewhere:
+# weather -> the investigation's own study, or an independent weather service; medical_tox ->
+# an independent medical examiner or laboratory; atc_radar_data -> recorded at the time, not an
+# account. Decision 0037 permits committing text only from NTSB-authored documents; those three
+# are not, by the project's own labels.
 # Defined here, ahead of CRITERIA, so the "two types" criterion below names this set instead
 # of a second, independently-typed literal that could drift from it.
 DOCUMENT_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"exam_site", "specialist_factual"})

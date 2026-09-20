@@ -16,27 +16,57 @@ from ntsb_probable_cause.paths import resolve_path
 
 DOCKET_KEY = "docket"
 
-# Provenance header (decision 0038 item 2): a label for the type, then the page count, then
-# the author's role the category implies. The agent is told what it reads, never that it is wrong.
+# Provenance header (decision 0038 item 2, amended by 0048 item 4): a label for the type, then
+# the page count, then a phrase answering *whose account is this* -- not who holds formal party
+# status. The hand-check's author question grades this line against the same question, so both
+# use one five-word vocabulary: investigation / party / independent / recorded / unclear. Each
+# phrase below states one of the five in plain prose, never the bare word. The agent is told
+# what it reads, never that it is wrong (0038 item 2): no phrase here hints at reliability.
+#
+# Two categories genuinely vary and are hedged honestly rather than forced to a single word:
+# maintenance_records (the aircraft's maintainers may or may not be a party) and weather (the
+# investigation's own study, or an independent weather service). conversation_statement is
+# hedged the same way, between a witness's account (independent) and a party representative's
+# (party) -- an investigator's write-up of what someone said is still that person's account, not
+# a verbatim capture, so it is never "recorded". atc_radar_data and photos, by contrast, are
+# nobody's account -- an ATC transcript is a verbatim capture in which no one is arguing
+# anything (0048 item 4) -- so both are "recorded". manuals_reference is published material
+# (a manual, a chart, a handbook) rather than an account of this accident, closest to
+# "independent" of the five, so its phrase names the publisher instead of hedging.
 _LABELS: Mapping[str, tuple[str, str]] = {
     "party_submission": ("Party submission", "submitted by a party to the investigation"),
-    "pilot_form_6120": ("Pilot/operator accident report form", "written by the pilot or operator"),
-    "photos": ("Photographs", "NTSB or its investigators"),
-    "weather": ("Weather study or data", "NTSB or a weather service"),
-    "maintenance_records": ("Maintenance records", "the aircraft's maintainers"),
-    "medical_tox": ("Medical or toxicology report", "a medical examiner or laboratory"),
-    "specialist_factual": ("Specialist factual report", "NTSB or its investigators"),
-    "exam_site": ("Examination or site report", "NTSB or its investigators"),
+    "pilot_form_6120": (
+        "Pilot/operator accident report form",
+        "submitted by the pilot or operator, a party to the investigation",
+    ),
+    "photos": ("Photographs", "recorded at the time, not an account"),
+    "weather": (
+        "Weather study or data",
+        "produced by the investigation's own study, or by an independent weather service",
+    ),
+    "maintenance_records": (
+        "Maintenance records",
+        "kept by the aircraft's maintainers, who may or may not be a party to the investigation",
+    ),
+    "medical_tox": (
+        "Medical or toxicology report",
+        "produced by an independent medical examiner or laboratory",
+    ),
+    "specialist_factual": ("Specialist factual report", "written by the investigation"),
+    "exam_site": ("Examination or site report", "written by the investigation"),
     "conversation_statement": (
         "Statement or record of conversation",
-        "a witness or party, recorded by an investigator",
+        "given by a witness or a party, and written down by an investigator",
     ),
-    "atc_radar_data": ("Air traffic, radar or recorded data", "the FAA or a data source"),
+    "atc_radar_data": (
+        "Air traffic, radar or recorded data",
+        "recorded at the time, not an account",
+    ),
     "manuals_reference": (
         "Manual or reference excerpt",
-        "the manufacturer or a reference source",
+        "published by the aircraft's manufacturer or a reference source",
     ),
-    "other": ("Docket document", "author not given by the listing"),
+    "other": ("Docket document", "not stated in the listing"),
 }
 
 _AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
@@ -65,7 +95,8 @@ def header(record: DocumentRecord) -> str:
     E.g. ``Party submission, 22 pages, submitted by a party to the investigation.``
     """
     label, role = _LABELS.get(record.category, _LABELS["other"])
-    return f"{label}, {record.pages} pages, {role}."
+    unit = "page" if record.pages == 1 else "pages"
+    return f"{label}, {record.pages} {unit}, {role}."
 
 
 def render_document(record: DocumentRecord, text: str) -> str:

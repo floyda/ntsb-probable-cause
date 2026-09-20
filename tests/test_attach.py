@@ -5,6 +5,7 @@ from collections.abc import Mapping
 
 import pytest
 
+from ntsb_probable_cause.docket import attach as attach_module
 from ntsb_probable_cause.docket.attach import (
     DOCKET_KEY,
     amateur_built_replace,
@@ -12,6 +13,7 @@ from ntsb_probable_cause.docket.attach import (
     header,
     redact_known_names,
 )
+from ntsb_probable_cause.docket.classify import CATEGORIES
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
 from ntsb_probable_cause.errors import DocketError, LeakageError
@@ -132,11 +134,40 @@ def test_requesting_an_unreadable_document_leaves_it_unattached(
     assert result.not_available == ("2: unreadable: scan", "3: unreadable: scan")
 
 
-def test_header_names_type_pages_and_author_role() -> None:
+def test_header_names_type_pages_and_whose_account_it_is() -> None:
     record = _docket({2: "x"}).record(2)
     assert header(record) == "Party submission, 3 pages, submitted by a party to the investigation."
     exam = _docket({1: "x"}).record(1)
-    assert header(exam) == "Examination or site report, 3 pages, NTSB or its investigators."
+    assert header(exam) == "Examination or site report, 3 pages, written by the investigation."
+
+
+def test_header_uses_singular_page_for_a_one_page_document() -> None:
+    entry = _entry(1, "One-page memo", pages=1)
+    record = DocumentRecord(
+        entry=entry,
+        category="exam_site",
+        status="read",
+        pages=1,
+        readable_pages=1,
+        estimated_tokens=1,
+        kind="born-digital",
+    )
+    assert header(record) == "Examination or site report, 1 page, written by the investigation."
+
+
+def test_every_classify_category_plus_other_has_a_provenance_label() -> None:
+    """0048 item 4: a category added to ``classify.CATEGORIES`` without a label must not
+    silently fall back to "not stated" -- it must fail this test instead."""
+    expected = {name for name, _pattern in CATEGORIES} | {"other"}
+    assert expected <= set(attach_module._LABELS)
+
+
+def test_every_provenance_phrase_answers_whose_account_it_is_in_plain_prose() -> None:
+    """The role phrase never states a bare vocabulary word (0048 item 4): it is prose that
+    resolves to one of investigation / party / independent / recorded / unclear."""
+    bare_words = {"investigation", "party", "independent", "recorded", "unclear"}
+    for label, role in attach_module._LABELS.values():
+        assert role.strip().lower() not in bare_words, (label, role)
 
 
 def test_amateur_built_make_and_model_are_replaced_in_text_and_counted(
