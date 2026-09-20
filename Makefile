@@ -42,8 +42,14 @@ bars:
 # queue into thirty-six minutes. `docs/results/heldout-ledger.md` must exist with its header
 # first, or two runs finishing together race to create it and one row is lost.
 
+# --expected-cost-per-case-usd is REQUIRED, not a nicety. Without it the budget guard projects a
+# run at the per-case CAP, which for dev-400 is 401 x $0.05 = $20.05, and refuses the run against
+# the $25 monthly budget before a single model call. The real cost is about $0.0075 a case
+# (docs/specs/2026-09-18-s2-design-measurements.txt), so 0.01 is a deliberate over-estimate: high
+# enough that the guard still means something, low enough that a legitimate run is not refused.
+# One run since decision 0054 retired the party-submission comparison.
 armb:
-	uv run ntsb-eval run --arm B --sample dev-400
+	uv run ntsb-eval run --arm B --sample dev-400 --expected-cost-per-case-usd 0.01
 # The reports are generated from explicit run ids afterwards, never `--latest`, as S1 learned.
 
 docket-scan:

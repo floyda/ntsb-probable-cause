@@ -39,3 +39,11 @@ not cached (skipped, never fetched): 0 of 401
 refused network requests (blocked by the transport, never sent): 0
 
 cases stopped by the tripwire at the guard's current threshold (20), by category (a document category, or 'listing'): {'conversation_statement': 7, 'exam_site': 3, 'medical_tox': 1, 'other': 1, 'party_submission': 1, 'photos': 1, 'pilot_form_6120': 1, 'specialist_factual': 2}
+
+read this with decision 0056, which this file is the evidence for: the deny-list described above
+was REMOVED on the strength of this table, not filled from it. The hits spread across 8 of the 12
+categories and 33 of the 56 fall in "other" -- the label meaning the classifier could not tell
+what the document is -- so a category deny-list cannot be filled without denying two thirds of
+the taxonomy. The "misses", "false denies" and "deny-list in force" lines above are the shape of
+the measurement decision 0039 item 1 specified, kept verbatim; they no longer describe a live
+mechanism.
