@@ -53,6 +53,67 @@ person wrote into a model prompt, which is why the boundary work of §3 comes fi
 
 ---
 
+---
+
+## 1a. Amendments after decision 0045 (appended 2026-09-20; nothing below is rewritten)
+
+This specification was written before decisions 0046-0056 and describes, in several places, a
+design the code no longer has. The original text stays, per the append-only rule; this section
+is the map from what is written to what is true. Each item names the record that holds the
+measurement.
+
+**The document header (§2 item 2, §6.3).** The provenance header is gone. It claimed whose
+account a document was, inferred from its title; Andy's 60-title hand-check measured that claim
+at 58-72% accurate, with two categories at zero of five (0051). The category label that replaced
+it went too, because it was then the last place a guess reached the model and 604 of 3,790
+documents fall to `other` (0055). §6.3's example header is not what the code renders. The header
+is now the listing index, the page count, and how many pages held readable text:
+
+```
+Docket item 3, 11 pages, of which 4 held readable text.
+```
+
+**The type classifier (§7.2).** It no longer matches "on the title and the page's type column".
+Matching the two joined put 225 documents — witness statements, toxicology reports, examination
+summaries — into `photos` because the NTSB's `Text/Image` type contains the word *image*, and 138
+of them held readable text (`docs/results/s2-doctype.txt`). It matches the title alone.
+
+**Arm B's filter (§2 item 7, §7.3, §8.3, §8.5, §10).** There is no type filter. Arm B attaches
+every document extraction found text in (0052): dropping the photograph exclusion attaches 270
+more documents in 27% of cases, displaces none, and moves the median attached tokens by six. The
+`unfiltered` variant is removed as a synonym, and the `no-submissions` variant with it — the
+`party_submission` category finds only documents the NTSB itself labels, so the comparison 0038
+item 4 asks for would measure the wrong population (0054). §8.5's "three runs" is one run.
+
+**The deny-list (§7.1, §8.3).** Removed. The measurement 0039 required was run
+(`docs/results/s2-threshold.txt`): 56 tripwire hits stopping 17 of 401 cases, spread across 8 of
+the 12 categories, with 33 of the 56 in `other` — the label meaning the classifier could not tell.
+A category deny-list cannot be filled from that without denying two thirds of the taxonomy (0056).
+`denied: write-up` is no longer a manifest status (§5.3).
+
+**The tripwire on documents (§6.5).** Still runs on every attached document, with one measured
+exemption: sentences taken from the *factual narrative* are not compared inside docket documents,
+because the investigator writes that narrative from the docket, so a shared sentence is the
+narrative quoting the evidence (0050). Refusals fell from 156 of 401 development cases to 17. The
+analysis narrative, the probable cause and the codes are still compared, and those 17 cases still
+fail closed.
+
+**The threshold (§8.2).** `MIN_SENTENCE_CHARS` stays 20. §8.2's rule — the lowest length with zero
+hits — was tried and rejected: the sweep reaches zero only at 400 characters, which would disable
+the sentence check for every source and role (0050).
+
+**Readability (§5.2).** A page with 50 **or more** characters is readable; under 50 is a scan page.
+Both halves used to compare strictly against 50 in opposite directions, so a document averaging
+exactly 50 was attached with zero readable pages (0053).
+
+**The cost table (§15).** It prices a run that will not happen, so the S2 estimate is about $1.31
+high. Left as the estimate that was made.
+
+**What did not change.** Every document is evidence whatever its author (0038 item 1); the split
+and the five guard layers; `attach_docket` as the only way document text enters a record; the
+ordering rule — each document's own measured size, ascending (0048); the name and amateur-built
+replacements (0044, 0046); and the fixture rules (0037, 0049).
+
 ## 2. The stage in one page
 
 The work has a fixed order, set by what depends on what.
@@ -259,6 +320,8 @@ from its records. `--exclude docket_documents` works as every other exclusion do
 
 ### 6.3 The provenance header (0038)
 
+**Amended — this section describes a header the code no longer renders. See §1a and decisions 0051 and 0055.**
+
 Each attached document is rendered as a header line and then its text with page markers.
 The header is built from the listing only: title, document type, page count, and the
 author's role where the title or type gives it. Example:
@@ -297,6 +360,8 @@ number if it is taken.
 
 ### 6.5 The tripwire on documents (0039)
 
+**Amended — one measured exemption applies inside docket documents. See §1a and decision 0050.**
+
 Every attached document goes through the tripwire against its case's withheld narratives,
 probable cause and codes, at the threshold §8.2 re-measures. A hit fails the case closed
 with a `LeakageError`, as any other hit does. The number of development cases the tripwire
@@ -313,6 +378,8 @@ After 0038, every document is evidence and the filter has two jobs (0039).
 
 ### 7.1 Job 1: catch a case-level write-up
 
+**Amended — the deny-list was measured unfillable and removed. See §1a and decision 0056.**
+
 A closed docket can hold an NTSB-written factual report, the answer's first half. The spike
 found no such title in 160 development listings; rare is not never. The **deny-list** of
 titles starts empty and is filled only by tripwire hits on `dev-400` (§8.3). A title on the
@@ -321,6 +388,8 @@ hits, the published result says so and the tripwire remains the only defence, wh
 in any case.
 
 ### 7.2 Job 2: the type classifier
+
+**Amended — the classifier matches the title alone, and no longer serves the header, the rank order or a filter. See §1a and decisions 0052, 0055, 0056.**
 
 A document type for the header (§6.3), the rank order (§9.1) and the filter. It starts from
 the spike's title categories (`docket_shape_probe.py`, `CATEGORIES`: pilot form, photos,
@@ -332,6 +401,8 @@ first match wins. It is scored by Andy's hand-check of 60 titles drawn by seed f
 `tests/fixtures/docket/title_handcheck.csv` and the error rate is published.
 
 ### 7.3 Arm B's filter
+
+**Amended — there is no type filter; arm B attaches every document extraction found text in. See §1a and decision 0052.**
 
 The set of types arm B attaches, and their rank order, chosen on `dev-400` by the rule in
 §10 and published in `docs/results/s2-filter.txt` before the held-out run. The unfiltered
@@ -384,6 +455,8 @@ population of which 40 is over a third. About half an hour of fetching at the 90
 percentile (M5).
 
 ### 8.5 Arm B on `dev-400`
+
+**Amended — one run, not three. See §1a and decisions 0052, 0054.**
 
 Three runs, filtered, unfiltered and without party submissions, each reported with the
 count of cases where the cap bound and documents dropped, by fatal and non-fatal. The

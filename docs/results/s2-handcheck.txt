@@ -38,3 +38,11 @@ rows carrying a note: 3
   row  1  Not radar data but a ATC transcript
   row 15  This contains a phone conversation had so not sure its an examination
   row 31  this is a statement from the widow
+
+historical, and the point of it: all three mechanisms graded above were REMOVED on the strength
+of these marks. The photograph exclusion went (0052), the deny-list went (0056), and the
+provenance header's clause went (0051) along with the category label that remained (0055). The
+section headings are kept verbatim as what was measured; none describes a live mechanism. The
+"dropped but not a photograph -- 1, evidence lost" line is WITNESS STATEMENTS, misclassified
+because the classifier matched the listing's file-type column as well as the title; that defect
+was fixed separately and the category column above is the pre-fix classification.

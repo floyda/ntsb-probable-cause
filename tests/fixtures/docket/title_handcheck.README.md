@@ -1,5 +1,26 @@
 # Title hand-check: what to mark
 
+> **Completed 2026-09-20, and every mechanism it graded has since been removed.** The marks are in
+> `title_handcheck.filled.csv`; the scored result is `docs/results/s2-handcheck.txt`, produced by
+> `scripts/score_handcheck.py`. This file is kept as the instructions Andy actually worked from,
+> because the sheet is the evidence for decisions 0051, 0052 and 0056 and a reader should be able
+> to see what the marker was asked. **It is not a live task.** What the three questions graded,
+> and what became of each:
+>
+> - `is_photo` graded arm B's photograph exclusion. **Removed** (0052): the exclusion was a
+>   title-based guess at "this has no text"; dropping it attaches 270 more documents in 27% of
+>   cases, displaces none, and costs six tokens at the median. Arm B now attaches every document
+>   extraction found text in.
+> - `could_hold_conclusions` graded the deny-list. Marked **no on all 60 rows**. The deny-list was
+>   later **removed** outright (0056), after the tripwire measurement showed its hits spread across
+>   8 of the 12 categories with 33 of 56 in `other`.
+> - `author` graded the provenance header's "whose account is this" clause. The clause agreed with
+>   the marks on 32 of 55 rows — 58%, and 58-72% under every more generous reading — so it was
+>   **removed** (0051), and the category label that remained went with it (0055). The header now
+>   carries the listing index, the page count, and how many pages held readable text.
+>
+> The sheet did its job: it is the measurement behind three removals. Nothing below needs doing.
+
 This sheet is a stratified sample of about 60 document titles seen in the dev-400 docket
 cache, one row per title. It exists to measure three things the title classifier
 (`docket/classify.py`) is actually used for (decision 0048 item 4), not whether its twelve
