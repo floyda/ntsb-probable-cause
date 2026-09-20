@@ -96,23 +96,31 @@ def measure(
         except DocketError:
             t.no_docket += 1
             continue
+        # Both variants are prepared into locals first and only committed to the totals once
+        # BOTH have succeeded. Committing inside the loop counted a case on the first variant
+        # when the second raised, which is how an earlier run printed "247 of 245".
         sets: dict[Variant, frozenset[int]] = {}
+        counts: dict[Variant, tuple[int, int, bool]] = {}
         try:
             for variant in VARIANTS:
                 spec = RunSpec(sample=sample, arm="B", docket_filter=variant)
                 prepared = prepare_case(raw, spec, tables, docket)
                 sets[variant] = frozenset(prepared.attached)
-                t.attached[variant].append(len(prepared.attached))
-                t.tokens[variant].append(
-                    sum(docket.record(i).estimated_tokens for i in prepared.attached)
+                counts[variant] = (
+                    len(prepared.attached),
+                    sum(docket.record(i).estimated_tokens for i in prepared.attached),
+                    bool(prepared.not_read),
                 )
-                if prepared.not_read:
-                    t.capped[variant] += 1
-                else:
-                    t.complete[variant] += 1
         except LeakageError:
             t.leaked += 1
             continue
+        for variant, (documents, tokens, hit_cap) in counts.items():
+            t.attached[variant].append(documents)
+            t.tokens[variant].append(tokens)
+            if hit_cap:
+                t.capped[variant] += 1
+            else:
+                t.complete[variant] += 1
         t.cases += 1
         if sets[VARIANTS[0]] != sets[VARIANTS[1]]:
             t.differing += 1
@@ -149,6 +157,10 @@ def report(t: Totals, sample: str) -> str:
         f"  cases where the two rules attach a different set   {t.differing:3d} of {cases}"
         f" ({100 * t.differing / cases:.0f}%)",
         f"  documents 'unfiltered' attaches that 'published' does not   {t.gained}",
+        "",
+        "  a case stopped by the cap has documents omitted; if neither rule ever stops, the",
+        "  cap is not binding at this model's price and the drop rule (0043) is inert here",
+        "",
         f"  documents 'published' attaches that 'unfiltered' does not   {t.lost}"
         "   (the cap displacing a larger document, not the filter)",
     ]
