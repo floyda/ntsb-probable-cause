@@ -91,7 +91,7 @@ def read_docket(
     records: list[DocumentRecord] = []
     texts: dict[int, str] = {}
     for entry in listing.entries:
-        category = document_category(entry.title, entry.doc_type)
+        category = document_category(entry.title)
         if denied(category):
             records.append(_record(entry, category, "denied: write-up"))
         elif entry.is_photo_only():

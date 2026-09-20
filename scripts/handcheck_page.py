@@ -97,7 +97,7 @@ def rows_from_listing(listing: Listing) -> list[HandcheckRow]:
             row=entry.index,
             title=entry.title,
             doc_type=entry.doc_type,
-            category=document_category(entry.title, entry.doc_type),
+            category=document_category(entry.title),
             docket_url=sources.docket_url(listing.mkey),
             document_url=sources.docket_document_url(entry.href) if entry.href else None,
         )
@@ -131,7 +131,7 @@ def _title_pools(
                 continue
             listing = parse_listing(client.listing_html(mkey), mkey=mkey)
             for entry in listing.entries:
-                category = document_category(entry.title, entry.doc_type)
+                category = document_category(entry.title)
                 key = (entry.title, entry.doc_type, category)
                 pools[category].add(key)
                 locators.setdefault(key, (mkey, entry.href))

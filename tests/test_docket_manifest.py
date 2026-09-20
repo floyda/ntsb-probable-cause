@@ -142,7 +142,7 @@ def test_read_documents_carry_text_scans_and_denied_do_not(
     listing = parse_listing(page, mkey=mkey)
     non_photo = [e for e in listing.entries if e.is_pdf() and not e.is_photo_only()]
     born_digital, scanned, denied_entry, *rest = non_photo
-    denied_category = document_category(denied_entry.title, denied_entry.doc_type)
+    denied_category = document_category(denied_entry.title)
 
     respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=page))
     page_texts = [b"A" * 400, b"B" * 350]  # invented text, exact known lengths

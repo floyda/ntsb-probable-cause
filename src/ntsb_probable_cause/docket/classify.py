@@ -105,13 +105,20 @@ def estimated_tokens(chars: int) -> int:
     return chars // 4
 
 
-def document_category(title: str, doc_type: str) -> str:
-    """The first category whose pattern matches the title or the page's type column.
+def document_category(title: str) -> str:
+    """The first category whose pattern matches the title.
+
+    The listing's file-type column is never consulted: the NTSB writes ``Text/Image`` for a
+    scanned document that holds both text and pictures, and that string contains the word
+    *image*, so joining it into the match text made ``photos`` fire on titles like
+    ``WITNESS STATEMENTS`` whatever the title said -- 225 documents in 31 of 401 dev-400
+    dockets, 138 of them holding readable text, dropped from arm B before extraction
+    (``docs/results/s2-doctype.txt``).
 
     The roster (finding 1c) is checked first and unconditionally: it must land on "other"
     regardless of category order, not merely avoid being caught by ``party_submission``.
     """
-    text = f"{title} {doc_type}".lower()
+    text = title.lower()
     if _ROSTER.search(text):
         return "other"
     for name, pattern in _COMPILED:

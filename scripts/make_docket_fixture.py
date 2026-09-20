@@ -473,7 +473,7 @@ def _cmd_handcheck(args: argparse.Namespace, settings: Settings) -> int:
                 continue
             listing = parse_listing(client.listing_html(mkey), mkey=mkey)
             for entry in listing.entries:
-                category = document_category(entry.title, entry.doc_type)
+                category = document_category(entry.title)
                 rows_by_category[category].add((entry.title, entry.doc_type, category))
     rows_by_category_sorted = {c: sorted(rows) for c, rows in rows_by_category.items()}
     sample = _stratified_sample(rows_by_category_sorted, total=HANDCHECK_SAMPLE_SIZE, seed=SEED)

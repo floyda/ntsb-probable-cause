@@ -8,14 +8,21 @@ against the title and the ``doc_type`` column joined into one string, and the NT
 Counts and titles only; no document text is printed. Titles are read from the cached listing
 pages, the same source the committed hand-check sheet was drawn from.
 
+The fix (task 16b) removed ``doc_type`` from ``document_category`` itself, so the old, joined
+behaviour is reproduced here instead, in ``_joined_category``, a frozen copy of the pre-fix
+match -- this script's job is to keep comparing the two, not to exercise the fixed function
+twice.
+
 Run: ``uv run python -m scripts.doctype_scan`` (``--out PATH`` to save the text).
 """
 
 import argparse
+import re
 from collections import Counter
 from pathlib import Path
 
 from ntsb_probable_cause.docket.classify import (
+    CATEGORIES,
     document_category,
     estimated_tokens,
     readable_pages,
@@ -26,6 +33,23 @@ from ntsb_probable_cause.settings import Settings
 
 LISTING_FILE = "listing.html"
 EXAMPLES = 12
+
+# A frozen copy of the pre-fix roster check and category patterns (see the module docstring):
+# this script measures the fix, so it keeps its own snapshot of the behaviour being replaced
+# rather than reach back into the library for logic the library no longer has.
+_ROSTER = re.compile(r"statement of party representatives")
+_COMPILED = tuple((name, re.compile(pattern)) for name, pattern in CATEGORIES)
+
+
+def _joined_category(title: str, doc_type: str) -> str:
+    """The pre-fix match: the title and the listing's file-type column joined into one string."""
+    text = f"{title} {doc_type}".lower()
+    if _ROSTER.search(text):
+        return "other"
+    for name, pattern in _COMPILED:
+        if pattern.search(text):
+            return name
+    return "other"
 
 
 def scan(root: Path) -> str:
@@ -50,8 +74,8 @@ def scan(root: Path) -> str:
         for entry in parse_listing(page, mkey=int(docket.name)).entries:
             documents += 1
             doc_types[entry.doc_type] += 1
-            joined = document_category(entry.title, entry.doc_type)
-            alone = document_category(entry.title, "")
+            joined = _joined_category(entry.title, entry.doc_type)
+            alone = document_category(entry.title)
             if joined == alone:
                 continue
             extensions[(entry.doc_type, entry.extension)] += 1
