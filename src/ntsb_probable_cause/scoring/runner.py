@@ -585,6 +585,10 @@ class Prepared:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    # Decision 0052: admission is now the extraction outcome (``status == "read"``), not the
+    # category, so under ``published`` this is always empty -- every readable document is
+    # weighed against the cap. Under ``no-submissions`` it holds the readable party
+    # submissions the variant excludes on purpose.
     filtered_out: tuple[str, ...] = ()
 
 
@@ -632,10 +636,11 @@ def prepare_case(
     ``not read: cap`` with their estimated tokens. Every trial context goes through the split,
     so the tripwire runs on every document that is attached.
 
-    Fix finding 5: a readable document the fixed type filter never admits is not weighed
-    against the cap at all, so it is recorded separately, as ``filtered_out`` -- computed once,
-    from the whole docket, before the cap loop runs, so it is set even on a case that fails
-    "cap" before that loop attaches anything.
+    Fix finding 5 / decision 0052: a readable document the variant excludes on purpose (only
+    ``no-submissions``, now that admission is the extraction outcome rather than the category)
+    is not weighed against the cap at all, so it is recorded separately, as ``filtered_out`` --
+    computed once, from the whole docket, before the cap loop runs, so it is set even on a case
+    that fails "cap" before that loop attaches anything.
     """
     evidence, verdict, payload = _split_and_render(raw, spec)
     system = _system_text(raw, spec, tables, evidence.case_id)

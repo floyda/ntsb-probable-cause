@@ -1980,9 +1980,10 @@ def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
 
 
 def test_spec_json_records_the_docket_filter() -> None:
-    spec = RunSpec(sample="dev-400", arm="B", docket_filter="unfiltered")
+    spec = RunSpec(sample="dev-400", arm="B", docket_filter="no-submissions")
     assert (
-        spec_json(spec, commit_sha="a", dirty=False, case_ids=[])["docket_filter"] == "unfiltered"
+        spec_json(spec, commit_sha="a", dirty=False, case_ids=[])["docket_filter"]
+        == "no-submissions"
     )
 
 

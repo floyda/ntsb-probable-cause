@@ -808,7 +808,7 @@ def test_judge_carries_the_answering_runs_docket_filter_into_its_own_record(
     case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
     run_id = "20260101T000000-abc1234-dev-400-B"
     _write_judgeable_run(
-        runs_dir, run_id, case_id, sample="dev-400", arm="B", docket_filter="unfiltered"
+        runs_dir, run_id, case_id, sample="dev-400", arm="B", docket_filter="no-submissions"
     )
 
     fake = RecordingFakeClient([GOOD_LABELS])
@@ -819,9 +819,9 @@ def test_judge_carries_the_answering_runs_docket_filter_into_its_own_record(
     assert main(["judge", run_id], client_factory=factory) == 0
     records = read_jsonl(runs_dir / run_id / "run.jsonl", RunRecord)
     answering, judged = records[0], records[1]
-    assert answering.docket_filter == "unfiltered"
+    assert answering.docket_filter == "no-submissions"
     assert judged.run_id == f"{run_id}-judge"
-    assert judged.docket_filter == "unfiltered"
+    assert judged.docket_filter == "no-submissions"
 
 
 def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(
@@ -888,11 +888,13 @@ def test_release_clears_a_dead_reservation(
 
 def test_docket_filter_is_refused_with_any_arm_but_b(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
-        main(["run", "--arm", "ceiling", "--sample", "dev-400", "--docket-filter", "unfiltered"])
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--docket-filter", "no-submissions"]
+        )
     assert "docket-filter" in capsys.readouterr().err
 
 
-def test_resolve_latest_skips_an_unfiltered_arm_b_run(tmp_path: Path) -> None:
+def test_resolve_latest_skips_a_non_published_arm_b_run(tmp_path: Path) -> None:
     _write_run(
         tmp_path,
         "20260101T000000-abc-dev-400-B",
@@ -901,7 +903,7 @@ def test_resolve_latest_skips_an_unfiltered_arm_b_run(tmp_path: Path) -> None:
     )
     later = tmp_path / "20260102T000000-abc-dev-400-B"
     record = RunRecord(
-        **{**_RUN_KWARGS, "arm": "B", "docket_filter": "unfiltered"},
+        **{**_RUN_KWARGS, "arm": "B", "docket_filter": "no-submissions"},
         run_id=later.name,
         started=datetime(2026, 1, 2, tzinfo=UTC),
         finished=datetime(2026, 1, 2, tzinfo=UTC),

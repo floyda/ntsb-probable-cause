@@ -1,12 +1,11 @@
-"""Arm B's document filter: types, size order, the deny-list (decisions 0022, 0038, 0039, 0043,
-0048).
+"""Arm B's document filter: admission, size order, the deny-list (decisions 0022, 0038, 0039,
+0043, 0048, 0052).
 """
 
 import pytest
 
 from ntsb_probable_cause.docket import filter as filter_module
 from ntsb_probable_cause.docket.filter import (
-    ARM_B_TYPES,
     DENY_LIST,
     arm_b_documents,
     is_denied,
@@ -67,18 +66,45 @@ def test_is_denied_checks_membership(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not is_denied("weather")
 
 
-def test_published_filter_admits_read_documents_of_admitted_types_smallest_first() -> None:
-    assert "photos" not in ARM_B_TYPES
+def test_a_read_photos_document_is_attached() -> None:
+    # Decision 0052: admission is the extraction outcome, not the title-derived category.
+    # A document categorised "photos" that nonetheless yielded readable text must not be
+    # dropped for its category -- this is the whole point of the task.
+    docket = _docket_with([(1, "Photographs", "photos", "read", 400)])
+    assert arm_b_documents(docket) == [1]
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["unreadable: scan", "unreadable: not a pdf", "skipped: photo-only", "denied: write-up"],
+)
+def test_a_document_not_marked_read_is_never_attached(status: str) -> None:
+    docket = _docket_with([(1, "Some Document", "exam_site", status, 400)])
+    assert arm_b_documents(docket) == []
+
+
+def test_published_filter_admits_every_read_document_smallest_first() -> None:
     # Read documents are index 1 (5000 tokens), 2 (800) and 4 (1200); smallest first.
+    # Index 3 (skipped: photo-only) and 5 (unreadable: scan) are never attached.
     assert arm_b_documents(_docket()) == [2, 4, 1]
-
-
-def test_unfiltered_admits_every_read_document() -> None:
-    assert arm_b_documents(_docket(), variant="unfiltered") == [2, 4, 1]
 
 
 def test_no_submissions_drops_party_submissions() -> None:
     assert arm_b_documents(_docket(), variant="no-submissions") == [2, 4]
+
+
+def test_no_submissions_excludes_nothing_else() -> None:
+    # A read, non-submission document of any other category is still attached under
+    # "no-submissions" -- the variant excludes exactly one category, nothing more.
+    docket = _docket_with(
+        [
+            (1, "Party Submission - engine maker", "party_submission", "read", 900),
+            (2, "Weather Study", "weather", "read", 900),
+            (3, "Powerplant Examination", "exam_site", "read", 900),
+            (4, "Photographs", "photos", "read", 900),
+        ]
+    )
+    assert arm_b_documents(docket, variant="no-submissions") == [2, 3, 4]
 
 
 def test_equal_size_documents_break_the_tie_by_listing_index() -> None:
@@ -96,7 +122,7 @@ def test_equal_size_documents_break_the_tie_by_listing_index() -> None:
 def test_order_is_unaffected_by_a_documents_category() -> None:
     # The property decision 0048 buys: a misclassification cannot move a document in the
     # order, because the category is no longer consulted for it. Re-labelling every document
-    # to the same (admitted) category leaves the size-based order unchanged.
+    # to the same category leaves the size-based order unchanged.
     before = arm_b_documents(_docket())
     relabelled = _docket_with(
         [

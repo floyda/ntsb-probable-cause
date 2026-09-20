@@ -140,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
     run_p.add_argument(
         "--docket-filter",
-        choices=("published", "unfiltered", "no-submissions"),
+        choices=("published", "no-submissions"),
         default="published",
     )
     run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
