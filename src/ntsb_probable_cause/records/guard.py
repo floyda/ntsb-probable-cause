@@ -13,13 +13,25 @@ from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
 # the scan.
 MIN_SENTENCE_CHARS = 20
 
-# Decision 0019: in the weather report field only, sentences taken from the factual narrative
-# are not compared. In the cases measured, those matches were the narrative quoting the weather
-# observation. Sentences from the analysis and the probable cause, whole texts and codes are
-# still compared there. Accepted gap: a factual-narrative sentence placed in a plain-English
-# weather value would pass unseen.
+# Sentence-level exemptions, one role/source pair each. In every listed role, sentences taken
+# from the named withheld source are not compared; sentences from every other withheld source,
+# whole texts and codes are still compared there, and no other role is affected. Each pair is
+# justified by a measurement showing the matches are the named source quoting that evidence, not
+# the evidence reaching an answer -- the guard compares strings and cannot see that direction, so
+# the exemption is added only where the data forces it, and as narrowly as it allows (0019).
+# - weather_metar / factual_narrative (0019): the narrative quoting the weather observation.
+#   Accepted gap: a factual-narrative sentence placed in a plain-English weather value would
+#   pass unseen.
+# - docket_documents / factual_narrative (0050): the factual narrative is written from the
+#   docket at the end of the investigation, so a shared sentence is the narrative quoting a
+#   document, not the document containing the answer. docket_listing is not exempted (0050
+#   item 3). Accepted gap: a factual-narrative sentence placed inside a docket document would
+#   pass unseen.
 SENTENCE_CHECK_EXEMPTIONS: frozenset[tuple[str, str]] = frozenset(
-    {(EvidenceRole.WEATHER_METAR.value, "factual_narrative")}
+    {
+        (EvidenceRole.WEATHER_METAR.value, "factual_narrative"),
+        (EvidenceRole.DOCKET_DOCUMENTS.value, "factual_narrative"),
+    }
 )
 
 _WHITESPACE = re.compile(r"\s+")
