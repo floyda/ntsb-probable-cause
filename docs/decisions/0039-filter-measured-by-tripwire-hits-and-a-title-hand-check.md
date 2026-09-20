@@ -90,3 +90,11 @@ Accepted, 2026-09-17 (Andy).
   Until it existed, `docket/filter.py` cited a file — `docs/results/s2-filter.txt` — that had never
   been produced.
 - Item 2's rule stands: the deny-list is filled only by tripwire hits, never by judgement.
+
+**Items 1 and 2 completed and the mechanism removed by
+[0056](0056-the-deny-list-cannot-be-filled-from-titles.md), 2026-09-20.** The measurement item 1
+requires was run: 56 hits stopping 17 of 401 cases, spread across 8 of the 12 categories, with 33
+of the 56 in `other` — the label that means the classifier could not tell. A category deny-list
+cannot be filled from that table without denying two thirds of the taxonomy, so the deny-list is
+removed rather than left empty. Item 2's rule — filled only by hits, never by judgement — is what
+produced that answer, and it was right to forbid the alternative.

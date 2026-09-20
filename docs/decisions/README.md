@@ -96,3 +96,4 @@ under `docs/specs/` and the record links to it.
 | [0053](0053-a-page-of-fifty-characters-is-readable.md) | A page with 50 or more characters is readable; "attached" now implies "has a readable page" by arithmetic | Accepted; resolves the defect 0052 records, adjusts 0047 |
 | [0054](0054-the-party-submission-comparison-is-retired.md) | The party-submission comparison is retired: the category finds only NTSB-labelled submissions, not the population | Accepted; retires 0038 item 4, removes the `no-submissions` variant |
 | [0055](0055-the-document-header-carries-the-listing-number.md) | The document header identifies a document by its listing number, not an inferred category label | Accepted; amends 0051 item 3 |
+| [0056](0056-the-deny-list-cannot-be-filled-from-titles.md) | The deny-list cannot be filled from titles and is removed; the category keeps no job in the live path | Accepted; completes and removes 0039 items 1-2 |
