@@ -16,27 +16,6 @@ from ntsb_probable_cause.paths import resolve_path
 
 DOCKET_KEY = "docket"
 
-# Header labels (decision 0038 item 2, amended by 0048 item 4, narrowed by 0051): a label for
-# the type, inferred from the title, plus the page count. 0051 removed the provenance clause
-# that used to follow -- a hand-check found it wrong on a quarter to two-fifths of documents,
-# and the agent is already given the whole listing (including every title) to judge whose
-# account a document is for itself. The label stays: it was not part of that measurement, and
-# it supplies what the listing does not -- the category, not the account.
-_LABELS: Mapping[str, str] = {
-    "party_submission": "Party submission",
-    "pilot_form_6120": "Pilot/operator accident report form",
-    "photos": "Photographs",
-    "weather": "Weather study or data",
-    "maintenance_records": "Maintenance records",
-    "medical_tox": "Medical or toxicology report",
-    "specialist_factual": "Specialist factual report",
-    "exam_site": "Examination or site report",
-    "conversation_statement": "Statement or record of conversation",
-    "atc_radar_data": "Air traffic, radar or recorded data",
-    "manuals_reference": "Manual or reference excerpt",
-    "other": "Docket document",
-}
-
 _AMATEUR_BUILT_FLAG = "aircrafts[0].aircraftAmateurBuilt"
 _MIN_REPLACE_LEN = 3
 
@@ -58,14 +37,16 @@ class AttachResult:
 
 
 def header(record: DocumentRecord) -> str:
-    """Render the document header: label, page count, and readability if it is partial.
+    """Render the document header: the listing index, the page count, and readability if partial.
 
-    E.g. ``Examination or site report, 11 pages, of which 4 held readable text.`` A fully
-    readable document omits the last clause: ``Party submission, 3 pages.``
+    Decision 0055: the identifier is the listing index, not a title-inferred category label --
+    the index, the page count and the readable-page count are each a fact, never a guess, and
+    the index is what lets the agent tie a document's text back to its row in the listing it is
+    already given. E.g. ``Docket item 3, 11 pages, of which 4 held readable text.`` A fully
+    readable document omits the last clause: ``Docket item 2, 3 pages.``
     """
-    label = _LABELS.get(record.category, _LABELS["other"])
     unit = "page" if record.pages == 1 else "pages"
-    prefix = f"{label}, {record.pages} {unit}"
+    prefix = f"Docket item {record.entry.index}, {record.pages} {unit}"
     if record.readable_pages < record.pages:
         return f"{prefix}, of which {record.readable_pages} held readable text."
     return f"{prefix}."

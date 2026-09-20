@@ -9,7 +9,6 @@ import respx
 from pypdf import PdfWriter
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket.classify import document_category
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.manifest import read_docket
@@ -117,23 +116,7 @@ def test_fetch_failure_is_a_status_not_an_exception(
     } == {"fetch failed"}
 
 
-def test_denied_category_is_never_fetched(tmp_path: Path, respx_mock: respx.MockRouter) -> None:
-    folder, mkey = _first_fixture()
-    page = (folder / "listing.html").read_text()
-    respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=page))
-    route = respx_mock.get(url__startswith=sources.DOCKET_BASE_URL + "/Docket/Document").mock(
-        return_value=httpx.Response(200, content=_blank_pdf())
-    )
-    with DocketClient(tmp_path, sleep=lambda _s: None) as client:
-        docket = read_docket(client, mkey, denied=lambda _category: True)
-    assert all(
-        r.status in {"denied: write-up", "skipped: photo-only", "unreadable: not a pdf"}
-        for r in docket.documents
-    )
-    assert route.call_count == 0
-
-
-def test_read_documents_carry_text_scans_and_denied_do_not(
+def test_read_documents_carry_text_and_scans_do_not(
     tmp_path: Path, respx_mock: respx.MockRouter
 ) -> None:
     """`status == "read"` is the only path that populates `texts` (fix round 1, Finding 2)."""
@@ -141,24 +124,20 @@ def test_read_documents_carry_text_scans_and_denied_do_not(
     page = (folder / "listing.html").read_text()
     listing = parse_listing(page, mkey=mkey)
     non_photo = [e for e in listing.entries if e.is_pdf() and not e.is_photo_only()]
-    born_digital, scanned, denied_entry, *rest = non_photo
-    denied_category = document_category(denied_entry.title)
+    born_digital, scanned, *rest = non_photo
 
     respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=page))
     page_texts = [b"A" * 400, b"B" * 350]  # invented text, exact known lengths
     for entry in listing.entries:
-        if not entry.href or entry.index == denied_entry.index:
+        if not entry.href:
             continue
         content = _text_pdf(page_texts) if entry.index == born_digital.index else _blank_pdf()
         respx_mock.get(sources.docket_document_url(entry.href)).mock(
             return_value=httpx.Response(200, content=content)
         )
-    denied_route = respx_mock.get(sources.docket_document_url(denied_entry.href)).mock(
-        return_value=httpx.Response(200, content=_blank_pdf())
-    )
 
     with DocketClient(tmp_path, sleep=lambda _s: None) as client:
-        docket = read_docket(client, mkey, denied=lambda c: c == denied_category)
+        docket = read_docket(client, mkey)
 
     read_record = docket.record(born_digital.index)
     assert read_record.status == "read"
@@ -173,10 +152,8 @@ def test_read_documents_carry_text_scans_and_denied_do_not(
     assert "B" * 350 in text
 
     assert docket.record(scanned.index).status == "unreadable: scan"
-    assert docket.record(denied_entry.index).status == "denied: write-up"
-    assert denied_route.call_count == 0
     for entry in rest:
-        assert docket.record(entry.index).status != "read"
+        assert docket.record(entry.index).status != "read"  # every other entry got a blank pdf
 
     # The property that matters: only the read document's text is kept.
     assert set(docket.texts) == {born_digital.index}

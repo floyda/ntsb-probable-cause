@@ -11,7 +11,6 @@ import pytest
 from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
@@ -1979,14 +1978,6 @@ def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
     assert over_cap("", "", spec)
 
 
-def test_spec_json_records_the_docket_filter() -> None:
-    spec = RunSpec(sample="dev-400", arm="B", docket_filter="no-submissions")
-    assert (
-        spec_json(spec, commit_sha="a", dirty=False, case_ids=[])["docket_filter"]
-        == "no-submissions"
-    )
-
-
 # --- arm B: the docket reader, the drop rule, the step record (Task 12, decision 0043) ---
 
 
@@ -2012,25 +2003,24 @@ class _ByMkeyDocketReader:
         return self._by_mkey[mkey]
 
 
-def test_cached_docket_reader_delegates_to_read_docket_with_the_deny_list(
+def test_cached_docket_reader_delegates_to_read_docket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``CachedDocketReader`` is a thin seam: it calls ``manifest.read_docket`` with the
-    client it was built with and the filter module's deny-list predicate (spec §7.1)."""
+    client it was built with (spec §7.1). Decision 0056: no deny-list predicate to pass."""
     captured: dict[str, object] = {}
     docket = small_docket({1: "[page 1 of 3]\nx\n"})
 
-    def fake_read_docket(client: object, mkey: int, *, denied: object) -> Docket:
+    def fake_read_docket(client: object, mkey: int) -> Docket:
         captured["client"] = client
         captured["mkey"] = mkey
-        captured["denied"] = denied
         return docket
 
     monkeypatch.setattr("ntsb_probable_cause.scoring.runner.read_docket", fake_read_docket)
     sentinel_client = object()
     reader = CachedDocketReader(cast(DocketClient, sentinel_client))
     result = reader.read(42)
-    assert captured == {"client": sentinel_client, "mkey": 42, "denied": docket_filter.is_denied}
+    assert captured == {"client": sentinel_client, "mkey": 42}
     assert result is docket
 
 
@@ -2164,7 +2154,7 @@ def test_arm_b_attaches_the_filtered_documents_and_records_them(
     assert step.tool == "docket"
     # Decision 0048: order is by each document's own estimated_tokens, ascending -- document 2
     # (6 tokens) is smaller than document 1 (10 tokens), so it is attached first.
-    assert step.arguments == {"documents": [2, 1], "docket_filter": "published"}
+    assert step.arguments == {"documents": [2, 1]}
     assert step.documents_attached == ("2: party_submission, 6 tokens", "1: exam_site, 10 tokens")
     assert step.not_available == ("3: unreadable: scan",)
     assert "crankshaft" in client.payloads[0].text
@@ -2208,50 +2198,6 @@ def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
     assert step.documents_attached == ("1: exam_site, 5 tokens",)
     assert step.documents_not_read == ("2: cap, 10003 tokens",)
     assert "xxxx" not in client.payloads[0].text
-
-
-def test_arm_b_no_submissions_variant_leaves_out_party_submissions(
-    tmp_path: Path, record_fixtures: list[dict[str, object]]
-) -> None:
-    docket = small_docket({1: "[page 1 of 3]\na\n", 2: "[page 1 of 3]\nWe submit.\n"})
-    client = RecordingFakeClient([GOOD, REFINE])
-    spec = RunSpec(
-        sample="dev-400",
-        arm="B",
-        docket_filter="no-submissions",
-        sync=True,
-        price_variant="standard",
-        expected_cost_per_case_usd=0.001,
-    )
-    runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
-    assert "We submit." not in client.payloads[0].text
-
-
-def test_arm_b_records_a_readable_document_the_type_filter_excluded(
-    tmp_path: Path, record_fixtures: list[dict[str, object]]
-) -> None:
-    """Fix finding 5: a readable document the type filter never admits is recorded as
-    ``documents_filtered``, distinct from a cap drop -- it was never weighed against the cap
-    at all. Before the fix it appeared in neither ``not_available`` (its status is "read")
-    nor ``documents_not_read`` (the cap loop never sees it, since ``arm_b_documents`` leaves
-    it out of ``ordered``), so it was invisible to the report.
-    """
-    docket = small_docket({1: "[page 1 of 3]\na\n", 2: "[page 1 of 3]\nWe submit.\n"})
-    client = RecordingFakeClient([GOOD, REFINE])
-    spec = RunSpec(
-        sample="dev-400",
-        arm="B",
-        docket_filter="no-submissions",
-        sync=True,
-        price_variant="standard",
-        expected_cost_per_case_usd=0.001,
-    )
-    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
-    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
-    (step,) = case.steps
-    assert step.documents_filtered == ("2: filtered: party_submission",)
-    assert step.documents_not_read == ()
-    assert case.documents_filtered == step.documents_filtered
 
 
 def test_ceiling_and_arm_a_never_read_the_docket(

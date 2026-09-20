@@ -1,44 +1,29 @@
-"""Arm B's document filter and the deny-list (spec §7, §9; decisions 0022, 0039, 0043, 0048, 0052).
+"""Arm B's document filter (spec §7, §9; decisions 0022, 0043, 0048, 0052, 0054, 0056).
 
 Every constant here is chosen on the development split and published before any held-out run.
 """
 
-from typing import Literal
-
 from ntsb_probable_cause.docket.manifest import Docket
 
-Variant = Literal["published", "no-submissions"]
 
-# Title categories that carry the NTSB's case-level write-up. Starts empty and is filled only by
-# tripwire hits on dev-400 (decision 0039 item 2); source: docs/results/s2-filter.txt.
-DENY_LIST: frozenset[str] = frozenset()
-
-
-def is_denied(category: str) -> bool:
-    """True if the category is on the deny-list."""
-    return category in DENY_LIST
-
-
-def arm_b_documents(docket: Docket, *, variant: Variant = "published") -> list[int]:
+def arm_b_documents(docket: Docket) -> list[int]:
     """Listing indices of the read documents arm B attaches, smallest measured size first.
 
     Decision 0052: admission is the measured outcome of text extraction, not a guess from the
     document's title. A document is given status ``"read"`` only when extraction found text
     on it, so that status *is* the admission test -- there is no separate category check, and
-    a title misread can no longer delete a document from arm B. The category survives for
-    three things only, none of them admission: the ``no-submissions`` variant below, the
-    deny-list (0039), and the header label plus step-log lines (0051).
+    a title misread can no longer delete a document from arm B. Every document at that
+    status is attached; decision 0056 found the deny-list cannot be filled from titles
+    without denying the taxonomy's largest bucket, and decision 0054 retired the
+    ``no-submissions`` run variant on the same ground (the population it excluded could not
+    be identified from titles either). The category now carries no admission decision at
+    all -- it survives only as a published statistic and the header/step-log diagnostic word.
 
     Decision 0048: order is each document's own ``estimated_tokens``, ascending, so the
     largest number of whole documents fit under the cap (0043's reason, unchanged). Ties
     break by listing index, never by set iteration order. The category is not consulted for
-    order -- only, under ``no-submissions``, for admission.
+    order.
     """
-    chosen = [
-        r
-        for r in docket.documents
-        if r.status == "read"
-        and not (variant == "no-submissions" and r.category == "party_submission")
-    ]
+    chosen = [r for r in docket.documents if r.status == "read"]
     chosen.sort(key=lambda r: (r.estimated_tokens, r.entry.index))
     return [r.entry.index for r in chosen]

@@ -23,8 +23,24 @@ def test_born_digital_scan_and_partial() -> None:
     assert classify_pages([]) == "scan"
 
 
-def test_readable_pages_counts_pages_over_the_scan_threshold() -> None:
-    assert readable_pages([600, 0, 51, 50]) == 2
+def test_readable_pages_counts_pages_at_or_over_the_scan_threshold() -> None:
+    """Decision 0053: the boundary is inclusive, on the readable side."""
+    assert readable_pages([600, 0, 51, 50]) == 3
+
+
+@pytest.mark.parametrize(
+    "chars_by_page",
+    [[50], [50, 50], [49], [51], [600, 0, 51, 50]],
+)
+def test_a_non_scan_document_always_has_at_least_one_readable_page(
+    chars_by_page: list[int],
+) -> None:
+    """Decision 0053's invariant: the mean is never below the maximum page, so whenever
+    ``classify_pages`` calls a document anything but a scan, at least one page counts as
+    readable -- "attached as evidence" implies "has readable text" by arithmetic, not luck.
+    """
+    if classify_pages(chars_by_page) != "scan":
+        assert readable_pages(chars_by_page) >= 1
 
 
 def test_estimated_tokens_is_characters_over_four() -> None:

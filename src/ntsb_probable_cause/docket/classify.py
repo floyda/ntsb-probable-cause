@@ -96,8 +96,17 @@ def classify_pages(chars_by_page: Sequence[int]) -> Kind:
 
 
 def readable_pages(chars_by_page: Sequence[int]) -> int:
-    """Pages with more than the scan threshold of characters."""
-    return sum(1 for c in chars_by_page if c > SCAN_PAGE_MAX_CHARS)
+    """Pages with at least the scan threshold of characters.
+
+    Decision 0053: the boundary is inclusive, on the readable side, so it agrees with
+    ``classify_pages`` rather than leaving a page at exactly ``SCAN_PAGE_MAX_CHARS`` counted
+    by neither function. Because a document's mean is never below its maximum page, this
+    makes an invariant hold by arithmetic: whenever ``classify_pages`` returns anything but
+    ``"scan"`` (mean at least ``SCAN_PAGE_MAX_CHARS``), at least one page has at least the
+    mean and so counts as readable here. A document attached as evidence therefore always
+    has at least one readable page.
+    """
+    return sum(1 for c in chars_by_page if c >= SCAN_PAGE_MAX_CHARS)
 
 
 def estimated_tokens(chars: int) -> int:

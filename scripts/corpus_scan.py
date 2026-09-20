@@ -51,7 +51,6 @@ import httpx
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
@@ -541,6 +540,12 @@ def _scan_main() -> int:
 # --- docket mode (spec §8.2, §8.3): the threshold on docket text, then the filter measurement ---
 
 
+# Decision 0056: the deny-list this table was measured to fill is retired -- it stays
+# permanently empty, and ``docket.filter`` no longer defines it. Kept local, not reintroduced
+# on the library, so the "misses"/"false denies" columns below keep their original shape (a
+# diagnostic against what a deny-list would have caught) without resurrecting the mechanism.
+_EMPTY_DENY_LIST: frozenset[str] = frozenset()
+
 LISTING_CATEGORY = "listing"
 # Fix round 1, finding 3: `attach_docket` also renders `docket.listing` into the context, and
 # production `split_record` checks `EvidenceRole.DOCKET_LISTING` -- a threshold declared clean
@@ -647,8 +652,8 @@ def docket_report(hits_by_length: Mapping[int, Counter[str]], cases: int, docume
         counter = hits_by_length[length]
         hit_categories = {key.split("/")[0] for key in counter}
         by_category = dict(sorted(Counter(k.split("/")[0] for k in counter.elements()).items()))
-        misses = sorted(hit_categories - docket_filter.DENY_LIST)
-        false_denies = sorted(docket_filter.DENY_LIST - hit_categories)
+        misses = sorted(hit_categories - _EMPTY_DENY_LIST)
+        false_denies = sorted(_EMPTY_DENY_LIST - hit_categories)
         marker = " *** table in force ***" if length == MIN_SENTENCE_CHARS else ""
         lines.append(f"\n{length}{marker}:")
         lines.append(f"    hits by category: {by_category}")
@@ -660,7 +665,7 @@ def docket_report(hits_by_length: Mapping[int, Counter[str]], cases: int, docume
                 "there needs a different remedy, not an addition to this list"
             )
         lines.append(f"    false denies (on the deny-list, no hit): {false_denies}")
-    lines.append(f"\ndeny-list in force: {sorted(docket_filter.DENY_LIST) or 'empty'}")
+    lines.append(f"\ndeny-list in force: {sorted(_EMPTY_DENY_LIST) or 'empty'}")
     return "\n".join(lines)
 
 

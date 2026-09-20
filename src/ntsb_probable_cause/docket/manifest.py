@@ -1,6 +1,5 @@
 """The per-case manifest: what was read, what could not be, and why (spec §5.3)."""
 
-from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -23,7 +22,6 @@ Status = Literal[
     "unreadable: not a pdf",
     "skipped: photo-only",
     "fetch failed",
-    "denied: write-up",
 ]
 
 
@@ -83,18 +81,19 @@ def _record(  # noqa: PLR0913 -- one outcome field per status; see the Interface
     )
 
 
-def read_docket(
-    client: DocketClient, mkey: int, *, denied: Callable[[str], bool] = lambda _c: False
-) -> Docket:
-    """Fetch the listing and every document; classify and extract; keep text for read ones."""
+def read_docket(client: DocketClient, mkey: int) -> Docket:
+    """Fetch the listing and every document; classify and extract; keep text for read ones.
+
+    Decision 0056: there is no deny-list. Every entry is fetched and extracted unless its
+    listing metadata alone rules it out (a photo-only entry, a non-PDF), or extraction finds
+    it unreadable; the category never stops a document from being read.
+    """
     listing = parse_listing(client.listing_html(mkey), mkey=mkey)
     records: list[DocumentRecord] = []
     texts: dict[int, str] = {}
     for entry in listing.entries:
         category = document_category(entry.title)
-        if denied(category):
-            records.append(_record(entry, category, "denied: write-up"))
-        elif entry.is_photo_only():
+        if entry.is_photo_only():
             records.append(_record(entry, category, "skipped: photo-only"))
         elif not entry.is_pdf():
             records.append(_record(entry, category, "unreadable: not a pdf"))

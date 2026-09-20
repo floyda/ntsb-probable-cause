@@ -300,33 +300,6 @@ def cap_summary(results: Sequence[CaseResult]) -> str:
     )
 
 
-def filter_summary(results: Sequence[CaseResult]) -> str:
-    """How much of the docket the variant excluded on purpose before the cap ever saw it.
-
-    Distinct from ``cap_summary``: a document counted here was never weighed against the cap
-    at all, because ``docket_filter.arm_b_documents`` never admitted it (fix finding 5).
-    Decision 0052 made admission the measured extraction outcome (``status == "read"``)
-    rather than the category, so under ``published`` this is always zero; a document appears
-    here only under ``no-submissions``, which still excludes ``party_submission`` by category.
-    Same ``documents_filtered`` reasoning as ``cap_summary``: read from the case, not summed
-    over steps, so a case that failed before any step is still counted.
-    """
-
-    def counts(rows: Sequence[CaseResult]) -> tuple[int, int]:
-        hit = [r for r in rows if r.documents_filtered]
-        excluded = sum(len(r.documents_filtered) for r in rows)
-        return len(hit), excluded
-
-    cases_hit, docs = counts(results)
-    fatal_hit, fatal_docs = counts([r for r in results if r.fatal])
-    non_hit, non_docs = counts([r for r in results if not r.fatal])
-    return (
-        f"filter: {cases_hit} of {len(results)} cases had a readable document the docket "
-        f"filter excluded; {docs} documents excluded "
-        f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
-    )
-
-
 def _stream_raws_of_split(processed: Path, split: Split) -> Iterator[dict[str, object]]:
     """Every raw record of one split, read directly from the processed file, one at a time.
 

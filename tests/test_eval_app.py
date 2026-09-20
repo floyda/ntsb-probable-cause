@@ -884,29 +884,3 @@ def test_release_clears_a_dead_reservation(
     assert "released dead-run" in capsys.readouterr().out
     assert open_reservations(runs_dir) == {}
     assert main(["release", "dead-run"]) == 1
-
-
-def test_docket_filter_is_refused_with_any_arm_but_b(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit):
-        main(
-            ["run", "--arm", "ceiling", "--sample", "dev-400", "--docket-filter", "no-submissions"]
-        )
-    assert "docket-filter" in capsys.readouterr().err
-
-
-def test_resolve_latest_skips_a_non_published_arm_b_run(tmp_path: Path) -> None:
-    _write_run(
-        tmp_path,
-        "20260101T000000-abc-dev-400-B",
-        finished=datetime(2026, 1, 1, tzinfo=UTC),
-        arm="B",
-    )
-    later = tmp_path / "20260102T000000-abc-dev-400-B"
-    record = RunRecord(
-        **{**_RUN_KWARGS, "arm": "B", "docket_filter": "no-submissions"},
-        run_id=later.name,
-        started=datetime(2026, 1, 2, tzinfo=UTC),
-        finished=datetime(2026, 1, 2, tzinfo=UTC),
-    )
-    write_jsonl(later / "run.jsonl", [record])
-    assert resolve_latest(tmp_path, "B", "dev-400") == "20260101T000000-abc-dev-400-B"

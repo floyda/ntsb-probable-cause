@@ -87,11 +87,6 @@ def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None =
             continue
         if record.exclusions or record.includes:
             continue
-        # Skip runs with non-published docket filters to avoid silently publishing experimental
-        # results as headline numbers. The --docket-filter option exists to compare filters;
-        # those runs are measurements, not results.
-        if record.docket_filter != "published":
-            continue
         if model is not None and record.model != model:
             continue
         candidates.append((folder.name, record.model))
@@ -138,11 +133,6 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p = commands.add_parser("run", help="run one evaluation arm over a sample")
     run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
-    run_p.add_argument(
-        "--docket-filter",
-        choices=("published", "no-submissions"),
-        default="published",
-    )
     run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
     run_p.add_argument("--include", action="append", default=[], choices=("case_number",))
     run_p.add_argument("--model", default=RunSpec.model)
@@ -208,9 +198,6 @@ def _cmd_baseline(args: argparse.Namespace, settings: Settings) -> None:
 
 
 def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
-    if args.docket_filter != "published" and args.arm != "B":
-        print("error: --docket-filter applies to --arm B only", file=sys.stderr)
-        raise SystemExit(1)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
     if args.limit is not None:
@@ -225,7 +212,6 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         arm=args.arm,
         exclusions=frozenset(args.exclude),
         include_case_number="case_number" in args.include,
-        docket_filter=args.docket_filter,
         model=args.model,
         price_variant=args.price_variant,
         cap_usd=args.cap_usd,
@@ -286,7 +272,7 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
     if run_record.arm == "B":
-        text += "\n\n" + report.cap_summary(cases) + "\n" + report.filter_summary(cases)
+        text += "\n\n" + report.cap_summary(cases)
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"

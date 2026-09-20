@@ -14,7 +14,6 @@ from ntsb_probable_cause.data.build import investigation_class
 from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.docket.filter import Variant
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
 from ntsb_probable_cause.errors import (
     BudgetError,
@@ -78,7 +77,6 @@ class RunSpec:
     arm: Literal["A", "B", "ceiling"]
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
-    docket_filter: Variant = "published"
     model: str = "openai/gpt-5.6-luna"
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
@@ -120,7 +118,6 @@ def spec_json(
         "arm": spec.arm,
         "exclusions": sorted(role.value for role in spec.exclusions),
         "include_case_number": spec.include_case_number,
-        "docket_filter": spec.docket_filter,
         "model": spec.model,
         "price_variant": spec.price_variant,
         "cap_usd": spec.cap_usd,
@@ -563,14 +560,14 @@ class DocketReader(Protocol):
 
 
 class CachedDocketReader:
-    """The real reader: the client's cache, the deny-list applied (spec §7.1)."""
+    """The real reader: the client's cache (spec §7.1). Decision 0056: no deny-list to apply."""
 
     def __init__(self, client: DocketClient) -> None:
         self._client = client
 
     def read(self, mkey: int) -> Docket:
         """The docket for a case's internal key, fetched (or read from cache) and classified."""
-        return read_docket(self._client, mkey, denied=docket_filter.is_denied)
+        return read_docket(self._client, mkey)
 
 
 @dataclass(frozen=True)
@@ -585,11 +582,6 @@ class Prepared:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
-    # Decision 0052: admission is now the extraction outcome (``status == "read"``), not the
-    # category, so under ``published`` this is always empty -- every readable document is
-    # weighed against the cap. Under ``no-submissions`` it holds the readable party
-    # submissions the variant excludes on purpose.
-    filtered_out: tuple[str, ...] = ()
 
 
 # The two evidence roles arm B is defined by (spec §7.1). Excluding either one leaves the
@@ -636,11 +628,8 @@ def prepare_case(
     ``not read: cap`` with their estimated tokens. Every trial context goes through the split,
     so the tripwire runs on every document that is attached.
 
-    Fix finding 5 / decision 0052: a readable document the variant excludes on purpose (only
-    ``no-submissions``, now that admission is the extraction outcome rather than the category)
-    is not weighed against the cap at all, so it is recorded separately, as ``filtered_out`` --
-    computed once, from the whole docket, before the cap loop runs, so it is set even on a case
-    that fails "cap" before that loop attaches anything.
+    Decisions 0052, 0054, 0056: every readable document is weighed against the cap -- there is
+    no longer a category-based filter that can exclude one before that loop ever sees it.
     """
     evidence, verdict, payload = _split_and_render(raw, spec)
     system = _system_text(raw, spec, tables, evidence.case_id)
@@ -654,13 +643,7 @@ def prepare_case(
         )
     if docket is None:
         raise ConfigurationError("arm B needs a docket reader")
-    ordered = docket_filter.arm_b_documents(docket, variant=spec.docket_filter)
-    admitted = set(ordered)
-    filtered_out = tuple(
-        f"{r.entry.index}: filtered: {r.category}"
-        for r in docket.documents
-        if r.status == "read" and r.entry.index not in admitted
-    )
+    ordered = docket_filter.arm_b_documents(docket)
     attached: list[int] = []
     not_read: list[str] = []
     result = attach_docket(raw, docket, documents=attached)
@@ -688,7 +671,6 @@ def prepare_case(
         tuple(not_read),
         result.not_available,
         documents_attached,
-        filtered_out,
     )
 
 
@@ -755,7 +737,6 @@ class _CaseContext:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
-    filtered_out: tuple[str, ...] = ()
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
 
@@ -889,7 +870,6 @@ class Runner:
                 arm=spec.arm,
                 exclusions=tuple(sorted(e.value for e in spec.exclusions)),
                 includes=("case_number",) if spec.include_case_number else (),
-                docket_filter=spec.docket_filter,
                 prompt_version=prompt.PROMPT_VERSION,
                 model=spec.model,
                 price_variant=spec.price_variant,
@@ -1009,16 +989,13 @@ class Runner:
             condition="full",
             day=None,
             tool="docket" if is_arm_b else "none",
-            arguments={"documents": list(ctx.attached), "docket_filter": ctx.spec.docket_filter}
-            if is_arm_b
-            else {},
+            arguments={"documents": list(ctx.attached)} if is_arm_b else {},
             reason="",
             expected_effect="",
             returned_roles=tuple(sorted(ctx.payload.fields())),
             not_available=ctx.not_available,
             documents_attached=ctx.documents_attached,
             documents_not_read=ctx.not_read,
-            documents_filtered=ctx.filtered_out,
             payload_fingerprint=fingerprint(ctx.payload),
             hypothesis=hypothesis,
             observed_effect="",
@@ -1061,9 +1038,6 @@ class Runner:
             # step is built (``steps=()``), and that is exactly the case that dropped the
             # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
             documents_not_read=ctx.not_read,
-            # Same reasoning, for the type filter (fix finding 5): computed before the cap
-            # loop runs, so it is set on a "cap" failure too, not only on a scored case.
-            documents_filtered=ctx.filtered_out,
         )
 
     def _failed(
@@ -1108,12 +1082,11 @@ class Runner:
             A ``CaseResult`` with no steps and no scores, ``cost_usd=0.0`` (no model call was
             made), and ``failure`` prefixed ``"leak:"`` so it reads distinctly from ``"cap"``,
             ``"schema:"`` and ``"model:"`` in a run's failure list. Unlike a "cap" failure
-            (fix round 1, Finding 4; fix finding 5), ``documents_not_read`` and
-            ``documents_filtered`` are both deliberately left empty here: ``self._prepare``
-            raised instead of returning a ``Prepared``, so whatever the cap loop had or had
-            not attached, dropped or filtered at the moment of the trip is not available to
-            read -- there is nothing truthful, rather than merely nothing, to put in either
-            field (re-review round 2, minor).
+            (fix round 1, Finding 4), ``documents_not_read`` is deliberately left empty here:
+            ``self._prepare`` raised instead of returning a ``Prepared``, so whatever the cap
+            loop had or had not attached or dropped at the moment of the trip is not
+            available to read -- there is nothing truthful, rather than merely nothing, to
+            put in the field (re-review round 2, minor).
         """
         case_id = str(raw["ntsbNumber"])
         event = date.fromisoformat(str(raw["eventDate"])[:10])
@@ -1132,7 +1105,6 @@ class Runner:
             cost_usd=0.0,
             failure=f"leak: {error}",
             documents_not_read=(),
-            documents_filtered=(),
         )
 
     # --- the sync path ---
@@ -1155,7 +1127,6 @@ class Runner:
             not_read=prepared.not_read,
             not_available=prepared.not_available,
             documents_attached=prepared.documents_attached,
-            filtered_out=prepared.filtered_out,
         )
         if over_cap(prepared.payload.text, prepared.system, spec):
             return self._failed(ctx, "cap", 0.0)
@@ -1475,7 +1446,6 @@ class Runner:
                 not_read=prepared.not_read,
                 not_available=prepared.not_available,
                 documents_attached=prepared.documents_attached,
-                filtered_out=prepared.filtered_out,
             )
             if over_cap(prepared.payload.text, prepared.system, spec):
                 run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)

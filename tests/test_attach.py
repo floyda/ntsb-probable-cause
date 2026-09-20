@@ -5,7 +5,6 @@ from collections.abc import Mapping
 
 import pytest
 
-from ntsb_probable_cause.docket import attach as attach_module
 from ntsb_probable_cause.docket.attach import (
     DOCKET_KEY,
     amateur_built_replace,
@@ -134,16 +133,35 @@ def test_requesting_an_unreadable_document_leaves_it_unattached(
     assert result.not_available == ("2: unreadable: scan", "3: unreadable: scan")
 
 
-def test_header_names_type_and_pages_with_no_clause_when_fully_readable() -> None:
-    """Decision 0051: a fully readable document's header ends after the page count."""
+# The former category labels (decision 0051), quoted here only as a regression guard --
+# decision 0055 removed them from the header, and this list has no other purpose than
+# proving none of the twelve reappears in a rendered header.
+_FORMER_LABELS = (
+    "Party submission",
+    "Pilot/operator accident report form",
+    "Photographs",
+    "Weather study or data",
+    "Maintenance records",
+    "Medical or toxicology report",
+    "Specialist factual report",
+    "Examination or site report",
+    "Statement or record of conversation",
+    "Air traffic, radar or recorded data",
+    "Manual or reference excerpt",
+    "Docket document",
+)
+
+
+def test_header_names_the_listing_index_and_pages_with_no_clause_when_fully_readable() -> None:
+    """Decision 0055: a fully readable document's header ends after the page count."""
     record = _docket({2: "x"}).record(2)
-    assert header(record) == "Party submission, 3 pages."
+    assert header(record) == "Docket item 2, 3 pages."
     exam = _docket({1: "x"}).record(1)
-    assert header(exam) == "Examination or site report, 3 pages."
+    assert header(exam) == "Docket item 1, 3 pages."
 
 
 def test_header_reports_the_readable_page_count_when_partly_readable() -> None:
-    """Decision 0051 item 2: what was readable replaces the old provenance clause."""
+    """Decision 0055: what was readable follows the listing index and page count."""
     entry = _entry(1, "Partly scanned report", pages=11)
     record = DocumentRecord(
         entry=entry,
@@ -154,11 +172,11 @@ def test_header_reports_the_readable_page_count_when_partly_readable() -> None:
         estimated_tokens=100,
         kind="partial",
     )
-    assert header(record) == "Examination or site report, 11 pages, of which 4 held readable text."
+    assert header(record) == "Docket item 1, 11 pages, of which 4 held readable text."
 
 
 def test_header_uses_singular_page_for_a_one_page_document() -> None:
-    entry = _entry(1, "One-page memo", pages=1)
+    entry = _entry(7, "One-page memo", pages=1)
     record = DocumentRecord(
         entry=entry,
         category="exam_site",
@@ -168,29 +186,13 @@ def test_header_uses_singular_page_for_a_one_page_document() -> None:
         estimated_tokens=1,
         kind="born-digital",
     )
-    assert header(record) == "Examination or site report, 1 page."
+    assert header(record) == "Docket item 7, 1 page."
 
 
-def test_every_classify_category_plus_other_has_a_label() -> None:
-    """0048 item 4, narrowed by 0051: a category added to ``classify.CATEGORIES`` without a
-    label must not silently fall back to "Docket document" -- it must fail this test instead."""
-    expected = {name for name, _pattern in CATEGORIES} | {"other"}
-    assert expected <= set(attach_module._LABELS)
-
-
-def test_no_header_carries_any_of_the_removed_provenance_phrasings() -> None:
-    """Decision 0051: the provenance clause and its five-word vocabulary are gone. Rendered
-    for every category, at both a fully readable and a partly readable page count, no header
-    may contain any of the phrasings that clause used to carry."""
-    removed_phrasings = (
-        "submitted by",
-        "written by",
-        "produced by",
-        "recorded at",
-        "kept by",
-        "published by",
-        "not stated",
-    )
+def test_no_header_carries_any_of_the_twelve_former_category_labels() -> None:
+    """Decision 0055: the header's identifier is the listing index, not a title-inferred
+    category label. Rendered for every category, at both a fully readable and a partly
+    readable page count, no header may contain any of the labels that used to appear."""
     categories = {name for name, _pattern in CATEGORIES} | {"other"}
     for category in categories:
         for pages, readable_pages in ((3, 3), (11, 4)):
@@ -205,9 +207,9 @@ def test_no_header_carries_any_of_the_removed_provenance_phrasings() -> None:
                 kind="born-digital" if pages == readable_pages else "partial",
             )
             rendered = header(record)
-            assert attach_module._LABELS[category] in rendered
-            for phrase in removed_phrasings:
-                assert phrase not in rendered, (category, rendered)
+            assert "Docket item 1" in rendered
+            for label in _FORMER_LABELS:
+                assert label not in rendered, (category, rendered)
 
 
 def test_amateur_built_make_and_model_are_replaced_in_text_and_counted(
