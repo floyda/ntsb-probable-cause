@@ -1,0 +1,40 @@
+title hand-check, scored (decision 0048 item 4)
+sheet tests/fixtures/docket/title_handcheck.filled.csv, 60 rows, every row marked
+
+1. the photograph exclusion -- arm B drops the whole document
+  marked a photograph by hand              9 (15%)
+  classified photos                        5 (8%)
+  dropped but not a photograph             1    evidence lost
+  a photograph but kept                    5    attached as text
+
+2. the deny-list -- could hold the investigators' own conclusions
+  marked yes                               0 (0%)
+
+3. the provenance header -- whose account is this
+  rows whose header makes a claim         55 (92%)
+    agrees with the hand mark             32 (58%)
+    contradicts it                        23 (42%)
+  rows whose header claims nothing         5 (8%)
+    a person could still tell              5    not falsified
+  marked unclear by hand                   0
+
+where the header contradicts the mark, by category (claimed -> marked):
+  atc_radar_data           recorded                 -> independent  3
+  atc_radar_data           recorded                 -> party        1
+  exam_site                investigation            -> party        2
+  exam_site                investigation            -> recorded     1
+  maintenance_records      independent/party        -> recorded     4
+  photos                   recorded                 -> investigation 5
+  pilot_form_6120          party                    -> investigation 2
+  specialist_factual       investigation            -> independent  4
+  specialist_factual       investigation            -> party        1
+
+what the rows claiming nothing were marked as:
+  investigation            3
+  party                    1
+  recorded                 1
+
+rows carrying a note: 3
+  row  1  Not radar data but a ATC transcript
+  row 15  This contains a phone conversation had so not sure its an examination
+  row 31  this is a statement from the widow
