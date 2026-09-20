@@ -9,6 +9,11 @@ data/runs/
 # Decision 0037 permits only redacted, reviewed, NTSB-authored text in git — a cached
 # docket page or document is neither redacted nor reviewed, and this repo is public.
 data/docket/
+# The local hand-check marking page (scripts/handcheck_page.py): unredacted document titles
+# and links that name real cases, for the owner's own browser only. Decision 0049 keeps the
+# committed sheet this folds into (tests/fixtures/docket/title_handcheck.csv) redacted; this
+# is that sheet's working copy, never the committed artefact.
+data/handcheck/
 *.zip
 *.mdb
 *.accdb
