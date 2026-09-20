@@ -108,3 +108,19 @@ was redundant:
 ## Status
 
 Accepted, 2026-09-19 (Andy). Supersedes 0043 item 2.
+
+**Superseded in part, 2026-09-20 (appended; nothing above is edited).**
+
+Item 3 said the category keeps exactly three jobs: the photograph exclusion, the deny-list and the
+provenance header. Two are gone.
+[0052](0052-arm-b-attaches-every-readable-document.md) removed the photograph exclusion and
+`ARM_B_TYPES` with it, after measuring that dropping it attaches 270 more documents in 27% of cases,
+displaces none, and costs six tokens at the median — which refutes this record's Context, where the
+exclusion is argued to be "real work, not redundancy".
+[0051](0051-the-document-header-drops-the-provenance-clause.md) and
+[0055](0055-the-document-header-carries-the-listing-number.md) removed the header's label
+altogether. [0054](0054-the-party-submission-comparison-is-retired.md) removed the run variant.
+
+Item 2's ranking — each document's own `estimated_tokens`, ascending, ties broken by listing index —
+is unchanged and is still what `arm_b_documents` does. Item 4's hand-check was carried out; its
+results are in `docs/results/s2-handcheck.txt` and are the evidence for 0051.

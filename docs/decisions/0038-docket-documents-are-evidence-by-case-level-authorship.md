@@ -73,3 +73,26 @@ withhold. Cost is a budget question for arm B's filter (0022), not a leakage que
 ## Status
 
 Accepted, 2026-09-17 (Andy).
+
+## Superseded in part, 2026-09-20 (appended; nothing above is edited)
+
+- **Item 2 is superseded by [0051](0051-the-document-header-drops-the-provenance-clause.md)** and
+  then amended by [0055](0055-the-document-header-carries-the-listing-number.md). The provenance
+  header described here — "title, the document type from the listing, page count, and the author's
+  role" — was never implemented as written: the code rendered a category label, not the title or
+  the document type. 0051 removed the author's role after measuring it at 58-72% accurate and
+  0055 replaced the label with the listing number. The header is now the listing index, the page
+  count, and how many pages held readable text.
+- **Item 3's "the case then fails closed" no longer holds** for the case it describes.
+  [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) stops the
+  tripwire comparing factual-narrative sentences inside docket documents, which is exactly the
+  scenario this item names. Refusals fell from 156 of 401 development cases to 17. The analysis
+  narrative, the probable cause and the codes are still compared, so a document carrying those
+  still fails closed. Item 3's second sentence — the tripwire's hits published *by document type*
+  — is the measurement 0039 item 1 requires and is answered in `docs/results/s2-threshold.txt`.
+- **Item 4 is retired by [0054](0054-the-party-submission-comparison-is-retired.md)**: the
+  `party_submission` category finds only documents the NTSB itself labels, so the comparison would
+  measure the wrong population rather than a small one.
+
+Item 1 — every docket document is evidence, whatever its author — is untouched, and is the reason
+the other three needed revisiting.

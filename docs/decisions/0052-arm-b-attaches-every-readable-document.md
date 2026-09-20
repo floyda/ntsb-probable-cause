@@ -89,3 +89,20 @@ decision's "every document that yielded text" is true of every document except t
 ## Status
 
 Accepted, 2026-09-20 (Andy: "yes take the simplification next, implement that").
+
+## Correction, 2026-09-20 (appended; nothing above is edited)
+
+The opening line mis-cites both records it claims to supersede, and `docs/decisions/README.md`
+repeated the error:
+
+- The photograph exclusion and `ARM_B_TYPES` are **0048 item 3**, not item 4. Item 4 is the title
+  hand-check, which only *grades* the exclusion as one of its three questions.
+- **0039 never establishes `ARM_B_TYPES` and never mentions it.** 0039's subjects are the deny-list
+  and the measurement that fills it. `ARM_B_TYPES` came from the S2 specification and plan.
+
+Read the opening line as: *supersedes 0048 item 3's photograph exclusion and the `ARM_B_TYPES` set
+the S2 specification established; narrows 0039 item 3, which set arm B's admitted types.*
+
+Found by the whole-branch review. It matters because a reader following a supersession chain — the
+reader rule 8 exists to serve — would land in the wrong paragraph of 0048 and on a record that
+never said the thing.

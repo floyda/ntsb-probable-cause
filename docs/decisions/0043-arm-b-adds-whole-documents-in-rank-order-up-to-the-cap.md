@@ -40,3 +40,13 @@ standard price the room is 15,000 tokens and the largest document the spike saw 
 ## Status
 
 Accepted, 2026-09-18 (Andy: "lets capture when that token cap is breached").
+
+**Item 2 superseded by [0048](0048-arm-b-ranks-by-each-documents-measured-size.md), 2026-09-19**,
+which ranks by each document's own measured size rather than by category.
+
+**Measured consequence, 2026-09-20:** the drop rule this record specifies is correct and currently
+never fires. Over 384 development cases it stopped **zero** at the cap
+(`docs/results/s2-filter-compare.txt`), because at the model the harness defaults to a 123,188-token
+docket costs about $0.027 against a $0.05 cap. The rule binds at a dearer model, which is the
+justification this record gives, so it stands — but "the cap protects us" should be said about this
+build only with the word *currently*.

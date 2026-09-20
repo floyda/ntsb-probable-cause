@@ -75,3 +75,18 @@ sentences. The roadmap already requires re-measuring the threshold on docket tex
 ## Status
 
 Accepted, 2026-09-17 (Andy).
+
+**Amended, 2026-09-20 (appended; nothing above is edited).**
+
+- **Item 3's `ARM_B_TYPES` is removed** by [0052](0052-arm-b-attaches-every-readable-document.md).
+  Arm B admits every document extraction found text in. There is no type list to set.
+- **Item 5's threshold rule was tried and rejected.** It required the lowest minimum sentence length
+  with zero hits. The sweep was run (`docs/results/s2-docket-leak.txt`) and reaches zero only at 400
+  characters, which is a paragraph, not a sentence — so choosing it would have disabled the sentence
+  check for every source and role. `MIN_SENTENCE_CHARS` stays 20 and
+  [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) solves the problem
+  with a source-scoped exemption instead.
+- **Item 1's measurement was outstanding until 2026-09-20** and is `docs/results/s2-threshold.txt`.
+  Until it existed, `docket/filter.py` cited a file — `docs/results/s2-filter.txt` — that had never
+  been produced.
+- Item 2's rule stands: the deny-list is filled only by tripwire hits, never by judgement.
