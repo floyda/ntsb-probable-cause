@@ -39,6 +39,14 @@ from ntsb_probable_cause.settings import Settings
 CANDIDATES = (20, 30, 40, 60, 80, 100, 120, 150, 200, 250, 300, 400)
 NO_SENTENCES = 10**9
 EXEMPT_SOURCE = "factual_narrative"
+
+# The "before" column must keep measuring the guard AS IT STOOD BEFORE decision 0050, so it is
+# pinned to a frozen copy of the pre-0050 exemption set rather than left to inherit
+# guard.SENTENCE_CHECK_EXEMPTIONS. Inheriting it was a real defect: once 0050 added the
+# docket_documents pair, the live default suppressed the very matches this column exists to
+# count, and the before column collapsed onto the after column (12 of 40 became 1 of 40).
+# scripts/doctype_scan.py freezes its pre-fix matcher for the same reason.
+BEFORE_0050_EXEMPTIONS = frozenset({(EvidenceRole.WEATHER_METAR.value, "factual_narrative")})
 MKEY = "mKey"
 DOCKET_ROLES = frozenset({EvidenceRole.DOCKET_DOCUMENTS.value, EvidenceRole.DOCKET_LISTING.value})
 
@@ -102,7 +110,13 @@ def sweep(records: Sequence[Mapping[str, object]], reader: CachedDocketReader) -
         for candidate in CANDIDATES:
             leaks = [
                 leak
-                for leak in find_leaks(role_values, withheld, (), min_sentence_chars=candidate)
+                for leak in find_leaks(
+                    role_values,
+                    withheld,
+                    (),
+                    min_sentence_chars=candidate,
+                    exemptions=BEFORE_0050_EXEMPTIONS,
+                )
                 if leak.evidence_role in DOCKET_ROLES
             ]
             after = [leak for leak in leaks if leak.source != EXEMPT_SOURCE]
