@@ -87,3 +87,8 @@ and its sentences in the weather field are, in the cases measured, weather obser
 ## Status
 
 Accepted, 2026-09-14.
+
+**Extended by [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md),
+2026-09-20**, which makes the same exemption for the `docket_documents` role on the same argument:
+the direction of copying is known, because the investigator writes the factual narrative from the
+docket. Nothing in this record changes.

@@ -11,9 +11,21 @@ import pytest
 
 from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.metrics import CaseScores
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord
 from ntsb_probable_cause.splits import Split
+
+_HYPOTHESIS = Hypothesis(
+    evidence_narrative="n",
+    occurrence=(OccurrenceGuess(phase="552", event="230", probability=0.5),),
+    findings=(),
+    probable_cause="p",
+    lay_explanation="l",
+    confidence=0.5,
+    abstain=False,
+    evidence_used=(),
+)
 
 _SCHEMA = pa.schema(
     [
@@ -46,10 +58,40 @@ def _scores(*, top1: bool, confidence: float, abstained: bool = False) -> CaseSc
     )
 
 
+def _step(case_id: str, not_read: tuple[str, ...]) -> StepRecord:
+    """A minimal step, carrying only what ``cap_summary`` reads."""
+    return StepRecord(
+        case_id=case_id,
+        step=0,
+        arm="B",
+        condition="full",
+        day=None,
+        tool="docket",
+        arguments={},
+        reason="",
+        expected_effect="",
+        returned_roles=(),
+        not_available=(),
+        documents_not_read=not_read,
+        payload_fingerprint="x",
+        hypothesis=_HYPOTHESIS,
+        observed_effect="",
+        stop_reason="",
+        model="m",
+        price_variant="batch",
+        prompt_tokens=0,
+        completion_tokens=0,
+        cost_usd=0.0,
+        cumulative_cost_usd=0.0,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+
+
 def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult field varied.
     case_id: str,
     *,
-    top1: bool,
+    top1: bool = True,
     confidence: float = 0.5,
     fatal: bool = False,
     cls: str | None = "L",
@@ -58,6 +100,7 @@ def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult f
     cost: float = 0.001,
     failure: str | None = None,
     scores: CaseScores | None = None,
+    not_read: tuple[str, ...] = (),
 ) -> CaseResult:
     return CaseResult(
         case_id=case_id,
@@ -68,12 +111,16 @@ def _case(  # noqa: PLR0913 -- a test-only builder, one keyword per CaseResult f
         verdict_occurrence=("111230",),
         verdict_findings=("0206304044",),
         verdict_findings_in_cause=("0206304044",),
-        steps=(),
+        # A case that failed before any model call (mirroring ``_failed(ctx, "cap", 0.0)``,
+        # which always passes ``steps=()``) never gets a step either, even if it dropped
+        # documents -- ``documents_not_read`` below is the only place that survives for it.
+        steps=(_step(case_id, not_read),) if not_read and not failure else (),
         scores=None
         if failure
         else (scores or _scores(top1=top1, confidence=confidence, abstained=abstained)),
         cost_usd=cost,
         failure=failure,
+        documents_not_read=not_read,
     )
 
 
@@ -426,3 +473,29 @@ def test_honest_baseline_floor_returns_the_headline_figures_as_plain_floats(
         "finding recall@10 (all)",
     }
     assert all(isinstance(v, float) for v in floor.values())
+
+
+def test_cap_summary_counts_cases_and_documents_by_fatal() -> None:
+    fatal_hit = _case("A", fatal=True, not_read=("2: cap, 9000 tokens", "3: cap, 500 tokens"))
+    fatal_clear = _case("B", fatal=True)
+    non_fatal_hit = _case("C", fatal=False, not_read=("1: cap, 100 tokens",))
+    text = report.cap_summary([fatal_hit, fatal_clear, non_fatal_hit])
+    assert text == (
+        "cap: 2 of 3 cases hit the cap; 3 documents not read "
+        "(fatal 1 cases/2 documents, non-fatal 1/1)"
+    )
+
+
+def test_cap_summary_counts_a_case_that_failed_before_any_step() -> None:
+    """Fix round 1, Finding 4: a base prompt already over the cap fails via ``_failed``
+    before any step is recorded (``steps=()``) -- the worst case, where nothing of the
+    docket was read, must not be invisible in the count."""
+    failed_before_any_step = _case(
+        "Z", fatal=True, not_read=("1: cap, 500 tokens", "2: cap, 300 tokens"), failure="cap"
+    )
+    assert failed_before_any_step.steps == ()  # no model call was ever made
+    text = report.cap_summary([failed_before_any_step])
+    assert text == (
+        "cap: 1 of 1 cases hit the cap; 2 documents not read "
+        "(fatal 1 cases/2 documents, non-fatal 0/0)"
+    )

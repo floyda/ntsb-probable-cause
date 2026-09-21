@@ -238,7 +238,13 @@ _WEATHER_WITHHELD = (
 )
 _WEATHER_SENTENCE = "the engine lost power during the initial climb after takeoff"
 
-_NON_WEATHER_ROLES = [role for role in EvidenceRole if role is not EvidenceRole.WEATHER_METAR]
+# Roles not exempted for a factual-narrative sentence: every role except the two pairs in
+# SENTENCE_CHECK_EXEMPTIONS (weather_metar, 0019; docket_documents, 0050).
+_NON_EXEMPT_ROLES = [
+    role
+    for role in EvidenceRole
+    if role not in (EvidenceRole.WEATHER_METAR, EvidenceRole.DOCKET_DOCUMENTS)
+]
 
 
 def test_factual_narrative_sentence_in_weather_metar_gives_no_leak() -> None:
@@ -259,14 +265,22 @@ def test_probable_cause_sentence_embedded_in_weather_metar_is_caught() -> None:
     assert "sentence" in leaks(evidence, {"probable_cause": narrative})
 
 
-@pytest.mark.parametrize("role", _NON_WEATHER_ROLES, ids=lambda role: role.value)
+@pytest.mark.parametrize("role", _NON_EXEMPT_ROLES, ids=lambda role: role.value)
 def test_factual_narrative_sentence_is_caught_in_every_other_role(role: EvidenceRole) -> None:
     text: dict[str, str | None] = {"factual_narrative": _WEATHER_WITHHELD}
     assert "sentence" in leaks({role.value: _WEATHER_SENTENCE}, text)
 
 
-def test_sentence_check_exemptions_is_exactly_weather_metar_factual_narrative() -> None:
-    assert frozenset({("weather_metar", "factual_narrative")}) == SENTENCE_CHECK_EXEMPTIONS
+def test_sentence_check_exemptions_is_exactly_the_two_measured_pairs() -> None:
+    assert (
+        frozenset(
+            {
+                ("weather_metar", "factual_narrative"),
+                ("docket_documents", "factual_narrative"),
+            }
+        )
+        == SENTENCE_CHECK_EXEMPTIONS
+    )
 
 
 def test_whole_probable_cause_in_weather_metar_is_still_caught() -> None:
@@ -275,6 +289,59 @@ def test_whole_probable_cause_in_weather_metar_is_still_caught() -> None:
 
 def test_code_in_weather_metar_is_still_caught() -> None:
     assert leaks({"weather_metar": "occurrence 300230."}, codes=("300230",)) == ["code"]
+
+
+# --- Decision 0050: docket_documents is exempt from the sentence comparison only for
+# sentences sourced from the factual narrative; docket_listing is deliberately not exempted ---
+
+# Invented clinical text, not from any real record; used only to test the guard's matching.
+_DOCKET_WITHHELD = (
+    "The pilot completed a preflight inspection before the accident flight. "
+    "The postaccident examination found contamination in the fuel supplied to the left tank."
+)
+_DOCKET_SENTENCE = (
+    "the postaccident examination found contamination in the fuel supplied to the left tank"
+)
+
+
+def test_factual_narrative_sentence_in_docket_documents_gives_no_leak() -> None:
+    text: dict[str, str | None] = {"factual_narrative": _DOCKET_WITHHELD}
+    assert leaks({"docket_documents": _DOCKET_SENTENCE}, text) == []
+
+
+def test_analysis_sentence_in_docket_documents_is_still_caught() -> None:
+    text: dict[str, str | None] = {"analysis_narrative": _DOCKET_WITHHELD}
+    assert leaks({"docket_documents": _DOCKET_SENTENCE}, text) == ["sentence"]
+
+
+def test_probable_cause_sentence_in_docket_documents_is_still_caught() -> None:
+    narrative = "The airplane departed controlled flight during the approach. " + CAUSE
+    evidence: dict[str, EvidenceValue] = {
+        "docket_documents": f"Exhibit 3, investigator's note: {CAUSE} See attachment."
+    }
+    assert "sentence" in leaks(evidence, {"probable_cause": narrative})
+
+
+def test_code_in_docket_documents_is_still_caught() -> None:
+    assert leaks({"docket_documents": "occurrence 300230."}, codes=("300230",)) == ["code"]
+
+
+def test_whole_factual_narrative_in_docket_documents_is_still_caught() -> None:
+    # The sentence exemption applies only to split-out sentences, never to the whole-text
+    # needle -- so a document that quotes the entire factual narrative still stops the case.
+    text: dict[str, str | None] = {"factual_narrative": _DOCKET_WITHHELD}
+    assert leaks({"docket_documents": _DOCKET_WITHHELD}, text) == ["text"]
+
+
+def test_factual_narrative_sentence_in_docket_listing_is_still_caught() -> None:
+    # 0050 item 3: docket_listing is deliberately not in SENTENCE_CHECK_EXEMPTIONS.
+    text: dict[str, str | None] = {"factual_narrative": _DOCKET_WITHHELD}
+    assert leaks({"docket_listing": _DOCKET_SENTENCE}, text) == ["sentence"]
+
+
+def test_factual_narrative_sentence_in_another_role_is_still_caught() -> None:
+    text: dict[str, str | None] = {"factual_narrative": _DOCKET_WITHHELD}
+    assert leaks({"prelim_narrative": _DOCKET_SENTENCE}, text) == ["sentence"]
 
 
 # --- Minor: opening marks, as a property rather than fixed examples ---

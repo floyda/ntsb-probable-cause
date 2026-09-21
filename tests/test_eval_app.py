@@ -10,15 +10,31 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
+from tests.test_attach import _docket as small_docket
 
+from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
-from ntsb_probable_cause.model.client import ModelClient, ModelReply, RecordingFakeClient, Usage
+from ntsb_probable_cause.model.client import (
+    ModelClient,
+    ModelReply,
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+    Usage,
+)
 from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, write_jsonl
+from ntsb_probable_cause.scoring.records import (
+    CaseResult,
+    RunRecord,
+    StepRecord,
+    write_jsonl,
+)
 from ntsb_probable_cause.scoring.runner import BatchRunner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
@@ -55,13 +71,14 @@ _RUN_KWARGS = {
 }
 
 
-def _write_run(
+def _write_run(  # noqa: PLR0913
     runs_dir: Path,
     run_id: str,
     *,
     finished: datetime | None,
     started: datetime | None = None,
     cost_usd: float = 0.0,
+    arm: str | None = None,
 ) -> None:
     """A minimal, complete-or-aborted run folder, for ``resolve_latest``/``month_spent`` tests.
 
@@ -70,9 +87,10 @@ def _write_run(
     timestamp ``month_spent`` has to place it in a month.
     """
     when = started if started is not None else (finished or datetime(2026, 1, 1, tzinfo=UTC))
-    record = RunRecord(
-        **_RUN_KWARGS, run_id=run_id, started=when, finished=finished, cost_usd=cost_usd
-    )
+    kwargs = dict(_RUN_KWARGS)
+    if arm is not None:
+        kwargs["arm"] = arm
+    record = RunRecord(**kwargs, run_id=run_id, started=when, finished=finished, cost_usd=cost_usd)
     write_jsonl(runs_dir / run_id / "run.jsonl", [record])
 
 
@@ -311,7 +329,7 @@ def test_run_resume_refuses_a_different_limit(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     capsys.readouterr()
 
     exit_code = main(
@@ -357,7 +375,7 @@ def test_resumed_run_spend_reaches_month_spent_for_the_next_run(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(0.0)  # nothing read yet
 
     exit_code = main(
@@ -407,7 +425,7 @@ def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     one_reply = (100 * 0.10 + 50 * 0.60) / 1e6  # the stage-1 reply the dead run was billed
     billed = month_spent(runs_dir, now=datetime.now(UTC))
     assert billed == pytest.approx(one_reply)
@@ -452,7 +470,7 @@ def test_a_resume_that_aborts_leaves_the_dead_runs_spend_in_month_spent(
 
     with pytest.raises(ModelError, match="waiter died"):
         main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     billed = month_spent(runs_dir, now=datetime.now(UTC))
     assert billed > 0.0  # or the rest of this test proves nothing
 
@@ -560,7 +578,7 @@ def test_run_sync_then_report_end_to_end(
         client_factory=factory,
     )
     assert exit_code == 0
-    (run_folder,) = list(runs_dir.iterdir())
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     assert (run_folder / "cases.jsonl").exists()
 
     capsys.readouterr()  # discard the run command's own output
@@ -573,12 +591,68 @@ def test_run_sync_then_report_end_to_end(
     assert case_id  # the fixture case id was used to build the sample
 
 
+def test_run_arm_b_then_report_end_to_end(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Fix round 1, Finding 3: the coverage gate does not measure ``apps/``, so nothing
+    proved ``_cmd_run``'s real ``--arm B`` wiring (``DocketClient`` construction, the
+    ``contextlib.nullcontext()``/``with`` pairing, ``CachedDocketReader(docket_client) if
+    docket_client is not None else None``) ever produces a working run rather than raising
+    mid-run, after the budget reservation is already taken. ``CachedDocketReader`` is
+    stubbed (no socket needed) so the real ``DocketClient`` is still constructed, opened and
+    closed exactly as production does; only the docket *read* is faked. Also closes the
+    ``report`` command's ``if run_record.arm == "B":`` branch (the ``cap:`` line)."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+
+    class StubDocketReader:
+        """Stands in for ``CachedDocketReader``: same one-argument constructor, no HTTP."""
+
+        def __init__(self, client: object) -> None:
+            self.client = client
+
+        def read(self, mkey: int) -> Docket:
+            return docket
+
+    monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", StubDocketReader)
+    fake = RecordingFakeClient([GOOD, REFINE])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(
+        ["run", "--arm", "B", "--sample", "dev-400", "--sync", "--price-variant", "standard"],
+        client_factory=factory,
+    )
+    assert exit_code == 0
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    record = answering_run_record(run_folder)
+    assert record.arm == "B"
+    assert record.finished is not None
+    assert "crankshaft" in fake.payloads[0].text  # the stubbed docket really was read
+
+    capsys.readouterr()
+    main(["report", run_folder.name], client_factory=factory)
+    out = capsys.readouterr().out
+    assert "sample=dev-400 arm=B" in out
+    assert "cap:" in out  # report._cmd_report's arm-B-only branch
+    assert case_id  # the fixture case id was used to build the sample
+
+
 def _write_judgeable_run(
-    runs_dir: Path, run_id: str, case_id: str, *, sample: str = "dev-400"
+    runs_dir: Path,
+    run_id: str,
+    case_id: str,
+    *,
+    sample: str = "dev-400",
+    arm: str = "ceiling",
 ) -> None:
     """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
-    kwargs = {**_RUN_KWARGS, "sample": sample}
+    kwargs = {**_RUN_KWARGS, "sample": sample, "arm": arm}
     write_jsonl(
         runs_dir / run_id / "run.jsonl",
         [RunRecord(**kwargs, run_id=run_id, started=now, finished=now, cost_usd=1.0)],
@@ -721,3 +795,65 @@ def test_judge_command_never_deletes_a_prior_pass_labels_on_a_refused_retry(
     exit_code = main(["judge", run_id], client_factory=factory)
     assert exit_code == 1
     assert judge_path.read_text() == original_content  # untouched by the refused retry
+
+
+def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Spec §3.5: rows go to judge.jsonl.partial; the old file is replaced only when complete."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0], record_fixtures[1])
+    run_id = "20260101T000000-abc1234-dev-400-ceiling"
+    _write_judgeable_run(runs_dir, run_id, case_id, sample="dev-400")
+    second_id = str(record_fixtures[1]["ntsbNumber"])
+    _write_judgeable_run(runs_dir, run_id, second_id, sample="dev-400")
+
+    good = RecordingFakeClient([GOOD_LABELS, GOOD_LABELS])
+
+    def good_factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return good, None
+
+    assert main(["judge", run_id], client_factory=good_factory) == 0
+    judge_path = runs_dir / run_id / "judge.jsonl"
+    prior = judge_path.read_text()
+
+    class DiesAfterOne:
+        """One good label, then the provider falls over."""
+
+        def __init__(self) -> None:
+            self._inner = RecordingFakeClient([GOOD_LABELS])
+            self.calls = 0
+
+        def complete(
+            self,
+            payload: Payload,
+            settings: ModelSettings,
+            *,
+            system: str = "",
+            history: Sequence[Turn] = (),
+        ) -> ModelReply:
+            self.calls += 1
+            if self.calls > 1:
+                raise ModelError("boom")
+            return self._inner.complete(payload, settings, system=system, history=history)
+
+    dying = DiesAfterOne()
+
+    def dying_factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return dying, None
+
+    with pytest.raises(ModelError):
+        main(["judge", run_id], client_factory=dying_factory)
+    assert judge_path.read_text() == prior
+    assert (runs_dir / run_id / "judge.jsonl.partial").read_text().count("\n") == 1
+
+
+def test_release_clears_a_dead_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs_dir = tmp_path / "runs"
+    reserve(runs_dir, "dead-run", 5.0, now=datetime(2026, 9, 18, tzinfo=UTC))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    assert main(["release", "dead-run"]) == 0
+    assert "released dead-run" in capsys.readouterr().out
+    assert open_reservations(runs_dir) == {}
+    assert main(["release", "dead-run"]) == 1

@@ -1,0 +1,49 @@
+# S2 docket tripwire scan (scripts/corpus_scan.py --docket) — counts only
+dev-400 cases with a cached docket: 401; readable documents: 2587
+
+## tripwire hits on docket text by minimum sentence length (category/kind)
+10: total 56 {'conversation_statement/sentence': 8, 'exam_site/sentence': 9, 'medical_tox/sentence': 1, 'other/sentence': 32, 'other/text': 1, 'party_submission/sentence': 1, 'photos/sentence': 1, 'pilot_form_6120/sentence': 1, 'specialist_factual/sentence': 2}
+20: total 56 {'conversation_statement/sentence': 8, 'exam_site/sentence': 9, 'medical_tox/sentence': 1, 'other/sentence': 32, 'other/text': 1, 'party_submission/sentence': 1, 'photos/sentence': 1, 'pilot_form_6120/sentence': 1, 'specialist_factual/sentence': 2}
+40: total 54 {'conversation_statement/sentence': 6, 'exam_site/sentence': 9, 'medical_tox/sentence': 1, 'other/sentence': 32, 'other/text': 1, 'party_submission/sentence': 1, 'photos/sentence': 1, 'pilot_form_6120/sentence': 1, 'specialist_factual/sentence': 2}
+80: total 31 {'conversation_statement/sentence': 1, 'exam_site/sentence': 5, 'medical_tox/sentence': 1, 'other/sentence': 22, 'other/text': 1, 'party_submission/sentence': 1}
+
+chosen minimum sentence length: not measured -- no candidate length has zero hits; zero hits at every length is not evidence of a safe threshold when there is nothing to check it against
+
+## filter measurement by category, at every candidate minimum sentence length (decision 0039)
+the table the deny-list is drawn from is the one marked below, at the guard's operating threshold (records.guard.MIN_SENTENCE_CHARS = 20); the chosen length above, if any, is a different number and is not used for this table
+
+10:
+    hits by category: {'conversation_statement': 8, 'exam_site': 9, 'medical_tox': 1, 'other': 33, 'party_submission': 1, 'photos': 1, 'pilot_form_6120': 1, 'specialist_factual': 2}
+    misses (hit, category not on the deny-list): ['conversation_statement', 'exam_site', 'medical_tox', 'other', 'party_submission', 'photos', 'pilot_form_6120', 'specialist_factual']
+    false denies (on the deny-list, no hit): []
+
+20 *** table in force ***:
+    hits by category: {'conversation_statement': 8, 'exam_site': 9, 'medical_tox': 1, 'other': 33, 'party_submission': 1, 'photos': 1, 'pilot_form_6120': 1, 'specialist_factual': 2}
+    misses (hit, category not on the deny-list): ['conversation_statement', 'exam_site', 'medical_tox', 'other', 'party_submission', 'photos', 'pilot_form_6120', 'specialist_factual']
+    false denies (on the deny-list, no hit): []
+
+40:
+    hits by category: {'conversation_statement': 6, 'exam_site': 9, 'medical_tox': 1, 'other': 33, 'party_submission': 1, 'photos': 1, 'pilot_form_6120': 1, 'specialist_factual': 2}
+    misses (hit, category not on the deny-list): ['conversation_statement', 'exam_site', 'medical_tox', 'other', 'party_submission', 'photos', 'pilot_form_6120', 'specialist_factual']
+    false denies (on the deny-list, no hit): []
+
+80:
+    hits by category: {'conversation_statement': 1, 'exam_site': 5, 'medical_tox': 1, 'other': 23, 'party_submission': 1}
+    misses (hit, category not on the deny-list): ['conversation_statement', 'exam_site', 'medical_tox', 'other', 'party_submission']
+    false denies (on the deny-list, no hit): []
+
+deny-list in force: empty
+
+not cached (skipped, never fetched): 0 of 401
+
+refused network requests (blocked by the transport, never sent): 0
+
+cases stopped by the tripwire at the guard's current threshold (20), by category (a document category, or 'listing'): {'conversation_statement': 7, 'exam_site': 3, 'medical_tox': 1, 'other': 1, 'party_submission': 1, 'photos': 1, 'pilot_form_6120': 1, 'specialist_factual': 2}
+
+read this with decision 0056, which this file is the evidence for: the deny-list described above
+was REMOVED on the strength of this table, not filled from it. The hits spread across 8 of the 12
+categories and 33 of the 56 fall in "other" -- the label meaning the classifier could not tell
+what the document is -- so a category deny-list cannot be filled without denying two thirds of
+the taxonomy. The "misses", "false denies" and "deny-list in force" lines above are the shape of
+the measurement decision 0039 item 1 specified, kept verbatim; they no longer describe a live
+mechanism.

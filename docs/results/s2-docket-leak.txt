@@ -1,0 +1,27 @@
+withheld narrative text inside docket documents
+sample dev-400, 401 cases scanned (skipped: 0; of those, tripped on a code: 0)
+every readable document attached, not only the ones the cost cap admits
+no matched text is printed anywhere in this file
+
+  minimum sentence length, and what still trips the guard.
+  'after' applies the ruling: factual-narrative sentences in docket_documents are
+  no longer compared; every other source and role is compared exactly as now.
+    chars   cases hit         hits      cases after     hits after
+       20   156 of 401 ( 38.9%)    1147       17 of 401 (  4.2%)      39
+       30   155 of 401 ( 38.7%)    1094       17 of 401 (  4.2%)      39
+       40   151 of 401 ( 37.7%)    1007       15 of 401 (  3.7%)      37
+       60   137 of 401 ( 34.2%)     812       13 of 401 (  3.2%)      33
+       80   127 of 401 ( 31.7%)     564        7 of 401 (  1.7%)      20
+      100    99 of 401 ( 24.7%)     377        6 of 401 (  1.5%)      16
+      120    81 of 401 ( 20.2%)     256        4 of 401 (  1.0%)      13
+      150    52 of 401 ( 13.0%)     128        3 of 401 (  0.7%)       9
+      200    18 of 401 (  4.5%)      38        1 of 401 (  0.2%)       1
+      250     6 of 401 (  1.5%)      12        1 of 401 (  0.2%)       1
+      300     5 of 401 (  1.2%)       6        1 of 401 (  0.2%)       1
+      400     2 of 401 (  0.5%)       2        0 of 401 (  0.0%)       0
+
+  at the current threshold (20 chars):
+    by withheld source: factual_narrative 1108, analysis_narrative 36, probable_cause 3
+    cases carrying at least one match, by source: factual_narrative 155, analysis_narrative 17, probable_cause 1
+    by evidence role:   docket_documents 1147
+    matched fragment length: n=1147 min=20 median=79 p90=153 max=499 characters

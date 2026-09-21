@@ -2,6 +2,8 @@
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -18,6 +20,7 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import judge
+from ntsb_probable_cause.scoring.budget import reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -289,23 +292,47 @@ def test_pick_disagreements_is_seeded_and_bounded() -> None:
     assert set(picked) <= set(case_ids)
 
 
-def test_judge_run_refuses_over_budget_before_any_call() -> None:
+def test_judge_run_refuses_over_budget_before_any_call(tmp_path: Path) -> None:
     """Fix round 1, Important 1: judge spend now goes through the same guard as a run."""
     client = RecordingFakeClient([GOOD_LABELS])
     items = [("case1", H, S, V, _score())]
     with pytest.raises(BudgetError):
-        judge.judge_run(client, load_tables(), items, budget_usd=0.0001, month_spent_usd=0.0)
+        judge.judge_run(
+            client,
+            load_tables(),
+            items,
+            runs_dir=tmp_path,
+            budget_usd=0.0001,
+            month_spent_usd=0.0,
+        )
     assert client.payloads == []  # refused before the first call, nothing spent
 
 
-def test_judge_run_prices_each_case_and_writes_rows_incrementally() -> None:
+def test_judge_run_is_refused_by_another_runs_open_reservation(tmp_path: Path) -> None:
+    """The read half of decision 0045 applies here too (fix round 1, finding 2): a judge
+    pass launched while an answering run is in flight must see its open reservation, not
+    just the month's already-settled spend."""
+    reserve(tmp_path, "other-run", 20.0, now=datetime(2026, 9, 15, tzinfo=UTC))
+    client = RecordingFakeClient([GOOD_LABELS])
+    items = [("case1", H, S, V, _score())]
+    with pytest.raises(BudgetError, match="reserved"):
+        judge.judge_run(client, load_tables(), items, runs_dir=tmp_path, budget_usd=20.0)
+    assert client.payloads == []
+
+
+def test_judge_run_prices_each_case_and_writes_rows_incrementally(tmp_path: Path) -> None:
     client = RecordingFakeClient(
         [GOOD_LABELS, GOOD_LABELS], usage=[Usage(prompt_tokens=100, completion_tokens=20)]
     )
     items = [("case1", H, S, V, _score(top1=True)), ("case2", H, S, V, _score(top1=False))]
     rows: list[Mapping[str, object]] = []
     result = judge.judge_run(
-        client, load_tables(), items, price_variant="standard", on_row=rows.append
+        client,
+        load_tables(),
+        items,
+        runs_dir=tmp_path,
+        price_variant="standard",
+        on_row=rows.append,
     )
     assert result.case_ids == ("case1", "case2")
     assert [label.cause for label in result.labels] == ["same_cause", "same_cause"]
@@ -318,7 +345,7 @@ def test_judge_run_prices_each_case_and_writes_rows_incrementally() -> None:
     assert result.cost_usd > 0
 
 
-def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails() -> None:
+def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails(tmp_path: Path) -> None:
     """An interrupt/error partway through keeps every already-paid label (fix round 1)."""
     client = RecordingFakeClient(
         [GOOD_LABELS, "not json", "still not json"],
@@ -330,7 +357,14 @@ def test_judge_run_keeps_rows_paid_for_before_a_later_case_fails() -> None:
     ]
     rows: list[Mapping[str, object]] = []
     with pytest.raises(SchemaError):
-        judge.judge_run(client, load_tables(), items, price_variant="standard", on_row=rows.append)
+        judge.judge_run(
+            client,
+            load_tables(),
+            items,
+            runs_dir=tmp_path,
+            price_variant="standard",
+            on_row=rows.append,
+        )
     assert len(rows) == 1  # case1's row survives even though case2 raised
     assert rows[0]["case_id"] == "case1"
 
@@ -340,7 +374,7 @@ def test_judge_expected_cost_per_case_uses_the_conservative_spec_budget() -> Non
     assert judge.JUDGE_EXPECTED_COST_PER_CASE_USD == {"batch": 0.00125, "standard": 0.00125}
 
 
-def test_judge_run_refuses_a_batch_priced_call_before_any_call() -> None:
+def test_judge_run_refuses_a_batch_priced_call_before_any_call(tmp_path: Path) -> None:
     """The judge calls chat-completions directly, which never serves a ':batch' model id.
 
     Observed 2026-09-16 on the judge subcommand's first real use: every case 404s with
@@ -352,16 +386,18 @@ def test_judge_run_refuses_a_batch_priced_call_before_any_call() -> None:
     client = RecordingFakeClient([GOOD_LABELS])
     items = [("case1", H, S, V, _score())]
     with pytest.raises(ConfigurationError, match="cannot use price_variant='batch'"):
-        judge.judge_run(client, load_tables(), items, price_variant="batch")
+        judge.judge_run(client, load_tables(), items, runs_dir=tmp_path, price_variant="batch")
     assert client.payloads == []
 
 
-def test_judge_run_at_the_standard_price_makes_the_call() -> None:
+def test_judge_run_at_the_standard_price_makes_the_call(tmp_path: Path) -> None:
     """The standard price is confirmed in sources.py, so the judge runs at it."""
     client = RecordingFakeClient(
         [GOOD_LABELS], usage=[Usage(prompt_tokens=100, completion_tokens=20)]
     )
     items = [("case1", H, S, V, _score())]
-    result = judge.judge_run(client, load_tables(), items, price_variant="standard")
+    result = judge.judge_run(
+        client, load_tables(), items, runs_dir=tmp_path, price_variant="standard"
+    )
     assert len(client.payloads) == 1
     assert result.case_ids == ("case1",)

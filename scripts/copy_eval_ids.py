@@ -1,5 +1,10 @@
 """Copy evaluation case IDs and event dates from the frozen spike (decision 0015).
 
+Status
+    One-shot, complete (S0). Produced ``tests/fixtures/eval/*_ids.csv`` and their README from
+    the frozen spike's labelling sheets. The spike is closed, so its inputs no longer change;
+    rerun only if a sheet is amended there.
+
 Usage:
     uv run python -m scripts.copy_eval_ids ../ntsb-spike
 """

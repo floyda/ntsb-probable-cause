@@ -1,5 +1,13 @@
 """Build the code tables from the NTSB data dictionary in avall.zip (spec §3.1, decision 0025).
 
+Status
+    Live tool (S1). Produced the five label CSVs under
+    ``src/ntsb_probable_cause/scoring/tables/`` and ``docs/results/s1-code-tables.txt``
+    (commit ``dc434fb``, 2026-09-15). Rerun only when the NTSB re-issues its data dictionary.
+    The Deviations reference below points into ``docs/plans/2026-09-15-s1-scoring-and-
+    evaluation.md``, which decision 0017 deletes at the close of a stage; the reasoning now
+    lives in the As-built part of ``docs/specs/2026-09-14-s1-scoring-and-evaluation-design.md``.
+
 Usage:
     uv run python -m scripts.build_code_tables ../ntsb-spike/data/raw/avall.zip
 

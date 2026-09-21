@@ -1,23 +1,81 @@
 """Guard statistics over the whole processed corpus (S0 spec §10). Counts only; no record text.
 
+Status
+    Live tool (S0, extended in S2). Produced ``docs/results/s0-corpus-scan.txt`` (commit
+    ``ea5a290``, 2026-09-14) and, in ``--docket`` mode, ``docs/results/s2-threshold.txt``
+    (commit ``78dd7c0``, 2026-09-20).
+
+    **The deny-list this mode was written to fill no longer exists.** Decision 0056 retired it:
+    the tripwire's hits spread across 8 of 12 document categories and 33 of 56 fell in
+    ``other``, so no list of categories could catch them without denying two thirds of the
+    taxonomy. ``_EMPTY_DENY_LIST`` below keeps the table's shape, so the committed table still
+    reads as the evidence for that removal, and it is not a live mechanism. Every mention of a
+    deny-list in this file and in its output describes the measurement, never the code.
+
 Usage:
     uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt
+    uv run python -m scripts.corpus_scan --docket --out docs/results/s2-threshold.txt
+
+The ``--docket`` mode (spec §8.2, §8.3) re-measures the tripwire's minimum sentence length on
+docket text (documents and the listing both), then measures which document categories the tripwire
+actually trips at the guard's own operating threshold -- the only input decision 0039 allows for
+filling the deny-list (which 0056 then retired; see Status above). It reads the ``dev-400`` cache
+built by ``scripts/docket_scan.py`` and never fetches: a missing cache entry is counted as not
+cached and skipped, and a cache entry present but unverifiable is refused by the transport and
+counted separately, never silently attempted or silently absorbed. With no cached, readable
+evidence the report says the threshold could not be measured and the mode exits non-zero, rather
+than stating a threshold drawn from nothing.
+
+Fix round 1 (spec-compliance review) corrected five findings in this mode, referenced by number
+at each site below: (1) the filter table was computed at the chosen length, which is defined as
+the one candidate with zero hits, so it could only ever be empty -- it is now computed at every
+candidate length, with the guard's operating threshold marked as the one in force; (2) an empty
+or documentless cache stated a threshold anyway, since zero hits everywhere trivially satisfies
+"smallest length with zero hits" -- refused, with a reason, now; (3) the sweep excluded the
+listing, which production also checks -- now covered under its own pseudo-category; (4) [see
+``docket_shape_open.py``]; (5) a refused network request had no counter of its own, and a
+per-document fetch failure under this mode's transport (which only ever refuses, never
+succeeds) was silently indistinguishable from an ordinary fetch failure -- both are now counted
+as refusals and printed.
+
+Fix round 2 corrected one landmine finding 1 left behind, plus two wording corrections:
+finding (1)'s "table in force" marker only ever appears for a length that is actually swept, so
+if the guard's operating threshold were re-set (the next task in the plan does exactly this,
+from this file's own measurement) to a value outside ``CANDIDATE_LENGTHS``, the table would
+silently go missing while the preamble still claimed to show it. ``_sweep_lengths()`` now
+always includes the current operating threshold, read fresh, not frozen at import time. The two
+wordings: "cases stopped by the tripwire ... by document category" could already include the
+``listing`` pseudo-category, which is not a document category; and a ``listing`` entry in a
+"misses" line now carries a note that it is not a deny-list candidate at all, since the deny-
+list filters documents and the listing is always rendered.
 """
 
+import argparse
 import json
 import re
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import httpx
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.manifest import Docket, read_docket
+from ntsb_probable_cause.errors import DocketError, LeakageError
 from ntsb_probable_cause.paths import resolve_path
-from ntsb_probable_cause.records.guard import SENTENCE_CHECK_EXEMPTIONS, find_leaks, normalise_text
+from ntsb_probable_cause.records.guard import (
+    MIN_SENTENCE_CHARS,
+    SENTENCE_CHECK_EXEMPTIONS,
+    find_leaks,
+    normalise_text,
+)
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import Split
 
@@ -349,6 +407,7 @@ def _accumulate_row(state: ScanState, index: int, row: Mapping[str, object]) -> 
 
 def _print_header(state: ScanState, case_count: int) -> None:
     print("# S0 corpus scan (scripts/corpus_scan.py) — counts only")
+    print(f"guard MIN_SENTENCE_CHARS in force: {MIN_SENTENCE_CHARS}")
     print(f"cases: {case_count}; by split: {dict(sorted(state.by_split.items()))}")
     print(f"by split/class: {dict(sorted(state.by_class.items()))}")
     print(f"multi-aircraft cases by split: {dict(sorted(state.multi_aircraft.items()))}")
@@ -459,7 +518,7 @@ def _count_leakage_errors(rows: list[Mapping[str, object]], chosen: int) -> int:
     return failures
 
 
-def main() -> int:
+def _scan_main() -> int:
     """Scan every case and print the counts."""
     columns = ["split", "investigation_class", "aircraft_count", "raw_json"]
     table = pq.read_table(Settings().data_dir / "processed/cases.parquet", columns=columns)
@@ -490,5 +549,237 @@ def main() -> int:
     return 1 if failures else 0
 
 
+# --- docket mode (spec §8.2, §8.3): the threshold on docket text, then the filter measurement ---
+
+
+# Decision 0056: the deny-list this table was measured to fill is retired -- it stays
+# permanently empty, and ``docket.filter`` no longer defines it. Kept local, not reintroduced
+# on the library, so the "misses"/"false denies" columns below keep their original shape (a
+# diagnostic against what a deny-list would have caught) without resurrecting the mechanism.
+_EMPTY_DENY_LIST: frozenset[str] = frozenset()
+
+LISTING_CATEGORY = "listing"
+# Fix round 1, finding 3: `attach_docket` also renders `docket.listing` into the context, and
+# production `split_record` checks `EvidenceRole.DOCKET_LISTING` -- a threshold declared clean
+# against document text alone could still trip the guard on listing text. Counted under this
+# pseudo-category, distinct from every real `docket/classify.py` category name, so a listing
+# hit is visible and can never be mistaken for a document category's own hit.
+
+
+def docket_hits(
+    raw: Mapping[str, object], docket: Docket, *, min_sentence_chars: int
+) -> Counter[str]:
+    """Tripwire hits by ``category/kind``, every readable document plus the listing, one at a time.
+
+    Documents are attached one at a time so a hit is attributed to the document's category. The
+    listing does not vary by which documents are attached, so it is checked once, not per
+    document, to avoid inflating its hit count by the number of readable documents.
+    """
+    withheld = {
+        "factual_narrative": fields.factual_narrative(raw),
+        "analysis_narrative": fields.analysis_narrative(raw),
+        "probable_cause": fields.probable_cause(raw),
+    }
+    codes = fields.occurrence_codes(raw) + fields.finding_codes(raw)
+    hits: Counter[str] = Counter()
+    listing_context = attach_docket(raw, docket, documents=()).context
+    listing_evidence = {
+        f.role.value: f.extract(listing_context)
+        for f in fields.EVIDENCE_FIELDS
+        if f.role is fields.EvidenceRole.DOCKET_LISTING
+    }
+    for leak in find_leaks(
+        listing_evidence, withheld, codes, min_sentence_chars=min_sentence_chars
+    ):
+        hits[f"{LISTING_CATEGORY}/{leak.kind}"] += 1
+    for record in docket.documents:
+        if record.status != "read":
+            continue
+        context = attach_docket(raw, docket, documents=[record.entry.index]).context
+        evidence = {
+            f.role.value: f.extract(context)
+            for f in fields.EVIDENCE_FIELDS
+            if f.role is fields.EvidenceRole.DOCKET_DOCUMENTS
+        }
+        for leak in find_leaks(evidence, withheld, codes, min_sentence_chars=min_sentence_chars):
+            hits[f"{record.category}/{leak.kind}"] += 1
+    return hits
+
+
+def _evidence_gap(
+    hits_by_length: Mapping[int, Counter[str]], cases: int, documents: int
+) -> str | None:
+    """Why the docket-text threshold cannot be stated as measured, or ``None`` if it can.
+
+    Fix round 1, finding 2: zero cached dockets or zero readable documents trivially produce
+    zero hits at every candidate length, so the ordinary "smallest length with zero hits" rule
+    would silently choose the most sensitive candidate from no evidence at all.
+    """
+    if cases == 0:
+        return "no dev-400 case has a cached, readable docket"
+    if documents == 0:
+        return "no readable document was found in any cached docket"
+    totals = {length: sum(counter.values()) for length, counter in hits_by_length.items()}
+    if choose_threshold(totals) is None:
+        return "no candidate length has zero hits"
+    return None
+
+
+def docket_report(hits_by_length: Mapping[int, Counter[str]], cases: int, documents: int) -> str:
+    """The threshold curve on docket text, and the §8.3 filter table at every candidate length."""
+    lines = [
+        "# S2 docket tripwire scan (scripts/corpus_scan.py --docket) — counts only",
+        f"dev-400 cases with a cached docket: {cases}; readable documents: {documents}",
+    ]
+    lines.append("\n## tripwire hits on docket text by minimum sentence length (category/kind)")
+    totals = {length: sum(counter.values()) for length, counter in hits_by_length.items()}
+    for length in sorted(hits_by_length):
+        lines.append(
+            f"{length}: total {totals[length]} {dict(sorted(hits_by_length[length].items()))}"
+        )
+    gap = _evidence_gap(hits_by_length, cases, documents)
+    if gap is not None:
+        lines.append(
+            f"\n{THRESHOLD_LINE}not measured -- {gap}; zero hits at every length is not "
+            "evidence of a safe threshold when there is nothing to check it against"
+        )
+    else:
+        lines.append(f"\n{THRESHOLD_LINE}{choose_threshold(totals)}")
+    # Fix round 1, finding 1: the chosen length above is *defined* as the one candidate with
+    # zero hits, so a table computed there can only ever be empty -- the category that
+    # actually tripped the tripwire would vanish from the very section meant to show it. The
+    # deny-list is drawn from the table at the guard's operating threshold, not the chosen
+    # length; every candidate length is also shown, so a reader can see how the deny-list
+    # would differ under each.
+    lines.append(
+        "\n## filter measurement by category, at every candidate minimum sentence length "
+        "(decision 0039)"
+    )
+    lines.append(
+        f"the table the deny-list is drawn from is the one marked below, at the guard's "
+        f"operating threshold (records.guard.MIN_SENTENCE_CHARS = {MIN_SENTENCE_CHARS}); the "
+        "chosen length above, if any, is a different number and is not used for this table"
+    )
+    for length in sorted(hits_by_length):
+        counter = hits_by_length[length]
+        hit_categories = {key.split("/")[0] for key in counter}
+        by_category = dict(sorted(Counter(k.split("/")[0] for k in counter.elements()).items()))
+        misses = sorted(hit_categories - _EMPTY_DENY_LIST)
+        false_denies = sorted(_EMPTY_DENY_LIST - hit_categories)
+        marker = " *** table in force ***" if length == MIN_SENTENCE_CHARS else ""
+        lines.append(f"\n{length}{marker}:")
+        lines.append(f"    hits by category: {by_category}")
+        lines.append(f"    misses (hit, category not on the deny-list): {misses}")
+        if LISTING_CATEGORY in misses:
+            lines.append(
+                f"        note: '{LISTING_CATEGORY}' here is not a deny-list candidate -- the "
+                "deny-list filters documents, and the listing is always rendered, so a hit "
+                "there needs a different remedy, not an addition to this list"
+            )
+        lines.append(f"    false denies (on the deny-list, no hit): {false_denies}")
+    lines.append(f"\ndeny-list in force: {sorted(_EMPTY_DENY_LIST) or 'empty'}")
+    return "\n".join(lines)
+
+
+class _NetworkRefusedError(DocketError):
+    """Raised by the network-refusing transport instead of ever making a request.
+
+    Fix round 1, finding 5: a distinct subtype so ``docket_main`` can count a refused request
+    separately from an ordinary ``DocketError`` (e.g. a malformed but genuinely cached and
+    verified listing) instead of folding both into "not cached".
+    """
+
+
+def _refuse_network(request: httpx.Request) -> httpx.Response:
+    """Belt-and-braces: ``--docket`` mode reads the cache only and must never fetch.
+
+    A verified cache hit never reaches ``DocketClient``'s transport at all (``listing_html``
+    and ``document`` both return before calling ``self._http.get``), so this handler only ever
+    fires if a cache entry exists on disk without a matching, hash-verified manifest record --
+    which should not happen for a cache this script's own sibling (``docket_scan.py``) built,
+    but is not a chance worth taking against a real government site. A ``_NetworkRefusedError`` here
+    is caught by ``docket_main``'s own handler and counted, never silently absorbed.
+    """
+    raise _NetworkRefusedError(f"--docket mode never fetches; refused a request to {request.url}")
+
+
+def _sweep_lengths() -> tuple[int, ...]:
+    """Every candidate length, plus the guard's current operating threshold if not among them.
+
+    Fix round 2: ``MIN_SENTENCE_CHARS`` is read fresh on every call, not frozen into a
+    module-level constant, so the very next task's re-measurement (which resets it from this
+    file's own output) is picked up without editing this file again. Without this, a threshold
+    outside ``CANDIDATE_LENGTHS`` would never be measured at all, and ``docket_report``'s
+    "table in force" marker -- correct on whatever length it is given -- would mark nothing
+    and print no table, silently, for exactly the length the deny-list is supposed to use.
+    """
+    return tuple(sorted(set(CANDIDATE_LENGTHS) | {MIN_SENTENCE_CHARS}))
+
+
+def docket_main(out: str | None) -> int:
+    """Run the docket mode over the dev-400 cache; never fetch."""
+    settings = Settings()
+    processed = settings.data_dir / "processed"
+    raws = samples.load_cases(processed, samples.sample_ids("dev-400"))
+    sweep = _sweep_lengths()
+    hits_by_length: dict[int, Counter[str]] = {length: Counter() for length in sweep}
+    cases = documents = not_cached = refused = 0
+    stopped_by_category: Counter[str] = Counter()
+    transport = httpx.MockTransport(_refuse_network)
+    with DocketClient(settings.docket_dir, seconds_per_request=0.0, transport=transport) as client:
+        for raw in raws:
+            mkey = raw.get("mKey")
+            if (
+                not isinstance(mkey, int)
+                or not (settings.docket_dir / str(mkey) / "listing.html").is_file()
+            ):
+                not_cached += 1
+                continue
+            try:
+                docket = read_docket(client, mkey)
+            except _NetworkRefusedError:
+                refused += 1
+                continue
+            except DocketError:
+                not_cached += 1
+                continue
+            cases += 1
+            documents += sum(1 for r in docket.documents if r.status == "read")
+            # Fix round 1, finding 5: read_docket catches a per-document DocketError from
+            # client.document and records "fetch failed" without raising -- under this
+            # transport, that status has no other cause (client.document's only non-cache path
+            # is _get, which this transport always refuses), so every one is a refused request,
+            # not a silently shrunk population.
+            refused += sum(1 for r in docket.documents if r.status == "fetch failed")
+            for length in sweep:
+                hits = docket_hits(raw, docket, min_sentence_chars=length)
+                hits_by_length[length].update(hits)
+                if length == MIN_SENTENCE_CHARS:
+                    stopped_by_category.update({k.split("/")[0]: 1 for k in hits})
+    text = docket_report(hits_by_length, cases, documents)
+    text += f"\n\nnot cached (skipped, never fetched): {not_cached} of {len(raws)}"
+    text += f"\n\nrefused network requests (blocked by the transport, never sent): {refused}"
+    text += (
+        f"\n\ncases stopped by the tripwire at the guard's current threshold "
+        f"({MIN_SENTENCE_CHARS}), by category (a document category, or 'listing'): "
+        f"{dict(sorted(stopped_by_category.items()))}"
+    )
+    print(text)
+    if out:
+        Path(out).write_text(text + "\n")
+    return 1 if _evidence_gap(hits_by_length, cases, documents) is not None else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the guard-statistics scan, or (``--docket``) the docket tripwire scan."""
+    parser = argparse.ArgumentParser(prog="corpus_scan")
+    parser.add_argument("--docket", action="store_true", help="scan dev-400 docket text instead")
+    parser.add_argument("--out", default=None, help="also write the report text to this path")
+    args = parser.parse_args(argv)
+    if args.docket:
+        return docket_main(args.out)
+    return _scan_main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

@@ -1,5 +1,10 @@
 """Case-level reconciliation against the spike's processed file (S0 spec §6.2).
 
+Status
+    One-shot, complete (S0). Produced ``docs/results/s0-reconciliation.txt`` (commit
+    ``ea5a290``, 2026-09-14), the case-level check that this repository's ingestion agrees with
+    the spike's. The spike is closed and its processed file is frozen, so this will not change.
+
 Usage:
     uv run python -m scripts.reconcile_spike /path/to/ntsb-spike \
         > docs/results/s0-reconciliation.txt

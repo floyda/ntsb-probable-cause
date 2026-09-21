@@ -28,6 +28,8 @@ class Evidence(BaseModel):
     weather_metar: str | None = None
     phase_of_flight: str | None = None
     injury_level: str | None = None
+    docket_listing: str | None = None
+    docket_documents: tuple[str, ...] | None = None
 
     def role_values(self) -> dict[EvidenceRole, EvidenceValue]:
         """Every non-excluded evidence role and its value."""

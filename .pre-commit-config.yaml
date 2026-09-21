@@ -10,10 +10,14 @@ repos:
       - {id: check-yaml, name: check-yaml, entry: uv run check-yaml, language: system, types: [yaml]}
       - {id: check-toml, name: check-toml, entry: uv run check-toml, language: system, types: [toml]}
       - {id: check-json, name: check-json, entry: uv run check-json, language: system, types: [json]}
-      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text]}
-      - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text]}
+      # A docket fixture is a saved real response (decision 0037) and must stay byte-for-byte
+      # as received, or the parser is written against a page the NTSB never sent. Documents
+      # and PDFs land under the same tree in a later task, so the exclude covers all of it,
+      # not just the listing HTML.
+      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text], exclude: ^tests/fixtures/docket/}
+      - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text], exclude: ^tests/fixtures/docket/}
       - {id: check-merge-conflict, name: check-merge-conflict, entry: uv run check-merge-conflict, language: system, types: [text]}
-      - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text]}
+      - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text], exclude: ^tests/fixtures/docket/}
       - {id: no-commit-to-branch, name: no-commit-to-branch, entry: uv run no-commit-to-branch --branch main, language: system, pass_filenames: false, always_run: true}
       - {id: no-data-files, name: no files under data/, entry: "sh -c 'echo \"refusing to commit files under data/: $*\"; exit 1' --", language: system, files: ^data/}
       - {id: ruff-format, name: ruff format, entry: uv run ruff format, language: system, types: [python]}
@@ -22,9 +26,9 @@ repos:
       - {id: import-linter, name: import-linter, entry: uv run lint-imports, language: system, pass_filenames: false, types: [python]}
       - {id: deptry, name: deptry, entry: uv run deptry ., language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock|src/|apps/|scripts/)}
       - {id: vulture, name: vulture, entry: uv run vulture, language: system, pass_filenames: false, types: [python]}
-      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$}
+      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$|^tests/fixtures/docket/}
       - {id: actionlint, name: actionlint, entry: uv run actionlint, language: system, files: ^\.github/workflows/}
       - {id: zizmor, name: zizmor, entry: uv run zizmor, language: system, files: ^\.github/workflows/}
       - {id: check-docs, name: check-docs, entry: uv run python -m scripts.check_docs, language: system, pass_filenames: false, files: \.md$}
-      - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/.*\.json$}
+      - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/, pass_filenames: false}
       - {id: uv-lock-check, name: uv lock --check, entry: uv lock --check, language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock)$}

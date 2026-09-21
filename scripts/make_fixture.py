@@ -1,5 +1,9 @@
 """Create redacted development-split fixtures from this repository's raw data (decision 0015).
 
+Status
+    Live tool (S0). Produces the redacted development-split record fixtures under
+    ``tests/fixtures/records/``. Decision 0015 makes it the only way one may be made.
+
 Usage:
     uv run python -m scripts.make_fixture records <ntsb_number> [<ntsb_number> ...]
     uv run python -m scripts.make_fixture auto

@@ -1,0 +1,66 @@
+the doc_type column and the photograph exclusion
+cache /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/docket, 401 dockets, 3790 documents
+
+listing doc_type values:
+  Adobe PDF file               3387
+  Text/Image                   283
+  Other                        45
+  Comma-delimited data file    44
+  GIF image                    8
+  Text document                7
+  mov                          2
+  kmz                          2
+  wav                          2
+  xlsx                         2
+  mp4                          2
+  cdr                          1
+  hst                          1
+  cst                          1
+  png                          1
+  kml                          1
+  avi                          1
+
+documents classified photos only because doc_type was matched, not the title:
+  documents                               225 (5.9% of documents)
+  dockets holding at least one             31 (8% of dockets)
+
+  what the title alone says they are, and how many hold readable text:
+    other                     25 readable /  41
+    medical_tox               16 readable /  36
+    conversation_statement    25 readable /  28
+    atc_radar_data            12 readable /  28
+    weather                   19 readable /  27
+    exam_site                 22 readable /  26
+    maintenance_records        9 readable /  24
+    specialist_factual         5 readable /   8
+    manuals_reference          5 readable /   7
+
+  with at least one readable page         138 (61% of the 225)
+  estimated tokens in those             220,843
+  not a downloadable PDF                    8
+  PDF absent from the cache                 6
+  extraction raised                         3
+
+  examples (title, and the category the title alone gives):
+    [conversation_statement] WITNESS STATEMENTS
+    [other                 ] DELETE
+    [maintenance_records   ] PILOT LOGBOOK
+    [exam_site             ] WRECKAGE DIAGRAMS
+    [medical_tox           ] TOXICOLOGICAL REPORT
+    [medical_tox           ] PASSENGER TOXICOLOGICAL REPORT
+    [maintenance_records   ] MAINTENANCE RECORDS
+    [atc_radar_data        ] TRANSCRIPT OF RADIO COMMUNICATIONS
+    [conversation_statement] MEMORANDUM OF RECORD FAA CORRESPONDENCE
+    [exam_site             ] MAGNETO EXAMINATION FINDINGS
+    [exam_site             ] AIRFRAME EXAMINATION SUMMARY
+    [maintenance_records   ] MAINTENANCE RECORDS
+
+other category changes from dropping doc_type (not into photos):
+  Comma-delimited data file    -> other                    2
+
+every category change from dropping doc_type, by file extension --
+a non-PDF is never attached anyway (filter.arm_b_documents takes status 'read' only),
+so only the .pdf rows are documents the exclusion actually loses:
+  Text/Image                   .pdf        217
+  GIF image                    .gif        8
+  Comma-delimited data file    .csv        2

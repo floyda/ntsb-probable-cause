@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<!-- This is the original _Layout page with some modification -->
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>NTSB Docket - Docket Management System</title>
+    <link rel="icon" type="image/x-icon" href="/Docket/favicon.ico" />
+    <link rel="stylesheet" href="/Docket/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/Docket/lib/bootstrap/dist/css/styles.css" />
+
+
+    <style>
+        .smaller-image {
+            width: 150px;
+        }
+    </style>
+
+    
+
+</head>
+<body>
+    <div id="s4-workspace">
+        <div id="s4-bodyContainer">
+            <!-- ===== STARTER: style.css adds width and margin =========================================================================================== -->
+            <div class="customWidth">
+                <div id="header1">
+                    <header class="sticky-top desktop-nav">
+                        <div class="container" style="margin-top: -5px;">
+                            <a class="navbar-brand" href="https://www.ntsb.gov/">
+                                <img class="navbar-brand" src="/Docket/Images/top-logo.png" />
+                            </a>
+                            <div class="noindex">
+                                <nav class="navbar navbar-expand-lg navbar-dark">
+                                    <div class="container-fluid">
+                                        <div class="collapse navbar-collapse" id="navbarNavDropdown">
+                                            <!-- ! Bring in the Navigation -->
+                                            <ul class="navbar-nav">
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/investigations" id="investigationsDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">Investigations </a>
+                                                    <ul class="dropdown-menu" aria-labelledby="investigationsDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/investigations/process">Investigation Process</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/investigations/AccidentReports">Investigation Reports</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://data.ntsb.gov/Docket/Forms/searchdocket">Investigation Dockets</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/investigations/Pages/investigativeoffices.aspx">Investigative Offices</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/investigations/Pages/safety-recommendations.aspx">Safety Recommendations</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/safety" id="safetyResearchDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">Safety Research</a>
+                                                    <ul class="dropdown-menu" aria-labelledby="investigationsDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/safety/data">Accident Data</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/safety/Pages/research.aspx">Statistical Reviews</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/safety/safety-studies">Safety Research Reports</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/news" id="newsDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">News &amp; Events</a>
+                                                    <ul class="dropdown-menu" aria-labelledby="newsDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/news/events">Events &amp; Training</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/news/press-releases">News Releases</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/news/testimony">Official Testimony</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/advocacy" id="advocacyDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">Advocacy</a>
+                                                    <ul class="dropdown-menu" aria-labelledby="advocacyDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/advocacy/mwl">Most Wanted List</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/advocacy/safety-alerts">Safety Alerts</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/advocacy/safety-topics">Safety Topics</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/advocacy/activities">Advocacy Activities</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/tda" id="assistanceDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">Family Assistance</a>
+                                                    <ul class="dropdown-menu" aria-labelledby="assistanceDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/tda/family">Survivors, Family, and Friends</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/tda/er">Response Community</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                                <li class="nav-item dropdown">
+                                                    <a class="nav-link dropdown-toggle" href="https://www.ntsb.gov/about" id="aboutDropdownMenuLink" role="button" aria-expanded="false" style="margin-top: -5px;">About Us</a>
+                                                    <ul class="dropdown-menu" aria-labelledby="aboutDropdownMenuLink">
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/history">History</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/board">The Board</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/organization">Organization</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/foia">FOIA</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/legal">Legal</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/employment">Employment</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/organization/Pages/acquisitions.aspx">Acquisitions</a>
+                                                        </li>
+                                                        <li>
+                                                            <a class="dropdown-item" href="https://www.ntsb.gov/about/reports">Budget &amp; Performance Reports</a>
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                            </ul>
+                                            <br>
+                                        </div>
+                                    </div>                                    
+                                </nav>
+                            </div>                            
+                        </div>
+                    </header>
+                </div>
+
+            </div>
+
+
+            <!-- [ BODY ] -->
+            <div id="contentBox">
+                <!-- ===== STARTER: Status bar / also used for notifications in 365 ======================================= -->
+                <div id="DeltaPageStatusBar">
+                    <div id="pageStatusBar" class="ms-status-blue" style="display: none;"></div>
+                </div>
+                <!-- ===== STARTER: Main Placeholder gets replaced with content of the page ======================================= -->
+                <div class="container">
+                    <main role="main" class="pb-3">
+                        
+
+<input id="IndexModel" name="IndexModel" type="hidden" value="DMS_POC_RazorPage_.NETCore.Pages.IndexModel" />
+
+
+<!-- Required for the JS and JQurey scripts stuff inside the curly brackets https://code.jquery.com/jquery-1.12.4.js-->
+<!-- useful reference: https://jqueryui.com/accordion/ -->
+<style>
+    .button {
+        text-decoration: none;
+        background-color: #EEEEEE;
+        color: #333333;
+        padding: 2px 6px 2px 6px;
+        border-top: 1px solid #CCCCCC;
+        border-right: 1px solid #333333;
+        border-bottom: 1px solid #333333;
+        border-left: 1px solid #CCCCCC;
+    }
+</style>
+
+
+<div id="NTSBContentArea">
+    <div id="">
+            <div>
+                <h2>
+                    <b>Project Summary: </b>Aviation Investigation - 33 Docket Items
+                    - ERA19FA248
+                </h2>
+                <h3><b>Description:</b> N8JR, Textron Aviation Inc 680A</h3>
+                <table style="width:100%">
+                    <tr>
+                        <td><h3><b>Mode:</b> Aviation</h3></td>
+                        <th><h3><b>NTSB Number:</b> ERA19FA248</h3></th>
+                        <td><h3><b>Date of Accident:</b> 08/15/2019</h3></td>
+                    </tr>
+                    <tr>
+                        <td><h3><b>City:</b> Elizabethton</h3></td>
+                        <td><h3><b>State/Region:</b> TN</h3></td>
+                        <td><h3><b>Country:</b> United States</h3></td>
+                    </tr>
+                    <tr>
+                        <td><h3><b>Project Type:</b> Investigation</h3></td>
+                    </tr>
+                </table>
+
+                <br />
+                <h2><b>Docket Information</b></h2>
+                <table style="width:100%">
+                    <tr>
+                        <td><h3><b>Creation Date:</b> 07/13/2020</h3></td>
+                        <td><h3><b>Last Modified:</b> 07/16/2020 11:55 AM</h3></td>
+                    </tr>
+                    <tr>
+                        <td><h3>Public Release Date & Time: 07/16/2020 2:00 PM</h3></td>
+                        <td><h3></h3></td>
+                    </tr>
+                </table>
+                <br />
+                <a class="button" href="/Docket/TOCPrintable?data=100066">Docket Table of Contents</a>
+                <br />
+                <br />
+            </div>
+            <h6><b><a href="#">Docket Items: 33   </a> </b></h6>
+            <div>
+                <table style="width:100%">
+                    <tr>
+                        <th width="4%"><h6><b>#</b></h6></th>
+                        <th width="67%"><h6><b>Title</b></h6></th>
+                        <th width="4%"><h6><b>Pgs</b></h6></th>
+                        <th width="6%"><h6><b>Photo</b></h6></th>
+                        <th width="13%"><h6><b>Type</b></h6></th>
+                        <th width="6%"><h6><b>File</b></h6></th>
+                    </tr>
+                        <tr>
+                            <td><b>1</b></td>
+                            <td>Pilot/Operator Aircraft Accident Report, NTSB Form 6120.1</td>
+                            <td><b>11</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485284&amp;FileExtension=.PDF&amp;FileName=Pilot%2FOperator%20Aircraft%20Accident%20Report,%20NTSB%20Form%206120.1-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>2</b></td>
+                            <td>Flight Crew Written Statements</td>
+                            <td><b>4</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485285&amp;FileExtension=.PDF&amp;FileName=Flight%20Crew%20Written%20Statements-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>3</b></td>
+                            <td>NTSB Record of Conversation - Flight Crew Interview</td>
+                            <td><b>3</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485286&amp;FileExtension=.PDF&amp;FileName=NTSB%20Record%20of%20Conversation%20-%20Flight%20Crew%20Interview-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>4</b></td>
+                            <td>NTSB Record of Conversation - Passengers Interview</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485287&amp;FileExtension=.PDF&amp;FileName=NTSB%20Record%20of%20Conversation%20-%20Passengers%20Interview-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>5</b></td>
+                            <td>Witness Statements</td>
+                            <td><b>6</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485288&amp;FileExtension=.PDF&amp;FileName=Witness%20Statements-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>6</b></td>
+                            <td>NTSB Memorandum for Record - Pope</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485289&amp;FileExtension=.PDF&amp;FileName=NTSB%20Memorandum%20for%20Record%20-%20Pope-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>7</b></td>
+                            <td>NTSB memorandum for Record - Pope Interview 2</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485290&amp;FileExtension=.PDF&amp;FileName=NTSB%20memorandum%20for%20Record%20-%20Pope%20Interview%202-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>8</b></td>
+                            <td>NTSB Memorandum for Record - Melton 1</td>
+                            <td><b>1</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485291&amp;FileExtension=.PDF&amp;FileName=NTSB%20Memorandum%20for%20Record%20-%20Melton%201-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>9</b></td>
+                            <td>NTSB Memorandum for Record - Melton 2</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485292&amp;FileExtension=.PDF&amp;FileName=NTSB%20Memorandum%20for%20Record%20-%20Melton%202-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>10</b></td>
+                            <td>Initial Training Records - PIC</td>
+                            <td><b>4</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485293&amp;FileExtension=.PDF&amp;FileName=Initial%20Training%20Records%20-%20PIC-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>11</b></td>
+                            <td>Recurrent Training Records - PIC</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485294&amp;FileExtension=.PDF&amp;FileName=Recurrent%20Training%20Records%20-%20PIC-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>12</b></td>
+                            <td>Initial and Recurrent Training Records - SIC</td>
+                            <td><b>8</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485295&amp;FileExtension=.PDF&amp;FileName=Initial%20and%20Recurrent%20Training%20Records%20-%20SIC-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>13</b></td>
+                            <td>Recurrent Training Records - SIC</td>
+                            <td><b>4</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485296&amp;FileExtension=.PDF&amp;FileName=Recurrent%20Training%20Records%20-%20SIC-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>14</b></td>
+                            <td>TRU Simulation Thrust Reverser System Training Module</td>
+                            <td><b>2</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485297&amp;FileExtension=.PDF&amp;FileName=TRU%20Simulation%20Thrust%20Reverser%20System%20Training%20Module-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>15</b></td>
+                            <td>Excerpts - Latitude AFM</td>
+                            <td><b>3</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485298&amp;FileExtension=.PDF&amp;FileName=Excerpts%20-%20Latitude%20AFM-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>16</b></td>
+                            <td>Excerpts - Operating Manual</td>
+                            <td><b>7</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485299&amp;FileExtension=.PDF&amp;FileName=Excerpts%20-%20Operating%20Manual-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>17</b></td>
+                            <td>Excerpts - Maintenance Records</td>
+                            <td><b>16</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485300&amp;FileExtension=.PDF&amp;FileName=Excerpts%20-%20Maintenance%20Records-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>18</b></td>
+                            <td>Weather Information</td>
+                            <td><b>4</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485301&amp;FileExtension=.PDF&amp;FileName=Weather%20Information-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>19</b></td>
+                            <td>NOTAMS </td>
+                            <td><b>1</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485302&amp;FileExtension=.PDF&amp;FileName=NOTAMS%20-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>20</b></td>
+                            <td>Excerpt - Airport Supplement</td>
+                            <td><b>1</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485303&amp;FileExtension=.PDF&amp;FileName=Excerpt%20-%20Airport%20Supplement-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>21</b></td>
+                            <td>NTSB Memorandum for Record - Airport Information</td>
+                            <td><b>1</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485304&amp;FileExtension=.PDF&amp;FileName=NTSB%20Memorandum%20for%20Record%20-%20Airport%20Information-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>22</b></td>
+                            <td>Photo Array</td>
+                            <td><b>20</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485305&amp;FileExtension=.PDF&amp;FileName=Photo%20Array-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>23</b></td>
+                            <td>Wreckage Path</td>
+                            <td><b>1</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485306&amp;FileExtension=.PDF&amp;FileName=Wreckage%20Path-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>24</b></td>
+                            <td>NTSB Examination Summary</td>
+                            <td><b>13</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485307&amp;FileExtension=.PDF&amp;FileName=NTSB%20Examination%20Summary-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>25</b></td>
+                            <td>Textron AReS Data Review</td>
+                            <td><b>27</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485308&amp;FileExtension=.PDF&amp;FileName=Textron%20AReS%20Data%20Review-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>26</b></td>
+                            <td>AReS Data 4-06-2019</td>
+                            <td><b>0</b></td>
+                            <td>0</td>
+                            <td>Comma-delimited data file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485309&amp;FileExtension=.csv&amp;FileName=AReS%20Data%204-06-2019-Master.csv">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>27</b></td>
+                            <td>AReS Data Accident Flight</td>
+                            <td><b>0</b></td>
+                            <td>0</td>
+                            <td>Comma-delimited data file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485310&amp;FileExtension=.csv&amp;FileName=AReS%20Data%20Accident%20Flight-Master.csv">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>28</b></td>
+                            <td>Textron Technical Report </td>
+                            <td><b>8</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485311&amp;FileExtension=.PDF&amp;FileName=Textron%20Technical%20Report%20-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>29</b></td>
+                            <td>P&amp;WC Accident Report </td>
+                            <td><b>55</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485312&amp;FileExtension=.PDF&amp;FileName=P%26WC%20Accident%20Report%20-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>30</b></td>
+                            <td>Cockpit Displays - Specialist&#x27;s Factual Report</td>
+                            <td><b>9</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485318&amp;FileExtension=.PDF&amp;FileName=Cockpit%20Displays%20-%20Specialist%27s%20Factual%20Report-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>31</b></td>
+                            <td>Cockpit Displays - Attachment 1 (compressed tabular data for event flight)</td>
+                            <td><b>0</b></td>
+                            <td>0</td>
+                            <td>Comma-delimited data file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485319&amp;FileExtension=.csv&amp;FileName=Cockpit%20Displays%20-%20Attachment%201%20(compressed%20tabular%20data%20for%20event%20flight)-Master.csv">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>32</b></td>
+                            <td>Statement of Party Representatives to NTSB Investigation</td>
+                            <td><b>14</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485320&amp;FileExtension=.PDF&amp;FileName=Statement%20of%20Party%20Representatives%20to%20NTSB%20Investigation-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><b>33</b></td>
+                            <td>Cockpit Voice Recorder - Group Chairman&#x27;s Factual Report</td>
+                            <td><b>23</b></td>
+                            <td>0</td>
+                            <td>Adobe PDF file</td>
+                            <td>
+                                <a target="_blank" href="/Docket/Document/docBLOB?ID=40485427&amp;FileExtension=.PDF&amp;FileName=Cockpit%20Voice%20Recorder%20-%20Group%20Chairman%27s%20Factual%20Report-Master.PDF">View</a>
+                            </td>
+                        </tr>
+                </table>
+            </div>
+            <br />
+            <br />
+    </div>
+</div>
+                    </main>
+                </div>
+            </div>
+
+            <!-- [ FOOTER ] -->
+            <div id="footer1">
+                <div class="noindex">
+                    <footer>
+                        <div class="container">
+                            <div class="row lined">
+                                <div class="col-9">
+                                    <ul>
+                                        <li><a href="https://www.ntsb.gov/about/Pages/privacy.aspx">Privacy</a></li>
+                                        <li><a style="margin-left: -4px; margin-right: 1px" href="https://www.ntsb.gov/about/Pages/acessibility.aspx">Accessibility</a></li>
+                                        <li><a style="margin-left: -5px; margin-right: 1px" href="https://www.ntsb.gov/about/Pages/Website-Policies.aspx">Web Policies</a></li>
+                                        <li><a style="margin-left: -5px; margin-right: 1px" href="https://www.ntsb.gov/about/Pages/no-fear-act.aspx">No FEAR Act</a></li>
+                                        <li><a style="margin-left: -5px; margin-right: 1px" href="https://www.ntsb.gov/about/foia">FOIA</a></li>
+                                        <li><a style="margin-left: -5px; margin-right: 1px" href="https://www.oig.dot.gov/agency/national-transportation-safety-board">Office of Inspector General</a></li>
+                                        <li><a style="margin-left: -5px; margin-right: 1px" href="https://www.ntsb.gov/about/Pages/contact.aspx">Contact Us</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="row credits">
+                                <div class="col-9">
+                                    <p><span class="mobile-break">National Transportation Safety Board</span> <span class="hide-mobile">•</span> 490 L'Enfant Plaza, SW Washington, DC 20594</p>
+                                </div>
+
+                                <div class="col-3 right">
+                                    <p><a href="https://www.usa.gov/" target="_blank">USA.gov</a> (<a href="https://www.usa.gov/espanol/" target="_blank">USAGov en Español</a>) </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-6 social-media">
+                                    <h4>Connect With Us:</h4>
+                                    <p>
+                                        <a href="https://www.facebook.com/NTSBgov" target="_blank">
+                                            <i class="fab fa-facebook"></i>
+                                        </a>
+
+                                        <a href="https://www.instagram.com/ntsbgov" target="_blank">
+                                            <i class="fab fa-instagram"></i>
+                                        </a>
+
+                                        <a href="https://www.youtube.com/user/NTSBgov" target="_blank">
+                                            <i class="fab fa-youtube"></i>
+                                        </a>
+
+                                        <a href="https://www.flickr.com/photos/ntsb/" target="_blank">
+                                            <i class="fab fa-flickr"></i>
+                                        </a>
+                                    </p>
+
+                                    <p>
+                                        <a href="https://twitter.com/NTSB" target="_blank">
+                                            <i class="fab fa-twitter"></i>
+
+                                            <span class="smaller">@</span><span class="smaller" style="margin-left:0">NTSB</span>
+                                        </a>
+                                    </p>
+
+                                    <p>
+                                        <a href="https://twitter.com/NTSB_Newsroom" target="_blank">
+                                            <i class="fab fa-twitter"></i>
+
+                                            <span class="smaller">@</span><span class="smaller" style="margin-left:0">NTSB_Newsroom</span>
+                                        </a>
+                                    </p>
+                                    <p>
+                                        <a href="https://safetycompass.wordpress.com/" target="_blank"><span class="smaller">NTSB Blog</span></a>
+                                    </p>
+                                </div>
+
+                                <div class="col-6 logo">
+                                    <img style="padding-right: 8px;" src="/Docket/Images/round-logo.png" alt="NTSB Seal" />
+                                </div>
+                            </div>                            
+                        </div>
+                    </footer>
+                </div>
+            </div>
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+            <script src="/Docket/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+            <script src="/Docket/js/site.js?v=dLGP40S79Xnx6GqUthRF6NWvjvhQ1nOvdVSwaNcgG18"></script>
+            <script src="https://kit.fontawesome.com/d5d46be3f2.js" crossorigin="anonymous"></script>
+
+            
+    <script src="https://code.jquery.com/ui/1.14.1/jquery-ui.js"></script>
+    <script>
+        $(function () {
+            $("#accordion").accordion({
+                collapsible: true,
+                header: "h6",
+                heightStyle: "content"
+            });
+        });
+    </script>
+
+        </div>
+    </div>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3d45f0efa0ff746',t:'MTc4OTc3NjY2Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+</html>

@@ -73,3 +73,12 @@ before its probable cause. Grading it is decided in S1, together with the lay ex
 ## Status
 
 Accepted, 2026-09-13.
+
+**Amended by [0038](0038-docket-documents-are-evidence-by-case-level-authorship.md), 2026-09-20.**
+This record's Consequences say "S2 filters documents by type and title and measures the filter".
+Neither half survived. 0038 made every docket document evidence whatever its author; 0052 removed
+the type filter after measuring that it cost 270 documents and bought six tokens; 0050 stopped the
+tripwire comparing factual-narrative sentences inside docket documents. The three roles this
+record defines are unchanged — the narratives and the verdict are still withheld, and
+`split_record` is still the only splitter. What changed is what defends the docket, and the
+current answer is written in 0050, 0052 and the deny-list measurement 0039 requires.

@@ -5,6 +5,15 @@ data/processed/
 # Run outputs, too: model text, per-case results, and the spec of each run — whose
 # case_ids, on a held-out run, is the ordered held-out case list (CLAUDE.md rule 4, 0026).
 data/runs/
+# The docket cache: fetched NTSB docket listing pages and documents (PDFs, images).
+# Decision 0037 permits only redacted, reviewed, NTSB-authored text in git — a cached
+# docket page or document is neither redacted nor reviewed, and this repo is public.
+data/docket/
+# The local hand-check marking page (scripts/handcheck_page.py): unredacted document titles
+# and links that name real cases, for the owner's own browser only. Decision 0049 keeps the
+# committed sheet this folds into (tests/fixtures/docket/title_handcheck.csv) redacted; this
+# is that sheet's working copy, never the committed artefact.
+data/handcheck/
 *.zip
 *.mdb
 *.accdb

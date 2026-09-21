@@ -1,5 +1,9 @@
 """Documentation consistency check (decision 0017).
 
+Status
+    Live check (S0). Runs in CI and is what decision 0017's stage close-out depends on.
+    Not a measurement: it writes nothing under ``docs/results/``.
+
 Usage:
     uv run python -m scripts.check_docs [root]
 

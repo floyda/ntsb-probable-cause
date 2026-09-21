@@ -5,15 +5,27 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests.boundary import assert_boundary_holds
+from tests.boundary import RecordingBatchRunner, assert_boundary_holds, assert_requests_clean
+from tests.test_attach import _docket as _small_docket
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.model.client import Payload, RecordingFakeClient
+from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.model import client as client_module
+from ntsb_probable_cause.model.batch import BatchRequest
+from ntsb_probable_cause.model.client import (
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    ToolCall,
+    Turn,
+)
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring import runner as runner_module
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.runner import Runner, RunSpec
 
@@ -155,3 +167,158 @@ def test_runner_never_sends_withheld_text_as_system_text(
     for system in client.systems:
         for kind, text in withheld:
             assert text not in system, f"tripwire: {kind} reached an answering system prompt"
+
+
+def _withheld(record_fixtures: list[dict[str, object]]) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for raw in record_fixtures:
+        narrative = fields.factual_narrative(raw)
+        cause = fields.probable_cause(raw)
+        if narrative:
+            found.append(("factual narrative", narrative))
+        if cause:
+            found.append(("probable cause", cause))
+    assert found, "fixtures carry no withheld text: the boundary test would be vacuous"
+    return found
+
+
+def _batch_runner(tmp_path: Path, batch: RecordingBatchRunner) -> Runner:
+    return Runner(
+        RecordingFakeClient([]),
+        batch=batch,
+        tables=load_tables(),
+        seen_pairs=frozenset(),
+        runs_dir=tmp_path / "runs",
+        ledger_path=tmp_path / "ledger.md",
+        month_spent_usd=0.0,
+        commit=("abc1234", False),
+        now=lambda: datetime(2026, 9, 18, tzinfo=UTC),
+    )
+
+
+def test_batch_runner_never_sends_withheld_text_in_any_request(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The batch path is the default; it must be checked like the sync path (spec §3.1)."""
+    batch = RecordingBatchRunner(stage1=_GOOD_STAGE1, stage2=_GOOD_REFINE)
+    spec = RunSpec(sample="dev-400", arm="ceiling", expected_cost_per_case_usd=0.001)
+    _batch_runner(tmp_path, batch).run(spec, record_fixtures)
+
+    assert batch.requests, "the run should have submitted at least one batch request"
+    assert_requests_clean(batch.requests, _withheld(record_fixtures))
+
+
+def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
+    tmp_path: Path,
+    record_fixtures: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation test: the batch assertion must be able to fail (decision 0016)."""
+    leaked = next(
+        fields.factual_narrative(r) for r in record_fixtures if fields.factual_narrative(r)
+    )
+
+    def leaky_retry_system(system: str, error: str | None) -> str:
+        return f"{system}\n\n{leaked}"
+
+    monkeypatch.setattr(runner_module.Runner, "_retry_system", staticmethod(leaky_retry_system))
+    batch = RecordingBatchRunner(stage1=_GOOD_STAGE1, stage2=_GOOD_REFINE)
+    spec = RunSpec(sample="dev-400", arm="ceiling", expected_cost_per_case_usd=0.001)
+    _batch_runner(tmp_path, batch).run(spec, record_fixtures)
+
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_requests_clean(batch.requests, _withheld(record_fixtures))
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["system", "payload", "history", "tool_payload", "tool_call_arguments"],
+)
+def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
+    """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
+    needle = "the pilot did not extend the landing gear"
+    clean = Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN)
+    history: tuple[Turn, ...] = ()
+    if where == "history":
+        history = (Turn(role="assistant", content=needle),)
+    elif where == "tool_payload":
+        history = (
+            Turn(
+                role="tool",
+                tool_call_id="c1",
+                payload=Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN),
+            ),
+        )
+    elif where == "tool_call_arguments":
+        history = (
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="list_docket", arguments=needle),),
+            ),
+        )
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=(
+            Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN)
+            if where == "payload"
+            else clean
+        ),
+        settings=ModelSettings(),
+        system=needle if where == "system" else "",
+        history=history,
+    )
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_requests_clean([request], [("factual narrative", needle)])
+
+
+def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
+    """The negative case: a request with none of the withheld text passes."""
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="you are an investigator",
+        history=(Turn(role="assistant", content="a clean turn"),),
+    )
+    assert_requests_clean([request], [("factual narrative", "the pilot did not extend the gear")])
+
+
+def test_batch_boundary_assertion_reads_tool_turn_payloads(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """A tool turn's payload is one of the texts the batch assertion inspects."""
+    raw = next(r for r in record_fixtures if fields.factual_narrative(r))
+    evidence, synthesis, _ = split_record(raw)
+    leaked = evidence.model_copy(update={"prelim_narrative": synthesis.factual_narrative})
+    request = BatchRequest(
+        custom_id="x",
+        payload=Payload.from_evidence(evidence),
+        settings=ModelSettings(),
+        system="",
+        history=(Turn(role="tool", tool_call_id="c1", payload=Payload.from_evidence(leaked)),),
+    )
+    with pytest.raises(AssertionError, match=r"tool turn payload"):
+        assert_requests_clean([request], [("factual narrative", synthesis.factual_narrative or "")])
+
+
+def test_boundary_holds_on_a_case_context_with_documents(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    docket = _small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+    context = attach_docket(record_fixtures[0], docket, documents=[1]).context
+    assert_boundary_holds(context)
+
+
+def test_synthesis_document_never_reaches_the_payload(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Roadmap §9 / spec §12: a document holding withheld text is stopped whatever its title."""
+    raw = next(r for r in record_fixtures if fields.probable_cause(r))
+    cause = fields.probable_cause(raw) or ""
+    docket = _small_docket({1: f"[page 1 of 3]\nFactual Report. {cause}\n"})
+    context = attach_docket(raw, docket, documents=[1]).context
+    with pytest.raises(LeakageError):
+        split_record(context)
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_boundary_holds(context, lambda r: split_record(r, min_sentence_chars=10**9))

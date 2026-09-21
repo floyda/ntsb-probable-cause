@@ -81,7 +81,23 @@ def test_mask_lifts_late_fields_at_day_14() -> None:
     day14 = samples.masked_exclusions(14)
     assert EvidenceRole.PILOT_TOTAL_HOURS not in day14
     assert EvidenceRole.WEATHER_METAR not in day14
-    assert day14 == frozenset({EvidenceRole.PRELIM_NARRATIVE})
+    # The docket is absent in the masked condition regardless of day (0023's provisional rule,
+    # until the S2.5 recorder has arrival numbers): only the narrative lifts at day 14.
+    assert day14 == frozenset(
+        {EvidenceRole.PRELIM_NARRATIVE, EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS}
+    )
+
+
+def test_masked_condition_treats_the_docket_as_absent() -> None:
+    excluded = samples.masked_exclusions(1)
+    assert EvidenceRole.DOCKET_LISTING in excluded
+    assert EvidenceRole.DOCKET_DOCUMENTS in excluded
+    assert EvidenceRole.DOCKET_DOCUMENTS in samples.masked_exclusions(400)
+
+
+def test_arm_a_excludes_the_docket_and_arm_b_excludes_nothing() -> None:
+    assert EvidenceRole.DOCKET_DOCUMENTS in samples.arm_exclusions("A")
+    assert samples.arm_exclusions("B") == frozenset()
 
 
 def test_sample_ids_are_loaded(eval_ids: dict[str, dict[str, str]]) -> None:

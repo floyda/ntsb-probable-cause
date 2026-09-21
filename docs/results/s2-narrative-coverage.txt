@@ -1,0 +1,22 @@
+# how much of the withheld factual narrative a docket can reproduce
+sample dev-400; 379 cases measured, 22 skipped (no cached docket, no readable document, or a code hit), 0 with no factual narrative to compare
+every readable document attached, not only the ones the cost cap admits
+no matched text is printed anywhere in this file
+
+decision 0050 exempts factual-narrative SENTENCES inside docket_documents. The
+whole-text needle is not exempt, so an exact complete copy still trips the guard.
+This file measures the gap between those two: a near-complete copy.
+
+share of the narrative's sentences found anywhere in the docket:
+  median 0.0%   p90 17.3%   max 98.5%
+share found inside ONE single document (the shape the gap describes):
+  median 0.0%   p90 15.6%   max 98.5%
+
+cases at or above each share:
+  25%  whole docket   28 of 379   single document   23 of 379
+  50%  whole docket    4 of 379   single document    3 of 379
+  80%  whole docket    2 of 379   single document    2 of 379
+  90%  whole docket    2 of 379   single document    2 of 379
+  99%  whole docket    0 of 379   single document    0 of 379
+
+cases where the WHOLE narrative matched exactly (the guard catches these): 0

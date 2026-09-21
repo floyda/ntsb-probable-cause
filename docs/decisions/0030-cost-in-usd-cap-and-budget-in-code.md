@@ -43,3 +43,13 @@ roadmap says the cap is re-measured in S1 and S3.
 ## Status
 
 Accepted.
+
+## Forward pointer, added 2026-09-21 (S2 close-out audit)
+
+**The budget guard this record describes did not hold across runs launched together.** Four
+held-out runs started in parallel on 2026-09-17 each read the month's spend before any of them
+had written a cost, so each saw the same headroom and none of them saw the others.
+[0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) replaces the read-then-run check
+with a reservation taken under `fcntl.flock` at run start and settled at the end. The per-case
+cap and the decision to enforce cost in code rather than only measure it, which are the substance
+of this record, both stand.

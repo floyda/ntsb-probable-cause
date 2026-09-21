@@ -12,12 +12,14 @@ from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
 from ntsb_probable_cause.model.client import (
     ModelSettings,
     Payload,
+    ToolCall,
     Turn,
     cost_usd,
     parse_chat_completion,
 )
-from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.openrouter import OpenRouterClient, request_body
 from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.records.split import split_record
 
 FIX = Path("tests/fixtures/openrouter")
 URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -91,7 +93,11 @@ def test_client_sends_schema_system_and_history(respx_mock: respx.MockRouter) ->
                 saved_tool_call := parse_chat_completion(saved_response("tool_call")).tool_calls
             ),
         ),
-        Turn(role="tool", tool_call_id=saved_tool_call[0].call_id, content="{}"),
+        Turn(
+            role="tool",
+            tool_call_id=saved_tool_call[0].call_id,
+            payload=Payload.from_evidence(EVIDENCE),
+        ),
     )
     client.complete(Payload.from_evidence(EVIDENCE), settings, system="SYS", history=history)
     sent = json.loads(route.calls[0].request.content)
@@ -104,6 +110,25 @@ def test_client_sends_schema_system_and_history(respx_mock: respx.MockRouter) ->
     assert sent["response_format"]["json_schema"]["name"] == "mini"
     assert sent["temperature"] == 0
     assert route.calls[0].request.headers["authorization"] == "Bearer or-key"
+
+
+def test_request_body_renders_a_tool_turn_from_its_payload(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    evidence, _, _ = split_record(record_fixtures[0])
+    payload = Payload.from_evidence(evidence)
+    history = (
+        Turn(
+            role="assistant",
+            content=None,
+            tool_calls=(ToolCall(call_id="c1", name="list_docket", arguments="{}"),),
+        ),
+        Turn(role="tool", tool_call_id="c1", payload=payload),
+    )
+    body = request_body(payload, ModelSettings(), system="s", history=history)
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[-1] == {"role": "tool", "tool_call_id": "c1", "content": payload.text}
 
 
 def test_client_retries_then_raises(respx_mock: respx.MockRouter) -> None:

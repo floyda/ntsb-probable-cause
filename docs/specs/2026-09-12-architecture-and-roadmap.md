@@ -142,6 +142,9 @@ makes "the evaluated agent is the deployed agent" true at the transport layer as
 the code layer.
 
 The agent's model starts at `anthropic/claude-sonnet-5`, for continuity with the spike.
+**Superseded by decision 0031**, 2026-09-20: the default is `openai/gpt-5.6-luna`, batch
+variant for evaluation, and the model axis is measured after S3. The sentence above stays
+as written, per the append-only rule.
 Model choice is a parameter of the harness rather than a constant, which makes accuracy
 against cost across models an evaluation axis the project can report rather than assume.
 
@@ -474,7 +477,10 @@ open-split cases, so class does not mean the same thing in every era.
 cost, and the ceiling figure is the bar recorded for the agent. The same command runs arm A,
 and a per-step scoring test passes on a scripted trail from the recording fake.
 
-### S2. The docket tool
+### S2. The docket tool — done
+
+As built: see the stage specification's
+[As-built section](2026-09-18-s2-docket-tool-design.md#as-built).
 
 Docket client, HTML table parser, document downloader, classification by characters of
 text per page, born-digital text extraction, caching, and offline fixtures built from
@@ -498,6 +504,13 @@ is recorded as a bar for the loop.
 *Done means:* given a case identifier, the module returns extracted text and a manifest
 of what it could and could not read; the tests run without network access; the corpus scan,
 re-run with docket text, reports the tripwire threshold it used.
+
+*Amended 2026-09-18.* Restated by the S2 specification
+(`2026-09-18-s2-docket-tool-design.md`) under decisions 0037 to 0045: fixtures come from
+`dev-400`, not the spike's 14 dockets (0037); every document is evidence (0038); the filter is
+measured by tripwire hits (0039); shape is re-measured on closed open-split cases (0040); and
+document text enters through a case context before the split (0041, 0042). The original text
+above stays as written.
 
 ### S2.5. The recorder
 
@@ -560,7 +573,10 @@ no-narrative cases, ablation loss concentrated there). What carries over in kind
 the S1 ceiling, an ablation showing the docket tool's contribution, sensible abstention, and
 average cost under a per-case cap enforced in code. Added by 0022: arm C against arm B at equal
 cost, with the four results that would count against the loop (0022) and the six
-predictions (0022), each reported whichever way it comes out.
+predictions (0022), each reported whichever way it comes out. Added after S2: the loop (arm C)
+must beat arm B with the docket (`docs/results/s2-bars.txt`) at equal cost — beating the
+no-docket ceiling shows retrieval works, but not that choosing what to fetch does, and arm B is
+the fixed-order comparison that tests that.
 
 *Amended 2026-09-15 (0031).* The model axis of §4 — which model gains most from reading the
 docket — is measured after this stage, once arms B and C exist, as a separate table labelled

@@ -1,5 +1,10 @@
 """One-off probe of OpenRouter's response shapes (spec §7.1). Costs under $1. Needs a key.
 
+Status
+    Live tool (S1). Produced ``tests/fixtures/openrouter/*.json`` and their README, the
+    recorded response shapes the model seam's tests run against. ``make probe``. Rerun when a
+    provider changes a response shape; it costs real money and needs a key.
+
 Usage:
     uv run python -m scripts.openrouter_probe [--model openai/gpt-5.6-luna] [--cases 10]
 

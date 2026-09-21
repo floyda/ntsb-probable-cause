@@ -72,3 +72,16 @@ def test_case_number_year_would_misclassify_labelled_cases(
     cases = {case: day for name in original for case, day in eval_ids.get(name, {}).items()}
     mismatched = [c for c, day in cases.items() if 2000 + int(c[3:5]) != int(day[:4])]
     assert len(mismatched) == 16
+
+
+def test_docket_fixtures_are_dev_400_cases_by_event_date(
+    eval_ids: dict[str, dict[str, str]],
+) -> None:
+    """Decision 0037: every docket fixture is a development case drawn from dev-400."""
+    dev = eval_ids["dev_400_ids"]
+    for folder in sorted(p for p in Path("tests/fixtures/docket").iterdir() if p.is_dir()):
+        manifest = json.loads((folder / "manifest.json").read_text())
+        case_id = manifest["fixture"]["case_id"]
+        assert case_id in dev, f"{case_id} is not in dev-400"
+        assert _split(manifest["fixture"]["event_date"]) is Split.DEV
+        assert _split(dev[case_id]) is Split.DEV
