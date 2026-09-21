@@ -113,3 +113,33 @@ def test_docket_settings_have_polite_defaults() -> None:
 def test_docket_document_url_joins_the_relative_href() -> None:
     href = "/Docket/Document/docBLOB?ID=1&FileExtension=.pdf&FileName=x.pdf"
     assert sources.docket_document_url(href) == "https://data.ntsb.gov" + href
+
+
+def test_unset_dirs_default_to_the_literal_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_DATA_DIR", raising=False)
+    monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
+    monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.data_dir == Path("data")
+    assert settings.runs_dir == Path("data/runs")
+    assert settings.docket_dir == Path("data/docket")
+
+
+def test_unset_dirs_derive_from_an_explicit_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
+    monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
+    monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.runs_dir == Path("/somewhere/runs")
+    assert settings.docket_dir == Path("/somewhere/docket")
+
+
+def test_explicit_runs_dir_and_docket_dir_override_derivation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
+    monkeypatch.setenv("NTSB_RUNS_DIR", "/elsewhere/runs")
+    monkeypatch.setenv("NTSB_DOCKET_DIR", "/elsewhere/docket")
+    settings = Settings(_env_file=None)
+    assert settings.runs_dir == Path("/elsewhere/runs")
+    assert settings.docket_dir == Path("/elsewhere/docket")

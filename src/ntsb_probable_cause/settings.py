@@ -1,6 +1,7 @@
 """Per-run settings, read from the environment (decision 0012)."""
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,6 +37,30 @@ class Settings(BaseSettings):
     # every two seconds to `data.ntsb.gov`, a real government site, and 0 would remove that
     # floor in production. Tests never need 0 -- they inject `sleep` (fix round 1, Finding 4).
     docket_seconds_per_request: float = Field(default=2.0, gt=0)
+
+    # `runs_dir` and `docket_dir` used to be independent literal defaults. On 2026-09-21 a run
+    # was launched with `NTSB_DATA_DIR` pointing at the main checkout but `NTSB_DOCKET_DIR`
+    # unset; the docket cache resolved relative to the process's working directory -- inside a
+    # git worktree -- and 19 GB of politely fetched docket documents (three hours of requests to
+    # data.ntsb.gov at one every two seconds) landed somewhere the worktree's removal would have
+    # deleted. They were rescued by hand. So an unset directory setting now derives from
+    # `data_dir`, and only an explicitly supplied value overrides that.
+    #
+    # A `@model_validator(mode="after")` that returns `self.model_copy(update=...)` is the
+    # documented way to do this on a plain `BaseModel`, but `pydantic-settings` warns and
+    # silently ignores the returned copy when the model is built through `__init__` (as every
+    # `Settings()` call here is) -- see the pydantic-settings issue tracker for "Returning
+    # anything other than `self` from a top level model validator isn't supported when
+    # validating via `__init__`". `model_post_init` runs after that `__init__` has already
+    # produced the real instance, so mutating it there (via `object.__setattr__`, since the
+    # model is frozen) takes effect; nothing here bypasses field validation, since the values
+    # written are already-validated `Path`s.
+    def model_post_init(self, _context: Any) -> None:
+        """Derive `runs_dir` and `docket_dir` from `data_dir` where left unset."""
+        if "runs_dir" not in self.model_fields_set:
+            object.__setattr__(self, "runs_dir", self.data_dir / "runs")
+        if "docket_dir" not in self.model_fields_set:
+            object.__setattr__(self, "docket_dir", self.data_dir / "docket")
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""
