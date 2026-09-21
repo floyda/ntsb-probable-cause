@@ -1,0 +1,73 @@
+# S2 open-split docket shape (scripts/docket_shape_open.py; decision 0040) — counts and quantiles only
+
+## Definitions and limits
+Owner/operator detail figures (addresses, zip codes, a certificate number, and names -- decision 0046's full REDACTED_FIELDS scope, not name-bearing fields alone) are counted only over documents whose text was extracted; a scanned document is never searched, so the count is a floor for that reason as well as because a detail the record does not hold is not counted.
+"Containing" is a case-insensitive substring test; the replacement counts use word-boundary anchored matching (decision 0046), so the two are not the same measurement and a document can register on one without the other.
+Tokens per docket sums each document's own characters-divided-by-four floor; the spike's own figures floored once over a docket's total characters instead, so the two totals are not directly comparable for a docket with more than one document.
+"Scanned pages" sums pages minus readable pages over every document with a known kind (born-digital, partial or scan), so it counts every page of a scan-classified document and also the individually-unreadable pages inside a partial-classified one, not only whole scan-classified documents.
+
+## fatal: 40 dockets
+cases attempted: 40; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=40 median=14 p75=19 p90=28 max=51
+non-photo pages per docket: n=40 median=95 p75=135 p90=281 max=1,387
+estimated readable tokens per docket: n=40 median=17,120 p75=29,106 p90=47,963 max=479,432
+estimated tokens per readable document: n=348 median=1,065 p75=3,364 p90=9,864 max=221,671
+dockets under 10000 tokens: 12 of 40
+scanned pages: 1437; scan-only dockets: 0
+pilot forms with a text layer: 13 of 38
+dockets with a party submission: 0
+non-PDF documents: 119 of 653
+fetch failures: 0
+category mix: atc_radar_data 94, conversation_statement 58, exam_site 80, maintenance_records 51, manuals_reference 30, medical_tox 48, other 99, photos 41, pilot_form_6120 38, specialist_factual 49, weather 65
+documents containing an owner or operator detail from the record, by category:
+cases with such a document: 0 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, medical_tox 0, other 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+owner or operator detail replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, medical_tox 0, other 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+
+## non-fatal: 40 dockets
+cases attempted: 40; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=40 median=3 p75=6 p90=8 max=12
+non-photo pages per docket: n=40 median=15 p75=24 p90=49 max=210
+estimated readable tokens per docket: n=40 median=651 p75=2,563 p90=7,746 max=39,419
+estimated tokens per readable document: n=105 median=260 p75=1,001 p90=1,912 max=31,608
+dockets under 10000 tokens: 37 of 40
+scanned pages: 436; scan-only dockets: 0
+pilot forms with a text layer: 6 of 37
+dockets with a party submission: 1
+non-PDF documents: 8 of 171
+fetch failures: 0
+category mix: atc_radar_data 8, conversation_statement 21, exam_site 23, maintenance_records 10, manuals_reference 7, other 18, party_submission 1, photos 37, pilot_form_6120 37, specialist_factual 4, weather 5
+documents containing an owner or operator detail from the record, by category:
+cases with such a document: 0 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, other 0, party_submission 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+owner or operator detail replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, other 0, party_submission 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+
+## overall: 80 dockets
+cases attempted: 80; listing fetch failed: 0; skipped for missing mKey: 0
+documents per docket: n=80 median=8 p75=14 p90=20 max=51
+non-photo pages per docket: n=80 median=29 p75=102 p90=165 max=1,387
+estimated readable tokens per docket: n=80 median=2,672 p75=17,687 p90=32,546 max=479,432
+estimated tokens per readable document: n=453 median=783 p75=2,605 p90=7,292 max=221,671
+dockets under 10000 tokens: 49 of 80
+scanned pages: 1873; scan-only dockets: 0
+pilot forms with a text layer: 19 of 75
+dockets with a party submission: 1
+non-PDF documents: 127 of 824
+fetch failures: 0
+category mix: atc_radar_data 102, conversation_statement 79, exam_site 103, maintenance_records 61, manuals_reference 37, medical_tox 48, other 117, party_submission 1, photos 78, pilot_form_6120 75, specialist_factual 53, weather 70
+documents containing an owner or operator detail from the record, by category:
+cases with such a document: 0 (a floor: a detail the record does not hold is not counted)
+amateur-built replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, medical_tox 0, other 0, party_submission 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+owner or operator detail replacements, by category: atc_radar_data 0, conversation_statement 0, exam_site 0, maintenance_records 0, manuals_reference 0, medical_tox 0, other 0, party_submission 0, photos 0, pilot_form_6120 0, specialist_factual 0, weather 0
+
+## characters per page, all readable documents (spec §5.2 thresholds at 50 and 300)
+0-0: 333
+1-49: 72
+50-99: 273
+100-299: 1135
+300-599: 444
+600+: 3820
+
+Drew 40 of 124 closed fatal open-split cases and 40 of 1716 closed non-fatal open-split cases -- both pool sizes read from this run's own cases.parquet, not copied from another file. Each is a small population and this draw covers a large share of it, so these figures describe that population, not cases still open.
+
+Name and amateur-built figures above are zero by construction: this script calls accumulate() with an empty record (raw={}) for every case, so no per-case field is read and neither owner/operator names nor the amateur-built flag are looked up here (0024).

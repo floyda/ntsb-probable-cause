@@ -360,10 +360,16 @@ def report(state: ShapeState) -> str:
             )
         )
         lines.append(
-            "documents containing an owner or operator detail from the record, by category: "
-            + ", ".join(
-                f"{k} {v}" for k, v in sorted(_sum_by_category(state.name_hits, strata).items())
-            )
+            (
+                "documents containing an owner or operator detail from the record, by category: "
+                + ", ".join(
+                    f"{k} {v}" for k, v in sorted(_sum_by_category(state.name_hits, strata).items())
+                )
+            ).rstrip()
+            # rstrip: with no hits the join is empty and the line would end in a space, which
+            # the trailing-whitespace hook strips at commit -- the committed file would then
+            # never match what this script prints. The open-split run (raw={}) is exactly that
+            # case.
         )
         lines.append(
             f"cases with such a document: {sum(state.name_cases[s] for s in strata)} "
