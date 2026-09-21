@@ -56,3 +56,14 @@ whose missing information sits in the docket have it in a document with no text 
 
 Accepted, 2026-09-18 (retrospective: the dependency was added under S2 spec §5.1 and §11 during the
 build, and this record was written at the close-out review that found it undocumented).
+
+## Corrections, added 2026-09-21 (S2 close-out audit)
+
+1. **The pinned dependency is `pypdf[crypto]>=6.19.0`, not `pypdf>=6.19.0` as the Decision above
+   states.** The extra is not cosmetic. Without it `pypdf` falls back to a pure-Python RC4
+   implementation on encrypted documents; measured with `memray` over a 40-case fetch, that
+   fallback allocated **24.1 GB** against **13.6 GB** with the extra, and was the cause of three
+   repeated out-of-memory kills during the S2 measurements.
+2. **The page-level half of this record's extraction outcome was adjusted by
+   [0053](0053-a-page-of-fifty-characters-is-readable.md)**, which settled the boundary case at
+   exactly 50 characters a page, where `classify_pages` and `readable_pages` previously disagreed.

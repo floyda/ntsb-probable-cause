@@ -106,3 +106,25 @@ the S2 specification established; narrows 0039 item 3, which set arm B's admitte
 Found by the whole-branch review. It matters because a reader following a supersession chain — the
 reader rule 8 exists to serve — would land in the wrong paragraph of 0048 and on a record that
 never said the thing.
+
+## Correction, added 2026-09-21 (S2 close-out audit)
+
+**Item 4's list of the three jobs the document category still does is out of date, and was
+already out of date on the day it was written.** Two of the three were removed within hours:
+
+- the `no-submissions` run variant, by
+  [0054](0054-the-party-submission-comparison-is-retired.md) item 2 — no `Variant` class, no
+  `--docket-filter` argument and no `no-submissions` string survives anywhere in `src/` or
+  `tests/`;
+- the header label, by [0055](0055-the-document-header-carries-the-listing-number.md) — `header()`
+  now renders the listing number and the page counts, and `_LABELS` is gone;
+- the deny-list, which item 4 recorded as "measured empty", was removed outright by
+  [0056](0056-the-deny-list-cannot-be-filled-from-titles.md).
+
+What is left of item 4 is a published statistic and **one** step-log line
+(`scoring/runner.py:documents_attached`), not the two this record claims. 0056 states the
+resulting position correctly: the docket's defence is the tripwire alone.
+
+**Also**, this record's "Depends on an open defect" section is no longer open.
+[0053](0053-a-page-of-fifty-characters-is-readable.md) resolved the disagreement between
+`classify_pages` and `readable_pages` at exactly 50 characters a page.

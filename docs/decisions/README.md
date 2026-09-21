@@ -70,29 +70,29 @@ under `docs/specs/` and the record links to it.
 | [0027](0027-registration-rule-and-case-number-probe.md) | The registration rule, and the case-number probe measure memorisation | Accepted |
 | [0028](0028-prose-graded-by-validated-judge-never-a-bar.md) | Prose outputs are graded by a validated judge, and are never a bar | Accepted |
 | [0029](0029-live-headline-is-the-finding-score.md) | The live board's headline is the finding score | Accepted |
-| [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted |
+| [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted; its guard fixed by 0045 |
 | [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted |
 | [0032](0032-a-batch-run-is-resumable-from-its-recorded-batches.md) | A batch run is resumable from the batches it already paid for | Accepted |
 | [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
 | [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
 | [0035](0035-judge-narrative-gains-a-less-detailed-label.md) | The judge's narrative dimension gains a fourth label, "less detailed" | Accepted |
 | [0036](0036-heldout-text-purged-from-history-shas-map-forward.md) | Withheld held-out text is purged from git history; the runs' recorded SHAs map forward | Accepted |
-| [0037](0037-docket-fixtures-from-development-dockets-only.md) | Docket fixtures come from development-split dockets only | Accepted; amends the roadmap S2 entry |
-| [0038](0038-docket-documents-are-evidence-by-case-level-authorship.md) | Every docket document is evidence; the line is the NTSB's case-level write-up | Accepted; amends 0013 |
-| [0039](0039-filter-measured-by-tripwire-hits-and-a-title-hand-check.md) | The docket filter is measured by tripwire hits, and its type labels by a title hand-check | Accepted |
+| [0037](0037-docket-fixtures-from-development-dockets-only.md) | Docket fixtures come from development-split dockets only | Accepted; amends the roadmap S2 entry; item 2 superseded by 0049 |
+| [0038](0038-docket-documents-are-evidence-by-case-level-authorship.md) | Every docket document is evidence; the line is the NTSB's case-level write-up | Accepted; amends 0013; item 2 superseded by 0051, item 4 retired by 0054 |
+| [0039](0039-filter-measured-by-tripwire-hits-and-a-title-hand-check.md) | The docket filter is measured by tripwire hits, and its type labels by a title hand-check | Accepted; items 1-2 completed and removed by 0056, item 3 narrowed by 0052 |
 | [0040](0040-docket-shape-remeasured-on-closed-open-split-cases.md) | Docket shape is re-measured on closed open-split cases, 40 per stratum, numbers only | Accepted |
 | [0041](0041-docket-text-enters-through-a-case-context.md) | Docket text enters through a case context built by one attach step, before the split | Accepted |
 | [0042](0042-two-docket-roles-selection-when-the-context-is-built.md) | Two docket evidence roles; the documents attached are chosen when the context is built | Accepted |
-| [0043](0043-arm-b-adds-whole-documents-in-rank-order-up-to-the-cap.md) | Arm B adds whole documents in a published rank order and stops at the cap; omissions are recorded and counted | Accepted |
+| [0043](0043-arm-b-adds-whole-documents-in-rank-order-up-to-the-cap.md) | Arm B adds whole documents in a published rank order and stops at the cap; omissions are recorded and counted | Accepted; item 2 superseded by 0048 |
 | [0044](0044-amateur-built-replacement-applies-to-document-text.md) | The amateur-built replacement applies to document text, in the attach step, counted as a floor | Accepted; extends 0020 |
 | [0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) | The monthly budget is a reservation taken under a lock at run start and settled at the end | Accepted; fixes the 0030 guard |
 | [0046](0046-known-owner-and-operator-names-are-replaced-in-document-text.md) | The owner and operator names the record already holds are replaced in document text; full strings only | Accepted; extends 0020, 0044 |
-| [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted |
+| [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted; corrected 2026-09-21 (the pin is `pypdf[crypto]`); page half adjusted by 0053 |
 | [0048](0048-arm-b-ranks-by-each-documents-measured-size.md) | Arm B ranks by each document's own measured size; the category's other jobs are gone (0051, 0052, 0054) | Accepted; supersedes 0043 item 2; superseded in part by 0051, 0052, 0054 |
 | [0049](0049-the-name-line-is-the-public-surface-not-the-repository.md) | Names may stay in committed NTSB listing pages; the guard is this project's own public surfaces | Accepted; supersedes 0037 item 2's reason and its "a public repository is an output"; extends 0020, 0044, 0046 |
 | [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) | In docket documents the tripwire skips factual-narrative sentences; refusals fall from 38.9% to 4.2% of cases | Accepted; extends 0019 |
 | [0051](0051-the-document-header-drops-the-provenance-clause.md) | The document header drops the provenance clause and states how many pages held readable text | Accepted; supersedes 0038 item 2, narrows 0048 item 4 |
-| [0052](0052-arm-b-attaches-every-readable-document.md) | Arm B attaches every document extraction found text in; the photograph exclusion and `ARM_B_TYPES` go | Accepted; supersedes 0048 item 3, narrows 0039 item 3 |
+| [0052](0052-arm-b-attaches-every-readable-document.md) | Arm B attaches every document extraction found text in; the photograph exclusion and `ARM_B_TYPES` go | Accepted; supersedes 0048 item 3, narrows 0039 item 3; item 4 corrected 2026-09-21 (0054, 0055, 0056); its open defect resolved by 0053 |
 | [0053](0053-a-page-of-fifty-characters-is-readable.md) | A page with 50 or more characters is readable; "attached" now implies "has a readable page" by arithmetic | Accepted; resolves the defect 0052 records, adjusts 0047 |
 | [0054](0054-the-party-submission-comparison-is-retired.md) | The party-submission comparison is retired: the category finds only NTSB-labelled submissions, not the population | Accepted; retires 0038 item 4, removes the `no-submissions` variant |
 | [0055](0055-the-document-header-carries-the-listing-number.md) | The document header identifies a document by its listing number, not an inferred category label | Accepted; amends 0051 item 3 |
