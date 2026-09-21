@@ -28,7 +28,12 @@ takes a part of), and the current stage's specification (S0, closed:
   fields are a tool in S3; the Iowa Mesonet archive (params already verified in the spike's
   `config.yaml`) comes later, with its own provenance rule.
 - **Docket client and PDF classifier/extractor** as an importable module with test fixtures
-  (the spike's probe scripts hard-code temporary paths and are not reusable as-is).
+  (the spike's probe scripts hard-code temporary paths and are not reusable as-is). **Built in
+  S2**: `docket/client.py` (caching, polite rate limit), `docket/listing.py` and
+  `docket/manifest.py` (the document listing), `docket/classify.py` and `docket/extract.py`
+  (born-digital text extraction and classification), `docket/filter.py` (arm B's document
+  filter) and `docket/attach.py`, with offline fixtures under `tests/fixtures/docket` and arm
+  `B` wired into the eval harness.
 - **Code-constrained output**: the model picks from a supplied list of NTSB occurrence/finding
   codes with their meanings, not free text, so scoring is exact-match. Seed the code lookup
   table from the spike's `decidability_form.build_code_lookups()`.
@@ -151,6 +156,21 @@ one-shot ceiling is arm B without the docket; arm B with the docket runs before 
 exists. The four results that count against the loop and the six predictions are fixed in
 decision 0022 and are published whichever way they come out.
 
+**S2 measured arm B on `heldout-400`; the numbers live in `docs/results/s2-bars.txt`.** Arm B
+calls every tool in a fixed order (here, the docket) and answers once. Of the 400 sample
+cases, 358 were scored (42 failed). Occurrence top-1 is 22.3% [18.3%, 26.9%] and top-3 is
+37.2% [32.3%, 42.3%]. Paired against the S1 one-shot ceiling run on 357 shared, scored cases:
+occurrence top-1 +11.2% [+6.2%, +16.2%], occurrence top-3 +16.0% [+10.6%, +21.0%].
+
+**Arm B clears the honest no-model baseline on occurrence top-1**: the lower end of its
+interval, 18.3%, sits above the baseline's 17.7%.
+
+**On finding codes arm B is far below that same baseline, and this is stated plainly rather
+than softened.** The baseline's finding recall@10 is 23.2% (flagged) and 21.0% (all); arm B's
+is 9.1% [6.8%, 11.6%] (flagged) and 9.6% [7.4%, 11.9%] (all) — under half the baseline's
+recall on both measures. Reading the docket in a fixed order without choosing what to read
+raises the occurrence-code result and lowers the finding-code result.
+
 ## Model access
 
 **Claude Code develops and maintains this project.** Every model call the *product* makes —
@@ -190,15 +210,26 @@ make build   # build data/processed/cases.parquet from the raw store
 make scan    # uv run python -m scripts.corpus_scan — guard statistics, counts only
 make probe   # uv run python -m scripts.openrouter_probe — the S1 fixture-recording probe (§7.1)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (§6.5)
+make docket-scan       # uv run python -m scripts.docket_scan — dev-400 docket shape, cached and resumable (S2)
+make scan-docket       # uv run python -m scripts.corpus_scan --docket — the deny-list threshold, from the docket-scan cache (S2)
+make armb               # arm B on dev-400, the stage's headline result (S2)
+make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
+make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
 ```
 
-`ntsb-eval` is the evaluation harness (S1 spec §6.5): `ntsb-eval baseline|run|report|judge|threshold|release`,
-each with `--out PATH` to also write the printed text to a file; `run` takes `--arm` (`A`, `B` or `ceiling`), `--sample`,
-`--exclude ROLE`, `--include case_number`, `--limit N`, `--sync`, `--cap-usd`, `--budget-usd`,
-and (arm `B` only, S2); `release RUN_ID` clears a dead run's budget
-reservation (0045);
-`report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest` to compare;
-`judge` refuses a non-`dev-400` run without `--validated` (§8).
+`ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
+`ntsb-eval baseline|run|report|judge|threshold|release`,
+each with `--out PATH` to also write the printed text to a file; `run` takes `--arm` (`A`, `B`
+or `ceiling` — `B` reads the docket), `--sample`, `--exclude ROLE`, `--include case_number`,
+`--limit N`, `--sync`, `--cap-usd`, `--budget-usd`, `--resume RUN_ID` and
+`--expected-cost-per-case-usd`; the last is required for any large `--arm B` run rather than
+optional, because without it the budget guard projects the run at the per-case cap (e.g.
+401 x $0.05 for `dev-400`) and refuses it against the monthly budget before a single model
+call, so a deliberate, still-conservative estimate (`armb`, `s2-bars` pass `0.01` against a
+real cost of about $0.0075/case) is needed to get the guard to let a legitimate run start;
+`release RUN_ID` clears a dead run's budget reservation (0045) so its held budget can be
+reused; `report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest`
+to compare; `judge` refuses a non-`dev-400` run without `--validated` (§8).
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
@@ -206,6 +237,10 @@ close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) 
 `NTSB_API_KEY` (the NTSB Enterprise API key, required for `make ingest`, never printed or
 committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
 `OPENROUTER_API_KEY` (the model access decision 0009 uses), `NTSB_RUNS_DIR` (default
-`data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 25) and
+`data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 25),
 `NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
-cost cap).
+cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; defaults to
+`<NTSB_DATA_DIR>/docket`, so it moves with `NTSB_DATA_DIR` unless set explicitly; never
+committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
+`data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
+production).

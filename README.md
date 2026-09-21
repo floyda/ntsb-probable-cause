@@ -217,20 +217,33 @@ make build   # build data/processed/cases.parquet from the raw store
 make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
 make probe   # scripts/openrouter_probe.py — the S1 fixture-recording probe (spec §7.1)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (spec §6.5)
+make docket-scan       # scripts/docket_scan.py — dev-400 docket shape; cached and resumable (S2)
+make scan-docket       # scripts/corpus_scan.py --docket — the deny-list threshold, from the docket-scan cache (S2)
+make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
+make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
+make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
 ```
 
-`ntsb-eval` (spec §6.5) is the S1 evaluation harness, installed by `uv sync`:
+`ntsb-eval` (spec §6.5) is the evaluation harness, installed by `uv sync`; arm `B` and
+`release` were added in S2:
 
 ```bash
 ntsb-eval baseline  [--sample heldout-400]                 # spec §6.3
-ntsb-eval run       --arm ceiling|A --sample heldout-40|heldout-400|dev-400
+ntsb-eval run       --arm ceiling|A|B --sample heldout-40|heldout-400|dev-400
                      [--exclude ROLE ...] [--include case_number] [--limit N]
                      [--model ID] [--price-variant batch|standard]
-                     [--cap-usd 0.05] [--budget-usd 25] [--sync]
+                     [--cap-usd 0.05] [--budget-usd 25] [--expected-cost-per-case-usd USD]
+                     [--sync] [--resume RUN_ID]
 ntsb-eval report     <run id>|--latest ARM SAMPLE [--against <run id>|--against-latest ARM SAMPLE]
 ntsb-eval judge      <run id> [--validated]                 # spec §8; dev-400 until validated
 ntsb-eval threshold  <run id>                                # spec §9
+ntsb-eval release    <run id>                                # clear a dead run's budget reservation (0045)
 ```
+
+`--arm B` reads the docket; every tool is called in a fixed order and the run answers once.
+`--expected-cost-per-case-usd` is required, not optional, for any large `--arm B` run: without
+it the budget guard projects the run at the per-case cap rather than the real cost, and
+refuses it against the monthly budget before a single model call.
 
 Every subcommand accepts `--out PATH` to also write the printed text to a file.
 
@@ -253,6 +266,10 @@ file:
 - `NTSB_MONTHLY_BUDGET_USD` — the monthly spend cap a run refuses to exceed (default 25).
 - `NTSB_EXPECTED_COST_PER_CASE_USD` — measured cost per case a run projects against the
   budget from, once `make probe` has one; falls back to the cost cap when unset.
+- `NTSB_DOCKET_DIR` — where fetched docket documents are cached (default `<NTSB_DATA_DIR>/docket`,
+  so it moves with `NTSB_DATA_DIR` unless set explicitly). Nothing under it is committed.
+- `NTSB_DOCKET_SECONDS_PER_REQUEST` — the minimum time between requests to `data.ntsb.gov`
+  (default 2.0 seconds), enforced in code as a floor above zero.
 
 ## A note on tone
 

@@ -477,7 +477,10 @@ open-split cases, so class does not mean the same thing in every era.
 cost, and the ceiling figure is the bar recorded for the agent. The same command runs arm A,
 and a per-step scoring test passes on a scripted trail from the recording fake.
 
-### S2. The docket tool
+### S2. The docket tool — done
+
+As built: see the stage specification's
+[As-built section](2026-09-18-s2-docket-tool-design.md#as-built).
 
 Docket client, HTML table parser, document downloader, classification by characters of
 text per page, born-digital text extraction, caching, and offline fixtures built from
@@ -570,7 +573,10 @@ no-narrative cases, ablation loss concentrated there). What carries over in kind
 the S1 ceiling, an ablation showing the docket tool's contribution, sensible abstention, and
 average cost under a per-case cap enforced in code. Added by 0022: arm C against arm B at equal
 cost, with the four results that would count against the loop (0022) and the six
-predictions (0022), each reported whichever way it comes out.
+predictions (0022), each reported whichever way it comes out. Added after S2: the loop (arm C)
+must beat arm B with the docket (`docs/results/s2-bars.txt`) at equal cost — beating the
+no-docket ceiling shows retrieval works, but not that choosing what to fetch does, and arm B is
+the fixed-order comparison that tests that.
 
 *Amended 2026-09-15 (0031).* The model axis of §4 — which model gains most from reading the
 docket — is measured after this stage, once arms B and C exist, as a separate table labelled
