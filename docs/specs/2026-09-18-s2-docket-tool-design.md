@@ -1,7 +1,7 @@
 # S2 — The docket tool: design
 
 *Drafted 2026-09-17 and 2026-09-18 from a design session with Andy, after the release of S1
-(`v0.2.0`, pull request #5). Status: Approved (2026-09-18, Andy).
+(`v0.2.0`, pull request #5). Status: Approved (2026-09-18, Andy); Implemented (2026-09-21, pull request #8).
 This is the specification for build stage S2 in
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11, restated here as decisions 0037 to
 0040 amend it. It records what S2 builds, why, the decisions S2 was asked to take, and the
@@ -719,3 +719,330 @@ The roadmap's S2 entry gains a line pointing here; its original text stays, mark
 - **Paired difference**: two arms compared on the same cases, with an interval.
 - **Fingerprint**: a hash of the exact text sent to the model, stored instead of the text.
 - **Floor**: a count that can only undercount.
+
+---
+
+## As built
+
+*Closed 2026-09-21 in pull request #8.*
+
+### Delivered
+
+- **The docket package**, `src/ntsb_probable_cause/docket/`: `client.py` (a cached, rate-limited
+  client, one request every two seconds to `data.ntsb.gov`), `listing.py` (the docket page
+  parser), `extract.py` (`pypdf` text extraction with page markers), `classify.py` (readable /
+  scan / partial, and a title-based document category), `manifest.py` (`read_docket`: fetch,
+  extract, and record what could and could not be read), `filter.py` (arm B's document
+  selection), `attach.py` (the attach step that builds a case context).
+- **Documents as evidence**: `attach_docket` copies the raw record and adds a `docket` subtree
+  *before* `split_record` runs, under two new roles, `DOCKET_LISTING` and `DOCKET_DOCUMENTS`
+  ([0041](../decisions/0041-docket-text-enters-through-a-case-context.md),
+  [0042](../decisions/0042-two-docket-roles-selection-when-the-context-is-built.md)). There is
+  still exactly one payload assembler and one split.
+- **Arm B in the harness**: `ntsb-eval run --arm B`, which attaches every document extraction
+  found text in, ordered by each document's own measured size, and stops at the per-case cap.
+- **Three S1 gaps closed** before any document reached a model: the boundary test extended to the
+  batch path and tool turns, the monthly budget as a reservation taken under `fcntl.flock`
+  ([0045](../decisions/0045-monthly-budget-is-a-reservation-under-a-lock.md)), and a cap that
+  counts output tokens across both answering turns.
+- **The measurements**, all under `docs/results/`, all written by a script: `s2-shape-dev.txt`,
+  `s2-shape-open.txt`, `s2-threshold.txt`, `s2-doctype.txt`, `s2-docket-leak.txt`,
+  `s2-handcheck.txt`, `s2-filter-compare.txt`, `s2-name-coverage.txt`, `s2-armB-dev.txt`,
+  `s2-bars.txt`, and one new row in `heldout-ledger.md`.
+
+**The result, on `heldout-400` (358 scored of 400), at commit `3bc3a51`:**
+
+| | top-1 | top-3 | finding recall@10 |
+|---|---|---|---|
+| honest baseline, no model | 17.7% [16.6, 18.9] | 35.7% [34.2, 37.1] | 23.2% |
+| one-shot ceiling (no docket) | 10.8% [8.1, 14.2] | 20.3% [16.6, 24.5] | — |
+| **arm B, every readable document** | **22.3% [18.3, 26.9]** | **37.2% [32.3, 42.3]** | **9.1% [6.8, 11.6]** |
+
+Paired on the 357 cases both runs scored: occurrence top-1 **+11.2 points [+6.2, +16.2]**, top-3
+**+16.0 [+10.6, +21.0]**, finding recall@10 **+5.9 [+3.6, +8.3]**.
+
+**This is the first result in the project to clear the honest baseline on held-out data.** The
+bar S1 fixed was the baseline's 17.7%, not the ceiling's 10.8%, and arm B's interval begins at
+18.3%. Development ran 23.7%, so held-out lost 1.4 points — inside the noise, and no sign that
+anything was tuned to the development split.
+
+**On finding codes arm B is well below the same baseline: 9.1% against 23.2%.** Reading the
+docket helps (+5.9 points over the ceiling) and is still not close. Occurrence codes say *what*
+happened; finding codes say *why*. On *why*, this agent is not yet useful, and the figure is
+published as measured.
+
+**Total S2 spend: $4.13**, summing `cost_usd` over every run record started on or after
+2026-09-18 — the same field the budget guard's `month_spent` reads, so the published figure
+cannot disagree with what was enforced. Three runs: a 2-case smoke run ($0.01), arm B on
+`dev-400` ($2.12, 401 cases) and arm B on `heldout-400` ($2.00, 400 cases). September 2026 stood
+at $11.77 of the $25 monthly budget at close-out. Measured cost per case at the batch price:
+**$0.0053** on `dev-400`, **$0.0050** on `heldout-400`, against a $0.05 cap.
+
+### Done means, with evidence
+
+1. **Extracted text and a manifest, tested without network access** — met —
+   `docket/manifest.py:read_docket` returns page-marked text
+   (`extract.py:PAGE_MARKER`) and a per-document status. `pytest-socket` refuses sockets for
+   the whole suite; the tests run against saved real listing pages and reviewed documents under
+   `tests/fixtures/docket/`.
+2. **The boundary test covers the batch path and tool turns; its mutation test fails when the
+   assertion is removed** — met — `tests/test_boundary.py`:
+   `::test_batch_runner_never_sends_withheld_text_in_any_request`,
+   `::test_batch_boundary_assertion_reads_tool_turn_payloads`,
+   `::test_boundary_holds_on_a_case_context_with_documents`,
+   `::test_synthesis_document_never_reaches_the_payload`; the mutation tests are
+   `::test_boundary_test_fails_when_the_splitter_leaks`,
+   `::test_boundary_test_fails_when_a_value_comes_from_the_wrong_place`,
+   `::test_boundary_fails_when_only_the_tripwire_can_catch_a_leak`,
+   `::test_batch_boundary_test_fails_when_a_system_prompt_leaks`.
+3. **Reservation, cap with output, safe re-judge, in code with tests** — met —
+   `scoring/budget.py` (`month_spent`, `budget_lock`, `open_reservations`),
+   `scoring/runner.py:estimated_cost_usd` (`ANSWERING_TURNS * call_cost`, output reserve
+   included), and the re-judge's temporary-file write in `scoring/judge.py`.
+4. **The threshold, with its curve, and the scan reports the threshold it used** — met —
+   `docs/results/s2-threshold.txt`, four candidate minimum sentence lengths with hits by
+   category and kind.
+5. **NOT MET AS WRITTEN.** §14.5 asked for one file, `docs/results/s2-filter.txt`, holding five
+   things. There is no such file, and three of the five were retired by measurement rather than
+   delivered:
+   - *hits, misses and false denies by category* — in `docs/results/s2-threshold.txt`, which is
+     the evidence [0056](../decisions/0056-the-deny-list-cannot-be-filled-from-titles.md) rests
+     on;
+   - *the hand-check error rate* — in `docs/results/s2-handcheck.txt`, 60 rows, every row marked;
+   - *the submission difference* — **retired**
+     ([0054](../decisions/0054-the-party-submission-comparison-is-retired.md)): the category
+     finds documents the NTSB happened to title as submissions, not the population of party
+     submissions, so the comparison was measuring the wrong thing;
+   - *the published types* — **retired**
+     ([0052](../decisions/0052-arm-b-attaches-every-readable-document.md)): arm B attaches every
+     readable document, so there is no admitted-type list to publish;
+   - *the rank order* — delivered, but as each document's own measured size
+     ([0048](../decisions/0048-arm-b-ranks-by-each-documents-measured-size.md)), not a rank over
+     categories.
+   Recorded unmet rather than redefined to fit what was built.
+6. **Both shape files exist, and the open-split script wrote nothing under `data/`** — met —
+   `docs/results/s2-shape-dev.txt` (401 dockets) and `docs/results/s2-shape-open.txt` (80
+   dockets, 40 per stratum). `scripts/docket_shape_open.py` constructs its client with no cache
+   directory ([0040](../decisions/0040-docket-shape-remeasured-on-closed-open-split-cases.md));
+   the committed file was scanned for case numbers and holds none.
+7. **`s2-bars.txt` holds arm B paired against the S1 ceiling, with cap-bound counts, and the
+   ledger gained exactly one row** — met — the cap bound on 5 of 400 cases, 6 documents unread,
+   all in the fatal stratum; `docs/results/heldout-ledger.md` has one new row, dated 2026-09-21,
+   commit `3bc3a51`, $2.00.
+8. **Every committed docket text fixture carries `reviewed_by`, none from outside the
+   development split** — met — enforced by `scripts/check_fixtures_redacted.py`, which exits
+   clean. `ERA17LA217` carries a listing page and no documents, so it has no text fixture to
+   mark.
+9. **No run exceeded its budget flag; the total spend is stated** — met — $4.13, above.
+10. **CI green, documentation check passes, closed out under 0017** — met — this close-out
+    commit; `uv run python -m scripts.check_docs` clean.
+
+### Departures from this specification
+
+**Five mechanisms this specification describes were removed during the stage, each on a
+measurement.** S2 was written expecting to *build* a filter. What it mostly did was measure one
+and find it did not earn its place. Each removal is a numbered decision; the figures are the
+reason:
+
+- **The deny-list is gone** ([0056](../decisions/0056-the-deny-list-cannot-be-filled-from-titles.md)).
+  §7.1 planned a list of document categories too likely to carry the investigators' own
+  conclusions. The tripwire's hits spread across 8 of the 12 categories, and 33 of the 56 fell in
+  `other` — the label meaning the classifier could not tell what the document was. A list that
+  would catch them denies two thirds of the taxonomy. The hand-check found 0 of 60 documents
+  carrying a case-level conclusion.
+- **The photograph exclusion is gone**
+  ([0052](../decisions/0052-arm-b-attaches-every-readable-document.md)). It dropped 270
+  documents to save about 6 tokens each, and the hand-check showed it was wrong in both
+  directions: 1 of 60 dropped that was not a photograph, 5 kept that were.
+- **The provenance clause is gone**
+  ([0051](../decisions/0051-the-document-header-drops-the-provenance-clause.md)). The header used
+  to tell the model whose account a document was. Hand-checked against 60 documents, it agreed
+  with the human mark on 32 of the 55 it made a claim about — **58%**. A clause that is wrong
+  two times in five is worse than no clause.
+- **The party-submission comparison is retired**
+  ([0054](../decisions/0054-the-party-submission-comparison-is-retired.md)). §8.3 asked for a
+  run with submissions excluded. The category identified 9 documents in 401 dockets, which is
+  not the population of party submissions but the population the NTSB happened to title that
+  way — the same labelling weakness the other removals rest on.
+- **The category label is gone from the document header**
+  ([0055](../decisions/0055-the-document-header-carries-the-listing-number.md)). 604 of 3,790
+  development documents classify as `other`, so the label most often said nothing. The header now
+  gives the listing number and the page counts, both of which are facts rather than guesses.
+
+**Other departures:**
+
+- **§5.3's `unreadable: photos` status was folded into `skipped: photo-only`.** The listing
+  already says which entries are photograph sets, and a PDF of photographs with no text layer is
+  a scan like any other. One status fewer to explain.
+- **§6.1's case context does not store each document's manifest entry.** It holds the rendered
+  header-and-text strings plus an index of what was attached. Nothing downstream needed the
+  entry, and storing it would have put a second copy of the document metadata inside the payload
+  builder.
+- **§6.4 said the attach step was "the slot for any later name handling". It stopped being
+  later.** Mid-stage the owner and operator details the record already holds were added to the
+  replacement, covering addresses, postcodes and a certificate number, not only the five
+  name-bearing fields
+  ([0046](../decisions/0046-known-owner-and-operator-names-are-replaced-in-document-text.md)).
+- **§4.3 and §7.2 describe "the page's type column" as a document type. It is not.** The real
+  listing page's Type column holds the file format ("Adobe PDF file"). `document_category`
+  therefore classifies on the title alone; the specification's sentence describes something the
+  page does not provide.
+- **§8.5's tripwire refused 38.9% of development cases before any model call.** Almost all were
+  the *factual* narrative, which investigators quote verbatim from documents that are themselves
+  in the docket — the guard was catching the docket reproducing its own sources, not a leak of
+  the answer. Factual-narrative sentences are now skipped **in docket documents only**, every
+  other source and role compared exactly as before
+  ([0050](../decisions/0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md)).
+  Refusals fell to 4.2%, and the 17 cases that remained on `dev-400` were predicted exactly.
+- **The held-out refusal rate is more than double the development one: 40 of 400 (10.0%) against
+  17 of 401 (4.2%).** Every held-out refusal was an *analysis* narrative sentence inside a docket
+  document — the investigators' reasoning, not their factual account. This was not predicted and
+  is an era difference worth carrying into S2.5: the more recent the case, the more often the
+  published docket contains the conclusion.
+- **`pypdf` gained the `[crypto]` extra, and it was a memory fix, not a feature.** Without it
+  `pypdf` falls back to a pure-Python RC4 implementation on encrypted documents, which allocated
+  **24.1 GB** over a 40-case fetch against **13.6 GB** with the extra, measured with `memray`.
+  Three repeated out-of-memory kills were traced to it. Peak resident memory is flat with case
+  count (1,086 MB at 5 cases, 1,195 MB at 40), so the application does not leak; the kills were
+  the machine, not a growth bug.
+- **`--docket-filter` never shipped.** The flag existed to select between filter variants; with
+  the deny-list and the type list gone there is one behaviour and nothing to select.
+- **`.gitattributes` was added** (`tests/fixtures/docket/** -text`). Byte-exact docket fixtures
+  ([0037](../decisions/0037-docket-fixtures-from-development-dockets-only.md)) otherwise depend
+  on each clone's `core.autocrlf` setting rather than on anything in the repository.
+- **§15's cost model is a floor, not an estimate to trust.** It modelled about $0.0023 a case and
+  about $5.45 for the stage, counting the docket's tokens once when a case sends the same payload
+  on both answering turns. Measured: $0.0053 and $0.0050 a case, $4.13 for the stage.
+
+### What a later reader must not assume
+
+1. **The cap is a floor on a case's cost, not a ceiling.** It covers both answering turns but
+   excludes retries, so a retried case costs more than the cap nominally allows.
+2. **`fcntl` makes the scoring package POSIX-only** (0045). Windows is out of scope, not
+   untested.
+3. **The judge enforces the read half of the budget rule and not the write half.** It refuses to
+   start when other runs' open reservations would fill the budget, but takes no reservation of
+   its own; the reason is in `judge.py`'s docstring.
+4. **A cached `listing.html` never expires.** Correct for a stage that reads closed dockets only.
+   It becomes a precondition to fix in S2.5, when open dockets gain documents between fetches.
+5. **The published development shape covers documents arm B would not read.** The docket scan
+   fetches with nothing excluded, because the same fetch feeds the filter measurement and the
+   fixture pool.
+6. **`scripts/corpus_scan.py` still carries an `_EMPTY_DENY_LIST`.** It keeps the shape of the
+   measurement decision 0039 asked for, so the published table can be read as the evidence for
+   removing the deny-list. It is not a live mechanism, and `docs/results/s2-threshold.txt` says
+   so in its closing paragraph.
+7. **There is no OCR in S2** ([0047](../decisions/0047-pypdf-extracts-docket-text-no-ocr.md)). A
+   page `pypdf` cannot read counts zero characters. `docs/results/s2-shape-open.txt` measures what
+   that costs on recent cases: the pilot's own accident-report form carries a text layer in 261 of
+   335 development-era dockets but only 19 of 75 recent ones, and scanned pages per docket roughly
+   tripled. **The live board should therefore be expected to score below the held-out figure**,
+   and that prediction is recorded here before the live board runs.
+
+### Decisions taken during the stage, and an audit of them
+
+S2 produced **21 numbered records, 0037 to 0057** — more than S0 and S1 together. That prompted a
+fair question from the project owner: how many of them were changing decisions already made? The
+close-out audited all of them against the code rather than against their own status lines.
+
+**The answer, over the 20 records 0037–0056:** 4 decide new ground, 6 extend an existing
+principle to a new case, 2 amend an earlier record's scope, 2 fix an error in an earlier record,
+and 6 supersede part of one. **Nothing from S0 or S1 was reversed.** 0057, written at close-out,
+is new ground.
+
+**Most of the churn is S2 relitigating S2.** Five mechanisms proposed early in the stage — a
+title-based deny-list, a provenance clause, a photograph exclusion, a party-submission comparison,
+and ranking documents by category — were each measured and then removed by a later S2 record. That
+is the stage working as intended: the measurements were commissioned precisely to decide whether
+those mechanisms earned their place, and they did not.
+
+**The two records that touch pre-S2 decisions most directly both leave the target standing.**
+0038 amends 0013, the evidence/synthesis/verdict split, by settling what counts as evidence;
+0045 fixes 0030's budget guard by changing how it is enforced, not whether it is.
+
+**What the audit found wrong**, all now corrected append-only and none of it an edit to an
+existing claim: 0052's item 4 listed three jobs the document category still did, two of which had
+been removed hours earlier by 0054 and 0055 and the third by 0056; 0030 carried no forward pointer
+to the record that fixed its guard; 0047 and 0052 carried none to 0053, which closed a defect 0052
+itself had flagged as open; and 0047's text named the dependency as `pypdf` where the code pins
+`pypdf[crypto]`, which is a memory fix rather than packaging detail. The index now surfaces a
+later correction on the *earlier* record of each pair, which it previously showed only on the
+later one.
+
+**One standing property, stated rather than fixed.** Three separate records — 0052, 0054 and 0056
+— each concluded independently that title-based classification cannot be trusted to gate what the
+model sees, for three different jobs. The classifier still runs, for a published statistic and one
+line in the step log, and `other` remains the largest category at 604 of 3,790 documents. The
+docket's defence is now the tripwire alone; there is no second, structural layer. That is a
+deliberate position (0056 says so plainly) and it is the thing to revisit first if the tripwire
+ever proves insufficient.
+
+### The gap decision 0050 leaves, measured
+
+The close-out audit found a gap in the tripwire and the close-out measured it rather than
+reasoning about it. `docs/results/s2-narrative-coverage.txt` and
+`docs/results/s2-narrative-coverage-heldout.txt` are that measurement
+(`scripts/narrative_coverage.py`, counts only, no model call, no matched text printed).
+
+**The gap.** 0050 stopped the guard comparing factual-narrative *sentences* against
+`docket_documents`, because the narrative is written from the docket and was tripping on its own
+sources — that is what cut refusals from 38.9% of development cases to 4.2%. The backstop is the
+whole-text needle, which is *not* exempt: an exact, complete copy of the narrative inside a
+document still stops the case. A **near**-complete copy does not. One sentence missing, or one
+word altered, and no whole-text needle matches while every sentence is exempt. The factual
+narrative is the most informative thing that could leak — the spike measured 88% top-1 with it
+present against 12% without — so the size of this gap decides whether S2's numbers can be
+believed.
+
+**The measurement.** For every case, what share of the factual narrative's sentences appear
+inside the docket, and how much of it does any *single* document carry?
+
+| | cases measured | median | p90 | max | single document ≥80% | ≥90% |
+|---|---|---|---|---|---|---|
+| `dev-400` | 379 | 0.0% | 17.3% | 98.5% | 2 of 379 | 2 of 379 |
+| `heldout-400` | 270 | 9.1% | 32.4% | 74.6% | 0 of 270 | 0 of 270 |
+
+**The published held-out figure stands.** No held-out case has a single document carrying more
+than 74.6% of the narrative's sentences, and a document at that level is missing a quarter of it.
+Only 5 of 270 exceed half. No case in either split reproduced the narrative whole, so the
+whole-text backstop never had to fire.
+
+**The gap is nevertheless real, and development shows it.** Two of 379 development cases have a
+single document carrying **more than 90%** of the narrative — one at 98.5%. Those cases are
+exactly the shape the audit described, and today nothing stops them.
+
+**Recommended, not done: replace the exact whole-text backstop with a coverage threshold** —
+refuse a case when one document reproduces more than a set share of the narrative's sentences. On
+this evidence a threshold at 80% would have refused 2 development cases and nothing at all on
+held-out, so it costs almost no sample and closes the gap. That is a change to the guard and
+therefore Andy's decision, not one to take at a close-out; it is the first item for S2.5.
+
+**One corpus fact behind these figures**, consistent with `docs/results/s0-corpus-scan.txt`: 125
+of the 400 held-out cases carry no factual narrative at all, against 0 of 401 development ones.
+For those cases the risk described here cannot arise.
+
+### Implementation record
+
+Twenty tasks, executed by subagents against `docs/plans/2026-09-18-s2-docket-tool.md`, which this
+record replaces and the merge deletes (0017). Each task was reviewed for specification compliance
+and code quality before the next began; the plan's deviation log is curated into "Departures"
+above rather than carried verbatim.
+
+- **Repository additions the specification's §11 list omits**: `scripts/build_title_vocab.py`,
+  `scripts/handcheck_page.py`, `scripts/doctype_scan.py`, `scripts/docket_leak_scan.py`,
+  `scripts/name_coverage.py` (0046), `scripts/score_handcheck.py` and
+  `scripts/narrative_coverage.py` (this close-out); the results files `s2-doctype.txt`,
+  `s2-docket-leak.txt`, `s2-handcheck.txt`, `s2-filter-compare.txt`, `s2-name-coverage.txt`,
+  `s2-armB-dev.txt`, `s2-narrative-coverage.txt` and `s2-narrative-coverage-heldout.txt`;
+  `.gitattributes`; and decision records 0046, 0047 and 0050–0057.
+- **§11 says `Settings` gains `docket_dir` with a default of `data/docket`.** Since
+  [0057](../decisions/0057-unset-directory-settings-derive-from-data-dir.md) an unset directory
+  setting derives from `data_dir` instead, so the literal default only applies when `data_dir`
+  is itself the default. `runs_dir` changed with it.
+- **§11 names `filter.py` as "the deny-list and arm B's types and rank order".** None of those
+  three survive; the module holds one function, which returns every readable document in size
+  order.
+- **Removed during the stage**: `scripts/filter_compare.py`, whose comparison 0054 retired.
+- **Model**: `openai/gpt-5.6-luna` at the batch price throughout (0031).
+- **Total spend**: $4.13, stated above.
+- **Version**: `0.3.0`.
