@@ -10,6 +10,7 @@ from ntsb_probable_cause.docket.attach import (
     amateur_built_replace,
     attach_docket,
     header,
+    prepare_attachment,
     redact_known_names,
 )
 from ntsb_probable_cause.docket.classify import CATEGORIES
@@ -131,6 +132,66 @@ def test_requesting_an_unreadable_document_leaves_it_unattached(
     assert result.attached == ()
     assert result.context[DOCKET_KEY]["documents"] == []  # type: ignore[index]
     assert result.not_available == ("2: unreadable: scan", "3: unreadable: scan")
+
+
+def test_prepare_attachment_context_for_matches_attach_docket(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Task 16g: the once-per-case path and the thin wrapper must agree, for a docket holding
+    several readable documents and at least one unreadable one."""
+    raw = record_fixtures[0]
+    docket = _docket(
+        {1: "[page 1 of 3]\nThe crankshaft was intact.\n", 2: "[page 1 of 3]\nWe submit.\n"}
+    )
+    documents = [1, 2]
+    direct = attach_docket(raw, docket, documents=documents)
+    via_attachment = prepare_attachment(raw, docket).context_for(documents)
+    assert via_attachment.context == direct.context
+    assert via_attachment.attached == direct.attached
+    assert via_attachment.not_available == direct.not_available
+    assert via_attachment.replacements == direct.replacements
+
+
+def test_consecutive_context_for_calls_are_independent(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Regression test for the shared-mutation design: a later call with a different document
+    set must not corrupt the result of an earlier call with the same documents as a third call."""
+    raw = record_fixtures[0]
+    docket = _docket(
+        {1: "[page 1 of 3]\nThe crankshaft was intact.\n", 2: "[page 1 of 3]\nWe submit.\n"}
+    )
+    attachment = prepare_attachment(raw, docket)
+    first = attachment.context_for([1])
+    attachment.context_for([1, 2])
+    third = attachment.context_for([1])
+    assert third == first
+
+
+def test_context_for_replacement_count_matches_attach_docket_for_the_same_subset(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The replacement count is published in the shape file, so a subset's total from the
+    precomputed path must equal what ``attach_docket`` reports for that same subset."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["aircraftAmateurBuilt"] = True
+    aircrafts[0]["aircraftMake"] = "Invented Builder"
+    aircrafts[0]["aircraftModel"] = "RV-7X"
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]
+    docket = _docket(
+        {
+            1: "[page 1 of 3]\nInvented Builder logbook signed by Jordan Vale.\n",
+            2: "[page 1 of 3]\nJordan Vale submits this report.\n",
+        }
+    )
+    attachment = prepare_attachment(raw, docket)
+    for documents in ([1], [2], [1, 2]):
+        assert (
+            attachment.context_for(documents).replacements
+            == attach_docket(raw, docket, documents=documents).replacements
+        )
 
 
 # The former category labels (decision 0051), quoted here only as a regression guard --

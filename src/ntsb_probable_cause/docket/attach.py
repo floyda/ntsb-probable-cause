@@ -142,6 +142,94 @@ def redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
     return text, count
 
 
+@dataclass(frozen=True)
+class Attachment:
+    """A case's listing and every readable document, rendered and redacted exactly once.
+
+    Task 16g: the cap loop in ``scoring/runner.py`` used to call ``attach_docket`` once per
+    trial, which re-rendered the listing and re-scrubbed every already-attached document's
+    text on every pass, and deep-copied the whole raw record each time -- O(n^2) text
+    scrubbing and one deep copy per document for an n-document docket. ``prepare_attachment``
+    does the once-per-case work; ``context_for`` is the cheap per-trial step.
+    """
+
+    docket: Docket
+    listing_text: str
+    listing_replacements: int
+    document_texts: dict[int, str]
+    document_replacements: dict[int, int]
+    not_available: tuple[str, ...]
+    template: dict[str, object]
+
+    def context_for(self, documents: Sequence[int]) -> AttachResult:
+        """Build the case context for exactly ``documents``, from the precomputed text.
+
+        Sets the ``docket`` subtree on ``template`` -- the one deep copy made in
+        ``prepare_attachment`` -- and replaces it wholesale on every call, so consecutive calls
+        with different document sets do not accumulate state from one another. Safe to share
+        across trials only because nothing downstream keeps a reference into ``template`` or
+        its ``docket`` subtree past the trial that built it: ``records/split.py`` reads values
+        out of the mapping into ``Evidence`` (whose ``docket_documents`` is a freshly built
+        tuple and ``docket_listing`` an immutable ``str``, neither a view onto ``template``),
+        and ``model/client.py:Payload.from_evidence`` renders those values to a JSON string
+        immediately, so the ``Payload`` a trial returns holds no reference into ``template``
+        either. A requested index the docket has never heard of still raises ``DocketError``,
+        via ``Docket.record``, exactly as it always has.
+        """
+        rendered: list[str] = []
+        attached: list[int] = []
+        replacements = self.listing_replacements
+        for index in documents:
+            if index in self.document_texts:
+                rendered.append(self.document_texts[index])
+                replacements += self.document_replacements[index]
+                attached.append(index)
+            else:
+                self.docket.record(index)  # raises DocketError for an index the docket lacks
+        self.template[DOCKET_KEY] = {
+            "listing": self.listing_text,
+            "documents": rendered,
+            "attached": attached,
+        }
+        return AttachResult(self.template, tuple(attached), self.not_available, replacements)
+
+
+def prepare_attachment(raw: Mapping[str, object], docket: Docket) -> Attachment:
+    """Render and redact the listing and every readable document's text, once per case.
+
+    The raw record is deep-copied exactly once here; ``Attachment.context_for`` reuses that
+    single copy for every trial.
+    """
+    listing_text, listing_replacements = amateur_built_replace(render_listing(docket.listing), raw)
+    listing_text, n = redact_known_names(listing_text, raw)
+    listing_replacements += n
+    document_texts: dict[int, str] = {}
+    document_replacements: dict[int, int] = {}
+    for record in docket.documents:
+        if record.status != "read":
+            continue
+        text, replacements = amateur_built_replace(
+            render_document(record, docket.texts[record.entry.index]), raw
+        )
+        text, n = redact_known_names(text, raw)
+        replacements += n
+        document_texts[record.entry.index] = text
+        document_replacements[record.entry.index] = replacements
+    not_available = tuple(
+        f"{r.entry.index}: {r.status}" for r in docket.documents if r.status != "read"
+    )
+    template: dict[str, object] = copy.deepcopy(dict(raw))
+    return Attachment(
+        docket,
+        listing_text,
+        listing_replacements,
+        document_texts,
+        document_replacements,
+        not_available,
+        template,
+    )
+
+
 def attach_docket(
     raw: Mapping[str, object], docket: Docket, *, documents: Sequence[int]
 ) -> AttachResult:
@@ -150,25 +238,9 @@ def attach_docket(
     The raw record is copied, never mutated. Every document not attached is listed in
     ``not_available`` with its status when it could not have been read; a readable document
     left out by choice is not listed (the step record's ``arguments`` say what was chosen).
+
+    A thin wrapper (task 16g) kept for existing callers, including ``scripts/docket_leak_scan.py``
+    and every test written against it: it does the once-per-case and per-trial work in one call,
+    exactly as before, for a single set of documents.
     """
-    listing_text, replacements = amateur_built_replace(render_listing(docket.listing), raw)
-    listing_text, n = redact_known_names(listing_text, raw)
-    replacements += n
-    rendered: list[str] = []
-    attached: list[int] = []
-    for index in documents:
-        record = docket.record(index)
-        if record.status != "read":
-            continue
-        text, n = amateur_built_replace(render_document(record, docket.texts[index]), raw)
-        replacements += n
-        text, n = redact_known_names(text, raw)
-        replacements += n
-        rendered.append(text)
-        attached.append(index)
-    not_available = tuple(
-        f"{r.entry.index}: {r.status}" for r in docket.documents if r.status != "read"
-    )
-    context: dict[str, object] = copy.deepcopy(dict(raw))
-    context[DOCKET_KEY] = {"listing": listing_text, "documents": rendered, "attached": attached}
-    return AttachResult(context, tuple(attached), not_available, replacements)
+    return prepare_attachment(raw, docket).context_for(documents)

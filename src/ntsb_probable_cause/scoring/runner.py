@@ -12,7 +12,7 @@ from typing import Literal, Protocol
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.data.build import investigation_class
 from ntsb_probable_cause.docket import filter as docket_filter
-from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
 from ntsb_probable_cause.errors import (
@@ -644,12 +644,13 @@ def prepare_case(
     if docket is None:
         raise ConfigurationError("arm B needs a docket reader")
     ordered = docket_filter.arm_b_documents(docket)
+    attachment = prepare_attachment(raw, docket)
     attached: list[int] = []
     not_read: list[str] = []
-    result = attach_docket(raw, docket, documents=attached)
+    result = attachment.context_for(attached)
     evidence, verdict, payload = _split_and_render(result.context, spec)
     for position, index in enumerate(ordered):
-        trial = attach_docket(raw, docket, documents=[*attached, index])
+        trial = attachment.context_for([*attached, index])
         trial_evidence, trial_verdict, trial_payload = _split_and_render(trial.context, spec)
         if over_cap(trial_payload.text, system, spec):
             not_read.extend(
