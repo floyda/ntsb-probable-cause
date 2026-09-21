@@ -1,5 +1,13 @@
 """Pre-commit hook: fail if a fixture carries data it is not allowed to carry.
 
+Status
+    Live check (S0, extended through S2). Runs in CI and in the pre-commit hook; writes
+    nothing. Its scope grew with decisions 0015 (redacted fixtures), 0046 (owner and operator
+    details in document text) and 0049 (the committed title sheet). Decision 0058 records why
+    CI installs a system word list before running it: without one the title check turns 0
+    blocking findings into 158, and it had failed every CI run for two days before that was
+    found.
+
 Four checks, all on `tests/fixtures`:
 
 * JSON records must have their owner and operator fields redacted (0015).

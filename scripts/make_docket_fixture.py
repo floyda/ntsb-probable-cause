@@ -1,5 +1,14 @@
 """Create docket fixtures from development-split cases only (decision 0037).
 
+Status
+    Live tool (S2). Produced the committed docket fixture pool under ``tests/fixtures/docket/``
+    -- listing pages, the reviewed document texts decision 0037 requires a human to attest to,
+    and the title hand-check sheet. Rerun whenever a new fixture is needed; the ``document``
+    subcommand still requires Andy to read the document and pass ``--reviewed-by``. The "Task
+    16" references below are to the S2 implementation plan, which decision 0017 deleted at
+    merge; the deviations it records are in the As-built part of
+    ``docs/specs/2026-09-18-s2-docket-tool-design.md``.
+
 Usage:
     uv run python -m scripts.make_docket_fixture listing [<case_id>]
         Fetch one dev-400 listing page (the seeded first case when no id is given) and

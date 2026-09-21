@@ -1,5 +1,13 @@
 """How much of the withheld factual narrative a single docket document can reproduce.
 
+Status
+    One-shot, complete (S2 close-out). Produced ``docs/results/s2-narrative-coverage.txt`` and
+    ``docs/results/s2-narrative-coverage-heldout.txt`` (commit ``cc73ebf``, 2026-09-21):
+    held-out maximum 74.6% with nothing at or above 80%, which is why the published 22.3%
+    stands; two development cases of 379 above 90%, which is the hole. **Likely to be rerun.**
+    The first S2.5 item is replacing the exact whole-text backstop with a coverage threshold,
+    and this script is the measurement that would decide where the threshold sits.
+
 Decision 0050 exempts factual-narrative *sentences* from the tripwire inside
 ``docket_documents``: the narrative is written from the docket, so a shared sentence is the
 narrative quoting a document rather than a document holding the answer. The whole-text needle

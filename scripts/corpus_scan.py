@@ -1,18 +1,30 @@
 """Guard statistics over the whole processed corpus (S0 spec §10). Counts only; no record text.
 
+Status
+    Live tool (S0, extended in S2). Produced ``docs/results/s0-corpus-scan.txt`` (commit
+    ``ea5a290``, 2026-09-14) and, in ``--docket`` mode, ``docs/results/s2-threshold.txt``
+    (commit ``78dd7c0``, 2026-09-20).
+
+    **The deny-list this mode was written to fill no longer exists.** Decision 0056 retired it:
+    the tripwire's hits spread across 8 of 12 document categories and 33 of 56 fell in
+    ``other``, so no list of categories could catch them without denying two thirds of the
+    taxonomy. ``_EMPTY_DENY_LIST`` below keeps the table's shape, so the committed table still
+    reads as the evidence for that removal, and it is not a live mechanism. Every mention of a
+    deny-list in this file and in its output describes the measurement, never the code.
+
 Usage:
     uv run python -m scripts.corpus_scan > docs/results/s0-corpus-scan.txt
     uv run python -m scripts.corpus_scan --docket --out docs/results/s2-threshold.txt
 
 The ``--docket`` mode (spec §8.2, §8.3) re-measures the tripwire's minimum sentence length on
-docket text (documents and the listing both), then measures which document categories the
-tripwire actually trips at the guard's own operating threshold -- the only input decision 0039
-allows for filling the deny-list. It reads the ``dev-400`` cache built by
-``scripts/docket_scan.py`` and never fetches: a missing cache entry is counted as not cached
-and skipped, and a cache entry present but unverifiable is refused by the transport and counted
-separately, never silently attempted or silently absorbed. With no cached, readable evidence
-the report says the threshold could not be measured and the mode exits non-zero, rather than
-stating a threshold drawn from nothing.
+docket text (documents and the listing both), then measures which document categories the tripwire
+actually trips at the guard's own operating threshold -- the only input decision 0039 allows for
+filling the deny-list (which 0056 then retired; see Status above). It reads the ``dev-400`` cache
+built by ``scripts/docket_scan.py`` and never fetches: a missing cache entry is counted as not
+cached and skipped, and a cache entry present but unverifiable is refused by the transport and
+counted separately, never silently attempted or silently absorbed. With no cached, readable
+evidence the report says the threshold could not be measured and the mode exits non-zero, rather
+than stating a threshold drawn from nothing.
 
 Fix round 1 (spec-compliance review) corrected five findings in this mode, referenced by number
 at each site below: (1) the filter table was computed at the chosen length, which is defined as

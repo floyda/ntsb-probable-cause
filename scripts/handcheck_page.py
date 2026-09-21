@@ -1,5 +1,14 @@
 """A local, browser-based marking tool for the title hand-check (decision 0048 item 4).
 
+Status
+    One-shot, complete (S2, owner tooling). It produced the private marking page whose exported
+    marks became ``tests/fixtures/docket/title_handcheck.filled.csv`` (commit ``136d9f0``,
+    2026-09-20), the 60-row sheet three decisions rest on. **Two of the three questions it asks
+    are now moot**: the photograph exclusion was removed by 0052 and the deny-list by 0056, and
+    the provenance vocabulary it renders was dropped from the document header by 0051. The page
+    itself is never committed (0049). Reusable if another hand-check is needed, but its
+    questions would have to be rewritten first.
+
 Marking 60 rows in a spreadsheet by hand was reported unworkable twice. This writes one
 self-contained HTML page the owner opens directly (``file://``, no server, no network) and
 marks by clicking; a second, shorter page lists one case's whole docket for the owner's other

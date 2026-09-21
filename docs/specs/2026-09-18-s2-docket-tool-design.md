@@ -954,14 +954,14 @@ reason:
 
 ### Decisions taken during the stage, and an audit of them
 
-S2 produced **22 numbered records, 0037 to 0058** — more than S0 and S1 together. That prompted a
+S2 produced **23 numbered records, 0037 to 0059** — more than S0 and S1 together. That prompted a
 fair question from the project owner: how many of them were changing decisions already made? The
 close-out audited all of them against the code rather than against their own status lines.
 
 **The answer, over the 20 records 0037–0056:** 4 decide new ground, 6 extend an existing
 principle to a new case, 2 amend an earlier record's scope, 2 fix an error in an earlier record,
-and 6 supersede part of one. **Nothing from S0 or S1 was reversed.** 0057 and 0058, both written at
-close-out, are new ground.
+and 6 supersede part of one. **Nothing from S0 or S1 was reversed.** 0057, 0058 and 0059, all
+written at close-out, are new ground.
 
 **Most of the churn is S2 relitigating S2.** Five mechanisms proposed early in the stage — a
 title-based deny-list, a provenance clause, a photograph exclusion, a party-submission comparison,

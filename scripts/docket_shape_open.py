@@ -1,5 +1,13 @@
 """Docket shape on closed open-split cases, 40 per stratum, numbers only (decision 0040).
 
+Status
+    One-shot, complete (S2), and repeatable as open cases accumulate. Produced
+    ``docs/results/s2-shape-open.txt`` (commit ``3c38cc4``, 2026-09-21). Its figures are the
+    basis for the prediction recorded in the S2 As-built before the live board runs: recent
+    dockets carry far less machine-readable text (the pilot's own form has a text layer in 19
+    of 75 recent dockets against 261 of 335 development-era ones), and there is no OCR
+    (decision 0047), so the live score should be expected below the held-out figure.
+
 Usage:
     uv run python -m scripts.docket_shape_open [--per-stratum 40] \
         [--out docs/results/s2-shape-open.txt]

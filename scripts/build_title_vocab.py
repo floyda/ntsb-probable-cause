@@ -1,5 +1,13 @@
 """Build the committed docket-title vocabulary (finding 6's replacement, decision 0046).
 
+Status
+    Live tool (S2). Produced ``src/ntsb_probable_cause/docket/vocab/title_words.txt``
+    (commit ``101b1a0``, 2026-09-19): 235 words from 401 cached development dockets. Rerun
+    when the docket cache has grown enough to be worth re-measuring. Decision 0058 records
+    that ``check_fixtures_redacted.py`` also reads the system word list, and that vendoring a
+    word list into the repository is the better long-term fix -- if that is done, this
+    generator is where it goes.
+
 What this file is
     A generator for ``src/ntsb_probable_cause/docket/vocab/title_words.txt``: every
     capitalised word (``ntsb_probable_cause.docket.title_vocab.capitalised_words`` --

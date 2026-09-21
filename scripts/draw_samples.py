@@ -1,5 +1,11 @@
 """Draw the two fixed S1 samples, heldout-400 and dev-400, from cases.parquet (spec §5).
 
+Status
+    One-shot, complete (S1, decision 0026). Produced
+    ``tests/fixtures/eval/heldout_400_ids.csv`` and ``dev_400_ids.csv``. **Do not rerun
+    casually**: the samples are fixed and committed, every published S1 and S2 number is scored
+    over them, and a redraw would silently change what "heldout-400" means.
+
 Usage:
     NTSB_DATA_DIR=... uv run python -m scripts.draw_samples
 """

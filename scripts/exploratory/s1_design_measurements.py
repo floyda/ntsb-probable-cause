@@ -1,5 +1,10 @@
 """Measurements behind the S1 design (docs/specs/2026-09-14-s1-scoring-and-evaluation-design.md).
 
+Status
+    One-shot, complete (S1 design). Exploratory arithmetic behind the
+    specification named above, kept so its figures can be re-derived. It produces no
+    committed result and nothing imports it.
+
 Exploratory and one-off, in the pattern of `s0_design_measurements.py`. It reads the frozen
 spike's local data because this repository's `data/` is not in git. The S1 harness
 supersedes every number here once it runs on `cases.parquet`.

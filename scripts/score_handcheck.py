@@ -1,6 +1,18 @@
 """Score the title hand-check: what the classifier's labels are actually used for (0048 item 4).
 
-Grades three uses against Andy's marks, not the twelve category names:
+Status
+    **Deprecated** (S2). Produced ``docs/results/s2-handcheck.txt`` (commit ``136d9f0``,
+    2026-09-20). **All three uses it grades were removed after it ran, and this script is the
+    evidence for removing them**: the photograph exclusion (decision 0052 -- it dropped 270
+    documents to save about 6 tokens each and was wrong in both directions), the deny-list
+    (0056 -- the hits could not be caught by any list of categories) and the provenance clause
+    (0051 -- right on 32 of the 55 titles it made a claim about, 58%). None of the three exists
+    in the code. Read this file as a record of a measurement, never as a description of the
+    pipeline.
+
+Grades three uses against Andy's marks, not the twelve category names. All three were
+removed after this ran -- see Status above; the present tense below is the tense of the
+measurement, not of the code:
 
 1. the arm B photograph exclusion -- ``category == "photos"`` drops the whole document;
 2. the deny-list -- a document that could hold the investigators' own conclusions;

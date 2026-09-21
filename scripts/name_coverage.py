@@ -1,5 +1,11 @@
 """How many cases carry an owner or operator name, and what shape those names are (0046).
 
+Status
+    One-shot, complete (S2). Produced ``docs/results/s2-name-coverage.txt`` (commit
+    ``80ed6d1``, 2026-09-18). It is the evidence behind decision 0046, which **is live**: the
+    owner and operator details the record already holds are replaced in document text by
+    ``docket/attach.py``. Rerun only to re-measure how many cases carry such a detail.
+
 Counts only. No name is printed, written or returned: the point of the measurement is to decide
 whether searching document text for the names the record already holds is worth doing, and at
 what granularity, not to look at anybody's name.

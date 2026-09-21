@@ -1,6 +1,15 @@
 """What the listing's ``doc_type`` column does to the category, over the whole dev-400 cache.
 
-Written to measure a finding from the title hand-check (task 16): "WITNESS STATEMENTS" is
+Status
+    **Deprecated** (S2). Produced ``docs/results/s2-doctype.txt`` (commit ``136d9f0``,
+    2026-09-20). It measured how many documents the ``doc_type`` column mis-categorised and so
+    lost to arm B's photograph exclusion -- and that exclusion was removed outright by decision
+    0052, which attaches every readable document. The loss this script quantifies can no longer
+    happen. ``_joined_category`` below is a frozen copy of behaviour the library deliberately no
+    longer has; do not read it as current. The "task 16" references are to the S2 implementation
+    plan, which decision 0017 deleted at merge.
+
+Written to measure a finding from the title hand-check: "WITNESS STATEMENTS" is
 classified ``photos`` and dropped by arm B, because ``document_category`` matches its patterns
 against the title and the ``doc_type`` column joined into one string, and the NTSB's
 ``Text/Image`` doc_type contains the word *image*.
@@ -8,7 +17,7 @@ against the title and the ``doc_type`` column joined into one string, and the NT
 Counts and titles only; no document text is printed. Titles are read from the cached listing
 pages, the same source the committed hand-check sheet was drawn from.
 
-The fix (task 16b) removed ``doc_type`` from ``document_category`` itself, so the old, joined
+The fix removed ``doc_type`` from ``document_category`` itself, so the old, joined
 behaviour is reproduced here instead, in ``_joined_category``, a frozen copy of the pre-fix
 match -- this script's job is to keep comparing the two, not to exercise the fixed function
 twice.

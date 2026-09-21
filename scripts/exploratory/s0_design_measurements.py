@@ -1,5 +1,10 @@
 """Measurements behind the S0 design (docs/specs/2026-09-13-s0-foundation-design.md).
 
+Status
+    One-shot, complete (S0 design). Exploratory arithmetic behind the
+    specification named above, kept so its figures can be re-derived. It produces no
+    committed result and nothing imports it.
+
 Exploratory and one-off. It reads the frozen spike's local data rather than this
 repository's, because this repository has no ingestion yet. S0's
 `scripts/corpus_scan.py` supersedes it once `cases.parquet` exists; the numbers it

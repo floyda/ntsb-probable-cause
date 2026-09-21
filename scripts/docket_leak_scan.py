@@ -1,5 +1,13 @@
 """Where the withheld narratives reappear inside docket documents, and at what sentence length.
 
+Status
+    One-shot, complete (S2). Produced ``docs/results/s2-docket-leak.txt`` (commit ``74c22b9``,
+    2026-09-20). It is the evidence behind decision 0050, which exempted factual-narrative
+    sentences inside ``docket_documents`` and cut refusals from 38.9% of development cases to
+    4.2%. The gap that exemption leaves was measured separately, at the S2 close-out, by
+    ``scripts/narrative_coverage.py``. Rerun this only if the tripwire's threshold or its
+    exemptions change.
+
 ``MIN_SENTENCE_CHARS = 20`` was measured in S0 over the record's own fields, before any docket
 text existed (``docs/results/s0-corpus-scan.txt``). Attaching docket documents puts a large new
 body of text under the same tripwire, and it fires: the investigators' factual narrative is

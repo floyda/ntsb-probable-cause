@@ -1,5 +1,10 @@
 """Measurements behind the S2 design (docs/specs/2026-09-18-s2-docket-tool-design.md).
 
+Status
+    One-shot, complete (S2 design). Exploratory arithmetic behind the
+    specification named above, kept so its figures can be re-derived. It produces no
+    committed result and nothing imports it.
+
 Exploratory and one-off, in the pattern of `s1_design_measurements.py`. Nothing here is a
 result: S2 produces the results. Every number is arithmetic over two sourced inputs:
 

@@ -1,5 +1,12 @@
 """Fetch every dev-400 docket once and report its shape: counts and quantiles only (spec §8.1).
 
+Status
+    Live tool (S2). Produced ``docs/results/s2-shape-dev.txt`` (commit ``5248603``,
+    2026-09-19) and, as a side effect, the dev-400 docket cache that ``corpus_scan --docket``,
+    ``make_docket_fixture``, ``handcheck_page``, ``doctype_scan`` and ``narrative_coverage``
+    all read without fetching. ``make docket-scan``. Long-running and resumable; launched by
+    the project owner, never by CI.
+
 Usage:
     uv run python -m scripts.docket_scan [--limit N] [--out docs/results/s2-shape-dev.txt]
 

@@ -218,7 +218,7 @@ make scan    # scripts/corpus_scan.py — guard statistics over the whole proces
 make probe   # scripts/openrouter_probe.py — the S1 fixture-recording probe (spec §7.1)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (spec §6.5)
 make docket-scan       # scripts/docket_scan.py — dev-400 docket shape; cached and resumable (S2)
-make scan-docket       # scripts/corpus_scan.py --docket — the deny-list threshold, from the docket-scan cache (S2)
+make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sentence-length threshold, from the docket-scan cache (S2)
 make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
@@ -247,11 +247,43 @@ refuses it against the monthly budget before a single model call.
 
 Every subcommand accepts `--out PATH` to also write the printed text to a file.
 
-Other scripts, run with `uv run python -m scripts.<name>`:
+### Everything in `scripts/`
 
-- `scripts.make_fixture` — create redacted development-split fixtures (decision 0015); see
-  its module docstring for the `records` / `auto` / `api` subcommands.
-- `scripts.check_docs` — the documentation check decision 0017's stage close-out depends on.
+Run any of them with `uv run python -m scripts.<name>`. **Every script's module docstring opens
+with a `Status` block** saying which of three kinds it is and what it produced; read that before
+reading the file. The three kinds are *live tool* (rerun when its input changes), *one-shot,
+complete* (it produced a committed file and its job is done — kept because this project
+publishes no number without the script behind it), and *deprecated* (the mechanism it measured
+no longer exists, and the script is usually the evidence that removed it).
+
+| script | kind | what it produced |
+|---|---|---|
+| `check_docs` | live check | nothing; fails CI when the docs disagree (0017) |
+| `check_fixtures_redacted` | live check | nothing; runs in CI and pre-commit (0015, 0046, 0049, 0058) |
+| `make_fixture` | live tool | the redacted record fixtures (0015) |
+| `make_docket_fixture` | live tool | the docket fixture pool and the title hand-check sheet (0037) |
+| `build_code_tables` | live tool | the scoring code tables, `docs/results/s1-code-tables.txt` |
+| `build_title_vocab` | live tool | `docket/vocab/title_words.txt` (0046, 0058) |
+| `openrouter_probe` | live tool | the recorded OpenRouter response fixtures |
+| `corpus_scan` | live tool | `s0-corpus-scan.txt`; `--docket` → `s2-threshold.txt` |
+| `docket_scan` | live tool | `s2-shape-dev.txt`, and the dev-400 docket cache five other scripts read |
+| `docket_shape_open` | one-shot | `s2-shape-open.txt` (0024, 0040) |
+| `docket_leak_scan` | one-shot | `s2-docket-leak.txt` — the evidence for 0050 |
+| `name_coverage` | one-shot | `s2-name-coverage.txt` — the evidence for 0046, which is live |
+| `narrative_coverage` | one-shot | the two `s2-narrative-coverage` files; **rerun if the guard changes** |
+| `reconcile_spike` | one-shot | `s0-reconciliation.txt` |
+| `copy_eval_ids` | one-shot | the evaluation ID fixtures (0015) |
+| `draw_samples` | one-shot | the fixed `heldout-400` / `dev-400` ID lists — **do not redraw** (0026) |
+| `handcheck_page` | one-shot | the private marking page behind the committed hand-check sheet (0049) |
+| `doctype_scan` | **deprecated** | `s2-doctype.txt`; the photograph exclusion it measured was removed by 0052 |
+| `score_handcheck` | **deprecated** | `s2-handcheck.txt`; all three mechanisms it grades were removed by 0051, 0052 and 0056 |
+
+`scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result.
+
+One committed result has no script: `docs/results/s2-filter-compare.txt` was produced by
+`scripts/filter_compare.py`, added at commit `74c22b9` and removed at `3856a04` when decision
+0052 made arm B attach every readable document and 0054 retired the comparison. The file is
+cited by decisions 0043 and 0052; the script is recoverable from git history.
 
 Settings are read from the environment (`NTSB_` prefix, decision 0012), or a local `.env`
 file:
