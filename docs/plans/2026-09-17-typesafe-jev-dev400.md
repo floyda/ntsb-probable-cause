@@ -14,7 +14,7 @@
 
 - Every payload is built by `scoring/runner.py:case_payload`, which calls `split_record` and `Payload.from_evidence` (decisions 0013, 0016). The request `state` is `payload.text` and nothing else.
 - The `model` package may not import `scoring`, `records.split`, `records.synthesis` or `records.verdict` (import-linter, `pyproject.toml`). The client therefore takes plain question dictionaries.
-- Where a saved reply under `tests/fixtures/typesafe/` disagrees with this plan, follow the saved reply and log a deviation (0036).
+- Where a saved reply under `tests/fixtures/typesafe/` disagrees with this plan, follow the saved reply and log a deviation (0060).
 - Tests never reach the network. HTTP is replayed with `respx`.
 - `dev-400` only. No held-out case is loaded, sent or scored.
 - Hard stop at **$0.50** at the published price (`sources.JEV`). Jev is in preview: cost is reported for comparison only.
@@ -38,7 +38,7 @@
 | `tests/test_jev_dev400.py` | Create. Tests for the script's pure functions and for `ask_all` with a fake `ask` |
 | `docs/results/typesafe-jev-dev400.txt` | Create. The report subcommand's output, as printed |
 | `docs/results/typesafe-jev-dev400.md` | Create. The short report for Andy |
-| `docs/decisions/0036-typesafe-jev-as-a-declared-experiment.md` | Modify. One dated line under "Probe result" recording the row |
+| `docs/decisions/0060-typesafe-jev-as-a-declared-experiment.md` | Modify. One dated line under "Probe result" recording the row |
 
 ---
 
@@ -65,7 +65,7 @@
 Create `tests/test_typesafe_client.py`:
 
 ```python
-"""The System One client, tested on the probe's saved replies (decision 0036). No socket."""
+"""The System One client, tested on the probe's saved replies (decision 0060). No socket."""
 
 import json
 from pathlib import Path
@@ -160,9 +160,9 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'ntsb_probable_cause.m
 Create `src/ntsb_probable_cause/model/typesafe.py`:
 
 ```python
-"""TypeSafe's System One client, for the declared experiment of decision 0036 only.
+"""TypeSafe's System One client, for the declared experiment of decision 0060 only.
 
-The wire shape is the one the probe saved under ``tests/fixtures/typesafe/`` (0036, probe
+The wire shape is the one the probe saved under ``tests/fixtures/typesafe/`` (0060, probe
 result). Where the vendor's SDK and those replies differ, the replies win. This is not a
 ``ModelClient``: Jev takes one state and typed questions, not chat messages, and it is not a
 product transport (0009).
@@ -687,7 +687,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.exploratory.j
 Create `scripts/exploratory/jev_dev400.py`:
 
 ```python
-"""Jev on dev-400: phase and event as two Choices per case (decision 0036).
+"""Jev on dev-400: phase and event as two Choices per case (decision 0060).
 
 Specification: docs/specs/2026-09-17-typesafe-jev-dev400-design.md. Exploratory, so outside
 the strict tooling, but every payload is built by ``runner.case_payload`` and so passes
@@ -1352,7 +1352,7 @@ git commit -m "Jev dev-400: run and report subcommands"
 
 **Files:**
 - Create: `docs/results/typesafe-jev-dev400.txt`, `docs/results/typesafe-jev-dev400.md`
-- Modify: `docs/decisions/0036-typesafe-jev-as-a-declared-experiment.md`
+- Modify: `docs/decisions/0060-typesafe-jev-as-a-declared-experiment.md`
 
 All commands in this task start with this prefix, written here as `$ENV`:
 
@@ -1393,9 +1393,9 @@ Create `docs/results/typesafe-jev-dev400.md` in simplified technical English. Qu
 6. **What this does not show**: findings, abstention, wording, the loop (0022).
 7. **Glossary**: calibrated, expected calibration error, top-1, top-3, Choice, state.
 
-- [x] **Step 5: Record the row in 0036**
+- [x] **Step 5: Record the row in 0060**
 
-Add one line at the end of the "Probe result (2026-09-17)" section of `docs/decisions/0036-typesafe-jev-as-a-declared-experiment.md`:
+Add one line at the end of the "Probe result (2026-09-17)" section of `docs/decisions/0060-typesafe-jev-as-a-declared-experiment.md`:
 
 ```markdown
 **dev-400 row (2026-09-17).** Run `<folder>`: top-1 <value>, calibration reading "<reading>";
@@ -1411,8 +1411,8 @@ Run: `make check` and `uv run python -m scripts.check_docs`
 Expected: both pass.
 
 ```bash
-git add docs/results/typesafe-jev-dev400.txt docs/results/typesafe-jev-dev400.md docs/decisions/0036-typesafe-jev-as-a-declared-experiment.md docs/plans/2026-09-17-typesafe-jev-dev400.md
-git commit -m "Jev dev-400: results and the row in decision 0036"
+git add docs/results/typesafe-jev-dev400.txt docs/results/typesafe-jev-dev400.md docs/decisions/0060-typesafe-jev-as-a-declared-experiment.md docs/plans/2026-09-17-typesafe-jev-dev400.md
+git commit -m "Jev dev-400: results and the row in decision 0060"
 ```
 
 ---
@@ -1496,7 +1496,7 @@ its own heading.
 the built glossary had only four, omitting those two. Added both.
 
 (c) The plan's Step 5 template is three lines (folder, top-1, calibration reading, a pointer
-to the report). The row actually written to decision 0036 is a full paragraph — the two
+to the report). The row actually written to decision 0060 is a full paragraph — the two
 comparisons against Luna and Gemini, the two calibration readings, and a decline
 recommendation against point 4's own rule — because the specification's §5 readings needed
 stating in full to be checked, not just named. Recorded here rather than trimmed back to the
@@ -1510,7 +1510,7 @@ and working correctly (`ask_all`, `build_report` and the tests all read this sha
 consistently); the review found the plan's prose out of step with the code it describes, not
 a defect in the code.
 
-The review also confirmed that the abstention threshold Jev would need (decision 0036 point
+The review also confirmed that the abstention threshold Jev would need (decision 0060 point
 4) is out of scope for this run, per specification §7. The report's `answered top-1` column
 (added by the same review) uses the LLM runs' own abstention flags for Luna and Gemini and
 Jev's fact of never abstaining; it does not fit or apply any threshold to Jev's confidence,
@@ -1519,10 +1519,10 @@ so no in-scope work depended on choosing one.
 Follow-up (2026-09-17, after the whole-branch review that closed this plan): the review
 raised whether the 9.7% composed top-1 (below both Luna and Gemini, §2 of the result) is a
 property of Jev or an artefact of composing two independent Choice answers by multiplying
-their probabilities — decision 0036's own worked example shows the correct event paired with
+their probabilities — decision 0060's own worked example shows the correct event paired with
 the wrong phase on two cases where the event alone was right. This is outside the plan's
 scope (the plan and specification fix one call, two independent questions, composed by
-multiplication) and outside decision 0036, which was already written up and is not reopened.
+multiplication) and outside decision 0060, which was already written up and is not reopened.
 It was added as a `--conditioned` flag on the existing `run` and `report` subcommands rather
 than a new script, because every other piece — the client, the payload rule, the reply
 storage shape, the cap, the scoring helpers — carries over unchanged; only the composition

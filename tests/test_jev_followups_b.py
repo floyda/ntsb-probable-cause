@@ -72,7 +72,7 @@ def test_judge_questions_choice_criteria_match_cause_labels_exactly() -> None:
     assert set(cause_criteria) == set(CAUSE_LABELS)
     assert questions["agreement"]["type"] == "score"
     assert len(agreement_criteria) == 3
-    # Both questions carry the same rubric sentence (0036 point 4: same rubric, both shapes).
+    # Both questions carry the same rubric sentence (0060 point 4: same rubric, both shapes).
     assert questions["cause"]["instructions"] == questions["agreement"]["instructions"]
     assert questions["cause"]["instructions"]
 

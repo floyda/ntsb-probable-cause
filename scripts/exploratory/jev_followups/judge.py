@@ -1,4 +1,4 @@
-"""Experiment 2: is Jev usable as the judge of decision 0028? (decision 0036 point 5).
+"""Experiment 2: is Jev usable as the judge of decision 0028? (decision 0060 point 5).
 
 WARNING -- withheld text: ``build_state`` below renders the official NTSB probable cause,
 which is *verdict* text withheld from every answering call (decisions 0013, 0016). Doing so
@@ -19,7 +19,7 @@ as the official one. Two inputs are joined on ``row``:
 
 Jev is asked, in one call per row, a Choice named ``cause`` over exactly
 ``JudgeLabels`` model's three ``cause`` labels, and a Score named ``agreement`` over three
-ordered levels of the same rubric -- so both question shapes decision 0036 point 4 named are
+ordered levels of the same rubric -- so both question shapes decision 0060 point 4 named are
 exercised. Both questions' instructions are the ``cause:`` sentence of the judge's own
 ``SYSTEM_JUDGE`` rubric (decision 0028), extracted programmatically so the wording can never
 drift from the LLM judge's own.

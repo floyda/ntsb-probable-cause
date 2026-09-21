@@ -1,4 +1,4 @@
-"""The System One client, tested on the probe's saved replies (decision 0036). No socket."""
+"""The System One client, tested on the probe's saved replies (decision 0060). No socket."""
 
 import json
 from pathlib import Path

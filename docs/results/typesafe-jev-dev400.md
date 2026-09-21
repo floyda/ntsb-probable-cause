@@ -9,7 +9,7 @@ event-alone and unseen-pair rates) are quoted from `docs/results/s1-ceiling-dev.
 The two readings were fixed in the specification before the run.*
 
 **The short version.** Jev's probabilities are **not calibrated** on this task, and its
-accuracy does not beat the baseline. The experiment's central question (decision 0036) is
+accuracy does not beat the baseline. The experiment's central question (decision 0060) is
 answered, and the answer is negative. Nothing about the loop changes; S3 should not be built
 on a bought-in calibration claim.
 
@@ -19,7 +19,7 @@ Every one of the 401 `dev-400` development cases was sent once to Jev (the reply
 version `jev-1.13.0`), at commit `adda233` with a clean tree. The model was given the same
 evidence payload the language models were given, and two questions: which phase of flight
 (47 labels) and which event (93 labels). The two answers are combined into the NTSB's
-six-digit occurrence code by multiplying their probabilities, as decision 0036 fixed.
+six-digit occurrence code by multiplying their probabilities, as decision 0060 fixed.
 
 All 401 were answered. No request failed and none needed a retry. The whole run cost $0.0517
 at the vendor's published price ($0.000129 per case), which is reported for comparison only:
@@ -47,11 +47,11 @@ is the line this row is read against.
 **Reading (fixed in advance): not above the baseline.** Top-1's interval reaches 13.0%, well
 below 17.7%.
 
-Jev never abstains; Luna abstains on 22.9% of these cases and Gemini on 1.5%. Decision 0036
+Jev never abstains; Luna abstains on 22.9% of these cases and Gemini on 1.5%. Decision 0060
 point 4 fixed `answered top-1` — top-1 restricted to the cases each model chose to answer —
 as the like-for-like column for that reason, and it is the fourth column above. On it, Jev
 (9.7%, unchanged, since it always answers) sits below both Luna (11.3%) and Gemini (12.7%):
-Jev is not level with either model on the column 0036 set for the comparison. The paired
+Jev is not level with either model on the column 0060 set for the comparison. The paired
 plain-top-1 differences below count an abstention as wrong, which is a second, looser
 convention that includes cases the LLMs declined: on that basis Jev is +1.0% [-2.7, +4.7]
 against Luna and -2.7% [-6.2, +0.7] against Gemini, both too small at n=401 to call either
@@ -110,7 +110,7 @@ it — does not work on this task. S3 should not store Jev's distributions or us
 confidence as a stopping rule. Calibration remains something the project has to measure and
 earn, not purchase.
 
-**Per decision 0036's own rule, this declines the experiment.** 0036 point 4 named this
+**Per decision 0060's own rule, this declines the experiment.** 0060 point 4 named this
 column as the one it exists for, and §5 of the specification fixed "not calibrated" as
 grounds for declining. The status change is Andy's to make.
 
@@ -118,7 +118,7 @@ grounds for declining. The status change is Andy's to make.
 
 - **It rules the right answer out entirely on a third of cases.** The probability Jev put on
   the true event has a median of 0.030, and is exactly 0 on 127 of 401 cases (31.7%).
-  Probabilities come back rounded to two decimals (decision 0036, probe result point 2), so
+  Probabilities come back rounded to two decimals (decision 0060, probe result point 2), so
   "0" means below 0.005.
 - **It falls back to a non-answer.** In the five seeded examples, two are led by "Unknown or
   undetermined" (0.54 and 0.55) on cases whose true event was a total loss of engine power.
@@ -137,7 +137,7 @@ grounds for declining. The status change is Andy's to make.
 ## 5. What this does not show
 
 The findings questions (130 yes/no claims per case), the abstention threshold, whether the
-wording of the question changes the answer, and the judge test of 0036 point 5 were all out
+wording of the question changes the answer, and the judge test of 0060 point 5 were all out
 of scope. Nothing here bears on whether the tool loop is warranted: that needs arms B and C
 with the docket, which do not exist yet. No held-out case was touched.
 

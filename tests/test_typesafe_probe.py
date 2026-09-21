@@ -1,4 +1,4 @@
-"""Tests for the TypeSafe probe's request builders (decision 0036). No socket is opened."""
+"""Tests for the TypeSafe probe's request builders (decision 0060). No socket is opened."""
 
 import pytest
 from scripts.typesafe_probe import choice_questions, noul_questions, payload_text, request_bodies

@@ -81,7 +81,7 @@ class Settings(BaseSettings):
         return self.openrouter_api_key.get_secret_value()
 
     def require_typesafe_key(self) -> str:
-        """Return the TypeSafe key, or raise if it is not set (decision 0036)."""
+        """Return the TypeSafe key, or raise if it is not set (decision 0060)."""
         if self.typesafe_api_key is None or not self.typesafe_api_key.get_secret_value():
             raise ConfigurationError(
                 "TYPESAFE_API_KEY is not set; export it or load it from the password store."

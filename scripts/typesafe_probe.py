@@ -1,4 +1,4 @@
-"""One-off probe of TypeSafe's System One reply shape (decision 0036). Costs cents. Needs a key.
+"""One-off probe of TypeSafe's System One reply shape (decision 0060). Costs cents. Needs a key.
 
 Usage:
     uv run python -m scripts.typesafe_probe [--model jev-latest]
@@ -152,7 +152,7 @@ def main(argv: list[str]) -> int:
         print(f"{name}: usage {json.dumps(usages[name])}; {_estimated_cost(usages[name])}")
     (OUT / "README.md").write_text(
         f"# Saved TypeSafe responses\n\nWritten by `scripts/typesafe_probe.py` on "
-        f"{datetime.now(UTC).date()} with model `{args.model}` (decision 0036). Ids and key "
+        f"{datetime.now(UTC).date()} with model `{args.model}` (decision 0060). Ids and key "
         f"material are redacted. Usage blocks: `{json.dumps(usages)}`.\n"
     )
     return 0

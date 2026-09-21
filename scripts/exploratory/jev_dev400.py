@@ -1,4 +1,4 @@
-"""Jev on dev-400: phase and event as two Choices per case (decision 0036).
+"""Jev on dev-400: phase and event as two Choices per case (decision 0060).
 
 Specification: docs/specs/2026-09-17-typesafe-jev-dev400-design.md. Exploratory, so outside
 the strict tooling, but every payload is built by ``runner.case_payload`` and so passes
@@ -137,7 +137,7 @@ def jev_hypothesis(reply: SystemOneReply) -> Hypothesis:
     """Jev's answer in S1's shape, so ``score_case`` scores it exactly as it scored Luna.
 
     Composition: ranks over the full 47x93 grid of independent phase x event pairs (decision
-    0036). This is the unconditioned rule; ``conditioned_hypothesis`` below is a different,
+    0060). This is the unconditioned rule; ``conditioned_hypothesis`` below is a different,
     non-interchangeable rule for the two-call follow-up.
     """
     top = ranked_pairs(reply.choice("phase"), reply.choice("event"))

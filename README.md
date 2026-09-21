@@ -216,7 +216,7 @@ make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first
 make build   # build data/processed/cases.parquet from the raw store
 make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
 make probe   # scripts/openrouter_probe.py — the S1 fixture-recording probe (spec §7.1)
-make probe-typesafe  # scripts/typesafe_probe.py — saves one real TypeSafe Jev reply (decision 0036)
+make probe-typesafe  # scripts/typesafe_probe.py — saves one real TypeSafe Jev reply (decision 0060)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (spec §6.5)
 make docket-scan       # scripts/docket_scan.py — dev-400 docket shape; cached and resumable (S2)
 make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sentence-length threshold, from the docket-scan cache (S2)

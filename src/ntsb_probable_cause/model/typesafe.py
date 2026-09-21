@@ -1,6 +1,6 @@
-"""TypeSafe's System One client, for the declared experiment of decision 0036 only.
+"""TypeSafe's System One client, for the declared experiment of decision 0060 only.
 
-The wire shape is the one the probe saved under ``tests/fixtures/typesafe/`` (0036, probe
+The wire shape is the one the probe saved under ``tests/fixtures/typesafe/`` (0060, probe
 result). Where the vendor's SDK and those replies differ, the replies win. This is not a
 ``ModelClient``: Jev takes one state and typed questions, not chat messages, and it is not a
 product transport (0009).

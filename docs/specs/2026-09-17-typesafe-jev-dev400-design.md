@@ -2,7 +2,7 @@
 
 *Drafted 2026-09-17 from a design session with Andy.
 Status: Approved (Andy, 2026-09-17, in the design session).
-This is the specification for one run of the declared experiment of decision 0036. It is not
+This is the specification for one run of the declared experiment of decision 0060. It is not
 a build stage: it adds no stage to the roadmap and changes nothing in the product. The
 implementation plan is written from it separately, in `docs/plans/`.*
 
@@ -66,7 +66,7 @@ typed objects: a Choice answer (choice, confidence, probability per label) and t
 block. It uses `httpx`, which is already a dependency. Its tests read the committed probe
 replies in `tests/fixtures/typesafe/`.
 
-**Why in the library.** Decision 0036 point 3 says the client is written against the saved
+**Why in the library.** Decision 0060 point 3 says the client is written against the saved
 replies. The parser is the part most likely to be wrong, and a strict-typed module with
 tests catches that. Everything else about this run stays in the exploratory script.
 
@@ -75,7 +75,7 @@ tests catches that. Everything else about this run stays in the exploratory scri
 S1's scoring code is reused, not copied.
 
 - **Composed code.** Every (phase, event) pair gets the product of its two probabilities.
-  The highest product is top-1; the next two complete top-3 (0036 point 4). Pairs the NTSB
+  The highest product is top-1; the next two complete top-3 (0060 point 4). Pairs the NTSB
   has never used are not removed. S1's **pair unseen** column shows how often Jev's top-1 is
   such a pair.
 - **Accuracy.** The composed answer is wrapped in a `Hypothesis` with empty text fields, no
@@ -87,7 +87,7 @@ S1's scoring code is reused, not copied.
   - (a) Jev's event `confidence` against whether the event is right. This is the vendor's
     claim.
   - (b) Jev's highest event probability against whether the event is right. The probe
-    showed that `confidence` is a different number (0036, probe result point 3).
+    showed that `confidence` is a different number (0060, probe result point 3).
   - (c) The top-1 product against whether top-1 is right, beside Luna's and Gemini's
     probability on their own first guess against whether that guess is right. The LLM
     values are read from their saved runs (`20260916T032106-179520f-dev-400-ceiling` and
@@ -109,7 +109,7 @@ These are written before any reply is seen, so the result cannot move them.
 | result | reading |
 |---|---|
 | expected calibration error ≤ 0.05, and no bin with 20 or more cases off by more than 0.10 | Calibrated on our data. S3 should consider storing distributions and a confidence-based stopping rule. |
-| expected calibration error > 0.10 | Not calibrated. The vendor's central claim fails on our data; decision 0036 is declined. |
+| expected calibration error > 0.10 | Not calibrated. The vendor's central claim fails on our data; decision 0060 is declined. |
 | anything between | Inconclusive. In a bin of 50 cases, chance alone moves accuracy by about ±0.07. |
 
 **Accuracy**, on composed top-1, against the honest baseline of 17.7%
@@ -128,7 +128,7 @@ is the line this row is read against.
 - `docs/results/typesafe-jev-dev400.txt`: the script's printed tables, saved as run.
 - `docs/results/typesafe-jev-dev400.md`: a short report in simplified technical English
   with a glossary. It states the two readings of §5 and what they mean for S3.
-- One dated line added to decision 0036 recording the row. 0036 stays Proposed, because its
+- One dated line added to decision 0060 recording the row. 0060 stays Proposed, because its
   own condition (the judge test of point 5) has not run.
 
 ## 7. Out of scope

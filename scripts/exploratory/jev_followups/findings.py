@@ -1,4 +1,4 @@
-"""Experiment 4: 130 finding-category Nouls per case against Luna's LLM findings (decision 0036).
+"""Experiment 4: 130 finding-category Nouls per case against Luna's LLM findings (decision 0060).
 
 One call per case, over the first 150 case IDs of ``dev-400``, carrying all 130 finding-category
 Nouls worded exactly as ``scripts/typesafe_probe.py:noul_questions`` words them. The payload is
