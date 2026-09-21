@@ -98,3 +98,4 @@ under `docs/specs/` and the record links to it.
 | [0055](0055-the-document-header-carries-the-listing-number.md) | The document header identifies a document by its listing number, not an inferred category label | Accepted; amends 0051 item 3 |
 | [0056](0056-the-deny-list-cannot-be-filled-from-titles.md) | The deny-list cannot be filled from titles and is removed; the category keeps no job in the live path | Accepted; completes and removes 0039 items 1-2 |
 | [0057](0057-unset-directory-settings-derive-from-data-dir.md) | An unset directory setting derives from `data_dir` | Accepted |
+| [0058](0058-ci-installs-the-word-list-the-title-check-needs.md) | Continuous integration installs the word list the title check needs | Accepted |

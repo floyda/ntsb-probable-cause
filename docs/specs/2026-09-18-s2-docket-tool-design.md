@@ -834,8 +834,16 @@ at $11.77 of the $25 monthly budget at close-out. Measured cost per case at the 
    clean. `ERA17LA217` carries a listing page and no documents, so it has no text fixture to
    mark.
 9. **No run exceeded its budget flag; the total spend is stated** — met — $4.13, above.
-10. **CI green, documentation check passes, closed out under 0017** — met — this close-out
-    commit; `uv run python -m scripts.check_docs` clean.
+10. **CI green, documentation check passes, closed out under 0017** — met only after a fix,
+    and the story is worth keeping. Continuous integration had been **red since 2026-09-19**
+    and stayed red through eight commits. `scripts/check_fixtures_redacted.py`'s title check
+    tests a capitalised word against the committed vocabulary *plus the system word list at
+    `/usr/share/dict/words`*; macOS has one and `ubuntu-latest` does not, so on CI the check
+    produced 158 blocking false positives where a developer machine produced none. Nobody saw
+    it because the same command passes locally. Found while verifying this very item, fixed by
+    [0058](../decisions/0058-ci-installs-the-word-list-the-title-check-needs.md), which
+    installs the word list in CI and makes the warning unmissable.
+    `uv run python -m scripts.check_docs` clean.
 
 ### Departures from this specification
 
@@ -910,6 +918,11 @@ reason:
 - **`.gitattributes` was added** (`tests/fixtures/docket/** -text`). Byte-exact docket fixtures
   ([0037](../decisions/0037-docket-fixtures-from-development-dockets-only.md)) otherwise depend
   on each clone's `core.autocrlf` setting rather than on anything in the repository.
+- **A green local `make check` did not mean a green CI, for two days.** The fixture redaction
+  check depends on a system word list that macOS has and the CI runner does not, and its
+  absence turned 0 blocking findings into 158. The lesson is narrower than "run CI": a check
+  that silently degrades when an input is missing will be believed until someone reads the
+  build log, and on this branch nobody did. 0058 records it.
 - **§15's cost model is a floor, not an estimate to trust.** It modelled about $0.0023 a case and
   about $5.45 for the stage, counting the docket's tokens once when a case sends the same payload
   on both answering turns. Measured: $0.0053 and $0.0050 a case, $4.13 for the stage.
@@ -941,14 +954,14 @@ reason:
 
 ### Decisions taken during the stage, and an audit of them
 
-S2 produced **21 numbered records, 0037 to 0057** — more than S0 and S1 together. That prompted a
+S2 produced **22 numbered records, 0037 to 0058** — more than S0 and S1 together. That prompted a
 fair question from the project owner: how many of them were changing decisions already made? The
 close-out audited all of them against the code rather than against their own status lines.
 
 **The answer, over the 20 records 0037–0056:** 4 decide new ground, 6 extend an existing
 principle to a new case, 2 amend an earlier record's scope, 2 fix an error in an earlier record,
-and 6 supersede part of one. **Nothing from S0 or S1 was reversed.** 0057, written at close-out,
-is new ground.
+and 6 supersede part of one. **Nothing from S0 or S1 was reversed.** 0057 and 0058, both written at
+close-out, are new ground.
 
 **Most of the churn is S2 relitigating S2.** Five mechanisms proposed early in the stage — a
 title-based deny-list, a provenance clause, a photograph exclusion, a party-submission comparison,

@@ -335,7 +335,11 @@ def docket_fixture_name_problems(
     if not dictionary_found:
         print(
             f"{dictionary_path}: no system dictionary here -- checking titles against the "
-            "committed vocabulary alone (see title_vocab.known_title_words)",
+            "committed vocabulary alone (see title_vocab.known_title_words). MOST BLOCKING "
+            "FINDINGS BELOW WILL BE FALSE POSITIVES: measured on the committed fixtures, "
+            "this mode reports 158 blocking findings where a machine with a word list "
+            "reports none. Install one (Debian/Ubuntu: wamerican) and run again before "
+            "believing any of them (decision 0058).",
             file=sys.stderr,
         )
     problems: list[Finding] = []
