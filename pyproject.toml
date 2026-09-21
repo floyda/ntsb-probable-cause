@@ -14,7 +14,13 @@ dependencies = [
     "pyarrow>=25.0.1",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
-    "pypdf>=6.19.0",
+    # pypdf[crypto] pulls in `cryptography`. Without it pypdf falls back to a pure-Python RC4
+    # implementation that allocates one Python int per byte of every encrypted stream, and NTSB
+    # docket PDFs are routinely encrypted with an empty user password. Measured over 40 dev cases:
+    # 11.4 GB of the 24.1 GB total allocation came from that fallback, and resident growth per case
+    # fell from 17.9 MB to 9.2 MB once it was installed. Not an optional speed-up -- the pure-Python
+    # path is what made a 400-case run get killed for memory.
+    "pypdf[crypto]>=6.19.0",
 ]
 
 [project.scripts]
