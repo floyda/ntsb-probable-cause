@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -17,6 +18,38 @@ from ntsb_probable_cause.errors import DocketError
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 LISTING_FILE = "listing.html"
 FETCH_FILE = "fetch.json"
+
+# The two ``DocketError`` message shapes ``_get`` raises below: a non-retried status,
+# ``f"{url} returned {status}"`` (excluded from ``_RETRY_STATUSES``, most likely a 404 for a
+# case with no docket); and an exhausted-retries message once every attempt is spent,
+# ``f"{url} failed after {n} attempts; last status {status}"``, where ``status`` is either a
+# retried HTTP status code that persisted (an int) or a transport exception's class name (the
+# ``except httpx.TransportError`` branch below sets ``status = type(error).__name__``). Tried
+# in that order so the non-retried form is never mistaken for the other. Originally
+# scripts/ongoing_docket_probe.py's own ``outcome_for_error``; Task 8 moved it here so the
+# probe and the recorder (``recorder/dockets.py``) share one implementation.
+_RETURNED_STATUS = re.compile(r"returned (\d+)$")
+_LAST_STATUS = re.compile(r"last status (\S+)$")
+
+
+def outcome_for_error(message: str) -> str:
+    """Classify a ``DocketError`` message into a short, loggable reason string.
+
+    A non-retried status: ``"http-<status>"``. A status that persisted through every retry:
+    ``"http-<status>-after-retries"`` -- kept distinct from a non-retried status, and from a
+    plain network failure, since a persistent 500 or 429 is not the same finding as either. A
+    transport failure that exhausted every retry: ``"fetch-failed: <ExceptionClassName>"``, the
+    class name only -- never the full message, which may embed a URL. Anything unrecognised:
+    ``"fetch-failed"``.
+    """
+    returned = _RETURNED_STATUS.search(message)
+    if returned:
+        return f"http-{returned.group(1)}"
+    exhausted = _LAST_STATUS.search(message)
+    if exhausted:
+        token = exhausted.group(1)
+        return f"http-{token}-after-retries" if token.isdigit() else f"fetch-failed: {token}"
+    return "fetch-failed"
 
 
 def _load_manifest(cache: Path, mkey: int) -> dict[str, object]:

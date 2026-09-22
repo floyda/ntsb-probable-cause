@@ -22,6 +22,33 @@ _CREATION = re.compile(r"<b>Creation Date:</b>\s*([^<]*)<")
 _MODIFIED = re.compile(r"<b>Last Modified:</b>\s*([^<]*)<")
 _RELEASE = re.compile(r"Public Release Date &(?:amp;)? Time:\s*([^<]*)<")
 
+# Task 3's live probe (spec §10.1; deviation logged in docs/plans/2026-09-22-s25-recorder.md):
+# the site answers a case with no public docket at all with an ordinary HTTP 200 page
+# (title "NTSB Docket - Docket Management System") carrying this exact sentence in an
+# ``<h5>``, never with an HTTP error or a blank page. Confirmed against ProjectID 999999999,
+# a nonexistent case -- fixture tests/fixtures/docket/not-released.html. Matched after
+# unescaping and whitespace-normalising the page, so a reflow of the surrounding markup does
+# not break it. This was scripts/ongoing_docket_probe.py's own ``_NOT_RELEASED_SENTENCE`` and
+# ``_normalised_text``; Task 8 moved both here so the probe and the recorder share one
+# implementation instead of two copies drifting apart.
+NOT_RELEASED_SENTENCE = "The docket for this investigation has not been released."
+_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalised_text(page: str) -> str:
+    """``page`` with HTML entities unescaped and whitespace collapsed to single spaces."""
+    return _WHITESPACE.sub(" ", html.unescape(page)).strip()
+
+
+def is_not_released(page: str) -> bool:
+    """Whether ``page`` is the site's own "docket has not been released" page.
+
+    Checked before :func:`parse_listing`: this page carries no "Docket Items:" count and no
+    "Docket Information" block, so treating it as an ordinary listing would otherwise misread
+    it as ``no-info-block`` -- indistinguishable from a genuine layout change (spec §6.2).
+    """
+    return NOT_RELEASED_SENTENCE in _normalised_text(page)
+
 
 class DocketInfo(BaseModel):
     """The docket-level dates the page prints, as printed. Not per document (spec §6.2)."""

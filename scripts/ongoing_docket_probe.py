@@ -19,10 +19,8 @@ only to fetch and are never printed or saved (decision 0024).
 """
 
 import argparse
-import html
 import math
 import random
-import re
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Mapping, Sequence
@@ -31,7 +29,10 @@ from pathlib import Path
 
 from ntsb_probable_cause.data.ingest import iter_raw_records, latest_entries, read_manifest
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.docket.listing import parse_listing
+from ntsb_probable_cause.docket.client import (
+    outcome_for_error as outcome_for_error,  # noqa: PLC0414
+)
+from ntsb_probable_cause.docket.listing import is_not_released, parse_listing
 from ntsb_probable_cause.errors import DocketError
 from ntsb_probable_cause.paths import resolve_path
 from ntsb_probable_cause.settings import Settings
@@ -48,29 +49,11 @@ ONGOING = "Ongoing"
 _AVIATION_MODE = "Aviation"
 _REGULATION_PATH = "aircrafts[0].ownerOperators[0].regulationFlightConductedUnder"
 
-# The two DocketError message shapes docket/client.py's _get raises (fix round 1, IMPORTANT 1):
-# a non-retried status, `f"{url} returned {status}"` (client.py:17 excludes it from
-# _RETRY_STATUSES; most likely a 404 for a case with no docket); and an exhausted-retries
-# message once every attempt is spent, `f"{url} failed after {n} attempts; last status
-# {status}"` (client.py:193), where `status` is either a retried HTTP status code that
-# persisted (an int) or a transport exception's class name (client.py's `except
-# httpx.TransportError`, `status = type(error).__name__`). Read from the source, not guessed.
-_RETURNED_STATUS = re.compile(r"returned (\d+)$")
-_LAST_STATUS = re.compile(r"last status (\S+)$")
-
-# Live run, 2026-09-22 (fix round 2, "Andy's decision"): the site answers a case with no
-# public docket at all with an ordinary HTTP 200 page (title "NTSB Docket - Docket Management
-# System") carrying this exact sentence in an `<h5>`, not with an HTTP error or a page with no
-# text. Confirmed against ProjectID 999999999, a nonexistent case -- fixture
-# tests/fixtures/docket/not-released.html. One constant, matched after unescaping and
-# whitespace-normalising the page, so a reflow of the surrounding markup does not break it.
-_NOT_RELEASED_SENTENCE = "The docket for this investigation has not been released."
-_WHITESPACE = re.compile(r"\s+")
-
-
-def _normalised_text(page: str) -> str:
-    """``page`` with HTML entities unescaped and whitespace collapsed to single spaces."""
-    return _WHITESPACE.sub(" ", html.unescape(page)).strip()
+# 2026-09-22 (Task 8, controller change 1): ``outcome_for_error``, ``is_not_released`` and the
+# "not released" sentence itself moved into the library (docket/client.py, docket/listing.py)
+# so the recorder (recorder/dockets.py) and this probe share one implementation instead of two
+# copies that could drift apart. Both are imported above; see those modules' docstrings for
+# what each does.
 
 
 def stratify(days: int) -> str:
@@ -81,8 +64,8 @@ def stratify(days: int) -> str:
 def classify_page(page: str, mkey: int) -> str:
     """One of six outcomes for a fetched listing page.
 
-    ``"not-released"`` (the site's own "has not been released" page -- checked first, see
-    ``_NOT_RELEASED_SENTENCE`` above), ``"read"`` (documents listed), ``"empty"`` (an info
+    ``"not-released"`` (the site's own "has not been released" page -- checked first, via
+    ``docket.listing.is_not_released``), ``"read"`` (documents listed), ``"empty"`` (an info
     block, but no rows), ``"no-info-block"`` (a declared item count but no "Docket
     Information" block), ``"no-info-block-no-count"`` (no count either -- an unrelated 200
     page, not a docket shell) or ``"count-mismatch"`` (the declared count disagrees with the
@@ -91,7 +74,7 @@ def classify_page(page: str, mkey: int) -> str:
     docket text at all is a much stronger "no docket" signal than a docket shell with an
     empty info block.
     """
-    if _NOT_RELEASED_SENTENCE in _normalised_text(page):
+    if is_not_released(page):
         return "not-released"
     try:
         listing = parse_listing(page, mkey=mkey)
@@ -100,26 +83,6 @@ def classify_page(page: str, mkey: int) -> str:
     if listing.info is None:
         return "no-info-block" if listing.declared_items is not None else "no-info-block-no-count"
     return "empty" if not listing.entries else "read"
-
-
-def outcome_for_error(message: str) -> str:
-    """Classify a ``DocketError`` message (see the two shapes noted above ``_RETURNED_STATUS``).
-
-    A non-retried status: ``"http-<status>"`` (a 404 for a case with no docket, most likely).
-    A status that persisted through every retry: ``"http-<status>-after-retries"`` -- kept
-    distinct from a non-retried status, and from a plain network failure, since a persistent
-    500 or 429 is not the same finding as either. A transport failure that exhausted every
-    retry: ``"fetch-failed: <ExceptionClassName>"``, the class name only -- never the full
-    message, which may embed a URL. Anything unrecognised: ``"fetch-failed"``.
-    """
-    returned = _RETURNED_STATUS.search(message)
-    if returned:
-        return f"http-{returned.group(1)}"
-    exhausted = _LAST_STATUS.search(message)
-    if exhausted:
-        token = exhausted.group(1)
-        return f"http-{token}-after-retries" if token.isdigit() else f"fetch-failed: {token}"
-    return "fetch-failed"
 
 
 def ongoing_records(raw_dir: Path) -> Iterator[dict[str, object]]:
