@@ -96,6 +96,7 @@ source_modules = [
     "ntsb_probable_cause.scoring.hypothesis",
     "ntsb_probable_cause.scoring.prompt",
     "ntsb_probable_cause.scoring.samples",
+    "ntsb_probable_cause.store",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
 

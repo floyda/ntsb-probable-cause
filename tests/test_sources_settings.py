@@ -143,3 +143,25 @@ def test_explicit_runs_dir_and_docket_dir_override_derivation(
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/elsewhere/runs")
     assert settings.docket_dir == Path("/elsewhere/docket")
+
+
+def test_store_default_is_the_literal_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_DATA_DIR", raising=False)
+    monkeypatch.delenv("NTSB_STORE", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.store == "data/recorder.sqlite"
+
+
+def test_unset_store_derives_from_an_explicit_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
+    monkeypatch.delenv("NTSB_STORE", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.store == "/somewhere/recorder.sqlite"
+
+
+def test_explicit_s3_store_survives_intact(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `Path("s3://bucket/key")` would collapse the double slash to `s3:/bucket/key`; `store`
+    # is a plain `str` so Task 10's S3 location round-trips untouched (controller resolution 1).
+    monkeypatch.setenv("NTSB_STORE", "s3://bucket/key")
+    settings = Settings(_env_file=None)
+    assert settings.store == "s3://bucket/key"

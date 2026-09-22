@@ -33,6 +33,11 @@ class Settings(BaseSettings):
         validation_alias="NTSB_HELDOUT_LEDGER_PATH",
     )
     docket_dir: Path = Path("data/docket")
+    # `str`, not `Path`: the recorder's sync step (Task 10) accepts an `s3://bucket/key`
+    # location in this setting, and `Path("s3://b/k")` collapses the double slash after the
+    # scheme to `s3:/b/k`, silently corrupting it. A plain string round-trips any value
+    # untouched.
+    store: str = "data/recorder.sqlite"
     # `gt=0`, not `ge=0`: the plan's Global Constraints fix the docket rate at one request
     # every two seconds to `data.ntsb.gov`, a real government site, and 0 would remove that
     # floor in production. Tests never need 0 -- they inject `sleep` (fix round 1, Finding 4).
@@ -56,11 +61,13 @@ class Settings(BaseSettings):
     # model is frozen) takes effect; nothing here bypasses field validation, since the values
     # written are already-validated `Path`s.
     def model_post_init(self, _context: Any) -> None:
-        """Derive `runs_dir` and `docket_dir` from `data_dir` where left unset."""
+        """Derive `runs_dir`, `docket_dir` and `store` from `data_dir` where left unset."""
         if "runs_dir" not in self.model_fields_set:
             object.__setattr__(self, "runs_dir", self.data_dir / "runs")
         if "docket_dir" not in self.model_fields_set:
             object.__setattr__(self, "docket_dir", self.data_dir / "docket")
+        if "store" not in self.model_fields_set:
+            object.__setattr__(self, "store", str(self.data_dir / "recorder.sqlite"))
 
     def require_api_key(self) -> str:
         """Return the NTSB API key, or raise if it is not set."""
