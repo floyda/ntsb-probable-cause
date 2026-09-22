@@ -1,9 +1,13 @@
 """The boundary check: inspect what actually reached the (fake) model, not what was intended."""
 
 import copy
+import gzip
 import json
+import re
+import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.fields import EvidenceValue
@@ -150,7 +154,7 @@ def _windows(text: str, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CH
 
 
 def withheld_windows(raw: Mapping[str, object]) -> list[str]:
-    """Every substring a store boundary test should check for in a case's raw record.
+    """Every substring the RAW-BYTES store boundary check should search for.
 
     The probable cause and both narratives, each in both raw and JSON-escaped form and cut
     into overlapping windows well under an SQLite page (see ``_windows``, ``_json_escaped``),
@@ -158,11 +162,24 @@ def withheld_windows(raw: Mapping[str, object]) -> list[str]:
     (``CODE_LENGTH_THRESHOLD``) -- codes are short, all-numeric and unaffected by JSON
     escaping, so they are checked whole, not windowed.
 
+    This is the check built on the file's raw bytes (``assert_raw_bytes_clean``); it is not the
+    whole store boundary test any more. This follow-up adds a second, logical check
+    (``assert_logical_store_clean``) that reads every value back through SQLite instead of
+    scanning bytes, and has no page-split problem and no length floor at all -- together the
+    two checks leave no residual for any withheld string or code that is present in a live row.
+    The residual described below is real, but it belongs to THIS check alone.
+
     Codes are a real, accepted gap this function does NOT close: a 6-to-10-character code that
     happens to be split across a page boundary is not detected, because a code is too short to
     subdivide into windows at all without falling below any length that could not also match
     unrelated binary data by chance (``CODE_LENGTH_THRESHOLD`` already sits at that floor).
-    This is a residual risk, not a covered case -- it is not claimed to be covered.
+    Likewise a text of 98 characters or fewer is not fully protected (see ``_windows``'s
+    docstring for the measured gap). Both are covered by the logical check instead, for
+    anything still present in a live row; this raw-bytes check is kept regardless, because
+    spec §11 asks for the file read as bytes, and bytes also cover data a SQL query cannot
+    return at all -- a deleted or superseded row's old bytes still physically present in the
+    file, or anything outside the tables the logical check reads (see
+    ``assert_logical_store_clean``'s docstring).
 
     Empty/``None`` values are omitted.
     """
@@ -185,6 +202,159 @@ def withheld_windows(raw: Mapping[str, object]) -> list[str]:
         windows.extend(_windows(text))
         windows.extend(_windows(_json_escaped(text)))
     return windows
+
+
+def assert_raw_bytes_clean(blob: bytes, raw: Mapping[str, object]) -> None:
+    """No windowed withheld string (see ``withheld_windows``) is a contiguous run in ``blob``.
+
+    Unchanged in behaviour from fix round 3 -- this is the existing check, pulled out into a
+    named function only so the raw-bytes and logical checks can be run, and independently
+    tested, side by side (the logical-check follow-up, spec §11).
+    """
+    windows = withheld_windows(raw)
+    assert windows, "nothing to check: this call would be vacuous"
+    for window in windows:
+        assert window.encode() not in blob, "withheld string in store (raw bytes)"
+
+
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _gunzip_if_gzip(data: bytes) -> bytes:
+    """``data`` gunzipped if it starts with the gzip magic number; otherwise ``data`` as-is.
+
+    ``listing_pages.gz`` is always gzip-compressed (Task 8, decision 0063), but this checks
+    the magic number rather than the column name, so any future BLOB column that happens to
+    hold gzip data is unpacked the same way without hard-coding which column to expect it in.
+    """
+    if data[:2] == _GZIP_MAGIC:
+        return gzip.decompress(data)
+    return data
+
+
+def _decode_stored_value(value: object) -> str | None:
+    """One SQLite column value, as text.
+
+    ``str`` is returned as-is; ``bytes`` is gunzipped if it is gzip data, then decoded as
+    UTF-8 with ``errors="replace"`` (a store value is never guaranteed to be valid UTF-8 --
+    ``documents.title`` and ``prelim_narratives.text`` in particular pass through whatever the
+    NTSB site or API sent). Anything else (``None``, ``int``, ``float``) is not text and is not
+    something a withheld string could equal, so it yields nothing to search.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return _gunzip_if_gzip(value).decode("utf-8", errors="replace")
+    return None
+
+
+def store_values(db_path: Path) -> list[str]:
+    """Every string value SQLite would hand back for every row and column of a CLOSED store.
+
+    Opens ``db_path`` read-only (a plain URI connection, ``mode=ro`` -- the caller must have
+    already called ``Store.close()``, which checkpoints the write-ahead log into the main file,
+    so this sees everything). Tables are read from ``sqlite_master``, never a hard-coded list,
+    so a table this module does not know about (added by a later stage) is covered
+    automatically; SQLite's own internal ``sqlite_%`` tables are skipped, since they are not
+    this project's data. Reassembles each value from SQLite's storage (including any overflow
+    pages) before returning it -- see ``assert_logical_store_clean`` for why that matters.
+    """
+    values: list[str] = []
+    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        tables = [
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
+        for table in tables:
+            # `table` is read from sqlite_master itself, never external input, and sqlite3 has
+            # no placeholder syntax for identifiers -- there is nothing to parameterise here.
+            for row in connection.execute(f"SELECT * FROM {table}"):  # noqa: S608
+                for value in row:
+                    text = _decode_stored_value(value)
+                    if text:
+                        values.append(text)
+    finally:
+        connection.close()
+    return values
+
+
+_CODE_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _code_pattern(code: str) -> re.Pattern[str]:
+    """A code must match as a whole token in a logical read, not as a substring of a number.
+
+    Codes are pure digit strings (see ``CODE_LENGTH_THRESHOLD``'s comment). ``\\b`` marks a
+    transition between a "word" character (digits count as word characters) and a non-word
+    one, and never occurs between two digits -- so ``\\bcode\\b`` cannot match the "552090"
+    inside the longer digit run "12552090345" (there is no boundary there), while it still
+    matches "552090" wherever it genuinely stands alone: surrounded by JSON punctuation, a
+    comma, a quote mark, or the very start or end of the text.
+    """
+    pattern = _CODE_PATTERN_CACHE.get(code)
+    if pattern is None:
+        pattern = re.compile(rf"\b{re.escape(code)}\b")
+        _CODE_PATTERN_CACHE[code] = pattern
+    return pattern
+
+
+def withheld_texts_and_codes(raw: Mapping[str, object]) -> tuple[list[str], list[str]]:
+    """Every whole withheld string (with its JSON-escaped form) and every code, unwindowed.
+
+    For the logical check only (``assert_logical_store_clean``): a value read back through
+    SQLite is reassembled from any overflow pages before it is returned, so there is no
+    page-split problem to guard against here the way there is for the raw-bytes check's
+    ``withheld_windows`` -- every string can be searched for whole, with no length threshold
+    and no windowing at all. Codes need no escaped form of their own: they are pure digits,
+    which ``json.dumps`` never rewrites, so the escaped and raw forms are identical.
+    """
+    texts = [
+        text
+        for text in (
+            fields.probable_cause(raw),
+            fields.factual_narrative(raw),
+            fields.analysis_narrative(raw),
+        )
+        if text
+    ]
+    text_needles = list(texts) + [_json_escaped(text) for text in texts]
+    codes = [code for code in fields.occurrence_codes(raw) + fields.finding_codes(raw) if code]
+    return text_needles, codes
+
+
+def assert_logical_text_clean(logical_text: str, raw: Mapping[str, object]) -> None:
+    """No withheld text or code (see ``withheld_texts_and_codes``) is present, whole, in
+
+    ``logical_text`` -- the join of every value ``store_values`` read back. Split from
+    ``assert_logical_store_clean`` so a caller checking many records against one store (the
+    fixture sweep) can build the logical text once rather than reopening the store per record.
+    """
+    text_needles, codes = withheld_texts_and_codes(raw)
+    assert text_needles or codes, "nothing to check: this call would be vacuous"
+    for needle in text_needles:
+        assert needle not in logical_text, "withheld string in store (logical read)"
+    for code in codes:
+        assert not _code_pattern(code).search(logical_text), (
+            "withheld string in store (logical read)"
+        )
+
+
+def assert_logical_store_clean(db_path: Path, raw: Mapping[str, object]) -> None:
+    """No withheld text or code is present, whole, anywhere SQLite would read back from
+
+    ``db_path`` (a CLOSED store). Complements ``assert_raw_bytes_clean``: together, the two
+    leave no residual for a withheld string or code present in a live row -- this check has no
+    page-split problem (SQLite reassembles a value's overflow pages before returning it) and no
+    length floor, and it also sees inside gzip-compressed BLOB columns such as
+    ``listing_pages.gz``, which the raw-bytes check cannot read at all. The raw-bytes check is
+    kept anyway (spec §11 asks for the file read as bytes), because bytes also cover data a SQL
+    query cannot return: a deleted or superseded row's old bytes, still physically present in
+    the file until SQLite reuses that page, and anything outside a live row entirely.
+    """
+    assert_logical_text_clean("\n".join(store_values(db_path)), raw)
 
 
 # fields.WITHHELD_SUBTREES's narrative keys (fields.py:62-69), less the docket roles, which do

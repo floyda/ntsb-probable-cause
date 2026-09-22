@@ -1,4 +1,5 @@
 import copy
+import gzip
 import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
@@ -8,10 +9,17 @@ import pytest
 from tests.boundary import (
     CODE_LENGTH_THRESHOLD,
     RecordingBatchRunner,
+    Splitter,
+    _code_pattern,
     _window_spans,
+    _windows,
     as_ongoing,
     assert_boundary_holds,
+    assert_logical_store_clean,
+    assert_logical_text_clean,
+    assert_raw_bytes_clean,
     assert_requests_clean,
+    store_values,
     withheld_windows,
 )
 from tests.test_attach import _docket as _small_docket
@@ -415,26 +423,41 @@ def _read_store_bytes(db_path: Path) -> bytes:
     return db_path.read_bytes()
 
 
+_PRELIM_TEXT = "Preliminary information indicates the flight departed on a local flight."
+
+
+def _build_two_night_store(
+    tmp_path: Path, record: Mapping[str, object], *, name: str = "r.sqlite"
+) -> Path:
+    """Night 1: ``record`` as Ongoing, with a preliminary narrative. Night 2: ``record`` as
+
+    given (typically closing). Returns the path of the closed store. Two nights, not one, so a
+    check run against the result also covers the prelim-narrative table, the status
+    transition and the tail, not only ``record``'s own field snapshots (fix round 1).
+    """
+    ongoing = as_ongoing(record, prelim_text=_PRELIM_TEXT)
+    db_path = tmp_path / name
+    store = Store(db_path)
+    store.migrate()
+    observe_case(store, ongoing, run_id=1, today=date(2026, 10, 1))
+    observe_case(store, record, run_id=2, today=date(2026, 10, 2))
+    store.close()
+    return db_path
+
+
 def test_store_never_holds_synthesis_or_verdict(
     tmp_path: Path, closing_record: dict[str, object]
 ) -> None:
     """Night 1: Ongoing, with a preliminary narrative. Night 2: the case closes.
 
-    Two nights instead of one so the byte check also covers the prelim-narrative table, the
-    status transition and the tail, not only the closing record's own field snapshots (fix
-    round 1). The closing record carries the probable cause and both narratives; none of it,
-    raw or JSON-escaped, in any window, reaches the file.
+    The closing record carries the probable cause and both narratives; none of it reaches the
+    file, checked two ways: ``assert_raw_bytes_clean`` (the file's raw bytes, windowed -- see
+    ``withheld_windows``) and ``assert_logical_store_clean`` (every value read back through
+    SQLite, whole, no length floor -- the follow-up added because the raw-bytes check cannot
+    fully cover a withheld string of 98 characters or fewer, or a code, when SQLite's overflow
+    pages split it; see ``test_logical_check_catches_a_leak_the_raw_bytes_check_misses``).
     """
-    ongoing = as_ongoing(
-        closing_record,
-        prelim_text="Preliminary information indicates the flight departed on a local flight.",
-    )
-    store = Store(tmp_path / "r.sqlite")
-    store.migrate()
-    observe_case(store, ongoing, run_id=1, today=date(2026, 10, 1))
-    observe_case(store, closing_record, run_id=2, today=date(2026, 10, 2))
-    store.close()
-    blob = _read_store_bytes(tmp_path / "r.sqlite")
+    db_path = _build_two_night_store(tmp_path, closing_record)
 
     # Each kind (cause, narrative, codes) must be present on the fixture, or this test could
     # pass by checking nothing of that kind rather than because nothing leaked.
@@ -448,10 +471,8 @@ def test_store_never_holds_synthesis_or_verdict(
     ]
     assert qualifying_codes
 
-    windows = withheld_windows(closing_record)
-    assert windows
-    for window in windows:
-        assert window.encode() not in blob, "withheld string in store"
+    assert_raw_bytes_clean(_read_store_bytes(db_path), closing_record)
+    assert_logical_store_clean(db_path, closing_record)
 
 
 def test_store_boundary_test_fails_when_the_split_is_bypassed(
@@ -519,6 +540,49 @@ def test_store_boundary_test_fails_when_only_the_escaped_form_can_catch_the_leak
         test_store_never_holds_synthesis_or_verdict(tmp_path, mutated)
 
 
+def _quoted_probable_cause_record(record: dict[str, object]) -> dict[str, object]:
+    """A deep copy of ``record`` whose probable cause carries a JSON-escapable quote.
+
+    Needed only for ``_leaky_split_via_snapshot_escaped_only``, whose leak (see its own
+    docstring) does not exist at all unless the probable cause it copies contains something
+    ``json.dumps`` rewrites.
+    """
+    mutated = copy.deepcopy(record)
+    narratives = mutated["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["probableCause"] = 'The pilot\'s failure to maintain control, per "witness A".'
+    return mutated
+
+
+@pytest.mark.parametrize(
+    ("splitter", "record_for"),
+    [
+        (_leaky_split, lambda r: r),
+        (_leaky_split_via_snapshot, lambda r: r),
+        (_leaky_split_via_snapshot_escaped_only, _quoted_probable_cause_record),
+    ],
+    ids=["prelim_table", "snapshot_field_raw", "snapshot_field_escaped_only"],
+)
+def test_logical_check_alone_catches_every_existing_mutation(
+    tmp_path: Path,
+    closing_record: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    splitter: Splitter,
+    record_for: Callable[[dict[str, object]], dict[str, object]],
+) -> None:
+    """Every leak shape the existing mutation tests exercise must ALSO be caught by the
+
+    logical check running BY ITSELF -- ``assert_raw_bytes_clean`` is never called here at all,
+    so a pass could not be explained by the raw-bytes check having already found it first.
+    """
+    record = record_for(closing_record)
+    monkeypatch.setattr("ntsb_probable_cause.recorder.cases.split_record", splitter)
+    db_path = _build_two_night_store(tmp_path, record)
+
+    with pytest.raises(AssertionError, match="withheld string in store"):
+        assert_logical_store_clean(db_path, record)
+
+
 # Fix round 2, finding 1a: the reviewer's own alignment sweep (0..4199, every offset) found 155
 # of 4200 page alignments undetected with round 1's non-overlapping windows. This reproduces it
 # at a coarser stride so it stays fast in CI (measured: ~2 seconds for all 600 real stores, one
@@ -581,6 +645,68 @@ def test_boundary_windows_survive_every_page_alignment(
             misses.append(n)
 
     assert misses == [], f"{len(misses)}/{len(_ALIGNMENT_RANGE)} alignments undetected: {misses}"
+
+
+def test_logical_check_catches_a_leak_the_raw_bytes_check_misses(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one leak shape the raw-bytes check cannot fully close: a withheld string of 98
+
+    characters or fewer, split by a real SQLite page boundary at one of the positions
+    ``test_windows_gap_below_99_characters_is_the_measured_size`` proves the windows do not
+    protect. The logical check has no page-split problem at all -- SQLite reassembles the
+    value before returning it -- so it must catch what the raw-bytes check misses.
+
+    The fixture's 52-character probable cause is squarely in the 51-98 gap (47 of 51 split
+    positions unprotected, per the pinned measurement). Searching the same ``"x" * 5000 +
+    cause + "y" * n`` construction and 600-alignment range
+    ``test_boundary_windows_survive_every_page_alignment`` sweeps, stopping at the first real
+    page split the raw-bytes check misses, reliably finds one within that same range (a run
+    while writing this test found the first miss at ``n=4046``, near the range's far end, so
+    the search is bounded, not usually quick -- budget the same few seconds as that test).
+    """
+    raw = next(
+        r
+        for r in record_fixtures
+        if fields.probable_cause(r) and len(fields.probable_cause(r) or "") == 52
+    )
+    cause = fields.probable_cause(raw)
+    assert cause is not None
+    assert len(cause) == 52
+    cause_windows = _windows(cause)
+
+    miss_db_path: Path | None = None
+    for n in _ALIGNMENT_RANGE:
+        padded = "x" * 5000 + cause + "y" * n
+        monkeypatch.setattr(
+            "ntsb_probable_cause.recorder.cases.split_record", _leaky_padded_weather_metar(padded)
+        )
+        db_path = tmp_path / f"gap-{n}.sqlite"
+        store = Store(db_path)
+        store.migrate()
+        observe_case(store, raw, run_id=1, today=date(2026, 10, 1))
+        store.close()
+        blob = _read_store_bytes(db_path)
+        if not any(window.encode() in blob for window in cause_windows):
+            miss_db_path = db_path
+            break
+
+    assert miss_db_path is not None, (
+        "no page-split miss found for the 52-character cause in this alignment range -- "
+        "widen _ALIGNMENT_RANGE or re-check the gap still exists"
+    )
+
+    # Pinned: the raw-bytes check genuinely misses this specific leak. Not one window -- raw
+    # or escaped form, from any withheld field on the record -- is a contiguous run in the
+    # file.
+    miss_blob = _read_store_bytes(miss_db_path)
+    assert all(window.encode() not in miss_blob for window in withheld_windows(raw)), (
+        "expected the raw-bytes check to miss this alignment; the gap may have closed"
+    )
+
+    # The logical check, reading the value back through SQLite, catches it anyway.
+    with pytest.raises(AssertionError, match=r"withheld string in store \(logical read\)"):
+        assert_logical_store_clean(miss_db_path, raw)
 
 
 def _unprotected_split_positions(length: int) -> list[int]:
@@ -657,22 +783,65 @@ def test_store_never_holds_synthesis_or_verdict_for_every_fixture(
 
     A single hand-picked fixture proved the mechanism works; this sweeps every fixture that
     actually carries withheld content, so a leak that only one particular record's shape would
-    trigger cannot hide behind the others never being tried.
+    trigger cannot hide behind the others never being tried. Both checks run (see
+    ``test_store_never_holds_synthesis_or_verdict``); the store is read once for each (a blob
+    of bytes, a joined logical text) and every fixture is checked against that one read, rather
+    than reopening the store per fixture.
     """
     carriers = [raw for raw in record_fixtures if _has_withheld_text(raw)]
     assert carriers, "no fixture carries withheld text: this test would be vacuous"
 
-    store = Store(tmp_path / "sweep.sqlite")
+    db_path = tmp_path / "sweep.sqlite"
+    store = Store(db_path)
     store.migrate()
     for index, raw in enumerate(carriers):
         outcome = observe_case(store, raw, run_id=index + 1, today=date(2026, 10, 1))
-        # A fixture whose split failed would leave nothing written for it, so the byte check
-        # below would trivially find no leak -- not because none occurred, but because nothing
-        # was ever checked against. Fix round 2, Minor.
+        # A fixture whose split failed would leave nothing written for it, so a check below
+        # would trivially find no leak -- not because none occurred, but because nothing was
+        # ever checked against. Fix round 2, Minor.
         assert outcome.failed is None, f"fixture split failed unexpectedly: {outcome.failed}"
     store.close()
-    blob = _read_store_bytes(tmp_path / "sweep.sqlite")
+    blob = _read_store_bytes(db_path)
+    logical_text = "\n".join(store_values(db_path))
 
     for raw in carriers:
-        for window in withheld_windows(raw):
-            assert window.encode() not in blob, "withheld string in store"
+        assert_raw_bytes_clean(blob, raw)
+        assert_logical_text_clean(logical_text, raw)
+
+
+def test_store_values_reads_inside_gzipped_blobs(tmp_path: Path) -> None:
+    """``store_values`` gunzips a gzip-compressed BLOB (``listing_pages.gz``, or any other
+
+    BLOB column that happens to start with the gzip magic number) rather than returning its
+    compressed bytes untouched. The raw-bytes check cannot see inside these at all
+    (``withheld_windows``'s docstring); this is one of the two reasons the logical check
+    exists, and is checked directly here rather than only through a mutation test.
+    """
+    db_path = tmp_path / "gz.sqlite"
+    store = Store(db_path)
+    store.migrate()
+    marker_sentence = "a sentence that only exists gzip-compressed inside listing_pages"
+    store.add_page(page_sha="a" * 64, mkey=1, gz=gzip.compress(marker_sentence.encode()), run_id=1)
+    store.close()
+
+    values = store_values(db_path)
+    assert any(marker_sentence in value for value in values), (
+        "the gzip-compressed listing page was not found decompressed among the read-back values"
+    )
+
+
+def test_code_pattern_matches_a_whole_token_not_a_substring_of_a_longer_number() -> None:
+    """A code must match as a whole token in a logical read, never as a substring of a longer
+
+    number (see ``_code_pattern``'s own docstring for the word-boundary reasoning). Checked
+    directly on the regex, independent of any store, so a change to ``_code_pattern`` that
+    broke this property would be caught here even if no mutation test happened to exercise it.
+    """
+    pattern = _code_pattern("552090")
+    assert pattern.search('"552090"') is not None
+    assert pattern.search("[552090]") is not None
+    assert pattern.search(" 552090 ") is not None
+    assert pattern.search("552090") is not None
+    assert pattern.search("12552090345") is None  # embedded in a longer digit run
+    assert pattern.search("a552090") is None  # a letter immediately before: no word boundary
+    assert pattern.search("552090a") is None  # a letter immediately after: no word boundary
