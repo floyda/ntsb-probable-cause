@@ -8,6 +8,7 @@ import pytest
 from tests.boundary import (
     CODE_LENGTH_THRESHOLD,
     RecordingBatchRunner,
+    _window_spans,
     as_ongoing,
     assert_boundary_holds,
     assert_requests_clean,
@@ -556,6 +557,14 @@ def test_boundary_windows_survive_every_page_alignment(
     windows = withheld_windows(closing_record)
     assert windows
 
+    # Fix round 3, Minor: the "x"*5000 prefix and the 0..4200 alignment range below assume
+    # SQLite's default 4096-byte page; fail loudly rather than silently testing nothing if that
+    # default ever changes.
+    probe_store = Store(tmp_path / "page-size-probe.sqlite")
+    probe_store.migrate()
+    assert probe_store.connection.execute("PRAGMA page_size").fetchone()[0] == 4096
+    probe_store.close()
+
     misses: list[int] = []
     for n in _ALIGNMENT_RANGE:
         padded = "x" * 5000 + cause + "y" * n
@@ -572,6 +581,65 @@ def test_boundary_windows_survive_every_page_alignment(
             misses.append(n)
 
     assert misses == [], f"{len(misses)}/{len(_ALIGNMENT_RANGE)} alignments undetected: {misses}"
+
+
+def _unprotected_split_positions(length: int) -> list[int]:
+    """Every split position (1..``length``-1) that leaves no window entirely on one side of it.
+
+    A window ``(start, end)`` "protects" position ``p`` if the window does not straddle it --
+    ``end <= p`` or ``start >= p`` -- so it would still be one contiguous run of bytes in the
+    file even if the text were cut exactly at ``p``. A position with no protecting window at
+    all is unprotected: every generated window straddles it, so a single cut there defeats the
+    whole check for that position. Pure arithmetic on ``_window_spans``, no text or store
+    needed, so this is cheap enough to run over many lengths (fix round 3, Minor 1).
+    """
+    spans = _window_spans(length)
+    return [p for p in range(1, length) if not any(end <= p or start >= p for start, end in spans)]
+
+
+def test_windows_gap_below_99_characters_is_the_measured_size() -> None:
+    """Fix round 3, Important: pin the residual `_windows` leaves, instead of only describing
+
+    it in prose. The reviewer measured these exact counts by running the real window
+    arithmetic over every length from 1 to 5000 and every split position; this test is that
+    measurement, kept in the suite so the residual cannot silently grow (a regression that
+    widened the gap, e.g. by shrinking `_MIN_WINDOW_CHARS` or `_STRIDE_DIVISOR`, would fail
+    this test, not just look wrong in a docstring nobody re-reads).
+
+    Two of the nine development-fixture probable causes (52 and CEN11CA664's 83 characters)
+    fall inside this gap; the 52-character count here (47/51) also matches the real-store
+    sweep in the Task 7 report (47 of 4200 alignments missed for that exact cause).
+    """
+    # The gap: 51-98 characters, every one of them has at least one unprotected position.
+    assert len(_unprotected_split_positions(51)) > 0
+    for length in range(51, 99):
+        assert len(_unprotected_split_positions(length)) > 0, (
+            f"{length} characters: expected at least one unprotected split position"
+        )
+
+    # The reviewer's own spot-measured counts, exactly, so any change to the window geometry
+    # that shifts these is caught here rather than in a docstring's stale numbers.
+    measured = {52: 47, 60: 39, 75: 24, 83: 16, 98: 1}
+    for length, expected_unprotected in measured.items():
+        actual = len(_unprotected_split_positions(length))
+        assert actual == expected_unprotected, (
+            f"{length} characters: expected {expected_unprotected} unprotected positions, "
+            f"got {actual} -- the measured residual in the docstrings is now stale"
+        )
+        # A regression that widens the gap (more unprotected positions than measured) must
+        # fail; the bound is <=, per the fix-round-3 instruction, so a future improvement that
+        # narrows the gap further does not also have to be re-pinned to stay green.
+        assert actual <= expected_unprotected
+
+    # Full protection: 99 characters (2 * _MIN_WINDOW_CHARS - 1) onward, no unprotected
+    # position at all, checked at the boundary and comfortably above it.
+    assert _unprotected_split_positions(99) == []
+    for length in (100, 150, 200, 219, 300, 1000, 8000):
+        assert _unprotected_split_positions(length) == [], f"{length} characters: expected 0"
+
+    # 50 characters or fewer: one window, unprotected at every split position.
+    for length in (10, 49, 50):
+        assert len(_unprotected_split_positions(length)) == length - 1
 
 
 def _has_withheld_text(raw: Mapping[str, object]) -> bool:

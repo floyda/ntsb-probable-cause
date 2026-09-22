@@ -46,25 +46,43 @@ CODE_LENGTH_THRESHOLD = 6
 # a window that does land inside one page (the common case) is small next to that page's
 # capacity.
 WINDOW_CHARS = 200
-# The shortest window this module will ever emit. Long enough that a match cannot plausibly be
-# chance (fix round 2: raised from the guard's 20-character minimum sentence length, which was
-# tuned for a different purpose -- distinguishing real sentence quotation from coincidence in
-# free text -- not for this check's "could this string exist in unrelated binary data by
-# accident" question).
+# The minimum length _windows aims for once a text is long enough to subdivide at all (the
+# per-window length is never allowed to go below this). It is NOT the shortest string this
+# module can ever emit as a window: a text no longer than this value in the first place is
+# returned whole, as a single window, however short that actually is (see _windows's own
+# docstring). 50 is long enough that a match at this length cannot plausibly be chance
+# (fix round 2: raised from the guard's 20-character minimum sentence length, which was tuned
+# for a different purpose -- distinguishing real sentence quotation from coincidence in free
+# text -- not for this check's "could this string exist in unrelated binary data by accident"
+# question).
 _MIN_WINDOW_CHARS = 50
 # Windows overlap by at least half their own length (stride = window length // 2). Fix round 2,
 # finding 1a: round 1's windows did not overlap at all, so a withheld string no longer than one
-# window (WINDOW_CHARS + a folded remainder, i.e. up to 219 characters -- six of the nine
-# development fixtures' probable-cause texts qualify) produced exactly ONE window equal to the
-# whole string, and a single SQLite page split landing anywhere inside that one window defeated
-# it completely: the reviewer's sweep found 155 of 4200 page alignments (3.7%) undetected.
-# Overlap fixes this: for any single split point inside the tiled text, at most the one or two
-# windows whose span straddles that point are affected, and every other generated window --
-# there are always at least two, and usually several more -- is left as a contiguous run on one
-# side of the split, so at least one window is always still there to find. Verified empirically
-# against the reviewer's own construction in
-# test_boundary_windows_survive_every_page_alignment, which also demonstrates that round 1's
-# non-overlapping scheme fails it (see the Task 7 report).
+# window (up to 219 characters) produced exactly ONE window equal to the whole string, and a
+# single SQLite page split landing anywhere inside it defeated the check completely: the
+# reviewer's sweep found 155 of 4200 page alignments (3.7%) undetected.
+#
+# Overlap narrows that gap; it does not close it. Fix round 3 correction of an earlier, false
+# "always" claim here: the reviewer ran the real window arithmetic over every length from 1 to
+# 5000 and every split position within each length. The true, measured bound is full
+# protection -- some window survives any single split -- from 99 characters onward (twice
+# _MIN_WINDOW_CHARS, minus one; see test_windows_gap_below_99_characters_is_the_measured_size
+# for both numbers, pinned). Below 99, texts of 51-98 characters have split positions where
+# every generated window straddles the cut -- this includes the three-window case at 76-98
+# characters, not only the two-window case just above the floor. Measured counts (unprotected
+# split positions / total possible positions): 52 chars -> 47/51, 60 -> 39/59, 75 -> 24/74,
+# 83 -> 16/82, 98 -> 1/97. A text of 50 characters or fewer is one window (_MIN_WINDOW_CHARS)
+# and is unprotected at any split. Exposure per leak event is roughly (unprotected positions)
+# / ~4092 usable bytes per SQLite page: about 1.1% for a 52-character text, 0% from 99
+# characters up. Two of the nine development-fixture probable causes (52 and 83 characters)
+# fall in this 51-98 gap. It is structural, not closable within this scheme: two windows of at
+# least _MIN_WINDOW_CHARS characters, spaced usefully apart, do not fit inside a text shorter
+# than about twice that length. Verified empirically in
+# test_boundary_windows_survive_every_page_alignment (a real-store sweep, using a cause long
+# enough to sit above the 99-character line) and
+# test_windows_gap_below_99_characters_is_the_measured_size (pure arithmetic, below it); the
+# real-store sweep for the 52-character cause specifically misses 47 of 4200 alignments,
+# consistent with the arithmetic count above (see the Task 7 report).
 _STRIDE_DIVISOR = 2
 
 
@@ -78,42 +96,57 @@ def _json_escaped(text: str) -> str:
     return json.dumps(text)[1:-1]
 
 
-def _windows(text: str, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS) -> list[str]:
-    """Overlapping windows tiling ``text``, each at least ``min_size`` characters.
+def _window_spans(
+    length: int, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS
+) -> list[tuple[int, int]]:
+    """The ``(start, end)`` index pairs ``_windows`` tiles a text of this ``length`` with.
 
-    A text no longer than ``min_size`` is returned whole: it cannot be usefully subdivided
-    (there is no room for even one full-length window inside it), so it keeps whatever
-    single-window risk that implies. Otherwise the per-window length is capped at both
-    ``size`` (well under an SQLite page) and half of ``text``'s own length, so a text shorter
-    than one full-size window still gets at least two genuinely overlapping windows rather
-    than the single whole-string window round 1 produced for anything under 219 characters.
-    Consecutive windows are spaced by half a window's length (``_STRIDE_DIVISOR``), and the
-    final window is snapped to end exactly at the text's own end, so the whole text is covered
-    and the overlap guarantee (see ``_STRIDE_DIVISOR``'s comment) holds all the way to the end.
-
-    A text only a little longer than ``min_size`` (the shortest development-fixture probable
-    cause is 52 characters, against a 50-character minimum) cannot get more than two windows
-    with heavy mutual overlap -- there simply is not room for a third, differently-positioned
-    window -- so a split landing in that large shared overlap is not fully protected against.
-    This is accepted, not hidden: it is the same kind of small residual risk as the whole-code
-    check below, for the same reason (there is a hard floor on how short a checkable window can
-    be), and is smaller than round 1's gap, which covered every text under 219 characters, not
-    only texts within a few characters of the 50-character floor.
+    Split out from ``_windows`` so the window geometry can be checked with pure arithmetic (no
+    string content, no store) -- see
+    ``test_windows_gap_below_99_characters_is_the_measured_size``.
     """
-    length = len(text)
     if length <= min_size:
-        return [text]
+        return [(0, length)]
     window = min(size, max(min_size, length // 2))
     stride = max(1, window // _STRIDE_DIVISOR)
-    windows: list[str] = []
+    spans: list[tuple[int, int]] = []
     start = 0
     while True:
         if start + window >= length:
-            windows.append(text[length - window :])
+            spans.append((length - window, length))
             break
-        windows.append(text[start : start + window])
+        spans.append((start, start + window))
         start += stride
-    return windows
+    return spans
+
+
+def _windows(text: str, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS) -> list[str]:
+    """Overlapping windows tiling ``text``, each at least ``min_size`` characters.
+
+    A text of ``min_size`` characters or fewer (50 by default) is returned whole, as a single
+    window, however short that actually is: there is no room for even one full-length window
+    inside it, so it keeps whatever single-window risk that implies (kept as ``<=``, not `<`,
+    deliberately -- at exactly ``min_size`` characters the two branches produce the identical
+    single window either way, so the choice is prose-only, not behavioural). Otherwise the
+    per-window length is capped at both ``size`` (well under an SQLite page) and half of
+    ``text``'s own length, so a text shorter than one full-size window still gets at least two
+    genuinely overlapping windows rather than the single whole-string window round 1 produced
+    for anything under 219 characters. Consecutive windows are spaced by half a window's length
+    (``_STRIDE_DIVISOR``), and the final window is snapped to end exactly at the text's own
+    end, so the whole text is covered.
+
+    Texts from 51 to 98 characters (inclusive) are not fully protected: a split can land where
+    every generated window straddles it, and this includes the three-window case at 76-98
+    characters, not only the two-window case just above the floor. Full protection -- some
+    window survives any single split -- only starts at 99 characters. See
+    ``_STRIDE_DIVISOR``'s comment for the measured counts and the exposure this implies, and
+    ``test_windows_gap_below_99_characters_is_the_measured_size`` for the pinned bound. This is
+    accepted, not hidden, and is a smaller gap than round 1 left (which covered every text
+    under 219 characters): two windows of at least ``min_size`` characters, spaced usefully
+    apart, do not fit inside a text shorter than about twice ``min_size``, so it cannot be
+    closed within this scheme without lowering the floor itself.
+    """
+    return [text[start:end] for start, end in _window_spans(len(text), size, min_size)]
 
 
 def withheld_windows(raw: Mapping[str, object]) -> list[str]:
