@@ -114,6 +114,7 @@ class NtsbClient:
             number += 1
 
     def _get(self, path: str, params: dict[str, str], *, name: str) -> bytes:
+        status: int | str | None = None
         for attempt in range(1, self._max_attempts + 1):
             if self._requested:
                 self._sleep(self._gap)
@@ -121,16 +122,21 @@ class NtsbClient:
             try:
                 response = self._http.get(path, params=params)
             except httpx.TransportError as error:
-                status: object = type(error).__name__
+                status = type(error).__name__
             else:
                 if response.is_success:
                     return response.content
                 status = response.status_code
                 if response.status_code not in _RETRY_STATUSES:
-                    raise ApiError(f"{name} returned {status}: {response.text[:200]}")
+                    raise ApiError(
+                        f"{name} returned {status}: {response.text[:200]}", status=status
+                    )
             if attempt < self._max_attempts:
                 self._sleep(self._backoff * 2 ** (attempt - 1))
-        raise ApiError(f"{name} failed after {self._max_attempts} attempts; last status {status}")
+        raise ApiError(
+            f"{name} failed after {self._max_attempts} attempts; last status {status}",
+            status=status,
+        )
 
     @staticmethod
     def _parse(number: int, content: bytes) -> Page:

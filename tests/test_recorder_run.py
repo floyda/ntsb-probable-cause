@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -15,7 +15,6 @@ from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.recorder import run as run_module
 from ntsb_probable_cause.recorder.dockets import DocketOutcome
-from ntsb_probable_cause.recorder.dockets import observe_docket as real_observe_docket
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.store import CaseRow, Store
 
@@ -76,8 +75,10 @@ def _ongoing(
     return record
 
 
-def _month_body(records: list[dict[str, object]]) -> dict[str, object]:
-    return {"hasMore": False, "nextMarker": None, "data": records}
+def _month_body(
+    records: list[dict[str, object]], *, has_more: bool = False, marker: str | None = None
+) -> dict[str, object]:
+    return {"hasMore": has_more, "nextMarker": marker, "data": records}
 
 
 def _inputs(store: Store, moment: datetime) -> NightInputs:
@@ -162,7 +163,20 @@ def test_same_night_twice_is_idempotent(
         _ongoing(record_fixtures, MKEY_2, event_date),
     ]
     respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body(records)))
-    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    # A non-empty feed: `change_feed` is a deliberate exception to the store's usual
+    # idempotence (fix round 1, Minor 1) -- it is asserted below to GROW each night, not stay
+    # put, because the 2-day lookback window overlaps between nights on purpose.
+    feed_payload = [
+        {
+            "mkey": MKEY_1,
+            "mode": "Aviation",
+            "lastChangeDateTimeUtc": "2026-09-30T10:00:00Z",
+            "stepNumber": 3,
+            "stepId": "step-3",
+            "caseClosed": False,
+        }
+    ]
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=feed_payload))
     respx_mock.get(sources.docket_url(MKEY_1)).mock(return_value=httpx.Response(200, text=SAVED))
     respx_mock.get(sources.docket_url(MKEY_2)).mock(
         return_value=httpx.Response(200, text=NOT_RELEASED)
@@ -176,6 +190,7 @@ def test_same_night_twice_is_idempotent(
 
     assert again["runs"] == counts["runs"] + 1
     assert again["docket_polls"] == counts["docket_polls"] + 2
+    assert again["change_feed"] == counts["change_feed"] + len(feed_payload)
     for table in ("field_snapshots", "document_events", "listing_pages", "status_events"):
         assert again[table] == counts[table]
 
@@ -194,7 +209,7 @@ def test_api_outage_still_polls_dockets(store: Store, respx_mock: respx.MockRout
     inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
     summary = run_night(inputs)
 
-    assert summary.failures >= 1
+    assert summary.failures == 1  # exactly the one failed month; both docket polls succeed
     assert store.connection.execute("select count(*) from docket_polls").fetchone()[0] == 2
 
 
@@ -218,6 +233,66 @@ def test_a_watched_case_in_a_failed_month_is_not_marked_not_returned(
     assert case is not None
     assert case.status == "Ongoing"
     assert store.connection.execute("select count(*) from status_events").fetchone()[0] == 0
+
+
+def test_mid_month_failure_keeps_earlier_pages_and_skips_not_returned_for_the_month(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """Fix round 1, Minor 3: page 1 (hasMore) succeeds and its record's rows stand; page 2
+    fails 500 x5. The watched case that would only have appeared on page 2 gets NO
+    "not returned" event, and the whole month counts as exactly one failure."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_1, event_date)  # appears on page 1
+    _seed_case(store, MKEY_2, event_date)  # would appear on page 2, which never arrives
+    record_1 = _ongoing(record_fixtures, MKEY_1, event_date)
+
+    respx_mock.get(MONTH_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_month_body([record_1], has_more=True, marker="m1")),
+            httpx.Response(500),
+            httpx.Response(500),
+            httpx.Response(500),
+            httpx.Response(500),
+            httpx.Response(500),
+        ]
+    )
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    summary = run_night(inputs)
+
+    assert summary.failures == 1  # one failure for the whole month, not per page or per retry
+    assert store.latest_snapshots(MKEY_1)  # page 1's record was observed and stood
+    case_2 = store.get_case(MKEY_2)
+    assert case_2 is not None
+    assert case_2.status == "Ongoing"
+    assert store.connection.execute("select count(*) from status_events").fetchone()[0] == 0
+
+
+def test_two_nights_not_returned_writes_exactly_one_status_event(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """Fix round 1, Minor 3: once a case reads "not returned", a second night must not fire
+    `mark_not_returned` again for it -- `_ongoing_by_month` only ever groups cases whose stored
+    status still reads `Ongoing`."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_1, event_date)
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body([])))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    run_night(_inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)))
+    run_night(_inputs(store, datetime(2026, 10, 2, 3, 0, 0, tzinfo=UTC)))
+
+    assert store.connection.execute("select count(*) from status_events").fetchone()[0] == 1
 
 
 def test_feed_rows_are_aviation_only(
@@ -303,40 +378,65 @@ def test_first_run_walk_failure_skips_case_side_but_still_polls_dockets(
     assert store.connection.execute("select count(*) from cases").fetchone()[0] == 0
 
 
-def test_unknown_docket_mkey_is_one_failure_not_a_crash(
+def test_docket_poll_for_an_mkey_with_no_case_row_is_one_failure_not_a_crash(
     store: Store,
     record_fixtures: list[dict[str, object]],
     respx_mock: respx.MockRouter,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Controller resolution 3: a ``ValueError`` from ``observe_docket`` for an unknown mkey
-    counts as one failure and the docket loop continues to the next watched case."""
+    """Fix round 1, Important 1: the "unknown mkey" case is an explicit check on
+    ``store.get_case(mkey) is None`` made before ``observe_docket`` is ever called, not a caught
+    ``ValueError`` -- there is no natural way to produce a `watched_mkeys()`-sourced mkey with
+    no `cases` row, so `watched_mkeys` itself is monkeypatched to return one."""
     event_date = "2026-10-15"
     _seed_case(store, MKEY_1, event_date)
-    _seed_case(store, MKEY_2, event_date)
-    records = [
-        _ongoing(record_fixtures, MKEY_1, event_date),
-        _ongoing(record_fixtures, MKEY_2, event_date),
-    ]
+    records = [_ongoing(record_fixtures, MKEY_1, event_date)]
     respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body(records)))
     respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
-    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
         return_value=httpx.Response(200, text=NOT_RELEASED)
     )
 
-    def _flaky(store_arg: Store, client: DocketClient, mkey: int, *, run_id: int) -> DocketOutcome:
-        if mkey == MKEY_1:
-            raise ValueError(f"docket poll for unknown case mkey={mkey}")
-        return real_observe_docket(store_arg, client, mkey, run_id=run_id)
+    real_watched_mkeys = store.watched_mkeys
+    unknown_mkey = 424242
 
-    monkeypatch.setattr("ntsb_probable_cause.recorder.run.observe_docket", _flaky)
+    def _with_an_unknown_mkey(*, today: str) -> list[int]:
+        return [*real_watched_mkeys(today=today), unknown_mkey]
+
+    monkeypatch.setattr(store, "watched_mkeys", _with_an_unknown_mkey)
 
     inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
     summary = run_night(inputs)
 
-    assert summary.failures >= 1
-    assert summary.cases_polled == 2
+    assert summary.failures == 1
+    assert summary.cases_polled == 2  # the unknown mkey is one attempted poll too
     assert store.connection.execute("select count(*) from docket_polls").fetchone()[0] == 1
+
+
+def test_valueerror_inside_observe_docket_for_a_known_mkey_propagates(
+    store: Store,
+    record_fixtures: list[dict[str, object]],
+    respx_mock: respx.MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fix round 1, Important 1: only the explicit "no cases row" check is ever absorbed as one
+    failure -- a `ValueError` raised inside `observe_docket` for an mkey the store DOES know
+    (a real bug, not the documented unknown-mkey case; a pydantic `ValidationError` or a
+    `UnicodeDecodeError` both subclass `ValueError`) must fail the run loudly."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_1, event_date)
+    records = [_ongoing(record_fixtures, MKEY_1, event_date)]
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body(records)))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    def _broken(store_arg: Store, client: DocketClient, mkey: int, *, run_id: int) -> DocketOutcome:
+        raise ValueError("boom: a real bug, not an unknown mkey")
+
+    monkeypatch.setattr("ntsb_probable_cause.recorder.run.observe_docket", _broken)
+
+    inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    with pytest.raises(ValueError, match="boom"):
+        run_night(inputs)
 
 
 def test_feed_failure_still_polls_dockets(
@@ -355,23 +455,24 @@ def test_feed_failure_still_polls_dockets(
     inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
     summary = run_night(inputs)
 
-    assert summary.failures >= 1
+    assert summary.failures == 1  # exactly the failed feed call; the case and docket succeed
     assert summary.cases_polled == 1
     assert summary.new_documents == 5
     assert store.connection.execute("select count(*) from change_feed").fetchone()[0] == 0
 
 
 def test_verbose_sets_the_recorder_logger_to_debug(
-    store: Store, respx_mock: respx.MockRouter
+    store: Store, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(500))
     respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
-    logging.getLogger("ntsb_probable_cause.recorder").setLevel(logging.WARNING)
+    logger = logging.getLogger("ntsb_probable_cause.recorder")
+    monkeypatch.setattr(logger, "level", logging.WARNING)
 
     inputs = _inputs(store, datetime(2026, 10, 22, 3, 0, 0, tzinfo=UTC))
     run_night(inputs, verbose=True)
 
-    assert logging.getLogger("ntsb_probable_cause.recorder").level == logging.DEBUG
+    assert logger.level == logging.DEBUG
 
 
 def test_night_inputs_now_must_be_aware(store: Store, respx_mock: respx.MockRouter) -> None:
@@ -392,23 +493,33 @@ def test_night_inputs_now_must_be_aware(store: Store, respx_mock: respx.MockRout
 def test_minutes_is_the_injected_clocks_elapsed_time(
     store: Store, respx_mock: respx.MockRouter
 ) -> None:
+    """Independent of exactly how many times `run_night` calls `now()` (fix round 1, Minor 3):
+    the clock advances by one second on every call, and the expected minutes are computed from
+    the actual first and last values it returned, not from a fixed call count."""
     respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(500))
     respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
 
-    ticks = iter(
-        [datetime(2026, 10, 22, 3, 0, 0, tzinfo=UTC)] * 8
-        + [datetime(2026, 10, 22, 3, 38, 0, tzinfo=UTC)]
-    )
+    calls: list[datetime] = []
+
+    def _clock() -> datetime:
+        moment = datetime(2026, 10, 22, 3, 0, 0, tzinfo=UTC) + timedelta(seconds=len(calls))
+        calls.append(moment)
+        return moment
+
     inputs = NightInputs(
         api=NtsbClient("k", sleep=lambda _seconds: None),
         docket=DocketClient(None, seconds_per_request=2.0, sleep=lambda _seconds: None),
         store=store,
-        now=lambda: next(ticks, datetime(2026, 10, 22, 3, 38, 0, tzinfo=UTC)),
+        now=_clock,
         commit_sha="abc1234",
         dirty=False,
     )
     summary = run_night(inputs)
-    assert summary.minutes == pytest.approx(38.0)
+
+    assert len(calls) >= 2
+    expected_minutes = (calls[-1] - calls[0]).total_seconds() / 60
+    assert summary.minutes == pytest.approx(expected_minutes)
+    assert summary.minutes > 0
 
 
 def test_ongoing_by_month_excludes_a_watched_tail_case(store: Store) -> None:

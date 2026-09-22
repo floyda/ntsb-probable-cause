@@ -84,15 +84,33 @@ def test_retries_429_and_503_with_backoff(respx_mock: respx.MockRouter) -> None:
 
 def test_gives_up_after_max_attempts(respx_mock: respx.MockRouter) -> None:
     respx_mock.get(URL).mock(return_value=httpx.Response(500))
-    with client([]) as c, pytest.raises(ApiError, match="500"):
+    with client([]) as c, pytest.raises(ApiError, match="500") as excinfo:
         fetch(c)
+    assert excinfo.value.status == 500  # Task 9 fix round 1, Important 2: the last HTTP status
 
 
 def test_client_error_is_not_retried(respx_mock: respx.MockRouter) -> None:
     route = respx_mock.get(URL).mock(return_value=httpx.Response(401))
-    with client([]) as c, pytest.raises(ApiError, match="401"):
+    with client([]) as c, pytest.raises(ApiError, match="401") as excinfo:
         fetch(c)
     assert route.call_count == 1
+    assert excinfo.value.status == 401
+
+
+def test_api_error_after_transport_failures_carries_the_exception_class_name(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get(URL).mock(side_effect=httpx.ConnectError("boom"))
+    with client([]) as c, pytest.raises(ApiError) as excinfo:
+        fetch(c)
+    assert excinfo.value.status == "ConnectError"
+
+
+def test_api_error_with_no_status_to_report_leaves_it_none(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(200, json={"data": "not a list"}))
+    with client([]) as c, pytest.raises(ApiError) as excinfo:
+        fetch(c)
+    assert excinfo.value.status is None
 
 
 def test_malformed_payload_raises(respx_mock: respx.MockRouter) -> None:
