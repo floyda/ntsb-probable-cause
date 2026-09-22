@@ -10,6 +10,11 @@ Failure rules (controller note 2, spec §9.1's "the store is saved once, at the 
   (neither ``NTSB_COMMIT_SHA`` nor ``git`` works), is a clean, one-line refusal on stderr and
   exit 1 -- the same shape ``apps/eval`` uses for a :class:`~ntsb_probable_cause.errors.
   ConfigurationError`, never a traceback, and never a value from the environment.
+- A pull failure (fix round 2, Minor 4) -- anything other than the missing-object case
+  :func:`~ntsb_probable_cause.store.sync.pull` already reads as "first run: start empty" -- is
+  logged with its traceback and exits 1 *before* :class:`~ntsb_probable_cause.store.Store` is
+  ever constructed, so a failed pull never silently starts an empty local store next to a real
+  one still sitting on S3.
 - Any *other* exception -- in particular, one that escapes :func:`~ntsb_probable_cause.
   recorder.run.run_night` itself -- is logged with its full traceback, the store is closed
   (but never pushed), and this exits 1. For a **local** store the local path already *is* the
@@ -128,7 +133,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Never log NTSB_STORE itself -- only which kind of location it is (module docstring, and
     # the plan's "logs never contain case text" rule extends to settings values generally).
     _log.info("store location=%s", "s3" if location.is_s3 else "local")
-    pull(location, local)
+    try:
+        pull(location, local)
+    except Exception:
+        # Fix round 1, Minor 4: a pull failure (e.g. a network error, an expired AWS
+        # credential -- anything other than "the object is missing", which pull() itself
+        # already reads as first-run-start-empty) must stop here, before Store(local) is ever
+        # constructed. Opening the store after a failed pull would silently start a fresh,
+        # empty local file next to whatever the real store held on S3, which is worse than not
+        # opening a store at all: the next successful push would overwrite the real store with
+        # that empty one. Logged with its traceback, the same way a run_night or push failure
+        # is, for the same reason.
+        _log.exception("pull failed")
+        return 1
 
     store = Store(local)
     store.migrate()

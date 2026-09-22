@@ -25,36 +25,60 @@ Three pieces, already written:
 3. **The recorder's code** — the actual `ntsb-record run` program.
 
 **Two different things move independently, and it is worth keeping them apart in your head:**
-*where the wrapper script itself lives* (fixed, below), and *which checkout's code it runs*
-(changes once, at merge — stage 7).
+*where the wrapper script itself lives* (fixed, below, and **outside any git checkout**), and
+*which checkout's code it runs* (changes once, at merge — stage 7).
 
-**Where the wrapper script lives: always your main checkout, never the worktree.** This stage
-(S2.5) is built on a branch, `s25-recorder`, checked out in its own folder — a **worktree**, a
-second, independent copy of the same repository, checked out to a different branch, sharing
-the same git history — so it does not disturb your main checkout:
+**Where the wrapper script lives: NOT inside any git checkout, on purpose.** It is tempting to
+put it in your main checkout's `scripts/` folder — but a git checkout is not a stable place to
+hand-place a file. A `git pull` refuses to run at all if an untracked file would be
+overwritten by the merge, even when the content is byte-for-byte identical to what is about to
+be merged in; a `git clean -fdx`, a `git stash -u`, or simply switching branches can silently
+delete it; and if the tracked script changes later, a manual copy sitting in a checkout has no
+way of telling you it has gone stale. None of that is a risk worth taking for a file `launchd`
+depends on every night, so it lives in your **Application Support** folder instead — the
+standard macOS location for a program's own files that are not user documents and are not
+managed by git at all:
+
+```
+$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh
+```
+
+This stage (S2.5) is built on a branch, `s25-recorder`, checked out in its own folder — a
+**worktree**, a second, independent copy of the same repository, checked out to a different
+branch, sharing the same git history — so it does not disturb your main checkout:
 
 ```
 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder
 ```
 
-The branch has not merged yet, so `scripts/recorder_bridge.sh` does not exist in your main
-checkout's `scripts/` folder yet either. **Copy it there once, now**, so the `launchd` job
-(stage 5) can point at one fixed, stable path from the very start and never need to change:
+**Install the wrapper once, now**, copying it from the worktree (quote the path — it has a
+space in it):
 
 ```
+mkdir -p "$HOME/Library/Application Support/ntsb-record"
 cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder/scripts/recorder_bridge.sh \
-   /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh
+   "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh"
+chmod 755 "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh"
 ```
 
-This file is not yet tracked by git in your main checkout — that is expected. **When this
-stage merges**, `git pull` (or your usual update) brings in the real, git-tracked version of
-`scripts/recorder_bridge.sh` at that exact same path, replacing your manual copy with an
-identical or newer one. You do nothing else for the script's own location; stage 7 is only
-about the *other* path, below.
+**Updating the installed script.** Because the installed copy is not tracked by git at all, it
+never updates itself — you re-run this whenever the tracked `scripts/recorder_bridge.sh`
+changes in whichever checkout the bridge currently runs from (worktree now, main checkout after
+stage 7), and once, as part of stage 7 itself:
 
-**Which checkout's CODE the wrapper runs `ntsb-record run` from** is a separate setting — the
-second argument the plist passes the wrapper (stage 5), not the wrapper's own location. Point
-it at the worktree for now:
+```
+cp <checkout>/scripts/recorder_bridge.sh "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh"
+cmp <checkout>/scripts/recorder_bridge.sh "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh" && echo "match"
+```
+
+(`<checkout>` is whichever path stage 5's plist currently names as the code directory below.)
+`cmp` prints nothing and exits successfully when the two files are identical, so `match` only
+appears when the copy genuinely succeeded — if the files differ, `cmp` instead names the first
+byte where they diverge and `match` does not print.
+
+**Which checkout's CODE the wrapper runs `ntsb-record run` from** is a separate setting again —
+the second argument the plist passes the wrapper (stage 5), not the wrapper's own location
+(which never moves once installed, above). Point it at the worktree for now:
 
 ```
 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder
@@ -70,6 +94,40 @@ instead:
 (stage 7 below shows the exact edit). Either way, **the store file and the log always live in
 the main checkout's `data/` folder** — `scripts/recorder_bridge.sh` sets that on purpose, so
 switching which checkout's code runs the recorder never moves or splits the data.
+
+**Before your first run, make the main checkout ignore the bridge's own files too.** The store
+and the log live in your main checkout's `data/` folder (just above) even while the *code*
+still runs from the worktree — and until this stage merges, that main checkout is still on
+`main`, using `main`'s own committed `.gitignore`. That file only knows about
+`data/recorder.sqlite` (via its general `*.sqlite` pattern); it says nothing about
+`data/recorder.log` or the SQLite WAL/SHM side files the bridge also writes there, so none of
+those three are ignored yet. This matters because **the log carries open-split case keys**
+(`mkey` values) — exactly the kind of text this project's rules say must never reach git — so
+leaving it unignored means one careless `git add -A` in the main checkout could publish them.
+
+The fix is to append four lines to `.git/info/exclude` — a file every git repository has
+alongside `.gitignore`, but which is never committed and applies to every worktree of this
+repository, so it is the right place for a rule that exists only until the merge:
+
+```
+printf '%s\n' 'data/' '*.sqlite-wal' '*.sqlite-shm' '*.sqlite-journal' >> /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.git/info/exclude
+```
+
+Then check it took effect:
+
+```
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause check-ignore -v data/recorder.log data/recorder.sqlite-wal data/recorder.sqlite-shm
+```
+
+Each of the three lines this prints should name `.git/info/exclude` as the source — **not**
+`.gitignore` — for example `.git/info/exclude:7:data/    data/recorder.log` (today, `data/` is
+the first real rule the four-line `printf` above adds, right after the file's default six
+comment lines, so it lands on line 7; the exact line number does not matter, only that
+`.git/info/exclude` is doing the ignoring and each of the three paths gets a line at all). If a
+path instead prints nothing, it is not ignored — check that the four lines actually landed with
+`cat /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.git/info/exclude`. This step
+is one-time: once this stage merges, the tracked `.gitignore` itself covers all four patterns,
+and `.git/info/exclude`'s copies become redundant (harmless to leave in place).
 
 ---
 
@@ -95,11 +153,14 @@ script protects against the *stalling* half of this: it gives `pass` 60 seconds,
 and logs `NTSB key unavailable` rather than hanging forever. It cannot make the key appear.
 
 **Without the Keychain option, this is not a rare edge case — it is most weekends.** If you do
-not type the `pass` passphrase yourself at least once every 24 hours (any GPG-using command
-counts, not only running the bridge by hand), the cache expires and every night after that
-fails, until you next type it. The most likely example: you work on this project during the
-week, then don't touch a terminal over Saturday and Sunday — Saturday night's run already fails,
-and so does Sunday's, until Monday.
+not *type* the `pass` passphrase yourself at least once every 24 hours, the cache expires and
+every night after that fails, until you next type it. This means typing it, specifically — not
+merely running some other GPG-using command: only entering the passphrase resets the 24-hour
+ceiling described above, because that ceiling counts from when it was last typed, not from when
+it was last used (the recorder itself uses the cached passphrase every night without ever
+typing it, so its own runs never extend the cache). The most likely example: you work on this
+project during the week, then don't touch a terminal over Saturday and Sunday — Saturday
+night's run already fails, and so does Sunday's, until Monday.
 
 **The dialog only appears when GPG actually needs the passphrase — so you may never see the
 "Save in Keychain" option by accident.** If the passphrase happens to already be cached when
@@ -179,10 +240,12 @@ installing it. (If you are ever setting this up on a **different** Mac, check fi
 `which uv pass gpg perl` and adjust that one `PATH` string to match what it prints.)
 
 **Create the plist** (a **plist** — "property list" — is the XML file `launchd` reads to
-know what to run and when) at
-`~/Library/LaunchAgents/dev.floyda.ntsb-record.plist`:
+know what to run and when) at `~/Library/LaunchAgents/dev.floyda.ntsb-record.plist`. This
+command writes the file for you — nothing below needs to be hand-typed or hand-edited:
 
-```xml
+```
+mkdir -p "$HOME/Library/LaunchAgents"
+cat > "$HOME/Library/LaunchAgents/dev.floyda.ntsb-record.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -190,14 +253,14 @@ know what to run and when) at
     <key>Label</key>
     <string>dev.floyda.ntsb-record</string>
 
-    <!-- Argument 1 is the wrapper script -- ALWAYS this fixed path in your main checkout
-         (stage 1's one-time copy), never the worktree, and this never needs to change.
+    <!-- Argument 1 is the wrapper script -- ALWAYS this fixed Application Support path
+         (stage 1's install step), never a git checkout, and this never needs to change.
          Argument 2 is the code directory it runs `ntsb-record run` FROM -- the worktree for
          now, the main checkout after the merge (stage 7 -- THIS is the argument that changes,
          and only this one). -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Library/Application Support/ntsb-record/recorder_bridge.sh</string>
         <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder</string>
     </array>
 
@@ -227,7 +290,22 @@ know what to run and when) at
     <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.log</string>
 </dict>
 </plist>
+PLIST
 ```
+
+(The space in `Application Support` inside the `<string>` needs no escaping — plist text is
+plain XML content, not a shell argument, so a space there is no different from any other
+character.)
+
+**Check the plist is well-formed** before asking `launchd` to load it — a typo here fails
+silently otherwise:
+
+```
+plutil -lint "$HOME/Library/LaunchAgents/dev.floyda.ntsb-record.plist"
+```
+
+This should print `... OK`. Anything else names the line that is wrong; fix it (re-run the
+`cat > ... <<'PLIST'` command above with the correction) and check again before continuing.
 
 **Load it:**
 
@@ -252,8 +330,21 @@ launchctl kickstart -k gui/$(id -u)/dev.floyda.ntsb-record
 This is also the moment the `pinentry-mac` dialog may appear (stage 2) — if it does, decide
 then whether to tick "Save in Keychain."
 
-**Check it ran**, two ways (full paths below, so these work from anywhere — not only from
-inside the main checkout):
+**A full real run can take up to about 90 minutes** (the same ceiling given to the AWS Fargate
+task, spec §9.2; a normal night is closer to 40 minutes, but the first run against a case list
+the store has never seen before can run longer) — do not conclude anything failed just because
+nothing has appeared in the log a minute after `kickstart`.
+
+**Check its status**, three ways (full paths below, so these work from anywhere — not only
+from inside the main checkout):
+
+```
+launchctl print gui/$(id -u)/dev.floyda.ntsb-record | grep -E 'state|last exit'
+```
+
+`state = running` means it is still going; `state = not running` together with `last exit
+code = 0` means it finished cleanly. A non-zero `last exit code` means it finished, but with a
+failure — check the log next.
 
 ```
 tail /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.log
@@ -261,10 +352,15 @@ tail /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.l
 
 Look for the line `run done` (from the wrapper) after a block of lines starting
 `... INFO ntsb_probable_cause.recorder ...` (from the recorder itself, spec §9.1's own log
-format, in UTC to match the wrapper's own timestamps) ending in
-`run done cases=... changed=... new_docs=... failed=... minutes=...`. If you instead see `NTSB
-key unavailable` or `run failed exit=...`, the key or the run itself is the problem — nothing
-was written to the store beyond stage 4's note above.
+format, in UTC to match the wrapper's own timestamps). A healthy finish looks like this — every
+`=...` filled in with a number, never blank:
+
+```
+run done cases=903 changed=27 new_docs=41 failed=2 renumber_suspects=0 minutes=38
+```
+
+If you instead see `NTSB key unavailable` or `run failed exit=...`, the key or the run itself
+is the problem — nothing was written to the store beyond stage 4's note above.
 
 ```
 sqlite3 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
@@ -280,17 +376,34 @@ that is not a data loss on the bridge.
 ## Stage 7 — After the merge: point the bridge at the main checkout
 
 Once this stage's pull request is merged to `main`, the worktree in stage 1 is no longer where
-the current code lives. **Exactly one string in the plist changes** — the *second*
-`ProgramArguments` string (the code directory `ntsb-record run` runs from). The *first* string
-(the wrapper script's own path) does not change: it already points at your main checkout
-(stage 1), and that copy is now the real, git-tracked one instead of your manual copy.
+the current code lives. Two things change here, and only these two:
+
+**1. Re-install the wrapper script**, using stage 1's "Updating the installed script" step,
+pointed at the main checkout instead of the worktree:
+
+```
+cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh \
+   "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh"
+cmp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh \
+   "$HOME/Library/Application Support/ntsb-record/recorder_bridge.sh" && echo "match"
+```
+
+This is needed even though the installed script's own *path* in the plist never changes
+(stage 1): the *content* the merge brought in could differ from what stage 1 originally
+copied from the worktree, and this is the point where the installed copy should start
+tracking the main checkout's version going forward.
+
+**2. Edit the plist's second `ProgramArguments` string** — the code directory `ntsb-record
+run` runs from. This is the *only* plist string that changes; the first (the wrapper script's
+own path, in Application Support, never inside a git checkout) stays exactly as stage 5 wrote
+it.
 
 Before (what stage 5 installed):
 
 ```xml
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Library/Application Support/ntsb-record/recorder_bridge.sh</string>
         <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder</string>
     </array>
 ```
@@ -300,9 +413,15 @@ After (edit only the second `<string>`):
 ```xml
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Library/Application Support/ntsb-record/recorder_bridge.sh</string>
         <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause</string>
     </array>
+```
+
+Check the edited file is still well-formed, the same way as stage 5:
+
+```
+plutil -lint "$HOME/Library/LaunchAgents/dev.floyda.ntsb-record.plist"
 ```
 
 Then reload it:
@@ -312,9 +431,10 @@ launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist
 ```
 
-**Check the next run the same way as stage 6** — `tail` the log for a `run done` line, and the
-same `sqlite3 ... runs ...` query for a new row with `finished_at` set. The store and log paths
-do not change — they were already the main checkout's `data/` directory (stage 1).
+**Check the next run the same way as stage 6** — `launchctl print`, `tail` the log for a `run
+done` line, and the same `sqlite3 ... runs ...` query for a new row with `finished_at` set.
+The store and log paths do not change — they were already the main checkout's `data/`
+directory (stage 1).
 
 ---
 
@@ -330,7 +450,9 @@ launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
 ```
 
 (`rm ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist` afterwards if you want it gone for
-good, not just stopped.)
+good, not just stopped; `rm -r "$HOME/Library/Application Support/ntsb-record"` removes the
+installed wrapper script too, if you want nothing left behind at all — neither is required,
+since a stopped job runs nothing further either way.)
 
 **2. Upload everything the bridge has recorded so far, once**, so AWS continues from where the
 bridge left off rather than starting empty:
@@ -348,9 +470,15 @@ the first AWS run, so exactly one of the two is ever writing to the store at a t
 
 ## Known risks
 
-Three things worth knowing before you rely on this, none of them dangerous, all of them worth
+Four things worth knowing before you rely on this, none of them dangerous, all of them worth
 recognising if they happen:
 
+- **If you edit `scripts/recorder_bridge.sh` and forget to re-install it** (stage 1's
+  "Updating the installed script" step), the bridge keeps quietly running the old version —
+  nothing warns you, since the installed copy in Application Support and the tracked one in
+  the checkout are now two separate files by design, precisely so a `git` operation cannot
+  touch the installed one. `cmp` (the same command that step uses) is how you check they still
+  match.
 - **The bridge runs whatever code the worktree holds at 03:00** — including a change you were
   midway through editing when you went to bed. This is not silent: `ntsb-record` records
   whether the tree was "dirty" (uncommitted changes) with every run (CLAUDE.md rule 11), so a
@@ -379,6 +507,16 @@ across reboots, without you needing to leave a terminal open.
 **`plist`** ("property list"). The XML file that tells `launchd` what to run and when — one
 file per job, kept in `~/Library/LaunchAgents/` for jobs that run as you (rather than as the
 system).
+
+**Application Support.** The standard macOS folder (`~/Library/Application Support/`) for a
+program's own files that are not user documents and are not part of any git checkout — where
+the wrapper script is installed (stage 1), specifically so a git operation on any checkout can
+never delete or collide with it.
+
+**`.git/info/exclude`.** A file every git repository has, alongside the shared, committed
+`.gitignore` — but this one is never committed and only affects your own checkout, which is
+exactly what stage 1's before-the-merge step needs: a rule that should stop mattering once
+`.gitignore` itself covers the same paths.
 
 **`pass`.** A command-line password manager. Stores each secret as a small file encrypted with
 GPG; `pass show <name>` decrypts and prints one back.

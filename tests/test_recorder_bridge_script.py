@@ -7,6 +7,14 @@ round's safety note. ``NTSB_BRIDGE_DATA_DIR`` and ``NTSB_BRIDGE_KEY_TIMEOUT`` (r
 the script itself, never set by ``launchd``) isolate every run to a tmp directory and keep an
 intentional hang short; ``NTSB_BRIDGE_RUN_TIMEOUT`` does the same for the overall wall-clock
 alarm the script now wraps the run in.
+
+Fix round 2, Minor 5: ``/bin/bash`` specifically, not whatever ``bash`` resolves to on
+``PATH``. On this Mac those are two different interpreters -- ``/bin/bash`` is Apple's bundled
+bash 3.2, and a Homebrew install puts a much newer bash 5.x earlier on ``PATH``. `launchd`
+invokes the script directly by its shebang (``#!/bin/bash``), which the kernel always resolves
+to ``/bin/bash``, never ``PATH``; a test that ran the script under Homebrew's bash instead
+would not actually be testing what production runs. ``/bin/bash`` may not exist on a non-macOS
+CI runner, so this falls back to whatever ``bash`` is found on ``PATH`` there.
 """
 
 import os
@@ -17,9 +25,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "recorder_bridge.sh"
-# An absolute path, not the bare name "bash" (ruff S607): resolved once, from the real PATH,
-# before any test overrides PATH to put the fakes first.
-BASH = shutil.which("bash") or "/bin/bash"
+_SYSTEM_BASH = Path("/bin/bash")
+BASH = str(_SYSTEM_BASH) if _SYSTEM_BASH.exists() else shutil.which("bash") or "bash"
 SENTINEL_KEY = "sk-test-sentinel-should-never-appear-anywhere"
 
 

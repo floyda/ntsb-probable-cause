@@ -241,11 +241,13 @@ def test_local_path_helper_uses_data_dir_only_for_s3(tmp_path: Path) -> None:
     assert app._local_path(settings, s3_location) == settings.data_dir / "recorder-work.sqlite"
 
 
-def test_a_pull_failure_propagates_and_never_reaches_run_night_or_push(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_pull_failure_is_logged_and_never_reaches_run_night_or_push(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Fix round 1, Minor 1 (app side): pull() only swallows a missing S3 object; every other
-    pull failure must stop the app before run_night or push are ever reached."""
+    pull failure must stop the app before run_night or push are ever reached. Fix round 2,
+    Minor 4: this is now a logged, clean exit 1 -- not a bare uncaught exception -- so an
+    empty store is never silently opened after a failed pull."""
     run_night_called: list[bool] = []
     push_called: list[bool] = []
 
@@ -260,11 +262,28 @@ def test_a_pull_failure_propagates_and_never_reaches_run_night_or_push(
     monkeypatch.setattr(app, "run_night", _fake_run_night)
     monkeypatch.setattr(app, "push", lambda *a, **k: push_called.append(True))
 
-    with pytest.raises(RuntimeError, match="s3 access denied"):
-        app.main(["run"])
+    with caplog.at_level(logging.ERROR, logger="apps.recorder.__main__"):
+        assert app.main(["run"]) == 1
 
     assert run_night_called == []
     assert push_called == []
+    assert "pull failed" in caplog.text
+    assert "s3 access denied" in caplog.text  # the traceback landed in the log
+
+
+def test_a_pull_failure_never_opens_the_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed pull must never leave a fresh, empty store file behind -- Store(local) is
+    reached only after pull() has already succeeded."""
+
+    def _pull_fails(location: Location, local: Path, **_: object) -> None:
+        raise RuntimeError("s3 access denied")
+
+    monkeypatch.setattr(app, "pull", _pull_fails)
+
+    assert app.main(["run"]) == 1
+    assert not (tmp_path / "data" / "recorder.sqlite").exists()
 
 
 def test_a_push_failure_is_logged_and_returns_1(
