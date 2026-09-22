@@ -83,6 +83,11 @@ MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX docket_polls_case ON docket_polls (mkey, run_id);
 
+    -- Pages are deduplicated by hash, not by case: two cases can (and, for a shared
+    -- "not released" page, routinely do) receive byte-identical listing pages. `mkey` and
+    -- `first_run` name whichever case and run first stored this exact page, not every case
+    -- that has ever received it -- that per-poll association lives in `docket_polls.page_sha`,
+    -- one row per case per run, not here (Task 8 fix round 1, Minor 2).
     CREATE TABLE listing_pages (
         page_sha TEXT PRIMARY KEY,
         mkey INTEGER NOT NULL,

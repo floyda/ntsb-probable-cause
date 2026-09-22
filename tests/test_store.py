@@ -306,6 +306,38 @@ def test_upsert_case_replaces_existing_row(store: Store) -> None:
     assert row.watch_until == "2026-11-30"
 
 
+def test_set_last_docket_run_touches_only_that_column(store: Store) -> None:
+    """Task 8 fix round 1, Minor 1: a narrow UPDATE, never a whole-row overwrite.
+
+    A stale in-memory copy of the row (as the docket side reads before its network fetch)
+    must not be able to clobber a case-side column another part of the recorder wrote to the
+    same row in the meantime.
+    """
+    original = CaseRow(
+        mkey=1,
+        ntsb_number="X",
+        event_date="2026-01-01",
+        regulation="091",
+        status="Ongoing",
+        first_seen_run=1,
+        last_seen_run=1,
+        last_case_run=1,
+        last_docket_run=None,
+        watch_until=None,
+    )
+    store.upsert_case(original)
+    # Simulate a case-side write landing between the docket side's read and its own write.
+    store.upsert_case(original.model_copy(update={"status": "Completed", "last_seen_run": 2}))
+
+    store.set_last_docket_run(1, 5)
+
+    row = store.get_case(1)
+    assert row is not None
+    assert row.last_docket_run == 5
+    assert row.status == "Completed"
+    assert row.last_seen_run == 2
+
+
 def test_add_status_event_round_trips(store: Store) -> None:
     store.add_status_event(1, old="Ongoing", new="Completed", absent_run=3, present_run=4, run_id=4)
     row = store.connection.execute(

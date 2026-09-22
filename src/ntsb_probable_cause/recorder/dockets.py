@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import logging
 import re
+from collections import Counter
 
 from pydantic import BaseModel
 
@@ -85,14 +86,23 @@ def diff_documents(
     """Diff ``listing``'s entries against ``previous``. Pure: no store access.
 
     ``absent_run`` is the case's ``last_docket_run`` as of *before* this poll -- the interval
-    start for any document appearing for the first time ever (``None`` on a case's first
-    docket poll). A document returning after having disappeared instead uses its own stored
-    ``gone_present_run`` (the run that first noticed it missing) as the interval start, since
-    that is the last point this store can vouch the document was actually absent.
+    start for any document appearing this run, whether it has never been seen before or is
+    returning after having disappeared (spec §3: "last seen absent" is the *last* run that did
+    not see the thing, and every ``read``/``empty``/``no-docket`` poll between a disappearance
+    and this reappearance -- including ones that recorded no diff at all, since the document
+    stayed absent -- advanced ``last_docket_run`` without seeing it; a returning document's own
+    stale ``gone_present_run``, the *first* run that noticed it missing, is the wrong end of
+    that interval and is never used for this. Task 8 fix round 1, Important 1.).
 
-    Revision compares ``title``, ``pages`` and ``photos``. A "suspected re-number" is a
-    disappeared row and an appeared row that agree on ``(title, pages)`` -- counted, never
-    merged into one event, so the true appearance and disappearance both stay on the record.
+    A document's ``documents`` row always holds only its current appearance (fields overwritten
+    on every poll that sees it); its full history -- every appearance, revision and
+    disappearance -- lives in ``document_events`` instead.
+
+    Revision compares ``title``, ``pages`` and ``photos``. A "suspected re-number" is counted
+    per *pair*: for each ``(title, pages)`` key, ``min(disappeared count, appeared count)`` --
+    never the count of appeared rows merely present in the set of disappeared keys, which
+    over-counts when a title recurs (Task 8 fix round 1, Important 2). Disappearance and
+    appearance are always recorded as two separate events, never merged into one.
     """
     current: dict[int, ListingEntry] = {}
     for entry in listing.entries:
@@ -107,7 +117,7 @@ def diff_documents(
         prior = previous.get(doc_id)
         is_returning = prior is not None and prior.gone_present_run is not None
         if prior is None or is_returning:
-            row_absent_run = prior.gone_present_run if is_returning and prior else absent_run
+            row_absent_run = absent_run
             row_present_run = run_id
         else:
             row_absent_run = prior.absent_run
@@ -144,8 +154,11 @@ def diff_documents(
             )
         )
 
-    disappeared_keys = {(row.title, row.pages) for row in disappeared}
-    suspected_renumbers = sum(1 for row in appeared if (row.title, row.pages) in disappeared_keys)
+    disappeared_counts = Counter((row.title, row.pages) for row in disappeared)
+    appeared_counts = Counter((row.title, row.pages) for row in appeared)
+    suspected_renumbers = sum(
+        min(disappeared_counts[key], appeared_counts[key]) for key in disappeared_counts
+    )
 
     return DiffResult(
         appeared=tuple(appeared),
@@ -241,18 +254,41 @@ def _apply_diff(store: Store, mkey: int, diff: DiffResult, *, run_id: int) -> No
         )
 
 
-def _log_outcome(  # noqa: PLR0913 -- one parameter per the spec §9.1 log line's own fields.
-    mkey: int, outcome: str, *, items: int = 0, new: int = 0, revised: int = 0, gone: int = 0
+def _log_outcome(  # noqa: PLR0913 -- one parameter per the spec §9.1 log line's own fields,
+    # plus `reason` for a failed poll (Task 8 fix round 1, Minor 3).
+    mkey: int,
+    outcome: str,
+    *,
+    items: int = 0,
+    new: int = 0,
+    revised: int = 0,
+    gone: int = 0,
+    reason: str | None = None,
 ) -> None:
-    _log.info(
-        "docket mkey=%d outcome=%s items=%d new=%d revised=%d gone=%d",
-        mkey,
-        outcome,
-        items,
-        new,
-        revised,
-        gone,
-    )
+    if reason is None:
+        _log.info(
+            "docket mkey=%d outcome=%s items=%d new=%d revised=%d gone=%d",
+            mkey,
+            outcome,
+            items,
+            new,
+            revised,
+            gone,
+        )
+    else:
+        # `reason` is always the already-classified short label (outcome_for_error's result,
+        # or a fixed string like "count-mismatch") -- never the raw DocketError message body,
+        # which can embed a URL.
+        _log.info(
+            "docket mkey=%d outcome=%s items=%d new=%d revised=%d gone=%d reason=%s",
+            mkey,
+            outcome,
+            items,
+            new,
+            revised,
+            gone,
+            reason,
+        )
 
 
 def _failed(  # noqa: PLR0913 -- one parameter per optional docket_polls column a failure may carry.
@@ -276,7 +312,7 @@ def _failed(  # noqa: PLR0913 -- one parameter per optional docket_polls column 
             declared_items=declared_items,
             info=info,
         )
-    _log_outcome(mkey, "failed")
+    _log_outcome(mkey, "failed", reason=reason)
     return DocketOutcome(
         mkey=mkey,
         outcome="failed",
@@ -287,7 +323,15 @@ def _failed(  # noqa: PLR0913 -- one parameter per optional docket_polls column 
     )
 
 
-def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int) -> DocketOutcome:
+def observe_docket(  # noqa: PLR0911 -- one early return per outcome rule (spec §6.2); a
+    # dispatch table would only hide the same seven branches, each of which needs a different
+    # subset of `_failed`'s optional arguments.
+    store: Store,
+    client: DocketClient,
+    mkey: int,
+    *,
+    run_id: int,
+) -> DocketOutcome:
     """One nightly poll of a case's docket listing: outcome, page storage, the document diff.
 
     Outcome rules (spec §6.2, controller changes over the plan's original design):
@@ -304,6 +348,9 @@ def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int
     - a listed entry with no parseable document id -> ``"failed"`` (``entry-without-id``):
       nothing is diffed, since skipping just that entry would make an existing document whose
       link format changed look like it disappeared;
+    - two listed entries sharing one document id -> ``"failed"`` (``duplicate-id``), for the
+      same reason: nothing is diffed, since diffing against a doc-id-keyed map would silently
+      drop one of them;
     - otherwise ``"read"`` (or ``"empty"`` if the listing has no entries).
 
     Only ``"read"``/``"empty"`` run the document diff. A ``"no-docket"`` poll is itself an
@@ -314,9 +361,12 @@ def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int
 
     The page is stored (gzipped, hashed, deduplicated by hash) for every outcome where a page
     was actually received -- ``read``, ``empty``, ``no-docket``, and the ``failed`` outcomes
-    ``count-mismatch``, ``no-info-block`` and ``entry-without-id`` -- because the page is
-    exactly what a later re-parse needs (spec §6.4). It is never stored for a fetch error,
-    since no page was received.
+    ``count-mismatch``, ``no-info-block``, ``entry-without-id`` and ``duplicate-id`` -- because
+    the page is exactly what a later re-parse needs (spec §6.4). It is never stored for a fetch
+    error, since no page was received. Storage is deduplicated by the page's own hash, not by
+    case: two cases polled on the same night can receive (and, for the "not released" page,
+    routinely do receive) byte-identical pages, which land in one ``listing_pages`` row shared
+    between their two separate ``docket_polls`` rows.
 
     Raises:
         ValueError: no ``cases`` row exists for ``mkey``. The nightly run (Task 9) only calls
@@ -335,7 +385,7 @@ def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int
     if is_not_released(page):
         with store.transaction():
             _record_poll(store, mkey, run_id=run_id, outcome="no-docket", reason=None, page=page)
-            store.upsert_case(case.model_copy(update={"last_docket_run": run_id}))
+            store.set_last_docket_run(mkey, run_id)
         _log_outcome(mkey, "no-docket")
         return DocketOutcome(
             mkey=mkey,
@@ -361,12 +411,29 @@ def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int
             declared_items=listing.declared_items,
         )
 
-    if any(doc_id_of(entry.href) is None for entry in listing.entries):
+    entry_ids = [doc_id_of(entry.href) for entry in listing.entries]
+    if any(doc_id is None for doc_id in entry_ids):
         return _failed(
             store,
             mkey,
             run_id=run_id,
             reason="entry-without-id",
+            page=page,
+            declared_items=listing.declared_items,
+            info=listing.info,
+        )
+
+    if len(set(entry_ids)) != len(entry_ids):
+        # Two entries claiming the same document id (Task 8 fix round 1, Minor 4): diffing
+        # against a `current` map keyed by doc id would silently drop one of them, which is
+        # exactly the "a layout change must never read as a disappearance" failure mode
+        # `entry-without-id` above already guards against -- so this fails the whole poll the
+        # same way, rather than diffing against an incomplete, silently-deduplicated map.
+        return _failed(
+            store,
+            mkey,
+            run_id=run_id,
+            reason="duplicate-id",
             page=page,
             declared_items=listing.declared_items,
             info=listing.info,
@@ -390,7 +457,7 @@ def observe_docket(store: Store, client: DocketClient, mkey: int, *, run_id: int
             info=listing.info,
         )
         _apply_diff(store, mkey, diff, run_id=run_id)
-        store.upsert_case(case.model_copy(update={"last_docket_run": run_id}))
+        store.set_last_docket_run(mkey, run_id)
 
     changed = bool(diff.appeared or diff.revised or diff.disappeared)
     _log_outcome(

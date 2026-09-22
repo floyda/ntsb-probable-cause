@@ -11,7 +11,7 @@ import respx
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.docket.listing import parse_listing
+from ntsb_probable_cause.docket.listing import Listing, ListingEntry, parse_listing
 from ntsb_probable_cause.recorder.dockets import (
     DiffResult,
     DocketOutcome,
@@ -144,18 +144,17 @@ EMPTY = _without_row(
 # Row 5's href with "ID=" swapped for a format the parser cannot find a document id in --
 # everything else about the page (the info block, the declared count) is unchanged and valid.
 NO_ID = SAVED.replace("ID=40469811", "REF=40469811", 1)
+# Row 2 given row 1's document id, so two entries claim the same id (Task 8 fix round 1, Minor 4).
+DUPLICATE_ID = _with_doc_id(SAVED, index=2, doc_id=40469808)
 
 
-@pytest.fixture
-def store(tmp_path: Path) -> Iterator[Store]:
-    opened = Store(tmp_path / "r.sqlite")
-    opened.migrate()
-    # A case row, as Task 7's observe_case would already have written before the docket side
-    # ever polls it (Task 9 only calls observe_docket for mkeys drawn from watched_mkeys).
-    opened.upsert_case(
+def _seed_case(store: Store, mkey: int, ntsb_number: str) -> None:
+    """A case row, as Task 7's observe_case would already have written before the docket side
+    ever polls it (Task 9 only calls observe_docket for mkeys drawn from watched_mkeys)."""
+    store.upsert_case(
         CaseRow(
-            mkey=MKEY,
-            ntsb_number="ERA17LA217",
+            mkey=mkey,
+            ntsb_number=ntsb_number,
             event_date="2017-06-26",
             regulation="091",
             status="Ongoing",
@@ -167,6 +166,13 @@ def store(tmp_path: Path) -> Iterator[Store]:
             watched=True,
         )
     )
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> Iterator[Store]:
+    opened = Store(tmp_path / "r.sqlite")
+    opened.migrate()
+    _seed_case(opened, MKEY, "ERA17LA217")
     yield opened
     opened.close()
 
@@ -404,6 +410,76 @@ def test_a_non_retried_status_is_failed_with_its_own_reason(
     assert store.connection.execute("select count(*) from listing_pages").fetchone()[0] == 0
 
 
+def test_duplicate_document_id_fails_the_whole_poll(
+    store: Store, client: DocketClient, respx_mock: respx.MockRouter
+) -> None:
+    """Task 8 fix round 1, Minor 4: two entries claim one id, consistent with entry-without-id."""
+    out = _poll(store, client, respx_mock, DUPLICATE_ID, 1)
+    assert out.outcome == "failed"
+    assert out.failed == "duplicate-id"
+    assert len(_events(store)) == 0
+    assert store.documents_for(MKEY) == {}
+    reason = store.connection.execute("select reason from docket_polls where run_id=1").fetchone()[
+        0
+    ]
+    assert reason == "duplicate-id"
+    # a valid docket page with one repeated id is still stored whole (spec §6.4).
+    assert store.connection.execute("select count(*) from listing_pages").fetchone()[0] == 1
+
+
+def test_failed_poll_logs_its_reason(
+    store: Store,
+    client: DocketClient,
+    respx_mock: respx.MockRouter,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Task 8 fix round 1, Minor 3: the reason is the short, already-classified label, never
+    the raw DocketError message body -- which, for a fetch error, embeds the full URL and
+    ``"attempts"`` wording that ``outcome_for_error`` strips to ``"http-500-after-retries"``."""
+    respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(500))
+    with caplog.at_level("INFO", logger="ntsb_probable_cause.recorder.dockets"):
+        observe_docket(store, client, MKEY, run_id=1)
+    [record] = [r for r in caplog.records if "outcome=failed" in r.getMessage()]
+    message = record.getMessage()
+    assert "reason=http-500-after-retries" in message
+    assert "data.ntsb.gov" not in message  # no URL from the DocketError message body
+    assert "attempts" not in message
+
+
+def test_no_docket_page_is_stored(
+    store: Store, client: DocketClient, respx_mock: respx.MockRouter
+) -> None:
+    """Task 8 fix round 1, Minor 2: a no-docket page is a page the poll actually received."""
+    _poll(store, client, respx_mock, NOT_RELEASED, 1)
+    assert store.connection.execute("select count(*) from listing_pages").fetchone()[0] == 1
+    page_sha = store.connection.execute(
+        "select page_sha from docket_polls where run_id=1"
+    ).fetchone()[0]
+    assert page_sha is not None
+
+
+def test_two_cases_polling_the_same_not_released_page_share_one_stored_page(
+    store: Store, client: DocketClient, respx_mock: respx.MockRouter
+) -> None:
+    """Task 8 fix round 1, Minor 2: pages are deduplicated by hash, not by case."""
+    other_mkey = 95460
+    _seed_case(store, other_mkey, "ERA17LA218")
+    respx_mock.get(sources.docket_url(MKEY)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(sources.docket_url(other_mkey)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    observe_docket(store, client, MKEY, run_id=1)
+    observe_docket(store, client, other_mkey, run_id=1)
+
+    assert store.connection.execute("select count(*) from listing_pages").fetchone()[0] == 1
+    assert store.connection.execute("select count(*) from docket_polls").fetchone()[0] == 2
+    shas = store.connection.execute("select page_sha from docket_polls order by mkey").fetchall()
+    assert shas[0][0] == shas[1][0]
+    assert shas[0][0] is not None
+
+
 def test_unknown_mkey_raises(tmp_path: Path, client: DocketClient) -> None:
     bare = Store(tmp_path / "bare.sqlite")
     bare.migrate()
@@ -464,3 +540,99 @@ def test_diff_documents_against_a_prior_snapshot_finds_the_change() -> None:
     old, new = diff.revised[0]
     assert old.pages == 10
     assert new.pages == 14
+
+
+# --- Task 8 fix round 1, Important 1: a returning document's interval starts at the LAST run
+# that did not see it, not the FIRST -----------------------------------------------------------
+
+
+def test_returning_document_interval_starts_at_the_last_absent_read(
+    store: Store, client: DocketClient, respx_mock: respx.MockRouter
+) -> None:
+    """The reviewer's walk-through: X is read at runs 1-3, missing from reads at runs 4-9, and
+    back at run 10. The interval must be (9, 10) -- the last run that did not see X -- never
+    (4, 10), the first."""
+    _poll(store, client, respx_mock, SAVED, 1)
+    _poll(store, client, respx_mock, SAVED, 2)
+    _poll(store, client, respx_mock, SAVED, 3)
+    for run_id in range(4, 10):  # runs 4-9: six reads, each missing doc 40469811 (row 5)
+        _poll(store, client, respx_mock, REMOVED, run_id)
+    out = _poll(store, client, respx_mock, SAVED, 10)  # X is back
+    assert out.outcome == "read"
+    assert out.new_documents == 1
+    assert _events(store)[-1] == ("appeared", 9, 10)
+
+
+def test_returning_document_interval_spans_no_docket_nights(
+    store: Store, client: DocketClient, respx_mock: respx.MockRouter
+) -> None:
+    """The nights between a disappearance and a reappearance can be no-docket polls, not only
+    reads -- they still count as "did not see X", so the interval still ends at the last one."""
+    _poll(store, client, respx_mock, SAVED, 1)
+    _poll(store, client, respx_mock, REMOVED, 2)  # X disappears: ("disappeared", 1, 2)
+    for run_id in range(3, 9):  # runs 3-8: six no-docket nights
+        _poll(store, client, respx_mock, NOT_RELEASED, run_id)
+    out = _poll(store, client, respx_mock, SAVED, 9)  # X is back
+    assert out.outcome == "read"
+    assert _events(store)[-1] == ("appeared", 8, 9)
+
+
+# --- Task 8 fix round 1, Important 2: suspected re-numbers are counted by PAIR ------------------
+
+
+def _title_row(doc_id: int, title: str, pages: int) -> DocumentRow:
+    return DocumentRow(
+        mkey=MKEY,
+        doc_id=doc_id,
+        href=f"/Docket/Document/docBLOB?ID={doc_id}&FileExtension=.PDF",
+        position=1,
+        title=title,
+        pages=pages,
+        photos=0,
+        extension="pdf",
+        absent_run=None,
+        present_run=1,
+        last_present_run=1,
+        gone_absent_run=None,
+        gone_present_run=None,
+    )
+
+
+def _title_entry(doc_id: int, title: str, pages: int, *, index: int) -> ListingEntry:
+    return ListingEntry(
+        index=index,
+        title=title,
+        pages=pages,
+        photos=0,
+        doc_type="Adobe PDF file",
+        extension="pdf",
+        href=f"/Docket/Document/docBLOB?ID={doc_id}&FileExtension=.PDF",
+    )
+
+
+@pytest.mark.parametrize(
+    ("gone_ids", "appeared_ids", "expected"),
+    [
+        pytest.param([101], [201, 202], 1, id="1-gone-2-appeared"),
+        pytest.param([101, 102], [201], 1, id="2-gone-1-appeared"),
+        pytest.param([101, 102], [201, 202], 2, id="2-gone-2-appeared"),
+    ],
+)
+def test_suspected_renumbers_counted_by_pair(
+    gone_ids: list[int], appeared_ids: list[int], expected: int
+) -> None:
+    """One drop plus two same-title adds must count 1 pair, not 2 (the old bug: any appeared
+    row whose (title, pages) key was IN the set of disappeared keys was counted)."""
+    previous = {doc_id: _title_row(doc_id, "Same Title", 5) for doc_id in gone_ids}
+    listing = Listing(
+        mkey=MKEY,
+        declared_items=len(appeared_ids),
+        entries=tuple(
+            _title_entry(doc_id, "Same Title", 5, index=i)
+            for i, doc_id in enumerate(appeared_ids, start=1)
+        ),
+    )
+    diff = diff_documents(previous, listing, mkey=MKEY, run_id=2, absent_run=1)
+    assert len(diff.disappeared) == len(gone_ids)
+    assert len(diff.appeared) == len(appeared_ids)
+    assert diff.suspected_renumbers == expected

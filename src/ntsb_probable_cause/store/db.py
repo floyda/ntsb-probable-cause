@@ -271,6 +271,18 @@ class Store:
                 ),
             )
 
+    def set_last_docket_run(self, mkey: int, run_id: int) -> None:
+        """Update only a case's ``last_docket_run`` column (Task 8 fix round 1, Minor 1).
+
+        Unlike :meth:`upsert_case`, which replaces the whole row, this never risks writing back
+        a stale copy of the other columns: the docket side (``recorder/dockets.py``) reads a
+        case row before its network fetch, and a full ``upsert_case`` of that stale copy could
+        silently clobber a case-side field the case side (``recorder/cases.py``) wrote to the
+        same row in the meantime.
+        """
+        with self.transaction() as conn:
+            conn.execute("UPDATE cases SET last_docket_run=? WHERE mkey=?", (run_id, mkey))
+
     def watched_mkeys(self, *, today: str) -> list[int]:
         """Every case still watched: status ``Ongoing``, or within its ``watch_until`` tail.
 
