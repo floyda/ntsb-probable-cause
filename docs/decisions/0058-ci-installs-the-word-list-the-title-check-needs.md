@@ -73,3 +73,5 @@ long-term fix.
 ## Status
 
 Accepted, 2026-09-21 (S2 close-out).
+
+Amended by 0070 (2026-09-22): the word list is vendored into the repository and the CI install step is removed.

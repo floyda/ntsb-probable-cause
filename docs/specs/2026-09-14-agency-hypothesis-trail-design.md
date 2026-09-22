@@ -222,6 +222,11 @@ Decided in 0023.
   recorder's store (0024).
 - The preliminary narrative is absent in both conditions.
 
+*Amended 2026-09-22 (0068): "each document type" cannot be measured — S2 found the
+title-based type label unreliable (0054–0056) and the recorder records arrival per document
+with no label. The docket's mask rule is presence and document count by day *N*; further
+grouping is decided in S3 with the recorder's numbers. The bullet above stays as written.*
+
 ### 6.3 Scores per step
 
 - **Accuracy by step.** Occurrence top-1 and top-3, and finding-code precision and recall,

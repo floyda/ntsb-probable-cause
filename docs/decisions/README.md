@@ -98,5 +98,17 @@ under `docs/specs/` and the record links to it.
 | [0055](0055-the-document-header-carries-the-listing-number.md) | The document header identifies a document by its listing number, not an inferred category label | Accepted; amends 0051 item 3 |
 | [0056](0056-the-deny-list-cannot-be-filled-from-titles.md) | The deny-list cannot be filled from titles and is removed; the category keeps no job in the live path | Accepted; completes and removes 0039 items 1-2 |
 | [0057](0057-unset-directory-settings-derive-from-data-dir.md) | An unset directory setting derives from `data_dir` | Accepted |
-| [0058](0058-ci-installs-the-word-list-the-title-check-needs.md) | Continuous integration installs the word list the title check needs | Accepted |
+| [0058](0058-ci-installs-the-word-list-the-title-check-needs.md) | Continuous integration installs the word list the title check needs | Accepted; amended by 0070 |
 | [0059](0059-every-script-states-its-status.md) | Every script in `scripts/` states its kind, its output and what has since changed, in its docstring | Accepted |
+| [0060](0060-every-watched-case-is-polled-daily-no-tiers.md) | Every watched case is polled once a day, with no tiers; tiering considered and rejected | Accepted |
+| [0061](0061-the-recorder-reads-the-listing-only-never-a-document.md) | The recorder reads the listing page only and never downloads a document | Accepted |
+| [0062](0062-the-document-number-is-the-key-with-three-events.md) | The document number in the link is the key; three events; suspected re-numbers are counted | Accepted |
+| [0063](0063-a-compressed-listing-page-is-kept-when-its-hash-is-new.md) | A compressed copy of the listing page is kept whenever its hash is new | Accepted |
+| [0064](0064-closure-rules-and-the-thirty-day-tail.md) | Closure: status changes are events, nothing is deleted, the verdict is never stored, the docket is watched 30 days after | Accepted |
+| [0065](0065-event-months-are-the-source-of-truth-the-change-feed-is-stored-beside-them.md) | The event months are re-fetched nightly as the source of truth; the change feed is stored beside them and compared by script | Accepted; departs from the roadmap's "by modification date" |
+| [0066](0066-the-recorder-fetches-with-the-docket-cache-off.md) | The recorder fetches with the docket client's cache off and keeps its own copies | Accepted |
+| [0067](0067-watched-cases-are-part-91-plus-empty-regulation.md) | Watched cases are Part 91 plus those with the regulation empty; regulation changes are counted at 8 weeks | Accepted |
+| [0068](0068-arrival-is-recorded-per-document-with-no-type-label.md) | Arrival is recorded per document with no type label; the mask's docket rule is presence and count | Accepted; amends the agency design §6.2 |
+| [0069](0069-the-ntsb-key-reaches-the-task-from-parameter-store.md) | The NTSB key reaches the scheduled task from AWS Parameter Store, encrypted | Accepted |
+| [0070](0070-the-word-list-is-vendored-into-the-repository.md) | The word list is vendored into the repository | Accepted; amends 0058 |
+| [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted |
