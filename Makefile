@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe
 
 check: lint type test
 
@@ -74,3 +74,10 @@ docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
 # Read and discard (decision 0040): no cache, nothing written under data/. Roughly 500 polite
 # requests to data.ntsb.gov. Launched by the project owner, not CI.
+
+ongoing-probe:
+	uv run python -m scripts.ongoing_docket_probe --out docs/results/s25-ongoing-dockets.txt
+# Read and discard (decision 0024): no cache, nothing written under data/, no case number
+# printed. 100 polite requests to data.ntsb.gov (about 4 minutes at the 2-second floor).
+# Fixes the recorder's "no-docket" outcome (spec S2.5 S10.1) from what the site actually
+# returns for an ongoing case. Launched by the project owner, not CI.
