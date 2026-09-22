@@ -325,8 +325,8 @@ def docket_fixture_name_problems(
 
     Covers ``.html`` listings and ``.csv`` titles sheets. Never prints what it finds -- only
     where, the same rule ``scripts/name_coverage.py`` follows -- so review the file by eye,
-    not this output. The system dictionary at ``dictionary_path`` is read once, and a missing
-    dictionary is reported to stderr, not passed over in silence -- the check still runs, on
+    not this output. The word list at ``dictionary_path`` is read once, and a missing
+    word list is reported to stderr, not passed over in silence -- the check still runs, on
     the committed vocabulary alone, which only makes it stricter (a common word not yet in the
     vocabulary is a false positive, never a missed name).
 

@@ -309,31 +309,25 @@ def test_name_check_uses_vendored_dictionary_by_default() -> None:
     assert len(blocking) == 0
 
 
-def test_docket_fixture_name_problems_default_path_is_vendored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When /usr/share/dict/words is absent, the default still works.
+def test_docket_fixture_name_problems_default_path_is_vendored(tmp_path: Path) -> None:
+    """The check function defaults to VENDORED_DICTIONARY_PATH and uses it.
 
-    This simulates the CI environment where the system dictionary is not installed.
+    The default parameter value is the vendored list, and calling with that default
+    clears the check (0 blocking), while calling with a missing path fails it (blocking > 0).
     """
+    # Assert the signature default is VENDORED_DICTIONARY_PATH
+    sig = inspect.signature(docket_fixture_name_problems)
+    assert sig.parameters["dictionary_path"].default == VENDORED_DICTIONARY_PATH
 
-    def mock_system_dict(*args: object, **kwargs: object) -> frozenset[str]:
-        # Simulate dictionary missing by raising an exception on any non-vendored path
-        frame = inspect.currentframe()
-        if frame and frame.f_back:
-            locals_dict = frame.f_back.f_locals
-            if "dictionary_path" in locals_dict:
-                path = locals_dict["dictionary_path"]
-                if path != VENDORED_DICTIONARY_PATH:
-                    raise FileNotFoundError(f"Mock: {path} not found")
-        return frozenset(["examination", "study", "weather", "engine", "report"])
+    # Signature default is VENDORED_DICTIONARY_PATH. On committed fixtures designed
+    # to work with vocabulary + dictionary, it clears. Missing path makes it stricter.
 
-    # Monkeypatch the _system_dictionary function to reject non-vendored paths
-    monkeypatch.setattr(
-        "ntsb_probable_cause.docket.title_vocab._system_dictionary",
-        lambda path: None if path != VENDORED_DICTIONARY_PATH else mock_system_dict(),
-    )
-    # The check should still work (use VENDORED_DICTIONARY_PATH by default)
-    vocab, found = known_title_words()  # Uses default VENDORED_DICTIONARY_PATH
-    assert found is True
-    assert "examination" in vocab
+    # With default (vendored dictionary): no blocking findings on committed fixtures
+    problems = docket_fixture_name_problems()
+    blocking_default = [p for p in problems if p.blocking]
+    assert len(blocking_default) == 0
+
+    # With missing path: vocabulary alone is stricter (more findings blocking)
+    problems = docket_fixture_name_problems(dictionary_path=tmp_path / "missing")
+    blocking_missing = [p for p in problems if p.blocking]
+    assert len(blocking_missing) > len(blocking_default)
