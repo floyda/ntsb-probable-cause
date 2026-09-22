@@ -21,7 +21,16 @@ data/handcheck/
 # git-ignored, one `git add -A` away from landing open-split text in this public repository
 # (S2.5 Task 10, fix round 1, Important 4). "Nothing under data/ is committed" (CLAUDE.md rule
 # 4) is enforced here as a rule, not only as a list of known cases.
-data/
+# Anchored to the repo root (S2.5 Task 10, fix round 3, Important): an unqualified "data/"
+# matches at ANY depth, not only the repo root -- it silently also matched the tracked package
+# `src/ntsb_probable_cause/data/`, which meant every file in that package was untracked-and-
+# ignored (invisible to `git status`) AND skipped entirely by `ruff check` (ruff honours
+# ignore files even for tracked files), so lint stopped covering that package with nobody
+# noticing. The leading slash restricts this rule to the repository root's own `data/`, which
+# is the only one this rule was ever meant to reach -- the specific lines above it (`data/raw/`
+# etc.) were never affected, since a pattern containing an internal slash is already anchored
+# to the `.gitignore`'s own directory by git's own rules.
+/data/
 *.zip
 *.mdb
 *.accdb

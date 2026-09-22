@@ -110,8 +110,13 @@ alongside `.gitignore`, but which is never committed and applies to every worktr
 repository, so it is the right place for a rule that exists only until the merge:
 
 ```
-printf '%s\n' 'data/' '*.sqlite-wal' '*.sqlite-shm' '*.sqlite-journal' >> /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.git/info/exclude
+printf '%s\n' '/data/' '*.sqlite-wal' '*.sqlite-shm' '*.sqlite-journal' >> /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.git/info/exclude
 ```
+
+(`/data/`, with the **leading slash** — not the bare `data/` a pattern without one matches at
+*any* depth, which would also, wrongly, hide the tracked package `src/ntsb_probable_cause/
+data/` from git and from `ruff`. The leading slash anchors the rule to the repository root,
+the only place this rule is meant to reach.)
 
 Then check it took effect:
 
@@ -120,11 +125,18 @@ git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause check-ignore 
 ```
 
 Each of the three lines this prints should name `.git/info/exclude` as the source — **not**
-`.gitignore` — for example `.git/info/exclude:7:data/    data/recorder.log` (today, `data/` is
-the first real rule the four-line `printf` above adds, right after the file's default six
-comment lines, so it lands on line 7; the exact line number does not matter, only that
-`.git/info/exclude` is doing the ignoring and each of the three paths gets a line at all). If a
-path instead prints nothing, it is not ignored — check that the four lines actually landed with
+`.gitignore` — for example (a real tab character sits between the pattern and the path, as
+`git` itself prints it):
+
+```
+.git/info/exclude:7:/data/	data/recorder.log
+```
+
+(today, `/data/` is the first real rule the four-line `printf` above adds, right after the
+file's default six comment lines, so it lands on line 7; the exact line number does not
+matter, only that `.git/info/exclude` is doing the ignoring and each of the three paths gets a
+line at all). If a path instead prints nothing, it is not ignored — check that the four lines
+actually landed with
 `cat /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.git/info/exclude`. This step
 is one-time: once this stage merges, the tracked `.gitignore` itself covers all four patterns,
 and `.git/info/exclude`'s copies become redundant (harmless to leave in place).
@@ -181,11 +193,11 @@ goes to `/dev/null` here — this is only to make the dialog appear, not to read
 - **Tick "Save in Keychain"** in that dialog. The passphrase is then read from the macOS
   Keychain instead, which does not expire on the same 24-hour ceiling, and every night
   succeeds without you doing anything further.
-- **Or do nothing**, and accept that nights more than 24 hours after your last `pass` use will
-  fail with "NTSB key unavailable" — the weekend pattern above is the common case. This is
-  safe: spec §3 promises that a missed night only *widens the interval* the next run measures
-  against (it never invents a false date), so a run that does not happen is never a wrong
-  answer, only a later one.
+- **Or do nothing**, and accept that nights more than 24 hours after you last *typed* the
+  passphrase will fail with "NTSB key unavailable" — the weekend pattern above is the common
+  case. This is safe: spec §3 promises that a missed night only *widens the interval* the next
+  run measures against (it never invents a false date), so a run that does not happen is never
+  a wrong answer, only a later one.
 
 Either is fine. Pick whichever matches how much you want to think about this.
 
@@ -317,6 +329,15 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.floyda.ntsb-record.p
 `launchctl load ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist` instead — both do the
 same thing.)
 
+**If this prints `Bootstrap failed: 5`**, the job is already loaded (for example, from an
+earlier attempt) — `bootstrap` never replaces an existing job in place. Unload it first, then
+bootstrap again:
+
+```
+launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist
+```
+
 ---
 
 ## Stage 6 — Run it once by hand, and confirm it worked
@@ -327,8 +348,11 @@ Do not wait for 03:00 to find out whether it works:
 launchctl kickstart -k gui/$(id -u)/dev.floyda.ntsb-record
 ```
 
-This is also the moment the `pinentry-mac` dialog may appear (stage 2) — if it does, decide
-then whether to tick "Save in Keychain."
+This is also the moment the `pinentry-mac` dialog may appear (stage 2) — if it does, **you have
+60 seconds to type the passphrase** before the wrapper gives up waiting and logs "NTSB key
+unavailable" (stage 2 explains why: 60 seconds is the ceiling the wrapper itself gives `pass`).
+Deciding stage 2's choice *before* running this — ticking "Save in Keychain" there — avoids
+this altogether, since the dialog then never appears at all.
 
 **A full real run can take up to about 90 minutes** (the same ceiling given to the AWS Fargate
 task, spec §9.2; a normal night is closer to 40 minutes, but the first run against a case list
@@ -350,17 +374,24 @@ failure — check the log next.
 tail /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.log
 ```
 
-Look for the line `run done` (from the wrapper) after a block of lines starting
-`... INFO ntsb_probable_cause.recorder ...` (from the recorder itself, spec §9.1's own log
-format, in UTC to match the wrapper's own timestamps). A healthy finish looks like this — every
-`=...` filled in with a number, never blank:
+**A healthy finish is two different lines, in this order** — do not expect one line with
+everything in it:
 
 ```
-run done cases=903 changed=27 new_docs=41 failed=2 renumber_suspects=0 minutes=38
+2026-09-23T03:00:41Z INFO ntsb_probable_cause.recorder.run run done cases=903 changed=27 new_docs=41 failed=2 renumber_suspects=0 minutes=38
+2026-09-23T03:38:52Z run done
 ```
 
-If you instead see `NTSB key unavailable` or `run failed exit=...`, the key or the run itself
-is the problem — nothing was written to the store beyond stage 4's note above.
+The **first** is the recorder itself (spec §9.1's own log format, timestamped in UTC to match
+the wrapper's), with the counts that say what the night actually did — every `=...` filled in
+with a number, never blank. The **second**, further down and bare (no counts, no `INFO
+ntsb_probable_cause...` prefix), is the *wrapper's own* line, written only after that whole
+process has already exited successfully — this is the one that means the night is fully done,
+not merely that the recorder finished its own work.
+
+If you instead see `NTSB key unavailable` or `run failed exit=...` where that second line
+would be, the key or the run itself is the problem — nothing was written to the store beyond
+stage 4's note above.
 
 ```
 sqlite3 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
@@ -376,10 +407,17 @@ that is not a data loss on the bridge.
 ## Stage 7 — After the merge: point the bridge at the main checkout
 
 Once this stage's pull request is merged to `main`, the worktree in stage 1 is no longer where
-the current code lives. Two things change here, and only these two:
+the current code lives. Three things happen here, in this order:
 
-**1. Re-install the wrapper script**, using stage 1's "Updating the installed script" step,
-pointed at the main checkout instead of the worktree:
+**1. Bring the main checkout up to date**, so it actually has the merged code before anything
+below copies from it:
+
+```
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause pull
+```
+
+**2. Re-install the wrapper script**, using stage 1's "Updating the installed script" step,
+now pointed at the main checkout instead of the worktree:
 
 ```
 cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh \
@@ -393,10 +431,13 @@ This is needed even though the installed script's own *path* in the plist never 
 copied from the worktree, and this is the point where the installed copy should start
 tracking the main checkout's version going forward.
 
-**2. Edit the plist's second `ProgramArguments` string** — the code directory `ntsb-record
-run` runs from. This is the *only* plist string that changes; the first (the wrapper script's
-own path, in Application Support, never inside a git checkout) stays exactly as stage 5 wrote
-it.
+**3. Edit the plist's second `ProgramArguments` string by hand** — the code directory
+`ntsb-record run` runs from. This is the *only* plist string that changes; the first (the
+wrapper script's own path, in Application Support, never inside a git checkout) stays exactly
+as stage 5 wrote it. **Do not use `plutil -replace ProgramArguments.1 -string ...`** to do this
+— it *inserts* a third array entry rather than replacing the second, which silently breaks the
+wrapper's own argument parsing (it expects exactly one argument, the code directory). Open the
+file in a text editor and change the one line by hand instead.
 
 Before (what stage 5 installed):
 
