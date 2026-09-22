@@ -8,6 +8,7 @@ from ntsb_probable_cause.data.api import NtsbClient, Page
 from ntsb_probable_cause.errors import ApiError
 
 URL = "https://api.ntsb.gov/public/api/Common/v2/GetCasesByDateRange/"
+URL_MODIFIED = "https://api.ntsb.gov/public/api/Common/v1/GetCasesByModifiedDateRange/"
 
 
 def body(data: list[dict[str, object]], has_more: bool, marker: str | None) -> dict[str, object]:
@@ -143,7 +144,7 @@ def test_retries_transport_error_then_succeeds(respx_mock: respx.MockRouter) -> 
 
 
 def test_cases_modified_returns_the_list(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(url__regex=r".*GetCasesByModifiedDateRange.*").mock(
+    respx_mock.get(URL_MODIFIED).mock(
         return_value=httpx.Response(
             200, json=[{"mkey": 1, "mode": "Aviation"}, {"mkey": 2, "mode": "Railroad"}]
         )
@@ -158,33 +159,42 @@ def test_cases_modified_returns_the_list(respx_mock: respx.MockRouter) -> None:
 
 
 def test_cases_modified_rejects_an_object_body(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(url__regex=r".*GetCasesByModifiedDateRange.*").mock(
-        return_value=httpx.Response(200, json={})
-    )
+    respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(200, json={}))
     with NtsbClient("k", sleep=lambda _s: None) as client, pytest.raises(ApiError):
         client.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
 
 
 def test_cases_modified_accepts_204_empty_body(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(url__regex=r".*GetCasesByModifiedDateRange.*").mock(
-        return_value=httpx.Response(204)
-    )
+    respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(204))
     with NtsbClient("k", sleep=lambda _s: None) as client:
         rows = client.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
     assert rows == ()
 
 
 def test_cases_modified_rejects_list_with_non_object_element(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(url__regex=r".*GetCasesByModifiedDateRange.*").mock(
-        return_value=httpx.Response(200, json=[1, {"mkey": 2}])
-    )
+    respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(200, json=[1, {"mkey": 2}]))
     with NtsbClient("k", sleep=lambda _s: None) as client, pytest.raises(ApiError):
         client.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
 
 
 def test_cases_modified_rejects_non_json_body(respx_mock: respx.MockRouter) -> None:
-    respx_mock.get(url__regex=r".*GetCasesByModifiedDateRange.*").mock(
+    respx_mock.get(URL_MODIFIED).mock(
         return_value=httpx.Response(200, content=b"<html>Bad Gateway</html>")
     )
     with NtsbClient("k", sleep=lambda _s: None) as client, pytest.raises(ApiError):
         client.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
+
+
+def test_cases_modified_401_names_the_endpoint(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(401))
+    with (
+        NtsbClient("k", sleep=lambda _s: None) as client,
+        pytest.raises(ApiError, match="GetCasesByModifiedDateRange returned 401"),
+    ):
+        client.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
+
+
+def test_cases_by_date_range_401_names_the_endpoint(respx_mock: respx.MockRouter) -> None:
+    respx_mock.get(URL).mock(return_value=httpx.Response(401))
+    with client([]) as c, pytest.raises(ApiError, match="GetCasesByDateRangeV2 returned 401"):
+        fetch(c)

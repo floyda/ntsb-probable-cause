@@ -1,4 +1,8 @@
-"""Client for the NTSB Enterprise API's GetCasesByDateRangeV2 (spec: ../ntsb-spike/public.yaml)."""
+"""Client for the NTSB Enterprise API (spec: ../ntsb-spike/public.yaml).
+
+Endpoints: GetCasesByDateRangeV2 (cases by event date, aviation only, paginated) and
+GetCasesByModifiedDateRange (change feed, all modes, one response).
+"""
 
 import json
 import time
@@ -73,6 +77,7 @@ class NtsbClient:
         content = self._get(
             sources.CASES_BY_MODIFIED_DATE_RANGE_V1,
             {"startDate": start.isoformat(), "endDate": end.isoformat()},
+            name="GetCasesByModifiedDateRange",
         )
         try:
             payload = json.loads(content) if content.strip() else []
@@ -91,7 +96,10 @@ class NtsbClient:
         }
         number = 1
         while True:
-            page = self._parse(number, self._get(sources.CASES_BY_DATE_RANGE_V2, params))
+            page = self._parse(
+                number,
+                self._get(sources.CASES_BY_DATE_RANGE_V2, params, name="GetCasesByDateRangeV2"),
+            )
             yield page
             if not page.has_more:
                 return
@@ -105,9 +113,7 @@ class NtsbClient:
             params["marker"] = page.next_marker
             number += 1
 
-    def _get(self, path: str, params: dict[str, str]) -> bytes:
-        # Extract endpoint name from path for error messages
-        endpoint_name = path.rstrip("/").split("/")[-1]
+    def _get(self, path: str, params: dict[str, str], *, name: str) -> bytes:
         for attempt in range(1, self._max_attempts + 1):
             if self._requested:
                 self._sleep(self._gap)
@@ -121,12 +127,10 @@ class NtsbClient:
                     return response.content
                 status = response.status_code
                 if response.status_code not in _RETRY_STATUSES:
-                    raise ApiError(f"{endpoint_name} returned {status}: {response.text[:200]}")
+                    raise ApiError(f"{name} returned {status}: {response.text[:200]}")
             if attempt < self._max_attempts:
                 self._sleep(self._backoff * 2 ** (attempt - 1))
-        raise ApiError(
-            f"{endpoint_name} failed after {self._max_attempts} attempts; last status {status}"
-        )
+        raise ApiError(f"{name} failed after {self._max_attempts} attempts; last status {status}")
 
     @staticmethod
     def _parse(number: int, content: bytes) -> Page:

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 # ../ntsb-spike/public.yaml, operation get-cases-by-date-range-v2; confirmed by saved responses.
 NTSB_BASE_URL = "https://api.ntsb.gov/public"
 CASES_BY_DATE_RANGE_V2 = "api/Common/v2/GetCasesByDateRange/"
-# ../ntsb-spike/public.yaml, operation get-cases-by-modified-date-range-v1.
+# ../ntsb-spike/public.yaml, operation get-cases-by-modified-date-range.
 CASES_BY_MODIFIED_DATE_RANGE_V1 = "api/Common/v1/GetCasesByModifiedDateRange/"
 MODE_AVIATION = "aviation"
 MAX_PAGE_SIZE = 1000
