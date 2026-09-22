@@ -148,6 +148,71 @@ def test_watched_mkeys_includes_tail_until_date(store: Store) -> None:
     assert store.earliest_watched_event_month(today="2026-10-15") == "2025-06"
 
 
+def test_watched_column_round_trips(store: Store) -> None:
+    """`CaseRow.watched` defaults to True and its value survives `upsert_case`/`get_case`."""
+    row = CaseRow(
+        mkey=1,
+        ntsb_number="X",
+        event_date="2026-01-01",
+        regulation="091",
+        status="Ongoing",
+        first_seen_run=1,
+        last_seen_run=1,
+        last_case_run=1,
+        last_docket_run=None,
+        watch_until=None,
+    )
+    assert row.watched is True
+    store.upsert_case(row)
+    fetched = store.get_case(1)
+    assert fetched is not None
+    assert fetched.watched is True
+
+    store.upsert_case(row.model_copy(update={"watched": False}))
+    fetched = store.get_case(1)
+    assert fetched is not None
+    assert fetched.watched is False
+
+
+def test_watched_mkeys_excludes_a_case_with_watched_false(store: Store) -> None:
+    """A case whose regulation dropped off Part 91 is excluded even while status is Ongoing.
+
+    `watched_mkeys` and `earliest_watched_event_month` both require `watched = 1` in addition
+    to the status/tail predicate (0064/Task 7 rule 7).
+    """
+    store.upsert_case(
+        CaseRow(
+            mkey=1,
+            ntsb_number="X",
+            event_date="2020-01-01",
+            regulation="135",
+            status="Ongoing",
+            first_seen_run=1,
+            last_seen_run=1,
+            last_case_run=1,
+            last_docket_run=None,
+            watch_until=None,
+            watched=False,
+        )
+    )
+    store.upsert_case(
+        CaseRow(
+            mkey=2,
+            ntsb_number="Y",
+            event_date="2025-06-01",
+            regulation="091",
+            status="Ongoing",
+            first_seen_run=1,
+            last_seen_run=1,
+            last_case_run=1,
+            last_docket_run=None,
+            watch_until=None,
+        )
+    )
+    assert store.watched_mkeys(today="2026-10-15") == [2]
+    assert store.earliest_watched_event_month(today="2026-10-15") == "2025-06"
+
+
 def test_earliest_watched_event_month_is_none_when_nothing_watched(store: Store) -> None:
     store.upsert_case(
         CaseRow(

@@ -35,7 +35,8 @@ MIGRATIONS: tuple[str, ...] = (
         last_seen_run INTEGER NOT NULL,
         last_case_run INTEGER,
         last_docket_run INTEGER,
-        watch_until TEXT
+        watch_until TEXT,
+        watched INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE status_events (

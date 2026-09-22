@@ -1,11 +1,17 @@
 import copy
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from tests.boundary import RecordingBatchRunner, assert_boundary_holds, assert_requests_clean
+from tests.boundary import (
+    CODE_LENGTH_THRESHOLD,
+    RecordingBatchRunner,
+    assert_boundary_holds,
+    assert_requests_clean,
+    withheld_strings,
+)
 from tests.test_attach import _docket as _small_docket
 
 from ntsb_probable_cause import fields
@@ -20,6 +26,7 @@ from ntsb_probable_cause.model.client import (
     ToolCall,
     Turn,
 )
+from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
@@ -28,6 +35,7 @@ from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import runner as runner_module
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.runner import Runner, RunSpec
+from ntsb_probable_cause.store import Store
 
 _GOOD_STAGE1 = json.dumps(
     {
@@ -322,3 +330,73 @@ def test_synthesis_document_never_reaches_the_payload(
         split_record(context)
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_boundary_holds(context, lambda r: split_record(r, min_sentence_chars=10**9))
+
+
+@pytest.fixture
+def closing_record(record_fixtures: list[dict[str, object]]) -> dict[str, object]:
+    """A closed dev-split record carrying a full set of withheld text and codes (deep-copied).
+
+    Picked so ``withheld_strings`` has something of every kind to check: a probable cause, both
+    narratives, and at least one occurrence code and one finding code long enough to qualify
+    under ``CODE_LENGTH_THRESHOLD`` -- otherwise the store boundary test below could pass
+    vacuously, checking nothing.
+    """
+    raw = next(
+        r
+        for r in record_fixtures
+        if fields.probable_cause(r)
+        and fields.factual_narrative(r)
+        and fields.analysis_narrative(r)
+        and fields.occurrence_codes(r)
+        and fields.finding_codes(r)
+    )
+    return copy.deepcopy(raw)
+
+
+def _leaky_split(raw: Mapping[str, object]) -> tuple[Evidence, Synthesis, Verdict]:
+    """A splitter that copies the factual narrative into evidence (Task 7 Step 2)."""
+    evidence, synthesis, verdict = split_record(raw)
+    leaked = evidence.model_copy(update={"prelim_narrative": synthesis.factual_narrative})
+    return leaked, synthesis, verdict
+
+
+def test_store_never_holds_synthesis_or_verdict(
+    tmp_path: Path, closing_record: dict[str, object]
+) -> None:
+    """A closing record carries the probable cause and both narratives; none reaches the file."""
+    store = Store(tmp_path / "r.sqlite")
+    store.migrate()
+    observe_case(store, closing_record, run_id=1, today=date(2026, 10, 1))
+    store.close()
+    db_path = tmp_path / "r.sqlite"
+    wal_path = tmp_path / "r.sqlite-wal"
+    blob = (
+        (db_path.read_bytes() + wal_path.read_bytes())
+        if wal_path.exists()
+        else db_path.read_bytes()
+    )
+    checked = withheld_strings(closing_record)
+    # Each kind (cause, narrative, codes) must contribute at least one checked string, or this
+    # test could pass by checking nothing of that kind rather than because nothing leaked.
+    assert fields.probable_cause(closing_record) in checked
+    assert fields.factual_narrative(closing_record) in checked
+    assert fields.analysis_narrative(closing_record) in checked
+    qualifying_codes = [
+        code
+        for code in fields.occurrence_codes(closing_record) + fields.finding_codes(closing_record)
+        if len(code) >= CODE_LENGTH_THRESHOLD
+    ]
+    assert qualifying_codes
+    assert all(code in checked for code in qualifying_codes)
+
+    for text in checked:
+        assert text.encode() not in blob
+
+
+def test_store_boundary_test_fails_when_the_split_is_bypassed(
+    tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation: a splitter that returns the whole record as evidence must be caught."""
+    monkeypatch.setattr("ntsb_probable_cause.recorder.cases.split_record", _leaky_split)
+    with pytest.raises(AssertionError):
+        test_store_never_holds_synthesis_or_verdict(tmp_path, closing_record)

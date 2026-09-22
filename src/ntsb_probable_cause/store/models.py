@@ -16,6 +16,7 @@ class CaseRow(BaseModel, frozen=True):
     last_case_run: int | None
     last_docket_run: int | None
     watch_until: str | None
+    watched: bool = True
 
 
 class DocumentRow(BaseModel, frozen=True):

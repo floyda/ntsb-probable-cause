@@ -100,6 +100,11 @@ source_modules = [
     "ntsb_probable_cause.recorder",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
+# Task 7: the recorder's case side calls split_record itself (CLAUDE.md rule 1) and discards
+# the Synthesis/Verdict it returns; that necessary call is the only edge exempted, so the
+# recorder still cannot import records.synthesis or records.verdict directly, or by any other
+# path.
+ignore_imports = ["ntsb_probable_cause.recorder.cases -> ntsb_probable_cause.records.split"]
 
 [[tool.importlinter.contracts]]
 name = "The model boundary cannot see synthesis or verdict"

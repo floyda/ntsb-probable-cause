@@ -27,6 +27,32 @@ from ntsb_probable_cause.sources import docket_url
 
 Splitter = Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]]
 
+# Every occurrence code in the fixtures is 6 digits and every finding code 10 (checked against
+# every development-split fixture; see the Task 7 report). A short numeric code -- the brief's
+# own example is "240" -- is not distinctive: it can appear by chance in a binary SQLite file's
+# row ids, byte counts or other encoded integers, which would make a check built on it flaky or
+# vacuous. Six digits, all-numeric, checked as an exact substring of raw bytes, is long enough
+# that an accidental match against unrelated binary data is not a real risk, and it is also the
+# shortest code this project actually has, so the threshold excludes nothing real.
+CODE_LENGTH_THRESHOLD = 6
+
+
+def withheld_strings(raw: Mapping[str, object]) -> list[str]:
+    """Every withheld string a store boundary test can check for in a case's raw record.
+
+    The probable cause and both narratives, plus every occurrence and finding code long enough
+    to be distinctive (see ``CODE_LENGTH_THRESHOLD``). Empty/``None`` values are omitted.
+    """
+    texts = [
+        fields.probable_cause(raw),
+        fields.factual_narrative(raw),
+        fields.analysis_narrative(raw),
+    ]
+    codes = fields.occurrence_codes(raw) + fields.finding_codes(raw)
+    return [text for text in texts if text] + [
+        code for code in codes if len(code) >= CODE_LENGTH_THRESHOLD
+    ]
+
 
 def _as_evidence_value(value: object) -> EvidenceValue:
     if isinstance(value, list):

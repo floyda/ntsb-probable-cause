@@ -221,7 +221,7 @@ class Store:
         """The case's latest known state, or ``None`` if it has never been seen."""
         row = self._conn.execute(
             "SELECT mkey, ntsb_number, event_date, regulation, status, first_seen_run, "
-            "last_seen_run, last_case_run, last_docket_run, watch_until "
+            "last_seen_run, last_case_run, last_docket_run, watch_until, watched "
             "FROM cases WHERE mkey=?",
             (mkey,),
         ).fetchone()
@@ -238,6 +238,7 @@ class Store:
             last_case_run=row[7],
             last_docket_run=row[8],
             watch_until=row[9],
+            watched=bool(row[10]),
         )
 
     def upsert_case(self, row: CaseRow) -> None:
@@ -245,14 +246,16 @@ class Store:
         with self.transaction() as conn:
             conn.execute(
                 "INSERT INTO cases (mkey, ntsb_number, event_date, regulation, status, "
-                "first_seen_run, last_seen_run, last_case_run, last_docket_run, watch_until) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "first_seen_run, last_seen_run, last_case_run, last_docket_run, watch_until, "
+                "watched) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(mkey) DO UPDATE SET "
                 "ntsb_number=excluded.ntsb_number, event_date=excluded.event_date, "
                 "regulation=excluded.regulation, status=excluded.status, "
                 "first_seen_run=excluded.first_seen_run, last_seen_run=excluded.last_seen_run, "
                 "last_case_run=excluded.last_case_run, "
-                "last_docket_run=excluded.last_docket_run, watch_until=excluded.watch_until",
+                "last_docket_run=excluded.last_docket_run, watch_until=excluded.watch_until, "
+                "watched=excluded.watched",
                 (
                     row.mkey,
                     row.ntsb_number,
@@ -264,11 +267,15 @@ class Store:
                     row.last_case_run,
                     row.last_docket_run,
                     row.watch_until,
+                    int(row.watched),
                 ),
             )
 
     def watched_mkeys(self, *, today: str) -> list[int]:
         """Every case still watched: status ``Ongoing``, or within its ``watch_until`` tail.
+
+        A case whose ``watched`` column is 0 -- its regulation is no longer Part 91 or empty
+        (decision 0064) -- is excluded even if its status or tail would otherwise qualify.
 
         Raises:
             ValueError: ``today`` is not exactly ``YYYY-MM-DD``.
@@ -276,7 +283,8 @@ class Store:
         _require_plain_date(today)
         rows = self._conn.execute(
             "SELECT mkey FROM cases "
-            "WHERE status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?) "
+            "WHERE (status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?)) "
+            "AND watched = 1 "
             "ORDER BY mkey",
             (today,),
         ).fetchall()
@@ -285,13 +293,16 @@ class Store:
     def earliest_watched_event_month(self, *, today: str) -> str | None:
         """The earliest ``YYYY-MM`` event month among watched cases, or ``None`` if none.
 
+        See :meth:`watched_mkeys` for the ``watched`` column's role in the predicate.
+
         Raises:
             ValueError: ``today`` is not exactly ``YYYY-MM-DD``.
         """
         _require_plain_date(today)
         row = self._conn.execute(
             "SELECT MIN(substr(event_date, 1, 7)) FROM cases "
-            "WHERE status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?)",
+            "WHERE (status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?)) "
+            "AND watched = 1",
             (today,),
         ).fetchone()
         return row[0] if row is not None else None
