@@ -5,12 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ntsb_probable_cause.docket.listing import (
-    Listing,
-    ListingEntry,
-    parse_listing,
-    render_listing,
-)
+from ntsb_probable_cause.docket.listing import Listing, ListingEntry, parse_listing, render_listing
 from ntsb_probable_cause.errors import DocketError
 
 FIXTURES = Path("tests/fixtures/docket")
