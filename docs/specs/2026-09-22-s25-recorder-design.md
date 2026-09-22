@@ -1,7 +1,7 @@
 # S2.5 — The recorder: design
 
 *Drafted 2026-09-21 and 2026-09-22 from a design session with Andy, after the release of S2
-(`v0.3.0`, pull request #8). Status: Draft, awaiting Andy's review. This is the specification
+(`v0.3.0`, pull request #8). Status: Approved (2026-09-22, Andy). This is the specification
 for build stage S2.5 in `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records
 what S2.5 builds, why, the decisions S2.5 takes, and the condition for moving on. The
 implementation plan is written from it separately.*
