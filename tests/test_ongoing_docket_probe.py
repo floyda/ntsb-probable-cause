@@ -29,6 +29,13 @@ from ntsb_probable_cause.errors import DocketError
 SAVED = Path("tests/fixtures/docket/ERA17LA217/listing.html").read_bytes().decode("utf-8")
 MKEY = 95459
 
+# tests/fixtures/docket/not-released.html: the site's real answer for ProjectID 999999999, a
+# nonexistent case (fetched 2026-09-22 by the controller during Task 3's live run) -- not
+# open-split data, since no such case exists (decision 0024 governs real cases, not this).
+# HTTP 200, title "NTSB Docket - Docket Management System", no item count, no info block, and
+# one line reading "The docket for this investigation has not been released."
+NOT_RELEASED = Path("tests/fixtures/docket/not-released.html").read_bytes().decode("utf-8")
+
 
 class _ListSource:
     """A fixed page of records, wrapped as ``fetch_months``' ``CasesSource`` protocol wants."""
@@ -84,6 +91,32 @@ def test_page_without_a_count_or_a_block_is_distinguished() -> None:
     """Fix round 1, IMPORTANT 2: a docket shell (a count, no info block) is not the same
     outcome as an unrelated 200 page (a maintenance page, say) with no docket text at all."""
     assert classify_page("<html>nothing to see here</html>", 1) == "no-info-block-no-count"
+
+
+def test_the_sites_not_released_page_classifies_as_not_released() -> None:
+    """Fix round 2 (Andy's decision, after the live run): the site's real answer for a case
+    with no public docket at all is an HTTP 200 page carrying this sentence, not an error."""
+    assert classify_page(NOT_RELEASED, 999999999) == "not-released"
+
+
+def test_the_same_page_without_the_sentence_is_no_info_block_no_count() -> None:
+    """Without the sentence, the page has no count and no info block either, so it still
+    falls into no-info-block-no-count -- a layout change away from the known sentence stays
+    visible rather than silently landing back in "not-released"."""
+    stripped = NOT_RELEASED.replace(
+        "The docket for this investigation has not been released.", "Some other message."
+    )
+    assert classify_page(stripped, 999999999) == "no-info-block-no-count"
+
+
+def test_not_released_survives_a_reflow() -> None:
+    """Matched after whitespace-normalising, so a reflow of the surrounding markup -- extra
+    line breaks or runs of spaces inside the sentence itself -- does not defeat the match."""
+    reflowed = (
+        "<html>\n  <h5>\n    The docket   for this investigation\n    has not been "
+        "released.\n  </h5>\n</html>"
+    )
+    assert classify_page(reflowed, 1) == "not-released"
 
 
 def test_mismatch_is_reported_not_raised() -> None:

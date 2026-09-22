@@ -19,6 +19,7 @@ only to fetch and are never printed or saved (decision 0024).
 """
 
 import argparse
+import html
 import math
 import random
 import re
@@ -57,6 +58,20 @@ _REGULATION_PATH = "aircrafts[0].ownerOperators[0].regulationFlightConductedUnde
 _RETURNED_STATUS = re.compile(r"returned (\d+)$")
 _LAST_STATUS = re.compile(r"last status (\S+)$")
 
+# Live run, 2026-09-22 (fix round 2, "Andy's decision"): the site answers a case with no
+# public docket at all with an ordinary HTTP 200 page (title "NTSB Docket - Docket Management
+# System") carrying this exact sentence in an `<h5>`, not with an HTTP error or a page with no
+# text. Confirmed against ProjectID 999999999, a nonexistent case -- fixture
+# tests/fixtures/docket/not-released.html. One constant, matched after unescaping and
+# whitespace-normalising the page, so a reflow of the surrounding markup does not break it.
+_NOT_RELEASED_SENTENCE = "The docket for this investigation has not been released."
+_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalised_text(page: str) -> str:
+    """``page`` with HTML entities unescaped and whitespace collapsed to single spaces."""
+    return _WHITESPACE.sub(" ", html.unescape(page)).strip()
+
 
 def stratify(days: int) -> str:
     """The stratum name for ``days`` since the event."""
@@ -64,16 +79,20 @@ def stratify(days: int) -> str:
 
 
 def classify_page(page: str, mkey: int) -> str:
-    """One of five outcomes for a fetched listing page.
+    """One of six outcomes for a fetched listing page.
 
-    ``"read"`` (documents listed), ``"empty"`` (an info block, but no rows),
-    ``"no-info-block"`` (a declared item count but no "Docket Information" block),
-    ``"no-info-block-no-count"`` (no count either -- an unrelated 200 page, not a docket
-    shell) or ``"count-mismatch"`` (the declared count disagrees with the parsed rows). Fix
-    round 1, IMPORTANT 2: the last two used to be one bucket; ``Listing.declared_items`` (a
-    number vs ``None``) tells them apart, since a page with no docket text at all is a much
-    stronger "no docket" signal than a docket shell with an empty info block.
+    ``"not-released"`` (the site's own "has not been released" page -- checked first, see
+    ``_NOT_RELEASED_SENTENCE`` above), ``"read"`` (documents listed), ``"empty"`` (an info
+    block, but no rows), ``"no-info-block"`` (a declared item count but no "Docket
+    Information" block), ``"no-info-block-no-count"`` (no count either -- an unrelated 200
+    page, not a docket shell) or ``"count-mismatch"`` (the declared count disagrees with the
+    parsed rows). Fix round 1, IMPORTANT 2: the last two used to be one bucket;
+    ``Listing.declared_items`` (a number vs ``None``) tells them apart, since a page with no
+    docket text at all is a much stronger "no docket" signal than a docket shell with an
+    empty info block.
     """
+    if _NOT_RELEASED_SENTENCE in _normalised_text(page):
+        return "not-released"
     try:
         listing = parse_listing(page, mkey=mkey)
     except DocketError:
