@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from pydantic import BaseModel
 
 from ntsb_probable_cause.errors import LeakageError
-from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
 from ntsb_probable_cause.paths import resolve_path
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
@@ -42,6 +42,12 @@ _SKIPPED_ROLES = frozenset(
 # "Empty" (spec §4.1): the regulation has not been recorded yet. `resolve_path` returns `None`
 # for a missing field; an empty string is treated the same way, belt and suspenders.
 _EMPTY_REGULATION = frozenset({None, ""})
+
+# store/models.py: `CaseRow.first_seen_run` -- the first run that ever wrote this case's row.
+# `last_case_run` -- the last run whose call to `observe_case` produced this row (whether or
+# not anything changed); used as the `absent_run` for the next diff. `last_seen_run` -- the
+# last run in which the API actually returned this case's record; `mark_not_returned` never
+# sets it, because the whole point of that call is that the case was NOT seen.
 
 
 class CaseOutcome(BaseModel, frozen=True):
@@ -75,6 +81,17 @@ def _regulation_of(raw: Mapping[str, object]) -> str | None:
     return regulation if isinstance(regulation, str) else None
 
 
+def _is_empty(value: EvidenceValue) -> bool:
+    """No observation to record: ``None``, or an empty string/tuple.
+
+    The extractors in ``fields.py`` already normalise "" and ``()`` to ``None`` themselves
+    (``_text_at``, ``_strings_at``), so in practice only ``None`` occurs here -- but checking
+    all three keeps the first-sight rule correct even if an extractor's normalisation ever
+    changes, rather than depending on it silently.
+    """
+    return value is None or value in ("", ())
+
+
 def _apply_status(  # noqa: PLR0913 -- one parameter per rule 4's inputs and outputs.
     store: Store,
     mkey: int,
@@ -106,11 +123,21 @@ def _apply_status(  # noqa: PLR0913 -- one parameter per rule 4's inputs and out
 def _apply_fields(
     store: Store, mkey: int, evidence: Evidence, *, absent: int | None, run_id: int
 ) -> int:
-    """Write one ``field_snapshots`` row per changed, non-skipped role; return how many."""
+    """Write one ``field_snapshots`` row per changed, non-skipped role; return how many.
+
+    Spec §5.2: "one field_snapshots row per field that has a value" -- a role with no prior
+    row and an empty value (see :func:`_is_empty`) has nothing to record yet, so first sight is
+    silent for it (otherwise Task 11's arrival query would read every unset field as present
+    from the first watch). Once a role has a stored row, a later change to an empty value is a
+    real change and is written like any other change -- nothing already written is deleted.
+    """
     previous = store.latest_snapshots(mkey)
     count = 0
     for role, value in evidence.role_values().items():
         if role in _SKIPPED_ROLES:
+            continue
+        has_prior_row = role.value in previous
+        if not has_prior_row and _is_empty(value):
             continue
         value_json = json.dumps(value, sort_keys=True)
         if previous.get(role.value) == value_json:
@@ -160,6 +187,12 @@ def observe_case(
         _log.warning("case mkey=%d failed=%s", mkey, "no event date")
         return CaseOutcome(mkey=mkey, changed=False, failed="no event date")
 
+    status_value = raw.get("completionStatus")
+    if not isinstance(status_value, str) or not status_value:
+        _log.warning("case mkey=%d failed=%s", mkey, "no status")
+        return CaseOutcome(mkey=mkey, changed=False, failed="no status")
+    new_status = status_value
+
     try:
         evidence, _synthesis, _verdict = split_record(raw)
     except (LeakageError, ValueError) as error:
@@ -168,9 +201,6 @@ def observe_case(
         failed = type(error).__name__
         _log.warning("case mkey=%d failed=%s", mkey, failed)
         return CaseOutcome(mkey=mkey, changed=False, failed=failed)
-
-    status_value = raw.get("completionStatus")
-    new_status = status_value if isinstance(status_value, str) else ""
 
     existing = store.get_case(mkey)
     absent = existing.last_case_run if existing else None
@@ -202,10 +232,17 @@ def observe_case(
             wrote.append("1 prelim narrative")
 
         regulation = _regulation_of(raw)
-        watched = is_watchable(raw) or (
-            watch_until is not None and watch_until >= today.isoformat()
-        )
-        if regulation and regulation != GA_REGULATION:
+        # Important 4 (Task 7 fix round 1): the tail only re-admits a case that was actually
+        # watched at the moment it left Ongoing. Without `was_watched`, a case already dropped
+        # for its regulation (rule 7) would be readmitted to the watch set the night it closes,
+        # since closing sets a fresh `watch_until` regardless of why the case stopped being
+        # watched -- the approved spec §4.1 ("stops being watched") governs over the plan's
+        # plain `is_watchable(raw) or tail_active` formula.
+        was_watched = existing.watched if existing else True
+        tail_active = watch_until is not None and watch_until >= today.isoformat()
+        watched = is_watchable(raw) or (tail_active and was_watched)
+        # Logged once, on the transition, not every night the regulation stays bad.
+        if was_watched and not watched and regulation and regulation != GA_REGULATION:
             _log.info("case mkey=%d dropped: regulation=%s", mkey, regulation)
 
         store.upsert_case(
@@ -229,16 +266,33 @@ def observe_case(
     return CaseOutcome(mkey=mkey, changed=changed, failed=None)
 
 
-def mark_not_returned(store: Store, mkey: int, *, run_id: int) -> None:
+def mark_not_returned(store: Store, mkey: int, *, run_id: int, today: date) -> None:
     """Record that a previously watched case's API record no longer appears in its event month.
 
-    Spec §5.2/§7: a case the API stops returning is recorded the same way as any other status
-    change, and nothing already written is touched or deleted. Idempotent: a case already
-    marked ``not returned`` writes nothing on a later night.
+    Spec §4.1/§7 rule 1: "not returned" is a departure from ``Ongoing`` like any other and gets
+    the same 30-day tail -- it is not an immediate, tail-less drop. The tail is set only when
+    the case was ``Ongoing`` (mirroring ``_apply_status``'s rule for every other departure from
+    ``Ongoing``); a case that goes ``not returned`` a second time, or reappears and vanishes
+    again, keeps whatever tail it already had rather than getting a fresh one. ``watched``
+    follows the same tail rule ``observe_case`` uses (Important 4): the tail only counts if the
+    case was actually watched beforehand.
+
+    Neither ``last_seen_run`` nor ``last_case_run`` is touched: the API did not return this
+    case tonight, so tonight is not "last seen", and no evidence was reprocessed, so it is not
+    "last cased" either -- both keep meaning "the last night `observe_case` actually ran for
+    this case" (see the module-level comment by ``CaseRow`` above).
+
+    Idempotent: a case already marked ``not returned`` writes nothing on a later night.
     """
     existing = store.get_case(mkey)
     if existing is None or existing.status == NOT_RETURNED_STATUS:
         return
+
+    watch_until = existing.watch_until
+    if existing.status == ONGOING_STATUS:
+        watch_until = (today + timedelta(days=TAIL_DAYS)).isoformat()
+    tail_active = watch_until is not None and watch_until >= today.isoformat()
+    watched = tail_active and existing.watched
 
     with store.transaction():
         store.add_status_event(
@@ -251,7 +305,11 @@ def mark_not_returned(store: Store, mkey: int, *, run_id: int) -> None:
         )
         store.upsert_case(
             existing.model_copy(
-                update={"status": NOT_RETURNED_STATUS, "last_seen_run": run_id, "watched": False}
+                update={
+                    "status": NOT_RETURNED_STATUS,
+                    "watch_until": watch_until,
+                    "watched": watched,
+                }
             )
         )
 

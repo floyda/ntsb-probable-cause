@@ -1,5 +1,7 @@
 """The boundary check: inspect what actually reached the (fake) model, not what was intended."""
 
+import copy
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -36,22 +38,116 @@ Splitter = Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]]
 # shortest code this project actually has, so the threshold excludes nothing real.
 CODE_LENGTH_THRESHOLD = 6
 
+# Comfortably under an SQLite page's ~4KB usable payload. A withheld string that clears about
+# 4KB (a long factual narrative does) spans more than one page once it is stored, and the
+# pages are not contiguous in the file, so the whole string stops being one contiguous byte
+# run -- a store boundary check built on the whole string alone would then miss it (Task 7 fix
+# round 1, Important 1). A window this size almost always lands whole inside a single page, so
+# tiling the text with many such windows still catches the leak even though a window or two
+# that straddle a page boundary individually go undetected.
+WINDOW_CHARS = 200
+# The shortest window this module will emit; a bare remainder shorter than this (the tail end
+# of a text once it is cut into WINDOW_CHARS-sized pieces) is folded into the previous window
+# instead of being checked on its own, so no window is short enough to match unrelated bytes
+# by chance. Reuses the guard's own minimum-sentence length rather than inventing a second
+# number with no measurement behind it.
+_MIN_WINDOW_CHARS = 20
 
-def withheld_strings(raw: Mapping[str, object]) -> list[str]:
-    """Every withheld string a store boundary test can check for in a case's raw record.
 
-    The probable cause and both narratives, plus every occurrence and finding code long enough
-    to be distinctive (see ``CODE_LENGTH_THRESHOLD``). Empty/``None`` values are omitted.
+def _json_escaped(text: str) -> str:
+    """``text`` as it reads inside a JSON string: backslash escapes, no surrounding quotes.
+
+    ``field_snapshots.value_json`` is written with ``json.dumps``, which rewrites ``"``,
+    ``\\n`` and every non-ASCII character -- so a leak stored there does not read like the
+    source text any more, and a check that only looks for the raw form misses it.
+    """
+    return json.dumps(text)[1:-1]
+
+
+def _windows(text: str, size: int = WINDOW_CHARS) -> list[str]:
+    """Windows tiling ``text``, each short enough to fit on one SQLite page (see WINDOW_CHARS).
+
+    Non-overlapping except for the last window, which absorbs any final remainder shorter than
+    ``_MIN_WINDOW_CHARS`` rather than emitting it as its own too-short, potentially-vacuous
+    window.
+    """
+    windows: list[str] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        end = start + size
+        if length - end < _MIN_WINDOW_CHARS:
+            end = length
+        windows.append(text[start:end])
+        start = end
+    return windows
+
+
+def withheld_windows(raw: Mapping[str, object]) -> list[str]:
+    """Every substring a store boundary test should check for in a case's raw record.
+
+    The probable cause and both narratives, each in both raw and JSON-escaped form and cut
+    into windows well under an SQLite page (see ``_windows``, ``_json_escaped``), plus every
+    occurrence and finding code long enough to be distinctive (``CODE_LENGTH_THRESHOLD``) --
+    codes are short, all-numeric and unaffected by JSON escaping, so they are checked whole.
+    Empty/``None`` values are omitted.
     """
     texts = [
-        fields.probable_cause(raw),
-        fields.factual_narrative(raw),
-        fields.analysis_narrative(raw),
+        text
+        for text in (
+            fields.probable_cause(raw),
+            fields.factual_narrative(raw),
+            fields.analysis_narrative(raw),
+        )
+        if text
     ]
-    codes = fields.occurrence_codes(raw) + fields.finding_codes(raw)
-    return [text for text in texts if text] + [
-        code for code in codes if len(code) >= CODE_LENGTH_THRESHOLD
+    codes = [
+        code
+        for code in fields.occurrence_codes(raw) + fields.finding_codes(raw)
+        if len(code) >= CODE_LENGTH_THRESHOLD
     ]
+    windows: list[str] = list(codes)
+    for text in texts:
+        windows.extend(_windows(text))
+        windows.extend(_windows(_json_escaped(text)))
+    return windows
+
+
+# fields.WITHHELD_SUBTREES's narrative keys (fields.py:62-69), less the docket roles, which do
+# not exist on a raw API record at all (fields.py:244-249) and so need no stripping.
+_WITHHELD_NARRATIVE_KEYS = ("concatenatedFactualNarrative", "analysisNarrative", "probableCause")
+
+
+def as_ongoing(raw: Mapping[str, object], *, prelim_text: str) -> dict[str, object]:
+    """A deep copy of a closed dev-split record, edited to read like a live one.
+
+    ``completionStatus`` becomes ``Ongoing`` and every ``fields.WITHHELD_SUBTREES`` path is
+    stripped, so the record carries no synthesis or verdict content -- the shape a case
+    actually has while it is open. ``prelim_text`` becomes the preliminary narrative: none of
+    the development fixtures' closed records still carry one (the API clears it at closure).
+    """
+    record = copy.deepcopy(dict(raw))
+    record["completionStatus"] = "Ongoing"
+
+    narratives = record.get("narratives")
+    assert isinstance(narratives, list)
+    assert narratives
+    narrative = narratives[0]
+    assert isinstance(narrative, dict)
+    for key in _WITHHELD_NARRATIVE_KEYS:
+        narrative.pop(key, None)
+    narrative["prelimNarrative"] = prelim_text
+
+    aircrafts = record.get("aircrafts")
+    assert isinstance(aircrafts, list)
+    assert aircrafts
+    for aircraft in aircrafts:
+        assert isinstance(aircraft, dict)
+        aircraft.pop("events", None)
+        aircraft.pop("findings", None)
+
+    record.pop("richNarratives", None)
+    return record
 
 
 def _as_evidence_value(value: object) -> EvidenceValue:

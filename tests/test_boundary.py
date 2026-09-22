@@ -8,9 +8,10 @@ import pytest
 from tests.boundary import (
     CODE_LENGTH_THRESHOLD,
     RecordingBatchRunner,
+    as_ongoing,
     assert_boundary_holds,
     assert_requests_clean,
-    withheld_strings,
+    withheld_windows,
 )
 from tests.test_attach import _docket as _small_docket
 
@@ -336,10 +337,14 @@ def test_synthesis_document_never_reaches_the_payload(
 def closing_record(record_fixtures: list[dict[str, object]]) -> dict[str, object]:
     """A closed dev-split record carrying a full set of withheld text and codes (deep-copied).
 
-    Picked so ``withheld_strings`` has something of every kind to check: a probable cause, both
-    narratives, and at least one occurrence code and one finding code long enough to qualify
-    under ``CODE_LENGTH_THRESHOLD`` -- otherwise the store boundary test below could pass
-    vacuously, checking nothing.
+    Picked so ``withheld_windows`` has something of every kind to check: a probable cause, two
+    *different* narratives (a fixture whose factual and analysis narratives are identical would
+    let a factual-narrative check pass by accident against the analysis narrative), a factual
+    narrative over 4KB with characters JSON escapes (a quote or a newline) -- long and escapable
+    enough to exercise both leak shapes fix round 1 found undetected -- and at least one
+    occurrence code and one finding code long enough to qualify under
+    ``CODE_LENGTH_THRESHOLD``. Otherwise the store boundary test below could pass vacuously,
+    checking nothing, or checking too little to catch a real leak.
     """
     raw = next(
         r
@@ -347,6 +352,12 @@ def closing_record(record_fixtures: list[dict[str, object]]) -> dict[str, object
         if fields.probable_cause(r)
         and fields.factual_narrative(r)
         and fields.analysis_narrative(r)
+        and fields.factual_narrative(r) != fields.analysis_narrative(r)
+        and len(fields.factual_narrative(r) or "") > 4096
+        and (
+            '"' in (fields.factual_narrative(r) or "")
+            or "\n" in (fields.factual_narrative(r) or "")
+        )
         and fields.occurrence_codes(r)
         and fields.finding_codes(r)
     )
@@ -354,49 +365,121 @@ def closing_record(record_fixtures: list[dict[str, object]]) -> dict[str, object
 
 
 def _leaky_split(raw: Mapping[str, object]) -> tuple[Evidence, Synthesis, Verdict]:
-    """A splitter that copies the factual narrative into evidence (Task 7 Step 2)."""
+    """A splitter that copies the factual narrative into the preliminary narrative (Task 7)."""
     evidence, synthesis, verdict = split_record(raw)
     leaked = evidence.model_copy(update={"prelim_narrative": synthesis.factual_narrative})
     return leaked, synthesis, verdict
 
 
+def _leaky_split_via_snapshot(raw: Mapping[str, object]) -> tuple[Evidence, Synthesis, Verdict]:
+    """A splitter that copies the factual narrative into an ordinary evidence field.
+
+    Unlike ``_leaky_split`` (which leaks through ``prelim_narratives.text``, a plain TEXT
+    column), this leaks through ``field_snapshots.value_json``, written with
+    ``json.dumps(value, sort_keys=True)`` -- so the stored bytes are the *escaped* form of the
+    narrative, not the raw form. Fix round 1, Important 1: this is one of the two leak shapes
+    the original boundary check could not see.
+    """
+    evidence, synthesis, verdict = split_record(raw)
+    leaked = evidence.model_copy(update={"weather_metar": synthesis.factual_narrative})
+    return leaked, synthesis, verdict
+
+
+def _read_store_bytes(db_path: Path) -> bytes:
+    """A store's ``.sqlite`` file plus any not-yet-checkpointed ``-wal`` file, concatenated."""
+    wal_path = db_path.with_name(db_path.name + "-wal")
+    if wal_path.exists():
+        return db_path.read_bytes() + wal_path.read_bytes()
+    return db_path.read_bytes()
+
+
 def test_store_never_holds_synthesis_or_verdict(
     tmp_path: Path, closing_record: dict[str, object]
 ) -> None:
-    """A closing record carries the probable cause and both narratives; none reaches the file."""
+    """Night 1: Ongoing, with a preliminary narrative. Night 2: the case closes.
+
+    Two nights instead of one so the byte check also covers the prelim-narrative table, the
+    status transition and the tail, not only the closing record's own field snapshots (fix
+    round 1). The closing record carries the probable cause and both narratives; none of it,
+    raw or JSON-escaped, in any window, reaches the file.
+    """
+    ongoing = as_ongoing(
+        closing_record,
+        prelim_text="Preliminary information indicates the flight departed on a local flight.",
+    )
     store = Store(tmp_path / "r.sqlite")
     store.migrate()
-    observe_case(store, closing_record, run_id=1, today=date(2026, 10, 1))
+    observe_case(store, ongoing, run_id=1, today=date(2026, 10, 1))
+    observe_case(store, closing_record, run_id=2, today=date(2026, 10, 2))
     store.close()
-    db_path = tmp_path / "r.sqlite"
-    wal_path = tmp_path / "r.sqlite-wal"
-    blob = (
-        (db_path.read_bytes() + wal_path.read_bytes())
-        if wal_path.exists()
-        else db_path.read_bytes()
-    )
-    checked = withheld_strings(closing_record)
-    # Each kind (cause, narrative, codes) must contribute at least one checked string, or this
-    # test could pass by checking nothing of that kind rather than because nothing leaked.
-    assert fields.probable_cause(closing_record) in checked
-    assert fields.factual_narrative(closing_record) in checked
-    assert fields.analysis_narrative(closing_record) in checked
+    blob = _read_store_bytes(tmp_path / "r.sqlite")
+
+    # Each kind (cause, narrative, codes) must be present on the fixture, or this test could
+    # pass by checking nothing of that kind rather than because nothing leaked.
+    assert fields.probable_cause(closing_record)
+    assert fields.factual_narrative(closing_record)
+    assert fields.analysis_narrative(closing_record)
     qualifying_codes = [
         code
         for code in fields.occurrence_codes(closing_record) + fields.finding_codes(closing_record)
         if len(code) >= CODE_LENGTH_THRESHOLD
     ]
     assert qualifying_codes
-    assert all(code in checked for code in qualifying_codes)
 
-    for text in checked:
-        assert text.encode() not in blob
+    windows = withheld_windows(closing_record)
+    assert windows
+    for window in windows:
+        assert window.encode() not in blob, "withheld string in store"
 
 
 def test_store_boundary_test_fails_when_the_split_is_bypassed(
     tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Mutation: a splitter that returns the whole record as evidence must be caught."""
+    """Mutation: a splitter that leaks through the plain-text prelim table must be caught."""
     monkeypatch.setattr("ntsb_probable_cause.recorder.cases.split_record", _leaky_split)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="withheld string in store"):
         test_store_never_holds_synthesis_or_verdict(tmp_path, closing_record)
+
+
+def test_store_boundary_test_fails_when_a_snapshot_role_leaks(
+    tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation: a splitter that leaks through a JSON-escaped field_snapshots row must be
+    caught too -- proves the escaped-form windows, not just the raw-form ones, are checked."""
+    monkeypatch.setattr(
+        "ntsb_probable_cause.recorder.cases.split_record", _leaky_split_via_snapshot
+    )
+    with pytest.raises(AssertionError, match="withheld string in store"):
+        test_store_never_holds_synthesis_or_verdict(tmp_path, closing_record)
+
+
+def _has_withheld_text(raw: Mapping[str, object]) -> bool:
+    return bool(
+        fields.probable_cause(raw)
+        or fields.factual_narrative(raw)
+        or fields.analysis_narrative(raw)
+    )
+
+
+def test_store_never_holds_synthesis_or_verdict_for_every_fixture(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Every development fixture carrying withheld text is checked, not just one (fix round 1).
+
+    A single hand-picked fixture proved the mechanism works; this sweeps every fixture that
+    actually carries withheld content, so a leak that only one particular record's shape would
+    trigger cannot hide behind the others never being tried.
+    """
+    carriers = [raw for raw in record_fixtures if _has_withheld_text(raw)]
+    assert carriers, "no fixture carries withheld text: this test would be vacuous"
+
+    store = Store(tmp_path / "sweep.sqlite")
+    store.migrate()
+    for index, raw in enumerate(carriers):
+        observe_case(store, raw, run_id=index + 1, today=date(2026, 10, 1))
+    store.close()
+    blob = _read_store_bytes(tmp_path / "sweep.sqlite")
+
+    for raw in carriers:
+        for window in withheld_windows(raw):
+            assert window.encode() not in blob, "withheld string in store"
