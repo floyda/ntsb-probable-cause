@@ -338,8 +338,8 @@ def test_handcheck_is_dev_400_only_by_construction_and_reports_the_skip(
     )
     # Both titles are made only of words the committed vocabulary carries (Weather, Study,
     # Engine, Examination -- see src/ntsb_probable_cause/docket/vocab/title_words.txt), so this
-    # test's expected rows hold regardless of whether the machine running it has a system
-    # dictionary at all (``title_vocab.SYSTEM_DICTIONARY_PATH``): redaction never touches them.
+    # test's expected rows hold regardless of the vendored dictionary
+    # (``title_vocab.VENDORED_DICTIONARY_PATH``): redaction never touches them.
     _cache_case(docket_dir, 1, [(1, "Weather Study", 1, 0, "Report", b"x")])
     _cache_case(docket_dir, 2, [(1, "Engine Examination", 1, 0, "Report", b"x")])
     # A cached mkey outside dev-400 (e.g. held-out or open) must be skipped, not sampled.

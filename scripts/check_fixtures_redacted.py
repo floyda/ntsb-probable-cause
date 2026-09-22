@@ -77,7 +77,7 @@ from ntsb_probable_cause.data.redaction import find_redacted_fields
 from ntsb_probable_cause.docket.attach import owner_operator_values
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.title_vocab import (
-    SYSTEM_DICTIONARY_PATH,
+    VENDORED_DICTIONARY_PATH,
     capitalised_words,
     is_ordinary_word,
     known_title_words,
@@ -319,7 +319,7 @@ def _csv_name_problems(path: Path, processed: Path, known: frozenset[str]) -> li
 def docket_fixture_name_problems(
     root: Path = DOCKET_FIXTURES,
     processed: Path | None = None,
-    dictionary_path: Path = SYSTEM_DICTIONARY_PATH,
+    dictionary_path: Path = VENDORED_DICTIONARY_PATH,
 ) -> list[Finding]:
     """Every committed listing or titles sheet under ``root``, checked for a name (finding 6).
 
@@ -342,12 +342,12 @@ def docket_fixture_name_problems(
     known, dictionary_found = known_title_words(dictionary_path)
     if not dictionary_found:
         print(
-            f"{dictionary_path}: no system dictionary here -- checking titles against the "
+            f"{dictionary_path}: vendored word list not found -- checking titles against the "
             "committed vocabulary alone (see title_vocab.known_title_words). MOST BLOCKING "
             "FINDINGS BELOW WILL BE FALSE POSITIVES: measured on the committed fixtures, "
-            "this mode reports 158 blocking findings where a machine with a word list "
-            "reports none. Install one (Debian/Ubuntu: wamerican) and run again before "
-            "believing any of them (decision 0058).",
+            "this mode reports 158 blocking findings where the word list is present. "
+            "The vendored list tests/fixtures/words.txt should be committed; if missing, "
+            "the build is incomplete (decision 0070).",
             file=sys.stderr,
         )
     problems: list[Finding] = []
