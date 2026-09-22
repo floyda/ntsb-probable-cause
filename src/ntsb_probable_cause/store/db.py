@@ -6,9 +6,11 @@ SQLite serialises them against any open transaction.
 """
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -22,6 +24,25 @@ from ntsb_probable_cause.store.models import (
     RunSummaryRow,
 )
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _require_plain_date(today: str) -> None:
+    """Raise ``ValueError`` unless ``today`` is exactly ``YYYY-MM-DD``.
+
+    ``watched_mkeys`` and ``earliest_watched_event_month`` compare ``today`` against
+    ``watch_until`` and ``event_date`` as plain strings. A timestamp such as
+    ``"2026-10-30T03:00:00+00:00"`` sorts *before* the plain date ``"2026-10-30"`` (``"T"`` <
+    nothing), so passing one in would silently drop a case on its last watched day instead of
+    raising -- this check makes that a loud error at the call site instead.
+    """
+    if not _DATE_RE.match(today):
+        raise ValueError(f"today must be exactly 'YYYY-MM-DD', got {today!r}")
+    try:
+        date.fromisoformat(today)
+    except ValueError as error:
+        raise ValueError(f"today must be exactly 'YYYY-MM-DD', got {today!r}") from error
+
 
 class Store:
     """The recorder's SQLite store: one file, opened in WAL mode with foreign keys on."""
@@ -31,6 +52,7 @@ class Store:
         self._conn = sqlite3.connect(str(path))
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self._txn_depth = 0
 
     def __enter__(self) -> Self:
         return self
@@ -49,26 +71,47 @@ class Store:
         return self._conn
 
     def close(self) -> None:
-        """Checkpoint the write-ahead log into the main file, then close.
+        """Roll back any open transaction, checkpoint the write-ahead log, then close.
 
         Without the checkpoint, recent writes can sit in a separate ``-wal`` file: reading the
         ``.sqlite`` path alone (the store boundary test, and Task 10's upload to S3) would then
-        miss them.
+        miss them. A transaction left open by a caller who did not go through
+        :meth:`transaction` (or by a bug) makes the checkpoint fail with "database table is
+        locked", which would otherwise mask whatever the real problem was -- so it is rolled
+        back first, and the connection is closed in a ``finally`` so a failed checkpoint never
+        leaves the file handle open.
         """
-        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        self._conn.commit()
-        self._conn.close()
+        try:
+            if self._conn.in_transaction:
+                self._conn.rollback()
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            self._conn.commit()
+        finally:
+            self._conn.close()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        """Commit on a clean exit, roll back and re-raise on an exception."""
+        """Commit on a clean exit, roll back on any exception, re-entrantly.
+
+        Catches ``BaseException``, not just ``Exception``, so a ``KeyboardInterrupt`` mid-write
+        still rolls back. Re-entrant: a call nested inside an outer ``with
+        self.transaction():`` (for example one write method calling another, or a caller
+        grouping several writes so "a half-written night cannot exist") shares the same
+        underlying SQLite transaction. Only the outermost level commits or rolls back; an
+        inner level's exit does neither.
+        """
+        self._txn_depth += 1
         try:
             yield self._conn
-        except Exception:
-            self._conn.rollback()
+        except BaseException:
+            self._txn_depth -= 1
+            if self._txn_depth == 0:
+                self._conn.rollback()
             raise
         else:
-            self._conn.commit()
+            self._txn_depth -= 1
+            if self._txn_depth == 0:
+                self._conn.commit()
 
     def _current_version(self) -> int:
         has_table = self._conn.execute(
@@ -80,15 +123,34 @@ class Store:
         return int(row[0]) if row is not None else 0
 
     def migrate(self) -> int:
-        """Apply every migration after the current version, in order. Idempotent."""
+        """Apply every migration after the current version, in order. Idempotent.
+
+        Each migration's DDL and its version-row write run as one atomic unit.
+        ``executescript`` always commits any already-open transaction before it runs, and then
+        runs the statements in the script text itself in autocommit mode unless that text
+        opens its own transaction -- so the DDL and the version write are wrapped in a
+        literal ``BEGIN``/``COMMIT`` inside the same script, and a failure partway through is
+        rolled back explicitly. Without this, a failure after (say) ``CREATE TABLE
+        schema_version`` but before its row is written leaves a store that a later `migrate()`
+        cannot repair: it would see version 0 (no row) and try to create ``schema_version``
+        again, failing with "table schema_version already exists".
+
+        ``i`` is this loop's own 1-based migration index, an internal `int`, not external
+        input, so building the version-write statement with an f-string carries no injection
+        risk; ``executescript`` has no placeholder syntax to parameterise it with regardless.
+        """
         version = self._current_version()
         for i, migration_script in enumerate(schema.MIGRATIONS[version:], start=version + 1):
-            self._conn.executescript(migration_script)
-            with self.transaction() as conn:
-                if version == 0:
-                    conn.execute("INSERT INTO schema_version (version) VALUES (?)", (i,))
-                else:
-                    conn.execute("UPDATE schema_version SET version = ?", (i,))
+            version_write = (
+                f"INSERT INTO schema_version (version) VALUES ({i});"  # noqa: S608
+                if version == 0
+                else f"UPDATE schema_version SET version = {i};"  # noqa: S608
+            )
+            try:
+                self._conn.executescript(f"BEGIN;\n{migration_script}\n{version_write}\nCOMMIT;")
+            except Exception:
+                self._conn.rollback()
+                raise
             version = i
         return version
 
@@ -206,7 +268,12 @@ class Store:
             )
 
     def watched_mkeys(self, *, today: str) -> list[int]:
-        """Every case still watched: status ``Ongoing``, or within its ``watch_until`` tail."""
+        """Every case still watched: status ``Ongoing``, or within its ``watch_until`` tail.
+
+        Raises:
+            ValueError: ``today`` is not exactly ``YYYY-MM-DD``.
+        """
+        _require_plain_date(today)
         rows = self._conn.execute(
             "SELECT mkey FROM cases "
             "WHERE status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?) "
@@ -216,7 +283,12 @@ class Store:
         return [int(row[0]) for row in rows]
 
     def earliest_watched_event_month(self, *, today: str) -> str | None:
-        """The earliest ``YYYY-MM`` event month among watched cases, or ``None`` if none."""
+        """The earliest ``YYYY-MM`` event month among watched cases, or ``None`` if none.
+
+        Raises:
+            ValueError: ``today`` is not exactly ``YYYY-MM-DD``.
+        """
+        _require_plain_date(today)
         row = self._conn.execute(
             "SELECT MIN(substr(event_date, 1, 7)) FROM cases "
             "WHERE status='Ongoing' OR (watch_until IS NOT NULL AND watch_until >= ?)",
@@ -338,7 +410,12 @@ class Store:
         return row is not None
 
     def add_page(self, *, page_sha: str, mkey: int, gz: bytes, run_id: int) -> None:
-        """Store a listing page's compressed bytes, keyed by its hash (0063)."""
+        """Store a listing page's compressed bytes, keyed by its hash (0063).
+
+        Raises:
+            sqlite3.IntegrityError: ``page_sha`` is already stored (it is the primary key).
+                Callers must check :meth:`has_page` first.
+        """
         with self.transaction() as conn:
             conn.execute(
                 "INSERT INTO listing_pages (page_sha, mkey, gz, first_run) VALUES (?, ?, ?, ?)",
