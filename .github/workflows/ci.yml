@@ -18,12 +18,6 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      # /usr/share/dict/words. scripts/check_fixtures_redacted.py checks a committed docket
-      # title's capitalised words against the committed vocabulary AND this list; without it
-      # the vocabulary alone flags 158 blocking false positives on the hand-check sheet and
-      # every job that runs the check fails. macOS ships a word list, ubuntu-latest does not,
-      # which is why this was invisible locally (decision 0058).
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq wamerican
       - run: uv sync --locked
       - run: SKIP=no-commit-to-branch uv run pre-commit run --all-files --show-diff-on-failure
       - run: uv run pre-commit run --hook-stage manual check-added-large-files-all --all-files --show-diff-on-failure
@@ -46,12 +40,6 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      # /usr/share/dict/words. scripts/check_fixtures_redacted.py checks a committed docket
-      # title's capitalised words against the committed vocabulary AND this list; without it
-      # the vocabulary alone flags 158 blocking false positives on the hand-check sheet and
-      # every job that runs the check fails. macOS ships a word list, ubuntu-latest does not,
-      # which is why this was invisible locally (decision 0058).
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq wamerican
       - run: uv sync --locked
       - run: uv run pytest
 

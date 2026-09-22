@@ -4,6 +4,8 @@ from pathlib import Path
 
 from scripts.build_title_vocab import build_vocabulary, main
 
+from ntsb_probable_cause.docket.title_vocab import VENDORED_DICTIONARY_PATH, known_title_words
+
 _ROW_TEMPLATE = (
     "<tr><td><b>{index}</b></td><td>{title}</td><td><b>3</b></td><td>0</td>"
     "<td>Report</td><td></td></tr>"
@@ -85,3 +87,10 @@ def test_main_reports_a_missing_docket_cache(tmp_path: Path) -> None:
     code = main(["--docket-dir", str(tmp_path / "no-such-cache"), "--out", str(out)])
     assert code == 1
     assert not out.exists()
+
+
+def test_default_dictionary_is_the_vendored_file() -> None:
+    assert Path("tests/fixtures/words.txt") == VENDORED_DICTIONARY_PATH
+    words, found = known_title_words()
+    assert found is True
+    assert "examination" in words

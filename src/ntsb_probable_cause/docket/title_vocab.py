@@ -50,6 +50,10 @@ CAPITALISED_WORD = re.compile(r"[A-Z][a-z]{2,}")
 #: silently treats a missing dictionary as "nothing to check against".
 SYSTEM_DICTIONARY_PATH = Path("/usr/share/dict/words")
 
+#: The vendored word list, committed to the repository (decision 0070). Replaces the system
+#: dictionary on all machines, removing the need for CI to install it.
+VENDORED_DICTIONARY_PATH = Path("tests/fixtures/words.txt")
+
 #: The minimum number of distinct dockets a word must appear in to be "ordinary NTSB title
 #: vocabulary" rather than a proper noun specific to one case (scripts/build_title_vocab.py).
 MIN_DOCKETS = 5
@@ -123,7 +127,7 @@ def _system_dictionary(path: Path) -> frozenset[str] | None:
 
 
 def known_title_words(
-    dictionary_path: Path = SYSTEM_DICTIONARY_PATH,
+    dictionary_path: Path = VENDORED_DICTIONARY_PATH,
 ) -> tuple[frozenset[str], bool]:
     """The committed vocabulary, plus the system dictionary if this machine has one.
 
