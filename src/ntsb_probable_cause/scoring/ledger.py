@@ -1,10 +1,15 @@
 """The held-out ledger and the commit state every run records (decisions 0018, 0026)."""
 
-import subprocess
 from pathlib import Path
 
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.gitinfo import commit_state
 from ntsb_probable_cause.scoring.records import RunRecord
+
+# Re-exported so every existing caller -- and every test that monkeypatches
+# ``ntsb_probable_cause.scoring.ledger.commit_state`` -- keeps working unchanged (S2.5 Task 9;
+# see ``gitinfo.py`` for why the implementation moved).
+__all__ = ["append_row", "commit_state", "refuse_if_heldout_and_dirty", "results_ref"]
 
 _HEADER = (
     "# Held-out ledger\n\n"
@@ -12,23 +17,6 @@ _HEADER = (
     "| date | sample | arm | exclusions | includes | model | commit | cost USD | results |\n"
     "|---|---|---|---|---|---|---|---|---|\n"
 )
-
-
-def commit_state(repo: Path = Path()) -> tuple[str, bool]:
-    """Short SHA and whether the tree has uncommitted changes."""
-    sha = subprocess.run(  # noqa: S603 -- fixed argv, no shell
-        ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],  # noqa: S607 -- git on PATH
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    status = subprocess.run(  # noqa: S603 -- fixed argv, no shell
-        ["git", "-C", str(repo), "status", "--porcelain"],  # noqa: S607 -- git on PATH
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return sha, bool(status.strip())
 
 
 def refuse_if_heldout_and_dirty(sample: str, dirty: bool) -> None:

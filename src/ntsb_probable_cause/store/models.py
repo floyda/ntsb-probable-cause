@@ -48,7 +48,25 @@ class FeedRow(BaseModel, frozen=True):
 
 
 class RunSummary(BaseModel, frozen=True):
-    """The counts a finished run reports about itself, written by ``finish_run``."""
+    """The counts a finished run reports about itself, written by ``finish_run``.
+
+    Definitions (spec S2.5 §9.1, Task 9 controller note 4; :func:`~ntsb_probable_cause.
+    recorder.run.run_night` is what computes these):
+
+    - ``cases_polled`` -- the number of docket polls attempted, i.e. the number of watched
+      cases this night (``len(store.watched_mkeys(...))`` at the moment the docket step ran).
+    - ``cases_changed`` -- the number of *distinct* mkeys for which either side (the case side
+      or the docket side, including a "not returned" status event) wrote anything at all.
+    - ``new_documents`` -- the sum of every docket poll's ``new_documents`` (documents that
+      appeared, whether for the first time or on their return, this run).
+    - ``suspected_renumbers`` -- the sum of every docket poll's ``suspected_renumbers``.
+    - ``failures`` -- failed case observations, plus failed docket polls, plus failed months
+      (an ``ApiError`` fetching one month's cases), plus a failed change-feed call, plus every
+      unknown-mkey ``ValueError`` the docket side raised. Each is counted once, however many
+      documents or fields that one failure would otherwise have touched.
+    - ``minutes`` -- ``(finished_at - started_at)`` in minutes, from the run's own injected
+      clock, not wall-clock time measured some other way.
+    """
 
     cases_polled: int
     cases_changed: int

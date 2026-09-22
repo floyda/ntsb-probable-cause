@@ -98,6 +98,7 @@ source_modules = [
     "ntsb_probable_cause.scoring.samples",
     "ntsb_probable_cause.store",
     "ntsb_probable_cause.recorder",
+    "ntsb_probable_cause.gitinfo",
 ]
 forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cause.records.verdict"]
 # Task 7: the recorder's case side calls split_record itself (CLAUDE.md rule 1) and discards
