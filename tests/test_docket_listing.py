@@ -115,8 +115,8 @@ def test_render_listing_is_one_line_per_entry() -> None:
 
 
 def test_saved_page_carries_docket_info() -> None:
-    fixture = Path("tests/fixtures/docket/ERA17LA217/listing.html")
-    listing = parse_listing(fixture.read_bytes().decode("utf-8"), mkey=95459)
+    page = FIXTURES / "ERA17LA217" / "listing.html"
+    listing = parse_listing(_read_page(page), mkey=95459)
     assert listing.info is not None
     assert listing.info.creation_date == "01/28/2019"
     assert listing.info.last_modified == "01/28/2019 7:37 AM"
@@ -129,8 +129,38 @@ def test_page_without_info_block_has_none() -> None:
     assert listing.entries == ()
 
 
+def test_info_block_with_empty_date_labels_returns_none_fields() -> None:
+    page = (
+        "<h2><b>Docket Information</b></h2>"
+        "<table><tr><td><h3><b>Creation Date:</b> </h3></td></tr></table>"
+        "<html>Docket Items: 0</html>"
+    )
+    listing = parse_listing(page, mkey=1)
+    assert listing.info is not None
+    assert listing.info.creation_date is None
+    assert listing.info.last_modified is None
+    assert listing.info.release_date is None
+
+
+def test_release_date_with_amp_entity_unescapes() -> None:
+    # Verify the regex handles &amp; entity (raw & also works from real pages)
+    page = (
+        "<h2><b>Docket Information</b></h2>"
+        "<table><tr><td><h3>"
+        "Public Release Date &amp; Time: 01/28/2019 7:37 AM<"
+        "</h3></td></tr></table>"
+        "<html>Docket Items: 0</html>"
+    )
+    listing = parse_listing(page, mkey=1)
+    assert listing.info is not None
+    assert listing.info.release_date == "01/28/2019 7:37 AM"
+
+
 @pytest.mark.parametrize(("page", "mkey"), _saved_pages())
 def test_all_saved_listing_fixtures_carry_docket_info(page: Path, mkey: int) -> None:
     text = _read_page(page)
     listing = parse_listing(text, mkey=mkey)
     assert listing.info is not None, f"fixture {page.parent.name} has no docket info block"
+    assert listing.info.creation_date is not None
+    assert listing.info.last_modified is not None
+    assert listing.info.release_date is not None
