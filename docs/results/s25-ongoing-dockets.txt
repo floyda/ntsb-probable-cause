@@ -1,0 +1,37 @@
+Ongoing-docket probe (scripts/ongoing_docket_probe.py; spec S2.5 §10.1)
+
+cases attempted: 100
+skipped: no event date: 0
+
+outcomes (overall):
+  not-released: 98
+  read: 2
+
+outcomes by stratum:
+  0-30:
+    not-released: 25
+  31-90:
+    not-released: 25
+  91-180:
+    not-released: 23
+    read: 2
+  181+:
+    not-released: 25
+
+outcomes by docketOpenDate presence:
+  docketOpenDate not set:
+    not-released: 98
+    read: 2
+
+read pages: 2
+document counts (read pages): p25=2 p50=2 p75=8 max=8
+read pages with a creation date: 2
+
+seed: 2026
+
+drew 25 of 25 0-30-day ongoing cases in the population
+drew 25 of 190 31-90-day ongoing cases in the population
+drew 25 of 159 91-180-day ongoing cases in the population
+drew 25 of 531 181+-day ongoing cases in the population
+
+raw store fetched as of 2026-09-15: case statuses above are as of that date, not today's; a case may have closed since.
