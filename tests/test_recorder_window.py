@@ -1,4 +1,4 @@
-"""The self-setting month window (spec S2.5, Task 6)."""
+"""The self-setting month window (spec S2.5 §5.1)."""
 
 from collections.abc import Iterator
 from datetime import date
@@ -70,4 +70,22 @@ def test_edge_case_current_month_watched_with_12_empty_after() -> None:
     months = first_run_window(fetch, today=date(2026, 9, 22), is_watched=lambda _r: True)
     # Should walk back 12 empty months from 2026-09 and include the current month
     assert months[0].label == "2025-09"
+    assert months[-1].label == "2026-09"
+
+
+def test_first_run_uses_is_watched_not_just_record_presence() -> None:
+    """Verify is_watched predicate is actually used, not just checking if records exist."""
+    # Every month returns records, but only some months have watched records
+    watched_record_months = {"2026-09", "2026-05", "2025-11"}
+
+    def fetch(month: Month) -> list[dict[str, object]]:
+        # Every month has records; mark which ones are watched
+        return [{"m": month.label, "watched": month.label in watched_record_months}]
+
+    def is_watched(record: dict[str, object]) -> bool:
+        return bool(record.get("watched", False))
+
+    months = first_run_window(fetch, today=date(2026, 9, 22), is_watched=is_watched)
+    # Should stop 12 empty months before 2025-11 (the last watched month)
+    assert months[0].label == "2024-11"
     assert months[-1].label == "2026-09"

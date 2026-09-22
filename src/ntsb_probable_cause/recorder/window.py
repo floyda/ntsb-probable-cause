@@ -1,4 +1,4 @@
-"""The self-setting month window (spec S2.5, Task 6)."""
+"""The self-setting month window (spec S2.5 §5.1)."""
 
 import logging
 from collections.abc import Callable, Iterable
@@ -38,19 +38,10 @@ def first_run_window(
     today: date,
     is_watched: Callable[[dict[str, object]], bool],
 ) -> list[Month]:
-    """Walk backwards from today's month until 12 consecutive empty months are found.
+    """Walk backwards until 12 consecutive empty months are found.
 
-    Collects months newest-first, counts consecutive months where no watched record
-    appears, stops when the count reaches 12, and returns the list oldest-first
-    (including the 12 empty months).
-
-    Args:
-        fetch_month: Callable that fetches records for a given Month.
-        today: Today's date.
-        is_watched: Callable to check if a record is watched.
-
-    Returns:
-        List of Month objects from oldest to newest, inclusive of the 12 empty months.
+    Counts consecutive months where no watched record appears, stops when count reaches 12,
+    and returns the list oldest-first (including the 12 empty months).
     """
     months: list[Month] = []
     current = Month(today.year, today.month)
@@ -62,10 +53,10 @@ def first_run_window(
         has_watched = any(is_watched(r) for r in records)
 
         if has_watched:
-            _log.info(f"Month {current.label}: contains watched record")
+            _log.info("Month %s: contains watched record", current.label)
             empty_count = 0
         else:
-            _log.info(f"Month {current.label}: no watched record")
+            _log.info("Month %s: no watched record", current.label)
             empty_count += 1
 
         current = _previous(current)
