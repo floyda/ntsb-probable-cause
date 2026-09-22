@@ -239,3 +239,63 @@ def test_local_path_helper_uses_data_dir_only_for_s3(tmp_path: Path) -> None:
 
     assert app._local_path(settings, local_location) == Path(local_location.raw)
     assert app._local_path(settings, s3_location) == settings.data_dir / "recorder-work.sqlite"
+
+
+def test_a_pull_failure_propagates_and_never_reaches_run_night_or_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fix round 1, Minor 1 (app side): pull() only swallows a missing S3 object; every other
+    pull failure must stop the app before run_night or push are ever reached."""
+    run_night_called: list[bool] = []
+    push_called: list[bool] = []
+
+    def _pull_fails(location: Location, local: Path, **_: object) -> None:
+        raise RuntimeError("s3 access denied")
+
+    def _fake_run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
+        run_night_called.append(True)
+        return _fake_summary()
+
+    monkeypatch.setattr(app, "pull", _pull_fails)
+    monkeypatch.setattr(app, "run_night", _fake_run_night)
+    monkeypatch.setattr(app, "push", lambda *a, **k: push_called.append(True))
+
+    with pytest.raises(RuntimeError, match="s3 access denied"):
+        app.main(["run"])
+
+    assert run_night_called == []
+    assert push_called == []
+
+
+def test_a_push_failure_is_logged_and_returns_1(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def _fake_run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
+        return _fake_summary()
+
+    def _push_fails(local: Path, location: Location, **_: object) -> None:
+        raise RuntimeError("network unreachable")
+
+    monkeypatch.setattr(app, "run_night", _fake_run_night)
+    monkeypatch.setattr(app, "push", _push_fails)
+
+    with caplog.at_level(logging.ERROR, logger="apps.recorder.__main__"):
+        assert app.main(["run"]) == 1
+
+    assert "push failed" in caplog.text
+    assert "network unreachable" in caplog.text  # the traceback landed in the log
+
+
+def test_a_push_failure_never_happens_under_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--dry-run must never even call push, so a push failure cannot occur under it."""
+
+    def _fake_run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
+        return _fake_summary()
+
+    def _push_must_not_run(*_a: object, **_k: object) -> None:
+        raise AssertionError("push must not be called under --dry-run")
+
+    monkeypatch.setattr(app, "run_night", _fake_run_night)
+    monkeypatch.setattr(app, "push", _push_must_not_run)
+
+    assert app.main(["run", "--dry-run"]) == 0

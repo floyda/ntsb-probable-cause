@@ -14,6 +14,14 @@ data/docket/
 # committed sheet this folds into (tests/fixtures/docket/title_handcheck.csv) redacted; this
 # is that sheet's working copy, never the committed artefact.
 data/handcheck/
+# Whole-directory catch-all, kept alongside the specific lines above rather than replacing
+# them (they document *why* each kind of file under data/ is excluded). Without this, a file
+# the specific lines do not enumerate -- e.g. the recorder's data/recorder.log, or its store's
+# WAL/SHM side files before the *.sqlite-wal/-shm lines below existed -- sat untracked but NOT
+# git-ignored, one `git add -A` away from landing open-split text in this public repository
+# (S2.5 Task 10, fix round 1, Important 4). "Nothing under data/ is committed" (CLAUDE.md rule
+# 4) is enforced here as a rule, not only as a list of known cases.
+data/
 *.zip
 *.mdb
 *.accdb
@@ -29,6 +37,13 @@ data/handcheck/
 *.sqlite
 *.sqlite3
 *.db
+# SQLite's own WAL-mode side files (store/db.py opens every store with journal_mode=WAL) and
+# the older rollback-journal mode's file -- these hold uncommitted or since-checkpointed page
+# data, which for the recorder's store is open-split text (CLAUDE.md rule 5). *.sqlite above
+# already covers the main file; these cover it mid-write, wherever a store lives.
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
 
 # Account-specific operational values, referenced from docs/runbooks/.
 *.local.md

@@ -26,8 +26,15 @@ _S3_PREFIX = "s3://"
 
 # boto3's own error codes for "no such object": "NoSuchKey" from the object API, "404" from the
 # HEAD request `download_file` issues first to size the transfer. Named here, not inline, so
-# the one place that reads them (`s3_client`'s adapter, below) states the intent plainly.
+# the one place that reads them (`_is_missing_object_response`, below) states the intent
+# plainly.
 _MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey"})
+
+# The side files SQLite's WAL journal mode adds next to the main database file (`store/db.py`
+# opens every store with `journal_mode=WAL`); `-journal` is the older rollback-journal mode's
+# equivalent, kept here too in case a store is ever opened without WAL. `pull`'s stale-file
+# cleanup (fix round 1, Minor 2) removes all four suffixes, not just the main file.
+_SQLITE_SIDE_SUFFIXES = ("", "-wal", "-shm", "-journal")
 
 
 class ObjectNotFoundError(Exception):
@@ -85,14 +92,35 @@ class S3Like(Protocol):
         ...
 
 
+def _remove_stale_local_files(local: Path) -> None:
+    """Delete any leftover ``local`` file and its SQLite WAL/SHM/journal side files.
+
+    Fix round 1, Minor 2. A previous run that died before ``push`` (Task 10, controller note
+    2 -- an S3 store's local working file is discarded on failure, but only by never being
+    uploaded; nothing deletes it from disk) can leave a stale work file, or a stale ``-wal``
+    next to one, sitting under ``NTSB_DATA_DIR``. Downloading a fresh copy on top does not
+    reliably clear a leftover ``-wal``/``-shm``, and SQLite matches a WAL file to its main
+    database by content, not by name -- a stale WAL beside a freshly downloaded (or absent)
+    main file can make SQLite try to replay writes that do not belong to it. Removing all four
+    first means every pull starts from a clean slate, whether the download succeeds or the
+    object turns out to be missing (first run).
+    """
+    for suffix in _SQLITE_SIDE_SUFFIXES:
+        local.with_name(local.name + suffix).unlink(missing_ok=True)
+
+
 def pull(location: Location, local: Path, *, s3: S3Like | None = None) -> None:
     """Copy the store from ``location`` to ``local``; a no-op for a local location.
 
-    A missing S3 object (:class:`ObjectNotFoundError`) means first run: ``local`` is left absent,
-    and the caller's ``Store(local).migrate()`` then creates an empty schema there.
+    A missing S3 object (:class:`ObjectNotFoundError`) means first run: ``local`` is left
+    absent, and the caller's ``Store(local).migrate()`` then creates an empty schema there. Any
+    other error from the underlying client -- a permissions failure, a network error, anything
+    that is not "the object does not exist" -- propagates: a pull failure is never read as "start
+    empty", only a genuinely missing object is.
     """
     if not location.is_s3:
         return
+    _remove_stale_local_files(local)
     bucket, key = location.bucket_key()
     client = s3 if s3 is not None else s3_client()
     try:
@@ -112,6 +140,20 @@ def push(local: Path, location: Location, *, s3: S3Like | None = None) -> None:
     bucket, key = location.bucket_key()
     client = s3 if s3 is not None else s3_client()
     client.upload_file(str(local), bucket, key)
+
+
+def _is_missing_object_response(response: object) -> bool:
+    """Whether a boto3 ``ClientError``'s ``.response`` names a missing object (404/NoSuchKey).
+
+    A free function, not a method on the real adapter (fix round 1, Minor 1): ``ClientError``
+    itself is only ever available after ``boto3`` imports successfully, but the *shape* it
+    carries -- ``{"Error": {"Code": "..."}}`` -- is not boto3-specific at all, so this can be
+    exercised directly with a plain dict, or a duck-typed fake with a ``.response`` attribute,
+    with no ``boto3``/``botocore`` import anywhere in the test that calls it.
+    """
+    error = response.get("Error") if isinstance(response, dict) else None
+    code = error.get("Code") if isinstance(error, dict) else None
+    return code in _MISSING_OBJECT_CODES
 
 
 def s3_client() -> S3Like:
@@ -148,8 +190,7 @@ def s3_client() -> S3Like:
             try:
                 self._client.download_file(bucket, key, filename)
             except ClientError as error:
-                code = error.response.get("Error", {}).get("Code")
-                if code in _MISSING_OBJECT_CODES:
+                if _is_missing_object_response(error.response):
                     raise ObjectNotFoundError(f"s3://{bucket}/{key} not found") from error
                 raise
 

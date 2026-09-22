@@ -10,6 +10,13 @@
 #     (store/db.py). This script's only job is getting the API key and the data directory
 #     right, and leaving a trace in the log whichever way the night ends.
 #
+#     Fix round 1, Important 1: an `if (subshell); then ...; fi` with no `else` taken always
+#     returns exit status 0 for the *compound statement itself* when the condition is false --
+#     that is standard POSIX shell behaviour, not a bug in bash, but it means a `status=$?`
+#     placed AFTER such an `if` never sees the subshell's real exit code. The run itself is now
+#     executed as its own statement, with `status=$?` captured on the very next line, before
+#     anything else can overwrite `$?` -- see the `run start`/`status=$?` block below.
+#
 # Usage:
 #     scripts/recorder_bridge.sh <code-dir> [extra ntsb-record run arguments]
 #
@@ -19,6 +26,18 @@
 # worktree's: NTSB_DATA_DIR below is a fixed absolute path for that reason, regardless of
 # <code-dir>. Extra arguments (e.g. --dry-run, --verbose) are forwarded to `ntsb-record run`,
 # for testing this script by hand -- launchd itself passes none.
+#
+# Two environment variables exist ONLY so tests/test_recorder_bridge_script.py can exercise
+# this script quickly and in an isolated directory, never against the real `pass` or the real
+# data directory (fix round 1, Important 1's test requirement). Neither is set by launchd, and
+# neither weakens the production default -- both fall back to the real value when unset:
+#   NTSB_BRIDGE_DATA_DIR   overrides the main checkout's data/ directory (default: the fixed
+#                          absolute path below).
+#   NTSB_BRIDGE_KEY_TIMEOUT overrides the `pass show` alarm, in seconds (default: 60).
+#   NTSB_BRIDGE_RUN_TIMEOUT overrides the overall run's wall-clock alarm, in seconds
+#                          (default: 5400 -- 90 minutes, the same ceiling the AWS Fargate task
+#                          is given, spec §9.2, so a hung night can never run into the next
+#                          one; fix round 1, Minor 4).
 set -uo pipefail
 
 if [ "$#" -lt 1 ]; then
@@ -32,7 +51,9 @@ shift
 # NTSB_DATA_DIR once resolved inside a worktree during development and nearly discarded 19 GB
 # of already-fetched docket documents when the worktree was later removed (settings.py carries
 # the same lesson for NTSB_DOCKET_DIR).
-MAIN_DATA_DIR="/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data"
+MAIN_DATA_DIR="${NTSB_BRIDGE_DATA_DIR:-/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data}"
+KEY_TIMEOUT="${NTSB_BRIDGE_KEY_TIMEOUT:-60}"
+RUN_TIMEOUT="${NTSB_BRIDGE_RUN_TIMEOUT:-5400}"
 LOG="$MAIN_DATA_DIR/recorder.log"
 mkdir -p "$MAIN_DATA_DIR"
 
@@ -45,7 +66,7 @@ log() {
 # the trade-off; it is Andy's choice, not fixed here). 60 seconds is generous for a cached
 # passphrase and short enough that one stuck night never blocks the next one. macOS has no
 # `timeout(1)`; `perl -e 'alarm shift; exec @ARGV' N cmd...` is the portable substitute.
-raw_key="$(perl -e 'alarm shift; exec @ARGV' 60 pass show api/ntsb 2>/dev/null)"
+raw_key="$(perl -e 'alarm shift; exec @ARGV' "$KEY_TIMEOUT" pass show api/ntsb 2>/dev/null)"
 pass_status=$?
 if [ "$pass_status" -ne 0 ] || [ -z "$raw_key" ]; then
     log "NTSB key unavailable"
@@ -58,10 +79,19 @@ export NTSB_API_KEY
 export NTSB_DATA_DIR="$MAIN_DATA_DIR"
 
 log "run start"
-if (cd "$CODE_DIR" && uv run ntsb-record run "$@" >>"$LOG" 2>&1); then
+# The run itself, as its OWN statement -- not the condition of an `if` -- so `status=$?` on the
+# very next line reliably captures its real exit code (see the Important 1 note above). Wrapped
+# in its own wall-clock alarm (fix round 1, Minor 4): a hung night is killed by SIGALRM (exit
+# 142) rather than running past the next scheduled 03:00 and blocking it -- launchd will not
+# start a second instance of this job while one is still running.
+(cd "$CODE_DIR" && perl -e 'alarm shift; exec @ARGV' "$RUN_TIMEOUT" uv run ntsb-record run "$@" >>"$LOG" 2>&1)
+status=$?
+if [ "$status" -eq 0 ]; then
     log "run done"
     exit 0
 fi
-status=$?
+if [ "$status" -eq 142 ]; then
+    log "run exceeded the ${RUN_TIMEOUT}s wall-clock limit and was stopped"
+fi
 log "run failed exit=$status"
 exit "$status"

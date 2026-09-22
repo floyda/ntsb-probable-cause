@@ -24,25 +24,52 @@ Three pieces, already written:
 2. **A `launchd` job** (stage 5) — the alarm clock. It runs the wrapper every night.
 3. **The recorder's code** — the actual `ntsb-record run` program.
 
-**Which copy of the code the bridge runs.** This stage (S2.5) is built on a branch,
-`s25-recorder`, checked out in its own folder so it does not disturb your main checkout:
+**Two different things move independently, and it is worth keeping them apart in your head:**
+*where the wrapper script itself lives* (fixed, below), and *which checkout's code it runs*
+(changes once, at merge — stage 7).
+
+**Where the wrapper script lives: always your main checkout, never the worktree.** This stage
+(S2.5) is built on a branch, `s25-recorder`, checked out in its own folder — a **worktree**, a
+second, independent copy of the same repository, checked out to a different branch, sharing
+the same git history — so it does not disturb your main checkout:
 
 ```
 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder
 ```
 
-This kind of folder is called a **worktree** — a second, independent copy of the same
-repository, checked out to a different branch, sharing the same git history. Point the bridge
-at this worktree for now. **Once this stage is merged to `main`**, switch the bridge to your
-main checkout instead:
+The branch has not merged yet, so `scripts/recorder_bridge.sh` does not exist in your main
+checkout's `scripts/` folder yet either. **Copy it there once, now**, so the `launchd` job
+(stage 5) can point at one fixed, stable path from the very start and never need to change:
+
+```
+cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder/scripts/recorder_bridge.sh \
+   /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh
+```
+
+This file is not yet tracked by git in your main checkout — that is expected. **When this
+stage merges**, `git pull` (or your usual update) brings in the real, git-tracked version of
+`scripts/recorder_bridge.sh` at that exact same path, replacing your manual copy with an
+identical or newer one. You do nothing else for the script's own location; stage 7 is only
+about the *other* path, below.
+
+**Which checkout's CODE the wrapper runs `ntsb-record run` from** is a separate setting — the
+second argument the plist passes the wrapper (stage 5), not the wrapper's own location. Point
+it at the worktree for now:
+
+```
+/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder
+```
+
+**Once this stage is merged to `main`**, switch this one argument to your main checkout
+instead:
 
 ```
 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause
 ```
 
-(stage 7 below shows the one-line change). Either way, **the store file and the log always
-live in the main checkout's `data/` folder** — `scripts/recorder_bridge.sh` sets that on
-purpose, so switching which code runs the recorder never moves or splits the data.
+(stage 7 below shows the exact edit). Either way, **the store file and the log always live in
+the main checkout's `data/` folder** — `scripts/recorder_bridge.sh` sets that on purpose, so
+switching which checkout's code runs the recorder never moves or splits the data.
 
 ---
 
@@ -50,8 +77,16 @@ purpose, so switching which code runs the recorder never moves or splits the dat
 
 `pass` encrypts the NTSB API key with GPG. Reading it back needs a passphrase, checked by a
 small program called **`pinentry`** — on your Mac, `pinentry-mac`, which can remember the
-passphrase for a while so you are not asked every time. Yours is set to remember it for 24
-hours (`default-cache-ttl 86400`).
+passphrase for a while so you are not asked every time.
+
+**Two settings control this, and both matter.** Your `gpg-agent.conf` sets `default-cache-ttl
+86400` *and* `max-cache-ttl 86400` (24 hours, both). `default-cache-ttl` is the kind of timeout
+that would normally reset each time you use the passphrase — use it today, it is good for
+another 24 hours from today. `max-cache-ttl` is a hard ceiling that does **not** reset on use:
+it counts 24 hours from the moment you last *typed* the passphrase, however many times it was
+used in between. Because both are set to the same 86400 seconds, the ceiling is the only one
+that ever actually applies here — **the cached passphrase always expires 24 hours after you
+last typed it, full stop**, no matter how often the recorder itself used it overnight.
 
 **The problem.** The recorder runs at 03:00, while you are asleep. If the passphrase is not
 already cached at that moment, `pass show api/ntsb` pops a dialog on your screen and waits for
@@ -59,16 +94,37 @@ you to type it — nobody is there, so the run either stalls or fails with no ke
 script protects against the *stalling* half of this: it gives `pass` 60 seconds, then gives up
 and logs `NTSB key unavailable` rather than hanging forever. It cannot make the key appear.
 
+**Without the Keychain option, this is not a rare edge case — it is most weekends.** If you do
+not type the `pass` passphrase yourself at least once every 24 hours (any GPG-using command
+counts, not only running the bridge by hand), the cache expires and every night after that
+fails, until you next type it. The most likely example: you work on this project during the
+week, then don't touch a terminal over Saturday and Sunday — Saturday night's run already fails,
+and so does Sunday's, until Monday.
+
+**The dialog only appears when GPG actually needs the passphrase — so you may never see the
+"Save in Keychain" option by accident.** If the passphrase happens to already be cached when
+you first try `pass show`, no dialog appears at all, and you have no chance to tick the box.
+Force it to appear, once, when you want to make this decision:
+
+```
+gpgconf --reload gpg-agent
+pass show api/ntsb >/dev/null
+```
+
+The first command clears whatever is currently cached; the second asks for the key, which is
+now guaranteed to need the passphrase, so the `pinentry-mac` dialog appears. (The key itself
+goes to `/dev/null` here — this is only to make the dialog appear, not to read the key.)
+
 **Your choice, not a setting in the code:**
 
-- **Tick "Save in Keychain"** the next time the `pinentry-mac` dialog appears (for example,
-  right after you install the bridge and run it once by hand in stage 6). The passphrase is
-  then always available, and every night succeeds.
-- **Or do nothing**, and accept that some nights will fail with "NTSB key unavailable" — most
-  often the first night after your Mac restarts, since that clears the cache. This is safe:
-  spec §3 promises that a missed night only *widens the interval* the next run measures against
-  (it never invents a false date), so a run that does not happen is never a wrong answer, only
-  a later one.
+- **Tick "Save in Keychain"** in that dialog. The passphrase is then read from the macOS
+  Keychain instead, which does not expire on the same 24-hour ceiling, and every night
+  succeeds without you doing anything further.
+- **Or do nothing**, and accept that nights more than 24 hours after your last `pass` use will
+  fail with "NTSB key unavailable" — the weekend pattern above is the common case. This is
+  safe: spec §3 promises that a missed night only *widens the interval* the next run measures
+  against (it never invents a false date), so a run that does not happen is never a wrong
+  answer, only a later one.
 
 Either is fine. Pick whichever matches how much you want to think about this.
 
@@ -114,18 +170,13 @@ between two observations, and the recorder never claims a date it does not have.
 
 ## Stage 5 — Install the `launchd` job
 
-**First, find where your tools live**, because `launchd` jobs run with almost no `PATH` set —
-they do not automatically see what your Terminal sees:
-
-```
-which uv
-which pass
-which perl
-```
-
-Typical Homebrew locations are `/opt/homebrew/bin` (Apple Silicon) or `/usr/local/bin`
-(Intel); `perl` is normally already at `/usr/bin/perl`. Use what `which` actually printed, not
-the guess below, when you fill in the plist.
+**`launchd` jobs run with almost no `PATH` set** — they do not automatically see what your
+Terminal sees, so the plist below sets one explicitly:
+`/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`. **This is already correct for this Mac** —
+Homebrew's Apple Silicon location (`/opt/homebrew/bin`) is where `uv`, `pass` and `gpg` live
+here, and `perl` is the system one at `/usr/bin/perl`, so there is nothing to change before
+installing it. (If you are ever setting this up on a **different** Mac, check first with
+`which uv pass gpg perl` and adjust that one `PATH` string to match what it prints.)
 
 **Create the plist** (a **plist** — "property list" — is the XML file `launchd` reads to
 know what to run and when) at
@@ -139,11 +190,14 @@ know what to run and when) at
     <key>Label</key>
     <string>dev.floyda.ntsb-record</string>
 
-    <!-- Argument 1 is the wrapper script; argument 2 is the code directory it runs FROM
-         (stage 1 -- the worktree for now, the main checkout after the merge). -->
+    <!-- Argument 1 is the wrapper script -- ALWAYS this fixed path in your main checkout
+         (stage 1's one-time copy), never the worktree, and this never needs to change.
+         Argument 2 is the code directory it runs `ntsb-record run` FROM -- the worktree for
+         now, the main checkout after the merge (stage 7 -- THIS is the argument that changes,
+         and only this one). -->
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
         <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder</string>
     </array>
 
@@ -156,8 +210,8 @@ know what to run and when) at
         <integer>0</integer>
     </dict>
 
-    <!-- launchd's own minimal PATH does not include Homebrew or uv. Replace this with what
-         `which uv`/`which pass`/`which perl` printed above. -->
+    <!-- launchd's own minimal PATH does not include Homebrew or uv -- already correct for
+         this Mac (see above). -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -198,20 +252,23 @@ launchctl kickstart -k gui/$(id -u)/dev.floyda.ntsb-record
 This is also the moment the `pinentry-mac` dialog may appear (stage 2) — if it does, decide
 then whether to tick "Save in Keychain."
 
-**Check it ran**, two ways:
+**Check it ran**, two ways (full paths below, so these work from anywhere — not only from
+inside the main checkout):
 
 ```
-tail data/recorder.log
+tail /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.log
 ```
 
 Look for the line `run done` (from the wrapper) after a block of lines starting
 `... INFO ntsb_probable_cause.recorder ...` (from the recorder itself, spec §9.1's own log
-format) ending in `run done cases=... changed=... new_docs=... failed=... minutes=...`. If you
-instead see `NTSB key unavailable` or `run failed exit=...`, the key or the run itself is the
-problem — nothing was written to the store beyond stage 4's note above.
+format, in UTC to match the wrapper's own timestamps) ending in
+`run done cases=... changed=... new_docs=... failed=... minutes=...`. If you instead see `NTSB
+key unavailable` or `run failed exit=...`, the key or the run itself is the problem — nothing
+was written to the store beyond stage 4's note above.
 
 ```
-sqlite3 data/recorder.sqlite "select run_id, started_at, finished_at from runs order by run_id desc limit 3"
+sqlite3 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
+  "select run_id, started_at, finished_at from runs order by run_id desc limit 3"
 ```
 
 Each row is one night. `finished_at` set (not blank) means that run completed; a row with no
@@ -223,22 +280,41 @@ that is not a data loss on the bridge.
 ## Stage 7 — After the merge: point the bridge at the main checkout
 
 Once this stage's pull request is merged to `main`, the worktree in stage 1 is no longer where
-the current code lives. Edit the plist's first `ProgramArguments` string (the code directory)
-from the worktree path to:
+the current code lives. **Exactly one string in the plist changes** — the *second*
+`ProgramArguments` string (the code directory `ntsb-record run` runs from). The *first* string
+(the wrapper script's own path) does not change: it already points at your main checkout
+(stage 1), and that copy is now the real, git-tracked one instead of your manual copy.
 
-```
-/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause
+Before (what stage 5 installed):
+
+```xml
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder</string>
+    </array>
 ```
 
-then reload it:
+After (edit only the second `<string>`):
+
+```xml
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/scripts/recorder_bridge.sh</string>
+        <string>/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause</string>
+    </array>
+```
+
+Then reload it:
 
 ```
 launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist
 ```
 
-The store and log paths do not change — they were already the main checkout's `data/`
-directory (stage 1).
+**Check the next run the same way as stage 6** — `tail` the log for a `run done` line, and the
+same `sqlite3 ... runs ...` query for a new row with `finished_at` set. The store and log paths
+do not change — they were already the main checkout's `data/` directory (stage 1).
 
 ---
 
@@ -260,12 +336,38 @@ good, not just stopped.)
 bridge left off rather than starting empty:
 
 ```
-aws s3 cp data/recorder.sqlite s3://<bucket>/recorder.sqlite --profile ntsb
+aws s3 cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
+  s3://<bucket>/recorder.sqlite --profile ntsb
 ```
 
 (`<bucket>` is the name `cdk deploy` printed when the AWS stack was created — see
 `docs/runbooks/recorder-deploy.md`.) Do this once, right after unloading the bridge and before
 the first AWS run, so exactly one of the two is ever writing to the store at a time.
+
+---
+
+## Known risks
+
+Three things worth knowing before you rely on this, none of them dangerous, all of them worth
+recognising if they happen:
+
+- **The bridge runs whatever code the worktree holds at 03:00** — including a change you were
+  midway through editing when you went to bed. This is not silent: `ntsb-record` records
+  whether the tree was "dirty" (uncommitted changes) with every run (CLAUDE.md rule 11), so a
+  night run against half-edited code is visible in the store afterwards, not indistinguishable
+  from a clean one. Worst case, that night fails or writes from code that was never committed —
+  annoying, not corrupting, and the next clean night's rows are unaffected.
+- **If the worktree is deleted before stage 7 (the merge), the bridge stops.** The
+  `launchd` job still fires at 03:00, but the wrapper's code-directory argument points at a
+  folder that no longer exists, so every run fails at the `cd` step. `tail` the log (stage 6) to
+  notice; nothing is lost, since a failed run on a local store never destroys already-written
+  rows (stage 4's box).
+- **A timed-out night can leave the `pinentry-mac` dialog on screen.** If the GPG passphrase
+  cache has expired and `pass show` pops the dialog, the wrapper's 60-second alarm (stage 2)
+  kills `pass` itself and logs `NTSB key unavailable` — but the dialog it opened is a separate
+  window and is not guaranteed to close with it. If you see a stray "Enter passphrase" dialog
+  some morning, that is why; dismissing it is harmless, and the corresponding run already
+  failed cleanly.
 
 ---
 
@@ -287,6 +389,11 @@ you type it once, so you are not asked again on every use — this is what makes
 
 **`pinentry`.** The small program the GPG agent calls to ask you for your passphrase.
 `pinentry-mac` is the macOS version, which can show a "Save in Keychain" option.
+
+**Keychain.** macOS's own built-in password store. A passphrase saved there through
+`pinentry-mac` is read back by GPG directly, bypassing `gpg-agent`'s own 24-hour cache ceiling
+(stage 2) entirely — this is why ticking "Save in Keychain" once removes the problem for good,
+rather than just resetting the same 24-hour clock.
 
 **Worktree.** A second checkout of the same git repository, on a different branch, sharing the
 same underlying history — used here so this stage's code can run without touching your main

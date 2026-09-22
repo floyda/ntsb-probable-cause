@@ -27,6 +27,7 @@ import argparse
 import logging
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -98,11 +99,19 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse arguments and run one nightly pass. Returns the process exit code."""
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    # Fix round 1, Minor 6: UTC, with a trailing "Z", matching the wrapper script's own
+    # `%Y-%m-%dT%H:%M:%SZ` timestamps (scripts/recorder_bridge.sh) -- a mixed local/UTC log
+    # would misorder the wrapper's "run start"/"run done" lines against this process's own,
+    # which the runbook's "check it ran" step reads together. Scoped to this one Formatter
+    # instance (not `logging.Formatter.converter` globally), so nothing else in the process --
+    # or, in a test, anything else in the same pytest session -- is affected.
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ"
     )
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     args = _build_parser().parse_args(argv)
     settings = Settings()
 
@@ -144,7 +153,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     store.close()
     if not args.dry_run:
-        push(local, location)
+        try:
+            push(local, location)
+        except Exception:
+            # Fix round 1, Minor 3: a push failure (e.g. a network error, an expired AWS
+            # credential) must not read as a silent success -- it means tonight's rows never
+            # left the local working file, and for an S3 store that file is discarded when the
+            # process exits (controller note 2). Logged the same way a run_night failure is,
+            # for the same reason: this needs the traceback, not a clean one-liner.
+            _log.exception("push failed")
+            return 1
     return 0
 
 
