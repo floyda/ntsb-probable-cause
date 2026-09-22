@@ -78,6 +78,9 @@ docket-shape-open:
 ongoing-probe:
 	uv run python -m scripts.ongoing_docket_probe --out docs/results/s25-ongoing-dockets.txt
 # Read and discard (decision 0024): no cache, nothing written under data/, no case number
-# printed. 100 polite requests to data.ntsb.gov (about 4 minutes at the 2-second floor).
-# Fixes the recorder's "no-docket" outcome (spec S2.5 S10.1) from what the site actually
-# returns for an ongoing case. Launched by the project owner, not CI.
+# printed. 100 polite requests to data.ntsb.gov, about 4 minutes at the 2-second floor --
+# that estimate assumes no retries; each persistent retried status (429/500/502/503/504)
+# adds roughly 30 seconds of backoff for that one case (docket/client.py's exponential
+# backoff over up to 5 attempts). Fixes the recorder's "no-docket" outcome (spec S2.5 S10.1)
+# from what the site actually returns for an ongoing case. Launched by the project owner,
+# not CI.

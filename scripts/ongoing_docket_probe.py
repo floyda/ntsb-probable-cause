@@ -45,8 +45,17 @@ STRATA: tuple[tuple[str, int, int], ...] = (
 ONGOING = "Ongoing"
 # The record field's own value -- sources.MODE_AVIATION is the lowercase API query param, not this.
 _AVIATION_MODE = "Aviation"
-_HTTP_STATUS = re.compile(r"returned (\d+)$")
 _REGULATION_PATH = "aircrafts[0].ownerOperators[0].regulationFlightConductedUnder"
+
+# The two DocketError message shapes docket/client.py's _get raises (fix round 1, IMPORTANT 1):
+# a non-retried status, `f"{url} returned {status}"` (client.py:17 excludes it from
+# _RETRY_STATUSES; most likely a 404 for a case with no docket); and an exhausted-retries
+# message once every attempt is spent, `f"{url} failed after {n} attempts; last status
+# {status}"` (client.py:193), where `status` is either a retried HTTP status code that
+# persisted (an int) or a transport exception's class name (client.py's `except
+# httpx.TransportError`, `status = type(error).__name__`). Read from the source, not guessed.
+_RETURNED_STATUS = re.compile(r"returned (\d+)$")
+_LAST_STATUS = re.compile(r"last status (\S+)$")
 
 
 def stratify(days: int) -> str:
@@ -55,27 +64,43 @@ def stratify(days: int) -> str:
 
 
 def classify_page(page: str, mkey: int) -> str:
-    """``"read"``, ``"empty"``, ``"no-info-block"`` or ``"count-mismatch"`` for a fetched page."""
+    """One of five outcomes for a fetched listing page.
+
+    ``"read"`` (documents listed), ``"empty"`` (an info block, but no rows),
+    ``"no-info-block"`` (a declared item count but no "Docket Information" block),
+    ``"no-info-block-no-count"`` (no count either -- an unrelated 200 page, not a docket
+    shell) or ``"count-mismatch"`` (the declared count disagrees with the parsed rows). Fix
+    round 1, IMPORTANT 2: the last two used to be one bucket; ``Listing.declared_items`` (a
+    number vs ``None``) tells them apart, since a page with no docket text at all is a much
+    stronger "no docket" signal than a docket shell with an empty info block.
+    """
     try:
         listing = parse_listing(page, mkey=mkey)
     except DocketError:
         return "count-mismatch"
     if listing.info is None:
-        return "no-info-block"
+        return "no-info-block" if listing.declared_items is not None else "no-info-block-no-count"
     return "empty" if not listing.entries else "read"
 
 
 def outcome_for_error(message: str) -> str:
-    """``"http-<status>"`` when the client's ``DocketError`` message names one HTTP status.
+    """Classify a ``DocketError`` message (see the two shapes noted above ``_RETURNED_STATUS``).
 
-    ``DocketClient._get`` raises with ``f"{url} returned {status}"`` for a non-retried status
-    (a 404 for a case with no docket, most likely) and with ``f"{url} failed after {n}
-    attempts; last status {status}"`` once every retry is exhausted, where ``status`` may be a
-    transport exception's class name rather than a number. Only the first form names a clean
-    HTTP status; anything else -- including an exhausted-retries message -- is ``"fetch-failed"``.
+    A non-retried status: ``"http-<status>"`` (a 404 for a case with no docket, most likely).
+    A status that persisted through every retry: ``"http-<status>-after-retries"`` -- kept
+    distinct from a non-retried status, and from a plain network failure, since a persistent
+    500 or 429 is not the same finding as either. A transport failure that exhausted every
+    retry: ``"fetch-failed: <ExceptionClassName>"``, the class name only -- never the full
+    message, which may embed a URL. Anything unrecognised: ``"fetch-failed"``.
     """
-    match = _HTTP_STATUS.search(message)
-    return f"http-{match.group(1)}" if match else "fetch-failed"
+    returned = _RETURNED_STATUS.search(message)
+    if returned:
+        return f"http-{returned.group(1)}"
+    exhausted = _LAST_STATUS.search(message)
+    if exhausted:
+        token = exhausted.group(1)
+        return f"http-{token}-after-retries" if token.isdigit() else f"fetch-failed: {token}"
+    return "fetch-failed"
 
 
 def ongoing_records(raw_dir: Path) -> Iterator[dict[str, object]]:
@@ -116,9 +141,15 @@ def _in_population(record: Mapping[str, object]) -> bool:
     return regulation in (None, "", GA_REGULATION)
 
 
-def _population(raw_dir: Path, today: date) -> dict[str, list[tuple[int, int]]]:
-    """Eligible ongoing cases as ``(mkey, days_since_event)``, bucketed by day-stratum."""
+def _population(raw_dir: Path, today: date) -> tuple[dict[str, list[tuple[int, int]]], int]:
+    """Eligible ongoing cases as ``(mkey, days_since_event)``, bucketed by day-stratum.
+
+    Also returns how many otherwise-eligible records were skipped for a missing or
+    unparsable ``eventDate`` (fix round 1, item d) -- a denominator the report states rather
+    than silently drops.
+    """
     buckets: dict[str, list[tuple[int, int]]] = {name: [] for name, _, _ in STRATA}
+    skipped_no_event_date = 0
     for record in ongoing_records(raw_dir):
         if not _in_population(record):
             continue
@@ -128,22 +159,30 @@ def _population(raw_dir: Path, today: date) -> dict[str, list[tuple[int, int]]]:
         try:
             event_date = date.fromisoformat(str(record.get("eventDate"))[:10])
         except ValueError:
+            skipped_no_event_date += 1
             continue
         days = (today - event_date).days
         if days < 0:
             continue
         buckets[stratify(days)].append((mkey, days))
-    return buckets
+    return buckets, skipped_no_event_date
 
 
 def population_sizes(raw_dir: Path, today: date) -> dict[str, int]:
     """How many eligible ongoing cases exist per day-stratum -- what ``draw`` samples from."""
-    return {name: len(members) for name, members in _population(raw_dir, today).items()}
+    buckets, _ = _population(raw_dir, today)
+    return {name: len(members) for name, members in buckets.items()}
+
+
+def population_skips(raw_dir: Path, today: date) -> int:
+    """How many otherwise-eligible ongoing cases ``draw`` skipped for a bad ``eventDate``."""
+    _, skipped = _population(raw_dir, today)
+    return skipped
 
 
 def draw(raw_dir: Path, n: int, seed: int, today: date) -> list[tuple[int, int]]:
     """``n`` (mkey, days_since_event) pairs, split as evenly as possible across ``STRATA``."""
-    buckets = _population(raw_dir, today)
+    buckets, _ = _population(raw_dir, today)
     rng = random.Random(seed)  # noqa: S311 -- reproducible draw, not security
     names = [name for name, _, _ in STRATA]
     base, extra = divmod(n, len(names))
@@ -164,7 +203,9 @@ def _percentiles(values: Sequence[int]) -> dict[float, float]:
     return {q: ordered[min(n - 1, max(0, math.ceil(q * n) - 1))] for q in (0.25, 0.5, 0.75, 1.0)}
 
 
-def report(  # noqa: PLR0913 -- the brief's Interfaces block fixes report()'s fields.
+def report(  # noqa: PLR0913 -- one counts-only value per section; a dataclass would only move
+    # these same fields, and fix round 1's own additions (by_open_date, skipped_no_event_date)
+    # are counts this report has to state, not fields the brief fixed at 5.
     *,
     outcomes: Mapping[str, int],
     doc_counts: Sequence[int],
@@ -173,6 +214,7 @@ def report(  # noqa: PLR0913 -- the brief's Interfaces block fixes report()'s fi
     creation_date_present: int = 0,
     seed: int | None = None,
     by_open_date: Mapping[bool, Mapping[str, int]] | None = None,
+    skipped_no_event_date: int = 0,
 ) -> str:
     """Counts-only report: outcome mix, document-count percentiles, seed. Nothing per-case.
 
@@ -184,6 +226,7 @@ def report(  # noqa: PLR0913 -- the brief's Interfaces block fixes report()'s fi
         "Ongoing-docket probe (scripts/ongoing_docket_probe.py; spec S2.5 §10.1)",
         "",
         f"cases attempted: {attempted}",
+        f"skipped: no event date: {skipped_no_event_date}",
         "",
         "outcomes (overall):",
     ]
@@ -235,6 +278,7 @@ def main(argv: Sequence[str]) -> int:
 
     drawn = draw(raw_dir, args.n, args.seed, today)
     sizes = population_sizes(raw_dir, today)
+    skipped_no_event_date = population_skips(raw_dir, today)
     open_date_set = has_open_date_set(raw_dir)
     fetch_dates = [e.fetched_at.date() for e in latest_entries(read_manifest(raw_dir)).values()]
 
@@ -272,6 +316,7 @@ def main(argv: Sequence[str]) -> int:
         attempted=attempted,
         creation_date_present=creation_present,
         seed=args.seed,
+        skipped_no_event_date=skipped_no_event_date,
     )
     drawn_counts = Counter(stratify(days) for _, days in drawn)
     text += "\n\n" + "\n".join(

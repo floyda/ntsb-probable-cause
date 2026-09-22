@@ -15,6 +15,7 @@ from scripts.ongoing_docket_probe import (
     main,
     outcome_for_error,
     population_sizes,
+    population_skips,
     report,
     stratify,
 )
@@ -22,6 +23,8 @@ from scripts.ongoing_docket_probe import (
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.data.api import Page
 from ntsb_probable_cause.data.ingest import Month, fetch_months
+from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.errors import DocketError
 
 SAVED = Path("tests/fixtures/docket/ERA17LA217/listing.html").read_bytes().decode("utf-8")
 MKEY = 95459
@@ -77,6 +80,12 @@ def test_page_without_block_is_not_read() -> None:
     assert classify_page("<html>Docket Items: 0</html>", 1) == "no-info-block"
 
 
+def test_page_without_a_count_or_a_block_is_distinguished() -> None:
+    """Fix round 1, IMPORTANT 2: a docket shell (a count, no info block) is not the same
+    outcome as an unrelated 200 page (a maintenance page, say) with no docket text at all."""
+    assert classify_page("<html>nothing to see here</html>", 1) == "no-info-block-no-count"
+
+
 def test_mismatch_is_reported_not_raised() -> None:
     bad = SAVED.replace("Docket Items: 5", "Docket Items: 7")
     assert classify_page(bad, MKEY) == "count-mismatch"
@@ -105,14 +114,67 @@ def test_stratify_buckets_by_days() -> None:
 # --- outcome_for_error -----------------------------------------------------------------------
 
 
-def test_outcome_for_error_parses_the_returned_status() -> None:
-    assert outcome_for_error("https://data.ntsb.gov/Docket?ProjectID=1 returned 404") == "http-404"
-    assert outcome_for_error("https://data.ntsb.gov/Docket?ProjectID=1 returned 500") == "http-500"
+def test_outcome_for_error_parses_a_non_retried_status() -> None:
+    message = "https://data.ntsb.gov/Docket?ProjectID=1 returned 404"
+    assert outcome_for_error(message) == "http-404"
 
 
-def test_outcome_for_error_falls_back_when_no_clean_status() -> None:
-    message = "https://x failed after 5 attempts; last status ConnectError"
-    assert outcome_for_error(message) == "fetch-failed"
+def test_outcome_for_error_parses_an_exhausted_numeric_status() -> None:
+    message = "https://data.ntsb.gov/Docket?ProjectID=1 failed after 5 attempts; last status 500"
+    assert outcome_for_error(message) == "http-500-after-retries"
+
+
+def test_outcome_for_error_parses_an_exhausted_transport_error() -> None:
+    message = (
+        "https://data.ntsb.gov/Docket?ProjectID=1 failed after 5 attempts; last status ConnectError"
+    )
+    assert outcome_for_error(message) == "fetch-failed: ConnectError"
+
+
+def test_outcome_for_error_falls_back_on_an_unrecognised_message() -> None:
+    assert outcome_for_error("nothing recognisable here") == "fetch-failed"
+
+
+def test_outcome_for_error_matches_a_real_non_retried_status(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Driven through the real client, not a hand-typed string: breaks if its wording changes."""
+    respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(404))
+    sleeps: list[float] = []
+    with (
+        DocketClient(None, seconds_per_request=2.0, sleep=sleeps.append) as client,
+        pytest.raises(DocketError) as excinfo,
+    ):
+        client.listing_html(MKEY)
+    assert outcome_for_error(str(excinfo.value)) == "http-404"
+    assert sleeps == []  # a non-retried status never sleeps at all
+
+
+def test_outcome_for_error_matches_a_real_exhausted_numeric_status(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(500))
+    sleeps: list[float] = []
+    with (
+        DocketClient(None, seconds_per_request=2.0, sleep=sleeps.append) as client,
+        pytest.raises(DocketError) as excinfo,
+    ):
+        client.listing_html(MKEY)
+    assert outcome_for_error(str(excinfo.value)) == "http-500-after-retries"
+    assert sleeps  # every retry asked to sleep; injected, so none of it was real
+
+
+def test_outcome_for_error_matches_a_real_exhausted_transport_error(
+    respx_mock: respx.MockRouter,
+) -> None:
+    respx_mock.get(sources.docket_url(MKEY)).mock(side_effect=httpx.ConnectError("boom"))
+    sleeps: list[float] = []
+    with (
+        DocketClient(None, seconds_per_request=2.0, sleep=sleeps.append) as client,
+        pytest.raises(DocketError) as excinfo,
+    ):
+        client.listing_html(MKEY)
+    assert outcome_for_error(str(excinfo.value)) == "fetch-failed: ConnectError"
 
 
 # --- report ----------------------------------------------------------------------------------
@@ -144,20 +206,6 @@ def test_report_carries_the_seed_and_percentiles_when_given() -> None:
     assert "read pages with a creation date: 2" in text
 
 
-def test_report_never_names_a_case_id() -> None:
-    """No output form of the report may carry a case number, however it is built."""
-    text = report(
-        outcomes={"read": 1},
-        doc_counts=[3],
-        by_stratum={"181+": {"read": 1}},
-        attempted=1,
-        creation_date_present=1,
-        seed=1,
-    )
-    assert "CEN" not in text
-    assert str(MKEY) not in text
-
-
 def test_report_cross_tabs_by_open_date_presence_when_given() -> None:
     text = report(
         outcomes={"read": 1, "http-404": 1},
@@ -175,6 +223,19 @@ def test_report_cross_tabs_by_open_date_presence_when_given() -> None:
 def test_report_omits_open_date_section_when_not_given() -> None:
     text = report(outcomes={"read": 1}, doc_counts=[1], by_stratum={}, attempted=1)
     assert "docketOpenDate" not in text
+
+
+def test_report_states_the_no_event_date_skip_count() -> None:
+    text = report(outcomes={"read": 1}, doc_counts=[1], by_stratum={}, attempted=1)
+    assert "skipped: no event date: 0" in text
+    text = report(
+        outcomes={"read": 1},
+        doc_counts=[1],
+        by_stratum={},
+        attempted=1,
+        skipped_no_event_date=3,
+    )
+    assert "skipped: no event date: 3" in text
 
 
 # --- has_open_date_set -----------------------------------------------------------------------
@@ -291,6 +352,40 @@ def test_population_sizes_matches_what_draw_samples_from(tmp_path: Path) -> None
     assert sorted(draw(raw, 100, seed=1, today=today)) == [(1001, 21)]
 
 
+def test_population_skips_counts_missing_and_unparsable_event_dates(tmp_path: Path) -> None:
+    """Fix round 1, item d: a bad eventDate is a stated denominator, not a silent drop."""
+    raw = tmp_path / "raw"
+    today = date(2026, 9, 22)
+    _write_month(
+        raw,
+        Month(2026, 8),
+        [
+            _record(ntsbNumber="CEN26LA030", mKey=4001, eventDate="2026-09-01"),  # kept
+            _record(ntsbNumber="CEN26LA031", mKey=4002, eventDate="not-a-date"),  # unparsable
+            _record(ntsbNumber="CEN26LA032", mKey=4003, eventDate=None),  # missing
+        ],
+        "2026-09-20T00:00:00",
+    )
+    assert population_skips(raw, today) == 2
+    drawn = draw(raw, 100, seed=1, today=today)
+    assert drawn == [(4001, 21)]
+
+
+def test_draw_takes_every_member_of_a_stratum_smaller_than_its_share(tmp_path: Path) -> None:
+    """A stratum with fewer candidates than its even share takes all of it, not a sample --
+    what draw()'s min(shares[name], len(members)) already does; this pins the behaviour and
+    what population_sizes reports for main()'s "drew N of M" line to describe it accurately.
+    """
+    raw = tmp_path / "raw"
+    today = date(2026, 9, 22)
+    _write_month(
+        raw, Month(2026, 8), [_record(ntsbNumber="CEN26LA040", mKey=5001)], "2026-09-20T00:00:00"
+    )
+    drawn = draw(raw, 100, seed=1, today=today)  # share for "0-30" is 25; only 1 candidate exists
+    assert drawn == [(5001, 21)]
+    assert population_sizes(raw, today)["0-30"] == 1
+
+
 # --- main --------------------------------------------------------------------------------------
 
 
@@ -316,7 +411,15 @@ def test_main_writes_a_counts_only_report_and_no_cache(
         "2026-09-20T00:00:00",
     )
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("NTSB_DOCKET_SECONDS_PER_REQUEST", "0.001")
+    # Fix round 1, item c: NEVER override the polite rate to near-zero -- that is the one
+    # thing the project rule forbids (docket_seconds_per_request is `gt=0` for a real reason:
+    # data.ntsb.gov is a real government site). main() builds its own DocketClient without a
+    # way to inject a fake `sleep`, so this test follows tests/test_docket_shape_open.py:70-71
+    # instead: keep the real 2-second rate and keep the drawn set to exactly the two cases
+    # above, so there is only ever one real gap to wait out, not zero or none. NTSB_DOCKET_DIR
+    # is pinned to a tmp path too, as that precedent does, even though DocketClient(None, ...)
+    # never writes to it.
+    monkeypatch.setenv("NTSB_DOCKET_DIR", str(tmp_path / "docket"))
     respx_mock.get(sources.docket_url(1001)).mock(
         return_value=httpx.Response(200, text="<html>Docket Items: 0</html>")
     )
@@ -327,10 +430,14 @@ def test_main_writes_a_counts_only_report_and_no_cache(
     assert main(["--n", "4", "--seed", "1", "--out", str(out)]) == 0
     text = out.read_text()
     assert "cases attempted: 2" in text
+    assert "skipped: no event date: 0" in text
     assert "no-info-block: 1" in text
     assert "http-404: 1" in text
     assert "docketOpenDate set:" in text
     assert "docketOpenDate not set:" in text
+    assert "drew 1 of 1 0-30-day ongoing cases in the population" in text
+    assert "drew 1 of 1 181+-day ongoing cases in the population" in text
+    assert f"raw store fetched as of {date(2026, 9, 20).isoformat()}" in text
     assert "1001" not in text
     assert "1002" not in text
     assert "CEN26LA001" not in text
