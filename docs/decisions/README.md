@@ -112,3 +112,4 @@ under `docs/specs/` and the record links to it.
 | [0069](0069-the-ntsb-key-reaches-the-task-from-parameter-store.md) | The NTSB key reaches the scheduled task from AWS Parameter Store, encrypted | Accepted |
 | [0070](0070-the-word-list-is-vendored-into-the-repository.md) | The word list is vendored into the repository | Accepted; amends 0058 |
 | [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted |
+| [0072](0072-recorders-one-exempted-import-link.md) | The recorder's call to `split_record` is the one link exempted from the synthesis-and-verdict import rule | Accepted; narrows 0016 |
