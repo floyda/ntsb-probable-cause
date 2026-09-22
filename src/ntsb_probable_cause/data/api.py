@@ -68,6 +68,20 @@ class NtsbClient:
     ) -> None:
         self._http.close()
 
+    def cases_modified(self, start: date, end: date) -> tuple[dict[str, object], ...]:
+        """Cases the NTSB changed in [start, end], all modes (decision 0065)."""
+        content = self._get(
+            sources.CASES_BY_MODIFIED_DATE_RANGE_V1,
+            {"startDate": start.isoformat(), "endDate": end.isoformat()},
+        )
+        try:
+            payload = json.loads(content) if content.strip() else []
+        except ValueError as error:
+            raise ApiError("GetCasesByModifiedDateRange: not JSON") from error
+        if not isinstance(payload, list) or not all(isinstance(r, dict) for r in payload):
+            raise ApiError("GetCasesByModifiedDateRange: expected a JSON list of records")
+        return tuple(payload)
+
     def cases_by_date_range(self, start: date, end: date) -> Iterator[Page]:
         """Yield every page of aviation cases whose event date lies in [start, end]."""
         params: dict[str, str] = {
@@ -77,7 +91,7 @@ class NtsbClient:
         }
         number = 1
         while True:
-            page = self._parse(number, self._get(params))
+            page = self._parse(number, self._get(sources.CASES_BY_DATE_RANGE_V2, params))
             yield page
             if not page.has_more:
                 return
@@ -91,13 +105,15 @@ class NtsbClient:
             params["marker"] = page.next_marker
             number += 1
 
-    def _get(self, params: dict[str, str]) -> bytes:
+    def _get(self, path: str, params: dict[str, str]) -> bytes:
+        # Extract endpoint name from path for error messages
+        endpoint_name = path.rstrip("/").split("/")[-1]
         for attempt in range(1, self._max_attempts + 1):
             if self._requested:
                 self._sleep(self._gap)
             self._requested = True
             try:
-                response = self._http.get(sources.CASES_BY_DATE_RANGE_V2, params=params)
+                response = self._http.get(path, params=params)
             except httpx.TransportError as error:
                 status: object = type(error).__name__
             else:
@@ -105,14 +121,11 @@ class NtsbClient:
                     return response.content
                 status = response.status_code
                 if response.status_code not in _RETRY_STATUSES:
-                    raise ApiError(
-                        f"GetCasesByDateRangeV2 returned {status}: {response.text[:200]}"
-                    )
+                    raise ApiError(f"{endpoint_name} returned {status}: {response.text[:200]}")
             if attempt < self._max_attempts:
                 self._sleep(self._backoff * 2 ** (attempt - 1))
         raise ApiError(
-            f"GetCasesByDateRangeV2 failed after {self._max_attempts} attempts; "
-            f"last status {status}"
+            f"{endpoint_name} failed after {self._max_attempts} attempts; last status {status}"
         )
 
     @staticmethod
