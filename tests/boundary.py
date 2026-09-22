@@ -42,16 +42,30 @@ CODE_LENGTH_THRESHOLD = 6
 # 4KB (a long factual narrative does) spans more than one page once it is stored, and the
 # pages are not contiguous in the file, so the whole string stops being one contiguous byte
 # run -- a store boundary check built on the whole string alone would then miss it (Task 7 fix
-# round 1, Important 1). A window this size almost always lands whole inside a single page, so
-# tiling the text with many such windows still catches the leak even though a window or two
-# that straddle a page boundary individually go undetected.
+# round 1, Important 1). WINDOW_CHARS caps how long a single window is ever allowed to be, so
+# a window that does land inside one page (the common case) is small next to that page's
+# capacity.
 WINDOW_CHARS = 200
-# The shortest window this module will emit; a bare remainder shorter than this (the tail end
-# of a text once it is cut into WINDOW_CHARS-sized pieces) is folded into the previous window
-# instead of being checked on its own, so no window is short enough to match unrelated bytes
-# by chance. Reuses the guard's own minimum-sentence length rather than inventing a second
-# number with no measurement behind it.
-_MIN_WINDOW_CHARS = 20
+# The shortest window this module will ever emit. Long enough that a match cannot plausibly be
+# chance (fix round 2: raised from the guard's 20-character minimum sentence length, which was
+# tuned for a different purpose -- distinguishing real sentence quotation from coincidence in
+# free text -- not for this check's "could this string exist in unrelated binary data by
+# accident" question).
+_MIN_WINDOW_CHARS = 50
+# Windows overlap by at least half their own length (stride = window length // 2). Fix round 2,
+# finding 1a: round 1's windows did not overlap at all, so a withheld string no longer than one
+# window (WINDOW_CHARS + a folded remainder, i.e. up to 219 characters -- six of the nine
+# development fixtures' probable-cause texts qualify) produced exactly ONE window equal to the
+# whole string, and a single SQLite page split landing anywhere inside that one window defeated
+# it completely: the reviewer's sweep found 155 of 4200 page alignments (3.7%) undetected.
+# Overlap fixes this: for any single split point inside the tiled text, at most the one or two
+# windows whose span straddles that point are affected, and every other generated window --
+# there are always at least two, and usually several more -- is left as a contiguous run on one
+# side of the split, so at least one window is always still there to find. Verified empirically
+# against the reviewer's own construction in
+# test_boundary_windows_survive_every_page_alignment, which also demonstrates that round 1's
+# non-overlapping scheme fails it (see the Task 7 report).
+_STRIDE_DIVISOR = 2
 
 
 def _json_escaped(text: str) -> str:
@@ -64,22 +78,41 @@ def _json_escaped(text: str) -> str:
     return json.dumps(text)[1:-1]
 
 
-def _windows(text: str, size: int = WINDOW_CHARS) -> list[str]:
-    """Windows tiling ``text``, each short enough to fit on one SQLite page (see WINDOW_CHARS).
+def _windows(text: str, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS) -> list[str]:
+    """Overlapping windows tiling ``text``, each at least ``min_size`` characters.
 
-    Non-overlapping except for the last window, which absorbs any final remainder shorter than
-    ``_MIN_WINDOW_CHARS`` rather than emitting it as its own too-short, potentially-vacuous
-    window.
+    A text no longer than ``min_size`` is returned whole: it cannot be usefully subdivided
+    (there is no room for even one full-length window inside it), so it keeps whatever
+    single-window risk that implies. Otherwise the per-window length is capped at both
+    ``size`` (well under an SQLite page) and half of ``text``'s own length, so a text shorter
+    than one full-size window still gets at least two genuinely overlapping windows rather
+    than the single whole-string window round 1 produced for anything under 219 characters.
+    Consecutive windows are spaced by half a window's length (``_STRIDE_DIVISOR``), and the
+    final window is snapped to end exactly at the text's own end, so the whole text is covered
+    and the overlap guarantee (see ``_STRIDE_DIVISOR``'s comment) holds all the way to the end.
+
+    A text only a little longer than ``min_size`` (the shortest development-fixture probable
+    cause is 52 characters, against a 50-character minimum) cannot get more than two windows
+    with heavy mutual overlap -- there simply is not room for a third, differently-positioned
+    window -- so a split landing in that large shared overlap is not fully protected against.
+    This is accepted, not hidden: it is the same kind of small residual risk as the whole-code
+    check below, for the same reason (there is a hard floor on how short a checkable window can
+    be), and is smaller than round 1's gap, which covered every text under 219 characters, not
+    only texts within a few characters of the 50-character floor.
     """
+    length = len(text)
+    if length <= min_size:
+        return [text]
+    window = min(size, max(min_size, length // 2))
+    stride = max(1, window // _STRIDE_DIVISOR)
     windows: list[str] = []
     start = 0
-    length = len(text)
-    while start < length:
-        end = start + size
-        if length - end < _MIN_WINDOW_CHARS:
-            end = length
-        windows.append(text[start:end])
-        start = end
+    while True:
+        if start + window >= length:
+            windows.append(text[length - window :])
+            break
+        windows.append(text[start : start + window])
+        start += stride
     return windows
 
 
@@ -87,9 +120,17 @@ def withheld_windows(raw: Mapping[str, object]) -> list[str]:
     """Every substring a store boundary test should check for in a case's raw record.
 
     The probable cause and both narratives, each in both raw and JSON-escaped form and cut
-    into windows well under an SQLite page (see ``_windows``, ``_json_escaped``), plus every
-    occurrence and finding code long enough to be distinctive (``CODE_LENGTH_THRESHOLD``) --
-    codes are short, all-numeric and unaffected by JSON escaping, so they are checked whole.
+    into overlapping windows well under an SQLite page (see ``_windows``, ``_json_escaped``),
+    plus every occurrence and finding code long enough to be distinctive
+    (``CODE_LENGTH_THRESHOLD``) -- codes are short, all-numeric and unaffected by JSON
+    escaping, so they are checked whole, not windowed.
+
+    Codes are a real, accepted gap this function does NOT close: a 6-to-10-character code that
+    happens to be split across a page boundary is not detected, because a code is too short to
+    subdivide into windows at all without falling below any length that could not also match
+    unrelated binary data by chance (``CODE_LENGTH_THRESHOLD`` already sits at that floor).
+    This is a residual risk, not a covered case -- it is not claimed to be covered.
+
     Empty/``None`` values are omitted.
     """
     texts = [

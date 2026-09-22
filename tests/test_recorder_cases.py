@@ -14,6 +14,7 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.paths import overlaps
 from ntsb_probable_cause.recorder.cases import (
     REGULATION_PATH,
+    _is_empty,
     is_watchable,
     mark_not_returned,
     observe_case,
@@ -470,6 +471,55 @@ def test_not_returned_then_completed_keeps_the_tail(
     assert case.watch_until == tail_after_not_returned
 
 
+def test_mark_not_returned_after_reappearing_as_ongoing_gets_a_fresh_tail(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """A case that reappears as Ongoing has its tail cleared there (`_apply_status`); the next
+
+    vanishing sets a genuinely fresh tail, not the one it had before it reappeared -- the
+    `mark_not_returned` docstring's own claim, checked directly.
+    """
+    observe_case(store, ongoing_record, run_id=1, today=date(2026, 10, 1))
+    mkey = _mkey(ongoing_record)
+
+    mark_not_returned(store, mkey, run_id=2, today=date(2026, 10, 2))
+    first = store.get_case(mkey)
+    assert first is not None
+    assert first.watch_until == "2026-11-01"
+
+    observe_case(store, ongoing_record, run_id=3, today=date(2026, 10, 10))
+    reappeared = store.get_case(mkey)
+    assert reappeared is not None
+    assert reappeared.status == "Ongoing"
+    assert reappeared.watch_until is None
+
+    mark_not_returned(store, mkey, run_id=4, today=date(2026, 10, 20))
+    second = store.get_case(mkey)
+    assert second is not None
+    assert second.watch_until == "2026-11-19"
+    assert second.watch_until != first.watch_until
+
+
 def test_mark_not_returned_on_an_unknown_case_does_nothing(store: Store) -> None:
     mark_not_returned(store, 999999, run_id=1, today=date(2026, 10, 1))
     assert store.get_case(999999) is None
+
+
+@pytest.mark.parametrize("empty_value", [None, "", ()])
+def test_is_empty_treats_none_blank_string_and_empty_tuple_as_empty(
+    empty_value: str | tuple[str, ...] | None,
+) -> None:
+    """Fix round 2: the decision documented in `_is_empty`'s docstring, exercised directly.
+
+    The `fields.py` extractors never actually emit "" or () themselves (they already normalise
+    both to None), so only the `None` case is reachable through a real evidence value today --
+    this test is what proves the other two branches do what the docstring says regardless.
+    """
+    assert _is_empty(empty_value)
+
+
+@pytest.mark.parametrize("non_empty_value", ["REC", 14000.0, ("Private",), ("a", "b")])
+def test_is_empty_is_false_for_a_real_value(
+    non_empty_value: str | float | tuple[str, ...],
+) -> None:
+    assert not _is_empty(non_empty_value)

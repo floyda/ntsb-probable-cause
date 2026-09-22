@@ -1,6 +1,6 @@
 import copy
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -376,12 +376,33 @@ def _leaky_split_via_snapshot(raw: Mapping[str, object]) -> tuple[Evidence, Synt
 
     Unlike ``_leaky_split`` (which leaks through ``prelim_narratives.text``, a plain TEXT
     column), this leaks through ``field_snapshots.value_json``, written with
-    ``json.dumps(value, sort_keys=True)`` -- so the stored bytes are the *escaped* form of the
-    narrative, not the raw form. Fix round 1, Important 1: this is one of the two leak shapes
-    the original boundary check could not see.
+    ``json.dumps(value, sort_keys=True)``. This exercises the ``field_snapshots`` leak path,
+    one of the two shapes fix round 1, Important 1 found the original check could not see --
+    but it does NOT by itself prove the *escaped*-form windows are load-bearing: most of an
+    8000-character narrative contains no character JSON escapes, so plenty of plain raw-form
+    windows still match and this test would pass even with the escaped-form windows removed
+    (fix round 2, finding 1b, corrects this docstring's earlier, mistaken claim to the
+    contrary). ``test_store_boundary_test_fails_when_only_the_escaped_form_can_catch_the_leak``
+    below is the test that actually needs the escaped form.
     """
     evidence, synthesis, verdict = split_record(raw)
     leaked = evidence.model_copy(update={"weather_metar": synthesis.factual_narrative})
+    return leaked, synthesis, verdict
+
+
+def _leaky_split_via_snapshot_escaped_only(
+    raw: Mapping[str, object],
+) -> tuple[Evidence, Synthesis, Verdict]:
+    """A splitter that leaks the probable cause through an evidence field, escaped-only.
+
+    The probable cause this is run against (see the mutation test below) is edited to contain
+    a double quote, which ``json.dumps`` rewrites to ``\\"``. Once stored, the raw form (with a
+    literal ``"``) is never written to the file at all -- only the escaped form is -- so this
+    leak can be caught only by a check that includes the escaped-form windows (fix round 2,
+    finding 1b).
+    """
+    evidence, synthesis, verdict = split_record(raw)
+    leaked = evidence.model_copy(update={"weather_metar": verdict.probable_cause})
     return leaked, synthesis, verdict
 
 
@@ -444,13 +465,113 @@ def test_store_boundary_test_fails_when_the_split_is_bypassed(
 def test_store_boundary_test_fails_when_a_snapshot_role_leaks(
     tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Mutation: a splitter that leaks through a JSON-escaped field_snapshots row must be
-    caught too -- proves the escaped-form windows, not just the raw-form ones, are checked."""
+    """Mutation: a splitter that leaks through a ``field_snapshots`` row must be caught."""
     monkeypatch.setattr(
         "ntsb_probable_cause.recorder.cases.split_record", _leaky_split_via_snapshot
     )
     with pytest.raises(AssertionError, match="withheld string in store"):
         test_store_never_holds_synthesis_or_verdict(tmp_path, closing_record)
+
+
+def test_withheld_windows_include_the_escaped_form(closing_record: dict[str, object]) -> None:
+    """Unit check, fix round 2 finding 1b: ``withheld_windows`` really does emit windows
+
+    built from the JSON-escaped form of a withheld text, not only the raw form -- checked
+    directly on the function's own output, independent of any store or mutation test, so a
+    regression that silently dropped the escaped form would be caught here even if some other
+    raw-form window happened to still catch a given mutation test's specific leak.
+    """
+    mutated = copy.deepcopy(closing_record)
+    narratives = mutated["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["probableCause"] = 'The pilot\'s failure to maintain control, per "witness A".'
+
+    windows = withheld_windows(mutated)
+    assert any('\\"' in window for window in windows), (
+        "no window carried the escaped-quote form; escaped windows are not being produced"
+    )
+
+
+def test_store_boundary_test_fails_when_only_the_escaped_form_can_catch_the_leak(
+    tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation: a leak that ONLY its escaped form can find must be caught.
+
+    Fix round 2, finding 1b: ``test_store_boundary_test_fails_when_a_snapshot_role_leaks``
+    (above) exercises the ``field_snapshots`` leak path but does not need the escaped-form
+    windows to catch it, since most of an 8000-character narrative contains no character JSON
+    escapes at all. This test edits the probable cause to contain a double quote, which
+    ``json.dumps`` rewrites to ``\\"`` -- so the raw form (with a literal ``"``) is never
+    written to the file, and only a check that includes the escaped-form windows can catch it.
+    Confirmed, outside pytest, to fail when ``_json_escaped`` is replaced by the identity
+    function (Task 7 report).
+    """
+    mutated = copy.deepcopy(closing_record)
+    narratives = mutated["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["probableCause"] = 'The pilot\'s failure to maintain control, per "witness A".'
+
+    monkeypatch.setattr(
+        "ntsb_probable_cause.recorder.cases.split_record", _leaky_split_via_snapshot_escaped_only
+    )
+    with pytest.raises(AssertionError, match="withheld string in store"):
+        test_store_never_holds_synthesis_or_verdict(tmp_path, mutated)
+
+
+# Fix round 2, finding 1a: the reviewer's own alignment sweep (0..4199, every offset) found 155
+# of 4200 page alignments undetected with round 1's non-overlapping windows. This reproduces it
+# at a coarser stride so it stays fast in CI (measured: ~2 seconds for all 600 real stores, one
+# store per alignment, each closed and read back as bytes -- see the Task 7 report).
+_ALIGNMENT_STRIDE = 7
+_ALIGNMENT_RANGE = range(0, 4200, _ALIGNMENT_STRIDE)  # exactly 600 alignments
+
+
+def _leaky_padded_weather_metar(
+    padded: str,
+) -> Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]]:
+    def leaky(raw: Mapping[str, object]) -> tuple[Evidence, Synthesis, Verdict]:
+        evidence, synthesis, verdict = split_record(raw)
+        leaked = evidence.model_copy(update={"weather_metar": padded})
+        return leaked, synthesis, verdict
+
+    return leaky
+
+
+def test_boundary_windows_survive_every_page_alignment(
+    tmp_path: Path, closing_record: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SLOW (~600 real SQLite stores, one per page alignment; budget a few seconds).
+
+    Fix round 2, finding 1a. The probable cause is embedded in ``"x" * 5000 + cause + "y" * n``
+    (the reviewer's own construction) for 600 values of ``n`` spanning one page's width, so the
+    cause lands at a different byte offset relative to whatever SQLite page split occurs for
+    each ``n``. A real ``Store`` is built and closed for every alignment -- there is no cheaper
+    way to see where SQLite actually splits a page than to let it happen -- so this is
+    intentionally the slowest test in this file, capped at 600 stores by ``_ALIGNMENT_STRIDE``.
+    Every alignment must be caught: 0 misses. Demonstrated, outside pytest, to fail (22 of the
+    600 alignments undetected) against round 1's non-overlapping windows (Task 7 report).
+    """
+    cause = fields.probable_cause(closing_record)
+    assert cause
+    windows = withheld_windows(closing_record)
+    assert windows
+
+    misses: list[int] = []
+    for n in _ALIGNMENT_RANGE:
+        padded = "x" * 5000 + cause + "y" * n
+        monkeypatch.setattr(
+            "ntsb_probable_cause.recorder.cases.split_record", _leaky_padded_weather_metar(padded)
+        )
+        db_path = tmp_path / f"align-{n}.sqlite"
+        store = Store(db_path)
+        store.migrate()
+        observe_case(store, closing_record, run_id=1, today=date(2026, 10, 1))
+        store.close()
+        blob = _read_store_bytes(db_path)
+        if not any(window.encode() in blob for window in windows):
+            misses.append(n)
+
+    assert misses == [], f"{len(misses)}/{len(_ALIGNMENT_RANGE)} alignments undetected: {misses}"
 
 
 def _has_withheld_text(raw: Mapping[str, object]) -> bool:
@@ -476,7 +597,11 @@ def test_store_never_holds_synthesis_or_verdict_for_every_fixture(
     store = Store(tmp_path / "sweep.sqlite")
     store.migrate()
     for index, raw in enumerate(carriers):
-        observe_case(store, raw, run_id=index + 1, today=date(2026, 10, 1))
+        outcome = observe_case(store, raw, run_id=index + 1, today=date(2026, 10, 1))
+        # A fixture whose split failed would leave nothing written for it, so the byte check
+        # below would trivially find no leak -- not because none occurred, but because nothing
+        # was ever checked against. Fix round 2, Minor.
+        assert outcome.failed is None, f"fixture split failed unexpectedly: {outcome.failed}"
     store.close()
     blob = _read_store_bytes(tmp_path / "sweep.sqlite")
 

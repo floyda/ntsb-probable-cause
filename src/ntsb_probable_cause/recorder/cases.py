@@ -270,12 +270,19 @@ def mark_not_returned(store: Store, mkey: int, *, run_id: int, today: date) -> N
     """Record that a previously watched case's API record no longer appears in its event month.
 
     Spec §4.1/§7 rule 1: "not returned" is a departure from ``Ongoing`` like any other and gets
-    the same 30-day tail -- it is not an immediate, tail-less drop. The tail is set only when
-    the case was ``Ongoing`` (mirroring ``_apply_status``'s rule for every other departure from
-    ``Ongoing``); a case that goes ``not returned`` a second time, or reappears and vanishes
-    again, keeps whatever tail it already had rather than getting a fresh one. ``watched``
-    follows the same tail rule ``observe_case`` uses (Important 4): the tail only counts if the
-    case was actually watched beforehand.
+    the same 30-day tail -- it is not an immediate, tail-less drop. A fresh tail is set only
+    when the case's *currently stored* status is ``Ongoing`` (mirroring ``_apply_status``'s
+    rule for every other departure from ``Ongoing``). Two cases keep whatever tail they already
+    had instead: a case whose status is already ``not returned`` (a no-op below, so nothing
+    about it changes, tail included), and a case whose status is something else non-``Ongoing``
+    entirely (closed some other way; the same "not refreshed" rule ``_apply_status`` applies to
+    every transition between two non-``Ongoing`` statuses). A case that *reappears* as
+    ``Ongoing`` through a later :func:`observe_case` call has its tail cleared there
+    (``_apply_status`` sets ``watch_until = None`` on any return to ``Ongoing``), so if it then
+    vanishes again, this function's "status is Ongoing" branch fires again and it gets a
+    genuinely fresh tail, not the one it had before it reappeared. ``watched`` follows the same
+    tail rule ``observe_case`` uses (Important 4): the tail only counts if the case was
+    actually watched beforehand.
 
     Neither ``last_seen_run`` nor ``last_case_run`` is touched: the API did not return this
     case tonight, so tonight is not "last seen", and no evidence was reprocessed, so it is not
