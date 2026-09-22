@@ -5,7 +5,7 @@ import gzip
 import json
 import re
 import sqlite3
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -169,6 +169,14 @@ def withheld_windows(raw: Mapping[str, object]) -> list[str]:
     two checks leave no residual for any withheld string or code that is present in a live row.
     The residual described below is real, but it belongs to THIS check alone.
 
+    That "no residual" claim depends on the logical check comparing a code against ``INTEGER``
+    and ``REAL`` column values numerically, not only against text
+    (``store_numeric_values``/``_code_present``, fix round 1 of the logical-check follow-up):
+    SQLite type affinity can turn a numeric-looking insert into an actual integer, dropping a
+    leading zero in the process, and several columns are declared ``INTEGER`` regardless
+    (``mkey``, ``doc_id``, ``pages``, ``photos``, every run id). Before that fix a code stored
+    that way was invisible to BOTH checks, not only this one, and the claim above was false.
+
     Codes are a real, accepted gap this function does NOT close: a 6-to-10-character code that
     happens to be split across a page boundary is not detected, because a code is too short to
     subdivide into windows at all without falling below any length that could not also match
@@ -248,18 +256,20 @@ def _decode_stored_value(value: object) -> str | None:
     return None
 
 
-def store_values(db_path: Path) -> list[str]:
-    """Every string value SQLite would hand back for every row and column of a CLOSED store.
+def _iter_raw_values(db_path: Path) -> Iterator[object]:
+    """Every raw column value SQLite hands back for every row and column of a CLOSED store.
 
-    Opens ``db_path`` read-only (a plain URI connection, ``mode=ro`` -- the caller must have
-    already called ``Store.close()``, which checkpoints the write-ahead log into the main file,
-    so this sees everything). Tables are read from ``sqlite_master``, never a hard-coded list,
-    so a table this module does not know about (added by a later stage) is covered
-    automatically; SQLite's own internal ``sqlite_%`` tables are skipped, since they are not
-    this project's data. Reassembles each value from SQLite's storage (including any overflow
-    pages) before returning it -- see ``assert_logical_store_clean`` for why that matters.
+    Opens ``db_path`` read-only (a plain URI connection, ``mode=ro``). The caller must have
+    already called ``Store.close()``, which checkpoints the write-ahead log into the main
+    file, so this sees everything -- ``store_values``/``store_numeric_values`` are only
+    correct read AFTER ``assert_raw_bytes_clean`` has read the same store's bytes, not before
+    (see those functions' docstrings for why the ordering itself matters, separately from
+    ``close()``). Tables are read from ``sqlite_master``, never a hard-coded list, so a table
+    this module does not know about (added by a later stage) is covered automatically;
+    SQLite's own internal ``sqlite_%`` tables are skipped, since they are not this project's
+    data. Table names are read from ``sqlite_master`` (never external input) and quoted in the
+    query, so a table name that happens to collide with a SQL keyword still works.
     """
-    values: list[str] = []
     connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         tables = [
@@ -271,14 +281,53 @@ def store_values(db_path: Path) -> list[str]:
         for table in tables:
             # `table` is read from sqlite_master itself, never external input, and sqlite3 has
             # no placeholder syntax for identifiers -- there is nothing to parameterise here.
-            for row in connection.execute(f"SELECT * FROM {table}"):  # noqa: S608
-                for value in row:
-                    text = _decode_stored_value(value)
-                    if text:
-                        values.append(text)
+            for row in connection.execute(f'SELECT * FROM "{table}"'):  # noqa: S608
+                yield from row
     finally:
         connection.close()
-    return values
+
+
+def store_values(db_path: Path) -> list[str]:
+    """Every string value SQLite would hand back for every row and column of a CLOSED store.
+
+    Reassembles each value from SQLite's storage (including any overflow pages) before
+    returning it -- see ``assert_logical_store_clean`` for why that matters. Only ``str`` and
+    ``bytes`` values become text here; an ``int`` or ``float`` column value is not text and
+    cannot be found by a string search at all -- see ``store_numeric_values`` for those.
+
+    Call this only AFTER any raw-bytes check on the same store has already read the file's
+    bytes (``assert_raw_bytes_clean``/``_read_store_bytes``). Opening a read-only connection
+    against a WAL-mode database creates an empty ``-wal`` and a small ``-shm`` file beside the
+    store if they do not already exist; harmless to the data (the main file was already fully
+    checkpointed by ``Store.close()``), but a raw-bytes check run afterwards would be reading a
+    directory with two new files in it that were not there when the store was written, which is
+    avoidable by simply checking bytes first. (``immutable=1`` was considered instead of
+    ``mode=ro`` to suppress the ``-wal``/``-shm`` creation entirely, and rejected: it tells
+    SQLite the file will never change and lets it skip checking for a WAL at all, so a caller
+    who forgot to call ``close()`` -- leaving real, uncommitted data sitting in an actual
+    ``-wal`` file -- would have that data silently ignored instead of read or erroring.)
+    """
+    return [text for value in _iter_raw_values(db_path) if (text := _decode_stored_value(value))]
+
+
+def store_numeric_values(db_path: Path) -> list[int | float]:
+    """Every ``INTEGER`` or ``REAL`` column value read back from a CLOSED store.
+
+    SQLite's type affinity can silently turn a numeric-looking value inserted into an
+    ``INTEGER`` column into an integer -- rewriting the text "550402" to the integer 550402,
+    or "0204151044" to 204151044, dropping the leading zero -- and several columns are
+    declared ``INTEGER`` from the start regardless (``mkey``, ``doc_id``, ``pages``,
+    ``photos``, every run id). ``store_values`` only collects ``str``/``bytes`` values, so a
+    code that ends up stored as a number -- by type affinity, or by any future column that
+    simply holds one numerically -- would be invisible to a text search entirely. This
+    collects the numeric side so ``assert_logical_text_clean`` can compare a code against it
+    with ``==``, not by turning either side into a string.
+    """
+    return [
+        value
+        for value in _iter_raw_values(db_path)
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    ]
 
 
 _CODE_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
@@ -301,7 +350,7 @@ def _code_pattern(code: str) -> re.Pattern[str]:
     return pattern
 
 
-def withheld_texts_and_codes(raw: Mapping[str, object]) -> tuple[list[str], list[str]]:
+def withheld_texts_and_codes(raw: Mapping[str, object]) -> tuple[list[tuple[str, str]], list[str]]:
     """Every whole withheld string (with its JSON-escaped form) and every code, unwindowed.
 
     For the logical check only (``assert_logical_store_clean``): a value read back through
@@ -310,51 +359,86 @@ def withheld_texts_and_codes(raw: Mapping[str, object]) -> tuple[list[str], list
     ``withheld_windows`` -- every string can be searched for whole, with no length threshold
     and no windowing at all. Codes need no escaped form of their own: they are pure digits,
     which ``json.dumps`` never rewrites, so the escaped and raw forms are identical.
+
+    Text needles are returned labelled, ``(kind, text)``, so a failing assertion can name
+    which withheld field actually leaked (fix round 1 of the logical-check follow-up, Minor 3)
+    instead of a message that is identical whichever needle happened to fire.
     """
-    texts = [
-        text
-        for text in (
-            fields.probable_cause(raw),
-            fields.factual_narrative(raw),
-            fields.analysis_narrative(raw),
-        )
-        if text
-    ]
-    text_needles = list(texts) + [_json_escaped(text) for text in texts]
+    labelled: list[tuple[str, str]] = []
+    for kind, text in (
+        ("probable cause", fields.probable_cause(raw)),
+        ("factual narrative", fields.factual_narrative(raw)),
+        ("analysis narrative", fields.analysis_narrative(raw)),
+    ):
+        if text:
+            labelled.append((kind, text))
+            labelled.append((f"{kind} (escaped)", _json_escaped(text)))
     codes = [code for code in fields.occurrence_codes(raw) + fields.finding_codes(raw) if code]
-    return text_needles, codes
+    return labelled, codes
 
 
-def assert_logical_text_clean(logical_text: str, raw: Mapping[str, object]) -> None:
-    """No withheld text or code (see ``withheld_texts_and_codes``) is present, whole, in
+def _code_present(code: str, logical_text: str, numeric_values: Sequence[int | float]) -> bool:
+    """Whether ``code`` is present, logically, as text or as a numeric column value.
 
-    ``logical_text`` -- the join of every value ``store_values`` read back. Split from
-    ``assert_logical_store_clean`` so a caller checking many records against one store (the
-    fixture sweep) can build the logical text once rather than reopening the store per record.
+    A code appearing inside a JSON string (``field_snapshots.value_json``, for instance) is
+    found by ``_code_pattern`` against the joined text. A code SQLite has stored as an
+    ``INTEGER`` or ``REAL`` -- by type affinity coercing a numeric-looking insert, or a future
+    column that simply holds one numerically -- is not text at all and would never match a
+    string search; it is compared with ``==`` instead, against the numeric reading of the code
+    itself (``int(code)`` for an ``int`` value, ``float(code)`` for a ``float`` one), never by
+    turning the stored number back into a string. A stringify-and-regex approach was rejected
+    for two reasons found while fixing this: it would still miss a leading-zero finding code
+    (SQLite's own affinity already dropped the zero from the stored integer, so there is
+    nothing left to `str()` that still has it), and comparing mkeys, doc ids, run ids or page
+    counts against a *stringified* code by substring or regex risks a coincidental digit-run
+    collision with an unrelated column that a direct numeric ``==`` does not.
     """
-    text_needles, codes = withheld_texts_and_codes(raw)
-    assert text_needles or codes, "nothing to check: this call would be vacuous"
-    for needle in text_needles:
-        assert needle not in logical_text, "withheld string in store (logical read)"
+    if _code_pattern(code).search(logical_text) is not None:
+        return True
+    return any(
+        (isinstance(value, int) and value == int(code))
+        or (isinstance(value, float) and value == float(code))
+        for value in numeric_values
+    )
+
+
+def assert_logical_text_clean(
+    logical_text: str, numeric_values: Sequence[int | float], raw: Mapping[str, object]
+) -> None:
+    """No withheld text or code is present, whole, in ``logical_text`` or ``numeric_values``.
+
+    ``logical_text`` is every ``store_values`` string, joined; ``numeric_values`` is every
+    ``store_numeric_values`` reading (see ``withheld_texts_and_codes``, ``_code_present``).
+    Split from ``assert_logical_store_clean`` so a caller checking many records against one
+    store (the fixture sweep) can build both once rather than reopening the store per record.
+    """
+    labelled_texts, codes = withheld_texts_and_codes(raw)
+    assert labelled_texts or codes, "nothing to check: this call would be vacuous"
+    for kind, needle in labelled_texts:
+        assert needle not in logical_text, f"withheld string in store (logical read, {kind})"
     for code in codes:
-        assert not _code_pattern(code).search(logical_text), (
-            "withheld string in store (logical read)"
+        assert not _code_present(code, logical_text, numeric_values), (
+            "withheld string in store (logical read, code)"
         )
 
 
 def assert_logical_store_clean(db_path: Path, raw: Mapping[str, object]) -> None:
-    """No withheld text or code is present, whole, anywhere SQLite would read back from
+    """No withheld text or code is present, whole, anywhere SQLite reads back from ``db_path``.
 
-    ``db_path`` (a CLOSED store). Complements ``assert_raw_bytes_clean``: together, the two
-    leave no residual for a withheld string or code present in a live row -- this check has no
-    page-split problem (SQLite reassembles a value's overflow pages before returning it) and no
-    length floor, and it also sees inside gzip-compressed BLOB columns such as
-    ``listing_pages.gz``, which the raw-bytes check cannot read at all. The raw-bytes check is
-    kept anyway (spec §11 asks for the file read as bytes), because bytes also cover data a SQL
-    query cannot return: a deleted or superseded row's old bytes, still physically present in
-    the file until SQLite reuses that page, and anything outside a live row entirely.
+    ``db_path`` is a CLOSED store, read either as text (``store_values``) or as an
+    ``INTEGER``/``REAL`` column value (``store_numeric_values``; see ``_code_present``).
+    Complements ``assert_raw_bytes_clean``: together, the two leave no residual for a withheld
+    string or code present in a live row -- this check has no page-split problem (SQLite
+    reassembles a value's overflow pages before returning it), no length floor, and no blind
+    spot for a code SQLite happens to store numerically. It also sees inside gzip-compressed
+    BLOB columns such as ``listing_pages.gz``, which the raw-bytes check cannot read at all.
+
+    The raw-bytes check is kept anyway: spec §11 asks for the file read as bytes, and bytes
+    also cover data a SQL query cannot return -- a deleted or superseded row's old bytes,
+    still physically present in the file until SQLite reuses that page, and anything outside
+    a live row entirely.
     """
-    assert_logical_text_clean("\n".join(store_values(db_path)), raw)
+    assert_logical_text_clean("\n".join(store_values(db_path)), store_numeric_values(db_path), raw)
 
 
 # fields.WITHHELD_SUBTREES's narrative keys (fields.py:62-69), less the docket roles, which do
