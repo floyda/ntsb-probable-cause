@@ -17,6 +17,19 @@ _ROW = re.compile(
 )
 _ITEMS = re.compile(r"Docket Items:\s*(\d+)")
 _TAGS = re.compile(r"<[^>]+>")
+_INFO_BLOCK = re.compile(r"<h2><b>Docket Information</b></h2>")
+_CREATION = re.compile(r"<b>Creation Date:</b>\s*([^<]*)<")
+_MODIFIED = re.compile(r"<b>Last Modified:</b>\s*([^<]*)<")
+_RELEASE = re.compile(r"Public Release Date &(?:amp;)? Time:\s*([^<]*)<")
+
+
+class DocketInfo(BaseModel):
+    """The docket-level dates the page prints, as printed. Not per document (spec §6.2)."""
+
+    model_config = ConfigDict(frozen=True)
+    creation_date: str | None
+    last_modified: str | None
+    release_date: str | None
 
 
 class ListingEntry(BaseModel):
@@ -47,6 +60,7 @@ class Listing(BaseModel):
     mkey: int
     declared_items: int | None
     entries: tuple[ListingEntry, ...]
+    info: DocketInfo | None = None
 
 
 def _extension(href: str) -> str:
@@ -54,6 +68,20 @@ def _extension(href: str) -> str:
         return ""
     ext = href.rsplit("FileExtension=", maxsplit=1)[-1].split("&", maxsplit=1)[0].strip(".").lower()
     return ext or href.rsplit(".", 1)[-1].lower()
+
+
+def _info(page: str) -> DocketInfo | None:
+    if not _INFO_BLOCK.search(page):
+        return None
+
+    def first(pattern: re.Pattern[str]) -> str | None:
+        match = pattern.search(page)
+        value = html.unescape(match.group(1)).strip() if match else ""
+        return value or None
+
+    return DocketInfo(
+        creation_date=first(_CREATION), last_modified=first(_MODIFIED), release_date=first(_RELEASE)
+    )
 
 
 def parse_listing(page: str, *, mkey: int) -> Listing:
@@ -78,7 +106,7 @@ def parse_listing(page: str, *, mkey: int) -> Listing:
         raise DocketError(
             f"docket {mkey}: page declared {declared} items, parsed {len(entries)} rows"
         )
-    return Listing(mkey=mkey, declared_items=declared, entries=tuple(entries))
+    return Listing(mkey=mkey, declared_items=declared, entries=tuple(entries), info=_info(page))
 
 
 def render_listing(listing: Listing) -> str:

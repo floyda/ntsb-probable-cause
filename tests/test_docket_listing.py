@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from ntsb_probable_cause.docket.listing import Listing, ListingEntry, parse_listing, render_listing
+from ntsb_probable_cause.docket.listing import (
+    Listing,
+    ListingEntry,
+    parse_listing,
+    render_listing,
+)
 from ntsb_probable_cause.errors import DocketError
 
 FIXTURES = Path("tests/fixtures/docket")
@@ -107,3 +112,25 @@ def test_render_listing_is_one_line_per_entry() -> None:
         ),
     )
     assert render_listing(listing) == "1. Weather Study (Report, 12 pages, 0 photos)"
+
+
+def test_saved_page_carries_docket_info() -> None:
+    fixture = Path("tests/fixtures/docket/ERA17LA217/listing.html")
+    listing = parse_listing(fixture.read_bytes().decode("utf-8"), mkey=95459)
+    assert listing.info is not None
+    assert listing.info.creation_date == "01/28/2019"
+    assert listing.info.last_modified == "01/28/2019 7:37 AM"
+    assert listing.info.release_date == "01/28/2019 7:37 AM"
+
+
+def test_page_without_info_block_has_none() -> None:
+    listing = parse_listing("<html>Docket Items: 0</html>", mkey=1)
+    assert listing.info is None
+    assert listing.entries == ()
+
+
+@pytest.mark.parametrize(("page", "mkey"), _saved_pages())
+def test_all_saved_listing_fixtures_carry_docket_info(page: Path, mkey: int) -> None:
+    text = _read_page(page)
+    listing = parse_listing(text, mkey=mkey)
+    assert listing.info is not None, f"fixture {page.parent.name} has no docket info block"
