@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # every two seconds to `data.ntsb.gov`, a real government site, and 0 would remove that
     # floor in production. Tests never need 0 -- they inject `sleep` (fix round 1, Finding 4).
     docket_seconds_per_request: float = Field(default=2.0, gt=0)
+    # Set only inside the container image (Task 12), which has no `.git` at all -- the image is
+    # built from a known, clean commit, so `apps/recorder` trusts this value instead of running
+    # `git` (which would fail there). Unset everywhere else: the Mac bridge and any developer
+    # checkout have `.git` and read the commit from it (`gitinfo.commit_state()`).
+    commit_sha: str | None = None
 
     # `runs_dir` and `docket_dir` used to be independent literal defaults. On 2026-09-21 a run
     # was launched with `NTSB_DATA_DIR` pointing at the main checkout but `NTSB_DOCKET_DIR`

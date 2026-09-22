@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record
 
 check: lint type test
 
@@ -84,3 +84,12 @@ ongoing-probe:
 # backoff over up to 5 attempts). Fixes the recorder's "no-docket" outcome (spec S2.5 S10.1)
 # from what the site actually returns for an ongoing case. Launched by the project owner,
 # not CI.
+
+record:
+	uv run ntsb-record run
+# One nightly pass (spec S2.5 §9.1): fetches the month window, the change feed and every
+# watched docket, and writes the result to NTSB_STORE (a local path by default, or an
+# `s3://` URL -- store/sync.py, Task 10). Takes about 40 minutes on a normal night. This is
+# the same command the Mac bridge and the AWS Fargate task both run
+# (docs/runbooks/recorder-bridge.md); `--verbose` and `--dry-run` are also accepted, e.g.
+# `uv run ntsb-record run --dry-run`.

@@ -215,6 +215,7 @@ make scan-docket       # uv run python -m scripts.corpus_scan --docket — the d
 make armb               # arm B on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
+make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10); --verbose and --dry-run also accepted
 ```
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
@@ -244,3 +245,9 @@ cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; default
 committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
 production).
+
+The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
+store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`
+URL; `store/sync.py` pulls and pushes it around an S3 working file under `NTSB_DATA_DIR`) and
+`NTSB_COMMIT_SHA` (set only inside the container image, which has no `.git`; everywhere else
+this stays unset and `git` itself supplies the commit).
