@@ -859,11 +859,14 @@ class Store:
     # -- run months (final review item 2; Andy's decision 2026-09-23: "Add it") ---------------
 
     def add_run_month(self, run_id: int, month: str) -> None:
-        """Record that ``month`` (``YYYY-MM``) was fetched cleanly this run.
+        """Record that ``month`` (``YYYY-MM``) was fetched cleanly AND fully this run.
 
         "Cleanly" means completely, with no error, and not cut short by the outage budget.
-        Idempotent (``ON CONFLICT DO NOTHING``): ``run_id, month`` is the primary key, and
-        ``recorder.run``'s case side calls this once per month it fetched cleanly, never more.
+        "Fully" (pre-deploy fix round, item A) means every record the fetch returned was also
+        successfully observed -- ``recorder.run._case_side`` does not call this at all for a
+        month where any record's ``observe_case`` call itself failed. Idempotent (``ON
+        CONFLICT DO NOTHING``): ``run_id, month`` is the primary key, and ``recorder.run``'s
+        case side calls this once per month that met both conditions, never more.
         """
         with self.transaction() as conn:
             conn.execute(
@@ -873,20 +876,54 @@ class Store:
             )
 
     def last_clean_fetch(self, month: str, *, before_run: int) -> int | None:
-        """The latest ``run_id`` strictly before ``before_run`` that fetched ``month`` cleanly.
+        """The latest run before ``before_run`` whose fetch of ``month`` was clean and full.
 
-        ``None`` if no earlier run ever fetched this month cleanly -- correctly ``None`` on a
-        store's very first night, when nothing has been observed yet at all. This is what
-        ``recorder.cases.observe_case``'s ``new_case_absent_run`` parameter uses: a case seen
-        for the first time whose event month WAS cleanly fetched by an earlier run genuinely
-        was absent then, and gets a true arrival (``absent_run IS NOT NULL``) rather than
-        reading as merely "present when watching began".
+        Never simply "the night before" (pre-deploy fix round, item B wording). ``None`` if no
+        earlier run ever fetched this month that way -- correctly ``None`` on a
+        store's very first night, when nothing has been observed yet at all, and also ``None``
+        for every month before this store gained the ``run_months`` table (migration 3): its
+        absence there means "not recorded", never "not clean". This is what
+        ``recorder.cases.observe_case``'s ``new_case_absent_run`` parameter uses -- subject to
+        :meth:`is_seen_unstored` overriding it to ``None`` for an mkey this store has already
+        seen and not stored before, since for that mkey this run is not really its first sight
+        at all, whatever this method returns.
         """
         row = self._conn.execute(
             "SELECT MAX(run_id) FROM run_months WHERE month = ? AND run_id < ?",
             (month, before_run),
         ).fetchone()
         return int(row[0]) if row is not None and row[0] is not None else None
+
+    # -- seen-but-unstored records (pre-deploy fix round, item B) ------------------------------
+
+    def add_seen_unstored(self, mkey: int, *, first_run: int) -> None:
+        """Record that ``mkey`` was returned by the API but NOT stored this run.
+
+        Either it was not watchable and unknown to the store (a Completed or non-Part-91 case
+        never watched), or ``observe_case`` was called for it and failed. Idempotent
+        (``ON CONFLICT DO NOTHING``): ``mkey`` is the primary key, so only the FIRST run that
+        ever saw this mkey unstored is kept -- exactly what :meth:`is_seen_unstored` needs, a
+        plain yes/no, not a full history.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO seen_unstored (mkey, first_run) VALUES (?, ?) "
+                "ON CONFLICT(mkey) DO NOTHING",
+                (mkey, first_run),
+            )
+
+    def is_seen_unstored(self, mkey: int) -> bool:
+        """Whether this store has ever seen ``mkey`` returned by the API without storing it.
+
+        ``recorder.cases.observe_case`` checks this for every genuinely new mkey (no existing
+        ``cases`` row) before ever using ``new_case_absent_run``: a case that was seen-but-
+        unstored before is not really new now, and this store has no reliable clean-fetch
+        history covering however long ago that first, unstored sighting was -- so it reads as
+        first-sight (``absent_run=None``) instead of a false true arrival possibly years after
+        the real event.
+        """
+        row = self._conn.execute("SELECT 1 FROM seen_unstored WHERE mkey = ?", (mkey,)).fetchone()
+        return row is not None
 
     # -- report queries (Task 11; spec S2.5 §10.2) -------------------------------------------
     #

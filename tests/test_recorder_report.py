@@ -969,14 +969,26 @@ def test_report_states_the_evidence_field_name_note(store: Store) -> None:
 
 
 def test_report_states_the_new_case_absent_side_rule(store: Store) -> None:
-    """Final review item 2: the report states, in plain English, when a case first seen after
-    the recorder's first night gets a true absent side instead of reading as first-sight."""
+    """Final review item 2, corrected wording by the pre-deploy fix round item B: the report
+    states, in plain English, when a case first seen after the recorder's first night gets a
+    true absent side instead of reading as first-sight -- "the latest earlier night whose
+    fetch ... was clean and fully observed", never simply "the night before"."""
     text = _full_report_from(store)
     rule = (
-        "a case first seen after the recorder's first night has an absent side if its event "
-        "month was fetched cleanly the night before"
+        "a case first seen after the recorder's first night has an absent side if the "
+        "latest earlier night whose fetch of its event month was clean and fully observed "
+        "found it absent"
     )
-    assert text.count(rule) == 2  # once for fields, once for the preliminary narrative
+    assert rule in text
+    assert "was fetched cleanly the night before" not in text  # the old, corrected wording
+    assert text.count("A record the API returned but never stored") == 1
+    assert (
+        text.count(
+            "which nights count as 'clean and fully observed' is known only from the "
+            "night this store gained the table that records it"
+        )
+        == 1
+    )
 
 
 def test_report_regulation_coverage_makes_no_deployment_claim(store: Store) -> None:

@@ -226,9 +226,17 @@ def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: 
         "evidence-field arrival percentiles, days from event to first appearance:",
         "  the names below (e.g. weather_condition) are this project's own evidence field "
         "names, not raw database column names.",
-        "  a case first seen after the recorder's first night has an absent side if its event "
-        "month was fetched cleanly the night before -- it then counts as a true arrival "
-        "below, not as first-sight.",
+        "  a case first seen after the recorder's first night has an absent side if the "
+        "latest earlier night whose fetch of its event month was clean and fully observed "
+        "found it absent -- never simply 'the night before'. It then counts as a true "
+        "arrival below, not as first-sight. A record the API returned but never stored "
+        "(not watchable and unknown, or an observation that failed) is never treated as "
+        "new later either, whichever night it eventually becomes storable on.",
+        "  which nights count as 'clean and fully observed' is known only from the night "
+        "this store gained the table that records it (for this store, the first AWS "
+        "night); for a case first seen on the night right after that, there is no earlier "
+        "clean-fetch record to check yet, so it may still read as first-sight even when it "
+        "genuinely was absent the night before.",
     ]
     if not field_arrivals:
         lines.append("  no data")
@@ -249,8 +257,10 @@ def _prelim_lines(prelim_arrivals: Sequence[ArrivalRow], prelim_first_sight: int
     lines = [
         "preliminary narrative arrival:",
         "  the same rule applies here as for evidence fields: a case first seen after the "
-        "recorder's first night has an absent side if its event month was fetched cleanly "
-        "the night before.",
+        "recorder's first night has an absent side if the latest earlier night whose fetch "
+        "of its event month was clean and fully observed found it absent -- never simply "
+        "'the night before'; and the same caveat applies about clean fetches being known "
+        "only from the night that history was added to this store.",
     ]
     lines.extend(_arrival_lines("preliminary narrative", prelim_arrivals))
     lines.append(

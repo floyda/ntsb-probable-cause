@@ -200,14 +200,20 @@ def observe_case(
     ``absent_run`` to use ONLY when this mkey has never been seen before (``existing is
     None``) -- ordinarily ``recorder.run``'s ``Store.last_clean_fetch(month_of(event_date),
     before_run=run_id)``: the latest earlier run that fetched this case's event month
-    completely and without error, if any. It applies uniformly to the first-sight field
-    snapshots, the prelim row and the first status event -- every place this function would
-    otherwise have written ``absent_run=None`` for a brand-new case. It is ignored entirely for
-    a case that already has a stored row (``existing is not None``): that case's own
-    ``last_case_run`` is always the correct ``absent_run`` regardless of what this parameter
-    holds. ``None`` (the default, and always what a store's very first night computes) means
-    what it always meant: no run ever observed this case's absence, so first sight is exactly
-    that -- a lower bound, not a true arrival.
+    completely, without error, and fully observed, if any. It applies uniformly to the
+    first-sight field snapshots, the prelim row and the first status event -- every place this
+    function would otherwise have written ``absent_run=None`` for a brand-new case. It is
+    ignored entirely for a case that already has a stored row (``existing is not None``): that
+    case's own ``last_case_run`` is always the correct ``absent_run`` regardless of what this
+    parameter holds. It is ALSO ignored -- overridden to ``None``, first-sight -- for a
+    genuinely new mkey that :meth:`~ntsb_probable_cause.store.Store.is_seen_unstored` says this
+    store has already seen and not stored before (pre-deploy fix round, item B): a record
+    returned by the API but not watchable and unknown, or one whose observation itself failed,
+    is not "new" the next time it becomes storable, and using ``new_case_absent_run`` for it
+    would record a false arrival date, possibly years after the real event. ``None`` (the
+    default, and always what a store's very first night computes) means what it always meant:
+    no run ever observed this case's absence, so first sight is exactly that -- a lower bound,
+    not a true arrival.
     """
     mkey = raw.get("mKey")
     if not isinstance(mkey, int):
@@ -235,7 +241,17 @@ def observe_case(
         return CaseOutcome(mkey=mkey, changed=False, failed=failed)
 
     existing = store.get_case(mkey)
-    absent = existing.last_case_run if existing else new_case_absent_run
+    if existing is not None:
+        absent = existing.last_case_run
+    elif store.is_seen_unstored(mkey):
+        # Pre-deploy fix round, item B: this mkey was returned by the API before but never
+        # stored -- not watchable and unknown, or a previous `observe_case` call failed. This
+        # run is not really its first sight, whatever `last_clean_fetch` found; there is no
+        # reliable clean-fetch history covering however long ago that first, unstored sighting
+        # actually was, so it reads honestly as first-sight rather than a false true arrival.
+        absent = None
+    else:
+        absent = new_case_absent_run
     old_status = existing.status if existing else None
     watch_until = existing.watch_until if existing else None
 

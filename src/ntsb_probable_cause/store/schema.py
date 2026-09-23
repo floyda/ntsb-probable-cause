@@ -157,24 +157,47 @@ MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX change_feed_mkey ON change_feed (mkey);
     """,
-    # Migration 3 (final-review fix, item 2; Andy's decision 2026-09-23: "Add it"). Records
-    # which event months a run fetched CLEANLY -- to completion, with no ApiError, and not cut
-    # short by the outage budget's deadline or circuit breaker (item 1). One row per
-    # (run_id, month) actually fetched cleanly; a month skipped or failed gets no row at all.
+    # Migration 3 (final-review fix, item 2; Andy's decision 2026-09-23: "Add it"; edited in
+    # place by the pre-deploy fix round below -- migration 3 had not yet been applied to any
+    # real store when that round landed, so it is corrected here rather than added as a
+    # migration 4; the only real store at the time was still at version 2). Records which
+    # event months a run fetched CLEANLY -- to completion, with no ApiError, not cut short by
+    # the outage budget's deadline or circuit breaker (item 1), and with every record in it
+    # successfully observed (pre-deploy fix round B: a month where any record's `observe_case`
+    # call itself failed is not "clean" either, even if every page fetched without error). One
+    # row per (run_id, month) that met all of that; a month that did not gets no row at all.
     #
     # This exists so a case seen for the very first time can still get a TRUE absent side
     # (`field_snapshots.absent_run IS NOT NULL`) instead of always reading as a first-sight
-    # observation: `Store.last_clean_fetch` finds the latest EARLIER run that cleanly fetched
-    # the new case's event month, and `recorder.cases.observe_case`'s `new_case_absent_run`
-    # parameter uses that as the first-sight snapshots' `absent_run` when the case genuinely
-    # was not there before. Never edit migrations 1 or 2 above -- a live store may already
-    # exist at either version, and `Store.migrate` only ever applies scripts after the current
-    # version.
+    # observation: `Store.last_clean_fetch` finds the latest EARLIER run that cleanly and
+    # fully fetched the new case's event month, and `recorder.cases.observe_case`'s
+    # `new_case_absent_run` parameter uses that as the first-sight snapshots' `absent_run` when
+    # the case genuinely was not there before.
+    #
+    # `seen_unstored` (pre-deploy fix round, item B) closes the gap `run_months` alone leaves
+    # open: a record the API DID return but the recorder did not store -- `is_watchable` false
+    # and the mkey unknown (a Completed or non-Part-91 case never watched), or a record whose
+    # `observe_case` call itself failed -- is not "new" the next time it becomes storable (the
+    # case reopens, or the failure stops happening); it was already seen once. Without this
+    # table such a case would read `new_case_absent_run` as if it were genuinely first-sight
+    # and record a false arrival date, possibly years after the real event, breaking spec §3's
+    # "when" is always a real interval between two observations. One row per mkey ever seen
+    # this way, holding only the run it was first noticed at; `recorder.cases.observe_case`
+    # never applies `new_case_absent_run` to an mkey recorded here (see `Store.
+    # is_seen_unstored`) -- such a case reads as first-sight instead, which is honest given
+    # what the store actually knows about it. Never edit migrations 1 or 2 above -- a live
+    # store may already exist at either version, and `Store.migrate` only ever applies scripts
+    # after the current version.
     """
     CREATE TABLE run_months (
         run_id INTEGER NOT NULL,
         month TEXT NOT NULL,
         PRIMARY KEY (run_id, month)
+    );
+
+    CREATE TABLE seen_unstored (
+        mkey INTEGER PRIMARY KEY,
+        first_run INTEGER NOT NULL
     );
     """,
 )

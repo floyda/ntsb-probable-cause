@@ -525,8 +525,9 @@ def test_run_night_store_never_holds_synthesis_or_verdict(
     holds no case data at all) gets at least one row: `runs`, `cases`, `status_events`,
     `field_snapshots`, `prelim_narratives`, `regulation_events` (a forced regulation change
     across the two nights), `docket_polls`, `listing_pages`, `documents`, `document_events`,
-    `change_feed` (one row) and `run_months`. `sqlite_master` is enumerated directly, not a
-    hard-coded list, so a table added later is automatically covered too.
+    `change_feed` (one row), `run_months` and `seen_unstored` (a second, never-watchable record
+    in night 2's month, pre-deploy fix round item B). `sqlite_master` is enumerated directly,
+    not a hard-coded list, so a table added later is automatically covered too.
     """
     mkey = closing_record["mKey"]
     assert isinstance(mkey, int)
@@ -576,8 +577,14 @@ def test_run_night_store_never_holds_synthesis_or_verdict(
     run_night(night1)
 
     # Night 2: re-fetches the (now singly-watched) month directly, and the case closes.
+    # `unstored_record` (pre-deploy fix round, item B) is a never-before-seen mkey that is
+    # never watchable (Completed, unknown to the store) -- seen by the API, but not stored;
+    # it populates `seen_unstored`.
+    unstored_record = copy.deepcopy(closing_record)
+    unstored_record["mKey"] = mkey + 1_000_000
+    unstored_record["completionStatus"] = "Completed"
     respx_mock.get(MONTH_URL).mock(
-        return_value=httpx.Response(200, json=_month_body([night2_record]))
+        return_value=httpx.Response(200, json=_month_body([night2_record, unstored_record]))
     )
     tomorrow = today + timedelta(days=1)
     night2 = NightInputs(

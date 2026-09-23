@@ -34,16 +34,48 @@ untouched -- exactly like an ``ApiError`` does. The deadline and breaker are NOT
 :func:`~ntsb_probable_cause.recorder.window.first_run_window`'s own walk-back loop (see
 :func:`_case_side`'s docstring for why).
 
+Pre-deploy fix round (2026-09-23), four corrections found before the original numbers could
+survive a real hung API: (A1) the CHANGE FEED was completely ungated -- it hit the same API
+host the case side does, so a hung API could exhaust the deadline on the case side and then the
+feed call would add its own full retry worst case on top, past the scheduler's limit; it is now
+skipped, and counted, whenever the deadline has already passed or the case side's own breaker
+has already tripped. (A2) :data:`RUN_DEADLINE_MINUTES` was 75 against a wrong "~2.5 minutes"
+estimate of one request's own worst case; the real figure -- 5 retried attempts, each up to the
+client's own 120-second timeout, plus backoff, plus rate-limit gaps -- is about 10.7 minutes for
+the API and 10.5 for the docket client, so the constant is now 65 (see its own comment for the
+full arithmetic). (A3) the deadline used to be checked only once per MONTH, so a single hung,
+multi-page month could still run every remaining page of itself past the deadline before the
+next check; :func:`_observe_month_streaming` now checks it before every PAGE too. (A4) the
+docket circuit breaker used to count every kind of ``DocketOutcome.failed`` poll, including
+fast PARSE failures (``no-info-block``, ``count-mismatch``, and the like) that mean the site
+answered and only its page content was unusual -- a real layout change could then trip the
+breaker after ten pages and stop storing the raw pages spec §6.4 needs precisely to diagnose
+that change. It now counts only reasons that mean the site itself did not answer
+(:func:`_is_docket_outage_reason`).
+
 New cases' absent side (final review, item 2; Andy's decision 2026-09-23: "Add it"). Every month
-:func:`_case_side` fetches cleanly is now recorded, via :meth:`~ntsb_probable_cause.store.Store.
-add_run_month`, in a new ``run_months`` table. A case observed for the first time ever can then
-be told whether an EARLIER run already fetched its event month cleanly and did not find it --
-:meth:`~ntsb_probable_cause.store.Store.last_clean_fetch` answers that -- and if so, that earlier
-run becomes the case's first-sight ``absent_run``, a TRUE arrival, rather than the case simply
-reading as "present when watching began" (the only possibility before this run of fixes, since
-a brand-new case's ``absent_run`` was always ``None``). In plain terms: a case first seen after
-the recorder's first night has an absent side if its event month was fetched cleanly the night
-before.
+:func:`_case_side` fetches cleanly AND fully (pre-deploy fix round, item B: every record it
+returned was also successfully observed) is recorded, via :meth:`~ntsb_probable_cause.store.
+Store.add_run_month`, in a new ``run_months`` table. A case observed for the first time ever can
+then be told whether an EARLIER run already fetched its event month that way and did not find
+it -- :meth:`~ntsb_probable_cause.store.Store.last_clean_fetch` answers that -- and if so, that
+earlier run becomes the case's first-sight ``absent_run``, a TRUE arrival, rather than the case
+simply reading as "present when watching began" (the only possibility before this run of fixes,
+since a brand-new case's ``absent_run`` was always ``None``). In plain terms: a case first seen
+after the recorder's first night has an absent side if the latest earlier night whose fetch of
+its event month was clean and fully observed found it absent.
+
+Seen-but-unstored records (pre-deploy fix round, item B). The rule above has a gap on its own:
+the recorder also sees records it does NOT store -- returned by the API but not watchable and
+unknown (a Completed or non-Part-91 case never watched), or a watchable record whose
+``observe_case`` call itself failed. If such an mkey later becomes storable (the case reopens,
+or the failure stops happening), it looks exactly like a genuinely new case, and would get
+``new_case_absent_run`` as if it were -- a false arrival date, possibly years after the real
+event. A new ``seen_unstored`` table (migration 3, edited in place rather than added as
+migration 4, since it had not yet been applied to any real store when this round landed) records
+every such mkey the first time it happens; :meth:`~ntsb_probable_cause.store.Store.
+is_seen_unstored` overrides ``new_case_absent_run`` to ``None`` (first-sight) for any mkey found
+there, regardless of what ``last_clean_fetch`` would otherwise have said.
 """
 
 import logging
@@ -77,28 +109,44 @@ _AVIATION_MODE = "Aviation"
 # deliberate (fix round 1, Minor 1).
 _FEED_LOOKBACK_DAYS = 2
 
-# Final review item 1: the run deadline. The scheduler's own hard stop is 90 minutes
-# (docs/runbooks/recorder-deploy.md's Fargate task timeout, `docs/runbooks/recorder-bridge.md`
-# for the Mac bridge's own launchd timeout); this trips well before that so the run still
-# finishes CLEANLY -- writes its summary, closes the store -- rather than being killed
-# mid-write, which on an S3 store discards the whole night (nothing gets pushed). 75 minutes
-# leaves 15 minutes of margin for whatever single step is in progress when the deadline is
-# checked (a docket poll's own worst case is about 2.5 minutes: 5 attempts x up to 120s
-# timeout, plus backoff between them) -- generous enough that the deadline is never the reason
-# an ordinary night runs long, tight enough that a genuinely stuck night still finishes inside
-# the scheduler's own limit.
-RUN_DEADLINE_MINUTES = 75
+# Final review item 1, corrected by the pre-deploy fix round (A2): the run deadline. The
+# scheduler's own hard stop is 90 minutes (docs/runbooks/recorder-deploy.md's Fargate task
+# timeout, docs/runbooks/recorder-bridge.md for the Mac bridge's own launchd timeout); this
+# trips well before that so the run still finishes CLEANLY -- writes its summary, closes the
+# store -- rather than being killed mid-write, which on an S3 store discards the whole night
+# (nothing gets pushed).
+#
+# ONE request's own worst case, fully retried (`data/api.py`'s `NtsbClient`, `docket/
+# client.py`'s `DocketClient`; both default to 5 attempts, a 120s httpx timeout per attempt,
+# and exponential backoff starting at 2s): 5 attempts x up to 120s each = 600s, plus backoff
+# between the first four (2 + 4 + 8 + 16 = 30s), plus the polite rate-limit gap before each of
+# the 5 attempts once the client has made any earlier request (about 2s x 5 = 10s) -- 600 + 30
+# + 10 = 640s = 10.7 minutes for the API; the docket client's own gap/backoff arithmetic is
+# very slightly smaller (its gap sleep is net of any backoff already slept), about 10.5
+# minutes. The corrected constant below (65, not the original 75) still leaves this fully
+# inside the scheduler's limit: 65 minutes of run budget, plus one more request's worst case
+# already in flight when the deadline is checked (about 10.7 minutes, the larger of the two),
+# plus the store push and task startup/shutdown overhead the runbook budgets at roughly 10
+# minutes, is 65 + 10.7 + 10 = 85.7 minutes -- under the scheduler's 90-minute hard stop, with
+# a few minutes to spare, whichever single step happens to be in flight when the deadline
+# trips.
+RUN_DEADLINE_MINUTES = 65
 
-# Final review item 1: the per-side circuit breaker. After this many CONSECUTIVE fetch
-# failures on one side (case-side months, or docket polls), that side stops calling the network
-# for the rest of the night rather than spending the whole run budget retrying a site that is
-# down. At up to about 2.5 minutes per failure worst case (see RUN_DEADLINE_MINUTES's own
-# comment), 10 consecutive failures is already 20+ minutes sunk before the breaker trips --
-# comfortably above the handful of bad pages or months an ordinary night can have (one
-# malformed page, one flaky month) without tripping it by accident, and comfortably below
-# RUN_DEADLINE_MINUTES, so a genuine outage stops burning the run's budget well before the
-# deadline would have caught it anyway. A single success on a side resets its count to zero --
-# the breaker answers "is this side down right now", not "has this side ever had a bad night".
+# Final review item 1, corrected by the pre-deploy fix round (A2, A4): the per-side circuit
+# breaker. After this many CONSECUTIVE genuine fetch-outage failures on one side (case-side
+# months, or docket polls -- never a fast, non-retried status or a parse failure; see
+# `_is_docket_outage_reason`), that side stops calling the network for the rest of the night.
+#
+# This mechanism and the run deadline above catch two DIFFERENT failure shapes, not the same
+# one at different speeds. A site that HANGS (every attempt eats the full ~10.7/10.5-minute
+# worst case above) trips the DEADLINE first: only about six such failures (6 x 10.7 =~ 64
+# minutes) are needed to reach it, well under this constant's 10. A site that answers FAST but
+# WRONG -- a persistent 5xx that fails every retry quickly, or a transport error with no real
+# timeout involved -- costs only backoff-and-gap time per attempt (tens of seconds, not
+# minutes), and could otherwise run through the ENTIRE remaining budget one fast failure at a
+# time without ever tripping the deadline; this breaker is what actually stops that case. A
+# single success on a side resets its count to zero -- the breaker answers "is this side
+# rejecting requests right now", not "has this side ever had a bad night".
 CONSECUTIVE_FAILURES_TO_TRIP = 10
 
 _SKIPPED_DEADLINE = "skipped: deadline"
@@ -205,6 +253,15 @@ def _observe_records(
     shares the same event month (a page of ``cases_by_date_range(month.start, month.end)``, or
     one first-run-walk month's kept records), so the caller computes it once, via
     ``store.last_clean_fetch``, rather than this function computing it per record.
+    ``observe_case`` itself decides whether that value actually applies, per mkey (see its own
+    docstring's ``is_seen_unstored`` paragraph).
+
+    Pre-deploy fix round, item B: a record the API returned but this function does NOT store --
+    neither watchable nor already known (skipped before ever being split), or a watchable
+    record whose ``observe_case`` call itself failed -- is recorded in
+    :meth:`~ntsb_probable_cause.store.Store.add_seen_unstored`, so a later night that DOES
+    store it (the case reopens, or the failure stops happening) never mistakes it for a
+    genuinely new case and gives it a false absent side.
     """
     seen: set[int] = set()
     failures = 0
@@ -213,6 +270,8 @@ def _observe_records(
         mkey_value = raw.get("mKey")
         known = isinstance(mkey_value, int) and store.get_case(mkey_value) is not None
         if not (is_watchable(raw) or known):
+            if isinstance(mkey_value, int):
+                store.add_seen_unstored(mkey_value, first_run=run_id)
             continue
         outcome = observe_case(
             store,
@@ -225,13 +284,16 @@ def _observe_records(
             seen.add(mkey_value)
         if outcome.failed is not None:
             failures += 1
+            if isinstance(mkey_value, int):
+                store.add_seen_unstored(mkey_value, first_run=run_id)
         elif outcome.changed:
             changed.add(outcome.mkey)
     return seen, failures, changed
 
 
 def _observe_month_streaming(  # noqa: PLR0913 -- one parameter per fetch/observe input, plus
-    # `new_case_absent_run` (final review item 2), which every record in this one month shares.
+    # `new_case_absent_run` (final review item 2) and the outage-budget clock/deadline (item
+    # A3), which every page of this one month shares.
     api: NtsbClient,
     store: Store,
     month: Month,
@@ -239,6 +301,8 @@ def _observe_month_streaming(  # noqa: PLR0913 -- one parameter per fetch/observ
     run_id: int,
     today: date,
     new_case_absent_run: int | None,
+    now: Callable[[], datetime],
+    deadline: datetime,
 ) -> tuple[set[int], int, set[int], bool]:
     """Fetch one month page by page, observing as each page arrives.
 
@@ -248,12 +312,32 @@ def _observe_month_streaming(  # noqa: PLR0913 -- one parameter per fetch/observ
     call is its own transaction) -- they stand. The failure itself is counted once, here, and
     the caller is told ``errored=True`` so it skips "not returned" marking for this month's
     watched cases entirely, rather than reading an incompletely-fetched month as absence.
+
+    Pre-deploy fix round, item A3: the run deadline is also checked HERE, before each PAGE
+    (not only once per month, in ``_case_side``, before the whole month starts) -- a hung,
+    multi-page month must stop requesting the next page as soon as the deadline is reached,
+    not run every remaining page of that one month first. ``api.cases_by_date_range`` is a
+    generator; the loop below drives it with an explicit ``next()`` so the deadline can be
+    checked before each page is requested, not only after one arrives. A month cut short this
+    way is treated exactly like an ``ApiError`` mid-month: whatever pages already arrived stand
+    (each already committed), the month itself counts as ``errored=True`` -- no ``run_months``
+    row, no "not returned" marking for the rest of it.
     """
     seen: set[int] = set()
     failures = 0
     changed: set[int] = set()
+    pages = api.cases_by_date_range(month.start, month.end)
     try:
-        for page in api.cases_by_date_range(month.start, month.end):
+        while True:
+            if _utc(now()) >= deadline:
+                _log.warning(
+                    "case side: run deadline reached mid-month, month=%s stopped", month.label
+                )
+                return seen, failures + 1, changed, True
+            try:
+                page = next(pages)
+            except StopIteration:
+                break
             page_seen, page_failures, page_changed = _observe_records(
                 store,
                 page.records,
@@ -340,12 +424,14 @@ def _case_side(
     today: date,
     tally: _Tally,
     deadline: datetime,
-) -> tuple[list[Month], set[int], set[str]]:
+) -> tuple[list[Month], set[int], set[str], bool]:
     """Steps 2-3: the month window, then fetch each month and observe every watchable record.
 
     Returns ``(months fetched this run, every mkey observed, the months an ApiError -- or the
-    outage budget -- cut short)`` -- :func:`_mark_vanished` needs all three. ``computed_window
-    is None`` (rather than a separately tracked flag) is the one and only test for "this is a
+    outage budget -- cut short, whether the case-side circuit breaker tripped)``.
+    :func:`_mark_vanished` needs the first three; ``run_night`` needs the fourth to gate the
+    change feed (pre-deploy fix round, item A1 -- see :func:`_feed_side`). ``computed_window is
+    None`` (rather than a separately tracked flag) is the one and only test for "this is a
     first run" -- fix round 1, Minor 2 dropped the redundant ``first_run`` boolean the two used
     to track in parallel.
 
@@ -421,6 +507,8 @@ def _case_side(
                 run_id=run_id,
                 today=today,
                 new_case_absent_run=new_case_absent_run,
+                now=inputs.now,
+                deadline=deadline,
             )
             if errored:
                 errored_months.add(month.label)
@@ -436,9 +524,13 @@ def _case_side(
         tally.failures += month_failures
         tally.changed_mkeys |= changed
         all_seen |= seen
-        if not errored:
+        # Pre-deploy fix round, item B: a month is "clean" only if it also fetched WITHOUT
+        # ANY observation failure -- `month_failures > 0` means at least one record the API
+        # returned was not actually stored (see `_observe_records`'s `add_seen_unstored`
+        # calls), so this month was not fully observed even though every page arrived.
+        if not errored and month_failures == 0:
             inputs.store.add_run_month(run_id, month.label)
-    return months, all_seen, errored_months
+    return months, all_seen, errored_months, breaker_tripped
 
 
 def _mark_vanished(  # noqa: PLR0913 -- one parameter per input `_case_side` produced, plus the
@@ -469,8 +561,40 @@ def _mark_vanished(  # noqa: PLR0913 -- one parameter per input `_case_side` pro
             tally.changed_mkeys.add(mkey)
 
 
-def _feed_side(api: NtsbClient, store: Store, *, run_id: int, today: date, tally: _Tally) -> None:
-    """Step 5: fetch the change feed for the last two days and store its aviation-only rows."""
+def _feed_side(  # noqa: PLR0913 -- the outage budget (pre-deploy fix round, item A1) needs
+    # the clock, the deadline and the case-side breaker's own result alongside every parameter
+    # the feed step already took.
+    api: NtsbClient,
+    store: Store,
+    *,
+    run_id: int,
+    today: date,
+    tally: _Tally,
+    now: Callable[[], datetime],
+    deadline: datetime,
+    case_side_breaker_tripped: bool,
+) -> None:
+    """Step 5: fetch the change feed for the last two days and store its aviation-only rows.
+
+    Pre-deploy fix round, item A1: gated by the SAME outage budget the case and docket sides
+    already are, and for the same reason -- ``cases_modified`` (``data/api.py``) hits the same
+    API host ``cases_by_date_range`` does, with the same retry/backoff worst case
+    (``RUN_DEADLINE_MINUTES``'s own comment), and calling it UNGATED after the case side has
+    already burned most of the run deadline (or given up on that host entirely, via its own
+    circuit breaker) is exactly what could push a night past the scheduler's own limit. Skipped
+    -- one failure, one log line, ``cases_modified`` never called -- if the deadline has
+    already passed, OR if the case-side breaker already tripped (the same host is down; no
+    point trying it a sixth way tonight). The DOCKET side's own breaker does not gate this step:
+    a docket outage says nothing about whether the API host answers.
+    """
+    if case_side_breaker_tripped:
+        _log.warning("feed skipped: case-side circuit breaker already tripped (same API host)")
+        tally.failures += 1
+        return
+    if _utc(now()) >= deadline:
+        _log.warning("feed skipped: run deadline reached")
+        tally.failures += 1
+        return
     try:
         raw_feed = api.cases_modified(today - timedelta(days=_FEED_LOOKBACK_DAYS), today)
     except ApiError as error:
@@ -482,6 +606,25 @@ def _feed_side(api: NtsbClient, store: Store, *, run_id: int, today: date, tally
         _log.debug("feed rows skipped (missing mkey or lastChangeDateTimeUtc)=%d", feed_skipped)
     if feed_rows:
         store.add_feed_rows(feed_rows, run_id=run_id)
+
+
+def _is_docket_outage_reason(reason: str) -> bool:
+    """Final review item A4: only a reason meaning the site itself is unreachable counts.
+
+    That is exactly ``docket.client.outcome_for_error``'s two "exhausted every retry" shapes: a
+    persistent HTTP status that survived every attempt (its ``"...-after-retries"`` suffix) or
+    a transport failure that did too (``"fetch-failed: ..."``). Everything else leaves the
+    counter untouched, exactly as a real success would (never trips the breaker, and resets any
+    in-progress streak): a PARSE failure (``no-info-block``, ``count-mismatch``,
+    ``entry-without-id``, ``duplicate-id``) means a page arrived and was read -- on a night the
+    site changes its own page layout, every poll can fail this way, fast, and every one of
+    those raw pages must still be stored (spec §6.4), which tripping the breaker would stop
+    after only ten; and a FAST, non-retried status (``outcome_for_error``'s plain
+    ``"http-<status>"``, e.g. a 404 for one case that genuinely has no docket) means the site
+    answered too, just with a status this client does not retry -- also not evidence the site
+    itself is down.
+    """
+    return reason.endswith("-after-retries") or reason.startswith("fetch-failed:")
 
 
 def _skip_docket_poll(store: Store, mkey: int, *, run_id: int, reason: str) -> None:
@@ -535,10 +678,12 @@ def _docket_side(  # noqa: PLR0913 -- the outage budget (final review item 1) ne
     (never mid-poll -- a poll already in flight always finishes). Once tripped it stays tripped
     for the rest of this call: every remaining mkey gets a skipped ``docket_polls`` row
     (:func:`_skip_docket_poll`, reason ``"skipped: deadline"``) instead of a real fetch. The
-    circuit breaker counts consecutive ``DocketOutcome.failed`` polls (never the unknown-mkey
-    check above, which is a store bug, not a fetch failure) and, once tripped, likewise skips
-    every remaining mkey (reason ``"skipped: outage"``) -- a single non-failed poll resets the
-    count to zero.
+    circuit breaker counts consecutive ``DocketOutcome.failed`` polls whose reason means a real
+    fetch outage (:func:`_is_docket_outage_reason`, pre-deploy fix round A4 -- never a parse
+    failure, a fast non-retried status, or the unknown-mkey check above, which is a store bug,
+    not a fetch failure at all) and, once tripped, likewise skips every remaining mkey (reason
+    ``"skipped: outage"``) -- a single non-outage poll (a real success, or any of those
+    non-outage failure shapes) resets the count to zero.
     """
     watched = store.watched_mkeys(today=today.isoformat())
     consecutive_failures = 0
@@ -565,13 +710,16 @@ def _docket_side(  # noqa: PLR0913 -- the outage budget (final review item 1) ne
         tally.suspected_renumbers += outcome.suspected_renumbers
         if outcome.failed is not None:
             tally.failures += 1
-            consecutive_failures += 1
-            if consecutive_failures >= CONSECUTIVE_FAILURES_TO_TRIP and not breaker_tripped:
-                breaker_tripped = True
-                _log.warning(
-                    "docket side: circuit breaker tripped after %d consecutive failures",
-                    consecutive_failures,
-                )
+            if _is_docket_outage_reason(outcome.failed):
+                consecutive_failures += 1
+                if consecutive_failures >= CONSECUTIVE_FAILURES_TO_TRIP and not breaker_tripped:
+                    breaker_tripped = True
+                    _log.warning(
+                        "docket side: circuit breaker tripped after %d consecutive failures",
+                        consecutive_failures,
+                    )
+            else:
+                consecutive_failures = 0
         else:
             consecutive_failures = 0
             if outcome.changed:
@@ -622,7 +770,7 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
     # -- 2-3. the month window, then fetch and observe ---------------------------------------
     step_start = _utc(inputs.now())
     watched_before = _ongoing_by_month(inputs.store, today)
-    months, all_seen, errored_months = _case_side(
+    months, all_seen, errored_months, case_side_breaker_tripped = _case_side(
         inputs, run_id=run_id, today=today, tally=tally, deadline=deadline
     )
     _log_step("window, fetch months, observe", step_start, _utc(inputs.now()))
@@ -643,7 +791,16 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
 
     # -- 5. the change feed -----------------------------------------------------------------
     step_start = _utc(inputs.now())
-    _feed_side(inputs.api, inputs.store, run_id=run_id, today=today, tally=tally)
+    _feed_side(
+        inputs.api,
+        inputs.store,
+        run_id=run_id,
+        today=today,
+        tally=tally,
+        now=inputs.now,
+        deadline=deadline,
+        case_side_breaker_tripped=case_side_breaker_tripped,
+    )
     _log_step("store feed", step_start, _utc(inputs.now()))
 
     # -- 6. poll every watched docket ---------------------------------------------------------

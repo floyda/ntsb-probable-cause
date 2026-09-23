@@ -111,6 +111,27 @@ def _table_counts(store: Store) -> dict[str, int]:
     }
 
 
+class _ElapsedClock:
+    """A clock that advances only when told to -- via `.sleep()` (the callable injected into
+    `NtsbClient`/`DocketClient` for backoff and rate-limit gaps) or `.advance()` (a respx
+    `side_effect` modelling one request's own elapsed time) -- never by counting how many times
+    `now()` is called (final review, pre-deploy fix round item A5: a call-counted clock breaks
+    silently if `run_night`'s internal call sequence ever changes shape; this one is tied to
+    the SAME realistic elapsed-time arithmetic `RUN_DEADLINE_MINUTES`'s own comment uses)."""
+
+    def __init__(self, start: datetime) -> None:
+        self._now = start
+
+    def now(self) -> datetime:
+        return self._now
+
+    def sleep(self, seconds: float) -> None:
+        self._now += timedelta(seconds=seconds)
+
+    def advance(self, seconds: float) -> None:
+        self._now += timedelta(seconds=seconds)
+
+
 def test_a_night_writes_summary_and_rows(
     store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
 ) -> None:
@@ -572,40 +593,47 @@ def test_watched_case_that_stopped_appearing_is_marked_not_returned(
 def test_deadline_trips_mid_docket_loop_and_the_run_still_finishes(
     store: Store, respx_mock: respx.MockRouter
 ) -> None:
-    """The clock crosses `RUN_DEADLINE_MINUTES` between the first and second docket poll. The
-    first mkey (95459) is polled for real; the rest (95460, 95461) get "skipped: deadline"
-    `docket_polls` rows, and `run_night` still returns a normal summary rather than raising.
+    """The clock crosses `RUN_DEADLINE_MINUTES` between the first and second docket poll: the
+    month fetch is slow-but-successful (62 simulated minutes), and mkey 95459's own docket poll
+    is also slow-but-successful (4 more minutes, crossing the 65-minute deadline). The first
+    mkey is polled for real; the rest (95460, 95461) get "skipped: deadline" `docket_polls`
+    rows, and `run_night` still returns a normal summary rather than raising.
 
-    The trip point (11 calls) is calibrated against this exact scenario (one cleanly-fetched
-    month with no records, three watched cases) -- a diagnostic run of the real code counted
-    exactly 10 `now()` calls before the docket loop's first per-mkey deadline check, so the
-    11th call (that first check) must still read as "before the deadline" for mkey 95459 to be
-    polled for real, and the 12th (mkey 95460's check) must read as "past it".
+    Elapsed-clock driven (final review, pre-deploy fix round A5), not call-counted: the trip
+    point depends only on how much simulated time the mocked responses themselves report
+    taking, never on how many times `now()` happens to be called internally.
     """
     event_date = "2026-10-15"
     watched_mkeys = (95459, 95460, 95461)
     for mkey in watched_mkeys:
         _seed_case(store, mkey, event_date)
-        respx_mock.get(sources.docket_url(mkey)).mock(
-            return_value=httpx.Response(200, text=NOT_RELEASED)
-        )
-    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body([])))
-    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
 
     start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
-    past_deadline = start + timedelta(minutes=run_module.RUN_DEADLINE_MINUTES, seconds=1)
-    calls = {"n": 0}
-    trip_after_calls = 11
+    clock = _ElapsedClock(start)
 
-    def _clock() -> datetime:
-        calls["n"] += 1
-        return start if calls["n"] <= trip_after_calls else past_deadline
+    def _slow_month(request: httpx.Request) -> httpx.Response:
+        clock.advance(62 * 60)
+        return httpx.Response(200, json=_month_body([]))
+
+    def _slow_first_docket(request: httpx.Request) -> httpx.Response:
+        clock.advance(4 * 60)
+        return httpx.Response(200, text=NOT_RELEASED)
+
+    respx_mock.get(MONTH_URL).mock(side_effect=_slow_month)
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(95459)).mock(side_effect=_slow_first_docket)
+    respx_mock.get(sources.docket_url(95460)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(sources.docket_url(95461)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
 
     inputs = NightInputs(
-        api=NtsbClient("k", sleep=lambda _seconds: None),
-        docket=DocketClient(None, seconds_per_request=2.0, sleep=lambda _seconds: None),
+        api=NtsbClient("k", sleep=clock.sleep),
+        docket=DocketClient(None, seconds_per_request=2.0, sleep=clock.sleep),
         store=store,
-        now=_clock,
+        now=clock.now,
         commit_sha="abc1234",
         dirty=False,
     )
@@ -619,6 +647,163 @@ def test_deadline_trips_mid_docket_loop_and_the_run_still_finishes(
     assert polls[2] == (95461, "failed", "skipped: deadline")
     assert summary.cases_polled == 3
     assert summary.failures == 2
+
+
+def test_case_side_month_deadline_skips_remaining_months_and_gates_the_feed(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """A case seeded seven months before "today", with every month fetch hanging (the full
+    5-attempt, ~11-minute-per-month worst case), spans an eight-month window. The first seven
+    months fail for real and exhaust most of the 65-minute deadline; the case-side per-month
+    check (run.py's `_case_side`, before a month's own fetch even starts) then skips the
+    remaining months outright -- no `run_months` row for any of them, and the change feed is
+    also skipped because the deadline has already passed by the time step 5 runs.
+
+    Elapsed-clock driven (A5): each failed HTTP attempt (5 per month, all retried) reports
+    itself as having taken the client's own 120-second timeout, the same worst case
+    `RUN_DEADLINE_MINUTES`'s own comment computes from.
+    """
+    _seed_case(store, MKEY_1, "2026-02-15")
+    start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
+    clock = _ElapsedClock(start)
+
+    def _hung_month(request: httpx.Request) -> httpx.Response:
+        clock.advance(120.0)
+        return httpx.Response(500)
+
+    respx_mock.get(MONTH_URL).mock(side_effect=_hung_month)
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    inputs = NightInputs(
+        api=NtsbClient("k", sleep=clock.sleep),
+        docket=DocketClient(None, seconds_per_request=2.0, sleep=clock.sleep),
+        store=store,
+        now=clock.now,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    summary = run_night(inputs)
+
+    assert store.connection.execute("select count(*) from run_months").fetchone()[0] == 0
+    assert store.connection.execute("select count(*) from change_feed").fetchone()[0] == 0
+    # 7 real month failures + at least 1 month skipped by the deadline + the skipped feed call
+    assert summary.failures >= 9
+    case = store.get_case(MKEY_1)
+    assert case is not None
+    assert case.status == "Ongoing"  # never a false "not returned": no month fetched cleanly
+
+
+def test_feed_skipped_after_case_side_breaker_trips(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """Ten consecutive FAST month failures (no simulated per-request hang -- only backoff/gap
+    time, a few minutes total, well under the 65-minute deadline) trip the case-side breaker;
+    the change feed is then skipped because of the breaker, not the deadline, which never
+    trips in this scenario."""
+    _seed_case(store, MKEY_1, "2026-01-15")  # 10 months back from "today" below
+    start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
+    clock = _ElapsedClock(start)
+
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(500))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    inputs = NightInputs(
+        api=NtsbClient("k", sleep=clock.sleep),
+        docket=DocketClient(None, seconds_per_request=2.0, sleep=clock.sleep),
+        store=store,
+        now=clock.now,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    summary = run_night(inputs)
+
+    elapsed_minutes = (clock.now() - start).total_seconds() / 60
+    assert elapsed_minutes < run_module.RUN_DEADLINE_MINUTES  # the deadline never tripped
+    assert store.connection.execute("select count(*) from change_feed").fetchone()[0] == 0
+    assert summary.failures >= run_module.CONSECUTIVE_FAILURES_TO_TRIP + 1  # + the skipped feed
+
+
+def test_page_level_deadline_stops_before_the_next_page(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """A single month, two pages: page 1 arrives (slow but successful, crossing the deadline);
+    the per-page check inside `_observe_month_streaming` (A3) must then stop BEFORE requesting
+    page 2 at all. Page 1's own record still stands (already observed and committed); the whole
+    month counts as errored (no `run_months` row, no "not returned" marking)."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_1, event_date)
+    _seed_case(store, MKEY_2, event_date)  # would only appear on page 2, which must never load
+    start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
+    clock = _ElapsedClock(start)
+    page_2_requested = {"called": False}
+
+    def _month_response(request: httpx.Request) -> httpx.Response:
+        if "marker" not in request.url.params:
+            clock.advance((run_module.RUN_DEADLINE_MINUTES + 1) * 60)
+            return httpx.Response(200, json=_month_body([], has_more=True, marker="page-2"))
+        page_2_requested["called"] = True
+        return httpx.Response(200, json=_month_body([]))
+
+    respx_mock.get(MONTH_URL).mock(side_effect=_month_response)
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    inputs = NightInputs(
+        api=NtsbClient("k", sleep=clock.sleep),
+        docket=DocketClient(None, seconds_per_request=2.0, sleep=clock.sleep),
+        store=store,
+        now=clock.now,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    run_night(inputs)
+
+    assert page_2_requested["called"] is False
+    assert store.connection.execute("select count(*) from run_months").fetchone()[0] == 0
+
+
+def test_docket_breaker_not_tripped_by_parse_failures_all_pages_stored(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """Ten consecutive `no-info-block` pages (a PARSE failure -- the site answered, its page
+    content is just unusual) must never trip the docket circuit breaker (A4): every one of the
+    ten is a real, attempted fetch, never "skipped: outage", and every one of their raw pages
+    is stored (spec §6.4 -- every `docket_polls` row has a non-null `page_sha`)."""
+    event_date = "2026-10-15"
+    mkeys = [200000 + i for i in range(12)]
+    records = []
+    for mkey in mkeys:
+        _seed_case(store, mkey, event_date)
+        records.append(_ongoing(record_fixtures, mkey, event_date))
+        respx_mock.get(sources.docket_url(mkey)).mock(
+            return_value=httpx.Response(200, text=f"<html>Docket Items: 0</html><!-- {mkey} -->")
+        )
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body(records)))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    run_night(inputs)
+
+    polls = store.connection.execute(
+        "select mkey, outcome, reason, page_sha from docket_polls order by mkey"
+    ).fetchall()
+    assert len(polls) == 12
+    assert all(
+        outcome == "failed" and reason == "no-info-block" for _m, outcome, reason, _s in polls
+    )
+    assert all(page_sha is not None for _m, _o, _r, page_sha in polls)  # every raw page stored
+    assert not any(reason == "skipped: outage" for _m, _o, reason, _s in polls)
 
 
 def test_docket_circuit_breaker_trips_after_ten_consecutive_failures(
@@ -743,3 +928,99 @@ def test_a_case_first_seen_the_night_after_a_clean_fetch_gets_a_true_arrival(
     # this fix they never would have for a brand-new case.
     role_count_before = len(store.field_change_arrivals())
     assert role_count_before > 0
+
+
+# --- seen-but-unstored records (pre-deploy fix round, item B) ------------------------------
+
+
+def test_a_completed_case_that_reopens_later_is_first_sight_not_a_true_arrival(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """A case the API returns as Completed (never watchable, never stored) for two nights, then
+    reopens as Ongoing on a third, must NOT read as a true arrival just because an earlier
+    night's fetch of its event month happened to be clean -- it was never really "new" on the
+    reopening night; the recorder had already seen it, twice, and simply never stored it."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_2, event_date)  # pins month_window to one known month
+    control = _ongoing(record_fixtures, MKEY_2, event_date)
+    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    reopening_mkey = 300000
+    completed = _ongoing(record_fixtures, reopening_mkey, event_date)
+    completed["completionStatus"] = "Completed"
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([control, completed]))
+    )
+
+    run_night(_inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)))
+    run_night(_inputs(store, datetime(2026, 10, 2, 3, 0, 0, tzinfo=UTC)))
+
+    assert store.get_case(reopening_mkey) is None  # never actually stored
+    assert store.is_seen_unstored(reopening_mkey) is True
+
+    # Night 3: the case reopens as Ongoing.
+    reopened = _ongoing(record_fixtures, reopening_mkey, event_date)
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([control, reopened]))
+    )
+    respx_mock.get(sources.docket_url(reopening_mkey)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    run_night(_inputs(store, datetime(2026, 10, 3, 3, 0, 0, tzinfo=UTC)))
+
+    absent_runs = store.connection.execute(
+        "select distinct absent_run from field_snapshots where mkey=?", (reopening_mkey,)
+    ).fetchall()
+    assert absent_runs == [(None,)]  # first-sight, never a false true arrival years late
+
+
+def test_an_observe_failure_then_success_is_first_sight_and_the_month_gets_no_run_months_row(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """A record `observe_case` fails on (here: no usable event date) is seen but not stored --
+    the same `seen_unstored` protection applies once it is fixed and succeeds. The month itself
+    is also NOT recorded as cleanly fetched (`month_failures > 0`), even though every page of
+    it arrived without an `ApiError`."""
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_2, event_date)
+    control = _ongoing(record_fixtures, MKEY_2, event_date)
+    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    broken_mkey = 400000
+    broken = _ongoing(record_fixtures, broken_mkey, event_date)
+    broken["eventDate"] = None  # observe_case fails: "no event date"
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([control, broken]))
+    )
+
+    run_night(_inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)))
+
+    assert store.get_case(broken_mkey) is None
+    assert store.is_seen_unstored(broken_mkey) is True
+    assert (
+        store.connection.execute(
+            "select count(*) from run_months where month='2026-10' and run_id=1"
+        ).fetchone()[0]
+        == 0
+    )
+
+    # Night 2: the record is now fixed and observes cleanly.
+    fixed = _ongoing(record_fixtures, broken_mkey, event_date)
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([control, fixed]))
+    )
+    respx_mock.get(sources.docket_url(broken_mkey)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    run_night(_inputs(store, datetime(2026, 10, 2, 3, 0, 0, tzinfo=UTC)))
+
+    absent_runs = store.connection.execute(
+        "select distinct absent_run from field_snapshots where mkey=?", (broken_mkey,)
+    ).fetchall()
+    assert absent_runs == [(None,)]

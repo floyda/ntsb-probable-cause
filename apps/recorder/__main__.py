@@ -174,7 +174,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Final review item 5b: a store whose schema_version is newer than this code knows
         # (a rolled-back deploy) is refused loudly, the same clean one-line shape every other
         # ConfigurationError in this app uses -- never a traceback, never a value from the
-        # environment.
+        # environment. Pre-deploy fix round, item C: `store.close()` here too -- the open
+        # sqlite3 connection otherwise leaks (a `ResourceWarning` `make check` catches), and a
+        # refused store should never be left holding an open handle on the way out regardless.
+        store.close()
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1
     try:

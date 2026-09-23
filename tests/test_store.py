@@ -61,10 +61,36 @@ def test_migrate_from_a_v1_store_applies_migration_2(tmp_path: Path) -> None:
     }
     assert "regulation_events" in names
     assert "run_months" in names
+    assert "seen_unstored" in names
     indexes = {
         r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
     }
     assert "change_feed_mkey" in indexes
+    store.close()
+
+
+def test_migrate_from_a_v2_store_applies_migration_3(tmp_path: Path) -> None:
+    """Pre-deploy fix round, item B: migration 3 was edited in place (not added as migration 4)
+    specifically so it still applies cleanly to a store already at version 2 -- the only real
+    store at the time this round landed. Built from `MIGRATIONS[:2]` directly, the same way a
+    real store that ran only under migrations 1-2 would look."""
+    path = tmp_path / "r.sqlite"
+    store = Store(path)
+    store.connection.executescript(
+        "BEGIN;\n"
+        f"{store_schema.MIGRATIONS[0]}\n"
+        f"{store_schema.MIGRATIONS[1]}\n"
+        "INSERT INTO schema_version (version) VALUES (2);\nCOMMIT;"
+    )
+    assert store.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+
+    assert store.migrate() == 3
+
+    names = {
+        r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "run_months" in names
+    assert "seen_unstored" in names
     store.close()
 
 
@@ -639,6 +665,19 @@ def test_last_clean_fetch_finds_the_latest_earlier_run(store: Store) -> None:
     assert store.last_clean_fetch("2026-09", before_run=100) == 3
     assert store.last_clean_fetch("2026-09", before_run=1) is None  # nothing strictly earlier
     assert store.last_clean_fetch("2099-01", before_run=100) is None  # never fetched at all
+
+
+def test_add_seen_unstored_is_idempotent_and_keeps_the_first_run(store: Store) -> None:
+    store.add_seen_unstored(42, first_run=1)
+    store.add_seen_unstored(42, first_run=5)  # same mkey again: kept, not overwritten
+    row = store.connection.execute("SELECT first_run FROM seen_unstored WHERE mkey = 42").fetchone()
+    assert row == (1,)
+
+
+def test_is_seen_unstored(store: Store) -> None:
+    store.add_seen_unstored(42, first_run=1)
+    assert store.is_seen_unstored(42) is True
+    assert store.is_seen_unstored(99) is False
 
 
 def test_close_checkpoints_wal_into_the_main_file(tmp_path: Path) -> None:
