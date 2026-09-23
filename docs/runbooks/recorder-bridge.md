@@ -481,31 +481,28 @@ directory (stage 1).
 
 ## Stage 8 — Retiring the bridge, once AWS takes over
 
-When `docs/runbooks/recorder-deploy.md` has the AWS schedule running its own first successful
-night, two steps close out the bridge:
+**This stage does not happen on its own — it is `docs/runbooks/recorder-deploy.md`'s stage 7,
+run from that runbook, not this one.** (Fix round 1, Important 2, 2026-09-23: this section used
+to give its own two steps directly, in a different order and with no verification step; that
+version is gone, not just superseded in place, because having the same procedure written twice
+is exactly how the two copies drift apart and start contradicting each other. This page now
+only orients you to when it happens, and points at the one copy of the steps.)
 
-**1. Unload the `launchd` job**, so it stops running:
+The full sequence — stop the bridge, checkpoint any unflushed write-ahead log, upload the
+store, and verify the upload is byte-for-byte complete before the schedule is trusted — is
+`docs/runbooks/recorder-deploy.md` stage 7, and it happens **before** that runbook's first
+manual cloud run (its stage 8), not after "AWS has its own first successful night" as this page
+used to say. In short: the bridge is retired as one step in *getting* AWS its first successful
+night, not after one has already happened on an empty store.
 
-```
-launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
-```
+Two things worth knowing here, since they are specific to the bridge side of that handover:
 
-(`rm ~/Library/LaunchAgents/dev.floyda.ntsb-record.plist` afterwards if you want it gone for
-good, not just stopped; `rm -r "$HOME/Library/Application Support/ntsb-record"` removes the
-installed wrapper script too, if you want nothing left behind at all — neither is required,
-since a stopped job runs nothing further either way.)
-
-**2. Upload everything the bridge has recorded so far, once**, so AWS continues from where the
-bridge left off rather than starting empty:
-
-```
-aws s3 cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
-  s3://<bucket>/recorder.sqlite --profile ntsb
-```
-
-(`<bucket>` is the name `cdk deploy` printed when the AWS stack was created — see
-`docs/runbooks/recorder-deploy.md`.) Do this once, right after unloading the bridge and before
-the first AWS run, so exactly one of the two is ever writing to the store at a time.
+- **The `launchctl bootout` command that stops the bridge is exactly the same one stage 6 of
+  this runbook uses to stop it for any other reason** — there is nothing bridge-specific about
+  retiring it, only about *when* (once, deliberately, as part of the AWS handover).
+- **Leave it stopped.** Nothing in this project restarts the bridge automatically, and nothing
+  should — a bridge that starts writing to the local file again after the store has moved to
+  S3 would silently create two writers with no way for either to see the other's rows.
 
 ---
 

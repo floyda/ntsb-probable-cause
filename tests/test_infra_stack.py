@@ -146,13 +146,24 @@ def test_schedule_is_nightly_at_0300_utc_with_no_flexible_window(template: Templ
     )
 
 
-def test_schedule_never_retries_a_failed_start(template: Template) -> None:
-    """A failed start must not trigger a second run the same night (spec S9.1: the store is
-    saved once, at the end, by a single task -- a retried second task would be a second
-    writer)."""
+def test_schedule_retries_only_a_failed_invocation_not_a_failed_task(template: Template) -> None:
+    """A Scheduler retry only fires when the `RunTask` API call itself failed -- no task ever
+    started, so a retry cannot produce a second task writing to the store the same night (spec
+    S9.1's single-writer rule). Reversed from this stack's first version, which set
+    `maximum_retry_attempts=0` on the mistaken assumption that any retry risked a second
+    writer -- see the dated Deviation entry that corrects it."""
     template.has_resource_properties(
         "AWS::Scheduler::Schedule",
-        {"Target": Match.object_like({"RetryPolicy": {"MaximumRetryAttempts": 0}})},
+        {
+            "Target": Match.object_like(
+                {
+                    "RetryPolicy": {
+                        "MaximumRetryAttempts": 2,
+                        "MaximumEventAgeInSeconds": 3600,
+                    }
+                }
+            )
+        },
     )
 
 
@@ -310,43 +321,44 @@ def test_deploy_role_trust_names_the_repository_and_branch(template: Template) -
     )
 
 
+def test_default_path_creates_exactly_one_native_oidc_provider(template: Template) -> None:
+    """`iam.OidcProviderNative` (fix round 1, Minor 1) synthesizes the real
+    `AWS::IAM::OIDCProvider` CloudFormation resource type directly -- no Lambda-backed custom
+    resource, no extra role, no extra log group."""
+    template.resource_count_is("AWS::IAM::OIDCProvider", 1)
+    template.resource_count_is("AWS::Lambda::Function", 0)
+    template.resource_count_is("AWS::IAM::Role", 4)
+
+
 def test_stack_synths_when_importing_an_existing_oidc_provider() -> None:
     """An account may hold only one `token.actions.githubusercontent.com` provider; passing
     its ARN as context must import it rather than try to create a second one. This is also the
     "offline" path exercised end to end: no AWS call is made either way (controller note 2)."""
     existing_arn = f"arn:aws:iam::{_TEST_ACCOUNT}:oidc-provider/token.actions.githubusercontent.com"
     imported = _build_template(github_oidc_provider_arn=existing_arn)
-    imported.resource_count_is("Custom::AWSCDKOpenIdConnectProvider", 0)
-    # Task role, execution role, scheduler role, deploy role -- one fewer than the
-    # default (creating) path, which also creates the custom resource's own service role.
+    imported.resource_count_is("AWS::IAM::OIDCProvider", 0)
+    # Task role, execution role, scheduler role, deploy role -- the same four as the default
+    # (creating) path: the native OIDC provider resource creates no role of its own either way.
     imported.resource_count_is("AWS::IAM::Role", 4)
 
 
-# --- 7. No bare wildcards, with three stated, narrow exceptions ---------------------------------
+# --- 7. No bare wildcards, with one stated, narrow exception -----------------------------------
 
 # `ecr:GetAuthorizationToken` has no resource-level permissions at all -- AWS requires
 # `Resource: "*"` for it; it only returns a short-lived registry login token, not access to any
-# repository's images. `kms:Decrypt` on the AWS-managed `alias/aws/ssm` key is the same shape of
-# exception for a different reason: an account's managed key ID is not knowable without a live
-# lookup, which would break offline `cdk synth` (controller note 2), so the policy uses
-# `Resource: "*"` narrowed by the `kms:ResourceAliases` condition key to that one alias instead
-# of a key ARN.
+# repository's images.
 #
-# The five `iam:*OpenIDConnectProvider*` actions are not code this stack wrote: CDK generates
-# them, on the Lambda execution role of the custom resource it creates to manage the GitHub
-# OIDC provider (only in the default, provider-creating path -- gone entirely when
-# `github_oidc_provider_arn` imports an existing one instead, as the test above shows by its
-# role count). They have the same "resource does not exist yet at grant time" shape as
-# `ecr:GetAuthorizationToken`: an OIDC provider's ARN cannot be named in a policy before the
-# provider is created. Listed here, as the test brief asked, rather than silently allowed.
-_ALLOWED_WILDCARD_ACTIONS = {"ecr:GetAuthorizationToken", "kms:Decrypt"}
-_CDK_GENERATED_OIDC_CUSTOM_RESOURCE_ACTIONS = {
-    "iam:CreateOpenIDConnectProvider",
-    "iam:DeleteOpenIDConnectProvider",
-    "iam:UpdateOpenIDConnectProviderThumbprint",
-    "iam:AddClientIDToOpenIDConnectProvider",
-    "iam:RemoveClientIDFromOpenIDConnectProvider",
-}
+# There is no `kms:Decrypt` grant anywhere in this stack (fix round 1, Important 1, corrected
+# from this stack's first version): the ECS Developer Guide states plainly that it is "required
+# only if your secret uses a customer managed key and not the default key", and 0069's
+# `put-parameter` command never passes `--key-id`, so the parameter is encrypted with the
+# default AWS-managed key. `test_no_kms_grant_exists` below checks this directly.
+#
+# The native OIDC provider construct (`iam.OidcProviderNative`, fix round 1, Minor 1) also
+# removed the other exception this stack used to need: the older `iam.OpenIdConnectProvider`
+# generated a Lambda-backed custom resource with its own `Resource: "*"` policy for
+# `iam:*OpenIDConnectProvider*` actions; the native resource type creates no such role.
+_ALLOWED_WILDCARD_ACTIONS = {"ecr:GetAuthorizationToken"}
 
 
 def _actions(statement: dict[str, Any]) -> list[str]:
@@ -359,7 +371,7 @@ def test_no_policy_statement_allows_every_action(template: Template) -> None:
     assert offenders == []
 
 
-def test_no_policy_statement_targets_every_resource_except_the_stated_exceptions(
+def test_no_policy_statement_targets_every_resource_except_the_stated_exception(
     template: Template,
 ) -> None:
     offenders = []
@@ -368,26 +380,22 @@ def test_no_policy_statement_targets_every_resource_except_the_stated_exceptions
         resources = resource if isinstance(resource, list) else [resource]
         if "*" not in resources:
             continue
-        actions = set(_actions(statement))
-        if (
-            actions <= _ALLOWED_WILDCARD_ACTIONS
-            or actions <= _CDK_GENERATED_OIDC_CUSTOM_RESOURCE_ACTIONS
-        ):
+        if set(_actions(statement)) <= _ALLOWED_WILDCARD_ACTIONS:
             continue
         offenders.append(statement)
     assert offenders == []
 
 
-def test_kms_decrypt_wildcard_is_narrowed_to_the_one_alias(template: Template) -> None:
-    """The one thing test group 7's blanket check above cannot see on its own: that the
-    `kms:Decrypt` exception really is narrowed by a condition, not a bare `Resource: "*"`."""
-    kms_statements = [s for s in _all_policy_statements(template) if "kms:Decrypt" in _actions(s)]
-    assert len(kms_statements) == 1
-    (statement,) = kms_statements
-    assert statement["Resource"] == "*"
-    assert statement["Condition"] == {
-        "ForAnyValue:StringEquals": {"kms:ResourceAliases": "alias/aws/ssm"}
-    }
+def test_no_kms_grant_exists(template: Template) -> None:
+    """Fix round 1, Important 1: the default AWS-managed key needs no `kms:Decrypt` grant at
+    all (see the comment above `_ALLOWED_WILDCARD_ACTIONS`). This is the direct check that the
+    earlier, incorrect grant was actually removed, not just moved."""
+    kms_statements = [
+        s
+        for s in _all_policy_statements(template)
+        if any(a.startswith("kms:") for a in _actions(s))
+    ]
+    assert kms_statements == []
 
 
 # --- 8. Container Insights disabled --------------------------------------------------------------
@@ -406,4 +414,94 @@ def test_container_insights_is_disabled(template: Template) -> None:
 def test_outputs_include_bucket_log_group_role_and_repository(template: Template) -> None:
     outputs = template.to_json()["Outputs"]
     names = set(outputs)
-    assert {"BucketName", "LogGroupName", "DeployRoleArn", "RepositoryUri"} <= names
+    assert {
+        "BucketName",
+        "LogGroupName",
+        "DeployRoleArn",
+        "RepositoryUri",
+        "SubnetIds",
+        "SecurityGroupId",
+    } <= names
+
+
+# --- 9. The strongest protective properties (fix round 1, Important 7) -------------------------
+
+
+def test_bucket_and_repository_have_deletion_policy_retain(template: Template) -> None:
+    """The bucket and the ECR repository are the two resources `docs/runbooks/
+    recorder-deploy.md` stage 9 says survive `cdk destroy` -- checked here as the actual
+    CloudFormation `DeletionPolicy`, not just the CDK-level `removal_policy` prop, since that
+    is what really governs what `cdk destroy` does to the resource."""
+    as_json = template.to_json()
+    for resource_type in ("AWS::S3::Bucket", "AWS::ECR::Repository"):
+        (resource,) = [r for r in as_json["Resources"].values() if r["Type"] == resource_type]
+        assert resource["DeletionPolicy"] == "Retain", resource_type
+
+
+def test_log_group_also_has_deletion_policy_retain(template: Template) -> None:
+    """Not one of the brief's original two RETAIN resources, but true of this stack as built,
+    and `docs/runbooks/recorder-deploy.md` stage 9 says so explicitly -- checked directly so a
+    future change to the log group's `removal_policy` cannot silently make the runbook wrong."""
+    as_json = template.to_json()
+    (log_group,) = [r for r in as_json["Resources"].values() if r["Type"] == "AWS::Logs::LogGroup"]
+    assert log_group["DeletionPolicy"] == "Retain"
+
+
+def test_scheduler_pass_role_is_scoped_to_exactly_the_two_task_roles(template: Template) -> None:
+    """Fargate assumes the task's own two roles (task role, execution role) when it starts the
+    container; the scheduler's `iam:PassRole` grant must name exactly those two ARNs, not every
+    role in the account."""
+    pass_role_statements = [
+        s for s in _all_policy_statements(template) if _actions(s) == ["iam:PassRole"]
+    ]
+    assert len(pass_role_statements) == 1
+    (statement,) = pass_role_statements
+    resources = statement["Resource"]
+    assert isinstance(resources, list)
+    assert len(resources) == 2
+
+
+def test_deploy_role_push_actions_are_scoped_to_the_repository_arn(template: Template) -> None:
+    """`repository.grant_pull_push` must land on the repository's own ARN, never `Resource:
+    "*"` -- the wildcard tests above already forbid a bare `"*"` for these actions, but this
+    checks the positive property directly: the resource named is a `Fn::GetAtt` on the ECR
+    repository's own logical resource, not some other value."""
+    (repository_logical_id,) = template.find_resources("AWS::ECR::Repository").keys()
+    push_actions = {
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+    }
+    candidates = [s for s in _all_policy_statements(template) if push_actions & set(_actions(s))]
+    assert len(candidates) == 1
+    (statement,) = candidates
+    resource = statement["Resource"]
+    assert resource != "*"
+    assert resource == {"Fn::GetAtt": [repository_logical_id, "Arn"]}
+
+
+def test_security_group_has_no_ingress(template: Template) -> None:
+    """No inbound rule of any kind -- nothing on the internet can reach the task."""
+    (security_group,) = template.find_resources("AWS::EC2::SecurityGroup").values()
+    assert "SecurityGroupIngress" not in security_group["Properties"]
+
+
+def test_log_retention_is_30_days(template: Template) -> None:
+    template.has_resource_properties(
+        "AWS::Logs::LogGroup",
+        {"RetentionInDays": 30},
+    )
+
+
+def test_task_role_cannot_delete_objects(template: Template) -> None:
+    """Fix round 1, Minor 5: `grant_read` + `grant_put`, not `grant_read_write`, so the task
+    role has no `s3:DeleteObject*` action -- keeping delete out of its reach is what makes the
+    bucket's versioning a real safety net rather than one a compromised or buggy task could
+    also undo."""
+    offenders = [
+        s
+        for s in _all_policy_statements(template)
+        if any(a.startswith("s3:DeleteObject") for a in _actions(s))
+    ]
+    assert offenders == []

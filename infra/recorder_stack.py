@@ -20,14 +20,17 @@ Two constraints carried from Task 12 (fix round 1), not new resources:
   first write.
 
 Deployment offline (controller note 2): `cdk synth` must work with no AWS credentials and no
-network calls, so the VPC is created fresh here -- never looked up from an existing account --
-and the stack's `env` (set in `app.py`) reads the account from `CDK_DEFAULT_ACCOUNT`, which is
-unset until `cdk deploy --profile ntsb` fills it in.
+network calls, so the VPC is created fresh here -- never looked up from an existing account.
+`app.py` leaves the stack's account unresolved (see its own docstring for why -- in short, a
+concrete account is what makes `ec2.Vpc`'s explicit `availability_zones` list trigger a real
+AWS lookup rather than a CloudFormation pseudo-parameter, regardless of the list being given
+explicitly); `cdk deploy --profile ntsb` resolves the real account from the profile at deploy
+time.
 """
 
 from __future__ import annotations
 
-from aws_cdk import CfnOutput, Duration, Environment, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, Environment, Fn, RemovalPolicy, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
@@ -89,9 +92,10 @@ class NtsbRecorderStack(Stack):
         Args:
             scope: The CDK app or parent construct.
             construct_id: This stack's construct id.
-            env: The account/region this stack deploys to. `app.py` passes an account read
-                from `CDK_DEFAULT_ACCOUNT` (unset during a plain `cdk synth`) and the fixed
-                region `eu-west-2`.
+            env: The account/region this stack deploys to. `app.py` passes the fixed region
+                `eu-west-2` and leaves account unset, so `cdk deploy --profile ntsb` resolves
+                it from the profile, and `cdk synth` never attempts an account-specific AWS
+                lookup regardless of what is set in the calling shell.
             github_oidc_provider_arn: ARN of an *existing* `token.actions.githubusercontent.com`
                 OIDC provider in the target account, if the account already has one (an account
                 may only have one provider per URL). When unset, this stack creates one. Passed
@@ -131,11 +135,27 @@ class NtsbRecorderStack(Stack):
         # it, so a public subnet with `assign_public_ip=ENABLED` gets outbound access for free.
         # No interface or gateway VPC endpoints either -- each one is itself a billed resource,
         # and this stack has nothing that benefits from one at this size.
+        #
+        # `availability_zones=[...]`, not `max_azs=2`: `max_azs` makes CDK look up the real
+        # list of AZs for the deploying account and region, which can write the answer to
+        # `infra/cdk.context.json` -- a file that would then carry the account's own AZ names
+        # on disk (now gitignored regardless, as defence in depth). `eu-west-2a`/`eu-west-2b`
+        # are London's first two AZs, always present (a region with only one AZ does not
+        # exist), so naming them directly is deterministic and needs no lookup to choose.
+        #
+        # This alone is not sufficient, though, and it is worth being exact about why: `Vpc`
+        # still reads `Stack.availabilityZones` internally to validate the given list against
+        # the stack's real AZs, and that property attempts a live, credentialed lookup the
+        # moment the stack's *account* is concrete -- independent of whether `availability_zones`
+        # was given explicitly (confirmed directly against `aws-cdk-lib`'s own source; passing
+        # this list changes nothing about whether the lookup is attempted, only what CDK does
+        # with the result if it succeeds). What actually keeps `cdk synth` lookup-free is
+        # `app.py` leaving the stack's account unresolved -- see its docstring.
         vpc = ec2.Vpc(
             self,
             "Vpc",
             nat_gateways=0,
-            max_azs=2,
+            availability_zones=["eu-west-2a", "eu-west-2b"],
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="Public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24
@@ -145,6 +165,7 @@ class NtsbRecorderStack(Stack):
 
         # No inbound rules are added below, so nothing on the internet can reach the task;
         # `allow_all_outbound` covers the NTSB API, S3, ECR and CloudWatch Logs calls it makes.
+        # Cost: free -- a security group has no charge of its own.
         task_security_group = ec2.SecurityGroup(
             self,
             "TaskSecurityGroup",
@@ -153,7 +174,8 @@ class NtsbRecorderStack(Stack):
             allow_all_outbound=True,
         )
 
-        # ECR repository -- the image registry. Tag mutability stays at its CDK default,
+        # 4. ECR repository, ECS cluster, log group and task definition -- the image registry.
+        # Tag mutability stays at its CDK default,
         # `MUTABLE` (the carried constraint above); a lifecycle rule keeps only the 5 newest
         # images, so storage cost does not grow forever; `image_scan_on_push` is the free basic
         # vulnerability scan. Kept on `cdk destroy` (RETAIN), so a re-deploy never loses the
@@ -204,52 +226,33 @@ class NtsbRecorderStack(Stack):
             memory_limit_mib=512,
         )
 
-        # The task role -- what the *running program* is allowed to do. It only ever touches
-        # its own store object, so it gets exactly `grant_read_write` on the bucket and nothing
-        # else (controller note 3).
-        bucket.grant_read_write(task_definition.task_role)
+        # The task role -- what the *running program* is allowed to do. `store/sync.py` only
+        # ever calls `download_file` (a `GetObject`) and `upload_file` (a `PutObject`) on this
+        # one object -- never deletes anything -- so the role gets `grant_read` + `grant_put`,
+        # not the broader `grant_read_write` (which also includes `s3:DeleteObject*`). Keeping
+        # delete out of the task role's reach is what makes the bucket's own versioning (above)
+        # a real safety net: a bug in the recorder can overwrite `recorder.sqlite` with a bad
+        # night's data, recoverable from a prior version, but it cannot delete the version
+        # history itself.
+        bucket.grant_read(task_definition.task_role)
+        bucket.grant_put(task_definition.task_role)
 
         # The execution role -- what *Fargate itself* does before the program starts: pull the
         # image and inject the secret. `secrets=` below makes CDK grant it `ssm:GetParameters`
-        # on this one parameter automatically. That is not enough on its own: the parameter is
-        # a `SecureString`, encrypted with the AWS-managed key `alias/aws/ssm` (0069's command
-        # passes no `--key-id`, so SSM defaults to it), and reading a `SecureString` also needs
-        # `kms:Decrypt` on that key -- without it the task would pull the parameter and fail to
-        # decrypt it at start.
-        #
-        # Granting it correctly is harder than it looks. `kms.Alias.from_alias_name(...)
-        # .grant_decrypt(role)` (tried first, kept out of the final code) silently adds
-        # *nothing*: `Grant.success` comes back `False`, because IAM's `Resource` element for
-        # `kms:Decrypt` must name the key's own ARN (`.../key/<key-id>`), not an alias ARN --
-        # and an AWS-managed key's ID is account-specific and can only be learned with a live
-        # `kms:DescribeKey`/`ListAliases` call, which `cdk synth` must not make (controller note
-        # 2: it has to work with no AWS credentials). So the key ID cannot be known here, ever,
-        # without breaking offline synth.
-        #
-        # The standard fix for exactly this situation is KMS's `kms:ResourceAliases` condition
-        # key: it lets a policy use `Resource: "*"` for `kms:Decrypt` while still constraining
-        # it to one named alias, checked by KMS itself at call time against whichever key the
-        # alias currently points to. `Resource: "*"` alone would be too broad (every key in the
-        # account); the condition is what keeps this to "only the parameter's key, whichever key
-        # that is" rather than "every key". This is the one exception in this stack to "no
-        # `Resource: '*'` outside `ecr:GetAuthorizationToken`" (which has the same shape of
-        # reason: the action itself has no resource-level permissions).
+        # on this one parameter automatically, which is all it needs: the parameter is a
+        # `SecureString`, but 0069's command passes no `--key-id`, so SSM encrypts it with the
+        # *default* AWS-managed key (`alias/aws/ssm`) -- and per the ECS Developer Guide
+        # ("Retrieve secrets through Secrets Manager or Systems Manager Parameter Store",
+        # `task_execution_IAM_role.html#task-execution-secrets`), `kms:Decrypt` is required
+        # "only if your secret uses a customer managed key and not the default key". No KMS
+        # grant is added here (see the corrected Deviation entry for the earlier, wrong version
+        # of this comment, which added one).
         #
         # `obtain_execution_role()` (not the `.execution_role` property, which stays `None`
-        # until something else asks for the role first) is typed as `IRole`, the general
-        # interface -- so this uses `add_to_principal_policy`, not `Role`'s own `add_to_policy`
-        # convenience method, which `IRole` does not declare. The role object is the same
-        # either way; only the typed handle to it differs. Reused below (Fargate's
-        # `iam:PassRole` grant) so both statements land on the one execution role CDK actually
-        # creates, not two different lazily-created roles.
+        # until something else asks for the role first) creates the role now, so the
+        # `iam:PassRole` grant below (Fargate assuming it to start the task) targets the same
+        # role object CDK actually creates, not a second, separately lazily-created one.
         execution_role = task_definition.obtain_execution_role()
-        execution_role.add_to_principal_policy(
-            iam.PolicyStatement(
-                actions=["kms:Decrypt"],
-                resources=["*"],
-                conditions={"ForAnyValue:StringEquals": {"kms:ResourceAliases": "alias/aws/ssm"}},
-            )
-        )
 
         # `add_container` builds the container definition and attaches it to `task_definition`
         # in place; nothing further needs the return value, since the scheduler target below
@@ -308,9 +311,20 @@ class NtsbRecorderStack(Stack):
             target=scheduler.CfnSchedule.TargetProperty(
                 arn=cluster.cluster_arn,
                 role_arn=scheduler_role.role_arn,
-                # A failed start must not retry and risk two runs writing to the store the same
-                # night (spec S9.1: the store is saved once, at the end, by a single task).
-                retry_policy=scheduler.CfnSchedule.RetryPolicyProperty(maximum_retry_attempts=0),
+                # A Scheduler retry only fires when the `RunTask` API call itself failed (for
+                # example, throttled) -- in that case no task ever started, so a retry cannot
+                # produce two tasks writing to the store the same night (spec S9.1's single-
+                # writer rule is about the *task* succeeding twice, not the schedule invocation
+                # failing once). Reversed from this stack's first version, which set
+                # `maximum_retry_attempts=0` on the mistaken assumption that any retry risked a
+                # second writer -- see the dated Deviation entry that corrects it.
+                # `maximum_event_age_in_seconds=3600` bounds how long a retry is still worth
+                # attempting (an hour is well inside the 03:00-04:30 UTC window the runbook
+                # already treats as "the night's run").
+                retry_policy=scheduler.CfnSchedule.RetryPolicyProperty(
+                    maximum_retry_attempts=2,
+                    maximum_event_age_in_seconds=3600,
+                ),
                 ecs_parameters=scheduler.CfnSchedule.EcsParametersProperty(
                     task_definition_arn=task_definition.task_definition_arn,
                     launch_type="FARGATE",
@@ -330,12 +344,21 @@ class NtsbRecorderStack(Stack):
         # when told to (`github_oidc_provider_arn`, checked by the runbook with
         # `aws iam list-open-id-connect-providers`) rather than risk a duplicate-provider
         # deploy failure. Free.
+        #
+        # `iam.OidcProviderNative` (added in aws-cdk-lib 2.163, present in the 2.270.0 pinned
+        # here), not the older `iam.OpenIdConnectProvider`: the native construct synthesizes
+        # the real `AWS::IAM::OIDCProvider` CloudFormation resource type directly, whereas the
+        # older one (when creating a new provider, as opposed to importing one) synthesizes a
+        # Lambda-backed custom resource to manage it instead -- its own IAM role with a
+        # `Resource: "*"` policy for the `iam:*OpenIDConnectProvider*` actions, an asset bucket
+        # entry, and a log group with no retention set. The native resource needs none of that
+        # extra machinery and creates no extra resources at all.
         oidc_provider = (
-            iam.OpenIdConnectProvider.from_open_id_connect_provider_arn(
+            iam.OidcProviderNative.from_oidc_provider_arn(
                 self, "GithubOidcProvider", github_oidc_provider_arn
             )
             if github_oidc_provider_arn
-            else iam.OpenIdConnectProvider(
+            else iam.OidcProviderNative(
                 self,
                 "GithubOidcProvider",
                 url="https://token.actions.githubusercontent.com",
@@ -372,8 +395,14 @@ class NtsbRecorderStack(Stack):
         # Push and pull, scoped to this one repository -- nothing else.
         repository.grant_pull_push(deploy_role)
 
-        # 7. Outputs -- what the runbook and CI need.
+        # 7. Outputs -- what the runbook and CI need. `SubnetIds` and `SecurityGroupId` are not
+        # in the brief's original four -- added so the runbook's manual `aws ecs run-task`
+        # step (`docs/runbooks/recorder-deploy.md`) can read the network configuration straight
+        # from `describe-stacks`, rather than a separate `describe-stack-resources` lookup by
+        # resource type.
         CfnOutput(self, "BucketName", value=bucket.bucket_name)
         CfnOutput(self, "LogGroupName", value=log_group.log_group_name)
         CfnOutput(self, "DeployRoleArn", value=deploy_role.role_arn)
         CfnOutput(self, "RepositoryUri", value=repository.repository_uri)
+        CfnOutput(self, "SubnetIds", value=Fn.join(",", public_subnet_ids))
+        CfnOutput(self, "SecurityGroupId", value=task_security_group.security_group_id)

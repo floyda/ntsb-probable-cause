@@ -58,11 +58,6 @@ convention = "google"
 "tests/**" = ["D", "S101", "PLR2004"]
 "scripts/**" = ["T201"]
 "apps/**" = ["T201"]
-# `infra/app.py` and `infra/recorder_stack.py` are CDK's app entry point and stack
-# definition, not library code with a CLI; `cdk synth` prints its own diagnostics, this
-# code does not (T201). Docstrings stay required (unlike `tests/`), since this file
-# documents cost and reasoning for whoever deploys it next.
-"infra/**" = ["T201"]
 
 [tool.mypy]
 strict = true

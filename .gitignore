@@ -68,6 +68,13 @@ __pycache__/
 .mypy_cache/
 .coverage
 cdk.out/
+infra/cdk.out/
+# `infra/app.py` leaves the stack's account unresolved so `cdk synth` never performs a
+# credentialed AWS lookup (S2.5 Task 13 fix round 1, Important 3) -- so this file should never
+# be written by `cdk synth`. Ignored anyway, as defence in depth: a real `cdk deploy --profile
+# ntsb`, which does have credentials, legitimately performs other context lookups and could
+# write one, and it would then carry the project's real AWS account number on disk.
+infra/cdk.context.json
 dist/
 node_modules/
 .DS_Store
