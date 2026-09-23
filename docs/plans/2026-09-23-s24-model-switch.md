@@ -450,7 +450,7 @@ git commit -m "S2.4: the report counts failures by reason and labels cross-model
 **Files:**
 - Modify: `Makefile` (+ `s24-probe`, `s24-gate`, `s24-bars`)
 
-- [ ] **Step 1: Add the three targets**
+- [x] **Step 1: Add the three targets**
 
 After the `s2-bars` target in `Makefile`:
 
@@ -472,7 +472,7 @@ s24-bars:
 
 Append `s24-probe s24-gate s24-bars` to the `.PHONY` line (line 1 of the `Makefile`). The `--expected-cost-per-case-usd` values are deliberate, conservative estimates (GPT-5.6's measured ceiling cost was about $0.0011 a case and arm B's $0.005); without them the budget guard projects each run at the $0.05 cap.
 
-- [ ] **Step 2: Commit the targets**
+- [x] **Step 2: Commit the targets**
 
 ```bash
 git add Makefile docs/plans/2026-09-23-s24-model-switch.md

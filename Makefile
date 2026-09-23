@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars
 
 check: lint type test
 
@@ -69,6 +69,20 @@ scan-docket:
 # so this spends one to two hours politely fetching before the batch is submitted.
 s2-bars:
 	uv run ntsb-eval run --arm B --sample heldout-400 --expected-cost-per-case-usd 0.01
+
+s24-probe:
+	uv run ntsb-eval run --arm ceiling --sample dev-400 --limit 1 --sync --price-variant standard --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
+	uv run ntsb-eval run --arm ceiling --sample dev-400 --limit 1 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
+# S2.4 spec §3.1: one development case, both stages, standard then batch.
+
+s24-gate:
+	uv run ntsb-eval run --arm ceiling --sample dev-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
+# S2.4 spec §3.2. About $0.20. The report is made from the explicit run id afterwards.
+
+s24-bars:
+	uv run ntsb-eval run --arm ceiling --sample heldout-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
+	uv run ntsb-eval run --arm B --sample heldout-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.01
+# S2.4 spec §5 -- ONCE, only after the gate has passed; appends two rows to the held-out ledger.
 
 docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
