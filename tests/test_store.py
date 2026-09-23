@@ -699,3 +699,56 @@ def test_readonly_open_of_a_nonexistent_file_raises(tmp_path: Path) -> None:
     """A caller wanting "no store yet" to be a soft case must check existence first."""
     with pytest.raises(sqlite3.OperationalError):
         Store(tmp_path / "does-not-exist.sqlite", readonly=True)
+
+
+def test_readonly_store_quotes_special_characters_in_the_path(tmp_path: Path) -> None:
+    """Task 11 fix round 3, MINOR: a path with a literal '?' or '#' must not lose 'mode=ro'
+    or silently open a different (truncated) file -- both are URI delimiters if unescaped."""
+    path = tmp_path / "r?eport#1.sqlite"
+    writable = Store(path)
+    writable.migrate()
+    writable.upsert_case(
+        CaseRow(
+            mkey=1,
+            ntsb_number="X",
+            event_date="2026-01-01",
+            regulation="091",
+            status="Ongoing",
+            first_seen_run=1,
+            last_seen_run=1,
+            last_case_run=1,
+            last_docket_run=None,
+            watch_until=None,
+        )
+    )
+    writable.close()
+
+    reader = Store(path, readonly=True)
+    try:
+        assert reader.schema_version() == 2
+        case = reader.get_case(1)
+        assert case is not None
+        assert case.mkey == 1
+        with pytest.raises(sqlite3.OperationalError):
+            reader.upsert_case(
+                CaseRow(
+                    mkey=2,
+                    ntsb_number="Y",
+                    event_date="2026-01-01",
+                    regulation="091",
+                    status="Ongoing",
+                    first_seen_run=1,
+                    last_seen_run=1,
+                    last_case_run=1,
+                    last_docket_run=None,
+                    watch_until=None,
+                )
+            )
+    finally:
+        reader.close()
+
+    # No stray file (e.g. a file literally named "r", from a URI truncated at the first
+    # unescaped '?') -- only the intended path and its ordinary WAL-mode side files.
+    expected = {path.name, path.name + "-wal", path.name + "-shm", path.name + "-journal"}
+    after = {p.name for p in tmp_path.iterdir()}
+    assert after <= expected

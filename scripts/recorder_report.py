@@ -27,7 +27,14 @@ Status
     it now reads the case's regulation history, as recorded at the time of each arrival; the
     report text was rewritten in plain language, without reviewer shorthand or raw column
     names; "finished nights" now counts distinct UTC calendar dates, not run rows; the store is
-    opened truly read-only (no ``migrate()`` call) with a schema-version check. See
+    opened truly read-only (no ``migrate()`` call) with a schema-version check.
+
+    Fix round 3 (2026-09-23): a real closure now includes one reached via ``'not returned'``
+    (round 2's own ``old_status = 'Ongoing'`` requirement, meant only to block a
+    ``Completed``-to-``N/A`` relabel, wrongly excluded that path too); the run table and totals
+    line no longer show raw column names; the classification paragraph states the whole I5
+    rule; the read-only URI now percent-encodes the store path, so one containing ``?`` or
+    ``#`` cannot lose ``mode=ro`` or open the wrong file. See
     ``docs/plans/2026-09-22-s25-recorder.md``'s Deviations for the full account.
 
 Usage:
@@ -69,6 +76,7 @@ from ntsb_probable_cause.store.sync import Location, pull
 _PERCENTILES: tuple[float, ...] = (0.25, 0.5, 0.75, 0.9)
 _MIN_N_FOR_PERCENTILES = 3
 _REPORT_WORK_FILENAME = "recorder-report-work.sqlite"
+_RUN_TABLE_TEXT_COLUMNS = 3  # run, started (UTC), finished (UTC): left-aligned; the rest right.
 
 _ArrivalRowLike = FieldArrivalRow | ArrivalRow | DocketArrivalRow
 
@@ -138,6 +146,49 @@ def _arrival_lines(label: str, rows: Sequence[_ArrivalRowLike]) -> list[str]:
     ]
 
 
+# One (label, width) per run-table column, shared by the header and every row (Task 11 fix
+# round 3, WORDING 6): building both from the same tuple makes a header/row misalignment
+# structurally impossible, rather than relying on hand-counted spaces in a literal string.
+_RUN_TABLE_COLUMNS: tuple[tuple[str, int], ...] = (
+    ("run", 7),
+    ("started (UTC)", 26),
+    ("finished (UTC)", 26),
+    ("polled", 6),
+    ("changed", 7),
+    ("new documents", 14),
+    ("failures", 8),
+    ("re-numbers", 10),
+    ("minutes", 7),
+)
+
+
+def _run_table_header() -> str:
+    return "  " + " ".join(f"{name:<{width}}" for name, width in _RUN_TABLE_COLUMNS)
+
+
+def _run_table_row(r: RunSummaryRow) -> str:
+    finished_display = r.finished_at if r.finished_at is not None else "UNFINISHED"
+    values = (
+        str(r.run_id),
+        r.started_at,
+        finished_display,
+        _fmt_int(r.cases_polled),
+        _fmt_int(r.cases_changed),
+        _fmt_int(r.new_documents),
+        _fmt_int(r.failures),
+        _fmt_int(r.suspected_renumbers),
+        _fmt_minutes(r.minutes),
+    )
+    # The first three columns (run, started, finished) are text, left-aligned; the rest are
+    # counts, right-aligned -- same convention a spreadsheet uses, and it does not affect
+    # column boundaries, which come from the shared widths alone.
+    cells = [
+        f"{value:<{width}}" if i < _RUN_TABLE_TEXT_COLUMNS else f"{value:>{width}}"
+        for i, ((_label, width), value) in enumerate(zip(_RUN_TABLE_COLUMNS, values, strict=True))
+    ]
+    return "  " + " ".join(cells)
+
+
 def _run_summary_lines(run_rows: Sequence[RunSummaryRow]) -> list[str]:
     finished = [r for r in run_rows if r.finished_at is not None]
     unfinished = [r for r in run_rows if r.finished_at is None]
@@ -155,25 +206,15 @@ def _run_summary_lines(run_rows: Sequence[RunSummaryRow]) -> list[str]:
         lines.append("run summaries: no data")
         return lines
     lines.append("run summaries (most recent first):")
-    lines.append(
-        "  run_id  started_at                status      polled changed new_docs failed "
-        "suspects minutes"
-    )
-    for r in run_rows:
-        status = "ok" if r.finished_at is not None else "UNFINISHED"
-        lines.append(
-            f"  {r.run_id:<7} {r.started_at:<26} {status:<11} "
-            f"{_fmt_int(r.cases_polled):>6} {_fmt_int(r.cases_changed):>7} "
-            f"{_fmt_int(r.new_documents):>8} {_fmt_int(r.failures):>6} "
-            f"{_fmt_int(r.suspected_renumbers):>8} {_fmt_minutes(r.minutes):>7}"
-        )
+    lines.append(_run_table_header())
+    lines.extend(_run_table_row(r) for r in run_rows)
     lines.append("")
     lines.append(
-        "totals over finished runs (rule: unfinished runs' rows are real observations but "
-        "excluded from these sums): "
-        f"cases_polled={sum(r.cases_polled or 0 for r in finished)} "
-        f"cases_changed={sum(r.cases_changed or 0 for r in finished)} "
-        f"new_documents={sum(r.new_documents or 0 for r in finished)} "
+        "totals over finished runs (unfinished runs' rows are real observations but excluded "
+        "from these sums): "
+        f"cases polled={sum(r.cases_polled or 0 for r in finished)} "
+        f"cases changed={sum(r.cases_changed or 0 for r in finished)} "
+        f"new documents={sum(r.new_documents or 0 for r in finished)} "
         f"failures={sum(r.failures or 0 for r in finished)} "
         f"minutes={sum(r.minutes or 0.0 for r in finished):.0f}"
     )
@@ -181,7 +222,11 @@ def _run_summary_lines(run_rows: Sequence[RunSummaryRow]) -> list[str]:
 
 
 def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: int) -> list[str]:
-    lines = ["evidence-field arrival percentiles, days from event to first appearance:"]
+    lines = [
+        "evidence-field arrival percentiles, days from event to first appearance:",
+        "  the names below (e.g. weather_condition) are this project's own evidence field "
+        "names, not raw database column names.",
+    ]
     if not field_arrivals:
         lines.append("  no data")
     else:
@@ -237,8 +282,9 @@ def _feed_lines(feed_comparison: FeedComparisonResult, feed_window_days: int) ->
     lines = [
         "comparison between the month re-fetch and the change feed: a field change counts as "
         "reported by the feed only when the feed's own record of that case's change happened "
-        f"strictly after the last time the field was seen absent, AND the feed was checked "
-        f"within {feed_window_days} day(s), by clock time, of the night the change was found.",
+        "strictly after the last time the field was seen absent, AND the feed was checked at "
+        f"the same time as, or within {feed_window_days} day(s) after, the run that found the "
+        "change.",
         f"  timestamps that could not be read at all: {feed_comparison.unparsable_timestamps}",
     ]
     if not feed_comparison.field_changes:
@@ -257,10 +303,9 @@ def _feed_lines(feed_comparison: FeedComparisonResult, feed_window_days: int) ->
 
 def _regulation_lines(transitions: RegulationTransitions) -> list[str]:
     return [
-        "regulation transitions, watched cases only. This project's stores have always been "
-        "built with the regulation-history table present from the start, so this count has no "
-        "gap for this deployment; a store lacking that table for part of its life would show "
-        "an unknown period, not zero changes, for those nights.",
+        "regulation transitions, watched cases only. Regulation changes are known only from "
+        "the night the regulation-history table was added to this store; for any nights "
+        "before that, changes are unknown, not zero.",
         f"  empty -> 091 (filled in): {transitions.empty_to_091}",
         f"  days from first sight to fill-in: {_format_days(list(transitions.empty_to_091_days))}",
         f"  empty -> other (filled in and dropped): {transitions.empty_to_other}",
@@ -318,10 +363,15 @@ def report(  # noqa: PLR0913 -- one counts-only value per spec §10.2 bullet; se
         "",
         *_run_summary_lines(run_rows),
         "",
-        "How arrivals are classified: each true arrival is BEFORE, SAME NIGHT AS, or AFTER its "
-        "case's real closure. A case whose regulation, as recorded at the time of the arrival, "
-        "was something other than not-yet-recorded or Part 91 is excluded instead, whichever "
-        "night that was -- a regulation change recorded on the very same night as an arrival "
+        "How arrivals are classified: each true arrival is BEFORE, on the SAME RUN AS, or "
+        "AFTER its case's real closure. Separately, a case can be EXCLUDED instead, decided "
+        "purely from its regulation history, never from closing or from the end of the 30-day "
+        "watch after closing: the latest regulation change recorded at or before the "
+        "arrival's run decides; if the only changes recorded are later than the arrival, the "
+        "regulation recorded before the first of those changes decides; if the case has no "
+        "recorded regulation changes at all, its regulation as currently recorded decides. A "
+        "case is excluded only when that decided regulation is neither not-yet-recorded nor "
+        "Part 91 -- so a regulation change recorded on the very same run as an arrival "
         "excludes that arrival too, which is a deliberately cautious reading. Only the "
         "before-closure arrivals are the mask distribution spec §10.2 means.",
         "",

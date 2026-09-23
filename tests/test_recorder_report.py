@@ -593,6 +593,65 @@ def test_closure_run_ignores_a_relabel_between_two_non_ongoing_statuses(store: S
     assert field.classification == ArrivalClassification.AFTER_CLOSURE
 
 
+def test_closure_reached_via_not_returned_is_a_real_closure(store: Store) -> None:
+    """Task 11 fix round 3: the reviewer's own reproduction, with the real recorder shape.
+
+    status_events are ``(None, 'Ongoing', 1)``, ``('Ongoing', 'not returned', 3)``,
+    ``('not returned', 'Completed', 4)``. Round 2's ``old_status = 'Ongoing'`` requirement
+    made ``_closure_runs()`` return ``{}`` for this case -- a real closure was missed entirely
+    because it was reached via 'not returned' rather than directly from 'Ongoing'. A field
+    arriving on night 5, after the case closed on night 4, must be AFTER_CLOSURE, and the case
+    must appear in both the real-closure tail and the 'not returned' tail.
+    """
+    _begin_runs(
+        store,
+        (1, "2026-01-01T03:00:00+00:00"),
+        (2, "2026-01-02T03:00:00+00:00"),
+        (3, "2026-01-03T03:00:00+00:00"),
+        (4, "2026-01-04T03:00:00+00:00"),
+        (5, "2026-01-05T03:00:00+00:00"),
+    )
+    store.upsert_case(_case(1, event_date="2025-12-01"))
+    store.add_status_event(1, old=None, new="Ongoing", absent_run=None, present_run=1, run_id=1)
+    store.add_status_event(
+        1, old="Ongoing", new="not returned", absent_run=1, present_run=3, run_id=3
+    )
+    store.add_status_event(
+        1, old="not returned", new="Completed", absent_run=3, present_run=4, run_id=4
+    )
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=4, present_run=5, run_id=5
+    )
+
+    (field,) = store.field_change_arrivals()
+    assert field.classification == ArrivalClassification.AFTER_CLOSURE
+
+    # The case appears in both tails: the real closure (run 4) and the 'not returned' event
+    # (also run 4) each have a document arriving strictly after them (run 5).
+    document = DocumentRow(
+        mkey=1,
+        doc_id=1,
+        href="docBLOB?ID=1",
+        position=1,
+        title="DISTINCTIVE-TITLE",
+        pages=1,
+        photos=0,
+        extension=".PDF",
+        absent_run=4,
+        present_run=5,
+        last_present_run=5,
+        gone_absent_run=None,
+        gone_present_run=None,
+    )
+    store.upsert_document(document)
+    store.add_document_event(
+        1, doc_id=1, kind="appeared", absent_run=4, present_run=5, run_id=5, old=None, new={}
+    )
+    tail = store.tail_arrivals()
+    assert tail.total == 1
+    assert tail.not_returned_tail == 1
+
+
 def test_tail_arrivals_real_closures_only_split_same_run_after_and_excludes_first_sight(
     store: Store,
 ) -> None:
@@ -785,7 +844,23 @@ def test_report_states_nights_finished_nights_and_the_rules(store: Store) -> Non
 
 
 def test_report_never_prints_reviewer_labels_or_raw_column_names(store: Store) -> None:
-    """MINOR 1: the citable report is plain English -- no review shorthand, no SQL column names."""
+    """Fix round 1 MINOR 1, extended in fix round 3 WORDING 5: the citable report is plain
+    English -- no review shorthand, no SQL column names. Populated with at least one finished
+    and one unfinished run, so the run table and totals line are actually rendered (an empty
+    store never reaches that code path at all)."""
+    _begin_runs(store, (1, RUN1), (2, RUN2))
+    store.finish_run(
+        1,
+        finished_at=RUN1,
+        summary=RunSummary(
+            cases_polled=1,
+            cases_changed=1,
+            new_documents=1,
+            failures=0,
+            suspected_renumbers=0,
+            minutes=1.0,
+        ),
+    )
     text = _full_report_from(store)
     for forbidden in (
         "CRITICAL",
@@ -795,8 +870,52 @@ def test_report_never_prints_reviewer_labels_or_raw_column_names(store: Store) -
         "last_change_utc",
         "cases.watched",
         "cases.regulation",
+        "run_id",
+        "started_at",
+        "finished_at",
+        "cases_polled",
+        "cases_changed",
+        "new_documents",
+        "suspected_renumbers",
+        "SAME NIGHT AS",
     ):
         assert forbidden not in text
+    assert "started (UTC)" in text
+    assert "finished (UTC)" in text
+    assert "SAME RUN AS" in text
+    assert "cases polled=" in text
+    assert "cases changed=" in text
+    assert "new documents=" in text
+
+
+def test_report_states_the_whole_i5_rule_and_the_feed_direction(store: Store) -> None:
+    """Task 11 fix round 3, WORDING 1 and WORDING 4."""
+    text = _full_report_from(store)
+    assert "the latest regulation change recorded at or before the arrival's run decides" in text
+    assert "the regulation recorded before the first of those changes decides" in text
+    assert "its regulation as currently recorded decides" in text
+    assert "excluded only when that decided regulation is neither not-yet-recorded nor" in text
+    assert "whichever night that was" not in text
+    assert "at the same time as, or within" in text
+    assert "day(s) after, the run that found the change" in text
+
+
+def test_report_states_the_evidence_field_name_note(store: Store) -> None:
+    """Task 11 fix round 3, WORDING 5."""
+    text = _full_report_from(store)
+    assert "this project's own evidence field names, not raw database column names" in text
+
+
+def test_report_regulation_coverage_makes_no_deployment_claim(store: Store) -> None:
+    """Task 11 fix round 3, WORDING 2: no claim about a particular store's own history."""
+    text = _full_report_from(store)
+    assert (
+        "Regulation changes are known only from the night the regulation-history table was "
+        "added to this store" in text
+    )
+    assert "for any nights before that, changes are unknown, not zero" in text
+    assert "has always been built with the regulation-history table present" not in text
+    assert "no gap for this deployment" not in text
 
 
 def test_report_counts_distinct_finished_nights_not_runs(store: Store) -> None:
@@ -966,3 +1085,26 @@ def test_main_reads_a_real_store_read_only(
 
     assert exit_code == 0
     assert "nights recorded (every run, finished or not): 1" in capsys.readouterr().out
+
+
+def test_main_reads_a_store_whose_path_has_special_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Task 11 fix round 3, MINOR: '?'/'#' in NTSB_STORE must not break the read-only open."""
+    path = tmp_path / "r?eport#1.sqlite"
+    setup = Store(path)
+    setup.migrate()
+    setup.begin_run(started_at=RUN1, commit_sha="a" * 7, dirty=False)
+    setup.close()
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(path))
+
+    exit_code = main([])
+
+    assert exit_code == 0
+    assert "nights recorded (every run, finished or not): 1" in capsys.readouterr().out
+    # No stray file (e.g. a file literally named "r", from a URI truncated at the first
+    # unescaped '?') -- only the intended path and its ordinary WAL-mode side files.
+    expected = {path.name, path.name + "-wal", path.name + "-shm", path.name + "-journal"}
+    after = {p.name for p in tmp_path.iterdir()}
+    assert after <= expected

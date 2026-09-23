@@ -31,13 +31,14 @@ from ntsb_probable_cause.store.models import (
     TailArrivals,
 )
 
-# The two "real closure" statuses (spec §7): a status event departing Ongoing for either of
-# these is an attested closure. "not returned" is deliberately NOT one of these -- it is a
-# missed record, not an attested outcome (spec §7's own uncertainty) -- so it is tracked
-# separately throughout this module (Task 11 fix round 1, IMPORTANT 3/5).
+# The two "real closure" statuses (spec §7): a status event whose new_status is one of these,
+# arriving from anything else (never a relabel between the two), is an attested closure. "not
+# returned" is deliberately NOT one of these -- it is a missed record, not an attested outcome
+# (spec §7's own uncertainty) -- so it is tracked separately throughout this module (Task 11
+# fix round 1, IMPORTANT 3/5), but a case CAN still reach a real closure by way of it
+# (Ongoing -> 'not returned' -> Completed is a real closure; fix round 3).
 _REAL_CLOSURE_STATUSES = ("Completed", "N/A")
 _NOT_RETURNED_STATUS = "not returned"
-_ONGOING_STATUS = "Ongoing"
 # The two regulation values that mean "watched": not recorded at all, or Part 91 (decision
 # 0067). Anything else means the case was dropped from watching. Task 11 fix round 2.
 _WATCHED_REGULATIONS = (None, "091")
@@ -254,11 +255,18 @@ class Store:
         accordingly. Raises whatever ``sqlite3.connect`` raises if ``path`` does not exist --
         callers that want "no store yet" to be a soft case (rather than an exception) must
         check ``path.exists()`` before constructing a read-only ``Store``.
+
+        The URI is built with :meth:`Path.as_uri`, not an f-string (Task 11 fix round 3,
+        MINOR): a path containing a literal ``?`` or ``#`` is exactly what a SQLite URI's own
+        query string and fragment delimiters are, so an unescaped one would truncate the path
+        there, silently open (or create) the wrong file, and lose ``mode=ro`` along with it.
+        ``as_uri()`` percent-encodes both characters; ``?mode=ro`` is appended after, where it
+        is unambiguously the query string.
         """
         self._path = path
         self._readonly = readonly
         if readonly:
-            self._conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            self._conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
         else:
             self._conn = sqlite3.connect(str(path))
             self._conn.execute("PRAGMA journal_mode=WAL")
@@ -841,23 +849,33 @@ class Store:
     # spec §10.2 says replaces ``scoring.samples.MASK_LIFTS_AT_DAY``.
 
     def _closure_runs(self) -> dict[int, int]:
-        """Each case's most recent REAL closure event's ``present_run`` (Task 11 IMPORTANT 5).
+        """Each case's EARLIEST real-closure event's ``present_run`` (Task 11 fix round 3).
 
-        "Real" excludes ``'not returned'`` (spec §7's own uncertainty: it is a missed record,
-        not an attested outcome) -- see the module-level ``_REAL_CLOSURE_STATUSES``. A case
-        that closed, reopened and closed again is keyed by its *latest* closing, matching
-        ``cases.py``'s own "only the latest transition sets the tail" rule.
+        A real closure is a status event whose ``new_status`` is ``'Completed'`` or ``'N/A'``
+        (``_REAL_CLOSURE_STATUSES``), arriving from anything that is NOT already one of those
+        two statuses -- ``old_status IS NULL`` (the case's very first observation was already
+        closed) or ``old_status`` outside the closure statuses. That deliberately counts a
+        closure reached via ``'not returned'`` (``Ongoing`` -> ``'not returned'`` ->
+        ``Completed``, spec §7's own uncertain status is not exempt from ever really closing)
+        while still excluding a later re-label between two closure statuses (``Completed`` to
+        ``N/A``): the second fix round required ``old_status = 'Ongoing'`` specifically, which
+        wrongly excluded the ``'not returned'`` path along with the re-label it was meant to
+        catch -- reproduced live by the reviewer with the real recorder functions. The broader
+        predicate here fixes both at once, verified against both scenarios in
+        ``tests/test_recorder_report.py``.
 
-        Requires ``old_status = 'Ongoing'`` as well as the new status (Task 11 fix round 2, I3):
-        without it, a later re-label between two non-``Ongoing`` statuses -- e.g. ``Completed``
-        to ``N/A``, both real-closure statuses -- would move the closure run to that later
-        re-label's own run, even though the case actually closed earlier.
+        Keyed by the EARLIEST such event, not the latest: once a case has genuinely closed,
+        that is when it closed; a later status row for the same case can only match this
+        predicate again if the case reopened to a non-closure status and closed a second time,
+        which the earliest closure already answers "when did this case first close" for.
         """
         placeholders = ", ".join("?" for _ in _REAL_CLOSURE_STATUSES)
         rows = self._conn.execute(
-            "SELECT mkey, MAX(present_run) FROM status_events "  # noqa: S608 -- placeholders
-            f"WHERE old_status = ? AND new_status IN ({placeholders}) GROUP BY mkey",
-            (_ONGOING_STATUS, *_REAL_CLOSURE_STATUSES),
+            "SELECT mkey, MIN(present_run) FROM status_events "  # noqa: S608 -- placeholders
+            f"WHERE new_status IN ({placeholders}) "
+            f"AND (old_status IS NULL OR old_status NOT IN ({placeholders})) "
+            "GROUP BY mkey",
+            (*_REAL_CLOSURE_STATUSES, *_REAL_CLOSURE_STATUSES),
         ).fetchall()
         return {int(mkey): int(present_run) for mkey, present_run in rows}
 
@@ -1162,11 +1180,11 @@ class Store:
 
         A store that ran under schema version 1 before migration 2 was applied would have no
         ``regulation_events`` rows for those nights -- an UNKNOWN period, not zero changes; this
-        method cannot tell the two apart from the rows alone (Task 11 fix round 2, I7). No live
-        store has ever existed at version 1: every deployment of this code creates its store
-        with migration 2 already present, so there is no such gap for this deployment, and the
-        report states that plainly rather than describing a gap that would only be real for a
-        store this project has never actually run.
+        method cannot tell the two apart from the rows alone (Task 11 fix round 2, I7). It
+        makes no claim about any particular store's own history; the report states the general
+        rule (regulation changes are known only from the night the table was added) rather
+        than asserting that gap does or does not apply to whichever store produced the report
+        it is reading (fix round 3, WORDING 2).
         """
         rows = self._conn.execute(
             "SELECT re.old, re.new, re.present_run, c.first_seen_run "

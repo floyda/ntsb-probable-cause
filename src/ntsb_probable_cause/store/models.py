@@ -98,16 +98,27 @@ class ArrivalClassification(StrEnum):
     """Where one arrival falls relative to its case's closure (Task 11, IMPORTANT I5).
 
     Only ``BEFORE_CLOSURE`` arrivals form the distribution spec §10.2 says replaces
-    ``scoring.samples.MASK_LIFTS_AT_DAY``: an arrival recorded the same night as, or after, the
-    status event that closed the case is not something a live agent watching an *open* case
-    would ever see arrive, so it cannot inform what the mask should assume about an open case's
-    evidence. ``EXCLUDED_UNWATCHED`` is a case whose regulation, AS RECORDED AT THE TIME of the
-    arrival (from ``regulation_events`` history, never the case's *current* ``cases.watched``
-    flag), was something other than empty or Part 91 (decision 0067) -- also outside the
-    intended population, counted separately rather than silently mixed in either way. Fix
-    round 2 replaced an earlier version of this rule that read ``cases.watched`` directly: that
-    flag is cleared when a closed case's 30-day tail expires, which silently moved every
-    already-closed case's genuine before-closure arrivals into this bucket a month later.
+    ``scoring.samples.MASK_LIFTS_AT_DAY``: an arrival recorded on the same run as, or after,
+    the status event that closed the case is not something a live agent watching an *open*
+    case would ever see arrive, so it cannot inform what the mask should assume about an open
+    case's evidence.
+
+    ``EXCLUDED_UNWATCHED`` is decided from ``regulation_events`` history alone, never from the
+    case's *current* ``cases.watched`` flag (that flag is cleared when a closed case's 30-day
+    tail expires, which used to silently move every already-closed case's genuine
+    before-closure arrivals into this bucket a month later -- fix round 2 replaced that rule).
+    Precisely, at the arrival's own run:
+
+    - the LATEST regulation change recorded at or before that run decides;
+    - if the case has regulation changes but all of them are later, the regulation recorded
+      BEFORE the first of those changes decides (nothing had changed it yet);
+    - if the case has no recorded regulation changes at all, its *current* ``cases.regulation``
+      decides, as a stated fallback;
+    - the case is excluded only when that decided regulation is neither "not yet recorded" nor
+      Part 91 (``091``, decision 0067).
+
+    Closing, and the end of the 30-day watch after closing, never exclude a case on their own
+    -- those are exactly what ``SAME_RUN_AS_CLOSURE``/``AFTER_CLOSURE`` already state.
     """
 
     BEFORE_CLOSURE = "before_closure"
