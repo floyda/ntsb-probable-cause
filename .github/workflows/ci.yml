@@ -76,12 +76,22 @@ jobs:
   # request, which could come from a fork with no business holding this project's AWS
   # credentials. `id-token: write` (for the GitHub OIDC exchange `aws-actions/
   # configure-aws-credentials` performs) is scoped to this job alone, not the whole workflow,
-  # per controller note 3.
+  # per controller note 3. `needs` also names `lint` and `test` (fix round 1, Minor 3), not
+  # only `image-build`: `needs` requires every listed job to succeed, so a commit that fails
+  # lint or the test suite can reach `main` (nothing here blocks that merge) but its image is
+  # never pushed. `concurrency` (fix round 1, Minor 4) serializes pushes across quick
+  # back-to-back merges so `:latest` always ends up as the most recent successful build, never
+  # whichever run's push happened to finish last; `cancel-in-progress: false` because a
+  # half-finished push must never be interrupted mid-way and left as `:latest`.
   image-push:
-    needs: image-build
+    needs: [image-build, lint, test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    concurrency:
+      group: image-push
+      cancel-in-progress: false
     permissions:
+      # OIDC exchange for aws-actions/configure-aws-credentials (fix round 1, Minor 8).
       id-token: write
       contents: read
     steps:

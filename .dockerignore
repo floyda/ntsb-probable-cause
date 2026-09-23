@@ -15,3 +15,10 @@ infra/
 .ruff_cache/
 .pytest_cache/
 *.sqlite*
+# Defence in depth (fix round 1, Minor 5): no secret belongs in the image, and none is copied
+# in by name today -- the Dockerfile's own `COPY` lines never mention `.env` -- but a bare
+# `COPY . .` added later should not be able to pick one up either. `!.env.example` re-includes
+# the one committed, non-secret file that `.env.*` would otherwise also exclude.
+.env
+.env.*
+!.env.example

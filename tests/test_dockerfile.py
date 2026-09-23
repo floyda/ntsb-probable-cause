@@ -44,6 +44,15 @@ def test_entrypoint_runs_ntsb_record() -> None:
     assert "ntsb-record" in args
 
 
+def test_entrypoint_does_not_depend_on_uv_run() -> None:
+    """Fix round 1, Minor 2: the entrypoint runs the venv's own installed script directly
+    (`ENV PATH=/app/.venv/bin:$PATH`), not `uv run`, so the running container depends on
+    nothing but that venv -- no `uv` binary, no `uv` cache, no writable `HOME`."""
+    args = json.loads(_last_instruction("ENTRYPOINT"))
+    assert "uv" not in args
+    assert "run" not in args
+
+
 def test_cmd_defaults_to_the_run_subcommand() -> None:
     args = json.loads(_last_instruction("CMD"))
     assert args == ["run"]
@@ -60,3 +69,34 @@ def test_image_runs_as_a_non_root_user() -> None:
     assert user_lines, "Dockerfile never switches to a non-root USER"
     last_user = user_lines[-1].removeprefix("USER").strip()
     assert last_user not in {"root", "0"}
+
+
+def test_base_image_is_pinned_by_digest() -> None:
+    """Fix round 1, Minor 7: a tag alone can be repointed by the publisher; a digest cannot."""
+    from_line = _last_instruction("FROM")
+    assert "@sha256:" in from_line, f"FROM line has no digest pin: {from_line!r}"
+
+
+def test_chown_does_not_recurse_into_app() -> None:
+    """Fix round 1, Minor 1: only `NTSB_DATA_DIR` is handed to the non-root user -- a recursive
+    `chown` of `/app` would duplicate the whole venv into a new image layer on every build."""
+    chown_lines = [
+        line
+        for line in DOCKERFILE.splitlines()
+        if "chown" in line and not line.strip().startswith("#")
+    ]
+    assert chown_lines, "no chown instruction found"
+    for line in chown_lines:
+        assert "-R" not in line.split(), f"a chown here must not recurse: {line!r}"
+        assert "/app" not in line, f"a chown here must not touch /app: {line!r}"
+
+
+def test_bytecode_is_compiled_at_build_time() -> None:
+    """Fix round 1, Minor 1: `UV_COMPILE_BYTECODE=1` set before the first `uv sync`, so
+    compilation happens once at build time rather than on every nightly container start."""
+    lines = DOCKERFILE.splitlines()
+    env_index = next(
+        i for i, line in enumerate(lines) if line.strip() == "ENV UV_COMPILE_BYTECODE=1"
+    )
+    first_sync_index = next(i for i, line in enumerate(lines) if "uv sync" in line)
+    assert env_index < first_sync_index

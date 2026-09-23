@@ -2,9 +2,11 @@
 
 Parses the workflow's own YAML rather than matching its text, so a harmless reformatting
 (key order, quoting) does not break these tests -- only the properties that matter: the build
-job runs on every pull request, the push job is gated on a merge to `main`, every `uses:` is
-pinned by a full commit SHA (not a tag or a branch), and `id-token: write` -- the permission
-the OIDC credential exchange needs -- appears on the push job and nowhere else.
+job runs on every pull request, the push job is gated on a merge to `main` and needs lint and
+test to pass first, every `uses:` is pinned by a full commit SHA (not a tag or a branch),
+`id-token: write` -- the permission the OIDC credential exchange needs -- appears on the push
+job and nowhere else, pushes are serialized by a non-cancelling concurrency group (fix round
+1), and every `docker build` step carries the commit identity build arg.
 """
 
 from pathlib import Path
@@ -70,11 +72,45 @@ def test_image_push_job_is_gated_on_main_push_only() -> None:
     assert "push" in condition
 
 
-def test_image_push_job_needs_the_build_job_to_pass_first() -> None:
+def test_image_push_job_needs_lint_and_test_to_pass_first() -> None:
+    """Fix round 1, Minor 3: `needs` requires *every* listed job to succeed, not merely finish
+    -- so a commit that fails lint or the test suite can still merge to `main`, but its image
+    is never pushed."""
     jobs = _jobs(_load_workflow())
     needs = jobs["image-push"].get("needs")
     needs_list = [needs] if isinstance(needs, str) else needs
-    assert needs_list == ["image-build"]
+    assert needs_list is not None
+    assert set(needs_list) == {"image-build", "lint", "test"}
+
+
+def test_image_push_job_has_a_non_cancelling_concurrency_group() -> None:
+    """Fix round 1, Minor 4: serializes pushes across quick back-to-back merges to `main`, so
+    `:latest` always ends up as the most recent successful build -- `cancel-in-progress: false`
+    because a half-finished push must never be interrupted mid-way and left as `:latest`."""
+    jobs = _jobs(_load_workflow())
+    concurrency = jobs["image-push"].get("concurrency")
+    assert isinstance(concurrency, dict), "image-push has no concurrency group"
+    assert concurrency.get("group") == "image-push"
+    assert concurrency.get("cancel-in-progress") is False
+
+
+def test_every_docker_build_passes_commit_sha() -> None:
+    """Fix round 1, Minor 6: guards against a future edit to either build step -- the no-push
+    validation build or the real push build -- silently dropping the commit identity that the
+    Dockerfile's `ARG COMMIT_SHA` needs."""
+    workflow = _load_workflow()
+    docker_build_runs = [
+        step["run"]
+        for job in _jobs(workflow).values()
+        for step in _steps(job)
+        if "docker build" in step.get("run", "")
+    ]
+    assert docker_build_runs, "no `docker build` step found anywhere in the workflow"
+    for run_text in docker_build_runs:
+        has_build_arg = "--build-arg" in run_text
+        has_commit_sha = "COMMIT_SHA=" in run_text
+        assert has_build_arg, f"a docker build step is missing --build-arg: {run_text!r}"
+        assert has_commit_sha, f"a docker build step is missing COMMIT_SHA=: {run_text!r}"
 
 
 def _is_pinned_by_full_sha(ref: str) -> bool:
