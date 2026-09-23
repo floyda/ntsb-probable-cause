@@ -128,6 +128,30 @@ def test_explicit_commit_sha_is_used_and_git_is_never_called(
     assert captured[0].dirty is False
 
 
+def test_empty_commit_sha_counts_as_unset_and_falls_back_to_git(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A container built with no ``--build-arg COMMIT_SHA`` carries an empty string into
+    ``NTSB_COMMIT_SHA`` (Task 12, controller note 2), which must not be recorded as a real
+    commit."""
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "")
+    captured: list[NightInputs] = []
+
+    def _fake_run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
+        captured.append(inputs)
+        return _fake_summary()
+
+    def _fake_commit_state() -> tuple[str, bool]:
+        return "abc1234", False
+
+    monkeypatch.setattr(app, "run_night", _fake_run_night)
+    monkeypatch.setattr(app, "commit_state", _fake_commit_state)
+    monkeypatch.setattr(app, "push", lambda *a, **k: None)
+
+    assert app.main(["run", "--dry-run"]) == 0
+    assert captured[0].commit_sha == "abc1234"
+
+
 def test_unset_commit_sha_falls_back_to_git(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[NightInputs] = []
 

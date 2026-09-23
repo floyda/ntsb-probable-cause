@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ntsb_probable_cause.errors import ConfigurationError
@@ -47,6 +47,23 @@ class Settings(BaseSettings):
     # `git` (which would fail there). Unset everywhere else: the Mac bridge and any developer
     # checkout have `.git` and read the commit from it (`gitinfo.commit_state()`).
     commit_sha: str | None = None
+
+    @field_validator("commit_sha", mode="before")
+    @classmethod
+    def _empty_commit_sha_is_unset(cls, value: object) -> object:
+        """An empty ``NTSB_COMMIT_SHA`` counts as unset (Task 12, controller note 2).
+
+        The container image's ``ARG COMMIT_SHA`` has no default; built with no
+        ``--build-arg``, Docker sets it to an empty string, and the Dockerfile's
+        ``ENV NTSB_COMMIT_SHA=${COMMIT_SHA}`` then carries that empty string into the
+        environment rather than leaving the variable unset. Without this, `apps/recorder/
+        __main__.py:_commit_identity`'s `settings.commit_sha is not None` check would treat
+        `""` as a real value and record a fabricated, empty commit instead of refusing to
+        guess one.
+        """
+        if value == "":
+            return None
+        return value
 
     # `runs_dir` and `docket_dir` used to be independent literal defaults. On 2026-09-21 a run
     # was launched with `NTSB_DATA_DIR` pointing at the main checkout but `NTSB_DOCKET_DIR`

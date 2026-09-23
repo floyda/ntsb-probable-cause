@@ -165,3 +165,22 @@ def test_explicit_s3_store_survives_intact(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("NTSB_STORE", "s3://bucket/key")
     settings = Settings(_env_file=None)
     assert settings.store == "s3://bucket/key"
+
+
+def test_unset_commit_sha_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_COMMIT_SHA", raising=False)
+    assert Settings(_env_file=None).commit_sha is None
+
+
+def test_empty_commit_sha_env_var_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The container image's `ARG COMMIT_SHA` has no default (Dockerfile, Task 12); built with
+    # no `--build-arg`, `NTSB_COMMIT_SHA` in the environment is `""`, not absent. That must
+    # read the same as unset, so `apps/recorder/__main__.py:_commit_identity` falls back to
+    # `git` instead of recording a fabricated empty commit (controller note 2).
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "")
+    assert Settings(_env_file=None).commit_sha is None
+
+
+def test_real_commit_sha_env_var_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "abc1234")
+    assert Settings(_env_file=None).commit_sha == "abc1234"
