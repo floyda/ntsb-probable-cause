@@ -134,4 +134,27 @@ MIGRATIONS: tuple[str, ...] = (
         run_id INTEGER NOT NULL
     );
     """,
+    # Migration 2 (Task 11 fix round 1, IMPORTANT 7): a regulation history and an index the
+    # feed comparison needs. Never edit migration 1 above -- a live store may already exist at
+    # version 1, and `Store.migrate` only ever applies scripts *after* the current version.
+    #
+    # `regulation_events` fills a gap spec S2.5 §4.1 assumed away: "the recorder snapshots the
+    # field, and the 8-week report counts the changes". Regulation is not an `EvidenceRole`, so
+    # it never went through `field_snapshots`, and `cases.regulation` is overwritten on every
+    # observation -- before this migration there was no history to count changes from at all.
+    # A store that ran only under migration 1 has no regulation history for those nights; the
+    # report states this rather than silently treating the gap as "no changes occurred".
+    """
+    CREATE TABLE regulation_events (
+        id INTEGER PRIMARY KEY,
+        mkey INTEGER NOT NULL,
+        old TEXT,
+        new TEXT,
+        was_watched INTEGER NOT NULL,
+        absent_run INTEGER,
+        present_run INTEGER NOT NULL,
+        run_id INTEGER NOT NULL
+    );
+    CREATE INDEX change_feed_mkey ON change_feed (mkey);
+    """,
 )

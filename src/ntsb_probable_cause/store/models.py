@@ -1,5 +1,7 @@
 """Frozen row and summary models for the store package (spec S2.5, Task 4)."""
 
+from enum import StrEnum
+
 from pydantic import BaseModel
 
 
@@ -90,3 +92,95 @@ class RunSummaryRow(BaseModel, frozen=True):
     failures: int | None
     suspected_renumbers: int | None
     minutes: float | None
+
+
+class ArrivalClassification(StrEnum):
+    """Where one arrival falls relative to its case's closure (Task 11 fix round 1, IMPORTANT 5).
+
+    Only ``BEFORE_CLOSURE`` arrivals form the distribution spec §10.2 says replaces
+    ``scoring.samples.MASK_LIFTS_AT_DAY``: an arrival recorded the same night as, or after, the
+    status event that closed the case is not something a live agent watching an *open* case
+    would ever see arrive, so it cannot inform what the mask should assume about an open case's
+    evidence. ``EXCLUDED_UNWATCHED`` is a case that was not currently watched (dropped for its
+    regulation, decision 0067) at the time -- also outside the intended population, counted
+    separately rather than silently mixed in either way.
+    """
+
+    BEFORE_CLOSURE = "before_closure"
+    SAME_RUN_AS_CLOSURE = "same_run_as_closure"
+    AFTER_CLOSURE = "after_closure"
+    EXCLUDED_UNWATCHED = "excluded_unwatched"
+
+
+class ArrivalRow(BaseModel, frozen=True):
+    """One true arrival (a preliminary narrative, Task 11 IMPORTANT 6): days plus classification."""
+
+    days: int
+    absent_days: int
+    classification: ArrivalClassification
+
+
+class FieldArrivalRow(BaseModel, frozen=True):
+    """One true evidence-field arrival: its role, days, and classification."""
+
+    role: str
+    days: int
+    absent_days: int
+    classification: ArrivalClassification
+
+
+class DocketArrivalRow(BaseModel, frozen=True):
+    """One true docket arrival: days, document count at that poll, and classification."""
+
+    days: int
+    absent_days: int
+    document_count: int
+    classification: ArrivalClassification
+
+
+class TailArrivals(BaseModel, frozen=True):
+    """Closure-tail document appearances (spec §7 rule 5; Task 11 fix round 1, IMPORTANT 3).
+
+    ``same_run``/``after``/``total`` cover only *real* closures (a status event whose
+    ``new_status`` is ``'Completed'`` or ``'N/A'``). ``not_returned_tail`` is the same measure
+    for cases whose last departure from ``Ongoing`` was ``'not returned'`` instead -- reported
+    separately because "not returned" is not an attested closure (the case may simply be a
+    missed record, spec §7's own uncertainty), so mixing it into the real-closure counts would
+    overstate how many genuine post-closure arrivals occur.
+    """
+
+    same_run: int
+    after: int
+    total: int
+    not_returned_tail: int
+
+
+class FeedComparisonResult(BaseModel, frozen=True):
+    """The change-feed comparison (spec §5.3, §10.2; Task 11 fix round 1, CRITICAL 2).
+
+    Reported at two granularities: per field-change row (``field_changes``/
+    ``field_changes_reported``) and per case-night -- one ``(mkey, present_run)`` pair, which
+    can hold several field changes at once (``case_nights``/``case_nights_reported``).
+    """
+
+    field_changes: int
+    field_changes_reported: int
+    case_nights: int
+    case_nights_reported: int
+
+
+class RegulationTransitions(BaseModel, frozen=True):
+    """Regulation changes among watched cases (spec §4.1; Task 11 fix round 1, IMPORTANT 7).
+
+    Every count is over ``regulation_events`` rows with ``was_watched = 1`` only -- a case
+    already dropped from watching when its regulation changed is not part of "watched cases
+    changed regulation". ``empty_to_091_days`` is, per such event, the days from the case's
+    first-ever run (``cases.first_seen_run``) to the run that recorded the fill-in -- an
+    upper bound on how long a case's regulation stayed unrecorded, not from the event date.
+    """
+
+    empty_to_091: int
+    empty_to_091_days: tuple[int, ...]
+    empty_to_other: int
+    changed_value: int
+    value_to_empty: int

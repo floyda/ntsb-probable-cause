@@ -24,8 +24,8 @@ def store(tmp_path: Path) -> Iterator[Store]:
 
 def test_migrate_creates_tables_once(tmp_path: Path) -> None:
     store = Store(tmp_path / "r.sqlite")
-    assert store.migrate() == 1
-    assert store.migrate() == 1
+    assert store.migrate() == 2
+    assert store.migrate() == 2
     names = {
         r[0] for r in store.connection.execute("select name from sqlite_master where type='table'")
     }
@@ -36,7 +36,38 @@ def test_migrate_creates_tables_once(tmp_path: Path) -> None:
         "document_events",
         "change_feed",
         "listing_pages",
+        "regulation_events",
     } <= names
+    store.close()
+
+
+def test_migrate_from_a_v1_store_applies_migration_2(tmp_path: Path) -> None:
+    """A store already at schema version 1 (Task 11 fix round 1, IMPORTANT 7) gains migration 2
+    on its next `migrate()` call, without touching migration 1's tables or data."""
+    path = tmp_path / "r.sqlite"
+    store = Store(path)
+    store.connection.executescript(
+        f"BEGIN;\n{store_schema.MIGRATIONS[0]}\n"
+        "INSERT INTO schema_version (version) VALUES (1);\nCOMMIT;"
+    )
+    assert store.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+
+    assert store.migrate() == 2
+
+    names = {
+        r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "regulation_events" in names
+    indexes = {
+        r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
+    }
+    assert "change_feed_mkey" in indexes
+    store.close()
+
+
+def test_migrate_from_empty_applies_both_migrations(tmp_path: Path) -> None:
+    store = Store(tmp_path / "r.sqlite")
+    assert store.migrate() == 2
     store.close()
 
 
@@ -67,7 +98,7 @@ def test_migrate_rolls_back_a_failed_migration_and_can_recover(
     assert store.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
 
     monkeypatch.undo()  # restore the real MIGRATIONS
-    assert store.migrate() == 1  # nothing left to apply; still recovers cleanly
+    assert store.migrate() == 2  # the real migration 2 still applies; recovers cleanly
     store.close()
 
 
@@ -388,6 +419,17 @@ def test_add_docket_poll_round_trips(store: Store) -> None:
         "release_date, page_sha FROM docket_polls"
     ).fetchone()
     assert tuple(row) == (1, 1, "read", None, 4, "2026-09-01", "2026-09-10", "2026-09-10", "a" * 64)
+
+
+def test_add_regulation_event_round_trips(store: Store) -> None:
+    """Migration 2 (Task 11 fix round 1, IMPORTANT 7)."""
+    store.add_regulation_event(
+        1, old="091", new="135", was_watched=True, absent_run=1, present_run=2, run_id=2
+    )
+    row = store.connection.execute(
+        "SELECT mkey, old, new, was_watched, absent_run, present_run, run_id FROM regulation_events"
+    ).fetchone()
+    assert tuple(row) == (1, "091", "135", 1, 1, 2, 2)
 
 
 def test_page_is_stored_once(store: Store) -> None:

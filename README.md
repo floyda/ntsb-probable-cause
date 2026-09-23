@@ -222,6 +222,9 @@ make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sent
 make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
+make record             # uv run ntsb-record run — one nightly pass (S2.5)
+make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
+make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
 ```
 
 `ntsb-eval` (spec §6.5) is the evaluation harness, installed by `uv sync`; arm `B` and
@@ -277,6 +280,8 @@ no longer exists, and the script is usually the evidence that removed it).
 | `handcheck_page` | one-shot | the private marking page behind the committed hand-check sheet (0049) |
 | `doctype_scan` | **deprecated** | `s2-doctype.txt`; the photograph exclusion it measured was removed by 0052 |
 | `score_handcheck` | **deprecated** | `s2-handcheck.txt`; all three mechanisms it grades were removed by 0051, 0052 and 0056 |
+| `change_feed_probe` | one-shot | `tests/fixtures/api/change_feed_shape.json` and `s25-change-feed.txt` (spec S2.5 §5.3, 0065) |
+| `recorder_report` | live tool | `s25-recorder-report.txt` from `NTSB_STORE` — counts only (spec S2.5 §10.2) |
 
 `scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result.
 

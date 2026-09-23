@@ -216,6 +216,8 @@ make armb               # arm B on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
 make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10); --verbose and --dry-run also accepted
+make change-feed-probe  # uv run python -m scripts.change_feed_probe — the change feed's shape, one-shot (S2.5 §5.3, 0065)
+make recorder-report    # uv run python -m scripts.recorder_report — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
 ```
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):

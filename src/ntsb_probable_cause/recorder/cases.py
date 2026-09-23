@@ -81,6 +81,16 @@ def _regulation_of(raw: Mapping[str, object]) -> str | None:
     return regulation if isinstance(regulation, str) else None
 
 
+def _normalize_regulation(value: str | None) -> str | None:
+    """``None`` and ``""`` both mean "not recorded" -- the same value for change detection.
+
+    Task 11 fix round 1, IMPORTANT 7: without this, a case whose regulation reads ``""`` one
+    night and ``None`` the next (both "empty", never a real change) would write a spurious
+    ``regulation_events`` row.
+    """
+    return None if value in _EMPTY_REGULATION else value
+
+
 def _is_empty(value: EvidenceValue) -> bool:
     """No observation to record: ``None``, or an empty string/tuple.
 
@@ -241,6 +251,26 @@ def observe_case(
         was_watched = existing.watched if existing else True
         tail_active = watch_until is not None and watch_until >= today.isoformat()
         watched = is_watchable(raw) or (tail_active and was_watched)
+
+        # Task 11 fix round 1, IMPORTANT 7: regulation history. `existing is None` means this
+        # is the case's first sight -- there is nothing to compare against, so nothing is
+        # written (the first-sight value is derivable later from this row's own `old`, or from
+        # `cases.regulation` if no later event exists). Empty-to-empty (None <-> "") is not a
+        # change; `_normalize_regulation` reads both the same way.
+        if existing is not None and _normalize_regulation(
+            existing.regulation
+        ) != _normalize_regulation(regulation):
+            store.add_regulation_event(
+                mkey,
+                old=existing.regulation,
+                new=regulation,
+                was_watched=was_watched,
+                absent_run=existing.last_case_run,
+                present_run=run_id,
+                run_id=run_id,
+            )
+            wrote.append("1 regulation event")
+
         # Logged once, on the transition, not every night the regulation stays bad.
         if was_watched and not watched and regulation and regulation != GA_REGULATION:
             _log.info("case mkey=%d dropped: regulation=%s", mkey, regulation)

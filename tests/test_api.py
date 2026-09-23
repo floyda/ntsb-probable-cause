@@ -8,15 +8,17 @@ import respx
 
 from ntsb_probable_cause.data.api import NtsbClient, Page
 from ntsb_probable_cause.errors import ApiError
+from ntsb_probable_cause.recorder.run import _feed_rows
+from ntsb_probable_cause.store import FeedRow
 
 URL = "https://api.ntsb.gov/public/api/Common/v2/GetCasesByDateRange/"
 URL_MODIFIED = "https://api.ntsb.gov/public/api/Common/v1/GetCasesByModifiedDateRange/"
 
-# scripts/change_feed_probe.py (Task 11) writes this from a live response: key -> sorted list
-# of value type names, never values (decision 0024). Committed by the controller after the
-# one-shot live probe (`make change-feed-probe`) has run -- until then this file does not
-# exist, and the test below is skipped with a clear reason rather than failing or being faked
-# from a guess.
+# scripts/change_feed_probe.py (Task 11) writes this from a live response:
+# {"shape": {key: [sorted type names]}, "last_change_utc_signatures": [masked format strings]}
+# -- never a value (decision 0024). Committed by the controller after the one-shot live probe
+# (`make change-feed-probe`) has run -- until then this file does not exist, and the test below
+# is skipped with a clear reason rather than failing or being faked from a guess.
 _CHANGE_FEED_SHAPE_FIXTURE = Path("tests/fixtures/api/change_feed_shape.json")
 
 # One representative value per Python type name the fixture might record, for building a
@@ -27,6 +29,23 @@ _SYNTHETIC_VALUES: dict[str, object] = {
     "bool": True,
     "float": 1.0,
     "NoneType": None,
+}
+
+# Task 11 fix round 1, IMPORTANT 8: the six keys `recorder.run._feed_rows` actually reads
+# (`recorder/run.py`'s `_feed_rows` docstring). The synthetic row overrides these with concrete,
+# well-typed values instead of the generic per-type placeholder, so `_feed_rows` -- which
+# filters on `mode == "Aviation"` and requires `mkey`/`lastChangeDateTimeUtc` to parse at all --
+# actually keeps the row rather than silently dropping it.
+_REQUIRED_FEED_KEYS = frozenset(
+    {"mkey", "mode", "lastChangeDateTimeUtc", "stepNumber", "stepId", "caseClosed"}
+)
+_REQUIRED_OVERRIDES: dict[str, object] = {
+    "mkey": 1,
+    "mode": "Aviation",
+    "lastChangeDateTimeUtc": "2026-01-01T00:00:00",
+    "stepNumber": 1,
+    "stepId": "S1",
+    "caseClosed": True,
 }
 
 
@@ -244,6 +263,11 @@ def test_cases_modified_parses_the_confirmed_live_shape(respx_mock: respx.MockRo
     against the live API and its fixture committed (Task 11 controller note 1) -- this is a
     structural sanity check (the endpoint still returns a JSON list of objects with these
     keys), not a claim that every field's meaning is validated.
+
+    Fix round 1, IMPORTANT 8: also asserts the confirmed shape actually carries the six keys
+    ``recorder.run._feed_rows`` reads, and that ``_feed_rows`` turns the synthetic row into a
+    real :class:`~ntsb_probable_cause.store.FeedRow` -- not just that ``cases_modified`` can
+    parse a JSON list of objects, which any shape at all would satisfy.
     """
     if not _CHANGE_FEED_SHAPE_FIXTURE.exists():
         pytest.skip(
@@ -251,9 +275,29 @@ def test_cases_modified_parses_the_confirmed_live_shape(respx_mock: respx.MockRo
             "once against the live API (NTSB_API_KEY set) to record it, then commit the "
             "fixture; this test then stops skipping."
         )
-    shape = json.loads(_CHANGE_FEED_SHAPE_FIXTURE.read_text())
-    row = {key: _SYNTHETIC_VALUES.get(types[0], "x") for key, types in shape.items()}
+    fixture = json.loads(_CHANGE_FEED_SHAPE_FIXTURE.read_text())
+    shape = fixture["shape"]
+
+    missing = _REQUIRED_FEED_KEYS - shape.keys()
+    assert not missing, f"confirmed change-feed shape is missing required keys: {missing}"
+
+    row = {
+        key: _REQUIRED_OVERRIDES.get(key, _SYNTHETIC_VALUES.get(types[0], "x"))
+        for key, types in shape.items()
+    }
     respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(200, json=[row]))
     with NtsbClient("k", sleep=lambda _s: None) as c:
         rows = c.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
     assert rows == (row,)
+
+    feed_rows, skipped = _feed_rows(rows)
+    assert skipped == 0
+    assert feed_rows == [
+        FeedRow(
+            mkey=1,
+            last_change_utc="2026-01-01T00:00:00",
+            step_number=1,
+            step_id="S1",
+            case_closed=True,
+        )
+    ]

@@ -305,6 +305,70 @@ def test_dropped_regulation_is_logged_once_not_every_night(
     assert len(drop_lines) == 1
 
 
+def _regulation_events(store: Store) -> list[tuple[str | None, str | None, bool]]:
+    rows = store.connection.execute(
+        "SELECT old, new, was_watched FROM regulation_events ORDER BY id"
+    ).fetchall()
+    return [(old, new, bool(watched)) for old, new, watched in rows]
+
+
+def test_regulation_event_written_on_a_real_change(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """Task 11 fix round 1, IMPORTANT 7: 091 -> 135 is a real change and gets one row."""
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=1, today=date(2026, 10, 1))
+    observe_case(store, _with_regulation(ongoing_record, "135"), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == [("091", "135", True)]
+
+
+def test_regulation_event_written_from_empty_to_recorded(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    observe_case(store, _with_regulation(ongoing_record, None), run_id=1, today=date(2026, 10, 1))
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == [(None, "091", True)]
+
+
+def test_regulation_event_written_from_recorded_to_empty(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=1, today=date(2026, 10, 1))
+    observe_case(store, _with_regulation(ongoing_record, None), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == [("091", None, True)]
+
+
+def test_no_regulation_event_for_an_unchanged_value(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=1, today=date(2026, 10, 1))
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == []
+
+
+def test_no_regulation_event_between_the_two_empty_spellings(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """``None`` and ``""`` both mean "not recorded"; a change between them is not a change."""
+    observe_case(store, _with_regulation(ongoing_record, None), run_id=1, today=date(2026, 10, 1))
+    observe_case(store, _with_regulation(ongoing_record, ""), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == []
+
+
+def test_no_regulation_event_on_first_sight(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    observe_case(store, _with_regulation(ongoing_record, "091"), run_id=1, today=date(2026, 10, 1))
+    assert _regulation_events(store) == []
+
+
+def test_mark_not_returned_writes_no_regulation_event(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    observe_case(store, ongoing_record, run_id=1, today=date(2026, 10, 1))
+    mark_not_returned(store, _mkey(ongoing_record), run_id=2, today=date(2026, 10, 2))
+    assert _regulation_events(store) == []
+
+
 def test_field_with_no_value_is_silent_on_first_sight_then_writes_once_set(
     store: Store, ongoing_record: dict[str, object]
 ) -> None:
