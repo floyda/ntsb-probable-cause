@@ -105,11 +105,15 @@ takes a part of), and the current stage's specification (S0, closed:
     in `docs/plans/`, not the superpowers default. Tick plan tasks in the same commit as their
     code and log deviations in the plan. The pull request that finishes a stage runs the
     `close-stage` skill; `scripts/check_docs.py` fails CI if the close-out is missing.
-11. **Squash merges; each closed stage is a tagged release** (0018). Pull requests are
-    squash-merged only, titled `<stage>: <name>`. The close-out sets `version` in
+11. **A pull request that closes a stage is merged with a merge commit, never squashed or
+    rebased** (0018, amended by 0033); each closed stage is a tagged release. Squash merges
+    stay the default for incidental pull requests that produce no measurements (documentation
+    fixes, tooling, dependency bumps); rebase merging stays disabled entirely. A stage-closing
+    pull request is titled `<stage>: <name>`. The close-out sets `version` in
     `pyproject.toml`; after the merge Andy runs `gh release create --generate-notes`. There is
     no `CHANGELOG.md`. From S1, every evaluation run and prediction row records the commit SHA
-    and whether the tree had uncommitted changes.
+    and whether the tree had uncommitted changes -- 0033 is why: a squashed stage merge would
+    have left that recorded SHA unreachable from `main`'s history.
 
 ## What to carry over from the spike
 
@@ -215,6 +219,7 @@ make scan-docket       # uv run python -m scripts.corpus_scan --docket — the d
 make armb               # arm B on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
+make ongoing-probe      # uv run python -m scripts.ongoing_docket_probe — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
 make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10); --verbose and --dry-run also accepted
 make change-feed-probe  # uv run python -m scripts.change_feed_probe — the change feed's shape, one-shot (S2.5 §5.3, 0065)
 make recorder-report    # uv run python -m scripts.recorder_report — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.store import (
     CaseRow,
     DocumentRow,
@@ -24,8 +25,8 @@ def store(tmp_path: Path) -> Iterator[Store]:
 
 def test_migrate_creates_tables_once(tmp_path: Path) -> None:
     store = Store(tmp_path / "r.sqlite")
-    assert store.migrate() == 2
-    assert store.migrate() == 2
+    assert store.migrate() == 3
+    assert store.migrate() == 3
     names = {
         r[0] for r in store.connection.execute("select name from sqlite_master where type='table'")
     }
@@ -37,13 +38,14 @@ def test_migrate_creates_tables_once(tmp_path: Path) -> None:
         "change_feed",
         "listing_pages",
         "regulation_events",
+        "run_months",
     } <= names
     store.close()
 
 
 def test_migrate_from_a_v1_store_applies_migration_2(tmp_path: Path) -> None:
-    """A store already at schema version 1 (Task 11 fix round 1, IMPORTANT 7) gains migration 2
-    on its next `migrate()` call, without touching migration 1's tables or data."""
+    """A store already at schema version 1 (Task 11 fix round 1, IMPORTANT 7) gains migrations 2
+    and 3 on its next `migrate()` call, without touching migration 1's tables or data."""
     path = tmp_path / "r.sqlite"
     store = Store(path)
     store.connection.executescript(
@@ -52,12 +54,13 @@ def test_migrate_from_a_v1_store_applies_migration_2(tmp_path: Path) -> None:
     )
     assert store.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
 
-    assert store.migrate() == 2
+    assert store.migrate() == 3
 
     names = {
         r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
     assert "regulation_events" in names
+    assert "run_months" in names
     indexes = {
         r[0] for r in store.connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
     }
@@ -65,9 +68,9 @@ def test_migrate_from_a_v1_store_applies_migration_2(tmp_path: Path) -> None:
     store.close()
 
 
-def test_migrate_from_empty_applies_both_migrations(tmp_path: Path) -> None:
+def test_migrate_from_empty_applies_all_migrations(tmp_path: Path) -> None:
     store = Store(tmp_path / "r.sqlite")
-    assert store.migrate() == 2
+    assert store.migrate() == 3
     store.close()
 
 
@@ -98,8 +101,27 @@ def test_migrate_rolls_back_a_failed_migration_and_can_recover(
     assert store.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
 
     monkeypatch.undo()  # restore the real MIGRATIONS
-    assert store.migrate() == 2  # the real migration 2 still applies; recovers cleanly
+    assert store.migrate() == 3  # the real migrations 2 and 3 still apply; recovers cleanly
     store.close()
+
+
+def test_migrate_refuses_a_store_newer_than_this_code_knows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final review item 5b: a schema_version higher than `len(schema.MIGRATIONS)` looks like a
+    rolled-back deploy talking to a store a newer version already wrote to -- refused loudly,
+    never silently skipped or migrated past."""
+    path = tmp_path / "r.sqlite"
+    store = Store(path)
+    store.migrate()
+    store.connection.execute("UPDATE schema_version SET version = 99")
+    store.connection.commit()
+    store.close()
+
+    reopened = Store(path)
+    with pytest.raises(ConfigurationError, match="99"):
+        reopened.migrate()
+    reopened.close()
 
 
 def test_pragmas_are_set(store: Store) -> None:
@@ -600,6 +622,25 @@ def test_add_feed_rows_round_trips(store: Store) -> None:
     assert tuple(stored[1]) == (2, "2026-09-21T00:00:00+00:00", None, None, 1, 1)
 
 
+def test_add_run_month_is_idempotent(store: Store) -> None:
+    store.add_run_month(1, "2026-09")
+    store.add_run_month(1, "2026-09")  # same (run_id, month) again: no error, no duplicate row
+    count = store.connection.execute("SELECT COUNT(*) FROM run_months").fetchone()[0]
+    assert count == 1
+
+
+def test_last_clean_fetch_finds_the_latest_earlier_run(store: Store) -> None:
+    store.add_run_month(1, "2026-09")
+    store.add_run_month(3, "2026-09")
+    store.add_run_month(5, "2026-10")  # a different month: never a match for "2026-09"
+
+    assert store.last_clean_fetch("2026-09", before_run=4) == 3
+    assert store.last_clean_fetch("2026-09", before_run=3) == 1  # run 3 itself is excluded
+    assert store.last_clean_fetch("2026-09", before_run=100) == 3
+    assert store.last_clean_fetch("2026-09", before_run=1) is None  # nothing strictly earlier
+    assert store.last_clean_fetch("2099-01", before_run=100) is None  # never fetched at all
+
+
 def test_close_checkpoints_wal_into_the_main_file(tmp_path: Path) -> None:
     # A reader connection that has never executed a statement does not stop SQLite's own
     # checkpoint-on-last-writer-close, which would let this test pass even with no PRAGMA in
@@ -685,12 +726,12 @@ def test_readonly_store_reads_but_cannot_write(tmp_path: Path) -> None:
 def test_readonly_store_schema_version_without_migrating(tmp_path: Path) -> None:
     path = tmp_path / "r.sqlite"
     writable = Store(path)
-    assert writable.migrate() == 2
+    assert writable.migrate() == 3
     writable.close()
 
     reader = Store(path, readonly=True)
     try:
-        assert reader.schema_version() == 2
+        assert reader.schema_version() == 3
     finally:
         reader.close()
 
@@ -725,7 +766,7 @@ def test_readonly_store_quotes_special_characters_in_the_path(tmp_path: Path) ->
 
     reader = Store(path, readonly=True)
     try:
-        assert reader.schema_version() == 2
+        assert reader.schema_version() == 3
         case = reader.get_case(1)
         assert case is not None
         assert case.mkey == 1

@@ -226,6 +226,9 @@ def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: 
         "evidence-field arrival percentiles, days from event to first appearance:",
         "  the names below (e.g. weather_condition) are this project's own evidence field "
         "names, not raw database column names.",
+        "  a case first seen after the recorder's first night has an absent side if its event "
+        "month was fetched cleanly the night before -- it then counts as a true arrival "
+        "below, not as first-sight.",
     ]
     if not field_arrivals:
         lines.append("  no data")
@@ -243,7 +246,12 @@ def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: 
 
 
 def _prelim_lines(prelim_arrivals: Sequence[ArrivalRow], prelim_first_sight: int) -> list[str]:
-    lines = ["preliminary narrative arrival:"]
+    lines = [
+        "preliminary narrative arrival:",
+        "  the same rule applies here as for evidence fields: a case first seen after the "
+        "recorder's first night has an absent side if its event month was fetched cleanly "
+        "the night before.",
+    ]
     lines.extend(_arrival_lines("preliminary narrative", prelim_arrivals))
     lines.append(
         "  first-sight preliminary narratives (present by the day watching began, excluded "

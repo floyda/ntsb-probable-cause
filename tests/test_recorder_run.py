@@ -564,3 +564,182 @@ def test_watched_case_that_stopped_appearing_is_marked_not_returned(
     assert case.status == "not returned"
     assert case.watch_until == date(2026, 10, 31).isoformat()
     assert summary.cases_changed >= 1
+
+
+# --- the outage budget: deadline and circuit breaker (final review item 1) -----------------
+
+
+def test_deadline_trips_mid_docket_loop_and_the_run_still_finishes(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """The clock crosses `RUN_DEADLINE_MINUTES` between the first and second docket poll. The
+    first mkey (95459) is polled for real; the rest (95460, 95461) get "skipped: deadline"
+    `docket_polls` rows, and `run_night` still returns a normal summary rather than raising.
+
+    The trip point (11 calls) is calibrated against this exact scenario (one cleanly-fetched
+    month with no records, three watched cases) -- a diagnostic run of the real code counted
+    exactly 10 `now()` calls before the docket loop's first per-mkey deadline check, so the
+    11th call (that first check) must still read as "before the deadline" for mkey 95459 to be
+    polled for real, and the 12th (mkey 95460's check) must read as "past it".
+    """
+    event_date = "2026-10-15"
+    watched_mkeys = (95459, 95460, 95461)
+    for mkey in watched_mkeys:
+        _seed_case(store, mkey, event_date)
+        respx_mock.get(sources.docket_url(mkey)).mock(
+            return_value=httpx.Response(200, text=NOT_RELEASED)
+        )
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body([])))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
+    past_deadline = start + timedelta(minutes=run_module.RUN_DEADLINE_MINUTES, seconds=1)
+    calls = {"n": 0}
+    trip_after_calls = 11
+
+    def _clock() -> datetime:
+        calls["n"] += 1
+        return start if calls["n"] <= trip_after_calls else past_deadline
+
+    inputs = NightInputs(
+        api=NtsbClient("k", sleep=lambda _seconds: None),
+        docket=DocketClient(None, seconds_per_request=2.0, sleep=lambda _seconds: None),
+        store=store,
+        now=_clock,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    summary = run_night(inputs)
+
+    polls = store.connection.execute(
+        "select mkey, outcome, reason from docket_polls order by mkey"
+    ).fetchall()
+    assert polls[0] == (95459, "no-docket", None)  # polled for real, before the trip
+    assert polls[1] == (95460, "failed", "skipped: deadline")
+    assert polls[2] == (95461, "failed", "skipped: deadline")
+    assert summary.cases_polled == 3
+    assert summary.failures == 2
+
+
+def test_docket_circuit_breaker_trips_after_ten_consecutive_failures(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """Ten consecutive HTTP 500s (each exhausting its own retries) trip the docket breaker; the
+    remaining two watched cases get "skipped: outage" rows instead of a real fetch. The case
+    side, fetched from a normal, successful month response, is unaffected: zero case failures."""
+    event_date = "2026-10-15"
+    mkeys = [100000 + i for i in range(12)]
+    records = []
+    for mkey in mkeys:
+        _seed_case(store, mkey, event_date)
+        records.append(_ongoing(record_fixtures, mkey, event_date))
+        respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(500))
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body(records)))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    summary = run_night(inputs)
+
+    assert summary.failures == 12  # every one of the 12 dockets failed or was skipped
+    polls = store.connection.execute(
+        "select mkey, outcome, reason from docket_polls order by mkey"
+    ).fetchall()
+    assert len(polls) == 12
+    real_failures = [p for p in polls if p[2] != "skipped: outage"]
+    skipped = [p for p in polls if p[2] == "skipped: outage"]
+    assert len(real_failures) == 10  # ten real, over-the-network attempts before the trip
+    assert len(skipped) == 2
+    assert all(outcome == "failed" for _mkey, outcome, _reason in real_failures)
+    # the case side (a normal, successful month fetch) is untouched by the docket breaker
+    for mkey in mkeys:
+        case = store.get_case(mkey)
+        assert case is not None
+        assert case.status == "Ongoing"
+
+
+def test_month_circuit_breaker_trips_and_the_docket_side_still_runs(
+    store: Store, respx_mock: respx.MockRouter
+) -> None:
+    """An outage that fails ten consecutive months trips the case side's breaker; the remaining
+    months in the window are skipped, never marked cleanly fetched, and the docket side still
+    polls whatever the store already holds."""
+    _seed_case(store, MKEY_1, "2025-11-15")  # 12 months back from "today" below
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(500))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+
+    inputs = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    summary = run_night(inputs)
+
+    assert summary.failures >= run_module.CONSECUTIVE_FAILURES_TO_TRIP
+    assert store.connection.execute("select count(*) from run_months").fetchone()[0] == 0
+    # the docket side still ran, for the one case the store already held
+    assert store.connection.execute("select count(*) from docket_polls").fetchone()[0] == 1
+    case = store.get_case(MKEY_1)
+    assert case is not None
+    assert case.status == "Ongoing"  # never a false "not returned": its month never fetched cleanly
+
+
+# --- new cases' absent side (final review item 2; Andy's decision 2026-09-23) ---------------
+
+
+def test_a_case_first_seen_the_night_after_a_clean_fetch_gets_a_true_arrival(
+    store: Store, record_fixtures: list[dict[str, object]], respx_mock: respx.MockRouter
+) -> None:
+    """Night 1 fetches the case's event month cleanly and does not find it. Night 2 sees the
+    case for the first time. Its first-sight field snapshots and status event now carry night
+    1's run id as `absent_run` -- a TRUE arrival, not "present when watching began" -- and the
+    report's arrival query (not just raw rows) agrees.
+
+    A second, already-watched control case (MKEY_2, seeded directly) keeps `month_window`
+    pinned to the one known month on both nights, rather than falling back to the first-run
+    walk -- irrelevant to what this test checks, but avoids a walk-back that would otherwise
+    never find its 12 empty months (every month's mocked response is watchable).
+    """
+    event_date = "2026-10-15"
+    _seed_case(store, MKEY_2, event_date)
+    control = _ongoing(record_fixtures, MKEY_2, event_date)
+    respx_mock.get(sources.docket_url(MKEY_2)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    respx_mock.get(MONTH_URL).mock(return_value=httpx.Response(200, json=_month_body([control])))
+    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    night1 = _inputs(store, datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC))
+    run_night(night1)
+    run1_id = store.last_run_id()
+    assert run1_id is not None
+    assert (
+        store.connection.execute(
+            "select count(*) from run_months where run_id=? and month=?", (run1_id, "2026-10")
+        ).fetchone()[0]
+        == 1
+    )
+
+    # Night 2: the case appears for the first time, alongside the control.
+    record = _ongoing(record_fixtures, MKEY_1, event_date)
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([control, record]))
+    )
+    respx_mock.get(sources.docket_url(MKEY_1)).mock(
+        return_value=httpx.Response(200, text=NOT_RELEASED)
+    )
+    night2 = _inputs(store, datetime(2026, 10, 2, 3, 0, 0, tzinfo=UTC))
+    run_night(night2)
+
+    absent_runs = store.connection.execute(
+        "select distinct absent_run from field_snapshots where mkey=?", (MKEY_1,)
+    ).fetchall()
+    assert absent_runs == [(run1_id,)]
+    status_absent = store.connection.execute(
+        "select absent_run from status_events where mkey=?", (MKEY_1,)
+    ).fetchone()
+    assert status_absent == (run1_id,)
+
+    # Report classification: field_change_arrivals() only ever returns rows with a known
+    # absent side (`absent_run IS NOT NULL`) -- MKEY_1's snapshots now qualify, where before
+    # this fix they never would have for a brand-new case.
+    role_count_before = len(store.field_change_arrivals())
+    assert role_count_before > 0

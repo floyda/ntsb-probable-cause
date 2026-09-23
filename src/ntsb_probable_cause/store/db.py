@@ -15,6 +15,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.store import schema
 from ntsb_probable_cause.store.models import (
     ArrivalClassification,
@@ -325,6 +326,19 @@ class Store:
         grouping several writes so "a half-written night cannot exist") shares the same
         underlying SQLite transaction. Only the outermost level commits or rolls back; an
         inner level's exit does neither.
+
+        Nesting caveat (Task 4 design note, final review item 5c): re-entrancy means an
+        exception raised inside an INNER ``with self.transaction():`` block, if the OUTER block
+        catches it (rather than letting it propagate all the way out), does NOT roll back the
+        inner block's own writes -- they are already inside the one shared transaction the
+        outer block will still commit normally when it exits cleanly. "A half-written night
+        cannot exist" therefore describes the outermost caller's own writes, not a guarantee
+        that every nested call either fully happens or fully does not: a caller that wraps a
+        nested write in its own ``try``/``except`` and continues past the exception commits
+        that partial write along with everything else. No code in this module currently does
+        that (every multi-statement caller lets an inner exception propagate to its own
+        transaction boundary), but a future one must not assume nesting alone gives it
+        per-nested-block atomicity -- only the outermost block's boundary does.
         """
         self._txn_depth += 1
         try:
@@ -373,8 +387,26 @@ class Store:
         ``i`` is this loop's own 1-based migration index, an internal `int`, not external
         input, so building the version-write statement with an f-string carries no injection
         risk; ``executescript`` has no placeholder syntax to parameterise it with regardless.
+
+        Raises:
+            ConfigurationError: the store's ``schema_version`` is already HIGHER than this
+                code knows (final review item 5b) -- a rolled-back deploy talking to a store a
+                newer version already wrote to. Applying migrations from ``schema.MIGRATIONS``
+                in that case would either silently skip real schema history the code has never
+                seen, or (since ``schema.MIGRATIONS[version:]`` is empty when ``version`` is
+                past the end) do nothing and let every later write proceed against a schema
+                shape this code was never tested against -- both are worse than refusing
+                outright and exiting loudly.
         """
         version = self._current_version()
+        known = len(schema.MIGRATIONS)
+        if version > known:
+            raise ConfigurationError(
+                f"store schema version {version} is newer than this code's {known} known "
+                "migrations -- this looks like older code (a rolled-back deploy) talking to a "
+                "store a newer version already wrote to. Refusing to touch it; deploy the "
+                "matching code, or point NTSB_STORE at the intended file."
+            )
         for i, migration_script in enumerate(schema.MIGRATIONS[version:], start=version + 1):
             version_write = (
                 f"INSERT INTO schema_version (version) VALUES ({i});"  # noqa: S608
@@ -824,6 +856,38 @@ class Store:
                 ],
             )
 
+    # -- run months (final review item 2; Andy's decision 2026-09-23: "Add it") ---------------
+
+    def add_run_month(self, run_id: int, month: str) -> None:
+        """Record that ``month`` (``YYYY-MM``) was fetched cleanly this run.
+
+        "Cleanly" means completely, with no error, and not cut short by the outage budget.
+        Idempotent (``ON CONFLICT DO NOTHING``): ``run_id, month`` is the primary key, and
+        ``recorder.run``'s case side calls this once per month it fetched cleanly, never more.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO run_months (run_id, month) VALUES (?, ?) "
+                "ON CONFLICT(run_id, month) DO NOTHING",
+                (run_id, month),
+            )
+
+    def last_clean_fetch(self, month: str, *, before_run: int) -> int | None:
+        """The latest ``run_id`` strictly before ``before_run`` that fetched ``month`` cleanly.
+
+        ``None`` if no earlier run ever fetched this month cleanly -- correctly ``None`` on a
+        store's very first night, when nothing has been observed yet at all. This is what
+        ``recorder.cases.observe_case``'s ``new_case_absent_run`` parameter uses: a case seen
+        for the first time whose event month WAS cleanly fetched by an earlier run genuinely
+        was absent then, and gets a true arrival (``absent_run IS NOT NULL``) rather than
+        reading as merely "present when watching began".
+        """
+        row = self._conn.execute(
+            "SELECT MAX(run_id) FROM run_months WHERE month = ? AND run_id < ?",
+            (month, before_run),
+        ).fetchone()
+        return int(row[0]) if row is not None and row[0] is not None else None
+
     # -- report queries (Task 11; spec S2.5 §10.2) -------------------------------------------
     #
     # Every method here is read-only and returns numbers, never case text -- the report script
@@ -1232,6 +1296,21 @@ class Store:
         one half of a suspected re-numbered pair (``recorder/dockets.py``'s ``diff_documents``
         writes both as ordinary ``appeared``/``disappeared`` events in addition to incrementing
         the suspected-renumber count) -- nothing here treats those differently.
+
+        MIN vs MAX (final review item 5d, documented rather than unified -- the two populations
+        answer genuinely different questions). Real closures (:meth:`_closure_runs`) use
+        ``MIN(present_run)``, the EARLIEST closure: a real closure is meant to be terminal, so
+        "when did this case first close" is the meaningful moment its tail is measured from,
+        and :meth:`_closure_runs`'s own docstring explains why the query still tolerates a
+        later re-label between two closure statuses. ``'not returned'`` events, by contrast, use
+        ``MAX(present_run)``, the LATEST such event: unlike a real closure, "not returned" is
+        not attested (spec §7) and a case can cycle through it more than once -- reappear as
+        ``Ongoing`` (``recorder.cases._apply_status`` clears the tail on any such return) and
+        later go missing again. Only the CURRENT tail -- the most recent "not returned" event
+        still in effect -- is the one this report should measure documents against; an earlier,
+        superseded "not returned" event (later contradicted by the case reappearing) is not a
+        tail worth counting arrivals from at all, and :meth:`possible_false_not_returned`
+        reports that population separately, on its own terms.
         """
         real_closures = self._closure_runs()
         not_returned = self._conn.execute(

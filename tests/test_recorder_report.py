@@ -23,6 +23,7 @@ from ntsb_probable_cause.store import (
     Store,
 )
 from ntsb_probable_cause.store import schema as store_schema
+from ntsb_probable_cause.store.sync import Location
 
 RUN1 = "2026-01-01T03:00:00+00:00"  # day 0
 RUN2 = "2026-01-02T03:00:00+00:00"  # day 1
@@ -239,6 +240,30 @@ def test_first_sight_field_count(store: Store) -> None:
     )
     assert store.first_sight_field_count() == 1
     assert store.field_change_arrivals() == []
+
+
+def test_a_new_cases_first_snapshot_with_a_known_absent_run_is_a_true_arrival(
+    store: Store,
+) -> None:
+    """Final review item 2 (Andy's decision 2026-09-23): a case observed for the very first
+    time whose event month an EARLIER run had already fetched cleanly gets a real absent side
+    on its first-sight row (`recorder.cases.observe_case`'s `new_case_absent_run`) -- the
+    report's arrival query must count that as a TRUE arrival, not fold it into the
+    "present when watching began" first-sight count, exactly as any other true arrival."""
+    _begin_runs(store, (1, RUN1), (2, RUN2))
+    store.upsert_case(_case(1, event_date="2025-12-20", first_seen_run=2))
+    # The case's very first-ever field_snapshots row, written with a real `absent_run` -- what
+    # `observe_case(..., new_case_absent_run=1)` produces for a brand-new mkey.
+    store.add_field_snapshot(
+        1, role="engine_type", value_json='"REC"', absent_run=1, present_run=2, run_id=2
+    )
+
+    assert store.first_sight_field_count() == 0  # not "present when watching began"
+    (arrival,) = store.field_change_arrivals()
+    assert arrival.role == "engine_type"
+    assert arrival.classification == ArrivalClassification.BEFORE_CLOSURE
+    assert arrival.days == 13  # 2026-01-02 - 2025-12-20
+    assert arrival.absent_days == 12  # 2026-01-01 - 2025-12-20
 
 
 # --- preliminary narrative arrival (IMPORTANT 6) -------------------------------------------
@@ -943,6 +968,17 @@ def test_report_states_the_evidence_field_name_note(store: Store) -> None:
     assert "this project's own evidence field names, not raw database column names" in text
 
 
+def test_report_states_the_new_case_absent_side_rule(store: Store) -> None:
+    """Final review item 2: the report states, in plain English, when a case first seen after
+    the recorder's first night gets a true absent side instead of reading as first-sight."""
+    text = _full_report_from(store)
+    rule = (
+        "a case first seen after the recorder's first night has an absent side if its event "
+        "month was fetched cleanly the night before"
+    )
+    assert text.count(rule) == 2  # once for fields, once for the preliminary narrative
+
+
 def test_report_regulation_coverage_makes_no_deployment_claim(store: Store) -> None:
     """Task 11 fix round 3, WORDING 2: no claim about a particular store's own history."""
     text = _full_report_from(store)
@@ -1072,6 +1108,35 @@ def test_open_store_refuses_a_mismatched_schema_version_without_migrating(
         assert check.schema_version() == 1
     finally:
         check.close()
+
+
+def test_open_store_pulls_an_s3_location_to_a_local_work_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final review item 5f: `NTSB_STORE=s3://...` is pulled to a temporary file under
+    `NTSB_DATA_DIR` and opened read-only from there -- the S3 object itself is never opened or
+    written to. No test exercised this branch before this fix."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", "s3://a-bucket/recorder.sqlite")
+
+    pulled: list[tuple[Location, Path]] = []
+
+    def _fake_pull(location: Location, local: Path, **_: object) -> None:
+        pulled.append((location, local))
+        setup = Store(local)
+        setup.migrate()
+        setup.close()
+
+    monkeypatch.setattr("scripts.recorder_report.pull", _fake_pull)
+
+    result_store, error = _open_store(Settings())
+
+    assert error is None
+    assert result_store is not None
+    assert pulled == [
+        (Location("s3://a-bucket/recorder.sqlite"), tmp_path / "recorder-report-work.sqlite")
+    ]
+    result_store.close()
 
 
 def test_main_prints_an_empty_report_and_creates_no_file_when_no_store_exists(

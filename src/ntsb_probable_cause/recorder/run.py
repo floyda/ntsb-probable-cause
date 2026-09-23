@@ -16,6 +16,34 @@ every ``ValueError`` from ``observe_docket``, which would have silently absorbed
 ``pydantic.ValidationError`` or a ``UnicodeDecodeError`` (both subclass ``ValueError``) as if it
 were the documented "unknown mkey" case -- the check is now made explicitly, before the call, so
 only that one condition is ever swallowed.
+
+Outage budget (final review, item 1). Spec §9.1 promises "if the API is down, dockets are still
+polled; if the docket site is down, fields are still snapshotted" -- but neither promise bounds
+how long a down site is allowed to eat into the night before the scheduler's own 90-minute
+Fargate timeout kills the task outright, which on an S3 store discards the whole night (nothing
+gets pushed). Two mechanisms, both driven by ``inputs.now()`` (never wall-clock time measured
+some other way, so a test can drive them deterministically): a RUN DEADLINE
+(:data:`RUN_DEADLINE_MINUTES` after the run's own start; no new month fetch or docket poll
+starts after it, and each skipped item is one failure) and a per-side CIRCUIT BREAKER
+(:data:`CONSECUTIVE_FAILURES_TO_TRIP` consecutive fetch failures on the case side or the docket
+side stops that side for the rest of the night; a single success resets the count). A month or
+docket poll skipped by either mechanism is never treated as fetched cleanly: the case side's
+``run_months`` bookkeeping (below) and "mark vanished" step both already only ever act on a
+month that finished cleanly, so a skip simply leaves that month, and every watched case in it,
+untouched -- exactly like an ``ApiError`` does. The deadline and breaker are NOT applied inside
+:func:`~ntsb_probable_cause.recorder.window.first_run_window`'s own walk-back loop (see
+:func:`_case_side`'s docstring for why).
+
+New cases' absent side (final review, item 2; Andy's decision 2026-09-23: "Add it"). Every month
+:func:`_case_side` fetches cleanly is now recorded, via :meth:`~ntsb_probable_cause.store.Store.
+add_run_month`, in a new ``run_months`` table. A case observed for the first time ever can then
+be told whether an EARLIER run already fetched its event month cleanly and did not find it --
+:meth:`~ntsb_probable_cause.store.Store.last_clean_fetch` answers that -- and if so, that earlier
+run becomes the case's first-sight ``absent_run``, a TRUE arrival, rather than the case simply
+reading as "present when watching began" (the only possibility before this run of fixes, since
+a brand-new case's ``absent_run`` was always ``None``). In plain terms: a case first seen after
+the recorder's first night has an absent side if its event month was fetched cleanly the night
+before.
 """
 
 import logging
@@ -49,12 +77,40 @@ _AVIATION_MODE = "Aviation"
 # deliberate (fix round 1, Minor 1).
 _FEED_LOOKBACK_DAYS = 2
 
+# Final review item 1: the run deadline. The scheduler's own hard stop is 90 minutes
+# (docs/runbooks/recorder-deploy.md's Fargate task timeout, `docs/runbooks/recorder-bridge.md`
+# for the Mac bridge's own launchd timeout); this trips well before that so the run still
+# finishes CLEANLY -- writes its summary, closes the store -- rather than being killed
+# mid-write, which on an S3 store discards the whole night (nothing gets pushed). 75 minutes
+# leaves 15 minutes of margin for whatever single step is in progress when the deadline is
+# checked (a docket poll's own worst case is about 2.5 minutes: 5 attempts x up to 120s
+# timeout, plus backoff between them) -- generous enough that the deadline is never the reason
+# an ordinary night runs long, tight enough that a genuinely stuck night still finishes inside
+# the scheduler's own limit.
+RUN_DEADLINE_MINUTES = 75
+
+# Final review item 1: the per-side circuit breaker. After this many CONSECUTIVE fetch
+# failures on one side (case-side months, or docket polls), that side stops calling the network
+# for the rest of the night rather than spending the whole run budget retrying a site that is
+# down. At up to about 2.5 minutes per failure worst case (see RUN_DEADLINE_MINUTES's own
+# comment), 10 consecutive failures is already 20+ minutes sunk before the breaker trips --
+# comfortably above the handful of bad pages or months an ordinary night can have (one
+# malformed page, one flaky month) without tripping it by accident, and comfortably below
+# RUN_DEADLINE_MINUTES, so a genuine outage stops burning the run's budget well before the
+# deadline would have caught it anyway. A single success on a side resets its count to zero --
+# the breaker answers "is this side down right now", not "has this side ever had a bad night".
+CONSECUTIVE_FAILURES_TO_TRIP = 10
+
+_SKIPPED_DEADLINE = "skipped: deadline"
+_SKIPPED_OUTAGE = "skipped: outage"
+
 
 class NightInputs(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """Everything one nightly pass needs, injected so a test touches neither network nor clock.
 
-    ``now`` is called repeatedly through the run (once per step boundary, for the per-step
-    duration log lines) and must always return an aware datetime (see :func:`_utc`).
+    ``now`` is called repeatedly through the run (once per step boundary for the per-step
+    duration log lines, and once per month/docket-poll attempt for the outage budget) and must
+    always return an aware datetime (see :func:`_utc`).
     """
 
     api: NtsbClient
@@ -130,7 +186,12 @@ def _ongoing_by_month(store: Store, today: date) -> dict[str, set[int]]:
 
 
 def _observe_records(
-    store: Store, records: Iterable[Mapping[str, object]], *, run_id: int, today: date
+    store: Store,
+    records: Iterable[Mapping[str, object]],
+    *,
+    run_id: int,
+    today: date,
+    new_case_absent_run: int | None,
 ) -> tuple[set[int], int, set[int]]:
     """Filter and observe one batch of raw records (spec §9.1's per-record rule).
 
@@ -138,6 +199,12 @@ def _observe_records(
     that is neither watchable nor already known to the store is skipped entirely, never even
     split. Returns ``(seen, failures, changed)``: every mkey actually observed (whatever the
     outcome), how many of those observations failed, and which of them wrote something.
+
+    ``new_case_absent_run`` (final review item 2) is passed straight through to every
+    :func:`~ntsb_probable_cause.recorder.cases.observe_case` call: every record in one batch
+    shares the same event month (a page of ``cases_by_date_range(month.start, month.end)``, or
+    one first-run-walk month's kept records), so the caller computes it once, via
+    ``store.last_clean_fetch``, rather than this function computing it per record.
     """
     seen: set[int] = set()
     failures = 0
@@ -147,7 +214,13 @@ def _observe_records(
         known = isinstance(mkey_value, int) and store.get_case(mkey_value) is not None
         if not (is_watchable(raw) or known):
             continue
-        outcome = observe_case(store, raw, run_id=run_id, today=today)
+        outcome = observe_case(
+            store,
+            raw,
+            run_id=run_id,
+            today=today,
+            new_case_absent_run=new_case_absent_run,
+        )
         if isinstance(mkey_value, int):
             seen.add(mkey_value)
         if outcome.failed is not None:
@@ -157,8 +230,15 @@ def _observe_records(
     return seen, failures, changed
 
 
-def _observe_month_streaming(
-    api: NtsbClient, store: Store, month: Month, *, run_id: int, today: date
+def _observe_month_streaming(  # noqa: PLR0913 -- one parameter per fetch/observe input, plus
+    # `new_case_absent_run` (final review item 2), which every record in this one month shares.
+    api: NtsbClient,
+    store: Store,
+    month: Month,
+    *,
+    run_id: int,
+    today: date,
+    new_case_absent_run: int | None,
 ) -> tuple[set[int], int, set[int], bool]:
     """Fetch one month page by page, observing as each page arrives.
 
@@ -175,7 +255,11 @@ def _observe_month_streaming(
     try:
         for page in api.cases_by_date_range(month.start, month.end):
             page_seen, page_failures, page_changed = _observe_records(
-                store, page.records, run_id=run_id, today=today
+                store,
+                page.records,
+                run_id=run_id,
+                today=today,
+                new_case_absent_run=new_case_absent_run,
             )
             seen |= page_seen
             failures += page_failures
@@ -250,15 +334,39 @@ def _feed_rows(raw_rows: Iterable[Mapping[str, object]]) -> tuple[list[FeedRow],
 
 
 def _case_side(
-    inputs: NightInputs, *, run_id: int, today: date, tally: _Tally
+    inputs: NightInputs,
+    *,
+    run_id: int,
+    today: date,
+    tally: _Tally,
+    deadline: datetime,
 ) -> tuple[list[Month], set[int], set[str]]:
     """Steps 2-3: the month window, then fetch each month and observe every watchable record.
 
-    Returns ``(months fetched this run, every mkey observed, the months an ApiError cut
-    short)`` -- :func:`_mark_vanished` needs all three. ``computed_window is None`` (rather
-    than a separately tracked flag) is the one and only test for "this is a first run" --
-    fix round 1, Minor 2 dropped the redundant ``first_run`` boolean the two used to track
-    in parallel.
+    Returns ``(months fetched this run, every mkey observed, the months an ApiError -- or the
+    outage budget -- cut short)`` -- :func:`_mark_vanished` needs all three. ``computed_window
+    is None`` (rather than a separately tracked flag) is the one and only test for "this is a
+    first run" -- fix round 1, Minor 2 dropped the redundant ``first_run`` boolean the two used
+    to track in parallel.
+
+    The run deadline and circuit breaker (final review item 1) apply only to the STEADY-STATE
+    branch below (``computed_window`` already known), one check per month, before that month's
+    own fetch begins. They are deliberately NOT applied inside
+    :func:`~ntsb_probable_cause.recorder.window.first_run_window`'s own walk-back loop: that
+    function has no clock parameter, walks every month back to the earliest watched case (or
+    twelve empty months) as one atomic operation, and -- being a first run -- there is no
+    ``cases`` history yet for a mid-walk cut to protect; a first-run walk that runs long is
+    covered by the run deadline the OUTER call already sits inside (:func:`run_night` checks
+    ``inputs.now()`` again immediately after this function returns, via its own step-duration
+    log line, so a first run that overruns is visible in the log even though it is not cut off
+    mid-walk). Every month the walk DOES return is, by construction, cleanly fetched (the walk
+    itself raises and aborts on the first ``ApiError``, never returning a partial month) -- see
+    the loop below.
+
+    Each cleanly fetched month's ``run_months`` row (final review item 2) is written here, via
+    :meth:`~ntsb_probable_cause.store.Store.add_run_month`, immediately after that month is
+    confirmed clean -- a month skipped by the deadline or breaker, or cut short by an
+    ``ApiError``, gets no row.
     """
     computed_window = month_window(inputs.store, today=today)
     kept: dict[str, list[dict[str, object]]] = {}
@@ -282,20 +390,54 @@ def _case_side(
 
     all_seen: set[int] = set()
     errored_months: set[str] = set()
+    consecutive_failures = 0
+    breaker_tripped = False
     for month in months:
         if computed_window is None:
+            new_case_absent_run = inputs.store.last_clean_fetch(month.label, before_run=run_id)
             seen, month_failures, changed = _observe_records(
-                inputs.store, kept[month.label], run_id=run_id, today=today
+                inputs.store,
+                kept[month.label],
+                run_id=run_id,
+                today=today,
+                new_case_absent_run=new_case_absent_run,
             )
+            errored = False
         else:
+            if _utc(inputs.now()) >= deadline:
+                _log.warning("case side: run deadline reached, month=%s skipped", month.label)
+                tally.failures += 1
+                errored_months.add(month.label)
+                continue
+            if breaker_tripped:
+                tally.failures += 1
+                errored_months.add(month.label)
+                continue
+            new_case_absent_run = inputs.store.last_clean_fetch(month.label, before_run=run_id)
             seen, month_failures, changed, errored = _observe_month_streaming(
-                inputs.api, inputs.store, month, run_id=run_id, today=today
+                inputs.api,
+                inputs.store,
+                month,
+                run_id=run_id,
+                today=today,
+                new_case_absent_run=new_case_absent_run,
             )
             if errored:
                 errored_months.add(month.label)
+                consecutive_failures += 1
+                if consecutive_failures >= CONSECUTIVE_FAILURES_TO_TRIP and not breaker_tripped:
+                    breaker_tripped = True
+                    _log.warning(
+                        "case side: circuit breaker tripped after %d consecutive month failures",
+                        consecutive_failures,
+                    )
+            else:
+                consecutive_failures = 0
         tally.failures += month_failures
         tally.changed_mkeys |= changed
         all_seen |= seen
+        if not errored:
+            inputs.store.add_run_month(run_id, month.label)
     return months, all_seen, errored_months
 
 
@@ -314,8 +456,9 @@ def _mark_vanished(  # noqa: PLR0913 -- one parameter per input `_case_side` pro
     """Step 4: mark vanished cases as "not returned".
 
     Every previously-``Ongoing`` watched case not seen in a completely, cleanly fetched month
-    is marked. A month never fetched at all tonight, or cut short by an ``ApiError`` (in
-    ``errored_months``), contributes no such marks.
+    is marked. A month never fetched at all tonight, cut short by an ``ApiError``, or skipped by
+    the outage budget (all three land in ``errored_months`` -- final review item 1), contributes
+    no such marks.
     """
     fetched_months = {month.label for month in months}
     for month_label, mkeys in watched_before.items():
@@ -341,8 +484,37 @@ def _feed_side(api: NtsbClient, store: Store, *, run_id: int, today: date, tally
         store.add_feed_rows(feed_rows, run_id=run_id)
 
 
-def _docket_side(
-    store: Store, docket: DocketClient, *, run_id: int, today: date, tally: _Tally
+def _skip_docket_poll(store: Store, mkey: int, *, run_id: int, reason: str) -> None:
+    """Write a ``failed`` ``docket_polls`` row for a poll the outage budget never attempted.
+
+    Final review item 1: "so the log and the store agree" -- a poll the deadline or breaker
+    skipped gets exactly the row a poll that failed over the network would have gotten (outcome
+    ``failed``, no page, no declared item count), just with a ``reason`` naming which budget
+    mechanism skipped it, rather than leaving a gap in ``docket_polls`` for that mkey tonight.
+    """
+    store.add_docket_poll(
+        mkey,
+        run_id=run_id,
+        outcome="failed",
+        reason=reason,
+        declared_items=None,
+        creation_date=None,
+        last_modified=None,
+        release_date=None,
+        page_sha=None,
+    )
+
+
+def _docket_side(  # noqa: PLR0913 -- the outage budget (final review item 1) needs the clock
+    # and the deadline alongside every parameter the docket side already took.
+    store: Store,
+    docket: DocketClient,
+    *,
+    run_id: int,
+    today: date,
+    tally: _Tally,
+    now: Callable[[], datetime],
+    deadline: datetime,
 ) -> list[int]:
     """Step 6: poll every watched case's docket.
 
@@ -358,9 +530,32 @@ def _docket_side(
     and-swallowed ``except ValueError`` would previously have absorbed as if it were this same
     "unknown mkey" case -- now propagates instead of being silently counted as one quiet
     failure a night.
+
+    Final review item 1: the deadline is checked once per mkey, before that mkey's own poll
+    (never mid-poll -- a poll already in flight always finishes). Once tripped it stays tripped
+    for the rest of this call: every remaining mkey gets a skipped ``docket_polls`` row
+    (:func:`_skip_docket_poll`, reason ``"skipped: deadline"``) instead of a real fetch. The
+    circuit breaker counts consecutive ``DocketOutcome.failed`` polls (never the unknown-mkey
+    check above, which is a store bug, not a fetch failure) and, once tripped, likewise skips
+    every remaining mkey (reason ``"skipped: outage"``) -- a single non-failed poll resets the
+    count to zero.
     """
     watched = store.watched_mkeys(today=today.isoformat())
+    consecutive_failures = 0
+    breaker_tripped = False
+    deadline_tripped = False
     for mkey in watched:
+        if not deadline_tripped and _utc(now()) >= deadline:
+            deadline_tripped = True
+            _log.warning("docket side: run deadline reached, remaining polls skipped")
+        if deadline_tripped:
+            _skip_docket_poll(store, mkey, run_id=run_id, reason=_SKIPPED_DEADLINE)
+            tally.failures += 1
+            continue
+        if breaker_tripped:
+            _skip_docket_poll(store, mkey, run_id=run_id, reason=_SKIPPED_OUTAGE)
+            tally.failures += 1
+            continue
         if store.get_case(mkey) is None:
             _log.warning("docket mkey=%d failed=unknown-mkey", mkey)
             tally.failures += 1
@@ -370,8 +565,17 @@ def _docket_side(
         tally.suspected_renumbers += outcome.suspected_renumbers
         if outcome.failed is not None:
             tally.failures += 1
-        elif outcome.changed:
-            tally.changed_mkeys.add(mkey)
+            consecutive_failures += 1
+            if consecutive_failures >= CONSECUTIVE_FAILURES_TO_TRIP and not breaker_tripped:
+                breaker_tripped = True
+                _log.warning(
+                    "docket side: circuit breaker tripped after %d consecutive failures",
+                    consecutive_failures,
+                )
+        else:
+            consecutive_failures = 0
+            if outcome.changed:
+                tally.changed_mkeys.add(mkey)
     return watched
 
 
@@ -385,10 +589,17 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
     which share progress through one mutable :class:`_Tally` rather than each returning a
     growing tuple of counters (fix round 1, Minor 2).
 
-    ``verbose=True`` sets the ``ntsb_probable_cause.recorder`` logger to ``DEBUG`` -- the case
-    and docket sides (``recorder/cases.py``, ``recorder/dockets.py``) already emit a ``debug``
-    line per diff decision at that level; this function does not raise it back down afterwards,
-    since a night is one process's one run.
+    ``verbose=True`` sets the ``ntsb_probable_cause.recorder`` logger to ``DEBUG``. The case and
+    docket sides (``recorder/cases.py``, ``recorder/dockets.py``) then also emit a ``debug``
+    line per diff decision -- which evidence ROLE names differed (never a value) on the case
+    side, and which document IDs appeared, were revised, or disappeared (never a title) on the
+    docket side (final review item 3; spec §9.1: "which fields differed, which document numbers
+    were compared"). This function does not raise the level back down afterwards, since a
+    night is one process's one run.
+
+    The run deadline and per-side circuit breaker (final review item 1; see the module
+    docstring) bound how long a down API or docket site can eat into the night before the
+    scheduler's own timeout would otherwise kill the task outright.
 
     See :class:`~ntsb_probable_cause.store.RunSummary` for exactly what each summary field
     counts.
@@ -398,6 +609,7 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
 
     start = _utc(inputs.now())
     today = start.date()
+    deadline = start + timedelta(minutes=RUN_DEADLINE_MINUTES)
     tally = _Tally()
 
     # -- 1. begin the run ----------------------------------------------------------------------
@@ -410,7 +622,9 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
     # -- 2-3. the month window, then fetch and observe ---------------------------------------
     step_start = _utc(inputs.now())
     watched_before = _ongoing_by_month(inputs.store, today)
-    months, all_seen, errored_months = _case_side(inputs, run_id=run_id, today=today, tally=tally)
+    months, all_seen, errored_months = _case_side(
+        inputs, run_id=run_id, today=today, tally=tally, deadline=deadline
+    )
     _log_step("window, fetch months, observe", step_start, _utc(inputs.now()))
 
     # -- 4. mark vanished cases -------------------------------------------------------------
@@ -434,7 +648,15 @@ def run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
 
     # -- 6. poll every watched docket ---------------------------------------------------------
     step_start = _utc(inputs.now())
-    watched = _docket_side(inputs.store, inputs.docket, run_id=run_id, today=today, tally=tally)
+    watched = _docket_side(
+        inputs.store,
+        inputs.docket,
+        run_id=run_id,
+        today=today,
+        tally=tally,
+        now=inputs.now,
+        deadline=deadline,
+    )
     _log_step("poll dockets", step_start, _utc(inputs.now()))
 
     # -- finish the run -------------------------------------------------------------------------

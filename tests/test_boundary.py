@@ -3,10 +3,12 @@ import gzip
 import json
 import sqlite3
 from collections.abc import Callable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from tests.boundary import (
     CODE_LENGTH_THRESHOLD,
     RecordingBatchRunner,
@@ -25,9 +27,12 @@ from tests.boundary import (
     withheld_windows,
 )
 from tests.test_attach import _docket as _small_docket
+from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
 
-from ntsb_probable_cause import fields
+from ntsb_probable_cause import fields, sources
+from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.attach import attach_docket
+from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
@@ -39,6 +44,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
 )
 from ntsb_probable_cause.recorder.cases import observe_case
+from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
@@ -426,6 +432,7 @@ def _read_store_bytes(db_path: Path) -> bytes:
 
 
 _PRELIM_TEXT = "Preliminary information indicates the flight departed on a local flight."
+SAVED = Path("tests/fixtures/docket/ERA17LA217/listing.html").read_bytes().decode("utf-8")
 
 
 def _build_two_night_store(
@@ -495,6 +502,126 @@ def test_store_boundary_test_fails_when_a_snapshot_role_leaks(
     )
     with pytest.raises(AssertionError, match="withheld string in store"):
         test_store_never_holds_synthesis_or_verdict(tmp_path, closing_record)
+
+
+def _with_regulation(record: Mapping[str, object], value: str | None) -> dict[str, object]:
+    """A deep copy of ``record`` with its regulation field set to ``value``."""
+    edited = copy.deepcopy(dict(record))
+    aircrafts = edited["aircrafts"]
+    assert isinstance(aircrafts, list)
+    owner_operators = aircrafts[0]["ownerOperators"]
+    assert isinstance(owner_operators, list)
+    owner_operators[0]["regulationFlightConductedUnder"] = value
+    return edited
+
+
+def test_run_night_store_never_holds_synthesis_or_verdict(
+    tmp_path: Path, closing_record: dict[str, object], respx_mock: respx.MockRouter
+) -> None:
+    """The same boundary check as ``test_store_never_holds_synthesis_or_verdict``, but driven
+    through ``run_night`` itself rather than by calling ``observe_case`` directly -- the whole
+    nightly pass (the month fetch/walk-back, the change feed, the docket poll) is real code, not
+    a shortcut around it, and every table `sqlite_master` lists (bar `schema_version`, which
+    holds no case data at all) gets at least one row: `runs`, `cases`, `status_events`,
+    `field_snapshots`, `prelim_narratives`, `regulation_events` (a forced regulation change
+    across the two nights), `docket_polls`, `listing_pages`, `documents`, `document_events`,
+    `change_feed` (one row) and `run_months`. `sqlite_master` is enumerated directly, not a
+    hard-coded list, so a table added later is automatically covered too.
+    """
+    mkey = closing_record["mKey"]
+    assert isinstance(mkey, int)
+    event_date = str(closing_record["eventDate"])[:10]
+    today = date.fromisoformat(event_date)  # night 1 walks back from the event's own month
+
+    night1_record = _with_regulation(as_ongoing(closing_record, prelim_text=_PRELIM_TEXT), "091")
+    night2_record = _with_regulation(closing_record, "135")  # a real regulation CHANGE
+
+    def _month_response(request: httpx.Request) -> httpx.Response:
+        start = request.url.params["startDate"]
+        records = [night1_record] if start == today.replace(day=1).isoformat() else []
+        return httpx.Response(200, json=_month_body(records))
+
+    respx_mock.get(MONTH_URL).mock(side_effect=_month_response)
+    respx_mock.get(FEED_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "mkey": mkey,
+                    "mode": "Aviation",
+                    "lastChangeDateTimeUtc": "2026-09-30T10:00:00Z",
+                    "stepNumber": 1,
+                    "stepId": "prelim",
+                    "caseClosed": False,
+                }
+            ],
+        )
+    )
+    respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=SAVED))
+
+    db_path = tmp_path / "r.sqlite"
+    store = Store(db_path)
+    store.migrate()
+    api = NtsbClient("k", sleep=lambda _seconds: None)
+    docket = DocketClient(None, seconds_per_request=2.0, sleep=lambda _seconds: None)
+
+    night1 = NightInputs(
+        api=api,
+        docket=docket,
+        store=store,
+        now=lambda: datetime(today.year, today.month, today.day, 3, 0, 0, tzinfo=UTC),
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    run_night(night1)
+
+    # Night 2: re-fetches the (now singly-watched) month directly, and the case closes.
+    respx_mock.get(MONTH_URL).mock(
+        return_value=httpx.Response(200, json=_month_body([night2_record]))
+    )
+    tomorrow = today + timedelta(days=1)
+    night2 = NightInputs(
+        api=api,
+        docket=docket,
+        store=store,
+        now=lambda: datetime(tomorrow.year, tomorrow.month, tomorrow.day, 3, 0, 0, tzinfo=UTC),
+        commit_sha="abc1234",
+        dirty=False,
+    )
+    run_night(night2)
+    store.close()
+
+    check_conn = sqlite3.connect(db_path)
+    try:
+        tables = {
+            row[0]
+            for row in check_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        checked = tables - {"schema_version"}
+        assert checked  # sanity: the migration actually created tables
+        empty_tables = [
+            name
+            for name in checked
+            # `name` is read from sqlite_master, not external input.
+            for (count,) in [check_conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()]  # noqa: S608
+            if count == 0
+        ]
+        assert not empty_tables, f"tables with no rows at all: {empty_tables}"
+    finally:
+        check_conn.close()
+
+    assert fields.probable_cause(closing_record)
+    assert fields.factual_narrative(closing_record)
+    assert fields.analysis_narrative(closing_record)
+    qualifying_codes = [
+        code
+        for code in fields.occurrence_codes(closing_record) + fields.finding_codes(closing_record)
+        if len(code) >= CODE_LENGTH_THRESHOLD
+    ]
+    assert qualifying_codes
+
+    assert_raw_bytes_clean(_read_store_bytes(db_path), closing_record)
+    assert_logical_store_clean(db_path, closing_record)
 
 
 def test_withheld_windows_include_the_escaped_form(closing_record: dict[str, object]) -> None:

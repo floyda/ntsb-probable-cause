@@ -6,25 +6,28 @@ Task 9); close the store; push it back (unless ``--dry-run``); exit.
 
 Failure rules (controller note 2, spec §9.1's "the store is saved once, at the end"):
 
-- A missing or unusable ``NTSB_API_KEY``, or a commit identity that cannot be determined
-  (neither ``NTSB_COMMIT_SHA`` nor ``git`` works), is a clean, one-line refusal on stderr and
-  exit 1 -- the same shape ``apps/eval`` uses for a :class:`~ntsb_probable_cause.errors.
-  ConfigurationError`, never a traceback, and never a value from the environment.
+- A missing or unusable ``NTSB_API_KEY``, a commit identity that cannot be determined (neither
+  ``NTSB_COMMIT_SHA`` nor ``git`` works), or a store whose schema is newer than this code knows
+  (final review item 5b), is a clean, one-line refusal on stderr and exit 1 -- the same shape
+  ``apps/eval`` uses for a :class:`~ntsb_probable_cause.errors.ConfigurationError`, never a
+  traceback, and never a value from the environment.
 - A pull failure (fix round 2, Minor 4) -- anything other than the missing-object case
   :func:`~ntsb_probable_cause.store.sync.pull` already reads as "first run: start empty" -- is
   logged with its traceback and exits 1 *before* :class:`~ntsb_probable_cause.store.Store` is
   ever constructed, so a failed pull never silently starts an empty local store next to a real
   one still sitting on S3.
 - Any *other* exception -- in particular, one that escapes :func:`~ntsb_probable_cause.
-  recorder.run.run_night` itself -- is logged with its full traceback, the store is closed
-  (but never pushed), and this exits 1. For a **local** store the local path already *is* the
-  store, so whatever the night wrote before it failed stays in place -- those are real,
-  already-committed observations, and only the run's own ``runs`` row is left unfinished. For
-  an **S3** store the local working file is a temporary copy: closing it checkpoints the WAL
-  onto disk, but skipping the push means that copy, and everything the night wrote to it, is
-  discarded -- tonight's rows really are lost, and tomorrow's run sees a wider interval, never
-  a false date (this is the one place the two backends genuinely differ; the bridge runbook,
-  ``docs/runbooks/recorder-bridge.md``, states it plainly).
+  recorder.run.run_night` itself -- is logged (:func:`_log_run_failure`, final review item 5a:
+  the exception's class name and traceback FRAMES, deliberately never its own message, which
+  can carry case text), the store is closed (but never pushed), and this exits 1. For a
+  **local** store the local path already *is* the store, so whatever the night wrote before it
+  failed stays in place -- those are real, already-committed observations, and only the run's
+  own ``runs`` row is left unfinished. For an **S3** store the local working file is a
+  temporary copy: closing it checkpoints the WAL onto disk, but skipping the push means that
+  copy, and everything the night wrote to it, is discarded -- tonight's rows really are lost,
+  and tomorrow's run sees a wider interval, never a false date (this is the one place the two
+  backends genuinely differ; the bridge runbook, ``docs/runbooks/recorder-bridge.md``, states
+  it plainly).
 - On success the store is closed, then pushed (skipped under ``--dry-run``), and this exits 0.
 """
 
@@ -33,6 +36,7 @@ import logging
 import subprocess
 import sys
 import time
+import traceback
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +58,22 @@ _log = logging.getLogger(__name__)
 # discarded 19 GB of already-fetched docket documents when the worktree was later removed (see
 # `settings.py`'s own note on `docket_dir`, which the same incident also fixed).
 _S3_WORK_FILENAME = "recorder-work.sqlite"
+
+
+def _log_run_failure(error: BaseException) -> None:
+    """Log a run failure without the exception's own MESSAGE (final review item 5a).
+
+    ``logging.exception``/``Logger.error(..., exc_info=True)`` would append
+    ``traceback.format_exception``'s output, whose final line is ``f"{type(error).__name__}:
+    {error}"`` -- and a real failure inside ``run_night`` can come from deep in ``split_record``
+    or an evidence extractor, where a pydantic ``ValidationError``'s own message embeds the
+    offending ``input_value`` -- case text, in a log CloudWatch keeps for 30 days. This logs the
+    exception's class name and the traceback's frames (file, line, function -- the part that
+    actually helps diagnose a crash) via ``traceback.format_tb``, which never touches the
+    exception's message at all.
+    """
+    frames = "".join(traceback.format_tb(error.__traceback__))
+    _log.error("run failed: %s\n%s", type(error).__name__, frames)
 
 
 def _commit_identity(settings: Settings) -> tuple[str, bool]:
@@ -148,7 +168,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     store = Store(local)
-    store.migrate()
+    try:
+        store.migrate()
+    except ConfigurationError as error:
+        # Final review item 5b: a store whose schema_version is newer than this code knows
+        # (a rolled-back deploy) is refused loudly, the same clean one-line shape every other
+        # ConfigurationError in this app uses -- never a traceback, never a value from the
+        # environment.
+        print(f"{args.command}: {error}", file=sys.stderr)
+        return 1
     try:
         with (
             NtsbClient(api_key, requests_per_minute=settings.requests_per_minute) as api,
@@ -163,8 +191,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dirty=dirty,
             )
             run_night(inputs, verbose=args.verbose)
-    except Exception:
-        _log.exception("run failed")
+    except Exception as error:
+        _log_run_failure(error)
         store.close()
         return 1
 

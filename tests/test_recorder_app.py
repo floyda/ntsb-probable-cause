@@ -106,6 +106,27 @@ def test_run_night_exception_returns_1_does_not_push_and_closes_the_store(
     assert "ValueError" in caplog.text  # the traceback landed in the log, not just a bare line
 
 
+def test_run_failure_never_logs_the_exceptions_own_message(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Final review item 5a: the exception's own message can carry case text (e.g. a pydantic
+    ValidationError's `input_value`) -- only the class name and traceback frames are logged."""
+    sentinel = "SENTINEL-CASE-TEXT-8f3c1a9e"
+
+    def _fake_run_night(inputs: NightInputs, *, verbose: bool = False) -> RunSummary:
+        raise ValueError(sentinel)
+
+    monkeypatch.setattr(app, "run_night", _fake_run_night)
+    monkeypatch.setattr(app, "push", lambda *a, **k: None)
+
+    with caplog.at_level(logging.ERROR, logger="apps.recorder.__main__"):
+        assert app.main(["run"]) == 1
+
+    assert "run failed" in caplog.text
+    assert "ValueError" in caplog.text
+    assert sentinel not in caplog.text
+
+
 def test_explicit_commit_sha_is_used_and_git_is_never_called(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -293,6 +314,34 @@ def test_a_pull_failure_is_logged_and_never_reaches_run_night_or_push(
     assert push_called == []
     assert "pull failed" in caplog.text
     assert "s3 access denied" in caplog.text  # the traceback landed in the log
+
+
+def test_a_store_newer_than_this_code_knows_is_a_clean_exit_1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review item 5b: `Store.migrate()` refuses a store whose schema_version is already
+    higher than this code knows; the app exits 1 cleanly, the same shape every other
+    ConfigurationError in this app uses, and never even reaches run_night."""
+    store_path = tmp_path / "data" / "recorder.sqlite"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    setup = Store(store_path)
+    setup.migrate()
+    setup.connection.execute("UPDATE schema_version SET version = 99")
+    setup.connection.commit()
+    setup.close()
+
+    called: list[bool] = []
+
+    def _run_night_must_not_run(*_a: object, **_k: object) -> RunSummary:
+        called.append(True)
+        return _fake_summary()
+
+    monkeypatch.setattr(app, "run_night", _run_night_must_not_run)
+
+    assert app.main(["run"]) == 1
+    assert called == []
+    err = capsys.readouterr().err
+    assert "99" in err
 
 
 def test_a_pull_failure_never_opens_the_store(

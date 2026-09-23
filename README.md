@@ -222,6 +222,7 @@ make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sent
 make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
+make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
 make record             # uv run ntsb-record run — one nightly pass (S2.5)
 make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
 make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
@@ -282,6 +283,11 @@ no longer exists, and the script is usually the evidence that removed it).
 | `score_handcheck` | **deprecated** | `s2-handcheck.txt`; all three mechanisms it grades were removed by 0051, 0052 and 0056 |
 | `change_feed_probe` | one-shot | `tests/fixtures/api/change_feed_shape.json` and `s25-change-feed.txt` (spec S2.5 §5.3, 0065) |
 | `recorder_report` | live tool | `s25-recorder-report.txt` from `NTSB_STORE` — counts only (spec S2.5 §10.2) |
+| `ongoing_docket_probe` | one-shot | `s25-ongoing-dockets.txt` — fixed the recorder's `no-docket` outcome (spec §10.1); `outcome_for_error` and the "not released" check it used have since moved into the library (0059) |
+
+`scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
+-m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
+ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/recorder-bridge.md`.
 
 `scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result.
 

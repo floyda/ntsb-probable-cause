@@ -219,6 +219,22 @@ def _apply_diff(store: Store, mkey: int, diff: DiffResult, *, run_id: int) -> No
         *diff.disappeared,
     ):
         store.upsert_document(row)
+    # Final review item 3: `--verbose` (spec §9.1: "which document numbers were compared")
+    # logs the document IDs each diff decision touched -- integers only, never a title.
+    if diff.appeared:
+        _log.debug(
+            "docket mkey=%d appeared doc_ids=%s", mkey, [row.doc_id for row in diff.appeared]
+        )
+    if diff.revised:
+        _log.debug(
+            "docket mkey=%d revised doc_ids=%s", mkey, [new.doc_id for _old, new in diff.revised]
+        )
+    if diff.disappeared:
+        _log.debug(
+            "docket mkey=%d disappeared doc_ids=%s",
+            mkey,
+            [row.doc_id for row in diff.disappeared],
+        )
     for row in diff.appeared:
         store.add_document_event(
             mkey,

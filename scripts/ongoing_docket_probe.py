@@ -5,6 +5,12 @@ Status
     outcome of the recorder (spec §6.2) from what the site actually returns for a case with no
     public docket. Nothing is cached, no case number is printed (decision 0024).
 
+    What has changed since (0059): this probe originally carried its own copies of
+    ``outcome_for_error`` (classifying a ``DocketError`` message) and the "not released" page
+    check; Task 8 moved both into the library proper (``docket/client.py`` and
+    ``docket/listing.py`` respectively, so the probe and the recorder share one
+    implementation) and this script now imports them from there, unchanged in behaviour.
+
 Usage:
     uv run python -m scripts.ongoing_docket_probe [--n 100] [--seed 2026] \
         [--out docs/results/s25-ongoing-dockets.txt]

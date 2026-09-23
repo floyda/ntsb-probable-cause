@@ -334,6 +334,10 @@ placed after the merge, not before it.
 
 ## Stage 6 — Move the bridge's data to AWS
 
+**If you never started the Mac bridge, skip this stage**: the first cloud night finds an empty
+bucket and does a normal first night (the walk-back `recorder/window.py`'s `first_run_window`
+runs, the same as any brand-new store) — there is nothing to move.
+
 The bridge (`docs/runbooks/recorder-bridge.md`) has been writing to a **local** SQLite file
 since the day the recorder merged. Move it to AWS now, in this order, so the cloud run
 continues from where the bridge left off rather than starting from an empty store.
@@ -347,7 +351,22 @@ run the full 90-minute limit plus the 60-second kill grace the `timeout` wrapper
 upload racing against the scheduled task's own download/upload of the same object is exactly
 the "two writers" situation the whole design avoids elsewhere. Pick any other time.
 
-**1. Stop the bridge**, so nothing on the Mac writes to the local file again:
+**1. Check the bridge is not mid-run, then stop it**, so nothing on the Mac writes to the
+local file again. The bridge fires at 03:00 **local** time (not UTC — see
+`docs/runbooks/recorder-bridge.md` for why local time shifts against UTC across the year), so
+this check is against the Mac's own clock, not the cloud schedule's UTC window above:
+
+```
+launchctl print gui/$(id -u)/dev.floyda.ntsb-record | grep state
+tail -1 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.log
+```
+
+The first command must print `state = waiting` (not `running`); the second must end with a
+`run done ...` line, not a bare `run start` with nothing after it. If either says the bridge is
+still running, wait for it to finish before continuing — stopping it mid-run risks the exact
+half-written night the store's own transaction boundaries are designed to prevent from ever
+being READ as a finished one, but a `bootout` mid-run still kills the process outright rather
+than letting it reach its own clean exit. Once both checks agree the bridge is idle:
 
 ```
 launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
@@ -469,6 +488,33 @@ yourself after the first few nights, until the pattern is familiar.
 
 **This log is spec §14 item 4's own done-criterion — the last thing needed before this
 pull request can merge.**
+
+---
+
+### Running the counts-only report against the AWS store
+
+`scripts/recorder_report.py` already reads an `s3://` `NTSB_STORE` — nothing here needed
+changing; this is where reading it from your own machine is written down. It pulls the S3
+object to a temporary file under `NTSB_DATA_DIR` (never opening or writing the S3 object
+itself) and opens that copy strictly read-only, the same as it does for a local file.
+
+```
+uv sync --extra aws
+AWS_PROFILE=ntsb NTSB_STORE=s3://<BucketName from stage 4>/recorder.sqlite \
+  uv run python -m scripts.recorder_report
+```
+
+**What this does.** `uv sync --extra aws` installs `boto3` (not part of the default install,
+since only this S3 path needs it — `store/sync.py`). The second command downloads the current
+store and prints the same counts-only report `make recorder-report` prints against a local
+file: run summaries, arrival percentiles, the change-feed comparison, regulation transitions,
+the closure tail, suspected re-numbers. Add `--out docs/results/s25-recorder-report.txt` to
+also save it.
+
+**What it costs.** A few cents at most for the download (the same order as stage 6's upload).
+
+**How to check.** The report's own "nights recorded" and "distinct finished nights" lines
+should match what stage 8's CloudWatch log shows has actually run.
 
 ---
 

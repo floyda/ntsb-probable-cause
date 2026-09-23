@@ -152,6 +152,10 @@ def _apply_fields(
         value_json = json.dumps(value, sort_keys=True)
         if previous.get(role.value) == value_json:
             continue
+        # Final review item 3: `--verbose` (spec §9.1: "which fields differed") logs the ROLE
+        # NAME only, never the value on either side of the diff -- a role name is a fixed,
+        # short identifier from `EvidenceRole` (e.g. "weather_condition"), never case text.
+        _log.debug("case mkey=%d field differed role=%s", mkey, role.value)
         store.add_field_snapshot(
             mkey,
             role=role.value,
@@ -179,13 +183,31 @@ def _apply_prelim(
 
 
 def observe_case(
-    store: Store, raw: Mapping[str, object], *, run_id: int, today: date
+    store: Store,
+    raw: Mapping[str, object],
+    *,
+    run_id: int,
+    today: date,
+    new_case_absent_run: int | None = None,
 ) -> CaseOutcome:
     """Split one record, diff it against the case's last snapshot, and write what changed.
 
     Every write this call makes lands in one transaction: a case is recorded whole or not at
     all. Nothing is written if ``raw`` has no usable ``mKey`` or ``eventDate``, or if
     :func:`~ntsb_probable_cause.records.split.split_record` raises.
+
+    ``new_case_absent_run`` (final review item 2; Andy's decision 2026-09-23) is the
+    ``absent_run`` to use ONLY when this mkey has never been seen before (``existing is
+    None``) -- ordinarily ``recorder.run``'s ``Store.last_clean_fetch(month_of(event_date),
+    before_run=run_id)``: the latest earlier run that fetched this case's event month
+    completely and without error, if any. It applies uniformly to the first-sight field
+    snapshots, the prelim row and the first status event -- every place this function would
+    otherwise have written ``absent_run=None`` for a brand-new case. It is ignored entirely for
+    a case that already has a stored row (``existing is not None``): that case's own
+    ``last_case_run`` is always the correct ``absent_run`` regardless of what this parameter
+    holds. ``None`` (the default, and always what a store's very first night computes) means
+    what it always meant: no run ever observed this case's absence, so first sight is exactly
+    that -- a lower bound, not a true arrival.
     """
     mkey = raw.get("mKey")
     if not isinstance(mkey, int):
@@ -213,7 +235,7 @@ def observe_case(
         return CaseOutcome(mkey=mkey, changed=False, failed=failed)
 
     existing = store.get_case(mkey)
-    absent = existing.last_case_run if existing else None
+    absent = existing.last_case_run if existing else new_case_absent_run
     old_status = existing.status if existing else None
     watch_until = existing.watch_until if existing else None
 

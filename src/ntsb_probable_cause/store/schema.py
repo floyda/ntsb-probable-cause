@@ -157,4 +157,24 @@ MIGRATIONS: tuple[str, ...] = (
     );
     CREATE INDEX change_feed_mkey ON change_feed (mkey);
     """,
+    # Migration 3 (final-review fix, item 2; Andy's decision 2026-09-23: "Add it"). Records
+    # which event months a run fetched CLEANLY -- to completion, with no ApiError, and not cut
+    # short by the outage budget's deadline or circuit breaker (item 1). One row per
+    # (run_id, month) actually fetched cleanly; a month skipped or failed gets no row at all.
+    #
+    # This exists so a case seen for the very first time can still get a TRUE absent side
+    # (`field_snapshots.absent_run IS NOT NULL`) instead of always reading as a first-sight
+    # observation: `Store.last_clean_fetch` finds the latest EARLIER run that cleanly fetched
+    # the new case's event month, and `recorder.cases.observe_case`'s `new_case_absent_run`
+    # parameter uses that as the first-sight snapshots' `absent_run` when the case genuinely
+    # was not there before. Never edit migrations 1 or 2 above -- a live store may already
+    # exist at either version, and `Store.migrate` only ever applies scripts after the current
+    # version.
+    """
+    CREATE TABLE run_months (
+        run_id INTEGER NOT NULL,
+        month TEXT NOT NULL,
+        PRIMARY KEY (run_id, month)
+    );
+    """,
 )

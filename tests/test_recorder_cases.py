@@ -587,3 +587,76 @@ def test_is_empty_is_false_for_a_real_value(
     non_empty_value: str | float | tuple[str, ...],
 ) -> None:
     assert not _is_empty(non_empty_value)
+
+
+# --- new_case_absent_run (final review item 2; Andy's decision 2026-09-23) -----------------
+
+
+def test_new_case_absent_run_becomes_the_first_sight_absent_side(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """A case never seen before, whose `new_case_absent_run` is given (an earlier run cleanly
+    fetched its event month and did not find it), gets a TRUE arrival -- `absent_run` on its
+    first-sight field snapshots and status event, not `None`."""
+    out = observe_case(
+        store, ongoing_record, run_id=5, today=date(2026, 10, 5), new_case_absent_run=2
+    )
+    assert out.changed
+    assert out.failed is None
+
+    snapshot_absent = store.connection.execute(
+        "SELECT DISTINCT absent_run FROM field_snapshots WHERE mkey=?", (out.mkey,)
+    ).fetchall()
+    assert snapshot_absent == [(2,)]
+
+    status_absent = store.connection.execute(
+        "SELECT absent_run FROM status_events WHERE mkey=?", (out.mkey,)
+    ).fetchone()
+    assert status_absent == (2,)
+
+
+def test_new_case_absent_run_none_is_a_first_sight_observation(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """The default (no earlier run ever fetched the month cleanly, or this is the store's very
+    first night): `absent_run` stays `None`, exactly as before this parameter existed."""
+    out = observe_case(store, ongoing_record, run_id=1, today=date(2026, 10, 1))
+    snapshot_absent = store.connection.execute(
+        "SELECT DISTINCT absent_run FROM field_snapshots WHERE mkey=?", (out.mkey,)
+    ).fetchall()
+    assert snapshot_absent == [(None,)]
+
+
+def test_new_case_absent_run_is_ignored_for_an_already_known_case(
+    store: Store, ongoing_record: dict[str, object]
+) -> None:
+    """A case the store already has a row for uses its OWN `last_case_run`, never
+    `new_case_absent_run` -- the parameter only ever applies to a genuinely new mkey."""
+    observe_case(store, ongoing_record, run_id=1, today=date(2026, 10, 1))
+    changed = dict(ongoing_record)
+    changed["highestInjuryLevel"] = "Fatal"
+
+    observe_case(store, changed, run_id=3, today=date(2026, 10, 3), new_case_absent_run=999)
+
+    row = store.connection.execute(
+        "SELECT absent_run FROM field_snapshots WHERE role='injury_level' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row == (1,)  # the case's own last_case_run (1), never the passed-in 999
+
+
+# --- verbose diff logging (final review item 3) --------------------------------------------
+
+
+def test_verbose_logs_the_differing_role_name_never_the_value(
+    store: Store, ongoing_record: dict[str, object], caplog: pytest.LogCaptureFixture
+) -> None:
+    changed = dict(ongoing_record)
+    changed["highestInjuryLevel"] = "Fatal"
+
+    with caplog.at_level(logging.DEBUG, logger="ntsb_probable_cause.recorder.cases"):
+        observe_case(store, ongoing_record, run_id=1, today=date(2026, 10, 1))
+        observe_case(store, changed, run_id=2, today=date(2026, 10, 2))
+
+    diff_lines = [r.getMessage() for r in caplog.records if "field differed" in r.getMessage()]
+    assert any("role=injury_level" in line for line in diff_lines)
+    assert not any("Fatal" in line for line in diff_lines)

@@ -1,6 +1,7 @@
 """The docket side of the nightly run: outcomes, the document diff, stored pages (Task 8)."""
 
 import json
+import logging
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -236,6 +237,32 @@ def test_added_row_is_one_appeared_with_interval(
     out = _poll(store, client, respx_mock, ADDED, 2)
     assert out.new_documents == 1
     assert _events(store)[-1] == ("appeared", 1, 2)
+
+
+def test_verbose_logs_the_appeared_doc_id_never_a_title(
+    store: Store,
+    client: DocketClient,
+    respx_mock: respx.MockRouter,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Final review item 3: `--verbose` (spec §9.1: "which document numbers were compared")
+    logs the appeared/revised/disappeared document IDs -- integers only, never a title."""
+    with caplog.at_level(logging.DEBUG, logger="ntsb_probable_cause.recorder.dockets"):
+        _poll(store, client, respx_mock, SAVED, 1)
+        _poll(store, client, respx_mock, ADDED, 2)
+        _poll(store, client, respx_mock, REPAGED, 3)
+        _poll(store, client, respx_mock, REMOVED, 4)
+
+    diff_lines = [
+        r.getMessage()
+        for r in caplog.records
+        if "appeared doc_ids" in r.getMessage()
+        or "revised doc_ids" in r.getMessage()
+        or "disappeared doc_ids" in r.getMessage()
+    ]
+    assert any("40469999" in line for line in diff_lines)  # ADDED's new doc id
+    assert not any("Docket" in line for line in diff_lines)  # never a title/page word
+    assert not any(re.search(r"[A-Za-z]{4,}", line.split("doc_ids=")[1]) for line in diff_lines)
 
 
 def test_page_count_change_is_revised(
