@@ -174,12 +174,13 @@ class NtsbRecorderStack(Stack):
             allow_all_outbound=True,
         )
 
-        # 4. ECR repository, ECS cluster, log group and task definition -- the image registry.
-        # Tag mutability stays at its CDK default,
-        # `MUTABLE` (the carried constraint above); a lifecycle rule keeps only the 5 newest
-        # images, so storage cost does not grow forever; `image_scan_on_push` is the free basic
-        # vulnerability scan. Kept on `cdk destroy` (RETAIN), so a re-deploy never loses the
-        # images CI already pushed. Cost: a few cents a month.
+        # 4. ECR repository, ECS cluster, log group and task definition -- everything the
+        # container itself needs. First, the ECR repository: the image registry. Tag
+        # mutability stays at its CDK default, `MUTABLE` (the carried constraint above); a
+        # lifecycle rule keeps only the 5 newest images, so storage cost does not grow forever;
+        # `image_scan_on_push` is the free basic vulnerability scan. Kept on `cdk destroy`
+        # (RETAIN), so a re-deploy never loses the images CI already pushed. Cost: a few cents
+        # a month.
         repository = ecr.Repository(
             self,
             "Repository",
@@ -319,8 +320,11 @@ class NtsbRecorderStack(Stack):
                 # `maximum_retry_attempts=0` on the mistaken assumption that any retry risked a
                 # second writer -- see the dated Deviation entry that corrects it.
                 # `maximum_event_age_in_seconds=3600` bounds how long a retry is still worth
-                # attempting (an hour is well inside the 03:00-04:30 UTC window the runbook
-                # already treats as "the night's run").
+                # attempting -- an hour after the scheduled 03:00 UTC start, so the latest a
+                # retried task can actually *start* is about 04:00 UTC; from there it can still
+                # run the full 90 minutes plus the 60-second kill grace (the `timeout` wrapper
+                # above), so the true end of "the night's run" the runbook treats as its
+                # exclusion window is about 05:31 UTC, not 04:30.
                 retry_policy=scheduler.CfnSchedule.RetryPolicyProperty(
                     maximum_retry_attempts=2,
                     maximum_event_age_in_seconds=3600,

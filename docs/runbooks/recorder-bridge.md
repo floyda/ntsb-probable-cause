@@ -481,17 +481,20 @@ directory (stage 1).
 
 ## Stage 8 — Retiring the bridge, once AWS takes over
 
-**This stage does not happen on its own — it is `docs/runbooks/recorder-deploy.md`'s stage 7,
+**This stage does not happen on its own — it is `docs/runbooks/recorder-deploy.md`'s stage 6,
 run from that runbook, not this one.** (Fix round 1, Important 2, 2026-09-23: this section used
 to give its own two steps directly, in a different order and with no verification step; that
 version is gone, not just superseded in place, because having the same procedure written twice
 is exactly how the two copies drift apart and start contradicting each other. This page now
-only orients you to when it happens, and points at the one copy of the steps.)
+only orients you to when it happens, and points at the one copy of the steps. Fix round 2,
+Important, 2026-09-23: that other runbook's own stage numbers changed again, moving the CI
+hand-over to after the first scheduled night rather than before it — the number here is
+updated to match, not left stale a second time.)
 
 The full sequence — stop the bridge, checkpoint any unflushed write-ahead log, upload the
 store, and verify the upload is byte-for-byte complete before the schedule is trusted — is
-`docs/runbooks/recorder-deploy.md` stage 7, and it happens **before** that runbook's first
-manual cloud run (its stage 8), not after "AWS has its own first successful night" as this page
+`docs/runbooks/recorder-deploy.md` stage 6, and it happens **before** that runbook's first
+manual cloud run (its stage 7), not after "AWS has its own first successful night" as this page
 used to say. In short: the bridge is retired as one step in *getting* AWS its first successful
 night, not after one has already happened on an empty store.
 

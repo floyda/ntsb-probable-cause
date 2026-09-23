@@ -29,7 +29,11 @@ from aws_cdk.assertions import Match, Template
 
 _INFRA_DIR = Path(__file__).resolve().parents[1] / "infra"
 sys.path.insert(0, str(_INFRA_DIR))
-from recorder_stack import NtsbRecorderStack  # noqa: E402 -- must follow the sys.path insert above
+# Both of these must follow the sys.path insert above. Importing `app` (fix round 2, N6) is
+# safe -- its stack construction and `app.synth()` call live behind `if __name__ ==
+# "__main__":`, which a plain `import` never satisfies, so importing it here runs nothing.
+import app as recorder_app  # noqa: E402
+from recorder_stack import NtsbRecorderStack  # noqa: E402
 
 _TEST_ACCOUNT = "123456789012"
 _TEST_REGION = "eu-west-2"
@@ -429,7 +433,7 @@ def test_outputs_include_bucket_log_group_role_and_repository(template: Template
 
 def test_bucket_and_repository_have_deletion_policy_retain(template: Template) -> None:
     """The bucket and the ECR repository are the two resources `docs/runbooks/
-    recorder-deploy.md` stage 9 says survive `cdk destroy` -- checked here as the actual
+    recorder-deploy.md` stage 10 says survive `cdk destroy` -- checked here as the actual
     CloudFormation `DeletionPolicy`, not just the CDK-level `removal_policy` prop, since that
     is what really governs what `cdk destroy` does to the resource."""
     as_json = template.to_json()
@@ -440,7 +444,7 @@ def test_bucket_and_repository_have_deletion_policy_retain(template: Template) -
 
 def test_log_group_also_has_deletion_policy_retain(template: Template) -> None:
     """Not one of the brief's original two RETAIN resources, but true of this stack as built,
-    and `docs/runbooks/recorder-deploy.md` stage 9 says so explicitly -- checked directly so a
+    and `docs/runbooks/recorder-deploy.md` stage 10 says so explicitly -- checked directly so a
     future change to the log group's `removal_policy` cannot silently make the runbook wrong."""
     as_json = template.to_json()
     (log_group,) = [r for r in as_json["Resources"].values() if r["Type"] == "AWS::Logs::LogGroup"]
@@ -450,7 +454,16 @@ def test_log_group_also_has_deletion_policy_retain(template: Template) -> None:
 def test_scheduler_pass_role_is_scoped_to_exactly_the_two_task_roles(template: Template) -> None:
     """Fargate assumes the task's own two roles (task role, execution role) when it starts the
     container; the scheduler's `iam:PassRole` grant must name exactly those two ARNs, not every
-    role in the account."""
+    role in the account -- and not merely *some* two ARNs (fix round 2, N5): each is checked to
+    be a `Fn::GetAtt` naming the task definition's own task-role and execution-role logical
+    resources specifically, found by their construct-id prefix rather than a hard-coded hash
+    suffix (which CDK could regenerate on an unrelated change)."""
+    role_logical_ids = template.find_resources("AWS::IAM::Role").keys()
+    (task_role_id,) = [r for r in role_logical_ids if r.startswith("TaskDefinitionTaskRole")]
+    (execution_role_id,) = [
+        r for r in role_logical_ids if r.startswith("TaskDefinitionExecutionRole")
+    ]
+
     pass_role_statements = [
         s for s in _all_policy_statements(template) if _actions(s) == ["iam:PassRole"]
     ]
@@ -459,6 +472,8 @@ def test_scheduler_pass_role_is_scoped_to_exactly_the_two_task_roles(template: T
     resources = statement["Resource"]
     assert isinstance(resources, list)
     assert len(resources) == 2
+    assert {"Fn::GetAtt": [task_role_id, "Arn"]} in resources
+    assert {"Fn::GetAtt": [execution_role_id, "Arn"]} in resources
 
 
 def test_deploy_role_push_actions_are_scoped_to_the_repository_arn(template: Template) -> None:
@@ -482,9 +497,26 @@ def test_deploy_role_push_actions_are_scoped_to_the_repository_arn(template: Tem
 
 
 def test_security_group_has_no_ingress(template: Template) -> None:
-    """No inbound rule of any kind -- nothing on the internet can reach the task."""
+    """No inbound rule of any kind -- nothing on the internet can reach the task. Checked two
+    ways (fix round 2, N5): no inline `SecurityGroupIngress` property on the group itself, and
+    no separate `AWS::EC2::SecurityGroupIngress` resource either -- CDK can express an ingress
+    rule either way (the latter when a rule is added after construction, or with
+    `disable_inline_rules`), so only checking one would miss the other."""
     (security_group,) = template.find_resources("AWS::EC2::SecurityGroup").values()
     assert "SecurityGroupIngress" not in security_group["Properties"]
+    template.resource_count_is("AWS::EC2::SecurityGroupIngress", 0)
+
+
+def test_app_leaves_the_account_unresolved() -> None:
+    """`infra/app.py`'s own environment construction (fix round 2, N6), imported directly --
+    safe because `app.py`'s stack construction and `app.synth()` call are guarded behind `if
+    __name__ == "__main__":`, which a plain `import` never satisfies. Protects against
+    Important 3's fix (fix round 1) being quietly reintroduced, e.g. by reading
+    `CDK_DEFAULT_ACCOUNT` back into `env.account` -- if that happened, `stack.environment`
+    below would show a concrete account instead of `unknown-account`, and this test would fail
+    even though no `cdk synth` call (which alone reproduced the original bug) is involved."""
+    stack = NtsbRecorderStack(cdk.App(), "Test", env=recorder_app.deploy_environment())
+    assert stack.environment == "aws://unknown-account/eu-west-2"
 
 
 def test_log_retention_is_30_days(template: Template) -> None:

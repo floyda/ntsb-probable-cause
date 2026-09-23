@@ -28,19 +28,37 @@ in the calling shell.
 `-c github_oidc_provider_arn=<arn>` to import an account's existing
 `token.actions.githubusercontent.com` provider instead of creating a new one (an account may
 hold only one provider per URL). The runbook shows Andy how to check first.
+
+`deploy_environment()` is factored out of the `if __name__ == "__main__":` block below (fix
+round 2, N6) so a test can import this file and check the account really is left unresolved,
+without also running `app.synth()` -- importing this module never runs the block below, since
+the CDK CLI (`infra/cdk.json`'s `"app": "uv run python app.py"`) always executes it as a
+script, where `__name__` is `"__main__"`; a test's plain `import app` leaves `__name__` as
+`"app"`, so the guard is not a no-op for that case, it is what makes the import side-effect
+free.
 """
 
 import aws_cdk as cdk
 
 from recorder_stack import NtsbRecorderStack
 
-app = cdk.App()
 
-NtsbRecorderStack(
-    app,
-    "NtsbRecorderStack",
-    env=cdk.Environment(region="eu-west-2"),
-    github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
-)
+def deploy_environment() -> cdk.Environment:
+    """The account/region this stack deploys to.
 
-app.synth()
+    See the module docstring for why the account is deliberately left unset.
+    """
+    return cdk.Environment(region="eu-west-2")
+
+
+if __name__ == "__main__":
+    app = cdk.App()
+
+    NtsbRecorderStack(
+        app,
+        "NtsbRecorderStack",
+        env=deploy_environment(),
+        github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
+    )
+
+    app.synth()

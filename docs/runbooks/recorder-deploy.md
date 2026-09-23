@@ -2,12 +2,21 @@
 
 *Read this before you start.* It walks the whole sequence in `infra/recorder_stack.py` (S2.5
 Task 13, spec S9.2) into a running nightly job on AWS: install the tools, create the stack,
-get an image into it, point CI at it, move the bridge's data over, and prove one night's run
-actually works before trusting the schedule.
+get an image into it, move the bridge's data over, prove one night's run actually works, and
+only then point CI at it.
 
 Every term in **bold** the first time it appears is in the glossary at the end. The commands
 below all use `--profile ntsb` — the command-line identity `docs/runbooks/aws-setup.md`
 created, which reaches the project's own AWS account, never the account holding `floyda.dev`.
+
+**A note on paths.** A few commands below need a checkout of this repository on disk — for
+`git -C` and for a Docker build context. Right now, before this stage's pull request merges,
+that is the S2.5 worktree:
+`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder`.
+**After the merge**, use the main checkout instead:
+`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause`. The commands below default to
+the worktree path, since that is what this stage is run from; swap it for the main checkout
+path the next time you deploy a later change.
 
 ---
 
@@ -15,7 +24,7 @@ created, which reaches the project's own AWS account, never the account holding 
 
 - `docs/runbooks/aws-setup.md`'s checks all pass (the project account exists, the `ntsb`
   profile targets it, the budget is in place).
-- `docs/runbooks/recorder-bridge.md`'s bridge is running on your Mac — stage 7 below stops it.
+- `docs/runbooks/recorder-bridge.md`'s bridge is running on your Mac — stage 6 below stops it.
 - **You do need Docker for this runbook**, once (stage 5): the very first image has to be
   built and pushed by hand, before CI can take over. Stage 1 checks for it.
 
@@ -40,6 +49,15 @@ cdk --version
 **How to check.** The printed version should be at least `2.270.0` — the same `aws-cdk-lib`
 version pinned in this checkout's `uv.lock`. A much older CDK CLI can fail to understand a
 newer stack; a newer CLI (like the one already on this Mac) is fine.
+
+**A banner you can ignore.** The first command that starts the underlying Node process (`cdk
+synth`, below, or any `cdk` command) may print a boxed warning that this software "has not
+been tested with node v26" (or whatever version `brew` installed). This is jsii (the layer
+that lets `aws-cdk-lib`, a Node library, be called from Python) being conservative about which
+Node releases it has explicitly tested against, not a real compatibility problem — every `cdk
+synth` run while building this stack used exactly this combination without issue. Ignore it
+rather than installing an older Node just to silence it (`brew install node@24` would work if
+you would rather not see the banner, but it is not necessary).
 
 **2. Docker Desktop**, for stage 5's one-time manual image upload.
 
@@ -70,10 +88,12 @@ cd infra
 cdk synth
 ```
 
-Expect it to finish with no error and no prompt — `cdk synth` only renders the stack's
-CloudFormation template locally; it makes no AWS call and needs no credentials, so this works
-even before stage 2. (A short `cdk flags` notice about "unconfigured feature flags" is normal
-and harmless.)
+`cdk synth` prints the whole rendered CloudFormation template to your terminal — a few hundred
+lines — followed by a `cdk flags` notice about "unconfigured feature flags" (harmless, ignore
+it too). **Success is the command exiting with status `0` and the template containing lines
+naming `NtsbRecorderStack`** (for example, `aws:cdk:path: NtsbRecorderStack/Store/Resource`)
+— you do not need to read the whole thing to confirm it worked. This makes no AWS call and
+needs no credentials, so it works even before stage 2.
 
 ---
 
@@ -156,6 +176,25 @@ above; `put-parameter` refuses to overwrite an existing parameter by default.
 
 ## Stage 4 — Deploy the stack
 
+> **Stages 4, 5 and 6 are one sitting, not three separate errands — start stage 4 only when
+> you have time to also finish 5 and 6 before the next 03:00 UTC.**
+>
+> The 03:00 UTC schedule goes live the moment this stage's `cdk deploy` finishes. Until stage 6
+> replaces the store with the bridge's real data, every scheduled run writes into (and reads
+> from) an **empty** bucket — meanwhile the bridge (still running on your Mac) is doing the
+> real work. That is two recorders polling the NTSB sites every night, doubling the load for no
+> reason, and each cloud night's empty-store run is thrown away the moment stage 6 finally
+> uploads over it. Fixed in this round from an earlier version of this runbook, which put the
+> CI hand-over (now stage 9) between stages 5 and 6 — that let the cloud schedule run for days
+> on an empty store beside a still-live bridge, which is exactly the situation this box exists
+> to prevent.
+>
+> **If you genuinely cannot finish all three before 03:00 UTC**, say so to yourself plainly:
+> every cloud night between stage 4 and stage 6 runs against an empty store and its output is
+> discarded, not merged, the moment stage 6's upload replaces the file wholesale; nothing from
+> the bridge's own recording is lost, since the bridge keeps running for real until you
+> deliberately stop it in stage 6, step 1.
+
 ### 4a — Check for an existing GitHub OIDC provider first
 
 An AWS account can hold only **one** IAM **OIDC provider** per identity provider URL. Check
@@ -213,13 +252,8 @@ running total.
 aws cloudformation describe-stacks --stack-name NtsbRecorderStack --profile ntsb --query 'Stacks[0].StackStatus'
 ```
 
-Expect `"CREATE_COMPLETE"` (or `"UPDATE_COMPLETE"` on a later re-deploy).
-
-**Important: the 03:00 UTC schedule is live from the moment this command finishes**, and the
-registry it points at is still empty — nothing has pushed an image yet (stage 5 does that).
-**A run before the image exists fails, and fails with no log line at all** (there is nothing to
-write a log stream, because the container image itself could not be pulled): finish stage 5
-the same day you run stage 4, or before 03:00 UTC, whichever comes first.
+Expect `"CREATE_COMPLETE"` (or `"UPDATE_COMPLETE"` on a later re-deploy). Now go straight on to
+stage 5 — see the box above.
 
 ---
 
@@ -227,8 +261,9 @@ the same day you run stage 4, or before 03:00 UTC, whichever comes first.
 
 *This stage exists because of a decision Andy made on 2026-09-23, logged as a Deviation.* CI's
 `image-push` job (`.github/workflows/ci.yml`) only runs on a push to `main`, and this whole
-stage only merges to `main` once its own done-criteria are met — so the very first image has to
-reach ECR another way, or the schedule (live since stage 4) runs against an empty registry.
+stage only merges to `main` once its own done-criteria are met (spec §14 item 4 — one AWS
+night's own log, which is stage 8, has to happen first) — so the very first image has to reach
+ECR another way, or the schedule (live since stage 4) runs against an empty registry.
 
 **1. Start Docker Desktop and confirm it is running** (stage 1 already did this once; repeat if
 it has since quit):
@@ -258,20 +293,19 @@ Silicon Mac builds for your Mac's own chip, `arm64`, by default. If you build wi
 otherwise, the image runs fine locally and then **fails immediately** on Fargate — the CPU
 instructions in the image do not match the CPU running it, and the container never starts.
 `--platform linux/amd64` (Docker's name for the same x86_64 family) is therefore **required**,
-not optional, from an Apple Silicon Mac:
+not optional, from an Apple Silicon Mac. The commands below default to the S2.5 worktree path
+(this stage's own checkout, "A note on paths" above) — use the main checkout path instead once
+this pull request has merged:
 
 ```
-short_sha=$(git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause rev-parse --short HEAD)
+checkout=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s25-recorder
+short_sha=$(git -C "$checkout" rev-parse --short HEAD)
 docker build --platform linux/amd64 \
   --build-arg COMMIT_SHA="$short_sha" \
   -t <RepositoryUri>:latest \
   -t <RepositoryUri>:"$short_sha" \
-  /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause
+  "$checkout"
 ```
-
-(Point the `git -C` path and the final build-context path at whichever checkout of this
-repository holds the commit you want deployed — the S2.5 worktree while this stage is still on
-its own branch, the main checkout after it merges.)
 
 **4. Push both tags.**
 
@@ -290,54 +324,28 @@ aws ecr describe-images --repository-name ntsb-recorder --region eu-west-2 --pro
 
 Expect two `imageTags` entries covering the two tags just pushed (`latest` and the short SHA);
 `imageScanStatus` may still read `IN_PROGRESS` for a minute after the push — that is normal.
+Now go straight on to stage 6 — see the box at the top of stage 4.
 
-**Until this stage's pull request merges to `main`, a code change needs this whole stage
-repeated** — CI is not pushing yet. **After the merge, stage 6 hands that job to CI**, and this
-manual upload is never needed again for an ordinary code change.
-
----
-
-## Stage 6 — Point CI at the deploy role, then merge
-
-GitHub Actions pushes the container image to ECR by assuming `DeployRoleArn` from stage 4 (no
-stored AWS secret — see the glossary's **OIDC**). Tell the repository which role that is:
-
-```
-gh variable set AWS_DEPLOY_ROLE_ARN --body <DeployRoleArn from stage 4>
-```
-
-**What this does.** Sets a GitHub Actions repository variable (not a secret — the role ARN
-identifies the role but grants nothing on its own; only a workflow run in *this* repository, on
-`main`, can assume it, per the trust condition `infra/recorder_stack.py` sets).
-
-**What it costs.** Nothing.
-
-**How to check.**
-
-```
-gh variable list
-```
-
-Expect `AWS_DEPLOY_ROLE_ARN` in the list.
-
-**Then merge this stage's pull request to `main`.** `.github/workflows/ci.yml`'s `image-push`
-job runs on every push to `main`; once `AWS_DEPLOY_ROLE_ARN` is set, it stops skipping and
-builds and pushes `ntsb-recorder:latest` (and a tag matching the commit's short SHA) to ECR on
-every future merge. Check the run in the "Actions" tab of the repository — the `image-push` job
-should succeed, not be skipped.
+**Until this stage's pull request merges to `main`, any further code change needs this whole
+stage repeated by hand.** CI is not pushing yet — that only starts at stage 9, deliberately
+placed after the merge, not before it.
 
 ---
 
-## Stage 7 — Move the bridge's data to AWS
+## Stage 6 — Move the bridge's data to AWS
 
 The bridge (`docs/runbooks/recorder-bridge.md`) has been writing to a **local** SQLite file
 since the day the recorder merged. Move it to AWS now, in this order, so the cloud run
 continues from where the bridge left off rather than starting from an empty store.
 
-**Never run this stage between 03:00 and 04:30 UTC.** That is the scheduled task's own run
-window (03:00 UTC start, 90-minute limit); a manual upload racing against the schedule's own
-download/upload of the same object is exactly the "two writers" situation the whole design
-avoids elsewhere. Pick any other time.
+**Never run this stage, or stage 7, between 03:00 and about 05:31 UTC.** That window is the
+scheduled task's own possible run time — not just "03:00 for 90 minutes": the schedule retries
+a failed *invocation* up to twice within an hour (`infra/recorder_stack.py`'s
+`RetryPolicy`), so a task can still *start* as late as roughly 04:00 UTC, and from there it can
+run the full 90-minute limit plus the 60-second kill grace the `timeout` wrapper allows —
+03:00 + up to 1 hour (last possible start) + 90 minutes + 60 seconds ≈ 05:31 UTC. A manual
+upload racing against the scheduled task's own download/upload of the same object is exactly
+the "two writers" situation the whole design avoids elsewhere. Pick any other time.
 
 **1. Stop the bridge**, so nothing on the Mac writes to the local file again:
 
@@ -391,12 +399,15 @@ either way.)
 
 ---
 
-## Stage 8 — Run one task by hand
+## Stage 7 — Run one task by hand
 
-Before trusting the 03:00 schedule, run the task once yourself and read its log. The cluster
-and task family are both named `ntsb-recorder` (fixed in the stack); the subnets and security
-group come straight from stage 4's `SubnetIds` and `SecurityGroupId` outputs — no separate
-lookup needed:
+Before trusting the 03:00 schedule, run the task once yourself and read its log. **Never start
+this outside stage 6's own window warning above (03:00–05:31 UTC excluded)** — a manual run
+racing the scheduled task would be two writers to the same store, exactly as stage 6 warns.
+
+The cluster and task family are both named `ntsb-recorder` (fixed in the stack); the subnets
+and security group come straight from stage 4's `SubnetIds` and `SecurityGroupId` outputs — no
+separate lookup needed:
 
 ```
 aws ecs run-task \
@@ -425,7 +436,7 @@ same image, same command, same 90-minute limit as a real night. `--query 'tasks[
 
    Poll until `lastStatus` reads `"STOPPED"`. `exitCode` of `0` is success. **`stoppedReason` is
    the field that explains a failure that leaves no log at all** — an image the task could not
-   pull (a typo in the tag, or stage 5/6 not actually done yet) or a secret it could not read
+   pull (a typo in the tag, or stage 5 not actually done yet) or a secret it could not read
    (Parameter Store) both stop the task before it ever starts logging, and only `stoppedReason`
    says which.
 
@@ -438,7 +449,7 @@ same image, same command, same 90-minute limit as a real night. `--query 'tasks[
 
 ---
 
-## Stage 9 — Confirm the first scheduled run
+## Stage 8 — Confirm the first scheduled run
 
 The 03:00 UTC schedule is now the only thing that should ever write to the store. The morning
 after the first 03:00 UTC has passed:
@@ -448,13 +459,52 @@ aws logs tail /ecs/ntsb-recorder --since 24h --profile ntsb
 ```
 
 **What this does.** Prints the last 24 hours of the recorder's log lines directly in your
-terminal — the same content stage 8 read from the console, without opening a browser.
+terminal — the same content stage 7 read from the console, without opening a browser.
 
 **How to check.** A `run done` line with today's date, and no `failed=` count higher than a
 handful of cases (some failures — a docket temporarily unreachable, a malformed PDF — are
 normal and already counted; a large number is not). **Nothing alerts you if a night is
 missed entirely** (no task started, so no failure to alert on either) — check the log
 yourself after the first few nights, until the pattern is familiar.
+
+**This log is spec §14 item 4's own done-criterion — the last thing needed before this
+pull request can merge.**
+
+---
+
+## Stage 9 — After this stage's pull request merges
+
+Everything through stage 8 above happens **before** the merge, on purpose — stage 5's manual
+upload exists precisely because CI cannot push before it either, and merging any earlier would
+mean merging without the one AWS night's log spec §14 item 4 requires. Once the pull request
+has actually merged (through this project's normal review process, not a step in this
+runbook), do this once:
+
+```
+gh variable set AWS_DEPLOY_ROLE_ARN --body <DeployRoleArn from stage 4>
+```
+
+**What this does.** Sets a GitHub Actions repository variable (not a secret — the role ARN
+identifies the role but grants nothing on its own; only a workflow run in *this* repository, on
+`main`, can assume it, per the trust condition `infra/recorder_stack.py` sets). Deliberately
+done *after* the merge, not before: setting it earlier would let the merge commit itself
+trigger CI's first automatic push, before stages 6–8 have actually proven the manually-uploaded
+image and the moved store work together.
+
+**What it costs.** Nothing.
+
+**How to check.**
+
+```
+gh variable list
+```
+
+Expect `AWS_DEPLOY_ROLE_ARN` in the list. `.github/workflows/ci.yml`'s `image-push` job runs on
+every push to `main`; once the variable is set, it stops skipping and builds and pushes
+`ntsb-recorder:latest` (and a tag matching the commit's short SHA) to ECR on every future
+merge, from this point on — check the run in the "Actions" tab of the repository on the next
+merge that touches this project, and confirm the `image-push` job succeeds rather than being
+skipped.
 
 ---
 
@@ -477,17 +527,21 @@ the schedule, the IAM roles):
 None of the three is deleted by accident, and none of the three is deleted on purpose by this
 command either — you would delete them yourself, deliberately, if you ever wanted them gone.
 
-**If you plan to redeploy afterwards, read this first — it is not automatic.**
+**If you plan to redeploy afterwards, read this first — it is not automatic, and it is not
+just `cdk deploy` again.**
 
 The ECR repository and the log group keep the **same fixed name** every time
-(`ntsb-recorder`, `/ecs/ntsb-recorder`) — that is deliberate (it is what lets stage 8's manual
+(`ntsb-recorder`, `/ecs/ntsb-recorder`) — that is deliberate (it is what lets stage 7's manual
 run and CI's `image-push` refer to them by name instead of looking them up). It also means a
 fresh `cdk deploy` after a `cdk destroy` tries to *create* a repository and a log group with
 names that **already exist** (the retained, now-orphaned ones from before) and fails. The
 practical, low-stakes recovery — appropriate here because the retained data in both is
 disposable (ECR only ever keeps the newest 5 images anyway, all rebuildable from git history and
 a fresh CI push; CloudWatch log lines are 30 days of operational output, not a record this
-project keeps) — is to delete the two orphans first, then redeploy:
+project keeps) — is to delete the two orphans first, then redeploy (add
+`-c github_oidc_provider_arn=<arn>` again if stage 4a needed it the first time — an existing
+OIDC provider is untouched by `cdk destroy`, since it is not one of the three RETAIN resources
+and CDK never deletes something it does not own, so the same import is needed again):
 
 ```
 aws ecr delete-repository --repository-name ntsb-recorder --force --region eu-west-2 --profile ntsb
@@ -500,7 +554,7 @@ generates one), so a fresh `cdk deploy` does **not** collide with the orphaned b
 simply creates a **new, different, empty** bucket. The recorder would then start its next
 scheduled run against that empty store, silently, with no error — losing continuity with every
 night recorded before the destroy, even though the old bucket (still retained) still has all of
-it. **Before trusting the schedule again, copy the store across, the same way stage 7 first
+it. **Before trusting the schedule again, copy the store across, the same way stage 6 first
 moved it from the bridge:**
 
 ```
@@ -508,8 +562,15 @@ aws s3 ls --profile ntsb | grep -i ntsbrecorderstack   # find the OLD, orphaned 
 aws s3 cp s3://<old bucket>/recorder.sqlite s3://<new BucketName from the fresh deploy's output>/recorder.sqlite --profile ntsb
 ```
 
-Verify with the same `head-object`/`stat` comparison stage 7 uses, then the new bucket has
-everything the old one did.
+Verify with the same `head-object`/`stat` comparison stage 6 uses.
+
+**The new ECR repository is also empty, even though its name survived.** A repository's name
+being retained does not retain its images — those were deleted along with the repository
+itself in the recovery command above. **Repeat stage 5 (upload the image by hand) before
+trusting the schedule**, exactly as the first deploy needed it, for the same reason: nothing
+has pushed to the new repository yet, and a run before an image exists fails with no log line.
+Do the store copy and the image upload both before the next 03:00 UTC, for the same reason the
+box at the top of stage 4 gives for the very first deploy.
 
 ---
 
@@ -542,7 +603,7 @@ describes, deployed and torn down together, tracked as one CloudFormation stack
 
 **Task definition.** ECS's description of a container to run: which image, how much CPU and
 memory, what environment variables and secrets, what command. Not itself a running thing — it
-becomes one each time `run-task` (by hand, stage 8) or the schedule (stage 9) starts it.
+becomes one each time `run-task` (by hand, stage 7) or the schedule (stage 8) starts it.
 
 **OIDC (OpenID Connect).** The mechanism GitHub Actions uses to prove its identity to AWS for
 one workflow run, without any stored AWS access key: GitHub issues a short-lived signed token,
