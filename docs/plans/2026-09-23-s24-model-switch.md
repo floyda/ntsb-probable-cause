@@ -53,7 +53,7 @@
 **Interfaces:**
 - Produces: `sources.ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]`; `sources.LUNA_6`, `sources.LUNA_6_BATCH` (`ModelPrice`); `sources.DEFAULT_MODEL: str` (value `"openai/gpt-5.6-luna"` until Task 6); `sources.DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"`; `ModelSettings.reasoning_effort: ReasoningEffort | None = None`; `RecordingFakeClient.settings: list[ModelSettings]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_sources_settings.py` (add `from ntsb_probable_cause.model.client import ModelSettings` to its imports if absent):
 
@@ -100,12 +100,12 @@ def test_request_body_sends_no_reasoning_key_when_unset(
     assert "reasoning" not in body
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `uv run pytest tests/test_sources_settings.py tests/test_openrouter.py -k "gpt_6 or named_once or reasoning" -v`
 Expected: FAIL — `AttributeError: module 'ntsb_probable_cause.sources' has no attribute 'LUNA_6_BATCH'` and `ModelSettings` rejecting `reasoning_effort`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/ntsb_probable_cause/sources.py`, change the import line to `from typing import Literal` alongside `from dataclasses import dataclass`, and after `LUNA_BATCH` add:
 
@@ -147,12 +147,12 @@ In `src/ntsb_probable_cause/model/openrouter.py`, `request_body`, after the `if 
         body["reasoning"] = {"effort": settings.reasoning_effort}
 ```
 
-- [ ] **Step 4: Run the tests to see them pass**
+- [x] **Step 4: Run the tests to see them pass**
 
 Run: `uv run pytest tests/test_sources_settings.py tests/test_openrouter.py tests/test_batch.py tests/test_model_client.py -v`
 Expected: PASS. The batch client builds each line with `request_body`, so it carries the key too.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 make check

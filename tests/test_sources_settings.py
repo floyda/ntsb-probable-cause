@@ -10,6 +10,7 @@ from ntsb_probable_cause.errors import (
     NtsbError,
     SchemaError,
 )
+from ntsb_probable_cause.model.client import ModelSettings
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import SONNET_5, SONNET_5_BATCH, docket_url
 
@@ -143,3 +144,21 @@ def test_explicit_runs_dir_and_docket_dir_override_derivation(
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/elsewhere/runs")
     assert settings.docket_dir == Path("/elsewhere/docket")
+
+
+def test_gpt_6_luna_is_priced_from_the_models_api() -> None:
+    """Decision 0073: read from https://openrouter.ai/api/v1/models on 2026-09-22."""
+    assert sources.price_of("openai/gpt-6-luna:batch") is sources.LUNA_6_BATCH
+    assert sources.price_of("openai/gpt-6-luna") is sources.LUNA_6
+    assert (sources.LUNA_6_BATCH.input_usd_per_mtok, sources.LUNA_6_BATCH.output_usd_per_mtok) == (
+        0.05,
+        0.25,
+    )
+    assert (sources.LUNA_6.input_usd_per_mtok, sources.LUNA_6.output_usd_per_mtok) == (0.10, 0.50)
+
+
+def test_the_default_model_and_reasoning_level_are_named_once() -> None:
+    """S2.4 spec §4: one constant each, read by ModelSettings (and, from Task 2, RunSpec)."""
+    assert sources.DEFAULT_REASONING_EFFORT == "medium"
+    assert ModelSettings().model == sources.DEFAULT_MODEL
+    assert ModelSettings().reasoning_effort is None  # the judge and probes send no level
