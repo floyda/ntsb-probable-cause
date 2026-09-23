@@ -281,6 +281,18 @@ def test_cases_modified_parses_the_confirmed_live_shape(respx_mock: respx.MockRo
     missing = _REQUIRED_FEED_KEYS - shape.keys()
     assert not missing, f"confirmed change-feed shape is missing required keys: {missing}"
 
+    # Task 11 fix round 2, I8 (partial): assert the RECORDED types directly. The synthetic row
+    # below overrides these six keys with concrete, well-typed values so `_feed_rows` actually
+    # keeps the row (it filters on `mode == "Aviation"`) -- but that override alone would let a
+    # fixture that recorded, say, `mkey: ["str"]` pass silently. These assertions check what
+    # the live probe actually saw, independent of the override.
+    assert "int" in shape["mkey"]
+    assert "str" in shape["mode"]
+    assert "str" in shape["lastChangeDateTimeUtc"]
+    assert "int" in shape["stepNumber"]
+    assert "str" in shape["stepId"]
+    assert "bool" in shape["caseClosed"]
+
     row = {
         key: _REQUIRED_OVERRIDES.get(key, _SYNTHETIC_VALUES.get(types[0], "x"))
         for key, types in shape.items()

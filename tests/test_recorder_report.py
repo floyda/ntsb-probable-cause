@@ -11,8 +11,9 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from scripts.recorder_report import report
+from scripts.recorder_report import _open_store, main, report
 
+from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.store import (
     ArrivalClassification,
     CaseRow,
@@ -21,6 +22,7 @@ from ntsb_probable_cause.store import (
     RunSummary,
     Store,
 )
+from ntsb_probable_cause.store import schema as store_schema
 
 RUN1 = "2026-01-01T03:00:00+00:00"  # day 0
 RUN2 = "2026-01-02T03:00:00+00:00"  # day 1
@@ -90,8 +92,9 @@ def test_field_arrivals_are_classified_before_same_run_after_and_excluded(store:
         2, role="pilot_total_hours", value_json="10", absent_run=3, present_run=4, run_id=4
     )
 
-    # mkey 3: currently unwatched (dropped for its regulation) -- excluded regardless of status.
-    store.upsert_case(_case(3, event_date="2025-12-01", watched=False))
+    # mkey 3: regulation is currently "135" (not Part 91) and there is no regulation_events
+    # history at all -- the no-history fallback reads the case's current regulation.
+    store.upsert_case(_case(3, event_date="2025-12-01", regulation="135"))
     store.add_field_snapshot(
         3, role="injury_level", value_json='"None"', absent_run=1, present_run=2, run_id=2
     )
@@ -107,6 +110,125 @@ def test_field_arrivals_are_classified_before_same_run_after_and_excluded(store:
     weather = next(r for r in store.field_change_arrivals() if r.role == "weather_condition")
     assert weather.days == 13  # 2026-01-02 - 2025-12-20
     assert weather.absent_days == 12  # 2026-01-01 - 2025-12-20
+
+
+def test_i5_tail_expiry_never_moves_arrivals_to_excluded(store: Store) -> None:
+    """Task 11 fix round 2, IMPORTANT I5: the reviewer's own reproduction.
+
+    A case whose field, preliminary narrative and docket all arrive on night 3, and which
+    closes on night 5, must have all three stay BEFORE_CLOSURE forever after -- including once
+    the case's ``watched`` flag clears when its 30-day tail expires (simulated here directly,
+    since only ``recorder/cases.py`` runs the tail logic; ``Store`` itself never computes it).
+    The case's regulation is never dropped and no ``regulation_events`` row is ever written.
+    """
+    _begin_runs(
+        store,
+        (1, "2026-01-01T03:00:00+00:00"),
+        (2, "2026-01-02T03:00:00+00:00"),
+        (3, "2026-01-03T03:00:00+00:00"),
+        (4, "2026-01-04T03:00:00+00:00"),
+        (5, "2026-01-05T03:00:00+00:00"),
+        (6, "2026-01-06T03:00:00+00:00"),
+    )
+    store.upsert_case(_case(1, event_date="2025-12-01"))
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=2, present_run=3, run_id=3
+    )
+    store.add_prelim(1, text="arrived", absent_run=2, present_run=3, run_id=3)
+    store.add_docket_poll(
+        1,
+        run_id=1,
+        outcome="no-docket",
+        reason=None,
+        declared_items=None,
+        creation_date=None,
+        last_modified=None,
+        release_date=None,
+        page_sha=None,
+    )
+    store.add_docket_poll(
+        1,
+        run_id=2,
+        outcome="empty",
+        reason=None,
+        declared_items=0,
+        creation_date=None,
+        last_modified=None,
+        release_date=None,
+        page_sha=None,
+    )
+    store.add_docket_poll(
+        1,
+        run_id=3,
+        outcome="read",
+        reason=None,
+        declared_items=2,
+        creation_date=None,
+        last_modified=None,
+        release_date=None,
+        page_sha=None,
+    )
+    store.add_status_event(1, old="Ongoing", new="Completed", absent_run=4, present_run=5, run_id=5)
+    # Night 6: the tail expires; `watched` clears. Regulation was never touched.
+    store.upsert_case(
+        _case(1, event_date="2025-12-01", status="Completed", watched=False, first_seen_run=1)
+    )
+
+    (field,) = store.field_change_arrivals()
+    assert field.classification == ArrivalClassification.BEFORE_CLOSURE
+    (prelim,) = store.prelim_arrivals()
+    assert prelim.classification == ArrivalClassification.BEFORE_CLOSURE
+    (docket,) = store.docket_arrivals()
+    assert docket.classification == ArrivalClassification.BEFORE_CLOSURE
+
+
+def test_i5_regulation_drop_boundary_excludes_at_and_after_the_drop_run(store: Store) -> None:
+    """091 -> 135 recorded at run 3: an arrival at run 2 is counted; one at run 3 itself (the
+    drop's own run, a conservative choice) and one at run 4 are excluded."""
+    _begin_runs(store, (1, RUN1), (2, RUN2), (3, RUN3), (4, RUN4))
+    store.upsert_case(_case(1, event_date="2025-12-01"))
+    store.add_regulation_event(
+        1, old="091", new="135", was_watched=True, absent_run=2, present_run=3, run_id=3
+    )
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=1, present_run=2, run_id=2
+    )
+    store.add_field_snapshot(
+        1, role="registration", value_json='"N1"', absent_run=2, present_run=3, run_id=3
+    )
+    store.add_field_snapshot(
+        1, role="pilot_total_hours", value_json="1", absent_run=3, present_run=4, run_id=4
+    )
+
+    by_role = {row.role: row.classification for row in store.field_change_arrivals()}
+    assert by_role["weather_condition"] == ArrivalClassification.BEFORE_CLOSURE
+    assert by_role["registration"] == ArrivalClassification.EXCLUDED_UNWATCHED
+    assert by_role["pilot_total_hours"] == ArrivalClassification.EXCLUDED_UNWATCHED
+
+
+def test_i5_regulation_readmission_counts_arrivals_after_it(store: Store) -> None:
+    """135 -> 091: an arrival recorded after the re-admission is counted normally."""
+    _begin_runs(store, (1, RUN1), (2, RUN2), (3, RUN3))
+    store.upsert_case(_case(1, event_date="2025-12-01", regulation="135"))
+    store.add_regulation_event(
+        1, old="135", new="091", was_watched=False, absent_run=1, present_run=2, run_id=2
+    )
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=2, present_run=3, run_id=3
+    )
+    (field,) = store.field_change_arrivals()
+    assert field.classification == ArrivalClassification.BEFORE_CLOSURE
+
+
+def test_i5_no_regulation_history_falls_back_to_current_regulation(store: Store) -> None:
+    """No ``regulation_events`` rows at all: the case's current ``cases.regulation`` decides."""
+    _begin_runs(store, (1, RUN1), (2, RUN2))
+    store.upsert_case(_case(1, event_date="2025-12-01", regulation="135"))
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=1, present_run=2, run_id=2
+    )
+    (field,) = store.field_change_arrivals()
+    assert field.classification == ArrivalClassification.EXCLUDED_UNWATCHED
 
 
 def test_first_sight_field_count(store: Store) -> None:
@@ -388,6 +510,37 @@ def test_feed_comparison_caches_change_feed_rows_per_mkey(store: Store) -> None:
     assert result.case_nights_reported == 1
 
 
+def test_feed_comparison_counts_unparsable_timestamps(store: Store) -> None:
+    """Task 11 fix round 2, MINOR 3."""
+    _begin_runs(store, (1, RUN1), (2, RUN2))
+    store.upsert_case(_case(1, event_date="2025-12-01"))
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=1, present_run=2, run_id=2
+    )
+    store.add_feed_rows(
+        [
+            FeedRow(
+                mkey=1,
+                last_change_utc="not-a-timestamp-at-all",
+                step_number=None,
+                step_id=None,
+                case_closed=False,
+            ),
+            FeedRow(
+                mkey=1,
+                last_change_utc="2026-01-02T01:00:00+00:00",
+                step_number=None,
+                step_id=None,
+                case_closed=False,
+            ),
+        ],
+        run_id=2,
+    )
+    result = store.feed_comparison(window_days=1)
+    assert result.unparsable_timestamps == 1
+    assert result.field_changes_reported == 1  # the good row still matches
+
+
 # --- regulation transitions (IMPORTANT 7 / migration 2) ------------------------------------
 
 
@@ -422,6 +575,22 @@ def test_regulation_transitions_four_categories_and_fill_in_days(store: Store) -
 
 
 # --- closure tail (IMPORTANT 3) --------------------------------------------------------------
+
+
+def test_closure_run_ignores_a_relabel_between_two_non_ongoing_statuses(store: Store) -> None:
+    """Task 11 fix round 2, I3: a Completed -> N/A relabel must not move the closure run --
+    the case actually left Ongoing at the earlier, real closure."""
+    _begin_runs(store, (1, RUN1), (2, RUN2), (3, RUN3), (4, RUN4))
+    store.upsert_case(_case(1, event_date="2025-12-01"))
+    store.add_status_event(1, old="Ongoing", new="Completed", absent_run=2, present_run=3, run_id=3)
+    store.add_status_event(1, old="Completed", new="N/A", absent_run=3, present_run=4, run_id=4)
+    # An arrival on the relabel's own run (4) must read AFTER_CLOSURE, not SAME_RUN_AS_CLOSURE
+    # -- the real closure was run 3.
+    store.add_field_snapshot(
+        1, role="weather_condition", value_json='"VMC"', absent_run=3, present_run=4, run_id=4
+    )
+    (field,) = store.field_change_arrivals()
+    assert field.classification == ArrivalClassification.AFTER_CLOSURE
 
 
 def test_tail_arrivals_real_closures_only_split_same_run_after_and_excludes_first_sight(
@@ -606,12 +775,53 @@ def test_report_states_nights_finished_nights_and_the_rules(store: Store) -> Non
     # run 2 left unfinished.
     text = _full_report_from(store)
 
-    assert "nights: 2" in text
-    assert "finished nights: 1 " in text
+    assert "nights recorded (every run, finished or not): 2" in text
+    assert "finished runs: 1" in text
+    assert "distinct finished nights: 1 " in text
     assert "unfinished (crashed) runs: 1" in text
     assert "Percentiles: nearest-rank method" in text
-    assert "BEFORE_CLOSURE" in text
-    assert "CRITICAL 2" in text or "reported iff" in text
+    assert "How arrivals are classified" in text
+    assert "before-closure arrivals are the mask distribution" in text
+
+
+def test_report_never_prints_reviewer_labels_or_raw_column_names(store: Store) -> None:
+    """MINOR 1: the citable report is plain English -- no review shorthand, no SQL column names."""
+    text = _full_report_from(store)
+    for forbidden in (
+        "CRITICAL",
+        "IMPORTANT",
+        "MINOR",
+        "change_feed row",
+        "last_change_utc",
+        "cases.watched",
+        "cases.regulation",
+    ):
+        assert forbidden not in text
+
+
+def test_report_counts_distinct_finished_nights_not_runs(store: Store) -> None:
+    """MINOR 2: two finished runs on the same UTC calendar date count as one finished night."""
+    same_night_a = "2026-01-01T03:00:00+00:00"
+    same_night_b = "2026-01-01T14:00:00+00:00"  # same UTC date, a re-run later that day
+    different_night = "2026-01-02T03:00:00+00:00"
+    _begin_runs(store, (1, same_night_a), (2, same_night_b), (3, different_night))
+    for run_id, started_at in ((1, same_night_a), (2, same_night_b), (3, different_night)):
+        store.finish_run(
+            run_id,
+            finished_at=started_at,
+            summary=RunSummary(
+                cases_polled=0,
+                cases_changed=0,
+                new_documents=0,
+                failures=0,
+                suspected_renumbers=0,
+                minutes=1.0,
+            ),
+        )
+    text = _full_report_from(store)
+    assert "nights recorded (every run, finished or not): 3" in text
+    assert "finished runs: 3" in text
+    assert "distinct finished nights: 2 " in text
 
 
 def test_report_suppresses_percentiles_below_three_observations(store: Store) -> None:
@@ -658,6 +868,101 @@ def test_report_prints_no_case_data(store: Store) -> None:
 
 def test_report_empty_store_prints_no_data(store: Store) -> None:
     text = _full_report_from(store)
-    assert "nights: 0" in text
+    assert "nights recorded (every run, finished or not): 0" in text
     assert "run summaries: no data" in text
     assert "no data" in text
+
+
+# --- _open_store / main(): the store is opened strictly read-only (Task 11 fix round 2, MINOR 4)
+
+
+def test_open_store_with_no_file_returns_none_and_creates_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store_path = tmp_path / "does-not-exist.sqlite"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(store_path))
+
+    result_store, error = _open_store(Settings())
+
+    assert result_store is None
+    assert error is None
+    assert not store_path.exists()
+
+
+def test_open_store_refuses_a_mismatched_schema_version_without_migrating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store stuck at schema version 1 is refused, not silently migrated to 2."""
+    path = tmp_path / "r.sqlite"
+    v1_store = Store(path)
+    v1_store.connection.executescript(
+        f"BEGIN;\n{store_schema.MIGRATIONS[0]}\n"
+        "INSERT INTO schema_version (version) VALUES (1);\nCOMMIT;"
+    )
+    v1_store.close()
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(path))
+
+    result_store, error = _open_store(Settings())
+
+    assert result_store is None
+    assert error is not None
+    assert "schema version" in error
+
+    # Confirm _open_store never called migrate(): the file is still at version 1.
+    check = Store(path)
+    try:
+        assert check.schema_version() == 1
+    finally:
+        check.close()
+
+
+def test_main_prints_an_empty_report_and_creates_no_file_when_no_store_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store_path = tmp_path / "does-not-exist.sqlite"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(store_path))
+
+    exit_code = main([])
+
+    assert exit_code == 0
+    assert "nights recorded (every run, finished or not): 0" in capsys.readouterr().out
+    assert not store_path.exists()
+
+
+def test_main_refuses_a_mismatched_store_with_a_nonzero_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "r.sqlite"
+    v1_store = Store(path)
+    v1_store.connection.executescript(
+        f"BEGIN;\n{store_schema.MIGRATIONS[0]}\n"
+        "INSERT INTO schema_version (version) VALUES (1);\nCOMMIT;"
+    )
+    v1_store.close()
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(path))
+
+    exit_code = main([])
+
+    assert exit_code == 1
+    assert "schema version" in capsys.readouterr().err
+
+
+def test_main_reads_a_real_store_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "r.sqlite"
+    setup = Store(path)
+    setup.migrate()
+    setup.begin_run(started_at=RUN1, commit_sha="a" * 7, dirty=False)
+    setup.close()
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_STORE", str(path))
+
+    exit_code = main([])
+
+    assert exit_code == 0
+    assert "nights recorded (every run, finished or not): 1" in capsys.readouterr().out

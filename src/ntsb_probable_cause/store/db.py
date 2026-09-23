@@ -8,7 +8,7 @@ SQLite serialises them against any open transaction.
 import json
 import re
 import sqlite3
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -37,6 +37,10 @@ from ntsb_probable_cause.store.models import (
 # separately throughout this module (Task 11 fix round 1, IMPORTANT 3/5).
 _REAL_CLOSURE_STATUSES = ("Completed", "N/A")
 _NOT_RETURNED_STATUS = "not returned"
+_ONGOING_STATUS = "Ongoing"
+# The two regulation values that mean "watched": not recorded at all, or Part 91 (decision
+# 0067). Anything else means the case was dropped from watching. Task 11 fix round 2.
+_WATCHED_REGULATIONS = (None, "091")
 # `None` and `""` both mean "not recorded" -- mirrors `recorder.cases._EMPTY_REGULATION` /
 # `_normalize_regulation`. Duplicated here, not imported: `store` must never import `recorder`
 # (recorder already imports store; importing the other way would be circular), and this is a
@@ -116,6 +120,69 @@ def _classify_run(present_run: int, closure_run: int | None) -> ArrivalClassific
     return ArrivalClassification.AFTER_CLOSURE
 
 
+def _regulation_excluded_at(
+    events: Sequence[tuple[int, int, str | None, str | None]],
+    current_regulation: str | None,
+    present_run: int,
+) -> bool:
+    """Whether the case's regulation, as recorded AT ``present_run``, excluded it from watching.
+
+    Task 11 fix round 2, IMPORTANT I5. This NEVER reads ``cases.watched``: that flag is the
+    case's *current* state, and it is cleared when a closed case's 30-day tail expires --
+    reproduced live by the reviewer, a case whose field, prelim and docket all arrived on night
+    3 and which closed on night 5 had every one of those arrivals silently move from
+    BEFORE_CLOSURE to EXCLUDED_UNWATCHED on night 6, once the tail expired, even though nothing
+    about the case's regulation had ever changed. Closure and tail expiry are handled entirely
+    by :func:`_classify_run`; this function answers a narrower question -- was the case's
+    *regulation* itself, as recorded at the time, something other than empty or Part 91 -- from
+    ``regulation_events`` history alone.
+
+    ``events`` is one case's ``regulation_events`` rows, ``(present_run, id, old, new)``,
+    sorted by ``(present_run, id)`` ascending (the caller's contract; see
+    :meth:`Store._regulation_events_by_mkey`).
+
+    - If any event's ``present_run`` is at or before this arrival's, the LATEST such event's
+      ``new`` value is what was in force -- so a regulation drop recorded on the arrival's own
+      run excludes that arrival too. This is conservative, and the report says so.
+    - Otherwise, if events exist but all of them are later than this arrival, the EARLIEST
+      event's ``old`` value is what was in force at ``present_run`` (nothing had changed it
+      yet).
+    - Otherwise (no events at all for the case), there is no history to consult; the case's
+      *current* ``cases.regulation`` is used as a fallback -- stated as a fallback in the
+      report, not silently treated as history.
+    """
+    at_or_before = [event for event in events if event[0] <= present_run]
+    if at_or_before:
+        _run, _id, _old, new = at_or_before[-1]
+        return _normalize_regulation(new) not in _WATCHED_REGULATIONS
+    if events:
+        _run, _id, old, _new = events[0]
+        return _normalize_regulation(old) not in _WATCHED_REGULATIONS
+    return _normalize_regulation(current_regulation) not in _WATCHED_REGULATIONS
+
+
+def _classify_arrival(
+    mkey: int,
+    present_run: int,
+    *,
+    closures: Mapping[int, int],
+    regulation_events: Mapping[int, Sequence[tuple[int, int, str | None, str | None]]],
+    current_regulation: Mapping[int, str | None],
+) -> ArrivalClassification:
+    """The one classification rule every arrival query uses (Task 11 fix round 2, IMPORTANT I5).
+
+    Combines :func:`_regulation_excluded_at` (was the case's regulation, at the time, something
+    other than empty or Part 91) with :func:`_classify_run` (before/same-run/after the case's
+    real closure) -- shared, identically, by field, preliminary-narrative and docket arrivals,
+    so the rule is written, and tested, once.
+    """
+    if _regulation_excluded_at(
+        regulation_events.get(mkey, ()), current_regulation.get(mkey), present_run
+    ):
+        return ArrivalClassification.EXCLUDED_UNWATCHED
+    return _classify_run(present_run, closures.get(mkey))
+
+
 def _parse_feed_timestamp(text: str) -> datetime | None:
     """Parse a change-feed timestamp; ``None`` if it does not parse.
 
@@ -178,10 +245,23 @@ def _feed_reported_change(
 class Store:
     """The recorder's SQLite store: one file, opened in WAL mode with foreign keys on."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, readonly: bool = False) -> None:
+        """Open ``path``.
+
+        ``readonly=True`` opens a true read-only connection (Task 11 fix round 2, MINOR 4): a
+        SQLite URI with ``mode=ro``, so a bug that tried to write would raise rather than
+        silently succeed, and :meth:`close` skips the WAL checkpoint (itself a write)
+        accordingly. Raises whatever ``sqlite3.connect`` raises if ``path`` does not exist --
+        callers that want "no store yet" to be a soft case (rather than an exception) must
+        check ``path.exists()`` before constructing a read-only ``Store``.
+        """
         self._path = path
-        self._conn = sqlite3.connect(str(path))
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._readonly = readonly
+        if readonly:
+            self._conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        else:
+            self._conn = sqlite3.connect(str(path))
+            self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._txn_depth = 0
 
@@ -211,7 +291,14 @@ class Store:
         locked", which would otherwise mask whatever the real problem was -- so it is rolled
         back first, and the connection is closed in a ``finally`` so a failed checkpoint never
         leaves the file handle open.
+
+        A read-only store (Task 11 fix round 2, MINOR 4) skips all of this: it never opened a
+        transaction, and both ``wal_checkpoint`` and ``commit`` are writes that a ``mode=ro``
+        connection cannot perform.
         """
+        if self._readonly:
+            self._conn.close()
+            return
         try:
             if self._conn.in_transaction:
                 self._conn.rollback()
@@ -252,6 +339,15 @@ class Store:
             return 0
         row = self._conn.execute("SELECT version FROM schema_version").fetchone()
         return int(row[0]) if row is not None else 0
+
+    def schema_version(self) -> int:
+        """The store's current ``schema_version``, without applying any pending migration.
+
+        For a read-only store (Task 11 fix round 2, MINOR 4): a caller that must never write
+        can still tell whether the file's schema matches what the code expects, and refuse to
+        read it otherwise, rather than calling :meth:`migrate` (a write) just to find out.
+        """
+        return self._current_version()
 
     def migrate(self) -> int:
         """Apply every migration after the current version, in order. Idempotent.
@@ -734,12 +830,15 @@ class Store:
     # calculation applied to the run that last observed the thing's absence, giving the lower
     # bound next to the upper bound `days` already is (Task 11 fix round 1, MINOR 2).
     #
-    # Fix round 1, IMPORTANT 5: every true arrival is further classified by
-    # :class:`~ntsb_probable_cause.store.ArrivalClassification`, relative to the case's real
-    # closure (a status event whose ``new_status`` is ``'Completed'`` or ``'N/A'`` -- never
-    # ``'not returned'``, which is not an attested closure) and to whether the case was
-    # currently watched. Only ``BEFORE_CLOSURE`` rows belong in the distribution spec §10.2
-    # says replaces ``scoring.samples.MASK_LIFTS_AT_DAY``.
+    # Fix round 1, IMPORTANT 5 (corrected in fix round 2): every true arrival is further
+    # classified by :class:`~ntsb_probable_cause.store.ArrivalClassification`, relative to the
+    # case's real closure (a status event whose ``new_status`` is ``'Completed'`` or ``'N/A'``
+    # -- never ``'not returned'``, which is not an attested closure) and to whether the case's
+    # regulation, AT THE TIME of the arrival, was recorded as anything other than empty or Part
+    # 91 -- from ``regulation_events`` history (:func:`_regulation_excluded_at`), never from
+    # ``cases.watched``, whose *current* value a closed case's tail expiry clears regardless of
+    # what its regulation ever was. Only ``BEFORE_CLOSURE`` rows belong in the distribution
+    # spec §10.2 says replaces ``scoring.samples.MASK_LIFTS_AT_DAY``.
 
     def _closure_runs(self) -> dict[int, int]:
         """Each case's most recent REAL closure event's ``present_run`` (Task 11 IMPORTANT 5).
@@ -748,14 +847,54 @@ class Store:
         not an attested outcome) -- see the module-level ``_REAL_CLOSURE_STATUSES``. A case
         that closed, reopened and closed again is keyed by its *latest* closing, matching
         ``cases.py``'s own "only the latest transition sets the tail" rule.
+
+        Requires ``old_status = 'Ongoing'`` as well as the new status (Task 11 fix round 2, I3):
+        without it, a later re-label between two non-``Ongoing`` statuses -- e.g. ``Completed``
+        to ``N/A``, both real-closure statuses -- would move the closure run to that later
+        re-label's own run, even though the case actually closed earlier.
         """
         placeholders = ", ".join("?" for _ in _REAL_CLOSURE_STATUSES)
         rows = self._conn.execute(
             "SELECT mkey, MAX(present_run) FROM status_events "  # noqa: S608 -- placeholders
-            f"WHERE new_status IN ({placeholders}) GROUP BY mkey",
-            _REAL_CLOSURE_STATUSES,
+            f"WHERE old_status = ? AND new_status IN ({placeholders}) GROUP BY mkey",
+            (_ONGOING_STATUS, *_REAL_CLOSURE_STATUSES),
         ).fetchall()
         return {int(mkey): int(present_run) for mkey, present_run in rows}
+
+    def _regulation_events_by_mkey(
+        self,
+    ) -> dict[int, list[tuple[int, int, str | None, str | None]]]:
+        """Every case's ``regulation_events`` rows, sorted for :func:`_regulation_excluded_at`.
+
+        Each row is ``(present_run, id, old, new)``, sorted by ``(present_run, id)`` ascending
+        -- the precondition that function documents.
+        """
+        rows = self._conn.execute(
+            "SELECT mkey, present_run, id, old, new FROM regulation_events "
+            "ORDER BY mkey, present_run, id"
+        ).fetchall()
+        result: dict[int, list[tuple[int, int, str | None, str | None]]] = {}
+        for mkey, present_run, event_id, old, new in rows:
+            result.setdefault(int(mkey), []).append((int(present_run), int(event_id), old, new))
+        return result
+
+    def _case_regulation(self) -> dict[int, str | None]:
+        """Every case's *current* ``cases.regulation`` -- the no-history fallback (IMPORTANT I5)."""
+        rows = self._conn.execute("SELECT mkey, regulation FROM cases").fetchall()
+        return {int(mkey): regulation for mkey, regulation in rows}
+
+    def _arrival_context(
+        self,
+    ) -> tuple[
+        dict[int, int],
+        dict[int, list[tuple[int, int, str | None, str | None]]],
+        dict[int, str | None],
+    ]:
+        """The three lookups every arrival classification needs, fetched once per call.
+
+        Returns ``(closures, regulation_events_by_mkey, current_regulation)``.
+        """
+        return self._closure_runs(), self._regulation_events_by_mkey(), self._case_regulation()
 
     def field_change_arrivals(self) -> list[FieldArrivalRow]:
         """Every true evidence-field arrival: role, days, absent-side days, and classification.
@@ -775,7 +914,7 @@ class Store:
             # not external input; there is no placeholder syntax to parameterise a sub-SELECT
             # with regardless.
             "SELECT fs.role, fs.mkey, fs.present_run, rp.started_at, ra.started_at, "  # noqa: S608
-            "c.event_date, c.watched "
+            "c.event_date "
             "FROM field_snapshots fs "
             f"JOIN {_FIRST_FIELD_SNAPSHOT} fr ON fr.first_id = fs.id "
             "JOIN runs rp ON rp.run_id = fs.present_run "
@@ -783,13 +922,15 @@ class Store:
             "JOIN cases c ON c.mkey = fs.mkey "
             "WHERE fs.absent_run IS NOT NULL"
         ).fetchall()
-        closures = self._closure_runs()
+        closures, regulation_events, current_regulation = self._arrival_context()
         result: list[FieldArrivalRow] = []
-        for role, mkey, present_run, present_started, absent_started, event_date, watched in rows:
-            classification = (
-                ArrivalClassification.EXCLUDED_UNWATCHED
-                if not watched
-                else _classify_run(present_run, closures.get(mkey))
+        for role, mkey, present_run, present_started, absent_started, event_date in rows:
+            classification = _classify_arrival(
+                mkey,
+                present_run,
+                closures=closures,
+                regulation_events=regulation_events,
+                current_regulation=current_regulation,
             )
             result.append(
                 FieldArrivalRow(
@@ -829,8 +970,7 @@ class Store:
         known absent side.
         """
         rows = self._conn.execute(
-            "SELECT pre.mkey, pre.present_run, rp.started_at, ra.started_at, c.event_date, "  # noqa: S608
-            "c.watched "
+            "SELECT pre.mkey, pre.present_run, rp.started_at, ra.started_at, c.event_date "  # noqa: S608
             "FROM prelim_narratives pre "
             f"JOIN {_FIRST_PRELIM} pf ON pf.first_id = pre.id "
             "JOIN runs rp ON rp.run_id = pre.present_run "
@@ -838,13 +978,15 @@ class Store:
             "JOIN cases c ON c.mkey = pre.mkey "
             "WHERE pre.absent_run IS NOT NULL"
         ).fetchall()
-        closures = self._closure_runs()
+        closures, regulation_events, current_regulation = self._arrival_context()
         result: list[ArrivalRow] = []
-        for mkey, present_run, present_started, absent_started, event_date, watched in rows:
-            classification = (
-                ArrivalClassification.EXCLUDED_UNWATCHED
-                if not watched
-                else _classify_run(present_run, closures.get(mkey))
+        for mkey, present_run, present_started, absent_started, event_date in rows:
+            classification = _classify_arrival(
+                mkey,
+                present_run,
+                closures=closures,
+                regulation_events=regulation_events,
+                current_regulation=current_regulation,
             )
             result.append(
                 ArrivalRow(
@@ -885,9 +1027,9 @@ class Store:
             )
         return groups
 
-    def _case_event_and_watched(self) -> dict[int, tuple[str, bool]]:
-        rows = self._conn.execute("SELECT mkey, event_date, watched FROM cases").fetchall()
-        return {int(mkey): (str(event_date), bool(watched)) for mkey, event_date, watched in rows}
+    def _case_event_dates(self) -> dict[int, str]:
+        rows = self._conn.execute("SELECT mkey, event_date FROM cases").fetchall()
+        return {int(mkey): str(event_date) for mkey, event_date in rows}
 
     def docket_arrivals(self) -> list[DocketArrivalRow]:
         """Every true docket arrival: days, absent-side days, document count, classification.
@@ -903,8 +1045,8 @@ class Store:
         contributes to none of the three.
         """
         groups = self._docket_poll_groups()
-        case_info = self._case_event_and_watched()
-        closures = self._closure_runs()
+        event_dates = self._case_event_dates()
+        closures, regulation_events, current_regulation = self._arrival_context()
         result: list[DocketArrivalRow] = []
         for mkey, rows in groups.items():
             read_rows = [r for r in rows if r[1] == "read"]
@@ -917,15 +1059,17 @@ class Store:
             absent_candidates = [r for r in earlier if r[1] in ("no-docket", "empty")]
             if not absent_candidates:
                 continue  # absent side unknown -- docket_absent_side_unknown_count
-            if mkey not in case_info:
+            if mkey not in event_dates:
                 continue
-            event_date, watched = case_info[mkey]
+            event_date = event_dates[mkey]
             absent_poll = absent_candidates[-1]  # the LAST such poll before the first read poll
             present_run, _outcome, declared_items, present_started = first_read
-            classification = (
-                ArrivalClassification.EXCLUDED_UNWATCHED
-                if not watched
-                else _classify_run(present_run, closures.get(mkey))
+            classification = _classify_arrival(
+                mkey,
+                present_run,
+                closures=closures,
+                regulation_events=regulation_events,
+                current_regulation=current_regulation,
             )
             result.append(
                 DocketArrivalRow(
@@ -968,7 +1112,11 @@ class Store:
 
         See :class:`~ntsb_probable_cause.store.FeedComparisonResult` and
         :func:`_feed_reported_change` for the exact rule and what each of the four numbers
-        counts.
+        counts. ``unparsable_timestamps`` (Task 11 fix round 2, MINOR 3) is a separate,
+        whole-table count of every stored ``last_change_utc`` value that does not parse at all
+        -- not scoped to the mkeys involved in a comparison, so it is stable across
+        ``window_days`` values and tells a reader how much of the feed's own data was unusable,
+        as opposed to simply not matching.
         """
         run_started_at = dict(self._conn.execute("SELECT run_id, started_at FROM runs").fetchall())
         changes = self._conn.execute(
@@ -993,11 +1141,14 @@ class Store:
             ):
                 field_changes_reported += 1
                 case_nights_reported.add((mkey, present_run))
+        all_timestamps = self._conn.execute("SELECT last_change_utc FROM change_feed").fetchall()
+        unparsable = sum(1 for (value,) in all_timestamps if _parse_feed_timestamp(value) is None)
         return FeedComparisonResult(
             field_changes=len(changes),
             field_changes_reported=field_changes_reported,
             case_nights=len(case_nights),
             case_nights_reported=len(case_nights_reported),
+            unparsable_timestamps=unparsable,
         )
 
     def regulation_transitions(self) -> RegulationTransitions:
@@ -1009,11 +1160,13 @@ class Store:
         is not "a watched case that changed regulation" (spec §4.1). Values are compared after
         :func:`_normalize_regulation` (``None``/``""`` both read as empty).
 
-        A store that ran only under schema version 1 (before migration 2 existed) has no
-        ``regulation_events`` rows for those nights at all -- this method, and the report that
-        prints it, simply count what migration 2 has recorded since it first ran; there is no
-        separate flag for "before migration 2 existed" because every count here would already
-        read as zero for that period, which is the truth, not a gap disguised as a zero.
+        A store that ran under schema version 1 before migration 2 was applied would have no
+        ``regulation_events`` rows for those nights -- an UNKNOWN period, not zero changes; this
+        method cannot tell the two apart from the rows alone (Task 11 fix round 2, I7). No live
+        store has ever existed at version 1: every deployment of this code creates its store
+        with migration 2 already present, so there is no such gap for this deployment, and the
+        report states that plainly rather than describing a gap that would only be real for a
+        store this project has never actually run.
         """
         rows = self._conn.execute(
             "SELECT re.old, re.new, re.present_run, c.first_seen_run "

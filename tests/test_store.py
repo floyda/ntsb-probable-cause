@@ -635,3 +635,67 @@ def test_close_checkpoints_wal_into_the_main_file(tmp_path: Path) -> None:
         assert marker.encode() in path.read_bytes()
     finally:
         reader.close()
+
+
+def test_readonly_store_reads_but_cannot_write(tmp_path: Path) -> None:
+    """Task 11 fix round 2, MINOR 4: ``readonly=True`` opens a true read-only connection."""
+    path = tmp_path / "r.sqlite"
+    writable = Store(path)
+    writable.migrate()
+    writable.upsert_case(
+        CaseRow(
+            mkey=1,
+            ntsb_number="X",
+            event_date="2026-01-01",
+            regulation="091",
+            status="Ongoing",
+            first_seen_run=1,
+            last_seen_run=1,
+            last_case_run=1,
+            last_docket_run=None,
+            watch_until=None,
+        )
+    )
+    writable.close()
+
+    reader = Store(path, readonly=True)
+    try:
+        case = reader.get_case(1)
+        assert case is not None
+        assert case.mkey == 1
+        with pytest.raises(sqlite3.OperationalError):
+            reader.upsert_case(
+                CaseRow(
+                    mkey=2,
+                    ntsb_number="Y",
+                    event_date="2026-01-01",
+                    regulation="091",
+                    status="Ongoing",
+                    first_seen_run=1,
+                    last_seen_run=1,
+                    last_case_run=1,
+                    last_docket_run=None,
+                    watch_until=None,
+                )
+            )
+    finally:
+        reader.close()  # must not raise, and must not attempt a checkpoint
+
+
+def test_readonly_store_schema_version_without_migrating(tmp_path: Path) -> None:
+    path = tmp_path / "r.sqlite"
+    writable = Store(path)
+    assert writable.migrate() == 2
+    writable.close()
+
+    reader = Store(path, readonly=True)
+    try:
+        assert reader.schema_version() == 2
+    finally:
+        reader.close()
+
+
+def test_readonly_open_of_a_nonexistent_file_raises(tmp_path: Path) -> None:
+    """A caller wanting "no store yet" to be a soft case must check existence first."""
+    with pytest.raises(sqlite3.OperationalError):
+        Store(tmp_path / "does-not-exist.sqlite", readonly=True)

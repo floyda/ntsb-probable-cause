@@ -95,15 +95,19 @@ class RunSummaryRow(BaseModel, frozen=True):
 
 
 class ArrivalClassification(StrEnum):
-    """Where one arrival falls relative to its case's closure (Task 11 fix round 1, IMPORTANT 5).
+    """Where one arrival falls relative to its case's closure (Task 11, IMPORTANT I5).
 
     Only ``BEFORE_CLOSURE`` arrivals form the distribution spec §10.2 says replaces
     ``scoring.samples.MASK_LIFTS_AT_DAY``: an arrival recorded the same night as, or after, the
     status event that closed the case is not something a live agent watching an *open* case
     would ever see arrive, so it cannot inform what the mask should assume about an open case's
-    evidence. ``EXCLUDED_UNWATCHED`` is a case that was not currently watched (dropped for its
-    regulation, decision 0067) at the time -- also outside the intended population, counted
-    separately rather than silently mixed in either way.
+    evidence. ``EXCLUDED_UNWATCHED`` is a case whose regulation, AS RECORDED AT THE TIME of the
+    arrival (from ``regulation_events`` history, never the case's *current* ``cases.watched``
+    flag), was something other than empty or Part 91 (decision 0067) -- also outside the
+    intended population, counted separately rather than silently mixed in either way. Fix
+    round 2 replaced an earlier version of this rule that read ``cases.watched`` directly: that
+    flag is cleared when a closed case's 30-day tail expires, which silently moved every
+    already-closed case's genuine before-closure arrivals into this bucket a month later.
     """
 
     BEFORE_CLOSURE = "before_closure"
@@ -161,12 +165,15 @@ class FeedComparisonResult(BaseModel, frozen=True):
     Reported at two granularities: per field-change row (``field_changes``/
     ``field_changes_reported``) and per case-night -- one ``(mkey, present_run)`` pair, which
     can hold several field changes at once (``case_nights``/``case_nights_reported``).
+    ``unparsable_timestamps`` (fix round 2, MINOR 3) is a whole-table count of stored
+    ``last_change_utc`` values that failed to parse at all, independent of ``window_days``.
     """
 
     field_changes: int
     field_changes_reported: int
     case_nights: int
     case_nights_reported: int
+    unparsable_timestamps: int
 
 
 class RegulationTransitions(BaseModel, frozen=True):

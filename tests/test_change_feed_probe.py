@@ -2,8 +2,20 @@
 the confirmed-key counts, IMPORTANT 8/CRITICAL 1)."""
 
 from collections import Counter
+from pathlib import Path
 
-from scripts.change_feed_probe import feed_timestamp_signatures, format_signature, report, shape_of
+import httpx
+import pytest
+import respx
+from scripts.change_feed_probe import (
+    feed_timestamp_signatures,
+    format_signature,
+    main,
+    report,
+    shape_of,
+)
+
+_URL_MODIFIED = "https://api.ntsb.gov/public/api/Common/v1/GetCasesByModifiedDateRange/"
 
 
 def test_shape_of_records_sorted_type_names_per_key() -> None:
@@ -96,3 +108,43 @@ def test_report_with_no_rows_states_no_data_and_refused_fixture() -> None:
     assert "caseClosed counts:\n  no data" in text
     assert "stepId counts:\n  no data" in text
     assert "fixture written: False (refused -- the response held no rows)" in text
+
+
+def test_main_refuses_to_write_the_fixture_on_an_empty_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    respx_mock: respx.MockRouter,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Task 11 fix round 2, IMPORTANT I8: an empty response must never overwrite the fixture
+    with "the feed has no keys"."""
+    monkeypatch.setenv("NTSB_API_KEY", "test-key")
+    respx_mock.get(_URL_MODIFIED).mock(return_value=httpx.Response(200, json=[]))
+    fixture_path = tmp_path / "shape.json"
+    out_path = tmp_path / "out.txt"
+
+    exit_code = main(["--fixture", str(fixture_path), "--out", str(out_path)])
+
+    assert exit_code == 0
+    assert not fixture_path.exists()
+    output = capsys.readouterr().out
+    assert "fixture written: False" in output
+    assert "refused -- the response held no rows" in out_path.read_text()
+
+
+def test_main_writes_the_fixture_when_rows_are_returned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    respx_mock: respx.MockRouter,
+) -> None:
+    monkeypatch.setenv("NTSB_API_KEY", "test-key")
+    respx_mock.get(_URL_MODIFIED).mock(
+        return_value=httpx.Response(200, json=[{"mkey": 1, "mode": "Aviation"}])
+    )
+    fixture_path = tmp_path / "shape.json"
+
+    exit_code = main(["--fixture", str(fixture_path)])
+
+    assert exit_code == 0
+    assert fixture_path.exists()
+    assert "mkey" in fixture_path.read_text()

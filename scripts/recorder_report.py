@@ -3,32 +3,44 @@
 Status
     Live tool. Produces ``docs/results/s25-recorder-report.txt``. Its numbers become the
     stage's As-built record, and the 8-week comparisons in spec §10.2, once ``runs`` holds 14
-    or more FINISHED nights (spec "Done means" §14, item 2; a crashed run is not a night the
-    recorder actually completed, so it does not count toward the threshold) -- run before
-    that, it still prints, but its output is not yet citable. Prints, counts only (decision
-    0024; never a case number, an mkey, a title or any other per-case text): the per-night run
-    summaries; arrival percentiles (days from event to first appearance, present- and
-    absent-side, nearest-rank method) per evidence field, for the preliminary narrative and for
-    the docket, each split into before/same-run/after closure and cases excluded as currently
-    unwatched -- only the before-closure figures are the mask distribution spec §10.2 means;
-    the change-feed comparison, at both field-row and case-night granularity; regulation
-    transitions (migration 2's history, replacing the previous lower-bound estimate); the
-    30-day closure tail, split by same-run/after/total and reported separately for "not
-    returned" cases; suspected re-numbers; a possible-false-"not returned" count; and
-    compressed listing-page sizes.
+    or more distinct FINISHED nights (spec "Done means" §14, item 2; a crashed run is not a
+    night the recorder actually completed, so it does not count toward the threshold, and a
+    night the recorder ran more than once counts once) -- run before that, it still prints,
+    but its output is not yet citable. Prints, counts only (decision 0024; never a case number,
+    an mkey, a title or any other per-case text): the per-night run summaries; arrival
+    percentiles (days from event to first appearance, present- and absent-side, nearest-rank
+    method) per evidence field, for the preliminary narrative and for the docket, each split
+    into before/same-run/after closure and cases excluded because their regulation, at the
+    time, was not Part 91 -- only the before-closure figures are the mask distribution spec
+    §10.2 means; the change-feed comparison, at both field-row and case-night granularity;
+    regulation transitions (migration 2's history, replacing the previous lower-bound
+    estimate); the 30-day closure tail, split by same-run/after/total and reported separately
+    for "not returned" cases; suspected re-numbers; a possible-false-"not returned" count; and
+    compressed listing-page sizes. Opens the store strictly read-only and never migrates it.
 
     Fix round 1 (Task 11, 2026-09-23): rewrote every arrival query the report reads from
     (before/same-run/after-closure classification, the corrected feed rule, the docket
-    absent-side rule, the preliminary narrative, migration 2's regulation history); see
-    ``docs/plans/2026-09-22-s25-recorder.md``'s Deviations for what changed and why.
+    absent-side rule, the preliminary narrative, migration 2's regulation history).
+
+    Fix round 2 (2026-09-23): the "excluded" classification no longer reads the case's current
+    ``watched`` flag, which a closed case's tail expiry clears regardless of its regulation --
+    it now reads the case's regulation history, as recorded at the time of each arrival; the
+    report text was rewritten in plain language, without reviewer shorthand or raw column
+    names; "finished nights" now counts distinct UTC calendar dates, not run rows; the store is
+    opened truly read-only (no ``migrate()`` call) with a schema-version check. See
+    ``docs/plans/2026-09-22-s25-recorder.md``'s Deviations for the full account.
 
 Usage:
     uv run python -m scripts.recorder_report [--out docs/results/s25-recorder-report.txt] \
         [--feed-window-days 1]
 
 Reads ``NTSB_STORE`` (a local path or an ``s3://bucket/key`` URL, exactly as the recorder
-itself does -- ``store/sync.py``): an S3 location is pulled read-only to a local working file
-under ``NTSB_DATA_DIR`` and never pushed back.
+itself does -- ``store/sync.py``): an S3 location is pulled to a local working file under
+``NTSB_DATA_DIR`` (a plain download; the S3 object itself is never touched), which is then
+opened read-only and never migrated. If the store does not exist yet, or its schema version
+does not match what this code expects, the script says so and either prints an all-zero report
+(no store yet) or refuses to read it (a mismatched version) -- it never writes to try to fix
+either.
 """
 
 import argparse
@@ -36,6 +48,7 @@ import math
 import sys
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 from ntsb_probable_cause.settings import Settings
@@ -50,6 +63,7 @@ from ntsb_probable_cause.store import (
     Store,
     TailArrivals,
 )
+from ntsb_probable_cause.store import schema as store_schema
 from ntsb_probable_cause.store.sync import Location, pull
 
 _PERCENTILES: tuple[float, ...] = (0.25, 0.5, 0.75, 0.9)
@@ -69,10 +83,10 @@ def _percentiles(values: Sequence[int], qs: Sequence[float] = _PERCENTILES) -> d
 
 
 def _format_days(values: Sequence[int]) -> str:
-    """Nearest-rank percentile text (MINOR 2), or a floor/empty note.
+    """Nearest-rank percentile text, or a floor/empty note.
 
-    ``n<3`` suppresses percentiles below the reliable floor (MINOR 4); an empty sequence reads
-    ``no data``.
+    ``n<3`` suppresses percentiles below the reliable floor; an empty sequence reads ``no
+    data``.
     """
     if not values:
         return "no data"
@@ -117,20 +131,23 @@ def _arrival_lines(label: str, rows: Sequence[_ArrivalRowLike]) -> list[str]:
         f"    present-side: {_format_days(present_days)}",
         f"    absent-side:  {_format_days(absent_days)}",
         f"  {label} classification: "
-        f"before_closure={counts[ArrivalClassification.BEFORE_CLOSURE]} "
-        f"same_run_as_closure={counts[ArrivalClassification.SAME_RUN_AS_CLOSURE]} "
-        f"after_closure={counts[ArrivalClassification.AFTER_CLOSURE]} "
-        f"excluded_unwatched={counts[ArrivalClassification.EXCLUDED_UNWATCHED]}",
+        f"before closure={counts[ArrivalClassification.BEFORE_CLOSURE]} "
+        f"same run as closure={counts[ArrivalClassification.SAME_RUN_AS_CLOSURE]} "
+        f"after closure={counts[ArrivalClassification.AFTER_CLOSURE]} "
+        f"excluded (not Part 91 at the time)={counts[ArrivalClassification.EXCLUDED_UNWATCHED]}",
     ]
 
 
 def _run_summary_lines(run_rows: Sequence[RunSummaryRow]) -> list[str]:
     finished = [r for r in run_rows if r.finished_at is not None]
     unfinished = [r for r in run_rows if r.finished_at is None]
+    finished_dates = {datetime.fromisoformat(r.started_at).date() for r in finished}
     lines = [
-        f"nights: {len(run_rows)}",
-        f"finished nights: {len(finished)} "
-        "(the 14-night citability threshold, spec 'Done means' §14, counts these, not `nights`)",
+        f"nights recorded (every run, finished or not): {len(run_rows)}",
+        f"finished runs: {len(finished)}",
+        f"distinct finished nights: {len(finished_dates)} "
+        "(counts each UTC calendar date once, even when the recorder ran more than once that "
+        "night; this is the number the 14-night threshold counts)",
         f"unfinished (crashed) runs: {len(unfinished)}",
         "",
     ]
@@ -139,13 +156,13 @@ def _run_summary_lines(run_rows: Sequence[RunSummaryRow]) -> list[str]:
         return lines
     lines.append("run summaries (most recent first):")
     lines.append(
-        "  run_id  started_at             status      polled changed new_docs failed "
+        "  run_id  started_at                status      polled changed new_docs failed "
         "suspects minutes"
     )
     for r in run_rows:
         status = "ok" if r.finished_at is not None else "UNFINISHED"
         lines.append(
-            f"  {r.run_id:<7} {r.started_at:<22} {status:<11} "
+            f"  {r.run_id:<7} {r.started_at:<26} {status:<11} "
             f"{_fmt_int(r.cases_polled):>6} {_fmt_int(r.cases_changed):>7} "
             f"{_fmt_int(r.new_documents):>8} {_fmt_int(r.failures):>6} "
             f"{_fmt_int(r.suspected_renumbers):>8} {_fmt_minutes(r.minutes):>7}"
@@ -182,10 +199,10 @@ def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: 
 
 def _prelim_lines(prelim_arrivals: Sequence[ArrivalRow], prelim_first_sight: int) -> list[str]:
     lines = ["preliminary narrative arrival:"]
-    lines.extend(_arrival_lines("prelim_narrative", prelim_arrivals))
+    lines.extend(_arrival_lines("preliminary narrative", prelim_arrivals))
     lines.append(
-        "  first-sight prelim narratives (present by the day watching began, excluded above): "
-        f"{prelim_first_sight}"
+        "  first-sight preliminary narratives (present by the day watching began, excluded "
+        f"above): {prelim_first_sight}"
     )
     return lines
 
@@ -218,10 +235,11 @@ def _docket_lines(
 
 def _feed_lines(feed_comparison: FeedComparisonResult, feed_window_days: int) -> list[str]:
     lines = [
-        "feed comparison rule (CRITICAL 2): a field change is 'reported' iff some change_feed "
-        "row for the same case has last_change_utc strictly after the absent run's start time, "
-        f"AND was polled by a run whose start time falls within {feed_window_days} day(s), by "
-        "time, at or after the present run's start."
+        "comparison between the month re-fetch and the change feed: a field change counts as "
+        "reported by the feed only when the feed's own record of that case's change happened "
+        f"strictly after the last time the field was seen absent, AND the feed was checked "
+        f"within {feed_window_days} day(s), by clock time, of the night the change was found.",
+        f"  timestamps that could not be read at all: {feed_comparison.unparsable_timestamps}",
     ]
     if not feed_comparison.field_changes:
         lines.append("  no data")
@@ -239,9 +257,10 @@ def _feed_lines(feed_comparison: FeedComparisonResult, feed_window_days: int) ->
 
 def _regulation_lines(transitions: RegulationTransitions) -> list[str]:
     return [
-        "regulation transitions, watched cases only (IMPORTANT 7; migration 2 -- a store that "
-        "ran only before migration 2 has no history for those nights, which reads as zero "
-        "here, not a gap):",
+        "regulation transitions, watched cases only. This project's stores have always been "
+        "built with the regulation-history table present from the start, so this count has no "
+        "gap for this deployment; a store lacking that table for part of its life would show "
+        "an unknown period, not zero changes, for those nights.",
         f"  empty -> 091 (filled in): {transitions.empty_to_091}",
         f"  days from first sight to fill-in: {_format_days(list(transitions.empty_to_091_days))}",
         f"  empty -> other (filled in and dropped): {transitions.empty_to_other}",
@@ -252,11 +271,16 @@ def _regulation_lines(transitions: RegulationTransitions) -> list[str]:
 
 def _tail_lines(tail: TailArrivals) -> list[str]:
     return [
-        "closure tail (IMPORTANT 3; real closures only -- Completed or N/A; 'appeared' also "
-        "covers reappearances and one half of a suspected re-numbered pair):",
-        f"  same run as closure (order unknown, spec §7 rule 4): {tail.same_run}",
+        "closure tail: documents that appeared at or after a case's closure (real closures "
+        "only -- a status change to Completed or N/A, never 'not returned'; a document seen "
+        "for the first time ever, with no earlier poll that showed it absent, is not counted "
+        "as an arrival here at all). Reappearances and one half of a suspected re-numbered "
+        "pair count the same as any other appearance. A case can have both a 'not returned' "
+        "event and, later, a real closure; its documents can then be counted in both tails "
+        "below.",
+        f"  same run as closure (order unknown): {tail.same_run}",
         f"  strictly after closure: {tail.after}",
-        f"  total (at or after closure, spec §7): {tail.total}",
+        f"  total (at or after closure): {tail.total}",
         "  'not returned' tail (reported separately, not a real closure): "
         f"{tail.not_returned_tail}",
     ]
@@ -285,6 +309,8 @@ def report(  # noqa: PLR0913 -- one counts-only value per spec §10.2 bullet; se
     Every argument is a number or a sequence of small, case-free rows (day counts and
     classification labels only -- no case number, mkey or title ever crosses into this
     function), so this cannot leak one regardless of what the store contains (decision 0024).
+    Written in plain language throughout: no internal review labels and no raw column names,
+    since this text becomes the stage's citable record.
     """
     lines = [
         "Recorder report (scripts/recorder_report.py; spec S2.5 §10.2)",
@@ -292,11 +318,12 @@ def report(  # noqa: PLR0913 -- one counts-only value per spec §10.2 bullet; se
         "",
         *_run_summary_lines(run_rows),
         "",
-        "arrival classification rule (IMPORTANT 5): each true arrival is BEFORE_CLOSURE, "
-        "SAME_RUN_AS_CLOSURE or AFTER_CLOSURE, relative to the case's most recent real closure "
-        "(Completed or N/A -- never 'not returned'); a case not currently watched (dropped for "
-        "its regulation) is EXCLUDED_UNWATCHED instead. Only BEFORE_CLOSURE arrivals are the "
-        "mask distribution spec §10.2 means.",
+        "How arrivals are classified: each true arrival is BEFORE, SAME NIGHT AS, or AFTER its "
+        "case's real closure. A case whose regulation, as recorded at the time of the arrival, "
+        "was something other than not-yet-recorded or Part 91 is excluded instead, whichever "
+        "night that was -- a regulation change recorded on the very same night as an arrival "
+        "excludes that arrival too, which is a deliberately cautious reading. Only the "
+        "before-closure arrivals are the mask distribution spec §10.2 means.",
         "",
         *_field_lines(field_arrivals, first_sight_fields),
         "",
@@ -323,8 +350,51 @@ def report(  # noqa: PLR0913 -- one counts-only value per spec §10.2 bullet; se
     return "\n".join(lines)
 
 
-def _open_store(settings: Settings) -> Store:
-    """Open the store the recorder itself writes to; read-only, S3 pulled but never pushed."""
+def _empty_report(feed_window_days: int) -> str:
+    """The report an empty store would print, without ever opening a file (Task 11 MINOR 4)."""
+    return report(
+        run_rows=[],
+        field_arrivals=[],
+        first_sight_fields=0,
+        prelim_arrivals=[],
+        prelim_first_sight=0,
+        docket_arrivals=[],
+        docket_first_sight=0,
+        docket_absent_side_unknown=0,
+        feed_comparison=FeedComparisonResult(
+            field_changes=0,
+            field_changes_reported=0,
+            case_nights=0,
+            case_nights_reported=0,
+            unparsable_timestamps=0,
+        ),
+        feed_window_days=feed_window_days,
+        regulation_transitions=RegulationTransitions(
+            empty_to_091=0,
+            empty_to_091_days=(),
+            empty_to_other=0,
+            changed_value=0,
+            value_to_empty=0,
+        ),
+        tail_arrivals=TailArrivals(same_run=0, after=0, total=0, not_returned_tail=0),
+        renumber_suspects=0,
+        possible_false_not_returned=0,
+        page_sizes=[],
+    )
+
+
+def _open_store(settings: Settings) -> tuple[Store | None, str | None]:
+    """Open the store the recorder writes to, strictly read-only and never migrated.
+
+    Task 11 fix round 2, MINOR 4: no ``migrate()`` call -- the script's "read-only" claim was
+    not true while it silently upgraded the schema on every run. Returns ``(store, None)`` on
+    success, ``(None, None)`` when no store exists yet (the caller prints an all-zero report
+    without ever touching a file), or ``(None, message)`` when the store's schema version does
+    not match what this code expects (refused, rather than read partially or migrated).
+
+    An ``s3://`` location is still pulled to a local working file first -- a plain download,
+    never a write to the S3 object itself -- and that local copy is then opened read-only.
+    """
     location = Location(settings.store)
     if location.is_s3:
         local = settings.data_dir / _REPORT_WORK_FILENAME
@@ -332,9 +402,22 @@ def _open_store(settings: Settings) -> Store:
         pull(location, local)
     else:
         local = Path(location.raw)
-    store = Store(local)
-    store.migrate()
-    return store
+
+    if not local.exists():
+        return None, None
+
+    store = Store(local, readonly=True)
+    version = store.schema_version()
+    expected = len(store_schema.MIGRATIONS)
+    if version != expected:
+        store.close()
+        return None, (
+            f"the store's schema version ({version}) does not match what this code expects "
+            f"({expected}); refusing to read a mismatched store. Run the recorder itself "
+            "(which migrates on write) against it first, or check that NTSB_STORE points at "
+            "the intended file."
+        )
+    return store, None
 
 
 def main(argv: Sequence[str]) -> int:
@@ -345,27 +428,34 @@ def main(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
 
     settings = Settings()
-    store = _open_store(settings)
-    try:
-        text = report(
-            run_rows=store.run_summaries(),
-            field_arrivals=store.field_change_arrivals(),
-            first_sight_fields=store.first_sight_field_count(),
-            prelim_arrivals=store.prelim_arrivals(),
-            prelim_first_sight=store.prelim_first_sight_count(),
-            docket_arrivals=store.docket_arrivals(),
-            docket_first_sight=store.docket_first_sight_count(),
-            docket_absent_side_unknown=store.docket_absent_side_unknown_count(),
-            feed_comparison=store.feed_comparison(window_days=args.feed_window_days),
-            feed_window_days=args.feed_window_days,
-            regulation_transitions=store.regulation_transitions(),
-            tail_arrivals=store.tail_arrivals(),
-            renumber_suspects=store.renumber_suspects(),
-            possible_false_not_returned=store.possible_false_not_returned(),
-            page_sizes=store.compressed_page_sizes(),
-        )
-    finally:
-        store.close()
+    store, error = _open_store(settings)
+    if error is not None:
+        print(error, file=sys.stderr)
+        return 1
+
+    if store is None:
+        text = _empty_report(args.feed_window_days)
+    else:
+        try:
+            text = report(
+                run_rows=store.run_summaries(),
+                field_arrivals=store.field_change_arrivals(),
+                first_sight_fields=store.first_sight_field_count(),
+                prelim_arrivals=store.prelim_arrivals(),
+                prelim_first_sight=store.prelim_first_sight_count(),
+                docket_arrivals=store.docket_arrivals(),
+                docket_first_sight=store.docket_first_sight_count(),
+                docket_absent_side_unknown=store.docket_absent_side_unknown_count(),
+                feed_comparison=store.feed_comparison(window_days=args.feed_window_days),
+                feed_window_days=args.feed_window_days,
+                regulation_transitions=store.regulation_transitions(),
+                tail_arrivals=store.tail_arrivals(),
+                renumber_suspects=store.renumber_suspects(),
+                possible_false_not_returned=store.possible_false_not_returned(),
+                page_sizes=store.compressed_page_sizes(),
+            )
+        finally:
+            store.close()
 
     print(text)
     if args.out:
