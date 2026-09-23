@@ -1,0 +1,58 @@
+Change-feed probe (scripts/change_feed_probe.py; spec S2.5 §5.3, decision 0065)
+
+row count: 156
+keys: 30
+
+key types:
+  caseClosed: bool
+  caseCreatedDateTimeUtc: str
+  city: NoneType, str
+  country: NoneType, str
+  environmentalDamage: NoneType, str
+  eventDate: NoneType, str
+  eventTimeUtc: NoneType, str
+  eventTimeUtcOffsetHours: NoneType, int
+  eventType: NoneType, str
+  factualPublishedDate: NoneType, str
+  hazmatInvolved: NoneType, bool
+  highestInjuryLevel: NoneType, str
+  isStudy: bool
+  isUtc: NoneType, bool
+  lastChangeDateTimeUtc: str
+  lastRevisionDate: NoneType, str
+  latitude: NoneType, float, int
+  legacy: bool
+  location: NoneType, str
+  longitude: NoneType, float, int
+  mkey: int
+  mode: str
+  ntsbnumber: str
+  originalPublishedDate: NoneType, str
+  propertyDamage: NoneType, int
+  reportDate: NoneType, str
+  reportNumber: NoneType, str
+  stateOrRegion: NoneType, str
+  stepId: str
+  stepNumber: int
+
+lastChangeDateTimeUtc format signature(s) (digits masked as 'd'):
+  dddd-dd-ddTdd:dd:dd.dddd
+  dddd-dd-ddTdd:dd:dd.ddddd
+  dddd-dd-ddTdd:dd:dd.dddddd
+
+mode counts:
+  Aviation: 142
+  Marine: 1
+  Railroad: 13
+
+caseClosed counts:
+  False: 75
+  True: 81
+
+stepId counts:
+  Complete: 39
+  FactualDataCollection: 58
+  Preliminary: 16
+  Published: 43
+
+fixture written: True

@@ -480,6 +480,43 @@ def test_feed_timestamp_with_no_timezone_is_read_as_utc(store: Store) -> None:
     assert result.field_changes_reported == 1
 
 
+def test_feed_timestamp_with_no_timezone_and_4_5_or_6_fractional_digits_is_read_as_utc(
+    store: Store,
+) -> None:
+    """Task 11 close-out: the live probe (2026-09-23, `make change-feed-probe`) confirmed
+    ``lastChangeDateTimeUtc`` carries no time zone at all and 4, 5 or 6 fractional-second
+    digits (``dddd-dd-ddTdd:dd:dd.dddd``/``.ddddd``/``.dddddd``) -- never a "Z" or an offset.
+    All three widths must parse as UTC, exactly like the plain-seconds form fix round 1 fixed.
+    """
+    _begin_runs(store, (1, RUN1), (2, RUN2))
+    for mkey, fractional in ((1, "1234"), (2, "12345"), (3, "123456")):
+        store.upsert_case(_case(mkey, event_date="2025-12-01"))
+        store.add_field_snapshot(
+            mkey,
+            role="weather_condition",
+            value_json='"VMC"',
+            absent_run=1,
+            present_run=2,
+            run_id=2,
+        )
+        store.add_feed_rows(
+            [
+                FeedRow(
+                    mkey=mkey,
+                    last_change_utc=f"2026-01-02T01:00:00.{fractional}",
+                    step_number=None,
+                    step_id=None,
+                    case_closed=False,
+                )
+            ],
+            run_id=2,
+        )
+    result = store.feed_comparison(window_days=1)
+    assert result.field_changes == 3
+    assert result.field_changes_reported == 3
+    assert result.unparsable_timestamps == 0
+
+
 def test_feed_comparison_caches_change_feed_rows_per_mkey(store: Store) -> None:
     """Two field changes on the same case in one run: one case-night, two field-row changes,
     and the change_feed rows for that mkey are fetched once, not once per field row."""
