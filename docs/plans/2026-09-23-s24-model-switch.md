@@ -174,7 +174,7 @@ git commit -m "S2.4: name the default model and reasoning level once; price GPT-
 - Consumes: `sources.DEFAULT_MODEL`, `sources.DEFAULT_REASONING_EFFORT`, `sources.ReasoningEffort`, `RecordingFakeClient.settings` (Task 1).
 - Produces: `RunSpec.reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT`; `spec.json` key `"reasoning_effort"`; `RunRecord.reasoning_effort: str | None = None`; `provenance` prints `reasoning=<level>` or `reasoning=provider default`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_runner.py`:
 
@@ -227,12 +227,12 @@ def test_no_module_but_sources_names_a_luna_model() -> None:
     assert offenders == []
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_sources_settings.py -k "reasoning or defaults_come or names_a_luna" -v`
 Expected: FAIL — `RunSpec` has no `reasoning_effort`; `runner.py` still names `openai/gpt-5.6-luna`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ntsb_probable_cause/scoring/runner.py`, `RunSpec`: replace `model: str = "openai/gpt-5.6-luna"` with
 
@@ -276,12 +276,12 @@ def _settings(spec: RunSpec, schema: dict[str, object], name: str) -> ModelSetti
 
 If an existing test asserts the old header line exactly, update its expected string to include `reasoning=provider default`; do not change what it checks otherwise.
 
-- [ ] **Step 4: Run the tests to see them pass**
+- [x] **Step 4: Run the tests to see them pass**
 
 Run: `make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/runner.py src/ntsb_probable_cause/scoring/records.py src/ntsb_probable_cause/scoring/report.py tests/test_runner.py tests/test_report.py tests/test_sources_settings.py docs/plans/2026-09-23-s24-model-switch.md

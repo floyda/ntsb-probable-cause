@@ -499,3 +499,10 @@ def test_cap_summary_counts_a_case_that_failed_before_any_step() -> None:
         "cap: 1 of 1 cases hit the cap; 2 documents not read "
         "(fatal 1 cases/2 documents, non-fatal 0/0)"
     )
+
+
+def test_provenance_shows_the_reasoning_level(run_record: RunRecord) -> None:
+    """A run from before S2.4 never recorded its level; the header says so plainly."""
+    assert "reasoning=provider default" in report.provenance(run_record)
+    stated = run_record.model_copy(update={"reasoning_effort": "medium"})
+    assert "reasoning=medium" in report.provenance(stated)

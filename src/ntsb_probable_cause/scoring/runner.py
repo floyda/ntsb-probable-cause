@@ -77,7 +77,8 @@ class RunSpec:
     arm: Literal["A", "B", "ceiling"]
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
-    model: str = "openai/gpt-5.6-luna"
+    model: str = sources.DEFAULT_MODEL
+    reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
     budget_usd: float = 25.0
@@ -119,6 +120,7 @@ def spec_json(
         "exclusions": sorted(role.value for role in spec.exclusions),
         "include_case_number": spec.include_case_number,
         "model": spec.model,
+        "reasoning_effort": spec.reasoning_effort,
         "price_variant": spec.price_variant,
         "cap_usd": spec.cap_usd,
         "budget_usd": spec.budget_usd,
@@ -538,7 +540,11 @@ def refuse_sync_with_batch_price(spec: RunSpec) -> None:
 def _settings(spec: RunSpec, schema: dict[str, object], name: str) -> ModelSettings:
     """Model settings for one call; ``schema`` and ``name`` vary between the two stages."""
     return ModelSettings(
-        model=spec.model, price_variant=spec.price_variant, json_schema=schema, schema_name=name
+        model=spec.model,
+        price_variant=spec.price_variant,
+        reasoning_effort=spec.reasoning_effort,
+        json_schema=schema,
+        schema_name=name,
     )
 
 
@@ -873,6 +879,7 @@ class Runner:
                 includes=("case_number",) if spec.include_case_number else (),
                 prompt_version=prompt.PROMPT_VERSION,
                 model=spec.model,
+                reasoning_effort=spec.reasoning_effort,
                 price_variant=spec.price_variant,
                 cap_usd=spec.cap_usd,
                 budget_usd=spec.budget_usd,

@@ -11,6 +11,7 @@ from ntsb_probable_cause.errors import (
     SchemaError,
 )
 from ntsb_probable_cause.model.client import ModelSettings
+from ntsb_probable_cause.scoring.runner import RunSpec
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import SONNET_5, SONNET_5_BATCH, docket_url
 
@@ -162,3 +163,19 @@ def test_the_default_model_and_reasoning_level_are_named_once() -> None:
     assert sources.DEFAULT_REASONING_EFFORT == "medium"
     assert ModelSettings().model == sources.DEFAULT_MODEL
     assert ModelSettings().reasoning_effort is None  # the judge and probes send no level
+
+
+def test_run_spec_defaults_come_from_sources() -> None:
+    spec = RunSpec(sample="dev-400", arm="ceiling")
+    assert spec.model == sources.DEFAULT_MODEL
+    assert spec.reasoning_effort == sources.DEFAULT_REASONING_EFFORT
+
+
+def test_no_module_but_sources_names_a_luna_model() -> None:
+    """S2.4 spec §4 item 1: the default lives in one place, so a switch is one line."""
+    offenders = [
+        str(path)
+        for path in Path("src/ntsb_probable_cause").rglob("*.py")
+        if path.name != "sources.py" and "-luna" in path.read_text()
+    ]
+    assert offenders == []

@@ -2273,3 +2273,22 @@ def test_batch_leaking_case_fails_alone_and_the_run_continues(
     assert clean_result.scores is not None
     submitted_ids = {req.custom_id for batch in fake.submitted for req in batch}
     assert submitted_ids == {str(clean["ntsbNumber"])}
+
+
+def test_every_call_states_the_runs_reasoning_level_and_the_run_records_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.4 spec §4.1: stated on both stages, written to spec.json and to the run record."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert [s.reasoning_effort for s in client.settings] == ["medium", "medium"]
+    folder = tmp_path / "runs" / run.run_id
+    assert json.loads((folder / "spec.json").read_text())["reasoning_effort"] == "medium"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].reasoning_effort == "medium"
