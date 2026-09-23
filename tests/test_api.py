@@ -1,4 +1,6 @@
+import json
 from datetime import date
+from pathlib import Path
 
 import httpx
 import pytest
@@ -9,6 +11,23 @@ from ntsb_probable_cause.errors import ApiError
 
 URL = "https://api.ntsb.gov/public/api/Common/v2/GetCasesByDateRange/"
 URL_MODIFIED = "https://api.ntsb.gov/public/api/Common/v1/GetCasesByModifiedDateRange/"
+
+# scripts/change_feed_probe.py (Task 11) writes this from a live response: key -> sorted list
+# of value type names, never values (decision 0024). Committed by the controller after the
+# one-shot live probe (`make change-feed-probe`) has run -- until then this file does not
+# exist, and the test below is skipped with a clear reason rather than failing or being faked
+# from a guess.
+_CHANGE_FEED_SHAPE_FIXTURE = Path("tests/fixtures/api/change_feed_shape.json")
+
+# One representative value per Python type name the fixture might record, for building a
+# synthetic row that has the real shape without ever holding a real value.
+_SYNTHETIC_VALUES: dict[str, object] = {
+    "int": 1,
+    "str": "x",
+    "bool": True,
+    "float": 1.0,
+    "NoneType": None,
+}
 
 
 def body(data: list[dict[str, object]], has_more: bool, marker: str | None) -> dict[str, object]:
@@ -216,3 +235,25 @@ def test_cases_by_date_range_401_names_the_endpoint(respx_mock: respx.MockRouter
     respx_mock.get(URL).mock(return_value=httpx.Response(401))
     with client([]) as c, pytest.raises(ApiError, match="GetCasesByDateRangeV2 returned 401"):
         fetch(c)
+
+
+def test_cases_modified_parses_the_confirmed_live_shape(respx_mock: respx.MockRouter) -> None:
+    """Task 11: a synthetic row built from the committed change-feed shape fixture parses.
+
+    Skipped, with a clear reason, until ``scripts/change_feed_probe.py`` has been run once
+    against the live API and its fixture committed (Task 11 controller note 1) -- this is a
+    structural sanity check (the endpoint still returns a JSON list of objects with these
+    keys), not a claim that every field's meaning is validated.
+    """
+    if not _CHANGE_FEED_SHAPE_FIXTURE.exists():
+        pytest.skip(
+            f"{_CHANGE_FEED_SHAPE_FIXTURE} does not exist yet -- run `make change-feed-probe` "
+            "once against the live API (NTSB_API_KEY set) to record it, then commit the "
+            "fixture; this test then stops skipping."
+        )
+    shape = json.loads(_CHANGE_FEED_SHAPE_FIXTURE.read_text())
+    row = {key: _SYNTHETIC_VALUES.get(types[0], "x") for key, types in shape.items()}
+    respx_mock.get(URL_MODIFIED).mock(return_value=httpx.Response(200, json=[row]))
+    with NtsbClient("k", sleep=lambda _s: None) as c:
+        rows = c.cases_modified(date(2026, 9, 19), date(2026, 9, 21))
+    assert rows == (row,)

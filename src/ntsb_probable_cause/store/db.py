@@ -8,9 +8,9 @@ SQLite serialises them against any open transaction.
 import json
 import re
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -25,6 +25,13 @@ from ntsb_probable_cause.store.models import (
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Shared by field_change_arrivals and first_sight_field_count (Task 11): the first (smallest
+# ``id``) field_snapshots row per (mkey, role) -- the run that first recorded any value for
+# that role at all, whether that turns out to be a true arrival or a first-sight observation.
+_FIRST_FIELD_SNAPSHOT = (
+    "(SELECT mkey, role, MIN(id) AS first_id FROM field_snapshots GROUP BY mkey, role)"
+)
 
 
 def _require_plain_date(today: str) -> None:
@@ -42,6 +49,76 @@ def _require_plain_date(today: str) -> None:
         date.fromisoformat(today)
     except ValueError as error:
         raise ValueError(f"today must be exactly 'YYYY-MM-DD', got {today!r}") from error
+
+
+def _days_between(event_date: str, started_at: str) -> int:
+    """Days from ``event_date`` (``YYYY-MM-DD``) to the DATE portion of ``started_at``.
+
+    ``started_at`` is one of ``runs.started_at``'s full ISO-8601 timestamps (spec §3: every
+    "when" is a run id, never a bare date); only its date component is used. Task 11 controller
+    note 2: this is an upper bound on how long a field took to arrive -- the run that *first*
+    recorded the value may have run days after the value actually appeared, if a night was
+    missed. The interval's other side (the last run that did *not* see it) is on record too,
+    as ``absent_run``, but this report states only the present-side day count.
+    """
+    run_date = datetime.fromisoformat(started_at).date()
+    return (run_date - date.fromisoformat(event_date)).days
+
+
+def _parse_feed_timestamp(text: str) -> datetime | None:
+    """Parse a change-feed ``last_change_utc`` value; ``None`` if it does not parse.
+
+    Tolerates a trailing ``Z`` (``datetime.fromisoformat`` before Python 3.11 could not, and
+    the feed's own timestamp format has never been confirmed by a live response, so this stays
+    defensive rather than assuming one exact shape).
+    """
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _feed_reported_change(
+    feed_rows: Iterable[tuple[int, str]],
+    *,
+    absent_run: int | None,
+    present_run: int,
+    window_days: int,
+    run_started_at: Mapping[int, str],
+) -> bool:
+    """Whether one field change is "reported by the feed" (Task 11 controller note 6).
+
+    One precise rule, with two branches -- either is sufficient:
+
+    (a) some ``change_feed`` row for the same case was recorded at ``present_run`` itself, or
+        at any run up to ``window_days`` after it (the feed's own nightly poll caught the
+        change the same night the month re-fetch did, or within the next ``window_days``
+        nights);
+    (b) some row's ``last_change_utc`` -- the NTSB's own real-world change timestamp,
+        independent of our nightly polling cadence -- falls between the two runs' start times
+        (``absent_run``'s and ``present_run``'s), inclusive. Only checked when the absent side
+        is known and both runs' start times are on record; a first-sight row (``absent_run``
+        ``None``) is never passed here at all (:meth:`Store.feed_comparison` only queries rows
+        with ``absent_run IS NOT NULL``).
+    """
+    absent_started = (
+        _parse_feed_timestamp(run_started_at[absent_run])
+        if absent_run is not None and absent_run in run_started_at
+        else None
+    )
+    present_started = (
+        _parse_feed_timestamp(run_started_at[present_run])
+        if present_run in run_started_at
+        else None
+    )
+    for run_id, last_change_utc in feed_rows:
+        if present_run <= run_id <= present_run + window_days:
+            return True
+        if absent_started is not None and present_started is not None:
+            changed_at = _parse_feed_timestamp(last_change_utc)
+            if changed_at is not None and absent_started <= changed_at <= present_started:
+                return True
+    return False
 
 
 class Store:
@@ -559,3 +636,218 @@ class Store:
                     for row in rows
                 ],
             )
+
+    # -- report queries (Task 11; spec S2.5 §10.2) -------------------------------------------
+    #
+    # Every method here is read-only and returns numbers, never case text -- the report script
+    # (scripts/recorder_report.py) is the only caller and it is built to print counts only
+    # (decision 0024). "Arrival" methods follow one rule throughout (Task 11 controller note
+    # 2): a field or a docket is either a *true arrival* (there is a run that observed its
+    # absence before the run that observed its presence -- ``absent_run IS NOT NULL``) or a
+    # *first-sight* observation (present already at the very first run that could have seen
+    # it, so only a lower bound is known). True arrivals are reported as day counts; first-
+    # sight observations are reported separately, as a count, never mixed into the same
+    # distribution.
+
+    def field_change_arrivals(self) -> list[tuple[str, int]]:
+        """``(role, days from event to first appearance)`` for every true evidence-field arrival.
+
+        Precisely: for each ``(mkey, role)`` pair, take its *first* ``field_snapshots`` row (the
+        smallest ``id`` -- ``cases.py``'s ``_apply_fields`` never writes a row for a role while
+        it is still unknown, so this is the run that first recorded a value for that role at
+        all). Included only when that row's ``absent_run IS NOT NULL`` -- a true arrival, with a
+        run that observed the field's absence beforehand. A first-sight row (``absent_run IS
+        NULL``) is excluded here; see :meth:`first_sight_field_count`.
+
+        ``days`` is :func:`_days_between` applied to the case's ``event_date`` and the row's
+        ``present_run``'s ``runs.started_at`` -- an upper bound (see that function's docstring).
+        """
+        rows = self._conn.execute(
+            # `_FIRST_FIELD_SNAPSHOT` is a fixed module-level constant (see its own comment),
+            # not external input; there is no placeholder syntax to parameterise a sub-SELECT
+            # with regardless.
+            "SELECT fs.role, r.started_at, c.event_date "  # noqa: S608
+            "FROM field_snapshots fs "
+            f"JOIN {_FIRST_FIELD_SNAPSHOT} fr ON fr.first_id = fs.id "
+            "JOIN runs r ON r.run_id = fs.present_run "
+            "JOIN cases c ON c.mkey = fs.mkey "
+            "WHERE fs.absent_run IS NOT NULL"
+        ).fetchall()
+        return [
+            (str(role), _days_between(event_date, started_at))
+            for role, started_at, event_date in rows
+        ]
+
+    def first_sight_field_count(self) -> int:
+        """How many ``(mkey, role)`` fields were already known at the case's first-ever run.
+
+        These say only "present by the day we started watching" -- a lower bound, never mixed
+        into :meth:`field_change_arrivals`'s day counts (Task 11 controller note 2). Precisely:
+        the field's first ``field_snapshots`` row has ``absent_run IS NULL`` *and* its
+        ``present_run`` equals the case's own ``first_seen_run`` -- the second check is
+        belt-and-suspenders, since ``cases.py`` only ever writes ``absent_run=NULL`` on a
+        case's first observation, but it keeps this query correct even if that ever changed.
+        """
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM field_snapshots fs "  # noqa: S608 -- see field_change_arrivals.
+            f"JOIN {_FIRST_FIELD_SNAPSHOT} fr ON fr.first_id = fs.id "
+            "JOIN cases c ON c.mkey = fs.mkey "
+            "WHERE fs.absent_run IS NULL AND fs.present_run = c.first_seen_run"
+        ).fetchone()
+        return int(row[0])
+
+    def docket_arrivals(self) -> list[tuple[int, int]]:
+        """``(days from event to first documented poll, document count at that poll)`` per case.
+
+        Precisely: for each case, its first ``docket_polls`` row with ``outcome='read'`` (a
+        page with the "Docket Information" block and at least one entry -- ``outcome='empty'``
+        is a page with none, spec §6.2). Excluded when that row is also the case's very first
+        poll of *any* outcome -- there is then no earlier poll that observed the docket's
+        absence, so it is present-at-first-sight rather than a true arrival; see
+        :meth:`docket_first_sight_count`. A case with no ``read`` poll at all contributes
+        nothing to either count.
+        """
+        rows = self._conn.execute(
+            "SELECT dp.declared_items, r.started_at, c.event_date "
+            "FROM docket_polls dp "
+            "JOIN runs r ON r.run_id = dp.run_id "
+            "JOIN cases c ON c.mkey = dp.mkey "
+            "WHERE dp.outcome = 'read' "
+            "  AND dp.run_id = (SELECT MIN(run_id) FROM docket_polls "
+            "                    WHERE mkey = dp.mkey AND outcome = 'read') "
+            "  AND dp.run_id != (SELECT MIN(run_id) FROM docket_polls WHERE mkey = dp.mkey)"
+        ).fetchall()
+        return [
+            (_days_between(event_date, started_at), int(declared_items or 0))
+            for declared_items, started_at, event_date in rows
+        ]
+
+    def docket_first_sight_count(self) -> int:
+        """How many cases already had a documented docket at their very first poll ever."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM docket_polls dp "
+            "WHERE dp.outcome = 'read' "
+            "  AND dp.run_id = (SELECT MIN(run_id) FROM docket_polls WHERE mkey = dp.mkey)"
+        ).fetchone()
+        return int(row[0])
+
+    def feed_comparison(self, window_days: int = 1) -> tuple[int, int]:
+        """``(field_changes, reported_by_feed)`` (spec §5.3, §10.2; Task 11 controller note 6).
+
+        ``field_changes`` is every true evidence-field arrival the month re-fetch found (every
+        ``field_snapshots`` row with ``absent_run IS NOT NULL`` -- not deduplicated by role,
+        since the question is "how many of the changes we wrote did the feed also report", and
+        each row is one change). ``reported_by_feed`` is how many of those have at least one
+        matching ``change_feed`` row for the same ``mkey``, by :func:`_feed_reported_change`.
+        """
+        run_started_at = dict(self._conn.execute("SELECT run_id, started_at FROM runs").fetchall())
+        changes = self._conn.execute(
+            "SELECT mkey, absent_run, present_run FROM field_snapshots WHERE absent_run IS NOT NULL"
+        ).fetchall()
+        reported = 0
+        for mkey, absent_run, present_run in changes:
+            feed_rows = self._conn.execute(
+                "SELECT run_id, last_change_utc FROM change_feed WHERE mkey = ?", (mkey,)
+            ).fetchall()
+            if _feed_reported_change(
+                feed_rows,
+                absent_run=absent_run,
+                present_run=present_run,
+                window_days=window_days,
+                run_started_at=run_started_at,
+            ):
+                reported += 1
+        return len(changes), reported
+
+    def regulation_changes(self) -> int:
+        """Watched cases currently excluded from watching by their regulation (spec §4.1).
+
+        The store keeps no history of ``cases.regulation`` -- every observation overwrites the
+        one column (``upsert_case``), so a case that changed regulation and later *closed*, or
+        that changed away from and back to Part 91 within the store's life, leaves no trace
+        this query can see. What is on record: a case whose *current* status is still
+        ``'Ongoing'`` and whose ``watched`` flag is ``0`` can only have become unwatched one
+        way -- ``recorder.cases.is_watchable`` returning ``False`` while the case is Ongoing,
+        which happens precisely when its regulation is recorded as neither Part 91 nor empty
+        (``recorder/cases.py``'s ``_apply_status``/``observe_case``: watching a case never
+        stops for an Ongoing case for any other reason). So this counts *current*, still-open
+        regulation drops -- a lower bound on "how many watched cases changed regulation after
+        first seen", not the full historical count the spec's prose describes; a case that both
+        changed regulation and closed is undercounted. Recorded as a known limitation, not a
+        silent one.
+        """
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM cases WHERE status = 'Ongoing' AND watched = 0"
+        ).fetchone()
+        return int(row[0])
+
+    def tail_arrivals(self) -> int:
+        """Document arrivals recorded after a case's closing status event (spec §7 rule 5).
+
+        For each case, its closing event is the *latest* ``status_events`` row with
+        ``old_status = 'Ongoing'`` (the transition ``cases.py``'s ``_apply_status`` sets the
+        30-day tail on; a case that reopened and closed again is counted from its most recent
+        closing, matching ``watch_until``'s own "only the latest transition matters"
+        semantics). A ``document_events`` row of kind ``'appeared'`` for that case counts if its
+        ``present_run`` is strictly after the closing event's ``present_run`` -- an event on the
+        very same run as the closing one is not counted, since spec §7 rule 4 ("same-poll
+        changes carry no order") means the store cannot say whether it arrived before or after
+        the status change that same night.
+        """
+        closings = self._conn.execute(
+            "SELECT mkey, MAX(present_run) FROM status_events WHERE old_status = 'Ongoing' "
+            "GROUP BY mkey"
+        ).fetchall()
+        total = 0
+        for mkey, present_run in closings:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM document_events "
+                "WHERE mkey = ? AND kind = 'appeared' AND present_run > ?",
+                (mkey, present_run),
+            ).fetchone()
+            total += int(row[0])
+        return total
+
+    def renumber_suspects(self) -> int:
+        """Total suspected re-numbers over every finished run (unfinished runs excluded, rule 4)."""
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(suspected_renumbers), 0) FROM runs WHERE finished_at IS NOT NULL"
+        ).fetchone()
+        return int(row[0])
+
+    def possible_false_not_returned(self) -> int:
+        """How many ``'not returned'`` status events look like a false positive (Task 9 dev.).
+
+        A ``status_events`` row with ``new_status = 'not returned'`` is counted if the same
+        case later shows either sign of having reappeared: a later ``status_events`` row for
+        the same ``mkey`` with ``old_status = 'not returned'`` (an explicit transition away from
+        it), or the case's current ``last_case_run`` -- the last run :func:`~ntsb_probable_cause.
+        recorder.cases.observe_case` actually processed a fresh record for it, which
+        ``mark_not_returned`` never touches -- falling after the "not returned" event's own
+        ``present_run``. Counts events, not cases: a case marked "not returned" more than once
+        contributes one count per such event that was later contradicted.
+        """
+        rows = self._conn.execute(
+            "SELECT mkey, present_run FROM status_events WHERE new_status = 'not returned'"
+        ).fetchall()
+        count = 0
+        for mkey, present_run in rows:
+            reappeared_by_status = self._conn.execute(
+                "SELECT 1 FROM status_events "
+                "WHERE mkey = ? AND old_status = 'not returned' AND present_run > ? LIMIT 1",
+                (mkey, present_run),
+            ).fetchone()
+            if reappeared_by_status is not None:
+                count += 1
+                continue
+            case_row = self._conn.execute(
+                "SELECT last_case_run FROM cases WHERE mkey = ?", (mkey,)
+            ).fetchone()
+            if case_row is not None and case_row[0] is not None and case_row[0] > present_run:
+                count += 1
+        return count
+
+    def compressed_page_sizes(self) -> list[int]:
+        """The compressed byte length of every stored listing page (spec §6.4)."""
+        rows = self._conn.execute("SELECT length(gz) FROM listing_pages").fetchall()
+        return [int(row[0]) for row in rows]
