@@ -248,6 +248,12 @@ cdk bootstrap aws://<PROJECT_ACCOUNT_ID>/eu-west-2 --profile ntsb
 Run this once, when there is a first stack to deploy (build stage S5). Listed here so the
 sequence is complete.
 
+**Stage 5 (recorder stack): pending Andy's deploy.** The stack itself
+(`infra/recorder_stack.py`) and its deploy runbook (`docs/runbooks/recorder-deploy.md`) are
+written (S2.5 Task 13), but `cdk bootstrap` and `cdk deploy` have not been run against the
+project account yet — this line is updated once that runbook's stages are actually done, not
+before.
+
 ---
 
 ## Stage 6 — Deferred items

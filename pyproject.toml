@@ -43,7 +43,7 @@ packages = ["src/ntsb_probable_cause", "apps"]
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["src", "apps", "scripts", "tests"]
+src = ["src", "apps", "scripts", "tests", "infra"]
 extend-exclude = ["docs", "scripts/exploratory"]
 force-exclude = true
 
@@ -58,14 +58,19 @@ convention = "google"
 "tests/**" = ["D", "S101", "PLR2004"]
 "scripts/**" = ["T201"]
 "apps/**" = ["T201"]
+# `infra/app.py` and `infra/recorder_stack.py` are CDK's app entry point and stack
+# definition, not library code with a CLI; `cdk synth` prints its own diagnostics, this
+# code does not (T201). Docstrings stay required (unlike `tests/`), since this file
+# documents cost and reasoning for whoever deploys it next.
+"infra/**" = ["T201"]
 
 [tool.mypy]
 strict = true
 python_version = "3.14"
 plugins = ["pydantic.mypy"]
-files = ["src", "apps", "scripts", "tests"]
+files = ["src", "apps", "scripts", "tests", "infra"]
 exclude = ["^scripts/exploratory/"]
-mypy_path = "src"
+mypy_path = ["src", "infra"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
@@ -137,7 +142,11 @@ forbidden_modules = [
 ]
 
 [tool.deptry]
-known_first_party = ["ntsb_probable_cause", "apps", "scripts"]
+# `recorder_stack` (infra/app.py's plain, unqualified `from recorder_stack import ...`) is this
+# project's own CDK stack module, not a third-party package -- CDK's own convention is a flat
+# `app.py` next to the stack file it imports, with no package wrapper, so there is no dotted
+# package name to list here instead.
+known_first_party = ["ntsb_probable_cause", "apps", "scripts", "recorder_stack"]
 extend_exclude = ["scripts/exploratory"]
 
 [tool.deptry.per_rule_ignores]
@@ -145,9 +154,16 @@ extend_exclude = ["scripts/exploratory"]
 # `store/sync.py:s3_client()` imports `botocore.exceptions.ClientError` alongside the lazy
 # `boto3` import (controller note 3) only to translate one boto3 error into `ObjectNotFoundError`.
 DEP001 = ["botocore"]
+# `aws-cdk-lib` and `constructs` are deliberately dev dependencies, not runtime ones (Task 13
+# controller note 4): `infra/` is deploy-time tooling that runs on Andy's machine through `cdk
+# synth`/`cdk deploy`, never inside the container image (`.dockerignore` excludes `infra/`,
+# Task 12) and never imported by `src`/`apps`. The same reasoning already applies to this
+# project's dev-only test and lint tooling; this is that same shape of dependency, not product
+# code that happens to be misclassified.
+DEP004 = ["aws_cdk", "constructs"]
 
 [tool.vulture]
-paths = ["src", "apps", "scripts"]
+paths = ["src", "apps", "scripts", "infra"]
 exclude = ["scripts/exploratory"]
 min_confidence = 80
 
@@ -189,6 +205,8 @@ extend-exclude = [
 [dependency-groups]
 dev = [
     "actionlint-py>=1.7.12.24",
+    "aws-cdk-lib>=2.270.0",
+    "constructs>=10.8.1",
     "deptry>=0.25.1",
     "grimp>=3.17",
     "hypothesis>=6.168.0",
