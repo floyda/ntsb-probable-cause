@@ -847,6 +847,111 @@ def test_judge_that_dies_mid_pass_leaves_the_previous_pass_intact(
     assert (runs_dir / run_id / "judge.jsonl.partial").read_text().count("\n") == 1
 
 
+def _write_min_report_run(  # noqa: PLR0913 -- a test-only builder, one keyword per varied field.
+    runs_dir: Path,
+    run_id: str,
+    case_id: str,
+    *,
+    model: str,
+    commit_sha: str,
+    reasoning_effort: str | None = None,
+) -> None:
+    """A run folder ``report`` can act on: one failed, unscored case (fix round 1, Finding).
+
+    Minimal on purpose: ``report``'s ``--against`` wiring is what these tests exercise, not
+    scoring, so ``scores=None`` and ``failure="cap"`` are enough to drive ``failure_summary``
+    and ``compare`` without needing a full ``CaseScores``/``StepRecord`` fixture.
+    """
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    kwargs = {**_RUN_KWARGS, "model": model, "commit_sha": commit_sha}
+    write_jsonl(
+        runs_dir / run_id / "run.jsonl",
+        [
+            RunRecord(
+                **kwargs,
+                run_id=run_id,
+                started=now,
+                finished=now,
+                cost_usd=1.0,
+                reasoning_effort=reasoning_effort,
+            )
+        ],
+    )
+    case = CaseResult(
+        case_id=case_id,
+        split="dev",
+        fatal=False,
+        investigation_class="C",
+        report_flavour=None,
+        verdict_occurrence=("552230",),
+        verdict_findings=(),
+        verdict_findings_in_cause=(),
+        steps=(),
+        scores=None,
+        cost_usd=0.0,
+        failure="cap",
+    )
+    write_jsonl(runs_dir / run_id / "cases.jsonl", [case])
+
+
+def test_report_against_labels_a_cross_model_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1: the ``report --against`` wiring is exercised end-to-end over two real
+    run folders, proving both the argument order (this run first, the other run second, so
+    a swap would print the wrong side first) and that a cross-model comparison is labelled
+    (decision 0031 item 2) rather than printed as a plain bar."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+
+    _write_min_report_run(
+        runs_dir,
+        "this-run",
+        "CASE1",
+        model="openai/gpt-6-luna",
+        commit_sha="sha-this",
+        reasoning_effort="medium",
+    )
+    _write_min_report_run(
+        runs_dir, "other-run", "CASE2", model="openai/gpt-5.6-luna", commit_sha="sha-other"
+    )
+
+    exit_code = main(["report", "this-run", "--against", "other-run"])
+    assert exit_code is None or exit_code == 0
+    out = capsys.readouterr().out
+
+    assert "failures by reason:" in out
+    heading = (
+        "model comparison (decision 0031 item 2): openai/gpt-6-luna at sha-this, "
+        "reasoning medium, against openai/gpt-5.6-luna at sha-other, "
+        "reasoning provider default -- run other-run:"
+    )
+    assert heading in out
+
+
+def test_report_against_same_model_uses_the_plain_heading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1: two runs of the same model and reasoning level still get the plain,
+    unlabelled ``against <run_id>:`` heading -- the existing behaviour every ``report
+    --against`` test before S2.4 relied on."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+
+    _write_min_report_run(runs_dir, "this-run", "CASE1", model="m", commit_sha="abc")
+    _write_min_report_run(runs_dir, "other-run", "CASE2", model="m", commit_sha="abc")
+
+    exit_code = main(["report", "this-run", "--against", "other-run"])
+    assert exit_code is None or exit_code == 0
+    out = capsys.readouterr().out
+
+    assert "failures by reason:" in out
+    assert "against other-run:" in out
+    assert "model comparison" not in out
+
+
 def test_release_clears_a_dead_reservation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
