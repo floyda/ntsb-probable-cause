@@ -233,10 +233,9 @@ def _field_lines(field_arrivals: Sequence[FieldArrivalRow], first_sight_fields: 
         "(not watchable and unknown, or an observation that failed) is never treated as "
         "new later either, whichever night it eventually becomes storable on.",
         "  which nights count as 'clean and fully observed' is known only from the night "
-        "this store gained the table that records it (for this store, the first AWS "
-        "night); for a case first seen on the night right after that, there is no earlier "
-        "clean-fetch record to check yet, so it may still read as first-sight even when it "
-        "genuinely was absent the night before.",
+        "this store gained the table that records it; a case first seen on that same night "
+        "has no earlier clean-fetch record to check yet, so it may still read as "
+        "first-sight even when it genuinely was absent the night before.",
     ]
     if not field_arrivals:
         lines.append("  no data")

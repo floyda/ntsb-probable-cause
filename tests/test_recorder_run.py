@@ -653,15 +653,26 @@ def test_case_side_month_deadline_skips_remaining_months_and_gates_the_feed(
     store: Store, respx_mock: respx.MockRouter
 ) -> None:
     """A case seeded seven months before "today", with every month fetch hanging (the full
-    5-attempt, ~11-minute-per-month worst case), spans an eight-month window. The first seven
-    months fail for real and exhaust most of the 65-minute deadline; the case-side per-month
-    check (run.py's `_case_side`, before a month's own fetch even starts) then skips the
-    remaining months outright -- no `run_months` row for any of them, and the change feed is
-    also skipped because the deadline has already passed by the time step 5 runs.
+    5-attempt, ~11-minute-per-month worst case), spans a nine-month window (February through
+    October inclusive). The first seven months fail for real and exhaust most of the 65-minute
+    deadline; the case-side per-month check (run.py's `_case_side`, before a month's own fetch
+    even starts) then skips the remaining two months outright -- no `run_months` row for any of
+    them, and the change feed is also skipped because the deadline has already passed by the
+    time step 5 runs.
 
     Elapsed-clock driven (A5): each failed HTTP attempt (5 per month, all retried) reports
     itself as having taken the client's own 120-second timeout, the same worst case
     `RUN_DEADLINE_MINUTES`'s own comment computes from.
+
+    The exact failure count and `feed_route.called is False` (not just `summary.failures`
+    being large) are both asserted deliberately: with only the loose `>= 9` bound this test had
+    before, removing the feed step's own deadline gate (`_feed_side`'s `if _utc(now()) >=
+    deadline:`) is NOT caught -- confirmed directly, by disabling that gate in a scratch copy of
+    `run.py` and re-running this exact scenario. With the gate removed, the feed route IS
+    called (`feed_route.called` becomes `True`, `call_count` 1) and it returns `[]`
+    successfully, so `summary.failures` merely drops from 11 to 10 -- which still satisfies
+    `>= 9`. Asserting the feed route was never called, and the exact count, both catch that
+    mutation; the loose bound alone does not.
     """
     _seed_case(store, MKEY_1, "2026-02-15")
     start = datetime(2026, 10, 1, 3, 0, 0, tzinfo=UTC)
@@ -672,7 +683,7 @@ def test_case_side_month_deadline_skips_remaining_months_and_gates_the_feed(
         return httpx.Response(500)
 
     respx_mock.get(MONTH_URL).mock(side_effect=_hung_month)
-    respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
+    feed_route = respx_mock.get(FEED_URL).mock(return_value=httpx.Response(200, json=[]))
     respx_mock.get(sources.docket_url(MKEY_1)).mock(
         return_value=httpx.Response(200, text=NOT_RELEASED)
     )
@@ -689,8 +700,10 @@ def test_case_side_month_deadline_skips_remaining_months_and_gates_the_feed(
 
     assert store.connection.execute("select count(*) from run_months").fetchone()[0] == 0
     assert store.connection.execute("select count(*) from change_feed").fetchone()[0] == 0
-    # 7 real month failures + at least 1 month skipped by the deadline + the skipped feed call
-    assert summary.failures >= 9
+    assert feed_route.called is False
+    # 7 real month failures (Feb-Aug) + 2 months skipped by the deadline (Sep, Oct) + the
+    # skipped feed call + the docket side's own deadline-reached skip = 11, exactly.
+    assert summary.failures == 11
     case = store.get_case(MKEY_1)
     assert case is not None
     assert case.status == "Ongoing"  # never a false "not returned": no month fetched cleanly
