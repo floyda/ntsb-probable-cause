@@ -506,3 +506,54 @@ def test_provenance_shows_the_reasoning_level(run_record: RunRecord) -> None:
     assert "reasoning=provider default" in report.provenance(run_record)
     stated = run_record.model_copy(update={"reasoning_effort": "medium"})
     assert "reasoning=medium" in report.provenance(stated)
+
+
+def test_failure_summary_counts_by_reason_and_never_names_a_case() -> None:
+    """S2.4 spec §6: the refusal count S2.6 needs, from a script, without case numbers."""
+    rows = [
+        _case(
+            "CEN20LA123",
+            failure="leak: CEN20LA123: sentence from analysis_narrative in docket_documents"
+            " (80 chars withheld)",
+        ),
+        _case(
+            "ERA21LA161",
+            failure="leak: ERA21LA161: sentence from analysis_narrative in docket_documents"
+            " (40 chars withheld); sentence from probable_cause in docket_documents"
+            " (60 chars withheld)",
+        ),
+        _case("WPR22FA087", failure="schema: reply is not a Hypothesis"),
+        _case("WPR23FA080", failure="cap"),
+        _case("WPR20LA001"),
+    ]
+    text = report.failure_summary(rows)
+    assert text == (
+        "failures by reason: cap 1, leak (analysis_narrative) 1, "
+        "leak (analysis_narrative, probable_cause) 1, schema 1"
+    )
+    assert not any(case_id in text for case_id in ("CEN20LA123", "ERA21LA161", "WPR22FA087"))
+
+
+def test_failure_summary_with_no_failures() -> None:
+    assert report.failure_summary([_case("WPR20LA001")]) == "failures by reason: none"
+
+
+def test_comparison_heading_labels_a_cross_model_comparison(run_record: RunRecord) -> None:
+    """Decision 0031 item 2: a comparison across models is labelled, with both commits."""
+    same = run_record.model_copy(update={"run_id": "other"})
+    assert report.comparison_heading(run_record, same) == "against other:"
+    other = run_record.model_copy(
+        update={
+            "run_id": "old",
+            "model": "openai/gpt-5.6-luna",
+            "commit_sha": "c717ab5",
+        }
+    )
+    this = run_record.model_copy(
+        update={"model": "openai/gpt-6-luna", "reasoning_effort": "medium"}
+    )
+    assert report.comparison_heading(this, other) == (
+        f"model comparison (decision 0031 item 2): openai/gpt-6-luna at {this.commit_sha}, "
+        "reasoning medium, against openai/gpt-5.6-luna at c717ab5, reasoning provider default "
+        "-- run old:"
+    )

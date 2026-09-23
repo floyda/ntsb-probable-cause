@@ -301,7 +301,7 @@ git commit -m "S2.4: every agent call states the reasoning level; every run reco
 - Consumes: `CaseResult.failure: str | None` (strings `"cap"`, `"schema: …"`, `"model: …"`, `"leak: <case>: <kind> from <source> in <role> (N chars withheld)[; …]"`); `RunRecord.model`, `.reasoning_effort`, `.commit_sha`, `.run_id`.
 - Produces: `report.failure_summary(results: Sequence[CaseResult]) -> str`; `report.comparison_heading(this: RunRecord, other: RunRecord) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report.py`:
 
@@ -357,12 +357,12 @@ def test_comparison_heading_labels_a_cross_model_comparison(run_record: RunRecor
     )
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `uv run pytest tests/test_report.py -k "failure_summary or comparison_heading" -v`
 Expected: FAIL — `AttributeError: module 'ntsb_probable_cause.scoring.report' has no attribute 'failure_summary'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/ntsb_probable_cause/scoring/report.py` add `import re` and `from collections import Counter` to the imports if absent, and after `cap_summary`:
 
@@ -431,12 +431,12 @@ with
         text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
 ```
 
-- [ ] **Step 4: Run the tests to see them pass**
+- [x] **Step 4: Run the tests to see them pass**
 
 Run: `make check`
 Expected: PASS. Existing `report --against` tests compare two runs on one model, so their `against <id>:` line is unchanged; any test asserting the whole report text gains the `failures by reason:` line — update its expected text, nothing else.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/report.py apps/eval/__main__.py tests/test_report.py tests/test_eval_app.py docs/plans/2026-09-23-s24-model-switch.md

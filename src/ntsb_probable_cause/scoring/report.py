@@ -7,6 +7,8 @@ and the stopping threshold is read off a curve, not chosen (§9).
 
 import json
 import random
+import re
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -298,6 +300,50 @@ def cap_summary(results: Sequence[CaseResult]) -> str:
     return (
         f"cap: {cases_hit} of {len(results)} cases hit the cap; {docs} documents not read "
         f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
+    )
+
+
+# The leak message is "<kind> from <source> in <role> (N chars withheld)", joined by "; "
+# (records/guard.py ``Leak.__str__``, records/split.py).
+_LEAK_SOURCE = re.compile(r"\b\w+ from (\w+) in \w+")
+
+
+def failure_summary(results: Sequence[CaseResult]) -> str:
+    """Failed cases counted by reason, never naming a case (S2.4 spec §6).
+
+    A leak is counted under the withheld sources its message names, so a refusal for an
+    analysis-narrative sentence reads apart from one for the probable cause.
+    """
+    counts: Counter[str] = Counter()
+    for result in results:
+        if not result.failure:
+            continue
+        kind = result.failure.split(":", 1)[0].strip()
+        if kind == "leak":
+            named = sorted(set(_LEAK_SOURCE.findall(result.failure)))
+            kind = f"leak ({', '.join(named) or 'unparsed'})"
+        counts[kind] += 1
+    if not counts:
+        return "failures by reason: none"
+    return "failures by reason: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
+
+
+def comparison_heading(this: RunRecord, other: RunRecord) -> str:
+    """The line above a paired comparison; labels one made across models or levels.
+
+    Decision 0031 item 2: a table across models is separate and labelled, never a bar. The
+    two commits are printed because such runs were made at different times (S2.4 spec §5).
+    """
+    if this.model == other.model and this.reasoning_effort == other.reasoning_effort:
+        return f"against {other.run_id}:"
+
+    def side(record: RunRecord) -> str:
+        level = record.reasoning_effort or "provider default"
+        return f"{record.model} at {record.commit_sha}, reasoning {level}"
+
+    return (
+        f"model comparison (decision 0031 item 2): {side(this)}, against {side(other)} "
+        f"-- run {other.run_id}:"
     )
 
 
