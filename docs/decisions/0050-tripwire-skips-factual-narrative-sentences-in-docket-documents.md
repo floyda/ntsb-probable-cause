@@ -122,3 +122,8 @@ Layer note: `tests/boundary.py` calls `find_leaks` with the same default exempti
 layer 5 is relaxed by exactly the same amount as layer 4. That is the intended design — one
 constant, one policy, no divergence — but for this specific case the layered guard has one fewer
 *independent* layer, and decision 0016's "layered" claim should be read with that in mind.
+
+**Extended by [0077](0077-analysis-sentences-in-docket-documents-mark-the-case.md), 2026-09-23**,
+which lets analysis-narrative sentences in docket documents reach the agent and marks the case,
+on the same direction-of-copying argument, after a hand-check of the matched sentences. The
+probable cause and the codes stay fully protected. Nothing in this record changes.
