@@ -32,7 +32,7 @@
 The spec is approved; these are the places where writing the plan found something the spec did not settle, or where the spec's assumption turned out false. Each is marked in the task that depends on it. The walkthrough takes them one per message; the outcome of each is written back here and into the Deviations section before Task 1 starts.
 
 - **W1. Images cannot use the batch service.** Found while planning (quoted in Global Constraints). The spec priced transcription, the inventory and the v3 probe at batch prices; the standard price is exactly twice the batch price for every candidate (OpenRouter models list, read 2026-09-24: Flash Lite $0.25/$1.50 per million tokens in/out against $0.125/$0.75; Gemini 3.6 Flash $0.75/$3.75; GPT-6 Luna $0.10/$0.50; Qwen3.5 122B $0.26/$2.08, which has no batch variant). Re-estimate (arithmetic, replaced at close-out): inventory $0.20, transcriber test $4–8, `dev-400` transcription $6–12, `heldout-400` transcription $6–12, v3 probe $4–6; the text-only arm B runs are unchanged. Stage total about **$26–46**, against the spec's $17–27. *Planned as:* every image call on the standard path, the stage spread across the September and October budgets, the pause point unchanged. **Decided 2026-09-24 (Andy): as planned ("A, go with the standard price").** Rejected: public image links so batch works (helps GPT-6 Luna only, puts fatal-accident pages at web addresses); cutting pages before the inventory measures them.
-- **W2. Photo-only docket entries are never fetched.** `docket/manifest.py:read_docket` skips an entry whose listing says every page is a photo (the spike's rule), so the development cache holds none of them. Neither the inventory nor the v3 probe can see those photographs. Task 1 counts them from the listing metadata. *Planned as:* decided after Task 1's count; if Andy wants them, a free, polite fetch of `dev-400`'s photo-only PDFs is added before the inventory (Task 12 Step 1).
+- **W2. Photo-only docket entries are never fetched.** `docket/manifest.py:read_docket` skips an entry whose listing says every page is a photo (the spike's rule), so the development cache holds none of them. Neither the inventory nor the v3 probe can see those photographs. Task 1 counts them from the listing metadata. An ad-hoc count of `dev-400`'s cached listings (2026-09-24, counts only): 146 photo-only PDFs holding 831 pages, in 113 of 401 cases (717 pages in fatal cases), against 170 photograph pages declared inside the documents S2 reads. **Decided 2026-09-24 (Andy): download them and include them** — Task 1 fetches them politely and frames them as their own stratum; the inventory samples 15 + 15 of them; v2 transcribes them and v3 shows them, guarded like any other page; v1 keeps S2's rule. Rejected: pictures for v3 only (every one would be unguarded, 0082 item 2); leaving them out (v3 would test about one photograph in six).
 - **W3. Which mixed pages are sent to the transcriber.** The spec says "a page whose images are logos only is not" sent, and that the inventory decides — but a program has to decide *before* sending. *Planned as:* each page's image-area share (the fraction of the page its images cover, from the renderer) is recorded in the inventory, and the cut-off is chosen by a rule fixed before the inventory runs (Task 12 Step 2).
 - **W4. The renderer's test pages are built in code, not committed real pages.** Spec §12 says "a committed development fixture page of each awkward shape". No real PDF is committed anywhere in the repository today (the extract tests build theirs with pypdf), and a real page would need Andy's read for names (0037). *Planned as:* rotated, tiled and fax-encoded pages built in the tests with Pillow and pypdf (verified to work while planning).
 - **W5. The v3 probe's partner run.** v3 carries images, so it must run on the standard path (W1); B-v2 from Task 15 runs on batch. *Planned as:* a second B-v2 run on the standard path, paired with B-v3, so the pictures are the only difference (about $3–4 more, estimate).
@@ -473,6 +473,7 @@ def test_frame_rows_carry_the_page_and_its_kind(tmp_path: Path) -> None:
             "images": 1,
             "rotation": 0,
             "encodings": ["JPEG"],
+            "photo_only": False,
         }
     ]
     out = tmp_path / "frame.jsonl"
@@ -484,7 +485,22 @@ def test_document_facts_of_a_built_pdf_feed_the_tally() -> None:
     tally = page_kinds.Tally()
     tally.add_document("fatal", document_facts(build_pdf([PageSpec(images=("/JPXDecode",))])))
     assert tally.encodings["JPEG 2000"] == 1
+
+
+def test_photo_only_documents_are_counted_apart_and_framed_as_such() -> None:
+    """Decision W2: fetched photo-only documents never change S2's page-kind counts."""
+    tally = page_kinds.Tally()
+    tally.add_photo_document("fatal", (_facts(0, 1, 0, "JPEG"), _facts(0, 1, 0, "JPEG")))
+    assert tally.photo_pages[("fatal", "image only")] == 2
+    assert tally.pages == Counter()
+    assert tally.photo_pdfs == 1
+    (row,) = page_kinds.frame_rows(
+        case_id="X1", mkey=7, fatal=True, document=5, facts=(_facts(0, 1),), photo_only=True
+    )
+    assert row["photo_only"] is True
 ```
+
+(add `from collections import Counter` to the imports.)
 
 - [ ] **Step 7: Run them to see them fail**
 
@@ -505,11 +521,15 @@ Status
     results file; the design session's figures (spec §1, §5.2) were ad hoc, and where the
     two differ this one stands.
 
-Reads the cache only: a transport that refuses every request makes a cache miss loud and
-free. Development samples only: the frame would otherwise list held-out pages, and no
-held-out page is inspected (spec §17).
+Reads the cache only -- a transport that refuses every request makes a cache miss loud and
+free -- with one exception: ``--include-photo-only`` fetches the photo-only documents S2
+never downloaded (decision W2, Andy, 2026-09-24), politely (the 2-second floor) into the
+same cache, and counts and frames their pages apart from S2's, so the S2 figures above them
+are unchanged. Development samples only: the frame would otherwise list held-out pages, and
+no held-out page is inspected (spec §17).
 
-Run: ``uv run python -m scripts.page_kinds [--sample dev-400] [--out PATH] [--frame PATH]``.
+Run: ``uv run python -m scripts.page_kinds [--sample dev-400] [--include-photo-only]
+[--out PATH] [--frame PATH]``.
 """
 
 import argparse
@@ -561,9 +581,17 @@ class Tally:
     failed_pages: int = 0
     photo_only_entries: Counter[str] = field(default_factory=Counter)
     photo_only_pages: Counter[str] = field(default_factory=Counter)
+    photo_pdfs: int = 0
+    photo_pages: Counter[tuple[str, PageKind]] = field(default_factory=Counter)
     not_cached: int = 0
     fetch_failed: int = 0
     not_pdf: int = 0
+
+    def add_photo_document(self, stratum: str, facts: Sequence[PageFacts]) -> None:
+        """Count a fetched photo-only document's pages apart from S2's documents (W2)."""
+        self.photo_pdfs += 1
+        for page in facts:
+            self.photo_pages[(stratum, page.kind)] += 1
 
     def add_document(self, stratum: str, facts: Sequence[PageFacts]) -> None:
         """Count one PDF's pages; image-only pages also by rotation, pieces and encoding."""
@@ -580,8 +608,14 @@ class Tally:
             self.encodings.update(page.encodings)
 
 
-def frame_rows(
-    *, case_id: str, mkey: int, fatal: bool, document: int, facts: Sequence[PageFacts]
+def frame_rows(  # noqa: PLR0913 -- one keyword per fact a frame row records.
+    *,
+    case_id: str,
+    mkey: int,
+    fatal: bool,
+    document: int,
+    facts: Sequence[PageFacts],
+    photo_only: bool = False,
 ) -> list[dict[str, object]]:
     """One private frame row per page: where it is, and its counts. Never its text."""
     return [
@@ -597,6 +631,7 @@ def frame_rows(
             "images": page.images,
             "rotation": page.rotation,
             "encodings": list(page.encodings),
+            "photo_only": photo_only,
         }
         for n, page in enumerate(facts, start=1)
     ]
@@ -609,9 +644,16 @@ def write_frame(path: Path, rows: Sequence[Mapping[str, object]]) -> None:
 
 
 def sweep(
-    records: Sequence[Mapping[str, object]], client: DocketClient
+    records: Sequence[Mapping[str, object]],
+    client: DocketClient,
+    *,
+    fetch_photo_only: DocketClient | None = None,
 ) -> tuple[Tally, list[dict[str, object]]]:
-    """Every cached PDF of every case: counted, and listed page by page in the frame."""
+    """Every cached PDF of every case: counted, and listed page by page in the frame.
+
+    With ``fetch_photo_only`` (a client allowed to fetch, politely), photo-only PDF entries
+    are fetched too, and counted and framed apart (decision W2).
+    """
     tally = Tally()
     rows: list[dict[str, object]] = []
     for raw in records:
@@ -628,14 +670,17 @@ def sweep(
             tally.not_cached += 1
             continue
         for entry in listing.entries:
-            if entry.is_photo_only():
+            photo_only = entry.is_photo_only()
+            if photo_only:
                 tally.photo_only_entries[stratum] += 1
                 tally.photo_only_pages[stratum] += entry.pages
-                continue
+                if fetch_photo_only is None:
+                    continue
             if not entry.is_pdf():
                 continue
+            source = fetch_photo_only if photo_only and fetch_photo_only else client
             try:
-                data = client.document(mkey, entry.index, entry.href)
+                data = source.document(mkey, entry.index, entry.href)
             except DocketError:
                 tally.fetch_failed += 1
                 continue
@@ -644,7 +689,10 @@ def sweep(
             except DocketError:
                 tally.not_pdf += 1
                 continue
-            tally.add_document(stratum, facts)
+            if photo_only:
+                tally.add_photo_document(stratum, facts)
+            else:
+                tally.add_document(stratum, facts)
             rows.extend(
                 frame_rows(
                     case_id=str(raw["ntsbNumber"]),
@@ -652,6 +700,7 @@ def sweep(
                     fatal=fatal,
                     document=entry.index,
                     facts=facts,
+                    photo_only=photo_only,
                 )
             )
     return tally, rows
@@ -696,15 +745,21 @@ def report(tally: Tally, sample: str) -> str:
         "  by encoding (a page counts once for each encoding it holds): "
         + ", ".join(f"{name} {tally.encodings[name]}" for name in ENCODING_ORDER),
         "",
-        "## photo-only listing entries (never fetched: read_docket skips them, S2's rule)",
+        "## photo-only listing entries (S2's read_docket skips them; fetched for S2.6, W2)",
         _row("entries", tally.photo_only_entries),
         _row("declared pages", tally.photo_only_pages),
+        f"  fetched and read: {tally.photo_pdfs} PDFs; their pages by kind:",
+        *(
+            _row(kind, {s: tally.photo_pages[(s, kind)] for s in STRATA})
+            for kind in KINDS
+        ),
         "",
         "## limits",
         "- an inline image (drawn in the content stream rather than as a resource) is not",
         "  counted, so a page built only from inline images reads as text only or blank;",
         "- text is pypdf's extract_text, as the docket tool reads it (decision 0047);",
-        "- photo-only entries are counted from the listing's own page count, unread.",
+        "- the counts above the photo-only section are S2's documents only, so they compare",
+        "  with the design session's; photo-only pages are counted in their own section.",
     ]
     return "\n".join(lines)
 
@@ -715,13 +770,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sample", default="dev-400")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--frame", type=Path)
+    parser.add_argument("--include-photo-only", action="store_true")
     args = parser.parse_args(argv)
     if not args.sample.startswith("dev"):
         raise SystemExit(f"{args.sample}: page kinds are counted on development samples only")
     settings = Settings()
     client = DocketClient(settings.docket_dir, transport=_offline())
+    polite = (
+        DocketClient(
+            settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
+        )
+        if args.include_photo_only
+        else None
+    )
     records = load_cases(settings.data_dir / "processed", sample_ids(args.sample))
-    tally, rows = sweep(records, client)
+    tally, rows = sweep(records, client, fetch_photo_only=polite)
     text = report(tally, args.sample)
     print(text)
     if args.out:
@@ -740,14 +803,14 @@ if __name__ == "__main__":
 Run: `uv run pytest tests/test_docket_pages.py tests/test_page_kinds.py -v`, then `make check`
 Expected: PASS; `make check` green. If `sweep` is below the coverage gate, add a test that writes a one-case cache into `tmp_path` in `DocketClient`'s layout (`<mkey>/listing.html`, `<mkey>/<index>.bin`, `<mkey>/fetch.json` with each file's `sha256` and `href`; copy the shape from `tests/fixtures/docket/ERA17LA217/`) and runs `sweep` with the offline transport. Fix any vulture or deptry finding at its cause; never whitelist.
 
-- [ ] **Step 10: Run the script on `dev-400`** (free; reads the local cache; about 10–20 minutes)
+- [ ] **Step 10: Run the script on `dev-400`** (free; reads the local cache and politely fetches the 146 photo-only PDFs, about 5 minutes of it at the 2-second floor; about 15–25 minutes in all)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
-uv run python -m scripts.page_kinds --sample dev-400 --out docs/results/s26-page-kinds.txt
+uv run python -m scripts.page_kinds --sample dev-400 --include-photo-only --out docs/results/s26-page-kinds.txt
 ```
 
-Expected: `no cached listing: 0` (the S2 docket scan cached all 401), and no `offline:` error. Afterwards the tree holds one new file, `docs/results/s26-page-kinds.txt`; the frame is under `data/`, outside git. Compare the four kind totals with spec §1's ad-hoc figures (5,006 / 3,281 / 8,403 / 109) and the image-only details with §5.2's (527 rotated, 200 tiled, 929 fax, 250 JPEG 2000, 54 JBIG2); log every difference in Deviations. The scripted numbers stand.
+Expected: `no cached listing: 0` (the S2 docket scan cached all 401), no `offline:` error, and `fetched and read:` close to the ad-hoc 146 photo-only PDFs (any fetch failure is counted on the `document fetch failed` line). Afterwards the tree holds one new file, `docs/results/s26-page-kinds.txt`; the frame is under `data/`, outside git. Compare the four kind totals with spec §1's ad-hoc figures (5,006 / 3,281 / 8,403 / 109) and the image-only details with §5.2's (527 rotated, 200 tiled, 929 fax, 250 JPEG 2000, 54 JBIG2); log every difference in Deviations. The scripted numbers stand.
 
 - [ ] **Step 11: Commit**
 
@@ -756,9 +819,9 @@ git add src/ntsb_probable_cause/docket/pages.py scripts/page_kinds.py tests/pdf_
 git commit -m "S2.6: page facts and the dev-400 page-kind counts (spec §6.2 step 1)"
 ```
 
-- [ ] **Step 12: STOP — report the page kinds and the photo-only count to Andy (decision W2)**
+- [ ] **Step 12: STOP — report the page kinds and the photo-only pages to Andy**
 
-In plain words, with a glossary: the four kind totals against the design session's, and the photo-only entry count. Record Andy's W2 answer in the walkthrough section and in Deviations.
+In plain words, with a glossary: the four kind totals against the design session's, and what the fetched photo-only documents hold (W2 is decided: they are in).
 
 ---
 
@@ -2313,7 +2376,7 @@ Append to `Makefile` after the `recorder-report` target, and add the names to th
 
 ```make
 page-kinds:
-	uv run python -m scripts.page_kinds --sample dev-400 --out docs/results/s26-page-kinds.txt
+	uv run python -m scripts.page_kinds --sample dev-400 --include-photo-only --out docs/results/s26-page-kinds.txt
 # S2.6 spec §6.2 step 1: free, reads the docket cache; writes the private page frame under data/.
 
 analysis-handcheck:
@@ -3701,17 +3764,17 @@ git commit -m "S2.6: transcription -- the fixed instruction, the per-page cache,
 - Produces: `scripts.page_inventory.draw_sample(frame, *, allocation, seed) -> list[dict[str, object]]`, `weighted_word_share(labels, population, *, counted=WORDS) -> float`, `final_labels(labels, marks) -> dict[int, str]`, `mixed_cut(rows: Sequence[tuple[float, str]]) -> float`, and the constants below. Task 13 reads `data/s26/inventory/sample.jsonl` and the inventory labels from the transcription cache.
 - Produces: `docket.transcribe.MIXED_PAGE_MIN_IMAGE_SHARE: float` — a text-and-image page whose images cover less than this share of it is not sent (0079 item 3). Task 14 reads it.
 
-**The sample (spec §6.2 item 2), fixed now.** Seed `20260924`. 300 pages from the page frame: image-only pages 68 fatal + 67 non-fatal; text-and-image pages 68 fatal + 67 non-fatal; text-only pages 15 + 15 as a control. Equal numbers per kind over-represent image-only pages against their share of the population, so every estimate over "all image-bearing pages" is weighted back by the frame's own page counts per stratum, and each stratum's own proportions are reported beside it. If W2 adds photo-only entries, a further 15 + 15 are drawn from them.
+**The sample (spec §6.2 item 2), fixed now.** Seed `20260924`. 300 pages from the page frame: image-only pages 68 fatal + 67 non-fatal; text-and-image pages 68 fatal + 67 non-fatal; text-only pages 15 + 15 as a control. Equal numbers per kind over-represent image-only pages against their share of the population, so every estimate over "all image-bearing pages" is weighted back by the frame's own page counts per stratum, and each stratum's own proportions are reported beside it. Decision W2 adds the photo-only documents as their own stratum, 15 fatal + 15 non-fatal (330 pages in all).
 
 **The stop rule (spec §6.4), fixed now — decision W6.** Images "hold words" when a page labelled image-only is typed text, handwriting, a filled form or mixed, or when a text-and-image page is handwriting, a filled form or mixed (its typed text is already in the text layer). If the weighted share of image-bearing pages whose images hold words is **under 10%**, transcription stops (§6.4), and the stage records why.
 
 **The mixed-page cut-off (W3), fixed now.** Among the sampled text-and-image pages, for each candidate cut of image-area share — 2%, 5%, 10%, 20%, in that order — take the pages below it. A cut is admissible when at most 1 in 20 of those pages have images that hold words. The chosen cut is the largest cut such that it and every smaller one are admissible; if the first is not, the cut is 0 and every text-and-image page is sent. Example: if the pages under 5% are 58 logos and 1 handwritten note (1 in 59), and the pages under 10% add 12 pages of which 3 hold handwriting (4 in 71), the cut is 5%.
 
-**What Andy checks (spec §6.2 item 4).** A seeded 60 of the 300 (seed `20260925`), each shown as its image beside its label, marked right or wrong, with the right label chosen when wrong. Where Andy checked a page, his label is the one used.
+**What Andy checks (spec §6.2 item 4).** A seeded 60 of the 330 (seed `20260925`), each shown as its image beside its label, marked right or wrong, with the right label chosen when wrong. Where Andy checked a page, his label is the one used.
 
-- [ ] **Step 1: W2's branch — photo-only entries**
+- [ ] **Step 1: Confirm the photo-only pages are in the frame (decision W2)**
 
-If Andy chose (W2) to leave photo-only entries out: skip to Step 2, and note it in Deviations. If he chose to fetch them: add a `--include-photo-only` flag to `scripts/page_kinds.py` whose `sweep` fetches those entries through a `DocketClient` built *with* the normal transport and the 2-second floor (a polite fetch into the same cache, the S2 docket scan's rule), frames their pages with `"photo_only": true`, and counts them under their own heading. Add `("photo-only", True): 15, ("photo-only", False): 15` to `ALLOCATION` below, drawn from rows with `"photo_only": true`. Re-run Task 1 Step 10 with the flag, then commit the updated results file with the flag's tests.
+Task 1 fetched them (`--include-photo-only`). Check that `data/s26/pages-dev-400.jsonl` has rows with `"photo_only": true` and that `docs/results/s26-page-kinds.txt`'s `fetched and read:` line is not zero; if either fails, stop and re-run Task 1 Step 10. `ALLOCATION` below already holds the photo-only stratum.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -3817,6 +3880,19 @@ def test_the_sample_follows_the_allocation_and_the_seed() -> None:
     assert [r["n"] for r in first] == list(range(1, 301))
     assert first == again
     assert sum(1 for r in first if r["stratum"] == "text only/fatal") == 15
+
+
+def test_photo_only_pages_are_their_own_stratum() -> None:
+    """Decision W2: a photograph page is never drawn as an ordinary scan."""
+    photos = [
+        {"case_id": f"P{i}", "mkey": i, "fatal": i % 2 == 0, "document": 9, "page": i,
+         "pages": 99, "kind": "image only", "photo_only": True}
+        for i in range(40)
+    ]
+    sample = inv.draw_sample(_frame() + photos)
+    assert sum(1 for r in sample if r["stratum"] == "photo-only/fatal") == 15
+    assert not any(r.get("photo_only") for r in sample if r["stratum"] != "photo-only/fatal"
+                   and r["stratum"] != "photo-only/non-fatal")
 
 
 def test_weighted_share_weights_each_stratum_by_its_population() -> None:
@@ -4030,10 +4106,10 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
 
 Status
     One-shot (S2.6, Task 12). Five subcommands, run in order:
-      sample -- draw the 300 pages from the page frame (seeded) and draw each to a private image
+      sample -- draw the 330 pages from the page frame (seeded) and draw each to a private image
       probe  -- label one page, to confirm the model accepts the request (paid, under a cent)
-      label  -- label all 300 with Gemini 3.1 Flash Lite at minimal reasoning (paid, ~$0.20)
-      check  -- write Andy's page for a seeded 60 of the 300
+      label  -- label all 330 with Gemini 3.1 Flash Lite at minimal reasoning (paid, ~$0.20)
+      check  -- write Andy's page for a seeded 60 of the 330
       score  -- write docs/results/s26-inventory.txt: counts, Andy's check, the mixed-page
                 cut-off and the stop rule (spec §6.4)
     Everything but the results file lives under data/s26/inventory/ and is never committed.
@@ -4084,19 +4160,30 @@ ALLOCATION: dict[tuple[str, bool], int] = {
     ("text and image", False): 67,
     ("text only", True): 15,
     ("text only", False): 15,
+    # Decision W2 (Andy, 2026-09-24): the photo-only documents S2 never fetched, as their own
+    # stratum, so an ordinary scan and a wreckage photograph are never drawn from one pool.
+    ("photo-only", True): 15,
+    ("photo-only", False): 15,
 }
-IMAGE_BEARING = ("image only", "text and image")
+IMAGE_BEARING = ("image only", "text and image", "photo-only")
 # Whether a page's images hold words (decision W6): on an image-only page typed text counts,
 # because nothing else holds it; on a text-and-image page it does not, because the text
-# layer already holds it.
+# layer already holds it. A photo-only page has no text layer, like an image-only one.
+_IMAGE_ONLY_WORDS = frozenset({"typed text", "handwriting", "filled form", "mixed"})
 WORDS = {
-    "image only": frozenset({"typed text", "handwriting", "filled form", "mixed"}),
+    "image only": _IMAGE_ONLY_WORDS,
     "text and image": frozenset({"handwriting", "filled form", "mixed"}),
+    "photo-only": _IMAGE_ONLY_WORDS,
 }
 STOP_SHARE = 0.10
 CUTS = (0.02, 0.05, 0.10, 0.20)
 MAX_WORDS_BELOW_CUT = 1 / 20
 FOLDER = Path("s26") / "inventory"
+
+
+def sample_kind(row: Mapping[str, object]) -> str:
+    """The page's kind for sampling: a page of a photo-only document is its own kind (W2)."""
+    return "photo-only" if row.get("photo_only") else str(row["kind"])
 
 
 def _stratum(kind: object, fatal: object) -> str:
@@ -4114,7 +4201,7 @@ def draw_sample(
     sample: list[dict[str, object]] = []
     for (kind, fatal), size in allocation.items():
         pool = sorted(
-            (r for r in frame if r["kind"] == kind and r["fatal"] == fatal),
+            (r for r in frame if sample_kind(r) == kind and r["fatal"] == fatal),
             key=lambda r: (str(r["case_id"]), int(str(r["document"])), int(str(r["page"]))),
         )
         for row in rng.sample(pool, min(size, len(pool))):
@@ -4214,7 +4301,7 @@ def cmd_sample(settings: Settings, documents: CachedDocuments) -> str:
         row["document_sha256"] = hashlib.sha256(data).hexdigest()
         row["image_area_share"] = page.image_area_share
     (folder / "sample.jsonl").write_text("".join(json.dumps(r) + "\n" for r in sample))
-    population = Counter(_stratum(r["kind"], r["fatal"]) for r in frame)
+    population = Counter(_stratum(sample_kind(r), r["fatal"]) for r in frame)
     (folder / "population.json").write_text(json.dumps(population))
     return f"{len(sample)} pages drawn to {folder}"
 
@@ -4407,12 +4494,12 @@ Append to `Makefile` (and `.PHONY`):
 s26-inventory-probe:
 	uv run python -m scripts.page_inventory sample
 	uv run python -m scripts.page_inventory probe
-# S2.6 spec §6.2: draws the 300-page sample (free), then labels ONE page (under a cent).
+# S2.6 spec §6.2: draws the 330-page sample (free), then labels ONE page (under a cent).
 
 s26-inventory:
 	uv run python -m scripts.page_inventory label
 	uv run python -m scripts.page_inventory check
-# S2.6 spec §6.2: labels the 300 (about $0.20), then writes Andy's 60-page check.
+# S2.6 spec §6.2: labels the 330 (about $0.20), then writes Andy's 60-page check.
 ```
 
 ```bash
@@ -4420,7 +4507,7 @@ git add src/ntsb_probable_cause/docket/documents.py src/ntsb_probable_cause/scor
 git commit -m "S2.6: the inventory -- sample, labeller, Andy's check page, cut-off and stop rule (spec §6)"
 ```
 
-- [ ] **Step 9: STOP — Andy runs the one-page probe** (under a cent; about a minute, most of it drawing 300 pages)
+- [ ] **Step 9: STOP — Andy runs the one-page probe** (under a cent; about a minute, most of it drawing 330 pages)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -4428,11 +4515,11 @@ export OPENROUTER_API_KEY="$(pass show api/openrouter)"
 make s26-inventory-probe
 ```
 
-Expected: `300 pages drawn to …` and `probe: transcribed, kind <one of the eight>, error None, …`. The tree is unchanged afterwards (everything is under `data/`). If the probe fails, its error names the cause; record it in Deviations and stop (spec §17: a candidate that rejects our requests).
+Expected: `330 pages drawn to …` and `probe: transcribed, kind <one of the eight>, error None, …`. The tree is unchanged afterwards (everything is under `data/`). If the probe fails, its error names the cause; record it in Deviations and stop (spec §17: a candidate that rejects our requests).
 
 - [ ] **Step 10: STOP — Andy runs the labelling** (about $0.20, estimate; about 5 minutes)
 
-Same two exports, then `make s26-inventory`. Expected: `labelled 300 pages, 0 failed, $0.1…` and the check page's path. The tree is unchanged afterwards. The month's spend now includes the job's spend rows (`uv run ntsb-eval report --latest …` lists open reservations; there should be none).
+Same two exports, then `make s26-inventory`. Expected: `labelled 330 pages, 0 failed, $0.1…` and the check page's path. The tree is unchanged afterwards. The month's spend now includes the job's spend rows (`uv run ntsb-eval report --latest …` lists open reservations; there should be none).
 
 - [ ] **Step 11: STOP — Andy checks 60 labels** (about 20 minutes)
 
@@ -5399,7 +5486,7 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
             by_stratum.setdefault(str(row["stratum"]), []).append(labels[str(row["n"])])
     population = json.loads((s26 / "inventory" / "population.json").read_text())
     picture_share = inventory.weighted_word_share(
-        by_stratum, population, counted={"image only": PICTURES, "text and image": PICTURES}
+        by_stratum, population, counted={"image only": PICTURES, "text and image": PICTURES, "photo-only": PICTURES}
     )
     luna_photo_tokens = [
         r.prompt_tokens
@@ -6022,7 +6109,7 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> None:
         )
 ```
 
-(The `W2` branch: if Andy chose to fetch photo-only entries, drop `entry.is_photo_only() or` here and in `read_docket`, in the same commit, with a Deviations line.) Counts only are printed: on `heldout-400` this command reads pages by program and no person sees them.
+Decision W2: v2 and v3 read the photo-only documents too. So in this command drop `entry.is_photo_only() or` from the skip, and in `read_docket` skip a photo-only entry only when `readings is None` (v1 keeps S2's rule exactly); test both. Counts only are printed: on `heldout-400` this command reads pages by program and no person sees them.
 
 In `_cmd_run`, for arm B: `readings = ReadingLookup(TranscriptionCache(settings.transcription_dir)) if args.evidence_version != "v1" else None`; if `readings` is set and `not readings.is_done(args.sample)`, exit with `f"{args.sample} is not fully transcribed: run ntsb-eval transcribe --sample {args.sample} first"`; build `CachedDocketReader(docket_client, readings=readings)`.
 
