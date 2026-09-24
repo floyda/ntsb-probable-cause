@@ -177,6 +177,7 @@ extend-ignore-re = [
 [tool.typos.default.extend-words]
 # NTSB abbreviations that are not misspellings go here, one per line, with a comment.
 mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016; not a misspelling
+Flate = "Flate" # the PDF compression filter FlateDecode, named by S2.6's page facts (docket/pages.py)
 
 [tool.typos.files]
 # Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false
