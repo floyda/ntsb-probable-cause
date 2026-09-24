@@ -498,11 +498,11 @@ uv run ntsb-eval report <batch-probe-run-id>
 - Create: `docs/results/s24-gate-dev.txt`
 - Modify: `docs/decisions/0073-the-default-model-is-gpt-6-luna-behind-a-gate.md` (an appended result note), `docs/decisions/README.md` (its status cell)
 
-- [ ] **Step 1: Andy runs the gate**
+- [x] **Step 1: Andy runs the gate**
 
 From the key-exporting shell script: `make s24-gate`. Note the run id.
 
-- [ ] **Step 2: Write the results file**
+- [x] **Step 2: Write the results file**
 
 ```bash
 {
@@ -514,7 +514,7 @@ From the key-exporting shell script: `make s24-gate`. Note the run id.
 
 Expected: two probe tables, the gate table with its `failures by reason:` line, and a `model comparison (decision 0031 item 2): …` block pairing the gate run with the GPT-5.6 Luna ceiling run.
 
-- [ ] **Step 3: Apply the rule**
+- [x] **Step 3: Apply the rule**
 
 Format failures are the `schema` and `model` counts on the gate's `failures by reason:` line.
 
@@ -522,7 +522,7 @@ Format failures are the `schema` and `model` counts on the gate's `failures by r
 - **Fail on format:** more than 4. Append to 0073 a dated `**Result, <date>:** the gate failed …` note citing the results file, leave the default unchanged, skip Tasks 6 and 7, and go to Task 8, which closes the stage with this negative result.
 - **Clearly worse score:** the paired interval's upper end is below zero. Stop and ask Andy; record his decision in the Deviations section before going on.
 
-- [ ] **Step 4: Record the pass and commit**
+- [x] **Step 4: Record the pass and commit**
 
 Append to `docs/decisions/0073-the-default-model-is-gpt-6-luna-behind-a-gate.md`:
 
@@ -647,3 +647,7 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   dockets. Probe result: runs `20260924T060001-ce8a55e-dev-400-ceiling` (standard) and
   `20260924T060021-ce8a55e-dev-400-ceiling` (batch), each `failed 0 of 1`,
   `failures by reason: none`, `reasoning=medium`; $0.0013 and $0.0005.
+- 2026-09-24, Task 5: the gate passed its written rule (0 of 401 format failures; top-1 +0.7
+  [−2.0, +3.7]), but finding recall@10 was −1.1 [−2.2, −0.2] against GPT-5.6 Luna, outside the
+  gate. Put to Andy before the switch; he chose to switch and read findings on held-out arm B in
+  Task 7, noting a higher reasoning level as the lever to try if findings lag (recorded in 0073).

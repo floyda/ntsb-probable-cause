@@ -54,3 +54,11 @@ Detail: `docs/specs/2026-09-23-s24-model-switch-design.md`.
 ## Status
 
 Accepted, 2026-09-23 (Andy), conditional on the probe and the gate (items 1 and 2).
+
+**Conditions met, 2026-09-24 (appended; nothing above is edited).** The shape probe passed on the
+standard and batch paths, and the gate run failed the reply format on 0 of 401 `dev-400` cases
+(`docs/results/s24-gate-dev.txt`). Paired against GPT-5.6 Luna on 401 cases, occurrence top-1 was
++0.7 points [−2.0, +3.7]; top-3 −2.7 [−6.5, +1.2]; finding recall@10 −1.1 [−2.2, −0.2]. The
+finding difference is outside the gate, which is on top-1; Andy chose to switch and read findings
+on held-out arm B (S2.4 spec §5), noting that a higher reasoning level is the first lever to try
+if GPT-6 Luna's findings lag — a question for the model axis after S3 (spec §4.1).

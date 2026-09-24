@@ -100,4 +100,4 @@ under `docs/specs/` and the record links to it.
 | [0057](0057-unset-directory-settings-derive-from-data-dir.md) | An unset directory setting derives from `data_dir` | Accepted |
 | [0058](0058-ci-installs-the-word-list-the-title-check-needs.md) | Continuous integration installs the word list the title check needs | Accepted |
 | [0059](0059-every-script-states-its-status.md) | Every script in `scripts/` states its kind, its output and what has since changed, in its docstring | Accepted |
-| [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted, conditional; replaces 0031 item 1 |
+| [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted; gate passed 2026-09-24; replaces 0031 item 1 |
