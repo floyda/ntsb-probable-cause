@@ -148,3 +148,24 @@ def test_a_code_in_a_document_still_refuses(record_fixtures: list[dict[str, obje
     code = verdict.codes()[0]
     with pytest.raises(LeakageError, match="code from codes in docket_documents"):
         split_record(_analysed(record_fixtures, f"Table row {code} noted."))
+
+
+# A second, distinct probable-cause sentence, so a document can hold just one sentence of a
+# two-sentence probableCause -- not the whole text -- beside the marked analysis sentence
+# (fix round 1, Important 1): the mark must stay scoped to its own source, never to "any
+# sentence-kind leak in this role".
+CONTRIBUTING = "Contributing to the accident was the pilot's failure to monitor the fuel gauges."
+TWO_SENTENCE_CAUSE = f"{CAUSE} {CONTRIBUTING}"
+
+
+def test_a_probable_cause_sentence_beside_a_marked_analysis_sentence_still_refuses(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    document = f"Docket item 1, 2 pages.\n[page 1 of 2]\n{QUOTED} {CONTRIBUTING}"
+    raw = _case(record_fixtures, document)
+    narratives = raw["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["analysisNarrative"] = ANALYSIS
+    narratives[0]["probableCause"] = TWO_SENTENCE_CAUSE
+    with pytest.raises(LeakageError, match="sentence from probable_cause in docket_documents"):
+        split_record(raw)
