@@ -662,3 +662,10 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   brief's own resolution names only the price case, and the commit message's "each test you
   pinned (or price)" description read as though all 13 were price failures. That is corrected
   here: the fixes are unchanged and correct, only the record of why 3 of the 13 failed.
+- 2026-09-24, Task 7: `make s24-bars` ran the held-out ceiling (`20260924T070202-05c5c5b-heldout-400-ceiling`,
+  $0.24) and then stopped: the ceiling run appends its ledger row, which leaves the tree dirty, and
+  the held-out guard (0026) refused arm B before any model call ("refusing to run with uncommitted
+  changes"). A defect in the plan's target, not the code: two held-out runs cannot share one `make`
+  recipe. The ledger row was committed alone and arm B was run on its own. The two runs therefore
+  sit on commits that differ only by that ledger line, so spec §5's "at one commit" holds for the
+  code. The `s24-bars` target is to be split into one target per run before close-out.
