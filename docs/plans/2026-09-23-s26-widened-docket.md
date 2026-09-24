@@ -842,7 +842,7 @@ In plain words, with a glossary: the four kind totals against the design session
 
 **What Andy sees, and why.** Each card is one matched sentence, shown inside about 300 characters of the document text on each side, with the document's listing title and category. The text is shown as the tripwire compares it — lower case, whitespace collapsed — because that is the form in which it matched. The one question: *does this sentence quote evidence, or is it a conclusion sitting in the docket?* An example of "quotes evidence": a wreckage examination that reads "…examination of the engine revealed no mechanical anomalies that would have precluded normal operation…". An example of "conclusion in the docket": a party's letter that reads "…the loss of power was the result of the pilot's mismanagement of the fuel system…". The sentence is withheld text, so the page and the sheet stay under `data/`. Andy marks by clicking, never in a spreadsheet (marking 60 rows in a spreadsheet was reported unworkable twice in S2; `scripts/handcheck_page.py`).
 
-- [ ] **Step 1: Write the failing tests for the marking page**
+- [x] **Step 1: Write the failing tests for the marking page**
 
 `tests/test_marking_page.py`:
 
@@ -899,12 +899,12 @@ def test_read_marks_by_row(tmp_path: Path) -> None:
     }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_marking_page.py -v`
 Expected: FAIL — `ImportError: cannot import name 'marking_page' from 'scripts'`.
 
-- [ ] **Step 3: Implement `scripts/marking_page.py`**
+- [x] **Step 3: Implement `scripts/marking_page.py`**
 
 ```python
 """A private, offline marking page: cards, choices, text fields, and a CSV of the marks.
@@ -1094,12 +1094,12 @@ def read_marks(path: Path) -> dict[int, dict[str, str]]:
         }
 ```
 
-- [ ] **Step 4: Run them to see them pass**
+- [x] **Step 4: Run them to see them pass**
 
 Run: `uv run pytest tests/test_marking_page.py -v`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Write the failing tests for the hand-check**
+- [x] **Step 5: Write the failing tests for the hand-check**
 
 `tests/test_analysis_handcheck.py` (the docket is built from the manifest's own models, so no network and no real case is involved; the narrative is invented):
 
@@ -1229,12 +1229,12 @@ def test_score_refuses_an_unmarked_row() -> None:
         analysis_handcheck.score(_sheet(36), {i: "quotes evidence" for i in range(1, 36)})
 ```
 
-- [ ] **Step 6: Run them to see them fail**
+- [x] **Step 6: Run them to see them fail**
 
 Run: `uv run pytest tests/test_analysis_handcheck.py -v`
 Expected: FAIL — `ImportError: cannot import name 'analysis_handcheck' from 'scripts'`.
 
-- [ ] **Step 7: Implement `scripts/analysis_handcheck.py`**
+- [x] **Step 7: Implement `scripts/analysis_handcheck.py`**
 
 ```python
 """The analysis-sentence hand-check: Andy's marking page, and its scorer (S2.6 §4.2, 0077).
@@ -1511,12 +1511,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 8: Run the tests to see them pass, then the whole check**
+- [x] **Step 8: Run the tests to see them pass, then the whole check**
 
 Run: `uv run pytest tests/test_marking_page.py tests/test_analysis_handcheck.py -v`, then `make check`
 Expected: PASS; green. If `main` pulls coverage under 90%, test `main(["sheet", "--sample", "heldout-400"])` raising `SystemExit`, and `main(["score", ...])` over a `tmp_path` sheet with `NTSB_DATA_DIR` monkeypatched.
 
-- [ ] **Step 9: Commit the tools**
+- [x] **Step 9: Commit the tools**
 
 ```bash
 git add scripts/marking_page.py scripts/analysis_handcheck.py tests/test_marking_page.py tests/test_analysis_handcheck.py docs/plans/2026-09-23-s26-widened-docket.md
@@ -6714,4 +6714,5 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, plan: the inventory's §6.4 stop rule has a number — under 10% of image-bearing pages with words in their images — and mixed pages are chosen by an image-area cut-off with a rule fixed in advance. Andy decided both (W3 and W6, 2026-09-24).
 - 2026-09-24, plan: the recorded transcriber replies (spec §12) are of an invented page drawn in code, so a committed fixture carries no docket text.
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
+- 2026-09-24, Task 2 Steps 3/7: `ruff format` rewrote the brief's `except (DocketError, LeakageError):` to the invalid `except DocketError, LeakageError:` while formatting an unrelated line nearby; restored the parenthesised tuple by hand. `ruff check` (`TRY301`) then required the `raise DocketError("no mKey")` inside the `sheet` command's try block to move into a small helper, `_read_docket(reader, mkey)`, called in place of the inline `isinstance` check plus `reader.read(mkey)` -- same behaviour, same exception. `PT018` (assertion must not combine two checks with `and`) and `C420` (a full-range dict comprehension should be `dict.fromkeys`) required splitting three combined asserts in `tests/test_marking_page.py` and `tests/test_analysis_handcheck.py` into separate `assert` lines and replacing three `{i: v for i in range(...)}` comprehensions with `dict.fromkeys(range(...), v)`; both are lint-only rewrites of the brief's literal test code, not changes to what is tested. Isort also reordered one import block in `tests/test_analysis_handcheck.py`.
 - 2026-09-24, Task 1 Step 10: `scripts.page_kinds`'s scripted count on `dev-400` (401 cases, 3,516 cached PDFs, 8 not a PDF, 0 fetch failures, 0 no-cached-listing) differs slightly from the design session's ad-hoc four-kind totals (spec §1): text only 5,005 against 5,006 (-1), image only 3,274 against 3,281 (-7), text and image 8,402 against 8,403 (-1), blank 109 against 109 (exact). The image-only breakdown (spec §5.2) differs more: rotated 527 against 527 (exact), 5+ images (tiled) 201 against 200 (+1), fax (CCITT) 883 against 929 (-46), JPEG 2000 60 against 250 (-190), JBIG2 42 against 54 (-12). Measured, not guessed (fix round 1, throwaway script under `/Users/floyda/.claude/jobs/95263328/tmp/chain_encoding_probe.py`, not in the repo): a chained `/Filter` array is not the explanation. Over the same 3,274 image-only pages, counting each of the three encodings both by `_encoding`'s own rule (the *last* filter in the chain) and by "anywhere in the chain" gives identical totals either way -- fax (CCITT) 883/883, JPEG 2000 60/60, JBIG2 42/42 -- and only 8 of the 3,274 pages have an image with more than one filter in its `/Filter` array at all. So the gap against the ad-hoc figures is not a last-vs-first convention difference; its real cause is still unknown (candidates not checked: a different page or document set, per-image rather than per-page counting, or a bug in the uncommitted ad-hoc script), and is not chased further here. Per the brief, the scripted numbers in `docs/results/s26-page-kinds.txt` stand and are what later tasks and the As-built record cite; the design-session figures in spec §1 and §5.2 are not corrected in place (the spec is amended separately if needed). Additionally, `--include-photo-only` fetched and read all 146 of the 146 photo-only PDFs the ad-hoc count found (831 declared pages; 831 pages read, split 48/322/460/1 by kind), with 0 fetch failures, matching decision W2's count exactly.
