@@ -197,6 +197,13 @@ A per-case cost cap is enforced in code, not just measured, because these calls 
 The spike's line was £0.05/case; it is re-measured in S1 and S3, because every case now reads
 the docket (0013).
 
+**S2.4 model switch to GPT-6-Luna.** The agent's default model is now `openai/gpt-6-luna` (batch
+variant for evaluation), at reasoning level `medium` (0073, replacing decision 0031 item 1). The
+reasoning level is stated on every agent call and recorded on every run's spec file and run record.
+GPT-6-Luna passed a one-case shape probe and a format gate on `dev-400` with 0 of 401 format
+failures (documented in `docs/results/s24-gate-dev.txt`). GPT-5.6-Luna results elsewhere in this
+file are historical reference points, not bars. The reasoning-level axis is examined with the model
+axis after S3.
 
 ## Commands
 
@@ -215,6 +222,10 @@ make scan-docket       # uv run python -m scripts.corpus_scan --docket — the d
 make armb               # arm B on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
+make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
+make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
+make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
+make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
 ```
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
@@ -229,7 +240,7 @@ call, so a deliberate, still-conservative estimate (`armb`, `s2-bars` pass `0.01
 real cost of about $0.0075/case) is needed to get the guard to let a legitimate run start;
 `release RUN_ID` clears a dead run's budget reservation (0045) so its held budget can be
 reused; `report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest`
-to compare; `judge` refuses a non-`dev-400` run without `--validated` (§8).
+to compare — it prints a `failures by reason:` line and labels cross-model comparisons; `judge` refuses a non-`dev-400` run without `--validated` (§8).
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
@@ -243,4 +254,4 @@ cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; default
 `<NTSB_DATA_DIR>/docket`, so it moves with `NTSB_DATA_DIR` unless set explicitly; never
 committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
-production).
+production). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
