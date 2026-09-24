@@ -1523,7 +1523,7 @@ git add scripts/marking_page.py scripts/analysis_handcheck.py tests/test_marking
 git commit -m "S2.6: an offline marking page, and the analysis-sentence hand-check (spec §4.2)"
 ```
 
-- [ ] **Step 10: Write the sheet** (free; reads the local cache; a few minutes)
+- [x] **Step 10: Write the sheet** (free; reads the local cache; a few minutes)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -6705,6 +6705,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
 
+- 2026-09-24, Task 2 Step 10: `uv run python -m scripts.analysis_handcheck sheet --sample dev-400` against the real `NTSB_DATA_DIR` cache printed `52 sentences in 19 cases; 0 cases skipped`, not the expected `36 sentences in 17 cases; 0 cases skipped` (spec §4.2, `docs/results/s2-docket-leak.txt`). Per the brief, the count is recorded as measured and not "fixed" here; git is unaffected (the sheet and page are under `data/handcheck/s26-analysis/`, git-ignored, and `git status --short` is empty after the run). Reported to Andy; Steps 11-13 (Andy's marking, scoring, and the appended 0077 result note) do not proceed until he decides how to reconcile the gap with S2's one-shot scan.
 - 2026-09-24, plan: **images cannot use the batch service** (OpenRouter batch documentation, read 2026-09-24). The spec's transcription, inventory and v3 costs assumed batch prices; every image call runs synchronously at the standard price, twice the batch price. Stage estimate $26–46 instead of $17–27. Andy chose this (W1, 2026-09-24).
 - 2026-09-24, plan: the transcription cache is keyed by the **document's content hash and page number** in place of the page image's hash (spec §8.3); the image hash is stored in each record. Same identity (rendering is repeatable, checked while planning), and a run can find a page's reading without drawing it.
 - 2026-09-24, plan: spec §4.4's "the case's log line" is the case's row in the run's `cases.jsonl`: the runner writes no per-case log line, only batch progress lines. Marks are on `CaseResult.marks`.
