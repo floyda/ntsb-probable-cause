@@ -37,7 +37,7 @@ The spec is approved; these are the places where writing the plan found somethin
 - **W4. The renderer's test pages are built in code, not committed real pages.** Spec §12 says "a committed development fixture page of each awkward shape". No real PDF is committed anywhere in the repository today (the extract tests build theirs with pypdf), and a real page would need Andy's read for names (0037). *Planned as:* rotated, tiled and fax-encoded pages built in the tests with Pillow and pypdf (verified to work while planning).
 - **W5. The v3 probe's partner run.** v3 carries images, so it must run on the standard path (W1); B-v2 from Task 15 runs on batch. *Planned as:* a second B-v2 run on the standard path, paired with B-v3, so the pictures are the only difference (about $3–4 more, estimate).
 - **W6. The inventory's stop rule needs a number.** Spec §6.4 stops transcription "if the inventory shows the image-bearing pages rarely hold words", without saying how rarely. A rule fixed after seeing the counts could be fitted to them. *Planned as:* stop if, weighted over all image-bearing `dev-400` pages, **under 10%** have words in their images (Task 12).
-- **W7. Most mixed pages are full-page scans that already carry a machine-read text layer.** An ad-hoc count (2026-09-24, dev-400, 3,517 PDFs, pypdfium2's text and image boxes) put 4,932 of 8,399 text-and-image pages at 70% or more image cover. For those the mixed-page instruction ("copy only words not already in the text layer") does most of the work, and the transcriber test's three keys never measure it. *To be put to Andy after W3.*
+- **W7. Most mixed pages are full-page scans that already carry a machine-read text layer.** An ad-hoc count (2026-09-24, dev-400, 3,517 PDFs, pypdfium2's text and image boxes) put 4,932 of 8,399 text-and-image pages at 70% or more image cover. For those the mixed-page instruction ("copy only words not already in the text layer") does most of the work, and the transcriber test's three keys never measure it. A crude check of those layers (400 pages, share of words found in the vendored word list) gave a median of 74%, against 77% on typed pages: usually not garbage. **Decided 2026-09-24 (Andy): keep the mixed-page instruction, and add a 25-page check of it to the transcriber test** (Task 13), gated like the photographs (at most 1 in 20 pages with invented added words). Rejected: not sending these scans (loses handwritten answers on scanned forms); transcribing them in full in place of the layer (against 0079; v2 would replace v1 text, not only add to it).
 
 ---
 
@@ -4579,16 +4579,17 @@ In plain words with a glossary: what the pages show, how often the labeller was 
 - Produces: `docket.transcribe.TRANSCRIBER: str` (the chosen model id) — Task 14 reads it; `render.RESOLUTION` settled.
 - Produces (pure, pinned by tests): `lines_of`, `line_hits`, `inventing_lines`, `typed_errors`, `draft_letter`, `agreed_lines`, `CandidateResult`, `choose`, `choose_resolution`, and the rule's constants.
 
-**The three answer keys (spec §7.3), fixed now.** Seed `20260926`.
+**The answer keys (spec §7.3, and a fourth from decision W7), fixed now.** Seed `20260926`.
 - *Typed:* 100 text-only pages (50 fatal, 50 non-fatal) whose text layer has between 300 and 3,000 characters — at least `classify.BORN_DIGITAL_MIN_CHARS_PER_PAGE`, and no more than one reply comfortably copies. Each is drawn to an image and transcribed; the text layer is the answer. A best case, stated.
 - *Handwriting:* 25 pages. First, the inventory's pages whose final label is `handwriting`; topped up, if fewer, from image-only pages in documents whose title category is `pilot_form_6120`, in seeded order, labelled 25 at a time with the inventory's labeller until 25 are found or 200 have been tried.
 - *No-word photographs:* 50 pages. The inventory's `photograph` pages, topped up the same way from image-only pages in documents whose category is `photos`.
+- *Full-page scans with a machine-read text layer (decision W7, Andy, 2026-09-24):* 25 text-and-image pages, not in the inventory's sample and not from a photo-only document, whose images cover at least 70% of the page, in seeded order. Every candidate reads them with the mixed-page instruction (the page's own text layer given, only missing words asked for). Andy marks each model's added words: *all on the page and new*, *repeats the text layer*, or *some invented*. No answer key is typed: the check is for invented words, which the gate counts.
 
 **The handwriting key, and how Andy's time is spent.** All four candidates transcribe every handwriting page. On Andy's page, each handwriting page shows its image, the four versions under the letters A–D (shuffled per page, so no model's name can sway him), the lines all four agree on — accepted — and a text box prefilled with the version that agrees most with the other three. Andy edits the box into the page's true text, one line per written line, writing `[illegible]` where he cannot read a word either. A seeded 1 in 10 of the agreed lines is flagged "check this line"; if one is wrong, he corrects it in the box and says so. Afterwards, each key line that matches one of the versions word for word is counted as *picked* and every other line as *typed* (spec §17).
 
-**The measures (spec §7.4).** Line accuracy: key lines a model reproduced exactly, whitespace aside, each of its lines used once, pooled over all handwriting pages; `[illegible]` counts right when the key has `[illegible]` in the same place. Invented text on handwriting: a model line holding a word (two or more letters or digits) that appears nowhere in the page's key — a guess where `[illegible]` was due counts here — per 100 key lines. Invented text on photographs: a page where Andy marks any output word as not on the page. Typed errors: the characters of the longer of key and transcription left unmatched by an alignment (`difflib.SequenceMatcher`, no junk heuristic), per 100 key characters, whitespace collapsed.
+**The measures (spec §7.4).** Line accuracy: key lines a model reproduced exactly, whitespace aside, each of its lines used once, pooled over all handwriting pages; `[illegible]` counts right when the key has `[illegible]` in the same place. Invented text on handwriting: a model line holding a word (two or more letters or digits) that appears nowhere in the page's key — a guess where `[illegible]` was due counts here — per 100 key lines. Invented text on photographs: a page where Andy marks any output word as not on the page. Invented text on full-page scans: a page where Andy marks a model's added words *some invented*; *repeats the text layer* is counted and published but not gated (it wastes the agent's reading, it does not mislead it). Typed errors: the characters of the longer of key and transcription left unmatched by an alignment (`difflib.SequenceMatcher`, no junk heuristic), per 100 key characters, whitespace collapsed.
 
-**The rule, in code, before the test runs.** See `choose` below: out if more than 2 invented lines per 100 handwriting lines or more than 1 in 20 photo pages with invented words; of the rest, the cheapest — by **measured cost per test page**, which counts each model's real token use rather than its list price — whose handwriting line accuracy is within 5 points of the best and whose typed errors are within 1 per 100 characters of the best. Then 150 or 200 dots per inch: 200 only if the chosen model's handwriting accuracy is more than 5 points higher at 200.
+**The rule, in code, before the test runs.** See `choose` below: out if more than 2 invented lines per 100 handwriting lines, more than 1 in 20 photo pages with invented words, or more than 1 in 20 full-page scans with invented added words; of the rest, the cheapest — by **measured cost per test page**, which counts each model's real token use rather than its list price — whose handwriting line accuracy is within 5 points of the best and whose typed errors are within 1 per 100 characters of the best. Then 150 or 200 dots per inch: 200 only if the chosen model's handwriting accuracy is more than 5 points higher at 200.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4616,6 +4617,8 @@ def _result(model: str, **overrides: float) -> tt.CandidateResult:
         "photo_invented": 1,
         "typed_chars": 100_000,
         "typed_errors": 500,
+        "mixed_pages": 25,
+        "mixed_invented": 0,
     }
     values.update(overrides)
     return tt.CandidateResult(model=model, **{k: v for k, v in values.items()})  # type: ignore[arg-type]
@@ -4665,6 +4668,15 @@ def test_the_gate_removes_an_inventing_model() -> None:
 def test_the_photo_gate_is_one_in_twenty() -> None:
     chosen, _ = tt.choose([_result("a", photo_invented=3), _result("b", photo_invented=2)])
     assert chosen == "b"
+
+
+def test_the_full_page_scan_gate_is_one_in_twenty() -> None:
+    """Decision W7: 2 of 25 scans with invented added words is over 1 in 20; 1 is not."""
+    chosen, notes = tt.choose(
+        [_result("a", cost_per_page=0.0005, mixed_invented=2), _result("b", mixed_invented=1)]
+    )
+    assert chosen == "b"
+    assert any("a: out" in note and "full-page scans" in note for note in notes)
 
 
 def test_the_cheapest_within_the_margins_wins() -> None:
@@ -4747,6 +4759,7 @@ from pathlib import Path
 # The rule (spec §7.4, decision 0080), fixed before the test runs.
 GATE_INVENTED_LINES_PER_100 = 2.0
 GATE_INVENTED_PHOTO_SHARE = 1 / 20
+GATE_INVENTED_MIXED_SHARE = 1 / 20  # decision W7: the photographs' bar
 HANDWRITING_MARGIN = 0.05
 TYPED_MARGIN_PER_100 = 1.0
 RESOLUTION_MARGIN = 0.05
@@ -4822,6 +4835,8 @@ class CandidateResult:
     photo_invented: int
     typed_chars: int
     typed_errors: int
+    mixed_pages: int = 0
+    mixed_invented: int = 0
 
     @property
     def hw_accuracy(self) -> float:
@@ -4837,6 +4852,11 @@ class CandidateResult:
     def photo_invented_share(self) -> float:
         """Share of no-word photograph pages with an invented word."""
         return self.photo_invented / self.photo_pages if self.photo_pages else 0.0
+
+    @property
+    def mixed_invented_share(self) -> float:
+        """Share of full-page scans whose added words hold an invented word (decision W7)."""
+        return self.mixed_invented / self.mixed_pages if self.mixed_pages else 0.0
 
     @property
     def typed_errors_per_100(self) -> float:
@@ -4858,6 +4878,11 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
             notes.append(
                 f"{r.model}: out -- invented words on {r.photo_invented} of {r.photo_pages} "
                 "no-word photograph pages (gate 1 in 20)"
+            )
+        elif r.mixed_invented_share > GATE_INVENTED_MIXED_SHARE:
+            notes.append(
+                f"{r.model}: out -- invented added words on {r.mixed_invented} of "
+                f"{r.mixed_pages} full-page scans (gate 1 in 20)"
             )
         else:
             passed.append(r)
@@ -4952,7 +4977,8 @@ EXPECTED_COST_PER_PAGE_USD = {
 LABELLER = "google/gemini-3.1-flash-lite"
 AGENT_MODEL = "openai/gpt-6-luna"
 SEED = 20260926
-TYPED_PAGES, HANDWRITING_PAGES, PHOTO_PAGES = 100, 25, 50
+TYPED_PAGES, HANDWRITING_PAGES, PHOTO_PAGES, MIXED_PAGES = 100, 25, 50, 25
+FULL_SCAN_SHARE = 0.70  # decision W7: a mixed page this much image is a scan with a text layer
 TYPED_MAX_CHARS = 3000
 TOP_UP_BATCH, TOP_UP_LIMIT = 25, 200
 MONTH_BUDGET_USD = 40.0  # decision 0083
@@ -5071,6 +5097,35 @@ def _typed_rows(frame: Sequence[Mapping[str, object]], rng: random.Random) -> li
     return typed
 
 
+def _full_scans(
+    frame: Sequence[Mapping[str, object]],
+    sampled: set[tuple[str, int, int]],
+    docs: CachedDocuments,
+    rng: random.Random,
+) -> list[dict[str, object]]:
+    """Decision W7: text-and-image pages at least 70% image, in seeded order, until 25."""
+    pool = sorted(
+        (
+            dict(r)
+            for r in frame
+            if r["kind"] == "text and image"
+            and not r.get("photo_only")
+            and _place(r) not in sampled
+        ),
+        key=_place,
+    )
+    rng.shuffle(pool)
+    chosen: list[dict[str, object]] = []
+    for row in pool:
+        if len(chosen) >= MIXED_PAGES:
+            break
+        data = docs.document(_int(row, "mkey"), _int(row, "document"))
+        (page,) = render_pages(data, [_int(row, "page")])
+        if page.image_area_share >= FULL_SCAN_SHARE:
+            chosen.append(row)
+    return _hashed(chosen, docs)
+
+
 def cmd_keys(settings: Settings, docs: CachedDocuments) -> str:
     """Draw the three keys (spec §7.3), topping up with the labeller where the inventory is short."""
     s26 = settings.data_dir / "s26"
@@ -5098,9 +5153,11 @@ def cmd_keys(settings: Settings, docs: CachedDocuments) -> str:
     photos = _top_up(
         from_inventory("photograph"), photo_docs, PHOTO_PAGES, "photograph", docs, settings
     )
+    scans = _full_scans(frame, sampled, docs, rng)
+    groups = (("typed", typed), ("handwriting", handwriting), ("photo", photos), ("mixed", scans))
     rows = [
         {**row, "set": name, "k": k}
-        for name, group in (("typed", typed), ("handwriting", handwriting), ("photo", photos))
+        for name, group in groups
         for k, row in enumerate(group, start=1)
     ]
     folder = settings.data_dir / FOLDER
@@ -5113,7 +5170,7 @@ def cmd_keys(settings: Settings, docs: CachedDocuments) -> str:
     counts = Counter(str(row["set"]) for row in rows)
     return (
         f"keys: typed {counts['typed']}, handwriting {counts['handwriting']}, "
-        f"photo {counts['photo']}"
+        f"photo {counts['photo']}, full-page scans {counts['mixed']}"
     )
 
 
@@ -5191,7 +5248,7 @@ def cmd_run(settings: Settings, docs: CachedDocuments, *, models: Sequence[str],
                 PageJob(
                     _key(row, model, instruction=TRANSCRIBE.version, dpi=dpi),
                     docs.loader(_int(row, "mkey"), _int(row, "document")),
-                    mixed=False,
+                    mixed=row["set"] == "mixed",
                 )
                 for row in keys
             ],
@@ -5330,6 +5387,61 @@ def cmd_photos(settings: Settings) -> str:
     return f"{len(cards)} outputs with words; page at {folder / 'photos.html'}"
 
 
+def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
+    """Andy's page (decision W7): the words each candidate added to a full-page scan."""
+    folder = settings.data_dir / FOLDER
+    rows = [r for r in _read(folder / "keys.jsonl") if r["set"] == "mixed"]
+    cache = TranscriptionCache(settings.transcription_dir)
+    sheet: dict[int, dict[str, object]] = {}
+    cards: list[Card] = []
+    for row in rows:
+        k = _int(row, "k")
+        data = docs.document(_int(row, "mkey"), _int(row, "document"))
+        layer = page_text(data, _int(row, "page"))
+        order = random.Random(SEED + 200 + k).sample(CANDIDATES, len(CANDIDATES))  # noqa: S311
+        for i, model in enumerate(order, start=1):
+            text = _text(cache, row, model, dpi=RESOLUTION)
+            if not re.search(r"[A-Za-z0-9]{2,}", text):
+                continue
+            number = 10 * k + i
+            sheet[number] = {"k": k, "model": model}
+            cards.append(
+                Card(
+                    row=number,
+                    body_html=(
+                        f'<p class="meta">Full-page scan {k}, version {LETTERS[i - 1]}</p>'
+                        f'<img src="pages/mixed-{k}.jpg" alt="page {k}">'
+                        f"<details><summary>the page's text layer</summary>"
+                        f"<pre>{html.escape(layer)}</pre></details>"
+                        f"<p>Words this version added:</p><pre>{html.escape(text)}</pre>"
+                    ),
+                    choices=(
+                        Choice(
+                            "added words",
+                            ("all on the page and new", "repeats the text layer", "some invented"),
+                        ),
+                    ),
+                )
+            )
+    (folder / "mixed.json").write_text(json.dumps(sheet))
+    intro = (
+        "<p>Each card is a scanned page that already has a machine-read text layer, and the words "
+        "one transcriber added to it. Mark <b>some invented</b> if any added word is not on the "
+        "page; <b>repeats the text layer</b> if the added words are already in the text layer "
+        "(open it under the image); otherwise <b>all on the page and new</b>.</p>"
+    )
+    (folder / "mixed.html").write_text(
+        marking_page.render(
+            title="Words added to full-page scans (S2.6, decision W7)",
+            intro_html=intro,
+            cards=cards,
+            storage_key="s26-mixed-words",
+            csv_name="mixed-words.csv",
+        )
+    )
+    return f"{len(cards)} outputs with added words; page at {folder / 'mixed.html'}"
+
+
 def _result(
     model: str,
     keys: Sequence[Mapping[str, object]],
@@ -5339,6 +5451,7 @@ def _result(
     cache: TranscriptionCache,
     *,
     dpi: int,
+    mixed_invented: int = 0,
 ) -> CandidateResult:
     hw_lines = hw_right = hw_inventing = 0
     for row in (r for r in keys if r["set"] == "handwriting"):
@@ -5366,11 +5479,17 @@ def _result(
         photo_invented=photo_invented,
         typed_chars=typed_chars,
         typed_errors=typed_errs,
+        mixed_pages=sum(1 for r in keys if r["set"] == "mixed"),
+        mixed_invented=mixed_invented,
     )
 
 
 def cmd_score(
-    settings: Settings, docs: CachedDocuments, handwriting_csv: Path, photos_csv: Path
+    settings: Settings,
+    docs: CachedDocuments,
+    handwriting_csv: Path,
+    photos_csv: Path,
+    mixed_csv: Path,
 ) -> str:
     """Apply the rule to every candidate; add the resolution comparison once it has run."""
     folder = settings.data_dir / FOLDER
@@ -5383,6 +5502,15 @@ def cmd_score(
     unmarked = [n for n in photo_sheet if photo_marks.get(int(n), {}).get("words") == ""]
     if unmarked or len(photo_marks) < len(photo_sheet):
         raise SystemExit("some photograph outputs are unmarked")
+    mixed_sheet = json.loads((folder / "mixed.json").read_text())
+    mixed_marks = marking_page.read_marks(mixed_csv)
+    if any(mixed_marks.get(int(n), {}).get("added words", "") == "" for n in mixed_sheet):
+        raise SystemExit("some full-page scan outputs are unmarked")
+    mixed_by_mark = Counter(
+        (str(mixed_sheet[str(n)]["model"]), fields["added words"])
+        for n, fields in mixed_marks.items()
+        if str(n) in mixed_sheet
+    )
     key_texts = {k: fields["key"] for k, fields in hw_marks.items()}
     typed_answers = {
         _int(r, "k"): page_text(docs.document(_int(r, "mkey"), _int(r, "document")), _int(r, "page"))
@@ -5395,7 +5523,16 @@ def cmd_score(
         if fields.get("words") == "some invented"
     )
     results = [
-        _result(m, keys, key_texts, invented[m], typed_answers, cache, dpi=RESOLUTION)
+        _result(
+            m,
+            keys,
+            key_texts,
+            invented[m],
+            typed_answers,
+            cache,
+            dpi=RESOLUTION,
+            mixed_invented=mixed_by_mark[(m, "some invented")],
+        )
         for m in CANDIDATES
     ]
     chosen, notes = choose(results)
@@ -5432,6 +5569,9 @@ def cmd_score(
             f"[{low:.1%}, {high:.1%}], Wilson 95%, lines not independent)",
             f"  typed errors: {r.typed_errors_per_100:.2f} per 100 characters "
             f"({r.typed_errors} of {r.typed_chars})",
+            f"  full-page scans (decision W7): invented added words on {r.mixed_invented} of "
+            f"{r.mixed_pages}; repeated the text layer on "
+            f"{mixed_by_mark[(r.model, 'repeats the text layer')]}",
         ]
     lines += ["", "## the rule", *notes]
     if chosen is not None:
@@ -5535,13 +5675,14 @@ def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_test")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("keys", "probe", "run", "handwriting", "photos"):
+    for name in ("keys", "probe", "run", "handwriting", "photos", "mixed"):
         commands.add_parser(name)
     resolution_p = commands.add_parser("resolution")
     resolution_p.add_argument("--model", required=True, choices=CANDIDATES)
     score_p = commands.add_parser("score")
     score_p.add_argument("--handwriting", type=Path, required=True)
     score_p.add_argument("--photos", type=Path, required=True)
+    score_p.add_argument("--mixed", type=Path, required=True)
     score_p.add_argument("--out", type=Path)
     estimate_p = commands.add_parser("estimate")
     estimate_p.add_argument("--model", required=True, choices=CANDIDATES)
@@ -5561,8 +5702,10 @@ def main(argv: list[str] | None = None) -> int:
         text = cmd_handwriting(settings)
     elif args.command == "photos":
         text = cmd_photos(settings)
+    elif args.command == "mixed":
+        text = cmd_mixed(settings, docs)
     elif args.command == "score":
-        text = cmd_score(settings, docs, args.handwriting, args.photos)
+        text = cmd_score(settings, docs, args.handwriting, args.photos, args.mixed)
         if args.out:
             args.out.write_text(text + "\n")
     else:
@@ -5594,6 +5737,7 @@ s26-transcriber-run:
 	uv run python -m scripts.transcriber_test run
 	uv run python -m scripts.transcriber_test handwriting
 	uv run python -m scripts.transcriber_test photos
+	uv run python -m scripts.transcriber_test mixed
 # All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then Andy's two pages.
 
 s26-transcriber-resolution:
@@ -5615,7 +5759,7 @@ make s26-transcriber-keys
 make s26-transcriber-probe
 ```
 
-Expected: `keys: typed 100, handwriting 25, photo 50` (fewer is logged in Deviations: the spec's "about"), and `ok` for all four candidates with every probe line copied. Afterwards the tree holds four new fixture files under `tests/fixtures/openrouter/transcription/` — replies to the invented page only. Read one before committing, confirm it holds only the invented lines, then:
+Expected: `keys: typed 100, handwriting 25, photo 50, full-page scans 25` (fewer is logged in Deviations: the spec's "about"), and `ok` for all four candidates with every probe line copied. Afterwards the tree holds four new fixture files under `tests/fixtures/openrouter/transcription/` — replies to the invented page only. Read one before committing, confirm it holds only the invented lines, then:
 
 ```bash
 uv run pytest tests/test_transcriber_test.py -v
@@ -5629,7 +5773,7 @@ A candidate that fails the probe (for example Qwen rejecting reasoning level `no
 
 Same exports, then `make s26-transcriber-run`. Expected: four `run_preparation` summaries and the two page paths. The tree is unchanged afterwards (everything is under `data/`).
 
-- [ ] **Step 9: STOP — Andy builds the handwriting key and reviews the photograph words** (about 1–1½ hours)
+- [ ] **Step 9: STOP — Andy builds the handwriting key and reviews the photograph and full-page-scan words** (about 1½–2 hours)
 
 Andy opens `…/data/s26/transcriber-test/handwriting.html`, edits each page's key and answers each spot check, and downloads `handwriting-key.csv`; then opens `…/photos.html`, marks each output, and downloads `photo-words.csv`.
 
@@ -5637,7 +5781,7 @@ Andy opens `…/data/s26/transcriber-test/handwriting.html`, edits each page's k
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
-uv run python -m scripts.transcriber_test score --handwriting ~/Downloads/handwriting-key.csv --photos ~/Downloads/photo-words.csv --out docs/results/s26-transcriber-test.txt
+uv run python -m scripts.transcriber_test score --handwriting ~/Downloads/handwriting-key.csv --photos ~/Downloads/photo-words.csv --mixed ~/Downloads/mixed-words.csv --out docs/results/s26-transcriber-test.txt
 ```
 
 If a model was chosen, **STOP** — Andy runs the resolution comparison (same exports; `make s26-transcriber-resolution MODEL=<the chosen model id>`, about $0.30–1, estimate), then the score command again, which adds the resolution section. If no model passed the gate, go to Step 13.
