@@ -54,3 +54,15 @@ for having been important enough to quote is the opposite.
 ## Status
 
 Accepted, 2026-09-23 (Andy: "yes thats much more like it"), conditional on item 4.
+
+**Rule rescaled, 2026-09-24 (Andy; appended, nothing above is edited).** Item 4 was written
+against the 36 sentences S2 measured (`docs/results/s2-docket-leak.txt`). The 2026-09-24
+reading of the `dev-400` dockets finds 52 matched sentences in 19 cases, not 36 in 17 -- S2's
+36 was measured before `pypdf` read encrypted documents. Andy's decision, verbatim: "A, go with
+7 of 52" -- the rule becomes *adopt 0077 if 7 or fewer of 52 are conclusions*, keeping the same
+~1-in-7 rate as the original 5 of 36 (7/52 = 13.5% against 5/36 = 13.9%).
+
+**Hand-check result, 2026-09-24 (appended; nothing above is edited).** Andy marked the 52
+matched sentences: 51 quote evidence and 1 is a conclusion in the docket
+(`docs/results/s26-analysis-handcheck.txt`). Adopted: this record takes effect, and 1 of 52 is
+its measured error.

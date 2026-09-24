@@ -1537,11 +1537,11 @@ uv run python -m scripts.analysis_handcheck sheet --sample dev-400
 
 Expected: `36 sentences in 17 cases; 0 cases skipped`. A different count is logged in Deviations and reported to Andy before he marks, because the score step will not apply the rule to it. Nothing in git changes.
 
-- [ ] **Step 11: STOP — Andy marks the 36 sentences** (about 30–45 minutes)
+- [x] **Step 11: STOP — Andy marks the 36 sentences** (about 30–45 minutes)
 
 Andy opens `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/handcheck/s26-analysis/index.html` in a browser (it works offline), marks every card, and clicks **Download marks as CSV**. Tasks 3 and 4 do not depend on this and continue meanwhile.
 
-- [ ] **Step 12: Score and publish the counts**
+- [x] **Step 12: Score and publish the counts**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -1566,7 +1566,7 @@ git add docs/results/s26-analysis-handcheck.txt docs/decisions/0077-analysis-sen
 git commit -m "S2.6: the analysis-sentence hand-check, scored (decision 0077 item 4)"
 ```
 
-- [ ] **Step 13: STOP if not adopted.** If the outcome line reads `not adopted` or `not applied`, report to Andy in plain words and wait: Task 5 does not start until he decides. Tasks 3, 4 and 6 onwards do not depend on it.
+- [x] **Step 13: STOP if not adopted.** If the outcome line reads `not adopted` or `not applied`, report to Andy in plain words and wait: Task 5 does not start until he decides. Tasks 3, 4 and 6 onwards do not depend on it.
 
 ---
 

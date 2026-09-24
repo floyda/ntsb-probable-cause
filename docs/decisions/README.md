@@ -116,7 +116,7 @@ under `docs/specs/` and the record links to it.
 | [0074](0074-words-in-images-are-read-in-the-build.md) | Words in images are read in the build, not in "phase 2"; an inventory decides what is transcribed | Accepted; replaces 0047 item 3 |
 | [0075](0075-pages-are-rendered-with-pypdfium2.md) | Pages are rendered with `pypdfium2`, a ready-built package that passes 0047's reproducibility test | Accepted; extends 0047 |
 | [0076](0076-evidence-version-is-an-axis-not-an-arm.md) | Evidence version (v1, v2, v3) is an axis, not an arm; runs record it and cross-version comparisons are refused unless labelled | Accepted; extends 0022 |
-| [0077](0077-analysis-sentences-in-docket-documents-mark-the-case.md) | Analysis-narrative sentences in docket documents reach the agent and mark the case, after Andy's hand-check | Accepted, conditional; extends 0050 |
+| [0077](0077-analysis-sentences-in-docket-documents-mark-the-case.md) | Analysis-narrative sentences in docket documents reach the agent and mark the case, after Andy's hand-check | Accepted; adopted after the hand-check 2026-09-24; extends 0050 |
 | [0078](0078-the-narrative-coverage-mark-at-fifty-percent.md) | The narrative-coverage mark, at 50% of one document, is set in S2.6 | Accepted; takes up 0071 |
 | [0079](0079-transcribed-text-is-marked-and-never-guessed.md) | Transcribed text carries its own page marker and writes `[illegible]` rather than guessing | Accepted |
 | [0080](0080-the-transcriber-test-and-its-choice-rule.md) | The transcriber is chosen by a test on our own pages, by a rule fixed in advance | Accepted |
