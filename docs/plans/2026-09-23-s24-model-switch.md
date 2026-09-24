@@ -669,3 +669,15 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   recipe. The ledger row was committed alone and arm B was run on its own. The two runs therefore
   sit on commits that differ only by that ledger line, so spec §5's "at one commit" holds for the
   code. The `s24-bars` target is to be split into one target per run before close-out.
+- 2026-09-24, Task 7: the held-out arm B run `20260924T075506-36bcd22-heldout-400-B` aborted. Stage 1
+  completed ($0.51 reported); the stage-1 retry batch (`batch-1790239332-REtOQmoQUfUloC44CBt5`,
+  submitted 08:42 UTC) stayed queued at OpenRouter for over 10 hours, then returned 404 ("Upstream
+  batch-api returned HTTP 404"), and the runner stopped after its 120-second not-found grace. 40
+  cases had been refused by the guard; 360 were unanswered; nothing was scored. A resume would
+  re-use the recorded dead batch id and fail the same way. Offered a salvage (move the dead row
+  aside and resume) or a fresh run; Andy chose a fresh run ("keep it simple"). The aborted run is
+  entered in the held-out ledger by hand from its run record ($0.58), because the runner writes
+  ledger rows only for runs that finish; the fresh run is therefore the second held-out touch for
+  arm B in this stage, and both are visible. **Follow-up owed before close-out:** the runner should
+  treat a re-used batch the provider no longer has as lost and resubmit that pass, so a resume can
+  recover from this without editing a run folder — with a test, reviewed like any task.
