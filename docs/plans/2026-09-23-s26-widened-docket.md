@@ -1888,7 +1888,7 @@ git commit -m "S2.6: the renderer -- pypdfium2 pages, upright and whole, as JPEG
 
 **The share.** For each document, the share is the number of the factual narrative's sentences found in it, divided by the number of sentences the narrative has — the measure `scripts/narrative_coverage.py` published in `docs/results/s2-narrative-coverage.txt`, now in the library. The case's share is its largest document's. A case at or above 50% is marked `narrative_coverage`, with the count of documents at or above 50%. The share is stored on every case that has documents, so any other cut can be reported later (0078 item 1).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_marks.py` (the narratives are invented and clinical, set into a real fixture record's `narratives[0]`; the docket subtree is set directly, as `docket/attach.py` sets it):
 
@@ -1983,12 +1983,12 @@ In `tests/test_records.py`, the schema test is unchanged in form — `BOOKKEEPIN
     assert {"marks", "narrative_share"} <= BOOKKEEPING_FIELDS
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_marks.py tests/test_records.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ntsb_probable_cause.records.marks'`.
 
-- [ ] **Step 3: Create `records/marks.py`**
+- [x] **Step 3: Create `records/marks.py`**
 
 ```python
 """Marks: notes on a case kept in logs and results, never in the agent's text (S2.6 §4.4).
@@ -2017,7 +2017,7 @@ class CaseMark(BaseModel):
     count: int
 ```
 
-- [ ] **Step 4: Refactor the needles out of `find_leaks`, and add the share and the screen**
+- [x] **Step 4: Refactor the needles out of `find_leaks`, and add the share and the screen**
 
 In `records/guard.py`, add `from collections.abc import Iterable, Mapping, Sequence` (extending the existing import), then replace the needle-building loop inside `find_leaks` with a call to a new private helper, so the sentences the share counts are exactly the sentences the tripwire searches for:
 
@@ -2133,7 +2133,7 @@ def screen(  # noqa: PLR0913 -- find_leaks' parameters plus the marked pairs.
 
 If `ruff` reports `PLR0913` not triggered (it counts keyword-only arguments too, so it should), drop the `noqa` — never leave an unused suppression (`RUF100`).
 
-- [ ] **Step 5: Add the two bookkeeping fields to `Evidence`**
+- [x] **Step 5: Add the two bookkeeping fields to `Evidence`**
 
 In `records/evidence.py`:
 
@@ -2153,7 +2153,7 @@ and, after `excluded`:
 
 Update the class docstring's second sentence to: `Bookkeeping fields (identity, exclusions, marks) are never rendered into a payload.`
 
-- [ ] **Step 6: Compute marks in `split_record`**
+- [x] **Step 6: Compute marks in `split_record`**
 
 In `records/split.py`, import `NARRATIVE_COVERAGE_MARK, narrative_shares, screen` from `records.guard` (drop `find_leaks`) and `CaseMark` from `records.marks`, and replace everything from `leaks = find_leaks(` to the end with:
 
@@ -2183,16 +2183,16 @@ In `records/split.py`, import `NARRATIVE_COVERAGE_MARK, narrative_shares, screen
 
 and add to the docstring: `Marks (S2.6 spec §4) are computed here, from the same screen, and returned on the evidence as bookkeeping.`
 
-- [ ] **Step 7: The import contract**
+- [x] **Step 7: The import contract**
 
 In `pyproject.toml`, add `"ntsb_probable_cause.records.marks",` to the `source_modules` of the contract named "Only the splitter constructs synthesis and verdict", after `"ntsb_probable_cause.records.guard",`.
 
-- [ ] **Step 8: Run the tests to see them pass, then the whole check**
+- [x] **Step 8: Run the tests to see them pass, then the whole check**
 
 Run: `uv run pytest tests/test_marks.py tests/test_guard.py tests/test_records.py tests/test_boundary.py -v`, then `make check`
 Expected: PASS; green. `test_guard.py` and `test_boundary.py` pass unchanged — the refactor changed no behaviour.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/records/marks.py src/ntsb_probable_cause/records/guard.py src/ntsb_probable_cause/records/evidence.py src/ntsb_probable_cause/records/split.py pyproject.toml tests/test_marks.py tests/test_records.py docs/plans/2026-09-23-s26-widened-docket.md
@@ -6720,3 +6720,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, Task 2 Steps 3/7: `ruff format` rewrites the brief's `except (DocketError, LeakageError):` to the unparenthesised `except DocketError, LeakageError:` -- this project's ruff (0.16.8, `target-version = "py314"`) treats the parenthesised tuple form as the one to normalise away, since Python 3.14 accepts a bare comma list there under PEP 758. Confirmed by re-running `ruff format` on the file after restoring the parentheses by hand: it rewrote them away again. Kept ruff's unparenthesised form rather than fighting the formatter (`ruff check` also passes it clean); the fix-round review's premise -- that the committed file held the unparenthesised form because a manual restoration had failed to stick, not because ruff prefers it -- is confirmed. `ruff check` (`TRY301`) separately required the `raise DocketError("no mKey")` inside the `sheet` command's try block to move into a small helper, `_read_docket(reader, mkey)`, called in place of the inline `isinstance` check plus `reader.read(mkey)` -- same behaviour, same exception. `PT018` (assertion must not combine two checks with `and`) and `C420` (a full-range dict comprehension should be `dict.fromkeys`) required splitting three combined asserts in `tests/test_marking_page.py` and `tests/test_analysis_handcheck.py` into separate `assert` lines and replacing three `{i: v for i in range(...)}` comprehensions with `dict.fromkeys(range(...), v)`; both are lint-only rewrites of the brief's literal test code, not changes to what is tested. Isort also reordered one import block in `tests/test_analysis_handcheck.py`.
 - 2026-09-24, Task 2 fix round 1 (findings 1-2, code review): `scripts/analysis_handcheck.py:main` had no test at all -- added `tests/test_analysis_handcheck.py` cases for the `sheet` subcommand's dev-prefix guard (`SystemExit`), its per-case `DocketError` skip path and `write_sheet` call (driven by monkeypatching the module-level `sample_ids`/`load_cases` names `main` calls directly, rather than a real `cases.parquet` and dev-400 docket cache, which would also need `DocketClient`'s real backoff/sleep behaviour patched out to stay cheap), its success path (a fake `CachedDocketReader`), and the `score` subcommand's file I/O (a `tmp_path` `sheet.csv`, a marks CSV, `--out`). `scripts.analysis_handcheck` module coverage is now 98% (137 statements, 3 missed: the offline transport's `raise` body, which a `MockTransport` never actually has to run since no test drives a real cache miss through it; `sheet_rows`'s "no analysis narrative at all" empty return, not exercised by any fixture; and the `if __name__ == "__main__":` guard). Also added a test asserting `sheet_rows`'s claim to mirror `docket_leak_scan.sweep`'s counting method: over a two-document, one-shared-sentence case, the rows it returns match, set for set, the distinct `kind == "sentence"` leaks `find_leaks` reports over the documents joined the way `records/guard.py:_as_text` joins a tuple evidence value (`" | ".join`).
 - 2026-09-24, Task 1 Step 10: `scripts.page_kinds`'s scripted count on `dev-400` (401 cases, 3,516 cached PDFs, 8 not a PDF, 0 fetch failures, 0 no-cached-listing) differs slightly from the design session's ad-hoc four-kind totals (spec §1): text only 5,005 against 5,006 (-1), image only 3,274 against 3,281 (-7), text and image 8,402 against 8,403 (-1), blank 109 against 109 (exact). The image-only breakdown (spec §5.2) differs more: rotated 527 against 527 (exact), 5+ images (tiled) 201 against 200 (+1), fax (CCITT) 883 against 929 (-46), JPEG 2000 60 against 250 (-190), JBIG2 42 against 54 (-12). Measured, not guessed (fix round 1, throwaway script under `/Users/floyda/.claude/jobs/95263328/tmp/chain_encoding_probe.py`, not in the repo): a chained `/Filter` array is not the explanation. Over the same 3,274 image-only pages, counting each of the three encodings both by `_encoding`'s own rule (the *last* filter in the chain) and by "anywhere in the chain" gives identical totals either way -- fax (CCITT) 883/883, JPEG 2000 60/60, JBIG2 42/42 -- and only 8 of the 3,274 pages have an image with more than one filter in its `/Filter` array at all. So the gap against the ad-hoc figures is not a last-vs-first convention difference; its real cause is still unknown (candidates not checked: a different page or document set, per-image rather than per-page counting, or a bug in the uncommitted ad-hoc script), and is not chased further here. Per the brief, the scripted numbers in `docs/results/s26-page-kinds.txt` stand and are what later tasks and the As-built record cite; the design-session figures in spec §1 and §5.2 are not corrected in place (the spec is amended separately if needed). Additionally, `--include-photo-only` fetched and read all 146 of the 146 photo-only PDFs the ad-hoc count found (831 declared pages; 831 pages read, split 48/322/460/1 by kind), with 0 fetch failures, matching decision W2's count exactly.
+- 2026-09-24, Task 4 Step 6/8: `tests/test_boundary.py::test_boundary_fails_when_only_the_tripwire_can_catch_a_leak` monkeypatched `split_module.find_leaks` to disable `split_record`'s own leakage guard; Step 6 has `split.py` drop its `find_leaks` import and call `guard.screen(...)` instead, so that attribute no longer exists on `records.split` and the monkeypatch raised `AttributeError`. Per the controller's decision, the mutation test now disables the split's tripwire at its new seam instead: `monkeypatch.setattr(split_module, "screen", lambda *_a, **_k: Screen(leaks=(), marked=()))` (`Screen` imported from `ntsb_probable_cause.records.guard`), every assertion in the test unchanged. `guard.find_leaks` itself was not touched and is not patched by any test -- patching it globally would have disabled every caller, not just the split's seam.

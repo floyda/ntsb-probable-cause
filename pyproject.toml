@@ -119,6 +119,7 @@ source_modules = [
     "ntsb_probable_cause.errors",
     "ntsb_probable_cause.records.evidence",
     "ntsb_probable_cause.records.guard",
+    "ntsb_probable_cause.records.marks",
     "ntsb_probable_cause.model",
     "ntsb_probable_cause.scoring.baseline",
     "ntsb_probable_cause.scoring.codes",

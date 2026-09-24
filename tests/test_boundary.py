@@ -47,6 +47,7 @@ from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.records.guard import Screen
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
@@ -142,7 +143,7 @@ def test_boundary_fails_when_only_the_tripwire_can_catch_a_leak(
     assert isinstance(aircrafts, list)
     aircrafts[0]["aircraftMake"] = fields.probable_cause(raw)
 
-    monkeypatch.setattr(split_module, "find_leaks", lambda *_a, **_k: [])
+    monkeypatch.setattr(split_module, "screen", lambda *_a, **_k: Screen(leaks=(), marked=()))
 
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_boundary_holds(mutated)

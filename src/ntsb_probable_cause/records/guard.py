@@ -2,7 +2,7 @@
 
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
@@ -109,6 +109,27 @@ def _as_text(value: EvidenceValue) -> str:
     return "" if value is None else str(value)
 
 
+def _needles(source: str, text: str | None, min_sentence_chars: int) -> list[tuple[str, str, str]]:
+    """The whole text and each sentence of one withheld text, as the tripwire searches them."""
+    if not text:
+        return []
+    whole = normalise_text(text)
+    whole_stripped = _strip_needle(whole)
+    needles: list[tuple[str, str, str]] = []
+    # Never exempted for boilerplate: only a single isolated sentence can be boilerplate.
+    if len(whole_stripped) >= min_sentence_chars:
+        needles.append(("text", source, whole_stripped))
+    for sentence in _SENTENCE_END.split(whole):
+        stripped = _strip_needle(sentence)
+        if (
+            len(stripped) >= min_sentence_chars
+            and stripped != whole_stripped
+            and not _BOILERPLATE_SENTENCE.match(stripped)
+        ):
+            needles.append(("sentence", source, stripped))
+    return needles
+
+
 def find_leaks(
     evidence: Mapping[str, EvidenceValue],
     withheld_text: Mapping[str, str | None],
@@ -119,23 +140,11 @@ def find_leaks(
 ) -> list[Leak]:
     """Return every place withheld text, sentence or code appears in an evidence value."""
     haystacks = {role: normalise_text(_as_text(value)) for role, value in evidence.items()}
-    needles: list[tuple[str, str, str]] = []
-    for source, text in withheld_text.items():
-        if not text:
-            continue
-        whole = normalise_text(text)
-        whole_stripped = _strip_needle(whole)
-        # Never exempted for boilerplate: only a single isolated sentence can be boilerplate.
-        if len(whole_stripped) >= min_sentence_chars:
-            needles.append(("text", source, whole_stripped))
-        for sentence in _SENTENCE_END.split(whole):
-            stripped = _strip_needle(sentence)
-            if (
-                len(stripped) >= min_sentence_chars
-                and stripped != whole_stripped
-                and not _BOILERPLATE_SENTENCE.match(stripped)
-            ):
-                needles.append(("sentence", source, stripped))
+    needles = [
+        needle
+        for source, text in withheld_text.items()
+        for needle in _needles(source, text, min_sentence_chars)
+    ]
     patterns = [
         (code, re.compile(rf"\b{re.escape(code)}\b"))
         for code in dict.fromkeys(code for code in codes if code and code.strip())
@@ -153,3 +162,78 @@ def find_leaks(
             if pattern.search(haystack)
         )
     return found
+
+
+# Decision 0078: a case is marked narrative_coverage when one docket document holds at least
+# this share of the factual narrative's sentences (docs/results/s2-narrative-coverage.txt:
+# 3 of 379 development cases).
+NARRATIVE_COVERAGE_MARK = 0.5
+
+# Sentence matches that mark the case instead of refusing it, one role/source pair each.
+# Only a sentence is ever marked: a whole withheld text, a probable-cause sentence or a code
+# still refuses, in every role. Empty until decision 0077 is adopted (S2.6 Task 5).
+MARKED_SENTENCES: frozenset[tuple[str, str]] = frozenset()
+
+
+def sentence_needles(
+    text: str | None, *, min_sentence_chars: int = MIN_SENTENCE_CHARS
+) -> frozenset[str]:
+    """The sentences of one withheld text, normalised exactly as the tripwire searches them."""
+    return frozenset(
+        needle for kind, _, needle in _needles("", text, min_sentence_chars) if kind == "sentence"
+    )
+
+
+def narrative_shares(
+    documents: Sequence[str],
+    narrative: str | None,
+    *,
+    min_sentence_chars: int = MIN_SENTENCE_CHARS,
+) -> tuple[float, ...]:
+    """Per document, the share of the narrative's sentences found in it (decision 0078).
+
+    Empty when there are no documents or the narrative has no sentence long enough to
+    search for -- a case with nothing to compare has no share, not a share of zero.
+    """
+    needles = sentence_needles(narrative, min_sentence_chars=min_sentence_chars)
+    if not needles or not documents:
+        return ()
+    return tuple(
+        sum(1 for needle in needles if needle in haystack) / len(needles)
+        for haystack in (normalise_text(document) for document in documents)
+    )
+
+
+@dataclass(frozen=True)
+class Screen:
+    """What the tripwire found: leaks, which refuse the case, and marked sentences."""
+
+    leaks: tuple[Leak, ...]
+    marked: tuple[Leak, ...]
+
+
+def screen(  # noqa: PLR0913 -- find_leaks' parameters plus the marked pairs.
+    evidence: Mapping[str, EvidenceValue],
+    withheld_text: Mapping[str, str | None],
+    codes: Iterable[str],
+    *,
+    min_sentence_chars: int = MIN_SENTENCE_CHARS,
+    exemptions: frozenset[tuple[str, str]] = SENTENCE_CHECK_EXEMPTIONS,
+    marked: frozenset[tuple[str, str]] = MARKED_SENTENCES,
+) -> Screen:
+    """``find_leaks``, with sentence matches in the marked role/source pairs set apart."""
+    found = find_leaks(
+        evidence,
+        withheld_text,
+        codes,
+        min_sentence_chars=min_sentence_chars,
+        exemptions=exemptions,
+    )
+
+    def is_marked(leak: Leak) -> bool:
+        return leak.kind == "sentence" and (leak.evidence_role, leak.source) in marked
+
+    return Screen(
+        leaks=tuple(leak for leak in found if not is_marked(leak)),
+        marked=tuple(leak for leak in found if is_marked(leak)),
+    )
