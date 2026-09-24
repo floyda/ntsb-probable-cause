@@ -681,3 +681,4 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   arm B in this stage, and both are visible. **Follow-up owed before close-out:** the runner should
   treat a re-used batch the provider no longer has as lost and resubmit that pass, so a resume can
   recover from this without editing a run folder — with a test, reviewed like any task.
+- 2026-09-24, Task 7 follow-up: `s24-bars` split into `s24-bars-ceiling` and `s24-bars-b`, one held-out run per recipe, each commented with the commit-between rule.

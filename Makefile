@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars-ceiling s24-bars-b
 
 check: lint type test
 
@@ -79,10 +79,14 @@ s24-gate:
 	uv run ntsb-eval run --arm ceiling --sample dev-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
 # S2.4 spec §3.2. About $0.20. The report is made from the explicit run id afterwards.
 
-s24-bars:
+s24-bars-ceiling:
 	uv run ntsb-eval run --arm ceiling --sample heldout-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
+# S2.4 spec §5 -- ONCE, only after the gate has passed. Appends a ledger row: commit it before
+# running s24-bars-b, because the held-out guard refuses a run from a dirty tree (decision 0026).
+
+s24-bars-b:
 	uv run ntsb-eval run --arm B --sample heldout-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.01
-# S2.4 spec §5 -- ONCE, only after the gate has passed; appends two rows to the held-out ledger.
+# S2.4 spec §5 -- ONCE, after s24-bars-ceiling's ledger row is committed.
 
 docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
