@@ -85,7 +85,7 @@ Task numbers in this table are final; the tasks below use them.
 
 **Why the facts come from pypdf, not the renderer.** Counting images and reading rotation from a page's own dictionaries decodes nothing, so all ~16,800 `dev-400` pages are classified without any image codec. The text count is pypdf's `extract_text`, exactly as the docket tool reads it (0047), so "under 50 characters" means here what it means in `classify.py`.
 
-- [ ] **Step 1: Write the test PDF builder**
+- [x] **Step 1: Write the test PDF builder**
 
 `tests/pdf_builder.py` (a helper module, not a test file). Checked while planning with pypdf 6.19: text extracts, rotation reads back, images inside a form are found, and PDFium draws the one-byte images without error.
 
@@ -196,7 +196,7 @@ def build_pdf(pages: Sequence[PageSpec]) -> bytes:
     return out.getvalue()
 ```
 
-- [ ] **Step 2: Write the failing tests for page facts**
+- [x] **Step 2: Write the failing tests for page facts**
 
 `tests/test_docket_pages.py`:
 
@@ -264,12 +264,12 @@ def test_a_failed_page_is_blank_and_flagged() -> None:
     assert facts.kind == "blank"
 ```
 
-- [ ] **Step 3: Run them to see them fail**
+- [x] **Step 3: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_pages.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ntsb_probable_cause.docket.pages'`.
 
-- [ ] **Step 4: Implement `docket/pages.py`**
+- [x] **Step 4: Implement `docket/pages.py`**
 
 ```python
 """What a PDF page holds: text characters, images, rotation and image encodings (S2.6 §1).
@@ -394,12 +394,12 @@ def document_facts(data: bytes) -> tuple[PageFacts, ...]:
     return tuple(page_facts(page) for page in pages)
 ```
 
-- [ ] **Step 5: Run the tests to see them pass**
+- [x] **Step 5: Run the tests to see them pass**
 
 Run: `uv run pytest tests/test_docket_pages.py -v`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 6: Write the failing tests for the script**
+- [x] **Step 6: Write the failing tests for the script**
 
 `tests/test_page_kinds.py`:
 
@@ -503,12 +503,12 @@ def test_photo_only_documents_are_counted_apart_and_framed_as_such() -> None:
 
 (add `from collections import Counter` to the imports.)
 
-- [ ] **Step 7: Run them to see them fail**
+- [x] **Step 7: Run them to see them fail**
 
 Run: `uv run pytest tests/test_page_kinds.py -v`
 Expected: FAIL — `ImportError: cannot import name 'page_kinds' from 'scripts'`.
 
-- [ ] **Step 8: Implement `scripts/page_kinds.py`**
+- [x] **Step 8: Implement `scripts/page_kinds.py`**
 
 ```python
 """The kinds of page in a development sample's cached dockets: counts only (S2.6 §1, §5.2).
@@ -799,12 +799,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 9: Run the tests, then the whole check**
+- [x] **Step 9: Run the tests, then the whole check**
 
 Run: `uv run pytest tests/test_docket_pages.py tests/test_page_kinds.py -v`, then `make check`
 Expected: PASS; `make check` green. If `sweep` is below the coverage gate, add a test that writes a one-case cache into `tmp_path` in `DocketClient`'s layout (`<mkey>/listing.html`, `<mkey>/<index>.bin`, `<mkey>/fetch.json` with each file's `sha256` and `href`; copy the shape from `tests/fixtures/docket/ERA17LA217/`) and runs `sweep` with the offline transport. Fix any vulture or deptry finding at its cause; never whitelist.
 
-- [ ] **Step 10: Run the script on `dev-400`** (free; reads the local cache and politely fetches the 146 photo-only PDFs, about 5 minutes of it at the 2-second floor; about 15–25 minutes in all)
+- [x] **Step 10: Run the script on `dev-400`** (free; reads the local cache and politely fetches the 146 photo-only PDFs, about 5 minutes of it at the 2-second floor; about 15–25 minutes in all)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -813,7 +813,7 @@ uv run python -m scripts.page_kinds --sample dev-400 --include-photo-only --out 
 
 Expected: `no cached listing: 0` (the S2 docket scan cached all 401), no `offline:` error, and `fetched and read:` close to the ad-hoc 146 photo-only PDFs (any fetch failure is counted on the `document fetch failed` line). Afterwards the tree holds one new file, `docs/results/s26-page-kinds.txt`; the frame is under `data/`, outside git. Compare the four kind totals with spec §1's ad-hoc figures (5,006 / 3,281 / 8,403 / 109) and the image-only details with §5.2's (527 rotated, 200 tiled, 929 fax, 250 JPEG 2000, 54 JBIG2); log every difference in Deviations. The scripted numbers stand.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/docket/pages.py scripts/page_kinds.py tests/pdf_builder.py tests/test_docket_pages.py tests/test_page_kinds.py docs/results/s26-page-kinds.txt docs/plans/2026-09-23-s26-widened-docket.md
@@ -6714,3 +6714,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, plan: the inventory's §6.4 stop rule has a number — under 10% of image-bearing pages with words in their images — and mixed pages are chosen by an image-area cut-off with a rule fixed in advance. Andy decided both (W3 and W6, 2026-09-24).
 - 2026-09-24, plan: the recorded transcriber replies (spec §12) are of an invented page drawn in code, so a committed fixture carries no docket text.
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
+- 2026-09-24, Task 1 Step 10: `scripts.page_kinds`'s scripted count on `dev-400` (401 cases, 3,516 cached PDFs, 8 not a PDF, 0 fetch failures, 0 no-cached-listing) differs slightly from the design session's ad-hoc four-kind totals (spec §1): text only 5,005 against 5,006 (-1), image only 3,274 against 3,281 (-7), text and image 8,402 against 8,403 (-1), blank 109 against 109 (exact). The image-only breakdown (spec §5.2) differs more: rotated 527 against 527 (exact), 5+ images (tiled) 201 against 200 (+1), fax (CCITT) 883 against 929 (-46), JPEG 2000 60 against 250 (-190), JBIG2 42 against 54 (-12). The JPEG 2000 gap is the largest and is not explained by anything this task changed; the most likely cause is that the ad-hoc count used a different rule for which filter to report when an image chains more than one (`_encoding` here reports the *last* filter applied, i.e. closest to the raw bytes, not the first), but this was not re-run against the ad-hoc script to confirm, since that script was not committed. Per the brief, the scripted numbers in `docs/results/s26-page-kinds.txt` stand and are what later tasks and the As-built record cite; the design-session figures in spec §1 and §5.2 are not corrected in place (the spec is amended separately if needed). Additionally, `--include-photo-only` fetched and read all 146 of the 146 photo-only PDFs the ad-hoc count found (831 declared pages; 831 pages read, split 48/322/460/1 by kind), with 0 fetch failures, matching decision W2's count exactly.
