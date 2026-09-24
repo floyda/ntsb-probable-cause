@@ -651,3 +651,14 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   [−2.0, +3.7]), but finding recall@10 was −1.1 [−2.2, −0.2] against GPT-5.6 Luna, outside the
   gate. Put to Andy before the switch; he chose to switch and read findings on held-out arm B in
   Task 7, noting a higher reasoning level as the lever to try if findings lag (recorded in 0073).
+- 2026-09-24, Task 6: of the 13 tests that failed after the one-line switch, 10 encoded GPT-5.6
+  Luna's price (a cost, a cap boundary, or a budget projection) and 3 asserted its model id as a
+  literal — `test_client_sends_schema_system_and_history` (the sent request body's `"model"`
+  field), `test_run_header_logs_fresh_with_the_specs_facts` and
+  `test_run_header_logs_resumed_with_the_specs_facts` (the logged header's `model=` substring).
+  All 13 were fixed the same way, by pinning `model="openai/gpt-5.6-luna"` explicitly, which
+  keeps each testing what it was written to test (that the configured model's price prices the
+  run, or that the configured model's id propagates verbatim) rather than the default; the task
+  brief's own resolution names only the price case, and the commit message's "each test you
+  pinned (or price)" description read as though all 13 were price failures. That is corrected
+  here: the fixes are unchanged and correct, only the record of why 3 of the 13 failed.
