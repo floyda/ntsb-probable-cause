@@ -338,6 +338,7 @@ def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
             sample="dev-400",
             arm="ceiling",
             sync=True,
+            model="openai/gpt-5.6-luna",
             price_variant="standard",
             expected_cost_per_case_usd=0.001,
         ),
@@ -372,6 +373,7 @@ def test_sync_cost_reflects_both_replies_when_the_retry_succeeds(
             sample="dev-400",
             arm="ceiling",
             sync=True,
+            model="openai/gpt-5.6-luna",
             price_variant="standard",
             expected_cost_per_case_usd=0.001,
         ),
@@ -576,7 +578,13 @@ def test_batch_per_case_cost_priced_at_the_batch_price(
 ) -> None:
     fake = FakeBatchClient(handlers=[lambda bid, reqs: _status(bid, reqs, ABSTAIN)])
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     folder = tmp_path / "runs" / run.run_id
@@ -632,7 +640,13 @@ def test_batch_reply_that_fails_schema_is_retried_once_then_recorded(
         ]
     )
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert len(fake.submitted) == 2
@@ -759,7 +773,13 @@ def test_batch_stage1_retry_recovers_and_the_case_still_completes(
         ]
     )
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert run.batch_ids == ("b1", "b2", "b3")
@@ -911,7 +931,13 @@ def test_batch_abort_on_stage_two_failure_still_records_stage_one_spend(
     )
     with pytest.raises(ModelError, match="expired"):
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                expected_cost_per_case_usd=0.001,
+            ),
             record_fixtures[:1],
         )
     folder = tmp_path / "runs" / _run_id()
@@ -949,7 +975,13 @@ def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
     )
     with pytest.raises(KeyboardInterrupt):
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                expected_cost_per_case_usd=0.001,
+            ),
             record_fixtures[:1],
         )
     folder = tmp_path / "runs" / _run_id()
@@ -966,7 +998,13 @@ def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
 # --- resume: a run continues from the batches it already paid for (0032) ---
 
 
-BATCH_SPEC = RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001)
+BATCH_SPEC = RunSpec(
+    sample="dev-400",
+    arm="ceiling",
+    sync=False,
+    model="openai/gpt-5.6-luna",  # pinned: expected costs below are Luna 5.6's batch price
+    expected_cost_per_case_usd=0.001,
+)
 
 
 class _ExplodingBatchClient:

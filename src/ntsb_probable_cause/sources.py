@@ -120,7 +120,7 @@ ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
 # The agent's default model and reasoning level, each named once (decision 0073). The level is
 # stated on every agent request rather than left to the provider, whose default could change
 # with nothing in a run's record to show it (S2.4 spec §4.1).
-DEFAULT_MODEL = "openai/gpt-5.6-luna"
+DEFAULT_MODEL = "openai/gpt-6-luna"
 DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"
 
 

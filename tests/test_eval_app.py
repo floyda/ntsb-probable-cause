@@ -374,12 +374,25 @@ def test_resumed_run_spend_reaches_month_spent_for_the_next_run(
         return RecordingFakeClient([]), cast(BatchRunner, batch)
 
     with pytest.raises(ModelError, match="waiter died"):
-        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--model", "openai/gpt-5.6-luna"],
+            client_factory=factory,
+        )
     (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     assert month_spent(runs_dir, now=datetime.now(UTC)) == pytest.approx(0.0)  # nothing read yet
 
     exit_code = main(
-        ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", run_folder.name],
+        [
+            "run",
+            "--arm",
+            "ceiling",
+            "--sample",
+            "dev-400",
+            "--model",
+            "openai/gpt-5.6-luna",
+            "--resume",
+            run_folder.name,
+        ],
         client_factory=factory,
     )
     assert exit_code == 0
@@ -424,7 +437,10 @@ def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
         return RecordingFakeClient([]), cast(BatchRunner, batch)
 
     with pytest.raises(ModelError, match="waiter died"):
-        main(["run", "--arm", "ceiling", "--sample", "dev-400"], client_factory=factory)
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--model", "openai/gpt-5.6-luna"],
+            client_factory=factory,
+        )
     (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
     one_reply = (100 * 0.10 + 50 * 0.60) / 1e6  # the stage-1 reply the dead run was billed
     billed = month_spent(runs_dir, now=datetime.now(UTC))
@@ -433,7 +449,17 @@ def test_a_resume_in_flight_keeps_the_dead_runs_spend_visible_to_month_spent(
     seen_mid_flight.clear()
     assert (
         main(
-            ["run", "--arm", "ceiling", "--sample", "dev-400", "--resume", run_folder.name],
+            [
+                "run",
+                "--arm",
+                "ceiling",
+                "--sample",
+                "dev-400",
+                "--model",
+                "openai/gpt-5.6-luna",
+                "--resume",
+                run_folder.name,
+            ],
             client_factory=factory,
         )
         == 0

@@ -84,7 +84,10 @@ def test_client_sends_schema_system_and_history(respx_mock: respx.MockRouter) ->
     )
     client = OpenRouterClient("or-key", sleep=lambda _s: None)
     settings = ModelSettings(
-        json_schema={"type": "object"}, schema_name="mini", price_variant="standard"
+        model="openai/gpt-5.6-luna",
+        json_schema={"type": "object"},
+        schema_name="mini",
+        price_variant="standard",
     )
     history = (
         Turn(

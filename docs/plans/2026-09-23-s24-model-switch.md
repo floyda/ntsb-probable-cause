@@ -549,18 +549,18 @@ git commit -m "S2.4: GPT-6 Luna passes the shape probe and the format gate on de
 - Modify: `src/ntsb_probable_cause/sources.py` (`DEFAULT_MODEL`)
 - Test: whichever existing tests encode GPT-5.6 Luna's price through the default model
 
-- [ ] **Step 1: Change the one line**
+- [x] **Step 1: Change the one line**
 
 ```python
 DEFAULT_MODEL = "openai/gpt-6-luna"
 ```
 
-- [ ] **Step 2: Run the suite**
+- [x] **Step 2: Run the suite**
 
 Run: `make check`
 Expected: the tests of Tasks 1 and 2 pass unchanged. A test whose expected number depends on the default model's *price* (a cost, a cap boundary, a budget projection) now fails, because GPT-6 Luna costs about half as much. Fix each such test by passing `model="openai/gpt-5.6-luna"` explicitly to the `RunSpec` or `ModelSettings` it builds, so it keeps testing what it was written to test; never by changing its expected number. List each test changed in the commit message.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/sources.py tests/ docs/plans/2026-09-23-s24-model-switch.md
