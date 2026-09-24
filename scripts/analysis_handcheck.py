@@ -8,7 +8,9 @@ Status
     before pypdf read encrypted documents; ``scripts.docket_leak_scan`` re-run on 2026-09-24
     gives 52 in 19 too). ``score`` reads the marks Andy downloads from that page and writes
     ``docs/results/s26-analysis-handcheck.txt``, counts only. Decision 0077 takes effect only
-    if 5 or fewer of the 36 are conclusions.
+    if 7 or fewer of the 52 are conclusions (rescaled 2026-09-24 from the original 5 of 36 to
+    keep the same ~1-in-7 rate against the wider reading; see the comment above
+    ``MAX_CONCLUSIONS`` below).
 
 The sheet holds withheld text -- the matched analysis sentences -- so it lives under
 ``data/`` and is never committed (spec §4.2). Each sentence is shown inside the document
@@ -50,9 +52,19 @@ CAUSE = VerdictRole.PROBABLE_CAUSE.value
 DOCUMENTS = EvidenceRole.DOCKET_DOCUMENTS.value
 CONTEXT_CHARS = 300
 NO_SENTENCES = 10**9
-# Spec §4.2 and decision 0077 item 4: "If 5 or fewer of the 36 are conclusions".
-MAX_CONCLUSIONS = 5
-EXPECTED_ROWS = 36
+# Spec §4.2 / decision 0077 item 4 said 5 of 36 (about one in seven). The 2026-09-24 reading of
+# the dev-400 dockets finds 52 matched sentences, not 36 -- S2's 36 (docs/results/s2-docket-leak
+# .txt) was measured before pypdf read encrypted documents. Andy's decision, 2026-09-24
+# (verbatim: "A, go with 7 of 52"), keeps the rate: 7 of 52 (13.5%) against the original 5 of 36
+# (13.9%).
+MAX_CONCLUSIONS = 7
+EXPECTED_ROWS = 52
+RESCALED_FROM = (
+    "rule rescaled 2026-09-24 from the original 5 of 36 (spec §4.2 / decision 0077 item 4): "
+    "the 2026-09-24 reading of the dev-400 dockets finds 52 matched sentences, not 36 (S2's 36 "
+    "was measured before pypdf read encrypted documents), and Andy's decision keeps the same "
+    "~1-in-7 rate against the wider count"
+)
 QUOTES, CONCLUSION = "quotes evidence", "conclusion in the docket"
 MARKS = (QUOTES, CONCLUSION)
 FOLDER = Path("handcheck") / "s26-analysis"
@@ -225,6 +237,7 @@ def score(rows: Sequence[Mapping[str, str]], marks: Mapping[int, str]) -> str:
             f"the rule's measured error: {conclusions} of {total} sentences are conclusions "
             f"({conclusions / total:.1%} [{low:.1%}, {high:.1%}], Wilson 95%)",
             f"rule: adopt 0077 if {MAX_CONCLUSIONS} or fewer of {EXPECTED_ROWS} are conclusions",
+            RESCALED_FROM,
             outcome,
         ]
     )

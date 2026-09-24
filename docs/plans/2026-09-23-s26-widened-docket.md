@@ -838,7 +838,7 @@ In plain words, with a glossary: the four kind totals against the design session
 **Interfaces:**
 - Consumes: `records.split.split_record`, `records.guard.find_leaks`, `records.guard.normalise_text`, `docket.attach.prepare_attachment`, `scoring.runner.CachedDocketReader`, `scoring.metrics.wilson`.
 - Produces: `scripts.marking_page.Choice(name: str, options: tuple[str, ...], required: bool = True)`, `scripts.marking_page.Card(row: int, body_html: str, choices: tuple[Choice, ...] = (), text_fields: tuple[tuple[str, str], ...] = ())` (a text field is `(name, prefilled value)`), `scripts.marking_page.render(*, title: str, intro_html: str, cards: Sequence[Card], storage_key: str, csv_name: str) -> str`, `scripts.marking_page.read_marks(path: Path) -> dict[int, dict[str, str]]`. The downloaded CSV has a `row` column and one column per field name, in first-seen order. Tasks 12 and 13 reuse all four.
-- Produces: `scripts.analysis_handcheck.SheetRow` (frozen dataclass: `case_id: str`, `document: int`, `title: str`, `category: str`, `sentence: str`, `before: str`, `after: str`, `cause_in_case: bool`); `sheet_rows(raw, docket) -> list[SheetRow]`; `score(rows: Sequence[Mapping[str, str]], marks: Mapping[int, str]) -> str`; `MAX_CONCLUSIONS = 5`; `EXPECTED_ROWS = 36`. Task 5 reads the results file's `outcome:` line.
+- Produces: `scripts.analysis_handcheck.SheetRow` (frozen dataclass: `case_id: str`, `document: int`, `title: str`, `category: str`, `sentence: str`, `before: str`, `after: str`, `cause_in_case: bool`); `sheet_rows(raw, docket) -> list[SheetRow]`; `score(rows: Sequence[Mapping[str, str]], marks: Mapping[int, str]) -> str`; `MAX_CONCLUSIONS = 7`; `EXPECTED_ROWS = 52` (rescaled 2026-09-24 from the brief's original 5/36, see the Deviations entry). Task 5 reads the results file's `outcome:` line.
 
 **What Andy sees, and why.** Each card is one matched sentence, shown inside about 300 characters of the document text on each side, with the document's listing title and category. The text is shown as the tripwire compares it — lower case, whitespace collapsed — because that is the form in which it matched. The one question: *does this sentence quote evidence, or is it a conclusion sitting in the docket?* An example of "quotes evidence": a wreckage examination that reads "…examination of the engine revealed no mechanical anomalies that would have precluded normal operation…". An example of "conclusion in the docket": a party's letter that reads "…the loss of power was the result of the pilot's mismanagement of the fuel system…". The sentence is withheld text, so the page and the sheet stay under `data/`. Andy marks by clicking, never in a spreadsheet (marking 60 rows in a spreadsheet was reported unworkable twice in S2; `scripts/handcheck_page.py`).
 
@@ -1245,7 +1245,8 @@ Status
     matches to the analysis narrative (36 in 17 cases, ``docs/results/s2-docket-leak.txt``).
     ``score`` reads the marks Andy downloads from that page and writes
     ``docs/results/s26-analysis-handcheck.txt``, counts only. Decision 0077 takes effect only
-    if 5 or fewer of the 36 are conclusions.
+    if 7 or fewer of the 52 are conclusions (rescaled 2026-09-24 from the original 5 of 36 to
+    keep the same ~1-in-7 rate against the wider 2026-09-24 reading; see the Deviations entry).
 
 The sheet holds withheld text -- the matched analysis sentences -- so it lives under
 ``data/`` and is never committed (spec §4.2). Each sentence is shown inside the document
@@ -1287,9 +1288,13 @@ CAUSE = VerdictRole.PROBABLE_CAUSE.value
 DOCUMENTS = EvidenceRole.DOCKET_DOCUMENTS.value
 CONTEXT_CHARS = 300
 NO_SENTENCES = 10**9
-# Spec §4.2 and decision 0077 item 4: "If 5 or fewer of the 36 are conclusions".
-MAX_CONCLUSIONS = 5
-EXPECTED_ROWS = 36
+# Spec §4.2 / decision 0077 item 4 said 5 of 36 (about one in seven). The 2026-09-24 reading of
+# the dev-400 dockets finds 52 matched sentences, not 36 -- S2's 36 (docs/results/s2-docket-leak
+# .txt) was measured before pypdf read encrypted documents. Andy's decision, 2026-09-24
+# (verbatim: "A, go with 7 of 52"), keeps the rate: 7 of 52 (13.5%) against the original 5 of 36
+# (13.9%).
+MAX_CONCLUSIONS = 7
+EXPECTED_ROWS = 52
 QUOTES, CONCLUSION = "quotes evidence", "conclusion in the docket"
 MARKS = (QUOTES, CONCLUSION)
 FOLDER = Path("handcheck") / "s26-analysis"
@@ -6704,6 +6709,8 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 ## Deviations
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
+
+- 2026-09-24, Task 2, Andy's decision: decision 0077's rule (spec §4.2 item 4, "if 5 or fewer of the 36 are conclusions") is rescaled to the wider 2026-09-24 reading of the dev-400 dockets (52 matched sentences in 19 cases, not S2's 36 in 17 -- pypdf now reads encrypted documents S2's `pypdf` could not, see the Step 10 Deviations entry above). Andy's decision, verbatim: "A, go with 7 of 52" -- the rule becomes "adopt 0077 if 7 or fewer of 52 are conclusions", keeping the rate at about one in seven (7/52 = 13.5% against the original 5/36 = 13.9%). `scripts/analysis_handcheck.py`'s `MAX_CONCLUSIONS` and `EXPECTED_ROWS` are changed to 7 and 52, the comment above them and the module's Status docstring cite the rescaling, and `score`'s printed text carries a `RESCALED_FROM` line so the published `docs/results/s26-analysis-handcheck.txt` states the rescaling rather than presenting 7/52 as if it had always been the rule. `tests/test_analysis_handcheck.py`'s five 36/5 tests are moved to 52/7 (adopt at 7, not adopted at 8, not applied when the sheet is not 52 rows, the unmarked-row refusal), and one test now asserts the score text names the rescaling. This section's Interfaces line and the two literal "5 or fewer of the 36" occurrences in the embedded Step 7 code above are updated to match; the rest of that embedded code block (a historical copy of the brief) is left as written, per the same practice as every other logged deviation in this document.
 
 - 2026-09-24, Task 2 Step 10: `uv run python -m scripts.analysis_handcheck sheet --sample dev-400` against the real `NTSB_DATA_DIR` cache printed `52 sentences in 19 cases; 0 cases skipped`, not the expected `36 sentences in 17 cases; 0 cases skipped` (spec §4.2, `docs/results/s2-docket-leak.txt`). The controller re-ran `scripts.docket_leak_scan` on today's data and it also finds `analysis_narrative` 52 in 19 cases (and `probable_cause` 6 in 2), confirming `sheet_rows`'s count is right, not a bug in this task's code. The case records and the `dev-400` docket cache predate S2's own scan (commit `74c22b9`); the likely cause is that `pypdf` now installs with its `[crypto]` extra (added after that scan), so encrypted documents S2's `pypdf` could not open are read today, widening the readable text the tripwire compares against. `EXPECTED_ROWS` and `MAX_CONCLUSIONS` are left at 36/5 -- changing them is Andy's decision, pending, not this task's to make. Git is unaffected by the run itself (the sheet and page are under `data/handcheck/s26-analysis/`, git-ignored, and `git status --short` is empty after it). Steps 11-13 (Andy's marking, scoring, and the appended 0077 result note) do not proceed until he decides how to reconcile the wider count with the rule as written.
 - 2026-09-24, plan: **images cannot use the batch service** (OpenRouter batch documentation, read 2026-09-24). The spec's transcription, inventory and v3 costs assumed batch prices; every image call runs synchronously at the standard price, twice the batch price. Stage estimate $26–46 instead of $17–27. Andy chose this (W1, 2026-09-24).

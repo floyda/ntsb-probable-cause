@@ -167,35 +167,41 @@ def test_the_page_escapes_text_and_offers_the_two_marks() -> None:
 
 def _sheet(n: int) -> list[dict[str, str]]:
     return [
-        {"row": str(i), "category": "exam_site", "case_id": f"C{i % 17}"} for i in range(1, n + 1)
+        {"row": str(i), "category": "exam_site", "case_id": f"C{i % 19}"} for i in range(1, n + 1)
     ]
 
 
 def _marks(conclusions: int) -> dict[int, str]:
-    marks = dict.fromkeys(range(1, 37), "quotes evidence")
+    marks = dict.fromkeys(range(1, 53), "quotes evidence")
     return marks | dict.fromkeys(range(1, conclusions + 1), CONCLUDED)
 
 
-def test_score_adopts_the_rule_at_five_conclusions() -> None:
-    text = analysis_handcheck.score(_sheet(36), _marks(5))
-    assert f"{CONCLUDED:<28} {5:3d}" in text
+def test_score_adopts_the_rule_at_seven_conclusions() -> None:
+    text = analysis_handcheck.score(_sheet(52), _marks(7))
+    assert f"{CONCLUDED:<28} {7:3d}" in text
     assert "outcome: adopted" in text
 
 
-def test_score_does_not_adopt_at_six_conclusions() -> None:
-    text = analysis_handcheck.score(_sheet(36), _marks(6))
+def test_score_names_the_rescaling_from_the_original_rule() -> None:
+    text = analysis_handcheck.score(_sheet(52), _marks(7))
+    assert "rescaled 2026-09-24 from the original 5 of 36" in text
+    assert "rule: adopt 0077 if 7 or fewer of 52 are conclusions" in text
+
+
+def test_score_does_not_adopt_at_eight_conclusions() -> None:
+    text = analysis_handcheck.score(_sheet(52), _marks(8))
     assert "outcome: not adopted" in text
 
 
-def test_score_refuses_the_rule_when_the_sheet_is_not_the_36() -> None:
-    marks = dict.fromkeys(range(1, 36), "quotes evidence")
-    text = analysis_handcheck.score(_sheet(35), marks)
+def test_score_refuses_the_rule_when_the_sheet_is_not_the_52() -> None:
+    marks = dict.fromkeys(range(1, 52), "quotes evidence")
+    text = analysis_handcheck.score(_sheet(51), marks)
     assert "outcome: not applied" in text
 
 
 def test_score_refuses_an_unmarked_row() -> None:
     with pytest.raises(SystemExit, match="unmarked"):
-        analysis_handcheck.score(_sheet(36), dict.fromkeys(range(1, 36), "quotes evidence"))
+        analysis_handcheck.score(_sheet(52), dict.fromkeys(range(1, 52), "quotes evidence"))
 
 
 def test_main_sheet_refuses_a_non_development_sample(
@@ -279,13 +285,13 @@ def test_main_score_reads_the_sheet_and_marks_and_writes_the_outcome(
     with (folder / "sheet.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["row", "case_id", "category"])
         writer.writeheader()
-        for i in range(1, 37):
-            writer.writerow({"row": i, "case_id": f"C{i % 17}", "category": "exam_site"})
+        for i in range(1, 53):
+            writer.writerow({"row": i, "case_id": f"C{i % 19}", "category": "exam_site"})
     marks_path = tmp_path / "marks.csv"
     with marks_path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["row", "mark", "notes"])
         writer.writeheader()
-        for i in range(1, 37):
+        for i in range(1, 53):
             writer.writerow({"row": i, "mark": analysis_handcheck.QUOTES, "notes": ""})
     out_path = tmp_path / "out.txt"
 
