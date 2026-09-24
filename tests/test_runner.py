@@ -1042,6 +1042,24 @@ def _died_waiting_on_stage1(tmp_path: Path, raws: Sequence[dict[str, object]]) -
     return fake
 
 
+def _died_waiting_on_stage2(tmp_path: Path, raws: Sequence[dict[str, object]]) -> FakeBatchClient:
+    """A batch run whose stage-1 batch completed and stage-2 batch was recorded, then lost its
+    waiter -- so ``batches.jsonl`` holds one row for each stage (fix round 1's scenario)."""
+
+    def die(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise ModelError("the waiter died")
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),  # stage1 completes
+            die,  # stage2
+        ]
+    )
+    with pytest.raises(ModelError, match="waiter died"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, raws)
+    return fake
+
+
 def _resume_after_stage1_death(
     tmp_path: Path, raws: Sequence[dict[str, object]]
 ) -> tuple[RunRecord, FakeBatchClient]:
@@ -1223,6 +1241,101 @@ def test_a_freshly_submitted_batch_that_the_provider_loses_still_aborts_the_run(
     folder = tmp_path / "runs" / _run_id()
     rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
     assert rows == [{"batch_id": "b1", "stage": "stage1", "time": rows[0]["time"]}]
+
+
+def test_a_lost_batch_supersedes_the_batches_recorded_after_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: stage 2's requests are built from stage 1's replies (``history``/
+    ``system``), so once the stage-1 batch is found lost, the dead run's stage-2 batch is not
+    a valid replay of anything either -- it must not be reused, only resubmitted fresh."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    resumed = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: the provider has lost it
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # stage1, resubmitted
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # stage2, resubmitted
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # b2 is never waited on
+    assert len(resumed.submitted) == 2  # both stages paid for fresh; b2 was never reused
+    assert record.batch_ids == ("c1", "c2")
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [
+        (row["stage"], row["batch_id"], row.get("lost", False), row.get("superseded", False))
+        for row in rows
+    ] == [
+        ("stage1", "b1", False, False),  # the dead run's original rows: never deleted
+        ("stage2", "b2", False, False),
+        ("stage1", "b1", True, False),  # marks b1 lost
+        ("stage2", "b2", False, True),  # marks b2 superseded: it depended on b1
+        ("stage1", "c1", False, False),  # the fresh replacement
+        ("stage2", "c2", False, False),
+    ]
+    assert rows[3]["depends_on_batch_id"] == "b1"
+    # A later resume's queue would wait on neither dead id again.
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", rows[4]["time"]),
+        ("stage2", "c2", rows[5]["time"]),
+    ]
+
+
+def test_a_superseded_batch_stays_superseded_across_a_second_resume(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The stronger case: resume #1 loses b1, resubmits it as c1, then dies again waiting on
+    the freshly submitted stage-2 batch; resume #2 must reuse c1 (not b1) and never touch the
+    superseded b2, proving the supersession survives past the resume that discovered it."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    def die_again(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise ModelError("the waiter died again")
+
+    resume1 = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: lost
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # c1: stage1, fresh
+            die_again,  # c2: stage2, fresh, waiter dies again
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    with pytest.raises(ModelError, match="waiter died again"):
+        runner(tmp_path, RecordingFakeClient([]), batch=resume1).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert len(resume1.submitted) == 2  # c1 and c2, neither of which was waited on to success
+
+    resume2 = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # c1, reused
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # c2, reused
+        ],
+        prefix="d",
+        preloaded={"c1": resume1.submitted[0], "c2": resume1.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resume2).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resume2.waited == ["c1", "c2"]  # reused, in order; b1 and b2 are never touched again
+    assert resume2.submitted == []  # nothing paid for a third time
+    assert record.batch_ids == ("c1", "c2")
+    assert record.finished is not None
 
 
 def test_spec_json_is_written_before_the_first_call(

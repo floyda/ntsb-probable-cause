@@ -387,10 +387,22 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
 
     A batch the provider has since lost (``BatchNotFoundError``, task 7b) gets a second row
     for the same id, ``{"batch_id": ..., "stage": ..., "lost": true, "time": ...}``, appended
-    when that is discovered. Neither that row nor the original row for the lost id is
-    returned here: a lost batch has nothing left to reuse, and the stage that recorded it
-    must be resubmitted fresh, exactly as if nothing had ever been recorded for it. Nothing
-    is ever deleted from ``batches.jsonl``; this only filters what is handed back.
+    wherever that is discovered -- not necessarily the row directly after it, since other
+    batches may have been recorded first. Neither that row nor the original row for the lost
+    id is returned here, however far apart they are: a lost batch has nothing left to reuse,
+    and the stage that recorded it must be resubmitted fresh, exactly as if nothing had ever
+    been recorded for it.
+
+    Every batch recorded *after* a lost one in the dead run depended on its replies (stage 2's
+    requests are built from stage 1's hypothesis, a retry's from the pass it retries) and so
+    is not a valid replay of anything once the batch it depended on is gone (fix round 1). Each
+    such batch gets its own row, ``{"batch_id": ..., "stage": ..., "superseded": true,
+    "depends_on_batch_id": <the lost id>, "time": ...}``, appended the moment the loss is
+    discovered (``Runner._submit_and_wait``, which also empties the in-memory reuse queue so
+    the rest of the run submits every one of them fresh). Neither a ``superseded`` row nor the
+    original row for a superseded id is returned here, for the same reason as a lost one.
+
+    Nothing is ever deleted from ``batches.jsonl``; this only filters what is handed back.
 
     Args:
         folder: the run folder.
@@ -413,14 +425,13 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
                 f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
             )
         time = row.get("time")
-        rows.append(
-            (stage, batch_id, time if isinstance(time, str) else None, row.get("lost") is True)
-        )
-    lost_ids = {batch_id for _stage, batch_id, _time, lost in rows if lost}
+        unusable = row.get("lost") is True or row.get("superseded") is True
+        rows.append((stage, batch_id, time if isinstance(time, str) else None, unusable))
+    unusable_ids = {batch_id for _stage, batch_id, _time, unusable in rows if unusable}
     return [
         (stage, batch_id, time)
-        for stage, batch_id, time, lost in rows
-        if not lost and batch_id not in lost_ids
+        for stage, batch_id, time, unusable in rows
+        if not unusable and batch_id not in unusable_ids
     ]
 
 
@@ -1316,6 +1327,19 @@ class Runner:
 
         self._write_log_line(body)
 
+    def _log_superseded(self, stage: str, batch_id: str, lost_batch_id: str) -> None:
+        """One line per downstream batch dropped because the batch it depended on is lost."""
+
+        def body() -> str:
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "SUPERSEDED".ljust(self._WORD_WIDTH)
+            return (
+                f"{stage_field}{word_field}{batch_id} depended on {lost_batch_id}, which is "
+                "lost; submitting afresh (new money)"
+            )
+
+        self._write_log_line(body)
+
     def _log_submitted(self, stage: str, batch_id: str, request_count: int) -> None:
         """One line when a stage submits a fresh batch (§3): new money, and how much of it."""
 
@@ -1366,6 +1390,44 @@ class Runner:
         }
         with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
+
+    def _record_superseded_batch(
+        self, folder: Path, batch_id: str, stage: str, lost_batch_id: str
+    ) -> None:
+        """Append a ``superseded`` row for a batch recorded after one the provider has lost.
+
+        Same shape as ``_record_lost_batch``'s row, plus ``depends_on_batch_id`` naming the
+        lost batch whose replies this one's requests were built from (fix round 1). Nothing
+        is ever deleted from ``batches.jsonl``.
+        """
+        folder.mkdir(parents=True, exist_ok=True)
+        row = {
+            "batch_id": batch_id,
+            "stage": stage,
+            "superseded": True,
+            "depends_on_batch_id": lost_batch_id,
+            "time": self._now().isoformat(),
+        }
+        with (folder / BATCHES_FILE).open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+
+    def _supersede_downstream(self, run: _BatchRun, *, lost_batch_id: str) -> None:
+        """Drop every batch still queued for reuse once one it depends on is found lost.
+
+        Fix round 1: stage 2's requests are built from stage 1's hypothesis (``history`` and
+        ``system``, see ``_stage2_system``), and a retry's requests are built from the pass it
+        retries, so every batch the dead run recorded *after* the one just found lost is not a
+        valid replay of anything any more -- it would parse replies written for content that
+        no longer exists into this run's records. This appends a ``superseded`` row for each
+        one still in ``run.reusable`` (naming the lost batch it depended on) and empties the
+        queue, so every downstream stage submits fresh for the rest of this run, and
+        ``recorded_batches`` keeps a later resume from ever reusing them either.
+        """
+        downstream = list(run.reusable)
+        run.reusable.clear()
+        for stage, batch_id, _recorded_time in downstream:
+            self._record_superseded_batch(run.folder, batch_id, stage, lost_batch_id)
+            self._log_superseded(stage, batch_id, lost_batch_id)
 
     @staticmethod
     def _take_reusable(run: _BatchRun, stage: str) -> tuple[str, str | None] | None:
@@ -1421,9 +1483,17 @@ class Runner:
         that is treated as the batch no longer existing, not as the pass failing. A ``lost``
         row is appended to ``batches.jsonl`` (so a later resume never waits on that id
         again), one line is logged, and the same ``requests`` are submitted fresh -- new
-        money, spent visibly, exactly once. A batch submitted fresh *in this call* that then
-        raises ``BatchNotFoundError`` is not retried again: it propagates and the run aborts,
-        so a run never silently re-spends more than once on the same stage.
+        money, spent visibly, exactly once. Its cost never lands in ``run.costs``/
+        ``run.batch_ids`` under the lost id -- only the fresh batch that replaces it does, the
+        same as for any batch that was never recorded at all. A batch submitted fresh *in this
+        call* that then raises ``BatchNotFoundError`` is not retried again: it propagates and
+        the run aborts, so a run never silently re-spends more than once on the same stage.
+
+        Fix round 1: every batch the dead run recorded *after* the lost one carries content
+        derived from it (stage 2's requests are built from stage 1's hypothesis) and so is not
+        a valid replay of anything any more either -- ``_supersede_downstream`` drops the rest
+        of this pass's reuse queue at the same moment, marking each one ``superseded`` so a
+        later resume does not reuse it either.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1437,6 +1507,7 @@ class Runner:
             except BatchNotFoundError:
                 self._record_lost_batch(run.folder, batch_id, stage)
                 self._log_lost(stage, batch_id)
+                self._supersede_downstream(run, lost_batch_id=batch_id)
                 reused = None
             else:
                 run.batch_ids.append(status.batch_id)
