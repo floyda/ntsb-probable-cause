@@ -21,6 +21,11 @@ dependencies = [
     # fell from 17.9 MB to 9.2 MB once it was installed. Not an optional speed-up -- the pure-Python
     # path is what made a 400-case run get killed for memory.
     "pypdf[crypto]>=6.19.0",
+    # Decision 0075: pages are drawn with PDFium (the engine in Chrome), installed from the lock
+    # file as a ready-built package -- not a system program, so 0047's reproducibility test holds.
+    # Pillow writes the drawn page as JPEG.
+    "pypdfium2>=5.13.0",
+    "pillow>=12.3.0",
 ]
 
 [project.scripts]
@@ -70,6 +75,12 @@ explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "pyarrow.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pypdfium2 ships no `py.typed` marker (checked on 5.13.0, 2026-09-24). Its values enter this
+# project only in docket/render.py, where each is converted to a plain int or float.
+module = ["pypdfium2", "pypdfium2.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
