@@ -7,6 +7,7 @@ import pytest
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.records.guard import (
+    MARKED_SENTENCES,
     NARRATIVE_COVERAGE_MARK,
     narrative_shares,
     sentence_needles,
@@ -80,3 +81,70 @@ def test_the_whole_narrative_in_a_document_still_refuses(
 ) -> None:
     with pytest.raises(LeakageError, match="text from factual_narrative"):
         split_record(_case(record_fixtures, FACTUAL))
+
+
+QUOTED = (
+    "Examination of the engine revealed no mechanical anomalies"
+    " that would have precluded normal operation."
+)
+ANALYSIS = QUOTED + " The fuel selector was found positioned to an empty tank."
+CAUSE = (
+    "The pilot's improper fuel management, which resulted in a loss of engine power due to"
+    " fuel starvation."
+)
+
+
+def _analysed(record_fixtures: list[dict[str, object]], *documents: str) -> dict[str, object]:
+    raw = _case(record_fixtures, *documents)
+    narratives = raw["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["analysisNarrative"] = ANALYSIS
+    narratives[0]["probableCause"] = CAUSE
+    return raw
+
+
+def test_only_the_docket_documents_analysis_pair_is_marked() -> None:
+    assert frozenset({("docket_documents", "analysis_narrative")}) == MARKED_SENTENCES
+
+
+def test_an_analysis_sentence_in_a_document_marks_and_reaches_the_agent(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    document = f"Docket item 1, 2 pages.\n[page 1 of 2]\n{QUOTED}"
+    evidence, _, _ = split_record(_analysed(record_fixtures, document))
+    assert CaseMark(kind="analysis_sentence", count=1) in evidence.marks
+    assert "no mechanical anomalies" in Payload.from_evidence(evidence).text
+    assert "analysis_sentence" not in Payload.from_evidence(evidence).text
+
+
+def test_an_analysis_sentence_outside_the_documents_still_refuses(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    raw = _analysed(record_fixtures)
+    narratives = raw["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["prelimNarrative"] = QUOTED
+    with pytest.raises(LeakageError, match="sentence from analysis_narrative in prelim"):
+        split_record(raw)
+
+
+def test_a_probable_cause_in_a_document_still_refuses(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    with pytest.raises(LeakageError, match="from probable_cause in docket_documents"):
+        split_record(_analysed(record_fixtures, f"Letter.\n{CAUSE}"))
+
+
+def test_the_whole_analysis_in_a_document_still_refuses(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    with pytest.raises(LeakageError, match="text from analysis_narrative in docket_documents"):
+        split_record(_analysed(record_fixtures, ANALYSIS))
+
+
+def test_a_code_in_a_document_still_refuses(record_fixtures: list[dict[str, object]]) -> None:
+    raw = _analysed(record_fixtures)
+    _, _, verdict = split_record(raw)
+    code = verdict.codes()[0]
+    with pytest.raises(LeakageError, match="code from codes in docket_documents"):
+        split_record(_analysed(record_fixtures, f"Table row {code} noted."))

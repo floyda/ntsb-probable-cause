@@ -2218,7 +2218,7 @@ git commit -m "S2.6: marks computed in the split; the narrative-coverage mark at
 - Consumes: Task 4's `screen`, `CaseMark`, `split_record`.
 - Produces: `MARKED_SENTENCES == frozenset({("docket_documents", "analysis_narrative")})`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_marks.py` (add `from ntsb_probable_cause.records.guard import MARKED_SENTENCES` to the imports):
 
@@ -2292,12 +2292,12 @@ def test_a_code_in_a_document_still_refuses(record_fixtures: list[dict[str, obje
 
 (If `record_fixtures[0]` has no verdict code, pick the first fixture that does with `next(...)`; the test must never pass vacuously.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_marks.py -v`
 Expected: the pair test and the marking test FAIL (`MARKED_SENTENCES` is empty, and the analysis sentence refuses with `LeakageError`); the four "still refuses" tests PASS already — they are the guarantees 0077 item 2 keeps.
 
-- [ ] **Step 3: Adopt the pair**
+- [x] **Step 3: Adopt the pair**
 
 In `records/guard.py`:
 
@@ -2314,12 +2314,12 @@ MARKED_SENTENCES: frozenset[tuple[str, str]] = frozenset(
 )
 ```
 
-- [ ] **Step 4: Run the tests, then the whole check**
+- [x] **Step 4: Run the tests, then the whole check**
 
 Run: `uv run pytest tests/test_marks.py tests/test_guard.py tests/test_boundary.py -v`, then `make check`
 Expected: PASS; green. A boundary test that asserted an analysis sentence in a docket document *refuses* is now wrong by decision: change it to assert the mark, and name it in the commit message.
 
-- [ ] **Step 5: Measure what changed on `dev-400`** (free; reads the local cache; a few minutes)
+- [x] **Step 5: Measure what changed on `dev-400`** (free; reads the local cache; a few minutes)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -2328,7 +2328,7 @@ uv run python -m scripts.docket_leak_scan --sample dev-400
 
 This is S2's one-shot scan, which compares against pinned pre-0050 exemptions and is not changed. It is run here only to confirm that the 36/17 figures still reproduce on this commit, so the marked-case count in Task 15 can be read against them. Nothing is written; nothing in git changes. Log the output's `analysis_narrative` line in Deviations if it differs from `docs/results/s2-docket-leak.txt`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/records/guard.py tests/test_marks.py tests/test_boundary.py docs/plans/2026-09-23-s26-widened-docket.md

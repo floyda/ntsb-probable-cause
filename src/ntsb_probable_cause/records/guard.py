@@ -171,8 +171,14 @@ NARRATIVE_COVERAGE_MARK = 0.5
 
 # Sentence matches that mark the case instead of refusing it, one role/source pair each.
 # Only a sentence is ever marked: a whole withheld text, a probable-cause sentence or a code
-# still refuses, in every role. Empty until decision 0077 is adopted (S2.6 Task 5).
-MARKED_SENTENCES: frozenset[tuple[str, str]] = frozenset()
+# still refuses, in every role.
+# - docket_documents / analysis_narrative (0077, adopted after Andy's hand-check,
+#   docs/results/s26-analysis-handcheck.txt): the analysis is written from the docket at the
+#   end of the investigation, so a shared sentence is usually the analysis quoting evidence.
+#   Measured error: the conclusions that file counts.
+MARKED_SENTENCES: frozenset[tuple[str, str]] = frozenset(
+    {(EvidenceRole.DOCKET_DOCUMENTS.value, "analysis_narrative")}
+)
 
 
 def sentence_needles(
