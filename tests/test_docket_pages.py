@@ -51,6 +51,13 @@ def test_an_unknown_encoding_is_named_other() -> None:
     assert facts.encodings == ("other",)
 
 
+def test_a_chained_filter_reports_the_last_encoding() -> None:
+    """A ``/Filter`` array names more than one filter; the last is closest to the raw bytes."""
+    (facts,) = document_facts(build_pdf([PageSpec(images=(("/FlateDecode", "/DCTDecode"),))]))
+    assert facts.encodings == ("JPEG",)
+    assert facts.images == 1
+
+
 def test_not_a_pdf_raises() -> None:
     with pytest.raises(DocketError, match="not a PDF"):
         document_facts(b"<html>not a pdf</html>")

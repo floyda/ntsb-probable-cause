@@ -23,17 +23,27 @@ from pypdf.generic import (
 
 @dataclass(frozen=True)
 class PageSpec:
-    """One test page: its text, one encoding name per image, its rotation."""
+    """One test page: its text, one encoding name (or a chain of them) per image, its rotation.
+
+    An entry of ``images`` is usually a single filter name (``"/DCTDecode"``); it may instead
+    be a tuple of filter names, written as a ``/Filter`` array on that one image, for a test
+    that needs a chained filter (``docket.pages._encoding`` reads the last name in the chain).
+    """
 
     text: str = ""
-    images: tuple[str, ...] = ()
+    images: tuple[str | tuple[str, ...], ...] = ()
     rotation: int = 0
     in_form: bool = False
 
 
-def _image(writer: PdfWriter, filter_name: str) -> IndirectObject:
+def _image(writer: PdfWriter, filter_name: str | tuple[str, ...]) -> IndirectObject:
     image = StreamObject()
     image.set_data(b"\x00")
+    filt = (
+        ArrayObject(NameObject(name) for name in filter_name)
+        if isinstance(filter_name, tuple)
+        else NameObject(filter_name)
+    )
     image.update(
         {
             NameObject("/Type"): NameObject("/XObject"),
@@ -42,7 +52,7 @@ def _image(writer: PdfWriter, filter_name: str) -> IndirectObject:
             NameObject("/Height"): NumberObject(1),
             NameObject("/ColorSpace"): NameObject("/DeviceGray"),
             NameObject("/BitsPerComponent"): NumberObject(8),
-            NameObject("/Filter"): NameObject(filter_name),
+            NameObject("/Filter"): filt,
         }
     )
     return writer._add_object(image)
