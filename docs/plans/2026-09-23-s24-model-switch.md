@@ -479,7 +479,7 @@ git add Makefile docs/plans/2026-09-23-s24-model-switch.md
 git commit -m "S2.4: make targets for the probe, the gate and the held-out bars"
 ```
 
-- [ ] **Step 3: Andy runs the probe**
+- [x] **Step 3: Andy runs the probe**
 
 From the key-exporting shell script: `make s24-probe`. Note both run ids from the terminal, then:
 
@@ -638,3 +638,12 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   fixtures already under `tests/fixtures/openrouter/`, and Task 1's tests pin the one new field in
   the request. If the probe shows a reply shape those fixtures do not cover, record one then.
 - 2026-09-23, plan: spec §5's four comparisons are written to `s24-bars.txt` as three `report` invocations; the fourth, against the no-model baseline, is the `Baseline floor` line every `heldout-400` report already prints.
+- 2026-09-24, Task 4: the paid steps are run from the S2.4 worktree, whose `data/` is empty
+  (git-ignored), so `make s24-probe` first failed with `FileNotFoundError: data/processed/cases.parquet`
+  before any model call. Every paid step (Tasks 4, 5, 7) is run with
+  `NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data` exported, which
+  also puts `runs_dir` and `docket_dir` there (decision 0057): the budget guard then reads the real
+  month's runs, the gate can pair with the GPT-5.6 run folder, and arm B reuses the cached held-out
+  dockets. Probe result: runs `20260924T060001-ce8a55e-dev-400-ceiling` (standard) and
+  `20260924T060021-ce8a55e-dev-400-ceiling` (batch), each `failed 0 of 1`,
+  `failures by reason: none`, `reasoning=medium`; $0.0013 and $0.0005.
