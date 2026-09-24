@@ -3,8 +3,10 @@
 Status
     One-shot (S2.6). ``sheet`` writes a private marking page and sheet under
     ``data/handcheck/s26-analysis/`` for the ``dev-400`` docket sentences the tripwire
-    matches to the analysis narrative (36 in 17 cases, ``docs/results/s2-docket-leak.txt``).
-    ``score`` reads the marks Andy downloads from that page and writes
+    matches to the analysis narrative: 52 matched sentences in 19 cases on today's reading of
+    the dev-400 dockets (S2's 36 in 17, ``docs/results/s2-docket-leak.txt``, were measured
+    before pypdf read encrypted documents; ``scripts.docket_leak_scan`` re-run on 2026-09-24
+    gives 52 in 19 too). ``score`` reads the marks Andy downloads from that page and writes
     ``docs/results/s26-analysis-handcheck.txt``, counts only. Decision 0077 takes effect only
     if 5 or fewer of the 36 are conclusions.
 
