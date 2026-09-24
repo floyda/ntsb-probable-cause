@@ -13,7 +13,13 @@ from tests.test_attach import _docket as small_docket
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
+from ntsb_probable_cause.errors import (
+    BatchNotFoundError,
+    BudgetError,
+    ConfigurationError,
+    LeakageError,
+    ModelError,
+)
 from ntsb_probable_cause.fields import EvidenceRole, factual_narrative
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
@@ -41,6 +47,7 @@ from ntsb_probable_cause.scoring.runner import (
     over_cap,
     prepare_case,
     project_cost,
+    recorded_batches,
     refuse_over_budget,
     spec_json,
 )
@@ -1132,6 +1139,90 @@ def test_resume_appends_no_second_row_for_the_reused_batch(
     path = tmp_path / "runs" / _run_id() / "batches.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     assert [(row["stage"], row["batch_id"]) for row in rows] == [("stage1", "b1"), ("stage2", "c1")]
+
+
+# --- resume: a batch the provider has lost is resubmitted, not retried forever (task 7b) ---
+
+
+def test_recorded_batches_skips_a_batch_marked_lost_later_in_the_file(tmp_path: Path) -> None:
+    """The resume queue must never hand back a dead id, or the row marking it dead."""
+    folder = tmp_path / "runs" / "x"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "b1", "stage": "stage1", "time": "2026-09-24T00:00:00"},
+        {"batch_id": "b1", "stage": "stage1", "lost": True, "time": "2026-09-24T10:00:00"},
+        {"batch_id": "c1", "stage": "stage1", "time": "2026-09-24T10:00:01"},
+        {"batch_id": "b2", "stage": "stage2", "time": "2026-09-24T00:00:02"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", "2026-09-24T10:00:01"),
+        ("stage2", "b2", "2026-09-24T00:00:02"),
+    ]
+
+
+def test_resume_resubmits_a_batch_the_provider_has_lost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The reused batch has vanished at the provider: this pass pays for it again, once,
+    logs a `lost` row so a later resume never waits on it again, and otherwise completes."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    resumed = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: the provider has lost it
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # b1 resubmitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # stage 2
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # the dead id, then a fresh stage 1, then stage 2
+    assert len(resumed.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
+    assert record.batch_ids == ("c1", "c2")  # the lost id never counts as one this run paid for
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("lost", False)) for row in rows] == [
+        ("stage1", "b1", False),  # the dead run's original row: never deleted
+        ("stage1", "b1", True),  # marks it lost
+        ("stage1", "c1", False),  # the fresh replacement
+        ("stage2", "c2", False),
+    ]
+    # A later resume's queue would never wait on the lost id again.
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", rows[2]["time"]),
+        ("stage2", "c2", rows[3]["time"]),
+    ]
+
+
+def test_a_freshly_submitted_batch_that_the_provider_loses_still_aborts_the_run(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """No silent re-spending within a run: only a REUSED batch is treated as recoverable.
+
+    A batch submitted fresh in this run raising ``BatchNotFoundError`` propagates and the
+    run aborts, exactly as any other ``ModelError`` would -- resubmitting automatically here
+    would let one run pay for the same stage an unbounded number of times.
+    """
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    fake = FakeBatchClient(handlers=[gone])
+    with pytest.raises(BatchNotFoundError):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
+    assert len(fake.submitted) == 1  # never retried automatically
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert rows == [{"batch_id": "b1", "stage": "stage1", "time": rows[0]["time"]}]
 
 
 def test_spec_json_is_written_before_the_first_call(

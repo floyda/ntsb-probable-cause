@@ -16,6 +16,7 @@ from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
 from ntsb_probable_cause.errors import (
+    BatchNotFoundError,
     BudgetError,
     ConfigurationError,
     LeakageError,
@@ -384,12 +385,19 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
     used only to label a reused batch in the run log) and is ``None`` where a row predates
     that field or does not carry a string there -- the reuse itself does not depend on it.
 
+    A batch the provider has since lost (``BatchNotFoundError``, task 7b) gets a second row
+    for the same id, ``{"batch_id": ..., "stage": ..., "lost": true, "time": ...}``, appended
+    when that is discovered. Neither that row nor the original row for the lost id is
+    returned here: a lost batch has nothing left to reuse, and the stage that recorded it
+    must be resubmitted fresh, exactly as if nothing had ever been recorded for it. Nothing
+    is ever deleted from ``batches.jsonl``; this only filters what is handed back.
+
     Args:
         folder: the run folder.
 
     Returns:
-        One ``(stage, batch_id, recorded_time)`` triple per recorded batch, in the order
-        they were submitted.
+        One ``(stage, batch_id, recorded_time)`` triple per recorded, still-usable batch, in
+        the order they were submitted.
 
     Raises:
         ConfigurationError: a line is damaged or records no stage and batch id.
@@ -397,7 +405,7 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
     path = folder / BATCHES_FILE
     if not path.is_file():
         return []
-    rows: list[tuple[str, str, str | None]] = []
+    rows: list[tuple[str, str, str | None, bool]] = []
     for number, row in _json_lines(path):
         stage, batch_id = row.get("stage"), row.get("batch_id")
         if not isinstance(stage, str) or not isinstance(batch_id, str):
@@ -405,8 +413,15 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
                 f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
             )
         time = row.get("time")
-        rows.append((stage, batch_id, time if isinstance(time, str) else None))
-    return rows
+        rows.append(
+            (stage, batch_id, time if isinstance(time, str) else None, row.get("lost") is True)
+        )
+    lost_ids = {batch_id for _stage, batch_id, _time, lost in rows if lost}
+    return [
+        (stage, batch_id, time)
+        for stage, batch_id, time, lost in rows
+        if not lost and batch_id not in lost_ids
+    ]
 
 
 RESULT_FILES = ("cases.jsonl", "steps.jsonl", RUN_FILE)
@@ -1288,6 +1303,19 @@ class Runner:
 
         self._write_log_line(body)
 
+    def _log_lost(self, stage: str, batch_id: str) -> None:
+        """One line when a reused batch has vanished at the provider: it is resubmitted fresh."""
+
+        def body() -> str:
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "LOST".ljust(self._WORD_WIDTH)
+            return (
+                f"{stage_field}{word_field}{batch_id} no longer exists at the provider; "
+                "submitting afresh (new money)"
+            )
+
+        self._write_log_line(body)
+
     def _log_submitted(self, stage: str, batch_id: str, request_count: int) -> None:
         """One line when a stage submits a fresh batch (§3): new money, and how much of it."""
 
@@ -1319,6 +1347,23 @@ class Runner:
         """Append the batch id before waiting (spec §7.2: an interrupted run can resume)."""
         folder.mkdir(parents=True, exist_ok=True)
         row = {"batch_id": batch_id, "stage": stage, "time": self._now().isoformat()}
+        with (folder / BATCHES_FILE).open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+
+    def _record_lost_batch(self, folder: Path, batch_id: str, stage: str) -> None:
+        """Append a ``lost`` row for a reused batch the provider no longer recognises.
+
+        Task 7b: this marks the id so a later resume's ``recorded_batches`` skips it (and
+        its original row) instead of waiting on it again. Nothing is ever deleted from
+        ``batches.jsonl`` -- the original row stays, this is a second row for the same id.
+        """
+        folder.mkdir(parents=True, exist_ok=True)
+        row = {
+            "batch_id": batch_id,
+            "stage": stage,
+            "lost": True,
+            "time": self._now().isoformat(),
+        }
         with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
 
@@ -1370,29 +1415,53 @@ class Runner:
         Before the wait begins, one line goes to the run log saying whether this batch is
         reused (no new money) or freshly submitted (new money, and how much of it) -- the
         money trail the brief calls out as currently invisible.
+
+        Task 7b: if the batch being waited on was reused and the provider has since lost it
+        (``BatchNotFoundError``, raised by ``BatchClient.wait`` once its 404 grace elapses),
+        that is treated as the batch no longer existing, not as the pass failing. A ``lost``
+        row is appended to ``batches.jsonl`` (so a later resume never waits on that id
+        again), one line is logged, and the same ``requests`` are submitted fresh -- new
+        money, spent visibly, exactly once. A batch submitted fresh *in this call* that then
+        raises ``BatchNotFoundError`` is not retried again: it propagates and the run aborts,
+        so a run never silently re-spends more than once on the same stage.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
+        batch = self._batch
         reused = self._take_reusable(run, stage)
-        if reused is None:
-            batch_id = self._batch.submit(requests)
-            self._record_batch_id(run.folder, batch_id, stage)
-            self._log_submitted(stage, batch_id, len(requests))
-        else:
+        if reused is not None:
             batch_id, recorded_time = reused
             self._log_reused(stage, batch_id, recorded_time)
-        wait_started = self._now()
-        status = self._batch.wait(
-            batch_id,
-            on_status=lambda s: self._log_status(stage, s, wait_started),
-        )
+            try:
+                status = self._wait_and_log(batch, batch_id, stage)
+            except BatchNotFoundError:
+                self._record_lost_batch(run.folder, batch_id, stage)
+                self._log_lost(stage, batch_id)
+                reused = None
+            else:
+                run.batch_ids.append(status.batch_id)
+                run.costs.append(status.reported_cost_usd)
+                if status.status != "completed":
+                    raise ModelError(f"batch {batch_id} ended {status.status}")
+                refuse_replay_mismatch(batch_id, requests, status)
+                return status
+        batch_id = batch.submit(requests)
+        self._record_batch_id(run.folder, batch_id, stage)
+        self._log_submitted(stage, batch_id, len(requests))
+        status = self._wait_and_log(batch, batch_id, stage)
         run.batch_ids.append(status.batch_id)
         run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
             raise ModelError(f"batch {batch_id} ended {status.status}")
-        if reused is not None:
-            refuse_replay_mismatch(reused[0], requests, status)
         return status
+
+    def _wait_and_log(self, batch: BatchRunner, batch_id: str, stage: str) -> BatchStatus:
+        """Wait for one batch's terminal status, logging every poll (shared by both paths)."""
+        wait_started = self._now()
+        return batch.wait(
+            batch_id,
+            on_status=lambda s: self._log_status(stage, s, wait_started),
+        )
 
     def _answer_batch(
         self, raws: Sequence[Mapping[str, object]], spec: RunSpec, run: _BatchRun

@@ -8,7 +8,7 @@ import httpx
 import pytest
 import respx
 
-from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.errors import BatchNotFoundError, ModelError
 from ntsb_probable_cause.model.batch import BatchClient, BatchRequest, BatchStatus
 from ntsb_probable_cause.model.client import ModelSettings, Payload, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
@@ -290,7 +290,7 @@ def test_wait_raises_naming_the_batch_id_once_the_404_grace_window_elapses(
     )
     respx_mock.get(f"{BASE}/b8").mock(side_effect=[not_found, not_found, not_found])
     clock = _FakeClock()
-    with pytest.raises(ModelError, match="b8"):
+    with pytest.raises(BatchNotFoundError, match="b8") as excinfo:
         client().wait(
             "b8",
             every_seconds=60.0,
@@ -298,6 +298,7 @@ def test_wait_raises_naming_the_batch_id_once_the_404_grace_window_elapses(
             now=clock.now,
             not_found_grace_seconds=120.0,
         )
+    assert isinstance(excinfo.value, ModelError)  # existing `except ModelError` still catches it
     assert clock.sleeps == [60.0, 60.0]  # two retries inside the window, then raise on the third
 
 

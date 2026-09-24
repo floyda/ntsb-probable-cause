@@ -682,3 +682,10 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   treat a re-used batch the provider no longer has as lost and resubmit that pass, so a resume can
   recover from this without editing a run folder — with a test, reviewed like any task.
 - 2026-09-24, Task 7 follow-up: `s24-bars` split into `s24-bars-ceiling` and `s24-bars-b`, one held-out run per recipe, each commented with the commit-between rule.
+- 2026-09-24, Task 7 follow-up (task 7b): the follow-up owed by the 2026-09-24 Task 7 entry is
+  done. `BatchClient.wait` now raises `BatchNotFoundError` (a `ModelError` subclass) once its
+  404 grace elapses; `Runner._submit_and_wait` treats that error on a *reused* batch as the
+  batch being lost — it logs a `lost` row to `batches.jsonl`, submits the same requests fresh
+  (new money, once), and continues, while a batch submitted fresh in the same run still aborts
+  the run on the same error. `recorded_batches` skips a lost id and its `lost` row, so a later
+  resume never waits on it again.
