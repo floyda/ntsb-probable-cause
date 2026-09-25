@@ -420,12 +420,14 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
     A batch that instead ran to a terminal status other than ``completed`` (Task 9B, S2.4's
     final review) gets the same treatment: a second row for the id, ``{"batch_id": ...,
     "stage": ..., "ended": "<status>", "reported_cost_usd": ..., "time": ...}``, appended in
-    ``_submit_and_wait``. That row's ``reported_cost_usd`` is what lets ``dead_batches`` (below)
-    carry the dead batch's money into a later resume's ``RunRecord.cost_usd`` -- fix round 1: no
-    case ever prices a dead batch's replies, so without this its cost would be visible only
-    within the one call that discovered it dead, never to ``month_spent`` on any later resume.
-    Neither an ``ended`` row nor the original row for that id is returned here, exactly as for
-    a ``lost`` one.
+    ``_submit_and_wait`` -- whether that batch was reused or freshly submitted (fix round 3,
+    review Minor C: a fresh batch is recorded ``ended`` right away too, not only rediscovered
+    by a later resume, which would otherwise race the provider purging it). That row's
+    ``reported_cost_usd`` is what lets ``dead_batches`` (below) carry the dead batch's money
+    into a later resume's ``RunRecord.cost_usd`` -- fix round 1: no case ever prices a dead
+    batch's replies, so without this its cost would be visible only within the one call that
+    discovered it dead, never to ``month_spent`` on any later resume. Neither an ``ended`` row
+    nor the original row for that id is returned here, exactly as for a ``lost`` one.
 
     Args:
         folder: the run folder.
@@ -1704,17 +1706,19 @@ class Runner:
         path. Control then falls through to the fresh-submit path below, so a stage with an
         unusable reused batch resubmits exactly once per call -- a fresh batch that itself ends
         unusably still raises ``ModelError`` rather than resubmitting again, so a run never
-        re-spends more than once on one stage in one call. That fresh batch's reported cost is
-        also appended to ``run.dead_costs`` before the raise (fix round 2, review Minor A): it
-        gets no ``ended`` row here (only a reused batch's does), so nothing seeds it into a
-        later resume's totals the way ``dead_batches`` does -- without this line, an abandoned
-        run (one nobody ever resumes again) would lose that money from ``cost_usd`` and
-        ``month_spent`` for good. The next ``--resume`` finds the fresh batch recorded and, if
-        it also ended unusably, resubmits it in turn (writing its own ``ended`` row this time,
-        since by then it is the *reused* batch) -- which is what makes the run recoverable
-        across repeated resumes, and what stops that money from ever being double-counted: a
-        batch contributes to ``dead_costs`` here, on the call that finds it freshly dead, or via
-        ``dead_batches`` on a later resume, never both.
+        re-spends more than once on one stage in one call. That fresh batch is now recorded
+        ``ended`` too, right there, before the raise (fix round 3, review Minor C; the reported
+        cost is appended to ``run.dead_costs`` at the same point, fix round 2's review Minor A)
+        -- not left for a later resume's reused-branch wait to rediscover, which would race the
+        provider purging the batch and undercount its cost. Recording it at once instead means
+        the next ``--resume`` finds no row to reuse for that stage at all (``recorded_batches``
+        excludes an ``ended`` id) and resubmits directly, never waiting on the dead batch again.
+        That is also what makes the run recoverable across repeated resumes: each attempt's own
+        fresh batch, if it too ends unusably, is marked ``ended`` in turn and the one after it
+        finds nothing to wait on either. Money is never double-counted: a batch contributes to
+        ``dead_costs`` exactly once, on the call whose own wait -- reused or fresh -- first
+        finds it dead; every later call only ever re-reads that cost from its ``ended`` row via
+        ``dead_batches``, never re-discovers it as freshly dead.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1754,13 +1758,23 @@ class Runner:
         run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
             if status.status in ENDED_UNUSABLE:
-                # Fix round 2 (review Minor A): this batch is fresh, not reused, so no ``ended``
-                # row is written for it here -- ``recorded_batches`` still offers its id to the
-                # next resume, which is where its ``ended`` row is written, if that resume's own
-                # wait finds it dead again. Until then this money is not seeded from
-                # ``dead_batches`` by anyone, so it must be counted here or the run this call
-                # aborts loses it from ``cost_usd``/``month_spent`` for good if abandoned.
+                # Fix round 2 (review Minor A) plus fix round 3 (review Minor C): this batch is
+                # fresh, not reused, but it is recorded ``ended`` right here, before the raise
+                # -- not left for a later resume's reused-branch wait to rediscover. Rediscovery
+                # would race the provider purging the batch (``BatchNotFoundError``, the lost
+                # path), which would undercount this money; recording it now instead means the
+                # next resume finds no row to reuse for this stage at all and resubmits
+                # directly, never asking the provider about this id again. Nothing downstream
+                # of a fresh batch is ever queued in ``run.reusable`` at this point: a later
+                # stage's row can only exist in the dead run's recording if this stage's own
+                # row does too (rows are appended in submission order), and if this stage's row
+                # had existed it would have been taken by ``_take_reusable`` above -- so there
+                # is nothing to supersede.
                 run.dead_costs.append(status.reported_cost_usd)
+                self._record_ended_batch(
+                    run.folder, batch_id, stage, status.status, status.reported_cost_usd
+                )
+                self._log_ended(stage, batch_id, status.status)
             raise ModelError(f"batch {batch_id} ended {status.status}")
         return status
 
