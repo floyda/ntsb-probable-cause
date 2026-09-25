@@ -1531,6 +1531,54 @@ def test_a_dead_batch_with_no_reported_cost_adds_nothing_and_does_not_crash(
     assert record.cost_usd == pytest.approx(case_cost)  # b1's None cost adds nothing
 
 
+def test_a_batch_that_dies_fresh_still_counts_in_the_runs_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2 (review Minor A): a batch that ends unusably on the *fresh* path (not
+    reused) never gets an ``ended`` row here -- only a reused batch's ending does -- so
+    ``dead_batches`` cannot seed a later resume with its cost. Without counting it on this
+    call too, an abandoned run (nobody ever resumes it again) would lose that money from
+    ``cost_usd``/``month_spent`` for good."""
+    fake = FakeBatchClient(
+        handlers=[lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.05)]
+    )
+    with pytest.raises(ModelError, match="ended expired"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
+
+    folder = tmp_path / "runs" / _run_id()
+    (aborted,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert aborted.finished is None
+    assert aborted.cost_usd == pytest.approx(0.05)
+    assert dead_batches(folder) == []  # a fresh batch gets no ``ended`` row
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        0.05
+    )
+
+    # A resume reuses b1 (it was never marked ``ended``), finds it still expired, and this
+    # time it does get an ``ended`` row -- and the $0.05 must count exactly once, not twice.
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.05),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # stage1, fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage2, fresh
+        ],
+        prefix="c",
+        preloaded={"b1": fake.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert record.finished is not None
+    assert dead_batches(folder) == [("b1", 0.05)]
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6  # the two replies that scored the case
+    # The floor (0.05, from the aborted attempt) is a max against this call's own dead_cost
+    # (0.05, found again here) -- not a sum, so b1's cost is counted exactly once.
+    assert record.cost_usd == pytest.approx(case_cost + 0.05)
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        record.cost_usd
+    )
+
+
 def test_dead_batches_reads_ended_rows_with_their_reported_cost(tmp_path: Path) -> None:
     """Pins ``dead_batches``' own contract: one ``(batch_id, reported_cost_usd)`` pair per
     ``ended`` row, ``None`` carried through rather than dropped or coerced to zero, and a
@@ -1557,6 +1605,33 @@ def test_dead_batches_reads_ended_rows_with_their_reported_cost(tmp_path: Path) 
     ]
     (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
     assert dead_batches(folder) == [("a1", 0.01), ("b1", None)]
+
+
+def test_dead_batches_deduplicates_by_batch_id(tmp_path: Path) -> None:
+    """Fix round 2 (review Nit B): two ``ended`` rows for one id count once, first row wins.
+    The runner itself can never produce this (an id is hidden from ``recorded_batches`` as
+    soon as its first ``ended`` row exists, so it can never be found dead a second time), but
+    a hand-edited file should not be double-counted."""
+    folder = tmp_path / "runs" / "z"
+    folder.mkdir(parents=True)
+    lines = [
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "failed",
+            "reported_cost_usd": 0.01,
+            "time": "2026-09-25T00:00:00",
+        },
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "expired",
+            "reported_cost_usd": 0.02,
+            "time": "2026-09-25T00:00:01",
+        },
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert dead_batches(folder) == [("a1", 0.01)]
 
 
 def test_recorded_batches_skips_ended_rows(tmp_path: Path) -> None:
