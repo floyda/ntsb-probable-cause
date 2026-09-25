@@ -21,7 +21,9 @@
 - **Images never go through the batch service** (OpenRouter batch documentation, <https://openrouter.ai/docs/batch-quickstart>, read 2026-09-24: "Image parts must be public `http(s)` URLs. Base64 and `data:` URI images are rejected on every provider", and Google's providers accept no image URL in a batch at all). Every call carrying an image uses the standard price variant, synchronously (decision W1, Andy, 2026-09-24).
 - **Budget.** $40 a month during development (0083); the code default is $25 until Task 7 changes it. Transcription and inventory spend counts against the month (0081) through the spend records of Task 7. The stage pause point (0083 item 2) is Task 13 Step 12.
 - **Paid and held-out commands handed to Andy** always state: `export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data`, the expected cost and duration, and what the tree looks like afterwards. They are run from a shell script that exports `OPENROUTER_API_KEY="$(pass show api/openrouter)"` and never prints it. **One held-out run per `make` recipe**: each held-out run appends its ledger row, which dirties the tree, and the held-out guard (0026) then refuses the next run; the row is committed between runs.
-- **Numbers reported anywhere come from a script.** Numbers S2.6 needs from S2.4 (held-out failures by reason, the GPT-6 Luna bars) are cited from `docs/results/s24-bars.txt` on `main`, never copied from memory.
+- **Numbers reported anywhere come from a script.** Numbers S2.6 needs from S2.4 (held-out failures by reason, the GPT-6 Luna bars) are cited from `docs/results/s24-bars.txt` on `main`, never copied from memory. S2.4 made GPT-6 Luna the default model (S2.4's own decision record, on `main` after Task 6); its held-out arm B run `20260924T185800-7071800-heldout-400-B` is the bar until S2.6 publishes its own, and its ceiling run is `20260924T070202-05c5c5b-heldout-400-ceiling` (both in `docs/results/s24-bars.txt`).
+- **Batch timing.** Paid batches are submitted between about 01:00 and 12:00 UTC; the 12:00–19:00 UTC slot is OpenRouter's slow window (median minutes against hours; S2.4's held-out arm B, submitted at 18:58 UTC, took 8 h 41 min). Since S2.4, `ntsb-eval run --resume <run id>` recovers a batch OpenRouter loses by resubmitting it and every batch after it. Every paid command handed to Andy says when to start it.
+- **One reply budget.** From Task 9A every run records `max_output_tokens`; every S2.6 run after Task 9A uses the budget its decision record sets.
 - `make check` = ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest; coverage gate `--cov-fail-under=90`, branch coverage. Google-style docstrings on every public symbol; line length 100. Scripts carry a `Status` paragraph in their module docstring (house style since S2).
 - Commit messages end with the attribution lines the session gives. Never commit to `main`. The stage pull request is titled `S2.6: the widened docket` and merged with a merge commit, never squashed (0033).
 
@@ -55,6 +57,7 @@ The spec is approved; these are the places where writing the plan found somethin
 | `src/ntsb_probable_cause/records/evidence.py`, `records/split.py` | 4, 5 | marks and the narrative share on `Evidence`, computed in the split |
 | `src/ntsb_probable_cause/settings.py`, `scoring/budget.py` | 7 | the $40 default; spend records for preparation jobs |
 | `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `scoring/ledger.py`, `apps/eval/__main__.py` | 8, 9 | the evidence version; marks in results; the report printed twice |
+| `scripts/reply_budget.py`, `RunSpec.max_output_tokens` | 9A | the reply budget, measured on `dev-400` and set by decision |
 | `src/ntsb_probable_cause/model/client.py`, `model/openrouter.py`, `sources.py` | 10 | `PageImage`; image parts in the request; candidate prices and reasoning levels |
 | `src/ntsb_probable_cause/docket/transcribe.py` | 11 | the instruction, the request, the reply, the per-page cache, the worker pool |
 | `scripts/page_inventory.py` | 12 | the inventory sample, labels, Andy's 60-label page, the counts |
@@ -2927,6 +2930,149 @@ git commit -m "S2.6: marks reach the case results; the report prints all cases, 
 
 ---
 
+### Task 9A: The reply budget (carried from S2.4 by Andy's decision; paid, about $1.20; one stop)
+
+**Why this task exists.** S2.4's held-out arm B run on GPT-6 Luna (`docs/results/s24-bars.txt`, run `20260924T185800-7071800-heldout-400-B`) failed 24 cases on the reply format (`failures by reason: leak (analysis_narrative) 40, schema 24`). By S2.4's own reading, 19 of the 24 were truncated or empty JSON. The likely cause: GPT-6 Luna's reasoning tokens count against `max_output_tokens` (2,000), and when a docket fills the prompt the model spends the budget thinking and runs out before it finishes the answer. Andy carried the fix to S2.6: confirm the cause on `dev-400`, then raise the budget as a decision record. It comes here, before any S2.6 run, so that every S2.6 run — the development B-v1/B-v2 pair, the v3 probe and both held-out runs — shares one budget and one commit (spec §9.1, §9.3).
+
+**The rule, fixed before the run.** The cause is **confirmed** if at least half of the reply-format failures in the development run end with `finish_reason == "length"` and reasoning tokens of at least half the budget (1,000). Then the new budget is the smallest of 4,000, 8,000 and 16,000 that is at least twice the 99th percentile of (reasoning + answer) tokens on the run's successful replies, and above every failed reply's reasoning tokens. If the cause is **not** confirmed, stop and report to Andy: the budget is not raised on a guess.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/model/client.py` (`Usage.reasoning_tokens`; `parse_chat_completion` reads it)
+- Modify: `src/ntsb_probable_cause/scoring/runner.py` (`RunSpec.max_output_tokens`; `spec_json`; `_settings`; a format failure records `finish_reason` and token counts)
+- Modify: `src/ntsb_probable_cause/scoring/records.py` (`RunRecord.max_output_tokens`, `StepRecord.reasoning_tokens`)
+- Modify: `src/ntsb_probable_cause/scoring/report.py` (`provenance` names the budget)
+- Modify: `apps/eval/__main__.py` (`run --max-output-tokens`)
+- Create: `scripts/reply_budget.py`, `tests/test_reply_budget.py`
+- Modify: `Makefile` (+ `s26-reply-budget`)
+- Output: `docs/results/s26-reply-budget-dev.txt`; a decision record at the next free number; `docs/decisions/README.md`
+- Test: `tests/test_openrouter.py`, `tests/test_runner.py`, `tests/test_report.py`
+
+**Interfaces:**
+- Produces: `Usage.reasoning_tokens: int | None = None`, read from `usage.completion_tokens_details.reasoning_tokens` (the field the saved replies in `tests/fixtures/openrouter/structured.json` and `two_turn.json` carry; rule 2); `RunSpec.max_output_tokens: int = 2000` (the default changes in Step 8); `spec_json(...)["max_output_tokens"]` after `"reasoning_effort"`; `RunRecord.max_output_tokens: int = 2000` (a run from before this task read 2,000, the old `ModelSettings` default); `StepRecord.reasoning_tokens: int | None = None`; a reply-format failure's `failure` text ends with ` (finish_reason=<value>, completion_tokens=<n>, reasoning_tokens=<n>)`; `scripts.reply_budget.summarise(cases) -> str`, `scripts.reply_budget.new_budget(successful: Sequence[int], failed_reasoning: Sequence[int]) -> int | None`.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/test_openrouter.py`: `parse_chat_completion` of `tests/fixtures/openrouter/structured.json` gives `reply.usage.reasoning_tokens == 161`, and of a reply with no `completion_tokens_details` gives `None`.
+
+In `tests/test_runner.py`: a `RunSpec(max_output_tokens=4000)` sends `max_tokens: 4000` (check the `ModelSettings` the `RecordingFakeClient` recorded); `spec_json` holds `max_output_tokens` right after `reasoning_effort`; a case whose stage-1 reply is truncated JSON with `finish_reason="length"` and `Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900)` fails with a `failure` starting `schema:` and ending `(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)`; a successful case's `StepRecord.reasoning_tokens` is the sum over its replies.
+
+In `tests/test_report.py`: `provenance` shows `max_output_tokens=2000`.
+
+`tests/test_reply_budget.py`:
+
+```python
+"""scripts/reply_budget.py: the cause, confirmed or not, and the new budget by a fixed rule."""
+
+from scripts import reply_budget as rb
+
+
+def test_the_new_budget_is_the_smallest_that_doubles_the_p99() -> None:
+    successful = [900] * 98 + [1_800, 2_100]  # p99 = 1,800 -> needs 3,600 -> 4,000
+    assert rb.new_budget(successful, failed_reasoning=[1_950]) == 4_000
+
+
+def test_a_failed_reply_above_the_step_moves_the_budget_up() -> None:
+    assert rb.new_budget([900] * 100, failed_reasoning=[4_500]) == 8_000
+
+
+def test_nothing_fits_means_no_budget() -> None:
+    assert rb.new_budget([9_000] * 100, failed_reasoning=[]) is None
+
+
+def test_the_cause_is_confirmed_by_half_the_failures() -> None:
+    failures = [("length", 1_900), ("length", 1_200), ("stop", 10), ("length", 300)]
+    assert rb.cause_confirmed(failures, budget=2_000)  # 2 of 4 are length with >= 1,000
+    assert not rb.cause_confirmed(failures[1:], budget=2_000)  # 1 of 3
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `uv run pytest tests/test_openrouter.py tests/test_runner.py tests/test_report.py tests/test_reply_budget.py -v -k "reasoning or budget or max_output or finish"`
+Expected: FAIL on the missing fields and module.
+
+- [ ] **Step 3: Implement the recording**
+
+`model/client.py`: `Usage` gains `reasoning_tokens: int | None = None`; in `parse_chat_completion`, `details = usage.get("completion_tokens_details")` and, when it is a mapping holding `reasoning_tokens`, `reasoning_tokens=_as_int(...)`.
+
+`scoring/runner.py`: `RunSpec.max_output_tokens: int = 2000` (comment: `# The reply budget, reasoning included (S2.6 Task 9A). Recorded on every run.`); `spec_json` gains `"max_output_tokens": spec.max_output_tokens` after `"reasoning_effort"`; `_settings` passes `max_output_tokens=spec.max_output_tokens`; `build_record` passes it to `RunRecord`. Where a `SchemaError` becomes a `schema:` failure (sync `_answer_case`, and the batch path's retry-exhausted branch), append the last reply's `finish_reason`, `completion_tokens` and `reasoning_tokens` in the form of the Interfaces line. `_step` sets `reasoning_tokens` to the sum of the replies' `usage.reasoning_tokens`, or `None` when no reply reported one.
+
+`scoring/records.py`: `RunRecord.max_output_tokens: int = 2000` (comment: `# 2000 on a run from before S2.6 Task 9A: the old ModelSettings default.`); `StepRecord.reasoning_tokens: int | None = None`.
+
+`scoring/report.py`: `provenance`'s second line gains ` max_output_tokens={record.max_output_tokens}` after `reasoning=...`.
+
+`apps/eval/__main__.py`: `run_p.add_argument("--max-output-tokens", type=int, default=RunSpec.max_output_tokens)`, passed into `RunSpec`.
+
+- [ ] **Step 4: Implement `scripts/reply_budget.py`**
+
+A script with a `Status` paragraph (one-shot, S2.6 Task 9A), reading one run folder's `cases.jsonl` (`--run RUN_ID`, from `Settings().runs_dir`) and writing counts only: cases, failures by reason, the reply-format failures by `finish_reason` (parsed from the failure text's trailing bracket), their reasoning tokens (min, median, max), the successful cases' reasoning + answer tokens per reply (median, p90, p99, max, from `StepRecord`: `completion_tokens` over the case's replies, `reasoning_tokens` likewise), the rule's verdict, and the new budget:
+
+```python
+BUDGET_STEPS = (4_000, 8_000, 16_000)
+
+
+def new_budget(successful: Sequence[int], failed_reasoning: Sequence[int]) -> int | None:
+    """The smallest step at least twice the p99 of successful replies and above every failure."""
+    ordered = sorted(successful)
+    p99 = ordered[min(len(ordered) - 1, math.ceil(0.99 * len(ordered)) - 1)] if ordered else 0
+    floor = max([2 * p99, *failed_reasoning], default=0)
+    return next((step for step in BUDGET_STEPS if step >= floor and step > max(failed_reasoning, default=0)), None)
+
+
+def cause_confirmed(failures: Sequence[tuple[str, int]], *, budget: int) -> bool:
+    """At least half the format failures are `length` with reasoning of at least half the budget."""
+    hits = sum(1 for reason, reasoning in failures if reason == "length" and reasoning >= budget / 2)
+    return bool(failures) and hits * 2 >= len(failures)
+```
+
+(Tokens per reply, not per case: a case makes up to four calls. Use the stage-1 reply's `completion_tokens` for a successful case when the step records more than one; say which in the output.)
+
+- [ ] **Step 5: Run the tests, then the whole check; commit**
+
+Run: the Step 2 command, then `make check`. Expected: PASS; green. Tests that assert the exact `spec_json` keys or `provenance` text gain the new field; say so in the commit message.
+
+```make
+s26-reply-budget:
+	uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 2000 --expected-cost-per-case-usd 0.005
+# S2.6 Task 9A: arm B on dev-400 at the old reply budget, to confirm why replies were truncated.
+```
+
+```bash
+git add src/ apps/eval/__main__.py scripts/reply_budget.py tests/ Makefile docs/plans/2026-09-23-s26-widened-docket.md
+git commit -m "S2.6: record the reply budget, finish reasons and reasoning tokens on every run (Task 9A)"
+```
+
+- [ ] **Step 6: STOP — Andy runs the confirmation run on `dev-400`** (about $1.20, estimate from S2.4's held-out arm B at $1.13 for 400 cases; minutes to an hour if submitted 01:00–12:00 UTC, up to half a day in OpenRouter's 12:00–19:00 UTC slow window)
+
+```bash
+export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
+export OPENROUTER_API_KEY="$(pass show api/openrouter)"
+git status --short   # must be empty
+make s26-reply-budget
+```
+
+Note the run id. It is a development run, so no ledger row is written and the tree is unchanged afterwards. If OpenRouter loses a batch, `uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 2000 --expected-cost-per-case-usd 0.005 --resume <run id>` resubmits the lost batch and every batch after it (S2.4).
+
+- [ ] **Step 7: The measurement**
+
+```bash
+uv run python -m scripts.reply_budget --run <run id> --out docs/results/s26-reply-budget-dev.txt
+```
+
+If the verdict is **not confirmed**, stop: report the counts to Andy in plain words and wait. If **confirmed**, go on.
+
+- [ ] **Step 8: The decision, and the new default**
+
+Write the decision record at the next free number in `docs/decisions/` (house format: Context — S2.4's 24 format failures, `docs/results/s24-bars.txt`; the measurement, `docs/results/s26-reply-budget-dev.txt`; Decision — the new `max_output_tokens`, recorded on every run; Why — the rule above and its outcome, every number from the results file; What this rules out — a lower reasoning level (a change to the model's behaviour, the model axis after S3), leaving 2,000 (truncation eats the hardest cases); Status — Accepted, <date> (Andy)), add its row to `docs/decisions/README.md`, and set `RunSpec.max_output_tokens` to the new value with a comment citing the record. The per-case cost estimate reserves the output budget (`estimated_cost_usd`), so a larger budget leaves slightly less room for documents under the cap: say so in the record's Context, as an effect every S2.6 run shares.
+
+```bash
+git add docs/results/s26-reply-budget-dev.txt docs/decisions/ src/ntsb_probable_cause/scoring/runner.py tests/ docs/plans/2026-09-23-s26-widened-docket.md
+git commit -m "S2.6: the reply budget raised to <value> tokens, measured on dev-400 (decision <number>)"
+```
+
+- [ ] **Step 9: STOP — report to Andy** in plain words: what truncated, how often, and the new budget. Every later run uses it.
+
+---
+
 ### Task 10: An image input at the model seam; the candidates' prices and reasoning levels (spec §7.2, §8.2)
 
 *Depends on decision W1 (images never through the batch service).*
@@ -3675,7 +3821,9 @@ def read_page(
         text, kind = parse_reply(reply.content, instruction)
     except SchemaError as error:
         return Transcription(
-            key=key, status="failed", error=f"schema: {error}"[:_ERROR_CHARS],
+            key=key, status="failed",
+            # Task 9A's lesson: a reply cut off by the output budget says so.
+            error=f"schema: {error} (finish_reason={reply.finish_reason})"[:_ERROR_CHARS],
             image_sha256=rendered.sha256, image_area_share=rendered.image_area_share,
             mixed=job.mixed, prompt_tokens=reply.usage.prompt_tokens,
             completion_tokens=reply.usage.completion_tokens, cost_usd=cost, created=now(),
@@ -6673,12 +6821,12 @@ git commit -m "S2.6: ledger row for B-v1 on heldout-400"
 ```bash
 {
   uv run ntsb-eval report <held-out B-v2 id> --against <held-out B-v1 id> --versions-compared; echo
-  uv run ntsb-eval report <held-out B-v1 id> --against <S2.4's held-out arm B id, from docs/results/s24-bars.txt>; echo
-  uv run ntsb-eval report <held-out B-v2 id> --against <S2.4's held-out ceiling id, from docs/results/s24-bars.txt>
+  uv run ntsb-eval report <held-out B-v1 id> --against 20260924T185800-7071800-heldout-400-B; echo
+  uv run ntsb-eval report <held-out B-v2 id> --against 20260924T070202-05c5c5b-heldout-400-ceiling
 } > docs/results/s26-bars.txt
 ```
 
-Expected: B-v2 against B-v1 (the transcription effect on held-out); B-v1 against S2.4's B-v1 (what the marks changed: S2.4's refused cases are answered here and appear in the marked rows); B-v2 against the ceiling; and the `Baseline floor` line every `heldout-400` report prints. Commit (`S2.6: B-v1 and B-v2 on heldout-400; B-v2 is the bar for S3 (spec §9.3)`).
+Expected: B-v2 against B-v1 (the transcription effect on held-out); B-v1 against S2.4's B-v1 (what the marks and the reply budget changed: S2.4's 40 analysis-sentence refusals and its truncated replies, `docs/results/s24-bars.txt`, are answered here, the first group in the marked rows); B-v2 against the ceiling; and the `Baseline floor` line every `heldout-400` report prints. Commit (`S2.6: B-v1 and B-v2 on heldout-400; B-v2 is the bar for S3 (spec §9.3)`).
 
 - [ ] **Step 6: STOP — report to Andy**: the new bar, in plain words, beside S2.4's, with the marked groups and what they show. B-v2 is the bar S3's loop must beat, on v2 (spec §9.3).
 
@@ -6721,6 +6869,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, plan: "the cheapest" candidate (spec §7.4 item 2) is judged by **measured cost per test page**, which counts each model's real token use, rather than list price; a model that writes twice the tokens at the same price is not cheaper.
 - 2026-09-24, plan: the inventory's §6.4 stop rule has a number — under 10% of image-bearing pages with words in their images — and mixed pages are chosen by an image-area cut-off with a rule fixed in advance. Andy decided both (W3 and W6, 2026-09-24).
 - 2026-09-24, plan: the recorded transcriber replies (spec §12) are of an invented page drawn in code, so a committed fixture carries no docket text.
+- 2026-09-25, plan (S2.4's close, Andy): GPT-6 Luna is the default model and S2.4's held-out arm B the bar until S2.6's own (`docs/results/s24-bars.txt`). Its held-out failures by reason were 40 guard refusals for analysis-narrative sentences and 24 reply-format failures (same file); by S2.4's reading 19 of the 24 were truncated or empty JSON. Andy carried the fix to S2.6: Task 9A, added before any S2.6 run so that every S2.6 run, not only the held-out pair, shares one reply budget. The 40 refusals are the cases decision 0077's mark now answers.
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
 - 2026-09-24, Task 3 Step 1: `uv add "pypdfium2>=5.13.0" "pillow>=12.3.0"` places each new dependency at its own alphabetical position in the `dependencies` list (`pillow` before `pyarrow`, `pypdfium2` after `pypdf[crypto]`), not adjacent to each other, so the brief's single comment block above "the two new lines" cannot sit above both in place. `pillow` was moved down next to `pypdfium2` (functionally identical -- list order is not significant to `uv`/hatchling) so the one comment block, naming both packages, sits directly above both entries as written.
 - 2026-09-24, Task 3 Step 2: `ruff check --fix` reordered `tests/test_docket_render.py`'s import block, moving `from tests.pdf_builder import ...` before the `ntsb_probable_cause` first-party imports (this project's isort groups `tests` as first-party alongside `ntsb_probable_cause`, sorted alphabetically within the group, so `tests` sorts before `ntsb_probable_cause`); same imports, no behaviour change. Also added `# type: ignore[index]` to the `xobjects = ...pages[0]["/Resources"]["/XObject"]` line in `test_a_fax_encoded_page_renders` (not in the brief's snippet) because `pypdf`'s `PdfObject` is not indexable under `mypy --strict`; the same pattern is already used throughout the test suite (e.g. `tests/test_attach.py`, `tests/test_fields.py`) for the same reason.
