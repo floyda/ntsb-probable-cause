@@ -423,8 +423,24 @@ def test_refuse_mismatched_runs_names_the_differing_field() -> None:
 def test_refuse_mismatched_runs_requires_a_different_budget() -> None:
     confirm = _run_record("confirm-run", max_output_tokens=2_000)
     size = _run_record("size-run", max_output_tokens=2_000)
-    with pytest.raises(SystemExit, match="max_output_tokens"):
+    with pytest.raises(SystemExit, match="max_output_tokens must be lower"):
         rb.refuse_mismatched_runs(confirm, size)
+
+
+def test_refuse_mismatched_runs_refuses_swapped_arguments() -> None:
+    """Fix round 4: the sizing run must be the roomy one, or it sizes from censored replies."""
+    confirm = _run_record("roomy-run", max_output_tokens=16_000)
+    size = _run_record("old-budget-run", max_output_tokens=2_000)
+    with pytest.raises(SystemExit, match="were the arguments swapped"):
+        rb.refuse_mismatched_runs(confirm, size)
+
+
+def test_confirm_and_size_refuses_swapped_arguments() -> None:
+    confirm = _run_record("roomy-run", max_output_tokens=16_000)
+    size = _run_record("old-budget-run", max_output_tokens=2_000)
+    size_cases = [_successful_case("c2", replies=[(1_300, 200, "stop")])]
+    with pytest.raises(SystemExit, match="must be lower"):
+        rb.confirm_and_size([], confirm, size_cases, size)
 
 
 def test_confirm_and_size_confirms_and_proposes_a_budget() -> None:
@@ -485,6 +501,86 @@ def test_confirm_and_size_reports_no_step_fits() -> None:
     text = rb.confirm_and_size(confirm_cases, confirm, size_cases, size)
     assert "cause CONFIRMED" in text
     assert "outcome: no step fits -- returned to Andy" in text
+
+
+# --- fix round 4: the outcome is fail-closed ---
+
+_CONFIRMING_FAILURE = (
+    "schema: bad json (finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)"
+)
+
+
+def _confirmed_pair_outcome(size_cases: Sequence[CaseResult]) -> str:
+    """The report's last line, for a confirmed cause and the given sizing-run cases."""
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000)
+    text = rb.confirm_and_size([_failed_case("c1", _CONFIRMING_FAILURE)], confirm, size_cases, size)
+    assert "cause CONFIRMED" in text
+    assert "new max_output_tokens" not in text
+    return text.splitlines()[-1]
+
+
+def test_confirm_and_size_is_unavailable_when_the_sizing_run_predates_per_reply_fields() -> None:
+    size_cases = [_successful_case_pre_fix("c2", completion_tokens=1_300, reasoning_tokens=200)]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: per-reply data unavailable -- returned to Andy"
+
+
+def test_confirm_and_size_is_unavailable_when_some_sizing_cases_predate_per_reply_fields() -> None:
+    """A partial mix: the excluded cases could hold the largest replies, so no number."""
+    size_cases = [
+        _successful_case("c2", replies=[(1_300, 200, "stop")]),
+        _successful_case_pre_fix("c3", completion_tokens=9_000, reasoning_tokens=8_000),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: per-reply data unavailable -- returned to Andy"
+
+
+def test_confirm_and_size_is_unavailable_without_a_successful_stop_reply() -> None:
+    size_cases = [_failed_case("c2", "model: the provider timed out")]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: per-reply data unavailable -- returned to Andy"
+
+
+def test_confirm_and_size_is_unavailable_for_an_empty_sizing_run() -> None:
+    assert _confirmed_pair_outcome([]) == "outcome: per-reply data unavailable -- returned to Andy"
+
+
+def test_confirm_and_size_refuses_to_size_from_a_recovered_reply_cut_off_at_the_sizing_budget() -> (
+    None
+):
+    """Without the guard, reasoning 14,000 on the failed side would yield 16,000 -- a budget
+    'proven' by a reply that 16,000 itself cut off."""
+    size_cases = [
+        _successful_case(
+            "c2", replies=[(16_000, 14_000, "length"), (1_300, 200, "stop"), (900, 100, "stop")]
+        )
+    ]
+    assert rb.new_budget([1_300, 900], [14_000]) == 16_000  # what the guard stops
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: no step fits -- a reply was cut off at 16000; returned to Andy"
+
+
+def test_confirm_and_size_refuses_to_size_from_a_failed_case_cut_off_at_the_sizing_budget() -> None:
+    size_cases = [
+        _failed_case(
+            "c2",
+            "schema: bad json "
+            "(finish_reason=length, completion_tokens=16000, reasoning_tokens=14000)",
+        ),
+        _successful_case("c3", replies=[(1_300, 200, "stop")]),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: no step fits -- a reply was cut off at 16000; returned to Andy"
+
+
+def test_confirm_and_size_reports_the_sizing_runs_cut_off_count() -> None:
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000)
+    size_cases = [_successful_case("c2", replies=[(1_300, 200, "stop")])]
+    text = rb.confirm_and_size([_failed_case("c1", _CONFIRMING_FAILURE)], confirm, size_cases, size)
+    assert "replies cut off at this run's own budget (finish_reason=length): 0" in text
+    assert text.splitlines()[-1] == "outcome: new max_output_tokens 4000"
 
 
 def test_main_confirm_and_size_writes_the_two_section_report(

@@ -4,14 +4,30 @@ Status
     One-shot. Prints and, with ``--out``, writes counts only (decision 0024: no case number,
     no title, no prose).
 
+    Fix round 4 (2026-09-25, re-review and controller ruling; the rule's numbers are
+    unchanged): the outcome is fail-closed. A sizing run with any reply that ended
+    ``length`` -- in a failed case or a recovered one -- was cut off by the sizing budget
+    itself, so no budget can be proven from it: "no step fits -- a reply was cut off at
+    <budget>; returned to Andy". A sizing run without per-reply figures, or without one
+    successful ``"stop"`` reply, gives "per-reply data unavailable -- returned to Andy"
+    rather than letting ``new_budget`` answer from an empty list. And the pair is refused
+    unless the confirmation run's budget is the lower one, so swapped arguments cannot size
+    from censored replies. Fix round 3's paragraph below said a failure's reasoning tokens
+    are "never censored"; that was wrong. Reasoning tokens count against
+    ``max_output_tokens``, so a cut-off reply reports at most the budget
+    (``tests/fixtures/openrouter/batch.json``, ``probe-1``: ``length`` at ``max_tokens`` 300,
+    completion 300, reasoning 300). The confirmation test (reasoning of at least 1,000 at a
+    2,000 budget) stays valid, because any count up to the budget is still observable; the
+    same bound is why the sizing run needs the "cut off" guard above.
+
     Fix round 3 (2026-09-25, Andy's decision, verbatim "Let's go with b and work this out
     properly"): at a 2,000-token budget every successful reply is itself censored at 2,000,
     so ``new_budget``'s "twice the p99 of successful replies" can only ever answer 4,000 --
     it can confirm the cause but cannot size the budget honestly. So there are **two**
     development runs, identical except ``max_output_tokens``: a **confirmation** run at the
-    old budget (2,000), whose failures prove the cause via the reasoning tokens *inside*
-    them (a failure's own reasoning-token count is never censored -- it is read from
-    ``completion_tokens_details``, not bounded by what the model was allowed to emit); and a
+    old budget (2,000), whose failures prove the cause via the reasoning tokens inside
+    them (corrected in fix round 4: those counts are bounded by the budget, but a count of
+    1,000 or more is still observable at 2,000); and a
     **sizing** run at a roomy budget (16,000), whose successful replies' own token counts are
     the real, uncut figures the fixed rule needs. ``confirm_and_size`` reads both, refuses
     them unless they are the same run in every respect but the budget
@@ -120,8 +136,9 @@ def refuse_mismatched_runs(confirm: RunRecord, size: RunRecord) -> None:
         size: the sizing run's ``RunRecord``.
 
     Raises:
-        SystemExit: the two runs differ in a field they must match, or do not differ in
-            ``max_output_tokens`` (the one field the whole comparison depends on).
+        SystemExit: the two runs differ in a field they must match, or the confirmation
+            run's ``max_output_tokens`` is not lower than the sizing run's (the one field
+            the whole comparison depends on, and the direction it must go).
     """
     for field in _MATCH_FIELDS:
         confirm_value, size_value = getattr(confirm, field), getattr(size, field)
@@ -141,11 +158,15 @@ def refuse_mismatched_runs(confirm: RunRecord, size: RunRecord) -> None:
             f"{size_version!r} -- they must be the same run at two reply budgets, not two "
             "different runs"
         )
-    if confirm.max_output_tokens == size.max_output_tokens:
+    # Fix round 4: lower, not merely different. With the arguments swapped the "sizing" run
+    # would be the one at the old budget, whose successful replies are censored at it --
+    # exactly the reading the pair exists to avoid.
+    if confirm.max_output_tokens >= size.max_output_tokens:
         raise SystemExit(
-            "--confirm and --size runs must differ in max_output_tokens (both were "
-            f"{confirm.max_output_tokens}) -- the whole point of the pair is one at the old "
-            "budget and one roomy enough to measure uncut need"
+            "--confirm run's max_output_tokens must be lower than the --size run's (they "
+            f"were {confirm.max_output_tokens} and {size.max_output_tokens}) -- the pair is "
+            "one run at the old budget and one roomy enough to measure uncut need; "
+            "were the arguments swapped?"
         )
 
 
@@ -432,15 +453,19 @@ def _confirmation_section(cases: Sequence[CaseResult], record: RunRecord) -> tup
     return lines, confirmed
 
 
-def _sizing_section(
-    cases: Sequence[CaseResult], record: RunRecord
-) -> tuple[list[str], list[int], list[int]]:
-    """Section 2: the sizing run's failure and per-reply lines.
+@dataclass(frozen=True)
+class _Sizing:
+    """Section 2's lines, and what the outcome reads from the sizing run (fix round 4)."""
 
-    Returns:
-        The section's lines, its successful replies' completion tokens, and the reasoning
-        tokens on its failed side -- both of which ``new_budget`` reads for the outcome.
-    """
+    lines: list[str]
+    successful: list[int]  # the "stop" replies' completion tokens -- new_budget's first input
+    failed_reasoning: list[int]  # the failed side's reasoning tokens -- new_budget's second
+    per_reply_complete: bool  # every successful case recorded its per-reply figures
+    cut_off: int  # replies that ended "length" -- failed cases and recovered replies alike
+
+
+def _sizing_section(cases: Sequence[CaseResult], record: RunRecord) -> _Sizing:
+    """Section 2: the sizing run's failure and per-reply lines, and what the outcome reads."""
     budget = record.max_output_tokens
     lines = [
         f"sizing run: {record.run_id} (max_output_tokens={budget})",
@@ -477,8 +502,37 @@ def _sizing_section(
             )
         lines.append(_stats_line("  total (completion_tokens)", classified.successful))
         lines.append(_stats_line("  reasoning tokens alone", classified.successful_reasoning))
-    _length_failures, floor_reasoning = _length_failures_and_floor(failures, classified)
-    return lines, classified.successful, floor_reasoning
+    length_failures, floor_reasoning = _length_failures_and_floor(failures, classified)
+    cut_off = sum(1 for reason, _reasoning in length_failures if reason == "length")
+    lines.append(f"replies cut off at this run's own budget (finish_reason=length): {cut_off}")
+    return _Sizing(
+        lines=lines,
+        successful=classified.successful,
+        failed_reasoning=floor_reasoning,
+        per_reply_complete=bool(per_case.available) and not per_case.unavailable_cases,
+        cut_off=cut_off,
+    )
+
+
+def _outcome(confirmed: bool, sizing: _Sizing, size_budget: int) -> str:
+    """The one ``outcome:`` line -- fail-closed wherever the sizing run cannot prove a number.
+
+    Fix round 4 (controller ruling): a reply cut off at the sizing run's own budget means that
+    budget itself censored it, so its reasoning tokens are a lower bound, not a need, and no
+    budget can be proven from the run; likewise when the per-reply figures are missing (a
+    pre-fix-round-2 step, or not one successful ``"stop"`` reply). Each goes back to Andy
+    rather than letting ``new_budget`` answer from nothing.
+    """
+    if not confirmed:
+        return "outcome: not confirmed -- returned to Andy"
+    if sizing.cut_off:
+        return f"outcome: no step fits -- a reply was cut off at {size_budget}; returned to Andy"
+    if not sizing.per_reply_complete or not sizing.successful:
+        return "outcome: per-reply data unavailable -- returned to Andy"
+    proposed = new_budget(sizing.successful, sizing.failed_reasoning)
+    if proposed is None:
+        return "outcome: no step fits -- returned to Andy"
+    return f"outcome: new max_output_tokens {proposed}"
 
 
 def confirm_and_size(
@@ -489,11 +543,19 @@ def confirm_and_size(
 ) -> str:
     """Confirm the cause at the old budget; size the budget at a roomy one (Andy's decision B).
 
-    Fix round 3: the confirmation run's failures prove the cause (their reasoning-token
-    counts are never censored -- they come from ``completion_tokens_details``, which reports
-    the true count regardless of ``max_output_tokens``); the sizing run's successful replies
-    give the rule the real, uncut per-reply figures it needs, because at 16,000 tokens
-    essentially nothing is actually cut short.
+    Fix round 3: the confirmation run's failures prove the cause; the sizing run's
+    successful replies give the rule the per-reply figures it needs, uncut unless a reply
+    reached 16,000 tokens.
+
+    Fix round 4: a failure's reasoning tokens *are* bounded by the budget -- they count
+    against ``max_output_tokens``, so a cut-off reply reports at most the budget
+    (``tests/fixtures/openrouter/batch.json``, ``probe-1``: ``length`` at ``max_tokens``
+    300, completion 300, reasoning 300). The confirmation test still holds, because it asks
+    only whether reasoning reached 1,000 of 2,000, and any count up to the budget is still
+    observable. The same bound is why the sizing run needs its own guard: a reply cut off at
+    16,000 shows only that its need was at least that much, so any ``length`` reply there
+    sends the outcome back to Andy instead of sizing from it (``_outcome``). So does missing
+    per-reply data: the outcome is never computed from nothing.
 
     Args:
         confirm_cases: the confirmation run's ``cases.jsonl`` rows.
@@ -505,12 +567,12 @@ def confirm_and_size(
         The two-section report text, ending with one ``outcome:`` line.
 
     Raises:
-        SystemExit: the two runs are not the same run at two reply budgets
-            (``refuse_mismatched_runs``).
+        SystemExit: the two runs are not the same run at two reply budgets, the
+            confirmation run's lower (``refuse_mismatched_runs``).
     """
     refuse_mismatched_runs(confirm_record, size_record)
     confirm_lines, confirmed = _confirmation_section(confirm_cases, confirm_record)
-    size_lines, size_successful, size_floor_reasoning = _sizing_section(size_cases, size_record)
+    sizing = _sizing_section(size_cases, size_record)
 
     confirm_cap_hit, confirm_total = _cap_hits(confirm_cases)
     size_cap_hit, size_total = _cap_hits(size_cases)
@@ -521,16 +583,8 @@ def confirm_and_size(
         f"  sizing run: {size_cap_hit} of {size_total}",
     ]
 
-    if not confirmed:
-        outcome = "outcome: not confirmed -- returned to Andy"
-    else:
-        proposed = new_budget(size_successful, size_floor_reasoning)
-        outcome = (
-            f"outcome: new max_output_tokens {proposed}"
-            if proposed is not None
-            else "outcome: no step fits -- returned to Andy"
-        )
-    return "\n".join([*confirm_lines, "", *size_lines, *cap_lines, "", outcome])
+    outcome = _outcome(confirmed, sizing, size_record.max_output_tokens)
+    return "\n".join([*confirm_lines, "", *sizing.lines, *cap_lines, "", outcome])
 
 
 def main(argv: Sequence[str]) -> int:

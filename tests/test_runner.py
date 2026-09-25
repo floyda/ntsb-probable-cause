@@ -2812,3 +2812,123 @@ def test_resume_refuses_a_different_reply_budget(
             resume=_run_id(),
         )
     assert other.submitted == []
+
+
+class _FinishingFakeClient(RecordingFakeClient):
+    """``RecordingFakeClient`` that also stamps each reply with a scripted ``finish_reason``."""
+
+    def __init__(
+        self, replies: Sequence[str], usage: Sequence[Usage], finish_reasons: Sequence[str]
+    ) -> None:
+        super().__init__(replies, usage=usage)
+        self._finish_reasons = tuple(finish_reasons)
+
+    def complete(
+        self,
+        payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        reply = super().complete(payload, settings, system=system, history=history)
+        finish = self._finish_reasons[len(self.payloads) - 1]
+        return reply.model_copy(update={"finish_reason": finish})
+
+
+def test_sync_step_records_every_reply_figure_in_call_order(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9A fix round 4: ``Runner._step`` fills the three per-reply tuples on the sync path.
+
+    Stage 1 is cut off (``length``), its retry succeeds and stage 2 succeeds, so the step
+    carries three replies -- each with its own figures, in call order, never a sum.
+    """
+    usage = [
+        Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+        Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+        Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+    ]
+    client = _FinishingFakeClient(
+        ['{"probable_cause": "the eng', GOOD, REFINE],
+        usage=usage,
+        finish_reasons=["length", "stop", "stop"],
+    )
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reply_completion_tokens == (2000, 300, 250)
+    assert step.reply_reasoning_tokens == (1900, 250, 200)
+    assert step.reply_finish_reasons == ("length", "stop", "stop")
+
+
+def _replying(
+    content: str, finish: str, usage: Usage
+) -> Callable[[str, Sequence[BatchRequest]], BatchStatus]:
+    """A ``FakeBatchClient`` handler: every request answered with one scripted reply."""
+
+    def handler(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content=content,
+                        finish_reason=finish,
+                        usage=usage,
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    return handler
+
+
+def test_batch_step_records_every_reply_figure_in_call_order(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9A fix round 4: the batch twin of the sync per-reply test above."""
+    fake = FakeBatchClient(
+        handlers=[
+            _replying(
+                '{"probable_cause": "the eng',
+                "length",
+                Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+            ),
+            _replying(
+                GOOD,
+                "stop",
+                Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+            ),
+            _replying(
+                REFINE,
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+            ),
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert run.batch_ids == ("b1", "b2", "b3")  # stage 1, stage-1 retry, stage 2
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reply_completion_tokens == (2000, 300, 250)
+    assert step.reply_reasoning_tokens == (1900, 250, 200)
+    assert step.reply_finish_reasons == ("length", "stop", "stop")
