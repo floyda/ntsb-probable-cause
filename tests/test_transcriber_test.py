@@ -1315,5 +1315,12 @@ def test_a_grouped_image_is_shown_once_and_repeats_are_named() -> None:
     assert tt._same_as(seen, "N123AB", "A") == ""
     assert tt._same_as(seen, "N123AB", "C") == " -- same words as version A"
     assert tt._same_as(seen, "N12", "D") == ""
-    assert "<img" in tt._group_head(True, "Photograph 1", "pages/photo-1.jpg")
-    assert tt._group_head(False, "Photograph 1", "pages/photo-1.jpg") == ""
+    assert '<img src="pages/photo-1.jpg"' in tt._image_head("Photograph 1", "pages/photo-1.jpg")
+
+
+def test_added_words_are_coloured_against_the_text_layer() -> None:
+    """Andy (2026-09-25): a display aid for 'repeats the text layer'."""
+    shown = tt._against_layer("FUEL: Both\nN123AB <x>", "Fuel selector both")
+    assert shown.startswith('<span class="inlayer">FUEL:</span> <span class="inlayer">Both</span>')
+    assert '<span class="new">N123AB</span>' in shown
+    assert '<span class="new">&lt;x&gt;</span>' in shown

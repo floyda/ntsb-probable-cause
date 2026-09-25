@@ -53,3 +53,26 @@ def test_read_marks_by_row(tmp_path: Path) -> None:
         1: {"mark": "right", "notes": ""},
         2: {"mark": "", "notes": "later"},
     }
+
+
+def test_grouped_cards_sit_beside_one_image_and_keep_their_rows() -> None:
+    """Andy (2026-09-25): a group is shown once; every card keeps its row and fields."""
+    cards = [
+        Card(row=11, body_html="a", choices=(Choice("words", ("ok", "bad")),), group="1"),
+        Card(row=12, body_html="b", choices=(Choice("words", ("ok", "bad")),), group="1"),
+        Card(row=21, body_html="c", choices=(Choice("words", ("ok", "bad")),)),
+    ]
+    page = marking_page.render(
+        title="t",
+        intro_html="",
+        cards=cards,
+        storage_key="k",
+        csv_name="c.csv",
+        groups={"1": ('<img src="p1.jpg">', "<pre>layer</pre>")},
+    )
+    assert page.count('<img src="p1.jpg">') == 1
+    assert page.count('<div class="group">') == 1
+    for row in (11, 12, 21):
+        assert f'data-row="{row}"' in page
+    assert page.index('data-row="12"') < page.index('data-row="21"')
+    assert '["words"]' in page

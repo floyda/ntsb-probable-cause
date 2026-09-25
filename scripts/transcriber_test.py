@@ -862,23 +862,22 @@ def cmd_handwriting(settings: Settings) -> str:
     return f"page at {folder / 'handwriting.html'}"
 
 
-# Andy, 2026-09-25 (display only): each image is shown once, above the first version's card,
-# and the versions that follow are short cards under it. Every version keeps its own card, row
-# number and mark, so the CSVs, scoring and marks already made are unchanged.
+# Andy, 2026-09-25 (display only): each image is shown once, held in view on the left, with
+# each version's words as its own card in columns on the right. Every version keeps its own
+# card, row number and mark, so the CSVs, scoring and marks already made are unchanged.
 _GROUPED_LAYOUT = """<style>
-.card{margin:.3rem 0}
-.card:has(.head){margin-top:2.5rem;border-top:4px solid #333}
-.head img{max-height:70vh;cursor:zoom-in}.head img.big{max-height:none;cursor:zoom-out}
+body{max-width:none;margin:1rem}
+.side>pre.layer{max-height:35vh;overflow:auto;font-size:.8rem}
+.card pre{font-size:.85rem}
+.inlayer{background:#cbd5e1}.new{background:#fde68a}
 </style>"""
 
 
-def _group_head(first: bool, title: str, src: str) -> str:
-    """The image and its title, only on the first card of an image's group."""
-    if not first:
-        return ""
+def _image_head(title: str, src: str) -> str:
+    """A group's left column: its title and its image (click to enlarge)."""
     return (
-        f'<div class="head"><h3>{html.escape(title)}</h3><img src="{src}" '
-        f'alt="{html.escape(title)}" onclick="this.classList.toggle(\'big\')"></div>'
+        f'<h3>{html.escape(title)}</h3><img src="{src}" alt="{html.escape(title)}" '
+        "onclick=\"this.classList.toggle('big')\">"
     )
 
 
@@ -889,6 +888,26 @@ def _same_as(seen: dict[str, str], text: str, letter: str) -> str:
     return f" -- same words as version {earlier}" if earlier else ""
 
 
+def _against_layer(text: str, layer: str) -> str:
+    """Added words, escaped, coloured by whether the page's text layer already holds each.
+
+    ``inlayer``: the word is already in the text layer (a sign of "repeats the text layer");
+    ``new``: it is not, so check it against the image. A display aid for Andy, never part of
+    the measures; case and surrounding punctuation are ignored, as in ``_highlighted``.
+    """
+    vocab = {_word(token) for token in layer.split()}
+    lines: list[str] = []
+    for line in text.splitlines():
+        words: list[str] = []
+        for token in line.split():
+            key = _word(token)
+            css = "" if not key else ("inlayer" if key in vocab else "new")
+            text_html = html.escape(token)
+            words.append(f'<span class="{css}">{text_html}</span>' if css else text_html)
+        lines.append(" ".join(words))
+    return "\n".join(lines)
+
+
 def cmd_photos(settings: Settings) -> str:
     """Andy's page: every word any candidate wrote for a no-word photograph."""
     folder = settings.data_dir / FOLDER
@@ -896,10 +915,12 @@ def cmd_photos(settings: Settings) -> str:
     cache = TranscriptionCache(settings.transcription_dir)
     sheet: dict[int, dict[str, object]] = {}
     cards: list[Card] = []
+    groups: dict[str, tuple[str, str]] = {}
     for row in rows:
         k = _int(row, "k")
         order = random.Random(SEED + 100 + k).sample(CANDIDATES, len(CANDIDATES))  # noqa: S311
         seen: dict[str, str] = {}
+        groups[str(k)] = (_image_head(f"Photograph {k}", f"pages/photo-{k}.jpg"), "")
         for i, model in enumerate(order, start=1):
             text = _text(cache, row, model, dpi=RESOLUTION)
             if not re.search(r"[A-Za-z0-9]{2,}", text):
@@ -911,21 +932,20 @@ def cmd_photos(settings: Settings) -> str:
                 Card(
                     row=number,
                     body_html=(
-                        _group_head(not seen, f"Photograph {k}", f"pages/photo-{k}.jpg")
-                        + f'<p class="meta">Photograph {k}, version {letter}'
+                        f'<p class="meta">Photograph {k}, version {letter}'
                         + _same_as(seen, text, letter)
                         + f"</p><pre>{html.escape(text)}</pre>"
                     ),
                     choices=(Choice("words", ("all on the page", "some invented")),),
+                    group=str(k),
                 )
             )
     (folder / "photos.json").write_text(json.dumps(sheet))
     intro = (
-        _GROUPED_LAYOUT
-        + "<p>Each photograph is shown once, followed by the words each transcriber "
-        "wrote for it, one card per version. Most will be "
-        "real (a registration, a placard). Mark <b>some invented</b> if any word is not on the "
-        "page. Click a photograph to enlarge it.</p>"
+        _GROUPED_LAYOUT + "<p>Each photograph is shown once on the left, held in view, with the "
+        "words each transcriber wrote for it as cards on the right, one per version. Most will "
+        "be real (a registration, a placard). Mark <b>some invented</b> if any word is not on "
+        "the page. Click a photograph to enlarge it.</p>"
     )
     (folder / "photos.html").write_text(
         marking_page.render(
@@ -934,6 +954,7 @@ def cmd_photos(settings: Settings) -> str:
             cards=cards,
             storage_key="s26-photo-words",
             csv_name="photo-words.csv",
+            groups=groups,
         )
     )
     return f"{len(cards)} outputs with words; page at {folder / 'photos.html'}"
@@ -946,12 +967,17 @@ def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
     cache = TranscriptionCache(settings.transcription_dir)
     sheet: dict[int, dict[str, object]] = {}
     cards: list[Card] = []
+    groups: dict[str, tuple[str, str]] = {}
     for row in rows:
         k = _int(row, "k")
         data = docs.document(_int(row, "mkey"), _int(row, "document"))
         layer = page_text(data, _int(row, "page"))
         order = random.Random(SEED + 200 + k).sample(CANDIDATES, len(CANDIDATES))  # noqa: S311
         seen: dict[str, str] = {}
+        groups[str(k)] = (
+            _image_head(f"Full-page scan {k}", f"pages/mixed-{k}.jpg"),
+            f'<p>The page\'s text layer:</p><pre class="layer">{html.escape(layer)}</pre>',
+        )
         for i, model in enumerate(order, start=1):
             text = _text(cache, row, model, dpi=RESOLUTION)
             if not re.search(r"[A-Za-z0-9]{2,}", text):
@@ -959,21 +985,14 @@ def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
             number = 10 * k + i
             sheet[number] = {"k": k, "model": model}
             letter = LETTERS[i - 1]
-            first = not seen
             cards.append(
                 Card(
                     row=number,
                     body_html=(
-                        _group_head(first, f"Full-page scan {k}", f"pages/mixed-{k}.jpg")
-                        + (
-                            "<details><summary>the page's text layer</summary>"
-                            f"<pre>{html.escape(layer)}</pre></details>"
-                            if first
-                            else ""
-                        )
-                        + f'<p class="meta">Full-page scan {k}, version {letter}'
+                        f'<p class="meta">Full-page scan {k}, version {letter}'
                         + _same_as(seen, text, letter)
-                        + f"</p><p>Words this version added:</p><pre>{html.escape(text)}</pre>"
+                        + "</p><p>Words this version added:</p>"
+                        + f"<pre>{_against_layer(text, layer)}</pre>"
                     ),
                     choices=(
                         Choice(
@@ -981,15 +1000,19 @@ def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
                             ("all on the page and new", "repeats the text layer", "some invented"),
                         ),
                     ),
+                    group=str(k),
                 )
             )
     (folder / "mixed.json").write_text(json.dumps(sheet))
     intro = (
-        _GROUPED_LAYOUT + "<p>Each scanned page (which already has a machine-read text layer) is "
-        "shown once, followed by the words each transcriber added to it, one card per "
-        "version. Mark <b>some invented</b> if any added word is not on the "
-        "page; <b>repeats the text layer</b> if the added words are already in the text layer "
-        "(open it under the image); otherwise <b>all on the page and new</b>.</p>"
+        _GROUPED_LAYOUT + "<p>Each scanned page is shown once on the left, held in view. On the "
+        "right are its machine-read text layer and the words each transcriber added, one card "
+        "per version. Added words are coloured: "
+        '<span class="inlayer">already in the text layer</span>, '
+        '<span class="new">not in the text layer (check against the image)</span>. '
+        "Mark <b>some invented</b> if any added word is not on the page; <b>repeats the text "
+        "layer</b> if the added words are already in the text layer; otherwise <b>all on the "
+        "page and new</b>. Click the image to enlarge it.</p>"
     )
     (folder / "mixed.html").write_text(
         marking_page.render(
@@ -998,6 +1021,7 @@ def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
             cards=cards,
             storage_key="s26-mixed-words",
             csv_name="mixed-words.csv",
+            groups=groups,
         )
     )
     return f"{len(cards)} outputs with added words; page at {folder / 'mixed.html'}"

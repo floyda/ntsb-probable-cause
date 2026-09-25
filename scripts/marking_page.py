@@ -19,8 +19,9 @@ values it places itself (choices, prefilled text).
 import csv
 import html
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from itertools import groupby
 from pathlib import Path
 from string import Template
 
@@ -40,12 +41,17 @@ class Choice:
 
 @dataclass(frozen=True)
 class Card:
-    """One item to mark: its body, its choices and its text fields ``(name, prefilled)``."""
+    """One item to mark: its body, its choices and its text fields ``(name, prefilled)``.
+
+    ``group`` names the cards that share one image (Andy, 2026-09-25): consecutive cards of a
+    group are shown once beside that image, and each still has its own row and marks.
+    """
 
     row: int
     body_html: str
     choices: tuple[Choice, ...] = ()
     text_fields: tuple[tuple[str, str], ...] = ()
+    group: str = ""
 
 
 _PAGE = Template(
@@ -59,6 +65,12 @@ mark{background:#fde68a}.meta{color:#555;font-size:.9rem}
 img{max-width:100%;border:1px solid #ddd}
 textarea{width:100%;min-height:3rem;font-family:ui-monospace,monospace}
 pre{white-space:pre-wrap;background:#f6f6f6;padding:.5rem}
+.group{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:1rem;
+margin:2rem 0;border-top:4px solid #333;padding-top:1rem}
+.group>.head{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto}
+.group>.head img{width:100%;cursor:zoom-in}.group>.head img.big{width:220%;cursor:zoom-out}
+.group .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:.5rem}
+.group .card{margin:0}
 </style></head><body>
 <h1>$title</h1>
 $intro
@@ -161,8 +173,35 @@ def _card(card: Card) -> str:
     )
 
 
-def render(
-    *, title: str, intro_html: str, cards: Sequence[Card], storage_key: str, csv_name: str
+def _cards_html(cards: Sequence[Card], groups: Mapping[str, tuple[str, str]]) -> str:
+    """Every card in order; a run of cards sharing a group sits beside that group's image.
+
+    ``groups`` maps a group to ``(left_html, right_html)``: the image column, and what sits
+    above the cards on the right (for example a page's text layer). Only the layout changes:
+    every card keeps its own row and fields, so the CSV is the same with or without groups.
+    """
+    parts: list[str] = []
+    for group, run in groupby(cards, key=lambda card: card.group):
+        body = "\n".join(_card(card) for card in run)
+        if group and group in groups:
+            left, right = groups[group]
+            parts.append(
+                f'<div class="group"><div class="head">{left}</div>'
+                f'<div class="side">{right}<div class="cards">{body}</div></div></div>'
+            )
+        else:
+            parts.append(body)
+    return "\n".join(parts)
+
+
+def render(  # noqa: PLR0913 -- every argument is a distinct part of the page.
+    *,
+    title: str,
+    intro_html: str,
+    cards: Sequence[Card],
+    storage_key: str,
+    csv_name: str,
+    groups: Mapping[str, tuple[str, str]] | None = None,
 ) -> str:
     """The self-contained page. Field names become CSV columns in first-seen order."""
     names: list[str] = []
@@ -173,7 +212,7 @@ def render(
     return _PAGE.substitute(
         title=html.escape(title),
         intro=intro_html,
-        cards="\n".join(_card(card) for card in cards),
+        cards=_cards_html(cards, groups or {}),
         key=json.dumps(storage_key),
         fields=json.dumps(names),
         csv=json.dumps(csv_name),
