@@ -1292,3 +1292,18 @@ def test_typed_rows_are_reproducible_from_the_seed() -> None:
     second = tt._typed_rows(frame, random.Random(tt.SEED))  # noqa: S311
     assert first == second
     assert len(first) == 20  # 10 fatal + 10 non-fatal, all that is available
+
+
+def test_highlighting_colours_words_by_how_many_versions_hold_them() -> None:
+    """A display aid for Andy (2026-09-25): plain in every version, some, or only this one."""
+    versions = {
+        "A": ["Fuel BOTH, <mixture> rich"],
+        "B": ["fuel both"],
+        "C": ["Fuel both rich"],
+        "D": [],
+    }
+    shown = tt._highlighted(versions["A"], versions)
+    assert shown.startswith("Fuel BOTH, ")
+    assert '<span class="only">&lt;mixture&gt;</span>' in shown
+    assert '<span class="some">rich</span>' in tt._highlighted(versions["C"], versions)
+    assert tt._highlighted(["x y"], {"A": ["x y"]}) == "x y"

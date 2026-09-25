@@ -716,6 +716,54 @@ def cmd_run(
     return "\n".join(out)
 
 
+# Andy, 2026-09-25 (display only; the fields, rows, storage key and CSV are unchanged, so marks
+# already made reload): each card is two columns -- the page image, held in view while the card
+# scrolls, and beside it the versions side by side, the agreed lines and the key box.
+_HANDWRITING_LAYOUT = """<style>
+body{max-width:none;margin:1rem}
+.card{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);column-gap:1rem}
+.card>*{grid-column:2}
+.card>.pic{grid-column:1;grid-row:1/span 50;align-self:start;position:sticky;top:0;
+max-height:100vh;overflow:auto}
+.pic img{width:100%;cursor:zoom-in}.pic img.big{width:220%;cursor:zoom-out}
+.vers{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.5rem}
+.vers pre{font-size:.8rem;max-height:45vh;overflow:auto;margin:0}
+.vers h4{margin:.2rem 0}
+.card textarea{min-height:20rem}
+.only{background:#fca5a5}.some{background:#fde68a}
+</style>"""
+
+
+def _word(token: str) -> str:
+    """A token as compared across versions: case and surrounding punctuation ignored."""
+    return re.sub(r"^[^\w\[]+|[^\w\]]+$", "", token).lower()
+
+
+def _highlighted(lines: Sequence[str], versions: Mapping[str, Sequence[str]]) -> str:
+    """One version's lines, escaped, each word coloured by how many versions hold it.
+
+    A word every version that read something holds is left plain; one only this version holds
+    is ``only``; one some but not all hold is ``some``. A display aid for Andy's key, never
+    part of the measures.
+    """
+    present = [{_word(t) for line in v for t in line.split()} for v in versions.values() if v]
+    out: list[str] = []
+    for line in lines:
+        words: list[str] = []
+        for token in line.split():
+            key = _word(token)
+            held = sum(1 for vocab in present if key in vocab)
+            css = (
+                ""
+                if not key or len(present) <= 1 or held == len(present)
+                else ("only" if held == 1 else "some")
+            )
+            text = html.escape(token)
+            words.append(f'<span class="{css}">{text}</span>' if css else text)
+        out.append(" ".join(words))
+    return "\n".join(out)
+
+
 def cmd_handwriting(settings: Settings) -> str:
     """Andy's key page: image, four lettered versions, agreed lines, spot checks, a draft."""
     folder = settings.data_dir / FOLDER
@@ -745,9 +793,13 @@ def cmd_handwriting(settings: Settings) -> str:
         agreed = cast("list[str]", page["agreed"])
         versions = cast("dict[str, list[str]]", page["versions"])
         page["spot"] = [line for i, line in enumerate(agreed) if (k, i) in spot]
-        blocks = "".join(
-            f"<h4>{letter}</h4><pre>{html.escape(chr(10).join(lines))}</pre>"
-            for letter, lines in sorted(versions.items())
+        blocks = (
+            '<div class="vers">'
+            + "".join(
+                f"<div><h4>{letter}</h4><pre>{_highlighted(lines, versions)}</pre></div>"
+                for letter, lines in sorted(versions.items())
+            )
+            + "</div>"
         )
         agreed_html = "".join(
             f"<li>{html.escape(line)}"
@@ -764,7 +816,9 @@ def cmd_handwriting(settings: Settings) -> str:
                 body_html=(
                     f'<p class="meta">Handwriting page {k} ({present} of {len(versions)} '
                     "versions read something)</p>"
-                    f'<img src="pages/handwriting-{k}.jpg" alt="page {k}">{blocks}'
+                    f'<div class="pic"><img src="pages/handwriting-{k}.jpg" alt="page {k}" '
+                    "onclick=\"this.classList.toggle('big')\"></div>"
+                    f"{blocks}"
                     "<p>Lines every version that read something agrees on (accepted):</p>"
                     f"<ul>{agreed_html}</ul>"
                 ),
@@ -784,6 +838,11 @@ def cmd_handwriting(settings: Settings) -> str:
     # versions"/"all four", which is both stale (a candidate can be dropped after the probe,
     # spec §17, M4) and wrong whenever a version reads a page as blank or fails on it.
     intro = (
+        _HANDWRITING_LAYOUT + "<p>Words in a version are coloured where the versions disagree: "
+        '<span class="only">only this version has it</span>, '
+        '<span class="some">some versions have it, not all</span>; uncoloured words are in '
+        "every version that read something. Check the coloured words against the image. "
+        "Click the image to enlarge it; it stays in view while you scroll the card.</p>"
         f"<p>For each page: make the text box the page's true text, one line per written "
         "line. Write [illegible] for a word you cannot read either. The "
         f"{len(CANDIDATES)} versions are shown under letters, shuffled per page. Lines marked "
