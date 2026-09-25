@@ -1231,7 +1231,7 @@ class Runner:
     # --- the batch path ---
 
     _STAGE_WIDTH = 13  # the longest stage name ("stage1-retry"/"stage2-retry") plus a gap
-    _WORD_WIDTH = 10  # "SUBMITTED" (9 chars) plus a gap; "REUSED" pads out to match
+    _WORD_WIDTH = 11  # "SUPERSEDED" (10 chars) plus a gap; every other word pads out to match
     _STATUS_WIDTH = 12  # "in_progress" (11 chars) plus a gap
     _COUNTS_WIDTH = 10  # "9999/9999" (9 chars, a large batch) plus a gap
 
@@ -1493,7 +1493,10 @@ class Runner:
         derived from it (stage 2's requests are built from stage 1's hypothesis) and so is not
         a valid replay of anything any more either -- ``_supersede_downstream`` drops the rest
         of this pass's reuse queue at the same moment, marking each one ``superseded`` so a
-        later resume does not reuse it either.
+        later resume does not reuse it either. Its rows are written *before* the ``lost`` row
+        (final review): otherwise a crash between the two writes would leave a ``lost`` row on
+        disk with no ``superseded`` rows for the batches that depended on it, so a resume that
+        stopped there would still think those batches are reusable.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1505,9 +1508,9 @@ class Runner:
             try:
                 status = self._wait_and_log(batch, batch_id, stage)
             except BatchNotFoundError:
+                self._supersede_downstream(run, lost_batch_id=batch_id)
                 self._record_lost_batch(run.folder, batch_id, stage)
                 self._log_lost(stage, batch_id)
-                self._supersede_downstream(run, lost_batch_id=batch_id)
                 reused = None
             else:
                 run.batch_ids.append(status.batch_id)

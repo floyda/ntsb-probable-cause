@@ -1279,12 +1279,12 @@ def test_a_lost_batch_supersedes_the_batches_recorded_after_it(
     ] == [
         ("stage1", "b1", False, False),  # the dead run's original rows: never deleted
         ("stage2", "b2", False, False),
-        ("stage1", "b1", True, False),  # marks b1 lost
         ("stage2", "b2", False, True),  # marks b2 superseded: it depended on b1
+        ("stage1", "b1", True, False),  # marks b1 lost -- written after its superseded rows
         ("stage1", "c1", False, False),  # the fresh replacement
         ("stage2", "c2", False, False),
     ]
-    assert rows[3]["depends_on_batch_id"] == "b1"
+    assert rows[2]["depends_on_batch_id"] == "b1"
     # A later resume's queue would wait on neither dead id again.
     assert recorded_batches(folder) == [
         ("stage1", "c1", rows[4]["time"]),
@@ -1946,7 +1946,7 @@ def test_log_reused_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_reused("stage1", "batch-1789528868-uJRGBbMh4Hxp07qRRB9m", "2026-09-16T03:21:11+00:00")
     assert capsys.readouterr().err == (
-        "07:10:21Z stage1       REUSED    batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
+        "07:10:21Z stage1       REUSED     batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
         "(recorded 03:21:11Z)\n"
     )
 
@@ -1990,7 +1990,7 @@ def test_log_submitted_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_submitted("stage1-retry", "batch-1789542619-7KCpMax2HcPd9lgJlg30", 3)
     assert capsys.readouterr().err == (
-        "07:10:23Z stage1-retry SUBMITTED batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
+        "07:10:23Z stage1-retry SUBMITTED  batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
     )
 
 
