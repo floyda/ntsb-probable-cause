@@ -45,3 +45,8 @@ google/gemini-3.6-flash: out -- 5.8 inventing lines per 100 handwriting lines (g
 qwen/qwen3.5-122b-a10b: out -- 3.5 inventing lines per 100 handwriting lines (gate 2)
 openai/gpt-6-luna: out -- 4.4 inventing lines per 100 handwriting lines (gate 2)
 no candidate passed the gate: transcription stops (spec §7.4 item 3)
+decision 0087 (post hoc): qwen/qwen3.5-122b-a10b chosen provisionally, overriding the rule's outcome; the dev-400 B-v1 against B-v2 comparison decides whether v2 goes forward
+
+## resolution (spec §7.5) -- for decision 0087's override
+  qwen/qwen3.5-122b-a10b: handwriting 66.9% at 150 dpi, 57.0% at 200; typed errors 12.29 and 13.12 per 100 characters
+  chosen: 150 dpi

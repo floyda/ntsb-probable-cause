@@ -1513,6 +1513,23 @@ def _candidate_lines(r: CandidateResult, mixed_repeats: int, *, pass2: bool) -> 
     return lines
 
 
+def _with_override(
+    chosen: str | None, notes: list[str], override: str | None
+) -> tuple[str | None, list[str]]:
+    """The model the resolution comparison is for, and the rule's notes with any override.
+
+    Decision 0087: only when the rule chose none does an override name a model, and it is
+    recorded as its own line, after the rule's unchanged outcome.
+    """
+    if chosen is not None or override is None:
+        return chosen, notes
+    return override, [
+        *notes,
+        f"decision 0087 (post hoc): {override} chosen provisionally, overriding the rule's "
+        "outcome; the dev-400 B-v1 against B-v2 comparison decides whether v2 goes forward",
+    ]
+
+
 def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second pass's rechecks.
     settings: Settings,
     docs: CachedDocuments,
@@ -1521,8 +1538,13 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
     mixed_csv: Path,
     *,
     recheck: Recheck | None = None,
+    override: str | None = None,
 ) -> str:
     """Apply the rule to every candidate; add the resolution comparison once it has run.
+
+    ``override`` (decision 0087) names a transcriber chosen after the rule chose none: the
+    rule's outcome is printed unchanged, a line records the override, and the resolution
+    comparison is made for that model, labelled as the override's.
 
     With ``recheck`` (decision 0086's second pass), the first-pass marks are overridden row by
     row by the recheck CSVs, handwriting pages are scored with the format rule, and the text
@@ -1587,6 +1609,7 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
     ]
     reading_counts = {m: _reading_counts(cache, keys, m, dpi=RESOLUTION) for m in CANDIDATES}
     chosen, notes = _choose_or_hold(reading_counts, results)
+    resolved, notes = _with_override(chosen, notes, override)
     picked, typed_lines, spot_total, spot_changed, spot_answer_mismatches = (
         _handwriting_key_summary(pages, key_texts, hw_marks)
     )
@@ -1621,7 +1644,7 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
             r, mixed_by_mark[(r.model, "repeats the text layer")], pass2=recheck is not None
         )
     lines += ["", "## the rule", *notes]
-    if chosen is not None:
+    if resolved is not None:
         # Fix round 3, R2: the resolution comparison only reads the handwriting and typed
         # keys at 200 dpi (`cmd_run`'s own filter). A reading missing there must refuse the
         # same way `score` does at 150 dpi (decision 3): an interrupted resolution run's
@@ -1630,7 +1653,7 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
         missing_200 = sum(
             1
             for r in resolution_keys
-            if cache.get(_key(r, chosen, instruction=TRANSCRIBE, dpi=200)) is None
+            if cache.get(_key(r, resolved, instruction=TRANSCRIBE, dpi=200)) is None
         )
         if missing_200 == len(resolution_keys):
             pass  # the resolution comparison has not been run yet: say nothing
@@ -1642,7 +1665,7 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
             ]
         else:
             at_200 = _result(
-                chosen,
+                resolved,
                 keys,
                 key_texts,
                 0,
@@ -1651,7 +1674,7 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
                 dpi=200,
                 format_gate=recheck is not None,
             )
-            base = next(r for r in results if r.model == chosen)
+            base = next(r for r in results if r.model == resolved)
             # Fix round 1, I7: exact fractions from the raw line counts, not the pre-divided
             # floats -- an exact 5-point gap must not be misjudged by floating-point error.
             base_acc = _fraction(base.hw_right, base.hw_lines)
@@ -1659,8 +1682,9 @@ def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second p
             dpi = choose_resolution(base_acc, at_200_acc)
             lines += [
                 "",
-                "## resolution (spec §7.5)",
-                f"  {chosen}: handwriting {float(base_acc):.1%} at 150 dpi, "
+                "## resolution (spec §7.5)"
+                + (" -- for decision 0087's override" if chosen is None else ""),
+                f"  {resolved}: handwriting {float(base_acc):.1%} at 150 dpi, "
                 f"{float(at_200_acc):.1%} at 200; typed errors {base.typed_errors_per_100:.2f} "
                 f"and {at_200.typed_errors_per_100:.2f} per 100 characters",
                 f"  chosen: {dpi} dpi",
@@ -1900,6 +1924,7 @@ def main(argv: list[str] | None = None) -> int:
     score_p.add_argument("--pass2", action="store_true")
     score_p.add_argument("--handwriting-recheck", type=Path)
     score_p.add_argument("--photos-recheck", type=Path)
+    score_p.add_argument("--override-model", choices=CANDIDATES)
     estimate_p = commands.add_parser("estimate")
     estimate_p.add_argument("--model", required=True, choices=CANDIDATES)
     estimate_p.add_argument("--dpi", type=int, choices=(150, 200), default=RESOLUTION)
@@ -1927,7 +1952,17 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "mixed":
         text = cmd_mixed(settings, docs)
     elif args.command == "score":
-        text = cmd_score(settings, docs, args.handwriting, args.photos, args.mixed, recheck=recheck)
+        if args.override_model and recheck is None:
+            parser.error("--override-model (decision 0087) follows the second pass: add --pass2")
+        text = cmd_score(
+            settings,
+            docs,
+            args.handwriting,
+            args.photos,
+            args.mixed,
+            recheck=recheck,
+            override=args.override_model,
+        )
         if args.out:
             args.out.write_text(text + "\n")
     else:

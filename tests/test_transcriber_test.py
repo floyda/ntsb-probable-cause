@@ -1725,3 +1725,24 @@ def test_score_second_pass_arguments_are_refused_unless_complete(extra: list[str
     with pytest.raises(SystemExit) as raised:
         tt.main(argv)
     assert raised.value.code == 2  # argparse's usage error, before anything is read
+
+
+def test_score_records_decision_0087s_override_when_the_rule_chose_none(tmp_path: Path) -> None:
+    """Decision 0087: the rule's outcome stands in print; the override is a line of its own."""
+    settings, docs, csvs = _score_fixture(tmp_path)
+    recheck = tt.Recheck(handwriting_csv=csvs["hw2"], photos_csv=csvs["photos2"])
+    plain = tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
+    text = tt.cmd_score(
+        settings,
+        docs,
+        csvs["hw"],
+        csvs["photos"],
+        csvs["mixed"],
+        recheck=recheck,
+        override="qwen/qwen3.5-122b-a10b",
+    )
+    assert "no candidate passed the gate" in text
+    assert "decision 0087 (post hoc): qwen/qwen3.5-122b-a10b chosen provisionally" in text
+    assert "decision 0087" not in plain
+    # No 200-dpi readings yet: the resolution section stays silent, as for a rule-chosen model.
+    assert "## resolution" not in text
