@@ -59,6 +59,7 @@ The spec is approved; these are the places where writing the plan found somethin
 | `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `scoring/ledger.py`, `apps/eval/__main__.py` | 8, 9 | the evidence version; marks in results; the report printed twice |
 | `scripts/reply_budget.py`, `RunSpec.max_output_tokens` | 9A | the reply budget, recorded on every run, measured on `dev-400` and set by decision |
 | `scoring/records.py` (`CaseResult` reply tuples), `scripts/reply_budget.py` | 9C | every case's per-reply facts; unknown finish reasons fail closed |
+| `scoring/runner.py` (`Runner.run`'s fresh branch) | 9D | a fresh run claims its folder atomically; a same-second twin is refused |
 | `scoring/runner.py` (`_submit_and_wait`, `recorded_batches`) | 9B | a resume resubmits a batch that ended failed, expired or cancelled |
 | `src/ntsb_probable_cause/model/client.py`, `model/openrouter.py`, `sources.py` | 10 | `PageImage`; image parts in the request; candidate prices and reasoning levels |
 | `src/ntsb_probable_cause/docket/transcribe.py` | 11 | the instruction, the request, the reply, the per-page cache, the worker pool |
@@ -3190,6 +3191,88 @@ git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expi
 - [x] **Step 4:** `make check` green; commit (`S2.6: every case records each reply's facts; an unknown finish reason stops the sizing (Task 9C)`).
 
 **Deviations.** The cut-off/unknown-reason guard is a separate, additive scan (`_cut_off_and_unknown_reason`) over every case's own per-reply tuples (falling back to the failure-text bracket only for a pre-Task-9C failed case), used solely to decide the sizing run's `outcome:` line. It does not replace or feed `_classify_replies`'s successful/recovered split or `_format_failures`'s reporting, which stay exactly as Task 9A left them (a failed case's replies must not be classified as "successful" merely because one ended `stop` — a schema-rejected reply is still a format failure regardless of its own finish reason) — so `new_budget`'s and `cause_confirmed`'s arithmetic and inputs are unchanged, per the task's own instruction.
+
+---
+
+### Task 9D: A fresh run refuses a run folder that already exists (Task 9A's collision; no paid call)
+
+**Why this task exists.** On 2026-09-25 the two Task 9A `dev-400` runs were started in the same second at the same commit, sample and arm. The run id is `f"{started:%Y%m%dT%H%M%S}-{sha}-{sample}-{arm}"`, so both got `20260925T100148-40c6ec6-dev-400-B`, and nothing refused the second: `write_spec_json` creates the folder with `exist_ok=True`, so the second run overwrote `spec.json` and both appended into the same `cases.jsonl`, `steps.jsonl`, `run.jsonl` and `batches.jsonl`. The data was recovered by hand (Deviations, 2026-09-25, Task 9A Step 6). A held-out run that collided the same way would need the same surgery on held-out records, which is not acceptable. The run id's shape stays as it is (`resolve_latest` and every recorded run rely on it); what changes is that a fresh run claims its folder atomically and refuses if it cannot.
+
+**The behaviour, fixed now.** A fresh run (no `--resume`) creates its run folder with `mkdir(exist_ok=False)` before it writes `spec.json`, reserves budget or makes any model call. If the folder exists, the run raises `ConfigurationError` naming the run id and saying: another run with the same id already exists (started in the same second, at the same commit, sample and arm) -- wait a second and start again, or pass `--resume <run id>` to continue that one. `mkdir` is atomic, so of two runs racing for one id exactly one wins. A resume is unchanged: it requires the folder to exist.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/runner.py` (`Runner.run`'s fresh branch; `write_spec_json` unchanged, it still serves repair)
+- Test: `tests/test_runner.py`
+
+**Interfaces:**
+- Consumes: `Runner.run`, `write_spec_json`, `ConfigurationError`, the test helpers `runner(...)` (fixed `now`) and `_run_id(...)`.
+- Produces: nothing new; one new refusal.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/test_runner.py`:
+
+```python
+def test_a_fresh_run_refuses_a_folder_that_already_exists(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9D: two runs started in the same second share an id; the second is refused."""
+    existing = tmp_path / "runs" / _run_id(arm="ceiling")
+    existing.mkdir(parents=True)
+    (existing / "cases.jsonl").write_text("sentinel\n")
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001)
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+    assert (existing / "cases.jsonl").read_text() == "sentinel\n"
+    assert not (existing / "spec.json").exists()
+
+
+def test_two_fresh_runs_in_the_same_second_cannot_share_a_folder(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The first run completes; a second fresh run with the same clock is refused."""
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, expected_cost_per_case_usd=0.001)
+    runner(tmp_path, RecordingFakeClient([GOOD, REFINE])).run(spec, record_fixtures[:1])
+    second = RecordingFakeClient([GOOD, REFINE])
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, second).run(spec, record_fixtures[:1])
+    assert second.payloads == []
+```
+
+Adapt the `RunSpec` arguments to whatever the file's existing sync ceiling tests pass so the first run in the second test succeeds (copy a passing test's spec). Check that no budget reservation file is left behind by the refused run.
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `uv run pytest tests/test_runner.py -v -k "already_exists or same_second"`
+Expected: FAIL -- the second run writes into the existing folder.
+
+- [ ] **Step 3: Implement**
+
+In `Runner.run`'s fresh branch (`if resume is None:`), right after `folder = self._runs_dir / run_id` and before `write_spec_json`:
+
+```python
+            try:
+                folder.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                # Task 9D: two runs started in the same second at the same commit, sample and
+                # arm share an id; mkdir is atomic, so exactly one claims the folder.
+                raise ConfigurationError(
+                    f"run folder {run_id} already exists: another run with this id was started "
+                    "in the same second at the same commit, sample and arm. Wait a second and "
+                    f"start again, or pass --resume {run_id} to continue that run."
+                ) from None
+```
+
+Every existing test that starts two fresh runs into one `tmp_path` with the same sample and arm under the fixed test clock will now be refused. Fix each by giving the second run a later `now` (the `runner(..., now=...)` seam) or its own `tmp_path` subfolder, never by weakening the refusal; list every test changed in the commit message. `make check` must be green.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py docs/plans/2026-09-23-s26-widened-docket.md
+git commit -m "S2.6: a fresh run refuses a run folder that already exists (Task 9D)"
+```
 
 ---
 
