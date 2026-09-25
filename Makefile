@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev
 
 check: lint type test
 
@@ -186,8 +186,13 @@ s26-transcriber-recheck:
 # Decision 0086's second pass (free: no model call): Andy's two recheck pages, read against the
 # first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/.
 
-s26-transcribe-dev:
+s26-transcribe-dev-dry:
 	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE) --dry-run
+# S2.6 spec §8.3, free: counts and prices the pages dev-400 needs. Read its projection before
+# running s26-transcribe-dev (Task 15 Step 2: stop if it is more than a quarter over the estimate).
+
+s26-transcribe-dev:
 	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE)
-# S2.6 spec §8.3: reads every image page dev-400 needs, once, into the cache. PER_PAGE is the
-# transcriber's measured cost per page from docs/results/s26-transcriber-test.txt, rounded up.
+# S2.6 spec §8.3, paid: reads every image page dev-400 needs, once, into the cache. PER_PAGE is
+# the transcriber's measured cost per page (docs/results/s26-transcriber-test-pass2.txt), rounded
+# up. Kept apart from the dry run (Task 14 review, I2) so there is a point to stop between them.
