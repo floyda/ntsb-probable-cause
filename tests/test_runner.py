@@ -2868,6 +2868,11 @@ def test_sync_step_records_every_reply_figure_in_call_order(
     assert step.reply_completion_tokens == (2000, 300, 250)
     assert step.reply_reasoning_tokens == (1900, 250, 200)
     assert step.reply_finish_reasons == ("length", "stop", "stop")
+    # S2.6 Task 9C: a scored case's own tuples equal its step's.
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.reply_completion_tokens == step.reply_completion_tokens
+    assert case.reply_reasoning_tokens == step.reply_reasoning_tokens
+    assert case.reply_finish_reasons == step.reply_finish_reasons
 
 
 def _replying(
@@ -2932,3 +2937,87 @@ def test_batch_step_records_every_reply_figure_in_call_order(
     assert step.reply_completion_tokens == (2000, 300, 250)
     assert step.reply_reasoning_tokens == (1900, 250, 200)
     assert step.reply_finish_reasons == ("length", "stop", "stop")
+    # S2.6 Task 9C: a scored case's own tuples equal its step's.
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.reply_completion_tokens == step.reply_completion_tokens
+    assert case.reply_reasoning_tokens == step.reply_reasoning_tokens
+    assert case.reply_finish_reasons == step.reply_finish_reasons
+
+
+def test_sync_failed_case_records_every_reply_including_an_earlier_cut_off_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.6 Task 9C: stage 1 is cut off (``length``) and retried successfully; stage 2 then
+    fails schema on both its attempt and its retry. The case's failure text names only its
+    *last* reply, but ``CaseResult`` carries every reply it made, in call order.
+    """
+    usage = [
+        Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+        Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+        Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+        Usage(prompt_tokens=1_000, completion_tokens=260, reasoning_tokens=210),
+    ]
+    client = _FinishingFakeClient(
+        ['{"probable_cause": "the eng', GOOD, "not json", "still not json"],
+        usage=usage,
+        finish_reasons=["length", "stop", "stop", "stop"],
+    )
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.steps == ()  # a failed case has no step
+    assert case.reply_completion_tokens == (2000, 300, 250, 260)
+    assert case.reply_reasoning_tokens == (1900, 250, 200, 210)
+    assert case.reply_finish_reasons == ("length", "stop", "stop", "stop")
+
+
+def test_batch_failed_case_records_every_reply_including_an_earlier_cut_off_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9C: the batch twin of the sync test above -- four batches, one per attempt."""
+    fake = FakeBatchClient(
+        handlers=[
+            _replying(
+                '{"probable_cause": "the eng',
+                "length",
+                Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+            ),
+            _replying(
+                GOOD,
+                "stop",
+                Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+            ),
+            _replying(
+                "not json",
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+            ),
+            _replying(
+                "still not json",
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=260, reasoning_tokens=210),
+            ),
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert run.batch_ids == ("b1", "b2", "b3", "b4")
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.steps == ()
+    assert case.reply_completion_tokens == (2000, 300, 250, 260)
+    assert case.reply_reasoning_tokens == (1900, 250, 200, 210)
+    assert case.reply_finish_reasons == ("length", "stop", "stop", "stop")

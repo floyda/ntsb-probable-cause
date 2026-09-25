@@ -4,6 +4,27 @@ Status
     One-shot. Prints and, with ``--out``, writes counts only (decision 0024: no case number,
     no title, no prose).
 
+    Task 9C (2026-09-25, Task 9A's final review) closes two gaps. First: a failed case has no
+    step (``steps=()``), and its failure text names only the *last* reply it made
+    (``_reply_detail``'s bracket) -- so a case whose stage-1 reply was cut off (``length``),
+    retried successfully, and which then failed for an unrelated reason on stage 2 had that
+    earlier cut-off reply invisible to the sizing run's cut-off guard. ``CaseResult`` now
+    carries every reply a case received, scored or failed, in its own
+    ``reply_completion_tokens``/``reply_reasoning_tokens``/``reply_finish_reasons`` tuples,
+    filled from the same source as ``StepRecord``'s copy of them, but present even where the
+    case has no step. This script's own scored-case reading (``_successful_case_replies``,
+    which feeds the percentile and was unaffected by the first gap) now reads them from there
+    instead of from the step; the cut-off/unknown-reason guard (``_cut_off_and_unknown_reason``)
+    scans every case's own tuples directly, and only falls back to a failed case's failure-text
+    bracket where a case predates Task 9C and carries none. Second: a reply whose
+    ``finish_reason`` was never recorded (``None``, or ``"unrecorded"`` from a bracket-less
+    pre-Task-9A failure) is neither a proven cut-off nor a proven "stop", so on its own it could
+    let a wrong number out of the sizing run -- the sizing run's outcome now treats any such
+    reply the same way as a cut-off one: "no step fits -- a reply in the sizing run has no
+    recorded finish reason; returned to Andy". Neither guard changes ``new_budget``'s or
+    ``cause_confirmed``'s own arithmetic; both only decide whether the outcome may call them
+    at all.
+
     Fix round 4 (2026-09-25, re-review and controller ruling; the rule's numbers are
     unchanged): the outcome is fail-closed. A sizing run with any reply that ended
     ``length`` -- in a failed case or a recovered one -- was cut off by the sizing budget
@@ -67,7 +88,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ntsb_probable_cause.scoring import report
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 
 BUDGET_STEPS = (4_000, 8_000, 16_000)
@@ -216,29 +237,50 @@ def _reason_breakdown(details: Sequence[_Detail]) -> str:
 
 @dataclass(frozen=True)
 class _Reply:
-    """One reply's own figures, read from a ``StepRecord``'s per-reply tuples."""
+    """One reply's own figures, read from a ``CaseResult``'s per-reply tuples (S2.6 Task 9C)."""
 
     completion_tokens: int
     reasoning_tokens: int | None
     finish_reason: str | None
 
 
-def _step_replies(step: StepRecord) -> list[_Reply] | None:
-    """The individual replies behind one successful case's step, or ``None`` if unrecorded.
+def _case_replies(case: CaseResult) -> list[_Reply] | None:
+    """The individual replies ``CaseResult`` itself recorded for one case (S2.6 Task 9C).
 
-    Fix round 2: a ``StepRecord`` written before this fix carries an empty
-    ``reply_completion_tokens`` -- there is nothing here to read a per-reply figure from, and
-    the caller must say so rather than substituting the case-level sum.
+    ``None`` where nothing is recorded there -- either because the case made no call at all
+    (a "cap" or "leak" failure, ``cost_usd == 0.0``: not a gap, there is nothing to read), or
+    because the case was recorded before Task 9C added these tuples (``cost_usd`` above zero
+    but the tuples still empty). The caller tells the two apart by ``cost_usd``, since a
+    failed case with no step ever had nowhere else on ``CaseResult`` to read this from.
     """
-    if not step.reply_completion_tokens:
+    if not case.reply_completion_tokens:
         return None
-    count = len(step.reply_completion_tokens)
-    reasoning = step.reply_reasoning_tokens or (None,) * count
-    finishes = step.reply_finish_reasons or (None,) * count
+    count = len(case.reply_completion_tokens)
+    reasoning = case.reply_reasoning_tokens or (None,) * count
+    finishes = case.reply_finish_reasons or (None,) * count
     return [
         _Reply(completion_tokens=c, reasoning_tokens=r, finish_reason=f)
-        for c, r, f in zip(step.reply_completion_tokens, reasoning, finishes, strict=True)
+        for c, r, f in zip(case.reply_completion_tokens, reasoning, finishes, strict=True)
     ]
+
+
+def _fallback_failed_reply(case: CaseResult) -> _Reply | None:
+    """The pre-Task-9C fallback: a failed case's *last* reply, from its failure-text bracket.
+
+    Used only when ``CaseResult`` carries no per-reply tuples of its own (recorded before
+    Task 9C) -- the failure text's trailing bracket (``_reply_detail``, S2.6 Task 9A) is all
+    that survives of that case's replies, and it names only the one that ended the case, not
+    every reply it made. ``None`` for anything but a ``"schema:"`` failure: a "model:" or
+    "aborted:" failure carries no such bracket to recover.
+    """
+    if case.failure is None or not case.failure.startswith("schema:"):
+        return None
+    detail = _parse_detail(case.failure)
+    return _Reply(
+        completion_tokens=0,  # not carried in the bracket; unused by anything that reads this
+        reasoning_tokens=detail.reasoning_tokens,
+        finish_reason=detail.finish_reason,
+    )
 
 
 @dataclass(frozen=True)
@@ -246,18 +288,49 @@ class _PerCaseReplies:
     """The per-reply data recoverable from a run's successful cases."""
 
     available: list[list[_Reply]]  # one list per successful case that recorded per-reply data
-    unavailable_cases: int  # successful cases whose step predates the per-reply fields
+    unavailable_cases: int  # successful cases that recorded no recoverable reply data
     had_successful_cases: bool  # whether the run had any successful cases at all
 
 
 def _successful_case_replies(cases: Sequence[CaseResult]) -> _PerCaseReplies:
-    """The per-reply data behind every successful (unfailed, scored) case in ``cases``."""
-    successful_steps = [
-        c.steps[0] for c in cases if c.failure is None and c.scores is not None and c.steps
-    ]
-    per_case = [_step_replies(s) for s in successful_steps]
+    """The per-reply data behind every successful (unfailed, scored) case in ``cases``.
+
+    S2.6 Task 9C: reads ``CaseResult``'s own tuples directly -- filled identically to
+    ``StepRecord``'s for a scored case -- rather than the step's copy of them. A scored case
+    never carries a failure-text bracket, so there is no fallback to try here; a case that
+    made a call but recorded no tuples simply predates Task 9C.
+    """
+    successful = [c for c in cases if c.failure is None and c.scores is not None]
+    per_case = [_case_replies(c) for c in successful]
     available = [replies for replies in per_case if replies is not None]
     return _PerCaseReplies(available, len(per_case) - len(available), bool(per_case))
+
+
+def _cut_off_and_unknown_reason(cases: Sequence[CaseResult]) -> tuple[int, int]:
+    """(replies that ended ``length``, replies with no recorded finish reason) -- S2.6 Task 9C.
+
+    Scans every reply of every case, scored or failed alike, that ``CaseResult`` itself
+    recorded, falling back to a failed case's failure-text bracket only where its own tuples
+    are empty (pre-Task-9C). This is separate from -- and never feeds -- ``_classify_replies``'s
+    successful/recovered split or ``new_budget``'s and ``cause_confirmed``'s arithmetic: its
+    only job is to catch two things Task 9A's own reading could not: a failed case's *earlier*
+    reply (invisible to that case's failure text, which names only its last one), and any
+    reply whose finish reason was never recorded at all -- "unknown" meaning ``None`` or the
+    pre-Task-9A bracket-less placeholder ``"unrecorded"``.
+    """
+    cut_off = 0
+    unknown = 0
+    for case in cases:
+        replies = _case_replies(case)
+        if replies is None:
+            fallback = _fallback_failed_reply(case)
+            replies = [fallback] if fallback is not None else []
+        for reply in replies:
+            if reply.finish_reason == "length":
+                cut_off += 1
+            elif reply.finish_reason is None or reply.finish_reason == "unrecorded":
+                unknown += 1
+    return cut_off, unknown
 
 
 @dataclass(frozen=True)
@@ -461,7 +534,8 @@ class _Sizing:
     successful: list[int]  # the "stop" replies' completion tokens -- new_budget's first input
     failed_reasoning: list[int]  # the failed side's reasoning tokens -- new_budget's second
     per_reply_complete: bool  # every successful case recorded its per-reply figures
-    cut_off: int  # replies that ended "length" -- failed cases and recovered replies alike
+    cut_off: int  # replies that ended "length", scored and failed cases alike (S2.6 Task 9C)
+    unknown_reason: int  # replies with no recorded finish reason (S2.6 Task 9C)
 
 
 def _sizing_section(cases: Sequence[CaseResult], record: RunRecord) -> _Sizing:
@@ -502,15 +576,20 @@ def _sizing_section(cases: Sequence[CaseResult], record: RunRecord) -> _Sizing:
             )
         lines.append(_stats_line("  total (completion_tokens)", classified.successful))
         lines.append(_stats_line("  reasoning tokens alone", classified.successful_reasoning))
-    length_failures, floor_reasoning = _length_failures_and_floor(failures, classified)
-    cut_off = sum(1 for reason, _reasoning in length_failures if reason == "length")
+    _length_failures, floor_reasoning = _length_failures_and_floor(failures, classified)
+    # S2.6 Task 9C: scanned across every reply of every case (scored or failed), not just the
+    # failed side's failure-text bracket -- the source ``new_budget``'s own inputs above still
+    # read unchanged. See ``_cut_off_and_unknown_reason``.
+    cut_off, unknown_reason = _cut_off_and_unknown_reason(cases)
     lines.append(f"replies cut off at this run's own budget (finish_reason=length): {cut_off}")
+    lines.append(f"replies with no recorded finish reason: {unknown_reason}")
     return _Sizing(
         lines=lines,
         successful=classified.successful,
         failed_reasoning=floor_reasoning,
         per_reply_complete=bool(per_case.available) and not per_case.unavailable_cases,
         cut_off=cut_off,
+        unknown_reason=unknown_reason,
     )
 
 
@@ -522,11 +601,21 @@ def _outcome(confirmed: bool, sizing: _Sizing, size_budget: int) -> str:
     budget can be proven from the run; likewise when the per-reply figures are missing (a
     pre-fix-round-2 step, or not one successful ``"stop"`` reply). Each goes back to Andy
     rather than letting ``new_budget`` answer from nothing.
+
+    Task 9C adds one more guard, checked right after the cut-off one and before the
+    per-reply-data-unavailable one: a reply whose finish reason was never recorded is neither
+    a proven cut-off nor a proven "stop", so it cannot honestly answer either way -- it goes
+    back to Andy too, rather than silently passing as a genuine, uncut need.
     """
     if not confirmed:
         return "outcome: not confirmed -- returned to Andy"
     if sizing.cut_off:
         return f"outcome: no step fits -- a reply was cut off at {size_budget}; returned to Andy"
+    if sizing.unknown_reason:
+        return (
+            "outcome: no step fits -- a reply in the sizing run has no recorded finish "
+            "reason; returned to Andy"
+        )
     if not sizing.per_reply_complete or not sizing.successful:
         return "outcome: per-reply data unavailable -- returned to Andy"
     proposed = new_budget(sizing.successful, sizing.failed_reasoning)

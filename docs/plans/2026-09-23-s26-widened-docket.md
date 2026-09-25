@@ -3181,13 +3181,15 @@ git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expi
 **Interfaces:**
 - Produces: `CaseResult.reply_completion_tokens: tuple[int, ...] = ()`, `CaseResult.reply_reasoning_tokens: tuple[int | None, ...] = ()`, `CaseResult.reply_finish_reasons: tuple[str | None, ...] = ()`, filled for every case that made at least one call (a leak or a cap case made none: empty). `StepRecord`'s tuples stay as they are.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `tests/test_runner.py`, sync and batch: a case whose stage-1 reply is cut off (`length`, 2000/1900), retried successfully, and whose stage 2 then fails on a schema error: the `CaseResult` has `failure` starting `schema:` and carries all its replies in call order in the three tuples. A scored case's tuples equal its step's.
   - `tests/test_records_s1.py`: the tuples round-trip through JSON; a pre-9C `cases.jsonl` line reads with empty tuples.
   - `tests/test_reply_budget.py`: a sizing run holding a failed case whose earlier reply ended `length` gives the cut-off outcome; a sizing run holding a reply with finish reason `None` (in a scored case, and in a failed case) gives the unknown-reason outcome, never a number; a sizing run whose cases lack the tuples (pre-9C) gives "per-reply data unavailable".
-- [ ] **Step 2: Run them to see them fail.**
-- [ ] **Step 3: Implement** — `_case_result` sets the three tuples from `ctx.replies` (`usage.completion_tokens`, `usage.reasoning_tokens`, `finish_reason`); `reply_budget` builds its per-reply lists from `CaseResult`'s tuples for every case (scored replies that ended `stop` feed the percentile; any `length` reply feeds the failed side and the cut-off guard; any unknown reason in the sizing run triggers its guard), keeping the failure-bracket reading only as the fallback for a failed case with empty tuples. Update the module docstring's account of where the figures come from.
-- [ ] **Step 4:** `make check` green; commit (`S2.6: every case records each reply's facts; an unknown finish reason stops the sizing (Task 9C)`).
+- [x] **Step 2: Run them to see them fail.**
+- [x] **Step 3: Implement** — `_case_result` sets the three tuples from `ctx.replies` (`usage.completion_tokens`, `usage.reasoning_tokens`, `finish_reason`); `reply_budget` builds its per-reply lists from `CaseResult`'s tuples for every case (scored replies that ended `stop` feed the percentile; any `length` reply feeds the failed side and the cut-off guard; any unknown reason in the sizing run triggers its guard), keeping the failure-bracket reading only as the fallback for a failed case with empty tuples. Update the module docstring's account of where the figures come from.
+- [x] **Step 4:** `make check` green; commit (`S2.6: every case records each reply's facts; an unknown finish reason stops the sizing (Task 9C)`).
+
+**Deviations.** The cut-off/unknown-reason guard is a separate, additive scan (`_cut_off_and_unknown_reason`) over every case's own per-reply tuples (falling back to the failure-text bracket only for a pre-Task-9C failed case), used solely to decide the sizing run's `outcome:` line. It does not replace or feed `_classify_replies`'s successful/recovered split or `_format_failures`'s reporting, which stay exactly as Task 9A left them (a failed case's replies must not be classified as "successful" merely because one ended `stop` — a schema-rejected reply is still a format failure regardless of its own finish reason) — so `new_budget`'s and `cause_confirmed`'s arithmetic and inputs are unchanged, per the task's own instruction.
 
 ---
 

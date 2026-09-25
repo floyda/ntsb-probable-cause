@@ -188,6 +188,12 @@ def _step_without_per_reply_fields(
 
 
 def _successful_case(case_id: str, *, replies: Sequence[_Reply]) -> CaseResult:
+    """A scored case, its per-reply tuples set on ``CaseResult`` itself (S2.6 Task 9C) exactly
+    as ``Runner._case_result`` fills them -- equal to its step's own copy of the same figures.
+    """
+    completion = tuple(c for c, _r, _f in replies)
+    reasoning = tuple(r for _c, r, _f in replies)
+    finishes = tuple(f for _c, _r, f in replies)
     return CaseResult(
         case_id=case_id,
         split="dev",
@@ -201,6 +207,9 @@ def _successful_case(case_id: str, *, replies: Sequence[_Reply]) -> CaseResult:
         scores=_SCORES,
         cost_usd=0.001,
         failure=None,
+        reply_completion_tokens=completion,
+        reply_reasoning_tokens=reasoning,
+        reply_finish_reasons=finishes,
     )
 
 
@@ -227,7 +236,19 @@ def _successful_case_pre_fix(
     )
 
 
-def _failed_case(case_id: str, failure: str) -> CaseResult:
+def _failed_case(
+    case_id: str, failure: str, *, replies: Sequence[_Reply] | None = None
+) -> CaseResult:
+    """A failed case. ``steps=()`` -- a failed case never gets a step -- so with no ``replies``
+    given, ``CaseResult``'s own per-reply tuples are empty too: a pre-Task-9C fixture, whose
+    only recoverable reply data is the failure text's own trailing bracket. Passing
+    ``replies`` sets ``CaseResult``'s tuples directly, as ``Runner._case_result`` fills them
+    for a real, post-Task-9C failed case -- including replies earlier than the one that
+    finally failed the case.
+    """
+    completion = tuple(c for c, _r, _f in replies) if replies is not None else ()
+    reasoning = tuple(r for _c, r, _f in replies) if replies is not None else ()
+    finishes = tuple(f for _c, _r, f in replies) if replies is not None else ()
     return CaseResult(
         case_id=case_id,
         split="dev",
@@ -241,6 +262,9 @@ def _failed_case(case_id: str, failure: str) -> CaseResult:
         scores=None,
         cost_usd=0.001,
         failure=failure,
+        reply_completion_tokens=completion,
+        reply_reasoning_tokens=reasoning,
+        reply_finish_reasons=finishes,
     )
 
 
@@ -581,6 +605,69 @@ def test_confirm_and_size_reports_the_sizing_runs_cut_off_count() -> None:
     text = rb.confirm_and_size([_failed_case("c1", _CONFIRMING_FAILURE)], confirm, size_cases, size)
     assert "replies cut off at this run's own budget (finish_reason=length): 0" in text
     assert text.splitlines()[-1] == "outcome: new max_output_tokens 4000"
+
+
+# --- Task 9C: every case's own replies, and the unknown-finish-reason guard ---
+
+
+def test_confirm_and_size_catches_a_failed_cases_earlier_reply_cut_off_not_just_its_last() -> None:
+    """Task 9C: the case's stage-1 reply was cut off and retried; stage 2 then failed with a
+    *different* finish reason. The failure text's own bracket names only that last reply
+    (``stop``), so only ``CaseResult``'s own tuples -- not the bracket -- catch the earlier
+    cut-off one."""
+    size_cases = [
+        _failed_case(
+            "c2",
+            "schema: bad json (finish_reason=stop, completion_tokens=500, reasoning_tokens=100)",
+            replies=[(16_000, 14_000, "length"), (2_000, 1_900, "stop"), (500, 100, "stop")],
+        ),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: no step fits -- a reply was cut off at 16000; returned to Andy"
+
+
+def test_confirm_and_size_refuses_to_size_from_a_scored_case_with_an_unknown_finish_reason() -> (
+    None
+):
+    """A reply with no recorded finish reason is neither a proven "stop" nor a proven
+    cut-off -- it must never silently pass as a genuine, uncut need."""
+    size_cases = [_successful_case("c2", replies=[(1_300, 200, None)])]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
+        "returned to Andy"
+    )
+
+
+def test_confirm_and_size_refuses_to_size_from_a_failed_case_with_an_unknown_finish_reason() -> (
+    None
+):
+    size_cases = [
+        _failed_case(
+            "c2",
+            "schema: bad json (finish_reason=stop, completion_tokens=500, reasoning_tokens=100)",
+            replies=[(500, 100, None)],
+        ),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
+        "returned to Andy"
+    )
+
+
+def test_confirm_and_size_unknown_reason_guard_fires_before_data_unavailable() -> None:
+    """A pre-Task-9C case (no tuples) sits alongside a scored case with an unknown reason: the
+    unknown-reason outcome fires, never "per-reply data unavailable"."""
+    size_cases = [
+        _successful_case("c2", replies=[(1_300, 200, None)]),
+        _successful_case_pre_fix("c3", completion_tokens=9_000, reasoning_tokens=8_000),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
+        "returned to Andy"
+    )
 
 
 def test_main_confirm_and_size_writes_the_two_section_report(

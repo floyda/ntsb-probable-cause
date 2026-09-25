@@ -1107,6 +1107,13 @@ class Runner:
             # step is built (``steps=()``), and that is exactly the case that dropped the
             # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
             documents_not_read=ctx.not_read,
+            # Every reply the case received, in call order, whether it was scored or failed
+            # (S2.6 Task 9C) -- the same source ``_step`` reads, but recorded here so a
+            # failed case (``steps=()``) still carries it. Empty when ``ctx.replies`` is
+            # empty (a "cap" failure made no call).
+            reply_completion_tokens=tuple(r.usage.completion_tokens for r in ctx.replies),
+            reply_reasoning_tokens=tuple(r.usage.reasoning_tokens for r in ctx.replies),
+            reply_finish_reasons=tuple(r.finish_reason for r in ctx.replies),
         )
 
     def _failed(

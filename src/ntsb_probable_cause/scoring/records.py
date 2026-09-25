@@ -107,6 +107,17 @@ class CaseResult(BaseModel):
     # (``steps=()``): the docket outcome must not be invisible just because the case never
     # reached a model call (decision 0043; fix round 1, Finding 4).
     documents_not_read: tuple[str, ...] = ()
+    # Every reply the case received, in call order, whether the case was scored or failed
+    # (S2.6 Task 9C). A failed case has no step (``steps=()``), so ``StepRecord``'s own copy
+    # of these tuples is invisible to a failed case -- and a case that failed on stage 2 after
+    # an earlier reply was cut off and retried carries only its *last* reply's facts in its
+    # failure text (``_reply_detail``), never the earlier one. These three tuples are filled
+    # from ``ctx.replies`` for every case that made at least one call; a case that failed
+    # before any call ("cap", "leak") made none and these stay empty, and so does a
+    # ``CaseResult`` written before this fix.
+    reply_completion_tokens: tuple[int, ...] = ()
+    reply_reasoning_tokens: tuple[int | None, ...] = ()
+    reply_finish_reasons: tuple[str | None, ...] = ()
 
 
 def fingerprint(payload: Payload) -> str:
