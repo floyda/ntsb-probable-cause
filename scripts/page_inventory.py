@@ -66,22 +66,36 @@ ALLOCATION: dict[tuple[str, bool], int] = {
 IMAGE_BEARING = ("image only", "text and image", "photo-only")
 # Whether a page's images hold words (decision W6): on an image-only page typed text counts,
 # because nothing else holds it; on a text-and-image page it does not, because the text
-# layer already holds it. A photo-only page has no text layer, like an image-only one.
+# layer already holds it. Looked up by a page's own kind (never by its stratum): a photo-only
+# page is judged exactly like an ordinary page of the same kind (decision A, fix round 2).
 _IMAGE_ONLY_WORDS = frozenset({"typed text", "handwriting", "filled form", "mixed"})
 WORDS = {
     "image only": _IMAGE_ONLY_WORDS,
     "text and image": frozenset({"handwriting", "filled form", "mixed"}),
-    "photo-only": _IMAGE_ONLY_WORDS,
 }
+# The frame kinds a photo-only page must have to enter the photo-only stratum at all (decision
+# A, fix round 2): S2's page-kinds scan read every photo-only page's own kind, and 508 of 831
+# have a text layer (docs/results/s26-page-kinds.txt) -- a photo-only page that is text-only
+# or blank is neither image-bearing nor an ordinary page of that kind (S2's own scan never
+# reads a photo-only document), so it takes no part in either pool or population.
+_PHOTO_ONLY_IMAGE_BEARING_KINDS = ("image only", "text and image")
 STOP_SHARE = 0.10
 CUTS = (0.02, 0.05, 0.10, 0.20)
 MAX_WORDS_BELOW_CUT = 1 / 20
 FOLDER = Path("s26") / "inventory"
 
 
-def sample_kind(row: Mapping[str, object]) -> str:
-    """The page's kind for sampling: a page of a photo-only document is its own kind (W2)."""
-    return "photo-only" if row.get("photo_only") else str(row["kind"])
+def sample_kind(row: Mapping[str, object]) -> str | None:
+    """The page's kind for sampling (decision W2, amended by decision A, fix round 2).
+
+    A photo-only page is its own stratum only when its own kind is image-bearing; a
+    text-only or blank photo-only page takes no part in either pool, so it maps to no kind
+    at all (``None`` never equals an allocation's kind string).
+    """
+    if row.get("photo_only"):
+        kind = str(row["kind"])
+        return "photo-only" if kind in _PHOTO_ONLY_IMAGE_BEARING_KINDS else None
+    return str(row["kind"])
 
 
 def _stratum(kind: object, fatal: object) -> str:
@@ -110,24 +124,29 @@ def draw_sample(
 
 
 def weighted_word_share(
-    labels: Mapping[str, Sequence[str]],
+    labels: Mapping[str, Sequence[tuple[str, str]]],
     population: Mapping[str, int],
     *,
     counted: Mapping[str, frozenset[str]] = WORDS,
 ) -> float:
-    """Of all image-bearing pages, the share whose label is ``counted`` for its kind.
+    """Of all image-bearing pages, the share whose label is ``counted`` for its OWN kind.
 
-    Weighted by each stratum's population in the frame. By default it counts pages whose
-    images hold words (decision W6); the transcriber test's estimate passes the picture
-    labels instead, to size the v3 probe.
+    Each entry pairs a page's own frame kind with its final label -- not the stratum it was
+    drawn into (decision A, fix round 2): the photo-only stratum can mix image-only and
+    text-and-image pages, and each is judged by its own kind's word set, exactly like an
+    ordinary page of that kind. A stratum with no entry of a counted kind (a text-only
+    control stratum) takes no part in the weighted estimate, as before. Weighted by each
+    stratum's population in the frame. By default it counts pages whose images hold words
+    (decision W6); the transcriber test's estimate passes the picture labels instead, to
+    size the v3 probe.
     """
     total = 0.0
     hits = 0.0
-    for stratum, stratum_labels in labels.items():
-        kind = stratum.split("/")[0]
-        if kind not in counted or not stratum_labels:
+    for stratum, entries in labels.items():
+        countable = [(kind, label) for kind, label in entries if kind in counted]
+        if not countable:
             continue
-        share = sum(1 for label in stratum_labels if label in counted[kind]) / len(stratum_labels)
+        share = sum(1 for kind, label in countable if label in counted[kind]) / len(countable)
         hits += population[stratum] * share
         total += population[stratum]
     return hits / total if total else 0.0
@@ -265,7 +284,9 @@ def cmd_sample(settings: Settings, documents: _DocumentSource) -> str:
     sample = draw_sample(frame)
     failed = _draw_pages(sample, documents, folder)
     (folder / "sample.jsonl").write_text("".join(json.dumps(r) + "\n" for r in sample))
-    population = Counter(_stratum(sample_kind(r), r["fatal"]) for r in frame)
+    population = Counter(
+        _stratum(kind, r["fatal"]) for r in frame if (kind := sample_kind(r)) is not None
+    )
     (folder / "population.json").write_text(json.dumps(population))
     note = f", {failed} failed to render" if failed else ""
     return f"{len(sample)} pages drawn to {folder}{note}"
@@ -402,11 +423,14 @@ def score_text(
             agree += 1
         elif fields.get("correct label"):
             confusion[(labels.get(n, "?"), fields["correct label"])] += 1
-    by_stratum: dict[str, list[str]] = {}
+    # Each entry pairs a page's own frame kind with its final label (decision A, fix round
+    # 2), so the photo-only stratum -- which can mix image-only and text-and-image pages --
+    # is judged page by page rather than by one word set for the whole stratum.
+    by_stratum: dict[str, list[tuple[str, str]]] = {}
     for row in sample:
         n = int(str(row["n"]))
         if n in final:
-            by_stratum.setdefault(str(row["stratum"]), []).append(final[n])
+            by_stratum.setdefault(str(row["stratum"]), []).append((str(row["kind"]), final[n]))
     share = weighted_word_share(by_stratum, population)
     mixed_rows = [
         (float(str(r["image_area_share"])), final[int(str(r["n"]))])
@@ -416,13 +440,14 @@ def score_text(
     evidence = cut_evidence(mixed_rows)
     cut = mixed_cut(mixed_rows)
     low, high = wilson(agree, checked)
-    # The same total the weighted estimate divides by (fix round 1, M6): only image-bearing
-    # strata with at least one label contribute, matching weighted_word_share's own rule.
+    # The same total the weighted estimate divides by (fix round 1, M6; per-page kind, fix
+    # round 2): only strata with at least one entry of a counted (image-bearing) kind
+    # contribute, matching weighted_word_share's own rule.
     weighted_total = (
         sum(
             population.get(s, 0)
-            for s, stratum_labels in by_stratum.items()
-            if s.split("/")[0] in WORDS and stratum_labels
+            for s, entries in by_stratum.items()
+            if any(kind in WORDS for kind, _label in entries)
         )
         or 1
     )
@@ -435,13 +460,15 @@ def score_text(
         "## labels by stratum (Andy's label where he checked the page; its own word share and "
         "population weight beside the weighted estimate, M6)",
     ]
-    for stratum, stratum_labels in sorted(by_stratum.items()):
-        counts = Counter(stratum_labels)
-        kind = stratum.split("/")[0]
-        counted = WORDS.get(kind)
-        if counted and stratum_labels:
-            stratum_share = sum(1 for label in stratum_labels if label in counted) / len(
-                stratum_labels
+    for stratum, entries in sorted(by_stratum.items()):
+        counts = Counter(label for _kind, label in entries)
+        # Each entry judged by its own kind (decision A): a mixed photo-only stratum has no
+        # single kind to look up, but every entry that has a countable kind is used exactly
+        # as an ordinary page of that kind would be.
+        countable = [(kind, label) for kind, label in entries if kind in WORDS]
+        if countable:
+            stratum_share = sum(1 for kind, label in countable if label in WORDS[kind]) / len(
+                countable
             )
             weight = population.get(stratum, 0) / weighted_total
             detail = f", {stratum_share:.1%} hold words, {weight:.1%} of the weighted estimate"

@@ -72,11 +72,98 @@ def test_photo_only_pages_are_their_own_stratum() -> None:
 
 def test_weighted_share_weights_each_stratum_by_its_population() -> None:
     labels = {
-        "image only/fatal": ["handwriting"] * 1 + ["photograph"] * 1,
-        "text and image/fatal": ["typed text"] * 2,
+        "image only/fatal": [("image only", "handwriting"), ("image only", "photograph")],
+        "text and image/fatal": [
+            ("text and image", "typed text"),
+            ("text and image", "typed text"),
+        ],
     }
     population = {"image only/fatal": 100, "text and image/fatal": 300}
     assert inv.weighted_word_share(labels, population) == 0.125  # (100 x 1/2 + 0) / 400
+
+
+def test_a_photo_only_page_holds_words_by_its_own_kind() -> None:
+    """Decision A (fix round 2): the photo-only stratum has no single word set of its own --
+    each page is judged exactly like an ordinary page of its own kind."""
+    # A photo-only page whose own kind is text-and-image: typed text is already in its text
+    # layer, so it does not count (same rule as an ordinary text-and-image page).
+    assert (
+        inv.weighted_word_share(
+            {"photo-only/fatal": [("text and image", "typed text")]}, {"photo-only/fatal": 10}
+        )
+        == 0.0
+    )
+    # A photo-only page whose own kind is image-only: nothing else holds its typed text.
+    assert (
+        inv.weighted_word_share(
+            {"photo-only/fatal": [("image only", "typed text")]}, {"photo-only/fatal": 10}
+        )
+        == 1.0
+    )
+    # A photo-only stratum mixing both kinds is judged page by page, not as one kind.
+    mixed = inv.weighted_word_share(
+        {
+            "photo-only/fatal": [
+                ("image only", "typed text"),
+                ("text and image", "typed text"),
+            ]
+        },
+        {"photo-only/fatal": 10},
+    )
+    assert mixed == 0.5
+
+
+def test_a_non_image_bearing_photo_only_row_takes_no_kind() -> None:
+    """Decision A: a text-only or blank photo-only row is drawn and weighted in neither pool."""
+    assert inv.sample_kind({"photo_only": True, "kind": "text only"}) is None
+    assert inv.sample_kind({"photo_only": True, "kind": "blank"}) is None
+    assert inv.sample_kind({"photo_only": True, "kind": "image only"}) == "photo-only"
+    assert inv.sample_kind({"photo_only": True, "kind": "text and image"}) == "photo-only"
+    assert inv.sample_kind({"kind": "text only"}) == "text only"  # ordinary pages are untouched
+
+
+def test_photo_only_draw_excludes_non_image_bearing_rows_and_still_totals_330() -> None:
+    """Decision A: the photo-only pool never draws a text-only or blank photo-only page, and
+    the whole sample still totals 330 and is still deterministic at seed 20260924."""
+    photos: list[dict[str, object]] = []
+    for i in range(40):
+        photos.append(
+            {
+                "case_id": f"P{i}",
+                "mkey": i,
+                "fatal": i % 2 == 0,
+                "document": 9,
+                "page": i,
+                "pages": 99,
+                "kind": "image only" if i % 2 == 0 else "text and image",
+                "photo_only": True,
+            }
+        )
+    excluded: list[dict[str, object]] = []
+    for i in range(60):
+        excluded.append(
+            {
+                "case_id": f"Q{i}",
+                "mkey": 10_000 + i,  # a mkey range no other row in this frame ever uses
+                "fatal": i % 2 == 0,
+                "document": 9,
+                "page": i,
+                "pages": 99,
+                "kind": "text only" if i % 2 == 0 else "blank",
+                "photo_only": True,
+            }
+        )
+    frame = _frame() + photos + excluded
+    first = inv.draw_sample(frame)
+    again = inv.draw_sample(frame)
+    assert len(first) == 330
+    assert first == again
+    photo_only_rows = [r for r in first if str(r["stratum"]).startswith("photo-only")]
+    assert sum(1 for r in photo_only_rows if r["stratum"] == "photo-only/fatal") == 15
+    assert sum(1 for r in photo_only_rows if r["stratum"] == "photo-only/non-fatal") == 15
+    assert all(r["kind"] in ("image only", "text and image") for r in photo_only_rows)
+    excluded_mkeys = {r["mkey"] for r in excluded}
+    assert not any(r["mkey"] in excluded_mkeys for r in first)
 
 
 def test_the_cut_off_is_the_largest_run_of_admissible_cuts() -> None:
@@ -137,11 +224,21 @@ def test_score_text_reports_cut_evidence_and_stratum_shares() -> None:
     """Fix round 1: I4 (the cut's evidence), M5 (a zero cut's wording) and M6 (per-stratum
     word share and population weight beside the weighted estimate) on a small fixture."""
     sample: list[dict[str, object]] = [
-        {"n": 1, "stratum": "image only/fatal", "image_area_share": 1.0},
-        {"n": 2, "stratum": "image only/fatal", "image_area_share": 1.0},
-        {"n": 3, "stratum": "text and image/fatal", "image_area_share": 0.01},
-        {"n": 4, "stratum": "text and image/fatal", "image_area_share": 0.01},
-        {"n": 5, "stratum": "text only/fatal", "image_area_share": 0.0},
+        {"n": 1, "stratum": "image only/fatal", "kind": "image only", "image_area_share": 1.0},
+        {"n": 2, "stratum": "image only/fatal", "kind": "image only", "image_area_share": 1.0},
+        {
+            "n": 3,
+            "stratum": "text and image/fatal",
+            "kind": "text and image",
+            "image_area_share": 0.01,
+        },
+        {
+            "n": 4,
+            "stratum": "text and image/fatal",
+            "kind": "text and image",
+            "image_area_share": 0.01,
+        },
+        {"n": 5, "stratum": "text only/fatal", "kind": "text only", "image_area_share": 0.0},
     ]
     labels = {
         1: "handwriting",
@@ -169,7 +266,12 @@ def test_score_text_reports_cut_evidence_and_stratum_shares() -> None:
 def test_score_text_prints_no_cut_when_nothing_is_admissible() -> None:
     """Fix round 1, M5: a cut of 0 reads as 'no cut', not 'under 0%'."""
     sample: list[dict[str, object]] = [
-        {"n": 1, "stratum": "text and image/fatal", "image_area_share": 0.01},
+        {
+            "n": 1,
+            "stratum": "text and image/fatal",
+            "kind": "text and image",
+            "image_area_share": 0.01,
+        },
     ]
     labels = {1: "handwriting"}
     population = {"text and image/fatal": 100}
