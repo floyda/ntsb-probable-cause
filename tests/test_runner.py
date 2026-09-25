@@ -2526,7 +2526,7 @@ def test_estimated_cost_reserves_the_maximum_output_at_the_output_price() -> Non
         sample="dev-400", arm="ceiling", model="anthropic/claude-sonnet-5", price_variant="standard"
     )
     price = sources.price_of("anthropic/claude-sonnet-5")
-    call_reserve = ModelSettings().max_output_tokens * price.output_usd_per_mtok / 1e6
+    call_reserve = spec.max_output_tokens * price.output_usd_per_mtok / 1e6
     assert estimated_cost_usd("", "", spec) == pytest.approx(ANSWERING_TURNS * call_reserve)
     assert estimated_cost_usd("x" * 4000, "", spec) == pytest.approx(
         ANSWERING_TURNS * (call_reserve + 1000 * price.input_usd_per_mtok / 1e6)
@@ -2786,6 +2786,9 @@ def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
         price_variant="standard",
         model="anthropic/claude-sonnet-5",
         cap_usd=0.08,
+        # The costs above were measured at a 2,000-token reply budget; pinned so the
+        # boundary stays where it was measured when the default changes (decision 0084).
+        max_output_tokens=2000,
         expected_cost_per_case_usd=0.001,
     )
     run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
@@ -3152,7 +3155,9 @@ def test_resume_refuses_a_different_reply_budget(
     """
     _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
     other = FakeBatchClient(handlers=[])
-    with pytest.raises(ConfigurationError, match="max_output_tokens was 2000"):
+    recorded = RunSpec.max_output_tokens
+    assert recorded != 4000
+    with pytest.raises(ConfigurationError, match=f"max_output_tokens was {recorded}"):
         runner(tmp_path, RecordingFakeClient([]), batch=other).run(
             RunSpec(
                 sample="dev-400",

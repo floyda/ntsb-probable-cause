@@ -84,8 +84,9 @@ class RunSpec:
     include_case_number: bool = False
     model: str = sources.DEFAULT_MODEL
     reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT
-    # The reply budget, reasoning included (S2.6 Task 9A). Recorded on every run.
-    max_output_tokens: int = 2000
+    # The reply budget, reasoning included (S2.6 Task 9A). Recorded on every run. Decision 0084:
+    # 8,000, measured on dev-400 (docs/results/s26-reply-budget-dev.txt).
+    max_output_tokens: int = 8000
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
     # Decision 0083: $40 a month during the development stages, until the live board (S4).

@@ -124,3 +124,4 @@ under `docs/specs/` and the record links to it.
 | [0081](0081-transcription-is-evidence-preparation.md) | Transcription is evidence preparation, costed apart from the agent's per-case cap | Accepted; extends 0030 |
 | [0082](0082-the-v3-probe-pictures-alongside-text.md) | The v3 probe: pictures alongside the text, on development cases only | Accepted |
 | [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030 |
+| [0084](0084-the-reply-budget-is-8000-tokens.md) | The reply budget is 8,000 tokens, measured on dev-400 by a rule fixed before the runs | Accepted |
