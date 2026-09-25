@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
@@ -139,7 +140,7 @@ def test_fmt_n_includes_the_count() -> None:
 def test_provenance_shows_status_commit_and_totals(run_record: RunRecord) -> None:
     text = report.provenance(run_record)
     assert text.startswith(f"run {run_record.run_id} [complete]")
-    assert "sample=heldout-40 arm=ceiling model=openai/gpt-5.6-luna" in text
+    assert "sample=heldout-40 arm=ceiling evidence=v1 model=openai/gpt-5.6-luna" in text
     assert f"commit={run_record.commit_sha} " in text
     assert "cases=40 total_cost_usd=1.2300" in text
 
@@ -562,3 +563,28 @@ def test_comparison_heading_labels_a_cross_model_comparison(run_record: RunRecor
         "reasoning medium, against openai/gpt-5.6-luna at c717ab5, reasoning provider default "
         "-- run old:"
     )
+
+
+def test_a_run_from_before_s26_reads_as_v1(run_record: RunRecord) -> None:
+    legacy = run_record.model_dump()
+    legacy.pop("evidence_version", None)
+    assert RunRecord.model_validate(legacy).evidence_version == "v1"
+
+
+def test_comparing_across_versions_is_refused_without_the_flag(run_record: RunRecord) -> None:
+    v2 = run_record.model_copy(update={"evidence_version": "v2", "run_id": "r-v2"})
+    with pytest.raises(ConfigurationError, match="decision 0076"):
+        report.refuse_cross_version(v2, run_record, versions_compared=False)
+    report.refuse_cross_version(v2, run_record, versions_compared=True)
+    report.refuse_cross_version(run_record, run_record, versions_compared=False)
+
+
+def test_a_cross_version_comparison_is_labelled(run_record: RunRecord) -> None:
+    v2 = run_record.model_copy(update={"evidence_version": "v2"})
+    heading = report.comparison_heading(v2, run_record)
+    assert heading.startswith("evidence-version comparison (decision 0076): v2 against v1 -- ")
+    assert report.comparison_heading(run_record, run_record).startswith("against ")
+
+
+def test_provenance_names_the_version(run_record: RunRecord) -> None:
+    assert "evidence=v1" in report.provenance(run_record)

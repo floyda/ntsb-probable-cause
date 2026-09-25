@@ -3023,3 +3023,30 @@ def test_batch_failed_case_records_every_reply_including_an_earlier_cut_off_one(
     assert case.reply_completion_tokens == (2000, 300, 250, 260)
     assert case.reply_reasoning_tokens == (1900, 250, 200, 210)
     assert case.reply_finish_reasons == ("length", "stop", "stop", "stop")
+
+
+def test_spec_json_records_the_evidence_version_after_the_arm() -> None:
+    spec = RunSpec(sample="dev-400", arm="B")
+    keys = list(spec_json(spec, commit_sha="abc1234", dirty=False, case_ids=()))
+    assert keys[keys.index("arm") + 1] == "evidence_version"
+    assert (
+        spec_json(spec, commit_sha="abc1234", dirty=False, case_ids=())["evidence_version"] == "v1"
+    )
+
+
+def test_run_refuses_an_evidence_version_that_is_not_built_yet(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Until Task 14, only v1 has a reader; the refusal fires before any model call."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        evidence_version="v2",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.0,
+    )
+    with pytest.raises(ConfigurationError, match="not built yet"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []

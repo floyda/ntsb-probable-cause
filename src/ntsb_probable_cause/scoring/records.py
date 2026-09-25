@@ -12,6 +12,10 @@ from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 
+# Decision 0076: what the docket holds once read. v1 = text layers (S2); v2 = + transcriptions
+# (S2.6); v3 = + pictures alongside the text (S2.6 probe). An axis, not an arm.
+EvidenceVersion = Literal["v1", "v2", "v3"]
+
 
 class RunRecord(BaseModel):
     """One evaluation run: what was run, against what sample and arm, and its totals."""
@@ -21,6 +25,8 @@ class RunRecord(BaseModel):
     run_id: str
     sample: str
     arm: Literal["A", "B", "ceiling"]
+    # "v1" on a run from before S2.6, which read text layers only (0076 item 2).
+    evidence_version: EvidenceVersion = "v1"
     exclusions: tuple[str, ...]
     includes: tuple[str, ...]
     prompt_version: str

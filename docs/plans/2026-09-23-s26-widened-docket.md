@@ -2583,7 +2583,7 @@ git commit -m "S2.6: the \$40 development budget (0083); preparation spend count
 
 **Example of what the refusal prevents.** `ntsb-eval report <B-v2 run> --against <B-v1 run>` without the flag stops with: `… reads the docket at evidence version v2 and … at v1; a comparison across versions is not an arm comparison (decision 0076). Pass --versions-compared to print it under its own heading.` With the flag, the comparison prints under `evidence-version comparison (decision 0076): v2 against v1 -- against <id>:`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_report.py` (reuse the file's own `RunRecord`-building helper or the `run_record` fixture from `conftest.py`, via `model_copy(update=...)`):
 
@@ -2655,12 +2655,12 @@ def test_an_old_ledger_gains_a_versioned_table_below_it(
 
 In `tests/test_eval_app.py`, follow the existing report-command tests: two run folders on different versions; `report A --against B` exits non-zero with the 0076 message; with `--versions-compared` it prints the labelled heading.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_report.py tests/test_runner.py tests/test_ledger.py tests/test_eval_app.py -v -k "version or ledger"`
 Expected: FAIL — `RunRecord` has no `evidence_version`; `report` has no `refuse_cross_version`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `scoring/records.py`:
 
@@ -2755,12 +2755,12 @@ Delete `_HEADER` once nothing uses it (vulture will say).
 
 `apps/eval/__main__.py`: `run_p.add_argument("--evidence-version", choices=("v1", "v2", "v3"), default="v1")`, passed as `evidence_version=args.evidence_version` into `RunSpec`; `report_p.add_argument("--versions-compared", action="store_true", help="compare runs on different evidence versions, under a labelled heading (0076)")`; in `_cmd_report`, before the heading, `report.refuse_cross_version(run_record, other_record, versions_compared=args.versions_compared)`; `resolve_latest` gains `version: str = "v1"` and skips `record.evidence_version != version`, with one docstring sentence: `A run on another evidence version is skipped too (0076): "latest B" means the latest B on v1 unless asked.` A `ConfigurationError` from `report` must reach the user as a one-line error the way the command's other refusals do; follow the existing pattern in `main`.
 
-- [ ] **Step 4: Run the tests, then the whole check**
+- [x] **Step 4: Run the tests, then the whole check**
 
 Run: the Step 2 command, then `make check`
 Expected: PASS; green. Tests that assert the exact `provenance` text or the exact `spec_json` keys gain the new field; say so in the commit message.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/ apps/eval/__main__.py tests/ docs/plans/2026-09-23-s26-widened-docket.md
@@ -7010,3 +7010,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 
   Corrected 2026-09-25 (fix round 2, re-review): the claim above, "this can only ever raise a proposed budget, never lower one", is false -- adding a reply to a p99-based pool can move the percentile either way (`new_budget([1000] * 197 + [5000, 6000], []) == 16000`; adding one 500-token reply to that same pool gives `4000`, because the extra, smaller value shifts which element the 99th percentile lands on). The true reason the ruling is sound has nothing to do with direction: it adds *real, finished* replies to the pool under the unchanged rule, so the percentile describes every completed reply rather than a subset of them, whichever way that moves the proposed number. Separately, `_cases_with_unrecoverable_replies`'s `cost_usd > 0` test was looser than Task 9C itself for a scored case: a scored case's `cost_usd` is not a reliable "made no call" signal the way a failed "cap"/"leak" case's is, so a scored, pre-Task-9C case that happened to read `cost_usd == 0.0` and carried no per-reply tuples was wrongly treated as complete. Renamed `_unrecoverable_replies`, it now counts a scored case without tuples unconditionally (regardless of cost) and a failed case only where it also made a call; the "unavailable" report line now names which kind of case (scored, failed, or both) is missing data, via a new `_unavailable_reason` helper, rather than one wording covering either. Test added: a zero-cost, pre-Task-9C scored case beside a good scored case gives "per-reply data unavailable", not a number. `make check` green (1263 passed, coverage 97.70%).
 - 2026-09-25, Task 7: two `tests/test_runner.py` tests (`test_budget_refusal_before_any_call`, `test_run_is_refused_by_another_runs_open_reservation`) relied on `RunSpec.budget_usd`'s old $25 default to trip the budget guard against a spent/reserved figure of $24.99. Both now pin `budget_usd=25.0` explicitly on their `RunSpec`; their expected numbers and assertions are unchanged. `tests/test_sources_settings.py::test_openrouter_defaults` is updated from `25.0` to `40.0` since it asserts the default itself.
+- 2026-09-25, Task 8: the evidence-version refusal added to `Runner.run` (one `if`/`raise` beside the other pre-flight refusals) pushed the method to 51 statements, one over ruff's `PLR0915` limit of 50. `def run(...)` gains `# noqa: PLR0915 -- the evidence-version refusal adds one line to an already-long method.`, the same pattern already used on `Runner.__init__`'s `PLR0913`. No other change to the brief's literal code. Tests updated for the new field: `test_report.py::test_provenance_shows_status_commit_and_totals` now expects `"sample=heldout-40 arm=ceiling evidence=v1 model=openai/gpt-5.6-luna"` in `provenance`'s text (the brief's own `provenance` change inserts `evidence=v1` before `model=`); no `spec_json` key-list test existed before this task to update. `make check` green (1275 passed, coverage 97.72%).

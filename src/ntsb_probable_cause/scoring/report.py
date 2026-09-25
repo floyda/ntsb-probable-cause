@@ -16,6 +16,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import baseline
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.metrics import (
@@ -225,7 +226,8 @@ def provenance(record: RunRecord) -> str:
     finished = record.finished.isoformat() if record.finished is not None else "-"
     return (
         f"run {record.run_id} [{status}]\n"
-        f"sample={record.sample} arm={record.arm} model={record.model} "
+        f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
+        f"model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
         f"max_output_tokens={record.max_output_tokens} "
         f"price_variant={record.price_variant}\n"
@@ -329,7 +331,23 @@ def failure_summary(results: Sequence[CaseResult]) -> str:
     return "failures by reason: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
 
 
-def comparison_heading(this: RunRecord, other: RunRecord) -> str:
+def refuse_cross_version(this: RunRecord, other: RunRecord, *, versions_compared: bool) -> None:
+    """Two runs on different evidence versions are not an arm comparison (decision 0076).
+
+    Refused unless the caller asked for an evidence-version comparison by name, which is then
+    printed under its own heading, so the output cannot be mistaken for "choosing helps".
+    """
+    if this.evidence_version == other.evidence_version or versions_compared:
+        return
+    raise ConfigurationError(
+        f"{this.run_id} reads the docket at evidence version {this.evidence_version} and "
+        f"{other.run_id} at {other.evidence_version}; a comparison across versions is not an "
+        "arm comparison (decision 0076). Pass --versions-compared to print it under its own "
+        "heading."
+    )
+
+
+def _model_heading(this: RunRecord, other: RunRecord) -> str:
     """The line above a paired comparison; labels one made across models or levels.
 
     Decision 0031 item 2: a table across models is separate and labelled, never a bar. The
@@ -346,6 +364,17 @@ def comparison_heading(this: RunRecord, other: RunRecord) -> str:
         f"model comparison (decision 0031 item 2): {side(this)}, against {side(other)} "
         f"-- run {other.run_id}:"
     )
+
+
+def comparison_heading(this: RunRecord, other: RunRecord) -> str:
+    """The line above a paired comparison: labelled across models (0031) and versions (0076)."""
+    heading = _model_heading(this, other)
+    if this.evidence_version != other.evidence_version:
+        return (
+            f"evidence-version comparison (decision 0076): {this.evidence_version} against "
+            f"{other.evidence_version} -- {heading}"
+        )
+    return heading
 
 
 def _stream_raws_of_split(processed: Path, split: Split) -> Iterator[dict[str, object]]:

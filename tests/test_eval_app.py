@@ -31,6 +31,7 @@ from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
+    EvidenceVersion,
     RunRecord,
     StepRecord,
     write_jsonl,
@@ -881,6 +882,7 @@ def _write_min_report_run(  # noqa: PLR0913 -- a test-only builder, one keyword 
     model: str,
     commit_sha: str,
     reasoning_effort: str | None = None,
+    evidence_version: EvidenceVersion = "v1",
 ) -> None:
     """A run folder ``report`` can act on: one failed, unscored case (fix round 1, Finding).
 
@@ -900,6 +902,7 @@ def _write_min_report_run(  # noqa: PLR0913 -- a test-only builder, one keyword 
                 finished=now,
                 cost_usd=1.0,
                 reasoning_effort=reasoning_effort,
+                evidence_version=evidence_version,
             )
         ],
     )
@@ -976,6 +979,32 @@ def test_report_against_same_model_uses_the_plain_heading(
     assert "failures by reason:" in out
     assert "against other-run:" in out
     assert "model comparison" not in out
+
+
+def test_report_against_a_different_version_is_refused_without_the_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 0076: a comparison across evidence versions is refused unless labelled."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+
+    _write_min_report_run(
+        runs_dir, "this-run", "CASE1", model="m", commit_sha="abc", evidence_version="v2"
+    )
+    _write_min_report_run(
+        runs_dir, "other-run", "CASE2", model="m", commit_sha="abc", evidence_version="v1"
+    )
+
+    exit_code = main(["report", "this-run", "--against", "other-run"])
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "decision 0076" in err
+
+    exit_code = main(["report", "this-run", "--against", "other-run", "--versions-compared"])
+    assert exit_code is None or exit_code == 0
+    out = capsys.readouterr().out
+    assert "evidence-version comparison (decision 0076): v2 against v1" in out
 
 
 def test_release_clears_a_dead_reservation(

@@ -61,6 +61,7 @@ from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and
 from ntsb_probable_cause.scoring.metrics import CaseScores, score_case
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
+    EvidenceVersion,
     RunRecord,
     StepRecord,
     fingerprint,
@@ -76,6 +77,9 @@ class RunSpec:
 
     sample: str
     arm: Literal["A", "B", "ceiling"]
+    # Decision 0076: the evidence version this run reads the docket at. Refused past "v1"
+    # until the reader that builds it exists (Task 14 for v2, Task 16 for v3).
+    evidence_version: EvidenceVersion = "v1"
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
     model: str = sources.DEFAULT_MODEL
@@ -121,6 +125,7 @@ def spec_json(
     return {
         "sample": spec.sample,
         "arm": spec.arm,
+        "evidence_version": spec.evidence_version,
         "exclusions": sorted(role.value for role in spec.exclusions),
         "include_case_number": spec.include_case_number,
         "model": spec.model,
@@ -854,7 +859,7 @@ class Runner:
         self._now = now
         self._docket = docket
 
-    def run(
+    def run(  # noqa: PLR0915 -- the evidence-version refusal adds one line to an already-long method.
         self,
         spec: RunSpec,
         raws: Sequence[Mapping[str, object]],
@@ -896,6 +901,9 @@ class Runner:
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
+        if spec.evidence_version != "v1":
+            # Replaced in Task 14 (v2) and Task 16 (v3) by the readers that build them.
+            raise ConfigurationError(f"evidence version {spec.evidence_version} is not built yet")
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
@@ -928,6 +936,7 @@ class Runner:
                 run_id=run_id,
                 sample=spec.sample,
                 arm=spec.arm,
+                evidence_version=spec.evidence_version,
                 exclusions=tuple(sorted(e.value for e in spec.exclusions)),
                 includes=("case_number",) if spec.include_case_number else (),
                 prompt_version=prompt.PROMPT_VERSION,

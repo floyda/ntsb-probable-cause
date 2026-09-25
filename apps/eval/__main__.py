@@ -57,8 +57,13 @@ def answering_run_record(folder: Path) -> RunRecord:
     return records[0]
 
 
-def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None = None) -> str:
+def resolve_latest(
+    runs_dir: Path, arm: str, sample: str, *, model: str | None = None, version: str = "v1"
+) -> str:
     """The newest *completed, unmodified* run id for one arm and sample.
+
+    A run on another evidence version is skipped too (0076): "latest B" means the latest B
+    on v1 unless asked.
 
     An aborted run (``finished is None``) is skipped (fix round 1, item 9): ``make bars``
     resolving ``--latest`` to a partial run would silently report and publish it as if it
@@ -88,6 +93,8 @@ def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None =
         if record.exclusions or record.includes:
             continue
         if model is not None and record.model != model:
+            continue
+        if record.evidence_version != version:
             continue
         candidates.append((folder.name, record.model))
     if not candidates:
@@ -133,6 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p = commands.add_parser("run", help="run one evaluation arm over a sample")
     run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
+    run_p.add_argument("--evidence-version", choices=("v1", "v2", "v3"), default="v1")
     run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
     run_p.add_argument("--include", action="append", default=[], choices=("case_number",))
     run_p.add_argument("--model", default=RunSpec.model)
@@ -161,6 +169,11 @@ def _build_parser() -> argparse.ArgumentParser:
     report_p.add_argument("--latest", nargs=2, metavar=("ARM", "SAMPLE"))
     report_p.add_argument("--against")
     report_p.add_argument("--against-latest", nargs=2, metavar=("ARM", "SAMPLE"))
+    report_p.add_argument(
+        "--versions-compared",
+        action="store_true",
+        help="compare runs on different evidence versions, under a labelled heading (0076)",
+    )
     _add_common(report_p)
 
     judge_p = commands.add_parser("judge", help="grade one run's prose against the withheld text")
@@ -211,6 +224,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
     spec = RunSpec(
         sample=args.sample,
         arm=args.arm,
+        evidence_version=args.evidence_version,
         exclusions=frozenset(args.exclude),
         include_case_number="case_number" in args.include,
         model=args.model,
@@ -283,6 +297,9 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
         other_record = answering_run_record(settings.runs_dir / other_id)
+        report.refuse_cross_version(
+            run_record, other_record, versions_compared=args.versions_compared
+        )
         heading = report.comparison_heading(run_record, other_record)
         text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
     reservations = open_reservations(settings.runs_dir)
