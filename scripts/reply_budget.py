@@ -8,19 +8,26 @@ Status
     reasoning_tokens=...)`` bracket (S2.6 Task 9A, ``scoring/runner.py``'s ``_reply_detail``)
     -- a failure text from before that task carries no such bracket, and is counted under
     ``"unrecorded"`` rather than raising; their reasoning tokens (min/median/max); the
-    successful cases' per-reply token totals (median/p90/p99/max, from
-    ``StepRecord.completion_tokens`` and ``.reasoning_tokens``); the rule's verdict
-    (confirmed / not confirmed, with the counts behind it, both fixed in the Task 9A brief
-    before any run); and, if confirmed, the new budget by ``new_budget``'s fixed rule.
+    successful cases' *per-reply* token spread (median/p90/p99/max, one figure per reply that
+    finished ``"stop"``); truncated-then-recovered replies -- a reply that finished
+    ``"length"`` inside an otherwise successful case, because a schema retry after it
+    succeeded -- counted separately, on both sides of the rule (their reasoning tokens raise
+    the floor `new_budget` sets, and they count as failures in the confirmation verdict,
+    alongside the cases that failed outright); the rule's verdict (confirmed / not confirmed,
+    with the counts behind it, both fixed in the Task 9A brief before any run); and, if
+    confirmed, the new budget by ``new_budget``'s fixed rule.
 
-    ``completion_tokens`` already includes reasoning tokens as a subset, not in addition to
-    them (``tests/fixtures/openrouter/structured.json``: ``completion_tokens=188``,
-    ``reasoning_tokens=161``) -- so it is the figure that counts against
-    ``max_output_tokens``, and what ``new_budget``'s ``successful`` argument is built from.
-    ``StepRecord`` aggregates every reply that went into a case (up to four, with retries),
-    not one reply alone; per the brief, this script uses that total as the stage-1 reply's
-    own figure for a successful case, since the two are not recorded separately, and says so
-    in its own output rather than presenting it as an exact per-reply count.
+    Fix round 2 (2026-09-25, code review): the first version fed `new_budget` a *case's*
+    summed ``StepRecord.completion_tokens`` -- stage 1 plus stage 2, plus any retries -- and
+    called it "the stage-1 reply's own figure", which it is not: `max_output_tokens` bounds
+    one reply, not a case's total across up to four calls. On S2's dev-400 arm B run the gap
+    was concrete: summed completion tokens gave p99=3,555 (-> proposed budget 8,000); the
+    correct per-reply p99 gives 4,000. `StepRecord` now also records
+    ``reply_completion_tokens``/``reply_reasoning_tokens``/``reply_finish_reasons`` -- the
+    individual figures behind those sums, in call order -- and this script reads those, not
+    the sums, wherever it can. A run whose ``steps.jsonl`` predates that fix carries none of
+    the three tuples; this script says so explicitly (`per-reply data unavailable`) rather
+    than silently falling back to the old, wrong, summed-total reading.
 
     There is no committed result yet: the confirmation run this script is written to read
     (plan Step 6, ``make s26-reply-budget``) has not been submitted as of this commit, so
@@ -41,7 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ntsb_probable_cause.scoring import report
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 
 BUDGET_STEPS = (4_000, 8_000, 16_000)
@@ -111,6 +118,75 @@ def _parse_detail(failure: str) -> _Detail:
     )
 
 
+@dataclass(frozen=True)
+class _Reply:
+    """One reply's own figures, read from a ``StepRecord``'s per-reply tuples."""
+
+    completion_tokens: int
+    reasoning_tokens: int | None
+    finish_reason: str | None
+
+
+def _step_replies(step: StepRecord) -> list[_Reply] | None:
+    """The individual replies behind one successful case's step, or ``None`` if unrecorded.
+
+    Fix round 2: a ``StepRecord`` written before this fix carries an empty
+    ``reply_completion_tokens`` -- there is nothing here to read a per-reply figure from, and
+    the caller must say so rather than substituting the case-level sum.
+    """
+    if not step.reply_completion_tokens:
+        return None
+    count = len(step.reply_completion_tokens)
+    reasoning = step.reply_reasoning_tokens or (None,) * count
+    finishes = step.reply_finish_reasons or (None,) * count
+    return [
+        _Reply(completion_tokens=c, reasoning_tokens=r, finish_reason=f)
+        for c, r, f in zip(step.reply_completion_tokens, reasoning, finishes, strict=True)
+    ]
+
+
+@dataclass(frozen=True)
+class _Classified:
+    """The per-reply figures, split into the two sides the rule reads (fix round 2)."""
+
+    successful: list[int]
+    successful_reasoning: list[int]
+    recovered_tuples: list[tuple[str, int]]  # for the verdict: counted as failures too
+    recovered_reasoning: list[int]  # for new_budget's failed side
+    recovered_count: int
+
+
+def _classify_replies(available: Sequence[Sequence[_Reply]]) -> _Classified:
+    """Split every reply of every successful case into "stop" (successful) or not (recovered).
+
+    A reply that did not finish ``"stop"`` inside an otherwise successful case (``scores`` is
+    not ``None``) means a schema retry after it must have gone on to succeed, or the case
+    would have failed outright -- that reply is a truncated-then-recovered failure, not a
+    successful one, whatever the case's own outcome was.
+    """
+    successful: list[int] = []
+    successful_reasoning: list[int] = []
+    recovered_tuples: list[tuple[str, int]] = []
+    recovered_reasoning: list[int] = []
+    recovered_count = 0
+    for replies in available:
+        for reply in replies:
+            if reply.finish_reason == "stop":
+                successful.append(reply.completion_tokens)
+                if reply.reasoning_tokens is not None:
+                    successful_reasoning.append(reply.reasoning_tokens)
+            else:
+                recovered_count += 1
+                recovered_tuples.append(
+                    (reply.finish_reason or "unrecorded", reply.reasoning_tokens or 0)
+                )
+                if reply.reasoning_tokens is not None:
+                    recovered_reasoning.append(reply.reasoning_tokens)
+    return _Classified(
+        successful, successful_reasoning, recovered_tuples, recovered_reasoning, recovered_count
+    )
+
+
 def _percentile(values: Sequence[int], q: float) -> int:
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, math.ceil(q * len(ordered)) - 1)]
@@ -120,7 +196,7 @@ def _stats_line(label: str, values: Sequence[int]) -> str:
     if not values:
         return f"  {label}: no data"
     return (
-        f"  {label}: n={len(values)} median={_percentile(values, 0.5)} "
+        f"  {label}: n={len(values)} min={min(values)} median={_percentile(values, 0.5)} "
         f"p90={_percentile(values, 0.9)} p99={_percentile(values, 0.99)} max={max(values)}"
     )
 
@@ -135,8 +211,9 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
 
     Returns:
         The report text: cases, failures by reason, the reply-format failures by
-        ``finish_reason`` with their reasoning-token spread, the successful cases' per-reply
-        token spread, the rule's verdict, and (if confirmed) the new budget.
+        ``finish_reason`` with their reasoning-token spread, the successful cases'
+        per-reply token spread, truncated-then-recovered replies, the rule's verdict, and
+        (if confirmed) the new budget.
     """
     lines = [f"cases: {len(cases)}", report.failure_summary(cases)]
 
@@ -154,37 +231,69 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
     ]
     lines.append(_stats_line("reply-format failures' reasoning tokens", failed_reasoning))
 
+    # Per-reply figures: one entry per reply, not per case (a case makes up to four calls).
     successful_steps = [
         c.steps[0] for c in cases if c.failure is None and c.scores is not None and c.steps
     ]
-    successful = [s.completion_tokens for s in successful_steps]
-    successful_reasoning = [
-        s.reasoning_tokens for s in successful_steps if s.reasoning_tokens is not None
-    ]
+    per_case_replies = [_step_replies(s) for s in successful_steps]
+    available = [replies for replies in per_case_replies if replies is not None]
+    unavailable_cases = len(per_case_replies) - len(available)
+    classified = _classify_replies(available)
+    successful = classified.successful
+    successful_reasoning = classified.successful_reasoning
+    recovered_tuples = classified.recovered_tuples
+    recovered_reasoning = classified.recovered_reasoning
+    recovered_count = classified.recovered_count
+
+    per_reply_data_available = bool(available) or not per_case_replies
     lines.append(
-        "successful cases' per-reply tokens (a case's step total, taken as the stage-1 "
-        "reply's own figure when the step aggregates more than one reply; reasoning tokens "
-        "are a subset of the total, not additional to it):"
+        "successful cases' per-reply tokens (replies that finished 'stop' only; a "
+        "truncated-then-recovered reply is reported separately below, not here):"
     )
-    lines.append(_stats_line("  total (completion_tokens)", successful))
-    lines.append(_stats_line("  reasoning tokens alone", successful_reasoning))
+    if not per_reply_data_available:
+        lines.append(
+            "  unavailable: this run's steps.jsonl predates the per-reply fields "
+            "(S2.6 Task 9A fix round 2) -- no per-reply breakdown is recorded"
+        )
+    else:
+        if unavailable_cases:
+            lines.append(
+                f"  note: {unavailable_cases} successful case(s) predate the per-reply "
+                "fields and are excluded from the figures below"
+            )
+        lines.append(_stats_line("  total (completion_tokens)", successful))
+        lines.append(_stats_line("  reasoning tokens alone", successful_reasoning))
+
+    lines.append(
+        f"truncated-then-recovered replies (finished other than 'stop' inside an "
+        f"otherwise successful case): {recovered_count}"
+    )
+    lines.append(_stats_line("  their reasoning tokens", recovered_reasoning))
 
     length_failures = [(d.finish_reason, d.reasoning_tokens or 0) for d in format_failures]
+    length_failures += recovered_tuples
     confirmed = cause_confirmed(length_failures, budget=budget)
     hits = sum(1 for r, t in length_failures if r == "length" and t >= budget / 2)
     lines.append(
         f"cause {'CONFIRMED' if confirmed else 'NOT CONFIRMED'} against budget={budget} "
-        f"({hits} of {len(length_failures)} reply-format failures are length with "
-        f"reasoning >= {budget / 2:.0f})"
+        f"({hits} of {len(length_failures)} format failures (failed cases + "
+        f"truncated-then-recovered replies) are length with reasoning >= {budget / 2:.0f})"
     )
     if confirmed:
-        proposed = new_budget(successful, failed_reasoning)
-        lines.append(
-            f"new max_output_tokens: {proposed}"
-            if proposed is not None
-            else "new max_output_tokens: none of the budget steps "
-            f"({', '.join(str(s) for s in BUDGET_STEPS)}) fit"
-        )
+        if not per_reply_data_available:
+            lines.append(
+                "new max_output_tokens: cannot compute -- successful cases' per-reply "
+                "tokens are unavailable in this run"
+            )
+        else:
+            combined_failed_reasoning = failed_reasoning + recovered_reasoning
+            proposed = new_budget(successful, combined_failed_reasoning)
+            lines.append(
+                f"new max_output_tokens: {proposed}"
+                if proposed is not None
+                else "new max_output_tokens: none of the budget steps "
+                f"({', '.join(str(s) for s in BUDGET_STEPS)}) fit"
+            )
     return "\n".join(lines)
 
 

@@ -1070,6 +1070,9 @@ class Runner:
                 if any(r.usage.reasoning_tokens is not None for r in ctx.replies)
                 else None
             ),
+            reply_completion_tokens=tuple(r.usage.completion_tokens for r in ctx.replies),
+            reply_reasoning_tokens=tuple(r.usage.reasoning_tokens for r in ctx.replies),
+            reply_finish_reasons=tuple(r.finish_reason for r in ctx.replies),
             cost_usd=cost,
             cumulative_cost_usd=cost,
             commit_sha=self._sha,

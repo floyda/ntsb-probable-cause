@@ -70,6 +70,16 @@ class StepRecord(BaseModel):
     completion_tokens: int
     # None when no reply for the case reported one (S2.6 Task 9A).
     reasoning_tokens: int | None = None
+    # The per-reply figures behind the sums above, in call order (S2.6 Task 9A fix round 2):
+    # a case makes up to four replies (stage 1 + stage 2, each with one retry), and the
+    # summed fields cannot tell a single reply's own token count apart from another's, which
+    # ``scripts/reply_budget.py`` needs to set a budget from real per-call figures rather
+    # than a case-level total. Empty on a ``StepRecord`` written before this fix: the summed
+    # fields are what such a step still has, and callers must not silently substitute them
+    # for a per-reply breakdown that was never recorded.
+    reply_completion_tokens: tuple[int, ...] = ()
+    reply_reasoning_tokens: tuple[int | None, ...] = ()
+    reply_finish_reasons: tuple[str | None, ...] = ()
     cost_usd: float
     cumulative_cost_usd: float
     commit_sha: str

@@ -245,6 +245,25 @@ def test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate(
     assert dollars == pytest.approx(expected)
 
 
+def test_a_truncated_batch_result_parses_finish_reason_and_reasoning_tokens(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """S2.6 Task 9A fix round 2: the batch result path parses these the same as a sync reply.
+
+    ``probe-1`` in the fixture is a truncated reply (``finish_reason="length"``,
+    ``completion_tokens_details.reasoning_tokens=300``) -- exactly the shape a real
+    reasoning-budget failure takes through the batch endpoint, not only the sync one.
+    """
+    respx_mock.get(f"{BASE}/b-truncated").mock(
+        return_value=httpx.Response(200, json=FIX["response"])
+    )
+    status = client().poll("b-truncated")
+    truncated = next(r for r in status.results if r.custom_id == "probe-1")
+    assert truncated.reply is not None
+    assert truncated.reply.finish_reason == "length"
+    assert truncated.reply.usage.reasoning_tokens == 300
+
+
 class _FakeClock:
     """A deterministic clock/sleeper pair: ``sleep`` advances ``now`` instead of blocking.
 

@@ -2658,6 +2658,64 @@ def test_batch_retry_prompt_never_carries_the_reply_detail(
     )
 
 
+def test_batch_stage2_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2: the stage-2 twin of ``test_batch_retry_prompt_never_carries_the_reply_detail``.
+
+    Stage 1 succeeds; both stage-2 attempts are truncated, so the case fails after its
+    stage-2 retry -- the retry that ``_stage2_system`` builds is what would have carried a
+    leaked detail if ``_run_stage2_pass``'s ``need_retry`` text had not been kept separate
+    from ``ctx.schema_detail``.
+    """
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"items": [',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1850
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            truncated,
+            truncated,
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert len(fake.submitted) == 3  # stage1, stage2, stage2-retry
+    retry_request = fake.submitted[2][0]
+    assert "Your previous reply was rejected: schema:" in retry_request.system
+    assert "finish_reason=" not in retry_request.system
+    assert "reasoning_tokens=" not in retry_request.system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1850)"
+    )
+
+
 def test_sync_retry_prompt_never_carries_the_reply_detail(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:

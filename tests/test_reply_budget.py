@@ -1,5 +1,6 @@
 """scripts/reply_budget.py: the cause, confirmed or not, and the new budget by a fixed rule."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -87,8 +88,52 @@ def test_parse_detail_of_a_pre_task_9a_failure_text_is_unrecorded_not_a_crash() 
 
 # --- summarise() ---
 
+# A reply, in call order: (completion_tokens, reasoning_tokens, finish_reason).
+_Reply = tuple[int, "int | None", "str | None"]
 
-def _step(*, completion_tokens: int, reasoning_tokens: int | None) -> StepRecord:
+
+def _step(*, replies: Sequence[_Reply]) -> StepRecord:
+    """A step with both the summed fields and the per-reply tuples filled in, as ``_step``
+    (``scoring/runner.py``) fills them for a real case."""
+    completion = tuple(c for c, _r, _f in replies)
+    reasoning = tuple(r for _c, r, _f in replies)
+    finishes = tuple(f for _c, _r, f in replies)
+    reasoning_sum = sum(r for r in reasoning if r is not None) if any(reasoning) else None
+    return StepRecord(
+        case_id="c",
+        step=0,
+        arm="B",
+        condition="full",
+        day=None,
+        tool="docket",
+        arguments={},
+        reason="",
+        expected_effect="",
+        returned_roles=(),
+        not_available=(),
+        payload_fingerprint="x",
+        hypothesis=_HYPOTHESIS,
+        observed_effect="",
+        stop_reason="answered",
+        model="openai/gpt-6-luna",
+        price_variant="batch",
+        prompt_tokens=1000 * len(replies),
+        completion_tokens=sum(completion),
+        reasoning_tokens=reasoning_sum,
+        reply_completion_tokens=completion,
+        reply_reasoning_tokens=reasoning,
+        reply_finish_reasons=finishes,
+        cost_usd=0.001,
+        cumulative_cost_usd=0.001,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+
+
+def _step_without_per_reply_fields(
+    *, completion_tokens: int, reasoning_tokens: int | None
+) -> StepRecord:
+    """A step as a pre-fix-round-2 run recorded it: only the summed fields, no per-reply tuples."""
     return StepRecord(
         case_id="c",
         step=0,
@@ -117,7 +162,24 @@ def _step(*, completion_tokens: int, reasoning_tokens: int | None) -> StepRecord
     )
 
 
-def _successful_case(
+def _successful_case(case_id: str, *, replies: Sequence[_Reply]) -> CaseResult:
+    return CaseResult(
+        case_id=case_id,
+        split="dev",
+        fatal=False,
+        investigation_class="L",
+        report_flavour=None,
+        verdict_occurrence=("111230",),
+        verdict_findings=("0206304044",),
+        verdict_findings_in_cause=("0206304044",),
+        steps=(_step(replies=replies),),
+        scores=_SCORES,
+        cost_usd=0.001,
+        failure=None,
+    )
+
+
+def _successful_case_pre_fix(
     case_id: str, *, completion_tokens: int, reasoning_tokens: int | None
 ) -> CaseResult:
     return CaseResult(
@@ -129,7 +191,11 @@ def _successful_case(
         verdict_occurrence=("111230",),
         verdict_findings=("0206304044",),
         verdict_findings_in_cause=("0206304044",),
-        steps=(_step(completion_tokens=completion_tokens, reasoning_tokens=reasoning_tokens),),
+        steps=(
+            _step_without_per_reply_fields(
+                completion_tokens=completion_tokens, reasoning_tokens=reasoning_tokens
+            ),
+        ),
         scores=_SCORES,
         cost_usd=0.001,
         failure=None,
@@ -155,7 +221,7 @@ def _failed_case(case_id: str, failure: str) -> CaseResult:
 
 def test_summarise_counts_cases_and_reuses_failure_summary() -> None:
     cases = [
-        _successful_case("c1", completion_tokens=900, reasoning_tokens=100),
+        _successful_case("c1", replies=[(900, 100, "stop")]),
         _failed_case(
             "c2", "leak: sentence from analysis_narrative in evidence_narrative (12 chars withheld)"
         ),
@@ -181,8 +247,11 @@ def test_summarise_reports_reply_format_failures_by_finish_reason_and_reasoning_
     ]
     text = rb.summarise(cases, budget=2_000)
     assert "reply-format failures by finish_reason: length 2, unrecorded 1" in text
-    assert "n=2 median=1200" in text  # only the two with a reasoning-token figure (nearest-rank)
+    # only the two with a reasoning-token figure (nearest-rank median, plus fix round 2's min)
+    assert "n=2 min=1200 median=1200" in text
     assert "cause CONFIRMED against budget=2000 (2 of 3" in text
+    # no successful replies recorded here, so the floor is only the two failures' reasoning:
+    # 2 * p99(none) = 0, so the floor is max(1900, 1200) = 1900 -> smallest step above it.
     assert "new max_output_tokens: 4000" in text
 
 
@@ -209,12 +278,49 @@ def test_summarise_reports_not_confirmed_when_fewer_than_half_are_length() -> No
 
 def test_summarise_shows_successful_cases_token_spread() -> None:
     cases = [
-        _successful_case("c1", completion_tokens=900, reasoning_tokens=100),
-        _successful_case("c2", completion_tokens=1_100, reasoning_tokens=None),
+        _successful_case("c1", replies=[(900, 100, "stop")]),
+        _successful_case("c2", replies=[(1_100, None, "stop")]),
     ]
     text = rb.summarise(cases)
     assert "total (completion_tokens): n=2" in text
     assert "reasoning tokens alone: n=1" in text  # c2's None is excluded, not counted as 0
+
+
+def test_summarise_feeds_each_reply_of_a_two_reply_case_separately_not_their_sum() -> None:
+    """Fix round 2's whole point: a case's two replies (stage 1 + stage 2) are two data
+    points, 1,200 and 1,100 -- never their sum, 2,300."""
+    cases = [_successful_case("c1", replies=[(1_200, 100, "stop"), (1_100, 50, "stop")])]
+    text = rb.summarise(cases)
+    assert "total (completion_tokens): n=2 min=1100" in text
+    assert "n=2 min=50" in text  # the reasoning-tokens-alone line
+
+
+def test_summarise_splits_a_truncated_then_recovered_case_across_both_sides() -> None:
+    """A case whose first stage-1 attempt was truncated (length, reasoning 1,900), retried
+    and then succeeded (stop): the truncated reply is a failure, not a successful reply."""
+    cases = [
+        _successful_case(
+            "c1",
+            replies=[(2_000, 1_900, "length"), (600, 200, "stop"), (500, 100, "stop")],
+        )
+    ]
+    text = rb.summarise(cases, budget=2_000)
+    assert "truncated-then-recovered replies" in text
+    assert "): 1" in text
+    assert "their reasoning tokens: n=1 min=1900 median=1900 p90=1900 p99=1900 max=1900" in text
+    # the two "stop" replies (600, 500) go to the successful side, not the truncated one.
+    assert "total (completion_tokens): n=2 min=500 median=500 p90=600 p99=600 max=600" in text
+    # the truncated reply counts as a failure in the verdict, alongside any that failed outright.
+    assert "cause CONFIRMED against budget=2000 (1 of 1" in text
+
+
+def test_summarise_reports_per_reply_data_unavailable_for_a_pre_fix_run() -> None:
+    """A run recorded before fix round 2 added the per-reply tuples must say so, not fall
+    back to the old, wrong, case-level-sum reading."""
+    cases = [_successful_case_pre_fix("c1", completion_tokens=2_300, reasoning_tokens=150)]
+    text = rb.summarise(cases)
+    assert "unavailable" in text
+    assert "2300" not in text  # the old sum-based figure never appears
 
 
 def test_summarise_with_no_failures_and_no_successes_says_so() -> None:
@@ -239,7 +345,7 @@ def test_main_reads_a_run_folder_and_writes_the_report(
     write_jsonl(
         folder / "cases.jsonl",
         [
-            _successful_case("c1", completion_tokens=900, reasoning_tokens=100),
+            _successful_case("c1", replies=[(900, 100, "stop")]),
             _failed_case(
                 "c2",
                 "schema: bad json "

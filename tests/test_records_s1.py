@@ -157,6 +157,41 @@ def test_case_result_with_populated_scores_round_trips_through_jsonl(tmp_path: P
     assert isinstance(loaded.scores, CaseScores)
 
 
+def test_step_records_the_per_reply_tuples_and_round_trips_them(tmp_path: Path) -> None:
+    """S2.6 Task 9A fix round 2: the per-reply figures the summed fields cannot recover."""
+    step = _step(
+        prompt_tokens=200,
+        completion_tokens=150,
+        reasoning_tokens=120,
+        reply_completion_tokens=(100, 50),
+        reply_reasoning_tokens=(100, None),
+        reply_finish_reasons=("length", "stop"),
+    )
+    path = tmp_path / "steps.jsonl"
+    write_jsonl(path, [step])
+    (loaded,) = read_jsonl(path, StepRecord)
+    assert loaded == step
+    assert loaded.reply_completion_tokens == (100, 50)
+    assert loaded.reply_reasoning_tokens == (100, None)
+    assert loaded.reply_finish_reasons == ("length", "stop")
+
+
+def test_step_written_before_the_per_reply_fields_still_reads_with_empty_defaults(
+    tmp_path: Path,
+) -> None:
+    """A ``steps.jsonl`` line from before this fix carries none of the three tuples."""
+    path = tmp_path / "steps.jsonl"
+    old_row = json.loads(_step().model_dump_json())
+    del old_row["reply_completion_tokens"]
+    del old_row["reply_reasoning_tokens"]
+    del old_row["reply_finish_reasons"]
+    path.write_text(json.dumps(old_row) + "\n")
+    (loaded,) = read_jsonl(path, StepRecord)
+    assert loaded.reply_completion_tokens == ()
+    assert loaded.reply_reasoning_tokens == ()
+    assert loaded.reply_finish_reasons == ()
+
+
 def test_records_are_frozen_and_forbid_extra_fields() -> None:
     step = _step()
     with pytest.raises(ValidationError):
