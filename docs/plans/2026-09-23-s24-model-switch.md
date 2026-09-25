@@ -575,15 +575,15 @@ git commit -m "S2.4: the default model is GPT-6 Luna (decision 0073)"
 - Create: `docs/results/s24-bars.txt`
 - Modify: `docs/results/heldout-ledger.md` (two rows, appended by the runs)
 
-- [ ] **Step 1: Confirm the tree is clean and the switch is in**
+- [x] **Step 1: Confirm the tree is clean and the switch is in**
 
 Run: `git status --short` (empty), `make check` (green), and `uv run python -c "from ntsb_probable_cause import sources; print(sources.DEFAULT_MODEL)"` (prints `openai/gpt-6-luna`).
 
-- [ ] **Step 2: Andy runs the two held-out runs**
+- [x] **Step 2: Andy runs the two held-out runs**
 
 From the key-exporting shell script: `make s24-bars`. Note both run ids. Expected: exactly two new ledger rows, model `openai/gpt-6-luna`.
 
-- [ ] **Step 3: Write the results file**
+- [x] **Step 3: Write the results file**
 
 ```bash
 {
@@ -595,7 +595,7 @@ From the key-exporting shell script: `make s24-bars`. Note both run ids. Expecte
 
 Expected, the four comparisons of spec §5: arm B against the ceiling on GPT-6 Luna (`against <id>:`); arm B, and the ceiling, each against GPT-5.6 Luna (`model comparison (decision 0031 item 2): … at <commit> …`, which states both commits — the limit spec §5 requires); and arm B against the no-model baseline, which every `heldout-400` report prints as its `Baseline floor` line. The `failures by reason:` line under arm B is the scripted count of held-out refusals S2.6 cites.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/results/s24-bars.txt docs/results/heldout-ledger.md docs/plans/2026-09-23-s24-model-switch.md
@@ -606,7 +606,7 @@ git commit -m "S2.4: the ceiling and arm B on heldout-400 with GPT-6 Luna, the b
 
 ### Task 8: Close-out (decision 0017)
 
-- [ ] **Step 1: Documentation**
+- [x] **Step 1: Documentation**
 
 `CLAUDE.md`, appended rather than rewritten:
 - "Model access": the agent's model is `openai/gpt-6-luna`, batch for evaluation, at reasoning level `medium`, stated on every call and recorded on every run (decision 0073, replacing 0031 item 1); GPT-5.6 Luna results are history.
@@ -689,3 +689,14 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   (new money, once), and continues, while a batch submitted fresh in the same run still aborts
   the run on the same error. `recorded_batches` skips a lost id and its `lost` row, so a later
   resume never waits on it again.
+- 2026-09-24/25, Task 7: the held-out arm B run on GPT-6 Luna (`20260924T185800-7071800-heldout-400-B`,
+  $1.13) failed 64 of 400 cases: 40 guard refusals (analysis-narrative sentences, as in S2) and
+  **24 reply-format failures**, against 2 for GPT-5.6 Luna's arm B. Of the 24, 19 are truncated or
+  empty JSON and 5 give occurrence probabilities summing above 1. The likely cause of the 19 —
+  likely, not proven, because a failed case keeps no token counts — is that reasoning tokens count
+  against the reply's `max_output_tokens` (2,000), and with a docket in the prompt `medium`
+  reasoning can use the budget before the answer is written. The gate (spec §3.2) could not see
+  this: it runs the ceiling, which has no docket. The bar is therefore measured on 336 scored
+  cases, not 360. Andy's decision (option A): S2.4 closes as it stands; **carried to S2.6**: confirm
+  the cause on `dev-400` and raise the reply budget as a decision before S2.6's held-out B-v1 and
+  B-v2 runs, which share one commit and so one budget.

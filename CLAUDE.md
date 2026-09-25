@@ -156,7 +156,7 @@ one-shot ceiling is arm B without the docket; arm B with the docket runs before 
 exists. The four results that count against the loop and the six predictions are fixed in
 decision 0022 and are published whichever way they come out.
 
-**S2 measured arm B on `heldout-400`; the numbers live in `docs/results/s2-bars.txt`.** Arm B
+**S2 measured arm B on `heldout-400` on GPT-5.6 Luna; the numbers live in `docs/results/s2-bars.txt`.** Arm B
 calls every tool in a fixed order (here, the docket) and answers once. Of the 400 sample
 cases, 358 were scored (42 failed). Occurrence top-1 is 22.3% [18.3%, 26.9%] and top-3 is
 37.2% [32.3%, 42.3%]. Paired against the S1 one-shot ceiling run on 357 shared, scored cases:
@@ -170,6 +170,21 @@ than softened.** The baseline's finding recall@10 is 23.2% (flagged) and 21.0% (
 is 9.1% [6.8%, 11.6%] (flagged) and 9.6% [7.4%, 11.9%] (all) — under half the baseline's
 recall on both measures. Reading the docket in a fixed order without choosing what to read
 raises the occurrence-code result and lowers the finding-code result.
+
+**S2.4 re-measured the bars on GPT-6 Luna, the default model from S2.4 (decision 0073); the
+numbers live in `docs/results/s24-bars.txt`.** Arm B on `heldout-400`: 336 of 400 cases
+scored; occurrence top-1 26.5% [22.1%, 31.5%], top-3 39.9% [34.8%, 45.2%], finding
+recall@10 (flagged) 9.9% [7.5%, 12.4%]. The lower end of its top-1 interval, 22.1%, is
+above the no-model baseline's 17.7%; on finding codes it remains far below the baseline's
+23.2%. Paired against the GPT-6 Luna ceiling on 336 cases: top-1 +14.3% [+9.2%, +19.3%],
+finding recall@10 +7.3% [+4.8%, +9.8%] (319 cases). Paired against GPT-5.6 Luna's arm B on
+334 cases (a model comparison, decision 0031 item 2, different commits): top-1 +4.5%
+[+0.0%, +9.0%], finding recall@10 +1.4% [-0.8%, +3.6%]. The GPT-6 Luna ceiling scores
+10.5% [7.9%, 13.9%] top-1, -0.3% [-3.8%, +3.3%] against GPT-5.6 Luna's. **Arm B on GPT-6
+Luna is the bar until S2.6 replaces it.** Its 64 failures are 40 guard refusals
+(analysis-narrative sentences in docket documents) and 24 reply-format failures, most of
+them truncated replies; the reply budget is re-examined in S2.6 before its held-out runs
+(S2.4 plan Deviations, 2026-09-24/25).
 
 ## Model access
 
