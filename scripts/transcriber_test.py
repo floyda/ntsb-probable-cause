@@ -262,8 +262,9 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
             )
         elif _fraction(r.hw_format_failed, r.hw_pages) > GATE_FORMAT_FAILED_SHARE:
             notes.append(
-                f"{r.model}: out -- fewer than half the key's lines on {r.hw_format_failed} of "
-                f"{r.hw_pages} handwriting pages (gate 1 in 20, decision 0086)"
+                f"{r.model}: out -- a transcribed reply with fewer than half the key's lines "
+                f"on {r.hw_format_failed} of {r.hw_pages} handwriting pages (gate 1 in 20, "
+                "decision 0086; failed readings not counted)"
             )
         elif r.photo_invented_share > GATE_INVENTED_PHOTO_SHARE:
             notes.append(
@@ -971,10 +972,10 @@ def cmd_handwriting_recheck(settings: Settings) -> str:
     ]
     intro = (
         _HANDWRITING_LAYOUT + "<p><b>Second pass (decision 0086).</b> These are the "
-        f"{len(cards)} pages whose key was left as the prefilled draft in the first pass. Check "
-        "this page's key against the image and correct it; it was left as the prefilled draft "
-        "in the first pass. The box holds your first-pass key. Write [illegible] for a word you "
-        "cannot read either. Then say whether the key was right as it stands or corrected.</p>"
+        f"{len(cards)} pages whose key was left as the prefilled draft in the first pass. On "
+        "each page, the box holds your first-pass key: check it against the image and correct "
+        "it in the box, one line per written line. Write [illegible] for a word you cannot "
+        "read either. Then say whether the key was right as it stands or corrected.</p>"
         + _HANDWRITING_LEGEND
     )
     (folder / "handwriting-recheck.html").write_text(
@@ -1229,19 +1230,24 @@ def _result(  # noqa: PLR0913, PLR0917 -- one parameter per fact a candidate's s
 ) -> CandidateResult:
     """One candidate's counts. ``format_gate`` applies decision 0086 item 2 (second pass).
 
-    With it, a handwriting page whose reply has fewer than half the key's lines counts as
-    wrong for this model (none of its lines right) and is counted as format-failed; its lines
-    still count towards the invented lines, exactly as any other page's.
+    With it, a handwriting page whose transcribed reply has fewer than half the key's lines
+    counts as wrong for this model (none of its lines right) and is counted as format-failed;
+    its lines still count towards the invented lines, exactly as any other page's. A failed
+    reading (controller ruling on 0086, fix round 1, I1) is scored as wrong through decision
+    3's path -- ``_text`` gives it no lines -- and is never counted as a format failure: it
+    returned no reply to judge the format of.
     """
     hw_lines = hw_right = hw_inventing = hw_pages = hw_format_failed = 0
     for row in (r for r in keys if r["set"] == "handwriting"):
         key_text = key_texts[_int(row, "k")]
         key_lines = lines_of(key_text)
         version = lines_of(_text(cache, row, model, dpi=dpi))
+        record = cache.get(_key(row, model, instruction=TRANSCRIBE, dpi=dpi))
+        transcribed = record is not None and record.status == "transcribed"
         hw_pages += 1
         hw_lines += len(key_lines)
         hw_inventing += inventing_lines(key_text, version)
-        if format_gate and format_failed(key_lines, version):
+        if format_gate and transcribed and format_failed(key_lines, version):
             hw_format_failed += 1
         else:
             hw_right += line_hits(key_lines, version)
@@ -1500,8 +1506,9 @@ def _candidate_lines(r: CandidateResult, mixed_repeats: int, *, pass2: bool) -> 
     ]
     if pass2:
         lines.append(
-            "  format-failed handwriting pages (decision 0086: fewer than half the key's "
-            f"lines, scored as wrong): {r.hw_format_failed} of {r.hw_pages}"
+            "  format-failed handwriting pages (decision 0086: a transcribed reply with fewer "
+            "than half the key's lines, scored as wrong; a failed reading is scored as wrong "
+            f"but not counted here): {r.hw_format_failed} of {r.hw_pages}"
         )
     return lines
 

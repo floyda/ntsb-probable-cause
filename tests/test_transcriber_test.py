@@ -1446,8 +1446,10 @@ def test_handwriting_recheck_lists_only_draft_anchored_pages_prefilled(tmp_path:
     assert "check this line" not in page
     assert '"s26-handwriting-key-pass2"' in page
     assert '"handwriting-key-pass2.csv"' in page
-    assert "Check this page's key against the image and correct it" in page
     assert "left as the prefilled draft in the first pass" in page
+    assert "check it against the image and correct it in the box" in page
+    assert page.count("prefilled draft") == 1  # said once, not twice (fix round 1, M2)
+    assert "this page" not in page
     assert 'src="pages/handwriting-1.jpg"' in page
     assert '<span class="only">RICH</span>' in page
 
@@ -1488,7 +1490,10 @@ def test_the_format_gate_is_one_in_twenty() -> None:
     )
     assert chosen == "b"
     _, notes = tt.choose([_result("a", hw_pages=25, hw_format_failed=2)])
-    assert any("a: out -- fewer than half the key's lines on 2 of 25" in n for n in notes)
+    assert any(
+        "a: out -- a transcribed reply with fewer than half the key's lines on 2 of 25" in n
+        for n in notes
+    )
     assert tt.choose([_result("a", hw_pages=25, hw_format_failed=1)])[0] == "a"
     # The first pass never counts format failures, so the gate cannot fire there.
     assert tt.choose([_result("a", hw_pages=25)])[0] == "a"
@@ -1520,6 +1525,45 @@ def test_result_scores_a_format_failed_page_as_wrong_only_in_the_second_pass(
     assert (second.hw_right, second.hw_format_failed, second.hw_pages) == (0, 1, 1)
     assert first.hw_inventing == second.hw_inventing == 1  # still counts as invented
     assert first.hw_lines == second.hw_lines == 10
+
+
+def test_a_failed_reading_is_wrong_but_not_a_format_failure(tmp_path: Path) -> None:
+    """Fix round 1, I1 (controller ruling): a failed reading stays scored as wrong (decision
+    3) and is never counted toward the format gate -- there was no reply to judge. A
+    transcribed but blank reply still counts."""
+    settings = Settings(data_dir=tmp_path)
+    cache = TranscriptionCache(settings.transcription_dir)
+    failed = {"set": "handwriting", "k": 1, "document_sha256": "f" * 64, "page": 1}
+    blank = {"set": "handwriting", "k": 2, "document_sha256": "9" * 64, "page": 1}
+    model = "openai/gpt-6-luna"
+    cache.put(
+        Transcription(
+            key=tt._key(failed, model, instruction=TRANSCRIBE, dpi=RESOLUTION),
+            status="failed",
+            error="boom",
+            cost_usd=0.002,
+            created=datetime.now(UTC),
+        )
+    )
+    _put(cache, blank, model, "")
+    key = "Fuel BOTH\nMixture RICH"
+
+    def result(rows: list[dict[str, object]]) -> tt.CandidateResult:
+        return tt._result(
+            model,
+            rows,
+            {1: key, 2: key},
+            0,
+            {},
+            cache,
+            dpi=RESOLUTION,
+            format_gate=True,
+        )
+
+    only_failed = result([failed])
+    assert (only_failed.hw_right, only_failed.hw_format_failed, only_failed.hw_pages) == (0, 0, 1)
+    both = result([failed, blank])
+    assert (both.hw_right, both.hw_format_failed, both.hw_pages) == (0, 1, 2)
 
 
 def _score_fixture(tmp_path: Path) -> tuple[Settings, CachedDocuments, dict[str, Path]]:
@@ -1597,11 +1641,14 @@ def test_score_second_pass_applies_the_three_corrections(tmp_path: Path) -> None
     assert "0 of 1 photographs" in luna
     # One line of a three-line key: under half, so wrong; 1 page in 1 is over 1 in 20 -- out.
     assert "handwriting lines right: 0 of 3" in luna
-    assert "scored as wrong): 1 of 1" in luna
-    assert "openai/gpt-6-luna: out -- fewer than half the key's lines on 1 of 1" in text
+    assert "but not counted here): 1 of 1" in luna
+    assert (
+        "openai/gpt-6-luna: out -- a transcribed reply with fewer than half the key's lines "
+        "on 1 of 1"
+    ) in text
     flash = text.split("## google/gemini-3.6-flash")[1].split("##")[0]
     assert "handwriting lines right: 2 of 3" in flash  # "Engine OK" was corrected
-    assert "scored as wrong): 0 of 1" in flash
+    assert "but not counted here): 0 of 1" in flash
 
 
 def test_score_first_pass_is_unchanged_without_the_second(tmp_path: Path) -> None:
@@ -1628,6 +1675,31 @@ def test_score_second_pass_refuses_a_recheck_with_the_wrong_rows(tmp_path: Path)
     _write_csv(csvs["photos2"], ["row", "words"], [["11", "all on the page"]])
     _write_csv(csvs["hw2"], ["row", "checked", "key"], [["1", "", "Fuel BOTH"]])
     with pytest.raises(SystemExit, match=r"unmarked or empty for page\(s\): \[1\]"):
+        tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
+
+
+def test_score_second_pass_refuses_a_handwriting_recheck_of_the_wrong_pages(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1, M4: page 2 is not a draft-anchored page (there is none), page 1 missing."""
+    settings, docs, csvs = _score_fixture(tmp_path)
+    _write_csv(
+        csvs["hw2"], ["row", "checked", "key"], [["2", "key right as it stands", "Fuel BOTH"]]
+    )
+    recheck = tt.Recheck(handwriting_csv=csvs["hw2"], photos_csv=csvs["photos2"])
+    with pytest.raises(
+        SystemExit, match=r"handwriting recheck holds page\(s\) \[2\], not .* \[1\]"
+    ):
+        tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
+
+
+def test_score_second_pass_refuses_an_unmarked_photo_recheck_row(tmp_path: Path) -> None:
+    """Fix round 1, M4: an unmarked recheck row is refused -- it never falls back to the first
+    pass's mark, so every one of the re-marked cards in the results file was marked again."""
+    settings, docs, csvs = _score_fixture(tmp_path)
+    _write_csv(csvs["photos2"], ["row", "words"], [["11", ""]])
+    recheck = tt.Recheck(handwriting_csv=csvs["hw2"], photos_csv=csvs["photos2"])
+    with pytest.raises(SystemExit, match="some photograph recheck outputs are unmarked"):
         tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
 
 
