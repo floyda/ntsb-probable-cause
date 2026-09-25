@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.gitinfo import commits_since
 from ntsb_probable_cause.scoring import ledger
 from ntsb_probable_cause.scoring.records import RunRecord
 
@@ -54,6 +55,11 @@ def test_commit_state_returns_a_short_sha_and_a_dirty_flag() -> None:
     sha, dirty = ledger.commit_state()
     assert len(sha) >= 7
     assert isinstance(dirty, bool)
+
+
+def test_commits_since_head_is_empty() -> None:
+    """`HEAD..HEAD` holds no commit; this reads no history, only proves the call's shape."""
+    assert commits_since("HEAD") == ()
 
 
 def test_a_new_ledger_carries_the_version_column(tmp_path: Path, run_record: RunRecord) -> None:

@@ -25,8 +25,9 @@ import operator
 import random
 import re
 import statistics
+import subprocess
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -59,7 +60,7 @@ from ntsb_probable_cause.docket.transcribe import (
     settings_for,
 )
 from ntsb_probable_cause.errors import ConfigurationError, ModelError, SchemaError
-from ntsb_probable_cause.gitinfo import commit_state
+from ntsb_probable_cause.gitinfo import commit_state, commits_since
 from ntsb_probable_cause.model.client import cost_usd
 from ntsb_probable_cause.scoring.budget import (
     SPEND_FILE,
@@ -320,11 +321,15 @@ TYPED_MAX_CHARS = 3000
 TOP_UP_BATCH, TOP_UP_LIMIT = 25, 200
 # Fix round 1, I5: `estimate` reads `settings.monthly_budget_usd` (decision 0083) directly,
 # rather than a second constant that could drift from it.
-# Fix round 3, R3: S2.6 began 2026-09-24 (decision W1). An evaluation run started on or after
-# this date is one of S2.6's own -- the reply-budget runs (Task 9A), and anything the stage
-# itself submits later -- not the whole project's history, which would double-count earlier
-# stages' own bars (S2.4's heldout runs, etc.).
-STAGE_START = datetime(2026, 9, 24, tzinfo=UTC)
+# Fix round 4, T1: which spend is S2.6's own is decided by commit, not by date. 90ceab9 is the
+# S2.4 merge commit on main ("S2.4: the model switch (#11)"). S2.6 was branched before it and
+# merged it in, so S2.6's own commits are exactly those reachable from HEAD but not from it
+# (`git rev-list 90ceab9..HEAD`). A run record or spend row counts towards the stage total
+# only if its recorded commit is one of these. Fix round 3's date filter (2026-09-24) counted
+# $2.164 of S2.4's own runs made that day, and would count any later run from another branch.
+STAGE_BASE = "90ceab9"
+# git's own shortest abbreviation; a shorter recorded sha would match too many commits.
+MIN_SHA_PREFIX = 4
 PICTURES = frozenset({"photograph", "diagram or chart", "mixed"})
 FOLDER = Path("s26") / "transcriber-test"
 PROBE_LINES = (
@@ -1228,6 +1233,26 @@ def _latest_heldout_b_cost_per_case(settings: Settings) -> float:
     return latest.cost_usd / latest.cases
 
 
+def _stage_commits(repo: Path = Path()) -> frozenset[str]:
+    """S2.6's own commits, full SHAs: ``git rev-list STAGE_BASE..HEAD`` (fix round 4, T1).
+
+    Refuses rather than guesses when git cannot answer: without the list, no spend can be
+    attributed to the stage, and a stage total built on a guess is worse than none.
+    """
+    try:
+        return frozenset(commits_since(STAGE_BASE, repo))
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ConfigurationError(
+            f"`estimate` needs git to list S2.6's commits (`git rev-list {STAGE_BASE}..HEAD`) "
+            f"and git could not: {error}; run it from the repository with git on PATH"
+        ) from error
+
+
+def _in_stage(sha: str, stage_commits: Collection[str]) -> bool:
+    """Whether a recorded (usually abbreviated) commit is one of the stage's full SHAs."""
+    return len(sha) >= MIN_SHA_PREFIX and any(full.startswith(sha) for full in stage_commits)
+
+
 def _estimate_verdict(stage_total: float, rest: float, headroom: float, budget: float) -> str:
     """Apply both decision 0083 item 2's stage-total test and fix round 1's headroom test.
 
@@ -1254,15 +1279,24 @@ def _estimate_verdict(stage_total: float, rest: float, headroom: float, budget: 
     return "pause: ask Andy -- " + "; ".join(reasons)
 
 
-def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
+def cmd_estimate(
+    settings: Settings,
+    transcriber: str,
+    dpi: int,
+    *,
+    stage_commits: Collection[str] | None = None,
+) -> str:
     """Decision 0083 item 2: both the stage total and the remaining spend, judged separately.
 
     Fix round 1, I5 judged only the second (``settings.monthly_budget_usd - month_spent(...)``
     minus open reservations), which by itself can miss decision 0083 item 2's own test: if
     ``estimate`` runs in a later month than most of S2.6's spend, the month's headroom looks
     almost untouched while the stage total is well past $40. Fix round 3, R3 restores the
-    stage-total test alongside it, naming whichever test fails.
+    stage-total test alongside it, naming whichever test fails. Fix round 4, T1: the stage's
+    spend so far is every spend row and run record whose commit is one of ``stage_commits``
+    (by default, ``git rev-list STAGE_BASE..HEAD``; tests pass their own list).
     """
+    commits = _stage_commits() if stage_commits is None else stage_commits
     s26 = settings.data_dir / "s26"
     now = datetime.now(UTC)
     month = month_spent(settings.runs_dir, now=now)
@@ -1272,6 +1306,7 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
         s.cost_usd
         for path in sorted(settings.runs_dir.glob(f"*/{SPEND_FILE}"))
         for s in read_jsonl(path, SpendRecord)
+        if _in_stage(s.commit_sha, commits)
     )
     # Fix round 3, R3: S2.6's own evaluation runs (the reply-budget runs, Task 9A) are not
     # preparation spend rows, so they were missing from the stage total entirely.
@@ -1279,7 +1314,7 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
         record.cost_usd
         for path in sorted(settings.runs_dir.glob("*/run.jsonl"))
         for record in read_jsonl(path, RunRecord)
-        if record.started >= STAGE_START
+        if _in_stage(record.commit_sha, commits)
     )
     frame = _read(s26 / "pages-dev-400.jsonl")
     sample = _read(s26 / "inventory" / "sample.jsonl")
@@ -1353,7 +1388,8 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
             f"month spent so far: ${month:.2f}; open reservations: ${reserved:.2f}; headroom "
             f"against the ${settings.monthly_budget_usd:.0f} budget: ${headroom:.2f}",
             f"spent on S2.6 so far: ${stage_so_far:.2f} (${stage_spent:.2f} preparation spend "
-            f"rows, ${stage_runs:.2f} evaluation runs since {STAGE_START:%Y-%m-%d})",
+            f"rows, ${stage_runs:.2f} evaluation runs; counted by commit, the "
+            f"{len(commits)} commits since the S2.4 merge {STAGE_BASE})",
             f"dev-400 pages to transcribe: {image_only} image-only + {sent_share:.0%} of "
             f"{text_and_image} text-and-image = {dev_pages}; held-out assumed the same",
             f"{transcriber} at {dpi} dpi: ${per_page:.5f} per page measured; transcription of "

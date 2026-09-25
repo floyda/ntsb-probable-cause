@@ -25,6 +25,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TranscriptionCache,
     parse_reply,
 )
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring.budget import SpendRecord, write_spend
 from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 from ntsb_probable_cause.settings import Settings
@@ -795,7 +796,9 @@ def test_cmd_estimate_reports_the_stage_total(tmp_path: Path) -> None:
         ],
     )
 
-    result = tt.cmd_estimate(settings, "openai/gpt-6-luna", RESOLUTION)
+    result = tt.cmd_estimate(
+        settings, "openai/gpt-6-luna", RESOLUTION, stage_commits=_STAGE_COMMITS
+    )
     assert "stage rest to spend: $" in result
     assert "spent on S2.6 so far" in result
     assert "month spent so far: $0.00; open reservations: $0.00; headroom" in result
@@ -843,8 +846,9 @@ def test_cmd_estimate_pauses_on_the_stage_total_even_with_headroom_to_spare(
     _put(cache, photo_row, "openai/gpt-6-luna", "N12345", cost_usd=0.002, prompt_tokens=1000)
 
     # A large spend row from earlier in the stage, dated in a month before "now" (2026-09-25
-    # in this repo's fixed calendar): counted in the stage total (unfiltered by date) but not
-    # in `month_spent` (filtered to the current month), so headroom stays close to $40.
+    # in this repo's fixed calendar): counted in the stage total (its commit is one of the
+    # stage's) but not in `month_spent` (filtered to the current month), so headroom stays
+    # close to $40.
     write_spend(
         settings.runs_dir,
         SpendRecord(
@@ -882,10 +886,143 @@ def test_cmd_estimate_pauses_on_the_stage_total_even_with_headroom_to_spare(
         ],
     )
 
-    result = tt.cmd_estimate(settings, "openai/gpt-6-luna", RESOLUTION)
+    result = tt.cmd_estimate(
+        settings, "openai/gpt-6-luna", RESOLUTION, stage_commits=_STAGE_COMMITS
+    )
     assert "pause: ask Andy" in result
     assert "passes the $40 stage line (decision 0083 item 2)" in result
     assert "does not fit the month's" not in result
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 4, T1: S2.6's spend is counted by commit, not by date. The commit lists below are
+# invented full SHAs; the tests never read the real repository's history.
+# ---------------------------------------------------------------------------------------
+
+_S26_RUN = "40c6ec6" + "1" * 33  # an S2.6 evaluation-run commit (Task 9B)
+_S26_PREP = "31af9fb" + "2" * 33  # an S2.6 preparation commit (the inventory)
+_S24_RUN = "7071800" + "3" * 33  # an S2.4 commit: reachable from the S2.4 merge, so not listed
+_STAGE_COMMITS = frozenset({_S26_RUN, _S26_PREP, "abc1234" + "4" * 33})
+
+
+def _estimate_inputs(settings: Settings) -> None:
+    """The frame, inventory and one cached photo reading `cmd_estimate` needs, minimal."""
+    s26 = settings.data_dir / "s26"
+    (s26 / "inventory").mkdir(parents=True)
+    (s26 / "pages-dev-400.jsonl").write_text(
+        json.dumps({"kind": "image only", "case_id": "C1"}) + "\n"
+    )
+    (s26 / "inventory" / "sample.jsonl").write_text(
+        json.dumps(
+            {
+                "n": 1,
+                "stratum": "text and image/fatal",
+                "kind": "text and image",
+                "image_area_share": 0.9,
+            }
+        )
+        + "\n"
+    )
+    (s26 / "inventory" / "labels.json").write_text(json.dumps({"1": "mixed"}))
+    (s26 / "inventory" / "population.json").write_text(json.dumps({"text and image/fatal": 5}))
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "f" * 64, "page": 1}
+    (folder / "keys.jsonl").write_text(json.dumps(photo_row) + "\n")
+    cache = TranscriptionCache(settings.transcription_dir)
+    _put(cache, photo_row, "openai/gpt-6-luna", "N12345", cost_usd=0.002, prompt_tokens=1000)
+
+
+def _run_record(settings: Settings, run_id: str, sha: str, cost_usd: float) -> None:
+    started = datetime.strptime(run_id[:15], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
+    write_jsonl(
+        settings.runs_dir / run_id / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample=run_id.split("-", 2)[2].rsplit("-", 1)[0],
+                arm="B",
+                exclusions=(),
+                includes=(),
+                prompt_version="p1",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha=sha,
+                dirty=False,
+                started=started,
+                finished=started,
+                cases=400,
+                cost_usd=cost_usd,
+            )
+        ],
+    )
+
+
+def _spend_row(settings: Settings, job_id: str, sha: str, cost_usd: float) -> None:
+    write_spend(
+        settings.runs_dir,
+        SpendRecord(
+            job_id=job_id,
+            kind="inventory",
+            model="google/gemini-3.1-flash-lite",
+            started=datetime(2026, 9, 24, 12, tzinfo=UTC),
+            calls=1,
+            cost_usd=cost_usd,
+            commit_sha=sha,
+            dirty=False,
+        ),
+    )
+
+
+def test_cmd_estimate_counts_the_stage_by_commit_not_by_date(tmp_path: Path) -> None:
+    """An S2.4 run from the stage's first day, an S2.4 spend row and a run at an unknown commit
+    are not S2.6 spend; an S2.6 run and an S2.6 spend row are, matched by their abbreviated
+    shas against the stage's full ones."""
+    settings = Settings(data_dir=tmp_path)
+    _estimate_inputs(settings)
+    # S2.4's held-out B bar, run on 2026-09-24 -- the day a date filter took as S2.6's start.
+    _run_record(settings, "20260924T185800-7071800-heldout-400-B", _S24_RUN[:7], 1.129)
+    _run_record(settings, "20260925T100148-40c6ec6-dev-400-B", _S26_RUN[:7], 1.181)
+    _run_record(settings, "20260925T110000-deadbee-dev-400-B", "deadbee", 7.0)
+    _spend_row(settings, "20260924T120000-31af9fb-inventory", _S26_PREP[:7], 0.11)
+    _spend_row(settings, "20260924T120000-ce8a55e-inventory", "ce8a55e", 0.5)
+
+    result = tt.cmd_estimate(
+        settings, "openai/gpt-6-luna", RESOLUTION, stage_commits=_STAGE_COMMITS
+    )
+    assert (
+        "spent on S2.6 so far: $1.29 ($0.11 preparation spend rows, $1.18 evaluation runs; "
+        "counted by commit, the 3 commits since the S2.4 merge 90ceab9)"
+    ) in result
+
+
+def test_in_stage_matches_an_abbreviated_sha_by_prefix_only() -> None:
+    assert tt._in_stage(_S26_RUN[:7], _STAGE_COMMITS)
+    assert tt._in_stage(_S26_RUN, _STAGE_COMMITS)
+    assert not tt._in_stage(_S24_RUN[:7], _STAGE_COMMITS)
+    assert not tt._in_stage("deadbee", _STAGE_COMMITS)
+    assert not tt._in_stage("", _STAGE_COMMITS)  # would prefix-match every commit
+    assert not tt._in_stage(_S26_RUN[:3], _STAGE_COMMITS)  # shorter than git's shortest
+
+
+def test_cmd_estimate_refuses_when_git_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_git(base: str, repo: Path = Path()) -> tuple[str, ...]:
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(tt, "commits_since", no_git)
+    settings = Settings(data_dir=tmp_path)
+    _estimate_inputs(settings)
+    with pytest.raises(ConfigurationError, match=r"needs git to list S2\.6's commits"):
+        tt.cmd_estimate(settings, "openai/gpt-6-luna", RESOLUTION)
+
+
+def test_stage_commits_refuses_outside_a_repository(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match=r"git rev-list 90ceab9\.\.HEAD"):
+        tt._stage_commits(tmp_path)
 
 
 # ---------------------------------------------------------------------------------------
