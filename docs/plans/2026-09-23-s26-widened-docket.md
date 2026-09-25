@@ -22,7 +22,7 @@
 - **Budget.** $40 a month during development (0083); the code default is $25 until Task 7 changes it. Transcription and inventory spend counts against the month (0081) through the spend records of Task 7. The stage pause point (0083 item 2) is Task 13 Step 12.
 - **Paid and held-out commands handed to Andy** always state: `export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data`, the expected cost and duration, and what the tree looks like afterwards. They are run from a shell script that exports `OPENROUTER_API_KEY="$(pass show api/openrouter)"` and never prints it. **One held-out run per `make` recipe**: each held-out run appends its ledger row, which dirties the tree, and the held-out guard (0026) then refuses the next run; the row is committed between runs.
 - **Numbers reported anywhere come from a script.** Numbers S2.6 needs from S2.4 (held-out failures by reason, the GPT-6 Luna bars) are cited from `docs/results/s24-bars.txt` on `main`, never copied from memory. S2.4 made GPT-6 Luna the default model (S2.4's own decision record, on `main` after Task 6); its held-out arm B run `20260924T185800-7071800-heldout-400-B` is the bar until S2.6 publishes its own, and its ceiling run is `20260924T070202-05c5c5b-heldout-400-ceiling` (both in `docs/results/s24-bars.txt`).
-- **Batch timing.** Paid batches are submitted between about 01:00 and 12:00 UTC; the 12:00–19:00 UTC slot is OpenRouter's slow window (median minutes against hours; S2.4's held-out arm B, submitted at 18:58 UTC, took 8 h 41 min). Since S2.4, `ntsb-eval run --resume <run id>` recovers a batch OpenRouter loses by resubmitting it and every batch after it. Every paid command handed to Andy says when to start it.
+- **Batch timing.** Paid batches are submitted between about 01:00 and 12:00 UTC; the 12:00–19:00 UTC slot is OpenRouter's slow window (median minutes against hours; S2.4's held-out arm B, submitted at 18:58 UTC, took 8 h 41 min). Since S2.4, `ntsb-eval run --resume <run id>` recovers a batch OpenRouter loses by resubmitting it and every batch after it; from Task 9B it does the same for a batch that ended failed, expired or cancelled. A held-out run in trouble is resumed, never re-run. Every paid command handed to Andy says when to start it.
 - **One reply budget.** From Task 9A every run records `max_output_tokens`; every S2.6 run after Task 9A uses the budget its decision record sets.
 - `make check` = ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest; coverage gate `--cov-fail-under=90`, branch coverage. Google-style docstrings on every public symbol; line length 100. Scripts carry a `Status` paragraph in their module docstring (house style since S2).
 - Commit messages end with the attribution lines the session gives. Never commit to `main`. The stage pull request is titled `S2.6: the widened docket` and merged with a merge commit, never squashed (0033).
@@ -57,7 +57,8 @@ The spec is approved; these are the places where writing the plan found somethin
 | `src/ntsb_probable_cause/records/evidence.py`, `records/split.py` | 4, 5 | marks and the narrative share on `Evidence`, computed in the split |
 | `src/ntsb_probable_cause/settings.py`, `scoring/budget.py` | 7 | the $40 default; spend records for preparation jobs |
 | `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `scoring/ledger.py`, `apps/eval/__main__.py` | 8, 9 | the evidence version; marks in results; the report printed twice |
-| `scripts/reply_budget.py`, `RunSpec.max_output_tokens` | 9A | the reply budget, measured on `dev-400` and set by decision |
+| `scripts/reply_budget.py`, `RunSpec.max_output_tokens` | 9A | the reply budget, recorded on every run, measured on `dev-400` and set by decision |
+| `scoring/runner.py` (`_submit_and_wait`, `recorded_batches`) | 9B | a resume resubmits a batch that ended failed, expired or cancelled |
 | `src/ntsb_probable_cause/model/client.py`, `model/openrouter.py`, `sources.py` | 10 | `PageImage`; image parts in the request; candidate prices and reasoning levels |
 | `src/ntsb_probable_cause/docket/transcribe.py` | 11 | the instruction, the request, the reply, the per-page cache, the worker pool |
 | `scripts/page_inventory.py` | 12 | the inventory sample, labels, Andy's 60-label page, the counts |
@@ -2958,6 +2959,8 @@ In `tests/test_runner.py`: a `RunSpec(max_output_tokens=4000)` sends `max_tokens
 
 In `tests/test_report.py`: `provenance` shows `max_output_tokens=2000`.
 
+In `tests/test_runner.py`, beside S2.4's `test_resume_refuses_a_different_model`: `test_resume_refuses_a_different_reply_budget` — a folder whose `spec.json` records `max_output_tokens: 2000`, resumed with `RunSpec(max_output_tokens=4000)`, raises `ConfigurationError` naming `max_output_tokens was 2000 … and is 4000 now`. (S2.4's final review: an unrecorded setting is a silent variable — the argument of S2.4's decision record for recording the reasoning level; `refuse_unresumable` compares every `spec.json` field, so recording it is what makes the refusal happen.)
+
 `tests/test_reply_budget.py`:
 
 ```python
@@ -3070,6 +3073,88 @@ git commit -m "S2.6: the reply budget raised to <value> tokens, measured on dev-
 ```
 
 - [ ] **Step 9: STOP — report to Andy** in plain words: what truncated, how often, and the new budget. Every later run uses it.
+
+---
+
+### Task 9B: A batch that ended failed or expired is resubmitted on resume (S2.4's final review; no paid call)
+
+**Why this task exists.** S2.4 taught `--resume` to recover a batch the provider has *lost* (a 404 after the grace period): it writes a `lost` row to `batches.jsonl`, marks every batch recorded after it `superseded` (their requests were built from its replies), and submits the lost stage again, once. A recorded batch that instead *ended* `failed` or `expired` still hits `raise ModelError(f"batch {batch_id} ended {status.status}")` in `Runner._submit_and_wait` on every resume, so the run can never be resumed. That is the failure that forced S2.4 into a second held-out touch. S2.6's two held-out runs must be resumable instead, so this lands before them.
+
+**The behaviour, fixed now.** On a resume, a *reused* recorded batch whose terminal status is `failed`, `expired` or `cancelled` (the three non-`completed` members of `model/batch.py`'s `TERMINAL`; a cancelled batch has no replies to reuse either) is treated as S2.4 treats a lost one:
+1. append a row `{"batch_id": ..., "stage": ..., "ended": "<status>", "time": ...}` to `batches.jsonl`, so no later resume waits on it again;
+2. log one line naming the batch, how it ended, and that the stage is resubmitted (new money);
+3. keep its reported cost and id in the run's totals (`run.costs`, `run.batch_ids`) — money the provider may have charged for requests it completed before the batch died must stay visible to the budget guard;
+4. mark every later batch in the reuse queue `superseded` (the existing `_supersede_downstream`), with `depends_on_batch_id` naming the dead batch;
+5. submit the same requests fresh, exactly once.
+
+A batch submitted fresh *in this call* that then ends `failed`, `expired` or `cancelled` still raises `ModelError`, as today: a run never re-spends more than once on one stage in one call. The next `--resume` then finds it recorded, sees it ended, and resubmits — which is what makes the run recoverable.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/runner.py` (`_submit_and_wait`'s reused branch; `recorded_batches` skips `ended` rows; + `_record_ended_batch`, `_log_ended`)
+- Test: `tests/test_runner.py`
+- Modify: `docs/plans/2026-09-23-s26-widened-docket.md` (Task 18's recovery note)
+
+**Interfaces:**
+- Consumes: S2.4's `recorded_batches`, `_take_reusable`, `_supersede_downstream`, `_record_lost_batch` and its row shape, `BatchStatus.status`, `TERMINAL`.
+- Produces: `runner.ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})`; the `ended` row shape above; `recorded_batches` treats a row with `row.get("ended") in ENDED_UNUSABLE` exactly as it treats `lost` (the original row for that id is not returned either).
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/test_runner.py`, beside S2.4's lost-batch resume tests (reuse their helpers — `FakeBatchClient`, the dead-run fixtures such as `_died_waiting_on_stage1` — and follow their shape):
+
+1. `test_resume_resubmits_a_recorded_batch_that_ended_expired`: a dead run's folder records a stage-1 batch; on resume the fake client's `wait` returns that id with status `expired` (and a reported cost of, say, $0.01). Assert: `batches.jsonl` gains exactly one `ended: "expired"` row for that id; a fresh stage-1 batch is submitted (the fake records one submit); the run finishes with every case scored; the run record's `batch_ids` holds both the dead id and the fresh one; its reported cost includes the $0.01.
+2. The same for `failed`, and for `cancelled` (parametrise the three).
+3. `test_an_ended_batch_supersedes_the_batches_recorded_after_it`: the dead run recorded stage 1 and stage 2; stage 1 comes back `expired` on resume. Assert stage 2's recorded id is written `superseded` with `depends_on_batch_id` equal to stage 1's id, and is never waited on.
+4. `test_a_fresh_batch_that_ends_failed_still_raises`: in the same resume, the fresh resubmission itself ends `failed`: `ModelError` is raised, and exactly one fresh submit happened (no second resubmission in one call). A second resume of that folder then resubmits once more and completes — the recoverability this task exists for.
+5. `test_recorded_batches_skips_ended_rows`: a `batches.jsonl` with rows for A (stage1), B (stage2), an `ended: "failed"` row for A: `recorded_batches` returns B only if B is not superseded, and never A (write the case the helper's docstring describes, so the rule is pinned).
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `uv run pytest tests/test_runner.py -v -k "ended or expired or failed_still_raises"`
+Expected: FAIL — the resume raises `ModelError: batch … ended expired`.
+
+- [ ] **Step 3: Implement**
+
+In `scoring/runner.py`:
+
+```python
+# A reused batch that ended any of these has no replies to reuse (S2.6 Task 9B, S2.4's final
+# review): like a lost batch, it is recorded, its dependants superseded, and it is resubmitted.
+ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})
+```
+
+In `recorded_batches`, the `unusable` test becomes
+`row.get("lost") is True or row.get("superseded") is True or row.get("ended") in ENDED_UNUSABLE`.
+Add `_record_ended_batch(folder, batch_id, stage, ended)` beside `_record_lost_batch` (same row shape, `"ended": ended` in place of `"lost": True`), and `_log_ended(stage, batch_id, ended)` beside `_log_lost` (one line: the batch, how it ended, and "resubmitting (new money)"). In `_submit_and_wait`'s reused branch, after the wait returns a status:
+
+```python
+            else:
+                run.batch_ids.append(status.batch_id)
+                run.costs.append(status.reported_cost_usd)
+                if status.status in ENDED_UNUSABLE:
+                    self._record_ended_batch(run.folder, batch_id, stage, status.status)
+                    self._log_ended(stage, batch_id, status.status)
+                    self._supersede_downstream(run, lost_batch_id=batch_id)
+                    reused = None
+                else:
+                    if status.status != "completed":
+                        raise ModelError(f"batch {batch_id} ended {status.status}")
+                    refuse_replay_mismatch(batch_id, requests, status)
+                    return status
+```
+
+so that control falls through to the existing fresh-submit path. Update `_submit_and_wait`'s and `recorded_batches`' docstrings: one paragraph each, naming Task 9B and S2.4's final review, saying the ended batch's cost stays in the totals and why. Rename `_supersede_downstream`'s keyword only if its docstring would otherwise mislead; a one-line note that it serves ended batches too is enough.
+
+- [ ] **Step 4: Run the tests, then the whole check; commit**
+
+Run: `uv run pytest tests/test_runner.py -v`, then `make check`. Expected: PASS; green; S2.4's lost-batch tests unchanged.
+
+In Task 18 of this plan, add to Steps 3 and 4: *if a batch is lost, fails or expires, do not start a new held-out run: resume this one with the same command plus `--resume <run id>` (Task 9B); it resubmits the dead batch and everything after it, and the ledger row is written once, when the run finishes.*
+
+```bash
+git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py docs/plans/2026-09-23-s26-widened-docket.md
+git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expired or cancelled (Task 9B, S2.4's final review)"
+```
 
 ---
 
@@ -6870,6 +6955,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, plan: the inventory's §6.4 stop rule has a number — under 10% of image-bearing pages with words in their images — and mixed pages are chosen by an image-area cut-off with a rule fixed in advance. Andy decided both (W3 and W6, 2026-09-24).
 - 2026-09-24, plan: the recorded transcriber replies (spec §12) are of an invented page drawn in code, so a committed fixture carries no docket text.
 - 2026-09-25, plan (S2.4's close, Andy): GPT-6 Luna is the default model and S2.4's held-out arm B the bar until S2.6's own (`docs/results/s24-bars.txt`). Its held-out failures by reason were 40 guard refusals for analysis-narrative sentences and 24 reply-format failures (same file); by S2.4's reading 19 of the 24 were truncated or empty JSON. Andy carried the fix to S2.6: Task 9A, added before any S2.6 run so that every S2.6 run, not only the held-out pair, shares one reply budget. The 40 refusals are the cases decision 0077's mark now answers.
+- 2026-09-25, plan (S2.4's final review, Andy): two items land before S2.6's held-out runs. The reply budget is recorded on every run (Task 9A, already written that way; a resume-refusal test added). A recorded batch that ended failed or expired could never be resumed, which forced S2.4's second held-out touch: Task 9B makes a resume treat it as S2.4 treats a lost batch (recorded, dependants superseded, resubmitted once).
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
 - 2026-09-24, Task 3 Step 1: `uv add "pypdfium2>=5.13.0" "pillow>=12.3.0"` places each new dependency at its own alphabetical position in the `dependencies` list (`pillow` before `pyarrow`, `pypdfium2` after `pypdf[crypto]`), not adjacent to each other, so the brief's single comment block above "the two new lines" cannot sit above both in place. `pillow` was moved down next to `pypdfium2` (functionally identical -- list order is not significant to `uv`/hatchling) so the one comment block, naming both packages, sits directly above both entries as written.
 - 2026-09-24, Task 3 Step 2: `ruff check --fix` reordered `tests/test_docket_render.py`'s import block, moving `from tests.pdf_builder import ...` before the `ntsb_probable_cause` first-party imports (this project's isort groups `tests` as first-party alongside `ntsb_probable_cause`, sorted alphabetically within the group, so `tests` sorts before `ntsb_probable_cause`); same imports, no behaviour change. Also added `# type: ignore[index]` to the `xobjects = ...pages[0]["/Resources"]["/XObject"]` line in `test_a_fax_encoded_page_renders` (not in the brief's snippet) because `pypdf`'s `PdfObject` is not indexable under `mypy --strict`; the same pattern is already used throughout the test suite (e.g. `tests/test_attach.py`, `tests/test_fields.py`) for the same reason.
