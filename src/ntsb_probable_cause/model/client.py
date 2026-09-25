@@ -1,5 +1,7 @@
 """What crosses to a model: a Payload rendered only from Evidence (decision 0016)."""
 
+import base64
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, Self, final
@@ -15,21 +17,41 @@ _CONSTRUCTION_TOKEN = object()
 _EVIDENCE_NAMES = frozenset(role.value for role in EvidenceRole)
 
 
+class PageImage(BaseModel):
+    """One page image for a model: a rendered page, never an image pulled out of a PDF (0075)."""
+
+    model_config = ConfigDict(frozen=True)
+    media_type: Literal["image/jpeg", "image/png"]
+    data: bytes
+
+    @property
+    def sha256(self) -> str:
+        """The image's hash."""
+        return hashlib.sha256(self.data).hexdigest()
+
+    def data_url(self) -> str:
+        """The image as a ``data:`` URL, the form the chat-completions endpoint accepts."""
+        return f"data:{self.media_type};base64,{base64.b64encode(self.data).decode('ascii')}"
+
+
 @final
 class Payload:
-    """The exact text a model would receive. Built only by ``Payload.from_evidence``.
+    """The exact text and images a model would receive.
 
+    Built only by Payload.from_evidence, or for one page's transcription by Payload.for_page.
     Immutable: ``__setattr__``/``__delattr__`` refuse any change after construction, and
     ``@final`` closes off subclassing, which would otherwise bypass the construction token.
     """
 
-    __slots__ = ("_text",)
+    __slots__ = ("_images", "_text")
     _text: str
+    _images: tuple[PageImage, ...]
 
-    def __init__(self, text: str, *, _token: object) -> None:
+    def __init__(self, text: str, *, images: tuple[PageImage, ...] = (), _token: object) -> None:
         if _token is not _CONSTRUCTION_TOKEN:
             raise TypeError("Payload is built only by Payload.from_evidence")
         object.__setattr__(self, "_text", text)
+        object.__setattr__(self, "_images", images)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"Payload is immutable: cannot set {name!r}")
@@ -38,8 +60,12 @@ class Payload:
         raise AttributeError(f"Payload is immutable: cannot delete {name!r}")
 
     @classmethod
-    def from_evidence(cls, evidence: Evidence) -> Payload:
-        """Render non-null, non-excluded evidence roles; never bookkeeping (guard layer 1)."""
+    def from_evidence(cls, evidence: Evidence, *, images: Sequence[PageImage] = ()) -> Payload:
+        """Render non-null, non-excluded evidence roles; never bookkeeping (guard layer 1).
+
+        ``images`` are the v3 probe's pictures (S2.6 §10), chosen by the runner from pages
+        whose transcription passed this same guard; empty otherwise.
+        """
         values = {
             role.value: list(value) if isinstance(value, tuple) else value
             for role, value in evidence.role_values().items()
@@ -53,13 +79,28 @@ class Payload:
             )
         return cls(
             json.dumps(values, indent=1, sort_keys=True, ensure_ascii=False),
+            images=tuple(images),
             _token=_CONSTRUCTION_TOKEN,
         )
+
+    @classmethod
+    def for_page(cls, image: PageImage, *, text_layer: str | None = None) -> Payload:
+        """A page transcription's request: one page image and, on a mixed page, its text layer.
+
+        (S2.6 §8.2). It takes no evidence and no record, so no withheld text has a way in;
+        ``tests/test_boundary.py`` checks the caller passes only the page's own text layer.
+        """
+        return cls(text_layer or "", images=(image,), _token=_CONSTRUCTION_TOKEN)
 
     @property
     def text(self) -> str:
         """The rendered payload."""
         return self._text
+
+    @property
+    def images(self) -> tuple[PageImage, ...]:
+        """The images sent after the text, in order; empty for a text-only payload."""
+        return self._images
 
     def fields(self) -> dict[str, object]:
         """The payload parsed back into a dictionary."""
@@ -67,10 +108,14 @@ class Payload:
         return parsed
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Payload) and other._text == self._text
+        return (
+            isinstance(other, Payload)
+            and other._text == self._text
+            and other._images == self._images
+        )
 
     def __hash__(self) -> int:
-        return hash(self._text)
+        return hash((self._text, tuple(i.sha256 for i in self._images)))
 
 
 class Usage(BaseModel):

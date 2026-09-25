@@ -228,3 +228,15 @@ def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("NTSB_MONTHLY_BUDGET_USD", raising=False)
     assert Settings(_env_file=None).monthly_budget_usd == 40.0
     assert RunSpec(sample="dev-400", arm="ceiling").budget_usd == 40.0
+
+
+def test_the_transcriber_candidates_are_priced_and_levelled() -> None:
+    """OpenRouter models API, read 2026-09-24 (S2.6 spec §7.2)."""
+    assert sources.price_of("google/gemini-3.6-flash") is sources.GEMINI_36_FLASH
+    assert sources.price_of("qwen/qwen3.5-122b-a10b") is sources.QWEN_35_122B
+    assert sources.LOWEST_REASONING == {
+        "google/gemini-3.1-flash-lite": "minimal",
+        "google/gemini-3.6-flash": "minimal",
+        "openai/gpt-6-luna": "none",
+        "qwen/qwen3.5-122b-a10b": "none",
+    }

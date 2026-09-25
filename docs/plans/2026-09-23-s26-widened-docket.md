@@ -3294,7 +3294,7 @@ git commit -m "S2.6: a fresh run refuses a run folder that already exists (Task 
 
 **The facts, and where they come from** (OpenRouter models list, <https://openrouter.ai/api/v1/models>, read 2026-09-24): Gemini 3.6 Flash $0.75/$3.75 per million tokens in/out, reasoning levels `minimal`–`high` and mandatory; Gemini 3.1 Flash Lite `minimal`–`high` (already priced in `sources.py` from S1); GPT-6 Luna `none`–`max`; Qwen3.5 122B $0.26/$2.08, no batch variant, reasoning optional with no listed levels. All four list `structured_outputs`. The batch refusal cites <https://openrouter.ai/docs/batch-quickstart>, read 2026-09-24.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_model_client.py`:
 
@@ -3375,12 +3375,12 @@ def test_the_transcriber_candidates_are_priced_and_levelled() -> None:
     }
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_model_client.py tests/test_openrouter.py tests/test_batch.py tests/test_sources_settings.py -v -k "image or page or candidates"`
 Expected: FAIL — `ImportError: cannot import name 'PageImage'`.
 
-- [ ] **Step 3: `sources.py`**
+- [x] **Step 3: `sources.py`**
 
 After `GLM_53_FLASH_BATCH`:
 
@@ -3415,7 +3415,7 @@ LOWEST_REASONING: dict[str, ReasoningEffort] = {
 }
 ```
 
-- [ ] **Step 4: `model/client.py`**
+- [x] **Step 4: `model/client.py`**
 
 Add `import base64` and `import hashlib`, and before `Payload`:
 
@@ -3457,7 +3457,7 @@ In `Payload`: the class docstring's first line becomes `The exact text and image
 
 `__eq__` compares `_text` and `_images`; `__hash__` is `hash((self._text, tuple(i.sha256 for i in self._images)))`.
 
-- [ ] **Step 5: `model/openrouter.py`**
+- [x] **Step 5: `model/openrouter.py`**
 
 Replace `messages.append({"role": "user", "content": payload.text})` with `messages.append({"role": "user", "content": _user_content(payload)})` and add:
 
@@ -3479,7 +3479,7 @@ def _user_content(payload: Payload) -> str | list[dict[str, object]]:
     return parts
 ```
 
-- [ ] **Step 6: `model/batch.py`**
+- [x] **Step 6: `model/batch.py`**
 
 At the top of `BatchRunner.submit`, before anything is sent (import `ConfigurationError`):
 
@@ -3493,12 +3493,12 @@ At the top of `BatchRunner.submit`, before anything is sent (import `Configurati
             )
 ```
 
-- [ ] **Step 7: Run the tests, then the whole check**
+- [x] **Step 7: Run the tests, then the whole check**
 
 Run: the Step 2 command, then `make check`
 Expected: PASS; green. Every existing request-body test passes unchanged, which is the proof that a text-only request is byte for byte what it was.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/model/ src/ntsb_probable_cause/sources.py tests/ docs/plans/2026-09-23-s26-widened-docket.md
@@ -7082,6 +7082,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, Task 9A Step 6: at Andy's request the controller started both dev-400 runs, at 10:01:44 UTC on commit `40c6ec6`, concurrently rather than one after the other (the controller's suggestion, to fit the batch window). Started in the same second at the same commit, sample and arm, they were given one run id, `20260925T100148-40c6ec6-dev-400-B`, and appended into one folder: nothing refuses a fresh run whose folder exists. No data was lost: every run file is append-only and the confirmation run finished (10:44 UTC) before the sizing run (10:48 UTC), so each file held the confirmation run's rows first, and `month_spent` counted both records ($1.1808 + $1.1742). Only `spec.json` (overwritten with the sizing run's) and `batches.jsonl` (interleaved) were mixed. A one-off script split the folder into `20260925T100148-40c6ec6-dev-400-B-confirm2000` and `…-size16000`: rows copied unchanged, the confirmation rows checked byte for byte against a copy taken before the sizing run finished, each run's own batch rows, and the confirmation run's `spec.json` rewritten by `write_spec_json` with the two fields that differed (`max_output_tokens` 2000, `expected_cost_per_case_usd` 0.005). The collided folder is kept unchanged at `data/runs-collided/`, outside the runs directory, so the month counts each run once. `docs/results/s26-reply-budget-dev.txt` prints each run's recorded id, so it shows the same id twice. Harness fix: Task 9D.
 - 2026-09-25, Task 9A Steps 7-8: outcome `new max_output_tokens 8000`; decision 0084; `RunSpec.max_output_tokens` defaults to 8000. `RunRecord.max_output_tokens` keeps its 2000 default, which is what a run from before Task 9A actually used.
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
+- 2026-09-25, Task 10: two of the brief's literal snippets failed the project's own lint (`make lint`), fixed without changing behaviour. `Payload`'s and `Payload.for_page`'s docstrings (`model/client.py`) are reworded (a one-line summary, blank line, then the description) to satisfy `D205`; the wording and facts are unchanged. `test_a_page_payload_carries_one_image_and_only_its_text_layer` (`tests/test_model_client.py`) has its combined `and` assertion split into two `assert` statements to satisfy `PT018`; the checks themselves are unchanged. `test_the_batch_service_refuses_an_image` (`tests/test_batch.py`) is written against the file's actual `BatchClient`/`client()` helper, not the brief's placeholder `BatchRunner`/`_runner()` names (`tests/test_batch.py` has no `BatchRunner`), and adds a `respx_mock` route so the "no request sent" half of the brief's requirement (`route.calls.call_count == 0`) is checked, since without a mocked route respx would itself raise before reaching the assertion.
 - 2026-09-24, Task 3 Step 1: `uv add "pypdfium2>=5.13.0" "pillow>=12.3.0"` places each new dependency at its own alphabetical position in the `dependencies` list (`pillow` before `pyarrow`, `pypdfium2` after `pypdf[crypto]`), not adjacent to each other, so the brief's single comment block above "the two new lines" cannot sit above both in place. `pillow` was moved down next to `pypdfium2` (functionally identical -- list order is not significant to `uv`/hatchling) so the one comment block, naming both packages, sits directly above both entries as written.
 - 2026-09-24, Task 3 Step 2: `ruff check --fix` reordered `tests/test_docket_render.py`'s import block, moving `from tests.pdf_builder import ...` before the `ntsb_probable_cause` first-party imports (this project's isort groups `tests` as first-party alongside `ntsb_probable_cause`, sorted alphabetically within the group, so `tests` sorts before `ntsb_probable_cause`); same imports, no behaviour change. Also added `# type: ignore[index]` to the `xobjects = ...pages[0]["/Resources"]["/XObject"]` line in `test_a_fax_encoded_page_renders` (not in the brief's snippet) because `pypdf`'s `PdfObject` is not indexable under `mypy --strict`; the same pattern is already used throughout the test suite (e.g. `tests/test_attach.py`, `tests/test_fields.py`) for the same reason.
 - 2026-09-24, Task 2 Steps 3/7: `ruff format` rewrites the brief's `except (DocketError, LeakageError):` to the unparenthesised `except DocketError, LeakageError:` -- this project's ruff (0.16.8, `target-version = "py314"`) treats the parenthesised tuple form as the one to normalise away, since Python 3.14 accepts a bare comma list there under PEP 758. Confirmed by re-running `ruff format` on the file after restoring the parentheses by hand: it rewrote them away again. Kept ruff's unparenthesised form rather than fighting the formatter (`ruff check` also passes it clean); the fix-round review's premise -- that the committed file held the unparenthesised form because a manual restoration had failed to stick, not because ruff prefers it -- is confirmed. `ruff check` (`TRY301`) separately required the `raise DocketError("no mKey")` inside the `sheet` command's try block to move into a small helper, `_read_docket(reader, mkey)`, called in place of the inline `isinstance` check plus `reader.read(mkey)` -- same behaviour, same exception. `PT018` (assertion must not combine two checks with `and`) and `C420` (a full-range dict comprehension should be `dict.fromkeys`) required splitting three combined asserts in `tests/test_marking_page.py` and `tests/test_analysis_handcheck.py` into separate `assert` lines and replacing three `{i: v for i in range(...)}` comprehensions with `dict.fromkeys(range(...), v)`; both are lint-only rewrites of the brief's literal test code, not changes to what is tested. Isort also reordered one import block in `tests/test_analysis_handcheck.py`.

@@ -91,6 +91,15 @@ GLM_53_FLASH_BATCH = ModelPrice(
     "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
 )
 
+# https://openrouter.ai/api/v1/models, read 2026-09-24: the transcriber candidates of S2.6
+# spec §7.2 that S1 had not priced. Standard prices only: an image cannot go through the batch
+# service (https://openrouter.ai/docs/batch-quickstart, read 2026-09-24), and Qwen has no
+# batch variant at all.
+GEMINI_36_FLASH = ModelPrice(
+    "google/gemini-3.6-flash", 0.75, 3.75, "OpenRouter models API, 2026-09-24"
+)
+QWEN_35_122B = ModelPrice("qwen/qwen3.5-122b-a10b", 0.26, 2.08, "OpenRouter models API, 2026-09-24")
+
 _PRICES = {
     p.model_id: p
     for p in (
@@ -106,6 +115,8 @@ _PRICES = {
         GEMINI_31_FLASH_LITE_BATCH,
         GLM_53_FLASH,
         GLM_53_FLASH_BATCH,
+        GEMINI_36_FLASH,
+        QWEN_35_122B,
     )
 }
 
@@ -115,9 +126,21 @@ def price_of(model_id: str) -> ModelPrice:
     return _PRICES[model_id]
 
 
-# The reasoning levels OpenRouter's model list gives both Luna models
-# (``reasoning.supported_efforts``, read 2026-09-23); their default is ``medium``.
-ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
+# The reasoning levels OpenRouter's model list gives (``reasoning.supported_efforts``): both
+# Luna models, read 2026-09-23; ``minimal`` added for the Gemini transcriber candidates, read
+# 2026-09-24.
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+# S2.6 spec §7.2: each transcriber candidate at its lowest reasoning level, recorded (the
+# benchmark found more reasoning made Flash Lite *worse*). Read from the models list on
+# 2026-09-24. Gemini 3.6 Flash cannot switch reasoning off (``mandatory``); Qwen lists no
+# levels, so ``none`` is confirmed by S2.6 Task 13's one-page probe before it is used.
+LOWEST_REASONING: dict[str, ReasoningEffort] = {
+    "google/gemini-3.1-flash-lite": "minimal",
+    "google/gemini-3.6-flash": "minimal",
+    "openai/gpt-6-luna": "none",
+    "qwen/qwen3.5-122b-a10b": "none",
+}
 
 # The agent's default model and reasoning level, each named once (decision 0073). The level is
 # stated on every agent request rather than left to the provider, whose default could change

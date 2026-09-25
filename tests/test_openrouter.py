@@ -11,6 +11,7 @@ from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
 from ntsb_probable_cause.model.client import (
     ModelSettings,
+    PageImage,
     Payload,
     ToolCall,
     Turn,
@@ -235,3 +236,31 @@ def test_request_body_sends_no_reasoning_key_when_unset(
     payload = Payload.from_evidence(evidence)
     body = request_body(payload, ModelSettings(), system="s", history=())
     assert "reasoning" not in body
+
+
+def test_request_body_sends_image_parts_after_the_text() -> None:
+    image = PageImage(media_type="image/jpeg", data=b"\xff\xd8jpeg")
+    body = request_body(
+        Payload.for_page(image, text_layer="typed words"),
+        ModelSettings(model="google/gemini-3.1-flash-lite", price_variant="standard"),
+        system="instruction",
+        history=(),
+    )
+    assert body["messages"] == [
+        {"role": "system", "content": "instruction"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "typed words"},
+                {"type": "image_url", "image_url": {"url": image.data_url()}},
+            ],
+        },
+    ]
+
+
+def test_an_image_page_with_no_text_layer_sends_the_image_alone() -> None:
+    image = PageImage(media_type="image/jpeg", data=b"\xff\xd8jpeg")
+    body = request_body(Payload.for_page(image), ModelSettings(), system="s", history=())
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[1]["content"] == [{"type": "image_url", "image_url": {"url": image.data_url()}}]

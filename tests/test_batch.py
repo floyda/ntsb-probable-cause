@@ -8,9 +8,9 @@ import httpx
 import pytest
 import respx
 
-from ntsb_probable_cause.errors import BatchNotFoundError, ModelError
+from ntsb_probable_cause.errors import BatchNotFoundError, ConfigurationError, ModelError
 from ntsb_probable_cause.model.batch import BatchClient, BatchRequest, BatchStatus
-from ntsb_probable_cause.model.client import ModelSettings, Payload, cost_usd
+from ntsb_probable_cause.model.client import ModelSettings, PageImage, Payload, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.evidence import Evidence
 
@@ -339,3 +339,19 @@ def test_wait_tolerates_a_later_404_blip_after_a_non_terminal_status_was_seen(
     )
     assert status.status == "completed"
     assert clock.sleeps == [10.0, 10.0]
+
+
+def test_the_batch_service_refuses_an_image(respx_mock: respx.MockRouter) -> None:
+    """OpenRouter batch documentation, read 2026-09-24: base64 and data: images are rejected."""
+    route = respx_mock.post(BASE).mock(
+        return_value=httpx.Response(
+            202, json={**FIX["response"], "status": "validating", "results": []}
+        )
+    )
+    image = PageImage(media_type="image/jpeg", data=b"\xff\xd8jpeg")
+    request = BatchRequest(
+        custom_id="p1", payload=Payload.for_page(image), settings=ModelSettings()
+    )
+    with pytest.raises(ConfigurationError, match="images cannot go through the batch service"):
+        client().submit([request])
+    assert route.calls.call_count == 0
