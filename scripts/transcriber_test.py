@@ -209,9 +209,20 @@ def _fraction(numerator: int, denominator: int) -> Fraction:
 def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     """Spec §7.4: the gate, then the cheapest within both margins of the best. Notes say why.
 
-    A tie in cost (fix round 1, M7) goes to whichever tied candidate is listed first in
-    ``CANDIDATES``: ``min`` returns the first minimum it meets, and ``results`` is built from
-    ``CANDIDATES`` in order.
+    Fix round 2, C1 (Andy, "handwriting first"): the spec did not say what happens when no
+    passing candidate is within both margins at once -- the review's own example (a candidate
+    with the best handwriting more than 1 error per 100 characters behind on typed text, and
+    the candidate with the best typed text more than 5 points behind on handwriting) makes
+    ``eligible`` empty and used to raise. Andy's answer: handwriting comes first. When no
+    candidate is within both margins, the cheapest candidate within 5 points of the best
+    handwriting line accuracy is chosen instead, typed errors per 100 characters breaking a
+    cost tie (lower wins), then the documented order in ``CANDIDATES`` (fix round 1, M7's tie
+    rule, unchanged). When no candidate passes the gate at all, the result is still "no
+    transcriber" (spec §7.4 item 3) -- that case is untouched by this decision.
+
+    A tie in cost within both margins (fix round 1, M7) goes to whichever tied candidate is
+    listed first in ``CANDIDATES``: ``min`` returns the first minimum it meets, and ``results``
+    is built from ``CANDIDATES`` in order.
     """
     notes: list[str] = []
     passed: list[CandidateResult] = []
@@ -240,17 +251,28 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     typed = {r.model: 100 * _fraction(r.typed_errors, r.typed_chars) for r in passed}
     best_hw = max(hw.values())
     best_typed = min(typed.values())
-    eligible = [
+    both_margins = [
         r
         for r in passed
         if hw[r.model] >= best_hw - HANDWRITING_MARGIN
         and typed[r.model] <= best_typed + TYPED_MARGIN_PER_100
     ]
     for r in passed:
-        if r not in eligible:
+        if r not in both_margins:
             notes.append(f"{r.model}: passed the gate, outside a margin of the best")
-    chosen = min(eligible, key=lambda r: r.cost_per_page)
-    notes.append(f"{chosen.model}: chosen -- the cheapest within both margins")
+    if both_margins:
+        chosen = min(both_margins, key=lambda r: r.cost_per_page)
+        notes.append(f"{chosen.model}: chosen -- the cheapest within both margins")
+        return chosen.model, notes
+    # Fix round 2, C1: no candidate was within both margins -- handwriting first. Ties (on
+    # cost, then on typed errors) go to whichever tied candidate comes first in ``passed``,
+    # the same way M7's within-both-margins tie already works: ``min`` keeps the first
+    # element it meets with the smallest key, and ``passed`` preserves ``CANDIDATES`` order.
+    hw_eligible = [r for r in passed if hw[r.model] >= best_hw - HANDWRITING_MARGIN]
+    chosen = min(hw_eligible, key=lambda r: (r.cost_per_page, typed[r.model]))
+    notes.append(
+        f"{chosen.model}: chosen -- handwriting first: no candidate was within both margins"
+    )
     return chosen.model, notes
 
 
@@ -371,11 +393,20 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
     have: list[dict[str, object]],
     pool: Sequence[Mapping[str, object]],
     want: int,
-    label: str,
+    labels: tuple[str, ...],
     docs: CachedDocuments,
     settings: Settings,
 ) -> list[dict[str, object]]:
-    """Label pool pages 25 at a time with the inventory's labeller until ``want`` are found."""
+    """Label pool pages 25 at a time with the inventory's labeller until ``want`` are found.
+
+    A pool page is kept when the labeller calls it any of ``labels`` (fix round 2, C2: the
+    handwriting top-up accepts ``handwriting`` or ``filled form``, since the labeller calls a
+    hand-filled pilot form the latter far more often than the former). Every row ``have``
+    starts with must already carry ``"source"`` and ``"page_kind"`` (the caller tags the
+    inventory's own rows before calling this); a page this function adds gets
+    ``"source": "top-up"`` and the label that admitted it, so the results file can report
+    where each key page came from.
+    """
     cache = TranscriptionCache(settings.transcription_dir)
     tried = 0
     while len(have) < want and tried < min(len(pool), TOP_UP_LIMIT):
@@ -400,8 +431,8 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
         )
         for row in chunk:
             record = cache.get(_key(row, LABELLER, instruction=LABEL, dpi=RESOLUTION))
-            if record is not None and record.page_kind == label:
-                have.append(row)
+            if record is not None and record.page_kind in labels:
+                have.append({**row, "source": "top-up", "page_kind": record.page_kind})
     return have[:want]
 
 
@@ -484,15 +515,29 @@ def cmd_keys(settings: Settings, docs: CachedDocuments, *, force: bool = False) 
     rng.shuffle(image_only)
 
     def from_inventory(label: str) -> list[dict[str, object]]:
-        return [dict(sample[n]) for n, lab in sorted(labels.items()) if lab == label]
+        # Fix round 2, C2: tagged "inventory" / its own label, so the results file can report
+        # where each key page came from.
+        return [
+            {**dict(sample[n]), "source": "inventory", "page_kind": lab}
+            for n, lab in sorted(labels.items())
+            if lab == label
+        ]
 
     forms = [row for row in image_only if _category(row, docs) == "pilot_form_6120"]
     photo_docs = [row for row in image_only if _category(row, docs) == "photos"]
+    # Fix round 2, C2 (Andy, "hand-filled pilot forms"): the top-up accepts a pilot-form page
+    # the labeller calls either handwriting or filled form -- of 97 sampled pilot-form pages
+    # the labeller called none handwriting and 90 filled form (docs/results/s26-inventory.txt).
     handwriting = _top_up(
-        from_inventory("handwriting"), forms, HANDWRITING_PAGES, "handwriting", docs, settings
+        from_inventory("handwriting"),
+        forms,
+        HANDWRITING_PAGES,
+        ("handwriting", "filled form"),
+        docs,
+        settings,
     )
     photos = _top_up(
-        from_inventory("photograph"), photo_docs, PHOTO_PAGES, "photograph", docs, settings
+        from_inventory("photograph"), photo_docs, PHOTO_PAGES, ("photograph",), docs, settings
     )
     scans = _full_scans(frame, sampled, docs, rng)
     groups = (("typed", typed), ("handwriting", handwriting), ("photo", photos), ("mixed", scans))
@@ -873,15 +918,20 @@ _KEY_SETS = ("typed", "handwriting", "photo", "mixed")
 
 @dataclass(frozen=True)
 class ReadingCounts:
-    """One key set's pages with no cached reading, and pages whose reading failed."""
+    """One key set's pages with no cached reading, and pages whose reading failed.
+
+    Fix round 2 (Andy, "count it as wrong"): a page a candidate still failed to read after
+    ``run --retry-failed`` is scored as wrong for that candidate, not held back from scoring --
+    only a page with no reading at all (never attempted) still blocks `score` (``incomplete``).
+    """
 
     missing: int
     failed: int
 
     @property
     def incomplete(self) -> int:
-        """Pages this candidate has no usable, transcribed reading for."""
-        return self.missing + self.failed
+        """Pages with no reading at all: the only thing that still blocks scoring."""
+        return self.missing
 
 
 def _reading_counts(
@@ -889,9 +939,9 @@ def _reading_counts(
 ) -> dict[str, ReadingCounts]:
     """Per key set, pages with no reading and pages whose reading failed (fix round 1, I2).
 
-    How a persistent failure should be *scored* is a rule question for Andy, not decided
-    here (spec §7.4's rule says nothing about it, and this fix round leaves that alone). This
-    only counts and reports, so nothing is silently scored as if it read no words.
+    Fix round 2 (Andy): a failed reading counts as wrong for that candidate rather than
+    blocking scoring; only a missing reading (never attempted) still does. Both are counted
+    and printed either way, so nothing is silently scored without a visible count behind it.
     """
     counts: dict[str, ReadingCounts] = {}
     for set_name in _KEY_SETS:
@@ -911,25 +961,25 @@ def _reading_counts(
 def _choose_or_hold(
     reading_counts: Mapping[str, Mapping[str, ReadingCounts]], results: Sequence[CandidateResult]
 ) -> tuple[str | None, list[str]]:
-    """Hold off `choose` while any candidate is missing a transcribed reading (fix round 1, I2).
+    """Hold off `choose` while any candidate has a page with no reading at all.
 
-    A failed or never-attempted reading is scored as if it read no words (`_text` returns
-    ""), which favours a model that fails often. How a persistent failure should ultimately be
-    *scored* is a rule question for Andy, left alone here; this only counts, reports, and
-    holds off choosing until every reading is in.
+    Fix round 1, I2; narrowed by fix round 2's "count it as wrong". A page never attempted
+    (no cached record at all) still holds off scoring: nothing is known
+    about it, so there is nothing to score. A page a candidate *tried* and failed -- even after
+    `run --retry-failed` -- is different: Andy's decision is to count it as wrong for that
+    candidate (`_result` already does, since `_text` returns "" for a failed reading, exactly
+    the same as a blank one) rather than hold up scoring on a persistent failure.
     """
     incomplete = {
-        m: counts
-        for m, counts in reading_counts.items()
-        if any(c.incomplete for c in counts.values())
+        m: counts for m, counts in reading_counts.items() if any(c.missing for c in counts.values())
     }
     if not incomplete:
         return choose(results)
-    total_incomplete = sum(c.incomplete for counts in incomplete.values() for c in counts.values())
+    total_missing = sum(c.missing for counts in incomplete.values() for c in counts.values())
     return None, [
-        f"not chosen: {total_incomplete} page(s) across {len(incomplete)} of "
-        f"{len(CANDIDATES)} candidates have no transcribed reading -- run "
-        "`transcriber_test run --retry-failed` and score again"
+        f"not chosen: {total_missing} page(s) across {len(incomplete)} of "
+        f"{len(CANDIDATES)} candidates have no reading at all -- run `transcriber_test run` "
+        "and score again"
     ]
 
 
@@ -1048,12 +1098,23 @@ def cmd_score(
     picked, typed_lines, spot_total, spot_changed, spot_answer_mismatches = (
         _handwriting_key_summary(pages, key_texts, hw_marks)
     )
+    # Fix round 2, C2: how many handwriting key pages came from the inventory's own handwriting
+    # label against the pilot-form top-up, and by the label that admitted each.
+    hw_sources = Counter(
+        (str(r.get("source", "inventory")), str(r.get("page_kind", "handwriting")))
+        for r in keys
+        if r["set"] == "handwriting"
+    )
+    hw_sources_line = ", ".join(
+        f"{n} {source} ({label})" for (source, label), n in sorted(hw_sources.items())
+    )
     lines = [
         "# the transcriber test (S2.6 spec §7, decision 0080) -- counts only",
         f"keys: {sum(1 for r in keys if r['set'] == 'typed')} typed pages, "
         f"{len(pages)} handwriting pages ({sum(r.hw_lines for r in results[:1])} key lines), "
         f"{results[0].photo_pages} no-word photographs; {RESOLUTION} dpi; instruction "
         f"{TRANSCRIBE.version}; standard prices (images cannot be batched)",
+        f"handwriting key sources (fix round 2, C2): {hw_sources_line}",
         f"handwriting key: {picked} lines picked from a version, {typed_lines} typed by Andy; "
         f"spot check of agreed lines: {spot_changed} of {spot_total} wrong in all four "
         f"({spot_answer_mismatches} pages where Andy's own spot-check answer disagrees)",

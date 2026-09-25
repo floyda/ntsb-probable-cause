@@ -124,6 +124,82 @@ def test_no_model_passing_means_no_transcriber() -> None:
     assert tt.choose([_result("a", hw_inventing=20)])[0] is None
 
 
+def test_choose_picks_handwriting_first_when_no_candidate_is_within_both_margins() -> None:
+    """Fix round 2, C1 (Andy, "handwriting first"): the review's own example -- A's
+    handwriting is best but its typed errors are too far behind B's; B's typed errors are
+    best but its handwriting is too far behind A's. No candidate is within both margins, so
+    handwriting comes first."""
+    results = [
+        _result(
+            "A",
+            cost_per_page=0.01,
+            hw_lines=1000,
+            hw_right=901,
+            hw_inventing=0,
+            typed_chars=100,
+            typed_errors=5,
+        ),
+        _result(
+            "B",
+            cost_per_page=0.001,
+            hw_lines=1000,
+            hw_right=800,
+            hw_inventing=0,
+            typed_chars=100,
+            typed_errors=1,
+        ),
+    ]
+    chosen, notes = tt.choose(results)
+    assert chosen == "A"
+    assert any("handwriting first" in note for note in notes)
+
+
+def test_choose_handwriting_first_tie_on_cost_broken_by_typed_errors() -> None:
+    """Fix round 2, C1: within the handwriting-first branch, a cost tie is broken by typed
+    errors per 100 characters, lower winning."""
+    results = [
+        _result(
+            "far",  # excluded from the handwriting-first pool: too far from the best hw
+            cost_per_page=0.0001,
+            hw_lines=1000,
+            hw_right=500,
+            hw_inventing=0,
+            typed_chars=100,
+            typed_errors=0,
+        ),
+        _result(
+            "A",
+            cost_per_page=0.001,
+            hw_lines=1000,
+            hw_right=900,
+            hw_inventing=0,
+            typed_chars=100,
+            typed_errors=10,
+        ),
+        _result(
+            "B",
+            cost_per_page=0.001,
+            hw_lines=1000,
+            hw_right=900,
+            hw_inventing=0,
+            typed_chars=100,
+            typed_errors=5,
+        ),
+    ]
+    chosen, notes = tt.choose(results)
+    assert chosen == "B"
+    assert any("handwriting first" in note for note in notes)
+
+
+def test_choose_all_out_still_gives_no_transcriber() -> None:
+    """Fix round 2, C1: when every candidate fails the gate, the outcome is unchanged --
+    handwriting-first only applies once at least one candidate has passed."""
+    results = [_result("a", hw_inventing=20), _result("b", hw_inventing=30)]
+    chosen, notes = tt.choose(results)
+    assert chosen is None
+    assert any("no candidate passed the gate" in note for note in notes)
+
+
 def test_resolution_200_only_for_more_than_five_points() -> None:
     assert tt.choose_resolution(0.80, 0.85) == 150
     assert tt.choose_resolution(0.80, 0.851) == 200
@@ -441,9 +517,10 @@ def test_cmd_score_applies_the_rule_and_reports_the_choice(tmp_path: Path) -> No
     assert "the transcriber test" in text
 
 
-def test_cmd_score_does_not_choose_while_a_reading_is_missing_or_failed(tmp_path: Path) -> None:
-    """Fix round 1, I2/M9: one candidate missing a reading of one key page holds off `choose`
-    entirely, naming the count, rather than silently scoring the gap as an empty reading."""
+def test_cmd_score_does_not_choose_while_a_reading_is_missing(tmp_path: Path) -> None:
+    """Fix round 1, I2/M9 (narrowed by fix round 2's "count it as wrong"): one candidate
+    missing a reading of one key page -- never attempted, no record at all -- holds off
+    `choose` entirely, naming the count, rather than silently scoring the gap as empty."""
     settings = Settings(data_dir=tmp_path)
     folder = settings.data_dir / tt.FOLDER
     folder.mkdir(parents=True)
@@ -488,9 +565,72 @@ def test_cmd_score_does_not_choose_while_a_reading_is_missing_or_failed(tmp_path
 
     text = tt.cmd_score(settings, docs, hw_csv, photos_csv, mixed_csv)
     assert "not chosen:" in text
-    assert "run `transcriber_test run --retry-failed`" in text
+    assert "run `transcriber_test run`" in text
     assert "chosen -- the cheapest" not in text
     assert "photo 1 missing/0 failed" in text
+
+
+def test_cmd_score_scores_a_failed_reading_as_wrong_and_still_chooses(tmp_path: Path) -> None:
+    """Fix round 2 (Andy, "count it as wrong"): a page a candidate still failed to read after
+    a retry does not block `choose` -- it counts as wrong for that candidate (0 handwriting
+    lines right, no invented lines, every typed character an error), its cost still counts,
+    and the failure is counted and printed."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    typed_doc = _text_pdf("FUEL SELECTOR BOTH.")
+    _seed(settings.docket_dir, 1, typed_doc)
+    docs = _offline_docs(settings)
+    key_text = page_text(typed_doc, 1)
+    typed_row = {
+        "set": "typed",
+        "k": 1,
+        "mkey": 1,
+        "document": 1,
+        "page": 1,
+        "document_sha256": hashlib.sha256(typed_doc).hexdigest(),
+    }
+    hw_row = {"set": "handwriting", "k": 1, "document_sha256": "a" * 64, "page": 1}
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "b" * 64, "page": 1}
+    mixed_row = {"set": "mixed", "k": 1, "document_sha256": "c" * 64, "page": 1}
+    keys = [typed_row, hw_row, photo_row, mixed_row]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in keys))
+
+    cache = TranscriptionCache(settings.transcription_dir)
+    for model in tt.CANDIDATES:
+        if model == "openai/gpt-6-luna":
+            # This candidate's handwriting reading failed (tried, cost real money, no text).
+            cache.put(
+                Transcription(
+                    key=tt._key(hw_row, model, instruction=TRANSCRIBE, dpi=RESOLUTION),
+                    status="failed",
+                    error="boom",
+                    cost_usd=0.002,
+                    created=datetime.now(UTC),
+                )
+            )
+        else:
+            _put(cache, hw_row, model, "Fuel BOTH")
+        _put(cache, typed_row, model, key_text)
+        _put(cache, photo_row, model, "")
+        _put(cache, mixed_row, model, "")
+
+    (folder / "handwriting.json").write_text(
+        json.dumps({"1": {"versions": {"A": ["Fuel BOTH"]}, "draft": "A", "agreed": ["Fuel BOTH"]}})
+    )
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    (folder / "mixed.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    hw_csv = tmp_path / "handwriting-key.csv"
+    _write_csv(hw_csv, ["row", "key"], [["1", "Fuel BOTH"]])
+    photos_csv = tmp_path / "photo-words.csv"
+    _write_csv(photos_csv, ["row", "words"], [["11", "all on the page"]])
+    mixed_csv = tmp_path / "mixed-words.csv"
+    _write_csv(mixed_csv, ["row", "added words"], [["11", "all on the page and new"]])
+
+    text = tt.cmd_score(settings, docs, hw_csv, photos_csv, mixed_csv)
+    assert "not chosen:" not in text
+    assert "chosen --" in text
+    assert "handwriting 0 missing/1 failed" in text
 
 
 def test_cmd_score_refuses_unmarked_photograph_outputs(tmp_path: Path) -> None:
@@ -653,7 +793,8 @@ def test_reading_counts_reports_missing_and_failed(tmp_path: Path) -> None:
         cache, [row_ok, row_failed, row_missing], "openai/gpt-6-luna", dpi=RESOLUTION
     )
     assert counts["typed"] == tt.ReadingCounts(missing=1, failed=1)
-    assert counts["typed"].incomplete == 2
+    # Fix round 2: only a missing reading blocks scoring; a failed one counts as wrong.
+    assert counts["typed"].incomplete == 1
     assert counts["handwriting"] == tt.ReadingCounts(missing=0, failed=0)
 
 
@@ -696,9 +837,57 @@ def test_top_up_labels_the_pool_until_want_is_reached(
         return []
 
     monkeypatch.setattr(tt, "run_preparation", fake_run_preparation)
-    have = tt._top_up([], pool, 2, "handwriting", docs, settings)
+    have = tt._top_up([], pool, 2, ("handwriting",), docs, settings)
     assert len(have) == 2
     assert {row["mkey"] for row in have} <= {100, 101, 102}
+    assert all(row["source"] == "top-up" and row["page_kind"] == "handwriting" for row in have)
+
+
+def test_top_up_accepts_either_of_two_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix round 2, C2 (Andy, "hand-filled pilot forms"): the handwriting top-up keeps a page
+    the labeller calls either ``handwriting`` or ``filled form``."""
+    settings = Settings(data_dir=tmp_path)
+    docs = _offline_docs(settings)
+    pool: list[dict[str, object]] = []
+    for i in range(3):
+        mkey = 200 + i
+        # Distinct content per page (fix round 1's own I3 note applies here too): identical
+        # bytes would give every page the same document_sha256, so they would share one cache
+        # key and only the last-written label would be readable back.
+        _seed(settings.docket_dir, mkey, _text_pdf(f"page {i}"))
+        pool.append({"case_id": f"G{i}", "mkey": mkey, "document": 1, "page": 1})
+    cache = TranscriptionCache(settings.transcription_dir)
+    kinds = ["filled form", "typed text", "handwriting"]  # only the first and third qualify
+
+    def fake_run_preparation(  # noqa: PLR0913 -- mirrors run_preparation's own signature.
+        *,
+        kind: str,
+        jobs: list[PageJob],
+        instruction: object,
+        settings: Settings,
+        commit: tuple[str, bool],
+        expected_cost_per_page_usd: float,
+        workers: int = 4,
+        retry_failed: bool = False,
+    ) -> list[Transcription]:
+        for job, page_kind in zip(jobs, kinds, strict=True):
+            cache.put(
+                Transcription(
+                    key=job.key,
+                    status="transcribed",
+                    text="",
+                    page_kind=page_kind,
+                    created=datetime.now(UTC),
+                )
+            )
+        return []
+
+    monkeypatch.setattr(tt, "run_preparation", fake_run_preparation)
+    have = tt._top_up([], pool, 5, ("handwriting", "filled form"), docs, settings)
+    assert len(have) == 2
+    assert {row["page_kind"] for row in have} == {"handwriting", "filled form"}
 
 
 def test_full_scans_excludes_sampled_photo_only_and_low_image_share(tmp_path: Path) -> None:
