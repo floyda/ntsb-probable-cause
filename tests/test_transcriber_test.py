@@ -1307,3 +1307,13 @@ def test_highlighting_colours_words_by_how_many_versions_hold_them() -> None:
     assert '<span class="only">&lt;mixture&gt;</span>' in shown
     assert '<span class="some">rich</span>' in tt._highlighted(versions["C"], versions)
     assert tt._highlighted(["x y"], {"A": ["x y"]}) == "x y"
+
+
+def test_a_grouped_image_is_shown_once_and_repeats_are_named() -> None:
+    """Andy (2026-09-25): one image per group; identical versions say so."""
+    seen: dict[str, str] = {}
+    assert tt._same_as(seen, "N123AB", "A") == ""
+    assert tt._same_as(seen, "N123AB", "C") == " -- same words as version A"
+    assert tt._same_as(seen, "N12", "D") == ""
+    assert "<img" in tt._group_head(True, "Photograph 1", "pages/photo-1.jpg")
+    assert tt._group_head(False, "Photograph 1", "pages/photo-1.jpg") == ""
