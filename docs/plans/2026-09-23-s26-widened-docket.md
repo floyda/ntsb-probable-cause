@@ -4136,11 +4136,11 @@ git commit -m "S2.6: transcription -- the fixed instruction, the per-page cache,
 
 **What Andy checks (spec §6.2 item 4).** A seeded 60 of the 330 (seed `20260925`), each shown as its image beside its label, marked right or wrong, with the right label chosen when wrong. Where Andy checked a page, his label is the one used.
 
-- [ ] **Step 1: Confirm the photo-only pages are in the frame (decision W2)**
+- [x] **Step 1: Confirm the photo-only pages are in the frame (decision W2)**
 
 Task 1 fetched them (`--include-photo-only`). Check that `data/s26/pages-dev-400.jsonl` has rows with `"photo_only": true` and that `docs/results/s26-page-kinds.txt`'s `fetched and read:` line is not zero; if either fails, stop and re-run Task 1 Step 10. `ALLOCATION` below already holds the photo-only stratum.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/test_docket_documents.py`: build a one-case cache in `tmp_path` in `DocketClient`'s layout (copy the listing from `tests/fixtures/docket/ERA17LA217/listing.html`, and write `1.bin` holding a `build_pdf` document with a `fetch.json` entry giving its `sha256` and the listing's `href` for index 1), then assert `CachedDocuments(client).document(mkey, 1)` returns those bytes, `loader(mkey, 1)()` returns the same, and an index the listing lacks raises `DocketError`.
 
@@ -4290,12 +4290,12 @@ def test_the_stop_rule() -> None:
     assert inv.stop_outcome(0.10).startswith("go on")
 ```
 
-- [ ] **Step 3: Run them to see them fail**
+- [x] **Step 3: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_documents.py tests/test_preparation.py tests/test_page_inventory.py -v`
 Expected: FAIL — the three modules do not exist.
 
-- [ ] **Step 4: `docket/documents.py`**
+- [x] **Step 4: `docket/documents.py`**
 
 ```python
 """Docket documents from the cache, by case key and listing index (S2.6)."""
@@ -4339,7 +4339,7 @@ class CachedDocuments:
         return lambda: self.document(mkey, index)
 ```
 
-- [ ] **Step 5: `scoring/preparation.py`**
+- [x] **Step 5: `scoring/preparation.py`**
 
 ```python
 """A paid evidence-preparation job: reserved, spent row by row, settled (0045, 0081).
@@ -4463,7 +4463,7 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
 
 (`OpenRouterClient` is a context manager; its default `requests_per_minute=60` applies per worker thread. Check the exact `OpenRouterClient.__init__` keywords in `model/openrouter.py` after the merge and match them.)
 
-- [ ] **Step 6: `scripts/page_inventory.py`**
+- [x] **Step 6: `scripts/page_inventory.py`**
 
 ```python
 """The inventory: what the image-bearing pages show, in measured proportions (S2.6 §6).
@@ -4845,12 +4845,12 @@ if __name__ == "__main__":
 
 Let `ruff format` break the two long f-string lines in `cmd_check` and `main` (split each into two adjacent f-strings); ruff's line-length rule would otherwise flag them.
 
-- [ ] **Step 7: Run the tests, then the whole check**
+- [x] **Step 7: Run the tests, then the whole check**
 
 Run: the Step 3 command, then `make check`
 Expected: PASS; green.
 
-- [ ] **Step 8: The targets, and commit the code**
+- [x] **Step 8: The targets, and commit the code**
 
 Append to `Makefile` (and `.PHONY`):
 
@@ -7118,3 +7118,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
   - **I1** (`docket/transcribe.py`, `parse_reply`): a reply from a copying instruction (t1) that omits `text` entirely was accepted as a transcribed, empty page -- indistinguishable from a page that genuinely has no words, and never re-read since `retry_failed` only re-reads failures. `parse_reply` now requires the `text` key to be present (not just defaults to `""`) whenever `instruction.copies_words` is true, and raises `SchemaError` otherwise.
   Also fixed in the same pass, all within the brief's stated interfaces: M2 (jobs are de-duplicated by `key.digest()` before any are paid for), M3 (`TranscriptionCache.get` raises `DocketError` naming the file on a corrupted cache entry, rather than treating it as a miss or letting a bare `ValidationError` through), M4 (`TranscriptionCache.put` also refuses, via an added optional `instruction` keyword, a record whose key names a different instruction; `transcribe_all` checks every job up front, before any page is loaded), M5 (`TranscriptionKey.dpi` is typed `Resolution`, not `int`), M6 (the boundary tests in `tests/test_boundary.py` now capture the body `read_page` actually sends, through a real `OpenRouterClient` against a mocked transport, and the mutation test patches `docket.transcribe.page_text` via `monkeypatch` rather than hand-building a bad payload), M8 (`TranscriptionCache.put` calls `os.fsync` before the atomic rename). M7 (carrying the cache-key deviation into the As-built record and decision 0081) is Andy's, not made here. Tests: `tests/test_docket_transcribe.py` gained tests for all of the above (a full 9-page, 8-worker pool that no longer crashes PDFium; an interruption and a raising `on_chunk`, both engineered deterministically rather than by timing; a pool page that fails after its call; duplicate jobs; a corrupted cache file; a key/instruction mismatch at `read_page`, `TranscriptionCache.put` and `transcribe_all`; an out-of-range `dpi`; a model-call failure and a cost-lookup failure, each with zero cost); `tests/test_boundary.py`'s two transcription boundary tests were reworked per M6.
 - 2026-09-25, Task 11 fix round 2: the re-review found one path in fix round 1's own C2 fix that still lost a paid page -- **R1**. In `transcribe_all`'s `work()`, `cache.put(record, instruction=instruction)` ran after `read_page` had already returned a paid record; if the write itself raised (a full disk, the likely cause), the record reached neither the cache nor `on_chunk`, and the pool's `finally` fold-in explicitly skipped any future whose `exception() is not None`, so the page's cost silently vanished (`probe_exc.py`: 10 paid, 9 reported). `work()` now catches a `cache.put` failure and returns `(record, error)` instead of letting it escape; every future therefore always completes successfully from the pool's point of view and is folded in and reported exactly like any other finished page, and the write error itself is collected and raised, once, only after every page has had its chance to reach `on_chunk` (the test asserting the old behaviour, `test_a_future_that_raised_outright_is_skipped_not_reported_or_crashed_on`, is renamed and rewritten to assert the page is reported and the write error still surfaces). The re-review's other findings (R2, a second interruption during `pool.shutdown` losing the fold-in, documented as a limitation rather than fixed, plus queuing a future's record before marking it handled; R3, one PDFium bitmap free running outside the lock, fixed with an explicit `del image`; R4, an unpriced model recorded at $0, fixed by checking `sources.price_of` for every job's model once before any call; R5, the "native crash" and "every entry point" comments corrected) are implementation detail, not scope departures, and are not logged separately.
+- 2026-09-25, Task 12 Step 6/Step 2: `ruff check --fix` removed an unused `# noqa: PLR0911` from `page_inventory.main` (the function's actual branch count does not trigger that rule after formatting) and reordered `tests/test_docket_documents.py`'s and `tests/test_preparation.py`'s import blocks (`from tests.pdf_builder import ...` moved ahead of the `ntsb_probable_cause` first-party group, this project's isort sorting `tests` alongside it, alphabetically before `ntsb_probable_cause`) -- same behaviour, lint-only rewrites of the brief's literal code, per the same practice as every other logged lint-fix deviation in this document.

@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory
 
 check: lint type test
 
@@ -144,3 +144,13 @@ s26-reply-budget:
 s26-reply-budget-roomy:
 	uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 16000 --expected-cost-per-case-usd 0.008
 # S2.6 Task 9A (Andy's decision B): the same run with a roomy reply budget, to measure uncut need.
+
+s26-inventory-probe:
+	uv run python -m scripts.page_inventory sample
+	uv run python -m scripts.page_inventory probe
+# S2.6 spec §6.2: draws the 330-page sample (free), then labels ONE page (under a cent).
+
+s26-inventory:
+	uv run python -m scripts.page_inventory label
+	uv run python -m scripts.page_inventory check
+# S2.6 spec §6.2: labels the 330 (about $0.20), then writes Andy's 60-page check.
