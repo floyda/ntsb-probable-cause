@@ -2605,6 +2605,90 @@ def test_stage1_truncated_reply_fails_schema_with_finish_reason_and_token_counts
     )
 
 
+def test_batch_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: the model-facing retry text must stay byte-for-byte what it was before
+    Task 9A -- only the *recorded* failure carries ``(finish_reason=..., ...)``.
+
+    Both stage-1 attempts are truncated (``finish_reason="length"``) so the case ends up
+    failed after its retry; the retry batch's own request is what would have carried a
+    leaked detail if ``need_retry``'s text (also used as the retry prompt) had not been kept
+    separate from the failure text.
+    """
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"probable_cause": "the eng',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(handlers=[truncated, truncated])
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert len(fake.submitted) == 2  # stage1, stage1-retry
+    retry_request = fake.submitted[1][0]
+    assert "Your previous reply was rejected: schema:" in retry_request.system
+    assert "finish_reason=" not in retry_request.system
+    assert "reasoning_tokens=" not in retry_request.system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)"
+    )
+
+
+def test_sync_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Mirrors the batch-path test for the sync path (fix round 1).
+
+    The sync retry already builds its prompt from the bare ``SchemaError`` (``_two_turns``
+    never sees ``_reply_detail``, which is only appended in ``_answer_case``'s except
+    block) -- this pins that it stays that way.
+    """
+    client = RecordingFakeClient(["not json", "still not json"])
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    assert len(client.systems) == 2  # first attempt, retry
+    retry_system = client.systems[1]
+    assert "Your previous reply was rejected: reply is not a Hypothesis" in retry_system
+    assert "finish_reason=" not in retry_system
+    assert "reasoning_tokens=" not in retry_system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert "finish_reason=" in case.failure
+
+
 def test_successful_case_records_reasoning_tokens_summed_over_its_replies(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:

@@ -792,6 +792,12 @@ class _CaseContext:
     documents_attached: tuple[str, ...] = ()
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
+    # The last SchemaError's reply detail (S2.6 Task 9A fix round 1): kept apart from the
+    # batch path's ``need_retry`` error text, which is also sent back to the model as the
+    # retry prompt ("Your previous reply was rejected: ..."). That text must stay exactly
+    # what it was before this task -- the detail is appended only when a case's *failure* is
+    # finally recorded, by ``_fail_case``, never by ``_retry_system``/``_stage2_system``.
+    schema_detail: str | None = None
 
 
 @dataclass
@@ -1637,7 +1643,17 @@ class Runner:
         run.results[case_id] = self._result(ctx, (step,), scores, cost)
 
     def _fail_case(self, case_id: str, failure: str, run: _BatchRun) -> None:
+        """Record one case's failure -- the only place ``schema_detail`` reaches a result.
+
+        ``failure`` here is the batch path's ``need_retry`` text, which is also sent back to
+        the model verbatim as the next retry's system message (``_retry_system`` /
+        ``_stage2_system``). The reply-budget detail (S2.6 Task 9A fix round 1) must never
+        reach the model, so it is appended only here, into the *recorded* failure, from
+        ``ctx.schema_detail`` -- set beside ``need_retry`` but never folded into it.
+        """
         ctx = run.contexts[case_id]
+        if failure.startswith("schema:") and ctx.schema_detail is not None:
+            failure = f"{failure}{ctx.schema_detail}"
         cost = self._cost(ctx.replies, ctx.spec)
         run.results[case_id] = self._failed(ctx, failure, cost)
 
@@ -1683,7 +1699,8 @@ class Runner:
             try:
                 hypothesis = parse_hypothesis(result.reply.content or "", self._tables)
             except SchemaError as error:
-                need_retry[cid] = f"schema: {error}{_reply_detail(result.reply)}"
+                need_retry[cid] = f"schema: {error}"
+                run.contexts[cid].schema_detail = _reply_detail(result.reply)
             else:
                 run.hyps[cid] = hypothesis
                 # Pinned once, so a stage-2 retry batch replays the accepted stage-1
@@ -1737,7 +1754,8 @@ class Runner:
                     result.reply.content or "", self._tables, run.hyps[cid]
                 )
             except SchemaError as error:
-                need_retry[cid] = f"schema: {error}{_reply_detail(result.reply)}"
+                need_retry[cid] = f"schema: {error}"
+                run.contexts[cid].schema_detail = _reply_detail(result.reply)
         return need_retry
 
     @staticmethod
