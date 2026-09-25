@@ -700,3 +700,11 @@ Title `S2.4: the model switch`. Merge with a merge commit, never squash (0033). 
   cases, not 360. Andy's decision (option A): S2.4 closes as it stands; **carried to S2.6**: confirm
   the cause on `dev-400` and raise the reply budget as a decision before S2.6's held-out B-v1 and
   B-v2 runs, which share one commit and so one budget.
+- 2026-09-25, Task 7, correction: the "2" GPT-5.6 Luna comparator above is now published by a
+  script, not carried from memory: `docs/results/s24-armB-gpt56-failures.txt`
+  (`uv run ntsb-eval report 20260921T071430-3bc3a51-heldout-400-B`) prints its `failures by
+  reason:` line as `leak (analysis_narrative) 40, schema 2` -- the "2" is the schema count. The
+  "19 truncated/empty, 5 probabilities > 1" split of GPT-6 Luna's 24 reply-format failures is an
+  **ad-hoc** hand tally, not a script's output, and is labelled as such wherever it appears; a
+  scripted sub-classification of reply-format failures is owed to S2.6, which must confirm the
+  truncation cause on `dev-400` anyway.

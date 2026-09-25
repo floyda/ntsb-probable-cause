@@ -62,3 +62,18 @@ standard and batch paths, and the gate run failed the reply format on 0 of 401 `
 finding difference is outside the gate, which is on top-1; Andy chose to switch and read findings
 on held-out arm B (S2.4 spec §5), noting that a higher reasoning level is the first lever to try
 if GPT-6 Luna's findings lag — a question for the model axis after S3 (spec §4.1).
+
+**Held-out outcome, 2026-09-25 (appended; nothing above is edited).** Numbers from
+`docs/results/s24-bars.txt` and `docs/results/s24-armB-gpt56-failures.txt`. Arm B on GPT-6 Luna,
+`heldout-400`: occurrence top-1 26.5% [22.1%, 31.5%] (336 of 400 cases scored). Paired against
+GPT-5.6 Luna's arm B on 334 shared, scored cases (different commits): occurrence top-1 +4.5
+points [+0.0, +9.0]; finding recall@10 +1.4 [−0.8, +3.6] — the top-1 gain holds up and findings
+are no worse. The ceiling's paired finding difference, on 380 shared, scored cases against
+GPT-5.6 Luna's ceiling, is finding recall@10 −0.7 [−1.6, +0.2].
+
+The gate had a blind spot: it runs the ceiling, which has no docket, so it could not see the
+reply-budget truncation that arm B hits once a docket is in the prompt. GPT-5.6 Luna's arm B had
+2 reply-format (schema) failures (`s24-armB-gpt56-failures.txt`); GPT-6 Luna's arm B had 24, most
+of them truncated replies (an ad-hoc tally, not a scripted one; see the S2.4 plan's Deviations,
+2026-09-24/25). The reply budget is carried to S2.6 as a decision to be made before its held-out
+runs, which must also confirm the truncation cause on `dev-400`.
