@@ -34,7 +34,12 @@ from ntsb_probable_cause.model.client import (
     Usage,
 )
 from ntsb_probable_cause.records.marks import CaseMark
-from ntsb_probable_cause.scoring.budget import RESERVATION_FILE, open_reservations, reserve
+from ntsb_probable_cause.scoring.budget import (
+    RESERVATION_FILE,
+    month_spent,
+    open_reservations,
+    reserve,
+)
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
@@ -46,6 +51,7 @@ from ntsb_probable_cause.scoring.runner import (
     RunSpec,
     _BatchRun,
     case_payload,
+    dead_batches,
     estimated_cost_usd,
     over_cap,
     prepare_case,
@@ -1346,7 +1352,7 @@ def test_a_superseded_batch_stays_superseded_across_a_second_resume(
 
 
 @pytest.mark.parametrize("ended_status", ["expired", "failed", "cancelled"])
-def test_resume_resubmits_a_recorded_batch_that_ended_expired(
+def test_resume_resubmits_a_recorded_batch_that_ended_unusable(
     tmp_path: Path, record_fixtures: list[dict[str, object]], ended_status: str
 ) -> None:
     """A reused batch that ran to a terminal, non-completed status has no replies left to
@@ -1382,6 +1388,10 @@ def test_resume_resubmits_a_recorded_batch_that_ended_expired(
         ("stage1", "c1", None),  # the fresh replacement
         ("stage2", "c2", None),
     ]
+    # Fix round 1 (review Minors 3-4): the ended row carries the dead batch's reported cost,
+    # so a later resume can add it back into RunRecord.cost_usd.
+    assert rows[1]["reported_cost_usd"] == pytest.approx(0.01)
+    assert dead_batches(folder) == [("b1", 0.01)]
 
 
 def test_an_ended_batch_supersedes_the_batches_recorded_after_it(
@@ -1427,8 +1437,16 @@ def test_a_fresh_batch_that_ends_failed_still_raises(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
     """A fresh resubmission that itself ends unusably still raises: a run never re-spends
-    more than once on one stage in one call. A second resume then resubmits once more and
-    completes -- the recoverability this task exists for."""
+    more than once on one stage in one call. A second resume then finds that same batch
+    (reused, since it was never marked ``ended``) still reports ``failed``, so it too is
+    recorded ended and resubmitted -- the recoverability this task exists for -- and this
+    time the fresh batch completes.
+
+    Also pins fix round 1 (review Minors 3-4): both dead batches' reported costs ($0.01 for
+    b1, $0.02 for c1) survive into the final ``RunRecord`` -- in ``batch_ids``, in
+    ``cost_usd`` and in ``month_spent`` -- even though neither batch's replies are ever
+    priced into the scored case.
+    """
     dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
 
     resume1 = FakeBatchClient(
@@ -1447,8 +1465,11 @@ def test_a_fresh_batch_that_ends_failed_still_raises(
 
     resume2 = FakeBatchClient(
         handlers=[
-            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.03),  # c1 resubmitted fresh
-            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.04),  # stage 2
+            # c1 is a recorded, never-``ended`` batch, so it is REUSED -- and still reports
+            # ``failed``, exactly as the provider left it. Only then is it resubmitted.
+            lambda bid, reqs: _status(bid, reqs, None, status="failed", reported_cost=0.02),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.03),  # d1: stage1, fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.04),  # d2: stage2, fresh
         ],
         prefix="d",
         preloaded={"c1": resume1.submitted[0]},
@@ -1456,9 +1477,86 @@ def test_a_fresh_batch_that_ends_failed_still_raises(
     record = runner(tmp_path, RecordingFakeClient([]), batch=resume2).run(
         BATCH_SPEC, record_fixtures[:1], resume=_run_id()
     )
+    assert resume2.waited == ["c1", "d1", "d2"]  # c1 reused and found dead, then two fresh
+    assert len(resume2.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
     assert record.finished is not None
     (case,) = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
     assert case.failure is None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("ended")) for row in rows] == [
+        ("stage1", "b1", None),
+        ("stage1", "b1", "expired"),
+        ("stage1", "c1", None),
+        ("stage1", "c1", "failed"),
+        ("stage1", "d1", None),
+        ("stage2", "d2", None),
+    ]
+    assert dead_batches(folder) == [("b1", 0.01), ("c1", 0.02)]
+
+    # Fix round 1: both dead batches' money stays visible in the final record and to the
+    # monthly budget guard, even though neither batch's replies were ever priced into the case.
+    assert record.batch_ids == ("b1", "c1", "d1", "d2")
+    assert record.reported_batch_cost_usd == pytest.approx(0.01 + 0.02 + 0.03 + 0.04)
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6  # the two replies that scored the case
+    assert record.cost_usd == pytest.approx(case_cost + 0.01 + 0.02)
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        record.cost_usd
+    )
+
+
+def test_a_dead_batch_with_no_reported_cost_adds_nothing_and_does_not_crash(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: an ended batch that reported no cost is carried through as ``None``, not
+    coerced to ``0.0`` or dropped -- and it must not make ``cost_usd`` crash either."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=None),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    folder = tmp_path / "runs" / _run_id()
+    assert dead_batches(folder) == [("b1", None)]
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6
+    assert record.cost_usd == pytest.approx(case_cost)  # b1's None cost adds nothing
+
+
+def test_dead_batches_reads_ended_rows_with_their_reported_cost(tmp_path: Path) -> None:
+    """Pins ``dead_batches``' own contract: one ``(batch_id, reported_cost_usd)`` pair per
+    ``ended`` row, ``None`` carried through rather than dropped or coerced to zero, and a
+    non-``ended`` row ignored."""
+    folder = tmp_path / "runs" / "y"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "a1", "stage": "stage1", "time": "2026-09-25T00:00:00"},
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "failed",
+            "reported_cost_usd": 0.01,
+            "time": "2026-09-25T00:00:01",
+        },
+        {
+            "batch_id": "b1",
+            "stage": "stage2",
+            "ended": "expired",
+            "reported_cost_usd": None,
+            "time": "2026-09-25T00:00:02",
+        },
+        {"batch_id": "c1", "stage": "stage2", "time": "2026-09-25T00:00:03"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert dead_batches(folder) == [("a1", 0.01), ("b1", None)]
 
 
 def test_recorded_batches_skips_ended_rows(tmp_path: Path) -> None:

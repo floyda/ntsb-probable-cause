@@ -419,12 +419,13 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
 
     A batch that instead ran to a terminal status other than ``completed`` (Task 9B, S2.4's
     final review) gets the same treatment: a second row for the id, ``{"batch_id": ...,
-    "stage": ..., "ended": "<status>", "time": ...}``, appended in ``_submit_and_wait``. Its
-    reported cost, unlike a lost batch's, has already been added to the run's totals by the
-    time that row is written -- the provider may have billed for requests it completed before
-    the batch died, so that money must stay visible to the budget guard even though the batch
-    itself has no replies left to reuse. Neither an ``ended`` row nor the original row for that
-    id is returned here, exactly as for a ``lost`` one.
+    "stage": ..., "ended": "<status>", "reported_cost_usd": ..., "time": ...}``, appended in
+    ``_submit_and_wait``. That row's ``reported_cost_usd`` is what lets ``dead_batches`` (below)
+    carry the dead batch's money into a later resume's ``RunRecord.cost_usd`` -- fix round 1: no
+    case ever prices a dead batch's replies, so without this its cost would be visible only
+    within the one call that discovered it dead, never to ``month_spent`` on any later resume.
+    Neither an ``ended`` row nor the original row for that id is returned here, exactly as for
+    a ``lost`` one.
 
     Args:
         folder: the run folder.
@@ -459,6 +460,38 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
         for stage, batch_id, time, unusable in rows
         if not unusable and batch_id not in unusable_ids
     ]
+
+
+def dead_batches(folder: Path) -> list[tuple[str, float | None]]:
+    """Every ``(batch_id, reported_cost_usd)`` recorded ``ended`` in ``batches.jsonl``.
+
+    Task 9B fix round 1 (review Minors 3-4): a dead batch's replies are never priced into any
+    case's cost, so its money would otherwise be visible only within the one call that first
+    found it dead. ``Runner.run`` seeds a resume's ``run.batch_ids``/``run.costs`` from this
+    list, and adds the sum of its non-``None`` costs into ``RunRecord.cost_usd`` (``dead_cost``
+    in ``build_record``), so the money stays in every later record and in ``month_spent`` too.
+
+    An empty list where the file does not exist, or where nothing has ended yet.
+
+    Args:
+        folder: the run folder.
+
+    Returns:
+        One ``(batch_id, reported_cost_usd)`` pair per ``ended`` row, in the order recorded.
+        ``reported_cost_usd`` is ``None`` where the batch reported none -- carried through, not
+        dropped, so the caller can tell "no batches ended" from "one ended and reported nothing".
+    """
+    path = folder / BATCHES_FILE
+    if not path.is_file():
+        return []
+    dead: list[tuple[str, float | None]] = []
+    for _number, row in _json_lines(path):
+        if row.get("ended") in ENDED_UNUSABLE:
+            batch_id = row.get("batch_id")
+            if isinstance(batch_id, str):
+                cost = row.get("reported_cost_usd")
+                dead.append((batch_id, cost if isinstance(cost, int | float) else None))
+    return dead
 
 
 RESULT_FILES = ("cases.jsonl", "steps.jsonl", RUN_FILE)
@@ -835,6 +868,12 @@ class _BatchRun:
     already recorded, emptied as ``_submit_and_wait`` consumes them (0032 point 3). It lives
     here, not on ``Runner``, because a ``Runner`` is reused across runs and this queue
     belongs to one answering pass.
+
+    ``dead_costs`` (Task 9B fix round 1) holds the reported cost of every batch found ``ended``
+    -- seeded from ``dead_batches(folder)`` at the start of a resume, and appended to whenever
+    this pass finds one dead itself. Unlike ``costs``, which mixes in every ordinary batch's
+    cost too, this list is only the money a dead batch's replies were never priced into any
+    case, so ``build_record`` can add exactly that amount into ``RunRecord.cost_usd``.
     """
 
     folder: Path
@@ -846,6 +885,7 @@ class _BatchRun:
     finals: dict[str, Hypothesis] = field(default_factory=dict)
     batch_ids: list[str] = field(default_factory=list)
     costs: list[float | None] = field(default_factory=list)
+    dead_costs: list[float | None] = field(default_factory=list)
 
 
 class Runner:
@@ -924,6 +964,7 @@ class Runner:
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
+        dead: list[tuple[str, float | None]] = []
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
             folder = self._runs_dir / run_id
@@ -940,13 +981,19 @@ class Runner:
                 spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
             )
             reusable = recorded_batches(folder)
+            # Task 9B fix round 1: every batch already known dead from an earlier attempt at
+            # this run seeds batch_ids/costs/dead_costs, so its money is never lost from this
+            # resume's record even though the batch that died is found in none of this call's
+            # own waits (a batch found dead *this* call is appended once, as it always was).
+            dead = dead_batches(folder)
         if spec.arm == "B" and self._docket is None:
             raise ConfigurationError("arm B needs a docket reader")
         self._reserve_budget(spec, run_id, len(raws), started)
         self._log_header(spec, run_id, len(case_ids), resumed=resume is not None)
         results: list[CaseResult] = []
-        batch_ids: tuple[str, ...] = ()
+        batch_ids: tuple[str, ...] = tuple(batch_id for batch_id, _cost in dead)
         reported_batch_cost: float | None = None
+        dead_cost = sum(cost for _batch_id, cost in dead if cost is not None)
 
         def build_record(finished: datetime | None, cost_floor: float) -> RunRecord:
             return RunRecord(
@@ -976,7 +1023,13 @@ class Runner:
                 # real spending, and ``month_spent`` — which globs ``*/run.jsonl`` and so
                 # cannot see the renamed file — would lose it. On the ordinary path the
                 # floor is inert: this run re-prices every reply the dead one read.
-                cost_usd=max(sum(r.cost_usd for r in results), cost_floor),
+                # Task 9B fix round 1 (review Minors 3-4): ``dead_cost`` adds in the reported
+                # cost of every batch found ``ended`` (seeded from an earlier attempt, plus any
+                # found dead in this call) -- money no case's ``cost_usd`` ever prices, since a
+                # dead batch's replies are discarded rather than answered from. Without this,
+                # that money was never visible outside the one call that found the batch dead,
+                # and ``month_spent`` (which sums exactly this field) would never see it either.
+                cost_usd=max(sum(r.cost_usd for r in results) + dead_cost, cost_floor),
                 reported_batch_cost_usd=reported_batch_cost,
             )
 
@@ -1001,7 +1054,13 @@ class Runner:
                 for raw in raws:
                     results.append(self._answer_case(raw, spec))
             else:
-                batch_run = _BatchRun(folder=folder, reusable=reusable)
+                batch_run = _BatchRun(
+                    folder=folder,
+                    reusable=reusable,
+                    batch_ids=[batch_id for batch_id, _cost in dead],
+                    costs=[cost for _batch_id, cost in dead],
+                    dead_costs=[cost for _batch_id, cost in dead],
+                )
                 try:
                     self._answer_batch(raws, spec, batch_run)
                 finally:
@@ -1012,6 +1071,7 @@ class Runner:
                     ]
                     batch_ids = tuple(batch_run.batch_ids)
                     reported_batch_cost = self._reported_total(batch_run.costs)
+                    dead_cost = sum(c for c in batch_run.dead_costs if c is not None)
         except BaseException:
             write_outputs(None)
             raise
@@ -1412,14 +1472,18 @@ class Runner:
         self._write_log_line(body)
 
     def _log_superseded(self, stage: str, batch_id: str, lost_batch_id: str) -> None:
-        """One line per downstream batch dropped because the batch it depended on is lost."""
+        """One line per downstream batch dropped because the one it depended on has died.
+
+        True whether that batch is lost or ended unusably (task 9B fix round 1, Minor 2: the
+        wording must be true for both, not just say "lost").
+        """
 
         def body() -> str:
             stage_field = stage.ljust(self._STAGE_WIDTH)
             word_field = "SUPERSEDED".ljust(self._WORD_WIDTH)
             return (
-                f"{stage_field}{word_field}{batch_id} depended on {lost_batch_id}, which is "
-                "lost; submitting afresh (new money)"
+                f"{stage_field}{word_field}{batch_id} depended on {lost_batch_id}, which has "
+                "no replies to reuse; submitting afresh (new money)"
             )
 
         self._write_log_line(body)
@@ -1475,7 +1539,14 @@ class Runner:
         with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
 
-    def _record_ended_batch(self, folder: Path, batch_id: str, stage: str, ended: str) -> None:
+    def _record_ended_batch(
+        self,
+        folder: Path,
+        batch_id: str,
+        stage: str,
+        ended: str,
+        reported_cost_usd: float | None,
+    ) -> None:
         """Append an ``ended`` row for a reused batch that ran to a terminal non-completed status.
 
         Task 9B, S2.4's final review: same row shape as ``_record_lost_batch``'s, with
@@ -1483,12 +1554,20 @@ class Runner:
         resume's ``recorded_batches`` skips this id (and its original row) instead of waiting
         on it again. Nothing is ever deleted from ``batches.jsonl`` -- the original row stays,
         this is a second row for the same id.
+
+        Fix round 1 (review Minors 3-4): the row also carries ``reported_cost_usd``, the dead
+        batch's own reported cost -- the money the provider may have billed for requests it
+        completed before the batch died. ``dead_batches`` reads it back so a later resume can
+        add it into ``RunRecord.cost_usd`` (``build_record``, in ``Runner.run``) even though no
+        case ever prices that batch's replies. Without this, the money was visible only within
+        the one call that discovered the batch dead, and never to ``month_spent``.
         """
         folder.mkdir(parents=True, exist_ok=True)
         row = {
             "batch_id": batch_id,
             "stage": stage,
             "ended": ended,
+            "reported_cost_usd": reported_cost_usd,
             "time": self._now().isoformat(),
         }
         with (folder / BATCHES_FILE).open("a") as handle:
@@ -1608,15 +1687,20 @@ class Runner:
         ``ENDED_UNUSABLE`` (``failed``, ``expired`` or ``cancelled``) is treated the same way --
         it has no replies left to reuse either. Its id and reported cost are already appended
         to ``run.batch_ids``/``run.costs`` above, before this check, so that money stays in the
-        run's totals even though the batch cannot be replayed; only then is
-        ``_supersede_downstream`` called, an ``ended`` row recorded and the queue's downstream
-        batches marked ``superseded``, in that order, for the same crash-safety reason as the
-        ``lost`` path. Control then falls through to the fresh-submit path below, so a stage
-        with an unusable reused batch resubmits exactly once per call -- a fresh batch that
-        itself ends unusably still raises ``ModelError`` rather than resubmitting again, so a
-        run never re-spends more than once on one stage in one call. The next ``--resume``
-        finds the fresh batch recorded and, if it also ended unusably, resubmits it in turn --
-        which is what makes the run recoverable across repeated resumes.
+        run's totals even though the batch cannot be replayed; the same reported cost is also
+        appended to ``run.dead_costs``, which ``build_record`` (``Runner.run``) adds into
+        ``RunRecord.cost_usd`` (fix round 1) -- without that, a dead batch's replies are never
+        priced into any case, so its cost would be genuinely invisible to ``month_spent`` past
+        the one call that found it dead. Only then is ``_supersede_downstream`` called, an
+        ``ended`` row recorded (also carrying the reported cost, so ``dead_batches`` can seed a
+        later resume's ``run.dead_costs`` the same way) and the queue's downstream batches
+        marked ``superseded``, in that order, for the same crash-safety reason as the ``lost``
+        path. Control then falls through to the fresh-submit path below, so a stage with an
+        unusable reused batch resubmits exactly once per call -- a fresh batch that itself ends
+        unusably still raises ``ModelError`` rather than resubmitting again, so a run never
+        re-spends more than once on one stage in one call. The next ``--resume`` finds the fresh
+        batch recorded and, if it also ended unusably, resubmits it in turn -- which is what
+        makes the run recoverable across repeated resumes.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1636,8 +1720,11 @@ class Runner:
                 run.batch_ids.append(status.batch_id)
                 run.costs.append(status.reported_cost_usd)
                 if status.status in ENDED_UNUSABLE:
+                    run.dead_costs.append(status.reported_cost_usd)
                     self._supersede_downstream(run, lost_batch_id=batch_id)
-                    self._record_ended_batch(run.folder, batch_id, stage, status.status)
+                    self._record_ended_batch(
+                        run.folder, batch_id, stage, status.status, status.reported_cost_usd
+                    )
                     self._log_ended(stage, batch_id, status.status)
                     reused = None
                 else:
