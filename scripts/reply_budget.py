@@ -1,42 +1,45 @@
-"""S2.6 Task 9A: read one run folder's ``cases.jsonl`` and report the reply-budget verdict.
+"""S2.6 Task 9A: confirm the reply-budget cause on one run, size it on another.
 
 Status
     One-shot. Prints and, with ``--out``, writes counts only (decision 0024: no case number,
-    no title, no prose) -- cases; failures by reason (``report.failure_summary``, unchanged);
-    the reply-format (``"schema:"``) failures broken down by ``finish_reason``, parsed from
-    each failure text's trailing ``(finish_reason=..., completion_tokens=...,
-    reasoning_tokens=...)`` bracket (S2.6 Task 9A, ``scoring/runner.py``'s ``_reply_detail``)
-    -- a failure text from before that task carries no such bracket, and is counted under
-    ``"unrecorded"`` rather than raising; their reasoning tokens (min/median/max); the
-    successful cases' *per-reply* token spread (median/p90/p99/max, one figure per reply that
-    finished ``"stop"``); truncated-then-recovered replies -- a reply that finished
-    ``"length"`` inside an otherwise successful case, because a schema retry after it
-    succeeded -- counted separately, on both sides of the rule (their reasoning tokens raise
-    the floor `new_budget` sets, and they count as failures in the confirmation verdict,
-    alongside the cases that failed outright); the rule's verdict (confirmed / not confirmed,
-    with the counts behind it, both fixed in the Task 9A brief before any run); and, if
-    confirmed, the new budget by ``new_budget``'s fixed rule.
+    no title, no prose).
 
-    Fix round 2 (2026-09-25, code review): the first version fed `new_budget` a *case's*
+    Fix round 3 (2026-09-25, Andy's decision, verbatim "Let's go with b and work this out
+    properly"): at a 2,000-token budget every successful reply is itself censored at 2,000,
+    so ``new_budget``'s "twice the p99 of successful replies" can only ever answer 4,000 --
+    it can confirm the cause but cannot size the budget honestly. So there are **two**
+    development runs, identical except ``max_output_tokens``: a **confirmation** run at the
+    old budget (2,000), whose failures prove the cause via the reasoning tokens *inside*
+    them (a failure's own reasoning-token count is never censored -- it is read from
+    ``completion_tokens_details``, not bounded by what the model was allowed to emit); and a
+    **sizing** run at a roomy budget (16,000), whose successful replies' own token counts are
+    the real, uncut figures the fixed rule needs. ``confirm_and_size`` reads both, refuses
+    them unless they are the same run in every respect but the budget
+    (``refuse_mismatched_runs``), and applies the unchanged rule (``new_budget``,
+    ``cause_confirmed``) to the confirmation run's failures and the sizing run's successful
+    replies respectively. ``summarise`` (one run) stays as it was for anything that only
+    needs one run's own numbers, or a rule check in isolation (tests).
+
+    Fix round 2 (2026-09-25, code review): the first version fed ``new_budget`` a *case's*
     summed ``StepRecord.completion_tokens`` -- stage 1 plus stage 2, plus any retries -- and
-    called it "the stage-1 reply's own figure", which it is not: `max_output_tokens` bounds
-    one reply, not a case's total across up to four calls. On S2's dev-400 arm B run the gap
-    was concrete: summed completion tokens gave p99=3,555 (-> proposed budget 8,000); the
-    correct per-reply p99 gives 4,000. `StepRecord` now also records
+    called it "the stage-1 reply's own figure", which it is not: ``max_output_tokens`` bounds
+    one reply, not a case's total across up to four calls. ``StepRecord`` now also records
     ``reply_completion_tokens``/``reply_reasoning_tokens``/``reply_finish_reasons`` -- the
     individual figures behind those sums, in call order -- and this script reads those, not
     the sums, wherever it can. A run whose ``steps.jsonl`` predates that fix carries none of
     the three tuples; this script says so explicitly (`per-reply data unavailable`) rather
     than silently falling back to the old, wrong, summed-total reading.
 
-    There is no committed result yet: the confirmation run this script is written to read
-    (plan Step 6, ``make s26-reply-budget``) has not been submitted as of this commit, so
-    ``docs/results/s26-reply-budget-dev.txt`` does not exist. Step 7 makes it, from a real
-    run id, once Step 6 has run.
+    There is no committed result yet: the two development runs this script is written to read
+    (plan Steps 6-7, ``make s26-reply-budget`` and ``make s26-reply-budget-roomy``) have not
+    been submitted as of this commit, so ``docs/results/s26-reply-budget-dev.txt`` does not
+    exist. Step 7 makes it, from the two real run ids, once Step 6 has run both.
 
 Usage:
-    uv run python -m scripts.reply_budget --run RUN_ID \
-        [--out docs/results/s26-reply-budget-dev.txt] [--budget 2000]
+    uv run python -m scripts.reply_budget --confirm RUN_ID --size RUN_ID \
+        [--out docs/results/s26-reply-budget-dev.txt]
+
+    uv run python -m scripts.reply_budget --run RUN_ID [--out PATH] [--budget 2000]
 """
 
 import argparse
@@ -62,8 +65,23 @@ _DETAIL_RE = re.compile(
 
 # The run's own reply budget at the confirmation run this script was written to read
 # (Step 6: `make s26-reply-budget` pins `--max-output-tokens 2000`, the pre-Task-9A
-# default) -- overridable with `--budget` for a run made at a different one.
+# default) -- overridable with `--budget` for a run made at a different one. Used only by
+# the single-run `summarise`; the two-run `confirm_and_size` always reads each run's own
+# recorded `max_output_tokens`.
 _DEFAULT_BUDGET = 2_000
+
+# The fields two runs must agree on to be "the same run at two reply budgets" (fix round 3,
+# Andy's decision B). `evidence_version` is read separately, by `getattr` with a default, so
+# this list -- and this script -- works before Task 8 gives `RunRecord` that field.
+_MATCH_FIELDS = (
+    "sample",
+    "arm",
+    "model",
+    "reasoning_effort",
+    "price_variant",
+    "commit_sha",
+    "dirty",
+)
 
 
 def new_budget(successful: Sequence[int], failed_reasoning: Sequence[int]) -> int | None:
@@ -87,6 +105,48 @@ def cause_confirmed(failures: Sequence[tuple[str, int]], *, budget: int) -> bool
         1 for reason, reasoning in failures if reason == "length" and reasoning >= budget / 2
     )
     return bool(failures) and hits * 2 >= len(failures)
+
+
+def refuse_mismatched_runs(confirm: RunRecord, size: RunRecord) -> None:
+    """Refuse two runs that are not the same run at two reply budgets (Andy's decision B).
+
+    ``confirm_and_size`` reads the confirmation run's failures and the sizing run's
+    successful replies as if they were two windows onto one experiment -- which is only
+    sound if nothing else differed between them. Every mismatch names the field and both
+    values, so a wrong pair of run ids is refused rather than silently combined.
+
+    Args:
+        confirm: the confirmation run's ``RunRecord``.
+        size: the sizing run's ``RunRecord``.
+
+    Raises:
+        SystemExit: the two runs differ in a field they must match, or do not differ in
+            ``max_output_tokens`` (the one field the whole comparison depends on).
+    """
+    for field in _MATCH_FIELDS:
+        confirm_value, size_value = getattr(confirm, field), getattr(size, field)
+        if confirm_value != size_value:
+            raise SystemExit(
+                f"--confirm and --size runs differ in {field}: {confirm_value!r} vs "
+                f"{size_value!r} -- they must be the same run at two reply budgets, not two "
+                "different runs"
+            )
+    # `evidence_version` does not exist on `RunRecord` before Task 8; `getattr` with a
+    # default means this check (and this script) works either side of that task.
+    confirm_version = getattr(confirm, "evidence_version", "v1")
+    size_version = getattr(size, "evidence_version", "v1")
+    if confirm_version != size_version:
+        raise SystemExit(
+            f"--confirm and --size runs differ in evidence_version: {confirm_version!r} vs "
+            f"{size_version!r} -- they must be the same run at two reply budgets, not two "
+            "different runs"
+        )
+    if confirm.max_output_tokens == size.max_output_tokens:
+        raise SystemExit(
+            "--confirm and --size runs must differ in max_output_tokens (both were "
+            f"{confirm.max_output_tokens}) -- the whole point of the pair is one at the old "
+            "budget and one roomy enough to measure uncut need"
+        )
 
 
 @dataclass(frozen=True)
@@ -118,6 +178,21 @@ def _parse_detail(failure: str) -> _Detail:
     )
 
 
+def _format_failures(cases: Sequence[CaseResult]) -> list[_Detail]:
+    """Every ``"schema:"`` (reply-format) failure in ``cases``, parsed."""
+    return [
+        _parse_detail(c.failure) for c in cases if c.failure and c.failure.startswith("schema:")
+    ]
+
+
+def _reason_breakdown(details: Sequence[_Detail]) -> str:
+    """``"length 2, unrecorded 1"``, or ``"none"``."""
+    by_reason: dict[str, int] = {}
+    for detail in details:
+        by_reason[detail.finish_reason] = by_reason.get(detail.finish_reason, 0) + 1
+    return ", ".join(f"{k} {v}" for k, v in sorted(by_reason.items())) or "none"
+
+
 @dataclass(frozen=True)
 class _Reply:
     """One reply's own figures, read from a ``StepRecord``'s per-reply tuples."""
@@ -143,6 +218,25 @@ def _step_replies(step: StepRecord) -> list[_Reply] | None:
         _Reply(completion_tokens=c, reasoning_tokens=r, finish_reason=f)
         for c, r, f in zip(step.reply_completion_tokens, reasoning, finishes, strict=True)
     ]
+
+
+@dataclass(frozen=True)
+class _PerCaseReplies:
+    """The per-reply data recoverable from a run's successful cases."""
+
+    available: list[list[_Reply]]  # one list per successful case that recorded per-reply data
+    unavailable_cases: int  # successful cases whose step predates the per-reply fields
+    had_successful_cases: bool  # whether the run had any successful cases at all
+
+
+def _successful_case_replies(cases: Sequence[CaseResult]) -> _PerCaseReplies:
+    """The per-reply data behind every successful (unfailed, scored) case in ``cases``."""
+    successful_steps = [
+        c.steps[0] for c in cases if c.failure is None and c.scores is not None and c.steps
+    ]
+    per_case = [_step_replies(s) for s in successful_steps]
+    available = [replies for replies in per_case if replies is not None]
+    return _PerCaseReplies(available, len(per_case) - len(available), bool(per_case))
 
 
 @dataclass(frozen=True)
@@ -201,8 +295,35 @@ def _stats_line(label: str, values: Sequence[int]) -> str:
     )
 
 
+def _cap_hits(cases: Sequence[CaseResult]) -> tuple[int, int]:
+    """(cases with at least one document dropped by the per-case cap, total cases)."""
+    return sum(1 for c in cases if c.documents_not_read), len(cases)
+
+
+def _length_failures_and_floor(
+    format_failures: Sequence[_Detail], classified: _Classified
+) -> tuple[list[tuple[str, int]], list[int]]:
+    """The tuples ``cause_confirmed`` reads, and the reasoning tokens ``new_budget`` reads.
+
+    From one run's schema failures plus its truncated-then-recovered replies.
+    """
+    length_failures = [(d.finish_reason, d.reasoning_tokens or 0) for d in format_failures]
+    length_failures += classified.recovered_tuples
+    failed_reasoning = [
+        d.reasoning_tokens for d in format_failures if d.reasoning_tokens is not None
+    ]
+    failed_reasoning += classified.recovered_reasoning
+    return length_failures, failed_reasoning
+
+
 def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> str:
-    """Counts only (decision 0024): no case number, no title, no prose.
+    """One run's own numbers against the fixed rule -- kept for a rule check in isolation.
+
+    At a real, censoring budget (2,000, the pre-fix-round-3 default) this over-states what
+    budget is needed, for the reason fix round 3 exists: a successful reply is itself
+    censored at ``budget``, so its own token count is not the true figure the rule wants.
+    ``confirm_and_size`` is what a real reply-budget decision reads; this stays for tests and
+    for reading one run's numbers on their own.
 
     Args:
         cases: one run's ``cases.jsonl`` rows, in any order.
@@ -217,35 +338,17 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
     """
     lines = [f"cases: {len(cases)}", report.failure_summary(cases)]
 
-    format_failures = [
-        _parse_detail(c.failure) for c in cases if c.failure and c.failure.startswith("schema:")
-    ]
-    by_reason: dict[str, int] = {}
-    for detail in format_failures:
-        by_reason[detail.finish_reason] = by_reason.get(detail.finish_reason, 0) + 1
-    reason_text = ", ".join(f"{k} {v}" for k, v in sorted(by_reason.items())) or "none"
-    lines.append(f"reply-format failures by finish_reason: {reason_text}")
-
+    format_failures = _format_failures(cases)
+    lines.append(f"reply-format failures by finish_reason: {_reason_breakdown(format_failures)}")
     failed_reasoning = [
         d.reasoning_tokens for d in format_failures if d.reasoning_tokens is not None
     ]
     lines.append(_stats_line("reply-format failures' reasoning tokens", failed_reasoning))
 
-    # Per-reply figures: one entry per reply, not per case (a case makes up to four calls).
-    successful_steps = [
-        c.steps[0] for c in cases if c.failure is None and c.scores is not None and c.steps
-    ]
-    per_case_replies = [_step_replies(s) for s in successful_steps]
-    available = [replies for replies in per_case_replies if replies is not None]
-    unavailable_cases = len(per_case_replies) - len(available)
-    classified = _classify_replies(available)
-    successful = classified.successful
-    successful_reasoning = classified.successful_reasoning
-    recovered_tuples = classified.recovered_tuples
-    recovered_reasoning = classified.recovered_reasoning
-    recovered_count = classified.recovered_count
+    per_case = _successful_case_replies(cases)
+    classified = _classify_replies(per_case.available)
+    per_reply_data_available = bool(per_case.available) or not per_case.had_successful_cases
 
-    per_reply_data_available = bool(available) or not per_case_replies
     lines.append(
         "successful cases' per-reply tokens (replies that finished 'stop' only; a "
         "truncated-then-recovered reply is reported separately below, not here):"
@@ -256,22 +359,23 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
             "(S2.6 Task 9A fix round 2) -- no per-reply breakdown is recorded"
         )
     else:
-        if unavailable_cases:
+        if per_case.unavailable_cases:
             lines.append(
-                f"  note: {unavailable_cases} successful case(s) predate the per-reply "
-                "fields and are excluded from the figures below"
+                f"  note: {per_case.unavailable_cases} successful case(s) predate the "
+                "per-reply fields and are excluded from the figures below"
             )
-        lines.append(_stats_line("  total (completion_tokens)", successful))
-        lines.append(_stats_line("  reasoning tokens alone", successful_reasoning))
+        lines.append(_stats_line("  total (completion_tokens)", classified.successful))
+        lines.append(_stats_line("  reasoning tokens alone", classified.successful_reasoning))
 
     lines.append(
         f"truncated-then-recovered replies (finished other than 'stop' inside an "
-        f"otherwise successful case): {recovered_count}"
+        f"otherwise successful case): {classified.recovered_count}"
     )
-    lines.append(_stats_line("  their reasoning tokens", recovered_reasoning))
+    lines.append(_stats_line("  their reasoning tokens", classified.recovered_reasoning))
 
-    length_failures = [(d.finish_reason, d.reasoning_tokens or 0) for d in format_failures]
-    length_failures += recovered_tuples
+    length_failures, combined_failed_reasoning = _length_failures_and_floor(
+        format_failures, classified
+    )
     confirmed = cause_confirmed(length_failures, budget=budget)
     hits = sum(1 for r, t in length_failures if r == "length" and t >= budget / 2)
     lines.append(
@@ -286,8 +390,7 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
                 "tokens are unavailable in this run"
             )
         else:
-            combined_failed_reasoning = failed_reasoning + recovered_reasoning
-            proposed = new_budget(successful, combined_failed_reasoning)
+            proposed = new_budget(classified.successful, combined_failed_reasoning)
             lines.append(
                 f"new max_output_tokens: {proposed}"
                 if proposed is not None
@@ -297,24 +400,179 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
     return "\n".join(lines)
 
 
+def _confirmation_section(cases: Sequence[CaseResult], record: RunRecord) -> tuple[list[str], bool]:
+    """Section 1: the confirmation run's failure lines and verdict.
+
+    Returns:
+        The section's lines, and whether the cause is confirmed at this run's own budget.
+    """
+    budget = record.max_output_tokens
+    lines = [
+        f"confirmation run: {record.run_id} (max_output_tokens={budget})",
+        f"cases: {len(cases)}",
+    ]
+    failures = _format_failures(cases)
+    lines.append(f"reply-format failures by finish_reason: {_reason_breakdown(failures)}")
+    failed_reasoning = [d.reasoning_tokens for d in failures if d.reasoning_tokens is not None]
+    lines.append(_stats_line("reply-format failures' reasoning tokens", failed_reasoning))
+    classified = _classify_replies(_successful_case_replies(cases).available)
+    lines.append(
+        f"truncated-then-recovered replies (finished other than 'stop' inside an "
+        f"otherwise successful case): {classified.recovered_count}"
+    )
+    lines.append(_stats_line("  their reasoning tokens", classified.recovered_reasoning))
+    length_failures, _floor = _length_failures_and_floor(failures, classified)
+    confirmed = cause_confirmed(length_failures, budget=budget)
+    hits = sum(1 for r, t in length_failures if r == "length" and t >= budget / 2)
+    lines.append(
+        f"cause {'CONFIRMED' if confirmed else 'NOT CONFIRMED'} against budget={budget} "
+        f"({hits} of {len(length_failures)} format failures (failed cases + "
+        f"truncated-then-recovered replies) are length with reasoning >= {budget / 2:.0f})"
+    )
+    return lines, confirmed
+
+
+def _sizing_section(
+    cases: Sequence[CaseResult], record: RunRecord
+) -> tuple[list[str], list[int], list[int]]:
+    """Section 2: the sizing run's failure and per-reply lines.
+
+    Returns:
+        The section's lines, its successful replies' completion tokens, and the reasoning
+        tokens on its failed side -- both of which ``new_budget`` reads for the outcome.
+    """
+    budget = record.max_output_tokens
+    lines = [
+        f"sizing run: {record.run_id} (max_output_tokens={budget})",
+        f"cases: {len(cases)}",
+    ]
+    failures = _format_failures(cases)
+    lines.append(
+        "reply-format failures by finish_reason (a roomy budget should remove almost all "
+        f"of these): {_reason_breakdown(failures)}"
+    )
+    failed_reasoning_shown = [
+        d.reasoning_tokens for d in failures if d.reasoning_tokens is not None
+    ]
+    lines.append(_stats_line("reply-format failures' reasoning tokens", failed_reasoning_shown))
+    per_case = _successful_case_replies(cases)
+    classified = _classify_replies(per_case.available)
+    lines.append(
+        f"truncated-then-recovered replies (finished other than 'stop' inside an "
+        f"otherwise successful case): {classified.recovered_count}"
+    )
+    lines.append(_stats_line("  their reasoning tokens", classified.recovered_reasoning))
+    per_reply_available = bool(per_case.available) or not per_case.had_successful_cases
+    lines.append("successful replies' uncut per-reply tokens:")
+    if not per_reply_available:
+        lines.append(
+            "  unavailable: this run's steps.jsonl predates the per-reply fields "
+            "(S2.6 Task 9A fix round 2) -- no per-reply breakdown is recorded"
+        )
+    else:
+        if per_case.unavailable_cases:
+            lines.append(
+                f"  note: {per_case.unavailable_cases} successful case(s) predate the "
+                "per-reply fields and are excluded from the figures below"
+            )
+        lines.append(_stats_line("  total (completion_tokens)", classified.successful))
+        lines.append(_stats_line("  reasoning tokens alone", classified.successful_reasoning))
+    _length_failures, floor_reasoning = _length_failures_and_floor(failures, classified)
+    return lines, classified.successful, floor_reasoning
+
+
+def confirm_and_size(
+    confirm_cases: Sequence[CaseResult],
+    confirm_record: RunRecord,
+    size_cases: Sequence[CaseResult],
+    size_record: RunRecord,
+) -> str:
+    """Confirm the cause at the old budget; size the budget at a roomy one (Andy's decision B).
+
+    Fix round 3: the confirmation run's failures prove the cause (their reasoning-token
+    counts are never censored -- they come from ``completion_tokens_details``, which reports
+    the true count regardless of ``max_output_tokens``); the sizing run's successful replies
+    give the rule the real, uncut per-reply figures it needs, because at 16,000 tokens
+    essentially nothing is actually cut short.
+
+    Args:
+        confirm_cases: the confirmation run's ``cases.jsonl`` rows.
+        confirm_record: the confirmation run's own ``RunRecord``.
+        size_cases: the sizing run's ``cases.jsonl`` rows.
+        size_record: the sizing run's own ``RunRecord``.
+
+    Returns:
+        The two-section report text, ending with one ``outcome:`` line.
+
+    Raises:
+        SystemExit: the two runs are not the same run at two reply budgets
+            (``refuse_mismatched_runs``).
+    """
+    refuse_mismatched_runs(confirm_record, size_record)
+    confirm_lines, confirmed = _confirmation_section(confirm_cases, confirm_record)
+    size_lines, size_successful, size_floor_reasoning = _sizing_section(size_cases, size_record)
+
+    confirm_cap_hit, confirm_total = _cap_hits(confirm_cases)
+    size_cap_hit, size_total = _cap_hits(size_cases)
+    cap_lines = [
+        "cases the per-case cap cut short (a larger reply-budget reserve leaves slightly "
+        "less room for documents under the cap):",
+        f"  confirmation run: {confirm_cap_hit} of {confirm_total}",
+        f"  sizing run: {size_cap_hit} of {size_total}",
+    ]
+
+    if not confirmed:
+        outcome = "outcome: not confirmed -- returned to Andy"
+    else:
+        proposed = new_budget(size_successful, size_floor_reasoning)
+        outcome = (
+            f"outcome: new max_output_tokens {proposed}"
+            if proposed is not None
+            else "outcome: no step fits -- returned to Andy"
+        )
+    return "\n".join([*confirm_lines, "", *size_lines, *cap_lines, "", outcome])
+
+
 def main(argv: Sequence[str]) -> int:
-    """Read one run folder's ``cases.jsonl`` and ``run.jsonl``; print and optionally write."""
+    """Read one run (``--run``) or a confirm/size pair (``--confirm``/``--size``).
+
+    Prints, and with ``--out`` also writes, the report text.
+    """
     parser = argparse.ArgumentParser(prog="reply_budget")
-    parser.add_argument("--run", required=True, metavar="RUN_ID")
+    parser.add_argument("--run", default=None, metavar="RUN_ID")
+    parser.add_argument("--confirm", default=None, metavar="RUN_ID")
+    parser.add_argument("--size", default=None, metavar="RUN_ID")
     parser.add_argument("--out", default=None)
     parser.add_argument(
         "--budget",
         type=int,
         default=None,
-        help="override the run's own max_output_tokens (default: read from run.jsonl)",
+        help="override the --run run's own max_output_tokens (default: read from run.jsonl)",
     )
     args = parser.parse_args(argv)
 
-    folder = Settings().runs_dir / args.run
-    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
-    run_record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    budget = args.budget if args.budget is not None else run_record.max_output_tokens
-    text = summarise(cases, budget=budget)
+    runs_dir = Settings().runs_dir
+    if args.confirm or args.size:
+        if not (args.confirm and args.size):
+            raise SystemExit("--confirm and --size must be given together")
+        if args.run:
+            raise SystemExit("--run cannot be combined with --confirm/--size")
+        confirm_folder = runs_dir / args.confirm
+        size_folder = runs_dir / args.size
+        confirm_cases = read_jsonl(confirm_folder / "cases.jsonl", CaseResult)
+        confirm_record = read_jsonl(confirm_folder / "run.jsonl", RunRecord)[0]
+        size_cases = read_jsonl(size_folder / "cases.jsonl", CaseResult)
+        size_record = read_jsonl(size_folder / "run.jsonl", RunRecord)[0]
+        text = confirm_and_size(confirm_cases, confirm_record, size_cases, size_record)
+    elif args.run:
+        folder = runs_dir / args.run
+        cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+        run_record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+        budget = args.budget if args.budget is not None else run_record.max_output_tokens
+        text = summarise(cases, budget=budget)
+    else:
+        raise SystemExit("either --run, or --confirm together with --size, is required")
+
     print(text)
     if args.out:
         Path(args.out).write_text(text + "\n")

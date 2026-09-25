@@ -40,6 +40,31 @@ _SCORES = CaseScores(
 )
 
 
+def _run_record(run_id: str, *, max_output_tokens: int, **overrides: object) -> RunRecord:
+    fields: dict[str, object] = {
+        "run_id": run_id,
+        "sample": "dev-400",
+        "arm": "B",
+        "exclusions": (),
+        "includes": (),
+        "prompt_version": "v1",
+        "model": "openai/gpt-6-luna",
+        "reasoning_effort": "medium",
+        "price_variant": "batch",
+        "cap_usd": 0.05,
+        "budget_usd": 25.0,
+        "max_output_tokens": max_output_tokens,
+        "commit_sha": "abc1234",
+        "dirty": False,
+        "started": datetime(2026, 9, 25, tzinfo=UTC),
+        "finished": datetime(2026, 9, 25, 1, tzinfo=UTC),
+        "cases": 1,
+        "cost_usd": 0.01,
+    }
+    fields.update(overrides)
+    return RunRecord(**fields)
+
+
 def test_the_new_budget_is_the_smallest_that_doubles_the_p99() -> None:
     successful = [900] * 98 + [1_800, 2_100]  # p99 = 1,800 -> needs 3,600 -> 4,000
     assert rb.new_budget(successful, failed_reasoning=[1_950]) == 4_000
@@ -383,3 +408,118 @@ def test_main_reads_a_run_folder_and_writes_the_report(
     text = out.read_text()
     assert "cases: 2" in text
     assert "cause CONFIRMED" in text  # budget read from run.jsonl (2000), not hardcoded
+
+
+# --- refuse_mismatched_runs() and confirm_and_size() (fix round 3, Andy's decision B) ---
+
+
+def test_refuse_mismatched_runs_names_the_differing_field() -> None:
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000, sample="heldout-400")
+    with pytest.raises(SystemExit, match="sample"):
+        rb.refuse_mismatched_runs(confirm, size)
+
+
+def test_refuse_mismatched_runs_requires_a_different_budget() -> None:
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=2_000)
+    with pytest.raises(SystemExit, match="max_output_tokens"):
+        rb.refuse_mismatched_runs(confirm, size)
+
+
+def test_confirm_and_size_confirms_and_proposes_a_budget() -> None:
+    """The coordinator's worked example: sizing p99 2,600 -> the smallest step above 5,200
+    is 8,000."""
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000)
+    confirm_cases = [
+        _failed_case(
+            "c1",
+            "schema: bad json "
+            "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)",
+        ),
+        _failed_case(
+            "c2",
+            "schema: bad json "
+            "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1200)",
+        ),
+    ]
+    size_cases = [_successful_case("c3", replies=[(1_300, 200, "stop"), (2_600, 300, "stop")])]
+    text = rb.confirm_and_size(confirm_cases, confirm, size_cases, size)
+    assert "confirmation run: confirm-run (max_output_tokens=2000)" in text
+    assert "sizing run: size-run (max_output_tokens=16000)" in text
+    assert "cause CONFIRMED against budget=2000 (2 of 2" in text
+    assert "total (completion_tokens): n=2 min=1300" in text
+    assert "cases the per-case cap cut short" in text
+    assert "confirmation run: 0 of 2" in text
+    assert "sizing run: 0 of 1" in text
+    assert "outcome: new max_output_tokens 8000" in text
+
+
+def test_confirm_and_size_not_confirmed_returns_to_andy() -> None:
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000)
+    confirm_cases = [
+        _failed_case(
+            "c1",
+            "schema: bad json (finish_reason=stop, completion_tokens=5, reasoning_tokens=10)",
+        )
+    ]
+    size_cases: list[CaseResult] = []
+    text = rb.confirm_and_size(confirm_cases, confirm, size_cases, size)
+    assert "cause NOT CONFIRMED" in text
+    assert "outcome: not confirmed -- returned to Andy" in text
+
+
+def test_confirm_and_size_reports_no_step_fits() -> None:
+    confirm = _run_record("confirm-run", max_output_tokens=2_000)
+    size = _run_record("size-run", max_output_tokens=16_000)
+    confirm_cases = [
+        _failed_case(
+            "c1",
+            "schema: bad json "
+            "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)",
+        )
+    ]
+    size_cases = [_successful_case("c2", replies=[(9_000, 8_000, "stop")])]
+    text = rb.confirm_and_size(confirm_cases, confirm, size_cases, size)
+    assert "cause CONFIRMED" in text
+    assert "outcome: no step fits -- returned to Andy" in text
+
+
+def test_main_confirm_and_size_writes_the_two_section_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    confirm_folder = runs_dir / "confirm-run"
+    size_folder = runs_dir / "size-run"
+    write_jsonl(
+        confirm_folder / "cases.jsonl",
+        [
+            _failed_case(
+                "c1",
+                "schema: bad json "
+                "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)",
+            )
+        ],
+    )
+    write_jsonl(confirm_folder / "run.jsonl", [_run_record("confirm-run", max_output_tokens=2_000)])
+    write_jsonl(
+        size_folder / "cases.jsonl",
+        [_successful_case("c2", replies=[(1_300, 200, "stop"), (900, 100, "stop")])],
+    )
+    write_jsonl(size_folder / "run.jsonl", [_run_record("size-run", max_output_tokens=16_000)])
+    out = tmp_path / "out.txt"
+    code = rb.main(["--confirm", "confirm-run", "--size", "size-run", "--out", str(out)])
+    assert code == 0
+    text = out.read_text()
+    assert "confirmation run: confirm-run" in text
+    assert "sizing run: size-run" in text
+    assert "outcome:" in text
+
+
+def test_main_refuses_confirm_without_size() -> None:
+    with pytest.raises(SystemExit, match="together"):
+        rb.main(["--confirm", "confirm-run"])
