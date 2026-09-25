@@ -59,6 +59,11 @@ PAGE_LABELS: tuple[PageLabel, ...] = (
 # Decision 0079: what the transcriber writes for a word it cannot read, instead of a guess.
 ILLEGIBLE = "[illegible]"
 MAX_OUTPUT_TOKENS = 4000
+# Decision W3 / 0079 item 3: a text-and-image page whose images cover less than this share of
+# the page is not sent -- its images are logos. Chosen by the rule fixed in the S2.6 plan
+# (Task 12), from docs/results/s26-inventory.txt: no candidate cut was admissible (1 of the 17
+# sampled pages under 2% holds words, more than 1 in 20), so every text-and-image page is sent.
+MIXED_PAGE_MIN_IMAGE_SHARE = 0.0
 _ERROR_CHARS = 200
 
 

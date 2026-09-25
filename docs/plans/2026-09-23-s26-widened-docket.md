@@ -4871,7 +4871,7 @@ git add src/ntsb_probable_cause/docket/documents.py src/ntsb_probable_cause/scor
 git commit -m "S2.6: the inventory -- sample, labeller, Andy's check page, cut-off and stop rule (spec §6)"
 ```
 
-- [ ] **Step 9: STOP — Andy runs the one-page probe** (under a cent; about a minute, most of it drawing 330 pages)
+- [x] **Step 9: STOP — Andy runs the one-page probe** (under a cent; about a minute, most of it drawing 330 pages)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -4881,15 +4881,15 @@ make s26-inventory-probe
 
 Expected: `330 pages drawn to …` and `probe: transcribed, kind <one of the eight>, error None, …`. The tree is unchanged afterwards (everything is under `data/`). If the probe fails, its error names the cause; record it in Deviations and stop (spec §17: a candidate that rejects our requests).
 
-- [ ] **Step 10: STOP — Andy runs the labelling** (about $0.20, estimate; about 5 minutes)
+- [x] **Step 10: STOP — Andy runs the labelling** (about $0.20, estimate; about 5 minutes)
 
 Same two exports, then `make s26-inventory`. Expected: `labelled 330 pages, 0 failed, $0.1…` and the check page's path. The tree is unchanged afterwards. The month's spend now includes the job's spend rows (`uv run ntsb-eval report --latest …` lists open reservations; there should be none).
 
-- [ ] **Step 11: STOP — Andy checks 60 labels** (about 20 minutes)
+- [x] **Step 11: STOP — Andy checks 60 labels** (about 20 minutes)
 
 Andy opens `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/s26/inventory/check.html`, marks each label right or wrong (choosing the right kind when wrong), and downloads the CSV.
 
-- [ ] **Step 12: Score, set the cut-off, commit**
+- [x] **Step 12: Score, set the cut-off, commit**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -7081,6 +7081,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, plan: Task 9C added after Task 9A's final re-review, before any paid run: every case (failed ones included) records each reply's facts, and a reply with no recorded finish reason stops the sizing like a cut-off one. Andy asked that everything be right before the runs.
 - 2026-09-25, Task 9A Step 6: at Andy's request the controller started both dev-400 runs, at 10:01:44 UTC on commit `40c6ec6`, concurrently rather than one after the other (the controller's suggestion, to fit the batch window). Started in the same second at the same commit, sample and arm, they were given one run id, `20260925T100148-40c6ec6-dev-400-B`, and appended into one folder: nothing refuses a fresh run whose folder exists. No data was lost: every run file is append-only and the confirmation run finished (10:44 UTC) before the sizing run (10:48 UTC), so each file held the confirmation run's rows first, and `month_spent` counted both records ($1.1808 + $1.1742). Only `spec.json` (overwritten with the sizing run's) and `batches.jsonl` (interleaved) were mixed. A one-off script split the folder into `20260925T100148-40c6ec6-dev-400-B-confirm2000` and `…-size16000`: rows copied unchanged, the confirmation rows checked byte for byte against a copy taken before the sizing run finished, each run's own batch rows, and the confirmation run's `spec.json` rewritten by `write_spec_json` with the two fields that differed (`max_output_tokens` 2000, `expected_cost_per_case_usd` 0.005). The collided folder is kept unchanged at `data/runs-collided/`, outside the runs directory, so the month counts each run once. `docs/results/s26-reply-budget-dev.txt` prints each run's recorded id, so it shows the same id twice. Harness fix: Task 9D.
 - 2026-09-25, Task 9A Steps 7-8: outcome `new max_output_tokens 8000`; decision 0084; `RunSpec.max_output_tokens` defaults to 8000. `RunRecord.max_output_tokens` keeps its 2000 default, which is what a run from before Task 9A actually used.
+- 2026-09-25, Task 12 Steps 9-10: run by the controller at Andy's request, on commit `31af9fb`: the probe labelled one page, then `label` labelled the other 329 (the probe's page was cached), 0 failed, 0 not drawable; the job's spend is in its spend rows and no reservation was left open. Step 12: no candidate cut was admissible, so `MIXED_PAGE_MIN_IMAGE_SHARE = 0.0` and every text-and-image page is sent; the stop rule's outcome is `go on` (docs/results/s26-inventory.txt).
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
 - 2026-09-25, Task 10: two of the brief's literal snippets failed the project's own lint (`make lint`), fixed without changing behaviour. `Payload`'s and `Payload.for_page`'s docstrings (`model/client.py`) are reworded (a one-line summary, blank line, then the description) to satisfy `D205`; the wording and facts are unchanged. `test_a_page_payload_carries_one_image_and_only_its_text_layer` (`tests/test_model_client.py`) has its combined `and` assertion split into two `assert` statements to satisfy `PT018`; the checks themselves are unchanged. `test_the_batch_service_refuses_an_image` (`tests/test_batch.py`) is written against the file's actual `BatchClient`/`client()` helper, not the brief's placeholder `BatchRunner`/`_runner()` names (`tests/test_batch.py` has no `BatchRunner`), and adds a `respx_mock` route so the "no request sent" half of the brief's requirement (`route.calls.call_count == 0`) is checked, since without a mocked route respx would itself raise before reaching the assertion.
 - 2026-09-24, Task 3 Step 1: `uv add "pypdfium2>=5.13.0" "pillow>=12.3.0"` places each new dependency at its own alphabetical position in the `dependencies` list (`pillow` before `pyarrow`, `pypdfium2` after `pypdf[crypto]`), not adjacent to each other, so the brief's single comment block above "the two new lines" cannot sit above both in place. `pillow` was moved down next to `pypdfium2` (functionally identical -- list order is not significant to `uv`/hatchling) so the one comment block, naming both packages, sits directly above both entries as written.
