@@ -10,6 +10,12 @@ Status
       mixed       -- write Andy's full-page-scan invented-words page (decision W7)
       resolution  -- the chosen model at 200 dpi on the handwriting and typed keys (paid)
       score       -- apply the rule; write docs/results/s26-transcriber-test.txt
+      photos-recheck, handwriting-recheck
+                  -- decision 0086's second pass: Andy's two recheck pages (free), read
+                     against the first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/
+      score --pass2 -- the second pass: the first-pass CSVs (--handwriting, --photos, --mixed;
+                     the pass1/ copies) overridden row by row by the two recheck CSVs;
+                     write docs/results/s26-transcriber-test-pass2.txt
       estimate    -- the stage's re-estimated cost (decision 0083 item 2's pause point)
     Keys, page images, Andy's sheets and every transcription live under data/ and are never
     committed; the results file holds counts only. The recorded probe replies are of an
@@ -89,6 +95,10 @@ from scripts.marking_page import Card, Choice
 GATE_INVENTED_LINES_PER_100 = 2.0
 GATE_INVENTED_PHOTO_SHARE = 1 / 20
 GATE_INVENTED_MIXED_SHARE = 1 / 20  # decision W7: the photographs' bar
+# Decision 0086 item 2 (the second pass only): a model that returns fewer than half a
+# handwriting page's key lines on more than 1 in 20 pages is out. An exact fraction built from
+# the integer counts, so 1 page in 20 passes and 2 in 20 do not, with no rounding either way.
+GATE_FORMAT_FAILED_SHARE = Fraction(1, 20)
 HANDWRITING_MARGIN = Fraction(1, 20)
 TYPED_MARGIN_PER_100 = Fraction(1, 1)
 RESOLUTION_MARGIN = Fraction(1, 20)
@@ -106,6 +116,15 @@ def lines_of(text: str) -> list[str]:
 def line_hits(key: Sequence[str], version: Sequence[str]) -> int:
     """Key lines the version holds exactly, each version line used at most once."""
     return sum((Counter(key) & Counter(version)).values())
+
+
+def format_failed(key: Sequence[str], version: Sequence[str]) -> bool:
+    """Decision 0086 item 2: the reply has fewer than half as many lines as the key.
+
+    Integer arithmetic (``2 * len(version) < len(key)``): against a 10-line key a 5-line
+    reply is not a format failure and a 4-line reply is.
+    """
+    return 2 * len(version) < len(key)
 
 
 def inventing_lines(key_text: str, version: Sequence[str]) -> int:
@@ -175,6 +194,10 @@ class CandidateResult:
     typed_errors: int
     mixed_pages: int = 0
     mixed_invented: int = 0
+    # Decision 0086 item 2 (the second pass): handwriting pages scored, and those whose reply
+    # had fewer than half the key's lines. Always 0 format failures in the first pass.
+    hw_pages: int = 0
+    hw_format_failed: int = 0
 
     @property
     def hw_accuracy(self) -> float:
@@ -224,6 +247,10 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     A tie in cost within both margins (fix round 1, M7) goes to whichever tied candidate is
     listed first in ``CANDIDATES``: ``min`` returns the first minimum it meets, and ``results``
     is built from ``CANDIDATES`` in order.
+
+    Decision 0086 item 2 adds one gate, for the second pass only: more than 1 in 20
+    handwriting pages with a reply of fewer than half the key's lines. The first pass never
+    counts such pages (``hw_format_failed`` stays 0), so the gate cannot fire there.
     """
     notes: list[str] = []
     passed: list[CandidateResult] = []
@@ -232,6 +259,11 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
             notes.append(
                 f"{r.model}: out -- {r.invented_per_100_lines:.1f} inventing lines per 100 "
                 f"handwriting lines (gate {GATE_INVENTED_LINES_PER_100:.0f})"
+            )
+        elif _fraction(r.hw_format_failed, r.hw_pages) > GATE_FORMAT_FAILED_SHARE:
+            notes.append(
+                f"{r.model}: out -- fewer than half the key's lines on {r.hw_format_failed} of "
+                f"{r.hw_pages} handwriting pages (gate 1 in 20, decision 0086)"
             )
         elif r.photo_invented_share > GATE_INVENTED_PHOTO_SHARE:
             notes.append(
@@ -332,6 +364,8 @@ STAGE_BASE = "90ceab9"
 MIN_SHA_PREFIX = 4
 PICTURES = frozenset({"photograph", "diagram or chart", "mixed"})
 FOLDER = Path("s26") / "transcriber-test"
+# Decision 0086: the first pass's three CSVs, kept unchanged beside the second pass's pages.
+PASS1 = "pass1"
 PROBE_LINES = (
     "PILOT STATEMENT - INVENTED TEST PAGE",
     "Engine sputtered at 800 ft.",
@@ -764,6 +798,62 @@ def _highlighted(lines: Sequence[str], versions: Mapping[str, Sequence[str]]) ->
     return "\n".join(out)
 
 
+def _handwriting_card(  # noqa: PLR0913 -- one keyword per part of a card that varies.
+    k: int,
+    versions: Mapping[str, Sequence[str]],
+    agreed: Sequence[str],
+    *,
+    spot_indices: Collection[int],
+    choices: tuple[Choice, ...],
+    key: str,
+) -> Card:
+    """One handwriting page's card: image, lettered versions, agreed lines, the key box.
+
+    Shared by the first pass (``cmd_handwriting``) and the second pass's recheck page
+    (decision 0086 item 3), so both show a page the same way.
+    """
+    blocks = (
+        '<div class="vers">'
+        + "".join(
+            f"<div><h4>{letter}</h4><pre>{_highlighted(lines, versions)}</pre></div>"
+            for letter, lines in sorted(versions.items())
+        )
+        + "</div>"
+    )
+    agreed_html = "".join(
+        f"<li>{html.escape(line)}"
+        f"{' <mark>check this line</mark>' if i in spot_indices else ''}</li>"
+        for i, line in enumerate(agreed)
+    )
+    # Fix round 1, M3: says how many versions actually read something, so a blank or failed
+    # reading (which agreed_lines already excludes from the intersection) is visible to Andy
+    # rather than silently folded into "agree on".
+    present = sum(1 for lines in versions.values() if lines)
+    return Card(
+        row=k,
+        body_html=(
+            f'<p class="meta">Handwriting page {k} ({present} of {len(versions)} '
+            "versions read something)</p>"
+            f'<div class="pic"><img src="pages/handwriting-{k}.jpg" alt="page {k}" '
+            "onclick=\"this.classList.toggle('big')\"></div>"
+            f"{blocks}"
+            "<p>Lines every version that read something agrees on (accepted):</p>"
+            f"<ul>{agreed_html}</ul>"
+        ),
+        choices=choices,
+        text_fields=(("key", key),),
+    )
+
+
+_HANDWRITING_LEGEND = (
+    "<p>Words in a version are coloured where the versions disagree: "
+    '<span class="only">only this version has it</span>, '
+    '<span class="some">some versions have it, not all</span>; uncoloured words are in '
+    "every version that read something. Check the coloured words against the image. "
+    "Click the image to enlarge it; it stays in view while you scroll the card.</p>"
+)
+
+
 def cmd_handwriting(settings: Settings) -> str:
     """Andy's key page: image, four lettered versions, agreed lines, spot checks, a draft."""
     folder = settings.data_dir / FOLDER
@@ -793,35 +883,12 @@ def cmd_handwriting(settings: Settings) -> str:
         agreed = cast("list[str]", page["agreed"])
         versions = cast("dict[str, list[str]]", page["versions"])
         page["spot"] = [line for i, line in enumerate(agreed) if (k, i) in spot]
-        blocks = (
-            '<div class="vers">'
-            + "".join(
-                f"<div><h4>{letter}</h4><pre>{_highlighted(lines, versions)}</pre></div>"
-                for letter, lines in sorted(versions.items())
-            )
-            + "</div>"
-        )
-        agreed_html = "".join(
-            f"<li>{html.escape(line)}"
-            f"{' <mark>check this line</mark>' if (k, i) in spot else ''}</li>"
-            for i, line in enumerate(agreed)
-        )
-        # Fix round 1, M3: says how many versions actually read something, so a blank or
-        # failed reading (which agreed_lines already excludes from the intersection above) is
-        # visible to Andy rather than silently folded into "agree on".
-        present = sum(1 for lines in versions.values() if lines)
         cards.append(
-            Card(
-                row=k,
-                body_html=(
-                    f'<p class="meta">Handwriting page {k} ({present} of {len(versions)} '
-                    "versions read something)</p>"
-                    f'<div class="pic"><img src="pages/handwriting-{k}.jpg" alt="page {k}" '
-                    "onclick=\"this.classList.toggle('big')\"></div>"
-                    f"{blocks}"
-                    "<p>Lines every version that read something agrees on (accepted):</p>"
-                    f"<ul>{agreed_html}</ul>"
-                ),
+            _handwriting_card(
+                k,
+                versions,
+                agreed,
+                spot_indices={i for i in range(len(agreed)) if (k, i) in spot},
                 choices=(
                     Choice(
                         "spot check",
@@ -829,7 +896,7 @@ def cmd_handwriting(settings: Settings) -> str:
                         required=bool(page["spot"]),
                     ),
                 ),
-                text_fields=(("key", "\n".join(versions[str(page["draft"])])),),
+                key="\n".join(versions[str(page["draft"])]),
             )
         )
     (folder / "handwriting.json").write_text(json.dumps(pages))
@@ -838,12 +905,9 @@ def cmd_handwriting(settings: Settings) -> str:
     # versions"/"all four", which is both stale (a candidate can be dropped after the probe,
     # spec §17, M4) and wrong whenever a version reads a page as blank or fails on it.
     intro = (
-        _HANDWRITING_LAYOUT + "<p>Words in a version are coloured where the versions disagree: "
-        '<span class="only">only this version has it</span>, '
-        '<span class="some">some versions have it, not all</span>; uncoloured words are in '
-        "every version that read something. Check the coloured words against the image. "
-        "Click the image to enlarge it; it stays in view while you scroll the card.</p>"
-        f"<p>For each page: make the text box the page's true text, one line per written "
+        _HANDWRITING_LAYOUT
+        + _HANDWRITING_LEGEND
+        + f"<p>For each page: make the text box the page's true text, one line per written "
         "line. Write [illegible] for a word you cannot read either. The "
         f"{len(CANDIDATES)} versions are shown under letters, shuffled per page. Lines marked "
         "<mark>check this line</mark> are agreed by every version that read something: check "
@@ -860,6 +924,69 @@ def cmd_handwriting(settings: Settings) -> str:
         )
     )
     return f"page at {folder / 'handwriting.html'}"
+
+
+def draft_anchored(
+    pages: Mapping[str, Mapping[str, object]], hw_marks: Mapping[int, Mapping[str, str]]
+) -> list[int]:
+    """Handwriting pages whose first-pass key is exactly the prefilled draft (0086 item 3).
+
+    Compared as ``lines_of``, the unit of the handwriting measure: a key Andy left as the draft
+    (or changed only in whitespace) counts; one he edited in any word does not.
+    """
+    return sorted(
+        int(k)
+        for k, page in pages.items()
+        if lines_of(hw_marks.get(int(k), {}).get("key", ""))
+        == list(cast("dict[str, list[str]]", page["versions"])[str(page["draft"])])
+    )
+
+
+# Decision 0086 item 3: the recheck page asks whether each key was already right, so a page
+# Andy checked and left unchanged still counts as marked (the page's progress counts only rows
+# he has touched, fix round 1, M5) and `score --pass2` can refuse a page nobody looked at.
+_KEY_CHECKED = Choice("checked", ("key right as it stands", "key corrected in the box"))
+
+
+def cmd_handwriting_recheck(settings: Settings) -> str:
+    """Decision 0086 item 3: only the draft-anchored pages, prefilled with the first-pass key.
+
+    Reads ``handwriting.json`` (the pages exactly as the first pass showed them) and the
+    first-pass CSV kept under ``pass1/``; the spot checks are not repeated.
+    """
+    folder = settings.data_dir / FOLDER
+    pages = json.loads((folder / "handwriting.json").read_text())
+    first = marking_page.read_marks(folder / PASS1 / "handwriting-key.csv")
+    anchored = draft_anchored(pages, first)
+    cards = [
+        _handwriting_card(
+            k,
+            cast("dict[str, list[str]]", pages[str(k)]["versions"]),
+            cast("list[str]", pages[str(k)]["agreed"]),
+            spot_indices=(),
+            choices=(_KEY_CHECKED,),
+            key=first[k]["key"],
+        )
+        for k in anchored
+    ]
+    intro = (
+        _HANDWRITING_LAYOUT + "<p><b>Second pass (decision 0086).</b> These are the "
+        f"{len(cards)} pages whose key was left as the prefilled draft in the first pass. Check "
+        "this page's key against the image and correct it; it was left as the prefilled draft "
+        "in the first pass. The box holds your first-pass key. Write [illegible] for a word you "
+        "cannot read either. Then say whether the key was right as it stands or corrected.</p>"
+        + _HANDWRITING_LEGEND
+    )
+    (folder / "handwriting-recheck.html").write_text(
+        marking_page.render(
+            title="Handwriting answer key, second pass (S2.6, decision 0086)",
+            intro_html=intro,
+            cards=cards,
+            storage_key="s26-handwriting-key-pass2",
+            csv_name="handwriting-key-pass2.csv",
+        )
+    )
+    return f"{len(cards)} draft-anchored pages; page at {folder / 'handwriting-recheck.html'}"
 
 
 # Andy, 2026-09-25 (display only): each image is shown once, held in view on the left, with
@@ -908,8 +1035,16 @@ def _against_layer(text: str, layer: str) -> str:
     return "\n".join(lines)
 
 
-def cmd_photos(settings: Settings) -> str:
-    """Andy's page: every word any candidate wrote for a no-word photograph."""
+_PHOTO_WORDS = Choice("words", ("all on the page", "some invented"))
+_PhotoCards = tuple[dict[int, dict[str, object]], list[Card], dict[str, tuple[str, str]]]
+
+
+def _photo_cards(settings: Settings) -> _PhotoCards:
+    """Every candidate output with words on a no-word photograph: the sheet, cards and groups.
+
+    Shared by the first pass (``cmd_photos``) and the second pass's recheck page (decision
+    0086 item 1), so both number and show a card the same way.
+    """
     folder = settings.data_dir / FOLDER
     rows = [r for r in _read(folder / "keys.jsonl") if r["set"] == "photo"]
     cache = TranscriptionCache(settings.transcription_dir)
@@ -936,10 +1071,17 @@ def cmd_photos(settings: Settings) -> str:
                         + _same_as(seen, text, letter)
                         + f"</p><pre>{html.escape(text)}</pre>"
                     ),
-                    choices=(Choice("words", ("all on the page", "some invented")),),
+                    choices=(_PHOTO_WORDS,),
                     group=str(k),
                 )
             )
+    return sheet, cards, groups
+
+
+def cmd_photos(settings: Settings) -> str:
+    """Andy's page: every word any candidate wrote for a no-word photograph."""
+    folder = settings.data_dir / FOLDER
+    sheet, cards, groups = _photo_cards(settings)
     (folder / "photos.json").write_text(json.dumps(sheet))
     intro = (
         _GROUPED_LAYOUT + "<p>Each photograph is shown once on the left, held in view, with the "
@@ -958,6 +1100,52 @@ def cmd_photos(settings: Settings) -> str:
         )
     )
     return f"{len(cards)} outputs with words; page at {folder / 'photos.html'}"
+
+
+def invented_rows(photo_marks: Mapping[int, Mapping[str, str]]) -> list[int]:
+    """Photograph cards the first pass marked "some invented": the ones 0086 item 1 re-marks."""
+    return sorted(n for n, fields in photo_marks.items() if fields.get("words") == "some invented")
+
+
+def cmd_photos_recheck(settings: Settings) -> str:
+    """Decision 0086 item 1: only the cards first marked "some invented", re-marked.
+
+    The cards are rebuilt as the first pass built them and must carry the same row numbers
+    for the same photograph and model as ``photos.json``; if they no longer do, the page is
+    refused rather than shown against the wrong rows.
+    """
+    folder = settings.data_dir / FOLDER
+    stored = json.loads((folder / "photos.json").read_text())
+    first = marking_page.read_marks(folder / PASS1 / "photo-words.csv")
+    rows = set(invented_rows(first))
+    sheet, cards, groups = _photo_cards(settings)
+    drifted = sorted(n for n in rows if n not in sheet or sheet[n] != stored.get(str(n)))
+    if drifted:
+        raise ConfigurationError(
+            f"photograph card row(s) {drifted} no longer match photos.json: the recheck page "
+            "would not mark the outputs the first pass marked"
+        )
+    kept = [card for card in cards if card.row in rows]
+    intro = (
+        _GROUPED_LAYOUT + "<p><b>Second pass (decision 0086).</b> These are the "
+        f"{len(kept)} outputs you marked <b>some invented</b> in the first pass; mark each "
+        "again under one corrected rule. A word printed on the page as part of the docket's "
+        "photo label counts as on the page, even when the icon hides part of it (for example "
+        '"Photo", whose "Pho" the icon covers). Anything else is judged as before: a misread '
+        "registration is still invented. Mark <b>some invented</b> if any other word is not on "
+        "the page. Click a photograph to enlarge it.</p>"
+    )
+    (folder / "photos-recheck.html").write_text(
+        marking_page.render(
+            title="Invented words on photographs, second pass (S2.6, decision 0086)",
+            intro_html=intro,
+            cards=kept,
+            storage_key="s26-photo-words-pass2",
+            csv_name="photo-words-pass2.csv",
+            groups={card.group: groups[card.group] for card in kept},
+        )
+    )
+    return f"{len(kept)} outputs to re-mark; page at {folder / 'photos-recheck.html'}"
 
 
 def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
@@ -1037,14 +1225,26 @@ def _result(  # noqa: PLR0913, PLR0917 -- one parameter per fact a candidate's s
     *,
     dpi: int,
     mixed_invented: int = 0,
+    format_gate: bool = False,
 ) -> CandidateResult:
-    hw_lines = hw_right = hw_inventing = 0
+    """One candidate's counts. ``format_gate`` applies decision 0086 item 2 (second pass).
+
+    With it, a handwriting page whose reply has fewer than half the key's lines counts as
+    wrong for this model (none of its lines right) and is counted as format-failed; its lines
+    still count towards the invented lines, exactly as any other page's.
+    """
+    hw_lines = hw_right = hw_inventing = hw_pages = hw_format_failed = 0
     for row in (r for r in keys if r["set"] == "handwriting"):
         key_text = key_texts[_int(row, "k")]
+        key_lines = lines_of(key_text)
         version = lines_of(_text(cache, row, model, dpi=dpi))
-        hw_lines += len(lines_of(key_text))
-        hw_right += line_hits(lines_of(key_text), version)
+        hw_pages += 1
+        hw_lines += len(key_lines)
         hw_inventing += inventing_lines(key_text, version)
+        if format_gate and format_failed(key_lines, version):
+            hw_format_failed += 1
+        else:
+            hw_right += line_hits(key_lines, version)
     typed_chars = typed_errs = 0
     for row in (r for r in keys if r["set"] == "typed"):
         errors, chars = typed_errors(
@@ -1072,6 +1272,8 @@ def _result(  # noqa: PLR0913, PLR0917 -- one parameter per fact a candidate's s
         typed_errors=typed_errs,
         mixed_pages=sum(1 for r in keys if r["set"] == "mixed"),
         mixed_invented=mixed_invented,
+        hw_pages=hw_pages,
+        hw_format_failed=hw_format_failed,
     )
 
 
@@ -1194,21 +1396,141 @@ def _handwriting_key_summary(
     return picked, typed_lines, spot_total, spot_changed, spot_answer_mismatches
 
 
-def cmd_score(
+@dataclass(frozen=True)
+class Recheck:
+    """Decision 0086's second pass: Andy's two recheck CSVs, applied over the first pass's."""
+
+    handwriting_csv: Path
+    photos_csv: Path
+
+
+FIRST_PASS_RESULTS = Path("docs/results/s26-transcriber-test.txt")
+PASS2_HEADER = "# the transcriber test -- SECOND PASS (post-hoc, decision 0086)"
+
+
+def overridden(
+    first: Mapping[int, Mapping[str, str]], recheck: Mapping[int, Mapping[str, str]]
+) -> dict[int, dict[str, str]]:
+    """First-pass marks, overridden row by row by a recheck's (decision 0086).
+
+    A row the recheck holds takes the recheck's value for every field the recheck has; the
+    first pass's other fields on that row (a handwriting page's spot check) stay. Every other
+    row is the first pass's, unchanged.
+    """
+    return {
+        row: {**first.get(row, {}), **recheck.get(row, {})}
+        for row in sorted(first.keys() | recheck.keys())
+    }
+
+
+def _apply_recheck(
+    pages: Mapping[str, Mapping[str, object]],
+    hw_marks: Mapping[int, Mapping[str, str]],
+    photo_marks: Mapping[int, Mapping[str, str]],
+    recheck: Recheck,
+) -> tuple[dict[int, dict[str, str]], dict[int, dict[str, str]], list[str]]:
+    """The final handwriting and photograph marks, and the second pass's header lines.
+
+    Refuses a recheck CSV that does not hold exactly the rows decision 0086 re-marks -- the
+    draft-anchored handwriting pages and the photograph cards first marked "some invented",
+    both judged from the first-pass CSVs given -- or that leaves any of them unmarked.
+    """
+    anchored = draft_anchored(pages, hw_marks)
+    invented = invented_rows(photo_marks)
+    hw_again = marking_page.read_marks(recheck.handwriting_csv)
+    photo_again = marking_page.read_marks(recheck.photos_csv)
+    if sorted(hw_again) != anchored:
+        raise SystemExit(
+            f"the handwriting recheck holds page(s) {sorted(hw_again)}, not the first pass's "
+            f"draft-anchored page(s) {anchored}"
+        )
+    if sorted(photo_again) != invented:
+        raise SystemExit(
+            f"the photograph recheck holds {len(photo_again)} row(s), not the {len(invented)} "
+            "the first pass marked some invented"
+        )
+    unmarked = [
+        k
+        for k in anchored
+        if not hw_again[k].get("key", "").strip() or not hw_again[k].get(_KEY_CHECKED.name)
+    ]
+    if unmarked:
+        raise SystemExit(f"handwriting recheck unmarked or empty for page(s): {unmarked}")
+    if any(not photo_again[n].get(_PHOTO_WORDS.name) for n in invented):
+        raise SystemExit("some photograph recheck outputs are unmarked")
+    final_hw = overridden(hw_marks, hw_again)
+    final_photo = overridden(photo_marks, photo_again)
+    keys_changed = {
+        k for k in anchored if lines_of(final_hw[k]["key"]) != lines_of(hw_marks[k]["key"])
+    }
+    said_changed = {
+        k for k in anchored if hw_again[k][_KEY_CHECKED.name] == _KEY_CHECKED.options[1]
+    }
+    marks_changed = sum(1 for n in invented if final_photo[n]["words"] != photo_marks[n]["words"])
+    header = [
+        PASS2_HEADER,
+        "corrections (decision 0086, fixed before re-marking): 1. a word of the docket's "
+        'stamped photo label ("Photo"), even partly hidden by the icon, is on the page; '
+        "2. a reply with fewer than half the key's lines fails that handwriting page, and more "
+        "than 1 in 20 such pages is out; 3. the draft-anchored handwriting keys are re-checked",
+        f"re-marked: {len(invented)} photograph cards ({marks_changed} marks changed); "
+        f"{len(anchored)} handwriting pages ({len(keys_changed)} keys changed; "
+        f"{len(keys_changed ^ said_changed)} pages where Andy's own answer disagrees)",
+        f"the first pass stands unchanged in {FIRST_PASS_RESULTS}",
+        "",
+    ]
+    return final_hw, final_photo, header
+
+
+def _candidate_lines(r: CandidateResult, mixed_repeats: int, *, pass2: bool) -> list[str]:
+    """One candidate's section of the results file; the second pass adds its format count."""
+    price = sources.price_of(r.model)
+    low, high = wilson(r.hw_right, r.hw_lines)
+    lines = [
+        f"## {r.model} (${price.input_usd_per_mtok}/${price.output_usd_per_mtok} per M "
+        f"tokens; measured ${r.cost_per_page:.5f} per test page)",
+        f"  invented: {r.hw_inventing} lines ({r.invented_per_100_lines:.1f} per 100 "
+        f"handwriting lines); {r.photo_invented} of {r.photo_pages} photographs",
+        f"  handwriting lines right: {r.hw_right} of {r.hw_lines} ({r.hw_accuracy:.1%} "
+        f"[{low:.1%}, {high:.1%}], Wilson 95%, lines not independent)",
+        f"  typed errors: {r.typed_errors_per_100:.2f} per 100 characters "
+        f"({r.typed_errors} of {r.typed_chars})",
+        f"  full-page scans (decision W7): invented added words on {r.mixed_invented} of "
+        f"{r.mixed_pages}; repeated the text layer on {mixed_repeats}",
+    ]
+    if pass2:
+        lines.append(
+            "  format-failed handwriting pages (decision 0086: fewer than half the key's "
+            f"lines, scored as wrong): {r.hw_format_failed} of {r.hw_pages}"
+        )
+    return lines
+
+
+def cmd_score(  # noqa: PLR0913 -- the three first-pass sheets, and the second pass's rechecks.
     settings: Settings,
     docs: CachedDocuments,
     handwriting_csv: Path,
     photos_csv: Path,
     mixed_csv: Path,
+    *,
+    recheck: Recheck | None = None,
 ) -> str:
-    """Apply the rule to every candidate; add the resolution comparison once it has run."""
+    """Apply the rule to every candidate; add the resolution comparison once it has run.
+
+    With ``recheck`` (decision 0086's second pass), the first-pass marks are overridden row by
+    row by the recheck CSVs, handwriting pages are scored with the format rule, and the text
+    starts with the second pass's header.
+    """
     folder = settings.data_dir / FOLDER
     keys = _read(folder / "keys.jsonl")
     cache = TranscriptionCache(settings.transcription_dir)
     pages = json.loads((folder / "handwriting.json").read_text())
     photo_sheet = json.loads((folder / "photos.json").read_text())
-    hw_marks = marking_page.read_marks(handwriting_csv)
-    photo_marks = marking_page.read_marks(photos_csv)
+    hw_marks: Mapping[int, Mapping[str, str]] = marking_page.read_marks(handwriting_csv)
+    photo_marks: Mapping[int, Mapping[str, str]] = marking_page.read_marks(photos_csv)
+    header: list[str] = []
+    if recheck is not None:
+        hw_marks, photo_marks, header = _apply_recheck(pages, hw_marks, photo_marks, recheck)
     unmarked = [n for n in photo_sheet if photo_marks.get(int(n), {}).get("words") == ""]
     if unmarked or len(photo_marks) < len(photo_sheet):
         raise SystemExit("some photograph outputs are unmarked")
@@ -1252,6 +1574,7 @@ def cmd_score(
             cache,
             dpi=RESOLUTION,
             mixed_invented=mixed_by_mark[(m, "some invented")],
+            format_gate=recheck is not None,
         )
         for m in CANDIDATES
     ]
@@ -1271,6 +1594,7 @@ def cmd_score(
         f"{n} {source} ({label})" for (source, label), n in sorted(hw_sources.items())
     )
     lines = [
+        *header,
         "# the transcriber test (S2.6 spec §7, decision 0080) -- counts only",
         f"keys: {sum(1 for r in keys if r['set'] == 'typed')} typed pages, "
         f"{len(pages)} handwriting pages ({sum(r.hw_lines for r in results[:1])} key lines), "
@@ -1286,21 +1610,9 @@ def cmd_score(
         "",
     ]
     for r in results:
-        price = sources.price_of(r.model)
-        low, high = wilson(r.hw_right, r.hw_lines)
-        lines += [
-            f"## {r.model} (${price.input_usd_per_mtok}/${price.output_usd_per_mtok} per M "
-            f"tokens; measured ${r.cost_per_page:.5f} per test page)",
-            f"  invented: {r.hw_inventing} lines ({r.invented_per_100_lines:.1f} per 100 "
-            f"handwriting lines); {r.photo_invented} of {r.photo_pages} photographs",
-            f"  handwriting lines right: {r.hw_right} of {r.hw_lines} ({r.hw_accuracy:.1%} "
-            f"[{low:.1%}, {high:.1%}], Wilson 95%, lines not independent)",
-            f"  typed errors: {r.typed_errors_per_100:.2f} per 100 characters "
-            f"({r.typed_errors} of {r.typed_chars})",
-            f"  full-page scans (decision W7): invented added words on {r.mixed_invented} of "
-            f"{r.mixed_pages}; repeated the text layer on "
-            f"{mixed_by_mark[(r.model, 'repeats the text layer')]}",
-        ]
+        lines += _candidate_lines(
+            r, mixed_by_mark[(r.model, "repeats the text layer")], pass2=recheck is not None
+        )
     lines += ["", "## the rule", *notes]
     if chosen is not None:
         # Fix round 3, R2: the resolution comparison only reads the handwriting and typed
@@ -1322,7 +1634,16 @@ def cmd_score(
                 f"  resolution: not decided -- {missing_200} pages have no reading at 200 dpi",
             ]
         else:
-            at_200 = _result(chosen, keys, key_texts, 0, typed_answers, cache, dpi=200)
+            at_200 = _result(
+                chosen,
+                keys,
+                key_texts,
+                0,
+                typed_answers,
+                cache,
+                dpi=200,
+                format_gate=recheck is not None,
+            )
             base = next(r for r in results if r.model == chosen)
             # Fix round 1, I7: exact fractions from the raw line counts, not the pre-divided
             # floats -- an exact 5-point gap must not be misjudged by floating-point error.
@@ -1527,11 +1848,35 @@ def cmd_estimate(
     )
 
 
+def _recheck_of(parser: argparse.ArgumentParser, args: argparse.Namespace) -> Recheck | None:
+    """``score``'s second-pass arguments (decision 0086), refused unless complete and safe.
+
+    ``--pass2`` needs both recheck CSVs, the recheck CSVs need ``--pass2``, and a second pass
+    may never be written over the first pass's published results file.
+    """
+    rechecks = (args.handwriting_recheck, args.photos_recheck)
+    if not args.pass2:
+        if any(rechecks):
+            parser.error("--handwriting-recheck and --photos-recheck need --pass2")
+        return None
+    if not all(rechecks):
+        parser.error("--pass2 needs --handwriting-recheck and --photos-recheck")
+    if args.out is not None and args.out.name == FIRST_PASS_RESULTS.name:
+        parser.error(f"the first pass's {FIRST_PASS_RESULTS} is never rewritten by --pass2")
+    return Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_test")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("probe", "handwriting", "photos", "mixed"):
+    pages_only = {
+        "handwriting": cmd_handwriting,
+        "photos": cmd_photos,
+        "handwriting-recheck": cmd_handwriting_recheck,
+        "photos-recheck": cmd_photos_recheck,
+    }
+    for name in ("probe", "mixed", *pages_only):
         commands.add_parser(name)
     keys_p = commands.add_parser("keys")
     keys_p.add_argument("--force", action="store_true")
@@ -1545,10 +1890,14 @@ def main(argv: list[str] | None = None) -> int:
     score_p.add_argument("--photos", type=Path, required=True)
     score_p.add_argument("--mixed", type=Path, required=True)
     score_p.add_argument("--out", type=Path)
+    score_p.add_argument("--pass2", action="store_true")
+    score_p.add_argument("--handwriting-recheck", type=Path)
+    score_p.add_argument("--photos-recheck", type=Path)
     estimate_p = commands.add_parser("estimate")
     estimate_p.add_argument("--model", required=True, choices=CANDIDATES)
     estimate_p.add_argument("--dpi", type=int, choices=(150, 200), default=RESOLUTION)
     args = parser.parse_args(argv)
+    recheck = _recheck_of(parser, args) if args.command == "score" else None
     settings = Settings()
     # max_attempts=1 (fix round 1, M1, as Task 12's own M1): a cache miss here means a genuine
     # bug, not a transient network fault, and must fail at once rather than sleep through five
@@ -1566,14 +1915,12 @@ def main(argv: list[str] | None = None) -> int:
         text = cmd_run(
             settings, docs, models=(args.model,), dpi=200, retry_failed=args.retry_failed
         )
-    elif args.command == "handwriting":
-        text = cmd_handwriting(settings)
-    elif args.command == "photos":
-        text = cmd_photos(settings)
+    elif args.command in pages_only:
+        text = pages_only[args.command](settings)
     elif args.command == "mixed":
         text = cmd_mixed(settings, docs)
     elif args.command == "score":
-        text = cmd_score(settings, docs, args.handwriting, args.photos, args.mixed)
+        text = cmd_score(settings, docs, args.handwriting, args.photos, args.mixed, recheck=recheck)
         if args.out:
             args.out.write_text(text + "\n")
     else:

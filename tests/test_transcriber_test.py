@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import random
+import re
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -1324,3 +1325,331 @@ def test_added_words_are_coloured_against_the_text_layer() -> None:
     assert shown.startswith('<span class="inlayer">FUEL:</span> <span class="inlayer">Both</span>')
     assert '<span class="new">N123AB</span>' in shown
     assert '<span class="new">&lt;x&gt;</span>' in shown
+
+
+# ---------------------------------------------------------------------------------------
+# Decision 0086: the second pass -- the two recheck pages and the corrected scoring.
+# ---------------------------------------------------------------------------------------
+
+_ROWS = re.compile(r'data-row="(\d+)"')
+
+
+def test_photos_recheck_lists_only_the_cards_first_marked_invented(tmp_path: Path) -> None:
+    """Item 1: the recheck page holds exactly the "some invented" cards, with their rows."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    rows: list[dict[str, object]] = [
+        {"set": "photo", "k": k, "document_sha256": f"{k}" * 64, "page": 1} for k in (1, 2)
+    ]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    cache = TranscriptionCache(settings.transcription_dir)
+    for row in rows:
+        for model in tt.CANDIDATES:
+            _put(cache, row, model, "Photo N12345")
+    tt.cmd_photos(settings)
+    sheet = json.loads((folder / "photos.json").read_text())
+    numbers = sorted(int(n) for n in sheet)
+    assert len(numbers) == 2 * len(tt.CANDIDATES)
+    invented = [numbers[1], numbers[4], numbers[6]]
+    (folder / tt.PASS1).mkdir()
+    _write_csv(
+        folder / tt.PASS1 / "photo-words.csv",
+        ["row", "words"],
+        [[str(n), "some invented" if n in invented else "all on the page"] for n in numbers],
+    )
+
+    result = tt.cmd_photos_recheck(settings)
+    page = (folder / "photos-recheck.html").read_text()
+    assert [int(n) for n in _ROWS.findall(page)] == invented
+    assert "3 outputs to re-mark" in result
+    assert '"s26-photo-words-pass2"' in page
+    assert '"photo-words-pass2.csv"' in page
+    assert 'value="all on the page"' in page
+    assert 'value="some invented"' in page
+    assert "photo label counts as on the page" in page
+    assert "a misread registration is still invented" in page
+    # The first pass's sheet is untouched.
+    assert json.loads((folder / "photos.json").read_text()) == sheet
+
+
+def test_photos_recheck_refuses_rows_that_no_longer_match_the_sheet(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    row = {"set": "photo", "k": 1, "document_sha256": "d" * 64, "page": 1}
+    (folder / "keys.jsonl").write_text(json.dumps(row) + "\n")
+    cache = TranscriptionCache(settings.transcription_dir)
+    _put(cache, row, "openai/gpt-6-luna", "Photo")
+    tt.cmd_photos(settings)
+    (number,) = json.loads((folder / "photos.json").read_text())
+    (folder / "photos.json").write_text(
+        json.dumps({number: {"k": 1, "model": "google/gemini-3.6-flash"}})
+    )
+    (folder / tt.PASS1).mkdir()
+    _write_csv(folder / tt.PASS1 / "photo-words.csv", ["row", "words"], [[number, "some invented"]])
+    with pytest.raises(ConfigurationError, match=r"no longer match photos\.json"):
+        tt.cmd_photos_recheck(settings)
+
+
+def _handwriting_pages() -> dict[str, dict[str, object]]:
+    """Two pages as the first pass stored them: page 1's draft is A, page 2's is B."""
+    return {
+        "1": {
+            "letters": {"A": "openai/gpt-6-luna", "B": "google/gemini-3.6-flash"},
+            "versions": {"A": ["Fuel BOTH", "Mixture RICH"], "B": ["Fuel BOTH", "Mixture LEAN"]},
+            "draft": "A",
+            "agreed": ["Fuel BOTH"],
+            "spot": ["Fuel BOTH"],
+        },
+        "2": {
+            "letters": {"A": "openai/gpt-6-luna", "B": "google/gemini-3.6-flash"},
+            "versions": {"A": ["Engine quit"], "B": ["Engine quit", "at 800 ft"]},
+            "draft": "B",
+            "agreed": ["Engine quit"],
+            "spot": [],
+        },
+    }
+
+
+def test_draft_anchored_compares_lines_not_raw_text() -> None:
+    pages = _handwriting_pages()
+    edited_2 = {
+        1: {"key": "Fuel  BOTH\n\nMixture RICH\n"},  # the draft, whitespace aside
+        2: {"key": "Engine quit\nat 900 ft"},  # edited
+    }
+    assert tt.draft_anchored(pages, edited_2) == [1]
+    edited_1 = {1: {"key": "Fuel BOTH"}, 2: {"key": "Engine quit\nat 800 ft"}}
+    assert tt.draft_anchored(pages, edited_1) == [2]
+
+
+def test_handwriting_recheck_lists_only_draft_anchored_pages_prefilled(tmp_path: Path) -> None:
+    """Item 3: only the pages whose first-pass key is the draft; the box holds that key; the
+    spot checks are not repeated."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    (folder / "handwriting.json").write_text(json.dumps(_handwriting_pages()))
+    (folder / tt.PASS1).mkdir()
+    _write_csv(
+        folder / tt.PASS1 / "handwriting-key.csv",
+        ["row", "spot check", "key"],
+        [["1", "all correct", "Fuel BOTH\nMixture RICH"], ["2", "", "Engine quit\nat 900 ft"]],
+    )
+
+    result = tt.cmd_handwriting_recheck(settings)
+    page = (folder / "handwriting-recheck.html").read_text()
+    assert [int(n) for n in _ROWS.findall(page)] == [1]
+    assert "1 draft-anchored pages" in result
+    assert "Fuel BOTH\nMixture RICH</textarea>" in page
+    assert "spot check" not in page
+    assert "check this line" not in page
+    assert '"s26-handwriting-key-pass2"' in page
+    assert '"handwriting-key-pass2.csv"' in page
+    assert "Check this page's key against the image and correct it" in page
+    assert "left as the prefilled draft in the first pass" in page
+    assert 'src="pages/handwriting-1.jpg"' in page
+    assert '<span class="only">RICH</span>' in page
+
+
+def test_overridden_replaces_rechecked_rows_field_by_field() -> None:
+    first = {
+        1: {"spot check": "all correct", "key": "old"},
+        2: {"spot check": "", "key": "kept"},
+    }
+    again = {1: {"checked": "key corrected in the box", "key": "new"}}
+    assert tt.overridden(first, again) == {
+        1: {"spot check": "all correct", "key": "new", "checked": "key corrected in the box"},
+        2: {"spot check": "", "key": "kept"},
+    }
+    photos = {11: {"words": "some invented"}, 12: {"words": "all on the page"}}
+    assert tt.overridden(photos, {11: {"words": "all on the page"}}) == {
+        11: {"words": "all on the page"},
+        12: {"words": "all on the page"},
+    }
+
+
+def test_a_reply_under_half_the_key_lines_is_a_format_failure() -> None:
+    """Item 2's boundary: against a 10-line key, 5 lines pass and 4 fail."""
+    key = [f"line {i}" for i in range(10)]
+    assert not tt.format_failed(key, key[:5])
+    assert tt.format_failed(key, key[:4])
+    assert not tt.format_failed(["a", "b", "c"], ["a", "b"])  # 2 of 3: not under half
+    assert tt.format_failed(["a", "b", "c"], ["a"])  # 1 of 3: under half
+
+
+def test_the_format_gate_is_one_in_twenty() -> None:
+    """Item 2's gate, exactly as the photo gate: 1 of 20 passes, 2 of 20 is out."""
+    chosen, _ = tt.choose(
+        [
+            _result("a", cost_per_page=0.0005, hw_pages=20, hw_format_failed=2),
+            _result("b", hw_pages=20, hw_format_failed=1),
+        ]
+    )
+    assert chosen == "b"
+    _, notes = tt.choose([_result("a", hw_pages=25, hw_format_failed=2)])
+    assert any("a: out -- fewer than half the key's lines on 2 of 25" in n for n in notes)
+    assert tt.choose([_result("a", hw_pages=25, hw_format_failed=1)])[0] == "a"
+    # The first pass never counts format failures, so the gate cannot fire there.
+    assert tt.choose([_result("a", hw_pages=25)])[0] == "a"
+
+
+def test_result_scores_a_format_failed_page_as_wrong_only_in_the_second_pass(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    cache = TranscriptionCache(settings.transcription_dir)
+    row = {"set": "handwriting", "k": 1, "document_sha256": "e" * 64, "page": 1}
+    key = "\n".join(f"line {i}" for i in range(10))
+    _put(cache, row, "openai/gpt-6-luna", "line 0\nline 1\nline 2\ninvented words")
+
+    def result(*, format_gate: bool) -> tt.CandidateResult:
+        return tt._result(
+            "openai/gpt-6-luna",
+            [row],
+            {1: key},
+            0,
+            {},
+            cache,
+            dpi=RESOLUTION,
+            format_gate=format_gate,
+        )
+
+    first, second = result(format_gate=False), result(format_gate=True)
+    assert (first.hw_right, first.hw_format_failed, first.hw_pages) == (3, 0, 1)
+    assert (second.hw_right, second.hw_format_failed, second.hw_pages) == (0, 1, 1)
+    assert first.hw_inventing == second.hw_inventing == 1  # still counts as invented
+    assert first.hw_lines == second.hw_lines == 10
+
+
+def _score_fixture(tmp_path: Path) -> tuple[Settings, CachedDocuments, dict[str, Path]]:
+    """One page per key set; GPT-6 Luna reads the handwriting page as one line of three.
+
+    The first-pass key equals the draft (so the page is draft-anchored) and the one photograph
+    output was first marked "some invented".
+    """
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    typed_doc = _text_pdf("FUEL SELECTOR BOTH. MIXTURE RICH.")
+    _seed(settings.docket_dir, 1, typed_doc)
+    docs = _offline_docs(settings)
+    typed_row = {
+        "set": "typed",
+        "k": 1,
+        "mkey": 1,
+        "document": 1,
+        "page": 1,
+        "document_sha256": hashlib.sha256(typed_doc).hexdigest(),
+    }
+    hw_row = {"set": "handwriting", "k": 1, "document_sha256": "a" * 64, "page": 1}
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "b" * 64, "page": 1}
+    mixed_row = {"set": "mixed", "k": 1, "document_sha256": "c" * 64, "page": 1}
+    keys = [typed_row, hw_row, photo_row, mixed_row]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in keys))
+    cache = TranscriptionCache(settings.transcription_dir)
+    for model in tt.CANDIDATES:
+        _put(cache, typed_row, model, page_text(typed_doc, 1))
+        _put(cache, photo_row, model, "")
+        _put(cache, mixed_row, model, "")
+        luna = model == "openai/gpt-6-luna"
+        _put(cache, hw_row, model, "Fuel BOTH" if luna else "Fuel BOTH\nMixture RICH\nEngine OK")
+    draft = ["Fuel BOTH", "Mixture RICH", "Engine OK"]
+    (folder / "handwriting.json").write_text(
+        json.dumps({"1": {"versions": {"A": draft}, "draft": "A", "agreed": draft}})
+    )
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    (folder / "mixed.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    csvs = {name: tmp_path / f"{name}.csv" for name in ("hw", "photos", "mixed", "hw2", "photos2")}
+    _write_csv(csvs["hw"], ["row", "spot check", "key"], [["1", "", "\n".join(draft)]])
+    _write_csv(csvs["photos"], ["row", "words"], [["11", "some invented"]])
+    _write_csv(csvs["mixed"], ["row", "added words"], [["11", "all on the page and new"]])
+    _write_csv(
+        csvs["hw2"],
+        ["row", "checked", "key"],
+        [["1", "key corrected in the box", "Fuel BOTH\nMixture RICH\nEngine ROUGH"]],
+    )
+    _write_csv(csvs["photos2"], ["row", "words"], [["11", "all on the page"]])
+    return settings, docs, csvs
+
+
+def test_score_second_pass_applies_the_three_corrections(tmp_path: Path) -> None:
+    settings, docs, csvs = _score_fixture(tmp_path)
+    text = tt.cmd_score(
+        settings,
+        docs,
+        csvs["hw"],
+        csvs["photos"],
+        csvs["mixed"],
+        recheck=tt.Recheck(handwriting_csv=csvs["hw2"], photos_csv=csvs["photos2"]),
+    )
+    lines = text.splitlines()
+    assert lines[0] == "# the transcriber test -- SECOND PASS (post-hoc, decision 0086)"
+    assert lines[1].startswith("corrections (decision 0086, fixed before re-marking): 1.")
+    assert lines[2] == (
+        "re-marked: 1 photograph cards (1 marks changed); 1 handwriting pages (1 keys changed; "
+        "0 pages where Andy's own answer disagrees)"
+    )
+    assert "the first pass stands unchanged in docs/results/s26-transcriber-test.txt" in text
+    assert "# the transcriber test (S2.6 spec §7, decision 0080) -- counts only" in text
+    # The re-marked photograph is no longer invented; the corrected key is the one scored.
+    luna = text.split("## openai/gpt-6-luna")[1]
+    assert "0 of 1 photographs" in luna
+    # One line of a three-line key: under half, so wrong; 1 page in 1 is over 1 in 20 -- out.
+    assert "handwriting lines right: 0 of 3" in luna
+    assert "scored as wrong): 1 of 1" in luna
+    assert "openai/gpt-6-luna: out -- fewer than half the key's lines on 1 of 1" in text
+    flash = text.split("## google/gemini-3.6-flash")[1].split("##")[0]
+    assert "handwriting lines right: 2 of 3" in flash  # "Engine OK" was corrected
+    assert "scored as wrong): 0 of 1" in flash
+
+
+def test_score_first_pass_is_unchanged_without_the_second(tmp_path: Path) -> None:
+    """The same sheets without ``recheck``: no header, no format rule, the first-pass marks."""
+    settings, docs, csvs = _score_fixture(tmp_path)
+    text = tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"])
+    assert text.splitlines()[0] == (
+        "# the transcriber test (S2.6 spec §7, decision 0080) -- counts only"
+    )
+    assert "SECOND PASS" not in text
+    assert "format-failed" not in text
+    assert "decision 0086" not in text
+    luna = text.split("## openai/gpt-6-luna")[1]
+    assert "1 of 1 photographs" in luna
+    assert "handwriting lines right: 1 of 3" in luna
+
+
+def test_score_second_pass_refuses_a_recheck_with_the_wrong_rows(tmp_path: Path) -> None:
+    settings, docs, csvs = _score_fixture(tmp_path)
+    _write_csv(csvs["photos2"], ["row", "words"], [["12", "all on the page"]])
+    recheck = tt.Recheck(handwriting_csv=csvs["hw2"], photos_csv=csvs["photos2"])
+    with pytest.raises(SystemExit, match="the photograph recheck holds 1 row"):
+        tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
+    _write_csv(csvs["photos2"], ["row", "words"], [["11", "all on the page"]])
+    _write_csv(csvs["hw2"], ["row", "checked", "key"], [["1", "", "Fuel BOTH"]])
+    with pytest.raises(SystemExit, match=r"unmarked or empty for page\(s\): \[1\]"):
+        tt.cmd_score(settings, docs, csvs["hw"], csvs["photos"], csvs["mixed"], recheck=recheck)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--pass2"],
+        ["--pass2", "--handwriting-recheck", "h.csv"],
+        ["--photos-recheck", "p.csv"],
+        [
+            "--pass2",
+            "--handwriting-recheck",
+            "h.csv",
+            "--photos-recheck",
+            "p.csv",
+            "--out",
+            "docs/results/s26-transcriber-test.txt",
+        ],
+    ],
+)
+def test_score_second_pass_arguments_are_refused_unless_complete(extra: list[str]) -> None:
+    argv = ["score", "--handwriting", "a", "--photos", "b", "--mixed", "c", *extra]
+    with pytest.raises(SystemExit) as raised:
+        tt.main(argv)
+    assert raised.value.code == 2  # argparse's usage error, before anything is read

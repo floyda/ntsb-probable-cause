@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck
 
 check: lint type test
 
@@ -179,3 +179,9 @@ s26-transcriber-resolution:
 	uv run python -m scripts.transcriber_test resolution --model $(MODEL) --retry-failed
 # The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1), then one retry of
 # any page that failed there too.
+
+s26-transcriber-recheck:
+	uv run python -m scripts.transcriber_test photos-recheck
+	uv run python -m scripts.transcriber_test handwriting-recheck
+# Decision 0086's second pass (free: no model call): Andy's two recheck pages, read against the
+# first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/.
