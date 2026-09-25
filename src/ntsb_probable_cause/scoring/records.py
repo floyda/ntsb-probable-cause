@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause.model.client import Payload
+from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 
@@ -113,6 +114,10 @@ class CaseResult(BaseModel):
     # (``steps=()``): the docket outcome must not be invisible just because the case never
     # reached a model call (decision 0043; fix round 1, Finding 4).
     documents_not_read: tuple[str, ...] = ()
+    # S2.6 spec §4.4: the case's marks and its largest single-document share of the factual
+    # narrative (0078), from the split. Never in the agent's text; reported as groups.
+    marks: tuple[CaseMark, ...] = ()
+    narrative_share: float | None = None
     # Every reply the case received, in call order, whether the case was scored or failed
     # (S2.6 Task 9C). A failed case has no step (``steps=()``), so ``StepRecord``'s own copy
     # of these tuples is invisible to a failed case -- and a case that failed on stage 2 after

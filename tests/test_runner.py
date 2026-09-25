@@ -1,5 +1,6 @@
 """The runner: sync and batch answering passes, the cap, the budget (spec §6)."""
 
+import copy
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Literal, cast
 
 import pytest
 from tests.test_attach import _docket as small_docket
+from tests.test_marks import FACTUAL, S1, S2
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
@@ -31,6 +33,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
+from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring.budget import RESERVATION_FILE, open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
@@ -2403,6 +2406,34 @@ def test_arm_b_attaches_the_filtered_documents_and_records_them(
     assert step.not_available == ("3: unreadable: scan",)
     assert "crankshaft" in client.payloads[0].text
     assert reader.reads == [record_fixtures[0]["mKey"]]
+
+
+def test_arm_b_case_result_carries_the_narrative_coverage_mark(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A docket document holding half the factual narrative marks the CaseResult (S2.6 §4.4),
+
+    and the mark itself never reaches a payload the model sees (0078).
+    """
+    raw = copy.deepcopy(record_fixtures[0])
+    narratives = raw["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["concatenatedFactualNarrative"] = FACTUAL
+    docket = small_docket({1: f"[page 1 of 3]\n{S1}. {S2}.\n"})
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, [raw])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.marks == (CaseMark(kind="narrative_coverage", count=1),)
+    assert case.narrative_share == 0.5
+    for payload in client.payloads:
+        assert "narrative_coverage" not in payload.text
 
 
 def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(

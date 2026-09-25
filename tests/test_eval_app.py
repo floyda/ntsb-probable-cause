@@ -24,6 +24,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
+from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
@@ -1005,6 +1006,65 @@ def test_report_against_a_different_version_is_refused_without_the_flag(
     assert exit_code is None or exit_code == 0
     out = capsys.readouterr().out
     assert "evidence-version comparison (decision 0076): v2 against v1" in out
+
+
+def _scored_case(case_id: str, *, marks: tuple[CaseMark, ...] = ()) -> CaseResult:
+    return CaseResult(
+        case_id=case_id,
+        split="dev",
+        fatal=False,
+        investigation_class="C",
+        report_flavour=None,
+        verdict_occurrence=("552230",),
+        verdict_findings=(),
+        verdict_findings_in_cause=(),
+        steps=(),
+        scores=CaseScores(
+            occurrence_top1=True,
+            occurrence_top3=True,
+            event_match=True,
+            pair_unseen=False,
+            finding_precision_10=1.0,
+            finding_recall_10=1.0,
+            finding_precision_8=1.0,
+            finding_recall_8=1.0,
+            finding_precision_6=1.0,
+            finding_recall_6=1.0,
+            finding_precision_all_10=1.0,
+            finding_recall_all_10=1.0,
+            abstained=False,
+            confidence=0.5,
+        ),
+        cost_usd=0.001,
+        failure=None,
+        marks=marks,
+    )
+
+
+def test_report_prints_unmarked_cases_and_each_marked_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """S2.6 spec §4.4: a run with any marked case gets the unmarked table and marks_summary."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    write_jsonl(
+        runs_dir / "this-run" / "run.jsonl",
+        [RunRecord(**_RUN_KWARGS, run_id="this-run", started=now, finished=now, cost_usd=1.0)],
+    )
+    clean = _scored_case("CASE1")
+    marked = _scored_case("CASE2", marks=(CaseMark(kind="analysis_sentence", count=3),))
+    write_jsonl(runs_dir / "this-run" / "cases.jsonl", [clean, marked])
+
+    exit_code = main(["report", "this-run"])
+    assert exit_code is None or exit_code == 0
+    out = capsys.readouterr().out
+
+    assert "unmarked cases only (S2.6 spec §4.4):" in out
+    assert "marks (S2.6 spec §4.4; never in the agent's text):" in out
+    assert "analysis_sentence: 1 cases (3 counted); top-1" in out
 
 
 def test_release_clears_a_dead_reservation(

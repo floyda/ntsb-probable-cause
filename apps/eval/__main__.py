@@ -288,6 +288,15 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
     text += "\n\n" + report.failure_summary(cases)
+    if any(r.marks for r in cases):
+        text += (
+            "\n\nunmarked cases only (S2.6 spec §4.4):\n"
+            + report.summarise(report.unmarked(cases), floor=floor)
+            + "\n\n"
+            + report.marks_summary(cases)
+        )
+    if any(r.narrative_share is not None for r in cases):
+        text += "\n" + report.share_bands(cases)
     if run_record.arm == "B":
         text += "\n\n" + report.cap_summary(cases)
     if run_record.sample == "heldout-400":
@@ -302,6 +311,15 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         )
         heading = report.comparison_heading(run_record, other_record)
         text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
+        marked_ids = {r.case_id for r in [*cases, *other_cases] if r.marks}
+        if marked_ids:
+            text += (
+                f"\n\non cases unmarked in both runs ({len(marked_ids)} marked cases left out):\n"
+                + report.compare(
+                    [r for r in cases if r.case_id not in marked_ids],
+                    [r for r in other_cases if r.case_id not in marked_ids],
+                )
+            )
     reservations = open_reservations(settings.runs_dir)
     if reservations:
         text += "\n\nopen budget reservations: " + ", ".join(

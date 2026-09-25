@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
@@ -588,3 +589,29 @@ def test_a_cross_version_comparison_is_labelled(run_record: RunRecord) -> None:
 
 def test_provenance_names_the_version(run_record: RunRecord) -> None:
     assert "evidence=v1" in report.provenance(run_record)
+
+
+def test_unmarked_drops_every_marked_case(case_result: CaseResult) -> None:
+    marked = case_result.model_copy(
+        update={"case_id": "M", "marks": (CaseMark(kind="analysis_sentence", count=2),)}
+    )
+    assert [r.case_id for r in report.unmarked([case_result, marked])] == [case_result.case_id]
+
+
+def test_marks_summary_rows_and_the_coverage_note(case_result: CaseResult) -> None:
+    coverage = case_result.model_copy(
+        update={"marks": (CaseMark(kind="narrative_coverage", count=1),)}
+    )
+    text = report.marks_summary([coverage, case_result])
+    assert "narrative_coverage: 1 cases (1 counted); top-1" in text
+    assert "decision 0078 item 3" in text
+    assert report.marks_summary([case_result]) == "marks: none"
+
+
+def test_share_bands_count_cases_at_each_cut(case_result: CaseResult) -> None:
+    rows = [case_result.model_copy(update={"narrative_share": s}) for s in (0.1, 0.3, 0.6, 0.9)]
+    rows.append(case_result.model_copy(update={"narrative_share": None}))
+    assert report.share_bands(rows) == (
+        "narrative share, largest single document: at least 25% 3, at least 50% 2, "
+        "at least 80% 1, of 4 cases with a share"
+    )

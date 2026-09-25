@@ -331,6 +331,46 @@ def failure_summary(results: Sequence[CaseResult]) -> str:
     return "failures by reason: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
 
 
+# One line of caution per mark kind whose group is too small to carry a claim.
+MARK_NOTES = {
+    "narrative_coverage": (
+        "at about three development cases this row makes the cases visible; it cannot show "
+        "whether coverage inflates the score (decision 0078 item 3)"
+    ),
+}
+_SHARE_CUTS = (0.25, 0.5, 0.8)
+
+
+def unmarked(results: Sequence[CaseResult]) -> list[CaseResult]:
+    """The cases carrying no mark: the second of the two tables spec §4.4 asks for."""
+    return [r for r in results if not r.marks]
+
+
+def marks_summary(results: Sequence[CaseResult]) -> str:
+    """Each mark kind as its own group: cases, what the marks counted, and top-1."""
+    kinds = sorted({mark.kind for r in results for mark in r.marks})
+    if not kinds:
+        return "marks: none"
+    lines = ["marks (S2.6 spec §4.4; never in the agent's text):"]
+    for kind in kinds:
+        group = [r for r in results if any(m.kind == kind for m in r.marks)]
+        counted = sum(m.count for r in group for m in r.marks if m.kind == kind)
+        cell = proportion([r.scores.occurrence_top1 for r in group if r.scores is not None])
+        lines.append(f"- {kind}: {len(group)} cases ({counted} counted); top-1 {fmt_n(cell)}")
+        if kind in MARK_NOTES:
+            lines.append(f"  {MARK_NOTES[kind]}")
+    return "\n".join(lines)
+
+
+def share_bands(results: Sequence[CaseResult]) -> str:
+    """How many cases reach each cut of the stored share, so another cut needs no re-run."""
+    shares = [r.narrative_share for r in results if r.narrative_share is not None]
+    bands = ", ".join(
+        f"at least {cut:.0%} {sum(1 for s in shares if s >= cut)}" for cut in _SHARE_CUTS
+    )
+    return f"narrative share, largest single document: {bands}, of {len(shares)} cases with a share"
+
+
 def refuse_cross_version(this: RunRecord, other: RunRecord, *, versions_compared: bool) -> None:
     """Two runs on different evidence versions are not an arm comparison (decision 0076).
 

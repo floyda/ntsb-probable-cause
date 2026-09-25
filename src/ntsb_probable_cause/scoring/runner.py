@@ -1117,6 +1117,11 @@ class Runner:
             # step is built (``steps=()``), and that is exactly the case that dropped the
             # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
             documents_not_read=ctx.not_read,
+            # S2.6 spec §4.4: copied from the evidence for every case that reached ``_prepare``
+            # (scored and failed-after-evidence alike). ``_leaked_case`` has no ``Evidence`` to
+            # read these from and keeps the defaults, ``()``/``None``.
+            marks=ctx.evidence.marks,
+            narrative_share=ctx.evidence.narrative_share,
             # Every reply the case received, in call order, whether it was scored or failed
             # (S2.6 Task 9C) -- the same source ``_step`` reads, but recorded here so a
             # failed case (``steps=()``) still carries it. Empty when ``ctx.replies`` is
