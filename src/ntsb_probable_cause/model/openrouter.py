@@ -66,6 +66,8 @@ def request_body(
         }
     if settings.tools:
         body["tools"] = list(settings.tools)
+    if settings.reasoning_effort is not None:
+        body["reasoning"] = {"effort": settings.reasoning_effort}
     return body
 
 

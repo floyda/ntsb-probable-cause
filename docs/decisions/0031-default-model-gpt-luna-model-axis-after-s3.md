@@ -47,3 +47,7 @@ both advertise a JSON schema on the reply and tool calls.
 ## Status
 
 Accepted.
+
+**Item 1 replaced by [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md), 2026-09-23**:
+the default becomes GPT-6 Luna if it passes a shape probe and a format gate, at a reasoning level
+set and recorded. Items 2 to 4 stand.

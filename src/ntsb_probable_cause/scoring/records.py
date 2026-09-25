@@ -25,6 +25,8 @@ class RunRecord(BaseModel):
     includes: tuple[str, ...]
     prompt_version: str
     model: str
+    # None on a run from before S2.4, which sent no level and used the provider's default.
+    reasoning_effort: str | None = None
     price_variant: str
     cap_usd: float
     budget_usd: float

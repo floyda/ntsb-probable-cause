@@ -1,6 +1,7 @@
 """Facts about external services, each with the source it came from (decision 0012)."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 # ../ntsb-spike/public.yaml, operation get-cases-by-date-range-v2; confirmed by saved responses.
 NTSB_BASE_URL = "https://api.ntsb.gov/public"
@@ -52,6 +53,13 @@ LUNA = ModelPrice("openai/gpt-5.6-luna", 0.20, 1.20, "OpenRouter models API, 202
 LUNA_BATCH = ModelPrice(
     "openai/gpt-5.6-luna:batch", 0.10, 0.60, "OpenRouter models API, 2026-09-15"
 )
+
+# https://openrouter.ai/api/v1/models, checked 2026-09-22 (decision 0073). The same line as
+# GPT-5.6 Luna at about half the price; the default only moves to it after S2.4's gate.
+LUNA_6 = ModelPrice("openai/gpt-6-luna", 0.10, 0.50, "OpenRouter models API, 2026-09-22")
+LUNA_6_BATCH = ModelPrice(
+    "openai/gpt-6-luna:batch", 0.05, 0.25, "OpenRouter models API, 2026-09-22"
+)
 HAIKU_45_BATCH = ModelPrice(
     "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
 )
@@ -88,6 +96,8 @@ _PRICES = {
         SONNET_5_BATCH,
         LUNA,
         LUNA_BATCH,
+        LUNA_6,
+        LUNA_6_BATCH,
         HAIKU_45_BATCH,
         HAIKU_45,
         GEMINI_31_FLASH_LITE,
@@ -101,6 +111,17 @@ _PRICES = {
 def price_of(model_id: str) -> ModelPrice:
     """The price entry for a model id; KeyError if the project has not recorded one."""
     return _PRICES[model_id]
+
+
+# The reasoning levels OpenRouter's model list gives both Luna models
+# (``reasoning.supported_efforts``, read 2026-09-23); their default is ``medium``.
+ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
+
+# The agent's default model and reasoning level, each named once (decision 0073). The level is
+# stated on every agent request rather than left to the provider, whose default could change
+# with nothing in a run's record to show it (S2.4 spec §4.1).
+DEFAULT_MODEL = "openai/gpt-6-luna"
+DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"
 
 
 # https://openrouter.ai/docs (decision 0009) and https://openrouter.ai/docs/batch-quickstart,
