@@ -15,6 +15,7 @@ from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
+from ntsb_probable_cause.docket.transcribe import ReadingLookup
 from ntsb_probable_cause.errors import (
     BatchNotFoundError,
     BudgetError,
@@ -671,20 +672,31 @@ def _sample_split(sample: str) -> Split:
 class DocketReader(Protocol):
     """Where arm B (and later the loop) gets a case's docket from."""
 
+    # Decision 0076: the evidence version the reader builds; ``Runner.run`` refuses a run
+    # whose own version differs, so v2 evidence is never recorded as v1, nor the reverse.
+    version: Literal["v1", "v2"]
+
     def read(self, mkey: int) -> Docket:
         """The docket for a case's internal key."""
         ...
 
 
 class CachedDocketReader:
-    """The real reader: the client's cache (spec §7.1). Decision 0056: no deny-list to apply."""
+    """The real reader: the client's cache (spec §7.1); with readings, evidence version v2.
 
-    def __init__(self, client: DocketClient) -> None:
+    Decision 0056: no deny-list to apply.
+    """
+
+    def __init__(self, client: DocketClient, *, readings: ReadingLookup | None = None) -> None:
         self._client = client
+        self._readings = readings
+        self.version: Literal["v1", "v2"] = "v1" if readings is None else "v2"
 
     def read(self, mkey: int) -> Docket:
         """The docket for a case's internal key, fetched (or read from cache) and classified."""
-        return read_docket(self._client, mkey)
+        if self._readings is None:
+            return read_docket(self._client, mkey)  # v1: S2's call, unchanged
+        return read_docket(self._client, mkey, readings=self._readings)
 
 
 @dataclass(frozen=True)
@@ -699,6 +711,8 @@ class Prepared:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    # Decision 0081: what transcribing this case's docket cost (v2), apart from the cap.
+    preparation_cost_usd: float = 0.0
 
 
 # The two evidence roles arm B is defined by (spec §7.1). Excluding either one leaves the
@@ -789,6 +803,7 @@ def prepare_case(
         tuple(not_read),
         result.not_available,
         documents_attached,
+        docket.preparation_cost_usd,
     )
 
 
@@ -855,6 +870,7 @@ class _CaseContext:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    preparation_cost_usd: float = 0.0
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
     # The last SchemaError's reply detail (S2.6 Task 9A fix round 1): kept apart from the
@@ -925,7 +941,7 @@ class Runner:
         self._now = now
         self._docket = docket
 
-    def run(  # noqa: PLR0915 -- the evidence-version refusal adds one line to an already-long method.
+    def run(  # noqa: PLR0912, PLR0915 -- the evidence-version refusals lengthen a long method.
         self,
         spec: RunSpec,
         raws: Sequence[Mapping[str, object]],
@@ -967,9 +983,15 @@ class Runner:
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
-        if spec.evidence_version != "v1":
-            # Replaced in Task 14 (v2) and Task 16 (v3) by the readers that build them.
-            raise ConfigurationError(f"evidence version {spec.evidence_version} is not built yet")
+        if spec.evidence_version == "v3":
+            raise ConfigurationError("evidence version v3 is not built yet")  # Task 16
+        if spec.arm == "B" and self._docket is not None:
+            wanted = "v1" if spec.evidence_version == "v1" else "v2"
+            if self._docket.version != wanted:
+                raise ConfigurationError(
+                    f"a {spec.evidence_version} run needs a {wanted} docket reader; this one "
+                    f"reads {self._docket.version} evidence (decision 0076)"
+                )
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
@@ -1218,6 +1240,7 @@ class Runner:
             # read these from and keeps the defaults, ``()``/``None``.
             marks=ctx.evidence.marks,
             narrative_share=ctx.evidence.narrative_share,
+            preparation_cost_usd=ctx.preparation_cost_usd,
             # Every reply the case received, in call order, whether it was scored or failed
             # (S2.6 Task 9C) -- the same source ``_step`` reads, but recorded here so a
             # failed case (``steps=()``) still carries it. Empty when ``ctx.replies`` is
@@ -1314,6 +1337,7 @@ class Runner:
             not_read=prepared.not_read,
             not_available=prepared.not_available,
             documents_attached=prepared.documents_attached,
+            preparation_cost_usd=prepared.preparation_cost_usd,
         )
         if over_cap(prepared.payload.text, prepared.system, spec):
             return self._failed(ctx, "cap", 0.0)
@@ -1857,6 +1881,7 @@ class Runner:
                 not_read=prepared.not_read,
                 not_available=prepared.not_available,
                 documents_attached=prepared.documents_attached,
+                preparation_cost_usd=prepared.preparation_cost_usd,
             )
             if over_cap(prepared.payload.text, prepared.system, spec):
                 run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)

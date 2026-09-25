@@ -1,5 +1,6 @@
 import copy
 import gzip
+import hashlib
 import json
 import sqlite3
 from collections.abc import Callable, Mapping
@@ -36,11 +37,16 @@ from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.listing import parse_listing
+from ntsb_probable_cause.docket.manifest import Docket, read_docket
 from ntsb_probable_cause.docket.pages import page_text
 from ntsb_probable_cause.docket.render import MEDIA_TYPE, render_pages
 from ntsb_probable_cause.docket.transcribe import (
     TRANSCRIBE,
     PageJob,
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
     TranscriptionKey,
     key_instruction,
     read_page,
@@ -1201,3 +1207,83 @@ def test_the_transcription_boundary_check_can_fail(
             image=PageImage(media_type=MEDIA_TYPE, data=rendered.data),
             text_layer=real_layer,
         )
+
+
+# --- Task 14: transcribed text is document text -- the replacements, split and tripwire apply
+# unchanged (spec §8.4) ---
+
+_V2_LISTING = Path("tests/fixtures/docket/ERA17LA217")
+_V2_IMAGE_PAGE = build_pdf([PageSpec(images=("/CCITTFaxDecode",))])
+_V2_BLANK = build_pdf([PageSpec()])
+
+
+def _v2_docket(tmp_path: Path, respx_mock: respx.MockRouter, transcription: str) -> Docket:
+    """A docket read through ``read_docket`` with a lookup: document 1's image page reads as
+    ``transcription``, from a transcription cache under ``tmp_path`` (no model call)."""
+    mkey = int(json.loads((_V2_LISTING / "manifest.json").read_text())["fixture"]["mkey"])
+    listing_html = (_V2_LISTING / "listing.html").read_text()
+    respx_mock.get(sources.docket_url(mkey)).mock(
+        return_value=httpx.Response(200, text=listing_html)
+    )
+    first = parse_listing(listing_html, mkey=mkey).entries[0]
+    # Registered first: respx answers with the first route that matches.
+    respx_mock.get(sources.docket_document_url(first.href)).mock(
+        return_value=httpx.Response(200, content=_V2_IMAGE_PAGE)
+    )
+    respx_mock.get(url__startswith=sources.DOCKET_BASE_URL + "/Docket/Document").mock(
+        return_value=httpx.Response(200, content=_V2_BLANK)
+    )
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    key = TranscriptionKey(
+        document_sha256=hashlib.sha256(_V2_IMAGE_PAGE).hexdigest(),
+        page=1,
+        model="m",
+        instruction=key_instruction(TRANSCRIBE, mixed=False),
+        dpi=150,
+    )
+    cache.put(
+        Transcription(
+            key=key,
+            status="transcribed",
+            text=transcription,
+            created=datetime(2026, 10, 1, tzinfo=UTC),
+        )
+    )
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    with DocketClient(tmp_path / "docket", sleep=lambda _s: None) as client:
+        docket = read_docket(client, mkey, readings=lookup)
+    assert docket.record(first.index).transcribed_pages == 1
+    return docket
+
+
+def test_a_transcription_holding_the_probable_cause_is_refused(
+    tmp_path: Path, respx_mock: respx.MockRouter, record_fixtures: list[dict[str, object]]
+) -> None:
+    raw = next(r for r in record_fixtures if fields.probable_cause(r))
+    cause = fields.probable_cause(raw) or ""
+    docket = _v2_docket(tmp_path, respx_mock, f"Handwritten note. {cause}")
+    spec = RunSpec(sample="dev-400", arm="B", evidence_version="v2")
+    with pytest.raises(LeakageError, match="probable_cause in docket_documents"):
+        runner_module.prepare_case(raw, spec, load_tables(), docket)
+    context = attach_docket(raw, docket, documents=list(docket.texts)).context
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_boundary_holds(context, lambda r: split_record(r, min_sentence_chars=10**9))
+
+
+def test_a_transcription_naming_the_owner_reaches_the_payload_with_the_name_replaced(
+    tmp_path: Path, respx_mock: respx.MockRouter, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0046: the recorded owner's name is replaced in transcribed text as in any."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]  # invented
+    docket = _v2_docket(
+        tmp_path, respx_mock, "Statement written by Jordan Vale: the engine lost power at 800 ft."
+    )
+    spec = RunSpec(sample="dev-400", arm="B", evidence_version="v2")
+    prepared = runner_module.prepare_case(raw, spec, load_tables(), docket)
+    assert "transcribed from an image" in prepared.payload.text
+    assert "Statement written by Owner or operator: the engine lost power" in prepared.payload.text
+    assert "Jordan Vale" not in prepared.payload.text
+    assert_boundary_holds(attach_docket(raw, docket, documents=list(docket.texts)).context)

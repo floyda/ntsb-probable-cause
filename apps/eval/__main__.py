@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import hashlib
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -10,7 +11,19 @@ from pathlib import Path
 from typing import cast
 
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError
+from ntsb_probable_cause.docket.documents import CachedDocuments
+from ntsb_probable_cause.docket.render import RESOLUTION
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    TRANSCRIBER,
+    PageJob,
+    ReadingLookup,
+    TranscriptionCache,
+    TranscriptionKey,
+    key_instruction,
+    pages_to_read,
+)
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError, DocketError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
@@ -26,6 +39,7 @@ from ntsb_probable_cause.scoring.judge import (
     judge_run,
     pick_disagreements,
 )
+from ntsb_probable_cause.scoring.preparation import run_preparation
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
@@ -193,6 +207,15 @@ def _build_parser() -> argparse.ArgumentParser:
     release_p = commands.add_parser("release", help="clear a dead run's budget reservation")
     release_p.add_argument("run_id")
 
+    transcribe_p = commands.add_parser(
+        "transcribe", help="read a sample's image pages once, into the cache (S2.6, 0081)"
+    )
+    transcribe_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
+    transcribe_p.add_argument("--expected-cost-per-page-usd", type=float, required=True)
+    transcribe_p.add_argument("--workers", type=int, default=8)
+    transcribe_p.add_argument("--retry-failed", action="store_true")
+    transcribe_p.add_argument("--dry-run", action="store_true", help="count and price only")
+
     return parser
 
 
@@ -211,7 +234,25 @@ def _cmd_baseline(args: argparse.Namespace, settings: Settings) -> None:
     _maybe_write(args.out, text)
 
 
+def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLookup | None:
+    """v2's readings for an arm B run, refused unless the sample is fully transcribed.
+
+    A v2 run must read v2 evidence, not v1 with some pages missing: ``ntsb-eval transcribe``
+    writes the done file only once every page it chose has a reading (spec §8.3).
+    """
+    if args.arm != "B" or args.evidence_version == "v1":
+        return None
+    readings = ReadingLookup(TranscriptionCache(settings.transcription_dir))
+    if not readings.is_done(args.sample):
+        raise ConfigurationError(
+            f"{args.sample} is not fully transcribed: run ntsb-eval transcribe --sample "
+            f"{args.sample} first"
+        )
+    return readings
+
+
 def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
+    readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
     if args.limit is not None:
@@ -243,7 +284,11 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         else contextlib.nullcontext()
     )
     with docket_cm as docket_client:
-        docket = CachedDocketReader(docket_client) if docket_client is not None else None
+        docket = (
+            CachedDocketReader(docket_client, readings=readings)
+            if docket_client is not None
+            else None
+        )
         runner = Runner(
             client,
             batch=batch,
@@ -299,6 +344,8 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         text += "\n" + report.share_bands(cases)
     if run_record.arm == "B":
         text += "\n\n" + report.cap_summary(cases)
+    if run_record.evidence_version != "v1":
+        text += "\n" + report.preparation_summary(cases)
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
@@ -311,6 +358,17 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         )
         heading = report.comparison_heading(run_record, other_record)
         text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
+        if run_record.evidence_version != other_record.evidence_version:
+            # Spec §9.1: the comparison also "for the cases that hold image pages" -- those
+            # this run paid to transcribe pages for.
+            transcribed_ids = {r.case_id for r in cases if r.preparation_cost_usd > 0}
+            text += (
+                f"\n\non the {len(transcribed_ids)} cases with transcribed pages:\n"
+                + report.compare(
+                    [r for r in cases if r.case_id in transcribed_ids],
+                    [r for r in other_cases if r.case_id in transcribed_ids],
+                )
+            )
         marked_ids = {r.case_id for r in [*cases, *other_cases] if r.marks}
         if marked_ids:
             text += (
@@ -359,6 +417,99 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     text = "\n".join(lines)
     print(text)
     _maybe_write(args.out, text)
+
+
+def _page_jobs(raws: Sequence[Mapping[str, object]], docs: CachedDocuments) -> list[PageJob]:
+    """One job per page v2 reads, over every PDF in every case's docket.
+
+    Decision W2: v2 reads the photo-only documents too, so none is skipped here. A case with
+    no listing, a document that cannot be fetched and a file that is not a PDF have no pages
+    to read (``read_docket`` records them as S2 does).
+    """
+    jobs: list[PageJob] = []
+    for raw in raws:
+        mkey = raw.get("mKey")
+        if not isinstance(mkey, int):
+            continue
+        try:
+            entries = docs.listing(mkey).entries
+        except DocketError:
+            continue
+        for entry in entries:
+            if not entry.is_pdf():
+                continue
+            try:
+                data = docs.document(mkey, entry.index)
+                chosen = pages_to_read(data)
+            except DocketError:
+                continue
+            sha = hashlib.sha256(data).hexdigest()
+            for page, mixed in chosen:
+                # Fix round 3, R4: the job's key carries the instruction its own ``mixed``
+                # status implies (0085, amended by Task 13's I3), the key v2 looks up.
+                key = TranscriptionKey(
+                    document_sha256=sha,
+                    page=page,
+                    model=TRANSCRIBER,
+                    instruction=key_instruction(TRANSCRIBE, mixed=mixed),
+                    dpi=RESOLUTION,
+                )
+                jobs.append(PageJob(key, docs.loader(mkey, entry.index), mixed))
+    return jobs
+
+
+def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> None:
+    """Every page v2 needs, for one sample: counted, priced, then read once (0081).
+
+    Counts only are printed: on a held-out sample this reads pages by program and no person
+    sees them. The done file is written only when every chosen page has a reading
+    (transcribed or failed), which is what ``run --evidence-version v2`` checks for.
+    """
+    raws = samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))
+    cache = TranscriptionCache(settings.transcription_dir)
+    with DocketClient(
+        settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
+    ) as client:
+        jobs = _page_jobs(raws, CachedDocuments(client))
+        pending = [
+            j
+            for j in jobs
+            if (hit := cache.get(j.key)) is None or (args.retry_failed and hit.status == "failed")
+        ]
+        projected = len(pending) * args.expected_cost_per_page_usd
+        print(
+            f"{args.sample}: {len(jobs)} pages to read with {TRANSCRIBER} at {RESOLUTION} dpi, "
+            f"{len(pending)} not yet read; projected ${projected:.2f}"
+        )
+        if args.dry_run:
+            return
+        # Nothing to pay for: no job, no reservation and no API key needed.
+        done = (
+            run_preparation(
+                kind="transcription",
+                jobs=jobs,
+                instruction=TRANSCRIBE,
+                settings=settings,
+                commit=ledger.commit_state(),
+                expected_cost_per_page_usd=args.expected_cost_per_page_usd,
+                workers=args.workers,
+                retry_failed=args.retry_failed,
+            )
+            if pending
+            else []
+        )
+    readings = [cache.get(j.key) for j in jobs]
+    failed = sum(1 for r in readings if r is not None and r.status == "failed")
+    print(
+        f"read {len(done)} pages now (${sum(r.cost_usd for r in done):.2f}); "
+        f"{failed} of {len(jobs)} failed in all"
+    )
+    if all(r is not None for r in readings):
+        ReadingLookup(cache).mark_done(
+            args.sample,
+            {"pages": len(jobs), "failed": failed, "model": TRANSCRIBER, "dpi": RESOLUTION},
+        )
+        print(f"{args.sample}: every page has a reading; v2 runs may start")
 
 
 def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
@@ -535,6 +686,8 @@ def main(
             _cmd_threshold(args, settings)
         elif args.command == "release":
             return _cmd_release(args, settings)
+        elif args.command == "transcribe":
+            _cmd_transcribe(args, settings)
     except (BudgetError, ConfigurationError) as error:
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1

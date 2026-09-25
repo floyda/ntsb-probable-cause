@@ -6229,7 +6229,7 @@ A page whose transcription failed contributes what S2 gave it (its marker and an
 
 **Why a finished-transcription file.** A v2 run must read v2 evidence, not v1 with some pages missing. `ntsb-eval transcribe` writes `<transcription_dir>/done/<sample>-<key>.json` only when every page it chose has a cached reading (transcribed or failed). `ntsb-eval run --evidence-version v2` refuses without it, naming the command to run. The reader's `version` must match the run's, or `Runner.run` refuses: v2 evidence cannot be recorded as v1, or the other way round.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_docket_extract.py` (append; `Transcription` records built directly, no model):
 
@@ -6367,12 +6367,12 @@ def test_preparation_summary_is_apart_from_the_cap(case_result: CaseResult) -> N
     )
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_extract.py tests/test_docket_manifest.py tests/test_docket_transcribe.py tests/test_runner.py tests/test_boundary.py tests/test_eval_app.py tests/test_report.py -v -k "reading or transcri or v2 or preparation or pages_to_read"`
 Expected: FAIL on the missing names.
 
-- [ ] **Step 3: Page counts without drawing**
+- [x] **Step 3: Page counts without drawing**
 
 `docket/pages.py`:
 
@@ -6411,7 +6411,7 @@ def image_area_shares(data: bytes) -> tuple[float, ...]:
         document.close()
 ```
 
-- [ ] **Step 4: Which pages are read, and where their readings are**
+- [x] **Step 4: Which pages are read, and where their readings are**
 
 `docket/transcribe.py` (import `hashlib`, `io`, `PdfReader`, `document_facts` from `docket.pages`, `image_area_shares` and `RESOLUTION` from `docket.render`):
 
@@ -6496,7 +6496,7 @@ class ReadingLookup:
 
 (`TranscriptionCache` gains a read-only `root` property returning its directory.)
 
-- [ ] **Step 5: `extract_pdf` reads the readings**
+- [x] **Step 5: `extract_pdf` reads the readings**
 
 In `docket/extract.py` (import `Mapping` and `Transcription`):
 
@@ -6527,7 +6527,7 @@ IMAGE_WORDS_HEADING = "[words in the page's images, transcribed]"
 
 and return `ExtractedDocument(chars_by_page=tuple(counts), text="\n".join(parts), transcribed_pages=transcribed, transcription_failed=failed, preparation_cost_usd=cost)`. With `readings=None` every branch is skipped, so the text is S2's exactly — the first test proves it.
 
-- [ ] **Step 6: `read_docket` takes the lookup**
+- [x] **Step 6: `read_docket` takes the lookup**
 
 In `docket/manifest.py`: `DocumentRecord` gains `transcribed_pages: int = 0` and `transcription_failed: int = 0`; `Docket` gains `readings: dict[int, dict[int, Transcription]] = {}` and
 
@@ -6540,7 +6540,7 @@ In `docket/manifest.py`: `DocumentRecord` gains `transcribed_pages: int = 0` and
 
 `read_docket(client, mkey, *, readings: ReadingLookup | None = None)`: after `content = client.document(...)`, `document_readings = readings.for_document(content) if readings is not None else None`; `extracted = extract_pdf(content, readings=document_readings)`; pass `transcribed_pages=extracted.transcribed_pages, transcription_failed=extracted.transcription_failed` into both `_record` calls (add them to `_record`'s keywords); and after the loop, `readings_by_document[entry.index] = document_readings or {}`, returned on the `Docket`. The scan test follows from the counts: a scanned page with a transcription now counts its characters, so `classify_pages` no longer calls the document a scan.
 
-- [ ] **Step 7: The runner, the records, the report**
+- [x] **Step 7: The runner, the records, the report**
 
 `scoring/runner.py`:
 
@@ -6601,7 +6601,7 @@ def preparation_summary(results: Sequence[CaseResult]) -> str:
 
 `apps/eval/__main__.py`, `_cmd_report`: when the run's `evidence_version` is not `v1`, append `report.preparation_summary(cases)`; and in the `--against` block, when the versions differ, also print the comparison restricted to cases with `preparation_cost_usd > 0` in this run, headed `on the <n> cases with transcribed pages:` (spec §9.1: "for the cases that hold image pages").
 
-- [ ] **Step 8: The `transcribe` command, and v2 runs**
+- [x] **Step 8: The `transcribe` command, and v2 runs**
 
 `apps/eval/__main__.py`:
 
@@ -6693,12 +6693,12 @@ Decision W2: v2 and v3 read the photo-only documents too. So in this command dro
 
 In `_cmd_run`, for arm B: `readings = ReadingLookup(TranscriptionCache(settings.transcription_dir)) if args.evidence_version != "v1" else None`; if `readings` is set and `not readings.is_done(args.sample)`, exit with `f"{args.sample} is not fully transcribed: run ntsb-eval transcribe --sample {args.sample} first"`; build `CachedDocketReader(docket_client, readings=readings)`.
 
-- [ ] **Step 9: Run the tests, then the whole check**
+- [x] **Step 9: Run the tests, then the whole check**
 
 Run: the Step 2 command, then `make check`
 Expected: PASS; green. Every S2 docket test passes unchanged — v1 is untouched.
 
-- [ ] **Step 10: The target, and commit**
+- [x] **Step 10: The target, and commit**
 
 ```make
 s26-transcribe-dev:
@@ -7207,3 +7207,9 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, Task 13 fix round 3: the re-review at `.superpowers/sdd/2026-09-23-s26-widened-docket/task-13-review.md` ("Re-review (fix rounds 1-2)") found decision 3's "after one retry" was never wired into a step (R1) and `estimate` had dropped decision 0083 item 2's own stage-total test (R3), both Important; and that Task 13's I3 fix does not yet carry into Task 14's own brief (R4, Important, plan text only). Also fixed: R2 (the resolution comparison had no missing-reading check at 200 dpi), R5 (`_top_up` could still collide with itself on a `keys` re-run), R6 (`choose_resolution` still accepted floats), R7 (stale "four versions"/"agreed by all four" wording, and Step 8's "two page paths"). **R1**: `s26-transcriber-run` and `s26-transcriber-resolution` each gained a second line, `run --retry-failed` / `resolution --model $(MODEL) --retry-failed`, run exactly once right after the first read; `cmd_run`'s docstring states that `--retry-failed` is one retry per invocation, not bounded on its own, and that calling it a second time would retry again -- the recipes calling it once is what makes "after one retry" true. **R3**: `cmd_estimate` now applies decision 0083 item 2's stage-total test (S2.6's own preparation spend rows plus its evaluation runs since `STAGE_START` = 2026-09-24, plus the remaining projection, against the $40 budget) alongside fix round 1's headroom test, pausing and naming whichever fails (`_estimate_verdict`); a large past spend dated outside the current month can fail the stage-total test while the headroom test alone would have missed it entirely, which is the scenario the review measured. **R4**: Task 14's brief (`docs/plans/...`, not built yet) is corrected in place -- `ReadingLookup`'s `instruction` parameter is the `Instruction` object, not its bare version string; `for_document` looks up only the pages `pages_to_read` would choose, each under `key_instruction(self._instruction, mixed=mixed)`; the `ntsb-eval transcribe` job builder keys each job the same way; a new test proves a mixed page's `t1+layer` reading is found and a full `t1` reading of the same page is never returned for it. Tests for R2, R5, R6 added in the same pass (a 200 dpi missing-reading "not decided" case; `_top_up` skipping `run_preparation` entirely when its batch is fully cached, proven with a client that raises if called; `choose_resolution` refusing a float at runtime, and its own pinned test moved to `Fraction`s). `make check` equivalent passes clean on the whole tree, 1411 passed, 1 skipped, 97.68% coverage; no network or model call was made.
 - 2026-09-25, Task 13 fix round 4: S2.6's spend for the stage-total test (0083 item 2) is counted by commit (S2.6's commits since the S2.4 merge 90ceab9), not by date; a date filter counted $2.164 of S2.4's runs from the stage's first day.
 - 2026-09-25, Task 13 (Andy, decision 0086): a post-hoc second pass -- the stamped "Photo" label is not an invention (69 photo cards re-marked), a reply with under half the key's lines fails the page (and more than 1 in 20 such pages is out), and the 13 draft-anchored handwriting keys are re-checked; the first pass stands in s26-transcriber-test.txt. Implementation's own addition, beyond the brief: each handwriting recheck card has a required `checked` choice ("key right as it stands" / "key corrected in the box"), because the marking page counts a card as marked only once it is touched (`scripts/marking_page.py`, Task 13's earlier fix round 1, M5) and a correct prefilled key would otherwise look unmarked; it adds a `checked` column to `handwriting-key-pass2.csv`, and `score --pass2` refuses a recheck page left without it. Fix round 1 (controller ruling, I1): a failed handwriting reading is scored as wrong (decision 3) but is not counted toward the format gate; only a transcribed reply with under half the key's lines is.
+- 2026-09-25, Task 14: `read_docket` keeps a document's readings in `Docket.readings` only when it has at least one, not `document_readings or {}` for every fetched document as the brief wrote: a v1 docket's `readings` then stays `{}`, exactly S2's, and `preparation_cost_usd` is the same sum either way. `CachedDocketReader.read` calls `read_docket(client, mkey)` with no keyword when it has no readings, so the v1 call is S2's own and the existing delegation test passes unchanged; with readings it passes `readings=`.
+- 2026-09-25, Task 14: `render.image_area_shares` runs every PDFium call under `_PDFIUM_LOCK` (as Task 11's fix rounds require), and a `PdfiumError` while reading one page's image boxes counts that page as 0.0, like a page that fails to load, so one broken page never stops `pages_to_read`. `ReadingLookup`'s `dpi` is typed `Resolution`, not `int` (`TranscriptionKey.dpi` is `Resolution`; `mypy --strict`); the brief's `io`/`PdfReader` imports into `transcribe.py` are not needed and were not added.
+- 2026-09-25, Task 14: `ntsb-eval transcribe` builds its jobs in `_page_jobs` (the brief's loop, with `pages_to_read` inside the `DocketError` guard, since a non-PDF raises there), opens the `DocketClient` with `with` so it is closed, and calls `run_preparation` only when at least one page is pending: with every page cached there is no job folder, no reservation and no API key needed, and the done file is still written. Photo-only entries are not skipped (decision W2). `run --evidence-version v2` refuses an unfinished sample as a `ConfigurationError` (exit 1, one line on stderr), from `_readings_for_run`, before any model client is built; the check applies to arm B only.
+- 2026-09-25, Task 14: `Runner.run` refuses v3 (Task 16) and a reader whose version differs from an arm B run's, as the brief wrote; it does not refuse `--evidence-version v2` on arm A or the ceiling, which read no docket. So Task 8's test `test_run_refuses_an_evidence_version_that_is_not_built_yet` now uses v3, the version still unbuilt. `run` gained `PLR0912` in its `noqa` (13 branches). Every test fake reader gained `version` (`FakeDocketReader` takes it as an optional argument; `tests/test_eval_app.py`'s `StubDocketReader` also accepts `readings=`, as `CachedDocketReader` now does).
+- 2026-09-25, Task 14, a limitation left as it is: a v2 arm B case whose docket trips the leakage guard is recorded by `_leaked_case`, which never received the docket, so its `preparation_cost_usd` is 0.0 even when its pages were transcribed. The money itself is in the transcription job's spend rows (0081); only that case's line in `preparation_summary` is missing.
+- 2026-09-25, Task 14, tests beyond the brief: `image_count` (forms followed, a broken page counts 0) and `image_area_shares` (equal to the shares `render_pages` reports); `pages_to_read` under a raised cut-off and on a non-PDF; the lookup ignoring text-only pages, another model and an unreadable file, and the done file differing by model, resolution and sample; an empty reading and a failed reading leaving the page as S2 read it; `read_docket` counting failed readings, and reading the photo-only entry only in v2 (W2); the runner refusing a v1 run with a v2 reader, recording the preparation cost on the batch path and not in `cost_usd`; `transcribe` marking the sample done, skipping `run_preparation` when all is cached and re-reading failures with `--retry-failed`; and `report` printing the preparation line and the transcribed-cases comparison on a v2 run only. No network or model call was made; `make check` passes (1477 passed, 97.69% coverage).

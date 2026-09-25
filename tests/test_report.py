@@ -615,3 +615,18 @@ def test_share_bands_count_cases_at_each_cut(case_result: CaseResult) -> None:
         "narrative share, largest single document: at least 25% 3, at least 50% 2, "
         "at least 80% 1, of 4 cases with a share"
     )
+
+
+def test_preparation_summary_is_apart_from_the_cap(case_result: CaseResult) -> None:
+    rows = [case_result.model_copy(update={"preparation_cost_usd": c}) for c in (0.01, 0.03)]
+    assert report.preparation_summary(rows) == (
+        "evidence preparation (transcription; paid once, apart from the per-case cap, "
+        "decision 0081): $0.0200 per case, $0.04 in all, 2 of 2 cases with transcribed pages"
+    )
+
+
+def test_preparation_summary_with_nothing_transcribed(case_result: CaseResult) -> None:
+    assert report.preparation_summary([case_result]) == (
+        "evidence preparation (transcription; paid once, apart from the per-case cap, "
+        "decision 0081): $0.0000 per case, $0.00 in all, 0 of 1 cases with transcribed pages"
+    )

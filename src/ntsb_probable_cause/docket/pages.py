@@ -111,6 +111,14 @@ def page_facts(page: PageObject) -> PageFacts:
     )
 
 
+def image_count(page: PageObject) -> int:
+    """How many images the page's resources draw, forms followed, none decoded."""
+    try:
+        return len(list(_images(page.get("/Resources"), set())))
+    except Exception:  # a broken page draws nothing we can count
+        return 0
+
+
 def page_text(data: bytes, page: int) -> str:
     """One page's text layer (1-based), as ``extract_pdf`` reads it; empty if unreadable."""
     try:

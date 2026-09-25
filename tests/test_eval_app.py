@@ -10,10 +10,20 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
+from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as small_docket
 
+from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
-from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    TRANSCRIBER,
+    PageJob,
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+)
+from ntsb_probable_cause.errors import DocketError, ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -637,10 +647,11 @@ def test_run_arm_b_then_report_end_to_end(
     docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
 
     class StubDocketReader:
-        """Stands in for ``CachedDocketReader``: same one-argument constructor, no HTTP."""
+        """Stands in for ``CachedDocketReader``: same constructor, no HTTP."""
 
-        def __init__(self, client: object) -> None:
+        def __init__(self, client: object, *, readings: object = None) -> None:
             self.client = client
+            self.version = "v1" if readings is None else "v2"
 
         def read(self, mkey: int) -> Docket:
             return docket
@@ -1077,3 +1088,236 @@ def test_release_clears_a_dead_reservation(
     assert "released dead-run" in capsys.readouterr().out
     assert open_reservations(runs_dir) == {}
     assert main(["release", "dead-run"]) == 1
+
+
+# --- Task 14: `transcribe`, and `run --evidence-version v2` ---
+
+_SCAN = build_pdf([PageSpec(images=("/CCITTFaxDecode",)), PageSpec(images=("/DCTDecode",))])
+
+
+def _entry(index: int, *, pages: int, photos: int = 0, extension: str = "pdf") -> ListingEntry:
+    return ListingEntry(
+        index=index,
+        title=f"Document {index}",
+        pages=pages,
+        photos=photos,
+        doc_type="",
+        extension=extension,
+        href=f"doc{index}",
+    )
+
+
+class _StubDocuments:
+    """Stands in for ``CachedDocuments``: a scan, a photo-only scan, a non-PDF; no HTTP."""
+
+    def __init__(self, _client: object) -> None:
+        self.entries = (
+            _entry(1, pages=2),
+            _entry(2, pages=2, photos=2),  # photo-only: v2 reads it too (decision W2)
+            _entry(3, pages=0, extension="csv"),
+            _entry(4, pages=1),  # fails to fetch
+        )
+
+    def listing(self, mkey: int) -> Listing:
+        return Listing(mkey=mkey, declared_items=len(self.entries), entries=self.entries)
+
+    def document(self, mkey: int, index: int) -> bytes:
+        if index == 4:
+            raise DocketError("fetch failed")
+        return _SCAN
+
+    def loader(self, mkey: int, index: int) -> Callable[[], bytes]:
+        return lambda: self.document(mkey, index)
+
+
+def _transcribe_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: dict[str, object]
+) -> Path:
+    """``dev-400`` pointed at ``raw``, the stubbed documents; returns the transcription dir."""
+    _eval_env(tmp_path, monkeypatch, raw)
+    monkeypatch.setattr("apps.eval.__main__.CachedDocuments", _StubDocuments)
+    return tmp_path / "data" / "transcriptions"
+
+
+def test_run_v2_without_a_finished_transcription_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no model client is built for a refused run")
+
+    exit_code = main(
+        ["run", "--arm", "B", "--sample", "dev-400", "--evidence-version", "v2", "--sync"],
+        client_factory=factory,
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "dev-400 is not fully transcribed" in err
+    assert "ntsb-eval transcribe --sample dev-400" in err
+
+
+def test_run_v2_with_a_finished_transcription_reads_with_a_v2_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ReadingLookup(TranscriptionCache(tmp_path / "data" / "transcriptions")).mark_done(
+        "dev-400", {"pages": 0}
+    )
+    docket = small_docket({1: "[page 1 of 3, transcribed from an image]\nThe crankshaft.\n"})
+    seen: list[object] = []
+
+    class StubDocketReader:
+        def __init__(self, client: object, *, readings: object = None) -> None:
+            seen.append(readings)
+            self.version = "v1" if readings is None else "v2"
+
+        def read(self, mkey: int) -> Docket:
+            return docket
+
+    monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", StubDocketReader)
+    fake = RecordingFakeClient([GOOD, REFINE])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    exit_code = main(
+        [
+            "run",
+            "--arm",
+            "B",
+            "--sample",
+            "dev-400",
+            "--evidence-version",
+            "v2",
+            "--sync",
+            "--price-variant",
+            "standard",
+        ],
+        client_factory=factory,
+    )
+    assert exit_code == 0
+    assert isinstance(seen[0], ReadingLookup)
+    (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    assert answering_run_record(run_folder).evidence_version == "v2"
+
+
+def test_transcribe_dry_run_counts_and_prices_and_calls_no_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+
+    def no_preparation(**_kwargs: object) -> list[Transcription]:
+        raise AssertionError("a dry run pays for nothing")
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", no_preparation)
+    exit_code = main(
+        [
+            "transcribe",
+            "--sample",
+            "dev-400",
+            "--expected-cost-per-page-usd",
+            "0.01",
+            "--dry-run",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    # Two scans of two image pages each (the photo-only one included, decision W2).
+    assert f"dev-400: 4 pages to read with {TRANSCRIBER} at 150 dpi, 4 not yet read" in out
+    assert "projected $0.04" in out
+    assert not ReadingLookup(TranscriptionCache(transcriptions)).is_done("dev-400")
+
+
+def test_transcribe_reads_the_pages_and_marks_the_sample_done(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    calls: list[Sequence[PageJob]] = []
+
+    def fake_preparation(*, jobs: Sequence[PageJob], **kwargs: object) -> list[Transcription]:
+        calls.append(jobs)
+        assert kwargs["kind"] == "transcription"
+        assert kwargs["expected_cost_per_page_usd"] == pytest.approx(0.01)
+        cache = TranscriptionCache(transcriptions)
+        done = []
+        for job in jobs:
+            if cache.get(job.key) is not None:
+                continue  # the same page twice (a shared document) is paid for once
+            record = Transcription(
+                key=job.key,
+                status="failed" if job.key.page == 2 else "transcribed",
+                text="words",
+                mixed=job.mixed,
+                cost_usd=0.01,
+                created=datetime(2026, 10, 1, tzinfo=UTC),
+            )
+            cache.put(record, instruction=TRANSCRIBE)
+            done.append(record)
+        return done
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", fake_preparation)
+    argv = ["transcribe", "--sample", "dev-400", "--expected-cost-per-page-usd", "0.01"]
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "read 2 pages now ($0.02); 2 of 4 failed in all" in out
+    lookup = ReadingLookup(TranscriptionCache(transcriptions))
+    assert lookup.is_done("dev-400")
+    assert json.loads(lookup.done_file("dev-400").read_text())["failed"] == 2
+    # Every key names the chosen transcriber, the fixed resolution and the page's own mixed
+    # status's instruction (fix round 3, R4).
+    assert {(j.key.model, j.key.dpi, j.key.instruction) for j in calls[0]} == {
+        (TRANSCRIBER, 150, "t1")
+    }
+
+    # Everything cached: a second pass needs no job at all; --retry-failed re-reads failures.
+    assert main(argv) == 0
+    assert len(calls) == 1
+    assert main([*argv, "--retry-failed"]) == 0
+    assert len(calls) == 2
+
+
+def test_report_on_v2_prints_preparation_and_the_transcribed_cases_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 0081's cost line on a v2 run; spec §9.1's comparison on the transcribed cases."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    versions: tuple[tuple[str, EvidenceVersion], ...] = (("v2-run", "v2"), ("v1-run", "v1"))
+    for run_id, version in versions:
+        write_jsonl(
+            runs_dir / run_id / "run.jsonl",
+            [
+                RunRecord(
+                    **{**_RUN_KWARGS, "arm": "B"},
+                    run_id=run_id,
+                    started=now,
+                    finished=now,
+                    evidence_version=version,
+                )
+            ],
+        )
+    transcribed = _scored_case("CASE1").model_copy(update={"preparation_cost_usd": 0.02})
+    write_jsonl(runs_dir / "v2-run" / "cases.jsonl", [transcribed, _scored_case("CASE2")])
+    write_jsonl(runs_dir / "v1-run" / "cases.jsonl", [_scored_case("CASE1"), _scored_case("CASE2")])
+
+    assert main(["report", "v2-run", "--against", "v1-run", "--versions-compared"]) == 0
+    out = capsys.readouterr().out
+    assert "$0.0200 per case, $0.02 in all, 1 of 2 cases with transcribed pages" in out
+    assert "on the 1 cases with transcribed pages:\npaired difference (a - b) on 1 shared" in out
+
+    assert main(["report", "v1-run"]) == 0
+    assert "evidence preparation" not in capsys.readouterr().out

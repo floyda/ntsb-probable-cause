@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,8 +25,15 @@ from typing import Literal, cast
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket.pages import page_text
-from ntsb_probable_cause.docket.render import MEDIA_TYPE, RenderedPage, Resolution, render_pages
+from ntsb_probable_cause.docket.pages import document_facts, page_text
+from ntsb_probable_cause.docket.render import (
+    MEDIA_TYPE,
+    RESOLUTION,
+    RenderedPage,
+    Resolution,
+    image_area_shares,
+    render_pages,
+)
 from ntsb_probable_cause.errors import ConfigurationError, DocketError, SchemaError
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -172,6 +179,11 @@ class TranscriptionCache:
 
     def __init__(self, root: Path) -> None:
         self._root = root
+
+    @property
+    def root(self) -> Path:
+        """The cache's directory."""
+        return self._root
 
     def _path(self, key: TranscriptionKey) -> Path:
         digest = key.digest()
@@ -523,3 +535,83 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
     if write_errors:
         raise write_errors[0]
     return done
+
+
+def pages_to_read(data: bytes) -> list[tuple[int, bool]]:
+    """``(page, mixed)`` for every page v2 transcribes (0074, 0079 item 3, decision W3).
+
+    Every image-only page; a text-and-image page only when its images cover at least
+    ``MIXED_PAGE_MIN_IMAGE_SHARE`` of it; never a text-only or blank page. A file that is not
+    a PDF raises ``DocketError``, as in ``extract.extract_pdf``.
+    """
+    chosen: list[tuple[int, bool]] = []
+    shares = image_area_shares(data)
+    for number, page in enumerate(document_facts(data), start=1):
+        share = shares[number - 1] if number <= len(shares) else 0.0
+        if page.kind == "image only":
+            chosen.append((number, False))
+        elif page.kind == "text and image" and share >= MIXED_PAGE_MIN_IMAGE_SHARE:
+            chosen.append((number, True))
+    return chosen
+
+
+class ReadingLookup:
+    """The chosen transcriber's cached readings, by document; and whether a sample is done."""
+
+    def __init__(
+        self,
+        cache: TranscriptionCache,
+        *,
+        model: str = TRANSCRIBER,
+        instruction: Instruction = TRANSCRIBE,
+        dpi: Resolution = RESOLUTION,
+    ) -> None:
+        self._cache = cache
+        self._model = model
+        self._instruction = instruction
+        self._dpi: Resolution = dpi
+
+    def for_document(self, data: bytes) -> dict[int, Transcription]:
+        """Every page v2 would read that has a reading, by page number.
+
+        Fix round 3, R4: only pages ``pages_to_read`` would choose are looked up at all, each
+        under its own mixed status's key (``key_instruction``, 0085 amended by Task 13's I3) --
+        a fixed instruction here would never find a mixed page's ``t1+layer`` reading, since it
+        is cached under a different key from a full reading of the same page. A corrupted cache
+        file still raises (``TranscriptionCache.get``): it is never read as a missing page.
+        """
+        sha = hashlib.sha256(data).hexdigest()
+        try:
+            chosen = pages_to_read(data)
+        except Exception:  # the same boundary as extract: an unreadable file has no readings
+            return {}
+        readings: dict[int, Transcription] = {}
+        for page, mixed in chosen:
+            key = TranscriptionKey(
+                document_sha256=sha,
+                page=page,
+                model=self._model,
+                instruction=key_instruction(self._instruction, mixed=mixed),
+                dpi=self._dpi,
+            )
+            record = self._cache.get(key)
+            if record is not None:
+                readings[page] = record
+        return readings
+
+    def done_file(self, sample: str) -> Path:
+        """Where ``ntsb-eval transcribe`` records that a sample's readings are complete."""
+        stamp = hashlib.sha256(
+            f"{self._model}|{self._instruction.version}|{self._dpi}".encode()
+        ).hexdigest()[:12]
+        return self._cache.root / "done" / f"{sample}-{stamp}.json"
+
+    def is_done(self, sample: str) -> bool:
+        """Whether every page the sample needs has a reading (transcribed or failed)."""
+        return self.done_file(sample).is_file()
+
+    def mark_done(self, sample: str, summary: Mapping[str, object]) -> None:
+        """Record a finished sample, with its counts."""
+        path = self.done_file(sample)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(summary), indent=1) + "\n")

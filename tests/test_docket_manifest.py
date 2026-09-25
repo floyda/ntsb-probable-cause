@@ -1,18 +1,29 @@
 """read_docket: every document gets a status; text is kept only for read documents (spec §5.3)."""
 
+import hashlib
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
+from tests.pdf_builder import PageSpec, build_pdf
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.classify import classify_pages, readable_pages
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.manifest import read_docket
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+    TranscriptionKey,
+)
 
 FIXTURES = Path("tests/fixtures/docket")
 
@@ -183,6 +194,116 @@ def test_downloaded_non_pdf_content_is_unreadable_not_fetch_failed(
 
     assert docket.record(target.index).status == "unreadable: not a pdf"
     assert target.index not in docket.texts
+
+
+# --- evidence version v2: transcribed pages (S2.6 §8, Task 14) ---
+
+V2_FIXTURE = FIXTURES / "ERA17LA217"  # four documents and one photo-only entry (index 5)
+SCAN = build_pdf([PageSpec(images=("/CCITTFaxDecode",)), PageSpec(images=("/DCTDecode",))])
+PHOTOS = build_pdf([PageSpec(images=("/DCTDecode",))])
+# Invented text, over the 50-character line, so a transcribed page counts as readable.
+HANDWRITTEN = "Engine sputtered at 800 ft. Switched to [illegible] tank, no change."
+CAPTION = "Photograph 1. The left wing fuel cap, found secured on the filler neck."
+NOW = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+def _put_readings(cache: TranscriptionCache, document: bytes, text: str) -> None:
+    """A transcription of every page of ``document``, under the key v2 looks up."""
+    sha = hashlib.sha256(document).hexdigest()
+    for page in range(1, len(PdfReader(io.BytesIO(document)).pages) + 1):
+        key = TranscriptionKey(document_sha256=sha, page=page, model="m", instruction="t1", dpi=150)
+        cache.put(
+            Transcription(key=key, status="transcribed", text=text, cost_usd=0.002, created=NOW)
+        )
+
+
+def _serve_v2_docket(respx_mock: respx.MockRouter) -> tuple[int, int]:
+    """The fixture's listing; document 1 a scan, the photo-only entry photographs, the rest text.
+
+    Returns the case key and the scanned document's listing index.
+    """
+    mkey = int(json.loads((V2_FIXTURE / "manifest.json").read_text())["fixture"]["mkey"])
+    page = (V2_FIXTURE / "listing.html").read_text()
+    listing = parse_listing(page, mkey=mkey)
+    respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=page))
+    for entry in listing.entries:
+        if entry.index == 1:
+            content = SCAN
+        elif entry.is_photo_only():
+            content = PHOTOS
+        else:
+            content = _text_pdf([b"C" * 300])
+        respx_mock.get(sources.docket_document_url(entry.href)).mock(
+            return_value=httpx.Response(200, content=content)
+        )
+    return mkey, 1
+
+
+def test_a_scan_with_readings_is_read_and_without_them_is_still_a_scan(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    mkey, scanned = _serve_v2_docket(respx_mock)
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    _put_readings(cache, SCAN, HANDWRITTEN)
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    with DocketClient(tmp_path / "docket", sleep=lambda _s: None) as client:
+        v1 = read_docket(client, mkey)
+        v2 = read_docket(client, mkey, readings=lookup)
+
+    assert v1.record(scanned).status == "unreadable: scan"
+    assert v1.record(scanned).transcribed_pages == 0
+    assert scanned not in v1.texts
+    assert v1.readings == {}
+    assert v1.preparation_cost_usd == 0.0
+
+    record = v2.record(scanned)
+    assert record.status == "read"
+    assert record.transcribed_pages == record.pages == 2
+    assert record.transcription_failed == 0
+    assert record.readable_pages == 2
+    assert "[page 1 of 2, transcribed from an image]\n" + HANDWRITTEN in v2.texts[scanned]
+    assert set(v2.readings[scanned]) == {1, 2}
+    assert v2.preparation_cost_usd == pytest.approx(0.004)
+    # The documents with a text layer only read exactly as in v1.
+    for index, text in v1.texts.items():
+        assert v2.texts[index] == text
+
+
+def test_v2_reads_the_photo_only_entries_and_v1_still_skips_them(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    """Decision W2: v2 and v3 read the photo-only documents; v1 keeps S2's skip exactly."""
+    mkey, _ = _serve_v2_docket(respx_mock)
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    _put_readings(cache, PHOTOS, CAPTION)
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    with DocketClient(tmp_path / "docket", sleep=lambda _s: None) as client:
+        v1 = read_docket(client, mkey)
+        v2 = read_docket(client, mkey, readings=lookup)
+    (photo_only,) = [r for r in v1.documents if r.entry.is_photo_only()]
+    index = photo_only.entry.index
+    assert photo_only.status == "skipped: photo-only"
+    assert v2.record(index).status == "read"
+    assert v2.record(index).transcribed_pages == 1
+    assert CAPTION in v2.texts[index]
+
+
+def test_v2_counts_failed_readings_and_keeps_the_page_a_scan(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    mkey, scanned = _serve_v2_docket(respx_mock)
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    sha = hashlib.sha256(SCAN).hexdigest()
+    for page in (1, 2):
+        key = TranscriptionKey(document_sha256=sha, page=page, model="m", instruction="t1", dpi=150)
+        cache.put(Transcription(key=key, status="failed", error="model: x", created=NOW))
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    with DocketClient(tmp_path / "docket", sleep=lambda _s: None) as client:
+        docket = read_docket(client, mkey, readings=lookup)
+    record = docket.record(scanned)
+    assert record.status == "unreadable: scan"
+    assert record.transcription_failed == 2
+    assert record.transcribed_pages == 0
 
 
 def test_a_read_record_always_has_at_least_one_readable_page() -> None:

@@ -1,5 +1,6 @@
 """Transcription: request, reply, cache and pool, with a fake client (S2.6 §8)."""
 
+import hashlib
 import json
 import threading
 import time
@@ -15,12 +16,15 @@ from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.transcribe import (
     ILLEGIBLE,
     LABEL,
+    MIXED_PAGE_MIN_IMAGE_SHARE,
     TRANSCRIBE,
     Instruction,
     PageJob,
+    ReadingLookup,
     Transcription,
     TranscriptionCache,
     TranscriptionKey,
+    pages_to_read,
     parse_reply,
     read_page,
     transcribe_all,
@@ -597,3 +601,120 @@ def test_a_page_whose_cache_write_fails_during_the_fold_in_is_still_reported(
     assert sorted(r.key.page for r in reported) == [1, 2]
     assert cache.get(_key(1)) is not None
     assert cache.get(_key(2)) is None
+
+
+# --- Task 14: which pages v2 reads, and where their readings are ---
+
+
+def test_pages_to_read_takes_image_pages_and_mixed_pages_over_the_cut() -> None:
+    document = build_pdf(
+        [
+            PageSpec(text=TYPED),
+            PageSpec(images=("/CCITTFaxDecode",)),
+            PageSpec(text=TYPED, images=("/DCTDecode",)),
+            PageSpec(),
+        ]
+    )
+    # A 100 x 100 image on a letter page covers about 2% of it.
+    chosen = pages_to_read(document)
+    assert (2, False) in chosen
+    logo_share = 100 * 100 / (612 * 792)
+    assert ((3, True) in chosen) == (logo_share >= MIXED_PAGE_MIN_IMAGE_SHARE)
+    assert all(page not in (1, 4) for page, _ in chosen)
+
+
+def test_pages_to_read_leaves_out_a_mixed_page_under_the_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = build_pdf(
+        [PageSpec(images=("/DCTDecode",)), PageSpec(text=TYPED, images=("/DCTDecode",))]
+    )
+    monkeypatch.setattr(transcribe_module, "MIXED_PAGE_MIN_IMAGE_SHARE", 0.05)
+    assert pages_to_read(document) == [(1, False)]
+    monkeypatch.setattr(transcribe_module, "MIXED_PAGE_MIN_IMAGE_SHARE", 0.0)
+    assert pages_to_read(document) == [(1, False), (2, True)]
+
+
+def test_pages_to_read_refuses_a_file_that_is_not_a_pdf() -> None:
+    with pytest.raises(DocketError, match="not a PDF"):
+        pages_to_read(b"<html>not a pdf</html>")
+
+
+def test_the_lookup_finds_a_documents_readings_and_the_done_file(tmp_path: Path) -> None:
+    cache = TranscriptionCache(tmp_path)
+    document = build_pdf([PageSpec(images=("/DCTDecode",))])
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    sha = hashlib.sha256(document).hexdigest()
+    key = TranscriptionKey(document_sha256=sha, page=1, model="m", instruction="t1", dpi=150)
+    cache.put(
+        Transcription(key=key, status="transcribed", text="x", page_kind="blank", created=NOW)
+    )
+    assert lookup.for_document(document) == {1: cache.get(key)}
+    assert not lookup.is_done("dev-400")
+    lookup.mark_done("dev-400", {"pages": 1})
+    assert lookup.is_done("dev-400")
+    assert json.loads(lookup.done_file("dev-400").read_text()) == {"pages": 1}
+    assert lookup.done_file("dev-400").parent == tmp_path / "done"
+
+
+def test_the_lookup_finds_a_mixed_reading_and_never_a_full_reading_for_it(
+    tmp_path: Path,
+) -> None:
+    """Fix round 3, R4: a text-and-image page's reading is cached under the ``t1+layer`` key
+    (0085, amended by Task 13's I3); a full ``t1`` reading of the same page -- from some other
+    context that happened to read it without the layer -- must never be returned for it."""
+    cache = TranscriptionCache(tmp_path)
+    document = build_pdf([PageSpec(text=TYPED, images=("/DCTDecode",))])  # text and image
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    sha = hashlib.sha256(document).hexdigest()
+    mixed_key = TranscriptionKey(
+        document_sha256=sha, page=1, model="m", instruction="t1+layer", dpi=150
+    )
+    full_key = TranscriptionKey(document_sha256=sha, page=1, model="m", instruction="t1", dpi=150)
+    cache.put(
+        Transcription(
+            key=mixed_key,
+            status="transcribed",
+            text="LEFT TANK 2 GAL",
+            page_kind="mixed",
+            mixed=True,
+            created=NOW,
+        )
+    )
+    cache.put(
+        Transcription(
+            key=full_key,
+            status="transcribed",
+            text="a full reading, never used for this page",
+            page_kind="typed text",
+            created=NOW,
+        )
+    )
+    found = lookup.for_document(document)
+    assert found[1].text == "LEFT TANK 2 GAL"
+    assert found[1].key == mixed_key
+
+
+def test_the_lookup_reads_nothing_for_a_text_page_another_model_or_an_unreadable_file(
+    tmp_path: Path,
+) -> None:
+    cache = TranscriptionCache(tmp_path)
+    document = build_pdf([PageSpec(text=TYPED), PageSpec(images=("/DCTDecode",))])
+    sha = hashlib.sha256(document).hexdigest()
+    for page in (1, 2):
+        key = TranscriptionKey(document_sha256=sha, page=page, model="m", instruction="t1", dpi=150)
+        cache.put(Transcription(key=key, status="transcribed", text="x", created=NOW))
+    assert set(ReadingLookup(cache, model="m", dpi=150).for_document(document)) == {2}
+    assert ReadingLookup(cache, model="other", dpi=150).for_document(document) == {}
+    assert ReadingLookup(cache, model="m", dpi=150).for_document(b"not a pdf") == {}
+
+
+def test_the_done_file_is_per_model_instruction_and_resolution(tmp_path: Path) -> None:
+    cache = TranscriptionCache(tmp_path)
+    base = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    assert base.done_file("dev-400") != ReadingLookup(cache, model="n").done_file("dev-400")
+    assert base.done_file("dev-400") != ReadingLookup(cache, model="m", dpi=200).done_file(
+        "dev-400"
+    )
+    assert base.done_file("dev-400") != base.done_file("heldout-400")
+    assert cache.root == tmp_path

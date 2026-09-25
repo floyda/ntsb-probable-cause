@@ -371,6 +371,18 @@ def share_bands(results: Sequence[CaseResult]) -> str:
     return f"narrative share, largest single document: {bands}, of {len(shares)} cases with a share"
 
 
+def preparation_summary(results: Sequence[CaseResult]) -> str:
+    """Transcription's cost per case, printed apart from the agent's (decision 0081)."""
+    paid = [r.preparation_cost_usd for r in results if r.preparation_cost_usd > 0]
+    total = sum(paid)
+    per_case = total / len(paid) if paid else 0.0
+    return (
+        "evidence preparation (transcription; paid once, apart from the per-case cap, "
+        f"decision 0081): ${per_case:.4f} per case, ${total:.2f} in all, {len(paid)} of "
+        f"{len(results)} cases with transcribed pages"
+    )
+
+
 def refuse_cross_version(this: RunRecord, other: RunRecord, *, versions_compared: bool) -> None:
     """Two runs on different evidence versions are not an arm comparison (decision 0076).
 

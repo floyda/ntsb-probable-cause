@@ -1,9 +1,17 @@
 """Page facts: characters, images, rotation and encodings, read without decoding (S2.6 §1)."""
 
+import io
+
 import pytest
+from pypdf import PdfReader
 from tests.pdf_builder import PageSpec, build_pdf
 
-from ntsb_probable_cause.docket.pages import TILED_MIN_IMAGES, PageFacts, document_facts
+from ntsb_probable_cause.docket.pages import (
+    TILED_MIN_IMAGES,
+    PageFacts,
+    document_facts,
+    image_count,
+)
 from ntsb_probable_cause.errors import DocketError
 
 # Invented clinical text, over the 50-character line (classify.SCAN_PAGE_MAX_CHARS).
@@ -66,3 +74,23 @@ def test_not_a_pdf_raises() -> None:
 def test_a_failed_page_is_blank_and_flagged() -> None:
     facts = PageFacts(chars=0, images=0, rotation=0, encodings=(), failed=True)
     assert facts.kind == "blank"
+
+
+def test_image_count_follows_forms_and_draws_nothing() -> None:
+    data = build_pdf(
+        [
+            PageSpec(text=TYPED),
+            PageSpec(images=("/DCTDecode", "/CCITTFaxDecode")),
+            PageSpec(images=("/JPXDecode",), in_form=True),
+        ]
+    )
+    pages = PdfReader(io.BytesIO(data)).pages
+    assert [image_count(page) for page in pages] == [0, 2, 1]
+
+
+def test_image_count_of_a_broken_page_is_zero() -> None:
+    class Broken:
+        def get(self, _key: str) -> object:
+            raise ValueError("broken resources")
+
+    assert image_count(Broken()) == 0  # type: ignore[arg-type]

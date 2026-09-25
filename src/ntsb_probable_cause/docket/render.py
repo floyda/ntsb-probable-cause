@@ -74,6 +74,36 @@ def _image_area_share(page: pdfium.PdfPage) -> float:
     return min(1.0, covered / (width * height))
 
 
+def image_area_shares(data: bytes) -> tuple[float, ...]:
+    """Every page's image-area share, from the images' boxes alone: nothing is drawn.
+
+    Behind ``_PDFIUM_LOCK``, like every other PDFium call here (fix round 1, C1): v2's reader
+    (``transcribe.pages_to_read``) can run while a transcription pool is rendering.
+    """
+    with _PDFIUM_LOCK:
+        try:
+            document = pdfium.PdfDocument(data)
+        except pdfium.PdfiumError as error:
+            raise DocketError(f"not a PDF: {error}") from error
+        try:
+            shares: list[float] = []
+            for index in range(len(document)):
+                try:
+                    page = document[index]
+                except pdfium.PdfiumError:  # a page PDFium cannot load covers nothing we see
+                    shares.append(0.0)
+                    continue
+                try:
+                    shares.append(_image_area_share(page))
+                except pdfium.PdfiumError:  # boxes PDFium cannot read cover nothing we see
+                    shares.append(0.0)
+                finally:
+                    page.close()
+            return tuple(shares)
+        finally:
+            document.close()
+
+
 def _jpeg(image: Image.Image) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=JPEG_QUALITY)

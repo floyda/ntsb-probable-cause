@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 from pypdf import PdfReader, PdfWriter, Transformation
 from tests.pdf_builder import PageSpec, build_pdf
 
-from ntsb_probable_cause.docket.render import RESOLUTION, render_pages
+from ntsb_probable_cause.docket.render import RESOLUTION, image_area_shares, render_pages
 from ntsb_probable_cause.errors import DocketError
 
 DARK = 128
@@ -112,3 +112,20 @@ def test_not_a_pdf_and_a_missing_page_raise() -> None:
         render_pages(b"<html>not a pdf</html>")
     with pytest.raises(DocketError, match="no page 2"):
         render_pages(build_pdf([PageSpec(text="one")]), [2])
+
+
+def test_image_area_shares_match_the_drawn_pages_without_drawing() -> None:
+    """Task 14: the same shares ``render_pages`` reports, from the object boxes alone."""
+    data = build_pdf(
+        [
+            PageSpec(text="A typed report with a logo.", images=("/DCTDecode",)),
+            PageSpec(text="x"),
+            PageSpec(images=("/DCTDecode", "/DCTDecode")),
+        ]
+    )
+    shares = image_area_shares(data)
+    assert shares == tuple(page.image_area_share for page in render_pages(data))
+    assert shares[0] == pytest.approx(100 * 100 / (612 * 792))
+    assert shares[1] == 0.0
+    with pytest.raises(DocketError, match="not a PDF"):
+        image_area_shares(b"<html>not a pdf</html>")

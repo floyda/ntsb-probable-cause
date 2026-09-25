@@ -15,6 +15,12 @@ from tests.test_marks import FACTUAL, S1, S2
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
+from ntsb_probable_cause.docket.transcribe import (
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+    TranscriptionKey,
+)
 from ntsb_probable_cause.errors import (
     BatchNotFoundError,
     BudgetError,
@@ -2594,9 +2600,10 @@ def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
 
 
 class FakeDocketReader:
-    def __init__(self, docket: Docket) -> None:
+    def __init__(self, docket: Docket, version: Literal["v1", "v2"] = "v1") -> None:
         self.docket = docket
         self.reads: list[int] = []
+        self.version: Literal["v1", "v2"] = version
 
     def read(self, mkey: int) -> Docket:
         self.reads.append(mkey)
@@ -2605,6 +2612,8 @@ class FakeDocketReader:
 
 class _ByMkeyDocketReader:
     """A DocketReader keyed by mKey: each case in a multi-case test gets its own docket."""
+
+    version: Literal["v1", "v2"] = "v1"
 
     def __init__(self, by_mkey: Mapping[int, Docket]) -> None:
         self._by_mkey = by_mkey
@@ -3438,12 +3447,15 @@ def test_spec_json_records_the_evidence_version_after_the_arm() -> None:
 def test_run_refuses_an_evidence_version_that_is_not_built_yet(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    """Until Task 14, only v1 has a reader; the refusal fires before any model call."""
+    """Until Task 16, v3 has no reader; the refusal fires before any model call.
+
+    Task 14 built v2, so this test moved from v2 to v3, the version still unbuilt.
+    """
     client = RecordingFakeClient([GOOD, REFINE])
     spec = RunSpec(
         sample="dev-400",
         arm="ceiling",
-        evidence_version="v2",
+        evidence_version="v3",
         sync=True,
         price_variant="standard",
         expected_cost_per_case_usd=0.0,
@@ -3451,3 +3463,123 @@ def test_run_refuses_an_evidence_version_that_is_not_built_yet(
     with pytest.raises(ConfigurationError, match="not built yet"):
         runner(tmp_path, client).run(spec, record_fixtures[:1])
     assert client.payloads == []
+
+
+# --- Task 14: evidence version v2, the reader's version, preparation cost per case ---
+
+
+def _transcribed_docket(cost: float = 0.003) -> Docket:
+    """One document whose first page was read from a transcription costing ``cost``."""
+    docket = small_docket(
+        {1: "[page 1 of 3, transcribed from an image]\nThe crankshaft was intact.\n"}
+    )
+    reading = Transcription(
+        key=TranscriptionKey(
+            document_sha256="d" * 64, page=1, model="m", instruction="t1", dpi=150
+        ),
+        status="transcribed",
+        text="The crankshaft was intact.",
+        cost_usd=cost,
+        created=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    return docket.model_copy(update={"readings": {1: {1: reading}}})
+
+
+def _arm_b(version: Literal["v1", "v2", "v3"], *, sync: bool = True) -> RunSpec:
+    return RunSpec(
+        sample="dev-400",
+        arm="B",
+        evidence_version=version,
+        sync=sync,
+        price_variant="standard" if sync else "batch",
+        expected_cost_per_case_usd=0.001,
+    )
+
+
+def test_a_v2_run_refuses_a_v1_reader_and_a_v1_run_a_v2_reader(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0076: v2 evidence is never recorded as v1, nor the reverse; before any call."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    docket = _transcribed_docket()
+    with pytest.raises(ConfigurationError, match="v1 evidence"):
+        runner(tmp_path, client, docket=FakeDocketReader(docket, "v1")).run(
+            _arm_b("v2"), record_fixtures[:1]
+        )
+    with pytest.raises(ConfigurationError, match="v2 evidence"):
+        runner(tmp_path, client, docket=FakeDocketReader(docket, "v2")).run(
+            _arm_b("v1"), record_fixtures[:1]
+        )
+    assert client.payloads == []
+    assert not (tmp_path / "runs").exists()  # refused before any run folder is claimed
+
+
+def test_a_v2_run_answers_and_records_the_preparation_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(_transcribed_docket(0.003), "v2")
+    run = runner(tmp_path, client, docket=reader).run(_arm_b("v2"), record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    assert case.preparation_cost_usd == pytest.approx(0.003)
+    assert run.evidence_version == "v2"
+    # Decision 0081: the preparation cost is apart from the agent's own cost.
+    assert run.cost_usd == pytest.approx(case.cost_usd)
+    assert "transcribed from an image" in client.payloads[0].text
+
+
+def test_a_v2_batch_run_records_the_preparation_cost_too(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),
+            lambda bid, reqs: _status(bid, reqs, REFINE),
+        ]
+    )
+    reader = FakeDocketReader(_transcribed_docket(0.004), "v2")
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake, docket=reader).run(
+        _arm_b("v2", sync=False), record_fixtures[:1]
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.preparation_cost_usd == pytest.approx(0.004)
+
+
+def test_a_v1_run_records_no_preparation_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"}))
+    run = runner(tmp_path, client, docket=reader).run(_arm_b("v1"), record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.preparation_cost_usd == 0.0
+
+
+def test_v3_is_still_refused_for_arm_b(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(_transcribed_docket(), "v2")
+    with pytest.raises(ConfigurationError, match="not built yet"):
+        runner(tmp_path, client, docket=reader).run(_arm_b("v3"), record_fixtures[:1])
+
+
+def test_the_cached_reader_is_v2_only_with_readings_and_passes_them_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+    docket = small_docket({1: "[page 1 of 3]\nx\n"})
+
+    def fake_read_docket(client: object, mkey: int, *, readings: object = None) -> Docket:
+        captured["readings"] = readings
+        return docket
+
+    monkeypatch.setattr("ntsb_probable_cause.scoring.runner.read_docket", fake_read_docket)
+    client = cast(DocketClient, object())
+    assert CachedDocketReader(client).version == "v1"
+    lookup = ReadingLookup(TranscriptionCache(tmp_path))
+    reader = CachedDocketReader(client, readings=lookup)
+    assert reader.version == "v2"
+    assert reader.read(7) is docket
+    assert captured["readings"] is lookup

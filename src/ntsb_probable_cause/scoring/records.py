@@ -118,6 +118,8 @@ class CaseResult(BaseModel):
     # narrative (0078), from the split. Never in the agent's text; reported as groups.
     marks: tuple[CaseMark, ...] = ()
     narrative_share: float | None = None
+    # Decision 0081: transcription paid for this case's docket -- apart from cost_usd and the cap.
+    preparation_cost_usd: float = 0.0
     # Every reply the case received, in call order, whether the case was scored or failed
     # (S2.6 Task 9C). A failed case has no step (``steps=()``), so ``StepRecord``'s own copy
     # of these tuples is invisible to a failed case -- and a case that failed on stage 2 after
