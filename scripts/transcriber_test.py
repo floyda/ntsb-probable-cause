@@ -276,13 +276,17 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     return chosen.model, notes
 
 
-def choose_resolution(accuracy_150: Fraction | float, accuracy_200: Fraction | float) -> int:
+def choose_resolution(accuracy_150: Fraction, accuracy_200: Fraction) -> int:
     """Spec §7.5: 200 dpi only for more than 5 points of handwriting accuracy.
 
-    Fix round 1, I7: accepts an exact ``Fraction`` as well as a ``float`` -- ``cmd_score``
-    passes fractions built from the raw line counts (``_fraction``), so an exact 5-point gap
-    is judged exactly, never nudged either way by ``0.05``'s own floating-point rounding.
+    Fix round 1, I7 built this on exact ``Fraction`` arithmetic so a 5-point gap is judged
+    exactly, never nudged either way by ``0.05``'s own floating-point rounding. Fix round 3,
+    R6 narrows the parameters to ``Fraction`` only, checked at runtime: accepting a ``float``
+    let a caller reintroduce the very rounding this function exists to avoid (1,960 misfires
+    in the review's boundary sweep on the float path).
     """
+    if not isinstance(accuracy_150, Fraction) or not isinstance(accuracy_200, Fraction):
+        raise TypeError("choose_resolution requires exact Fraction accuracies, not float")
     return 200 if accuracy_200 - accuracy_150 > RESOLUTION_MARGIN else 150
 
 
@@ -316,6 +320,11 @@ TYPED_MAX_CHARS = 3000
 TOP_UP_BATCH, TOP_UP_LIMIT = 25, 200
 # Fix round 1, I5: `estimate` reads `settings.monthly_budget_usd` (decision 0083) directly,
 # rather than a second constant that could drift from it.
+# Fix round 3, R3: S2.6 began 2026-09-24 (decision W1). An evaluation run started on or after
+# this date is one of S2.6's own -- the reply-budget runs (Task 9A), and anything the stage
+# itself submits later -- not the whole project's history, which would double-count earlier
+# stages' own bars (S2.4's heldout runs, etc.).
+STAGE_START = datetime(2026, 9, 24, tzinfo=UTC)
 PICTURES = frozenset({"photograph", "diagram or chart", "mixed"})
 FOLDER = Path("s26") / "transcriber-test"
 PROBE_LINES = (
@@ -406,6 +415,15 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
     inventory's own rows before calling this); a page this function adds gets
     ``"source": "top-up"`` and the label that admitted it, so the results file can report
     where each key page came from.
+
+    Fix round 3, R5: a batch already fully cached (every page already labelled, from an
+    earlier run of ``keys``) never calls ``run_preparation`` at all. The handwriting and
+    photograph top-ups are both a ``transcriber-test`` job under the labeller model, so a
+    ``keys`` re-run after a late crash -- one top-up already done, the other not yet reached --
+    would otherwise have both top-ups claim the same job id in the same second once their
+    already-labelled batches return instantly (the collision fix round 1's I1 closed for
+    ``cmd_run``, which uses a different model per job, does not reach: here the model is the
+    same for both).
     """
     cache = TranscriptionCache(settings.transcription_dir)
     tried = 0
@@ -420,15 +438,16 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
             )
             for row in chunk
         ]
-        run_preparation(
-            kind="transcriber-test",
-            jobs=jobs,
-            instruction=LABEL,
-            settings=settings,
-            commit=commit_state(),
-            expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD[LABELLER],
-            workers=4,
-        )
+        if any(cache.get(job.key) is None for job in jobs):
+            run_preparation(
+                kind="transcriber-test",
+                jobs=jobs,
+                instruction=LABEL,
+                settings=settings,
+                commit=commit_state(),
+                expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD[LABELLER],
+                workers=4,
+            )
         for row in chunk:
             record = cache.get(_key(row, LABELLER, instruction=LABEL, dpi=RESOLUTION))
             if record is not None and record.page_kind in labels:
@@ -652,7 +671,16 @@ def cmd_run(
     dpi: int,
     retry_failed: bool = False,
 ) -> str:
-    """Each model reads every key page it is asked to, at one resolution."""
+    """Each model reads every key page it is asked to, at one resolution.
+
+    Fix round 3, R1 (decision 3, "after one retry"): ``retry_failed`` re-reads every page a
+    model's cached reading records as ``"failed"`` -- one retry per invocation, not a bounded
+    count of its own. It does not record that a retry happened, so calling it a second time
+    would retry again; the invocations that decide the answer key (``s26-transcriber-run``,
+    ``s26-transcriber-resolution``) call it exactly once, right after the first read, which is
+    what makes "after one retry" true in practice. A page still failed at that point is scored
+    as wrong for that model (``ReadingCounts``, `_choose_or_hold`), not retried further.
+    """
     keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
     if dpi != RESOLUTION:  # the resolution comparison reads only the handwriting and typed keys
         keys = [row for row in keys if row["set"] in ("handwriting", "typed")]
@@ -746,12 +774,17 @@ def cmd_handwriting(settings: Settings) -> str:
             )
         )
     (folder / "handwriting.json").write_text(json.dumps(pages))
+    # Fix round 3, R7: says how many versions are shown and that agreement is among whichever
+    # of them read something, matching M3's own wording on each card -- not "the four
+    # versions"/"all four", which is both stale (a candidate can be dropped after the probe,
+    # spec §17, M4) and wrong whenever a version reads a page as blank or fails on it.
     intro = (
-        "<p>For each page: make the text box the page's true text, one line per written line. "
-        "Write [illegible] for a word you cannot read either. The four versions are shown under "
-        "letters, shuffled per page. Lines marked <mark>check this line</mark> are agreed by all "
-        "four: check them against the image, fix any that are wrong in the box, and answer the "
-        "spot check.</p>"
+        f"<p>For each page: make the text box the page's true text, one line per written "
+        "line. Write [illegible] for a word you cannot read either. The "
+        f"{len(CANDIDATES)} versions are shown under letters, shuffled per page. Lines marked "
+        "<mark>check this line</mark> are agreed by every version that read something: check "
+        "them against the image, fix any that are wrong in the box, and answer the spot "
+        "check.</p>"
     )
     (folder / "handwriting.html").write_text(
         marking_page.render(
@@ -1141,8 +1174,26 @@ def cmd_score(
         ]
     lines += ["", "## the rule", *notes]
     if chosen is not None:
-        at_200 = _result(chosen, keys, key_texts, 0, typed_answers, cache, dpi=200)
-        if at_200.cost_per_page > 0:
+        # Fix round 3, R2: the resolution comparison only reads the handwriting and typed
+        # keys at 200 dpi (`cmd_run`'s own filter). A reading missing there must refuse the
+        # same way `score` does at 150 dpi (decision 3): an interrupted resolution run's
+        # unread pages would otherwise score as empty, silently pushing the choice to 150 dpi.
+        resolution_keys = [r for r in keys if r["set"] in ("handwriting", "typed")]
+        missing_200 = sum(
+            1
+            for r in resolution_keys
+            if cache.get(_key(r, chosen, instruction=TRANSCRIBE, dpi=200)) is None
+        )
+        if missing_200 == len(resolution_keys):
+            pass  # the resolution comparison has not been run yet: say nothing
+        elif missing_200:
+            lines += [
+                "",
+                "## resolution (spec §7.5)",
+                f"  resolution: not decided -- {missing_200} pages have no reading at 200 dpi",
+            ]
+        else:
+            at_200 = _result(chosen, keys, key_texts, 0, typed_answers, cache, dpi=200)
             base = next(r for r in results if r.model == chosen)
             # Fix round 1, I7: exact fractions from the raw line counts, not the pre-divided
             # floats -- an exact 5-point gap must not be misjudged by floating-point error.
@@ -1177,14 +1228,40 @@ def _latest_heldout_b_cost_per_case(settings: Settings) -> float:
     return latest.cost_usd / latest.cases
 
 
-def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
-    """Decision 0083 item 2: the stage's re-estimated rest against the month's real headroom.
+def _estimate_verdict(stage_total: float, rest: float, headroom: float, budget: float) -> str:
+    """Apply both decision 0083 item 2's stage-total test and fix round 1's headroom test.
 
-    Fix round 1, I5: judged against ``settings.monthly_budget_usd - month_spent(...)`` minus
-    open reservations, not a flat $40 -- the flat figure ignored what the month had already
-    spent on S2.6's own evaluation runs (only preparation spend rows were counted) and every
-    other run that month, so "within $40" could print while the real budget guard would
-    refuse the transcription run part-way through.
+    Either can fail on its own -- for example when ``estimate`` runs in a later month than
+    most of S2.6's spend (fix round 3, R3).
+    """
+    over_stage = stage_total > budget
+    over_headroom = rest > headroom
+    if not (over_stage or over_headroom):
+        return (
+            f"fits: stage total ${stage_total:.2f} within ${budget:.0f}, remaining ${rest:.2f} "
+            f"within the month's ${headroom:.2f} headroom"
+        )
+    reasons = []
+    if over_stage:
+        reasons.append(
+            f"the stage total ${stage_total:.2f} passes the ${budget:.0f} stage line "
+            "(decision 0083 item 2)"
+        )
+    if over_headroom:
+        reasons.append(
+            f"the remaining ${rest:.2f} does not fit the month's ${headroom:.2f} headroom"
+        )
+    return "pause: ask Andy -- " + "; ".join(reasons)
+
+
+def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
+    """Decision 0083 item 2: both the stage total and the remaining spend, judged separately.
+
+    Fix round 1, I5 judged only the second (``settings.monthly_budget_usd - month_spent(...)``
+    minus open reservations), which by itself can miss decision 0083 item 2's own test: if
+    ``estimate`` runs in a later month than most of S2.6's spend, the month's headroom looks
+    almost untouched while the stage total is well past $40. Fix round 3, R3 restores the
+    stage-total test alongside it, naming whichever test fails.
     """
     s26 = settings.data_dir / "s26"
     now = datetime.now(UTC)
@@ -1195,6 +1272,14 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
         s.cost_usd
         for path in sorted(settings.runs_dir.glob(f"*/{SPEND_FILE}"))
         for s in read_jsonl(path, SpendRecord)
+    )
+    # Fix round 3, R3: S2.6's own evaluation runs (the reply-budget runs, Task 9A) are not
+    # preparation spend rows, so they were missing from the stage total entirely.
+    stage_runs = sum(
+        record.cost_usd
+        for path in sorted(settings.runs_dir.glob("*/run.jsonl"))
+        for record in read_jsonl(path, RunRecord)
+        if record.started >= STAGE_START
     )
     frame = _read(s26 / "pages-dev-400.jsonl")
     sample = _read(s26 / "inventory" / "sample.jsonl")
@@ -1257,18 +1342,18 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
     images_per_case = (image_only + text_and_image) * picture_share / cases_with_dockets
     luna = sources.price_of(AGENT_MODEL)
     v3 = 401 * (2 * b_case + 2 * images_per_case * image_tokens * luna.input_usd_per_mtok / 1e6)
-    rest = transcription + runs + v3  # what remains to spend, not yet in month_spent
-    verdict = (
-        f"pause: the stage's remaining ${rest:.2f} does not fit the month's ${headroom:.2f} "
-        "headroom -- Andy decides (decision 0083 item 2)"
-        if rest > headroom
-        else f"fits within the month's ${headroom:.2f} headroom"
-    )
+    rest = (
+        transcription + runs + v3
+    )  # what remains to spend, not yet in month_spent or stage_so_far
+    stage_so_far = stage_spent + stage_runs
+    stage_total = stage_so_far + rest
+    verdict = _estimate_verdict(stage_total, rest, headroom, settings.monthly_budget_usd)
     return "\n".join(
         [
             f"month spent so far: ${month:.2f}; open reservations: ${reserved:.2f}; headroom "
             f"against the ${settings.monthly_budget_usd:.0f} budget: ${headroom:.2f}",
-            f"spent on S2.6 so far (preparation spend rows only): ${stage_spent:.2f}",
+            f"spent on S2.6 so far: ${stage_so_far:.2f} (${stage_spent:.2f} preparation spend "
+            f"rows, ${stage_runs:.2f} evaluation runs since {STAGE_START:%Y-%m-%d})",
             f"dev-400 pages to transcribe: {image_only} image-only + {sent_share:.0%} of "
             f"{text_and_image} text-and-image = {dev_pages}; held-out assumed the same",
             f"{transcriber} at {dpi} dpi: ${per_page:.5f} per page measured; transcription of "
@@ -1277,7 +1362,7 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
             f"${b_case:.5f} per case (latest heldout-400 arm B run): ${runs:.2f}, a floor",
             f"v3 probe: {images_per_case:.1f} picture pages per case ({cases_with_dockets} cases "
             f"with a docket) at {image_tokens:.0f} tokens each, GPT-6 Luna standard: ${v3:.2f}",
-            f"stage rest to spend: ${rest:.2f} -- {verdict}",
+            f"stage rest to spend: ${rest:.2f}; stage total: ${stage_total:.2f} -- {verdict}",
         ]
     )
 

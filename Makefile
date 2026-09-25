@@ -165,12 +165,17 @@ s26-transcriber-probe:
 
 s26-transcriber-run:
 	uv run python -m scripts.transcriber_test run
+	uv run python -m scripts.transcriber_test run --retry-failed
 	uv run python -m scripts.transcriber_test handwriting
 	uv run python -m scripts.transcriber_test photos
 	uv run python -m scripts.transcriber_test mixed
-# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then Andy's
-# three pages (handwriting, photos, mixed).
+# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then one retry
+# of any page that failed (decision 3: a page still failed after this retry counts as wrong;
+# `--retry-failed` pays only for pages that failed, and this recipe calls it once), then
+# Andy's three pages (handwriting, photos, mixed).
 
 s26-transcriber-resolution:
 	uv run python -m scripts.transcriber_test resolution --model $(MODEL)
-# The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1).
+	uv run python -m scripts.transcriber_test resolution --model $(MODEL) --retry-failed
+# The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1), then one retry of
+# any page that failed there too.

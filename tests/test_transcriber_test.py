@@ -18,6 +18,7 @@ from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.pages import page_text
 from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
+    LABEL,
     TRANSCRIBE,
     PageJob,
     Transcription,
@@ -201,8 +202,17 @@ def test_choose_all_out_still_gives_no_transcriber() -> None:
 
 
 def test_resolution_200_only_for_more_than_five_points() -> None:
-    assert tt.choose_resolution(0.80, 0.85) == 150
-    assert tt.choose_resolution(0.80, 0.851) == 200
+    """Fix round 3, R6: ``choose_resolution`` takes exact ``Fraction``s, not floats -- updated
+    from the brief's literal ``choose_resolution(0.80, 0.85)`` / ``(0.80, 0.851)``, which the
+    review's own sweep found misfires on the float path (0.85 - 0.80 is not exactly 0.05)."""
+    assert tt.choose_resolution(Fraction(4, 5), Fraction(17, 20)) == 150  # 0.80, 0.85: exact 5
+    assert tt.choose_resolution(Fraction(4, 5), Fraction(9, 10)) == 200  # 0.80, 0.90: 10 points
+
+
+def test_choose_resolution_refuses_a_float() -> None:
+    """Fix round 3, R6: a runtime check, not just the type hint."""
+    with pytest.raises(TypeError):
+        tt.choose_resolution(0.80, 0.85)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -517,6 +527,68 @@ def test_cmd_score_applies_the_rule_and_reports_the_choice(tmp_path: Path) -> No
     assert "the transcriber test" in text
 
 
+def test_cmd_score_resolution_not_decided_while_a_200dpi_reading_is_missing(
+    tmp_path: Path,
+) -> None:
+    """Fix round 3, R2: the resolution comparison refuses to decide while any 200 dpi reading
+    on the handwriting or typed key is missing, the same way `score` refuses at 150 dpi --
+    an interrupted resolution run must not silently score its unread pages as empty, which
+    would push the choice towards 150 dpi with no sign anything was missing."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    typed_text = "FUEL SELECTOR BOTH. MIXTURE RICH."
+    typed_doc = _text_pdf(typed_text)
+    _seed(settings.docket_dir, 1, typed_doc)
+    docs = _offline_docs(settings)
+    key_text = page_text(typed_doc, 1)
+
+    typed_row = {
+        "set": "typed",
+        "k": 1,
+        "mkey": 1,
+        "document": 1,
+        "page": 1,
+        "document_sha256": hashlib.sha256(typed_doc).hexdigest(),
+    }
+    hw_row = {"set": "handwriting", "k": 1, "document_sha256": "a" * 64, "page": 1}
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "b" * 64, "page": 1}
+    mixed_row = {"set": "mixed", "k": 1, "document_sha256": "c" * 64, "page": 1}
+    keys = [typed_row, hw_row, photo_row, mixed_row]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in keys))
+
+    cache = TranscriptionCache(settings.transcription_dir)
+    _put(cache, typed_row, "openai/gpt-6-luna", key_text)
+    _put(cache, hw_row, "openai/gpt-6-luna", "Fuel BOTH")
+    _put(cache, photo_row, "openai/gpt-6-luna", "")
+    _put(cache, mixed_row, "openai/gpt-6-luna", "")
+    for model in tt.CANDIDATES:
+        if model == "openai/gpt-6-luna":
+            continue
+        for row in keys:
+            _put(cache, row, model, "")
+    # The resolution run only got to the handwriting key before being interrupted.
+    _put(cache, hw_row, "openai/gpt-6-luna", "Fuel BOTH", dpi=200)
+
+    (folder / "handwriting.json").write_text(
+        json.dumps({"1": {"versions": {"A": ["Fuel BOTH"]}, "draft": "A", "agreed": ["Fuel BOTH"]}})
+    )
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    (folder / "mixed.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    hw_csv = tmp_path / "handwriting-key.csv"
+    _write_csv(hw_csv, ["row", "key"], [["1", "Fuel BOTH"]])
+    photos_csv = tmp_path / "photo-words.csv"
+    _write_csv(photos_csv, ["row", "words"], [["11", "all on the page"]])
+    mixed_csv = tmp_path / "mixed-words.csv"
+    _write_csv(mixed_csv, ["row", "added words"], [["11", "all on the page and new"]])
+
+    text = tt.cmd_score(settings, docs, hw_csv, photos_csv, mixed_csv)
+    assert "openai/gpt-6-luna: chosen" in text
+    assert "resolution: not decided -- 1 pages have no reading at 200 dpi" in text
+    assert "chosen: 150 dpi" not in text
+    assert "chosen: 200 dpi" not in text
+
+
 def test_cmd_score_does_not_choose_while_a_reading_is_missing(tmp_path: Path) -> None:
     """Fix round 1, I2/M9 (narrowed by fix round 2's "count it as wrong"): one candidate
     missing a reading of one key page -- never attempted, no record at all -- holds off
@@ -729,6 +801,93 @@ def test_cmd_estimate_reports_the_stage_total(tmp_path: Path) -> None:
     assert "month spent so far: $0.00; open reservations: $0.00; headroom" in result
 
 
+def test_cmd_estimate_pauses_on_the_stage_total_even_with_headroom_to_spare(
+    tmp_path: Path,
+) -> None:
+    """Fix round 3, R3: decision 0083 item 2's own test (the stage total against its $40
+    line) is applied even when the remaining spend alone would fit the month's headroom -- a
+    large preparation spend from earlier in the stage, dated outside the current month,
+    inflates the stage total without touching `month_spent`'s headroom at all."""
+    settings = Settings(data_dir=tmp_path)
+    s26 = settings.data_dir / "s26"
+    (s26 / "inventory").mkdir(parents=True)
+    (s26 / "pages-dev-400.jsonl").write_text(
+        "".join(
+            json.dumps(r) + "\n"
+            for r in (
+                {"kind": "image only", "case_id": "C1"},
+                {"kind": "image only", "case_id": "C2"},
+                {"kind": "text and image", "case_id": "C3"},
+            )
+        )
+    )
+    (s26 / "inventory" / "sample.jsonl").write_text(
+        json.dumps(
+            {
+                "n": 1,
+                "stratum": "text and image/fatal",
+                "kind": "text and image",
+                "image_area_share": 0.9,
+            }
+        )
+        + "\n"
+    )
+    (s26 / "inventory" / "labels.json").write_text(json.dumps({"1": "mixed"}))
+    (s26 / "inventory" / "population.json").write_text(json.dumps({"text and image/fatal": 5}))
+
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "f" * 64, "page": 1}
+    (folder / "keys.jsonl").write_text(json.dumps(photo_row) + "\n")
+    cache = TranscriptionCache(settings.transcription_dir)
+    _put(cache, photo_row, "openai/gpt-6-luna", "N12345", cost_usd=0.002, prompt_tokens=1000)
+
+    # A large spend row from earlier in the stage, dated in a month before "now" (2026-09-25
+    # in this repo's fixed calendar): counted in the stage total (unfiltered by date) but not
+    # in `month_spent` (filtered to the current month), so headroom stays close to $40.
+    write_spend(
+        settings.runs_dir,
+        SpendRecord(
+            job_id="20260801T000000-abc1234-transcriber-test",
+            kind="transcriber-test",
+            model="openai/gpt-6-luna",
+            started=datetime(2026, 8, 1, tzinfo=UTC),
+            calls=1,
+            cost_usd=50.0,
+            commit_sha="abc1234",
+            dirty=False,
+        ),
+    )
+    write_jsonl(
+        settings.runs_dir / "20260101T000000-abc1234-heldout-400-B" / "run.jsonl",
+        [
+            RunRecord(
+                run_id="20260101T000000-abc1234-heldout-400-B",
+                sample="heldout-400",
+                arm="B",
+                exclusions=(),
+                includes=(),
+                prompt_version="p1",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha="abc1234",
+                dirty=False,
+                started=datetime(2026, 1, 1, tzinfo=UTC),
+                finished=datetime(2026, 1, 1, 1, tzinfo=UTC),
+                cases=10,
+                cost_usd=0.1,  # a small per-case cost, so the projected rest fits the headroom
+            )
+        ],
+    )
+
+    result = tt.cmd_estimate(settings, "openai/gpt-6-luna", RESOLUTION)
+    assert "pause: ask Andy" in result
+    assert "passes the $40 stage line (decision 0083 item 2)" in result
+    assert "does not fit the month's" not in result
+
+
 # ---------------------------------------------------------------------------------------
 # Fix round 1: the missing tests the review lists (M9), plus I7's boundary tests.
 # ---------------------------------------------------------------------------------------
@@ -888,6 +1047,42 @@ def test_top_up_accepts_either_of_two_labels(
     have = tt._top_up([], pool, 5, ("handwriting", "filled form"), docs, settings)
     assert len(have) == 2
     assert {row["page_kind"] for row in have} == {"handwriting", "filled form"}
+
+
+def test_top_up_skips_run_preparation_when_the_batch_is_already_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix round 3, R5: a `keys` re-run whose pool pages are already labelled from an earlier
+    run must not call `run_preparation` at all -- two top-ups of the same kind and model
+    (handwriting's and the photograph's) landing in the same clock second would otherwise both
+    try to claim one job folder."""
+    settings = Settings(data_dir=tmp_path)
+    docs = _offline_docs(settings)
+    pool: list[dict[str, object]] = []
+    cache = TranscriptionCache(settings.transcription_dir)
+    for i in range(2):
+        mkey = 300 + i
+        doc = _text_pdf(f"cached page {i}")
+        _seed(settings.docket_dir, mkey, doc)
+        row = {"case_id": f"H{i}", "mkey": mkey, "document": 1, "page": 1}
+        hashed = tt._hashed([row], docs)[0]
+        cache.put(
+            Transcription(
+                key=tt._key(hashed, tt.LABELLER, instruction=LABEL, dpi=RESOLUTION),
+                status="transcribed",
+                text="",
+                page_kind="handwriting",
+                created=datetime.now(UTC),
+            )
+        )
+        pool.append(row)
+
+    def boom(**_kwargs: object) -> list[Transcription]:
+        raise AssertionError("run_preparation must not be called: the batch is already cached")
+
+    monkeypatch.setattr(tt, "run_preparation", boom)
+    have = tt._top_up([], pool, 2, ("handwriting", "filled form"), docs, settings)
+    assert len(have) == 2
 
 
 def test_full_scans_excludes_sampled_photo_only_and_low_image_share(tmp_path: Path) -> None:
