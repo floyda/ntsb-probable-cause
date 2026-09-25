@@ -179,8 +179,8 @@ recall@10 (flagged) 9.9% [7.5%, 12.4%]. The lower end of its top-1 interval, 22.
 above the no-model baseline's 17.7%; on finding codes it remains far below the baseline's
 23.2%. Paired against the GPT-6 Luna ceiling on 336 cases: top-1 +14.3% [+9.2%, +19.3%],
 top-3 +15.2% [+9.8%, +20.5%], finding recall@10 +7.3% [+4.8%, +9.8%] (319 cases). The
-ceiling itself scores top-1 10.5% [7.9%, 13.9%], top-3 21.8% [18.0%, 26.1%] (all 400
-cases), -0.3% [-3.8%, +3.3%] top-1 against GPT-5.6 Luna's ceiling. Paired against GPT-5.6
+ceiling itself scores top-1 10.5% [7.9%, 13.9%], top-3 21.8% [18.0%, 26.1%] (399 of
+400 cases scored), -0.3% [-3.8%, +3.3%] top-1 against GPT-5.6 Luna's ceiling. Paired against GPT-5.6
 Luna's arm B on 334 cases (a model comparison, decision 0031 item 2, different commits):
 top-1 +4.5% [+0.0%, +9.0%], finding recall@10 +1.4% [-0.8%, +3.6%]. **Arm B on GPT-6 Luna
 is the bar until S2.6 replaces it.** Its 64 failures are 40 guard refusals
