@@ -131,7 +131,7 @@ figures are gone from this section: they were measured on free-text output throu
 code-constrained (0006), transported over OpenRouter (0009), and withholds the factual
 narrative from every case (0013).
 
-The two numbers to hold in mind, both on `heldout-400` at commit `c717ab5`:
+The two numbers to hold in mind, both on `heldout-400` at commit `c717ab5`, on GPT-5.6 Luna:
 
 | metric | honest baseline (no model) | one-shot ceiling |
 |---|---|---|
@@ -156,11 +156,12 @@ one-shot ceiling is arm B without the docket; arm B with the docket runs before 
 exists. The four results that count against the loop and the six predictions are fixed in
 decision 0022 and are published whichever way they come out.
 
-**S2 measured arm B on `heldout-400` on GPT-5.6 Luna; the numbers live in `docs/results/s2-bars.txt`.** Arm B
-calls every tool in a fixed order (here, the docket) and answers once. Of the 400 sample
-cases, 358 were scored (42 failed). Occurrence top-1 is 22.3% [18.3%, 26.9%] and top-3 is
-37.2% [32.3%, 42.3%]. Paired against the S1 one-shot ceiling run on 357 shared, scored cases:
-occurrence top-1 +11.2% [+6.2%, +16.2%], occurrence top-3 +16.0% [+10.6%, +21.0%].
+**S2 measured arm B on `heldout-400` on GPT-5.6 Luna; the numbers live in
+`docs/results/s2-bars.txt`.** Arm B calls every tool in a fixed order (here, the docket)
+and answers once. Of the 400 sample cases, 358 were scored (42 failed). Occurrence top-1
+is 22.3% [18.3%, 26.9%] and top-3 is 37.2% [32.3%, 42.3%]. Paired against the S1 one-shot
+ceiling run on 357 shared, scored cases: occurrence top-1 +11.2% [+6.2%, +16.2%],
+occurrence top-3 +16.0% [+10.6%, +21.0%].
 
 **Arm B clears the honest no-model baseline on occurrence top-1**: the lower end of its
 interval, 18.3%, sits above the baseline's 17.7%.
@@ -177,14 +178,17 @@ scored; occurrence top-1 26.5% [22.1%, 31.5%], top-3 39.9% [34.8%, 45.2%], findi
 recall@10 (flagged) 9.9% [7.5%, 12.4%]. The lower end of its top-1 interval, 22.1%, is
 above the no-model baseline's 17.7%; on finding codes it remains far below the baseline's
 23.2%. Paired against the GPT-6 Luna ceiling on 336 cases: top-1 +14.3% [+9.2%, +19.3%],
-finding recall@10 +7.3% [+4.8%, +9.8%] (319 cases). Paired against GPT-5.6 Luna's arm B on
-334 cases (a model comparison, decision 0031 item 2, different commits): top-1 +4.5%
-[+0.0%, +9.0%], finding recall@10 +1.4% [-0.8%, +3.6%]. The GPT-6 Luna ceiling scores
-10.5% [7.9%, 13.9%] top-1, -0.3% [-3.8%, +3.3%] against GPT-5.6 Luna's. **Arm B on GPT-6
-Luna is the bar until S2.6 replaces it.** Its 64 failures are 40 guard refusals
+top-3 +15.2% [+9.8%, +20.5%], finding recall@10 +7.3% [+4.8%, +9.8%] (319 cases). The
+ceiling itself scores top-1 10.5% [7.9%, 13.9%], top-3 21.8% [18.0%, 26.1%] (all 400
+cases), -0.3% [-3.8%, +3.3%] top-1 against GPT-5.6 Luna's ceiling. Paired against GPT-5.6
+Luna's arm B on 334 cases (a model comparison, decision 0031 item 2, different commits):
+top-1 +4.5% [+0.0%, +9.0%], finding recall@10 +1.4% [-0.8%, +3.6%]. **Arm B on GPT-6 Luna
+is the bar until S2.6 replaces it.** Its 64 failures are 40 guard refusals
 (analysis-narrative sentences in docket documents) and 24 reply-format failures, most of
-them truncated replies; the reply budget is re-examined in S2.6 before its held-out runs
-(S2.4 plan Deviations, 2026-09-24/25).
+them truncated replies (an ad-hoc split, not a scripted one: the S2.4 plan's Deviations,
+2026-09-24/25); the reply budget is re-examined in S2.6 before its held-out runs. Failed
+cases are excluded from `n`, not counted wrong, and they cluster in fatal cases: 42 of 200
+fatal cases failed against 22 of 200 non-fatal (`s24-bars.txt`'s `failed` column).
 
 ## Model access
 
@@ -195,11 +199,17 @@ in git). One transport for both, so the evaluated agent and the deployed agent a
 at the transport layer too. Decision record: `docs/decisions/0009-model-access-via-openrouter.md`,
 which supersedes the spike's "Claude exclusively" rule.
 
-The agent's model is `openai/gpt-5.6-luna`, batch variant for evaluation (decision 0031,
-which supersedes the earlier plan to start at `anthropic/claude-sonnet-5` for continuity with
-the spike). Model choice is a harness parameter, not a constant, and the model axis is measured
-after S3 — the bar and the agent are always compared on the same model (0022, 0031). Evaluation runs use the `:batch` variant
-(half price, no latency requirement); the live path does not.
+The agent's model was `openai/gpt-5.6-luna`, batch variant for evaluation (decision 0031,
+which superseded the earlier plan to start at `anthropic/claude-sonnet-5` for continuity
+with the spike), until S2.4. From S2.4 it is `openai/gpt-6-luna`, batch variant for
+evaluation, at reasoning level `medium` (decision 0073, replacing 0031 item 1). The
+reasoning level is stated on every agent call and recorded on every run's spec file and
+run record; comparing reasoning levels is part of the model axis, examined with the model
+axis after S3. GPT-6 Luna passed a one-case shape probe and a format gate on `dev-400`
+with 0 of 401 format failures (`docs/results/s24-gate-dev.txt`). Model choice is a harness
+parameter, not a constant, and the bar and the agent are always compared on the same model
+(0022, 0031). Evaluation runs use the `:batch` variant (half price, no latency
+requirement); the live path does not.
 
 Two consequences to hold on to:
 - The spike's £0.034/case and 57% top-1 were measured on a different transport, with the
@@ -210,15 +220,8 @@ Two consequences to hold on to:
 
 A per-case cost cap is enforced in code, not just measured, because these calls are metered.
 The spike's line was £0.05/case; it is re-measured in S1 and S3, because every case now reads
-the docket (0013).
-
-**S2.4 model switch to GPT-6-Luna.** The agent's default model is now `openai/gpt-6-luna` (batch
-variant for evaluation), at reasoning level `medium` (0073, replacing decision 0031 item 1). The
-reasoning level is stated on every agent call and recorded on every run's spec file and run record.
-GPT-6-Luna passed a one-case shape probe and a format gate on `dev-400` with 0 of 401 format
-failures (documented in `docs/results/s24-gate-dev.txt`). GPT-5.6-Luna results elsewhere in this
-file are historical reference points, not bars. The reasoning-level axis is examined with the model
-axis after S3.
+the docket (0013). GPT-5.6 Luna results elsewhere in this file are historical reference
+points, not bars.
 
 ## Commands
 
@@ -232,15 +235,21 @@ make build   # build data/processed/cases.parquet from the raw store
 make scan    # uv run python -m scripts.corpus_scan — guard statistics, counts only
 make probe   # uv run python -m scripts.openrouter_probe — the S1 fixture-recording probe (§7.1)
 make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (§6.5)
-make docket-scan       # uv run python -m scripts.docket_scan — dev-400 docket shape, cached and resumable (S2)
-make scan-docket       # uv run python -m scripts.corpus_scan --docket — the deny-list threshold, from the docket-scan cache (S2)
+make docket-scan       # uv run python -m scripts.docket_scan — dev-400 docket shape,
+                        #   cached and resumable (S2)
+make scan-docket       # uv run python -m scripts.corpus_scan --docket — the deny-list
+                        #   threshold, from the docket-scan cache (S2)
 make armb               # arm B on dev-400, the stage's headline result (S2)
-make s2-bars            # arm B on heldout-400 — ONCE; appends to docs/results/heldout-ledger.md (S2)
-make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket shape, numbers only, nothing cached (S2, 0024/0040)
+make s2-bars            # arm B on heldout-400 — ONCE; appends to
+                         #   docs/results/heldout-ledger.md (S2)
+make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket
+                         #   shape, numbers only, nothing cached (S2, 0024/0040)
 make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
 make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
-make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
-make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
+make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its
+                      #   ledger row before s24-bars-b
+make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after
+                      #   s24-bars-ceiling's row is committed
 ```
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
@@ -255,7 +264,8 @@ call, so a deliberate, still-conservative estimate (`armb`, `s2-bars` pass `0.01
 real cost of about $0.0075/case) is needed to get the guard to let a legitimate run start;
 `release RUN_ID` clears a dead run's budget reservation (0045) so its held budget can be
 reused; `report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--against-latest`
-to compare — it prints a `failures by reason:` line and labels cross-model comparisons; `judge` refuses a non-`dev-400` run without `--validated` (§8).
+to compare — it prints a `failures by reason:` line and labels cross-model comparisons;
+`judge` refuses a non-`dev-400` run without `--validated` (§8).
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
