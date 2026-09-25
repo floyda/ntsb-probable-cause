@@ -127,3 +127,4 @@ under `docs/specs/` and the record links to it.
 | [0084](0084-the-reply-budget-is-8000-tokens.md) | The reply budget is 8,000 tokens, measured on dev-400 by a rule fixed before the runs | Accepted |
 | [0085](0085-the-transcription-cache-is-keyed-by-document-and-page.md) | The transcription cache is keyed by document and page, not by image | Accepted; amends 0081 item 1 |
 | [0086](0086-the-transcriber-test-second-pass.md) | The transcriber test gets a second pass, with three corrections fixed before re-marking | Accepted; amends the scoring of 0080 |
+| [0087](0087-the-transcriber-is-qwen-provisionally.md) | The transcriber is Qwen3.5 122B, provisionally: a post-hoc override of 0080's outcome | Accepted; overrides 0080's outcome for S2.6 |
