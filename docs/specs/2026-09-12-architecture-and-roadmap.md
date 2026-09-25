@@ -512,7 +512,11 @@ measured by tripwire hits (0039); shape is re-measured on closed open-split case
 document text enters through a case context before the split (0041, 0042). The original text
 above stays as written.
 
-### S2.4. The model switch
+### S2.4. The model switch — done
+
+As built: see the stage specification's
+[As-built section](2026-09-23-s24-model-switch-design.md#as-built).
+
 
 *Added 2026-09-23 (0073).* Moves the agent's default model from GPT-5.6 Luna to GPT-6 Luna,
 about half the price, behind a one-case shape probe and a 1% format gate on `dev-400`, with the

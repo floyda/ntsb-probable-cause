@@ -1,7 +1,7 @@
 # S2.4 — The model switch: design
 
-*Drafted 2026-09-23 from a design session with Andy, alongside the S2.6 design. Status: Approved
-(2026-09-23, Andy). This is the specification for build stage S2.4, a small stage added to
+*Drafted 2026-09-23 from a design session with Andy, alongside the S2.6 design. Status: Implemented
+(2026-09-25, pull request #11). This is the specification for build stage S2.4, a small stage added to
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S2.4 builds, why, the
 decision it takes, and the condition for moving on. The implementation plan is written from it
 separately, in `docs/plans/`.*
@@ -269,6 +269,113 @@ Within the monthly budget (decision 0030).
 | It scores clearly worse | Recorded; Andy decides before held-out |
 | The provider changes the model behind the same id, or its price | The model id and the price's read date are recorded with every run |
 | The model is a day old when chosen | The gate is on our task, not on reputation; the old model stays priced and runnable |
+
+---
+
+## As built
+
+*Closed 2026-09-25 in pull request #11.*
+
+### Delivered
+
+- **One named default.** `sources.DEFAULT_MODEL` is `openai/gpt-6-luna` and
+  `sources.DEFAULT_REASONING_EFFORT` is `medium`. `ModelSettings` and `RunSpec` read them; no other
+  module names a Luna model (`tests/test_sources_settings.py::test_no_module_but_sources_names_a_luna_model`).
+  GPT-6 Luna's standard and batch prices are in `sources.py`; GPT-5.6 Luna's stay, so its runs
+  still price.
+- **The reasoning level is stated and recorded.** `ModelSettings.reasoning_effort` is sent as
+  `reasoning: {"effort": ...}` only when set, so the judge's requests are unchanged. Every agent
+  call states `medium`; `spec.json`, `RunRecord.reasoning_effort` and the report header record it.
+  A run from before S2.4 reads as "provider default".
+- **The report.** `ntsb-eval report` prints `failures by reason:` (counts only, never a case
+  number) and labels a comparison across models or reasoning levels with both commits
+  (`report.failure_summary`, `report.comparison_heading`).
+- **Recovery from a lost batch.** `BatchClient.wait` raises `BatchNotFoundError` once its 404
+  grace ends. On a resume, a re-used batch the provider no longer has is marked `lost` in
+  `batches.jsonl`; every batch recorded after it is marked `superseded`, because its requests were
+  built from the lost batch's replies; both are resubmitted fresh. A batch submitted fresh in the
+  same run still stops the run. `recorded_batches` skips lost and superseded ids.
+- **Make targets.** `s24-probe`, `s24-gate`, `s24-bars-ceiling`, `s24-bars-b` (one held-out run
+  per target).
+- **Results.** `docs/results/s24-gate-dev.txt`, `docs/results/s24-bars.txt`,
+  `docs/results/s24-armB-gpt56-failures.txt`.
+
+### Done means, with evidence
+
+1. The shape probe's result and the gate run are published with failures by reason — met —
+   `docs/results/s24-gate-dev.txt`: both probe runs `failed 0 of 1`, `failures by reason: none`;
+   the gate run 0 of 401 format failures, top-1 +0.7% [−2.0%, +3.7%] against GPT-5.6 Luna.
+2. The default is GPT-6 Luna, `s24-bars.txt` holds the four comparisons, and the ledger holds both
+   held-out rows — met — `sources.DEFAULT_MODEL`; `docs/results/s24-bars.txt` (arm B against the
+   ceiling, arm B and the ceiling each against GPT-5.6 Luna, and the baseline floor line);
+   `docs/results/heldout-ledger.md` holds the ceiling row, the arm B row, and a hand-written row for
+   the aborted arm B run (Departures below).
+3. `CLAUDE.md` names the default model and shows the bars on both models, GPT-5.6 Luna's marked as
+   history — met — `CLAUDE.md` sections "Model access" and "Eval bars to beat (held-out split)".
+4. Tests and CI green; `scripts/check_docs.py` passes; the As-built record appended and the plan
+   deleted — met — CI on pull request #11 green (audit, lint, test); `make check` 747 tests,
+   coverage 97.9%; this pull request's close-out commit; `uv run python -m scripts.check_docs`
+   clean.
+
+### Departures from this specification
+
+- **The shape probe runs through `ntsb-eval run --limit 1`**, not a separate script, so it tests
+  the exact code the gate and the bars use. As a result no new reply fixtures were recorded
+  (spec §7): the probe showed no reply shape the existing fixtures do not cover.
+- **Spec §5's four comparisons are three `report` invocations**; the fourth, against the no-model
+  baseline, is the `Baseline floor` line every `heldout-400` report prints.
+- **Paid steps from a worktree need `NTSB_DATA_DIR`** pointed at the main checkout's `data/`. The
+  first probe attempt stopped before any model call because the worktree's `data/` is empty. This
+  is now in `CLAUDE.md`.
+- **The gate passed its rule, but finding recall@10 on `dev-400` was −1.1% [−2.2%, −0.2%]**
+  against GPT-5.6 Luna, outside the gate. Andy chose to switch and read findings on held-out arm B,
+  which showed +1.4% [−0.8%, +3.6%] (recorded in 0073).
+- **Thirteen tests were pinned to GPT-5.6 Luna after the switch**: 10 encoded its price and 3 its
+  model id as a literal. All keep testing what they were written to test; no expected number was
+  changed.
+- **Two held-out runs cannot share one `make` recipe.** The first run's ledger row leaves the tree
+  dirty and the held-out guard refused the second before any model call. `s24-bars` was split into
+  `s24-bars-ceiling` and `s24-bars-b`. The two runs sit on commits that differ only by that ledger
+  row.
+- **A held-out arm B run aborted and was run again.** Run `20260924T075506-36bcd22-heldout-400-B`
+  completed stage 1, but its stage-1 retry batch (`batch-1790239332-REtOQmoQUfUloC44CBt5`) queued at
+  OpenRouter for over 10 hours and then returned 404, while OpenRouter's dashboard still showed it
+  as processing. Nothing was scored. Andy chose a fresh run over a salvage. The aborted run cost
+  $0.58, is entered in the held-out ledger by hand from its run record, and makes the fresh run
+  the second held-out touch for arm B in this stage. The resume recovery in "Delivered" was built
+  so that this no longer needs a fresh run. If the lost batch later completes, OpenRouter may bill
+  it; that amount is not in any run record.
+- **Held-out arm B on GPT-6 Luna failed 24 cases on the reply format**, against 2 for GPT-5.6
+  Luna (`docs/results/s24-armB-gpt56-failures.txt`). By an ad-hoc tally, 19 are truncated or empty
+  replies and 5 give probabilities summing above 1. The likely cause of the truncation is that
+  reasoning tokens count against the 2,000-token reply limit when a docket fills the prompt. The
+  gate could not see this: it runs the ceiling, which has no docket. The bar is therefore measured
+  on 336 scored cases. Andy's decision: S2.4 closes as it stands, and S2.6 confirms the cause on
+  `dev-400` and sets the reply budget as a decision before its held-out runs.
+
+### Decisions taken during the stage
+
+- [0073](../decisions/0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) — the default model is
+  GPT-6 Luna behind a shape probe and a format gate, at a reasoning level set and recorded;
+  replaces 0031 item 1. Its appended notes record the gate result and the held-out outcome.
+
+**Known limits carried forward** (from the final review; none changes a published number):
+
+- The cost of a lost or superseded batch is not added to the resumed run's record, so the monthly
+  total can understate money spent.
+- A recorded batch that ended `failed` or `expired` still cannot be resumed; S2.6 fixes this
+  before its held-out runs.
+- `max_output_tokens` is not recorded in `spec.json`; S2.6 records it if it changes the reply
+  budget.
+
+### Implementation record
+
+- Pull request: #11 (https://github.com/floyda/ntsb-probable-cause/pull/11)
+- Plan, at its last commit: https://github.com/floyda/ntsb-probable-cause/blob/377a634bc99fdaf5bee12ea26d845b5bb43f8473/docs/plans/2026-09-23-s24-model-switch.md
+- Commits: 83c330e..23bdeb0
+- Model spend, from the six S2.4 run records: $2.16 (probe $0.0018, gate $0.22, held-out ceiling
+  $0.24, aborted arm B $0.58, arm B $1.13), against the spec's estimate of $1.35.
+- Release: v0.4.0 (tag created by Andy after the merge; decision 0018)
 
 ---
 
