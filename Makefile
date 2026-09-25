@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck
 
 check: lint type test
 
@@ -128,3 +128,11 @@ recorder-report:
 # feed comparison, regulation changes, the 30-day closure tail, suspected re-numbers and
 # compressed listing-page sizes. Counts only (decision 0024). Its first citable output needs
 # 14 or more recorded nights (spec "Done means" §14).
+
+page-kinds:
+	uv run python -m scripts.page_kinds --sample dev-400 --include-photo-only --out docs/results/s26-page-kinds.txt
+# S2.6 spec §6.2 step 1: free, reads the docket cache; writes the private page frame under data/.
+
+analysis-handcheck:
+	uv run python -m scripts.analysis_handcheck sheet --sample dev-400
+# S2.6 spec §4.2: free; writes the private marking page under data/handcheck/s26-analysis/.

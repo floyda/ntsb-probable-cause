@@ -2349,7 +2349,7 @@ git commit -m "S2.6: analysis sentences in docket documents mark the case, not r
 
 **Files:** whatever the merge touches; then `Makefile` (the targets Tasks 1–2 could not add).
 
-- [ ] **Step 1: Confirm S2.4 is on `main`**
+- [x] **Step 1: Confirm S2.4 is on `main`**
 
 ```bash
 git fetch origin
@@ -2359,7 +2359,7 @@ git show origin/main:docs/results/s24-bars.txt | head -5
 
 Expected: an `S2.4: the model switch` merge commit, and the results file present. If not, stop: the rest of Part 2 waits.
 
-- [ ] **Step 2: Merge, never rebase** (0033: a rebase would rewrite commits that later results name)
+- [x] **Step 2: Merge, never rebase** (0033: a rebase would rewrite commits that later results name)
 
 ```bash
 git merge origin/main
@@ -2373,7 +2373,7 @@ Expected conflicts, each resolved by keeping both sides:
 - `uv.lock`: take either side, then run `uv lock` to regenerate it.
 - `Makefile`: both sides' targets.
 
-- [ ] **Step 3: If `s25-recorder` has moved on since the branch was cut, merge it too**
+- [x] **Step 3: If `s25-recorder` has moved on since the branch was cut, merge it too**
 
 ```bash
 git log --oneline s26-widened-docket..s25-recorder
@@ -2382,12 +2382,12 @@ git merge s25-recorder   # only if the first command printed anything
 
 (At the time of writing, `s25-recorder` is one commit ahead: `806caaf`, runbook corrections.)
 
-- [ ] **Step 4: The whole check**
+- [x] **Step 4: The whole check**
 
 Run: `make check`
 Expected: green. A test S2.4 wrote that S2.6's Tasks 4–5 now contradict (for example a boundary test expecting an analysis sentence to refuse) is fixed to the decision, and named in the merge commit's message.
 
-- [ ] **Step 5: The targets Part 1 could not add**
+- [x] **Step 5: The targets Part 1 could not add**
 
 Append to `Makefile` after the `recorder-report` target, and add the names to the `.PHONY` line:
 
@@ -2401,11 +2401,11 @@ analysis-handcheck:
 # S2.6 spec §4.2: free; writes the private marking page under data/handcheck/s26-analysis/.
 ```
 
-- [ ] **Step 6: Record what S2.6 cites from S2.4**
+- [x] **Step 6: Record what S2.6 cites from S2.4**
 
 Add one Deviations line naming the S2.4 results S2.6 will cite, by file and line label only: `docs/results/s24-bars.txt`, the held-out arm B `failures by reason:` line, and the ceiling and arm B tables. Copy no number here; Tasks 15 and 18 cite the file.
 
-- [ ] **Step 7: Commit the merge**
+- [x] **Step 7: Commit the merge**
 
 ```bash
 git add -A
