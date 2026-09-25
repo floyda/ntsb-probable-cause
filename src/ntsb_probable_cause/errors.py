@@ -53,6 +53,10 @@ class ModelError(NtsbError):
     """The model provider returned an unusable response after retries."""
 
 
+class BatchNotFoundError(ModelError):
+    """A batch id the provider no longer recognises, after the not-found grace."""
+
+
 class SchemaError(NtsbError):
     """A model reply did not parse as the requested schema, or named a code not in the tables."""
 

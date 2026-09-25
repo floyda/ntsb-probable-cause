@@ -512,6 +512,22 @@ measured by tripwire hits (0039); shape is re-measured on closed open-split case
 document text enters through a case context before the split (0041, 0042). The original text
 above stays as written.
 
+### S2.4. The model switch — done
+
+As built: see the stage specification's
+[As-built section](2026-09-23-s24-model-switch-design.md#as-built).
+
+
+*Added 2026-09-23 (0073).* Moves the agent's default model from GPT-5.6 Luna to GPT-6 Luna,
+about half the price, behind a one-case shape probe and a 1% format gate on `dev-400`, with the
+reasoning level set to `medium` and recorded on every run. The ceiling and arm B are then run
+once each on `heldout-400` with the new model and S2's guard, so the comparison isolates the
+model; arm B on GPT-6 Luna is the bar until S2.6 replaces it. The report gains failures by
+reason. Specification: `docs/specs/2026-09-23-s24-model-switch-design.md`.
+
+*Done means:* the conditions in the specification's §11; or, if the gate fails, the result
+recorded in 0073 and held-out untouched.
+
 ### S2.5. The recorder
 
 Poll open investigations, diff each docket's document listing against the last
@@ -651,6 +667,7 @@ guess at what was weighed. Rule 8 in `CLAUDE.md`; format in `docs/decisions/READ
 | Docket shape on dockets from 2020 or later, and whether closed open-split cases may be used | S2 | the spike measured 2015–2019 only; closed open-split cases, as numbers only (0024) |
 | Layout of the trajectory view and the live statistics | S5 | what is shown is fixed by 0021; how it is laid out is a presentation choice |
 | OCR for handwritten forms | phase 2 | a probe with a written result, not a build stage |
+| Reasoning level of the agent's model | the model axis, after S3 | pinned to `medium` and recorded by S2.4 so the switch changes one thing; Andy asked that it be examined with the model (0073) |
 | Weather tool | S3 for the record's weather fields; the archive after S3 | one of 17 misses; parameters already verified in the spike; an archive value needs its own provenance rule (0023) |
 | Similar-case search, as a declared experiment | after S3 | no measured demand on complete records; allowed only as a declared experiment: stated before it runs, earlier accidents only, with the retrieval-contamination test |
 

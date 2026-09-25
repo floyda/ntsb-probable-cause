@@ -3,7 +3,9 @@
 Status
     Live tool (S1). Produced ``tests/fixtures/openrouter/*.json`` and their README, the
     recorded response shapes the model seam's tests run against. ``make probe``. Rerun when a
-    provider changes a response shape; it costs real money and needs a key.
+    provider changes a response shape; it costs real money and needs a key. The default model
+    changed to GPT-6 Luna in S2.4 (decision 0073); this script still defaults to GPT-5.6 Luna,
+    the model whose response shape it was written to record as the S1 fixture recorder.
 
 Usage:
     uv run python -m scripts.openrouter_probe [--model openai/gpt-5.6-luna] [--cases 10]

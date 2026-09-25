@@ -13,7 +13,13 @@ from tests.test_attach import _docket as small_docket
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError, LeakageError, ModelError
+from ntsb_probable_cause.errors import (
+    BatchNotFoundError,
+    BudgetError,
+    ConfigurationError,
+    LeakageError,
+    ModelError,
+)
 from ntsb_probable_cause.fields import EvidenceRole, factual_narrative
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
@@ -41,6 +47,7 @@ from ntsb_probable_cause.scoring.runner import (
     over_cap,
     prepare_case,
     project_cost,
+    recorded_batches,
     refuse_over_budget,
     spec_json,
 )
@@ -338,6 +345,7 @@ def test_sync_stage_two_schema_failure_is_retried_once_then_recorded(
             sample="dev-400",
             arm="ceiling",
             sync=True,
+            model="openai/gpt-5.6-luna",
             price_variant="standard",
             expected_cost_per_case_usd=0.001,
         ),
@@ -372,6 +380,7 @@ def test_sync_cost_reflects_both_replies_when_the_retry_succeeds(
             sample="dev-400",
             arm="ceiling",
             sync=True,
+            model="openai/gpt-5.6-luna",
             price_variant="standard",
             expected_cost_per_case_usd=0.001,
         ),
@@ -576,7 +585,13 @@ def test_batch_per_case_cost_priced_at_the_batch_price(
 ) -> None:
     fake = FakeBatchClient(handlers=[lambda bid, reqs: _status(bid, reqs, ABSTAIN)])
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     folder = tmp_path / "runs" / run.run_id
@@ -632,7 +647,13 @@ def test_batch_reply_that_fails_schema_is_retried_once_then_recorded(
         ]
     )
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert len(fake.submitted) == 2
@@ -759,7 +780,13 @@ def test_batch_stage1_retry_recovers_and_the_case_still_completes(
         ]
     )
     run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=False,
+            model="openai/gpt-5.6-luna",
+            expected_cost_per_case_usd=0.001,
+        ),
         record_fixtures[:1],
     )
     assert run.batch_ids == ("b1", "b2", "b3")
@@ -911,7 +938,13 @@ def test_batch_abort_on_stage_two_failure_still_records_stage_one_spend(
     )
     with pytest.raises(ModelError, match="expired"):
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                expected_cost_per_case_usd=0.001,
+            ),
             record_fixtures[:1],
         )
     folder = tmp_path / "runs" / _run_id()
@@ -949,7 +982,13 @@ def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
     )
     with pytest.raises(KeyboardInterrupt):
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
-            RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                expected_cost_per_case_usd=0.001,
+            ),
             record_fixtures[:1],
         )
     folder = tmp_path / "runs" / _run_id()
@@ -966,7 +1005,13 @@ def test_batch_keyboard_interrupt_during_wait_still_records_stage_one_spend(
 # --- resume: a run continues from the batches it already paid for (0032) ---
 
 
-BATCH_SPEC = RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001)
+BATCH_SPEC = RunSpec(
+    sample="dev-400",
+    arm="ceiling",
+    sync=False,
+    model="openai/gpt-5.6-luna",  # pinned: expected costs below are Luna 5.6's batch price
+    expected_cost_per_case_usd=0.001,
+)
 
 
 class _ExplodingBatchClient:
@@ -992,6 +1037,24 @@ def _died_waiting_on_stage1(tmp_path: Path, raws: Sequence[dict[str, object]]) -
         raise ModelError("the waiter died")
 
     fake = FakeBatchClient(handlers=[die])
+    with pytest.raises(ModelError, match="waiter died"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, raws)
+    return fake
+
+
+def _died_waiting_on_stage2(tmp_path: Path, raws: Sequence[dict[str, object]]) -> FakeBatchClient:
+    """A batch run whose stage-1 batch completed and stage-2 batch was recorded, then lost its
+    waiter -- so ``batches.jsonl`` holds one row for each stage (fix round 1's scenario)."""
+
+    def die(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise ModelError("the waiter died")
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),  # stage1 completes
+            die,  # stage2
+        ]
+    )
     with pytest.raises(ModelError, match="waiter died"):
         runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, raws)
     return fake
@@ -1094,6 +1157,185 @@ def test_resume_appends_no_second_row_for_the_reused_batch(
     path = tmp_path / "runs" / _run_id() / "batches.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     assert [(row["stage"], row["batch_id"]) for row in rows] == [("stage1", "b1"), ("stage2", "c1")]
+
+
+# --- resume: a batch the provider has lost is resubmitted, not retried forever (task 7b) ---
+
+
+def test_recorded_batches_skips_a_batch_marked_lost_later_in_the_file(tmp_path: Path) -> None:
+    """The resume queue must never hand back a dead id, or the row marking it dead."""
+    folder = tmp_path / "runs" / "x"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "b1", "stage": "stage1", "time": "2026-09-24T00:00:00"},
+        {"batch_id": "b1", "stage": "stage1", "lost": True, "time": "2026-09-24T10:00:00"},
+        {"batch_id": "c1", "stage": "stage1", "time": "2026-09-24T10:00:01"},
+        {"batch_id": "b2", "stage": "stage2", "time": "2026-09-24T00:00:02"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", "2026-09-24T10:00:01"),
+        ("stage2", "b2", "2026-09-24T00:00:02"),
+    ]
+
+
+def test_resume_resubmits_a_batch_the_provider_has_lost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The reused batch has vanished at the provider: this pass pays for it again, once,
+    logs a `lost` row so a later resume never waits on it again, and otherwise completes."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    resumed = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: the provider has lost it
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # b1 resubmitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # stage 2
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # the dead id, then a fresh stage 1, then stage 2
+    assert len(resumed.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
+    assert record.batch_ids == ("c1", "c2")  # the lost id never counts as one this run paid for
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("lost", False)) for row in rows] == [
+        ("stage1", "b1", False),  # the dead run's original row: never deleted
+        ("stage1", "b1", True),  # marks it lost
+        ("stage1", "c1", False),  # the fresh replacement
+        ("stage2", "c2", False),
+    ]
+    # A later resume's queue would never wait on the lost id again.
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", rows[2]["time"]),
+        ("stage2", "c2", rows[3]["time"]),
+    ]
+
+
+def test_a_freshly_submitted_batch_that_the_provider_loses_still_aborts_the_run(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """No silent re-spending within a run: only a REUSED batch is treated as recoverable.
+
+    A batch submitted fresh in this run raising ``BatchNotFoundError`` propagates and the
+    run aborts, exactly as any other ``ModelError`` would -- resubmitting automatically here
+    would let one run pay for the same stage an unbounded number of times.
+    """
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    fake = FakeBatchClient(handlers=[gone])
+    with pytest.raises(BatchNotFoundError):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
+    assert len(fake.submitted) == 1  # never retried automatically
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert rows == [{"batch_id": "b1", "stage": "stage1", "time": rows[0]["time"]}]
+
+
+def test_a_lost_batch_supersedes_the_batches_recorded_after_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: stage 2's requests are built from stage 1's replies (``history``/
+    ``system``), so once the stage-1 batch is found lost, the dead run's stage-2 batch is not
+    a valid replay of anything either -- it must not be reused, only resubmitted fresh."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    resumed = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: the provider has lost it
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # stage1, resubmitted
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # stage2, resubmitted
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # b2 is never waited on
+    assert len(resumed.submitted) == 2  # both stages paid for fresh; b2 was never reused
+    assert record.batch_ids == ("c1", "c2")
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [
+        (row["stage"], row["batch_id"], row.get("lost", False), row.get("superseded", False))
+        for row in rows
+    ] == [
+        ("stage1", "b1", False, False),  # the dead run's original rows: never deleted
+        ("stage2", "b2", False, False),
+        ("stage2", "b2", False, True),  # marks b2 superseded: it depended on b1
+        ("stage1", "b1", True, False),  # marks b1 lost -- written after its superseded rows
+        ("stage1", "c1", False, False),  # the fresh replacement
+        ("stage2", "c2", False, False),
+    ]
+    assert rows[2]["depends_on_batch_id"] == "b1"
+    # A later resume's queue would wait on neither dead id again.
+    assert recorded_batches(folder) == [
+        ("stage1", "c1", rows[4]["time"]),
+        ("stage2", "c2", rows[5]["time"]),
+    ]
+
+
+def test_a_superseded_batch_stays_superseded_across_a_second_resume(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The stronger case: resume #1 loses b1, resubmits it as c1, then dies again waiting on
+    the freshly submitted stage-2 batch; resume #2 must reuse c1 (not b1) and never touch the
+    superseded b2, proving the supersession survives past the resume that discovered it."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    def gone(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise BatchNotFoundError(f"batch {bid}: still not found after 120s: gone")
+
+    def die_again(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        raise ModelError("the waiter died again")
+
+    resume1 = FakeBatchClient(
+        handlers=[
+            gone,  # b1 replayed: lost
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # c1: stage1, fresh
+            die_again,  # c2: stage2, fresh, waiter dies again
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    with pytest.raises(ModelError, match="waiter died again"):
+        runner(tmp_path, RecordingFakeClient([]), batch=resume1).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert len(resume1.submitted) == 2  # c1 and c2, neither of which was waited on to success
+
+    resume2 = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),  # c1, reused
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.02),  # c2, reused
+        ],
+        prefix="d",
+        preloaded={"c1": resume1.submitted[0], "c2": resume1.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resume2).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resume2.waited == ["c1", "c2"]  # reused, in order; b1 and b2 are never touched again
+    assert resume2.submitted == []  # nothing paid for a third time
+    assert record.batch_ids == ("c1", "c2")
+    assert record.finished is not None
 
 
 def test_spec_json_is_written_before_the_first_call(
@@ -1704,7 +1946,7 @@ def test_log_reused_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_reused("stage1", "batch-1789528868-uJRGBbMh4Hxp07qRRB9m", "2026-09-16T03:21:11+00:00")
     assert capsys.readouterr().err == (
-        "07:10:21Z stage1       REUSED    batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
+        "07:10:21Z stage1       REUSED     batch-1789528868-uJRGBbMh4Hxp07qRRB9m "
         "(recorded 03:21:11Z)\n"
     )
 
@@ -1748,7 +1990,7 @@ def test_log_submitted_pins_the_briefs_example(
     r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
     r._log_submitted("stage1-retry", "batch-1789542619-7KCpMax2HcPd9lgJlg30", 3)
     assert capsys.readouterr().err == (
-        "07:10:23Z stage1-retry SUBMITTED batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
+        "07:10:23Z stage1-retry SUBMITTED  batch-1789542619-7KCpMax2HcPd9lgJlg30 3 requests\n"
     )
 
 
@@ -2273,3 +2515,22 @@ def test_batch_leaking_case_fails_alone_and_the_run_continues(
     assert clean_result.scores is not None
     submitted_ids = {req.custom_id for batch in fake.submitted for req in batch}
     assert submitted_ids == {str(clean["ntsbNumber"])}
+
+
+def test_every_call_states_the_runs_reasoning_level_and_the_run_records_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.4 spec §4.1: stated on both stages, written to spec.json and to the run record."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert [s.reasoning_effort for s in client.settings] == ["medium", "medium"]
+    folder = tmp_path / "runs" / run.run_id
+    assert json.loads((folder / "spec.json").read_text())["reasoning_effort"] == "medium"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].reasoning_effort == "medium"

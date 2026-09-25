@@ -10,6 +10,8 @@ from ntsb_probable_cause.errors import (
     NtsbError,
     SchemaError,
 )
+from ntsb_probable_cause.model.client import ModelSettings
+from ntsb_probable_cause.scoring.runner import RunSpec
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import SONNET_5, SONNET_5_BATCH, docket_url
 
@@ -184,3 +186,38 @@ def test_empty_commit_sha_env_var_counts_as_unset(monkeypatch: pytest.MonkeyPatc
 def test_real_commit_sha_env_var_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTSB_COMMIT_SHA", "abc1234")
     assert Settings(_env_file=None).commit_sha == "abc1234"
+
+
+def test_gpt_6_luna_is_priced_from_the_models_api() -> None:
+    """Decision 0073: read from https://openrouter.ai/api/v1/models on 2026-09-22."""
+    assert sources.price_of("openai/gpt-6-luna:batch") is sources.LUNA_6_BATCH
+    assert sources.price_of("openai/gpt-6-luna") is sources.LUNA_6
+    assert (sources.LUNA_6_BATCH.input_usd_per_mtok, sources.LUNA_6_BATCH.output_usd_per_mtok) == (
+        0.05,
+        0.25,
+    )
+    assert (sources.LUNA_6.input_usd_per_mtok, sources.LUNA_6.output_usd_per_mtok) == (0.10, 0.50)
+
+
+def test_the_default_model_and_reasoning_level_are_named_once() -> None:
+    """S2.4 spec §4: one constant each, read by ModelSettings (and, from Task 2, RunSpec)."""
+    assert sources.DEFAULT_REASONING_EFFORT == "medium"
+    assert ModelSettings().model == sources.DEFAULT_MODEL
+    assert ModelSettings().reasoning_effort is None  # the judge and probes send no level
+
+
+def test_run_spec_defaults_come_from_sources() -> None:
+    spec = RunSpec(sample="dev-400", arm="ceiling")
+    assert spec.model == sources.DEFAULT_MODEL
+    assert spec.reasoning_effort == sources.DEFAULT_REASONING_EFFORT
+
+
+def test_no_module_but_sources_names_a_luna_model() -> None:
+    """S2.4 spec §4 item 1: the default lives in one place, so a switch is one line."""
+    package_root = Path(__file__).resolve().parent.parent / "src" / "ntsb_probable_cause"
+    paths = list(package_root.rglob("*.py"))
+    assert paths, f"no source files found under {package_root} -- the glob resolved wrong"
+    offenders = [
+        str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
+    ]
+    assert offenders == []

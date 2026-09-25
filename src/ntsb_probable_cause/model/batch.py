@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.errors import ModelError
+from ntsb_probable_cause.errors import BatchNotFoundError, ModelError
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
@@ -198,10 +198,11 @@ class BatchClient:
         ``not_found_grace_seconds`` -- sleeping and retrying rather than raising -- starting
         from the first 404 seen; a poll that succeeds (any status, terminal or not) clears
         the window, so a later blip gets its own fresh grace period. Only once the window
-        elapses without a successful poll does this raise ``ModelError`` naming the batch
-        id. Every other status behaviour (the ``TERMINAL`` set, ``expired``/``failed``
-        raising via ``_result_from_item`` on the caller's next step, per-result error
-        handling) is unchanged.
+        elapses without a successful poll does this raise ``BatchNotFoundError`` (a
+        ``ModelError`` subclass, so existing ``except ModelError`` callers are unaffected)
+        naming the batch id. Every other status behaviour (the ``TERMINAL`` set,
+        ``expired``/``failed`` raising via ``_result_from_item`` on the caller's next step,
+        per-result error handling) is unchanged.
         """
         not_found_deadline: float | None = None
         while True:
@@ -213,7 +214,7 @@ class BatchClient:
                 if not_found_deadline is None:
                     not_found_deadline = now() + not_found_grace_seconds
                 if now() >= not_found_deadline:
-                    raise ModelError(
+                    raise BatchNotFoundError(
                         f"batch {batch_id}: still not found after "
                         f"{not_found_grace_seconds:.0f}s: {error}"
                     ) from error

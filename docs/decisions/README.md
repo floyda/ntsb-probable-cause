@@ -71,7 +71,7 @@ under `docs/specs/` and the record links to it.
 | [0028](0028-prose-graded-by-validated-judge-never-a-bar.md) | Prose outputs are graded by a validated judge, and are never a bar | Accepted |
 | [0029](0029-live-headline-is-the-finding-score.md) | The live board's headline is the finding score | Accepted |
 | [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted; its guard fixed by 0045; budget default raised by 0083 |
-| [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted |
+| [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted; item 1 replaced by 0073 |
 | [0032](0032-a-batch-run-is-resumable-from-its-recorded-batches.md) | A batch run is resumable from the batches it already paid for | Accepted |
 | [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
 | [0034](0034-cross-model-check-uses-gemini-flash.md) | The cross-model sanity check uses Gemini 3.1 Flash Lite, not Sonnet 5 | Accepted |
@@ -113,6 +113,7 @@ under `docs/specs/` and the record links to it.
 | [0070](0070-the-word-list-is-vendored-into-the-repository.md) | The word list is vendored into the repository | Accepted; amends 0058 |
 | [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted; taken up by 0078 in S2.6 |
 | [0072](0072-recorders-one-exempted-import-link.md) | The recorder's call to `split_record` is the one link exempted from the synthesis-and-verdict import rule | Accepted; narrows 0016 |
+| [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted; gate passed 2026-09-24; replaces 0031 item 1 |
 | [0074](0074-words-in-images-are-read-in-the-build.md) | Words in images are read in the build, not in "phase 2"; an inventory decides what is transcribed | Accepted; replaces 0047 item 3 |
 | [0075](0075-pages-are-rendered-with-pypdfium2.md) | Pages are rendered with `pypdfium2`, a ready-built package that passes 0047's reproducibility test | Accepted; extends 0047 |
 | [0076](0076-evidence-version-is-an-axis-not-an-arm.md) | Evidence version (v1, v2, v3) is an axis, not an arm; runs record it and cross-version comparisons are refused unless labelled | Accepted; extends 0022 |
