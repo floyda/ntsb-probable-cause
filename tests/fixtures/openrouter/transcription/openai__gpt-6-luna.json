@@ -1,0 +1,13 @@
+{
+ "content": "{\"page_kind\":\"typed text\",\"text\":\"PILOT STATEMENT - INVENTED TEST PAGE\\n\\nEngine sputtered at 800 ft.\\n\\nSwitched to right tank, no change.\\n\\nFuel selector BOTH, mixture RICH.\"}",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 2708,
+  "completion_tokens": 58,
+  "reported_cost_usd": 0.000367425,
+  "reasoning_tokens": 0
+ },
+ "model": "openai/gpt-6-luna",
+ "response_id": "gen-1790360664-p9WQf5LcxfrXQXzr9VHX"
+}
