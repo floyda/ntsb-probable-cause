@@ -20,6 +20,7 @@ import random
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -183,15 +184,17 @@ def mixed_cut(rows: Sequence[tuple[float, str]]) -> float:
 def stop_outcome(share: float) -> str:
     """Spec §6.4 with decision W6's number.
 
-    Printed to two decimal places (fix round 1, M4), so a share such as 9.995% is never
-    printed as "10.0%"; the decision itself always compares the unrounded value.
+    Printed to three decimal places (fix round 3, N2, correcting fix round 1's M4): two
+    decimals could still round a share just under the threshold up to "10.00%" while the
+    text beside it says "under 10%" (0.09999 does exactly that at two decimals). The
+    decision itself always compares the unrounded value, never the printed one.
     """
     if share < STOP_SHARE:
         return (
-            f"stop: {share:.2%} of image-bearing pages hold words in their images, under "
+            f"stop: {share:.3%} of image-bearing pages hold words in their images, under "
             f"{STOP_SHARE:.0%}; transcription is not worth its cost (spec §6.4)"
         )
-    return f"go on: {share:.2%} of image-bearing pages hold words in their images"
+    return f"go on: {share:.3%} of image-bearing pages hold words in their images"
 
 
 # --- the subcommands (plumbing; the rules above are what the tests pin) ---
@@ -298,12 +301,15 @@ def cmd_probe(
     sample: Sequence[Mapping[str, object]],
     *,
     client_factory: Callable[[ExitStack], Callable[[], ModelClient]] | None = None,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> tuple[str, bool]:
     """Label one page through ``run_preparation`` (fix round 1, I3).
 
     So its reservation and spend row are real and the page's cache entry is real: ``label``
     then reuses it rather than paying for it a second time. If the page is already cached
-    (a re-run of the probe), no call is made and that reading is reported instead.
+    (a re-run of the probe), no call is made and that reading is reported instead. ``now``
+    exists so a test can run the probe twice without the second call refusing to share the
+    first's job folder (fix round 3, M9): two real probes are never a second apart.
     """
     job = _jobs(sample[:1], documents)[0]
     done = run_preparation(
@@ -315,6 +321,7 @@ def cmd_probe(
         expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD,
         workers=1,
         client_factory=client_factory,
+        now=now,
     )
     note = ""
     record: Transcription | None
@@ -375,6 +382,16 @@ def cmd_check(settings: Settings) -> str:
     return f"page at {folder / 'check.html'}"
 
 
+def _undrawable(row: Mapping[str, object]) -> bool:
+    """Whether a sampled page failed to render (fix round 1, M7; fix round 3, N1).
+
+    Such a row has no ``document_sha256`` and no ``image_area_share`` -- it was never sent
+    to the labeller and never drawn to an image, so it takes no part in a job, a cut-off row
+    or a stratum's word share, however it may have been marked.
+    """
+    return row.get("document_sha256") is None
+
+
 def final_labels(
     labels: Mapping[int, str], marks: Mapping[int, Mapping[str, str]]
 ) -> dict[int, str]:
@@ -413,6 +430,12 @@ def score_text(
     """The results file: counts, and the evidence behind the cut-off and the stop rule."""
     _check_marks(marks)
     final = final_labels(labels, marks)
+    # A page that failed to render (fix round 1, M7) has no image and no image-area share;
+    # fix round 3, N1: it is left out of every count below, however Andy may have marked it
+    # (a row's own render outcome, not the labeller's, decides whether it is used), so
+    # `score_text` never has to parse its own placeholder as a number.
+    drawable = [r for r in sample if not _undrawable(r)]
+    not_drawable = len(sample) - len(drawable)
     agree = checked = 0
     confusion: Counter[tuple[str, str]] = Counter()
     for n, fields in marks.items():
@@ -427,14 +450,14 @@ def score_text(
     # 2), so the photo-only stratum -- which can mix image-only and text-and-image pages --
     # is judged page by page rather than by one word set for the whole stratum.
     by_stratum: dict[str, list[tuple[str, str]]] = {}
-    for row in sample:
+    for row in drawable:
         n = int(str(row["n"]))
         if n in final:
             by_stratum.setdefault(str(row["stratum"]), []).append((str(row["kind"]), final[n]))
     share = weighted_word_share(by_stratum, population)
     mixed_rows = [
         (float(str(r["image_area_share"])), final[int(str(r["n"]))])
-        for r in sample
+        for r in drawable
         if str(r["stratum"]).startswith("text and image") and int(str(r["n"])) in final
     ]
     evidence = cut_evidence(mixed_rows)
@@ -455,7 +478,7 @@ def score_text(
         "# the inventory: what image-bearing pages show (S2.6 spec §6) -- counts only",
         f"sample: {len(sample)} pages from the dev-400 page frame, seed {SEED}; labeller "
         f"{MODEL} at minimal reasoning, instruction {LABEL.version}; labelled "
-        f"{len(labels)}; cost ${cost_usd:.4f}",
+        f"{len(labels)}; not drawable: {not_drawable}; cost ${cost_usd:.4f}",
         "",
         "## labels by stratum (Andy's label where he checked the page; its own word share and "
         "population weight beside the weighted estimate, M6)",
@@ -530,9 +553,15 @@ def main(argv: list[str] | None = None) -> int:
         print(text)
         return 0 if ok else 1
     if args.command == "label":
+        # A page that failed to render (M7) is never sent to the labeller (fix round 3, N1):
+        # `label`'s exit code then reflects only real labelling failures, not the sample's
+        # own undrawable count, so one undrawable page never stops `make s26-inventory`
+        # before `check` runs.
+        drawable = [r for r in sample if not _undrawable(r)]
+        not_drawable = len(sample) - len(drawable)
         done = run_preparation(
             kind="inventory",
-            jobs=_jobs(sample, documents),
+            jobs=_jobs(drawable, documents),
             instruction=LABEL,
             settings=settings,
             commit=commit_state(),
@@ -541,10 +570,13 @@ def main(argv: list[str] | None = None) -> int:
             expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD,
         )
         failed = sum(1 for r in done if r.status == "failed")
-        print(f"labelled {len(done)} pages, {failed} failed, ${sum(r.cost_usd for r in done):.4f}")
+        print(
+            f"labelled {len(done)} pages, {failed} failed, not drawable: {not_drawable}, "
+            f"${sum(r.cost_usd for r in done):.4f}"
+        )
         return 1 if failed else 0
     cache = TranscriptionCache(settings.transcription_dir)
-    records = {int(str(r["n"])): cache.get(_key(r)) for r in sample}
+    records = {int(str(r["n"])): cache.get(_key(r)) for r in sample if not _undrawable(r)}
     labels = {n: rec.page_kind for n, rec in records.items() if rec and rec.page_kind}
     cost = sum(rec.cost_usd for rec in records.values() if rec)
     population = json.loads((folder / "population.json").read_text())

@@ -5,7 +5,7 @@ import json
 import random
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -190,6 +190,15 @@ def test_the_stop_rule() -> None:
     assert inv.stop_outcome(0.10).startswith("go on")
 
 
+def test_stop_outcome_prints_enough_precision_near_the_threshold() -> None:
+    """Fix round 3, N2: a share that rounds to 10.00% at two decimals must not read that way
+    while the text beside it still says "under 10%"."""
+    text = inv.stop_outcome(0.09999)
+    assert text.startswith("stop")
+    assert "10.00%" not in text
+    assert "9.999%" in text
+
+
 def test_allocation_totals_330() -> None:
     """Fix round 1, M10: the 330 the brief's sample section fixes."""
     assert sum(inv.ALLOCATION.values()) == 330
@@ -224,21 +233,41 @@ def test_score_text_reports_cut_evidence_and_stratum_shares() -> None:
     """Fix round 1: I4 (the cut's evidence), M5 (a zero cut's wording) and M6 (per-stratum
     word share and population weight beside the weighted estimate) on a small fixture."""
     sample: list[dict[str, object]] = [
-        {"n": 1, "stratum": "image only/fatal", "kind": "image only", "image_area_share": 1.0},
-        {"n": 2, "stratum": "image only/fatal", "kind": "image only", "image_area_share": 1.0},
+        {
+            "n": 1,
+            "stratum": "image only/fatal",
+            "kind": "image only",
+            "document_sha256": "a" * 64,
+            "image_area_share": 1.0,
+        },
+        {
+            "n": 2,
+            "stratum": "image only/fatal",
+            "kind": "image only",
+            "document_sha256": "b" * 64,
+            "image_area_share": 1.0,
+        },
         {
             "n": 3,
             "stratum": "text and image/fatal",
             "kind": "text and image",
+            "document_sha256": "c" * 64,
             "image_area_share": 0.01,
         },
         {
             "n": 4,
             "stratum": "text and image/fatal",
             "kind": "text and image",
+            "document_sha256": "d" * 64,
             "image_area_share": 0.01,
         },
-        {"n": 5, "stratum": "text only/fatal", "kind": "text only", "image_area_share": 0.0},
+        {
+            "n": 5,
+            "stratum": "text only/fatal",
+            "kind": "text only",
+            "document_sha256": "e" * 64,
+            "image_area_share": 0.0,
+        },
     ]
     labels = {
         1: "handwriting",
@@ -270,6 +299,7 @@ def test_score_text_prints_no_cut_when_nothing_is_admissible() -> None:
             "n": 1,
             "stratum": "text and image/fatal",
             "kind": "text and image",
+            "document_sha256": "a" * 64,
             "image_area_share": 0.01,
         },
     ]
@@ -277,6 +307,45 @@ def test_score_text_prints_no_cut_when_nothing_is_admissible() -> None:
     population = {"text and image/fatal": 100}
     text = inv.score_text(sample, labels, {}, population, 0.0)
     assert "no cut: every text-and-image page is sent" in text
+
+
+def test_undrawable_identifies_a_page_with_no_document_hash() -> None:
+    """Fix round 3, N1: a page that failed to render has no ``document_sha256``."""
+    assert inv._undrawable({"document_sha256": None}) is True
+    assert inv._undrawable({"document_sha256": "a" * 64}) is False
+
+
+def test_score_text_leaves_an_undrawable_page_out_of_the_cut_off_and_the_word_share() -> None:
+    """Fix round 3, N1: a page that failed to render never reaches a stratum's word share or
+    the cut-off rows, and never crashes ``score_text`` trying to parse its placeholder as a
+    number -- even when Andy's own mark would otherwise have given it a label."""
+    sample: list[dict[str, object]] = [
+        {
+            "n": 1,
+            "stratum": "text and image/fatal",
+            "kind": "text and image",
+            "document_sha256": None,
+            "image_area_share": None,
+        },
+    ]
+    marks = {1: {"label": "wrong", "correct label": "handwriting"}}
+    population = {"text and image/fatal": 100}
+    text = inv.score_text(sample, {}, marks, population, 0.0)  # must not raise
+    assert "not drawable: 1" in text
+    assert "0 sampled text-and-image pages" in text
+
+
+def test_undrawable_pages_are_left_out_of_the_label_jobs() -> None:
+    """Fix round 3, N1: the page filtered out before ``_jobs`` is built never gets a job."""
+    sample: list[dict[str, object]] = [
+        {"n": 1, "mkey": 1, "document": 1, "page": 1, "document_sha256": "a" * 64},
+        {"n": 2, "mkey": 2, "document": 1, "page": 1, "document_sha256": None},
+    ]
+    drawable = [r for r in sample if not inv._undrawable(r)]
+    documents = _FakeDocuments(build_pdf([PageSpec(text="x")]))
+    jobs = inv._jobs(drawable, documents)
+    assert len(jobs) == 1
+    assert jobs[0].key.document_sha256 == "a" * 64
 
 
 def test_documents_fails_fast_on_a_cache_miss(tmp_path: Path) -> None:
@@ -361,6 +430,7 @@ def test_cmd_probe_runs_through_run_preparation_and_caches_the_page(tmp_path: Pa
 
 def test_cmd_probe_reports_an_already_cached_page_without_a_second_call(tmp_path: Path) -> None:
     """Fix round 1, I3: a re-run of the probe reads the cache rather than calling again."""
+    moment = datetime(2026, 10, 2, tzinfo=UTC)
     settings = Settings(data_dir=tmp_path)
     doc = build_pdf([PageSpec(text="Engine sputtered.")])
     documents = _FakeDocuments(doc)
@@ -369,7 +439,13 @@ def test_cmd_probe_reports_an_already_cached_page_without_a_second_call(tmp_path
         [json.dumps({"page_kind": "typed text"})],
         usage=[Usage(prompt_tokens=100, completion_tokens=10)],
     )
-    inv.cmd_probe(settings, documents, [row], client_factory=lambda stack: lambda: client)
+    inv.cmd_probe(
+        settings,
+        documents,
+        [row],
+        client_factory=lambda stack: lambda: client,
+        now=lambda: moment,
+    )
 
     def _must_not_be_called(_stack: object) -> Callable[[], RecordingFakeClient]:
         def make() -> RecordingFakeClient:
@@ -377,7 +453,15 @@ def test_cmd_probe_reports_an_already_cached_page_without_a_second_call(tmp_path
 
         return make
 
-    text, ok = inv.cmd_probe(settings, documents, [row], client_factory=_must_not_be_called)
+    # A distinct `now` (fix round 3, M9): two jobs of the same kind cannot share one folder,
+    # so the second probe -- like any second job -- needs its own second to claim.
+    text, ok = inv.cmd_probe(
+        settings,
+        documents,
+        [row],
+        client_factory=_must_not_be_called,
+        now=lambda: moment + timedelta(seconds=1),
+    )
     assert ok
     assert "already cached" in text
 

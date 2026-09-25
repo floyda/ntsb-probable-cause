@@ -176,6 +176,38 @@ def test_settle_on_a_keyboard_interrupt(tmp_path: Path) -> None:
     assert open_reservations(settings.runs_dir) == {}
 
 
+def test_a_second_job_with_the_same_id_is_refused(tmp_path: Path) -> None:
+    """Fix round 3, M9: two jobs of the same kind claim one folder atomically, so the second
+    one refuses rather than mixing its reservation and spend rows into the first's."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    done = run_preparation(
+        kind="transcription",
+        jobs=_jobs(),
+        instruction=TRANSCRIBE,
+        settings=settings,
+        commit=("abc1234", False),
+        expected_cost_per_page_usd=0.01,
+        workers=1,
+        client_factory=lambda stack: lambda: _factory(stack),
+        now=lambda: NOW,
+    )
+    assert len(done) == 3
+    with pytest.raises(ConfigurationError, match="already exists"):
+        run_preparation(
+            kind="transcription",
+            jobs=_jobs(),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.01,
+            workers=1,
+            client_factory=lambda stack: lambda: _factory(stack),
+            now=lambda: NOW,
+        )
+    # The first job's own reservation is unaffected by the second's refusal.
+    assert open_reservations(settings.runs_dir) == {}
+
+
 def test_one_job_one_model(tmp_path: Path) -> None:
     jobs = [*_jobs(), *_jobs("google/gemini-3.6-flash")]
     with pytest.raises(ConfigurationError, match="one model"):

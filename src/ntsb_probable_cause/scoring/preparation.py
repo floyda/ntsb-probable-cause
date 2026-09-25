@@ -77,6 +77,20 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     started = now()
     sha, dirty = commit
     job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-{kind}"
+    # Claim the job's folder atomically, before anything else (fix round 3, M9; the same
+    # pattern as scoring/runner.py's Task 9D): two preparation jobs of the same kind started
+    # in the same second at the same commit would otherwise share one folder, each
+    # overwriting the other's reservation and interleaving spend rows -- the exact collision
+    # Task 9D records for evaluation runs. `mkdir` is atomic, so exactly one job claims it.
+    job_folder = settings.runs_dir / job_id
+    try:
+        job_folder.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise ConfigurationError(
+            f"preparation job folder {job_id} already exists: another job of kind {kind!r} "
+            "was started in the same second at the same commit. Wait a second and start "
+            "again."
+        ) from None
     # Built before the reservation (fix round 1, I2): the default factory raises
     # ConfigurationError when OPENROUTER_API_KEY is missing, and building it after the
     # reservation would leave that reservation open with nothing left to settle it -- held
