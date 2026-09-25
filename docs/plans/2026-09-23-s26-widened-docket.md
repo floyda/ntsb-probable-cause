@@ -3208,7 +3208,7 @@ git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expi
 - Consumes: `Runner.run`, `write_spec_json`, `ConfigurationError`, the test helpers `runner(...)` (fixed `now`) and `_run_id(...)`.
 - Produces: nothing new; one new refusal.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_runner.py`:
 
@@ -3243,12 +3243,12 @@ def test_two_fresh_runs_in_the_same_second_cannot_share_a_folder(
 
 Adapt the `RunSpec` arguments to whatever the file's existing sync ceiling tests pass so the first run in the second test succeeds (copy a passing test's spec). Check that no budget reservation file is left behind by the refused run.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_runner.py -v -k "already_exists or same_second"`
 Expected: FAIL -- the second run writes into the existing folder.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `Runner.run`'s fresh branch (`if resume is None:`), right after `folder = self._runs_dir / run_id` and before `write_spec_json`:
 
@@ -3267,7 +3267,7 @@ In `Runner.run`'s fresh branch (`if resume is None:`), right after `folder = sel
 
 Every existing test that starts two fresh runs into one `tmp_path` with the same sample and arm under the fixed test clock will now be refused. Fix each by giving the second run a later `now` (the `runner(..., now=...)` seam) or its own `tmp_path` subfolder, never by weakening the refusal; list every test changed in the commit message. `make check` must be green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py docs/plans/2026-09-23-s26-widened-docket.md
@@ -7107,3 +7107,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, Task 9B fix round 1: a dead batch's reported cost is recorded on its ended row and added to the run's cost_usd, and its id kept in batch_ids, on every later resume; before this the money was visible only in the aborted record and never to month_spent (review Minors 3-4).
 - 2026-09-25, Task 9B fix round 2 (review Minor A): a batch that ends unusably on the *fresh* path (not reused) now also adds its reported cost into the run's dead-batch total before the call raises, not only a reused batch's ending -- it gets no `ended` row here (only a reused batch's ending does), so nothing would otherwise seed that money into a later resume's totals if the run is abandoned rather than resumed again. Fresh dead batches count too.
 - 2026-09-25, Task 9B fix round 3 (controller ruling, review Minor C): a batch that ends unusably on the fresh path now also gets its `ended` row written right there, before the raise, carrying its reported cost -- not only the round-2 in-memory total. Before this, a resume that re-waited on such a batch could race the provider purging it (the lost path), undercounting its cost by the amount between the aborted floor and the true spend. Now the next resume finds no row to reuse for that stage at all and resubmits directly, never asking the provider about the dead id again -- immune to the purge race. Fresh-dead batches count exactly once either way: on the call that finds them dead (reused or fresh), never re-discovered as fresh a second time.
+- 2026-09-25, Task 9D: the brief expected several existing tests to break under the fixed test clock (two fresh runs of the same sample and arm colliding in one `tmp_path`). Checking every test in `tests/test_runner.py` that calls `Runner.run` more than once found none that does so on the fresh path twice with the same `tmp_path`, sample and arm -- every other multi-call test either resumes the second call or uses a different sample/arm/tmp_path. So no existing test needed a later `now` or a separate `tmp_path`; only the two new tests from Step 1 were added, unchanged from the brief.

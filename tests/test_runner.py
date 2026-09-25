@@ -2174,6 +2174,50 @@ def test_resume_refuses_a_folder_that_does_not_exist(
         )
 
 
+# --- Task 9D: a fresh run claims its folder atomically ---
+
+
+def test_a_fresh_run_refuses_a_folder_that_already_exists(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9D: two runs started in the same second share an id; the second is refused."""
+    existing = tmp_path / "runs" / _run_id(arm="ceiling")
+    existing.mkdir(parents=True)
+    (existing / "cases.jsonl").write_text("sentinel\n")
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+    assert (existing / "cases.jsonl").read_text() == "sentinel\n"
+    assert not (existing / "spec.json").exists()
+    assert open_reservations(tmp_path / "runs") == {}
+
+
+def test_two_fresh_runs_in_the_same_second_cannot_share_a_folder(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The first run completes; a second fresh run with the same clock is refused."""
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    runner(tmp_path, RecordingFakeClient([GOOD, REFINE])).run(spec, record_fixtures[:1])
+    second = RecordingFakeClient([GOOD, REFINE])
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, second).run(spec, record_fixtures[:1])
+    assert second.payloads == []
+
+
 # --- the run log: elapsed, counts and cost per poll; reuse vs. fresh spend; the header ---
 
 

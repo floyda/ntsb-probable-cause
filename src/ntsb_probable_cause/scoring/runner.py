@@ -977,6 +977,16 @@ class Runner:
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
             folder = self._runs_dir / run_id
+            try:
+                folder.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                # Task 9D: two runs started in the same second at the same commit, sample and
+                # arm share an id; mkdir is atomic, so exactly one claims the folder.
+                raise ConfigurationError(
+                    f"run folder {run_id} already exists: another run with this id was "
+                    "started in the same second at the same commit, sample and arm. Wait a "
+                    f"second and start again, or pass --resume {run_id} to continue that run."
+                ) from None
             # Before the first model call, so a folder that dies early still describes
             # itself (0032 point 1).
             write_spec_json(
