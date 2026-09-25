@@ -18,10 +18,10 @@ import html
 import json
 import random
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
-from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 import httpx
 
@@ -32,13 +32,15 @@ from ntsb_probable_cause.docket.transcribe import (
     LABEL,
     PAGE_LABELS,
     PageJob,
+    Transcription,
     TranscriptionCache,
     TranscriptionKey,
-    read_page,
 )
+from ntsb_probable_cause.errors import ConfigurationError, DocketError
 from ntsb_probable_cause.gitinfo import commit_state
+from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.scoring.metrics import wilson
-from ntsb_probable_cause.scoring.preparation import openrouter_clients, run_preparation
+from ntsb_probable_cause.scoring.preparation import run_preparation
 from ntsb_probable_cause.settings import Settings
 from scripts import marking_page
 from scripts.marking_page import Card, Choice
@@ -131,26 +133,46 @@ def weighted_word_share(
     return hits / total if total else 0.0
 
 
-def mixed_cut(rows: Sequence[tuple[float, str]]) -> float:
-    """The largest run of admissible cuts of image-area share (decision W3)."""
-    chosen = 0.0
+def cut_evidence(rows: Sequence[tuple[float, str]]) -> list[tuple[float, int, int, bool]]:
+    """For each candidate cut: pages below it, how many of those hold words, admissible or not.
+
+    Decision W3, made measurable (fix round 1, I4): a reader can check the chosen cut from
+    this table rather than trust the committed constant alone. A cut with no sampled pages
+    below it carries no evidence for it (fix round 1, M2), so it is inadmissible rather than
+    vacuously true -- a correction to the plan's rule that can only make the chosen cut
+    smaller, never larger, so it cannot admit a page W3 would otherwise have excluded.
+    """
+    evidence: list[tuple[float, int, int, bool]] = []
     for cut in CUTS:
         below = [label for share, label in rows if share < cut]
         held = sum(1 for label in below if label in WORDS["text and image"])
-        if below and held / len(below) > MAX_WORDS_BELOW_CUT:
+        admissible = bool(below) and held / len(below) <= MAX_WORDS_BELOW_CUT
+        evidence.append((cut, held, len(below), admissible))
+    return evidence
+
+
+def mixed_cut(rows: Sequence[tuple[float, str]]) -> float:
+    """The largest run of admissible cuts of image-area share (decision W3)."""
+    chosen = 0.0
+    for cut, _held, _total, admissible in cut_evidence(rows):
+        if not admissible:
             break
         chosen = cut
     return chosen
 
 
 def stop_outcome(share: float) -> str:
-    """Spec §6.4 with decision W6's number."""
+    """Spec §6.4 with decision W6's number.
+
+    Printed to two decimal places (fix round 1, M4), so a share such as 9.995% is never
+    printed as "10.0%"; the decision itself always compares the unrounded value.
+    """
     if share < STOP_SHARE:
         return (
-            f"stop: {share:.1%} of image-bearing pages hold words in their images, under "
+            f"stop: {share:.2%} of image-bearing pages hold words in their images, under "
             f"{STOP_SHARE:.0%}; transcription is not worth its cost (spec §6.4)"
         )
-    return f"go on: {share:.1%} of image-bearing pages hold words in their images"
+    return f"go on: {share:.2%} of image-bearing pages hold words in their images"
 
 
 # --- the subcommands (plumbing; the rules above are what the tests pin) ---
@@ -161,6 +183,18 @@ def _offline() -> httpx.BaseTransport:
         raise httpx.ConnectError("offline: the inventory reads the docket cache only")
 
     return httpx.MockTransport(refuse)
+
+
+def _documents(settings: Settings) -> CachedDocuments:
+    """The cache-only reader every subcommand shares.
+
+    ``max_attempts=1`` (fix round 1, M1): the default client retries a failed request five
+    times with growing backoff, so a cache miss against this offline transport used to sleep
+    about 30 seconds before raising -- with the ``CachedDocuments`` lock held the whole time
+    for a listing miss. One attempt makes a miss loud and free, as it is meant to be.
+    """
+    client = DocketClient(settings.docket_dir, transport=_offline(), max_attempts=1)
+    return CachedDocuments(client)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -177,29 +211,104 @@ def _key(row: Mapping[str, object]) -> TranscriptionKey:
     )
 
 
-def _jobs(rows: Sequence[Mapping[str, object]], documents: CachedDocuments) -> list[PageJob]:
+class _Loader(Protocol):
+    """What ``_jobs``/``cmd_probe`` need: just the page loader, so a test can fake it."""
+
+    def loader(self, mkey: int, index: int) -> Callable[[], bytes]: ...
+
+
+class _DocumentSource(Protocol):
+    """What ``_draw_pages`` needs: just the one document call, so a test can fake it."""
+
+    def document(self, mkey: int, index: int) -> bytes: ...
+
+
+def _jobs(rows: Sequence[Mapping[str, object]], documents: _Loader) -> list[PageJob]:
     return [
         PageJob(_key(r), documents.loader(int(str(r["mkey"])), int(str(r["document"]))), False)
         for r in rows
     ]
 
 
-def cmd_sample(settings: Settings, documents: CachedDocuments) -> str:
+def _draw_pages(
+    sample: Sequence[dict[str, object]], documents: _DocumentSource, folder: Path
+) -> int:
+    """Render each sampled page to a private JPEG; return how many failed to render.
+
+    A page that fails -- fetching its document or rendering it -- is recorded failed (no
+    ``document_sha256`` or ``image_area_share``, and its ``render_error``) rather than
+    aborting the whole draw (fix round 1, M7): render.py notes that a real dev-400 page can
+    fail to load in PDFium, and with a fixed seed there would otherwise be no way past it.
+    """
+    failed = 0
+    for row in sample:
+        try:
+            data = documents.document(int(str(row["mkey"])), int(str(row["document"])))
+            (page,) = render_pages(data, [int(str(row["page"]))])
+        except DocketError as error:
+            row["document_sha256"] = None
+            row["image_area_share"] = None
+            row["render_error"] = str(error)
+            failed += 1
+            continue
+        (folder / "pages" / f"{row['n']}.jpg").write_bytes(page.data)
+        row["document_sha256"] = hashlib.sha256(data).hexdigest()
+        row["image_area_share"] = page.image_area_share
+    return failed
+
+
+def cmd_sample(settings: Settings, documents: _DocumentSource) -> str:
     """Draw the sample; draw each page to a private JPEG; record hashes and image share."""
     folder = settings.data_dir / FOLDER
     (folder / "pages").mkdir(parents=True, exist_ok=True)
     frame = _read_jsonl(settings.data_dir / "s26" / "pages-dev-400.jsonl")
     sample = draw_sample(frame)
-    for row in sample:
-        data = documents.document(int(str(row["mkey"])), int(str(row["document"])))
-        (page,) = render_pages(data, [int(str(row["page"]))])
-        (folder / "pages" / f"{row['n']}.jpg").write_bytes(page.data)
-        row["document_sha256"] = hashlib.sha256(data).hexdigest()
-        row["image_area_share"] = page.image_area_share
+    failed = _draw_pages(sample, documents, folder)
     (folder / "sample.jsonl").write_text("".join(json.dumps(r) + "\n" for r in sample))
     population = Counter(_stratum(sample_kind(r), r["fatal"]) for r in frame)
     (folder / "population.json").write_text(json.dumps(population))
-    return f"{len(sample)} pages drawn to {folder}"
+    note = f", {failed} failed to render" if failed else ""
+    return f"{len(sample)} pages drawn to {folder}{note}"
+
+
+def cmd_probe(
+    settings: Settings,
+    documents: _Loader,
+    sample: Sequence[Mapping[str, object]],
+    *,
+    client_factory: Callable[[ExitStack], Callable[[], ModelClient]] | None = None,
+) -> tuple[str, bool]:
+    """Label one page through ``run_preparation`` (fix round 1, I3).
+
+    So its reservation and spend row are real and the page's cache entry is real: ``label``
+    then reuses it rather than paying for it a second time. If the page is already cached
+    (a re-run of the probe), no call is made and that reading is reported instead.
+    """
+    job = _jobs(sample[:1], documents)[0]
+    done = run_preparation(
+        kind="inventory",
+        jobs=[job],
+        instruction=LABEL,
+        settings=settings,
+        commit=commit_state(),
+        expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD,
+        workers=1,
+        client_factory=client_factory,
+    )
+    note = ""
+    record: Transcription | None
+    if done:
+        record = done[0]
+    else:
+        note = "already cached: "
+        record = TranscriptionCache(settings.transcription_dir).get(job.key)
+    if record is None:
+        return "probe: no record (unexpected)", False
+    text = (
+        f"probe: {note}{record.status}, kind {record.page_kind}, error {record.error}, "
+        f"{record.prompt_tokens}+{record.completion_tokens} tokens, ${record.cost_usd:.5f}"
+    )
+    return text, record.status == "transcribed"
 
 
 def cmd_check(settings: Settings) -> str:
@@ -256,6 +365,23 @@ def final_labels(
     return final
 
 
+def _check_marks(marks: Mapping[int, Mapping[str, str]]) -> None:
+    """Refuse a 'wrong' mark with no correction (fix round 1, M3).
+
+    The brief: "where Andy checked a page, his label is the one used" -- a 'wrong' mark with
+    an empty correct label would otherwise silently keep the model's label, which is not what
+    marking a page wrong means.
+    """
+    bad = sorted(
+        n
+        for n, fields in marks.items()
+        if fields.get("label") == "wrong" and not fields.get("correct label")
+    )
+    if bad:
+        pages = ", ".join(str(n) for n in bad)
+        raise ConfigurationError(f"marked wrong with no correct label: page(s) {pages}")
+
+
 def score_text(
     sample: Sequence[Mapping[str, object]],
     labels: Mapping[int, str],
@@ -263,7 +389,8 @@ def score_text(
     population: Mapping[str, int],
     cost_usd: float,
 ) -> str:
-    """The results file: counts only."""
+    """The results file: counts, and the evidence behind the cut-off and the stop rule."""
+    _check_marks(marks)
     final = final_labels(labels, marks)
     agree = checked = 0
     confusion: Counter[tuple[str, str]] = Counter()
@@ -286,20 +413,42 @@ def score_text(
         for r in sample
         if str(r["stratum"]).startswith("text and image") and int(str(r["n"])) in final
     ]
+    evidence = cut_evidence(mixed_rows)
     cut = mixed_cut(mixed_rows)
     low, high = wilson(agree, checked)
+    # The same total the weighted estimate divides by (fix round 1, M6): only image-bearing
+    # strata with at least one label contribute, matching weighted_word_share's own rule.
+    weighted_total = (
+        sum(
+            population.get(s, 0)
+            for s, stratum_labels in by_stratum.items()
+            if s.split("/")[0] in WORDS and stratum_labels
+        )
+        or 1
+    )
     lines = [
         "# the inventory: what image-bearing pages show (S2.6 spec §6) -- counts only",
         f"sample: {len(sample)} pages from the dev-400 page frame, seed {SEED}; labeller "
         f"{MODEL} at minimal reasoning, instruction {LABEL.version}; labelled "
         f"{len(labels)}; cost ${cost_usd:.4f}",
         "",
-        "## labels by stratum (Andy's label where he checked the page)",
+        "## labels by stratum (Andy's label where he checked the page; its own word share and "
+        "population weight beside the weighted estimate, M6)",
     ]
     for stratum, stratum_labels in sorted(by_stratum.items()):
         counts = Counter(stratum_labels)
+        kind = stratum.split("/")[0]
+        counted = WORDS.get(kind)
+        if counted and stratum_labels:
+            stratum_share = sum(1 for label in stratum_labels if label in counted) / len(
+                stratum_labels
+            )
+            weight = population.get(stratum, 0) / weighted_total
+            detail = f", {stratum_share:.1%} hold words, {weight:.1%} of the weighted estimate"
+        else:
+            detail = " -- a control stratum, not counted in the weighted estimate"
         lines.append(
-            f"  {stratum} (population {population.get(stratum, 0)}): "
+            f"  {stratum} (population {population.get(stratum, 0)}{detail}): "
             + ", ".join(f"{label} {counts[label]}" for label in PAGE_LABELS if counts[label])
         )
     lines += [
@@ -310,10 +459,19 @@ def score_text(
         *(f"  labelled {a}, Andy says {b}: {k}" for (a, b), k in sorted(confusion.items())),
         "",
         "## the mixed-page cut-off (decision W3)",
-        f"  cut: text-and-image pages whose images cover under {cut:.0%} of the page are not "
-        f"sent (from {len(mixed_rows)} sampled text-and-image pages; candidates "
-        + ", ".join(f"{c:.0%}" for c in CUTS)
-        + f"; at most 1 in {round(1 / MAX_WORDS_BELOW_CUT)} below the cut may hold words)",
+        f"  {len(mixed_rows)} sampled text-and-image pages; at most 1 in "
+        f"{round(1 / MAX_WORDS_BELOW_CUT)} below a cut may hold words:",
+        *(
+            f"    {cut_value:.0%}: {held} of {total} below the cut hold words "
+            f"({'admissible' if admissible else 'not admissible'})"
+            for cut_value, held, total, admissible in evidence
+        ),
+        (
+            "  no cut: every text-and-image page is sent"
+            if cut == 0.0
+            else f"  cut: text-and-image pages whose images cover under {cut:.0%} of the page "
+            f"are not sent"
+        ),
         "",
         "## the stop rule (spec §6.4, decision W6)",
         f"  weighted over all image-bearing dev-400 pages: {stop_outcome(share)}",
@@ -328,9 +486,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--marks", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--retry-failed", action="store_true")
     args = parser.parse_args(argv)
     settings = Settings()
-    documents = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline()))
+    documents = _documents(settings)
     folder = settings.data_dir / FOLDER
     if args.command == "sample":
         print(cmd_sample(settings, documents))
@@ -340,16 +499,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     sample = _read_jsonl(folder / "sample.jsonl")
     if args.command == "probe":
-        with ExitStack() as stack:
-            client = openrouter_clients(settings)(stack)()
-            record = read_page(
-                _jobs(sample[:1], documents)[0], client, LABEL, now=lambda: datetime.now(UTC)
-            )
-        print(
-            f"probe: {record.status}, kind {record.page_kind}, error {record.error}, "
-            f"{record.prompt_tokens}+{record.completion_tokens} tokens, ${record.cost_usd:.5f}"
-        )
-        return 0 if record.status == "transcribed" else 1
+        text, ok = cmd_probe(settings, documents, sample)
+        print(text)
+        return 0 if ok else 1
     if args.command == "label":
         done = run_preparation(
             kind="inventory",
@@ -358,11 +510,12 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             commit=commit_state(),
             workers=args.workers,
+            retry_failed=args.retry_failed,
             expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD,
         )
         failed = sum(1 for r in done if r.status == "failed")
         print(f"labelled {len(done)} pages, {failed} failed, ${sum(r.cost_usd for r in done):.4f}")
-        return 0
+        return 1 if failed else 0
     cache = TranscriptionCache(settings.transcription_dir)
     records = {int(str(r["n"])): cache.get(_key(r)) for r in sample}
     labels = {n: rec.page_kind for n, rec in records.items() if rec and rec.page_kind}

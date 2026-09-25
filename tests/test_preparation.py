@@ -1,6 +1,7 @@
 """A paid preparation job: reserved, spent in rows, settled (decisions 0045, 0081)."""
 
 import json
+from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +11,14 @@ from tests.pdf_builder import PageSpec, build_pdf
 
 from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, PageJob, TranscriptionKey
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
-from ntsb_probable_cause.model.client import RecordingFakeClient, Usage
+from ntsb_probable_cause.model.client import (
+    ModelReply,
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+    Usage,
+)
 from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.preparation import run_preparation
 from ntsb_probable_cause.settings import Settings
@@ -59,6 +67,16 @@ def test_spend_is_recorded_and_the_reservation_settled(tmp_path: Path) -> None:
 
 def test_a_job_over_the_budget_is_refused_before_any_call(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, monthly_budget_usd=0.01)
+    calls = 0
+
+    def factory(_stack: ExitStack) -> Callable[[], RecordingFakeClient]:
+        def make() -> RecordingFakeClient:
+            nonlocal calls
+            calls += 1
+            return _factory(_stack)
+
+        return make
+
     with pytest.raises(BudgetError):
         run_preparation(
             kind="transcription",
@@ -68,9 +86,94 @@ def test_a_job_over_the_budget_is_refused_before_any_call(tmp_path: Path) -> Non
             commit=("abc1234", False),
             expected_cost_per_page_usd=0.01,
             workers=1,
-            client_factory=lambda stack: lambda: _factory(stack),
+            client_factory=factory,
             now=lambda: NOW,
         )
+    # Fix round 1, M10: the refusal happens before any model client is even built.
+    assert calls == 0
+    assert open_reservations(settings.runs_dir) == {}
+
+
+def test_a_missing_key_leaves_no_reservation_and_makes_no_call(tmp_path: Path) -> None:
+    """Fix round 1, I2: the default factory's ConfigurationError must not leak a reservation."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0, openrouter_api_key=None)
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+        run_preparation(
+            kind="transcription",
+            jobs=_jobs(),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.01,
+            workers=1,
+            now=lambda: NOW,
+        )
+    assert open_reservations(settings.runs_dir) == {}
+    assert month_spent(settings.runs_dir, now=NOW) == 0.0
+
+
+class _BoomClient:
+    """Answers correctly for ``fail_after`` calls, then raises ``exc`` (M10)."""
+
+    def __init__(self, fail_after: int, exc: BaseException) -> None:
+        self._inner = RecordingFakeClient(
+            [json.dumps({"text": "words", "page_kind": "typed text"})],
+            usage=[Usage(prompt_tokens=1000, completion_tokens=100)],
+        )
+        self._fail_after = fail_after
+        self._exc = exc
+        self._n = 0
+
+    def complete(
+        self,
+        payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        self._n += 1
+        if self._n > self._fail_after:
+            raise self._exc
+        return self._inner.complete(payload, settings, system=system, history=history)
+
+
+def test_settle_on_an_unexpected_exception_mid_run(tmp_path: Path) -> None:
+    """Fix round 1, M10: the reservation is settled even when a call raises part-way through."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    client = _BoomClient(1, RuntimeError("boom"))
+    done = run_preparation(
+        kind="transcription",
+        jobs=_jobs(),
+        instruction=TRANSCRIBE,
+        settings=settings,
+        commit=("abc1234", False),
+        expected_cost_per_page_usd=0.01,
+        workers=1,
+        client_factory=lambda stack: lambda: client,
+        now=lambda: NOW,
+    )
+    assert len(done) == 3
+    assert open_reservations(settings.runs_dir) == {}
+
+
+def test_settle_on_a_keyboard_interrupt(tmp_path: Path) -> None:
+    """Fix round 1, M10: an interruption still settles the reservation."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    client = _BoomClient(1, KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        run_preparation(
+            kind="transcription",
+            jobs=_jobs(),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.01,
+            workers=1,
+            client_factory=lambda stack: lambda: client,
+            now=lambda: NOW,
+        )
+    assert open_reservations(settings.runs_dir) == {}
 
 
 def test_one_job_one_model(tmp_path: Path) -> None:

@@ -1,6 +1,22 @@
 """scripts/page_inventory.py: the sample, the weights, the cut-off and the stop rule."""
 
+import hashlib
+import json
+import random
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
 from scripts import page_inventory as inv
+from tests.pdf_builder import PageSpec, build_pdf
+
+from ntsb_probable_cause.docket.transcribe import TranscriptionCache
+from ntsb_probable_cause.errors import ConfigurationError, DocketError
+from ntsb_probable_cause.model.client import RecordingFakeClient, Usage
+from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
+from ntsb_probable_cause.settings import Settings
 
 
 def _frame() -> list[dict[str, object]]:
@@ -85,3 +101,202 @@ def test_andys_correction_replaces_the_models_label() -> None:
 def test_the_stop_rule() -> None:
     assert inv.stop_outcome(0.09).startswith("stop")
     assert inv.stop_outcome(0.10).startswith("go on")
+
+
+def test_allocation_totals_330() -> None:
+    """Fix round 1, M10: the 330 the brief's sample section fixes."""
+    assert sum(inv.ALLOCATION.values()) == 330
+
+
+def test_a_cut_with_no_sampled_pages_below_it_is_not_admissible() -> None:
+    """Fix round 1, M2: zero evidence is not evidence for the cut, so it stops there."""
+    assert inv.mixed_cut([(0.5, "photograph")] * 10) == 0.0
+
+
+def test_cut_evidence_reports_each_candidate() -> None:
+    """Fix round 1, I4: the numbers behind the chosen cut, one row per candidate."""
+    rows = [(0.01, "logo or letterhead only")] * 58 + [(0.01, "handwriting")]
+    rows += [(0.07, "logo or letterhead only")] * 9 + [(0.07, "handwriting")] * 3
+    rows += [(0.5, "photograph")] * 10
+    assert inv.cut_evidence(rows) == [
+        (0.02, 1, 59, True),
+        (0.05, 1, 59, True),
+        (0.10, 4, 71, False),
+        (0.20, 4, 71, False),
+    ]
+
+
+def test_score_refuses_a_wrong_mark_with_no_correct_label() -> None:
+    """Fix round 1, M3: a 'wrong' mark with nothing to replace it is refused, not ignored."""
+    marks = {1: {"label": "wrong", "correct label": ""}}
+    with pytest.raises(ConfigurationError, match="page"):
+        inv.score_text([], {}, marks, {}, 0.0)
+
+
+def test_score_text_reports_cut_evidence_and_stratum_shares() -> None:
+    """Fix round 1: I4 (the cut's evidence), M5 (a zero cut's wording) and M6 (per-stratum
+    word share and population weight beside the weighted estimate) on a small fixture."""
+    sample: list[dict[str, object]] = [
+        {"n": 1, "stratum": "image only/fatal", "image_area_share": 1.0},
+        {"n": 2, "stratum": "image only/fatal", "image_area_share": 1.0},
+        {"n": 3, "stratum": "text and image/fatal", "image_area_share": 0.01},
+        {"n": 4, "stratum": "text and image/fatal", "image_area_share": 0.01},
+        {"n": 5, "stratum": "text only/fatal", "image_area_share": 0.0},
+    ]
+    labels = {
+        1: "handwriting",
+        2: "typed text",
+        3: "logo or letterhead only",
+        4: "logo or letterhead only",
+        5: "typed text",
+    }
+    population = {
+        "image only/fatal": 200,
+        "text and image/fatal": 400,
+        "text only/fatal": 300,
+    }
+    text = inv.score_text(sample, labels, {}, population, 0.01)
+    assert "2%: 0 of 2 below the cut hold words (admissible)" in text
+    assert "20%: 0 of 2 below the cut hold words (admissible)" in text
+    assert "cut: text-and-image pages whose images cover under 20% of the page are not sent" in text
+    assert "100.0% hold words" in text  # image only/fatal: handwriting + typed text both count
+    assert "0.0% hold words" in text  # text and image/fatal: two logos, neither counts
+    assert "33.3% of the weighted estimate" in text  # 200 of 600 (200 + 400)
+    assert "66.7% of the weighted estimate" in text  # 400 of 600
+    assert "a control stratum, not counted in the weighted estimate" in text  # text only
+
+
+def test_score_text_prints_no_cut_when_nothing_is_admissible() -> None:
+    """Fix round 1, M5: a cut of 0 reads as 'no cut', not 'under 0%'."""
+    sample: list[dict[str, object]] = [
+        {"n": 1, "stratum": "text and image/fatal", "image_area_share": 0.01},
+    ]
+    labels = {1: "handwriting"}
+    population = {"text and image/fatal": 100}
+    text = inv.score_text(sample, labels, {}, population, 0.0)
+    assert "no cut: every text-and-image page is sent" in text
+
+
+def test_documents_fails_fast_on_a_cache_miss(tmp_path: Path) -> None:
+    """Fix round 1, M1: the shared documents reader must not retry an offline miss."""
+    settings = Settings(data_dir=tmp_path)
+    documents = inv._documents(settings)
+    started = time.monotonic()
+    with pytest.raises(DocketError):
+        documents.document(999999999, 1)
+    assert time.monotonic() - started < 1.0
+
+
+class _FlakyDocuments:
+    """A document source that fails for one mkey and succeeds for every other (M7)."""
+
+    def __init__(self, data: bytes, *, fails: int) -> None:
+        self._data = data
+        self._fails = fails
+
+    def document(self, mkey: int, index: int) -> bytes:
+        if mkey == self._fails:
+            raise DocketError("boom: page did not load")
+        return self._data
+
+
+def test_draw_pages_records_a_render_failure_and_continues(tmp_path: Path) -> None:
+    """Fix round 1, M7: one page failing to draw does not abort the rest of the sample."""
+    doc = build_pdf([PageSpec(text="hello")])
+    documents = _FlakyDocuments(doc, fails=2)
+    sample: list[dict[str, object]] = [
+        {"n": 1, "mkey": 1, "document": 1, "page": 1},
+        {"n": 2, "mkey": 2, "document": 1, "page": 1},
+        {"n": 3, "mkey": 3, "document": 1, "page": 1},
+    ]
+    folder = tmp_path / "inventory"
+    (folder / "pages").mkdir(parents=True)
+    failed = inv._draw_pages(sample, documents, folder)
+    assert failed == 1
+    assert sample[0]["document_sha256"] is not None
+    assert sample[1]["document_sha256"] is None
+    assert "render_error" in sample[1]
+    assert sample[2]["document_sha256"] is not None
+    assert (folder / "pages" / "1.jpg").exists()
+    assert not (folder / "pages" / "2.jpg").exists()
+    assert (folder / "pages" / "3.jpg").exists()
+
+
+class _FakeDocuments:
+    """A document source that always returns the same bytes, for ``cmd_probe`` (I3)."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def loader(self, mkey: int, index: int) -> Callable[[], bytes]:
+        return lambda: self._data
+
+
+def _probe_row(document_sha256: str) -> dict[str, object]:
+    return {"mkey": 1, "document": 1, "page": 1, "document_sha256": document_sha256}
+
+
+def test_cmd_probe_runs_through_run_preparation_and_caches_the_page(tmp_path: Path) -> None:
+    """Fix round 1, I3: the probe's spend is visible, and the page is cached for `label`."""
+    settings = Settings(data_dir=tmp_path)
+    doc = build_pdf([PageSpec(text="Engine sputtered.")])
+    documents = _FakeDocuments(doc)
+    row = _probe_row(hashlib.sha256(doc).hexdigest())
+    client = RecordingFakeClient(
+        [json.dumps({"page_kind": "typed text"})],
+        usage=[Usage(prompt_tokens=100, completion_tokens=10)],
+    )
+    text, ok = inv.cmd_probe(
+        settings, documents, [row], client_factory=lambda stack: lambda: client
+    )
+    assert ok
+    assert "probe: transcribed" in text
+    assert month_spent(settings.runs_dir, now=datetime.now(UTC)) > 0
+    cache = TranscriptionCache(settings.transcription_dir)
+    assert cache.get(inv._key(row)) is not None
+    assert open_reservations(settings.runs_dir) == {}
+
+
+def test_cmd_probe_reports_an_already_cached_page_without_a_second_call(tmp_path: Path) -> None:
+    """Fix round 1, I3: a re-run of the probe reads the cache rather than calling again."""
+    settings = Settings(data_dir=tmp_path)
+    doc = build_pdf([PageSpec(text="Engine sputtered.")])
+    documents = _FakeDocuments(doc)
+    row = _probe_row(hashlib.sha256(doc).hexdigest())
+    client = RecordingFakeClient(
+        [json.dumps({"page_kind": "typed text"})],
+        usage=[Usage(prompt_tokens=100, completion_tokens=10)],
+    )
+    inv.cmd_probe(settings, documents, [row], client_factory=lambda stack: lambda: client)
+
+    def _must_not_be_called(_stack: object) -> Callable[[], RecordingFakeClient]:
+        def make() -> RecordingFakeClient:
+            raise AssertionError("a cached page must not be labelled a second time")
+
+        return make
+
+    text, ok = inv.cmd_probe(settings, documents, [row], client_factory=_must_not_be_called)
+    assert ok
+    assert "already cached" in text
+
+
+def test_cmd_check_writes_the_seeded_60_deterministically(tmp_path: Path) -> None:
+    """Fix round 1, M10: `check` writes 60 cards, reproducibly, at seed 20260925."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / inv.FOLDER
+    folder.mkdir(parents=True)
+    sample = [
+        {"n": i, "stratum": "image only/fatal", "document_sha256": "a" * 64, "page": i}
+        for i in range(1, 331)
+    ]
+    (folder / "sample.jsonl").write_text("".join(json.dumps(r) + "\n" for r in sample))
+    inv.cmd_check(settings)
+    first = (folder / "check.html").read_text()
+    assert first.count('class="card"') == inv.CHECK_SIZE
+    rng = random.Random(inv.CHECK_SEED)  # noqa: S311 -- sampling, not security
+    expected = sorted(int(str(r["n"])) for r in rng.sample(sample, inv.CHECK_SIZE))
+    assert f'data-row="{expected[0]}"' in first
+    assert f'data-row="{expected[-1]}"' in first
+    inv.cmd_check(settings)
+    second = (folder / "check.html").read_text()
+    assert first == second

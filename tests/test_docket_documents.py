@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -68,3 +69,24 @@ def test_a_missing_index_raises(tmp_path: Path) -> None:
     documents = CachedDocuments(client)
     with pytest.raises(DocketError):
         documents.document(MKEY, 99)
+
+
+def test_a_listing_miss_with_max_attempts_1_sends_one_request_and_raises_at_once(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1, M1: an offline reader built with ``max_attempts=1`` never sleeps a retry."""
+    calls: list[httpx.Request] = []
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise httpx.ConnectError("offline")
+
+    client = DocketClient(
+        tmp_path / "docket", transport=httpx.MockTransport(refuse), max_attempts=1
+    )
+    documents = CachedDocuments(client)
+    started = time.monotonic()
+    with pytest.raises(DocketError):
+        documents.document(999999999, 1)
+    assert time.monotonic() - started < 1.0
+    assert len(calls) == 1

@@ -77,6 +77,11 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     started = now()
     sha, dirty = commit
     job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-{kind}"
+    # Built before the reservation (fix round 1, I2): the default factory raises
+    # ConfigurationError when OPENROUTER_API_KEY is missing, and building it after the
+    # reservation would leave that reservation open with nothing left to settle it -- held
+    # against the budget until someone ran `ntsb-eval release` by hand.
+    factory = client_factory or openrouter_clients(settings)
     reserve_within_budget(
         settings.runs_dir,
         job_id,
@@ -100,7 +105,6 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
             ),
         )
 
-    factory = client_factory or openrouter_clients(settings)
     try:
         with ExitStack() as stack:
             return transcribe_all(
