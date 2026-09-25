@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution
 
 check: lint type test
 
@@ -154,3 +154,22 @@ s26-inventory:
 	uv run python -m scripts.page_inventory label
 	uv run python -m scripts.page_inventory check
 # S2.6 spec §6.2: labels the 330 (about $0.20), then writes Andy's 60-page check.
+
+s26-transcriber-keys:
+	uv run python -m scripts.transcriber_test keys
+# S2.6 spec §7.3: draws the three answer keys; labels top-up pages if the inventory is short (cents).
+
+s26-transcriber-probe:
+	uv run python -m scripts.transcriber_test probe
+# One invented page per candidate (under a cent in all); records each reply as a test fixture.
+
+s26-transcriber-run:
+	uv run python -m scripts.transcriber_test run
+	uv run python -m scripts.transcriber_test handwriting
+	uv run python -m scripts.transcriber_test photos
+	uv run python -m scripts.transcriber_test mixed
+# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then Andy's two pages.
+
+s26-transcriber-resolution:
+	uv run python -m scripts.transcriber_test resolution --model $(MODEL)
+# The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1).
