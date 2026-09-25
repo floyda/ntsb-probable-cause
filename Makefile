@@ -77,7 +77,7 @@ s24-probe:
 
 s24-gate:
 	uv run ntsb-eval run --arm ceiling --sample dev-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
-# S2.4 spec §3.2. About $0.20. The report is made from the explicit run id afterwards.
+# S2.4 spec §3.2. About $0.22. The report is made from the explicit run id afterwards.
 
 s24-bars-ceiling:
 	uv run ntsb-eval run --arm ceiling --sample heldout-400 --model openai/gpt-6-luna --expected-cost-per-case-usd 0.005
