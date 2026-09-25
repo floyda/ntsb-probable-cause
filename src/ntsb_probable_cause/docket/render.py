@@ -22,9 +22,10 @@ from ntsb_probable_cause.errors import DocketError
 # Fix round 1, C1: PDFium is not thread-safe (confirmed by the review's `pdfium_threads.py`
 # probe -- 8 concurrent workers crashed the process 5 times out of 5). `transcribe_all` calls
 # this from up to `workers` threads at once, so every entry point into PDFium -- opening,
-# reading a page's size or images, rendering, closing -- is serialised behind one process-wide
-# lock. Rendering one page is milliseconds against a model call of seconds, so the pool still
-# overlaps the calls that matter.
+# reading a page's size or images, rendering, closing, and (fix round 2, R3) freeing a
+# rendered bitmap -- is serialised behind one process-wide lock. Rendering one page is
+# milliseconds against a model call of seconds, so the pool still overlaps the calls that
+# matter.
 _PDFIUM_LOCK = threading.Lock()
 
 Resolution = Literal[150, 200]
@@ -86,7 +87,10 @@ def render_pages(
 
     Every PDFium call this function makes runs behind ``_PDFIUM_LOCK`` (fix round 1, C1):
     PDFium itself is not thread-safe, so two calls from different threads at once can crash
-    the process rather than raise a catchable error.
+    the process rather than raise a catchable error. That includes the implicit call a
+    rendered bitmap's finalizer makes when it is freed (fix round 2, R3): each page's ``image``
+    is deleted before the lock is released, rather than left to go out of scope after the
+    function returns.
     """
     with _PDFIUM_LOCK:
         try:
@@ -114,6 +118,13 @@ def render_pages(
                 finally:
                     page.close()
                 rgb = image.convert("RGB")
+                # `image` wraps a PDFium bitmap directly; `rgb` is an independent copy, so the
+                # bitmap is no longer needed. Deleting it here, not after the loop or at the
+                # end of the function, makes its finalizer (`FPDFBitmap_Destroy`) run inside
+                # this lock for every page, including the last -- fix round 2, R3: without
+                # this, the last page's `image` stayed alive as a local variable until the
+                # function returned, so its bitmap was freed after the lock had been released.
+                del image
                 drawn.append(
                     RenderedPage(
                         page=number,

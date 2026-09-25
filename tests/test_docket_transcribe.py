@@ -272,8 +272,10 @@ def test_an_interruption_reports_every_finished_page_once(tmp_path: Path) -> Non
 
     ``chunk=1`` makes ``on_chunk`` run after every single completed page, so raising from
     inside it on the very first call deterministically interrupts the loop before every
-    pending page has been drained -- standing in for a Ctrl-C or a native crash, without
-    depending on thread timing.
+    pending page has been drained -- standing in for a Ctrl-C, without depending on thread
+    timing (a native crash is a different matter: it ends the process outright and runs no
+    ``finally`` block at all, so nothing here defends against one; the PDFium lock, C1/R3,
+    is what prevents that specific crash).
     """
     cache = TranscriptionCache(tmp_path)
     jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in range(1, 7)]
@@ -294,6 +296,10 @@ def test_an_interruption_reports_every_finished_page_once(tmp_path: Path) -> Non
     cached_pages = {n for n in range(1, 7) if cache.get(_key(n)) is not None}
     reported_pages = [r.key.page for r in reported]
     assert cached_pages, "the pool should have paid for and cached at least one page"
+    # More than the one page the raising on_chunk call itself saw: proves the finally block's
+    # fold-in actually ran, rather than the test passing trivially because every other job
+    # happened to be cancelled before it started (fix round 2, re-review).
+    assert len(cached_pages) > 1
     assert set(reported_pages) == cached_pages
     assert len(reported_pages) == len(set(reported_pages))
 
@@ -389,6 +395,21 @@ def test_transcription_key_dpi_is_typed_as_resolution() -> None:
         TranscriptionKey(document_sha256="d" * 64, page=1, model="m", instruction="t1", dpi=300)
 
 
+def test_transcribe_all_refuses_an_unpriced_model_before_any_call(tmp_path: Path) -> None:
+    """Fix round 2, R4: an unpriced model fails before any page is loaded or any call made."""
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(model="nobody/nothing"), lambda: DOC, mixed=False)]
+    made: list[int] = []
+
+    def factory() -> RecordingFakeClient:
+        made.append(1)
+        return RecordingFakeClient([_reply("w")])
+
+    with pytest.raises(ConfigurationError):
+        transcribe_all(jobs, factory, cache, TRANSCRIBE)
+    assert made == []
+
+
 def test_read_page_records_a_model_call_failure_with_zero_cost() -> None:
     """Fix round 1, C2: any exception the call itself raises costs nothing -- no reply came
 
@@ -455,14 +476,40 @@ class _SlowFailingCache(TranscriptionCache):
         super().put(record, instruction=instruction)
 
 
-def test_a_future_that_raised_outright_is_skipped_not_reported_or_crashed_on(
+def test_a_page_whose_cache_write_fails_is_still_reported_then_the_write_error_surfaces(
     tmp_path: Path,
 ) -> None:
-    """Fix round 1: the pool's finally block also tolerates a future the loop above never saw
+    """Fix round 2, R1: a paid page is reported even when its own cache write fails.
 
-    at all -- not just one it already finished handling -- because it raised (a write failure
-    after a real, paid call) rather than completing normally. It is skipped, not reported, and
-    the interruption that triggered the fallback still propagates cleanly.
+    The model call happened and was paid for regardless of whether the write afterwards
+    succeeds, so the page must be reported either way; the write failure itself is raised
+    only once every page has had its chance to be reported, not instead of reporting it.
+    """
+    cache = _SlowFailingCache(tmp_path, fail_page=2, delay=0.0)
+    jobs = [
+        PageJob(_key(1), lambda: BIG_DOC, mixed=False),
+        PageJob(_key(2), lambda: BIG_DOC, mixed=False),
+    ]
+    client = RecordingFakeClient(
+        [_reply("w"), _reply("w")], usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 2
+    )
+    reported: list[Transcription] = []
+
+    with pytest.raises(RuntimeError, match="disk full"):
+        transcribe_all(jobs, lambda: client, cache, TRANSCRIBE, workers=2, on_chunk=reported.extend)
+    assert sorted(r.key.page for r in reported) == [1, 2]
+    assert cache.get(_key(1)) is not None
+    assert cache.get(_key(2)) is None
+
+
+def test_a_page_whose_cache_write_fails_during_the_fold_in_is_still_reported(
+    tmp_path: Path,
+) -> None:
+    """Fix round 2, R1 and R2 together: the pool's ``finally`` block also tolerates a future
+
+    that raised outright (a write failure after a real, paid call) rather than completing
+    normally -- it is folded in and reported like any other finished page, not skipped, even
+    though the interruption that triggered the fold-in is what ultimately propagates.
     """
     cache = _SlowFailingCache(tmp_path, fail_page=2, delay=0.2)
     jobs = [
@@ -476,10 +523,13 @@ def test_a_future_that_raised_outright_is_skipped_not_reported_or_crashed_on(
 
     def on_chunk(records: Sequence[Transcription]) -> None:
         reported.extend(records)
-        raise KeyboardInterrupt
+        if len(reported) == 1:
+            raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt):
         transcribe_all(
             jobs, lambda: client, cache, TRANSCRIBE, workers=2, chunk=1, on_chunk=on_chunk
         )
-    assert [r.key.page for r in reported] == [1]
+    assert sorted(r.key.page for r in reported) == [1, 2]
+    assert cache.get(_key(1)) is not None
+    assert cache.get(_key(2)) is None

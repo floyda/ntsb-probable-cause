@@ -16,7 +16,7 @@ import json
 import os
 import threading
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -346,6 +346,50 @@ def read_page(
     )
 
 
+def _validate_jobs(jobs: Sequence[PageJob], instruction: Instruction) -> None:
+    """Fail fast, before any page is loaded or any call made.
+
+    Every job's key must name the instruction actually being used (fix round 1, M4), and every
+    model named must already have a price on file (fix round 2, R4) -- both are configuration
+    bugs, not a page's own reading, so both are checked once up front rather than per page.
+    """
+    for job in jobs:
+        if job.key.instruction != instruction.version:
+            raise ConfigurationError(
+                f"page {job.key.page}'s key names instruction {job.key.instruction!r}, not "
+                f"the instruction actually used ({instruction.version!r})"
+            )
+    for model in {job.key.model for job in jobs}:
+        try:
+            sources.price_of(model)
+        except KeyError as error:
+            raise ConfigurationError(
+                f"no price on file for model {model!r}; add it to sources.py before "
+                "transcribing with it"
+            ) from error
+
+
+def _pending_jobs(
+    jobs: Sequence[PageJob], cache: TranscriptionCache, *, retry_failed: bool
+) -> list[PageJob]:
+    """Every job worth paying for: not already cached, and not a repeat of one that is pending.
+
+    De-duplicated by ``key.digest()`` (fix round 1, M2): an identical document, such as a
+    standard form, can appear in more than one docket, and each page is paid for once.
+    """
+    seen_keys: set[str] = set()
+    pending: list[PageJob] = []
+    for job in jobs:
+        digest = job.key.digest()
+        if digest in seen_keys:
+            continue
+        seen_keys.add(digest)
+        cached = cache.get(job.key)
+        if cached is None or (retry_failed and cached.status == "failed"):
+            pending.append(job)
+    return pending
+
+
 def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a caller needs.
     jobs: Sequence[PageJob],
     client_factory: Callable[[], ModelClient],
@@ -360,45 +404,44 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
 ) -> list[Transcription]:
     """Read every page not already cached, on a pool of threads with one client each.
 
-    Each reading is cached the moment it returns, so an interrupted job loses only the pages
-    in flight. ``on_chunk`` is handed every ``chunk`` new readings, and the remainder at the
-    end -- including on an interruption or an unexpected exception (fix round 1, C2) -- so
-    every dollar spent stays visible to the budget guard, and never twice (M1) even if
-    ``on_chunk`` itself raises. A page cached as failed is read again only with
-    ``retry_failed``. The same page listed more than once is paid for once (fix round 1, M2):
-    an identical document, such as a standard form, can appear in more than one docket. The
-    caller owns the clients the factory makes and closes them afterwards.
-    """
-    for job in jobs:
-        if job.key.instruction != instruction.version:
-            raise ConfigurationError(
-                f"page {job.key.page}'s key names instruction {job.key.instruction!r}, not "
-                f"the instruction actually used ({instruction.version!r})"
-            )
+    ``on_chunk`` is handed every ``chunk`` new readings, and the remainder at the end --
+    including on an interruption or an unexpected exception (fix round 1, C2) -- so every
+    dollar spent stays visible to the budget guard, and never twice (M1) even if ``on_chunk``
+    itself raises. A page whose call succeeded but whose cache write then failed is still
+    reported, with that write error raised only after every page has had its chance to be
+    reported (fix round 2, R1): paid means reported, even when the page could not be cached
+    (it is simply read again next time, the same as any other cache miss). A page cached as
+    failed is read again only with ``retry_failed``. The same page listed more than once is
+    paid for once (fix round 1, M2): an identical document, such as a standard form, can
+    appear in more than one docket. Every model named in ``jobs`` must already have a price on
+    file (fix round 2, R4), checked once before any call is made. The caller owns the clients
+    the factory makes and closes them afterwards.
 
-    seen_keys: set[str] = set()
-    pending: list[PageJob] = []
-    for job in jobs:
-        digest = job.key.digest()
-        if digest in seen_keys:
-            continue
-        seen_keys.add(digest)
-        cached = cache.get(job.key)
-        if cached is None or (retry_failed and cached.status == "failed"):
-            pending.append(job)
+    One limitation remains undefended (fix round 2, R2): a second interruption that lands
+    while this function is already waiting inside ``pool.shutdown`` -- for example a repeated
+    Ctrl-C, or a real process kill -- can still leave in-flight paid pages unreported for this
+    call. They are cached the moment their own call finishes, so a later call reads them from
+    the cache rather than paying for them again; only that run's report of them is lost.
+    """
+    _validate_jobs(jobs, instruction)
+    pending = _pending_jobs(jobs, cache, retry_failed=retry_failed)
 
     local = threading.local()
 
-    def work(job: PageJob) -> Transcription:
+    def work(job: PageJob) -> tuple[Transcription, Exception | None]:
         client = getattr(local, "client", None)
         if client is None:
             client = local.client = client_factory()
         record = read_page(job, client, instruction, now=now)
-        cache.put(record, instruction=instruction)
-        return record
+        try:
+            cache.put(record, instruction=instruction)
+        except Exception as error:  # fix round 2, R1: the call already happened and was paid
+            return record, error  # for; it must still be reported even though it was never
+        return record, None  # cached, not silently dropped along with the write failure.
 
     done: list[Transcription] = []
     unreported: list[Transcription] = []
+    write_errors: list[Exception] = []
 
     def flush() -> None:
         if not unreported:
@@ -409,33 +452,45 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
         unreported.clear()
         on_chunk(batch)
 
+    def take(future: Future[tuple[Transcription, Exception | None]]) -> None:
+        """Queue one future's record before marking it handled (fix round 2, R2).
+
+        Queuing first means an interruption between the two can at worst cause the fold-in
+        below to see this future as still unhandled and process it again -- itself harmless,
+        since a future's result can be read more than once -- rather than lose the record
+        outright, which reordering the other way around could do.
+        """
+        record, error = future.result()
+        if error is not None:
+            write_errors.append(error)
+        done.append(record)
+        unreported.append(record)
+        handled.add(id(future))
+
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = [pool.submit(work, job) for job in pending]
     handled: set[int] = set()
     try:
         for future in as_completed(futures):
-            handled.add(id(future))
-            record = future.result()
-            done.append(record)
-            unreported.append(record)
+            take(future)
             if len(unreported) >= chunk:
                 flush()
     finally:
-        # A native crash, a KeyboardInterrupt or any other exception can end the loop above
-        # before every future is drained (fix round 1, C2). `shutdown(wait=True)` blocks until
-        # every future still running finishes (and cancels every one not yet started), so by
-        # the time it returns each future is done, cancelled, or failed; anything done that the
-        # loop above never saw is folded in and flushed here, so a paid-for page is never left
-        # unreported.
+        # A KeyboardInterrupt or another exception raised above can end the loop before every
+        # future is drained. This does not defend against a native crash, which ends the
+        # process outright and runs no `finally` block at all -- the PDFium lock (fix round 1,
+        # C1; fix round 2, R3) is what prevents that specific crash, not this code.
+        # `shutdown(wait=True)` blocks until every future still running finishes (and cancels
+        # every one not yet started), so by the time it returns each future is done, cancelled,
+        # or still failed for a reason of its own; anything done that the loop above never saw
+        # is folded in and flushed here, so a paid-for page is never left unreported by this
+        # run (subject to the second-interruption limit this function's docstring names).
         pool.shutdown(wait=True, cancel_futures=True)
         for future in futures:
-            if id(future) in handled or future.cancelled():
+            if id(future) in handled or future.cancelled() or future.exception() is not None:
                 continue
-            if future.exception() is not None:
-                continue
-            record = future.result()
-            handled.add(id(future))
-            done.append(record)
-            unreported.append(record)
+            take(future)
         flush()
+    if write_errors:
+        raise write_errors[0]
     return done
