@@ -3105,7 +3105,7 @@ A batch submitted fresh *in this call* that then ends `failed`, `expired` or `ca
 - Consumes: S2.4's `recorded_batches`, `_take_reusable`, `_supersede_downstream`, `_record_lost_batch` and its row shape, `BatchStatus.status`, `TERMINAL`.
 - Produces: `runner.ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})`; the `ended` row shape above; `recorded_batches` treats a row with `row.get("ended") in ENDED_UNUSABLE` exactly as it treats `lost` (the original row for that id is not returned either).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_runner.py`, beside S2.4's lost-batch resume tests (reuse their helpers — `FakeBatchClient`, the dead-run fixtures such as `_died_waiting_on_stage1` — and follow their shape):
 
@@ -3115,12 +3115,12 @@ In `tests/test_runner.py`, beside S2.4's lost-batch resume tests (reuse their he
 4. `test_a_fresh_batch_that_ends_failed_still_raises`: in the same resume, the fresh resubmission itself ends `failed`: `ModelError` is raised, and exactly one fresh submit happened (no second resubmission in one call). A second resume of that folder then resubmits once more and completes — the recoverability this task exists for.
 5. `test_recorded_batches_skips_ended_rows`: a `batches.jsonl` with rows for A (stage1), B (stage2), an `ended: "failed"` row for A: `recorded_batches` returns B only if B is not superseded, and never A (write the case the helper's docstring describes, so the rule is pinned).
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_runner.py -v -k "ended or expired or failed_still_raises"`
 Expected: FAIL — the resume raises `ModelError: batch … ended expired`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `scoring/runner.py`:
 
@@ -3152,7 +3152,7 @@ Add `_record_ended_batch(folder, batch_id, stage, ended)` beside `_record_lost_b
 
 so that control falls through to the existing fresh-submit path. Update `_submit_and_wait`'s and `recorded_batches`' docstrings: one paragraph each, naming Task 9B and S2.4's final review, saying the ended batch's cost stays in the totals and why. Rename `_supersede_downstream`'s keyword only if its docstring would otherwise mislead; a one-line note that it serves ended batches too is enough.
 
-- [ ] **Step 4: Run the tests, then the whole check; commit**
+- [x] **Step 4: Run the tests, then the whole check; commit**
 
 Run: `uv run pytest tests/test_runner.py -v`, then `make check`. Expected: PASS; green; S2.4's lost-batch tests unchanged.
 
@@ -3162,6 +3162,10 @@ In Task 18 of this plan, add to Steps 3 and 4: *if a batch is lost, fails or exp
 git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py docs/plans/2026-09-23-s26-widened-docket.md
 git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expired or cancelled (Task 9B, S2.4's final review)"
 ```
+
+**Deviations.**
+- 2026-09-25, Task 9B: the ended path supersedes dependants before writing its ended row, the order S2.4's final review fixed for the lost path (crash safety); the plan's snippet had them the other way round.
+- 2026-09-25, Task 9B: `test_a_resume_that_aborts_does_not_erase_the_dead_runs_recorded_spend` (written before this task) recorded a reused stage-1 batch ending `failed` and expected the resume to abort immediately on that wait. Task 9B's behaviour instead resubmits it fresh, so the test's `resumed` fake was given a second handler making the fresh resubmission also end `failed`, which still raises `ModelError` and preserves the test's original point (the dead run's recorded spend is never erased).
 
 ---
 
@@ -6932,9 +6936,13 @@ git add docs/results/heldout-ledger.md
 git commit -m "S2.6: ledger row for B-v1 on heldout-400"
 ```
 
+If a batch is lost, fails or expires, do not start a new held-out run: resume this one with the same command plus `--resume <run id>` (Task 9B); it resubmits the dead batch and everything after it, and the ledger row is written once, when the run finishes.
+
 - [ ] **Step 4: STOP — Andy runs B-v2 on held-out** (about $1–2, estimate; 30–90 minutes)
 
 `git status --short` must be empty. Then `make s26-bars-v2 PER_CASE=<value>`. Afterwards the tree again has one change, the second ledger row; commit it the same way. The two runs sit on commits that differ only by the first ledger row, so the code is one commit's (the S2.4 precedent, recorded in Deviations).
+
+If a batch is lost, fails or expires, do not start a new held-out run: resume this one with the same command plus `--resume <run id>` (Task 9B); it resubmits the dead batch and everything after it, and the ledger row is written once, when the run finishes.
 
 - [ ] **Step 5: The results file**
 

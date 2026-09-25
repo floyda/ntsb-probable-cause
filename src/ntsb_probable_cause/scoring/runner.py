@@ -98,6 +98,10 @@ SPEC_FILE = "spec.json"
 BATCHES_FILE = "batches.jsonl"
 RUN_FILE = "run.jsonl"
 
+# A reused batch that ended any of these has no replies to reuse (S2.6 Task 9B, S2.4's final
+# review): like a lost batch, it is recorded, its dependants superseded, and it is resubmitted.
+ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})
+
 
 def spec_json(
     spec: RunSpec, *, commit_sha: str, dirty: bool, case_ids: Sequence[str]
@@ -413,6 +417,15 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
 
     Nothing is ever deleted from ``batches.jsonl``; this only filters what is handed back.
 
+    A batch that instead ran to a terminal status other than ``completed`` (Task 9B, S2.4's
+    final review) gets the same treatment: a second row for the id, ``{"batch_id": ...,
+    "stage": ..., "ended": "<status>", "time": ...}``, appended in ``_submit_and_wait``. Its
+    reported cost, unlike a lost batch's, has already been added to the run's totals by the
+    time that row is written -- the provider may have billed for requests it completed before
+    the batch died, so that money must stay visible to the budget guard even though the batch
+    itself has no replies left to reuse. Neither an ``ended`` row nor the original row for that
+    id is returned here, exactly as for a ``lost`` one.
+
     Args:
         folder: the run folder.
 
@@ -434,7 +447,11 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
                 f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
             )
         time = row.get("time")
-        unusable = row.get("lost") is True or row.get("superseded") is True
+        unusable = (
+            row.get("lost") is True
+            or row.get("superseded") is True
+            or row.get("ended") in ENDED_UNUSABLE
+        )
         rows.append((stage, batch_id, time if isinstance(time, str) else None, unusable))
     unusable_ids = {batch_id for _stage, batch_id, _time, unusable in rows if unusable}
     return [
@@ -1384,6 +1401,16 @@ class Runner:
 
         self._write_log_line(body)
 
+    def _log_ended(self, stage: str, batch_id: str, ended: str) -> None:
+        """One line when a reused batch ended failed/expired/cancelled: it is resubmitted fresh."""
+
+        def body() -> str:
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "ENDED".ljust(self._WORD_WIDTH)
+            return f"{stage_field}{word_field}{batch_id} ended {ended}; resubmitting (new money)"
+
+        self._write_log_line(body)
+
     def _log_superseded(self, stage: str, batch_id: str, lost_batch_id: str) -> None:
         """One line per downstream batch dropped because the batch it depended on is lost."""
 
@@ -1448,6 +1475,25 @@ class Runner:
         with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
 
+    def _record_ended_batch(self, folder: Path, batch_id: str, stage: str, ended: str) -> None:
+        """Append an ``ended`` row for a reused batch that ran to a terminal non-completed status.
+
+        Task 9B, S2.4's final review: same row shape as ``_record_lost_batch``'s, with
+        ``"ended": ended`` (one of ``ENDED_UNUSABLE``) in place of ``"lost": True``, so a later
+        resume's ``recorded_batches`` skips this id (and its original row) instead of waiting
+        on it again. Nothing is ever deleted from ``batches.jsonl`` -- the original row stays,
+        this is a second row for the same id.
+        """
+        folder.mkdir(parents=True, exist_ok=True)
+        row = {
+            "batch_id": batch_id,
+            "stage": stage,
+            "ended": ended,
+            "time": self._now().isoformat(),
+        }
+        with (folder / BATCHES_FILE).open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+
     def _record_superseded_batch(
         self, folder: Path, batch_id: str, stage: str, lost_batch_id: str
     ) -> None:
@@ -1479,6 +1525,9 @@ class Runner:
         one still in ``run.reusable`` (naming the lost batch it depended on) and empties the
         queue, so every downstream stage submits fresh for the rest of this run, and
         ``recorded_batches`` keeps a later resume from ever reusing them either.
+
+        Serves an ``ended`` batch (Task 9B) the same way as a ``lost`` one -- ``lost_batch_id``
+        is simply the id of whichever batch has no replies left to reuse.
         """
         downstream = list(run.reusable)
         run.reusable.clear()
@@ -1554,6 +1603,20 @@ class Runner:
         (final review): otherwise a crash between the two writes would leave a ``lost`` row on
         disk with no ``superseded`` rows for the batches that depended on it, so a resume that
         stopped there would still think those batches are reusable.
+
+        Task 9B (S2.4's final review): a reused batch that instead ran to a terminal status in
+        ``ENDED_UNUSABLE`` (``failed``, ``expired`` or ``cancelled``) is treated the same way --
+        it has no replies left to reuse either. Its id and reported cost are already appended
+        to ``run.batch_ids``/``run.costs`` above, before this check, so that money stays in the
+        run's totals even though the batch cannot be replayed; only then is
+        ``_supersede_downstream`` called, an ``ended`` row recorded and the queue's downstream
+        batches marked ``superseded``, in that order, for the same crash-safety reason as the
+        ``lost`` path. Control then falls through to the fresh-submit path below, so a stage
+        with an unusable reused batch resubmits exactly once per call -- a fresh batch that
+        itself ends unusably still raises ``ModelError`` rather than resubmitting again, so a
+        run never re-spends more than once on one stage in one call. The next ``--resume``
+        finds the fresh batch recorded and, if it also ended unusably, resubmits it in turn --
+        which is what makes the run recoverable across repeated resumes.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1572,10 +1635,16 @@ class Runner:
             else:
                 run.batch_ids.append(status.batch_id)
                 run.costs.append(status.reported_cost_usd)
-                if status.status != "completed":
-                    raise ModelError(f"batch {batch_id} ended {status.status}")
-                refuse_replay_mismatch(batch_id, requests, status)
-                return status
+                if status.status in ENDED_UNUSABLE:
+                    self._supersede_downstream(run, lost_batch_id=batch_id)
+                    self._record_ended_batch(run.folder, batch_id, stage, status.status)
+                    self._log_ended(stage, batch_id, status.status)
+                    reused = None
+                else:
+                    if status.status != "completed":
+                        raise ModelError(f"batch {batch_id} ended {status.status}")
+                    refuse_replay_mismatch(batch_id, requests, status)
+                    return status
         batch_id = batch.submit(requests)
         self._record_batch_id(run.folder, batch_id, stage)
         self._log_submitted(stage, batch_id, len(requests))

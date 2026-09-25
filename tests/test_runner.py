@@ -1342,6 +1342,138 @@ def test_a_superseded_batch_stays_superseded_across_a_second_resume(
     assert record.finished is not None
 
 
+# --- resume: a batch that ended failed/expired/cancelled is resubmitted (task 9B) ---
+
+
+@pytest.mark.parametrize("ended_status", ["expired", "failed", "cancelled"])
+def test_resume_resubmits_a_recorded_batch_that_ended_expired(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], ended_status: str
+) -> None:
+    """A reused batch that ran to a terminal, non-completed status has no replies left to
+    reuse: it is recorded, resubmitted fresh exactly once, and the run completes."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status=ended_status, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # b1 resubmitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage 2
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]
+    assert len(resumed.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
+    assert record.batch_ids == ("b1", "c1", "c2")  # the dead batch's id stays in the totals
+    assert record.reported_batch_cost_usd == pytest.approx(0.01 + 0.02 + 0.03)
+    assert record.finished is not None
+    (case,) = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    assert case.scores is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("ended")) for row in rows] == [
+        ("stage1", "b1", None),  # the dead run's original row: never deleted
+        ("stage1", "b1", ended_status),  # marks it ended
+        ("stage1", "c1", None),  # the fresh replacement
+        ("stage2", "c2", None),
+    ]
+
+
+def test_an_ended_batch_supersedes_the_batches_recorded_after_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Stage 2's recorded batch depended on stage 1's replies; once stage 1 is found to have
+    ended unusably, stage 2's recorded id is superseded and never waited on."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # stage1, resubmitted
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage2, resubmitted
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # b2 is never waited on
+    assert len(resumed.submitted) == 2  # both stages paid for fresh; b2 was never reused
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [
+        (row["stage"], row["batch_id"], row.get("ended"), row.get("superseded", False))
+        for row in rows
+    ] == [
+        ("stage1", "b1", None, False),  # the dead run's original rows: never deleted
+        ("stage2", "b2", None, False),
+        ("stage2", "b2", None, True),  # marks b2 superseded, written BEFORE the ended row (9B)
+        ("stage1", "b1", "expired", False),  # marks b1 ended -- after its superseded rows
+        ("stage1", "c1", None, False),  # the fresh replacement
+        ("stage2", "c2", None, False),
+    ]
+    assert rows[2]["depends_on_batch_id"] == "b1"
+
+
+def test_a_fresh_batch_that_ends_failed_still_raises(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A fresh resubmission that itself ends unusably still raises: a run never re-spends
+    more than once on one stage in one call. A second resume then resubmits once more and
+    completes -- the recoverability this task exists for."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resume1 = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, None, status="failed", reported_cost=0.02),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    with pytest.raises(ModelError, match="ended failed"):
+        runner(tmp_path, RecordingFakeClient([]), batch=resume1).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert len(resume1.submitted) == 1  # no second resubmission in this call
+
+    resume2 = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.03),  # c1 resubmitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.04),  # stage 2
+        ],
+        prefix="d",
+        preloaded={"c1": resume1.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resume2).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert record.finished is not None
+    (case,) = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    assert case.failure is None
+
+
+def test_recorded_batches_skips_ended_rows(tmp_path: Path) -> None:
+    """The resume queue must never hand back an id that ended unusably, or its ``ended`` row."""
+    folder = tmp_path / "runs" / "x"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "a1", "stage": "stage1", "time": "2026-09-25T00:00:00"},
+        {"batch_id": "a1", "stage": "stage1", "ended": "failed", "time": "2026-09-25T00:00:01"},
+        {"batch_id": "b1", "stage": "stage2", "time": "2026-09-25T00:00:02"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert recorded_batches(folder) == [("stage2", "b1", "2026-09-25T00:00:02")]
+
+
 def test_spec_json_is_written_before_the_first_call(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -1601,7 +1733,9 @@ def test_a_resume_that_aborts_does_not_erase_the_dead_runs_recorded_spend(
         return BatchStatus(batch_id=bid, status="failed", results=(), reported_cost_usd=None)
 
     resumed = FakeBatchClient(
-        handlers=[wait_fails],
+        # b1 (reused) ends "failed" -- task 9B resubmits it fresh as c1, which also ends
+        # "failed": a fresh batch that ends unusably still raises, so this resume aborts too.
+        handlers=[wait_fails, wait_fails],
         prefix="c",
         preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
     )
