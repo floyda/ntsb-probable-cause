@@ -991,6 +991,22 @@ def test_report_states_the_new_case_absent_side_rule(store: Store) -> None:
     )
 
 
+def test_report_clean_fetch_caveat_names_the_gain_night_and_no_deployment(store: Store) -> None:
+    """Post-deploy fix round, B2: the earlier wording said the caveat applies to "the night
+    right after" the store gained the `run_months` table -- wrong; `last_clean_fetch` (`store/
+    db.py`) excludes only `run_id < before_run`, so the GAIN night itself is the one with no
+    earlier row to find (the night after already has the gain night's own row to check
+    against). The earlier wording also named a specific deployment ("for this store, the first
+    AWS night"), a claim this report makes about no other store fact. Both are gone."""
+    text = _full_report_from(store)
+    assert (
+        "a case first seen on that same night has no earlier clean-fetch record to check yet"
+        in text
+    )
+    assert "for a case first seen on the night right after that" not in text
+    assert "for this store, the first AWS night" not in text
+
+
 def test_report_regulation_coverage_makes_no_deployment_claim(store: Store) -> None:
     """Task 11 fix round 3, WORDING 2: no claim about a particular store's own history."""
     text = _full_report_from(store)

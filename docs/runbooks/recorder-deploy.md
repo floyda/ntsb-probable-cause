@@ -30,6 +30,63 @@ path the next time you deploy a later change.
 
 ---
 
+## Console access
+
+Everything below runs from the command line, but some checks are easier in a browser — and
+getting to the right place in the console has one step that is easy to miss.
+
+**The recorder lives in the project account, not the management account** (decision 0010).
+Signing in normally puts you in the *management* account (the one that also holds
+`floyda.dev`) — none of this stack's resources are there. **Root cannot switch roles either**,
+so this has to be done as the IAM user, never as root (`docs/runbooks/aws-setup.md` stage 0
+covers why root is avoided generally).
+
+1. Sign in to the AWS console as the IAM user (the sign-in URL `docs/runbooks/aws-setup.md`
+   stage 0 found).
+2. Use **Switch role** (top-right corner, under the account menu) to move into the project
+   account: account = the project account number from
+   `docs/runbooks/aws-accounts.local.md` (not committed — account numbers never go in a
+   tracked file), role = `OrganizationAccountAccessRole`. Filling in the same two values as a
+   direct link also works:
+
+   ```
+   https://signin.aws.amazon.com/switchrole?account=<project account>&roleName=OrganizationAccountAccessRole&displayName=ntsb
+   ```
+
+3. **Check you actually landed in the project account** before trusting anything the console
+   shows you:
+
+   ```
+   aws sts get-caller-identity --profile ntsb --region eu-west-2
+   ```
+
+   Compare the `Account` this prints against the account number shown in the console's own
+   top-right account menu — they must match.
+
+4. **The region must be `eu-west-2`** (the selector is next to the account menu). Every
+   resource this stack creates lives only in that region (decision 0010); any other region
+   shows an empty console with nothing to find, not an error.
+
+### Where to look
+
+| For | Go to |
+|---|---|
+| The recorder's log | CloudWatch → Log groups → `/ecs/ntsb-recorder` |
+| Whether a task is running, or why one stopped | ECS → Clusters → `ntsb-recorder` → Tasks (toggle to show **stopped** tasks too — a failed task disappears from the default running-only view) |
+| The schedule's off switch | EventBridge → Scheduler → Schedules → the one schedule → **Disable** (stops future nights without touching anything already deployed) |
+| Rolling the store back to an earlier night | S3 → the bucket (stage 4's `BucketName`) → `recorder.sqlite` → **Versions** tab |
+| The stack's outputs, without the CLI | CloudFormation → Stacks → `NtsbRecorderStack` → **Outputs** tab |
+| The container images CI (or stage 5) has pushed | ECR → Repositories → `ntsb-recorder` |
+| The stored API key (existence only) | Systems Manager → Parameter Store → `/ntsb/api-key` — **never click "Show"**; this runbook's own rule (stage 3) is that the key never appears on screen, including here |
+
+**Costs.** Cost Explorer and Budgets are in the **management** account, not the project
+account — **Switch back** first, then filter by linked account (the project account) to see
+just this stack's spend. Two things to know going in: Cost Explorer can take **up to 24 hours**
+to enable the first time it is opened in an account, and even once enabled, **costs lag by
+about a day** — do not expect today's spend to appear today.
+
+---
+
 ## Stage 1 — Install the tools
 
 Three things, all one-time (or check-only if already installed):
@@ -106,7 +163,7 @@ handful of IAM roles CDK uses to deploy anything at all. This is a one-time setu
 account and region — you will not run this again for future changes to the stack.
 
 ```
-cdk bootstrap aws://$(aws sts get-caller-identity --profile ntsb --query Account --output text)/eu-west-2 --profile ntsb
+cdk bootstrap aws://$(aws sts get-caller-identity --profile ntsb --region eu-west-2 --query Account --output text)/eu-west-2 --profile ntsb
 ```
 
 **What this does.** Creates the bootstrap bucket, ECR repository and IAM roles above, in the
@@ -118,7 +175,7 @@ handful of small template files, nothing else.
 **How to check.**
 
 ```
-aws cloudformation describe-stacks --stack-name CDKToolkit --profile ntsb --query 'Stacks[0].StackStatus'
+aws cloudformation describe-stacks --stack-name CDKToolkit --profile ntsb --region eu-west-2 --query 'Stacks[0].StackStatus'
 ```
 
 Expect `"CREATE_COMPLETE"`.
@@ -134,43 +191,63 @@ parameter's *name*, `/ntsb/api-key`). You write the real value once, by hand, fr
 **Why not the simpler one-line command.** The obvious command is
 
 ```
-aws ssm put-parameter --name /ntsb/api-key --type SecureString --value "$(pass show api/ntsb | head -n1)" --profile ntsb
+aws ssm put-parameter --name /ntsb/api-key --type SecureString --value "$(pass show api/ntsb | head -n1)" --profile ntsb --region eu-west-2
 ```
 
 and it works — but for the moment `aws` runs, the key sits in that command's own argument
 list, which (on a machine with more than one user, or any tool that samples the process table)
 is visible via `ps`. This project's standing rule is that a key never reaches a printed line or
-anywhere else it doesn't have to; the command below keeps the same effect while never putting
-the key on a command line at all. It builds the request as JSON on `stdin` instead, using
-`--cli-input-json`, through `uv run python` (not a bare `python3` — this checkout pins its own
-Python via `uv`, and a bare `python3` on macOS can trigger an "install the Command Line Tools?"
-prompt on a Mac that has never needed one before):
+anywhere else it doesn't have to.
+
+**An earlier version of this runbook piped a JSON document into `aws ssm put-parameter
+--cli-input-json file:///dev/stdin` to avoid that — it does not work.** Reproduced directly
+against `aws-cli` 2.36, with a dummy value and no real credentials: the command fails with
+"Invalid JSON received". The AWS CLI's `file://` form reads a real file on disk; a *piped*
+`/dev/stdin` is not read the same way, so the JSON never actually reaches the command. The
+form below keeps the same property (the key never appears as a command-line argument, and
+never touches disk) a different way — it hands the key to Python's own `boto3` library on
+`stdin`, inside a one-off `uv run` environment, and lets `boto3` make the API call directly,
+bypassing the `aws` CLI's own argument parsing entirely:
 
 ```
-pass show api/ntsb | head -n1 | uv run python -c '
-import json, sys
+cd <checkout>
+pass show api/ntsb | head -n1 | uv run --extra aws --with awscrt python -c '
+import sys, boto3
 value = sys.stdin.readline().rstrip("\n")
-print(json.dumps({"Name": "/ntsb/api-key", "Type": "SecureString", "Value": value}))
-' | aws ssm put-parameter --cli-input-json file:///dev/stdin --profile ntsb
+if not value:
+    sys.exit("no key on stdin")
+ssm = boto3.Session(profile_name="ntsb").client("ssm", region_name="eu-west-2")
+ssm.put_parameter(Name="/ntsb/api-key", Type="SecureString", Value=value, Overwrite=False)
+print("stored /ntsb/api-key")
+'
 ```
 
-**What this does.** Reads the key from your password store, writes it to AWS Parameter Store
-as an encrypted (`SecureString`) parameter named `/ntsb/api-key`, and prints nothing but the
-new parameter's version number — never the key itself.
+(`<checkout>` — "A note on paths" above.) `--extra aws` pulls in `boto3` (this checkout's
+optional AWS dependency group — needed anyway for stage 8's report). `--with awscrt` adds one
+more package for this one run only, without changing this project's own dependencies: the
+`ntsb` profile authenticates through `aws login`'s newer credential provider, and `boto3` needs
+the separate `awscrt` package to read credentials from it — the `aws` CLI already bundles the
+equivalent support, which is why the CLI form above does not need it but `boto3` does.
+
+**What this does.** Reads the key from your password store, and calls Parameter Store's
+`PutParameter` API directly through `boto3`, storing it as an encrypted (`SecureString`)
+parameter named `/ntsb/api-key`. `print("stored /ntsb/api-key")` is the only thing that ever
+prints — never the key itself.
 
 **What it costs.** Nothing; a standard parameter is free.
 
 **How to check.**
 
 ```
-aws ssm describe-parameters --profile ntsb --query "Parameters[?Name=='/ntsb/api-key']"
+aws ssm describe-parameters --profile ntsb --region eu-west-2 --query "Parameters[?Name=='/ntsb/api-key']"
 ```
 
 Expect one entry, `"Type": "SecureString"`. (Reading the value back would defeat the point —
 this only confirms the parameter exists.)
 
-**If you ever need to replace the key** (rotation), add `"Overwrite": true` to the JSON object
-above; `put-parameter` refuses to overwrite an existing parameter by default.
+**If you ever need to replace the key** (rotation), change `Overwrite=False` to
+`Overwrite=True` in the command above; `put_parameter` refuses to overwrite an existing
+parameter otherwise.
 
 ---
 
@@ -202,7 +279,7 @@ whether one already exists for GitHub Actions before deploying, so the stack imp
 of trying to create a duplicate (which CloudFormation would reject):
 
 ```
-aws iam list-open-id-connect-providers --profile ntsb
+aws iam list-open-id-connect-providers --profile ntsb --region eu-west-2
 ```
 
 - **If the list is empty**, skip to 4b — the stack creates the provider itself.
@@ -240,7 +317,7 @@ NtsbRecorderStack.SecurityGroupId = sg-...
 
 Keep this terminal output — every later stage needs one or more of these values. (You can also
 get them again at any time: `aws cloudformation describe-stacks --stack-name
-NtsbRecorderStack --profile ntsb --query 'Stacks[0].Outputs' --no-cli-pager`.)
+NtsbRecorderStack --profile ntsb --region eu-west-2 --query 'Stacks[0].Outputs' --no-cli-pager`.)
 
 **What it costs.** Nothing extra to deploy the stack itself (CloudFormation is free); the
 resources it creates start billing once they exist — see "What it costs", below, for the
@@ -249,7 +326,7 @@ running total.
 **How to check.**
 
 ```
-aws cloudformation describe-stacks --stack-name NtsbRecorderStack --profile ntsb --query 'Stacks[0].StackStatus'
+aws cloudformation describe-stacks --stack-name NtsbRecorderStack --profile ntsb --region eu-west-2 --query 'Stacks[0].StackStatus'
 ```
 
 Expect `"CREATE_COMPLETE"` (or `"UPDATE_COMPLETE"` on a later re-deploy). Now go straight on to
@@ -334,13 +411,25 @@ placed after the merge, not before it.
 
 ## Stage 6 — Move the bridge's data to AWS
 
-**If you never started the Mac bridge, skip this stage**: the first cloud night finds an empty
-bucket and does a normal first night (the walk-back `recorder/window.py`'s `first_run_window`
-runs, the same as any brand-new store) — there is nothing to move.
+**Read this before deciding what to skip — it is not all-or-nothing.** This stage's steps 1 and
+2 are about the `launchd` bridge specifically (stopping it, checkpointing *its* file); steps 3
+and 4 are about moving whatever local store exists, from wherever it came from, to AWS. The two
+halves skip independently:
 
-The bridge (`docs/runbooks/recorder-bridge.md`) has been writing to a **local** SQLite file
-since the day the recorder merged. Move it to AWS now, in this order, so the cloud run
-continues from where the bridge left off rather than starting from an empty store.
+- **If the `launchd` bridge never ran, skip steps 1 and 2** — there is nothing to stop or
+  checkpoint.
+- **If a local store exists at `data/recorder.sqlite` at all** — written by the bridge, by
+  `make record` run by hand, or by a container run on your own Mac — **do steps 3 and 4**, so
+  the cloud run continues from it rather than starting empty. This is the situation a night-1
+  local container run leaves you in: no bridge to stop, but a real store to move.
+- **Skip this whole stage only if no local store exists at `data/recorder.sqlite` at all.** The
+  first cloud night then finds an empty bucket and does a normal first night (the walk-back
+  `recorder/window.py`'s `first_run_window` runs, the same as any brand-new store) — there is
+  genuinely nothing to move.
+
+The bridge (`docs/runbooks/recorder-bridge.md`), when it has run, writes to that same
+**local** SQLite file. Move whatever is there to AWS now, in this order, so the cloud run
+continues from where local recording left off rather than starting from an empty store.
 
 **Never run this stage, or stage 7, between 03:00 and about 05:31 UTC.** That window is the
 scheduled task's own possible run time — not just "03:00 for 90 minutes": the schedule retries
@@ -351,8 +440,9 @@ run the full 90-minute limit plus the 60-second kill grace the `timeout` wrapper
 upload racing against the scheduled task's own download/upload of the same object is exactly
 the "two writers" situation the whole design avoids elsewhere. Pick any other time.
 
-**1. Check the bridge is not mid-run, then stop it**, so nothing on the Mac writes to the
-local file again. The bridge fires at 03:00 **local** time (not UTC — see
+**1. Skip this step if the `launchd` bridge never ran.** Otherwise, check the bridge is not
+mid-run, then stop it, so nothing on the Mac writes to the local file again. The bridge fires
+at 03:00 **local** time (not UTC — see
 `docs/runbooks/recorder-bridge.md` for why local time shifts against UTC across the year), so
 this check is against the Mac's own clock, not the cloud schedule's UTC window above:
 
@@ -372,9 +462,14 @@ than letting it reach its own clean exit. Once both checks agree the bridge is i
 launchctl bootout gui/$(id -u)/dev.floyda.ntsb-record
 ```
 
-**2. Check for an unflushed write-ahead log.** SQLite (`store/db.py`) opens every store in WAL
-mode, which can leave recent writes sitting in a separate `-wal` file rather than in the main
-file — a plain `cp`/`s3 cp` of the main file alone could then miss them:
+**2. Also skip this step if the `launchd` bridge never ran.** A one-off local run (`make
+record`, or a container run) closes its own store cleanly on exit (`Store.close()` always
+checkpoints), so there is nothing left over to check. The bridge is the one repeatedly-invoked
+writer whose *most recent* run might have been interrupted rather than exited cleanly, which is
+what this step guards against — check for an unflushed write-ahead log. SQLite (`store/db.py`)
+opens every store in WAL mode, which can leave recent writes sitting in a separate `-wal` file
+rather than in the main file — a plain `cp`/`s3 cp` of the main file alone could then miss
+them:
 
 ```
 ls -l /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite-wal
@@ -393,13 +488,13 @@ sqlite3 /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorde
 
 ```
 aws s3 cp /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite \
-  s3://<BucketName from stage 4>/recorder.sqlite --profile ntsb
+  s3://<BucketName from stage 4>/recorder.sqlite --profile ntsb --region eu-west-2
 ```
 
 **4. Verify the upload is byte-for-byte complete** — do not trust a silent success alone:
 
 ```
-aws s3api head-object --bucket <BucketName> --key recorder.sqlite --profile ntsb --query ContentLength --output text
+aws s3api head-object --bucket <BucketName> --key recorder.sqlite --profile ntsb --region eu-west-2 --query ContentLength --output text
 stat -f%z /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/recorder.sqlite
 ```
 
@@ -424,33 +519,63 @@ Before trusting the 03:00 schedule, run the task once yourself and read its log.
 this outside stage 6's own window warning above (03:00–05:31 UTC excluded)** — a manual run
 racing the scheduled task would be two writers to the same store, exactly as stage 6 warns.
 
-The cluster and task family are both named `ntsb-recorder` (fixed in the stack); the subnets
-and security group come straight from stage 4's `SubnetIds` and `SecurityGroupId` outputs — no
-separate lookup needed:
+**1. Read the subnets and security group straight from the stack's outputs** — the cluster and
+task family are both named `ntsb-recorder` (fixed in the stack), but the subnets and security
+group are generated, so pull them rather than retyping stage 4's terminal output by hand:
 
 ```
-aws ecs run-task \
+subnets=$(aws cloudformation describe-stacks --stack-name NtsbRecorderStack --region eu-west-2 --profile ntsb \
+  --query "Stacks[0].Outputs[?OutputKey=='SubnetIds'].OutputValue" --output text)
+sg=$(aws cloudformation describe-stacks --stack-name NtsbRecorderStack --region eu-west-2 --profile ntsb \
+  --query "Stacks[0].Outputs[?OutputKey=='SecurityGroupId'].OutputValue" --output text)
+echo "subnets=$subnets"
+echo "sg=$sg"
+```
+
+**Stop here if either line prints empty.** An empty value means stage 4's deploy has not
+actually finished, or you are pointed at the wrong stack — `run-task` below would otherwise
+fail with a confusing network-configuration error rather than a clear one.
+
+**2. Start the task, capturing its ARN directly:**
+
+```
+task=$(aws ecs run-task \
   --cluster ntsb-recorder \
   --task-definition ntsb-recorder \
   --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[<SubnetIds, comma-split>],securityGroups=[<SecurityGroupId>],assignPublicIp=ENABLED}" \
-  --profile ntsb --no-cli-pager --query 'tasks[0].taskArn' --output text
+  --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=ENABLED}" \
+  --region eu-west-2 --profile ntsb --no-cli-pager --query 'tasks[0].taskArn' --output text)
+echo "$task"
 ```
 
 **What this does.** Starts the container once, immediately, outside the 03:00 schedule — the
-same image, same command, same 90-minute limit as a real night. `--query 'tasks[0].taskArn'
---output text` prints just the task's ARN, ready to paste into the next command.
+same image, same command, same 90-minute limit as a real night. `$task` holds the started
+task's ARN for the next command.
 
 **What it costs.** A few cents at most — Fargate bills by the second while the task runs (see
-"What it costs" below), and this one task is over in minutes for a store with little in it yet.
+"What it costs" below). **This is not a quick task**: every night polls every watched docket
+(about 940 of them) at the enforced 2-second-per-request floor, so a full run takes roughly
+40–50 minutes, not "a few minutes" — the measured first cloud run took 39 minutes. Budget for
+that before starting it.
 
-**How to check.** Two ways:
+**How to check.** Three ways, from quickest to most detailed:
 
-1. **The task's own status, including why it stopped:**
+1. **Watch it live, in your terminal, as it runs:**
 
    ```
-   aws ecs describe-tasks --cluster ntsb-recorder --tasks <taskArn from run-task's output> \
-     --profile ntsb --no-cli-pager --query 'tasks[0].[lastStatus,stoppedReason,containers[0].exitCode]'
+   aws logs tail /ecs/ntsb-recorder --follow --since 1h --region eu-west-2 --profile ntsb \
+     --filter-pattern '?"step=" ?"run done" ?"failed=" ?ERROR'
+   ```
+
+   The filter keeps this readable across a ~40-minute run by showing only step boundaries, the
+   final summary, failure counts and errors — not every one of the roughly 940 per-case lines.
+   `Ctrl-C` stops watching without stopping the task.
+
+2. **The task's own status, including why it stopped:**
+
+   ```
+   aws ecs describe-tasks --cluster ntsb-recorder --tasks "$task" \
+     --region eu-west-2 --profile ntsb --no-cli-pager --query 'tasks[0].[lastStatus,stoppedReason,containers[0].exitCode]'
    ```
 
    Poll until `lastStatus` reads `"STOPPED"`. `exitCode` of `0` is success. **`stoppedReason` is
@@ -459,12 +584,12 @@ same image, same command, same 90-minute limit as a real night. `--query 'tasks[
    (Parameter Store) both stop the task before it ever starts logging, and only `stoppedReason`
    says which.
 
-2. **The log, in the CloudWatch console** (region **Europe (London), `eu-west-2`** — the region
-   selector is in the console's top-right corner): CloudWatch → Log groups → `/ecs/ntsb-recorder`
-   → the one log stream (named `recorder/recorder/<task id>`). Expect one line per case, ending
-   with a `run done` summary line (spec S9.1's format: `run done cases=N changed=N new_docs=N
-   failed=N ... minutes=N`). No case text ever appears in the log (spec S9.1) — only counts and
-   outcomes.
+3. **The full log, in the CloudWatch console** (region **Europe (London), `eu-west-2`** — the
+   region selector is in the console's top-right corner; "Console access", above, has the exact
+   path): CloudWatch → Log groups → `/ecs/ntsb-recorder` → the one log stream (named
+   `recorder/recorder/<task id>`). Expect one line per case, ending with a `run done` summary
+   line (spec S9.1's format: `run done cases=N changed=N new_docs=N failed=N ... minutes=N`).
+   No case text ever appears in the log (spec S9.1) — only counts and outcomes.
 
 ---
 
@@ -474,7 +599,7 @@ The 03:00 UTC schedule is now the only thing that should ever write to the store
 after the first 03:00 UTC has passed:
 
 ```
-aws logs tail /ecs/ntsb-recorder --since 24h --profile ntsb
+aws logs tail /ecs/ntsb-recorder --since 24h --region eu-west-2 --profile ntsb
 ```
 
 **What this does.** Prints the last 24 hours of the recorder's log lines directly in your
@@ -501,11 +626,14 @@ itself) and opens that copy strictly read-only, the same as it does for a local 
 ```
 uv sync --extra aws
 AWS_PROFILE=ntsb NTSB_STORE=s3://<BucketName from stage 4>/recorder.sqlite \
-  uv run python -m scripts.recorder_report
+  uv run --with awscrt python -m scripts.recorder_report
 ```
 
 **What this does.** `uv sync --extra aws` installs `boto3` (not part of the default install,
-since only this S3 path needs it — `store/sync.py`). The second command downloads the current
+since only this S3 path needs it — `store/sync.py`) into this checkout's own environment, for
+good. `--with awscrt` on the run itself adds one more package, for this one run only, for the
+same reason stage 3 needs it: the `ntsb` profile authenticates through `aws login`'s newer
+credential provider, which `boto3` needs `awscrt` to read. The command downloads the current
 store and prints the same counts-only report `make recorder-report` prints against a local
 file: run summaries, arrival percentiles, the change-feed comparison, regulation transitions,
 the closure tail, suspected re-numbers. Add `--out docs/results/s25-recorder-report.txt` to
@@ -604,8 +732,8 @@ it. **Before trusting the schedule again, copy the store across, the same way st
 moved it from the bridge:**
 
 ```
-aws s3 ls --profile ntsb | grep -i ntsbrecorderstack   # find the OLD, orphaned bucket's name
-aws s3 cp s3://<old bucket>/recorder.sqlite s3://<new BucketName from the fresh deploy's output>/recorder.sqlite --profile ntsb
+aws s3 ls --profile ntsb --region eu-west-2 | grep -i ntsbrecorderstack   # find the OLD, orphaned bucket's name
+aws s3 cp s3://<old bucket>/recorder.sqlite s3://<new BucketName from the fresh deploy's output>/recorder.sqlite --profile ntsb --region eu-west-2
 ```
 
 Verify with the same `head-object`/`stat` comparison stage 6 uses.
