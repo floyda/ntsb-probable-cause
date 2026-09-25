@@ -112,6 +112,10 @@ def test_docket_settings_have_polite_defaults() -> None:
     assert settings.docket_seconds_per_request == 2.0
 
 
+def test_transcription_dir_defaults_to_the_literal_path() -> None:
+    assert Settings().transcription_dir == Path("data/transcriptions")
+
+
 def test_docket_document_url_joins_the_relative_href() -> None:
     href = "/Docket/Document/docBLOB?ID=1&FileExtension=.pdf&FileName=x.pdf"
     assert sources.docket_document_url(href) == "https://data.ntsb.gov" + href
@@ -121,19 +125,23 @@ def test_unset_dirs_default_to_the_literal_paths(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("NTSB_DATA_DIR", raising=False)
     monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
     monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    monkeypatch.delenv("NTSB_TRANSCRIPTION_DIR", raising=False)
     settings = Settings(_env_file=None)
     assert settings.data_dir == Path("data")
     assert settings.runs_dir == Path("data/runs")
     assert settings.docket_dir == Path("data/docket")
+    assert settings.transcription_dir == Path("data/transcriptions")
 
 
 def test_unset_dirs_derive_from_an_explicit_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
     monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
     monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    monkeypatch.delenv("NTSB_TRANSCRIPTION_DIR", raising=False)
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/somewhere/runs")
     assert settings.docket_dir == Path("/somewhere/docket")
+    assert settings.transcription_dir == Path("/somewhere/transcriptions")
 
 
 def test_explicit_runs_dir_and_docket_dir_override_derivation(
@@ -142,9 +150,11 @@ def test_explicit_runs_dir_and_docket_dir_override_derivation(
     monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
     monkeypatch.setenv("NTSB_RUNS_DIR", "/elsewhere/runs")
     monkeypatch.setenv("NTSB_DOCKET_DIR", "/elsewhere/docket")
+    monkeypatch.setenv("NTSB_TRANSCRIPTION_DIR", "/elsewhere/transcriptions")
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/elsewhere/runs")
     assert settings.docket_dir == Path("/elsewhere/docket")
+    assert settings.transcription_dir == Path("/elsewhere/transcriptions")
 
 
 def test_store_default_is_the_literal_path(monkeypatch: pytest.MonkeyPatch) -> None:

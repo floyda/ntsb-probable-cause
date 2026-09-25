@@ -289,9 +289,11 @@ committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
 `NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
 cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; defaults to
 `<NTSB_DATA_DIR>/docket`, so it moves with `NTSB_DATA_DIR` unless set explicitly; never
-committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
+committed), `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
-production). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
+production) and `NTSB_TRANSCRIPTION_DIR` (where per-page transcriptions are cached; defaults
+to `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly;
+never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
 
 The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
 store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`

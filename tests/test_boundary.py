@@ -22,10 +22,12 @@ from tests.boundary import (
     assert_logical_text_clean,
     assert_raw_bytes_clean,
     assert_requests_clean,
+    assert_transcription_request_only,
     store_numeric_values,
     store_values,
     withheld_windows,
 )
+from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as _small_docket
 from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
 
@@ -33,6 +35,9 @@ from ntsb_probable_cause import fields, sources
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.pages import page_text
+from ntsb_probable_cause.docket.render import render_pages
+from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, request_for, settings_for
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
@@ -43,11 +48,12 @@ from ntsb_probable_cause.model.client import (
     ToolCall,
     Turn,
 )
+from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
-from ntsb_probable_cause.records.guard import Screen
+from ntsb_probable_cause.records.guard import Screen, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
@@ -1082,3 +1088,53 @@ def test_code_pattern_matches_a_whole_token_not_a_substring_of_a_longer_number()
     assert pattern.search("12552090345") is None  # embedded in a longer digit run
     assert pattern.search("a552090") is None  # a letter immediately before: no word boundary
     assert pattern.search("552090a") is None  # a letter immediately after: no word boundary
+
+
+def test_a_transcription_request_holds_only_the_image_instruction_and_text_layer(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """S2.6 spec §8.2 and §12: nothing but the page -- in particular no withheld text."""
+    document = build_pdf(
+        [PageSpec(text="FUEL SELECTOR BOTH. MIXTURE RICH.", images=("/DCTDecode",))]
+    )
+    (rendered,) = render_pages(document)
+    for raw in record_fixtures:
+        payload, system = request_for(rendered, TRANSCRIBE, text_layer=page_text(document, 1))
+        body = request_body(
+            payload,
+            settings_for("google/gemini-3.1-flash-lite", TRANSCRIBE),
+            system=system,
+            history=(),
+        )
+        assert_transcription_request_only(
+            body,
+            system=TRANSCRIBE.mixed_system,
+            image=payload.images[0],
+            text_layer=page_text(document, 1),
+        )
+        _, synthesis, verdict = split_record(raw)
+        sent = json.dumps(body)
+        for text in (*synthesis.texts().values(), verdict.probable_cause):
+            assert not text or normalise_text(text)[:60] not in normalise_text(sent)
+
+
+def test_the_transcription_boundary_check_can_fail(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The mutation: a request that also carries the case's own narrative must be caught."""
+    document = build_pdf([PageSpec(text="FUEL SELECTOR BOTH.", images=("/DCTDecode",))])
+    (rendered,) = render_pages(document)
+    evidence, _, _ = split_record(record_fixtures[0])
+    layer = page_text(document, 1)
+    image = request_for(rendered, TRANSCRIBE, text_layer=layer)[0].images[0]
+    rogue = Payload.for_page(image, text_layer=f"{layer}\n{evidence.prelim_narrative or 'x'}")
+    body = request_body(
+        rogue,
+        settings_for("google/gemini-3.1-flash-lite", TRANSCRIBE),
+        system=TRANSCRIBE.mixed_system,
+        history=(),
+    )
+    with pytest.raises(AssertionError):
+        assert_transcription_request_only(
+            body, system=TRANSCRIBE.mixed_system, image=image, text_layer=layer
+        )

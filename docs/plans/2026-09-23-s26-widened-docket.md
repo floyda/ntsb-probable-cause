@@ -3531,7 +3531,7 @@ On a mixed page the same instruction is followed by: *This page already has a te
 
 The inventory's instruction (version i1) asks for the kind alone and copies no words, so nothing graphic or personal is stored (spec §6.2 item 3).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_docket_transcribe.py`:
 
@@ -3749,12 +3749,12 @@ def assert_transcription_request_only(
 
 (Import what these need into `tests/test_boundary.py`: `json`, `build_pdf`/`PageSpec`, `render_pages`, `page_text`, `TRANSCRIBE`, `request_for`, `settings_for`, `request_body`, `normalise_text`, `Payload`, and `assert_transcription_request_only` from `tests.boundary`; `PageImage` into `tests/boundary.py`. Let ruff format tidy the call layout.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_transcribe.py tests/test_boundary.py -v -k "transcri or page"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ntsb_probable_cause.docket.transcribe'`.
 
-- [ ] **Step 3: `docket/pages.py` and `settings.py`**
+- [x] **Step 3: `docket/pages.py` and `settings.py`**
 
 In `docket/pages.py`:
 
@@ -3769,7 +3769,7 @@ def page_text(data: bytes, page: int) -> str:
 
 In `settings.py`: `transcription_dir: Path = Path("data/transcriptions")` beside `docket_dir`, with a comment `# S2.6 (decision 0081): the per-page transcription cache; never committed.`, and in `model_post_init`: `if "transcription_dir" not in self.model_fields_set: object.__setattr__(self, "transcription_dir", self.data_dir / "transcriptions")`. Add a test beside the existing `docket_dir` derivation test in `tests/test_sources_settings.py`, and a line under "Settings come from the environment" in `CLAUDE.md` naming `NTSB_TRANSCRIPTION_DIR`.
 
-- [ ] **Step 4: `docket/transcribe.py`**
+- [x] **Step 4: `docket/transcribe.py`**
 
 ```python
 """Transcription: the words on a page image, copied and nothing else (S2.6 §7, §8; 0079-0081).
@@ -4095,12 +4095,12 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
 
 Let `ruff format` lay out the keyword-argument calls; the content is what matters.
 
-- [ ] **Step 5: Run the tests, then the whole check**
+- [x] **Step 5: Run the tests, then the whole check**
 
 Run: the Step 2 command, then `make check`
 Expected: PASS; green. `import-linter`: `docket.transcribe` imports `model.client`, which is allowed (the model boundary contract forbids `model` importing `scoring` or the withheld modules, not `docket` importing `model`). Vulture scans `src`, `apps`, `scripts` and `infra` at 80% confidence; an unused module-level name scores 60%, so `LABEL` (first used by Task 12) is not reported.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/docket/transcribe.py src/ntsb_probable_cause/docket/pages.py src/ntsb_probable_cause/settings.py tests/ CLAUDE.md docs/plans/2026-09-23-s26-widened-docket.md
@@ -7109,3 +7109,6 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, Task 9B fix round 2 (review Minor A): a batch that ends unusably on the *fresh* path (not reused) now also adds its reported cost into the run's dead-batch total before the call raises, not only a reused batch's ending -- it gets no `ended` row here (only a reused batch's ending does), so nothing would otherwise seed that money into a later resume's totals if the run is abandoned rather than resumed again. Fresh dead batches count too.
 - 2026-09-25, Task 9B fix round 3 (controller ruling, review Minor C): a batch that ends unusably on the fresh path now also gets its `ended` row written right there, before the raise, carrying its reported cost -- not only the round-2 in-memory total. Before this, a resume that re-waited on such a batch could race the provider purging it (the lost path), undercounting its cost by the amount between the aborted floor and the true spend. Now the next resume finds no row to reuse for that stage at all and resubmits directly, never asking the provider about the dead id again -- immune to the purge race. Fresh-dead batches count exactly once either way: on the call that finds them dead (reused or fresh), never re-discovered as fresh a second time.
 - 2026-09-25, Task 9D: the brief expected several existing tests to break under the fixed test clock (two fresh runs of the same sample and arm colliding in one `tmp_path`). Checking every test in `tests/test_runner.py` that calls `Runner.run` more than once found none that does so on the fresh path twice with the same `tmp_path`, sample and arm -- every other multi-call test either resumes the second call or uses a different sample/arm/tmp_path. So no existing test needed a later `now` or a separate `tmp_path`; only the two new tests from Step 1 were added, unchanged from the brief.
+
+- 2026-09-25, Task 11: the cache key is the document's content hash and page number, in place of spec §8.3's page-image hash; the image hash is stored on the `Transcription` record instead. Documented in the task's own "cache key" note above; logged here per that note's instruction. Reason: the document key lets an evaluation run find a page's transcription without drawing every page first, and the two identify the same thing because rendering is repeatable (checked while planning). A change of model, instruction or resolution still changes the key.
+- 2026-09-25, Task 11: three of the brief's literal test assertions in `tests/test_docket_transcribe.py` (`test_the_instruction_forbids_guessing_and_describing`, `test_read_page_sends_the_image_and_records_cost_and_kind`, `test_a_bad_reply_is_a_failed_page_that_still_costs`) fail ruff's PT018 ("assertion should be broken down into multiple parts") as written with `and`. Each is split into separate `assert` statements with the same conditions and no change in what is checked; `ruff check --fix` also reordered one import block and applied `str.split(maxsplit=1)`. `make check` is the gate (CLAUDE.md rule 9), so the literal code is kept everywhere it already passes lint and adjusted only where it did not.

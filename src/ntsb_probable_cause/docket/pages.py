@@ -111,6 +111,14 @@ def page_facts(page: PageObject) -> PageFacts:
     )
 
 
+def page_text(data: bytes, page: int) -> str:
+    """One page's text layer (1-based), as ``extract_pdf`` reads it; empty if unreadable."""
+    try:
+        return (PdfReader(io.BytesIO(data)).pages[page - 1].extract_text() or "").strip()
+    except Exception:  # an unreadable page has no text layer, as in extract_pdf
+        return ""
+
+
 def document_facts(data: bytes) -> tuple[PageFacts, ...]:
     """Every page's facts; a file pypdf cannot open raises ``DocketError``, as in extract."""
     try:
