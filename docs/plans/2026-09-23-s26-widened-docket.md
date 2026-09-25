@@ -2430,7 +2430,7 @@ git commit -m "S2.6: merge main (S2.4, the model switch) into the widened docket
 
 **Why spend rows, and why several per job.** The budget guard (0045) counts what `month_spent` reads, and until now that was only evaluation runs' `run.jsonl`. Transcription is paid preparation (0081 item 2) and must count too. A job appends one row per chunk of calls (Task 11 uses 50 pages), so a job killed after an hour still shows the hour's spend to the next run's budget check, as S1's abort path does for evaluation runs.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_budget.py` (add imports as needed: `from datetime import UTC, datetime`, `import pytest`, `from ntsb_probable_cause.errors import BudgetError`, and the new names from `ntsb_probable_cause.scoring.budget`):
 
@@ -2477,12 +2477,12 @@ def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch
 
 (import `RunSpec` from `ntsb_probable_cause.scoring.runner` and `Settings` if absent; if the file already constructs `Settings` without `_env_file`, follow its existing pattern instead.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_budget.py tests/test_sources_settings.py -v`
 Expected: FAIL — `ImportError` for `SpendRecord`, and `25.0 != 40.0`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `settings.py`:
 
@@ -2553,12 +2553,12 @@ and in `month_spent`, after the `run.jsonl` loop (docstring: add "and every prep
 
 `SpendRecord` is defined above `month_spent` so the name resolves; import `BudgetError` from `ntsb_probable_cause.errors`.
 
-- [ ] **Step 4: Run the tests, then the whole check**
+- [x] **Step 4: Run the tests, then the whole check**
 
 Run: `uv run pytest tests/test_budget.py tests/test_sources_settings.py -v`, then `make check`
 Expected: PASS; green. A test that relied on the $25 default to trip the budget guard now needs an explicit `budget_usd=25.0`; pin it that way (never change its expected number) and list it in the commit message.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/settings.py src/ntsb_probable_cause/scoring/runner.py src/ntsb_probable_cause/scoring/budget.py tests/ docs/plans/2026-09-23-s26-widened-docket.md
@@ -7009,3 +7009,4 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-25, Task 9C fix round 1, controller ruling on the review's Minor 4 (recorded here, not repeated as prose elsewhere): a "successful reply" for the percentile means a reply that *finished* (`"stop"`), whatever happened to its case afterwards -- a completed reply's own token count is a true measure of need even where the schema went on to reject its content, or a later reply in the same case failed instead. `scripts/reply_budget.py` now feeds every case's own `"stop"` replies, scored or failed alike, into the successful-percentile pool (`_failed_case_stop_replies`, merged in by `_merge_failed_stop_replies`); a failed case's non-`"stop"` replies are untouched by this and stay exactly where Task 9A already counted them (the failure-text bracket via `_format_failures`, and Task 9C's own ambiguous/cut-off scan), so this can only ever raise a proposed budget, never lower one, and it never touches `cause_confirmed`'s ratio. This also required widening what "the per-reply data is complete enough to compute from" means: the pre-existing check (a scored case's own tuples all present) trivially failed whenever a sizing run held no scored cases at all, which would have made a failed case's own recoverable `"stop"` reply worthless on its own -- `_cases_with_unrecoverable_replies` replaces it, counting only cases that made a call (`cost_usd > 0`) yet left nothing recoverable at all (neither `CaseResult`'s own tuples nor, for a failed case, its bracket fallback), so a run with no scored cases but one fully-recoverable failed case is no longer marked incomplete. Test: a scored case's 9,000-token `"stop"` reply and a failed case's own 9,000-token `"stop"` reply (recovered from its failure-text bracket) give the identical `outcome:` line. Mutation-tested in isolation from the Important-1 fix (reverting only the completeness widening, with the pool-merge still active, reproduced a mismatched pair of outcomes) to confirm both changes are independently load-bearing. `make check` green (1262 passed, coverage 97.70%).
 
   Corrected 2026-09-25 (fix round 2, re-review): the claim above, "this can only ever raise a proposed budget, never lower one", is false -- adding a reply to a p99-based pool can move the percentile either way (`new_budget([1000] * 197 + [5000, 6000], []) == 16000`; adding one 500-token reply to that same pool gives `4000`, because the extra, smaller value shifts which element the 99th percentile lands on). The true reason the ruling is sound has nothing to do with direction: it adds *real, finished* replies to the pool under the unchanged rule, so the percentile describes every completed reply rather than a subset of them, whichever way that moves the proposed number. Separately, `_cases_with_unrecoverable_replies`'s `cost_usd > 0` test was looser than Task 9C itself for a scored case: a scored case's `cost_usd` is not a reliable "made no call" signal the way a failed "cap"/"leak" case's is, so a scored, pre-Task-9C case that happened to read `cost_usd == 0.0` and carried no per-reply tuples was wrongly treated as complete. Renamed `_unrecoverable_replies`, it now counts a scored case without tuples unconditionally (regardless of cost) and a failed case only where it also made a call; the "unavailable" report line now names which kind of case (scored, failed, or both) is missing data, via a new `_unavailable_reason` helper, rather than one wording covering either. Test added: a zero-cost, pre-Task-9C scored case beside a good scored case gives "per-reply data unavailable", not a number. `make check` green (1263 passed, coverage 97.70%).
+- 2026-09-25, Task 7: two `tests/test_runner.py` tests (`test_budget_refusal_before_any_call`, `test_run_is_refused_by_another_runs_open_reservation`) relied on `RunSpec.budget_usd`'s old $25 default to trip the budget guard against a spent/reserved figure of $24.99. Both now pin `budget_usd=25.0` explicitly on their `RunSpec`; their expected numbers and assertions are unchanged. `tests/test_sources_settings.py::test_openrouter_defaults` is updated from `25.0` to `40.0` since it asserts the default itself.

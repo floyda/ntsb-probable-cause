@@ -90,7 +90,7 @@ def test_openrouter_defaults() -> None:
     s = Settings(_env_file=None)
     assert s.openrouter_base_url == "https://openrouter.ai"
     assert s.runs_dir == Path("data/runs")
-    assert s.monthly_budget_usd == 25.0
+    assert s.monthly_budget_usd == 40.0
 
 
 def test_price_of_known_and_unknown_model() -> None:
@@ -221,3 +221,10 @@ def test_no_module_but_sources_names_a_luna_model() -> None:
         str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
     ]
     assert offenders == []
+
+
+def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Decision 0083: $40 a month during development, until S4."""
+    monkeypatch.delenv("NTSB_MONTHLY_BUDGET_USD", raising=False)
+    assert Settings(_env_file=None).monthly_budget_usd == 40.0
+    assert RunSpec(sample="dev-400", arm="ceiling").budget_usd == 40.0

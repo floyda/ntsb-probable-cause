@@ -84,7 +84,8 @@ class RunSpec:
     max_output_tokens: int = 2000
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
-    budget_usd: float = 25.0
+    # Decision 0083: $40 a month during the development stages, until the live board (S4).
+    budget_usd: float = 40.0
     sync: bool = False
     expected_cost_per_case_usd: float | None = None
 

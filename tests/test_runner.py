@@ -239,6 +239,7 @@ def test_budget_refusal_before_any_call(
                 sync=True,
                 price_variant="standard",
                 expected_cost_per_case_usd=0.01,
+                budget_usd=25.0,
             ),
             record_fixtures,
         )
@@ -2167,6 +2168,7 @@ def test_run_is_refused_by_another_runs_open_reservation(
         sync=True,
         price_variant="standard",
         expected_cost_per_case_usd=0.05,
+        budget_usd=25.0,
     )
     with pytest.raises(BudgetError, match="reserved"):
         runner(tmp_path, client).run(spec, record_fixtures[:1])
