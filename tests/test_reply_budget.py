@@ -634,8 +634,8 @@ def test_confirm_and_size_refuses_to_size_from_a_scored_case_with_an_unknown_fin
     size_cases = [_successful_case("c2", replies=[(1_300, 200, None)])]
     outcome = _confirmed_pair_outcome(size_cases)
     assert outcome == (
-        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
-        "returned to Andy"
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(None); returned to Andy"
     )
 
 
@@ -651,23 +651,117 @@ def test_confirm_and_size_refuses_to_size_from_a_failed_case_with_an_unknown_fin
     ]
     outcome = _confirmed_pair_outcome(size_cases)
     assert outcome == (
-        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
-        "returned to Andy"
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(None); returned to Andy"
     )
 
 
 def test_confirm_and_size_unknown_reason_guard_fires_before_data_unavailable() -> None:
     """A pre-Task-9C case (no tuples) sits alongside a scored case with an unknown reason: the
-    unknown-reason outcome fires, never "per-reply data unavailable"."""
+    ambiguous-reason outcome fires, never "per-reply data unavailable"."""
     size_cases = [
         _successful_case("c2", replies=[(1_300, 200, None)]),
         _successful_case_pre_fix("c3", completion_tokens=9_000, reasoning_tokens=8_000),
     ]
     outcome = _confirmed_pair_outcome(size_cases)
     assert outcome == (
-        "outcome: no step fits -- a reply in the sizing run has no recorded finish reason; "
-        "returned to Andy"
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(None); returned to Andy"
     )
+
+
+# --- Task 9C fix round 1: any non-"stop"/non-"length" reason is ambiguous, not just None ---
+
+
+def test_confirm_and_size_treats_a_content_filter_reply_as_ambiguous_not_a_number() -> None:
+    """Review Important 1's own example: a content_filter reply's reasoning tokens are
+    censored exactly like a cut-off one, but it is not literally "length" -- without the
+    widened guard this fed the floor as if it were a genuine, uncut 15,900-token need and
+    yielded "new max_output_tokens 16000"."""
+    size_cases = [
+        _successful_case("c2", replies=[(1_300, 200, "stop"), (16_000, 15_900, "content_filter")])
+    ]
+    assert rb.new_budget([1_300], [15_900]) == 16_000  # what the widened guard now stops
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(content_filter); returned to Andy"
+    )
+
+
+def test_confirm_and_size_catches_a_failed_cases_earlier_non_length_non_stop_reply() -> None:
+    """Review Important 1: a failed case's *earlier* reply ended "error" -- not "length", not
+    None -- which the narrower (Task 9C) guard missed entirely, and which was invisible to
+    that case's own failure text (naming only its last reply, "stop"). The widened scan
+    catches it via ``CaseResult``'s own tuples."""
+    size_cases = [
+        _failed_case(
+            "c2",
+            "schema: bad json (finish_reason=stop, completion_tokens=500, reasoning_tokens=100)",
+            replies=[(16_000, 15_900, "error"), (500, 100, "stop")],
+        ),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(error); returned to Andy"
+    )
+
+
+def test_confirm_and_size_treats_a_bracket_less_pre_task_9a_failure_as_ambiguous() -> None:
+    """Review minor: pins the "unrecorded" branch (a pre-Task-9A failure with no bracket at
+    all) beside a good, ordinary scored case."""
+    size_cases = [
+        _failed_case("c2", "schema: bad json"),  # pre-Task-9A: no bracket at all
+        _successful_case("c3", replies=[(1_300, 200, "stop")]),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(unrecorded); returned to Andy"
+    )
+
+
+def test_confirm_and_size_refuses_to_size_when_a_none_reason_reply_has_large_reasoning() -> None:
+    """9A's original regression shape (fix round 4): without a guard, a None-reason reply's
+    15,900 reasoning tokens would raise the floor to 16,000 exactly as a censored reply would
+    -- even sitting beside two ordinary "stop" replies."""
+    size_cases = [
+        _successful_case(
+            "c2", replies=[(16_000, 15_900, None), (1_300, 200, "stop"), (900, 100, "stop")]
+        )
+    ]
+    assert rb.new_budget([1_300, 900], [15_900]) == 16_000  # what the guard stops
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == (
+        "outcome: no step fits -- a reply in the sizing run did not finish normally "
+        "(None); returned to Andy"
+    )
+
+
+# --- Task 9C fix round 1: controller ruling on Minor 4 -- every "stop" reply counts ---
+
+
+def test_confirm_and_size_a_schema_rejected_stop_reply_counts_the_same_in_either_case_type() -> (
+    None
+):
+    """A completed ("stop") reply's own token count is a true measure of need whatever
+    happened to its case afterwards: a scored case's 9,000-token "stop" reply and a failed
+    case's own 9,000-token "stop" reply (recovered from its failure-text bracket) must feed
+    the same percentile and give the same outcome."""
+    scored_outcome = _confirmed_pair_outcome(
+        [_successful_case("c2", replies=[(9_000, 100, "stop")])]
+    )
+    failed_outcome = _confirmed_pair_outcome(
+        [
+            _failed_case(
+                "c2",
+                "schema: bad json (finish_reason=stop, completion_tokens=9000, "
+                "reasoning_tokens=100)",
+            )
+        ]
+    )
+    assert scored_outcome == failed_outcome == "outcome: no step fits -- returned to Andy"
 
 
 def test_main_confirm_and_size_writes_the_two_section_report(
