@@ -58,6 +58,7 @@ The spec is approved; these are the places where writing the plan found somethin
 | `src/ntsb_probable_cause/settings.py`, `scoring/budget.py` | 7 | the $40 default; spend records for preparation jobs |
 | `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `scoring/ledger.py`, `apps/eval/__main__.py` | 8, 9 | the evidence version; marks in results; the report printed twice |
 | `scripts/reply_budget.py`, `RunSpec.max_output_tokens` | 9A | the reply budget, recorded on every run, measured on `dev-400` and set by decision |
+| `scoring/records.py` (`CaseResult` reply tuples), `scripts/reply_budget.py` | 9C | every case's per-reply facts; unknown finish reasons fail closed |
 | `scoring/runner.py` (`_submit_and_wait`, `recorded_batches`) | 9B | a resume resubmits a batch that ended failed, expired or cancelled |
 | `src/ntsb_probable_cause/model/client.py`, `model/openrouter.py`, `sources.py` | 10 | `PageImage`; image parts in the request; candidate prices and reasoning levels |
 | `src/ntsb_probable_cause/docket/transcribe.py` | 11 | the instruction, the request, the reply, the per-page cache, the worker pool |
@@ -3161,6 +3162,32 @@ In Task 18 of this plan, add to Steps 3 and 4: *if a batch is lost, fails or exp
 git add src/ntsb_probable_cause/scoring/runner.py tests/test_runner.py docs/plans/2026-09-23-s26-widened-docket.md
 git commit -m "S2.6: a resume resubmits a recorded batch that ended failed, expired or cancelled (Task 9B, S2.4's final review)"
 ```
+
+---
+
+### Task 9C: Every case records each reply's facts; an unknown finish reason stops the sizing (Task 9A's last review; no paid call)
+
+**Why this task exists.** Task 9A's final re-review (2026-09-25) found two ways a wrong budget could still come out of the paid runs, both outside that round's scope:
+1. Per-reply facts live on the `StepRecord`, and a failed case has no step. A failed case keeps only its last reply's bracket, so a reply cut off earlier in that case (for example a stage-1 reply cut off at 16,000, retried successfully, followed by a stage-2 failure) is invisible to the sizing run's cut-off guard, and a failed case's uncut replies never reach the percentile.
+2. A reply whose `finish_reason` is missing (`None`, or `unrecorded` in an old bracket) is counted as neither cut off nor finished, so a reply of 16,000 tokens with an unknown reason can still yield "new max_output_tokens 16000".
+
+**The behaviour, fixed now.** Every `CaseResult` records, in call order, every reply the case received — whether the case was scored or failed — as three tuples. `scripts/reply_budget.py` reads per-reply facts from the case, not the step, for every case. In the sizing run, any reply whose finish reason is not recorded counts like a cut-off reply: the outcome is "no step fits -- a reply in the sizing run has no recorded finish reason; returned to Andy". The fixed rule's arithmetic is unchanged.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/records.py` (`CaseResult` + three tuples), `src/ntsb_probable_cause/scoring/runner.py` (`_case_result` fills them from `ctx.replies`)
+- Modify: `scripts/reply_budget.py` (read `CaseResult`'s tuples for every case; the unknown-reason guard)
+- Test: `tests/test_runner.py`, `tests/test_reply_budget.py`, `tests/test_records_s1.py`
+
+**Interfaces:**
+- Produces: `CaseResult.reply_completion_tokens: tuple[int, ...] = ()`, `CaseResult.reply_reasoning_tokens: tuple[int | None, ...] = ()`, `CaseResult.reply_finish_reasons: tuple[str | None, ...] = ()`, filled for every case that made at least one call (a leak or a cap case made none: empty). `StepRecord`'s tuples stay as they are.
+
+- [ ] **Step 1: Write the failing tests**
+  - `tests/test_runner.py`, sync and batch: a case whose stage-1 reply is cut off (`length`, 2000/1900), retried successfully, and whose stage 2 then fails on a schema error: the `CaseResult` has `failure` starting `schema:` and carries all its replies in call order in the three tuples. A scored case's tuples equal its step's.
+  - `tests/test_records_s1.py`: the tuples round-trip through JSON; a pre-9C `cases.jsonl` line reads with empty tuples.
+  - `tests/test_reply_budget.py`: a sizing run holding a failed case whose earlier reply ended `length` gives the cut-off outcome; a sizing run holding a reply with finish reason `None` (in a scored case, and in a failed case) gives the unknown-reason outcome, never a number; a sizing run whose cases lack the tuples (pre-9C) gives "per-reply data unavailable".
+- [ ] **Step 2: Run them to see them fail.**
+- [ ] **Step 3: Implement** — `_case_result` sets the three tuples from `ctx.replies` (`usage.completion_tokens`, `usage.reasoning_tokens`, `finish_reason`); `reply_budget` builds its per-reply lists from `CaseResult`'s tuples for every case (scored replies that ended `stop` feed the percentile; any `length` reply feeds the failed side and the cut-off guard; any unknown reason in the sizing run triggers its guard), keeping the failure-bracket reading only as the fallback for a failed case with empty tuples. Update the module docstring's account of where the figures come from.
+- [ ] **Step 4:** `make check` green; commit (`S2.6: every case records each reply's facts; an unknown finish reason stops the sizing (Task 9C)`).
 
 ---
 
@@ -6962,6 +6989,7 @@ S2.6 sits on `s25-recorder`, so its pull request can merge only after S2.5's. If
 - 2026-09-24, plan: the recorded transcriber replies (spec §12) are of an invented page drawn in code, so a committed fixture carries no docket text.
 - 2026-09-25, plan (S2.4's close, Andy): GPT-6 Luna is the default model and S2.4's held-out arm B the bar until S2.6's own (`docs/results/s24-bars.txt`). Its held-out failures by reason were 40 guard refusals for analysis-narrative sentences and 24 reply-format failures (same file); by S2.4's reading 19 of the 24 were truncated or empty JSON. Andy carried the fix to S2.6: Task 9A, added before any S2.6 run so that every S2.6 run, not only the held-out pair, shares one reply budget. The 40 refusals are the cases decision 0077's mark now answers.
 - 2026-09-25, plan (S2.4's final review, Andy): two items land before S2.6's held-out runs. The reply budget is recorded on every run (Task 9A, already written that way; a resume-refusal test added). A recorded batch that ended failed or expired could never be resumed, which forced S2.4's second held-out touch: Task 9B makes a resume treat it as S2.4 treats a lost batch (recorded, dependants superseded, resubmitted once).
+- 2026-09-25, plan: Task 9C added after Task 9A's final re-review, before any paid run: every case (failed ones included) records each reply's facts, and a reply with no recorded finish reason stops the sizing like a cut-off one. Andy asked that everything be right before the runs.
 - 2026-09-24, plan (checked, no change): pypdf warns that it needs `fontTools` to decode some fonts, and the project does not install it. An ad-hoc check over every `dev-400` PDF found 686 pages in 44 documents that warn; with `fontTools` installed, 20 of them extract differently, and the share of their words in the vendored word list is the same (78.9% either way; 4 pages under 20% either way). S2's text layer is not materially garbled, so no dependency is added.
 - 2026-09-24, Task 3 Step 1: `uv add "pypdfium2>=5.13.0" "pillow>=12.3.0"` places each new dependency at its own alphabetical position in the `dependencies` list (`pillow` before `pyarrow`, `pypdfium2` after `pypdf[crypto]`), not adjacent to each other, so the brief's single comment block above "the two new lines" cannot sit above both in place. `pillow` was moved down next to `pypdfium2` (functionally identical -- list order is not significant to `uv`/hatchling) so the one comment block, naming both packages, sits directly above both entries as written.
 - 2026-09-24, Task 3 Step 2: `ruff check --fix` reordered `tests/test_docket_render.py`'s import block, moving `from tests.pdf_builder import ...` before the `ntsb_probable_cause` first-party imports (this project's isort groups `tests` as first-party alongside `ntsb_probable_cause`, sorted alphabetically within the group, so `tests` sorts before `ntsb_probable_cause`); same imports, no behaviour change. Also added `# type: ignore[index]` to the `xobjects = ...pages[0]["/Resources"]["/XObject"]` line in `test_a_fax_encoded_page_renders` (not in the brief's snippet) because `pypdf`'s `PdfObject` is not indexable under `mypy --strict`; the same pattern is already used throughout the test suite (e.g. `tests/test_attach.py`, `tests/test_fields.py`) for the same reason.
