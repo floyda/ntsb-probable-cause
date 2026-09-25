@@ -227,6 +227,7 @@ def provenance(record: RunRecord) -> str:
         f"run {record.run_id} [{status}]\n"
         f"sample={record.sample} arm={record.arm} model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
+        f"max_output_tokens={record.max_output_tokens} "
         f"price_variant={record.price_variant}\n"
         f"exclusions={','.join(record.exclusions) or '-'} "
         f"includes={','.join(record.includes) or '-'}\n"

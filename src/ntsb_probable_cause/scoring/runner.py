@@ -80,6 +80,8 @@ class RunSpec:
     include_case_number: bool = False
     model: str = sources.DEFAULT_MODEL
     reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT
+    # The reply budget, reasoning included (S2.6 Task 9A). Recorded on every run.
+    max_output_tokens: int = 2000
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
     budget_usd: float = 25.0
@@ -122,6 +124,7 @@ def spec_json(
         "include_case_number": spec.include_case_number,
         "model": spec.model,
         "reasoning_effort": spec.reasoning_effort,
+        "max_output_tokens": spec.max_output_tokens,
         "price_variant": spec.price_variant,
         "cap_usd": spec.cap_usd,
         "budget_usd": spec.budget_usd,
@@ -563,12 +566,29 @@ def refuse_sync_with_batch_price(spec: RunSpec) -> None:
         )
 
 
+def _reply_detail(reply: ModelReply) -> str:
+    """The trailing detail a reply-format failure carries (S2.6 Task 9A).
+
+    Appended to every ``schema:`` failure text, sync and batch alike, so a truncated or
+    empty reply says why: the finish reason the provider gave and the token counts that let
+    ``scripts/reply_budget.py`` tell a genuine schema violation from a reply cut short by
+    ``max_output_tokens``. ``failure_summary`` (report.py) splits on the first ``":"``, so
+    this trailing text never changes its counts.
+    """
+    return (
+        f" (finish_reason={reply.finish_reason}, "
+        f"completion_tokens={reply.usage.completion_tokens}, "
+        f"reasoning_tokens={reply.usage.reasoning_tokens})"
+    )
+
+
 def _settings(spec: RunSpec, schema: dict[str, object], name: str) -> ModelSettings:
     """Model settings for one call; ``schema`` and ``name`` vary between the two stages."""
     return ModelSettings(
         model=spec.model,
         price_variant=spec.price_variant,
         reasoning_effort=spec.reasoning_effort,
+        max_output_tokens=spec.max_output_tokens,
         json_schema=schema,
         schema_name=name,
     )
@@ -909,6 +929,7 @@ class Runner:
                 price_variant=spec.price_variant,
                 cap_usd=spec.cap_usd,
                 budget_usd=spec.budget_usd,
+                max_output_tokens=spec.max_output_tokens,
                 commit_sha=self._sha,
                 dirty=self._dirty,
                 started=started,
@@ -1038,6 +1059,11 @@ class Runner:
             price_variant=ctx.spec.price_variant,
             prompt_tokens=sum(r.usage.prompt_tokens for r in ctx.replies),
             completion_tokens=sum(r.usage.completion_tokens for r in ctx.replies),
+            reasoning_tokens=(
+                sum(r.usage.reasoning_tokens or 0 for r in ctx.replies)
+                if any(r.usage.reasoning_tokens is not None for r in ctx.replies)
+                else None
+            ),
             cost_usd=cost,
             cumulative_cost_usd=cost,
             commit_sha=self._sha,
@@ -1169,7 +1195,7 @@ class Runner:
         try:
             hypothesis = self._two_turns(ctx)
         except SchemaError as error:
-            failure = f"schema: {error}"
+            failure = f"schema: {error}{_reply_detail(ctx.replies[-1])}"
         except ModelError as error:
             failure = f"model: {error}"
         cost = self._cost(ctx.replies, spec)
@@ -1657,7 +1683,7 @@ class Runner:
             try:
                 hypothesis = parse_hypothesis(result.reply.content or "", self._tables)
             except SchemaError as error:
-                need_retry[cid] = f"schema: {error}"
+                need_retry[cid] = f"schema: {error}{_reply_detail(result.reply)}"
             else:
                 run.hyps[cid] = hypothesis
                 # Pinned once, so a stage-2 retry batch replays the accepted stage-1
@@ -1711,7 +1737,7 @@ class Runner:
                     result.reply.content or "", self._tables, run.hyps[cid]
                 )
             except SchemaError as error:
-                need_retry[cid] = f"schema: {error}"
+                need_retry[cid] = f"schema: {error}{_reply_detail(result.reply)}"
         return need_retry
 
     @staticmethod

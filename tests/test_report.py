@@ -508,6 +508,11 @@ def test_provenance_shows_the_reasoning_level(run_record: RunRecord) -> None:
     assert "reasoning=medium" in report.provenance(stated)
 
 
+def test_provenance_shows_the_reply_budget(run_record: RunRecord) -> None:
+    """S2.6 Task 9A: a run from before this task recorded the old default, 2000."""
+    assert "max_output_tokens=2000" in report.provenance(run_record)
+
+
 def test_failure_summary_counts_by_reason_and_never_names_a_case() -> None:
     """S2.4 spec §6: the refusal count S2.6 needs, from a script, without case numbers."""
     rows = [

@@ -2534,3 +2534,139 @@ def test_every_call_states_the_runs_reasoning_level_and_the_run_records_it(
     folder = tmp_path / "runs" / run.run_id
     assert json.loads((folder / "spec.json").read_text())["reasoning_effort"] == "medium"
     assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].reasoning_effort == "medium"
+
+
+# --- the reply budget, finish reasons and reasoning tokens (S2.6 Task 9A) ---
+
+
+def test_every_call_states_the_runs_reply_budget_and_the_run_records_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The budget is stated on both stages, written to spec.json, right after reasoning_effort,
+    and to the run record."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        max_output_tokens=4000,
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert [s.max_output_tokens for s in client.settings] == [4000, 4000]
+    folder = tmp_path / "runs" / run.run_id
+    recorded = json.loads((folder / "spec.json").read_text())
+    assert recorded["max_output_tokens"] == 4000
+    keys = list(recorded)
+    assert keys.index("max_output_tokens") == keys.index("reasoning_effort") + 1
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].max_output_tokens == 4000
+
+
+def test_stage1_truncated_reply_fails_schema_with_finish_reason_and_token_counts(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.6 Task 9A: the reply budget's own fingerprint on a truncated stage-1 reply."""
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"probable_cause": "the eng',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(handlers=[truncated, truncated])
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)"
+    )
+
+
+def test_successful_case_records_reasoning_tokens_summed_over_its_replies(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    usage = [
+        Usage(prompt_tokens=300, completion_tokens=40, reasoning_tokens=100),  # stage 1
+        Usage(prompt_tokens=150, completion_tokens=10, reasoning_tokens=20),  # stage 2
+    ]
+    client = RecordingFakeClient([GOOD, REFINE], usage=usage)
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reasoning_tokens == 120
+
+
+def test_step_reasoning_tokens_is_none_when_no_reply_reported_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])  # default usage: no reasoning_tokens
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reasoning_tokens is None
+
+
+def test_resume_refuses_a_different_reply_budget(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Beside S2.4's test_resume_refuses_a_different_model (0032 point 4).
+
+    ``refuse_unresumable`` compares every ``spec.json`` field, so recording
+    ``max_output_tokens`` is what makes a mismatched resume refuse -- an unrecorded setting
+    is a silent variable, the argument S2.4's reasoning-level decision made.
+    """
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    other = FakeBatchClient(handlers=[])
+    with pytest.raises(ConfigurationError, match="max_output_tokens was 2000"):
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                max_output_tokens=4000,
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
+            resume=_run_id(),
+        )
+    assert other.submitted == []

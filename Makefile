@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget
 
 check: lint type test
 
@@ -136,3 +136,7 @@ page-kinds:
 analysis-handcheck:
 	uv run python -m scripts.analysis_handcheck sheet --sample dev-400
 # S2.6 spec §4.2: free; writes the private marking page under data/handcheck/s26-analysis/.
+
+s26-reply-budget:
+	uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 2000 --expected-cost-per-case-usd 0.005
+# S2.6 Task 9A: arm B on dev-400 at the old reply budget, to confirm why replies were truncated.

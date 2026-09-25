@@ -139,6 +139,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--price-variant", choices=("batch", "standard"), default=RunSpec.price_variant
     )
+    run_p.add_argument("--max-output-tokens", type=int, default=RunSpec.max_output_tokens)
     run_p.add_argument("--cap-usd", type=float, default=RunSpec.cap_usd)
     run_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
@@ -214,6 +215,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         include_case_number="case_number" in args.include,
         model=args.model,
         price_variant=args.price_variant,
+        max_output_tokens=args.max_output_tokens,
         cap_usd=args.cap_usd,
         budget_usd=args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd,
         sync=args.sync,

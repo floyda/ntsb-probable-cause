@@ -30,6 +30,8 @@ class RunRecord(BaseModel):
     price_variant: str
     cap_usd: float
     budget_usd: float
+    # 2000 on a run from before S2.6 Task 9A: the old ModelSettings default.
+    max_output_tokens: int = 2000
     commit_sha: str
     dirty: bool
     started: datetime
@@ -66,6 +68,8 @@ class StepRecord(BaseModel):
     price_variant: str
     prompt_tokens: int
     completion_tokens: int
+    # None when no reply for the case reported one (S2.6 Task 9A).
+    reasoning_tokens: int | None = None
     cost_usd: float
     cumulative_cost_usd: float
     commit_sha: str

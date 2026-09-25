@@ -80,6 +80,9 @@ class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     reported_cost_usd: float | None = None
+    # None where the provider reports no completion_tokens_details, or no reasoning_tokens
+    # within it (S2.6 Task 9A: GPT-6 Luna's reasoning tokens count against the reply budget).
+    reasoning_tokens: int | None = None
 
 
 class ToolCall(BaseModel):
@@ -252,6 +255,10 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
         content = message.get("content")
         finish_reason = choice.get("finish_reason")
         cost = usage.get("cost")
+        details = usage.get("completion_tokens_details")
+        reasoning_tokens = None
+        if isinstance(details, Mapping) and details.get("reasoning_tokens") is not None:
+            reasoning_tokens = _as_int(details["reasoning_tokens"])
         return ModelReply(
             content=content if content is None else str(content),
             tool_calls=calls,
@@ -260,6 +267,7 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
                 prompt_tokens=_as_int(usage["prompt_tokens"]),
                 completion_tokens=_as_int(usage["completion_tokens"]),
                 reported_cost_usd=_as_float(cost) if cost is not None else None,
+                reasoning_tokens=reasoning_tokens,
             ),
             model=str(body.get("model", "")),
             response_id=str(body.get("id", "")),
