@@ -173,9 +173,10 @@ def test_run_spec_defaults_come_from_sources() -> None:
 
 def test_no_module_but_sources_names_a_luna_model() -> None:
     """S2.4 spec §4 item 1: the default lives in one place, so a switch is one line."""
+    package_root = Path(__file__).resolve().parent.parent / "src" / "ntsb_probable_cause"
+    paths = list(package_root.rglob("*.py"))
+    assert paths, f"no source files found under {package_root} -- the glob resolved wrong"
     offenders = [
-        str(path)
-        for path in Path("src/ntsb_probable_cause").rglob("*.py")
-        if path.name != "sources.py" and "-luna" in path.read_text()
+        str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
     ]
     assert offenders == []
