@@ -214,7 +214,11 @@ def _successful_case(case_id: str, *, replies: Sequence[_Reply]) -> CaseResult:
 
 
 def _successful_case_pre_fix(
-    case_id: str, *, completion_tokens: int, reasoning_tokens: int | None
+    case_id: str,
+    *,
+    completion_tokens: int,
+    reasoning_tokens: int | None,
+    cost_usd: float = 0.001,
 ) -> CaseResult:
     return CaseResult(
         case_id=case_id,
@@ -231,7 +235,7 @@ def _successful_case_pre_fix(
             ),
         ),
         scores=_SCORES,
-        cost_usd=0.001,
+        cost_usd=cost_usd,
         failure=None,
     )
 
@@ -762,6 +766,24 @@ def test_confirm_and_size_a_schema_rejected_stop_reply_counts_the_same_in_either
         ]
     )
     assert scored_outcome == failed_outcome == "outcome: no step fits -- returned to Andy"
+
+
+# --- Task 9C fix round 2: a scored case's cost never excuses a missing per-reply record ---
+
+
+def test_confirm_and_size_is_unavailable_for_a_zero_cost_scored_case_missing_tuples() -> None:
+    """A scored, pre-Task-9C case with ``cost_usd == 0.0`` must still make the run
+    "per-reply data unavailable" -- unlike a "cap"/"leak" failure, a scored case's cost is not
+    a reliable "made no call" signal, so it must not excuse a missing per-reply record just
+    because this one happens to read ``0.0``."""
+    size_cases = [
+        _successful_case_pre_fix(
+            "c2", completion_tokens=9_000, reasoning_tokens=8_000, cost_usd=0.0
+        ),
+        _successful_case("c3", replies=[(1_300, 200, "stop")]),
+    ]
+    outcome = _confirmed_pair_outcome(size_cases)
+    assert outcome == "outcome: per-reply data unavailable -- returned to Andy"
 
 
 def test_main_confirm_and_size_writes_the_two_section_report(

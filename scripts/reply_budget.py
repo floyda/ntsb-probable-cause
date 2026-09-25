@@ -4,6 +4,25 @@ Status
     One-shot. Prints and, with ``--out``, writes counts only (decision 0024: no case number,
     no title, no prose).
 
+    Task 9C fix round 2 (2026-09-25, re-review): two small corrections, before either
+    development run is submitted. First, fix round 1's paragraph below said the Minor 4 ruling
+    "can only raise a proposed budget, never lower one" -- that was wrong.
+    ``new_budget([1000] * 197 + [5000, 6000], [])`` is 16,000 (p99 lands on 5,000); adding one
+    500-token reply to that same pool is 4,000 (the extra, smaller value shifts where the 99th
+    percentile falls, dropping p99 to 1,000) -- so adding a reply to a p99-based pool can move
+    the answer either way, not only up. The true reason the ruling is still sound has nothing to
+    do with direction: it adds *real, finished* replies to the pool under the unchanged rule, so
+    the percentile describes every completed reply rather than a subset of them -- whichever way
+    that moves the proposed number. Second, the completeness check (then
+    ``_cases_with_unrecoverable_replies``, now ``_unrecoverable_replies``) counted a
+    scored case as complete whenever its ``cost_usd`` was ``0.0``, which is looser than Task 9C
+    itself was: a scored case with no per-reply tuples must make the sizing run
+    "per-reply data unavailable" regardless of its cost (a scored case's ``cost_usd`` is not a
+    reliable "made no call" signal the way a failed "cap"/"leak" case's is). It now counts a
+    scored case without tuples unconditionally, and a failed case only where it also made a call
+    (``cost_usd > 0``); the "unavailable" message names which kind of case is missing data
+    (scored, failed, or both), rather than one wording covering either.
+
     Task 9C fix round 1 (2026-09-25, final review of Task 9C): two more findings, before either
     development run is submitted. Important 1 -- the sizing guard Task 9C added only flagged
     ``None``/``"unrecorded"`` as ambiguous, so a reply that ended anything else *other than*
@@ -323,7 +342,7 @@ def _successful_case_replies(cases: Sequence[CaseResult]) -> _PerCaseReplies:
     never carries a failure-text bracket, so there is no fallback to try here; a case that
     made a call but recorded no tuples simply predates Task 9C. Whether the run has *no*
     scored cases at all is no longer read from here (fix round 1): completeness is decided by
-    ``_cases_with_unrecoverable_replies``, across every case, not only scored ones.
+    ``_unrecoverable_replies``, across every case, not only scored ones.
     """
     successful = [c for c in cases if c.failure is None and c.scores is not None]
     per_case = [_case_replies(c) for c in successful]
@@ -361,17 +380,58 @@ def _failed_case_stop_replies(cases: Sequence[CaseResult]) -> list[_Reply]:
     ]
 
 
-def _cases_with_unrecoverable_replies(cases: Sequence[CaseResult]) -> int:
-    """Cases that made a call but recorded no recoverable reply at all (fix round 1).
+@dataclass(frozen=True)
+class _Unrecoverable:
+    """Cases that recorded no recoverable reply at all, split by kind (fix round 2)."""
+
+    scored: int  # scored cases with no per-reply tuples of their own, whatever their cost
+    failed: int  # failed cases that made a call but recorded nothing recoverable
+
+    @property
+    def total(self) -> int:
+        return self.scored + self.failed
+
+
+def _unrecoverable_replies(cases: Sequence[CaseResult]) -> _Unrecoverable:
+    """Cases that recorded no recoverable reply at all (fix round 2).
 
     Neither ``CaseResult``'s own tuples (Task 9C) nor, for a failed case, its failure-text
-    bracket fallback. A "cap" or "leak" case made no call and is not counted -- there is
-    nothing to recover because nothing was ever sent. A run containing even one case that
-    *did* call the model but left nothing recoverable cannot honestly claim its percentile
-    pool is complete, whether or not another case's ``"stop"`` reply (Minor 4) happens to
-    fill it with data.
+    bracket fallback. A scored case (``failure`` is ``None``, ``scores`` is not) is counted
+    whenever it lacks its own tuples, regardless of ``cost_usd``: unlike a "cap"/"leak"
+    failure, ``cost_usd`` is not a reliable "this case never called the model" signal for a
+    scored case, and Task 9C's own reading never let a scored case's cost excuse a missing
+    per-reply record. A failed case is counted only where it also made a call
+    (``cost_usd > 0``) -- a "cap" or "leak" case made none, and there is nothing to recover
+    because nothing was ever sent. A run containing even one such case cannot honestly claim
+    its percentile pool is complete, whether or not another case's ``"stop"`` reply (Minor 4)
+    happens to fill it with data.
     """
-    return sum(1 for case in cases if case.cost_usd > 0.0 and not _case_replies_with_fallback(case))
+    scored = 0
+    failed = 0
+    for case in cases:
+        if case.failure is None and case.scores is not None:
+            if _case_replies(case) is None:
+                scored += 1
+        elif case.cost_usd > 0.0 and not _case_replies_with_fallback(case):
+            failed += 1
+    return _Unrecoverable(scored, failed)
+
+
+def _unavailable_reason(unrecoverable: _Unrecoverable) -> str:
+    """The "unavailable" line's own reason, naming which kind of case is missing data."""
+    parts = []
+    if unrecoverable.scored:
+        parts.append(
+            f"{unrecoverable.scored} scored case(s) carry no per-reply tuples on CaseResult "
+            "(S2.6 Task 9C) -- a run recorded before Task 9C may still have them on its own "
+            "steps.jsonl (Task 9A fix round 2), but this script no longer reads that"
+        )
+    if unrecoverable.failed:
+        parts.append(
+            f"{unrecoverable.failed} failed case(s) made a call but recorded no recoverable "
+            "reply at all (neither CaseResult's own tuples nor a schema failure-text bracket)"
+        )
+    return "; ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -550,8 +610,10 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
     # Fix round 1: "complete" no longer means "every scored case has tuples" alone -- a run
     # with no scored cases at all can still be complete if its failed cases' own "stop"
     # replies (Minor 4) are themselves fully recoverable. It is incomplete only where some
-    # case that made a call left nothing recoverable at all.
-    per_reply_data_available = _cases_with_unrecoverable_replies(cases) == 0
+    # case that made a call left nothing recoverable at all. Fix round 2: a scored case with
+    # no tuples is always incomplete, whatever its cost -- see ``_unrecoverable_replies``.
+    unrecoverable = _unrecoverable_replies(cases)
+    per_reply_data_available = unrecoverable.total == 0
     successful, successful_reasoning = _merge_failed_stop_replies(cases, classified)
 
     lines.append(
@@ -560,11 +622,7 @@ def summarise(cases: Sequence[CaseResult], *, budget: int = _DEFAULT_BUDGET) -> 
         "not here -- fix round 1, controller ruling on Minor 4):"
     )
     if not per_reply_data_available:
-        lines.append(
-            "  unavailable: this run's scored cases carry no per-reply tuples on CaseResult "
-            "(S2.6 Task 9C) -- a run recorded before Task 9C may still have them on its own "
-            "steps.jsonl (Task 9A fix round 2), but this script no longer reads that"
-        )
+        lines.append(f"  unavailable: {_unavailable_reason(unrecoverable)}")
     else:
         if per_case.unavailable_cases:
             lines.append(
@@ -677,18 +735,16 @@ def _sizing_section(cases: Sequence[CaseResult], record: RunRecord) -> _Sizing:
     )
     lines.append(_stats_line("  their reasoning tokens", classified.recovered_reasoning))
     # Fix round 1: "complete" no longer means "every scored case has tuples" alone -- see
-    # ``_cases_with_unrecoverable_replies`` (the same reasoning as in ``summarise``).
-    per_reply_available = _cases_with_unrecoverable_replies(cases) == 0
+    # ``_unrecoverable_replies`` (the same reasoning as in ``summarise``). Fix round 2: a
+    # scored case with no tuples is always incomplete, whatever its cost.
+    unrecoverable = _unrecoverable_replies(cases)
+    per_reply_available = unrecoverable.total == 0
     lines.append(
         "successful replies' uncut per-reply tokens (every reply that finished 'stop', "
         "scored or failed case alike -- fix round 1, controller ruling on Minor 4):"
     )
     if not per_reply_available:
-        lines.append(
-            "  unavailable: this run's scored cases carry no per-reply tuples on CaseResult "
-            "(S2.6 Task 9C) -- a run recorded before Task 9C may still have them on its own "
-            "steps.jsonl (Task 9A fix round 2), but this script no longer reads that"
-        )
+        lines.append(f"  unavailable: {_unavailable_reason(unrecoverable)}")
     else:
         if per_case.unavailable_cases:
             lines.append(
