@@ -8,6 +8,7 @@ with no correction here; tiled and fax, JPEG 2000 or JBIG2 pages are drawn like 
 
 import hashlib
 import io
+import threading
 from collections.abc import Sequence
 from typing import Literal
 
@@ -17,6 +18,14 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause.errors import DocketError
+
+# Fix round 1, C1: PDFium is not thread-safe (confirmed by the review's `pdfium_threads.py`
+# probe -- 8 concurrent workers crashed the process 5 times out of 5). `transcribe_all` calls
+# this from up to `workers` threads at once, so every entry point into PDFium -- opening,
+# reading a page's size or images, rendering, closing -- is serialised behind one process-wide
+# lock. Rendering one page is milliseconds against a model call of seconds, so the pool still
+# overlaps the calls that matter.
+_PDFIUM_LOCK = threading.Lock()
 
 Resolution = Literal[150, 200]
 # Spec §5.4 and §7.5: the transcriber test chooses 150 or 200 dots per inch; 150 until then.
@@ -73,41 +82,48 @@ def _jpeg(image: Image.Image) -> bytes:
 def render_pages(
     data: bytes, pages: Sequence[int] | None = None, *, dpi: Resolution = RESOLUTION
 ) -> list[RenderedPage]:
-    """Draw the asked pages (1-based, in the order asked; every page if ``None``)."""
-    try:
-        document = pdfium.PdfDocument(data)
-    except pdfium.PdfiumError as error:
-        raise DocketError(f"not a PDF: {error}") from error
-    try:
-        total = len(document)
-        drawn: list[RenderedPage] = []
-        for number in pages if pages is not None else range(1, total + 1):
-            if not 1 <= number <= total:
-                raise DocketError(f"no page {number} of {total}")
-            # A real dev-400 page fails to load in PDFium (found while planning): it becomes a
-            # DocketError, which a transcription records as a failed reading, never a crash.
-            try:
-                page = document[number - 1]
-            except pdfium.PdfiumError as error:
-                raise DocketError(f"page {number} did not load: {error}") from error
-            try:
-                image: Image.Image = page.render(scale=dpi / POINTS_PER_INCH).to_pil()
-                share = _image_area_share(page)
-            except pdfium.PdfiumError as error:
-                raise DocketError(f"page {number} did not render: {error}") from error
-            finally:
-                page.close()
-            rgb = image.convert("RGB")
-            drawn.append(
-                RenderedPage(
-                    page=number,
-                    dpi=dpi,
-                    width=rgb.width,
-                    height=rgb.height,
-                    image_area_share=share,
-                    data=_jpeg(rgb),
+    """Draw the asked pages (1-based, in the order asked; every page if ``None``).
+
+    Every PDFium call this function makes runs behind ``_PDFIUM_LOCK`` (fix round 1, C1):
+    PDFium itself is not thread-safe, so two calls from different threads at once can crash
+    the process rather than raise a catchable error.
+    """
+    with _PDFIUM_LOCK:
+        try:
+            document = pdfium.PdfDocument(data)
+        except pdfium.PdfiumError as error:
+            raise DocketError(f"not a PDF: {error}") from error
+        try:
+            total = len(document)
+            drawn: list[RenderedPage] = []
+            for number in pages if pages is not None else range(1, total + 1):
+                if not 1 <= number <= total:
+                    raise DocketError(f"no page {number} of {total}")
+                # A real dev-400 page fails to load in PDFium (found while planning): it
+                # becomes a DocketError, which a transcription records as a failed reading,
+                # never a crash.
+                try:
+                    page = document[number - 1]
+                except pdfium.PdfiumError as error:
+                    raise DocketError(f"page {number} did not load: {error}") from error
+                try:
+                    image: Image.Image = page.render(scale=dpi / POINTS_PER_INCH).to_pil()
+                    share = _image_area_share(page)
+                except pdfium.PdfiumError as error:
+                    raise DocketError(f"page {number} did not render: {error}") from error
+                finally:
+                    page.close()
+                rgb = image.convert("RGB")
+                drawn.append(
+                    RenderedPage(
+                        page=number,
+                        dpi=dpi,
+                        width=rgb.width,
+                        height=rgb.height,
+                        image_area_share=share,
+                        data=_jpeg(rgb),
+                    )
                 )
-            )
-        return drawn
-    finally:
-        document.close()
+            return drawn
+        finally:
+            document.close()

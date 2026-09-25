@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.pages import page_text
 from ntsb_probable_cause.docket.render import MEDIA_TYPE, RenderedPage, Resolution, render_pages
-from ntsb_probable_cause.errors import DocketError, ModelError, SchemaError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, SchemaError
 from ntsb_probable_cause.model.client import (
     ModelClient,
     ModelSettings,
@@ -119,7 +119,7 @@ class TranscriptionKey(BaseModel):
     page: int
     model: str
     instruction: str
-    dpi: int
+    dpi: Resolution
 
     def digest(self) -> str:
         """A stable hash of every field: the cache file's name."""
@@ -155,16 +155,41 @@ class TranscriptionCache:
         return self._root / digest[:2] / f"{digest}.json"
 
     def get(self, key: TranscriptionKey) -> Transcription | None:
-        """The cached reading for a key, or ``None``."""
-        path = self._path(key)
-        return Transcription.model_validate_json(path.read_text()) if path.is_file() else None
+        """The cached reading for a key, or ``None``.
 
-    def put(self, record: Transcription) -> None:
-        """Write a reading; a kill mid-write leaves the old file or none, never half of one."""
+        A file this cache itself wrote never fails to parse; one that does (fix round 1, M3)
+        is reported by name rather than treated as a miss, so it is not silently re-read (and
+        re-paid for) or -- worse -- silently overwritten in place.
+        """
+        path = self._path(key)
+        if not path.is_file():
+            return None
+        try:
+            return Transcription.model_validate_json(path.read_text())
+        except Exception as error:
+            raise DocketError(f"corrupted transcription cache file: {path}") from error
+
+    def put(self, record: Transcription, *, instruction: Instruction | None = None) -> None:
+        """Write a reading; a kill mid-write leaves the old file or none, never half of one.
+
+        ``instruction``, when given, must be the instruction that actually produced
+        ``record`` (fix round 1, M4): a record whose key names a different instruction version
+        is refused, so an inventory (i1) reading can never be cached under a transcriber (t1)
+        key and later served as a transcription with no words and no sign of the mistake.
+        """
+        if instruction is not None and record.key.instruction != instruction.version:
+            raise ConfigurationError(
+                f"record for page {record.key.page} names instruction "
+                f"{record.key.instruction!r}, not the instruction actually used "
+                f"({instruction.version!r})"
+            )
         path = self._path(record.key)
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.partial")
-        partial.write_text(record.model_dump_json())
+        with partial.open("w") as handle:
+            handle.write(record.model_dump_json())
+            handle.flush()
+            os.fsync(handle.fileno())
         partial.replace(path)
 
 
@@ -201,7 +226,13 @@ def settings_for(model: str, instruction: Instruction) -> ModelSettings:
 
 
 def parse_reply(content: str | None, instruction: Instruction) -> tuple[str, PageLabel]:
-    """The words (empty for an instruction that copies none) and the page kind."""
+    """The words (empty for an instruction that copies none) and the page kind.
+
+    A reply from an instruction that copies words (t1) must itself carry a ``text`` field
+    (fix round 1, I1): a provider that ignores the schema and omits it is refused rather than
+    cached as a transcribed, empty page, which would look exactly like a page that really has
+    no words and would never be read again (``retry_failed`` only re-reads failures).
+    """
     try:
         body = json.loads(content or "")
     except json.JSONDecodeError as error:
@@ -211,7 +242,12 @@ def parse_reply(content: str | None, instruction: Instruction) -> tuple[str, Pag
     kind = body.get("page_kind")
     if kind not in PAGE_LABELS:
         raise SchemaError(f"page_kind is not one of the labels: {kind!r}")
-    text = body.get("text", "") if instruction.copies_words else ""
+    if instruction.copies_words:
+        if "text" not in body:
+            raise SchemaError("reply is missing the required 'text' field")
+        text = body["text"]
+    else:
+        text = ""
     if not isinstance(text, str):
         raise SchemaError("text is not a string")
     return text.strip(), cast(PageLabel, kind)
@@ -224,16 +260,31 @@ def read_page(
     *,
     now: Callable[[], datetime],
 ) -> Transcription:
-    """Draw the page, send it, parse the reply. Every outcome is a record; nothing raises."""
+    """Draw the page, send it, parse the reply.
+
+    Never raises for a page's own reading (fix round 1, C2): a failure before the model call
+    (loading the document, rendering the page) costs nothing and is recorded failed with zero
+    cost; a failure the call itself raises costs nothing either, because no reply came back to
+    pay for; but once a reply has come back, every dollar it cost is real, so any failure after
+    that point (pricing it, parsing its schema) is recorded failed while keeping that cost. The
+    one thing this does raise is a ``ConfigurationError`` when the job's key names a different
+    instruction than the one actually used (fix round 1, M4) -- a caller bug to fail loudly on
+    before any page is even loaded, not a reading to record as failed.
+    """
     key = job.key
+    if key.instruction != instruction.version:
+        raise ConfigurationError(
+            f"page {key.page}'s key names instruction {key.instruction!r}, not the "
+            f"instruction actually used ({instruction.version!r})"
+        )
     try:
         data = job.load()
-        (rendered,) = render_pages(data, [key.page], dpi=cast(Resolution, key.dpi))
-    except DocketError as error:
+        (rendered,) = render_pages(data, [key.page], dpi=key.dpi)
+    except Exception as error:
         return Transcription(
             key=key,
             status="failed",
-            error=f"render: {error}"[:_ERROR_CHARS],
+            error=f"load-or-render: {type(error).__name__}: {error}"[:_ERROR_CHARS],
             mixed=job.mixed,
             created=now(),
         )
@@ -242,25 +293,23 @@ def read_page(
     settings = settings_for(key.model, instruction)
     try:
         reply = client.complete(payload, settings, system=system)
-    except ModelError as error:
+    except Exception as error:
         return Transcription(
             key=key,
             status="failed",
-            error=f"model: {type(error).__name__}",
+            error=f"model: {type(error).__name__}: {error}"[:_ERROR_CHARS],
             image_sha256=rendered.sha256,
             image_area_share=rendered.image_area_share,
             mixed=job.mixed,
             created=now(),
         )
-    cost, _ = cost_usd(reply, settings)
-    try:
-        text, kind = parse_reply(reply.content, instruction)
-    except SchemaError as error:
+
+    # The call has returned, so it has been paid for: every record from here keeps that cost.
+    def _paid_failure(prefix: str, detail: object, *, cost: float) -> Transcription:
         return Transcription(
             key=key,
             status="failed",
-            # Task 9A's lesson: a reply cut off by the output budget says so.
-            error=f"schema: {error} (finish_reason={reply.finish_reason})"[:_ERROR_CHARS],
+            error=f"{prefix}: {detail}"[:_ERROR_CHARS],
             image_sha256=rendered.sha256,
             image_area_share=rendered.image_area_share,
             mixed=job.mixed,
@@ -269,6 +318,19 @@ def read_page(
             cost_usd=cost,
             created=now(),
         )
+
+    try:
+        cost, _ = cost_usd(reply, settings)
+    except Exception as error:
+        # A price lookup can fail after the call was already made, e.g. an unpriced model
+        # (fix round 1, C2). The dollar amount cannot be known, but the page must still be
+        # recorded rather than silently dropped, so it costs 0.0 here and the error names why.
+        return _paid_failure("cost", f"{type(error).__name__}: {error}", cost=0.0)
+    try:
+        text, kind = parse_reply(reply.content, instruction)
+    except Exception as error:
+        # Task 9A's lesson: a reply cut off by the output budget says so.
+        return _paid_failure("schema", f"{error} (finish_reason={reply.finish_reason})", cost=cost)
     return Transcription(
         key=key,
         status="transcribed",
@@ -300,15 +362,31 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
 
     Each reading is cached the moment it returns, so an interrupted job loses only the pages
     in flight. ``on_chunk`` is handed every ``chunk`` new readings, and the remainder at the
-    end or on an interruption, so the caller can append a spend row (0081) as money is
-    spent. A page cached as failed is read again only with ``retry_failed``. The caller owns
-    the clients the factory makes and closes them afterwards.
+    end -- including on an interruption or an unexpected exception (fix round 1, C2) -- so
+    every dollar spent stays visible to the budget guard, and never twice (M1) even if
+    ``on_chunk`` itself raises. A page cached as failed is read again only with
+    ``retry_failed``. The same page listed more than once is paid for once (fix round 1, M2):
+    an identical document, such as a standard form, can appear in more than one docket. The
+    caller owns the clients the factory makes and closes them afterwards.
     """
-    pending = [
-        job
-        for job in jobs
-        if (cached := cache.get(job.key)) is None or (retry_failed and cached.status == "failed")
-    ]
+    for job in jobs:
+        if job.key.instruction != instruction.version:
+            raise ConfigurationError(
+                f"page {job.key.page}'s key names instruction {job.key.instruction!r}, not "
+                f"the instruction actually used ({instruction.version!r})"
+            )
+
+    seen_keys: set[str] = set()
+    pending: list[PageJob] = []
+    for job in jobs:
+        digest = job.key.digest()
+        if digest in seen_keys:
+            continue
+        seen_keys.add(digest)
+        cached = cache.get(job.key)
+        if cached is None or (retry_failed and cached.status == "failed"):
+            pending.append(job)
+
     local = threading.local()
 
     def work(job: PageJob) -> Transcription:
@@ -316,23 +394,48 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
         if client is None:
             client = local.client = client_factory()
         record = read_page(job, client, instruction, now=now)
-        cache.put(record)
+        cache.put(record, instruction=instruction)
         return record
 
     done: list[Transcription] = []
     unreported: list[Transcription] = []
+
+    def flush() -> None:
+        if not unreported:
+            return
+        batch = list(unreported)
+        # Cleared before on_chunk runs: if on_chunk itself raises, these records are already
+        # gone from `unreported`, so nothing here can be handed to it a second time (M1).
+        unreported.clear()
+        on_chunk(batch)
+
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = [pool.submit(work, job) for job in pending]
+    handled: set[int] = set()
     try:
         for future in as_completed(futures):
+            handled.add(id(future))
             record = future.result()
             done.append(record)
             unreported.append(record)
             if len(unreported) >= chunk:
-                on_chunk(unreported)
-                unreported = []
+                flush()
     finally:
+        # A native crash, a KeyboardInterrupt or any other exception can end the loop above
+        # before every future is drained (fix round 1, C2). `shutdown(wait=True)` blocks until
+        # every future still running finishes (and cancels every one not yet started), so by
+        # the time it returns each future is done, cancelled, or failed; anything done that the
+        # loop above never saw is folded in and flushed here, so a paid-for page is never left
+        # unreported.
         pool.shutdown(wait=True, cancel_futures=True)
-        if unreported:
-            on_chunk(unreported)
+        for future in futures:
+            if id(future) in handled or future.cancelled():
+                continue
+            if future.exception() is not None:
+                continue
+            record = future.result()
+            handled.add(id(future))
+            done.append(record)
+            unreported.append(record)
+        flush()
     return done

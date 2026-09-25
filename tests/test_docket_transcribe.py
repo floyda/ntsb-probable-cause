@@ -2,17 +2,21 @@
 
 import json
 import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pydantic
 import pytest
 from tests.pdf_builder import PageSpec, build_pdf
 
+from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.transcribe import (
     ILLEGIBLE,
     LABEL,
     TRANSCRIBE,
+    Instruction,
     PageJob,
     Transcription,
     TranscriptionCache,
@@ -21,12 +25,22 @@ from ntsb_probable_cause.docket.transcribe import (
     read_page,
     transcribe_all,
 )
-from ntsb_probable_cause.errors import SchemaError
-from ntsb_probable_cause.model.client import RecordingFakeClient, Usage
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, SchemaError
+from ntsb_probable_cause.model.client import (
+    ModelReply,
+    ModelSettings,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+    Usage,
+)
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 TYPED = "Engine sputtered at 800 ft. Switched tanks, no change."
 DOC = build_pdf([PageSpec(text=TYPED), PageSpec(text=TYPED, images=("/DCTDecode",))])
+# A document with enough pages for the pool tests (fix round 1: C1, C2, M1, M2), which need
+# more than DOC's two pages of distinct, individually addressable pages.
+BIG_DOC = build_pdf([PageSpec(text=TYPED)] * 9)
 
 
 def _key(page: int = 1, model: str = "google/gemini-3.1-flash-lite") -> TranscriptionKey:
@@ -60,7 +74,18 @@ def test_parse_reply_reads_words_and_kind() -> None:
 
 
 @pytest.mark.parametrize(
-    "content", [None, "not json", "[]", json.dumps({"text": "x", "page_kind": "poem"})]
+    "content",
+    [
+        None,
+        "not json",
+        "[]",
+        json.dumps({"text": "x", "page_kind": "poem"}),
+        # Fix round 1, I1: a copying instruction's reply must itself carry a 'text' field; a
+        # provider that ignores the schema and omits it is refused, not cached as an empty page.
+        json.dumps({"page_kind": "typed text"}),
+        # A 'text' field of the wrong type is refused too, not coerced.
+        json.dumps({"text": 5, "page_kind": "typed text"}),
+    ],
 )
 def test_parse_reply_refuses_a_bad_reply(content: str | None) -> None:
     with pytest.raises(SchemaError):
@@ -146,7 +171,9 @@ def test_transcribe_all_skips_cached_pages_and_reports_chunks(tmp_path: Path) ->
     assert [r.key.page for r in done] == [2]
     assert chunks == [1]
     assert cache.get(_key(2)) is not None
-    assert len(made) <= 2
+    # Fix round 1, I2: this must actually check the factory ran, not just an upper bound that
+    # a factory nobody called would also satisfy.
+    assert 1 <= len(made) <= 2
 
 
 def test_a_failed_page_is_retried_only_when_asked(tmp_path: Path) -> None:
@@ -157,3 +184,302 @@ def test_a_failed_page_is_retried_only_when_asked(tmp_path: Path) -> None:
     assert transcribe_all(jobs, factory, cache, TRANSCRIBE, workers=1) == []
     (again,) = transcribe_all(jobs, factory, cache, TRANSCRIBE, workers=1, retry_failed=True)
     assert again.status == "transcribed"
+
+
+def test_read_page_records_a_render_failure_with_zero_cost() -> None:
+    """Fix round 1, I2: the render-failure path -- a page number ``DOC`` does not have."""
+    record = read_page(
+        PageJob(_key(page=5), lambda: DOC, mixed=False),
+        RecordingFakeClient([_reply("w")]),
+        TRANSCRIBE,
+        now=lambda: NOW,
+    )
+    assert record.status == "failed"
+    assert record.error is not None
+    assert record.error.startswith("load-or-render:")
+    assert record.cost_usd == 0.0
+
+
+def test_a_pool_page_that_fails_after_its_call_still_costs_and_does_not_stop_the_run(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1, C2 and I2: one bad reply mid-pool becomes a failed, costed record, and
+
+    the other pages in the same run still complete. ``workers=1`` keeps job order
+    deterministic (a single worker drains its queue FIFO), which is what makes the first
+    reply land on page 1 rather than an arbitrary page.
+    """
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in (1, 2, 3)]
+    client = RecordingFakeClient(
+        ["not json", _reply("w"), _reply("w")],
+        usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 3,
+    )
+    reported: list[Transcription] = []
+    done = transcribe_all(
+        jobs, lambda: client, cache, TRANSCRIBE, workers=1, on_chunk=reported.extend
+    )
+    statuses = {r.key.page: r.status for r in done}
+    assert statuses == {1: "failed", 2: "transcribed", 3: "transcribed"}
+    failed = next(r for r in done if r.key.page == 1)
+    assert failed.cost_usd > 0
+    assert failed.error is not None
+    assert failed.error.startswith("schema:")
+    reported_pages = [r.key.page for r in reported]
+    assert sorted(reported_pages) == [1, 2, 3]
+    assert len(reported_pages) == len(set(reported_pages))
+
+
+def test_transcribe_all_runs_a_full_pool_without_crashing_pdfium(tmp_path: Path) -> None:
+    """Fix round 1, C1: PDFium is not thread-safe; every render must run behind one lock.
+
+    Before the fix, the review's ``pdfium_threads.py`` probe crashed the process 5 times out
+    of 5 with 8 concurrent workers rendering distinct pages. This runs the same shape (more
+    pending pages than workers, over real PDF bytes) through the real pool.
+    """
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in range(1, 10)]
+    client = RecordingFakeClient(
+        [_reply("w")] * 9, usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 9
+    )
+    done = transcribe_all(jobs, lambda: client, cache, TRANSCRIBE, workers=8)
+    assert len(done) == 9
+    assert all(record.status == "transcribed" for record in done)
+    assert {record.key.page for record in done} == set(range(1, 10))
+
+
+def test_transcribe_all_reports_more_than_one_chunk_and_a_remainder(tmp_path: Path) -> None:
+    """Fix round 1, I2: chunking beyond a single chunk, with a smaller remainder at the end."""
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in range(1, 6)]
+    client = RecordingFakeClient(
+        [_reply("w")] * 5, usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 5
+    )
+    chunks: list[int] = []
+
+    def on_chunk(records: Sequence[Transcription]) -> None:
+        chunks.append(len(records))
+
+    done = transcribe_all(
+        jobs, lambda: client, cache, TRANSCRIBE, workers=1, chunk=2, on_chunk=on_chunk
+    )
+    assert len(done) == 5
+    assert chunks == [2, 2, 1]
+
+
+def test_an_interruption_reports_every_finished_page_once(tmp_path: Path) -> None:
+    """Fix round 1, C2: money spent by calls still running when the pool stops is reported.
+
+    ``chunk=1`` makes ``on_chunk`` run after every single completed page, so raising from
+    inside it on the very first call deterministically interrupts the loop before every
+    pending page has been drained -- standing in for a Ctrl-C or a native crash, without
+    depending on thread timing.
+    """
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in range(1, 7)]
+    client = RecordingFakeClient(
+        [_reply("w")] * 6, usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 6
+    )
+    reported: list[Transcription] = []
+
+    def on_chunk(records: Sequence[Transcription]) -> None:
+        reported.extend(records)
+        if len(reported) == 1:
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        transcribe_all(
+            jobs, lambda: client, cache, TRANSCRIBE, workers=4, chunk=1, on_chunk=on_chunk
+        )
+    cached_pages = {n for n in range(1, 7) if cache.get(_key(n)) is not None}
+    reported_pages = [r.key.page for r in reported]
+    assert cached_pages, "the pool should have paid for and cached at least one page"
+    assert set(reported_pages) == cached_pages
+    assert len(reported_pages) == len(set(reported_pages))
+
+
+def test_a_raising_on_chunk_does_not_report_the_same_record_twice(tmp_path: Path) -> None:
+    """Fix round 1, M1: a batch is cleared before ``on_chunk`` runs, so it cannot be reported
+
+    again from the ``finally`` block's own flush if ``on_chunk`` itself raises.
+    """
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(n), lambda: BIG_DOC, mixed=False) for n in (1, 2)]
+    client = RecordingFakeClient(
+        [_reply("w"), _reply("w")], usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 2
+    )
+    seen: list[Transcription] = []
+
+    def flaky_on_chunk(records: Sequence[Transcription]) -> None:
+        seen.extend(records)
+        raise RuntimeError("on_chunk boom")
+
+    with pytest.raises(RuntimeError, match="on_chunk boom"):
+        transcribe_all(
+            jobs, lambda: client, cache, TRANSCRIBE, workers=1, chunk=1, on_chunk=flaky_on_chunk
+        )
+    seen_pages = [r.key.page for r in seen]
+    assert len(seen_pages) == len(set(seen_pages))
+
+
+def test_duplicate_jobs_are_paid_for_once(tmp_path: Path) -> None:
+    """Fix round 1, M2: the same page listed more than once is paid for once."""
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(1), lambda: DOC, mixed=False)] * 3
+    made_clients: list[RecordingFakeClient] = []
+    lock = threading.Lock()
+
+    def factory() -> RecordingFakeClient:
+        client = RecordingFakeClient([_reply("w")])
+        with lock:
+            made_clients.append(client)
+        return client
+
+    done = transcribe_all(jobs, factory, cache, TRANSCRIBE, workers=3)
+    assert len(done) == 1
+    assert sum(len(client.payloads) for client in made_clients) == 1
+
+
+def test_a_corrupted_cache_file_raises_naming_the_file(tmp_path: Path) -> None:
+    """Fix round 1, M3: a corrupted cache file is reported by name, not silently dropped."""
+    cache = TranscriptionCache(tmp_path)
+    path = cache._path(_key())
+    path.parent.mkdir(parents=True)
+    path.write_text("{not json")
+    with pytest.raises(DocketError, match=r"corrupted transcription cache file"):
+        cache.get(_key())
+
+
+def test_read_page_refuses_a_key_whose_instruction_does_not_match(tmp_path: Path) -> None:
+    """Fix round 1, M4: a job's key must name the instruction actually being used."""
+    with pytest.raises(ConfigurationError):
+        read_page(
+            PageJob(_key(), lambda: DOC, mixed=False),  # key names "t1"
+            RecordingFakeClient([_reply("w")]),
+            LABEL,  # "i1" is actually being used
+            now=lambda: NOW,
+        )
+
+
+def test_cache_put_refuses_a_record_whose_key_does_not_match_the_instruction_given(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1, M4: the same check on the write path, for a caller that bypasses read_page."""
+    cache = TranscriptionCache(tmp_path)
+    record = Transcription(
+        key=_key(), status="transcribed", text="", page_kind="blank", created=NOW
+    )
+    with pytest.raises(ConfigurationError):
+        cache.put(record, instruction=LABEL)
+    cache.put(record, instruction=TRANSCRIBE)
+    assert cache.get(_key()) == record
+
+
+def test_transcribe_all_refuses_a_key_whose_instruction_does_not_match(tmp_path: Path) -> None:
+    """Fix round 1, M4: checked once, up front, before any page in the batch is even loaded."""
+    cache = TranscriptionCache(tmp_path)
+    jobs = [PageJob(_key(), lambda: DOC, mixed=False)]
+    with pytest.raises(ConfigurationError):
+        transcribe_all(jobs, lambda: RecordingFakeClient([_reply("w")]), cache, LABEL)
+
+
+def test_transcription_key_dpi_is_typed_as_resolution() -> None:
+    """Fix round 1, M5: an out-of-range resolution is rejected, not silently rendered at it."""
+    with pytest.raises(pydantic.ValidationError):
+        TranscriptionKey(document_sha256="d" * 64, page=1, model="m", instruction="t1", dpi=300)
+
+
+def test_read_page_records_a_model_call_failure_with_zero_cost() -> None:
+    """Fix round 1, C2: any exception the call itself raises costs nothing -- no reply came
+
+    back to pay for, unlike a failure that happens after a reply is in hand.
+    """
+
+    class _Boom:
+        def complete(
+            self,
+            payload: Payload,
+            settings: ModelSettings,
+            *,
+            system: str = "",
+            history: Sequence[Turn] = (),
+        ) -> ModelReply:
+            raise RuntimeError("boom (not a ModelError)")
+
+    record = read_page(
+        PageJob(_key(), lambda: DOC, mixed=False), _Boom(), TRANSCRIBE, now=lambda: NOW
+    )
+    assert record.status == "failed"
+    assert record.error is not None
+    assert record.error.startswith("model:")
+    assert record.cost_usd == 0.0
+
+
+def test_read_page_records_a_cost_lookup_failure_after_a_real_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fix round 1, C2: a price lookup can fail after the call was already made (e.g. an
+
+    unpriced model); the page is still recorded, with the cost it could not price at 0.0.
+    """
+
+    def _boom_cost(reply: object, settings: object) -> object:
+        raise KeyError("no price on file for this model")
+
+    monkeypatch.setattr(transcribe_module, "cost_usd", _boom_cost)
+    client = RecordingFakeClient(
+        [_reply("w")], usage=[Usage(prompt_tokens=10, completion_tokens=5)]
+    )
+    record = read_page(
+        PageJob(_key(), lambda: DOC, mixed=False), client, TRANSCRIBE, now=lambda: NOW
+    )
+    assert record.status == "failed"
+    assert record.error is not None
+    assert record.error.startswith("cost:")
+    assert record.cost_usd == 0.0
+    assert record.prompt_tokens == 10
+
+
+class _SlowFailingCache(TranscriptionCache):
+    """A cache whose write for one page sleeps, then fails -- for the pool's finally block."""
+
+    def __init__(self, root: Path, *, fail_page: int, delay: float) -> None:
+        super().__init__(root)
+        self._fail_page = fail_page
+        self._delay = delay
+
+    def put(self, record: Transcription, *, instruction: Instruction | None = None) -> None:
+        if record.key.page == self._fail_page:
+            time.sleep(self._delay)
+            raise RuntimeError("disk full")
+        super().put(record, instruction=instruction)
+
+
+def test_a_future_that_raised_outright_is_skipped_not_reported_or_crashed_on(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1: the pool's finally block also tolerates a future the loop above never saw
+
+    at all -- not just one it already finished handling -- because it raised (a write failure
+    after a real, paid call) rather than completing normally. It is skipped, not reported, and
+    the interruption that triggered the fallback still propagates cleanly.
+    """
+    cache = _SlowFailingCache(tmp_path, fail_page=2, delay=0.2)
+    jobs = [
+        PageJob(_key(1), lambda: BIG_DOC, mixed=False),
+        PageJob(_key(2), lambda: BIG_DOC, mixed=False),
+    ]
+    client = RecordingFakeClient(
+        [_reply("w"), _reply("w")], usage=[Usage(prompt_tokens=10, completion_tokens=5)] * 2
+    )
+    reported: list[Transcription] = []
+
+    def on_chunk(records: Sequence[Transcription]) -> None:
+        reported.extend(records)
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        transcribe_all(
+            jobs, lambda: client, cache, TRANSCRIBE, workers=2, chunk=1, on_chunk=on_chunk
+        )
+    assert [r.key.page for r in reported] == [1]
