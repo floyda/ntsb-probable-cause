@@ -31,6 +31,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
+from fractions import Fraction
 from functools import reduce
 from pathlib import Path
 from typing import cast
@@ -48,17 +49,27 @@ from ntsb_probable_cause.docket.transcribe import (
     LABEL,
     MIXED_PAGE_MIN_IMAGE_SHARE,
     TRANSCRIBE,
+    Instruction,
     PageJob,
     TranscriptionCache,
     TranscriptionKey,
+    key_instruction,
     parse_reply,
     request_for,
     settings_for,
 )
-from ntsb_probable_cause.errors import ModelError, SchemaError
+from ntsb_probable_cause.errors import ConfigurationError, ModelError, SchemaError
 from ntsb_probable_cause.gitinfo import commit_state
 from ntsb_probable_cause.model.client import cost_usd
-from ntsb_probable_cause.scoring.budget import SPEND_FILE, SpendRecord, write_spend
+from ntsb_probable_cause.scoring.budget import (
+    SPEND_FILE,
+    SpendRecord,
+    month_spent,
+    open_reservations,
+    reserve_within_budget,
+    settle,
+    write_spend,
+)
 from ntsb_probable_cause.scoring.metrics import wilson
 from ntsb_probable_cause.scoring.preparation import openrouter_clients, run_preparation
 from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl
@@ -67,13 +78,19 @@ from scripts import marking_page
 from scripts import page_inventory as inventory
 from scripts.marking_page import Card, Choice
 
-# The rule (spec §7.4, decision 0080), fixed before the test runs.
+# The rule (spec §7.4, decision 0080), fixed before the test runs. The gates stay plain floats
+# (the review's own boundary sweep found 0 misfires on them); the two margins and the
+# resolution threshold are exact fractions (fix round 1, I7): a plain float 0.05 is not itself
+# exactly representable, and a boundary case -- an exact 5-point handwriting gap, an exact
+# 1-per-100 typed gap -- could be misjudged by that rounding alone, before any division even
+# enters. `choose` and `choose_resolution` compare `Fraction`s built from the raw integer
+# counts, never a pre-divided float, at every place a boundary can be hit.
 GATE_INVENTED_LINES_PER_100 = 2.0
 GATE_INVENTED_PHOTO_SHARE = 1 / 20
 GATE_INVENTED_MIXED_SHARE = 1 / 20  # decision W7: the photographs' bar
-HANDWRITING_MARGIN = 0.05
-TYPED_MARGIN_PER_100 = 1.0
-RESOLUTION_MARGIN = 0.05
+HANDWRITING_MARGIN = Fraction(1, 20)
+TYPED_MARGIN_PER_100 = Fraction(1, 1)
+RESOLUTION_MARGIN = Fraction(1, 20)
 SPOT_CHECK_EVERY = 10
 
 _WORD = re.compile(r"[A-Za-z0-9]{2,}")
@@ -123,8 +140,17 @@ def draft_letter(versions: Mapping[str, Sequence[str]]) -> str:
 
 
 def agreed_lines(versions: Mapping[str, Sequence[str]], *, order: Sequence[str]) -> list[str]:
-    """Lines every version holds, in the draft's order."""
-    common = reduce(operator.and_, (Counter(v) for v in versions.values()))
+    """Lines every non-empty version holds, in the draft's order.
+
+    Fix round 1, M3: a version with no lines at all (a failed reading, or a page one
+    candidate genuinely read as blank) takes no part in the intersection -- agreement is
+    judged among whichever versions actually have something, so one such version does not
+    wipe out every accepted line.
+    """
+    present = [v for v in versions.values() if v]
+    if not present:
+        return []
+    common = reduce(operator.and_, (Counter(v) for v in present))
     agreed: list[str] = []
     for line in order:
         if common[line] > 0:
@@ -175,8 +201,18 @@ class CandidateResult:
         return 100 * self.typed_errors / self.typed_chars if self.typed_chars else 0.0
 
 
+def _fraction(numerator: int, denominator: int) -> Fraction:
+    """``numerator / denominator`` exactly, or 0 when there is nothing to divide by."""
+    return Fraction(numerator, denominator) if denominator else Fraction(0)
+
+
 def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
-    """Spec §7.4: the gate, then the cheapest within both margins of the best. Notes say why."""
+    """Spec §7.4: the gate, then the cheapest within both margins of the best. Notes say why.
+
+    A tie in cost (fix round 1, M7) goes to whichever tied candidate is listed first in
+    ``CANDIDATES``: ``min`` returns the first minimum it meets, and ``results`` is built from
+    ``CANDIDATES`` in order.
+    """
     notes: list[str] = []
     passed: list[CandidateResult] = []
     for r in results:
@@ -200,13 +236,15 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     if not passed:
         notes.append("no candidate passed the gate: transcription stops (spec §7.4 item 3)")
         return None, notes
-    best_hw = max(r.hw_accuracy for r in passed)
-    best_typed = min(r.typed_errors_per_100 for r in passed)
+    hw = {r.model: _fraction(r.hw_right, r.hw_lines) for r in passed}
+    typed = {r.model: 100 * _fraction(r.typed_errors, r.typed_chars) for r in passed}
+    best_hw = max(hw.values())
+    best_typed = min(typed.values())
     eligible = [
         r
         for r in passed
-        if r.hw_accuracy >= best_hw - HANDWRITING_MARGIN
-        and r.typed_errors_per_100 <= best_typed + TYPED_MARGIN_PER_100
+        if hw[r.model] >= best_hw - HANDWRITING_MARGIN
+        and typed[r.model] <= best_typed + TYPED_MARGIN_PER_100
     ]
     for r in passed:
         if r not in eligible:
@@ -216,8 +254,13 @@ def choose(results: Sequence[CandidateResult]) -> tuple[str | None, list[str]]:
     return chosen.model, notes
 
 
-def choose_resolution(accuracy_150: float, accuracy_200: float) -> int:
-    """Spec §7.5: 200 dpi only for more than 5 points of handwriting accuracy."""
+def choose_resolution(accuracy_150: Fraction | float, accuracy_200: Fraction | float) -> int:
+    """Spec §7.5: 200 dpi only for more than 5 points of handwriting accuracy.
+
+    Fix round 1, I7: accepts an exact ``Fraction`` as well as a ``float`` -- ``cmd_score``
+    passes fractions built from the raw line counts (``_fraction``), so an exact 5-point gap
+    is judged exactly, never nudged either way by ``0.05``'s own floating-point rounding.
+    """
     return 200 if accuracy_200 - accuracy_150 > RESOLUTION_MARGIN else 150
 
 
@@ -227,13 +270,20 @@ CANDIDATES = (
     "qwen/qwen3.5-122b-a10b",
     "openai/gpt-6-luna",
 )
-LETTERS = ("A", "B", "C", "D")
+# Fix round 1, M4: sized to CANDIDATES itself, not fixed at four -- a candidate dropped after
+# the probe (spec §17 allows this) must not make `zip(LETTERS, order, strict=True)` raise.
+LETTERS = tuple("ABCDEFGH"[: len(CANDIDATES)])
 # Conservative per-page reservations; the spend rows record what was really spent.
+# Fix round 1, M8: at 200 key pages per candidate (100 + 25 + 50 + 25), the original figures
+# reserved 200 x (0.003+0.008+0.006+0.002) = $3.80 for the 150 dpi run -- below the brief's own
+# "$4-8" estimate, so not conservative if that estimate is right. Raised by about a fifth (a
+# round number, not a re-measurement) to 200 x 0.024 = $4.80; the spend rows record what the
+# run actually costs regardless.
 EXPECTED_COST_PER_PAGE_USD = {
-    "google/gemini-3.1-flash-lite": 0.003,
-    "google/gemini-3.6-flash": 0.008,
-    "qwen/qwen3.5-122b-a10b": 0.006,
-    "openai/gpt-6-luna": 0.002,
+    "google/gemini-3.1-flash-lite": 0.004,
+    "google/gemini-3.6-flash": 0.010,
+    "qwen/qwen3.5-122b-a10b": 0.007,
+    "openai/gpt-6-luna": 0.003,
 }
 LABELLER = "google/gemini-3.1-flash-lite"
 AGENT_MODEL = "openai/gpt-6-luna"
@@ -242,7 +292,8 @@ TYPED_PAGES, HANDWRITING_PAGES, PHOTO_PAGES, MIXED_PAGES = 100, 25, 50, 25
 FULL_SCAN_SHARE = 0.70  # decision W7: a mixed page this much image is a scan with a text layer
 TYPED_MAX_CHARS = 3000
 TOP_UP_BATCH, TOP_UP_LIMIT = 25, 200
-MONTH_BUDGET_USD = 40.0  # decision 0083
+# Fix round 1, I5: `estimate` reads `settings.monthly_budget_usd` (decision 0083) directly,
+# rather than a second constant that could drift from it.
 PICTURES = frozenset({"photograph", "diagram or chart", "mixed"})
 FOLDER = Path("s26") / "transcriber-test"
 PROBE_LINES = (
@@ -273,12 +324,24 @@ def _place(row: Mapping[str, object]) -> tuple[str, int, int]:
     return str(row["case_id"]), _int(row, "document"), _int(row, "page")
 
 
-def _key(row: Mapping[str, object], model: str, *, instruction: str, dpi: int) -> TranscriptionKey:
+def _key(
+    row: Mapping[str, object],
+    model: str,
+    *,
+    instruction: Instruction,
+    dpi: int,
+    mixed: bool = False,
+) -> TranscriptionKey:
+    """A reading's key.
+
+    ``mixed`` (fix round 1, I3) must match the job it identifies: a full and a mixed reading
+    of the same page must never share one (``key_instruction``, amending decision 0085).
+    """
     return TranscriptionKey(
         document_sha256=str(row["document_sha256"]),
         page=_int(row, "page"),
         model=model,
-        instruction=instruction,
+        instruction=key_instruction(instruction, mixed=mixed),
         dpi=dpi,
     )
 
@@ -299,7 +362,8 @@ def _category(row: Mapping[str, object], docs: CachedDocuments) -> str:
 
 
 def _text(cache: TranscriptionCache, row: Mapping[str, object], model: str, *, dpi: int) -> str:
-    record = cache.get(_key(row, model, instruction=TRANSCRIBE.version, dpi=dpi))
+    mixed = row.get("set") == "mixed"
+    record = cache.get(_key(row, model, instruction=TRANSCRIBE, dpi=dpi, mixed=mixed))
     return record.text if record is not None and record.status == "transcribed" else ""
 
 
@@ -319,7 +383,7 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
         tried += len(chunk)
         jobs = [
             PageJob(
-                _key(row, LABELLER, instruction=LABEL.version, dpi=RESOLUTION),
+                _key(row, LABELLER, instruction=LABEL, dpi=RESOLUTION),
                 docs.loader(_int(row, "mkey"), _int(row, "document")),
                 mixed=False,
             )
@@ -335,7 +399,7 @@ def _top_up(  # noqa: PLR0913, PLR0917 -- one parameter per fact the top-up need
             workers=4,
         )
         for row in chunk:
-            record = cache.get(_key(row, LABELLER, instruction=LABEL.version, dpi=RESOLUTION))
+            record = cache.get(_key(row, LABELLER, instruction=LABEL, dpi=RESOLUTION))
             if record is not None and record.page_kind == label:
                 have.append(row)
     return have[:want]
@@ -389,8 +453,22 @@ def _full_scans(
     return _hashed(chosen, docs)
 
 
-def cmd_keys(settings: Settings, docs: CachedDocuments) -> str:
-    """Draw the three keys (spec §7.3); top up with the labeller where the inventory is short."""
+def cmd_keys(settings: Settings, docs: CachedDocuments, *, force: bool = False) -> str:
+    """Draw the three keys (spec §7.3); top up with the labeller where the inventory is short.
+
+    Fix round 1, M6: refuses to overwrite an existing ``keys.jsonl`` unless ``force`` is
+    given. A re-run would draw a fresh, differently-numbered set of pages (the top-up and the
+    full-page-scan draw both call the labeller and the seeded shuffle again, and the inventory
+    or the frame may have changed underneath), silently shifting ``k`` under any marks Andy has
+    already saved against the old numbering.
+    """
+    folder = settings.data_dir / FOLDER
+    if not force and (folder / "keys.jsonl").exists():
+        raise ConfigurationError(
+            f"{folder / 'keys.jsonl'} already exists: `keys` would draw a fresh set of pages "
+            "and could shift the numbering under any marks already saved against it. Pass "
+            "--force to overwrite."
+        )
     s26 = settings.data_dir / "s26"
     frame = _read(s26 / "pages-dev-400.jsonl")
     sample = {_int(row, "n"): row for row in _read(s26 / "inventory" / "sample.jsonl")}
@@ -423,7 +501,6 @@ def cmd_keys(settings: Settings, docs: CachedDocuments) -> str:
         for name, group in groups
         for k, row in enumerate(group, start=1)
     ]
-    folder = settings.data_dir / FOLDER
     (folder / "pages").mkdir(parents=True, exist_ok=True)
     for row in rows:
         data = docs.document(_int(row, "mkey"), _int(row, "document"))
@@ -450,55 +527,86 @@ def probe_page() -> bytes:
 
 
 def cmd_probe(settings: Settings) -> str:
-    """One invented page per candidate; each reply is recorded as a test fixture."""
+    """One invented page per candidate; each reply is recorded as a test fixture.
+
+    Fix round 1, I4: reserved, spent and settled like any paid preparation job -- not routed
+    through `run_preparation` itself, which returns `Transcription` records rather than the
+    raw `ModelReply` this fixture needs to record. The client factory is built (which raises
+    if `OPENROUTER_API_KEY` is missing) before the reservation, the same order
+    `run_preparation` uses (its own fix round 1, I2), so that failure never leaves a
+    reservation open with nothing to settle it. The spend row's `calls` is the number that
+    actually completed, not `len(CANDIDATES)`, and is written -- with `settle` -- in a
+    `finally`, so an exception partway through still records what was spent.
+    """
     (rendered,) = render_pages(probe_page())
     payload, system = request_for(rendered, TRANSCRIBE, text_layer=None)
     FIXTURES.mkdir(parents=True, exist_ok=True)
     sha, dirty = commit_state()
     started = datetime.now(UTC)
-    lines: list[str] = []
-    total = 0.0
-    with ExitStack() as stack:
-        make = openrouter_clients(settings)(stack)
-        for model in CANDIDATES:
-            model_settings = settings_for(model, TRANSCRIBE)
-            try:
-                reply = make().complete(payload, model_settings, system=system)
-            except ModelError as error:
-                lines.append(f"{model}: FAILED -- {type(error).__name__}: {str(error)[:200]}")
-                continue
-            cost, _ = cost_usd(reply, model_settings)
-            total += cost
-            name = model.replace("/", "__") + ".json"
-            (FIXTURES / name).write_text(reply.model_dump_json(indent=1) + "\n")
-            try:
-                text, kind = parse_reply(reply.content, TRANSCRIBE)
-            except SchemaError as error:
-                lines.append(f"{model}: the reply did not parse -- {error}")
-                continue
-            copied = sum(1 for line in PROBE_LINES if line in text)
-            lines.append(
-                f"{model}: ok, kind {kind}, {copied} of {len(PROBE_LINES)} lines copied, "
-                f"{reply.usage.prompt_tokens}+{reply.usage.completion_tokens} tokens, "
-                f"${cost:.5f}"
-            )
-    write_spend(
+    job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-transcriber-probe"
+    client_factory = openrouter_clients(settings)
+    reserve_within_budget(
         settings.runs_dir,
-        SpendRecord(
-            job_id=f"{started:%Y%m%dT%H%M%S}-{sha}-transcriber-probe",
-            kind="transcriber-test",
-            model=",".join(CANDIDATES),
-            started=started,
-            calls=len(CANDIDATES),
-            cost_usd=total,
-            commit_sha=sha,
-            dirty=dirty,
-        ),
+        job_id,
+        len(CANDIDATES) * max(EXPECTED_COST_PER_PAGE_USD.values()),
+        settings.monthly_budget_usd,
+        now=started,
     )
+    lines: list[str] = []
+    calls = 0
+    total = 0.0
+    try:
+        with ExitStack() as stack:
+            make = client_factory(stack)
+            for model in CANDIDATES:
+                model_settings = settings_for(model, TRANSCRIBE)
+                try:
+                    reply = make().complete(payload, model_settings, system=system)
+                except ModelError as error:
+                    lines.append(f"{model}: FAILED -- {type(error).__name__}: {str(error)[:200]}")
+                    continue
+                calls += 1
+                cost, _ = cost_usd(reply, model_settings)
+                total += cost
+                name = model.replace("/", "__") + ".json"
+                (FIXTURES / name).write_text(reply.model_dump_json(indent=1) + "\n")
+                try:
+                    text, kind = parse_reply(reply.content, TRANSCRIBE)
+                except SchemaError as error:
+                    lines.append(f"{model}: the reply did not parse -- {error}")
+                    continue
+                copied = sum(1 for line in PROBE_LINES if line in text)
+                lines.append(
+                    f"{model}: ok, kind {kind}, {copied} of {len(PROBE_LINES)} lines copied, "
+                    f"{reply.usage.prompt_tokens}+{reply.usage.completion_tokens} tokens, "
+                    f"${cost:.5f}"
+                )
+    finally:
+        write_spend(
+            settings.runs_dir,
+            SpendRecord(
+                job_id=job_id,
+                kind="transcriber-test",
+                model=",".join(CANDIDATES),
+                started=started,
+                calls=calls,
+                cost_usd=total,
+                commit_sha=sha,
+                dirty=dirty,
+            ),
+        )
+        settle(settings.runs_dir, job_id)
     return "\n".join(lines)
 
 
-def cmd_run(settings: Settings, docs: CachedDocuments, *, models: Sequence[str], dpi: int) -> str:
+def cmd_run(
+    settings: Settings,
+    docs: CachedDocuments,
+    *,
+    models: Sequence[str],
+    dpi: int,
+    retry_failed: bool = False,
+) -> str:
     """Each model reads every key page it is asked to, at one resolution."""
     keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
     if dpi != RESOLUTION:  # the resolution comparison reads only the handwriting and typed keys
@@ -509,7 +617,7 @@ def cmd_run(settings: Settings, docs: CachedDocuments, *, models: Sequence[str],
             kind="transcriber-test",
             jobs=[
                 PageJob(
-                    _key(row, model, instruction=TRANSCRIBE.version, dpi=dpi),
+                    _key(row, model, instruction=TRANSCRIBE, dpi=dpi, mixed=row["set"] == "mixed"),
                     docs.loader(_int(row, "mkey"), _int(row, "document")),
                     mixed=row["set"] == "mixed",
                 )
@@ -520,6 +628,7 @@ def cmd_run(settings: Settings, docs: CachedDocuments, *, models: Sequence[str],
             commit=commit_state(),
             expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD[model],
             workers=4,
+            retry_failed=retry_failed,
         )
         failed = sum(1 for r in done if r.status == "failed")
         out.append(
@@ -567,13 +676,19 @@ def cmd_handwriting(settings: Settings) -> str:
             f"{' <mark>check this line</mark>' if (k, i) in spot else ''}</li>"
             for i, line in enumerate(agreed)
         )
+        # Fix round 1, M3: says how many versions actually read something, so a blank or
+        # failed reading (which agreed_lines already excludes from the intersection above) is
+        # visible to Andy rather than silently folded into "agree on".
+        present = sum(1 for lines in versions.values() if lines)
         cards.append(
             Card(
                 row=k,
                 body_html=(
-                    f'<p class="meta">Handwriting page {k}</p>'
+                    f'<p class="meta">Handwriting page {k} ({present} of {len(versions)} '
+                    "versions read something)</p>"
                     f'<img src="pages/handwriting-{k}.jpg" alt="page {k}">{blocks}'
-                    f"<p>All four agree on (accepted):</p><ul>{agreed_html}</ul>"
+                    "<p>Lines every version that read something agrees on (accepted):</p>"
+                    f"<ul>{agreed_html}</ul>"
                 ),
                 choices=(
                     Choice(
@@ -730,7 +845,13 @@ def _result(  # noqa: PLR0913, PLR0917 -- one parameter per fact a candidate's s
         )
         typed_errs += errors
         typed_chars += chars
-    readings = [cache.get(_key(r, model, instruction=TRANSCRIBE.version, dpi=dpi)) for r in keys]
+    readings = [
+        cache.get(_key(r, model, instruction=TRANSCRIBE, dpi=dpi, mixed=r["set"] == "mixed"))
+        for r in keys
+    ]
+    # Fix round 1, I2: a failed reading still cost real money (docket/transcribe.py keeps the
+    # cost of any call that got a reply back), so it counts here too -- excluding it would
+    # make a model that fails often look artificially cheap.
     costs = [r.cost_usd for r in readings if r is not None]
     return CandidateResult(
         model=model,
@@ -745,6 +866,120 @@ def _result(  # noqa: PLR0913, PLR0917 -- one parameter per fact a candidate's s
         mixed_pages=sum(1 for r in keys if r["set"] == "mixed"),
         mixed_invented=mixed_invented,
     )
+
+
+_KEY_SETS = ("typed", "handwriting", "photo", "mixed")
+
+
+@dataclass(frozen=True)
+class ReadingCounts:
+    """One key set's pages with no cached reading, and pages whose reading failed."""
+
+    missing: int
+    failed: int
+
+    @property
+    def incomplete(self) -> int:
+        """Pages this candidate has no usable, transcribed reading for."""
+        return self.missing + self.failed
+
+
+def _reading_counts(
+    cache: TranscriptionCache, keys: Sequence[Mapping[str, object]], model: str, *, dpi: int
+) -> dict[str, ReadingCounts]:
+    """Per key set, pages with no reading and pages whose reading failed (fix round 1, I2).
+
+    How a persistent failure should be *scored* is a rule question for Andy, not decided
+    here (spec §7.4's rule says nothing about it, and this fix round leaves that alone). This
+    only counts and reports, so nothing is silently scored as if it read no words.
+    """
+    counts: dict[str, ReadingCounts] = {}
+    for set_name in _KEY_SETS:
+        missing = failed = 0
+        for row in (r for r in keys if r["set"] == set_name):
+            record = cache.get(
+                _key(row, model, instruction=TRANSCRIBE, dpi=dpi, mixed=set_name == "mixed")
+            )
+            if record is None:
+                missing += 1
+            elif record.status == "failed":
+                failed += 1
+        counts[set_name] = ReadingCounts(missing=missing, failed=failed)
+    return counts
+
+
+def _choose_or_hold(
+    reading_counts: Mapping[str, Mapping[str, ReadingCounts]], results: Sequence[CandidateResult]
+) -> tuple[str | None, list[str]]:
+    """Hold off `choose` while any candidate is missing a transcribed reading (fix round 1, I2).
+
+    A failed or never-attempted reading is scored as if it read no words (`_text` returns
+    ""), which favours a model that fails often. How a persistent failure should ultimately be
+    *scored* is a rule question for Andy, left alone here; this only counts, reports, and
+    holds off choosing until every reading is in.
+    """
+    incomplete = {
+        m: counts
+        for m, counts in reading_counts.items()
+        if any(c.incomplete for c in counts.values())
+    }
+    if not incomplete:
+        return choose(results)
+    total_incomplete = sum(c.incomplete for counts in incomplete.values() for c in counts.values())
+    return None, [
+        f"not chosen: {total_incomplete} page(s) across {len(incomplete)} of "
+        f"{len(CANDIDATES)} candidates have no transcribed reading -- run "
+        "`transcriber_test run --retry-failed` and score again"
+    ]
+
+
+def _readings_lines(reading_counts: Mapping[str, Mapping[str, ReadingCounts]]) -> list[str]:
+    """One line per candidate: missing and failed readings, per key set (fix round 1, I2)."""
+    return [
+        "  "
+        + m
+        + ": "
+        + ", ".join(
+            f"{name} {c.missing} missing/{c.failed} failed" for name, c in reading_counts[m].items()
+        )
+        for m in CANDIDATES
+    ]
+
+
+def _handwriting_key_summary(
+    pages: Mapping[str, Mapping[str, object]],
+    key_texts: Mapping[int, str],
+    hw_marks: Mapping[int, Mapping[str, str]],
+) -> tuple[int, int, int, int, int]:
+    """Every handwriting page's key line counts (spec §17; fix round 1, M2 adds the last).
+
+    Returns (picked, typed, spot total, spot wrong, spot-answer mismatches).
+    """
+    spot_total = spot_changed = picked = typed_lines = spot_answer_mismatches = 0
+    for k, page in pages.items():
+        key_lines = Counter(lines_of(key_texts[int(k)]))
+        page_spot = cast("list[str]", page.get("spot", []))
+        spot_total += len(page_spot)
+        page_wrong = sum(1 for line in page_spot if key_lines[line] == 0)
+        spot_changed += page_wrong
+        if page_spot:
+            # Fix round 1, M2: Andy's own spot-check answer, read and checked against the
+            # computed outcome rather than left unread.
+            answer = hw_marks.get(int(k), {}).get("spot check", "")
+            said_wrong = answer == "some wrong, fixed in the key"
+            if said_wrong != (page_wrong > 0):
+                spot_answer_mismatches += 1
+        seen = {
+            line
+            for lines in cast("dict[str, list[str]]", page["versions"]).values()
+            for line in lines
+        }
+        for line in key_lines.elements():
+            if line in seen:
+                picked += 1
+            else:
+                typed_lines += 1
+    return picked, typed_lines, spot_total, spot_changed, spot_answer_mismatches
 
 
 def cmd_score(
@@ -769,6 +1004,14 @@ def cmd_score(
     mixed_marks = marking_page.read_marks(mixed_csv)
     if any(mixed_marks.get(int(n), {}).get("added words", "") == "" for n in mixed_sheet):
         raise SystemExit("some full-page scan outputs are unmarked")
+    # Fix round 1, M2: a page missing from the handwriting CSV altogether used to raise a bare
+    # KeyError below, naming no page; an empty key box (Andy never touched it) used to count
+    # silently as a page of zero lines. Both are refused here, by page number.
+    missing_hw = sorted(
+        int(k) for k in pages if not hw_marks.get(int(k), {}).get("key", "").strip()
+    )
+    if missing_hw:
+        raise SystemExit(f"handwriting key is missing or empty for page(s): {missing_hw}")
     mixed_by_mark = Counter(
         (str(mixed_sheet[str(n)]["model"]), fields["added words"])
         for n, fields in mixed_marks.items()
@@ -800,18 +1043,11 @@ def cmd_score(
         )
         for m in CANDIDATES
     ]
-    chosen, notes = choose(results)
-    spot_total = spot_changed = picked = typed_lines = 0
-    for k, page in pages.items():
-        key_lines = Counter(lines_of(key_texts[int(k)]))
-        spot_total += len(page.get("spot", []))
-        spot_changed += sum(1 for line in page.get("spot", []) if key_lines[line] == 0)
-        seen = {line for lines in page["versions"].values() for line in lines}
-        for line in key_lines.elements():
-            if line in seen:
-                picked += 1
-            else:
-                typed_lines += 1
+    reading_counts = {m: _reading_counts(cache, keys, m, dpi=RESOLUTION) for m in CANDIDATES}
+    chosen, notes = _choose_or_hold(reading_counts, results)
+    picked, typed_lines, spot_total, spot_changed, spot_answer_mismatches = (
+        _handwriting_key_summary(pages, key_texts, hw_marks)
+    )
     lines = [
         "# the transcriber test (S2.6 spec §7, decision 0080) -- counts only",
         f"keys: {sum(1 for r in keys if r['set'] == 'typed')} typed pages, "
@@ -819,7 +1055,11 @@ def cmd_score(
         f"{results[0].photo_pages} no-word photographs; {RESOLUTION} dpi; instruction "
         f"{TRANSCRIBE.version}; standard prices (images cannot be batched)",
         f"handwriting key: {picked} lines picked from a version, {typed_lines} typed by Andy; "
-        f"spot check of agreed lines: {spot_changed} of {spot_total} wrong in all four",
+        f"spot check of agreed lines: {spot_changed} of {spot_total} wrong in all four "
+        f"({spot_answer_mismatches} pages where Andy's own spot-check answer disagrees)",
+        "",
+        "## readings (fix round 1, I2)",
+        *_readings_lines(reading_counts),
         "",
     ]
     for r in results:
@@ -843,12 +1083,16 @@ def cmd_score(
         at_200 = _result(chosen, keys, key_texts, 0, typed_answers, cache, dpi=200)
         if at_200.cost_per_page > 0:
             base = next(r for r in results if r.model == chosen)
-            dpi = choose_resolution(base.hw_accuracy, at_200.hw_accuracy)
+            # Fix round 1, I7: exact fractions from the raw line counts, not the pre-divided
+            # floats -- an exact 5-point gap must not be misjudged by floating-point error.
+            base_acc = _fraction(base.hw_right, base.hw_lines)
+            at_200_acc = _fraction(at_200.hw_right, at_200.hw_lines)
+            dpi = choose_resolution(base_acc, at_200_acc)
             lines += [
                 "",
                 "## resolution (spec §7.5)",
-                f"  {chosen}: handwriting {base.hw_accuracy:.1%} at 150 dpi, "
-                f"{at_200.hw_accuracy:.1%} at 200; typed errors {base.typed_errors_per_100:.2f} "
+                f"  {chosen}: handwriting {float(base_acc):.1%} at 150 dpi, "
+                f"{float(at_200_acc):.1%} at 200; typed errors {base.typed_errors_per_100:.2f} "
                 f"and {at_200.typed_errors_per_100:.2f} per 100 characters",
                 f"  chosen: {dpi} dpi",
             ]
@@ -863,14 +1107,30 @@ def _latest_heldout_b_cost_per_case(settings: Settings) -> float:
         for record in read_jsonl(path, RunRecord)
         if record.finished is not None and record.arm == "B" and record.cases
     ]
+    if not records:
+        raise ConfigurationError(
+            "no finished heldout-400 arm B run under NTSB_RUNS_DIR; `estimate` needs one to "
+            "price v3 against the S2.4 bar"
+        )
     latest = max(records, key=lambda r: r.started)
     return latest.cost_usd / latest.cases
 
 
 def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
-    """Decision 0083 item 2: the stage's spend so far plus its re-estimated rest, against $40."""
+    """Decision 0083 item 2: the stage's re-estimated rest against the month's real headroom.
+
+    Fix round 1, I5: judged against ``settings.monthly_budget_usd - month_spent(...)`` minus
+    open reservations, not a flat $40 -- the flat figure ignored what the month had already
+    spent on S2.6's own evaluation runs (only preparation spend rows were counted) and every
+    other run that month, so "within $40" could print while the real budget guard would
+    refuse the transcription run part-way through.
+    """
     s26 = settings.data_dir / "s26"
-    spent = sum(
+    now = datetime.now(UTC)
+    month = month_spent(settings.runs_dir, now=now)
+    reserved = sum(open_reservations(settings.runs_dir).values())
+    headroom = settings.monthly_budget_usd - month - reserved
+    stage_spent = sum(
         s.cost_usd
         for path in sorted(settings.runs_dir.glob(f"*/{SPEND_FILE}"))
         for s in read_jsonl(path, SpendRecord)
@@ -883,13 +1143,23 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
     ) / max(1, len(mixed))
     image_only = sum(1 for r in frame if r["kind"] == "image only")
     text_and_image = sum(1 for r in frame if r["kind"] == "text and image")
+    # The frame's own case count (fix round 1, I5): dev-400 has 401 sample cases, but only the
+    # ones with a fetched docket contribute a page here -- 395, not 401, at the time of writing.
+    cases_with_dockets = len({r["case_id"] for r in frame}) or 1
     dev_pages = image_only + round(text_and_image * sent_share)
     cache = TranscriptionCache(settings.transcription_dir)
     keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
     readings = [
-        cache.get(_key(r, transcriber, instruction=TRANSCRIBE.version, dpi=dpi)) for r in keys
+        cache.get(_key(r, transcriber, instruction=TRANSCRIBE, dpi=dpi, mixed=r["set"] == "mixed"))
+        for r in keys
     ]
-    per_page = statistics.mean(r.cost_usd for r in readings if r is not None)
+    reading_costs = [r.cost_usd for r in readings if r is not None]
+    if not reading_costs:
+        raise ConfigurationError(
+            f"no cached {transcriber!r} reading at {dpi} dpi under NTSB_DATA_DIR; run `run` "
+            "(and, at 200 dpi, `resolution`) first"
+        )
+    per_page = statistics.mean(reading_costs)  # fix round 1, I2: a failed reading's cost counts
     transcription = 2 * dev_pages * per_page  # held-out assumed equal to development (spec §11)
     b_case = _latest_heldout_b_cost_per_case(settings)
     # A floor: v2 adds transcribed text to every payload, which the S2.4 cost per case lacks.
@@ -911,34 +1181,42 @@ def cmd_estimate(settings: Settings, transcriber: str, dpi: int) -> str:
     luna_photo_tokens = [
         r.prompt_tokens
         for r in (
-            cache.get(_key(row, AGENT_MODEL, instruction=TRANSCRIBE.version, dpi=RESOLUTION))
+            cache.get(_key(row, AGENT_MODEL, instruction=TRANSCRIBE, dpi=RESOLUTION))
             for row in keys
             if row["set"] == "photo"
         )
         if r is not None
     ]
+    if not luna_photo_tokens:
+        raise ConfigurationError(
+            "no cached GPT-6 Luna reading of a photo key page under NTSB_DATA_DIR; run `run` "
+            "first (v3's token estimate needs at least one)"
+        )
     image_tokens = statistics.median(luna_photo_tokens) - len(TRANSCRIBE.system) / 4
-    images_per_case = (image_only + text_and_image) * picture_share / 401
+    images_per_case = (image_only + text_and_image) * picture_share / cases_with_dockets
     luna = sources.price_of(AGENT_MODEL)
     v3 = 401 * (2 * b_case + 2 * images_per_case * image_tokens * luna.input_usd_per_mtok / 1e6)
-    total = spent + transcription + runs + v3
+    rest = transcription + runs + v3  # what remains to spend, not yet in month_spent
     verdict = (
-        f"pause: the stage passes ${MONTH_BUDGET_USD:.0f} -- Andy decides (decision 0083 item 2)"
-        if total > MONTH_BUDGET_USD
-        else f"within ${MONTH_BUDGET_USD:.0f}"
+        f"pause: the stage's remaining ${rest:.2f} does not fit the month's ${headroom:.2f} "
+        "headroom -- Andy decides (decision 0083 item 2)"
+        if rest > headroom
+        else f"fits within the month's ${headroom:.2f} headroom"
     )
     return "\n".join(
         [
-            f"spent on S2.6 so far (preparation spend rows): ${spent:.2f}",
+            f"month spent so far: ${month:.2f}; open reservations: ${reserved:.2f}; headroom "
+            f"against the ${settings.monthly_budget_usd:.0f} budget: ${headroom:.2f}",
+            f"spent on S2.6 so far (preparation spend rows only): ${stage_spent:.2f}",
             f"dev-400 pages to transcribe: {image_only} image-only + {sent_share:.0%} of "
             f"{text_and_image} text-and-image = {dev_pages}; held-out assumed the same",
             f"{transcriber} at {dpi} dpi: ${per_page:.5f} per page measured; transcription of "
             f"both samples ${transcription:.2f}",
             f"arm B runs (dev B-v1, B-v2, B-v2 standard; held-out B-v1, B-v2) at "
             f"${b_case:.5f} per case (latest heldout-400 arm B run): ${runs:.2f}, a floor",
-            f"v3 probe: {images_per_case:.1f} picture pages per case at {image_tokens:.0f} tokens "
-            f"each, GPT-6 Luna standard: ${v3:.2f}",
-            f"stage total: ${total:.2f} -- {verdict}",
+            f"v3 probe: {images_per_case:.1f} picture pages per case ({cases_with_dockets} cases "
+            f"with a docket) at {image_tokens:.0f} tokens each, GPT-6 Luna standard: ${v3:.2f}",
+            f"stage rest to spend: ${rest:.2f} -- {verdict}",
         ]
     )
 
@@ -947,10 +1225,15 @@ def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_test")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("keys", "probe", "run", "handwriting", "photos", "mixed"):
+    for name in ("probe", "handwriting", "photos", "mixed"):
         commands.add_parser(name)
+    keys_p = commands.add_parser("keys")
+    keys_p.add_argument("--force", action="store_true")
+    run_p = commands.add_parser("run")
+    run_p.add_argument("--retry-failed", action="store_true")
     resolution_p = commands.add_parser("resolution")
     resolution_p.add_argument("--model", required=True, choices=CANDIDATES)
+    resolution_p.add_argument("--retry-failed", action="store_true")
     score_p = commands.add_parser("score")
     score_p.add_argument("--handwriting", type=Path, required=True)
     score_p.add_argument("--photos", type=Path, required=True)
@@ -961,15 +1244,22 @@ def main(argv: list[str] | None = None) -> int:
     estimate_p.add_argument("--dpi", type=int, choices=(150, 200), default=RESOLUTION)
     args = parser.parse_args(argv)
     settings = Settings()
-    docs = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline()))
+    # max_attempts=1 (fix round 1, M1, as Task 12's own M1): a cache miss here means a genuine
+    # bug, not a transient network fault, and must fail at once rather than sleep through five
+    # retries' backoff.
+    docs = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline(), max_attempts=1))
     if args.command == "keys":
-        text = cmd_keys(settings, docs)
+        text = cmd_keys(settings, docs, force=args.force)
     elif args.command == "probe":
         text = cmd_probe(settings)
     elif args.command == "run":
-        text = cmd_run(settings, docs, models=CANDIDATES, dpi=RESOLUTION)
+        text = cmd_run(
+            settings, docs, models=CANDIDATES, dpi=RESOLUTION, retry_failed=args.retry_failed
+        )
     elif args.command == "resolution":
-        text = cmd_run(settings, docs, models=(args.model,), dpi=200)
+        text = cmd_run(
+            settings, docs, models=(args.model,), dpi=200, retry_failed=args.retry_failed
+        )
     elif args.command == "handwriting":
         text = cmd_handwriting(settings)
     elif args.command == "photos":

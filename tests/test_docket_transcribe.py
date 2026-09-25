@@ -43,9 +43,15 @@ DOC = build_pdf([PageSpec(text=TYPED), PageSpec(text=TYPED, images=("/DCTDecode"
 BIG_DOC = build_pdf([PageSpec(text=TYPED)] * 9)
 
 
-def _key(page: int = 1, model: str = "google/gemini-3.1-flash-lite") -> TranscriptionKey:
+def _key(
+    page: int = 1, model: str = "google/gemini-3.1-flash-lite", *, mixed: bool = False
+) -> TranscriptionKey:
     return TranscriptionKey(
-        document_sha256="d" * 64, page=page, model=model, instruction="t1", dpi=150
+        document_sha256="d" * 64,
+        page=page,
+        model=model,
+        instruction="t1+layer" if mixed else "t1",
+        dpi=150,
     )
 
 
@@ -114,9 +120,67 @@ def test_read_page_sends_the_image_and_records_cost_and_kind() -> None:
 
 def test_a_mixed_page_sends_its_own_text_layer_and_the_mixed_instruction() -> None:
     client = RecordingFakeClient([_reply("")])
-    read_page(PageJob(_key(page=2), lambda: DOC, mixed=True), client, TRANSCRIBE, now=lambda: NOW)
+    read_page(
+        PageJob(_key(page=2, mixed=True), lambda: DOC, mixed=True),
+        client,
+        TRANSCRIBE,
+        now=lambda: NOW,
+    )
     assert TYPED.split(".", maxsplit=1)[0] in client.payloads[0].text
     assert client.systems == [TRANSCRIBE.mixed_system]
+
+
+def test_a_mixed_and_a_full_reading_of_the_same_page_get_different_keys() -> None:
+    """Fix round 1, I3: the mixed-page instruction changes what is sent, so it must not share
+    a cache key with a full reading of the same page (amends decision 0085)."""
+    full = _key(page=2)
+    mixed = _key(page=2, mixed=True)
+    assert full.digest() != mixed.digest()
+    assert full.instruction == "t1"
+    assert mixed.instruction == "t1+layer"
+    assert transcribe_module.key_instruction(TRANSCRIBE, mixed=False) == "t1"
+    assert transcribe_module.key_instruction(TRANSCRIBE, mixed=True) == "t1+layer"
+
+
+def test_a_cached_full_reading_is_never_returned_for_a_mixed_job(tmp_path: Path) -> None:
+    """Fix round 1, I3: a cache miss under the mixed key, never the full reading's text."""
+    cache = TranscriptionCache(tmp_path)
+    full_record = Transcription(
+        key=_key(page=2),
+        status="transcribed",
+        text="full reading",
+        page_kind="typed text",
+        created=NOW,
+    )
+    cache.put(full_record, instruction=TRANSCRIBE)
+    assert cache.get(_key(page=2, mixed=True)) is None
+    assert cache.get(_key(page=2)) == full_record
+
+
+def test_read_page_refuses_a_full_key_for_a_mixed_job() -> None:
+    """Fix round 1, I3: a mixed job's key must carry the ``+layer`` variant."""
+    with pytest.raises(ConfigurationError):
+        read_page(
+            PageJob(_key(page=2), lambda: DOC, mixed=True),  # key names the full instruction
+            RecordingFakeClient([_reply("")]),
+            TRANSCRIBE,
+            now=lambda: NOW,
+        )
+
+
+def test_cache_put_refuses_a_mismatched_mixed_flag(tmp_path: Path) -> None:
+    """Fix round 1, I3: the write path checks ``record.mixed`` against the key's variant too."""
+    cache = TranscriptionCache(tmp_path)
+    record = Transcription(
+        key=_key(page=2),
+        status="transcribed",
+        text="",
+        page_kind="blank",
+        created=NOW,
+        mixed=True,  # the record says it is mixed, but its key names the full instruction
+    )
+    with pytest.raises(ConfigurationError):
+        cache.put(record, instruction=TRANSCRIBE)
 
 
 def test_a_bad_reply_is_a_failed_page_that_still_costs() -> None:

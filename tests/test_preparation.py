@@ -208,6 +208,56 @@ def test_a_second_job_with_the_same_id_is_refused(tmp_path: Path) -> None:
     assert open_reservations(settings.runs_dir) == {}
 
 
+def test_two_models_in_the_same_second_do_not_collide(tmp_path: Path) -> None:
+    """Fix round 1, I1: a command that runs one job per model, one after another, must not
+    have its second job refused as a duplicate of the first just because both started in the
+    same clock second (every page already cached makes the first job return in milliseconds).
+    """
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    for model in ("google/gemini-3.1-flash-lite", "openai/gpt-6-luna"):
+        done = run_preparation(
+            kind="transcriber-test",
+            jobs=_jobs(model),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.01,
+            workers=1,
+            client_factory=lambda stack: lambda: _factory(stack),
+            now=lambda: NOW,
+        )
+        assert len(done) == 3
+    assert open_reservations(settings.runs_dir) == {}
+
+
+def test_a_second_job_with_the_same_model_still_collides(tmp_path: Path) -> None:
+    """Fix round 1, I1: the model slug narrows the collision, it does not remove it."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    run_preparation(
+        kind="transcriber-test",
+        jobs=_jobs(),
+        instruction=TRANSCRIBE,
+        settings=settings,
+        commit=("abc1234", False),
+        expected_cost_per_page_usd=0.01,
+        workers=1,
+        client_factory=lambda stack: lambda: _factory(stack),
+        now=lambda: NOW,
+    )
+    with pytest.raises(ConfigurationError, match="already exists"):
+        run_preparation(
+            kind="transcriber-test",
+            jobs=_jobs(),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.01,
+            workers=1,
+            client_factory=lambda stack: lambda: _factory(stack),
+            now=lambda: NOW,
+        )
+
+
 def test_one_job_one_model(tmp_path: Path) -> None:
     jobs = [*_jobs(), *_jobs("google/gemini-3.6-flash")]
     with pytest.raises(ConfigurationError, match="one model"):

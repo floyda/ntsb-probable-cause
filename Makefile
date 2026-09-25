@@ -168,7 +168,8 @@ s26-transcriber-run:
 	uv run python -m scripts.transcriber_test handwriting
 	uv run python -m scripts.transcriber_test photos
 	uv run python -m scripts.transcriber_test mixed
-# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then Andy's two pages.
+# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then Andy's
+# three pages (handwriting, photos, mixed).
 
 s26-transcriber-resolution:
 	uv run python -m scripts.transcriber_test resolution --model $(MODEL)

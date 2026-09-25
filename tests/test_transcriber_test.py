@@ -3,7 +3,9 @@
 import hashlib
 import io
 import json
+import random
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,7 @@ from ntsb_probable_cause.docket.pages import page_text
 from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
     TRANSCRIBE,
+    PageJob,
     Transcription,
     TranscriptionCache,
     parse_reply,
@@ -293,13 +296,15 @@ def _put(  # noqa: PLR0913 -- one keyword per fact a test needs to set.
     cost_usd: float = 0.001,
     prompt_tokens: int = 0,
 ) -> None:
+    mixed = row.get("set") == "mixed"
     cache.put(
         Transcription(
-            key=tt._key(row, model, instruction=TRANSCRIBE.version, dpi=dpi),
+            key=tt._key(row, model, instruction=TRANSCRIBE, dpi=dpi, mixed=mixed),
             status="transcribed",
             text=text,
             cost_usd=cost_usd,
             prompt_tokens=prompt_tokens,
+            mixed=mixed,
             created=datetime.now(UTC),
         )
     )
@@ -407,6 +412,16 @@ def test_cmd_score_applies_the_rule_and_reports_the_choice(tmp_path: Path) -> No
     cache = TranscriptionCache(settings.transcription_dir)
     _put(cache, typed_row, "openai/gpt-6-luna", key_text)
     _put(cache, hw_row, "openai/gpt-6-luna", "Fuel BOTH")
+    _put(cache, photo_row, "openai/gpt-6-luna", "")
+    _put(cache, mixed_row, "openai/gpt-6-luna", "")
+    # Fix round 1, I2: `score` refuses to choose while any candidate lacks a transcribed
+    # reading of any key page, so every other candidate needs one too (blank is fine: it is
+    # not a *failed* reading, just an empty one, and scores as before).
+    for model in tt.CANDIDATES:
+        if model == "openai/gpt-6-luna":
+            continue
+        for row in keys:
+            _put(cache, row, model, "")
 
     (folder / "handwriting.json").write_text(
         json.dumps({"1": {"versions": {"A": ["Fuel BOTH"]}, "draft": "A", "agreed": ["Fuel BOTH"]}})
@@ -424,6 +439,58 @@ def test_cmd_score_applies_the_rule_and_reports_the_choice(tmp_path: Path) -> No
     text = tt.cmd_score(settings, docs, hw_csv, photos_csv, mixed_csv)
     assert "openai/gpt-6-luna: chosen -- the cheapest within both margins" in text
     assert "the transcriber test" in text
+
+
+def test_cmd_score_does_not_choose_while_a_reading_is_missing_or_failed(tmp_path: Path) -> None:
+    """Fix round 1, I2/M9: one candidate missing a reading of one key page holds off `choose`
+    entirely, naming the count, rather than silently scoring the gap as an empty reading."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    typed_doc = _text_pdf("FUEL SELECTOR BOTH.")
+    _seed(settings.docket_dir, 1, typed_doc)
+    docs = _offline_docs(settings)
+    key_text = page_text(typed_doc, 1)
+    typed_row = {
+        "set": "typed",
+        "k": 1,
+        "mkey": 1,
+        "document": 1,
+        "page": 1,
+        "document_sha256": hashlib.sha256(typed_doc).hexdigest(),
+    }
+    hw_row = {"set": "handwriting", "k": 1, "document_sha256": "a" * 64, "page": 1}
+    photo_row = {"set": "photo", "k": 1, "document_sha256": "b" * 64, "page": 1}
+    mixed_row = {"set": "mixed", "k": 1, "document_sha256": "c" * 64, "page": 1}
+    keys = [typed_row, hw_row, photo_row, mixed_row]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in keys))
+
+    cache = TranscriptionCache(settings.transcription_dir)
+    for model in tt.CANDIDATES:
+        _put(cache, typed_row, model, key_text)
+        _put(cache, hw_row, model, "Fuel BOTH")
+        _put(cache, mixed_row, model, "")
+        if model != "openai/gpt-6-luna":
+            _put(cache, photo_row, model, "")
+        # openai/gpt-6-luna's photo reading is never cached: it is missing.
+
+    (folder / "handwriting.json").write_text(
+        json.dumps({"1": {"versions": {"A": ["Fuel BOTH"]}, "draft": "A", "agreed": ["Fuel BOTH"]}})
+    )
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    (folder / "mixed.json").write_text(json.dumps({"11": {"k": 1, "model": "openai/gpt-6-luna"}}))
+    hw_csv = tmp_path / "handwriting-key.csv"
+    _write_csv(hw_csv, ["row", "key"], [["1", "Fuel BOTH"]])
+    photos_csv = tmp_path / "photo-words.csv"
+    _write_csv(photos_csv, ["row", "words"], [["11", "all on the page"]])
+    mixed_csv = tmp_path / "mixed-words.csv"
+    _write_csv(mixed_csv, ["row", "added words"], [["11", "all on the page and new"]])
+
+    text = tt.cmd_score(settings, docs, hw_csv, photos_csv, mixed_csv)
+    assert "not chosen:" in text
+    assert "run `transcriber_test run --retry-failed`" in text
+    assert "chosen -- the cheapest" not in text
+    assert "photo 1 missing/0 failed" in text
 
 
 def test_cmd_score_refuses_unmarked_photograph_outputs(tmp_path: Path) -> None:
@@ -452,9 +519,9 @@ def test_cmd_estimate_reports_the_stage_total(tmp_path: Path) -> None:
         "".join(
             json.dumps(r) + "\n"
             for r in (
-                {"kind": "image only"},
-                {"kind": "image only"},
-                {"kind": "text and image"},
+                {"kind": "image only", "case_id": "C1"},
+                {"kind": "image only", "case_id": "C2"},
+                {"kind": "text and image", "case_id": "C3"},
             )
         )
     )
@@ -517,5 +584,190 @@ def test_cmd_estimate_reports_the_stage_total(tmp_path: Path) -> None:
     )
 
     result = tt.cmd_estimate(settings, "openai/gpt-6-luna", RESOLUTION)
-    assert "stage total: $" in result
+    assert "stage rest to spend: $" in result
     assert "spent on S2.6 so far" in result
+    assert "month spent so far: $0.00; open reservations: $0.00; headroom" in result
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 1: the missing tests the review lists (M9), plus I7's boundary tests.
+# ---------------------------------------------------------------------------------------
+
+
+def test_choose_margin_boundaries_use_exact_fractions_not_floats() -> None:
+    """Fix round 1, I7: an exact 5-point handwriting gap and an exact 1-per-100 typed gap are
+    both within margin -- not misjudged by 0.05's own floating-point rounding."""
+    results = [
+        _result(
+            "best",
+            cost_per_page=0.004,
+            hw_lines=20,
+            hw_right=20,
+            hw_inventing=0,
+            typed_chars=2000,
+            typed_errors=20,
+        ),
+        _result(
+            "edge",
+            cost_per_page=0.001,
+            hw_lines=20,
+            hw_right=19,
+            hw_inventing=0,
+            typed_chars=2000,
+            typed_errors=40,
+        ),
+    ]
+    assert tt.choose(results)[0] == "edge"
+
+
+def test_choose_resolution_keeps_150_at_an_exact_five_point_gap() -> None:
+    """3/20 handwriting accuracy against 4/20 is exactly 5 points; the rule needs MORE than
+    5, so 150 dpi is kept. 3/20 against 5/20 (10 points) does cross it."""
+    assert tt.choose_resolution(Fraction(3, 20), Fraction(4, 20)) == 150
+    assert tt.choose_resolution(Fraction(3, 20), Fraction(5, 20)) == 200
+
+
+def test_fraction_of_zero_lines_is_zero() -> None:
+    assert tt._fraction(0, 0) == Fraction(0)
+    assert tt._fraction(3, 4) == Fraction(3, 4)
+
+
+def test_reading_counts_reports_missing_and_failed(tmp_path: Path) -> None:
+    """Fix round 1, M9 (the review's own list): a failed or never-attempted reading is
+    counted, not silently scored as if it read no words."""
+    settings = Settings(data_dir=tmp_path)
+    cache = TranscriptionCache(settings.transcription_dir)
+    row_ok = {"set": "typed", "k": 1, "document_sha256": "a" * 64, "page": 1}
+    row_failed = {"set": "typed", "k": 2, "document_sha256": "b" * 64, "page": 1}
+    row_missing = {"set": "typed", "k": 3, "document_sha256": "c" * 64, "page": 1}
+    _put(cache, row_ok, "openai/gpt-6-luna", "text")
+    cache.put(
+        Transcription(
+            key=tt._key(row_failed, "openai/gpt-6-luna", instruction=TRANSCRIBE, dpi=RESOLUTION),
+            status="failed",
+            error="boom",
+            created=datetime.now(UTC),
+        )
+    )
+    counts = tt._reading_counts(
+        cache, [row_ok, row_failed, row_missing], "openai/gpt-6-luna", dpi=RESOLUTION
+    )
+    assert counts["typed"] == tt.ReadingCounts(missing=1, failed=1)
+    assert counts["typed"].incomplete == 2
+    assert counts["handwriting"] == tt.ReadingCounts(missing=0, failed=0)
+
+
+def test_top_up_labels_the_pool_until_want_is_reached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix round 1, M9: the top-up actually calls the labeller and keeps what it labels,
+    stopping once ``want`` pages are found rather than labelling the whole pool."""
+    settings = Settings(data_dir=tmp_path)
+    docs = _offline_docs(settings)
+    doc = _text_pdf()
+    pool: list[dict[str, object]] = []
+    for i in range(3):
+        mkey = 100 + i
+        _seed(settings.docket_dir, mkey, doc)
+        pool.append({"case_id": f"F{i}", "mkey": mkey, "document": 1, "page": 1})
+    cache = TranscriptionCache(settings.transcription_dir)
+
+    def fake_run_preparation(  # noqa: PLR0913 -- mirrors run_preparation's own signature.
+        *,
+        kind: str,
+        jobs: list[PageJob],
+        instruction: object,
+        settings: Settings,
+        commit: tuple[str, bool],
+        expected_cost_per_page_usd: float,
+        workers: int = 4,
+        retry_failed: bool = False,
+    ) -> list[Transcription]:
+        for job in jobs:
+            cache.put(
+                Transcription(
+                    key=job.key,
+                    status="transcribed",
+                    text="",
+                    page_kind="handwriting",
+                    created=datetime.now(UTC),
+                )
+            )
+        return []
+
+    monkeypatch.setattr(tt, "run_preparation", fake_run_preparation)
+    have = tt._top_up([], pool, 2, "handwriting", docs, settings)
+    assert len(have) == 2
+    assert {row["mkey"] for row in have} <= {100, 101, 102}
+
+
+def test_full_scans_excludes_sampled_photo_only_and_low_image_share(tmp_path: Path) -> None:
+    """Fix round 1, M9: the full-page-scan draw excludes a sampled page, a photo-only
+    document's page, and a page whose images cover too little of it -- even when each is
+    otherwise a valid text-and-image page."""
+    settings = Settings(data_dir=tmp_path)
+    docs = _offline_docs(settings)
+    full_page = _full_page_pdf()
+    text_page = _text_pdf()
+    frame: list[dict[str, object]] = [
+        {
+            "case_id": "S",
+            "mkey": 1,
+            "document": 1,
+            "page": 1,
+            "kind": "text and image",
+            "photo_only": False,
+        },
+        {
+            "case_id": "P",
+            "mkey": 2,
+            "document": 1,
+            "page": 1,
+            "kind": "text and image",
+            "photo_only": True,
+        },
+        {
+            "case_id": "L",
+            "mkey": 3,
+            "document": 1,
+            "page": 1,
+            "kind": "text and image",
+            "photo_only": False,
+        },
+        {
+            "case_id": "G",
+            "mkey": 4,
+            "document": 1,
+            "page": 1,
+            "kind": "text and image",
+            "photo_only": False,
+        },
+    ]
+    _seed(settings.docket_dir, 1, full_page)
+    _seed(settings.docket_dir, 2, full_page)
+    _seed(settings.docket_dir, 3, text_page)  # mostly text: image_area_share well under 70%
+    _seed(settings.docket_dir, 4, full_page)
+    sampled = {("S", 1, 1)}  # the sampled page is excluded even though it would qualify
+
+    scans = tt._full_scans(frame, sampled, docs, random.Random(1))  # noqa: S311
+    assert [r["case_id"] for r in scans] == ["G"]
+
+
+def test_typed_rows_are_reproducible_from_the_seed() -> None:
+    """Fix round 1, M9: the seeded draw gives the same pages on a second call."""
+    frame = [
+        {
+            "case_id": f"T{i}",
+            "mkey": i,
+            "document": 1,
+            "page": 1,
+            "fatal": i % 2 == 0,
+            "kind": "text only",
+            "chars": 500,
+        }
+        for i in range(20)
+    ]
+    first = tt._typed_rows(frame, random.Random(tt.SEED))  # noqa: S311
+    second = tt._typed_rows(frame, random.Random(tt.SEED))  # noqa: S311
+    assert first == second
+    assert len(first) == 20  # 10 fatal + 10 non-fatal, all that is available

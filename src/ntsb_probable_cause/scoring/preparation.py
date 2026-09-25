@@ -6,6 +6,7 @@ first call, appends a spend row as each chunk of pages returns, and settles the 
 when it ends -- also when it is interrupted, since the spend rows already say what it cost.
 """
 
+import re
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from datetime import UTC, datetime
@@ -30,6 +31,22 @@ from ntsb_probable_cause.scoring.budget import (
 from ntsb_probable_cause.settings import Settings
 
 Kind = Literal["inventory", "transcriber-test", "transcription"]
+
+_NOT_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def _model_slug(model: str) -> str:
+    """A short, filesystem-safe slug for a model id (fix round 1, I1).
+
+    A command that starts one preparation job per model, one after another (the transcriber
+    test's ``run``), can have its second job start in the same clock second as its first once
+    every page is already cached -- the first job then returns in milliseconds. Without a
+    per-model slug, two such jobs of the same kind in the same second at the same commit
+    shared one folder name and the second was refused as a duplicate, so a re-run after an
+    interruption could never get past its second model. A genuine duplicate -- same kind,
+    same model, same second -- still refuses, unchanged.
+    """
+    return _NOT_SLUG.sub("-", model.lower()).strip("-") or "no-model"
 
 
 def openrouter_clients(settings: Settings) -> Callable[[ExitStack], Callable[[], ModelClient]]:
@@ -76,10 +93,14 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     )
     started = now()
     sha, dirty = commit
-    job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-{kind}"
+    # The model slug (fix round 1, I1) keeps two jobs of the same kind, started one after
+    # another in the same second at the same commit, from sharing a folder when they use
+    # different models; a genuine duplicate -- same kind AND same model, same second -- still
+    # collides and is refused below.
+    job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-{kind}-{_model_slug(model)}"
     # Claim the job's folder atomically, before anything else (fix round 3, M9; the same
-    # pattern as scoring/runner.py's Task 9D): two preparation jobs of the same kind started
-    # in the same second at the same commit would otherwise share one folder, each
+    # pattern as scoring/runner.py's Task 9D): two preparation jobs of the same kind and model
+    # started in the same second at the same commit would otherwise share one folder, each
     # overwriting the other's reservation and interleaving spend rows -- the exact collision
     # Task 9D records for evaluation runs. `mkdir` is atomic, so exactly one job claims it.
     job_folder = settings.runs_dir / job_id
@@ -88,8 +109,8 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     except FileExistsError:
         raise ConfigurationError(
             f"preparation job folder {job_id} already exists: another job of kind {kind!r} "
-            "was started in the same second at the same commit. Wait a second and start "
-            "again."
+            f"and model {model!r} was started in the same second at the same commit. Wait a "
+            "second and start again."
         ) from None
     # Built before the reservation (fix round 1, I2): the default factory raises
     # ConfigurationError when OPENROUTER_API_KEY is missing, and building it after the

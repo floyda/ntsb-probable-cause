@@ -86,6 +86,11 @@ function set(row, name, value) {
   marks[row] = marks[row] || {}; marks[row][name] = value; save(marks); progress();
 }
 function done(card) {
+  // Fix round 1, M5: a card with no required choice (e.g. a text-only card with no spot
+  // check due) must not count as marked before Andy has touched it -- `names.every` on an
+  // empty array is trivially true, so the row is also required to be one he has interacted
+  // with at least once (a choice or a text field, both call `set()`).
+  if (!(card.dataset.row in marks)) { return false; }
   var names = JSON.parse(card.dataset.required);
   return names.every(function (n) {
     return card.querySelector('input[data-field="' + n + '"]:checked') !== null;

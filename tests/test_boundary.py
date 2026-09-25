@@ -42,6 +42,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TRANSCRIBE,
     PageJob,
     TranscriptionKey,
+    key_instruction,
     read_page,
 )
 from ntsb_probable_cause.errors import LeakageError
@@ -1115,12 +1116,12 @@ def _page_reply(text: str = "", kind: str = "blank") -> dict[str, object]:
     }
 
 
-def _transcription_key(page: int = 1) -> TranscriptionKey:
+def _transcription_key(page: int = 1, *, mixed: bool = False) -> TranscriptionKey:
     return TranscriptionKey(
         document_sha256="d" * 64,
         page=page,
         model="google/gemini-3.1-flash-lite",
-        instruction=TRANSCRIBE.version,
+        instruction=key_instruction(TRANSCRIBE, mixed=mixed),
         dpi=150,
     )
 
@@ -1147,7 +1148,7 @@ def test_a_transcription_request_holds_only_the_image_instruction_and_text_layer
     client = OpenRouterClient("or-key", sleep=lambda _s: None)
     for raw in record_fixtures:
         read_page(
-            PageJob(_transcription_key(), lambda: document, mixed=True),
+            PageJob(_transcription_key(mixed=True), lambda: document, mixed=True),
             client,
             TRANSCRIBE,
             now=lambda: datetime(2026, 10, 1, tzinfo=UTC),
@@ -1187,7 +1188,7 @@ def test_the_transcription_boundary_check_can_fail(
     )
     client = OpenRouterClient("or-key", sleep=lambda _s: None)
     read_page(
-        PageJob(_transcription_key(), lambda: document, mixed=True),
+        PageJob(_transcription_key(mixed=True), lambda: document, mixed=True),
         client,
         TRANSCRIBE,
         now=lambda: datetime(2026, 10, 1, tzinfo=UTC),

@@ -89,6 +89,20 @@ class Instruction:
         }
 
 
+def key_instruction(instruction: Instruction, *, mixed: bool) -> str:
+    """The ``instruction`` value a reading's key carries: distinct for a mixed reading.
+
+    Fix round 1, I3 (amends decision 0085): a mixed reading sends the page's own text layer
+    alongside the instruction and so reads differently from a full reading of the same page
+    under the same nominal instruction version -- the two must never share a cache key, or a
+    later reader (Task 14's v2) could take a full reading, which repeats the page's text
+    layer, for "the words in the page's images". Used here (``read_page``, ``_validate_jobs``,
+    ``TranscriptionCache.put``), by the transcriber test's own key builder, and, from Task 14,
+    by v2.
+    """
+    return f"{instruction.version}+layer" if mixed else instruction.version
+
+
 _KINDS = "Say what the page mainly shows, as exactly one of: " + ", ".join(PAGE_LABELS) + "."
 _COPY = (
     "You copy the words on one page image from an aviation accident investigation docket. "
@@ -180,14 +194,18 @@ class TranscriptionCache:
         ``instruction``, when given, must be the instruction that actually produced
         ``record`` (fix round 1, M4): a record whose key names a different instruction version
         is refused, so an inventory (i1) reading can never be cached under a transcriber (t1)
-        key and later served as a transcription with no words and no sign of the mistake.
+        key and later served as a transcription with no words and no sign of the mistake. A
+        mixed reading's key must carry the ``+layer`` variant (fix round 1, I3), judged by
+        ``record.mixed``, so a full and a mixed reading of the same page can never collide.
         """
-        if instruction is not None and record.key.instruction != instruction.version:
-            raise ConfigurationError(
-                f"record for page {record.key.page} names instruction "
-                f"{record.key.instruction!r}, not the instruction actually used "
-                f"({instruction.version!r})"
-            )
+        if instruction is not None:
+            expected = key_instruction(instruction, mixed=record.mixed)
+            if record.key.instruction != expected:
+                raise ConfigurationError(
+                    f"record for page {record.key.page} names instruction "
+                    f"{record.key.instruction!r}, not the instruction actually used "
+                    f"({expected!r})"
+                )
         path = self._path(record.key)
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.partial")
@@ -277,10 +295,11 @@ def read_page(
     before any page is even loaded, not a reading to record as failed.
     """
     key = job.key
-    if key.instruction != instruction.version:
+    expected = key_instruction(instruction, mixed=job.mixed)
+    if key.instruction != expected:
         raise ConfigurationError(
             f"page {key.page}'s key names instruction {key.instruction!r}, not the "
-            f"instruction actually used ({instruction.version!r})"
+            f"instruction actually used ({expected!r})"
         )
     try:
         data = job.load()
@@ -359,10 +378,11 @@ def _validate_jobs(jobs: Sequence[PageJob], instruction: Instruction) -> None:
     bugs, not a page's own reading, so both are checked once up front rather than per page.
     """
     for job in jobs:
-        if job.key.instruction != instruction.version:
+        expected = key_instruction(instruction, mixed=job.mixed)
+        if job.key.instruction != expected:
             raise ConfigurationError(
                 f"page {job.key.page}'s key names instruction {job.key.instruction!r}, not "
-                f"the instruction actually used ({instruction.version!r})"
+                f"the instruction actually used ({expected!r})"
             )
     for model in {job.key.model for job in jobs}:
         try:
