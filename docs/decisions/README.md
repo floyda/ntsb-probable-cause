@@ -130,3 +130,4 @@ under `docs/specs/` and the record links to it.
 | [0087](0087-the-transcriber-is-qwen-provisionally.md) | The transcriber is Qwen3.5 122B, provisionally: a post-hoc override of 0080's outcome | Accepted; overrides 0080's outcome for S2.6 |
 | [0088](0088-s26-pauses-after-the-dev-comparison.md) | S2.6 pauses after the dev-400 comparison; the held-out step is decided then | Accepted; applies 0083 item 2; corrects 0087 item 2 |
 | [0089](0089-s26-closes-after-the-v3-probe-held-out-deferred.md) | S2.6 closes after the v3 probe on dev-400; its held-out runs are deferred | Accepted; takes 0088's held-out step |
+| [0090](0090-s26-closes-on-its-development-results.md) | S2.6 closes on its development results; the v3 probe and held-out runs are deferred | Accepted; supersedes 0089 item 1 |
