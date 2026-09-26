@@ -50,3 +50,5 @@ rounds on coding guidance before S3.
 ## Status
 
 Accepted, 2026-09-26 (Andy: "B: v3 probe in October, then close").
+
+**Note, 2026-09-26 (final review, I6):** the counts in Context (35.1%, 22.1%, the 33 loss-of-control/stall cases) come from scripts/occurrence_misses.py on run 20260926T085904-d19aafa-dev-400-B, published in docs/results/s26-occurrence-misses-dev.txt; they were quoted before that script was committed.
