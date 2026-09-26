@@ -37,9 +37,12 @@ ntsb-record = "apps.recorder.__main__:main"
 # The recorder's S3 store sync (`store/sync.py`, Task 10) needs this only behind an `s3://`
 # store location; imported lazily in `s3_client()`. `uv sync` (no `--extra`) never installs it
 # -- a local store, and every test, run without it -- so `uv sync --extra aws` is required on
-# any machine that will use an `s3://` store (the container image, Task 12).
+# any machine that will use an `s3://` store (the container image, Task 12). `botocore` is
+# declared too, although boto3 already requires it: `store/sync.py` imports
+# `botocore.exceptions.ClientError` directly, so deptry needs it declared (close-out, 2026-09-26).
 aws = [
     "boto3>=1.43.100",
+    "botocore>=1.43.100",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -157,10 +160,6 @@ known_first_party = ["ntsb_probable_cause", "apps", "scripts", "recorder_stack"]
 extend_exclude = ["scripts/exploratory"]
 
 [tool.deptry.per_rule_ignores]
-# `botocore` is boto3's own dependency, never installed or imported directly by this project;
-# `store/sync.py:s3_client()` imports `botocore.exceptions.ClientError` alongside the lazy
-# `boto3` import (controller note 3) only to translate one boto3 error into `ObjectNotFoundError`.
-DEP001 = ["botocore"]
 # `aws-cdk-lib` and `constructs` are deliberately dev dependencies, not runtime ones (Task 13
 # controller note 4): `infra/` is deploy-time tooling that runs on Andy's machine through `cdk
 # synth`/`cdk deploy`, never inside the container image (`.dockerignore` excludes `infra/`,

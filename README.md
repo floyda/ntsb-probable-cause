@@ -222,14 +222,14 @@ make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sent
 make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
-make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
-make record             # uv run ntsb-record run — one nightly pass (S2.5)
-make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
-make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
 make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
 make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
 make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
 make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
+make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
+make record             # uv run ntsb-record run — one nightly pass (S2.5)
+make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
+make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
 make page-kinds               # scripts/page_kinds.py — dev-400 page kinds, counts only; free (S2.6)
 make analysis-handcheck       # scripts/analysis_handcheck.py sheet — private marking page for analysis sentences; free (S2.6)
 make s26-reply-budget         # arm B on dev-400 at the old 2,000-token reply budget (S2.6, 0084)

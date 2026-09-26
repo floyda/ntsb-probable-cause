@@ -893,6 +893,7 @@ dependencies = [
 [package.optional-dependencies]
 aws = [
     { name = "boto3" },
+    { name = "botocore" },
 ]
 
 [package.dev-dependencies]
@@ -923,6 +924,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.43.100" },
+    { name = "botocore", marker = "extra == 'aws'", specifier = ">=1.43.100" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pyarrow", specifier = ">=25.0.1" },

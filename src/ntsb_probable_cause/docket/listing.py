@@ -22,7 +22,7 @@ _CREATION = re.compile(r"<b>Creation Date:</b>\s*([^<]*)<")
 _MODIFIED = re.compile(r"<b>Last Modified:</b>\s*([^<]*)<")
 _RELEASE = re.compile(r"Public Release Date &(?:amp;)? Time:\s*([^<]*)<")
 
-# Task 3's live probe (spec §10.1; deviation logged in docs/plans/2026-09-22-s25-recorder.md):
+# Task 3's live probe (spec §10.1; recorded in the spec's As-built section):
 # the site answers a case with no public docket at all with an ordinary HTTP 200 page
 # (title "NTSB Docket - Docket Management System") carrying this exact sentence in an
 # ``<h5>``, never with an HTTP error or a blank page. Confirmed against ProjectID 999999999,

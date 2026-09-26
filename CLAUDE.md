@@ -8,15 +8,17 @@ The agent itself: it determines the probable cause of a US general-aviation acci
 investigator-gathered evidence, scored against the NTSB's own published verdict. It is built on
 the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 `../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
-"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **S0
-(foundation) is built**: strict tooling, data ingestion, the evidence/synthesis/verdict split
-with its layered leakage guard, and a model seam — see "Commands" below. The agent loop, the
-docket tool and the evaluation harness are not built yet. Read build-brief §7 before writing
-any code, then
+"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **S0 to
+S2.4 are built and released**: S0 the foundation (strict tooling, data ingestion, the
+evidence/synthesis/verdict split with its layered leakage guard, a model seam), S1 scoring and
+the evaluation harness, S2 the docket tool and arm B, S2.4 the model switch. **S2.5 (the
+recorder) is built**: a nightly job that records when each open case's evidence fields and
+docket documents first appear, into its own SQLite store, running on AWS. The agent loop is
+not built yet. Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
-takes a part of), and the current stage's specification (S0, closed:
-`docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they differ.
+takes a part of), and each stage's specification under `docs/specs/` (its As-built section
+records what was delivered), which amend the brief where they differ.
 
 ## Required components (build-brief §7)
 
@@ -57,9 +59,18 @@ takes a part of), and the current stage's specification (S0, closed:
   never enters the agent's text; the report prints every result for all cases and again for
   unmarked cases, with each marked group's own row.
 - **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
-  document lists with first-seen timestamps; resolution outcomes.
+  document lists with first-seen timestamps; resolution outcomes. **The store's first tables
+  are built in S2.5**: `store/` (`db.py`, `schema.py` with numbered migrations, `models.py`,
+  `sync.py` for a local or `s3://` location) is the only code that touches SQLite, and holds
+  what the recorder observes, never a synthesis or verdict field. The predictions tables come
+  in S3 and S4.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
-  predictions (design notes suggest committing hashed rows to git for tamper-evidence).
+  predictions (design notes suggest committing hashed rows to git for tamper-evidence). **The
+  polling half is built in S2.5**: the recorder (`recorder/window.py`, `recorder/cases.py`,
+  `recorder/dockets.py`, `recorder/run.py`; the command `ntsb-record run` in
+  `apps/recorder/`) polls every watched open case and its docket listing each night at 03:00
+  UTC, as one scheduled AWS Fargate task defined in `infra/` (`NtsbRecorderStack`), with the
+  store in S3. The resolution watcher and prediction locking come in S4.
 - **Tests and CI**: the layered leakage guard's tests, including a mutation test that proves
   the boundary test can fail (0016); docket parser fixtures; a check that held-out cases never
   appear in development fixtures, judged by event date; a redaction check on fixtures (0015);
@@ -67,8 +78,9 @@ takes a part of), and the current stage's specification (S0, closed:
   retrieval-contamination test if similar-case search is ever added.
 - **Data ingestion as a job** (not `fetch.py <start> <end>`): S0 fetches by event month into a
   hashed manifest and rebuilds one processed file of index columns plus the raw record (0014);
-  incremental updates by modification date and status arrive with the recorder in S2.5. Raw
-  data kept out of git.
+  the S2.5 recorder re-fetches the event months of every watched case nightly, with the
+  change feed stored beside them for comparison, not used as the source (0065). Raw data kept
+  out of git.
 - **Live board**: the public surface — a page for open cases and a trajectory view of the
   agent's steps and costs, in the clinical tone the design notes require.
 
@@ -290,20 +302,20 @@ make s2-bars            # arm B on heldout-400 — ONCE; appends to
                          #   docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # uv run python -m scripts.docket_shape_open — open-split docket
                          #   shape, numbers only, nothing cached (S2, 0024/0040)
-make ongoing-probe      # uv run python -m scripts.ongoing_docket_probe — fixes the
-                         #   recorder's no-docket outcome, numbers only (S2.5 §10.1)
-make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10);
-                         #   --verbose and --dry-run also accepted
-make change-feed-probe  # uv run python -m scripts.change_feed_probe — the change feed's
-                         #   shape, one-shot (S2.5 §5.3, 0065)
-make recorder-report    # uv run python -m scripts.recorder_report — the recorder's
-                         #   counts-only report, from NTSB_STORE (S2.5 §10.2)
 make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
 make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
 make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its
                       #   ledger row before s24-bars-b
 make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after
                       #   s24-bars-ceiling's row is committed
+make ongoing-probe      # uv run python -m scripts.ongoing_docket_probe — fixes the recorder's
+                         #   no-docket outcome, numbers only (S2.5 §10.1)
+make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10); --verbose
+                         #   and --dry-run also accepted
+make change-feed-probe  # uv run python -m scripts.change_feed_probe — the change feed's shape,
+                         #   one-shot (S2.5 §5.3, 0065)
+make recorder-report    # uv run python -m scripts.recorder_report — the recorder's counts-only
+                         #   report, from NTSB_STORE (S2.5 §10.2)
 make page-kinds               # scripts.page_kinds — dev-400 page kinds, counts only; free (S2.6)
 make analysis-handcheck       # scripts.analysis_handcheck sheet — the private marking page for
                               #   analysis sentences in dev-400 dockets; free (S2.6, 0077)
