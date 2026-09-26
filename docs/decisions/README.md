@@ -114,3 +114,4 @@ under `docs/specs/` and the record links to it.
 | [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted |
 | [0072](0072-recorders-one-exempted-import-link.md) | The recorder's call to `split_record` is the one link exempted from the synthesis-and-verdict import rule | Accepted; narrows 0016 |
 | [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted; gate passed 2026-09-24; replaces 0031 item 1 |
+| [0092](0092-s25-closes-on-four-nights-report-and-cost-follow.md) | S2.5 closes on four recorded nights; the 14-night report and billed cost follow as a dated addendum | Accepted |
