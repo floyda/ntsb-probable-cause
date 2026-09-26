@@ -102,8 +102,9 @@ SPEC_FILE = "spec.json"
 BATCHES_FILE = "batches.jsonl"
 RUN_FILE = "run.jsonl"
 
-# A reused batch that ended any of these has no replies to reuse (S2.6 Task 9B, S2.4's final
-# review): like a lost batch, it is recorded, its dependants superseded, and it is resubmitted.
+# A batch that ended any of these has no replies to use (S2.6 Task 9B, S2.4's final review).
+# A reused one is, like a lost batch, recorded, its dependants superseded, and resubmitted; a
+# fresh one is recorded and the run stops, so a resume resubmits it (fix rounds 2-3 of 9B).
 ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})
 
 
@@ -1516,13 +1517,18 @@ class Runner:
 
         self._write_log_line(body)
 
-    def _log_ended(self, stage: str, batch_id: str, ended: str) -> None:
-        """One line when a reused batch ended failed/expired/cancelled: it is resubmitted fresh."""
+    def _log_ended(self, stage: str, batch_id: str, ended: str, *, reused: bool = True) -> None:
+        """One line when a batch ended failed/expired/cancelled.
+
+        A reused batch is resubmitted fresh; a fresh one stops the run, which a resume then
+        resubmits (final review, Minor 1: this line used to say "resubmitting" for both).
+        """
+        then = "resubmitting (new money)" if reused else "the run stops; a resume resubmits it"
 
         def body() -> str:
             stage_field = stage.ljust(self._STAGE_WIDTH)
             word_field = "ENDED".ljust(self._WORD_WIDTH)
-            return f"{stage_field}{word_field}{batch_id} ended {ended}; resubmitting (new money)"
+            return f"{stage_field}{word_field}{batch_id} ended {ended}; {then}"
 
         self._write_log_line(body)
 
@@ -1602,7 +1608,7 @@ class Runner:
         ended: str,
         reported_cost_usd: float | None,
     ) -> None:
-        """Append an ``ended`` row for a reused batch that ran to a terminal non-completed status.
+        """Append an ``ended`` row for a batch, reused or fresh, that ended non-completed.
 
         Task 9B, S2.4's final review: same row shape as ``_record_lost_batch``'s, with
         ``"ended": ended`` (one of ``ENDED_UNUSABLE``) in place of ``"lost": True``, so a later
@@ -1821,7 +1827,7 @@ class Runner:
                 self._record_ended_batch(
                     run.folder, batch_id, stage, status.status, status.reported_cost_usd
                 )
-                self._log_ended(stage, batch_id, status.status)
+                self._log_ended(stage, batch_id, status.status, reused=False)
             raise ModelError(f"batch {batch_id} ended {status.status}")
         return status
 

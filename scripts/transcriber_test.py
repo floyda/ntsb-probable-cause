@@ -356,9 +356,11 @@ TOP_UP_BATCH, TOP_UP_LIMIT = 25, 200
 # rather than a second constant that could drift from it.
 # Fix round 4, T1: which spend is S2.6's own is decided by commit, not by date. 90ceab9 is the
 # S2.4 merge commit on main ("S2.4: the model switch (#11)"). S2.6 was branched before it and
-# merged it in, so S2.6's own commits are exactly those reachable from HEAD but not from it
-# (`git rev-list 90ceab9..HEAD`). A run record or spend row counts towards the stage total
-# only if its recorded commit is one of these. Fix round 3's date filter (2026-09-24) counted
+# merged it in, so its commits are among those reachable from HEAD but not from it (`git
+# rev-list 90ceab9..HEAD`). Not exactly S2.6's (final review triage, T13-U1): that range also
+# holds S2.5's commits, merged in from the S2.5 branch, so an S2.5 spend row would be counted
+# as S2.6's; none exists. A run record or spend row counts towards the stage total only if
+# its recorded commit is one of these. Fix round 3's date filter (2026-09-24) counted
 # $2.164 of S2.4's own runs made that day, and would count any later run from another branch.
 STAGE_BASE = "90ceab9"
 # git's own shortest abbreviation; a shorter recorded sha would match too many commits.

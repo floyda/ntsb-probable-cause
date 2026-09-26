@@ -72,8 +72,10 @@ MAX_OUTPUT_TOKENS = 4000
 # sampled pages under 2% holds words, more than 1 in 20), so every text-and-image page is sent.
 MIXED_PAGE_MIN_IMAGE_SHARE = 0.0
 # Decision 0087: chosen provisionally, as a post-hoc override of decision 0080's rule, which
-# chose no candidate in either pass (docs/results/s26-transcriber-test.txt, -pass2.txt).
-# Whether transcription goes forward is decided by the dev-400 B-v1 against B-v2 comparison.
+# chose no candidate in either pass (docs/results/s26-transcriber-test.txt, -pass2.txt). The
+# dev-400 B-v2 against B-v1 comparison is done (top-1 +1.3% [-2.5%, +4.8%],
+# docs/results/s26-armB-v2-dev.txt): v2 is available and is not the default, and the bar is
+# unchanged -- S2.4's held-out arm B stays the bar (decisions 0089, 0090).
 TRANSCRIBER = "qwen/qwen3.5-122b-a10b"
 _ERROR_CHARS = 200
 

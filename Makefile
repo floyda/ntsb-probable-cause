@@ -175,10 +175,12 @@ s26-transcriber-run:
 # Andy's three pages (handwriting, photos, mixed).
 
 s26-transcriber-resolution:
+	$(if $(MODEL),,$(error MODEL is required: the chosen transcriber, e.g. MODEL=qwen/qwen3.5-122b-a10b))
 	uv run python -m scripts.transcriber_test resolution --model $(MODEL)
 	uv run python -m scripts.transcriber_test resolution --model $(MODEL) --retry-failed
 # The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1), then one retry of
-# any page that failed there too.
+# any page that failed there too. Run on 2026-09-25 with MODEL=qwen/qwen3.5-122b-a10b (decision
+# 0087; docs/results/s26-transcriber-test-pass2.txt, "resolution").
 
 s26-transcriber-recheck:
 	uv run python -m scripts.transcriber_test photos-recheck
@@ -187,19 +189,26 @@ s26-transcriber-recheck:
 # first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/.
 
 s26-dev-runs:
+	$(if $(PER_CASE),,$(error PER_CASE is required: the expected cost per case in USD, e.g. PER_CASE=0.0042))
 	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v1 --expected-cost-per-case-usd $(PER_CASE)
 	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v2 --expected-cost-per-case-usd $(PER_CASE)
 # S2.6 spec §9.1: both at one commit, marks in force. Development runs write no ledger row, so
 # the tree stays clean and one recipe is safe. PER_CASE: S2.4's arm B cost per case on
 # heldout-400 (docs/results/s24-bars.txt, $0.0028), rounded up by half for v2's added text.
+# Run on 2026-09-26 with PER_CASE=0.0042 (spec.json of 20260926T082427-d19aafa-dev-400-B and
+# 20260926T085904-d19aafa-dev-400-B).
 
 s26-transcribe-dev-dry:
+	$(if $(PER_PAGE),,$(error PER_PAGE is required: the expected cost per page in USD, above zero, e.g. PER_PAGE=0.0017))
 	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE) --dry-run
 # S2.6 spec §8.3, free: counts and prices the pages dev-400 needs. Read its projection before
 # running s26-transcribe-dev (Task 15 Step 2: stop if it is more than a quarter over the estimate).
 
 s26-transcribe-dev:
+	$(if $(PER_PAGE),,$(error PER_PAGE is required: the expected cost per page in USD, above zero, e.g. PER_PAGE=0.0017))
 	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE)
 # S2.6 spec §8.3, paid: reads every image page dev-400 needs, once, into the cache. PER_PAGE is
 # the transcriber's measured cost per page (docs/results/s26-transcriber-test-pass2.txt), rounded
 # up. Kept apart from the dry run (Task 14 review, I2) so there is a point to stop between them.
+# Run on 2026-09-26 with PER_PAGE=0.0017. The job reserves pages x PER_PAGE and stops once that
+# is spent (final review, I1), so a PER_PAGE set too low stops the job early; it never overspends.

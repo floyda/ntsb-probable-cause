@@ -117,10 +117,9 @@ def render_pages(
 
     Every PDFium call this function makes runs behind ``_PDFIUM_LOCK`` (fix round 1, C1):
     PDFium itself is not thread-safe, so two calls from different threads at once can crash
-    the process rather than raise a catchable error. That includes the implicit call a
-    rendered bitmap's finalizer makes when it is freed (fix round 2, R3): each page's ``image``
-    is deleted before the lock is released, rather than left to go out of scope after the
-    function returns.
+    the process rather than raise a catchable error. To keep a rendered bitmap from being
+    freed outside the lock (fix round 2, R3), each page's ``image`` is deleted before the lock
+    is released, rather than left to go out of scope after the function returns.
     """
     with _PDFIUM_LOCK:
         try:
@@ -148,12 +147,13 @@ def render_pages(
                 finally:
                     page.close()
                 rgb = image.convert("RGB")
-                # `image` wraps a PDFium bitmap directly; `rgb` is an independent copy, so the
+                # `image` wraps a PDFium bitmap's buffer; `rgb` is an independent copy, so the
                 # bitmap is no longer needed. Deleting it here, not after the loop or at the
-                # end of the function, makes its finalizer (`FPDFBitmap_Destroy`) run inside
-                # this lock for every page, including the last -- fix round 2, R3: without
-                # this, the last page's `image` stayed alive as a local variable until the
-                # function returned, so its bitmap was freed after the lock had been released.
+                # end of the function, drops this code's last reference inside the lock for
+                # every page, including the last -- fix round 2, R3: without this, the last
+                # page's `image` stayed alive until the function returned. When pypdfium2's
+                # own finalizer then frees the bitmap is pypdfium2's to decide; the bitmap is
+                # not closed explicitly (final review triage, T3 and T11-R6, carried).
                 del image
                 drawn.append(
                     RenderedPage(

@@ -2264,6 +2264,20 @@ def test_log_status_line_pins_the_briefs_completed_example(
     )
 
 
+def test_log_ended_says_resubmitting_only_for_a_reused_batch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Minor 1: a fresh batch that ends unusably stops the run; nothing is
+    resubmitted then, so the line must not say so."""
+    now = datetime(2026, 9, 16, 7, 10, 22, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    r._log_ended("stage1", "b1", "expired")
+    r._log_ended("stage1", "c1", "failed", reused=False)
+    reused, fresh = capsys.readouterr().err.splitlines()
+    assert reused.endswith("b1 ended expired; resubmitting (new money)")
+    assert fresh.endswith("c1 ended failed; the run stops; a resume resubmits it")
+
+
 def test_log_status_line_pins_the_briefs_retry_example_with_no_cost(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
