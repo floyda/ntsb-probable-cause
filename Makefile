@@ -211,4 +211,4 @@ s26-transcribe-dev:
 # the transcriber's measured cost per page (docs/results/s26-transcriber-test-pass2.txt), rounded
 # up. Kept apart from the dry run (Task 14 review, I2) so there is a point to stop between them.
 # Run on 2026-09-26 with PER_PAGE=0.0017. The job reserves pages x PER_PAGE and stops once that
-# is spent (final review, I1), so a PER_PAGE set too low stops the job early; it never overspends.
+# is spent (final review, I1), so a PER_PAGE set too low stops the job early, within a few in-flight pages of its reservation.

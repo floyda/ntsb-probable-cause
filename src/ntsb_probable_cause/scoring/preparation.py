@@ -5,7 +5,8 @@ count against the monthly budget like any run: the job reserves its projection b
 first call, appends a spend row as each chunk of pages returns, and settles the reservation
 when it ends -- also when it is interrupted, since the spend rows already say what it cost.
 It stops starting pages once it has spent its reservation (S2.6 final review, I1), so a low
-estimate cannot take the month past its budget.
+estimate stops the job within a few pages of its reservation: pages already in flight finish
+and are paid for, which can take it a few cents past the reservation.
 """
 
 import re
