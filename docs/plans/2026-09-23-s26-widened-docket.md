@@ -826,7 +826,7 @@ git add src/ntsb_probable_cause/docket/pages.py scripts/page_kinds.py tests/pdf_
 git commit -m "S2.6: page facts and the dev-400 page-kind counts (spec §6.2 step 1)"
 ```
 
-- [ ] **Step 12: STOP — report the page kinds and the photo-only pages to Andy**
+- [x] **Step 12: STOP — report the page kinds and the photo-only pages to Andy**
 
 In plain words, with a glossary: the four kind totals against the design session's, and what the fetched photo-only documents hold (W2 is decided: they are in).
 
@@ -3080,7 +3080,7 @@ git add docs/results/s26-reply-budget-dev.txt docs/decisions/ src/ntsb_probable_
 git commit -m "S2.6: the reply budget raised to <value> tokens, measured on dev-400 (decision <number>)"
 ```
 
-- [ ] **Step 9: STOP — report to Andy** in plain words: what truncated, how often, and the new budget. Every later run uses it.
+- [x] **Step 9: STOP — report to Andy** in plain words: what truncated, how often, and the new budget. Every later run uses it.
 
 ---
 
@@ -4910,7 +4910,7 @@ git add docs/results/s26-inventory.txt src/ntsb_probable_cause/docket/transcribe
 git commit -m "S2.6: the inventory, labelled and checked; the mixed-page cut-off (spec §6)"
 ```
 
-- [ ] **Step 13: STOP — report to Andy, and the stop point (spec §6.4)**
+- [x] **Step 13: STOP — report to Andy, and the stop point (spec §6.4)**
 
 In plain words with a glossary: what the pages show, how often the labeller was right, the cut-off and what it means, and the stop rule's outcome. If the outcome is `stop`, the stage records it (spec §6.4): Tasks 13–16 are skipped, the marks, the renderer and the evidence-version axis ship, and the close-out says why.
 
@@ -6125,11 +6125,11 @@ git commit -m "S2.6: each transcriber candidate's reply to the invented probe pa
 
 A candidate that fails the probe (for example Qwen rejecting reasoning level `none`) is recorded in Deviations with its error; the setting is corrected once in `sources.LOWEST_REASONING` with the reason, or the candidate is dropped (spec §17), and Andy is told before Step 8.
 
-- [ ] **Step 8: STOP — Andy runs the test** (about $4–8 at standard prices, estimate; about 30–60 minutes)
+- [x] **Step 8: STOP — Andy runs the test** (about $4–8 at standard prices, estimate; about 30–60 minutes)
 
 Same exports, then `make s26-transcriber-run`. Expected: four `run_preparation` summaries for the first `run`, a fifth summary for its `run --retry-failed` (decision 3, "after one retry": each page still failed at that point is scored as wrong for that model, fix round 3, R1 — the recipe calls `--retry-failed` exactly once, right after the first read), then the three page paths it writes by name: `.../handwriting.html`, `.../photos.html`, `.../mixed.html`. The tree is unchanged afterwards (everything is under `data/`). If the run is interrupted, re-run only the subcommands that did not finish (for example `uv run python -m scripts.transcriber_test run`, then the page-writing subcommands `handwriting`, `photos` and `mixed`), not the whole target, and do not re-run `run --retry-failed` if it already completed, so no failed page is retried twice (fix round 4, T2).
 
-- [ ] **Step 9: STOP — Andy builds the handwriting key and reviews the photograph and full-page-scan words** (about 2-3 hours; fix round 1, I6 widens the earlier 1½–2 hour estimate to include the third page)
+- [x] **Step 9: STOP — Andy builds the handwriting key and reviews the photograph and full-page-scan words** (about 2-3 hours; fix round 1, I6 widens the earlier 1½–2 hour estimate to include the third page)
 
 Andy opens `…/data/s26/transcriber-test/handwriting.html`, edits each page's key and answers each spot check, and downloads `handwriting-key.csv`; then opens `…/photos.html`, marks each output, and downloads `photo-words.csv`; then opens `…/mixed.html`, marks each output (decision W7's full-page scans, up to 100 cards, each needing a comparison between the image and its text layer), and downloads `mixed-words.csv`. Andy downloads each CSV now and then as a backup, not only at the end: his marks live only in the browser's `localStorage`, which survives a reload but not cleared site data or a different browser (fix round 1, M5).
 
@@ -6142,7 +6142,7 @@ uv run python -m scripts.transcriber_test score --handwriting ~/Downloads/handwr
 
 If a model was chosen, **STOP** — Andy runs the resolution comparison (same exports; `make s26-transcriber-resolution MODEL=<the chosen model id>`, about $0.30–1, estimate), then the score command again, which adds the resolution section. If no model passed the gate, go to Step 13.
 
-- [ ] **Step 10b: STOP — the second pass (decision 0086; post-hoc; free, no model call)**
+- [x] **Step 10b: STOP — the second pass (decision 0086; post-hoc; free, no model call)**
 
 The first pass chose no transcriber and stands, unchanged, in `docs/results/s26-transcriber-test.txt`. Decision 0086 fixes three corrections before any re-marking: (1) a word of the docket's stamped photo label ("Photo"), even partly hidden by the icon, counts as on the page; anything else is judged as before (a misread registration is still invented); (2) a transcribed reply with fewer than half as many lines as the key fails that handwriting page for that model (none of its lines right; its lines still count towards invented lines), and a model with more than 1 in 20 handwriting pages failed that way is out, as a further gate -- a failed reading is scored as wrong (decision 3) and is not also counted toward this gate (fix round 1, I1, controller ruling); (3) the handwriting keys that equal the prefilled draft are re-checked against the image. The gates' limits, the margins, "handwriting first", failed pages counted as wrong and the cost rule are unchanged. The first pass's three CSVs are kept at `<data_dir>/s26/transcriber-test/pass1/`; the recheck pages read them there.
 
@@ -6177,7 +6177,7 @@ git add docs/results/s26-transcriber-test.txt docs/decisions/ src/ntsb_probable_
 git commit -m "S2.6: the transcriber test, scored; the transcriber and its resolution (decision 0084)"
 ```
 
-- [ ] **Step 12: STOP — the pause point (decision 0083 item 2)**
+- [x] **Step 12: STOP — the pause point (decision 0083 item 2)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -6186,7 +6186,7 @@ uv run python -m scripts.transcriber_test estimate --model <the chosen model id>
 
 Report the result to Andy in plain words: the test's outcome, the choice and why, and the stage's re-estimated total. If it reads `pause`, Andy decides between spreading the stage over months and transcribing fewer pages (for example image-only pages first); record his answer in Deviations. Nothing further runs until he answers.
 
-- [ ] **Step 13: If no model passed.** The stage records it (spec §7.4 item 3): the results file says so, the transcriber decision is written as "no transcriber", Tasks 14–17 are skipped, and the close-out states what shipped (marks, renderer, axis, inventory) and what did not.
+- [x] **Step 13: If no model passed.** — not applicable: decision 0087 chose a transcriber. The stage records it (spec §7.4 item 3): the results file says so, the transcriber decision is written as "no transcriber", Tasks 14–17 are skipped, and the close-out states what shipped (marks, renderer, axis, inventory) and what did not.
 
 ---
 
@@ -6760,7 +6760,7 @@ Same exports; `git status --short` must be empty; then `make s26-dev-runs PER_CA
 
 Expected: both tables with their unmarked and marked rows (Task 9), the preparation line (Task 14), and the paired difference overall, on cases unmarked in both runs, and on the cases with transcribed pages, each by fatal and non-fatal through the slices. Commit (`S2.6: B-v2 against B-v1 on dev-400 (spec §9.1)`).
 
-- [ ] **Step 5: STOP — report to Andy** in plain words with a glossary: does reading the words in images change the diagnosis on development cases, overall and where image pages exist; what the marked groups show; what it cost. Published whichever way it comes out.
+- [x] **Step 5: STOP — report to Andy** in plain words with a glossary: does reading the words in images change the diagnosis on development cases, overall and where image pages exist; what the marked groups show; what it cost. Published whichever way it comes out.
 
 ---
 
@@ -6781,7 +6781,7 @@ Expected: both tables with their unmarked and marked rows (Task 9), the preparat
 
 **The rule, from spec §10.3 and 0082, as code:** a page is a picture if its reading passed (`transcribed`) and its kind is photograph, diagram or chart, or mixed — its words, if any, already passed the tripwire with the document's text; a page whose reading **failed** is sent anyway and counted `unguarded`. Pictures go in page order, document by document in the order attached, until the next would take the case over the cap; the rest are counted `images_not_sent`. A case with any unguarded picture is marked `unguarded_images` with the count. This mark is the one computed outside `split_record`, because pictures never pass through the split; it is added to the evidence's marks in `prepare_case`, the one place pictures are chosen.
 
-- [ ] **Step 1: Write the failing tests**
+- [-] **Step 1: Write the failing tests** (deferred, decision 0090)
 
 Append to `tests/test_runner.py` (it already imports `small_docket` from `tests.test_attach`, `prepare_case`, `estimated_cost_usd`, `runner`, `FakeDocketReader`; add `dataclasses`, `CaseMark`, `PageImage`, `Transcription`, `TranscriptionKey`, `picture_pages`):
 
@@ -6900,12 +6900,12 @@ def test_image_summary_counts_pictures_and_cases_cut_short(case_result: CaseResu
 
 and, in `tests/test_eval_app.py`, a v3 run folder with one `unguarded_images` case: `report` prints `without the unguarded_images cases (decision 0082 item 3):` followed by a table whose `all` row has one fewer case.
 
-- [ ] **Step 2: Run them to see them fail**
+- [-] **Step 2: Run them to see them fail** (deferred, decision 0090)
 
 Run: `uv run pytest tests/test_runner.py tests/test_boundary.py tests/test_report.py -v -k "v3 or picture or image"`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [-] **Step 3: Implement** (deferred, decision 0090)
 
 `scoring/runner.py`:
 
@@ -6987,7 +6987,7 @@ def image_summary(results: Sequence[CaseResult]) -> str:
 
 and `apps/eval/__main__.py`'s `_cmd_report`, for a v3 run: append `image_summary(cases)` and, when any case carries `unguarded_images`, `"without the unguarded_images cases (decision 0082 item 3):\n" + summarise([r for r in cases if not any(m.kind == "unguarded_images" for m in r.marks)], floor=floor)`.
 
-- [ ] **Step 4: Run the tests, then the whole check; commit**
+- [-] **Step 4: Run the tests, then the whole check; commit** (deferred, decision 0090)
 
 Run: the Step 2 command, then `make check`. Expected: PASS; green.
 
@@ -7000,7 +7000,7 @@ git commit -m "S2.6: v3 -- pictures alongside the text, up to the cap; unguarded
 
 ### Task 17: Does seeing the pictures help? The v3 probe on `dev-400` (spec §10; Andy runs; paid)
 
-- [ ] **Step 1: The target**
+- [-] **Step 1: The target** (deferred, decision 0090)
 
 ```make
 s26-v3-probe:
@@ -7012,7 +7012,7 @@ s26-v3-probe:
 
 Commit it.
 
-- [ ] **Step 2: STOP — Andy runs the probe** (about $6–10 in all at standard prices, estimate: B-v2 at twice its batch cost, and B-v3 with its pictures; about 2–4 hours each, one case at a time)
+- [-] **Step 2: STOP — Andy runs the probe** (deferred, decision 0090) (about $6–10 in all at standard prices, estimate: B-v2 at twice its batch cost, and B-v3 with its pictures; about 2–4 hours each, one case at a time)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -7023,7 +7023,7 @@ make s26-v3-probe PER_CASE=<2 x Task 15's B-v2 cost per case, rounded up> PER_CA
 
 The tree is unchanged afterwards. If the month's budget refuses the second run, wait for the next month or ask Andy (decision 0083).
 
-- [ ] **Step 3: The results file**
+- [-] **Step 3: The results file** (deferred, decision 0090)
 
 ```bash
 {
@@ -7035,7 +7035,7 @@ The tree is unchanged afterwards. If the month's budget refuses the second run, 
 
 Expected: the v3 table, its unmarked and marked rows, the table without `unguarded_images` cases, the picture line and the paired difference; then the noise floor: the standard B-v2 against the batch B-v2, same evidence version and model, whose paired difference is chance and transport alone. A v3 difference inside that floor is reported as no effect. Commit (`S2.6: the v3 probe on dev-400 (spec §10)`).
 
-- [ ] **Step 4: STOP — report to Andy**, including what it settles for S3 (spec §10.6): a real gain gives S3's loop an image tool and a B-v3 comparison; none keeps S3 on v2. Whether v3 ever runs on held-out is Andy's decision here, recorded in Deviations.
+- [-] **Step 4: STOP — report to Andy** (deferred, decision 0090), including what it settles for S3 (spec §10.6): a real gain gives S3's loop an image tool and a B-v3 comparison; none keeps S3 on v2. Whether v3 ever runs on held-out is Andy's decision here, recorded in Deviations.
 
 ---
 
@@ -7046,7 +7046,7 @@ Expected: the v3 table, its unmarked and marked rows, the table without `unguard
 - Create: `docs/results/s26-bars.txt`
 - Modify: `docs/results/heldout-ledger.md` (two rows, appended by the runs, into the versioned table of Task 8)
 
-- [ ] **Step 1: The targets**
+- [-] **Step 1: The targets** (deferred, decision 0090)
 
 ```make
 s26-transcribe-heldout:
@@ -7065,7 +7065,7 @@ s26-bars-v2:
 
 Commit them.
 
-- [ ] **Step 2: STOP — Andy transcribes `heldout-400`** (estimated, not counted, until the dry run's first line replaces the estimate; about 1–3 hours)
+- [-] **Step 2: STOP — Andy transcribes `heldout-400`** (deferred, decision 0090) (estimated, not counted, until the dry run's first line replaces the estimate; about 1–3 hours)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -7075,7 +7075,7 @@ make s26-transcribe-heldout PER_PAGE=<as in Task 15>
 
 The dry run prints the page count and projected cost first. If the projection is more than a quarter over Task 13's estimate, or the month cannot hold it, stop and ask Andy. Afterwards the tree is unchanged.
 
-- [ ] **Step 3: STOP — Andy runs B-v1 on held-out** (about $1–2, estimate; 30–90 minutes)
+- [-] **Step 3: STOP — Andy runs B-v1 on held-out** (deferred, decision 0090) (about $1–2, estimate; 30–90 minutes)
 
 `git status --short` must be empty and `make check` green. Then `make s26-bars-v1 PER_CASE=<value>`. Afterwards the tree has **one** change: a new row in `docs/results/heldout-ledger.md`. Commit it alone:
 
@@ -7086,13 +7086,13 @@ git commit -m "S2.6: ledger row for B-v1 on heldout-400"
 
 If a batch is lost, fails or expires, do not start a new held-out run: print the target's command with `make -n s26-bars-v1 PER_CASE=<value>`, and run that `uv run ntsb-eval run ...` line with `--resume <run id>` appended, from the same commit (Task 9B). It resubmits the dead batch and everything after it, and the ledger row is written once, when the run finishes.
 
-- [ ] **Step 4: STOP — Andy runs B-v2 on held-out** (about $1–2, estimate; 30–90 minutes)
+- [-] **Step 4: STOP — Andy runs B-v2 on held-out** (deferred, decision 0090) (about $1–2, estimate; 30–90 minutes)
 
 `git status --short` must be empty. Then `make s26-bars-v2 PER_CASE=<value>`. Afterwards the tree again has one change, the second ledger row; commit it the same way. The two runs sit on commits that differ only by the first ledger row, so the code is one commit's (the S2.4 precedent, recorded in Deviations).
 
 If a batch is lost, fails or expires, do not start a new held-out run: print the target's command with `make -n s26-bars-v2 PER_CASE=<value>`, and run that `uv run ntsb-eval run ...` line with `--resume <run id>` appended, from the same commit (Task 9B). It resubmits the dead batch and everything after it, and the ledger row is written once, when the run finishes.
 
-- [ ] **Step 5: The results file**
+- [-] **Step 5: The results file** (deferred, decision 0090)
 
 ```bash
 {
@@ -7104,13 +7104,13 @@ If a batch is lost, fails or expires, do not start a new held-out run: print the
 
 Expected: B-v2 against B-v1 (the transcription effect on held-out); B-v1 against S2.4's B-v1 (what the marks and the reply budget changed: S2.4's 40 analysis-sentence refusals and its truncated replies, `docs/results/s24-bars.txt`, are answered here, the first group in the marked rows); B-v2 against the ceiling; and the `Baseline floor` line every `heldout-400` report prints. Commit (`S2.6: B-v1 and B-v2 on heldout-400; B-v2 is the bar for S3 (spec §9.3)`).
 
-- [ ] **Step 6: STOP — report to Andy**: the new bar, in plain words, beside S2.4's, with the marked groups and what they show. B-v2 is the bar S3's loop must beat, on v2 (spec §9.3).
+- [-] **Step 6: STOP — report to Andy** (deferred, decision 0090): the new bar, in plain words, beside S2.4's, with the marked groups and what they show. B-v2 is the bar S3's loop must beat, on v2 (spec §9.3).
 
 ---
 
 ### Task 19: Close-out (decision 0017)
 
-- [ ] **Step 1: Documentation**
+- [x] **Step 1: Documentation**
 
 `CLAUDE.md`, appended rather than rewritten:
 - "Eval bars to beat": an S2.6 paragraph with B-v1 and B-v2 on `heldout-400` copied from `docs/results/s26-bars.txt` (top-1, top-3, finding recall@10, with intervals; the paired B-v2 − B-v1 difference; the marked groups), stating that B-v2 is S3's bar on v2, and the S2.4 figures left in place.
