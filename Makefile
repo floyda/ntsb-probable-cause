@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs
 
 check: lint type test
 
@@ -185,6 +185,13 @@ s26-transcriber-recheck:
 	uv run python -m scripts.transcriber_test handwriting-recheck
 # Decision 0086's second pass (free: no model call): Andy's two recheck pages, read against the
 # first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/.
+
+s26-dev-runs:
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v1 --expected-cost-per-case-usd $(PER_CASE)
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v2 --expected-cost-per-case-usd $(PER_CASE)
+# S2.6 spec §9.1: both at one commit, marks in force. Development runs write no ledger row, so
+# the tree stays clean and one recipe is safe. PER_CASE: S2.4's arm B cost per case on
+# heldout-400 (docs/results/s24-bars.txt, $0.0028), rounded up by half for v2's added text.
 
 s26-transcribe-dev-dry:
 	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE) --dry-run

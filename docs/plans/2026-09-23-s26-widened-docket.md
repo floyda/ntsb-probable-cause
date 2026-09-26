@@ -6721,7 +6721,7 @@ git commit -m "S2.6: v2 in the docket tool -- transcribed pages, their marker, a
 - Modify: `Makefile` (+ `s26-dev-runs`)
 - Create: `docs/results/s26-armB-v2-dev.txt`
 
-- [ ] **Step 1: The target**
+- [x] **Step 1: The target**
 
 ```make
 s26-dev-runs:
