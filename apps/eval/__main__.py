@@ -375,14 +375,14 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
             run_record, other_record, versions_compared=args.versions_compared
         )
         heading = report.comparison_heading(run_record, other_record)
-        text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
+        text += f"\n\n{heading}\n{report.compare_by_fatal(cases, other_cases)}"
         if run_record.evidence_version != other_record.evidence_version:
             # Spec §9.1: the comparison also "for the cases that hold image pages" -- those
             # this run paid to transcribe pages for.
             transcribed_ids = {r.case_id for r in cases if r.preparation_cost_usd > 0}
             text += (
                 f"\n\non the {len(transcribed_ids)} cases with transcribed pages:\n"
-                + report.compare(
+                + report.compare_by_fatal(
                     [r for r in cases if r.case_id in transcribed_ids],
                     [r for r in other_cases if r.case_id in transcribed_ids],
                 )
@@ -391,7 +391,7 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         if marked_ids:
             text += (
                 f"\n\non cases unmarked in both runs ({len(marked_ids)} marked cases left out):\n"
-                + report.compare(
+                + report.compare_by_fatal(
                     [r for r in cases if r.case_id not in marked_ids],
                     [r for r in other_cases if r.case_id not in marked_ids],
                 )

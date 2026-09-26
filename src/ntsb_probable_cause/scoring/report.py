@@ -146,6 +146,26 @@ def compare(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
     return "\n".join(lines)
 
 
+def compare_by_fatal(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """``compare`` on the shared cases, then on the fatal and the non-fatal ones apart.
+
+    Spec §9.1 publishes a paired difference "overall, by fatal and non-fatal" (S2.6 final
+    review, I5). A case is fatal or not by its record, the same in both runs; ``a``'s flag is
+    used, with ``b``'s for a case ``a`` lacks, which ``compare`` then leaves out anyway.
+    """
+    fatal = {r.case_id: r.fatal for r in b} | {r.case_id: r.fatal for r in a}
+    blocks = [compare(a, b)]
+    for label, wanted in (("fatal", True), ("non-fatal", False)):
+        blocks.append(
+            f"{label}: "
+            + compare(
+                [r for r in a if fatal[r.case_id] is wanted],
+                [r for r in b if fatal[r.case_id] is wanted],
+            )
+        )
+    return "\n".join(blocks)
+
+
 _THRESHOLDS = tuple(i / 20 for i in range(1, 20))
 
 

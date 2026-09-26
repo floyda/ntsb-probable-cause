@@ -1587,3 +1587,58 @@ def test_transcribe_that_spends_its_reservation_stops_and_exits_non_zero(
     assert "1 were left unread" in captured.err
     assert "marker is NOT written" in captured.err
     assert not ReadingLookup(TranscriptionCache(transcriptions)).is_done("dev-400")
+
+
+def test_report_against_prints_each_paired_block_by_fatal_and_non_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """S2.6 final review, I5 (spec §9.1): overall, on transcribed cases and on cases unmarked
+    in both runs, each paired difference is also printed for fatal and non-fatal cases."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    versions: tuple[tuple[str, EvidenceVersion], ...] = (("v2-run", "v2"), ("v1-run", "v1"))
+    for run_id, version in versions:
+        write_jsonl(
+            runs_dir / run_id / "run.jsonl",
+            [
+                RunRecord(
+                    **{**_RUN_KWARGS, "arm": "B"},
+                    run_id=run_id,
+                    started=now,
+                    finished=now,
+                    evidence_version=version,
+                )
+            ],
+        )
+    fatal = {"fatal": True}
+    paid = {"preparation_cost_usd": 0.02}
+    mark = (CaseMark(kind="analysis_sentence", count=1),)
+    v2_cases = [
+        _scored_case("F1").model_copy(update={**fatal, **paid}),
+        _scored_case("F2").model_copy(update=fatal),
+        _scored_case("N1").model_copy(update=paid),
+        _scored_case("N2", marks=mark),
+    ]
+    v1_cases = [
+        _scored_case("F1").model_copy(update=fatal),
+        _scored_case("F2").model_copy(update=fatal),
+        _scored_case("N1"),
+        _scored_case("N2"),
+    ]
+    write_jsonl(runs_dir / "v2-run" / "cases.jsonl", v2_cases)
+    write_jsonl(runs_dir / "v1-run" / "cases.jsonl", v1_cases)
+
+    assert main(["report", "v2-run", "--against", "v1-run", "--versions-compared"]) == 0
+    out = capsys.readouterr().out
+    overall = out.split("evidence-version comparison (decision 0076)")[1]
+    overall, transcribed = overall.split("on the 2 cases with transcribed pages:")
+    transcribed, unmarked = transcribed.split("on cases unmarked in both runs")
+    assert "\npaired difference (a - b) on 4 shared" in overall
+    assert "\nfatal: paired difference (a - b) on 2 shared" in overall
+    assert "\nnon-fatal: paired difference (a - b) on 2 shared" in overall
+    assert "\nfatal: paired difference (a - b) on 1 shared" in transcribed
+    assert "\nnon-fatal: paired difference (a - b) on 1 shared" in transcribed
+    assert "\nfatal: paired difference (a - b) on 2 shared" in unmarked
+    assert "\nnon-fatal: paired difference (a - b) on 1 shared" in unmarked
