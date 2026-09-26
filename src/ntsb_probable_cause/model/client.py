@@ -104,16 +104,17 @@ class ModelReply(BaseModel):
 
 
 class ModelSettings(BaseModel):
-    """Per-call model settings. The default model is decision 0031's."""
+    """Per-call model settings. The default model is decision 0073's."""
 
     model_config = ConfigDict(frozen=True)
-    model: str = "openai/gpt-5.6-luna"
+    model: str = sources.DEFAULT_MODEL
     price_variant: Literal["batch", "standard"] = "batch"
     temperature: float = 0.0
     max_output_tokens: int = 2000
     json_schema: dict[str, object] | None = None
     schema_name: str = "hypothesis"
     tools: tuple[dict[str, object], ...] = ()
+    reasoning_effort: sources.ReasoningEffort | None = None
 
     def model_id(self) -> str:
         """The provider model id, with the batch suffix when the batch price applies."""
@@ -172,6 +173,7 @@ class RecordingFakeClient:
         self.payloads: list[Payload] = []
         self.histories: list[tuple[Turn, ...]] = []
         self.systems: list[str] = []
+        self.settings: list[ModelSettings] = []
         self._replies = tuple(replies) or ("",)
         self._usage = tuple(usage)
 
@@ -187,6 +189,7 @@ class RecordingFakeClient:
         self.payloads.append(payload)
         self.histories.append(tuple(history))
         self.systems.append(system)
+        self.settings.append(settings)
         text = self._replies[min(len(self.payloads), len(self._replies)) - 1]
         if self._usage:
             usage = self._usage[min(len(self.payloads), len(self._usage)) - 1]

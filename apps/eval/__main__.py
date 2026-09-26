@@ -271,6 +271,7 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_record = answering_run_record(folder)
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
+    text += "\n\n" + report.failure_summary(cases)
     if run_record.arm == "B":
         text += "\n\n" + report.cap_summary(cases)
     if run_record.sample == "heldout-400":
@@ -279,7 +280,9 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     if args.against or args.against_latest:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
-        text += f"\n\nagainst {other_id}:\n{report.compare(cases, other_cases)}"
+        other_record = answering_run_record(settings.runs_dir / other_id)
+        heading = report.comparison_heading(run_record, other_record)
+        text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
     reservations = open_reservations(settings.runs_dir)
     if reservations:
         text += "\n\nopen budget reservations: " + ", ".join(

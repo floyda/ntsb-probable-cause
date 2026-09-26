@@ -222,6 +222,10 @@ make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sent
 make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
 make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
 make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
+make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
+make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
+make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
+make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
 make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
 make record             # uv run ntsb-record run — one nightly pass (S2.5)
 make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
@@ -239,6 +243,7 @@ ntsb-eval run       --arm ceiling|A|B --sample heldout-40|heldout-400|dev-400
                      [--cap-usd 0.05] [--budget-usd 25] [--expected-cost-per-case-usd USD]
                      [--sync] [--resume RUN_ID]
 ntsb-eval report     <run id>|--latest ARM SAMPLE [--against <run id>|--against-latest ARM SAMPLE]
+                     # prints failures by reason; labels cross-model comparisons
 ntsb-eval judge      <run id> [--validated]                 # spec §8; dev-400 until validated
 ntsb-eval threshold  <run id>                                # spec §9
 ntsb-eval release    <run id>                                # clear a dead run's budget reservation (0045)

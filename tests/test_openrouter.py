@@ -84,7 +84,10 @@ def test_client_sends_schema_system_and_history(respx_mock: respx.MockRouter) ->
     )
     client = OpenRouterClient("or-key", sleep=lambda _s: None)
     settings = ModelSettings(
-        json_schema={"type": "object"}, schema_name="mini", price_variant="standard"
+        model="openai/gpt-5.6-luna",
+        json_schema={"type": "object"},
+        schema_name="mini",
+        price_variant="standard",
     )
     history = (
         Turn(
@@ -196,3 +199,24 @@ def test_client_applies_rate_limit_gap_between_successful_calls(
     client.complete(Payload.from_evidence(EVIDENCE), ModelSettings())
     client.complete(Payload.from_evidence(EVIDENCE), ModelSettings())
     assert sleeps.count(1.0) == 1
+
+
+def test_request_body_states_the_reasoning_level_when_set(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """S2.4 spec §4.1: the agent's level is stated, never left to the provider's default."""
+    evidence, _, _ = split_record(record_fixtures[0])
+    payload = Payload.from_evidence(evidence)
+    settings = ModelSettings(reasoning_effort="medium")
+    body = request_body(payload, settings, system="s", history=())
+    assert body["reasoning"] == {"effort": "medium"}
+
+
+def test_request_body_sends_no_reasoning_key_when_unset(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """The judge's calls (no level set) are byte-for-byte what they were before S2.4."""
+    evidence, _, _ = split_record(record_fixtures[0])
+    payload = Payload.from_evidence(evidence)
+    body = request_body(payload, ModelSettings(), system="s", history=())
+    assert "reasoning" not in body
