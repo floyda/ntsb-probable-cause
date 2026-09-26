@@ -35,7 +35,7 @@ Status
     line no longer show raw column names; the classification paragraph states the whole I5
     rule; the read-only URI now percent-encodes the store path, so one containing ``?`` or
     ``#`` cannot lose ``mode=ro`` or open the wrong file. See
-    ``docs/plans/2026-09-22-s25-recorder.md``'s Deviations for the full account.
+    the S2.5 specification's As-built section (``docs/specs/2026-09-22-s25-recorder-design.md``).
 
 Usage:
     uv run python -m scripts.recorder_report [--out docs/results/s25-recorder-report.txt] \

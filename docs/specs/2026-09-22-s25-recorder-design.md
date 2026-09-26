@@ -1,7 +1,7 @@
 # S2.5 — The recorder: design
 
 *Drafted 2026-09-21 and 2026-09-22 from a design session with Andy, after the release of S2
-(`v0.3.0`, pull request #8). Status: Approved (2026-09-22, Andy). This is the specification
+(`v0.3.0`, pull request #8). Status: Implemented (2026-09-26, pull request #9). This is the specification
 for build stage S2.5 in `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records
 what S2.5 builds, why, the decisions S2.5 takes, and the condition for moving on. The
 implementation plan is written from it separately.*
@@ -582,6 +582,375 @@ Each is a numbered record, written with this specification, one decision per rec
 | The docket only opens at closure | Then the live agent has little to read before the verdict; the recorder measures this and S4 is designed from the number |
 | A run overruns | 90-minute scheduler limit; the run summary shows minutes every night |
 | Cost estimates are wrong | Every AWS figure here is labelled an estimate and is replaced from the bill at close-out |
+
+---
+
+## As built
+
+*Closed 2026-09-26 in pull request #9.*
+
+### Delivered
+
+- **The store.** `src/ntsb_probable_cause/store/`: `schema.py` (three numbered migrations),
+  `db.py` (the `Store` class, one method per kind of write and read, a read-only mode for the
+  report), `models.py` (the row models) and `sync.py` (pull and push between a local path or an
+  `s3://` location and a local working file). It is the only code that touches SQLite. It is on
+  the import-linter list of modules that may not import synthesis or verdict.
+- **The recorder.** `src/ntsb_probable_cause/recorder/`: `window.py` (the self-setting month
+  window), `cases.py` (the watched rule, the field diff, status, regulation and preliminary
+  narrative rows), `dockets.py` (the poll outcome, the document diff, page storage) and `run.py`
+  (`run_night`: the nightly steps, the run deadline, the circuit breakers, the summary and the
+  log lines).
+- **The command.** `ntsb-record run` in `apps/recorder/`, with `--verbose` and `--dry-run`.
+  `make record` runs it.
+- **Scripts.** `scripts/ongoing_docket_probe.py` (`make ongoing-probe`), `scripts/change_feed_probe.py`
+  (`make change-feed-probe`), `scripts/recorder_report.py` (`make recorder-report`, counts
+  only) and `scripts/recorder_bridge.sh` (the Mac bridge wrapper, kept as a fallback).
+- **The image and CI.** `Dockerfile` and `.dockerignore`. The CI job `image-build` builds the
+  image on every pull request and push. The CI job `image-push` pushes it to ECR on a push to
+  `main`, after lint and test pass, once the `AWS_DEPLOY_ROLE_ARN` repository variable is set.
+- **The AWS stack.** `infra/` (`app.py`, `recorder_stack.py`, `cdk.json`) defines
+  `NtsbRecorderStack` in `eu-west-2`: a versioned S3 bucket, a reference to the Parameter Store
+  key, a VPC with public subnets and no NAT gateway, an ECR repository, an ECS cluster, a
+  Fargate task definition, a CloudWatch log group (`/ecs/ntsb-recorder`, 30 days), an
+  EventBridge schedule at 03:00 UTC, and a GitHub OIDC deploy role for CI.
+- **Runbooks.** `docs/runbooks/recorder-deploy.md` (the deploy, corrected from the real
+  deploy), `docs/runbooks/recorder-bridge.md` (the Mac bridge, not used) and
+  `docs/runbooks/aws-setup.md` (stage 5 marked deployed).
+- **Results.** [`s25-ongoing-dockets.txt`](../results/s25-ongoing-dockets.txt),
+  [`s25-change-feed.txt`](../results/s25-change-feed.txt) and
+  [`s25-recorder-report-2026-09-26.txt`](../results/s25-recorder-report-2026-09-26.txt).
+- **Other.** The vendored word list `tests/fixtures/words.txt` (0070), and `listing.py` parsing
+  the docket-level dates and the Docket Information block.
+
+### Done means, with evidence
+
+1. `docs/results/s25-ongoing-dockets.txt` exists from the probe, numbers only — met —
+   [`s25-ongoing-dockets.txt`](../results/s25-ongoing-dockets.txt): 100 ongoing cases
+   attempted; 98 pages said the docket has not been released; 2 had a listing (both events
+   91–180 days old, with 2 and 8 documents); 0 HTTP errors.
+2. The recorder has run on at least 14 consecutive nights — met as amended by
+   [0092](../decisions/0092-s25-closes-on-four-nights-report-and-cost-follow.md) — 5 runs on 4
+   distinct nights, all 5 finished, 0 failures
+   ([`s25-recorder-report-2026-09-26.txt`](../results/s25-recorder-report-2026-09-26.txt), whose
+   `runs` table holds a row for each). The ≥14-night report follows as a dated addendum to this
+   record.
+3. `scripts/recorder_report.py` prints the run summaries and counts, and every number in this
+   record comes from it — met — `scripts/recorder_report.py`, run 2026-09-26, output committed
+   as [`s25-recorder-report-2026-09-26.txt`](../results/s25-recorder-report-2026-09-26.txt).
+   Every number in this record comes from that file, the two probe files above, or the two run
+   records below (run 1 and run 2, moved here from the plan, which is deleted).
+4. The stack is deployed, one nightly run has completed on AWS with its log in CloudWatch, and
+   Andy has followed the runbook — met — the stack was deployed on 2026-09-23 by Andy, following
+   `docs/runbooks/recorder-deploy.md`, which was corrected from that deploy. The first cloud run
+   (run 2, started by hand) ran 2026-09-23 20:38–21:17 UTC from image `ba8bf49`, exited `0`,
+   and logged `run done cases=941 changed=18 new_docs=94 failed=0 renumber_suspects=0
+   minutes=39` in CloudWatch (`/ecs/ntsb-recorder`). The first scheduled run (run 3) finished
+   2026-09-24T03:43:06Z.
+5. The store boundary test and its mutation test pass; CI is green; `scripts/check_docs.py`
+   passes — met — boundary tests `tests/test_boundary.py::test_store_never_holds_synthesis_or_verdict`,
+   `::test_store_never_holds_synthesis_or_verdict_for_every_fixture` and
+   `::test_run_night_store_never_holds_synthesis_or_verdict` (the run-level test); mutation
+   tests `::test_store_boundary_test_fails_when_the_split_is_bypassed`,
+   `::test_store_boundary_test_fails_when_a_snapshot_role_leaks`,
+   `::test_store_boundary_test_fails_when_only_the_escaped_form_can_catch_the_leak`,
+   `::test_logical_check_alone_catches_every_existing_mutation`,
+   `::test_logical_check_alone_catches_a_code_stored_in_an_integer_column`,
+   `::test_logical_check_alone_catches_a_code_leaked_through_a_snapshot_role` and
+   `::test_logical_check_catches_a_leak_the_raw_bytes_check_misses`; CI green on pull request
+   #9 (https://github.com/floyda/ntsb-probable-cause/actions/runs/36247393796: lint, test,
+   audit, image-build pass; image-push skipped, as designed, off `main`); `make check` 1,145
+   tests, coverage 98.02%; `uv run python -m scripts.check_docs` clean.
+6. The stage's AWS cost is stated from the billing console — amended by
+   [0092](../decisions/0092-s25-closes-on-four-nights-report-and-cost-follow.md) — the estimate
+   in §9.4 (about $0.50 a month) stands for now; the billed figure follows in the dated
+   addendum.
+7. The stage is closed out (status Implemented, As-built section, roadmap marked done, plan
+   deleted) — met — this pull request's close-out commit; `uv run python -m scripts.check_docs`
+   clean.
+
+**The run records** (numbers from the report; run 1 and run 2 also from their own log lines):
+
+| run | where | when (UTC) | cases polled | new documents | failures | minutes |
+|---|---|---|---|---|---|---|
+| 1 | local container, commit `0f248fe` | 2026-09-23 06:18–07:05 | 936 | 116 | 0 | 46 |
+| 2 | AWS, by hand, image `ba8bf49` | 2026-09-23 20:38–21:17 | 941 | 94 | 0 | 39 |
+| 3 | AWS, scheduled | 2026-09-24 03:01–03:43 | 941 | 0 | 0 | 42 |
+| 4 | AWS, scheduled | 2026-09-25 03:01–03:50 | 945 | 0 | 0 | 50 |
+| 5 | AWS, scheduled | 2026-09-26 03:01–03:39 | 946 | 0 | 0 | 39 |
+
+Totals over the 5 runs: 4,709 cases polled, 210 new documents, 0 failures, 215 minutes. Every
+watched case was polled on every run, and the report's run table matches the four `run done`
+lines in CloudWatch; run 1 has no CloudWatch log (both checked for decision 0092).
+
+**Early signals (not results).** Four nights give signals only, as decision 0092 frames them.
+They are not measurements this stage claims. The 8-week report (§10.2) is where they become
+results.
+
+- The change feed reported 70 of 97 field changes the month re-fetch found (21 of 29
+  case-nights).
+- 94 documents appeared after the first night. All 94 appeared on the same run as their case's
+  closure; none appeared strictly after it. No docket was first read with documents before its
+  case closed; 7 were first read on the same run as the closure.
+- Of the regulations that were empty when first seen, 2 were filled in as `091` and 2 as another
+  part.
+- Each evidence field that has any true arrival before closure has only 6 to 13 of them.
+
+**Estimates replaced by measurement.** §2 estimated about 905 watched cases (ad-hoc); runs
+polled 936 to 946. §4.2 and §9.1 estimated a pass of about 30 and about 40 minutes; runs took
+39 to 50. §6.4 estimated compressed pages of 4 to 6 KB from closed-case pages; the recorder's
+stored pages have a median of 3,397 bytes and a maximum of 6,342. The store file was 11,104,256
+bytes after run 2 and 23,388,160 bytes after run 5; the ≥14-night addendum compares this growth
+with §6.4's estimate of about 45 MB a year.
+
+### Departures from this specification
+
+**Decisions and Andy's decisions**
+
+- **The stage closes on 4 nights, not 14** (§14 items 2, 3 and 6). Decision
+  [0092](../decisions/0092-s25-closes-on-four-nights-report-and-cost-follow.md). The ≥14-night
+  report and the billed AWS cost follow as a dated addendum to this record.
+- **The recorder's one call to `split_record` is exempted from the import rule** (§8, §11). The
+  import-linter contract ignores exactly one edge, `recorder.cases -> records.split`. Decision
+  [0072](../decisions/0072-recorders-one-exempted-import-link.md) (Andy's decision).
+- **The Mac bridge was never started** (§9.3). Andy's decision: night 1 was a run of the
+  container image on Andy's Mac, and its store was uploaded to S3 at deploy time. The bridge
+  runbook and script stay as a fallback.
+- **The first image was uploaded to ECR by hand** (§9.2). Andy's decision: CI pushes only on a
+  push to `main`, and the stage could not merge before its first cloud run. CI takes over after
+  the merge, once `AWS_DEPLOY_ROLE_ARN` is set (runbook stage 9).
+- **The probe keeps finer outcome buckets** (§10.1). Andy's decision: a retried HTTP status, a
+  transport failure, a page with a count but no info block, and an unrelated page are each their
+  own outcome.
+- **New cases get a true absent side** (§3, §10.2). Andy's decision ("Add it"): migration 3 adds
+  `run_months`. A new case's absent side is the latest earlier run that fetched its event month
+  cleanly and fully. A case seen before but not stored (table `seen_unstored`) is first-sight
+  instead, so it can never get a false arrival date.
+
+**What a poll can return (§6.2, §6.3)**
+
+- **`no-docket` is a page, not a status.** The site answers with HTTP 200 and the sentence "The
+  docket for this investigation has not been released." The recorder checks for that sentence
+  (`NOT_RELEASED_SENTENCE` in `docket/listing.py`). A page with no count and no sentence stays
+  `failed`, so a layout change stays visible.
+- **More `failed` reasons exist** than §6.2 lists: `count-mismatch`, `no-info-block`,
+  `entry-without-id`, `duplicate-id`, `http-N`, `http-N-after-retries`,
+  `fetch-failed: <class name>`, `skipped: deadline` and `skipped: outage`.
+- **A `no-docket` poll is an observation of absence.** It advances the case's last docket run,
+  so a later first document gets a true absent side. It never diffs documents.
+- **Every received page is stored**, whatever the outcome. Two cases that receive the same page
+  share one stored copy; the stored row names the first case and run that stored it.
+- **One bad entry fails the whole poll.** A missing or repeated document number fails the poll,
+  because skipping one entry would read as that document disappearing.
+- **A returning document's absent side** is the case's last docket run before the poll, not the
+  run that first saw it gone.
+- **Suspected re-numbers are counted by pair**: for each title and page count, the smaller of
+  the disappeared and appeared counts.
+
+**The probes (§5.3, §10.1)**
+
+- **The ongoing-docket probe draws from the watched population** (aviation, `Ongoing`, Part 91
+  or regulation empty), not every ongoing case. It also prints how many cases it drew from each
+  stratum, how many it skipped for a missing event date (0), a cross-count by
+  `docketOpenDate` (unset on all 100), and the date of the raw store it drew from.
+- **The change-feed probe reads 7 days, not 30**, and counts `caseClosed` and `stepId`
+  instead of guessing a status field. It writes its fixture only when the feed returns rows. The
+  feed returned 156 rows with 30 keys, including 13 railroad and 1 marine row, which confirms
+  that its `mode` parameter does not filter.
+
+**The case side (§4.1, §5, §7)**
+
+- **An empty field on first sight writes nothing.** A value that later becomes empty writes a
+  null row. A record with no `mKey`, event date or status is a failure and writes nothing.
+- **The regulation has its own history table**, `regulation_events` (migration 2), not
+  `field_snapshots`, because it is not an evidence role. The report counts four kinds of change
+  among watched cases.
+- **"Not returned" gets the 30-day tail** like any other departure from `Ongoing`. A case
+  dropped for its regulation is not brought back by a later closure.
+- **The 30-day tail starts only on leaving `Ongoing`** and is never refreshed while the status
+  stays closed.
+- **The first run's window includes the 12 empty months**, and the first run reuses the records
+  its walk-back fetched.
+- **A known gap:** if an investigator moves a case's event date to a month before the window,
+  the case can get a false "not returned" event. The report counts these; the count was 0.
+
+**The nightly run (§9.1)**
+
+- **Marking vanished cases is its own step.** The order is: begin, window, months, mark vanished,
+  change feed, dockets, finish.
+- **A run deadline and two circuit breakers** were added. No new month page, feed call or docket
+  poll starts after 65 minutes (`RUN_DEADLINE_MINUTES`). After 10 consecutive outages on one
+  side, that side stops for the night (`CONSECUTIVE_FAILURES_TO_TRIP`). Skipped items are
+  recorded as failures. The deadline was first set at 75 minutes; the pre-deploy review moved it
+  to 65, because one request's worst case is about 10.7 minutes, not the estimated 2.5.
+- **Only true outages trip the docket breaker.** A parse failure or a fast HTTP error means the
+  site answered, so it does not count, and the raw page is still stored.
+- **The feed call is gated** by the deadline and by the case side's breaker, since it uses the
+  same API host.
+- **"Tonight's rows are lost" holds only for an S3 store.** A local store keeps every committed
+  row and leaves an unfinished `runs` row.
+- **`change_feed` is a plain insert every run.** The 2-day look-back overlaps between nights on
+  purpose, so it is deliberately not idempotent.
+- **Logs carry no case text.** A failure logs the class name, the HTTP status or a short reason,
+  never the exception message or a URL. A failed run logs the class name and the code frames
+  only. `--verbose` logs field role names and document numbers, never values or titles.
+- **An API error carries its HTTP status**, so a revoked key does not look like an outage.
+- **The store refuses a newer schema.** `migrate()` stops with a clear error if the store was
+  written by a newer version.
+
+**The store (§8)**
+
+- **Extra tables and columns:** `regulation_events` and the `change_feed_mkey` index (migration
+  2), `run_months` and `seen_unstored` (migration 3), and `schema_version`. `cases` gains
+  `watched`, `last_case_run` and `last_docket_run`. `documents` carries the disappearance
+  interval.
+- **Transactions nest**, and only the outer one commits or rolls back. Each migration applies
+  atomically. Closing the store folds the write-ahead log into the main file.
+- **The report opens the store read-only** and refuses a store whose schema version differs.
+
+**The report (§10.2)**
+
+- **Arrivals are classified** as before closure, same run as closure, after closure, or
+  excluded (the regulation at the time was neither Part 91 nor empty). Only before-closure
+  arrivals form the mask distribution. First-sight observations are counted separately.
+- **Exclusion reads the regulation history**, not the case's current watched flag. The current
+  flag clears when the tail ends and would have dropped most closed cases.
+- **A real closure** is `Completed` or `N/A` reached from any status that is not already a
+  closure, including "not returned"; the earliest counts. A first version missed closures
+  reached through "not returned"; the review found and fixed it.
+- **The closure tail is reported as same run, strictly after, and total.** The "not returned"
+  tail is reported separately.
+- **A docket's absent side** is the last `no-docket` or `empty` poll before its first read. A
+  first read after only failed polls has its own count.
+- **The feed comparison rule:** a feed row counts when its change time is strictly after the
+  start of the run that last saw the old value, and the feed was polled within 1 day after the
+  run that found the change. Feed timestamps carry no time zone and 4 to 6 fractional digits;
+  they are read as UTC.
+- **Percentiles use the nearest-rank method** and are not printed below 3 observations.
+  "Finished nights" counts distinct UTC dates, not runs.
+- **The report states its limits:** regulation changes and clean fetches are known only from the
+  night their tables were added.
+
+**Tests (§11)**
+
+- **The store boundary test has two checks.** The raw-bytes check reads the file in windows, in
+  raw and JSON-escaped form. A logical check reads every value back through SQLite, inside
+  compressed pages, and compares codes in number columns by value. The raw-bytes windows cannot
+  fully protect a text shorter than 99 characters across a page split; the logical check covers
+  that gap for live rows.
+- **The mutation tests replace `split_record` with a splitter that leaks**, rather than
+  removing the call.
+- **A run-level boundary test** drives `run_night` and checks every table.
+- **`gitinfo` was split out of `scoring.ledger`** so the recorder never imports `scoring`, and
+  joins the import-linter contract.
+
+**The AWS stack and the image (§9.2)**
+
+- **The scheduler cannot stop a task.** The 90-minute limit is `timeout --signal=TERM
+  --kill-after=60 5400` in the task's entry point.
+- **The scheduler retries 2 times, within 1 hour.** A retry fires only when the task never
+  started, so it cannot create a second writer. The first version had 0 retries. With retries,
+  the run window is 03:00 to about 05:31 UTC, not 03:00 to 04:30.
+- **No `kms:Decrypt` grant.** The key uses the AWS-managed key, which needs none. A first
+  version granted it; the review removed it.
+- **The task role can read and put, not delete.** Bucket versioning can then restore any
+  overwritten store.
+- **Smaller stack changes:** the OIDC provider uses `OidcProviderNative`; `app.py` leaves the
+  account unset, so `cdk synth` needs no credentials; the stack outputs `SubnetIds` and
+  `SecurityGroupId`; the bucket enforces TLS and S3-managed encryption; the cluster has a fixed
+  name; the bucket, the ECR repository and the log group are kept on `cdk destroy`.
+- **CDK is pinned once**, in `uv.lock` (`infra/cdk.json` runs `uv run python app.py`); there is
+  no `infra/requirements.txt`.
+- **The image runs as a non-root user**, starts `ntsb-record` directly from the virtual
+  environment, pins its base image by digest, and receives the commit as `NTSB_COMMIT_SHA`. An
+  empty commit value counts as unset.
+- **CI builds on every pull request; it pushes only from `main`**, after lint and test, one push
+  at a time, with the short commit hash as the tag. Actions are pinned by commit.
+
+**Settings and packaging**
+
+- **`NTSB_STORE` is a string**, not a path, so an `s3://` URL survives intact. `NTSB_COMMIT_SHA`
+  is new.
+- **`boto3` and `botocore` sit behind an `aws` extra.** A plain `uv sync` installs neither.
+  `botocore` was declared at close-out, because `store/sync.py` imports it directly.
+- **The word list** is excluded from the large-file, end-of-file and spelling hooks, and the
+  redaction check reads the vendored list.
+
+**Runbook corrections from the real deploy**
+
+- **The key upload uses `boto3`.** The `aws ssm put-parameter` form with a piped file fails on
+  `aws-cli` 2.36. The `boto3` form needs `--with awscrt` for this account's login.
+- **The console section** explains the project account, the role switch, and where to look.
+- **The run command reads the stack outputs itself.** Every command names the region. A run
+  takes about 40 to 50 minutes, not a few minutes.
+- **The store upload stage splits in two.** Stopping the bridge is skipped when no bridge ran;
+  the upload and its size check still run.
+- **Deploy, image upload and store upload are one sitting**, before the next 03:00 UTC. Setting
+  `AWS_DEPLOY_ROLE_ARN` comes after the merge, as the last stage.
+- **Tear-down is described correctly**: what survives, and how to redeploy.
+
+**Other fixes found by review**
+
+- **`.gitignore` ignores `/data/`, anchored.** An unanchored `data/` also hid
+  `src/ntsb_probable_cause/data/` from lint for part of Task 10; nothing was wrong in it.
+- **The bridge wrapper** reports the real exit status, stops a hung run after 90 minutes, and is
+  installed outside any git checkout.
+- **The recorder's pull** removes stale work files first; a failed pull or push exits 1 and
+  never opens or uploads an empty store.
+- **The bridge runbook** was corrected several times before it was set aside: the key cache's
+  24-hour limit, a plist written from a here-document and checked with `plutil -lint`, and
+  ignore rules for the main checkout.
+- **`make recorder-report` writes `docs/results/s25-recorder-report.txt`.** The committed file
+  for this record is a dated copy of that output, with one header line naming its source.
+- **Internal changes with no effect on behaviour:** row models in `store/models.py`; helper
+  splits to meet lint limits; an explicit error instead of a bare `assert` for a clock without a
+  time zone; UTC log timestamps; `pyyaml` and its type stubs as development dependencies;
+  Dependabot watching the base image; `README.md` and `LICENSE` copied into the image for the
+  build; and several tests tightened so that they fail when the code they guard is removed.
+- **The local Docker build** was done on 2026-09-23 from a clean export of `0f248fe`
+  (`linux/amd64`, 403 MB), and a full night in that container became run 1.
+
+### Decisions taken during the stage
+
+Decisions 0060 to 0071 were written with this specification (§12); 0072 and 0092 were written
+during the build.
+
+- [0060](../decisions/0060-every-watched-case-is-polled-daily-no-tiers.md) — every watched case
+  is polled once a day, with no tiers.
+- [0061](../decisions/0061-the-recorder-reads-the-listing-only-never-a-document.md) — the
+  recorder reads the listing page only and never downloads a document.
+- [0062](../decisions/0062-the-document-number-is-the-key-with-three-events.md) — the document
+  number is the key; three events; suspected re-numbers are counted.
+- [0063](../decisions/0063-a-compressed-listing-page-is-kept-when-its-hash-is-new.md) — a
+  compressed copy of the listing page is kept whenever its hash is new.
+- [0064](../decisions/0064-closure-rules-and-the-thirty-day-tail.md) — closure rules and the
+  30-day tail.
+- [0065](../decisions/0065-event-months-are-the-source-of-truth-the-change-feed-is-stored-beside-them.md)
+  — the event months are the source of truth; the change feed is stored beside them.
+- [0066](../decisions/0066-the-recorder-fetches-with-the-docket-cache-off.md) — the recorder
+  fetches with the docket client's cache off.
+- [0067](../decisions/0067-watched-cases-are-part-91-plus-empty-regulation.md) — watched cases
+  are Part 91 plus those with the regulation empty.
+- [0068](../decisions/0068-arrival-is-recorded-per-document-with-no-type-label.md) — arrival is
+  recorded per document with no type label.
+- [0069](../decisions/0069-the-ntsb-key-reaches-the-task-from-parameter-store.md) — the NTSB key
+  reaches the task from Parameter Store, encrypted.
+- [0070](../decisions/0070-the-word-list-is-vendored-into-the-repository.md) — the word list is
+  vendored into the repository.
+- [0071](../decisions/0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md)
+  — the coverage threshold is deferred to S3, as a mark, not a refusal.
+- [0072](../decisions/0072-recorders-one-exempted-import-link.md) — the recorder's call to
+  `split_record` is the one exempted import link (Andy's decision).
+- [0092](../decisions/0092-s25-closes-on-four-nights-report-and-cost-follow.md) — the stage
+  closes on four nights; the ≥14-night report and the billed cost follow as a dated addendum
+  (Andy's decision).
+
+### Implementation record
+
+- Pull request: #9 (https://github.com/floyda/ntsb-probable-cause/pull/9)
+- Plan, at its last commit: https://github.com/floyda/ntsb-probable-cause/blob/5166b14b41a0db16ffa84c206b3c8c8c48b11342/docs/plans/2026-09-22-s25-recorder.md
+- Commits: 3f22eb1..5166b14, including the merge of `main` (S2.4) into this branch, f9854ea
+- Release: v0.5.0 (tag created by Andy after the merge, not squashed; decisions 0018, 0033)
 
 ---
 

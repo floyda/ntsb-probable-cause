@@ -3,8 +3,8 @@
 Fix round 1 (2026-09-23): rewritten for the corrected feed rule (CRITICAL 2), the
 before/same-run/after-closure classification (IMPORTANT 5), the docket absent-side rule
 (IMPORTANT 4), the split closure tail (IMPORTANT 3), the preliminary narrative (IMPORTANT 6)
-and migration 2's regulation history (IMPORTANT 7). See ``docs/plans/2026-09-22-s25-recorder.md``
-Deviations for what changed and why.
+and migration 2's regulation history (IMPORTANT 7). See the S2.5 specification's As-built
+section (``docs/specs/2026-09-22-s25-recorder-design.md``) for what changed and why.
 """
 
 from collections.abc import Iterator
