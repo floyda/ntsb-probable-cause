@@ -553,7 +553,14 @@ observations — days from the event to first appearance — and no text (0024).
 *Done means:* running on a schedule and accumulating first-seen timestamps for docket
 documents, structured-field snapshots and preliminary narratives.
 
-### S2.6. The widened docket
+### S2.6. The widened docket — done
+
+As built: see the stage specification's
+[As-built section](2026-09-23-s26-widened-docket-design.md#as-built).
+Held-out runs and the v3 probe were deferred (decisions
+[0089](../decisions/0089-s26-closes-after-the-v3-probe-held-out-deferred.md),
+[0090](../decisions/0090-s26-closes-on-its-development-results.md)).
+
 
 *Added 2026-09-23 (0074–0083).* Reads the words in page images, which S2 left unread (0047),
 and lets arm B see photographs and diagrams in a development probe, so that "read everything"

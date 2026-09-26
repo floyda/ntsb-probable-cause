@@ -1,7 +1,7 @@
 # S2.6 — The widened docket: design
 
 *Drafted 2026-09-22 and 2026-09-23 from a design session with Andy, while S2.5 (the recorder)
-was being built. Status: Approved (2026-09-23, Andy). This is the specification for build stage S2.6,
+was being built. Status: Implemented (2026-09-26, pull request #10). This is the specification for build stage S2.6,
 a stage added between S2.5 and S3 of `docs/specs/2026-09-12-architecture-and-roadmap.md` §11.
 It records what S2.6 builds, why, the decisions it takes, and the condition for moving on. The
 implementation plan is written from it separately, in `docs/plans/`.*
@@ -723,6 +723,525 @@ phase 2: OCR") is amended to point at 0074. Both are appended, not rewritten.
 | A benchmark result does not carry to our pages | The benchmark only chose the shortlist; the choice is made on our pages |
 | A candidate model is withdrawn or rejects our requests | One test page first; the open-weights candidate is in the shortlist for this reason |
 | Costs exceed a month's budget | $40 a month during development (0083); a re-estimated stage total over $40 pauses for Andy; the reservation (0045) refuses a run that would overrun |
+
+---
+
+## As built
+
+*Closed 2026-09-26 in pull request #10.*
+
+S2.6 closed on its development results (decision
+[0090](../decisions/0090-s26-closes-on-its-development-results.md)). Transcription (v2) was
+built and measured on `dev-400`. The v3 probe (§10) and the held-out runs (§9.3) were not run:
+they are deferred, and S2.4's held-out arm B stays the bar (decision
+[0089](../decisions/0089-s26-closes-after-the-v3-probe-held-out-deferred.md) item 2).
+
+### Delivered
+
+- **Case marks** (§4). `records/marks.py` holds `CaseMark` (a kind and a count). The marks are
+  computed inside `records/split.py:split_record`, the one split, through `records/guard.py`
+  (`screen`, `narrative_share`). A docket sentence shared with the analysis narrative reaches
+  the agent and marks the case `analysis_sentence`; a probable-cause sentence, a code or a whole
+  withheld text still refuses the case (0077). A case whose largest single document holds at
+  least 50% of the factual-narrative sentences is marked `narrative_coverage`, and the share
+  itself is stored (`guard.NARRATIVE_COVERAGE_MARK`, 0078). Marks ride on `Evidence` and
+  `CaseResult.marks`, never in the payload text. `ntsb-eval report` prints every table twice,
+  all cases and unmarked cases, with each marked group's own row and the narrative-share bands.
+  The analysis-sentence rule was adopted after Andy's hand-check (`scripts/analysis_handcheck.py`,
+  `make analysis-handcheck`).
+- **Page facts and the page renderer** (§5). `docket/pages.py` reads per-page facts with pypdf
+  (characters, images, rotation, encodings, page kind). `docket/render.py` draws a page to a JPEG
+  with `pypdfium2` at `RESOLUTION = 150` dots per inch and measures each page's image-area share
+  (0075). Every PDFium call runs under one lock, because PDFium is not thread-safe. `Pillow` and
+  `pypdfium2` are new dependencies. `scripts/page_kinds.py` (`make page-kinds`) writes the page
+  counts.
+- **The evidence-version axis** (§3, 0076). `RunSpec` and `RunRecord` carry `evidence_version`
+  (v1, v2 or v3), written to `spec.json` and the run record; a run from before S2.6 reads as v1.
+  `ntsb-eval run --evidence-version` sets it. `report --against` refuses two runs on different
+  versions unless `--versions-compared` is given, which prints a labelled "evidence-version
+  comparison" heading; `--latest` skips runs on another version. The held-out ledger code adds a
+  table with a version column, headed "From S2.6", with its first versioned row; no such row has
+  been written. v3 is a name only: every run refuses it (0090). v2 and v3 are refused on arm A
+  and the ceiling, which read no docket (0091).
+- **The inventory** (§6). `scripts/page_inventory.py` (`make s26-inventory-probe`,
+  `make s26-inventory`) drew 330 pages, had `google/gemini-3.1-flash-lite` label each by kind,
+  and produced Andy's 60-page check and the counts.
+- **An image input at the model seam** (§8.2). `model/client.py` gains `PageImage` and
+  `Payload.for_page`; `model/openrouter.py` sends image parts; the batch client refuses an image
+  before any request is sent. `sources.py` holds the candidates' prices and lowest reasoning
+  levels. The boundary test (0016, layer 5) checks the body a transcription request actually
+  sends: only the image, the instruction and, for a text-and-image page, that page's own text
+  layer; its mutation test proves the check can fail.
+- **The transcriber test** (§7, 0080). `scripts/transcriber_test.py` (`make s26-transcriber-keys`,
+  `-probe`, `-run`, `-resolution`, `-recheck`) drew four answer keys (typed, handwriting,
+  photographs with no words, and full-page scans), read every key page with the four candidates,
+  built Andy's marking pages and applied the rule. Both passes chose no transcriber
+  (`docs/results/s26-transcriber-test.txt`; second pass, decision 0086,
+  `docs/results/s26-transcriber-test-pass2.txt`). Decision 0087 then chose
+  `qwen/qwen3.5-122b-a10b` provisionally, post hoc and openly, with the agent's own B-v1 against
+  B-v2 comparison deciding whether v2 goes forward. The resolution comparison kept 150 dots per
+  inch. `estimate` prints the stage's spend and projection.
+- **v2 in the docket tool** (§8). `docket/transcribe.py` holds the transcriber
+  (`TRANSCRIBER`), the instruction `t1` (copy words only; write `[illegible]`; for a
+  text-and-image page, only words not already in its text layer), `parse_reply`, the per-page
+  `TranscriptionCache` keyed by document hash and page number (0085), `pages_to_read`,
+  `ReadingLookup` and the worker pool `transcribe_all`. `docket/extract.py` marks a transcribed
+  page `[page n of total, transcribed from an image]`, and adds image words on a text-and-image
+  page under `[words in the page's images, transcribed]` (0079). `docket/manifest.py` reads the
+  readings for a v2 docket, including photo-only entries; v1 keeps S2's reading.
+  `scoring/runner.py:CachedDocketReader(readings=...)` passes them to arm B, through the same
+  attach step, split and tripwire.
+- **`ntsb-eval transcribe`** (§8.3, 0081). Counts, prices and then reads a sample's image pages
+  once into the cache under `NTSB_TRANSCRIPTION_DIR` (`make s26-transcribe-dev-dry`,
+  `make s26-transcribe-dev`). `scoring/preparation.py:run_preparation` reserves the job's budget,
+  writes spend rows and settles. The job stops once the pages read cost as much as it reserved
+  (`--expected-cost-per-page-usd` must be above zero). The finished-transcription marker, which a
+  v2 run requires, is written only when failed readings are at most 2% of the chosen pages.
+  A held-out sample is refused (0090).
+- **The reply budget is 8,000 tokens** (0084). `RunSpec.max_output_tokens` defaults to 8,000 and
+  is recorded on every run's `spec.json` and run record; `run --max-output-tokens` sets it, and a
+  resume refuses a different budget. Every case records each reply's completion tokens,
+  reasoning tokens and finish reason. `scripts/reply_budget.py` applied the rule fixed in
+  advance to two `dev-400` runs (`make s26-reply-budget`, `make s26-reply-budget-roomy`).
+- **The $40 monthly budget and spend rows** (0083, 0081). `Settings.monthly_budget_usd` defaults
+  to 40. A preparation job (inventory, transcriber test, transcription) writes `spend.jsonl` rows
+  in its own job folder, and `scoring/budget.py:month_spent` counts them with the evaluation runs.
+- **Recovery of an ended batch.** A resume treats a recorded batch that ended failed, expired or
+  cancelled as S2.4 treats a lost batch: it records it, supersedes the batches built from it and
+  resubmits them. A dead batch's reported cost is recorded on its `ended` row and counted in the
+  run's cost and the month's spend.
+- **Run-id collisions are refused.** A fresh run claims its folder atomically and refuses one
+  that already exists; a preparation job does the same, with the model in its job id.
+- **Marking pages.** `scripts/marking_page.py` renders every S2.6 hand-check: the page image held
+  in view beside each version, words coloured by agreement between versions, and a card counted
+  as marked only once it is touched. The pages and sheets live under `data/` and are never
+  committed.
+- **Occurrence misses.** `scripts/occurrence_misses.py` prints, for one development arm B run,
+  where the model's occurrence guesses sit in the NTSB's ordered sequence of codes (counts and
+  code labels only).
+- **Make targets.** `page-kinds`, `analysis-handcheck`, `s26-reply-budget`,
+  `s26-reply-budget-roomy`, `s26-inventory-probe`, `s26-inventory`, `s26-transcriber-keys`,
+  `s26-transcriber-probe`, `s26-transcriber-run`, `s26-transcriber-resolution`,
+  `s26-transcriber-recheck`, `s26-transcribe-dev-dry`, `s26-transcribe-dev`, `s26-dev-runs`.
+  The targets that need `MODEL`, `PER_PAGE` or `PER_CASE` stop when it is unset.
+
+#### What was measured
+
+- **Page kinds** (`docs/results/s26-page-kinds.txt`). Over the 3,516 PDFs of the 401 `dev-400`
+  dockets: 5,005 text-only pages, 3,274 image-only, 8,402 text-and-image and 109 blank; 11,676
+  image-bearing pages, 29.1 a case; 688 PDFs mix page kinds. The 146 photo-only listing entries
+  (831 declared pages), which S2 never fetched, were fetched and read: 322 image-only pages, 460
+  text-and-image, 48 text-only and 1 blank.
+- **The analysis-sentence hand-check** (`docs/results/s26-analysis-handcheck.txt`). Of 52 matched
+  sentences in 19 cases, Andy judged 51 to quote evidence and 1 to be a conclusion in the docket:
+  1.9% [0.3%, 10.1%]. The rule (at most 7 of 52, rescaled from 5 of 36) adopted 0077.
+- **The inventory** (`docs/results/s26-inventory.txt`). 330 pages labelled for $0.1098; Andy's
+  check found 53 of 60 labels right (88.3% [77.8%, 94.2%]). Weighted over all image-bearing
+  pages, 66.397% hold words in their images, far above the 10% stop line: go on. No mixed-page
+  cut-off was admissible, so every text-and-image page is sent.
+- **The reply budget** (`docs/results/s26-reply-budget-dev.txt`). At 2,000 tokens, 35 cases
+  failed on reply format, 24 of them cut off; the cause was confirmed (46 of 57 format failures
+  cut off with at least 1,000 reasoning tokens). At 16,000 no reply failed or was cut off; the
+  99th percentile of a finished reply was 2,548 tokens. The fixed rule gave 8,000.
+- **The transcriber test** (both passes, files above). Second pass: `qwen/qwen3.5-122b-a10b`
+  invented words on 3.5 of every 100 handwriting lines (limit 2), on 2 of 50 no-word photographs
+  and on 0 of 25 full-page scans; it read 66.9% [64.5%, 69.2%] of handwriting lines exactly, the
+  best of the four, at $0.00154 a test page. At 200 dots per inch its handwriting accuracy fell
+  to 57.0%, so 150 was kept.
+- **Transcription of `dev-400`** (the plan's Deviations, Task 15 Step 2). 12,458 pages: every
+  image-only page (3,274 + 322 from photo-only entries = 3,596) and every text-and-image page
+  (8,402 + 460 = 8,862), page kinds from `docs/results/s26-page-kinds.txt`. 59 pages failed in
+  all (0.47%), under the 2% line. The job's spend rows hold $13.56 ($8.06 for the first pass,
+  $5.50 to re-read the pages that failed), against an estimate of $19.14. The run report's own
+  preparation line attributes $13.06 in all to the 401 cases, $0.0337 a case, with 388 of 401
+  cases holding transcribed pages (`docs/results/s26-armB-v2-dev.txt`).
+- **Do transcriptions help? B-v2 against B-v1 on `dev-400`** (`docs/results/s26-armB-v2-dev.txt`,
+  script `ntsb-eval report --versions-compared`). Runs `20260926T085904-d19aafa-dev-400-B` (v2,
+  $1.3301) and `20260926T082427-d19aafa-dev-400-B` (v1, $1.1805), one commit, GPT-6 Luna at
+  `medium`, reply budget 8,000; 399 of 401 cases scored in each (2 refusals for probable-cause
+  wording in the docket), no reply-format failure. Paired on 399 cases: occurrence top-1 +1.3%
+  [-2.5%, +4.8%], top-3 +2.0% [-2.3%, +6.3%], finding recall@10 +0.6% [-0.9%, +2.1%] (397
+  cases). Fatal: top-1 +2.5% [-3.0%, +8.6%] (198); non-fatal: +0.0% [-5.0%, +4.5%] (201). On the
+  388 cases with transcribed pages: top-1 +0.8% [-2.8%, +4.4%]. On the 380 cases unmarked in
+  both runs: top-1 +1.8% [-1.8%, +5.5%]. Every interval includes zero: on development cases,
+  transcription has not been shown to help or to hurt. B-v2 alone: top-1 22.1% [18.3%, 26.4%],
+  top-3 35.1% [30.6%, 39.9%]. Marked groups in B-v2: `analysis_sentence` 18 cases, top-1 11.1%
+  [3.1%, 32.8%]; `narrative_coverage` 1 case, too few to show anything (0078 item 3).
+- **Where B-v2's occurrence misses sit** (`docs/results/s26-occurrence-misses-dev.txt`, script
+  `scripts/occurrence_misses.py`). The first guess is the NTSB's first code on 88 of 399 cases
+  (22.1%), but is somewhere in the NTSB's ordered sequence on 140 (35.1%); one of the three
+  guesses is somewhere in it on 192 (48.1%). The commonest miss (33 cases) is "loss of control in
+  flight" coded first where the model said "aerodynamic stall/spin". Most lost points are the
+  NTSB's coding order rather than missing evidence; this is why coding guidance comes next
+  (0089).
+
+### Done means, with evidence
+
+1. `docs/results/s26-page-kinds.txt` exists and every page-kind number in the As-built record
+   cites it — met — `scripts/page_kinds.py` (`make page-kinds`),
+   `docs/results/s26-page-kinds.txt`; every page-kind number above cites it.
+2. The analysis hand-check counts are published and 0077 records the outcome — met —
+   `scripts/analysis_handcheck.py score`, `docs/results/s26-analysis-handcheck.txt` (1 of 52
+   conclusions; adopted); decision 0077's appended "Hand-check result" note.
+3. `s26-transcriber-test.txt` holds the three answer keys' results for every candidate and the
+   rule applied, and a decision record states the choice, or that no model passed — met, with a
+   stated nuance — `docs/results/s26-transcriber-test.txt` (first pass) and
+   `docs/results/s26-transcriber-test-pass2.txt` (second pass, decision 0086) hold every key's
+   results for all four candidates (and a fourth key, full-page scans, Departures below) and the
+   rule's outcome: **no candidate passed the rule in either pass**. Decision 0087 then chose
+   `qwen/qwen3.5-122b-a10b` provisionally, as a post-hoc override of that outcome, stated as such
+   in 0087 and in the second-pass file.
+4. If a transcriber was chosen: `s26-armB-v2-dev.txt`, `s26-v3-probe-dev.txt` and `s26-bars.txt`
+   exist, each produced by a script, each with the marked and unmarked rows — **partly met** —
+   `docs/results/s26-armB-v2-dev.txt` is met (script: `ntsb-eval report ... --versions-compared`;
+   all-case, unmarked-case and marked-group rows). `s26-v3-probe-dev.txt` and `s26-bars.txt` are
+   **not met**: the v3 probe and the held-out runs were deferred by decisions 0089 and 0090.
+5. The held-out ledger holds S2.6's B-v1 and B-v2 rows with their version — **not met** —
+   deferred by decisions 0089 and 0090; S2.6 wrote no held-out ledger row, and S2.4's held-out
+   arm B (`docs/results/s24-bars.txt`) stays the bar.
+6. Tests and CI green; `scripts/check_docs.py` passes; the As-built record is appended and the
+   plan deleted — met — this pull request's close-out commit; `uv run python -m
+   scripts.check_docs` clean; `make check` green on the close-out tree, and CI on pull request
+   #10 runs the same checks.
+
+### Departures from this specification
+
+Every entry in the plan's Deviations section is here, grouped by topic and rewritten plainly.
+Lint-only rewrites of the plan's code are listed together at the end.
+
+#### What S2.6 did not do
+
+- **The held-out runs of §9.3 were not run.** Decision 0088 stopped the stage after the
+  `dev-400` comparison so that Andy could decide with its results in view; it also corrected
+  0087 item 2, which spoke of a rule the plan did not hold. Decision 0089 deferred the held-out
+  runs: coding guidance is likely to move scores more than transcription did, so a held-out
+  bar now would soon be superseded, at about $16 and one held-out touch. So B-v2 is not the bar
+  S3's loop must beat; S2.4's held-out arm B stays the bar, and the bar S3 faces is set after
+  S2.7. Task 18 was not done.
+- **The v3 probe (§10) was not run.** Decision 0089 kept it; decision 0090 then moved it to
+  the S2.7 candidates, because a null result now could not tell "pictures do not help" from
+  "their help is hidden behind coding-order errors". Tasks 16 and 17 were not done. The Task 16
+  build that had started was stopped before any commit; its partial diff is kept, uncommitted,
+  under `NTSB_DATA_DIR`. The half-built v3 input (`Payload.from_evidence`'s `images` parameter)
+  and the `unguarded_images` mark kind were removed (final review I2): no results file, run
+  record or fixture carried it, and 0082 still names it for when v3 is built. "v3" stays a name,
+  and every run refuses it.
+- **§3.1 said any arm can run on any version.** Decision 0091 refuses v2 and v3 on arm A and the
+  ceiling, before any budget reservation, because their label would claim a docket they never
+  read. This replaces a Task 14 entry that had accepted it (Andy, on Task 14 review I1 and final
+  review I8).
+- **§7.4 item 3 said transcription stops if no candidate passes.** None passed, in either pass.
+  Decision 0086 added a post-hoc second pass with three corrections fixed before re-marking;
+  decision 0087 then overrode the outcome and chose Qwen provisionally (Andy, option C,
+  "provisional Qwen, agent test decides"). 0080's limits are unchanged.
+
+#### Choices made before any code (the plan's walkthrough, 2026-09-24)
+
+- **Images cannot use the batch service** (W1). The spec priced image calls at batch prices;
+  every image call runs synchronously at the standard price, twice as much. The stage estimate
+  became $26–46 instead of $17–27. Andy chose this.
+- **Photo-only docket entries are fetched and read** (W2). S2's `read_docket` skipped them, so
+  the spec's counts did not include them. They are fetched, sampled as their own inventory
+  stratum and transcribed in v2; v1 keeps S2's rule. They hold 831 declared pages
+  (`docs/results/s26-page-kinds.txt`).
+- **The inventory's stop rule has a number, and mixed pages are chosen by a rule fixed in
+  advance** (W6, W3). Stop if under 10% of image-bearing pages hold words in their images; send
+  a text-and-image page only above an image-area cut-off chosen by a fixed rule. Andy decided
+  both.
+- **The renderer's test pages are built in the tests** with Pillow and pypdf, not committed real
+  pages (W4, §12), so no fatal-accident page enters the repository.
+- **The v3 partner run** (W5): a second B-v2 on the standard path, paired with B-v3, also
+  measuring the noise floor. Not run, since v3 was deferred.
+- **A fourth answer key** (W7). Most text-and-image pages are full-page scans that already carry
+  a machine-read text layer, which the three keys never measure. 25 full-page scans were added,
+  gated like the photographs (at most 1 in 20 pages with invented added words). The
+  `s26-transcriber-run` target therefore also runs the `mixed` subcommand, which the plan's
+  recipe had left out.
+- **"The cheapest" candidate** (§7.4 item 2) is judged by measured cost per test page, which
+  counts each model's real token use, not by list price.
+- **Recorded transcriber replies** (§12) are of an invented page drawn in code, so no committed
+  fixture carries docket text.
+- **§4.4's "the case's log line"** is the case's row in the run's `cases.jsonl`, since the runner
+  writes no per-case log line; marks are on `CaseResult.marks`.
+- **The held-out ledger's version column** is a new table appended below the existing rows,
+  because a markdown table cannot gain a column for new rows only; the rows above it read as v1.
+- **The transcription cache is keyed by the document's content hash and page number** (0085),
+  not by the page image's hash (§8.3); the image hash is stored in each record. Rendering is
+  repeatable, so the two identify the same page, and a run can find a reading without drawing
+  the page. Task 13's fix round 1 (I3) added `+layer` to a text-and-image reading's key, so a
+  full reading and a text-and-image reading of one page never share an entry.
+- **No `fontTools` dependency** (checked, no change). pypdf warns that it needs `fontTools` for
+  some fonts. An ad-hoc check found 686 warning pages in 44 documents; with `fontTools`, 20
+  extract differently and the share of their words in the word list is the same (78.9% either
+  way). S2's text layer is not materially garbled.
+
+#### Page kinds and the analysis-sentence hand-check (Tasks 1, 2)
+
+- **The scripted page counts differ slightly from the design session's ad-hoc counts** (Task 1).
+  The four page kinds differ by at most 7 pages; the encoding counts differ more (for example
+  JPEG 2000: 60 scripted). A measured check ruled out chained image filters as the cause; the
+  cause was not chased further. The scripted numbers in `docs/results/s26-page-kinds.txt` stand,
+  and §1 and §5.2 are not edited. All 146 photo-only PDFs were fetched with no failure.
+- **The hand-check found 52 matched sentences in 19 cases, not 36 in 17** (Task 2). The docket
+  leak scan re-run on the same data agrees (and finds probable-cause matches in 2 cases). The
+  likely cause is that pypdf now reads encrypted documents that S2's scan could not open.
+- **The rule was rescaled** (Andy, "A, go with 7 of 52"): adopt 0077 if 7 or fewer of 52 are
+  conclusions, keeping the one-in-seven rate of the original 5 of 36. The results file states
+  the rescaling. The outcome was 1 of 52.
+- **Tests added for the hand-check script's command line** (Task 2 fix round 1), and a test
+  that its counting matches the docket leak scan's.
+
+#### Marks, the budget, the evidence version and the report (Tasks 4, 6–9)
+
+- The boundary mutation test now disables the split's tripwire at its new seam (`screen`),
+  because the split no longer imports `find_leaks` (Task 4). Every assertion is unchanged.
+- What S2.6 cites from S2.4 is cited from `docs/results/s24-bars.txt` by line label only
+  (Task 6).
+- Two runner tests that relied on the old $25 default now state `budget_usd=25.0`; the settings
+  test expects 40 (Task 7).
+- `Runner.run` carries a lint exemption for one more statement; the provenance test expects
+  `evidence=v1` (Task 8).
+- A shared scored-case test fixture, and one end-to-end report test beyond the plan (Task 9).
+
+#### The reply budget and batch recovery, carried from S2.4 (Tasks 9A–9D)
+
+- **Task 9A was added at S2.4's close** (Andy). S2.4's held-out arm B lost 24 cases to reply
+  format (by S2.4's reading, 19 cut off or empty) and 40 to analysis-sentence refusals, which
+  0077's mark now answers. The fix came before any S2.6 run, so every S2.6 run shares one budget.
+- **From S2.4's final review**: the budget is recorded on every run (a resume refuses a different
+  one), and Task 9B makes a resume recover a batch that ended failed or expired.
+- **Task 9C**: every case, failed ones included, records each reply's facts, and a reply with no
+  recorded finish reason stops the sizing like a cut-off one.
+- **Two runs, not one** (Andy's decision B). At 2,000 tokens every successful reply is itself
+  cut at 2,000, so one run can confirm the cause but not size the fix. A confirmation run at
+  2,000 and a sizing run at 16,000, identical otherwise; the rule was unchanged, and the estimate
+  rose to about $2.50–3.50.
+- **The script was corrected in review rounds** (`scripts/reply_budget.py`). The first version
+  fed the rule a case's summed tokens across up to four replies; the budget bounds one reply, so
+  per-reply figures are now recorded on each step and case. The outcome fails closed: a reply cut
+  off in the sizing run, a reply ending for any reason other than `stop` or `length`, or missing
+  per-reply data gives no budget and returns the choice to Andy; the pair is refused unless the
+  confirmation budget is the lower one. A failed case's finished replies join the percentile
+  pool (a later correction withdrew the claim that this can only raise the budget: a percentile
+  can move either way). Recording was built first and the script afterwards, while the paid run
+  was in flight.
+- **Both runs were started in the same second and shared one run id and folder** (Task 9A
+  Step 6). No data was lost: every run file is append-only and the confirmation run finished
+  first. A one-off script split the folder into `-confirm2000` and `-size16000`, rows copied
+  unchanged and checked; the collided folder is kept outside the runs directory, so the month
+  counts each run once. The results file therefore prints the same recorded id twice. Task 9D
+  makes a fresh run refuse an existing folder; no existing test needed changing.
+- **Outcome: 8,000 tokens** (0084). `RunRecord.max_output_tokens` keeps its 2,000 default,
+  which is what a run from before Task 9A used.
+- **Task 9B details**: dependants are superseded before the `ended` row is written (crash
+  safety); an older test gained a second failed resubmission; a dead batch's reported cost is
+  recorded on its `ended` row and counted in the run's cost and the month, for reused and fresh
+  batches alike, and a fresh dead batch gets its `ended` row before the run stops.
+
+#### The image input and the transcription module (Tasks 10, 11)
+
+- The batch-refusal test uses the real `BatchClient` helper and a mocked route, so "no request
+  sent" is checked (Task 10).
+- **Fixed in review before any paid run** (Task 11): PDFium calls run under one lock (8
+  concurrent workers crashed the process without it); money for calls in flight when the pool
+  stops is still reported as spend; a copying reply that omits its text is a failure, not an
+  empty page; jobs are de-duplicated before paying; a corrupted cache entry raises, naming the
+  file; the cache refuses a record whose key names another instruction; writes are flushed to
+  disk before the rename; the boundary tests capture the body actually sent. In a second round,
+  a failed cache write no longer loses a paid page's cost, a bitmap is freed inside the lock, an
+  unpriced model is refused before any call, and one remaining interruption case is documented
+  as a limitation.
+
+#### The inventory (Task 12)
+
+- **Review fixes**: the client is built before the budget is reserved, so a missing key leaves no
+  open reservation; the one-page probe runs through the budgeted job and is cached; a cut-off
+  with no sampled pages below it is not admissible; the results file prints each cut's evidence
+  and each stratum's share; a page that cannot be drawn is recorded and excluded, not fatal; a
+  job folder is claimed atomically.
+- **The photo-only stratum** (Andy, decision A, before any page was labelled) is drawn from its
+  image-bearing pages only, and every page is judged by its own kind: 508 of the 831 photo-only
+  pages have a text layer (48 text-only + 460 text-and-image, `docs/results/s26-page-kinds.txt`).
+- **Run** (commit `31af9fb`, by the controller at Andy's request): 330 pages labelled, 0 failed.
+  No cut was admissible, so `MIXED_PAGE_MIN_IMAGE_SHARE = 0.0`; the stop rule said go on.
+- **After the check** (Andy, no change): every page Andy judged `mixed` was a photograph with a
+  caption. An ad-hoc re-score with `mixed` not counted as words gives 45.899%, still far above
+  10%; the cut-off is unchanged. On a text-and-image page the instruction copies only words not
+  in the text layer, so a caption held there adds nothing.
+
+#### The transcriber test (Task 13)
+
+- **Built by the controller** (Steps 1–6) with every per-subcommand test the plan asked for; the
+  inventory's weighted share is computed per page kind, as Task 12's signature requires.
+- **Review fixes before any key was drawn**: preparation job ids carry the model; the probe is
+  reserved and settled; the estimate is judged against the month's real headroom and, again,
+  against the stage's $40 line (0083 item 2); the one retry after a failed read is wired into the
+  targets; missing and failed readings are counted and printed; the margins are compared as exact
+  fractions; Task 14's plan text was corrected to use the `+layer` key; smaller fixes to page
+  counters, overwrite protection and tie rules.
+- **Andy's three decisions before any key was drawn**: (1) when no model is within both margins,
+  handwriting comes first; (2) the handwriting key is topped up from pilot-form pages labelled
+  handwriting or filled form, since the inventory held few handwriting pages; (3) a page still
+  failed after one retry counts as wrong, and its cost counts.
+- **S2.6's spend is counted by commit** (fix round 4), from the S2.4 merge `90ceab9`, not by date,
+  because a date filter counted $2.164 of S2.4's runs. The final review noted that this commit
+  range also holds S2.5's commits.
+- **The run** (Step 7, commit `f8a15c8`): every key full size (100 typed, 25 handwriting, 50
+  photographs, 25 full-page scans); every candidate passed the one-page probe. Gemini 3.6 Flash
+  joined lines into one, against the instruction.
+- **Marking-page display changes** (Step 9, Andy): the image held in view beside the versions,
+  words coloured by agreement, one image per photograph with each version's words beneath, and
+  the text layer shown above the scans' versions. Display only: the fields, rows and CSVs are
+  unchanged and the page data rebuilt byte-identical.
+- **The second pass** (decision 0086, post hoc): the docket's stamped "Photo" label is on the page,
+  not invented (69 photograph cards re-marked); a reply with under half the key's lines fails the
+  page (more than 1 in 20 such pages is out); the 13 draft-anchored handwriting keys were
+  re-checked, 2 changed. A required `checked` choice was added to each re-check card, so a
+  correct pre-filled key does not look unmarked. A failed reading is scored wrong but not
+  counted toward the line-format gate.
+- **The override** (Steps 10–11, decision 0087): the second pass also chose no transcriber; Qwen
+  was chosen provisionally.
+- **The resolution** (Step 10, commit `17396db`): Qwen at 200 dots per inch cost $0.2643, one
+  page still failed after its retry (scored wrong); `score` gained `--override-model`, which
+  prints the rule's outcome unchanged and labels the resolution section as the override's. 150
+  was kept.
+
+#### v2 in the docket tool (Task 14)
+
+- A v1 docket's readings stay empty, so the v1 call is exactly S2's.
+- Image-area shares are read under the PDFium lock; a page that fails there counts as 0.0 image.
+- `ntsb-eval transcribe` builds its jobs from every PDF, photo-only entries included (W2),
+  closes its client, and makes no job or reservation when every page is already cached.
+  `run --evidence-version v2` refuses a sample that is not fully transcribed (arm B only).
+- `Runner.run` refused v3 but accepted v2 on arm A and the ceiling; decision 0091 replaced that.
+- **A known limit**: a v2 case whose docket trips the guard reports a preparation cost of 0.0,
+  though its pages were transcribed; the money is in the job's spend rows.
+- Tests beyond the plan cover image counts, page choice, the reading lookup, the done file, empty
+  and failed readings, and the report's preparation line.
+- **Review**: the transcription target was split into a free dry run and a paid run, so there is
+  a point to stop between them.
+
+#### Transcription of `dev-400` and the development runs (Task 15)
+
+- **The first transcription run was cut short** (commit `ee21991`). From 01:40:50 UTC OpenRouter
+  refused every call with the account's own monthly spending limit, separate from the project's
+  $40 guard: 5,191 of 12,458 pages failed (5,137 refused, 1 dropped connection, 52 malformed
+  replies). The command wrote its finished marker anyway; the controller renamed it so no v2 run
+  could start on the gap. This led to the 2% marker rule below.
+- **Completed** (commit `0d7cde1`): after Andy raised the account's limit, `--retry-failed`
+  re-read the failed pages for $5.50; 59 of 12,458 failed in all (0.47%); $13.56 in all.
+- **The development runs** (commit `d19aafa`, by the controller at Andy's request): results in
+  `docs/results/s26-armB-v2-dev.txt`. The stage then stopped for Andy's held-out decision (0088).
+
+#### Close-out fixes (the final whole-branch review)
+
+- The finished-transcription marker is written only when failed readings are at most 2% of the
+  pages chosen; otherwise the command names the failure reasons and `--retry-failed` and exits
+  non-zero. Skipped documents are counted.
+- Transcription spend is bounded in code: the expected cost per page must be above zero, and a
+  job stops once the pages read cost as much as it reserved. It can run past the reservation by
+  at most the pages in flight (up to `--workers`) and any duplicated page.
+- `ntsb-eval transcribe` refuses a held-out sample (0090).
+- The v3 input and the `unguarded_images` mark were removed (above).
+- The judge pass's run record carries the judged run's evidence version, so a held-out judge row
+  names the right version.
+- `report --against` prints every paired block for fatal and non-fatal cases too, as §9.1 asked;
+  the results file was regenerated from the two existing run folders, with no model call, and
+  only those blocks were added.
+- `scripts/occurrence_misses.py` was committed and its output published; decision 0089 quoted
+  its counts before the script existed and gained a dated note saying where they come from.
+- The `s26-*` targets refuse unset variables, and stale code comments were corrected. Printed
+  report text (the "$13.06 in all" label, "about three development cases") was not changed,
+  because it would change committed results files.
+
+#### Lint-only rewrites of the plan's code
+
+In each case the formatter or linter required another form and behaviour is unchanged: the
+unparenthesised `except A, B:` form that ruff keeps under Python 3.14, and a small helper for a
+`raise` inside `try` (Task 2); `pillow` moved beside `pypdfium2` in `pyproject.toml` so one
+comment covers both, an import order and a `type: ignore[index]` (Task 3); docstring layout and
+split assertions (Tasks 10, 11); an unused lint exemption removed and import order (Task 12);
+lint exemptions for long signatures, `cast` in place of `assert`, wrapped lines, top-level
+imports and an unused loop variable (Task 13); and, throughout, compound assertions split in
+two and full-range dictionary comprehensions replaced by `dict.fromkeys`.
+
+#### Follow-ups for S2.7
+
+- **The ordering check**: a final step after the hypothesis. The historical statistics of how
+  the NTSB orders the codes a case's hypothesis proposes (from development cases outside
+  `dev-400`) are given to a model, which is asked which code comes first. Tested first on the
+  hypotheses B-v2 already recorded, four ways: no check, a written rule from the statistics
+  alone, GPT-6 Luna asked the question, and TypeSafe's Jev asked it (a "System One" model that
+  answers typed questions; the September spike, on the `typesafe-probe` branch, found it below
+  the baseline and not calibrated when asked to diagnose alone, a harder task than this).
+- **Coding conventions from development cases**: the model sees the code tables as bare labels;
+  small, pre-registered rounds of coding guidance drawn from development cases (0089).
+- **Retrieval of similar closed cases**, with the retrieval-contamination test the required
+  components already name.
+- **A wider transcriber re-test** (Andy): the candidates came from one benchmark. A
+  pre-registered survey of current OpenRouter vision models, reusing this stage's keys (100
+  typed, 25 checked handwriting, 50 photographs, 25 full-page scans) and its lessons (the
+  stamped photo label, the line-format rule, keys not built from drafts). Switching transcriber
+  re-reads `dev-400` (about $10–15 at Qwen's rate).
+- **The deferred v3 probe** (0090), run after coding guidance, when a picture effect would not be
+  hidden behind coding-order errors.
+- **The deferred held-out runs** (0089, 0090): transcription of `heldout-400` and arm B there,
+  once the evidence and guidance to be measured are settled; `ntsb-eval transcribe` refuses a
+  held-out sample until a later stage lifts that deliberately.
+
+### Decisions taken during the stage
+
+Records 0074 to 0083 were written with this specification; 0084 to 0091 during the build.
+
+- [0074](../decisions/0074-words-in-images-are-read-in-the-build.md) — words in images are read
+  in the build, not in "phase 2"; replaces 0047 item 3.
+- [0075](../decisions/0075-pages-are-rendered-with-pypdfium2.md) — pages are rendered with
+  `pypdfium2`.
+- [0076](../decisions/0076-evidence-version-is-an-axis-not-an-arm.md) — evidence version is an
+  axis, not an arm.
+- [0077](../decisions/0077-analysis-sentences-in-docket-documents-mark-the-case.md) —
+  analysis-narrative sentences in docket documents reach the agent and mark the case; adopted
+  after the hand-check.
+- [0078](../decisions/0078-the-narrative-coverage-mark-at-fifty-percent.md) — the
+  narrative-coverage mark, at 50% of one document.
+- [0079](../decisions/0079-transcribed-text-is-marked-and-never-guessed.md) — transcribed text
+  carries its own page marker and never guesses.
+- [0080](../decisions/0080-the-transcriber-test-and-its-choice-rule.md) — the transcriber is
+  chosen by a test on our own pages, by a rule fixed in advance.
+- [0081](../decisions/0081-transcription-is-evidence-preparation.md) — transcription is evidence
+  preparation, costed apart from the per-case cap.
+- [0082](../decisions/0082-the-v3-probe-pictures-alongside-text.md) — the v3 probe: pictures
+  alongside the text, development only (deferred by 0090).
+- [0083](../decisions/0083-the-monthly-budget-is-forty-dollars-in-development.md) — the monthly
+  budget is $40 during development.
+- [0084](../decisions/0084-the-reply-budget-is-8000-tokens.md) — the reply budget is 8,000
+  tokens.
+- [0085](../decisions/0085-the-transcription-cache-is-keyed-by-document-and-page.md) — the
+  transcription cache is keyed by document and page, not by image.
+- [0086](../decisions/0086-the-transcriber-test-second-pass.md) — the transcriber test gets a
+  post-hoc second pass, with three corrections fixed before re-marking.
+- [0087](../decisions/0087-the-transcriber-is-qwen-provisionally.md) — the transcriber is Qwen3.5
+  122B, provisionally: a post-hoc override.
+- [0088](../decisions/0088-s26-pauses-after-the-dev-comparison.md) — S2.6 pauses after the
+  `dev-400` comparison; the held-out step is decided then.
+- [0089](../decisions/0089-s26-closes-after-the-v3-probe-held-out-deferred.md) — held-out runs
+  deferred; S2.4's held-out arm B stays the bar (its item 1 superseded by 0090).
+- [0090](../decisions/0090-s26-closes-on-its-development-results.md) — S2.6 closes on its
+  development results; the v3 probe and held-out runs are deferred.
+- [0091](../decisions/0091-evidence-version-refused-on-arms-without-a-docket.md) — v2 and v3 are
+  refused on arms that read no docket.
+
+### Implementation record
+
+- Pull request: #10 (https://github.com/floyda/ntsb-probable-cause/pull/10)
+- Plan, at its last commit: https://github.com/floyda/ntsb-probable-cause/blob/c53ae6a957e1d94d1c79e8c10e9728e8ff4ef2e4/docs/plans/2026-09-23-s26-widened-docket.md
+- Commits: a24270c..c53ae6a
+- Spend: `uv run python -m scripts.transcriber_test estimate --model qwen/qwen3.5-122b-a10b`,
+  2026-09-26: "spent on S2.6 so far: $20.01 ($15.14 preparation spend rows, $4.87 evaluation
+  runs; counted by commit, the 136 commits since the S2.4 merge 90ceab9)". The spec's estimate
+  was $17–27 for the whole stage, including the v3 probe and the held-out runs not done here.
+- Release: v0.6.0, assuming S2.5 (pull request #9) is released first as v0.5.0; tag created by
+  Andy after the merge (decision 0018; merged with a merge commit, decision 0033)
 
 ---
 

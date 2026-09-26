@@ -230,24 +230,45 @@ make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standa
 make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
 make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
 make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
+make page-kinds               # scripts/page_kinds.py — dev-400 page kinds, counts only; free (S2.6)
+make analysis-handcheck       # scripts/analysis_handcheck.py sheet — private marking page for analysis sentences; free (S2.6)
+make s26-reply-budget         # arm B on dev-400 at the old 2,000-token reply budget (S2.6, 0084)
+make s26-reply-budget-roomy   # the same at 16,000 tokens, to size the reply budget (S2.6, 0084)
+make s26-inventory-probe      # draws the 330-page inventory sample and labels one page (S2.6)
+make s26-inventory            # labels the 330 pages (about $0.20) and writes the 60-page check (S2.6)
+make s26-transcriber-keys     # the transcriber test's answer keys (S2.6)
+make s26-transcriber-probe    # one invented page per candidate transcriber; records fixtures (S2.6)
+make s26-transcriber-run      # every candidate on every key page, one retry, the marking pages (S2.6)
+make s26-transcriber-resolution MODEL=<id>  # the chosen transcriber at 200 dpi (S2.6)
+make s26-transcriber-recheck  # the second pass's marking pages; free (S2.6, 0086)
+make s26-transcribe-dev-dry PER_PAGE=<usd>  # counts and prices dev-400's image pages; free (S2.6)
+make s26-transcribe-dev PER_PAGE=<usd>      # reads dev-400's image pages once into the cache; paid (S2.6)
+make s26-dev-runs PER_CASE=<usd>            # arm B at evidence version v1, then v2, on dev-400 (S2.6)
 ```
 
 `ntsb-eval` (spec §6.5) is the evaluation harness, installed by `uv sync`; arm `B` and
-`release` were added in S2:
+`release` were added in S2, `transcribe` and the evidence version in S2.6:
 
 ```bash
 ntsb-eval baseline  [--sample heldout-400]                 # spec §6.3
 ntsb-eval run       --arm ceiling|A|B --sample heldout-40|heldout-400|dev-400
+                     [--evidence-version v1|v2]            # v2: arm B only, after transcribe (0076, 0091)
                      [--exclude ROLE ...] [--include case_number] [--limit N]
-                     [--model ID] [--price-variant batch|standard]
-                     [--cap-usd 0.05] [--budget-usd 25] [--expected-cost-per-case-usd USD]
+                     [--model ID] [--price-variant batch|standard] [--max-output-tokens 8000]
+                     [--cap-usd 0.05] [--budget-usd 40] [--expected-cost-per-case-usd USD]
                      [--sync] [--resume RUN_ID]
 ntsb-eval report     <run id>|--latest ARM SAMPLE [--against <run id>|--against-latest ARM SAMPLE]
+                     [--versions-compared]                 # allow a labelled cross-version comparison (0076)
                      # prints failures by reason; labels cross-model comparisons
 ntsb-eval judge      <run id> [--validated]                 # spec §8; dev-400 until validated
 ntsb-eval threshold  <run id>                                # spec §9
 ntsb-eval release    <run id>                                # clear a dead run's budget reservation (0045)
+ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd USD
+                     [--workers 8] [--retry-failed] [--dry-run]   # read image pages once (0081); held-out refused (0090)
 ```
+
+`--evidence-version v3` is accepted by the parser and refused by every run: pictures alongside
+the text are not built (decision 0090).
 
 `--arm B` reads the docket; every tool is called in a fixed order and the run answers once.
 `--expected-cost-per-case-usd` is required, not optional, for any large `--arm B` run: without
@@ -289,6 +310,13 @@ no longer exists, and the script is usually the evidence that removed it).
 | `change_feed_probe` | one-shot | `tests/fixtures/api/change_feed_shape.json` and `s25-change-feed.txt` (spec S2.5 §5.3, 0065) |
 | `recorder_report` | live tool | `s25-recorder-report.txt` from `NTSB_STORE` — counts only (spec S2.5 §10.2) |
 | `ongoing_docket_probe` | one-shot | `s25-ongoing-dockets.txt` — fixed the recorder's `no-docket` outcome (spec §10.1); `outcome_for_error` and the "not released" check it used have since moved into the library (0059) |
+| `page_kinds` | live tool | `s26-page-kinds.txt`, and the private page frame the inventory and transcriber test sample from (spec S2.6 §6.2) |
+| `analysis_handcheck` | one-shot | `s26-analysis-handcheck.txt` — the evidence for 0077 |
+| `marking_page` | live helper | the private marking pages every S2.6 hand-check renders through |
+| `page_inventory` | one-shot | `s26-inventory.txt` — what image-bearing pages show (spec S2.6 §6) |
+| `transcriber_test` | one-shot | `s26-transcriber-test.txt` and `s26-transcriber-test-pass2.txt` (0080, 0086, 0087); `estimate` prints the stage's spend |
+| `reply_budget` | one-shot | `s26-reply-budget-dev.txt` — the evidence for 0084 |
+| `occurrence_misses` | live tool | `s26-occurrence-misses-dev.txt` — counts only, development arm B runs only |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
@@ -311,13 +339,17 @@ file:
 - `OPENROUTER_API_KEY` — the OpenRouter key `ntsb-eval run`/`judge` call the model through
   (decision 0009).
 - `NTSB_RUNS_DIR` — where evaluation runs are written (default `data/runs`); never committed.
-- `NTSB_MONTHLY_BUDGET_USD` — the monthly spend cap a run refuses to exceed (default 25).
+- `NTSB_MONTHLY_BUDGET_USD` — the monthly spend cap a run refuses to exceed (default 40 during
+  development, decision 0083); transcription and inventory spend count against it (0081).
 - `NTSB_EXPECTED_COST_PER_CASE_USD` — measured cost per case a run projects against the
   budget from, once `make probe` has one; falls back to the cost cap when unset.
 - `NTSB_DOCKET_DIR` — where fetched docket documents are cached (default `<NTSB_DATA_DIR>/docket`,
   so it moves with `NTSB_DATA_DIR` unless set explicitly). Nothing under it is committed.
 - `NTSB_DOCKET_SECONDS_PER_REQUEST` — the minimum time between requests to `data.ntsb.gov`
   (default 2.0 seconds), enforced in code as a floor above zero.
+- `NTSB_TRANSCRIPTION_DIR` — where per-page transcriptions are cached (default
+  `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly).
+  Nothing under it is committed.
 
 ## A note on tone
 

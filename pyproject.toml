@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ntsb-probable-cause"
-version = "0.4.0"
+version = "0.6.0"
 description = "An agent that determines the probable cause of US general-aviation accidents, scored against NTSB verdicts."
 readme = "README.md"
 license = "MIT"
