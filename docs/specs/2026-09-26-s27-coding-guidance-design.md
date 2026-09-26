@@ -1,6 +1,6 @@
 # S2.7 — Coding guidance: design
 
-*Drafted 2026-09-26 from a design session with Andy, after S2.6 closed (v0.6.0). Status: Draft.
+*Drafted 2026-09-26 from a design session with Andy, after S2.6 closed (v0.6.0). Status: Approved (2026-09-26, Andy).
 This is the specification for build stage S2.7, a stage added between S2.6 and S3 of
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S2.7 builds and
 measures, why, the decisions it takes, and the condition for moving on. The implementation

@@ -40,5 +40,5 @@ elsewhere.
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy approved the design's section
-on samples: "yes, go on to section 2"). Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy approved the design's section
+on samples: "yes, go on to section 2").

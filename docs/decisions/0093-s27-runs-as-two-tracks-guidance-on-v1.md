@@ -52,6 +52,5 @@ Doing the transcriber work first would hold up guidance, the larger lever.
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification from the design session with Andy
-(two tracks: "i agree with the two tracks"; branches: "i think it has to be A"). Accepted when
-Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification from the design session with Andy
+(two tracks: "i agree with the two tracks"; branches: "i think it has to be A").

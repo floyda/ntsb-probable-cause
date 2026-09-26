@@ -54,6 +54,5 @@ comes to fit `dev-400`; an end fixed in advance is how it does not.
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy: "A, $25 is fine"; findings after
-occurrence, "A"). The prediction's numbers are proposed in the specification for Andy's review.
-Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy: "A, $25 is fine"; findings after
+occurrence, "A").

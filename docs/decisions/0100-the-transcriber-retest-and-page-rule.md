@@ -49,5 +49,5 @@ re-derived by T3).
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy: "maybe before we do all this we
-need to find a cheaper way to transcribe"). Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy: "maybe before we do all this we
+need to find a cheaper way to transcribe").

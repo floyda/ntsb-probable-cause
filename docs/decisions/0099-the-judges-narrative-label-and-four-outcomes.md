@@ -44,5 +44,5 @@ investigators' conclusion, so "contradicts" can mean "framed differently".
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy: "A"; "hopefully i wont have to
-read any evidence"). Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy: "A"; "hopefully i wont have to
+read any evidence").

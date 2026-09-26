@@ -47,5 +47,5 @@ is a single Choice, the shape Jev is built for, and a much easier task than diag
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy proposed Jev as one of the four
-ways of the ordering check). Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy proposed Jev as one of the four
+ways of the ordering check).

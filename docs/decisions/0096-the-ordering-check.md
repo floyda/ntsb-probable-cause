@@ -49,5 +49,5 @@ habits could recover some of these without changing what the model reads.
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy chose what it sees, "A", and
-what it may choose, "A"). Accepted when Andy approves the specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy chose what it sees, "A", and
+what it may choose, "A").

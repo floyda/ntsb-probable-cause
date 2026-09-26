@@ -35,6 +35,5 @@ be the held-out run, which is touched rarely (0026) and whose number is the one 
 
 ## Status
 
-Proposed, 2026-09-26: written with the S2.7 specification (Andy: "I think A", a sealed sample;
-"I can probably swallow the extra transcription cost"). Accepted when Andy approves the
-specification.
+Accepted, 2026-09-26 (Andy: "I accept", approving the S2.7 specification). Proposed the same day: written with the S2.7 specification (Andy: "I think A", a sealed sample;
+"I can probably swallow the extra transcription cost").
