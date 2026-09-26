@@ -9,12 +9,20 @@ from typing import cast
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from apps.eval.__main__ import answering_run_record, main, month_spent, resolve_latest
+from apps.eval.__main__ import (
+    MAX_FAILED_SHARE,
+    _maybe_mark_done,
+    answering_run_record,
+    main,
+    month_spent,
+    resolve_latest,
+)
 from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
+from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
     TRANSCRIBE,
     TRANSCRIBER,
@@ -22,6 +30,7 @@ from ntsb_probable_cause.docket.transcribe import (
     ReadingLookup,
     Transcription,
     TranscriptionCache,
+    TranscriptionKey,
 )
 from ntsb_probable_cause.errors import DocketError, ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
@@ -1234,6 +1243,8 @@ def test_transcribe_dry_run_counts_and_prices_and_calls_no_model(
     # Two scans of two image pages each (the photo-only one included, decision W2).
     assert f"dev-400: 4 pages to read with {TRANSCRIBER} at 150 dpi, 4 not yet read" in out
     assert "projected $0.04" in out
+    # entry 4 fails to fetch (_StubDocuments): counted rather than silently dropped (M2).
+    assert "1 document(s) could not be listed, fetched or parsed" in out
     assert not ReadingLookup(TranscriptionCache(transcriptions)).is_done("dev-400")
 
 
@@ -1243,6 +1254,7 @@ def test_transcribe_reads_the_pages_and_marks_the_sample_done(
     record_fixtures: list[dict[str, object]],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """0 of 4 pages fail (well within the 2% threshold): the marker is written (M1)."""
     transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
     calls: list[Sequence[PageJob]] = []
 
@@ -1257,7 +1269,7 @@ def test_transcribe_reads_the_pages_and_marks_the_sample_done(
                 continue  # the same page twice (a shared document) is paid for once
             record = Transcription(
                 key=job.key,
-                status="failed" if job.key.page == 2 else "transcribed",
+                status="transcribed",
                 text="words",
                 mixed=job.mixed,
                 cost_usd=0.01,
@@ -1271,21 +1283,171 @@ def test_transcribe_reads_the_pages_and_marks_the_sample_done(
     argv = ["transcribe", "--sample", "dev-400", "--expected-cost-per-page-usd", "0.01"]
     assert main(argv) == 0
     out = capsys.readouterr().out
-    assert "read 2 pages now ($0.02); 2 of 4 failed in all" in out
+    # The two documents are byte-identical (_StubDocuments/_SCAN), so their pages share a
+    # digest and are paid for once (existing dedup behaviour, unaffected by M1/M2).
+    assert "read 2 pages now ($0.02); 0 of 4 failed in all" in out
+    assert "every page has a reading; v2 runs may start" in out
     lookup = ReadingLookup(TranscriptionCache(transcriptions))
     assert lookup.is_done("dev-400")
-    assert json.loads(lookup.done_file("dev-400").read_text())["failed"] == 2
+    summary = json.loads(lookup.done_file("dev-400").read_text())
+    assert summary["failed"] == 0
+    # entry 4 fails to fetch (_StubDocuments): counted in the marker's summary too (M2).
+    assert summary["skipped_documents"] == 1
     # Every key names the chosen transcriber, the fixed resolution and the page's own mixed
     # status's instruction (fix round 3, R4).
     assert {(j.key.model, j.key.dpi, j.key.instruction) for j in calls[0]} == {
         (TRANSCRIBER, 150, "t1")
     }
 
-    # Everything cached: a second pass needs no job at all; --retry-failed re-reads failures.
+    # Everything cached: a second pass needs no job at all.
     assert main(argv) == 0
     assert len(calls) == 1
-    assert main([*argv, "--retry-failed"]) == 0
+
+
+def test_transcribe_retry_failed_rereads_failed_pages_even_without_a_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """1 of 4 pages fails (25%, over the threshold): no marker, exit 1, --retry-failed re-reads."""
+    transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    calls: list[Sequence[PageJob]] = []
+
+    def fake_preparation(*, jobs: Sequence[PageJob], **kwargs: object) -> list[Transcription]:
+        calls.append(jobs)
+        cache = TranscriptionCache(transcriptions)
+        done = []
+        for job in jobs:
+            if cache.get(job.key) is not None:
+                continue
+            record = Transcription(
+                key=job.key,
+                status="failed" if job.key.page == 2 else "transcribed",
+                text="words",
+                error="model: ModelError: rate limited" if job.key.page == 2 else None,
+                mixed=job.mixed,
+                cost_usd=0.01,
+                created=datetime(2026, 10, 1, tzinfo=UTC),
+            )
+            cache.put(record, instruction=TRANSCRIBE)
+            done.append(record)
+        return done
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", fake_preparation)
+    argv = ["transcribe", "--sample", "dev-400", "--expected-cost-per-page-usd", "0.01"]
+    assert main(argv) == 1
+    out = capsys.readouterr().out
+    assert "read 2 pages now ($0.02); 2 of 4 failed in all" in out
+    assert "marker NOT written" in out
+    assert "--retry-failed" in out
+    lookup = ReadingLookup(TranscriptionCache(transcriptions))
+    assert not lookup.is_done("dev-400")
+
+    assert main([*argv, "--retry-failed"]) == 1
     assert len(calls) == 2
+
+
+def _cached_job(n: int, cache: TranscriptionCache, *, failed: bool, error: str | None) -> PageJob:
+    """A fabricated reading for page ``n`` of its own document, already in ``cache``."""
+    key = TranscriptionKey(
+        document_sha256=f"sha{n:04d}",
+        page=1,
+        model=TRANSCRIBER,
+        instruction="t1",
+        dpi=RESOLUTION,
+    )
+    job = PageJob(key, lambda: b"", False)
+    cache.put(
+        Transcription(
+            key=key,
+            status="failed" if failed else "transcribed",
+            text="" if failed else "words",
+            error=error,
+            created=datetime(2026, 10, 1, tzinfo=UTC),
+        ),
+        instruction=TRANSCRIBE,
+    )
+    return job
+
+
+def test_maybe_mark_done_writes_the_marker_at_exactly_two_percent_failed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    jobs = [
+        _cached_job(n, cache, failed=n < 2, error="model: ModelError: x" if n < 2 else None)
+        for n in range(100)
+    ]
+    assert pytest.approx(0.02) == MAX_FAILED_SHARE
+    exit_code = _maybe_mark_done(cache, "dev-400", jobs, 0)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "every page has a reading; v2 runs may start" in out
+    lookup = ReadingLookup(cache)
+    assert lookup.is_done("dev-400")
+    summary = json.loads(lookup.done_file("dev-400").read_text())
+    assert summary["failed"] == 2
+    assert summary["pages"] == 100
+    assert summary["skipped_documents"] == 0
+
+
+def test_maybe_mark_done_refuses_the_marker_above_two_percent_failed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    jobs = [
+        _cached_job(n, cache, failed=n < 3, error="model: ModelError: x" if n < 3 else None)
+        for n in range(100)
+    ]
+    exit_code = _maybe_mark_done(cache, "dev-400", jobs, 0)
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "3 of 100 pages failed (3.0%)" in out
+    assert "marker NOT written" in out
+    assert "--retry-failed" in out
+    assert not ReadingLookup(cache).is_done("dev-400")
+
+
+def test_maybe_mark_done_reasons_line_shows_only_error_prefixes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The reasons line is the error prefix up to the second colon -- never page text."""
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    jobs = [
+        _cached_job(
+            0,
+            cache,
+            failed=True,
+            error="model: ModelError: the pilot's medical certificate lapsed in March",
+        ),
+        _cached_job(
+            1,
+            cache,
+            failed=True,
+            error="schema: reply is not JSON: line 3 column 1 (char 42)",
+        ),
+        _cached_job(2, cache, failed=False, error=None),
+    ]
+    exit_code = _maybe_mark_done(cache, "dev-400", jobs, 0)
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "model: ModelError" in out
+    assert "schema: reply is not JSON" in out
+    # Never the page-specific detail after the prefix.
+    assert "medical certificate" not in out
+    assert "line 3 column 1" not in out
+
+
+def test_maybe_mark_done_counts_skipped_documents_in_the_marker(
+    tmp_path: Path,
+) -> None:
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    jobs = [_cached_job(0, cache, failed=False, error=None)]
+    exit_code = _maybe_mark_done(cache, "dev-400", jobs, 5)
+    assert exit_code == 0
+    summary = json.loads(ReadingLookup(cache).done_file("dev-400").read_text())
+    assert summary["skipped_documents"] == 5
 
 
 def test_report_on_v2_prints_preparation_and_the_transcribed_cases_comparison(

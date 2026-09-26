@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import json
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TRANSCRIBER,
     PageJob,
     ReadingLookup,
+    Transcription,
     TranscriptionCache,
     TranscriptionKey,
     key_instruction,
@@ -419,14 +421,56 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     _maybe_write(args.out, text)
 
 
-def _page_jobs(raws: Sequence[Mapping[str, object]], docs: CachedDocuments) -> list[PageJob]:
+MAX_FAILED_SHARE = 0.02
+"""The finished-transcription marker's retry threshold (Task 14 review, findings M1/M2).
+
+The S2.6 plan's Task 15 Step 2 already said the retry rule out loud: failed pages over 2% of
+the total means run once more with ``--retry-failed`` before going on. Task 14 itself never
+enforced it -- on 2026-09-26 a run hit the OpenRouter account's budget limit, 5,191 of 12,458
+pages (42%) failed with $0 403 errors, and the marker was still written, so a v2 run could
+have started on readings that were 42% missing. This constant is that rule, enforced rather
+than just written down.
+"""
+
+
+def _failure_reason(error: str | None) -> str:
+    """An error's prefix up to its second colon (e.g. "model: ModelError"), never page text.
+
+    Every failure in ``transcribe.py`` is recorded as ``"{prefix}: {detail}"``, where
+    ``detail`` itself usually starts with ``"{type(error).__name__}: ..."`` (a model failure)
+    or a message that itself contains a colon (a schema failure, e.g.
+    ``"schema: reply is not JSON: ..."``). Cutting after the second colon keeps exactly the
+    prefix and its immediate cause, never the page-specific detail after it.
+    """
+    minimum_parts = 2
+    if error is None:
+        return "unknown"
+    parts = error.split(":", 2)
+    if len(parts) < minimum_parts:
+        return parts[0].strip()
+    return f"{parts[0].strip()}: {parts[1].strip()}"
+
+
+def _top_failure_reasons(readings: Sequence[Transcription | None], limit: int = 3) -> list[str]:
+    """The most common failure reasons among failed readings, most common first."""
+    reasons = [_failure_reason(r.error) for r in readings if r is not None and r.status == "failed"]
+    counts = Counter(reasons)
+    return [reason for reason, _count in counts.most_common(limit)]
+
+
+def _page_jobs(
+    raws: Sequence[Mapping[str, object]], docs: CachedDocuments
+) -> tuple[list[PageJob], int]:
     """One job per page v2 reads, over every PDF in every case's docket.
 
-    Decision W2: v2 reads the photo-only documents too, so none is skipped here. A case with
-    no listing, a document that cannot be fetched and a file that is not a PDF have no pages
-    to read (``read_docket`` records them as S2 does).
+    Decision W2: v2 reads the photo-only documents too, so none is skipped here. A file that
+    is not a PDF is not a failure and is not counted. A case whose docket cannot be listed, a
+    document that cannot be fetched, and a document that cannot be parsed for its pages *are*
+    counted rather than silently dropped (Task 14 review, finding M2); the second return value
+    is that count.
     """
     jobs: list[PageJob] = []
+    skipped = 0
     for raw in raws:
         mkey = raw.get("mKey")
         if not isinstance(mkey, int):
@@ -434,6 +478,7 @@ def _page_jobs(raws: Sequence[Mapping[str, object]], docs: CachedDocuments) -> l
         try:
             entries = docs.listing(mkey).entries
         except DocketError:
+            skipped += 1
             continue
         for entry in entries:
             if not entry.is_pdf():
@@ -442,6 +487,7 @@ def _page_jobs(raws: Sequence[Mapping[str, object]], docs: CachedDocuments) -> l
                 data = docs.document(mkey, entry.index)
                 chosen = pages_to_read(data)
             except DocketError:
+                skipped += 1
                 continue
             sha = hashlib.sha256(data).hexdigest()
             for page, mixed in chosen:
@@ -455,22 +501,65 @@ def _page_jobs(raws: Sequence[Mapping[str, object]], docs: CachedDocuments) -> l
                     dpi=RESOLUTION,
                 )
                 jobs.append(PageJob(key, docs.loader(mkey, entry.index), mixed))
-    return jobs
+    return jobs, skipped
 
 
-def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> None:
+def _maybe_mark_done(
+    cache: TranscriptionCache, sample: str, jobs: Sequence[PageJob], skipped: int
+) -> int:
+    """Write the finished-transcription marker only within the retry threshold (M1).
+
+    Every chosen page must have a reading (transcribed or failed) before anything is decided.
+    Once that holds, the marker is written only when failed readings are at most
+    ``MAX_FAILED_SHARE`` of the pages chosen; otherwise nothing is written, the failure count,
+    share and the three most common failure reasons are printed (never page text), the
+    operator is told to re-run with ``--retry-failed``, and the exit code is non-zero so this
+    cannot pass unnoticed in a script.
+    """
+    readings = [cache.get(j.key) for j in jobs]
+    if not all(r is not None for r in readings):
+        return 0
+    total = len(jobs)
+    failed = sum(1 for r in readings if r is not None and r.status == "failed")
+    share = failed / total if total else 0.0
+    if total and share > MAX_FAILED_SHARE:
+        reasons = _top_failure_reasons(readings)
+        print(
+            f"{sample}: {failed} of {total} pages failed ({share:.1%}), above the "
+            f"{MAX_FAILED_SHARE:.0%} retry threshold; marker NOT written. Most common "
+            f"failure reasons: {', '.join(reasons)}. Run the same command again with "
+            "--retry-failed."
+        )
+        return 1
+    ReadingLookup(cache).mark_done(
+        sample,
+        {
+            "pages": total,
+            "failed": failed,
+            "failed_share": share,
+            "skipped_documents": skipped,
+            "model": TRANSCRIBER,
+            "dpi": RESOLUTION,
+        },
+    )
+    print(f"{sample}: every page has a reading; v2 runs may start")
+    return 0
+
+
+def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
     """Every page v2 needs, for one sample: counted, priced, then read once (0081).
 
     Counts only are printed: on a held-out sample this reads pages by program and no person
     sees them. The done file is written only when every chosen page has a reading
-    (transcribed or failed), which is what ``run --evidence-version v2`` checks for.
+    (transcribed or failed) and failures are within ``MAX_FAILED_SHARE`` (M1), which is what
+    ``run --evidence-version v2`` checks for.
     """
     raws = samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))
     cache = TranscriptionCache(settings.transcription_dir)
     with DocketClient(
         settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
     ) as client:
-        jobs = _page_jobs(raws, CachedDocuments(client))
+        jobs, skipped = _page_jobs(raws, CachedDocuments(client))
         pending = [
             j
             for j in jobs
@@ -479,10 +568,11 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> None:
         projected = len(pending) * args.expected_cost_per_page_usd
         print(
             f"{args.sample}: {len(jobs)} pages to read with {TRANSCRIBER} at {RESOLUTION} dpi, "
-            f"{len(pending)} not yet read; projected ${projected:.2f}"
+            f"{len(pending)} not yet read; projected ${projected:.2f}; {skipped} document(s) "
+            "could not be listed, fetched or parsed"
         )
         if args.dry_run:
-            return
+            return 0
         # Nothing to pay for: no job, no reservation and no API key needed.
         done = (
             run_preparation(
@@ -504,12 +594,7 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> None:
         f"read {len(done)} pages now (${sum(r.cost_usd for r in done):.2f}); "
         f"{failed} of {len(jobs)} failed in all"
     )
-    if all(r is not None for r in readings):
-        ReadingLookup(cache).mark_done(
-            args.sample,
-            {"pages": len(jobs), "failed": failed, "model": TRANSCRIBER, "dpi": RESOLUTION},
-        )
-        print(f"{args.sample}: every page has a reading; v2 runs may start")
+    return _maybe_mark_done(cache, args.sample, jobs, skipped)
 
 
 def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
@@ -687,7 +772,7 @@ def main(
         elif args.command == "release":
             return _cmd_release(args, settings)
         elif args.command == "transcribe":
-            _cmd_transcribe(args, settings)
+            return _cmd_transcribe(args, settings)
     except (BudgetError, ConfigurationError) as error:
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1
