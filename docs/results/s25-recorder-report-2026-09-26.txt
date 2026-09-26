@@ -1,0 +1,110 @@
+Produced by scripts/recorder_report.py, run 2026-09-26, on the S3 store version written 2026-09-26T03:39:44Z (23,388,160 bytes); the text below is the script output, unchanged.
+Recorder report (scripts/recorder_report.py; spec S2.5 §10.2)
+Percentiles: nearest-rank method throughout; suppressed (n<3) below 3 observations.
+
+nights recorded (every run, finished or not): 5
+finished runs: 5
+distinct finished nights: 4 (counts each UTC calendar date once, even when the recorder ran more than once that night; this is the number the 14-night threshold counts)
+unfinished (crashed) runs: 0
+
+run summaries (most recent first):
+  run     started (UTC)              finished (UTC)             polled changed new documents  failures re-numbers minutes
+  5       2026-09-26T03:01:06.470814+00:00 2026-09-26T03:39:43.861439+00:00    946       4              0        0          0      39
+  4       2026-09-25T03:01:05.712301+00:00 2026-09-25T03:50:54.990760+00:00    945      14              0        0          0      50
+  3       2026-09-24T03:01:12.111697+00:00 2026-09-24T03:43:06.549153+00:00    941       0              0        0          0      42
+  2       2026-09-23T20:38:46.847553+00:00 2026-09-23T21:17:38.009598+00:00    941      18             94        0          0      39
+  1       2026-09-23T06:18:51.102489+00:00 2026-09-23T07:05:06.607311+00:00    936     936            116        0          0      46
+
+totals over finished runs (unfinished runs' rows are real observations but excluded from these sums): cases polled=4709 cases changed=972 new documents=210 failures=0 minutes=215
+
+How arrivals are classified: each true arrival is BEFORE, on the SAME RUN AS, or AFTER its case's real closure. Separately, a case can be EXCLUDED instead, decided purely from its regulation history, never from closing or from the end of the 30-day watch after closing: the latest regulation change recorded at or before the arrival's run decides; if the only changes recorded are later than the arrival, the regulation recorded before the first of those changes decides; if the case has no recorded regulation changes at all, its regulation as currently recorded decides. A case is excluded only when that decided regulation is neither not-yet-recorded nor Part 91 -- so a regulation change recorded on the very same run as an arrival excludes that arrival too, which is a deliberately cautious reading. Only the before-closure arrivals are the mask distribution spec §10.2 means.
+
+evidence-field arrival percentiles, days from event to first appearance:
+  the names below (e.g. weather_condition) are this project's own evidence field names, not raw database column names.
+  a case first seen after the recorder's first night has an absent side if the latest earlier night whose fetch of its event month was clean and fully observed found it absent -- never simply 'the night before'. It then counts as a true arrival below, not as first-sight. A record the API returned but never stored (not watchable and unknown, or an observation that failed) is never treated as new later either, whichever night it eventually becomes storable on.
+  which nights count as 'clean and fully observed' is known only from the night this store gained the table that records it; a case first seen on that same night has no earlier clean-fetch record to check yet, so it may still read as first-sight even when it genuinely was absent the night before.
+  aircraft_make (before closure only -- the mask population):
+    present-side: n=6 p25=2 p50=2 p75=4 p90=5
+    absent-side:  n=6 p25=1 p50=1 p75=3 p90=4
+  aircraft_make classification: before closure=6 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=0
+  aircraft_model (before closure only -- the mask population):
+    present-side: n=6 p25=2 p50=2 p75=4 p90=5
+    absent-side:  n=6 p25=1 p50=1 p75=3 p90=4
+  aircraft_model classification: before closure=6 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=0
+  engine_type (before closure only -- the mask population):
+    present-side: no data
+    absent-side:  no data
+  engine_type classification: before closure=0 same run as closure=7 after closure=0 excluded (not Part 91 at the time)=0
+  injury_level (before closure only -- the mask population):
+    present-side: n=7 p25=2 p50=4 p75=5 p90=10
+    absent-side:  n=7 p25=1 p50=3 p75=4 p90=10
+  injury_level classification: before closure=7 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=0
+  phase_of_flight (before closure only -- the mask population):
+    present-side: n=6 p25=2 p50=2 p75=4 p90=5
+    absent-side:  n=6 p25=1 p50=1 p75=3 p90=4
+  phase_of_flight classification: before closure=6 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=0
+  pilot_certificates (before closure only -- the mask population):
+    present-side: no data
+    absent-side:  no data
+  pilot_certificates classification: before closure=0 same run as closure=7 after closure=0 excluded (not Part 91 at the time)=0
+  pilot_hours_in_type (before closure only -- the mask population):
+    present-side: no data
+    absent-side:  no data
+  pilot_hours_in_type classification: before closure=0 same run as closure=6 after closure=0 excluded (not Part 91 at the time)=0
+  pilot_total_hours (before closure only -- the mask population):
+    present-side: no data
+    absent-side:  no data
+  pilot_total_hours classification: before closure=0 same run as closure=7 after closure=0 excluded (not Part 91 at the time)=0
+  registration (before closure only -- the mask population):
+    present-side: n=6 p25=2 p50=2 p75=4 p90=5
+    absent-side:  n=6 p25=1 p50=1 p75=3 p90=4
+  registration classification: before closure=6 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=0
+  weather_condition (before closure only -- the mask population):
+    present-side: n=13 p25=3 p50=16 p75=20 p90=23
+    absent-side:  n=13 p25=3 p50=15 p75=19 p90=23
+  weather_condition classification: before closure=13 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=2
+  weather_metar (before closure only -- the mask population):
+    present-side: n=12 p25=16 p50=20 p75=23 p90=27
+    absent-side:  n=12 p25=15 p50=19 p75=23 p90=26
+  weather_metar classification: before closure=12 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=2
+  first-sight fields (present by the day watching began, a lower bound, excluded above): 6318
+
+preliminary narrative arrival:
+  the same rule applies here as for evidence fields: a case first seen after the recorder's first night has an absent side if the latest earlier night whose fetch of its event month was clean and fully observed found it absent -- never simply 'the night before'; and the same caveat applies about clean fetches being known only from the night that history was added to this store.
+  preliminary narrative (before closure only -- the mask population):
+    present-side: n=7 p25=18 p50=21 p75=25 p90=131
+    absent-side:  n=7 p25=17 p50=20 p75=24 p90=131
+  preliminary narrative classification: before closure=7 same run as closure=0 after closure=0 excluded (not Part 91 at the time)=2
+  first-sight preliminary narratives (present by the day watching began, excluded above): 704
+
+docket arrival, days from event to the first poll with documents:
+  docket (before closure only -- the mask population):
+    present-side: no data
+    absent-side:  no data
+  docket classification: before closure=0 same run as closure=7 after closure=0 excluded (not Part 91 at the time)=0
+  document count at that poll (before closure): no data
+  first-sight dockets (documents present at the first poll ever, a lower bound, excluded above): 5
+  absent side unknown (a documented first read poll preceded only by failed polls, never a genuine no-docket/empty observation): 0
+
+comparison between the month re-fetch and the change feed: a field change counts as reported by the feed only when the feed's own record of that case's change happened strictly after the last time the field was seen absent, AND the feed was checked at the same time as, or within 1 day(s) after, the run that found the change.
+  timestamps that could not be read at all: 0
+  field changes: reported 70 of 97
+  case-nights: reported 21 of 29
+
+regulation transitions, watched cases only. Regulation changes are known only from the night the regulation-history table was added to this store; for any nights before that, changes are unknown, not zero.
+  empty -> 091 (filled in): 2
+  days from first sight to fill-in: n=2 (n<3, percentiles suppressed)
+  empty -> other (filled in and dropped): 2
+  value -> different value (changed after first recorded): 0
+  value -> empty: 0
+
+closure tail: documents that appeared at or after a case's closure (real closures only -- a status change to Completed or N/A, never 'not returned'; a document seen for the first time ever, with no earlier poll that showed it absent, is not counted as an arrival here at all). Reappearances and one half of a suspected re-numbered pair count the same as any other appearance. A case can have both a 'not returned' event and, later, a real closure; its documents can then be counted in both tails below.
+  same run as closure (order unknown): 94
+  strictly after closure: 0
+  total (at or after closure): 94
+  'not returned' tail (reported separately, not a real closure): 0
+
+suspected re-numbers: 0
+possible false 'not returned' events: 0
+
+compressed listing page sizes (bytes): p50=3397 max=6342
