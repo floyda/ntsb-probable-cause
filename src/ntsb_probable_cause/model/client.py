@@ -1,5 +1,7 @@
 """What crosses to a model: a Payload rendered only from Evidence (decision 0016)."""
 
+import base64
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, Self, final
@@ -15,21 +17,42 @@ _CONSTRUCTION_TOKEN = object()
 _EVIDENCE_NAMES = frozenset(role.value for role in EvidenceRole)
 
 
+class PageImage(BaseModel):
+    """One page image for a model: a rendered page, never an image pulled out of a PDF (0075)."""
+
+    model_config = ConfigDict(frozen=True)
+    media_type: Literal["image/jpeg", "image/png"]
+    data: bytes
+
+    @property
+    def sha256(self) -> str:
+        """The image's hash."""
+        return hashlib.sha256(self.data).hexdigest()
+
+    def data_url(self) -> str:
+        """The image as a ``data:`` URL, the form the chat-completions endpoint accepts."""
+        return f"data:{self.media_type};base64,{base64.b64encode(self.data).decode('ascii')}"
+
+
 @final
 class Payload:
-    """The exact text a model would receive. Built only by ``Payload.from_evidence``.
+    """The exact text and images a model would receive.
 
+    Built only by Payload.from_evidence (evidence text, no images), or for one page's
+    transcription by Payload.for_page (one page image and, on a mixed page, its text layer).
     Immutable: ``__setattr__``/``__delattr__`` refuse any change after construction, and
     ``@final`` closes off subclassing, which would otherwise bypass the construction token.
     """
 
-    __slots__ = ("_text",)
+    __slots__ = ("_images", "_text")
     _text: str
+    _images: tuple[PageImage, ...]
 
-    def __init__(self, text: str, *, _token: object) -> None:
+    def __init__(self, text: str, *, images: tuple[PageImage, ...] = (), _token: object) -> None:
         if _token is not _CONSTRUCTION_TOKEN:
             raise TypeError("Payload is built only by Payload.from_evidence")
         object.__setattr__(self, "_text", text)
+        object.__setattr__(self, "_images", images)
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError(f"Payload is immutable: cannot set {name!r}")
@@ -39,7 +62,13 @@ class Payload:
 
     @classmethod
     def from_evidence(cls, evidence: Evidence) -> Payload:
-        """Render non-null, non-excluded evidence roles; never bookkeeping (guard layer 1)."""
+        """Render non-null, non-excluded evidence roles; never bookkeeping (guard layer 1).
+
+        Text only. The agent's payload carries no images: the leakage tripwire reads text and
+        cannot screen a picture, so page images reach a model only one at a time, for their
+        own transcription (``for_page``). Pictures for the agent (v3, decision 0082) are not
+        built; S2.6 deferred them (decision 0090) and they need their own guard first.
+        """
         values = {
             role.value: list(value) if isinstance(value, tuple) else value
             for role, value in evidence.role_values().items()
@@ -56,10 +85,24 @@ class Payload:
             _token=_CONSTRUCTION_TOKEN,
         )
 
+    @classmethod
+    def for_page(cls, image: PageImage, *, text_layer: str | None = None) -> Payload:
+        """A page transcription's request: one page image and, on a mixed page, its text layer.
+
+        (S2.6 §8.2). It takes no evidence and no record, so no withheld text has a way in;
+        ``tests/test_boundary.py`` checks the caller passes only the page's own text layer.
+        """
+        return cls(text_layer or "", images=(image,), _token=_CONSTRUCTION_TOKEN)
+
     @property
     def text(self) -> str:
         """The rendered payload."""
         return self._text
+
+    @property
+    def images(self) -> tuple[PageImage, ...]:
+        """The images sent after the text, in order; empty for a text-only payload."""
+        return self._images
 
     def fields(self) -> dict[str, object]:
         """The payload parsed back into a dictionary."""
@@ -67,10 +110,14 @@ class Payload:
         return parsed
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, Payload) and other._text == self._text
+        return (
+            isinstance(other, Payload)
+            and other._text == self._text
+            and other._images == self._images
+        )
 
     def __hash__(self) -> int:
-        return hash(self._text)
+        return hash((self._text, tuple(i.sha256 for i in self._images)))
 
 
 class Usage(BaseModel):
@@ -80,6 +127,9 @@ class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     reported_cost_usd: float | None = None
+    # None where the provider reports no completion_tokens_details, or no reasoning_tokens
+    # within it (S2.6 Task 9A: GPT-6 Luna's reasoning tokens count against the reply budget).
+    reasoning_tokens: int | None = None
 
 
 class ToolCall(BaseModel):
@@ -252,6 +302,10 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
         content = message.get("content")
         finish_reason = choice.get("finish_reason")
         cost = usage.get("cost")
+        details = usage.get("completion_tokens_details")
+        reasoning_tokens = None
+        if isinstance(details, Mapping) and details.get("reasoning_tokens") is not None:
+            reasoning_tokens = _as_int(details["reasoning_tokens"])
         return ModelReply(
             content=content if content is None else str(content),
             tool_calls=calls,
@@ -260,6 +314,7 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
                 prompt_tokens=_as_int(usage["prompt_tokens"]),
                 completion_tokens=_as_int(usage["completion_tokens"]),
                 reported_cost_usd=_as_float(cost) if cost is not None else None,
+                reasoning_tokens=reasoning_tokens,
             ),
             model=str(body.get("model", "")),
             response_id=str(body.get("id", "")),

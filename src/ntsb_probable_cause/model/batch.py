@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.errors import BatchNotFoundError, ModelError
+from ntsb_probable_cause.errors import BatchNotFoundError, ConfigurationError, ModelError
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
@@ -134,6 +134,13 @@ class BatchClient:
 
     def submit(self, requests: Sequence[BatchRequest]) -> str:
         """Submit one batch. Every request must share a model id."""
+        if any(request.payload.images for request in requests):
+            # https://openrouter.ai/docs/batch-quickstart, read 2026-09-24: "Image parts must be
+            # public http(s) URLs. Base64 and data: URI images are rejected on every provider."
+            raise ConfigurationError(
+                "images cannot go through the batch service: OpenRouter rejects base64 and "
+                "data: images in a batch. Send image requests synchronously (S2.6, decision W1)."
+            )
         model_ids = {r.settings.model_id() for r in requests}
         if len(model_ids) != 1:
             raise ModelError(f"a batch needs one model id, got {sorted(model_ids)}")

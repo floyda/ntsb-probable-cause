@@ -53,3 +53,8 @@ had written a cost, so each saw the same headroom and none of them saw the other
 with a reservation taken under `fcntl.flock` at run start and settled at the end. The per-case
 cap and the decision to enforce cost in code rather than only measure it, which are the substance
 of this record, both stand.
+
+**Amended 2026-09-23 (appended; nothing above is edited).** Item 2's $25 default is raised to $40
+for the development stages by [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md).
+[0081](0081-transcription-is-evidence-preparation.md) adds a third kind of cost, evidence
+preparation, which counts against the budget and not against the per-case cap.

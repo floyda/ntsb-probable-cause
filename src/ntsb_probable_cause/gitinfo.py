@@ -28,3 +28,18 @@ def commit_state(repo: Path = Path()) -> tuple[str, bool]:
         check=True,
     ).stdout
     return sha, bool(status.strip())
+
+
+def commits_since(base: str, repo: Path = Path()) -> tuple[str, ...]:
+    """Full SHAs of the commits reachable from HEAD but not from ``base`` (``base..HEAD``).
+
+    Raises ``OSError`` when git cannot be run and ``subprocess.CalledProcessError`` when git
+    fails (not a repository, or ``base`` unknown); the caller decides what that means.
+    """
+    listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "rev-list", f"{base}..HEAD"],  # noqa: S607 -- git on PATH
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return tuple(listing.split())

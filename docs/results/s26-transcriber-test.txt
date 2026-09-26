@@ -1,0 +1,38 @@
+# the transcriber test (S2.6 spec §7, decision 0080) -- counts only
+keys: 100 typed pages, 25 handwriting pages (1551 key lines), 50 no-word photographs; 150 dpi; instruction t1; standard prices (images cannot be batched)
+handwriting key sources (fix round 2, C2): 8 inventory (handwriting), 17 top-up (filled form)
+handwriting key: 1551 lines picked from a version, 0 typed by Andy; spot check of agreed lines: 0 of 0 wrong in all four (0 pages where Andy's own spot-check answer disagrees)
+
+## readings (fix round 1, I2)
+  google/gemini-3.1-flash-lite: typed 0 missing/2 failed, handwriting 0 missing/0 failed, photo 0 missing/0 failed, mixed 0 missing/1 failed
+  google/gemini-3.6-flash: typed 0 missing/1 failed, handwriting 0 missing/0 failed, photo 0 missing/0 failed, mixed 0 missing/0 failed
+  qwen/qwen3.5-122b-a10b: typed 0 missing/0 failed, handwriting 0 missing/0 failed, photo 0 missing/0 failed, mixed 0 missing/0 failed
+  openai/gpt-6-luna: typed 0 missing/0 failed, handwriting 0 missing/0 failed, photo 0 missing/2 failed, mixed 0 missing/0 failed
+
+## google/gemini-3.1-flash-lite ($0.25/$1.5 per M tokens; measured $0.00101 per test page)
+  invented: 17 lines (1.1 per 100 handwriting lines); 18 of 50 photographs
+  handwriting lines right: 0 of 1551 (0.0% [0.0%, 0.2%], Wilson 95%, lines not independent)
+  typed errors: 12.20 per 100 characters (20060 of 164464)
+  full-page scans (decision W7): invented added words on 2 of 25; repeated the text layer on 1
+## google/gemini-3.6-flash ($0.75/$3.75 per M tokens; measured $0.00264 per test page)
+  invented: 88 lines (5.7 per 100 handwriting lines); 21 of 50 photographs
+  handwriting lines right: 831 of 1551 (53.6% [51.1%, 56.0%], Wilson 95%, lines not independent)
+  typed errors: 12.60 per 100 characters (20720 of 164464)
+  full-page scans (decision W7): invented added words on 1 of 25; repeated the text layer on 1
+## qwen/qwen3.5-122b-a10b ($0.26/$2.08 per M tokens; measured $0.00154 per test page)
+  invented: 55 lines (3.5 per 100 handwriting lines); 13 of 50 photographs
+  handwriting lines right: 1041 of 1551 (67.1% [64.7%, 69.4%], Wilson 95%, lines not independent)
+  typed errors: 12.29 per 100 characters (20219 of 164464)
+  full-page scans (decision W7): invented added words on 0 of 25; repeated the text layer on 0
+## openai/gpt-6-luna ($0.1/$0.5 per M tokens; measured $0.00073 per test page)
+  invented: 53 lines (3.4 per 100 handwriting lines); 17 of 50 photographs
+  handwriting lines right: 998 of 1551 (64.3% [61.9%, 66.7%], Wilson 95%, lines not independent)
+  typed errors: 10.43 per 100 characters (17156 of 164464)
+  full-page scans (decision W7): invented added words on 2 of 25; repeated the text layer on 0
+
+## the rule
+google/gemini-3.1-flash-lite: out -- invented words on 18 of 50 no-word photograph pages (gate 1 in 20)
+google/gemini-3.6-flash: out -- 5.7 inventing lines per 100 handwriting lines (gate 2)
+qwen/qwen3.5-122b-a10b: out -- 3.5 inventing lines per 100 handwriting lines (gate 2)
+openai/gpt-6-luna: out -- 3.4 inventing lines per 100 handwriting lines (gate 2)
+no candidate passed the gate: transcription stops (spec §7.4 item 3)

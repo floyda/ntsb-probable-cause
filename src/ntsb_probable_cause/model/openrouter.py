@@ -21,6 +21,23 @@ _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _USER_AGENT = "ntsb-probable-cause (https://github.com/floyda/ntsb-probable-cause)"
 
 
+def _user_content(payload: Payload) -> str | list[dict[str, object]]:
+    """The user message: the text alone, byte for byte as before S2.6, unless images ride too.
+
+    With images, the text (when there is any) comes first, then each image as a ``data:``
+    URL -- the chat-completions content-parts form.
+    """
+    if not payload.images:
+        return payload.text
+    parts: list[dict[str, object]] = []
+    if payload.text:
+        parts.append({"type": "text", "text": payload.text})
+    parts.extend(
+        {"type": "image_url", "image_url": {"url": image.data_url()}} for image in payload.images
+    )
+    return parts
+
+
 def request_body(
     payload: Payload, settings: ModelSettings, *, system: str, history: Sequence[Turn]
 ) -> dict[str, object]:
@@ -28,7 +45,7 @@ def request_body(
     messages: list[dict[str, object]] = []
     if system:
         messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": payload.text})
+    messages.append({"role": "user", "content": _user_content(payload)})
     for turn in history:
         if turn.role == "assistant":
             message: dict[str, object] = {"role": "assistant", "content": turn.content}

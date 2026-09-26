@@ -9,8 +9,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause.model.client import Payload
+from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
+
+# Decision 0076: what the docket holds once read. v1 = text layers (S2); v2 = + transcriptions
+# (S2.6); v3 = + pictures alongside the text (decision 0082) -- a name only: not built, deferred
+# by 0090, and refused by every run. An axis, not an arm.
+EvidenceVersion = Literal["v1", "v2", "v3"]
 
 
 class RunRecord(BaseModel):
@@ -21,6 +27,8 @@ class RunRecord(BaseModel):
     run_id: str
     sample: str
     arm: Literal["A", "B", "ceiling"]
+    # "v1" on a run from before S2.6, which read text layers only (0076 item 2).
+    evidence_version: EvidenceVersion = "v1"
     exclusions: tuple[str, ...]
     includes: tuple[str, ...]
     prompt_version: str
@@ -30,6 +38,8 @@ class RunRecord(BaseModel):
     price_variant: str
     cap_usd: float
     budget_usd: float
+    # 2000 on a run from before S2.6 Task 9A: the old ModelSettings default.
+    max_output_tokens: int = 2000
     commit_sha: str
     dirty: bool
     started: datetime
@@ -66,6 +76,18 @@ class StepRecord(BaseModel):
     price_variant: str
     prompt_tokens: int
     completion_tokens: int
+    # None when no reply for the case reported one (S2.6 Task 9A).
+    reasoning_tokens: int | None = None
+    # The per-reply figures behind the sums above, in call order (S2.6 Task 9A fix round 2):
+    # a case makes up to four replies (stage 1 + stage 2, each with one retry), and the
+    # summed fields cannot tell a single reply's own token count apart from another's, which
+    # ``scripts/reply_budget.py`` needs to set a budget from real per-call figures rather
+    # than a case-level total. Empty on a ``StepRecord`` written before this fix: the summed
+    # fields are what such a step still has, and callers must not silently substitute them
+    # for a per-reply breakdown that was never recorded.
+    reply_completion_tokens: tuple[int, ...] = ()
+    reply_reasoning_tokens: tuple[int | None, ...] = ()
+    reply_finish_reasons: tuple[str | None, ...] = ()
     cost_usd: float
     cumulative_cost_usd: float
     commit_sha: str
@@ -93,6 +115,23 @@ class CaseResult(BaseModel):
     # (``steps=()``): the docket outcome must not be invisible just because the case never
     # reached a model call (decision 0043; fix round 1, Finding 4).
     documents_not_read: tuple[str, ...] = ()
+    # S2.6 spec §4.4: the case's marks and its largest single-document share of the factual
+    # narrative (0078), from the split. Never in the agent's text; reported as groups.
+    marks: tuple[CaseMark, ...] = ()
+    narrative_share: float | None = None
+    # Decision 0081: transcription paid for this case's docket -- apart from cost_usd and the cap.
+    preparation_cost_usd: float = 0.0
+    # Every reply the case received, in call order, whether the case was scored or failed
+    # (S2.6 Task 9C). A failed case has no step (``steps=()``), so ``StepRecord``'s own copy
+    # of these tuples is invisible to a failed case -- and a case that failed on stage 2 after
+    # an earlier reply was cut off and retried carries only its *last* reply's facts in its
+    # failure text (``_reply_detail``), never the earlier one. These three tuples are filled
+    # from ``ctx.replies`` for every case that made at least one call; a case that failed
+    # before any call ("cap", "leak") made none and these stay empty, and so does a
+    # ``CaseResult`` written before this fix.
+    reply_completion_tokens: tuple[int, ...] = ()
+    reply_reasoning_tokens: tuple[int | None, ...] = ()
+    reply_finish_reasons: tuple[str | None, ...] = ()
 
 
 def fingerprint(payload: Payload) -> str:

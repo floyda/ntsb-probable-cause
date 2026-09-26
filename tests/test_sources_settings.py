@@ -90,7 +90,7 @@ def test_openrouter_defaults() -> None:
     s = Settings(_env_file=None)
     assert s.openrouter_base_url == "https://openrouter.ai"
     assert s.runs_dir == Path("data/runs")
-    assert s.monthly_budget_usd == 25.0
+    assert s.monthly_budget_usd == 40.0
 
 
 def test_price_of_known_and_unknown_model() -> None:
@@ -112,6 +112,10 @@ def test_docket_settings_have_polite_defaults() -> None:
     assert settings.docket_seconds_per_request == 2.0
 
 
+def test_transcription_dir_defaults_to_the_literal_path() -> None:
+    assert Settings().transcription_dir == Path("data/transcriptions")
+
+
 def test_docket_document_url_joins_the_relative_href() -> None:
     href = "/Docket/Document/docBLOB?ID=1&FileExtension=.pdf&FileName=x.pdf"
     assert sources.docket_document_url(href) == "https://data.ntsb.gov" + href
@@ -121,19 +125,23 @@ def test_unset_dirs_default_to_the_literal_paths(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("NTSB_DATA_DIR", raising=False)
     monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
     monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    monkeypatch.delenv("NTSB_TRANSCRIPTION_DIR", raising=False)
     settings = Settings(_env_file=None)
     assert settings.data_dir == Path("data")
     assert settings.runs_dir == Path("data/runs")
     assert settings.docket_dir == Path("data/docket")
+    assert settings.transcription_dir == Path("data/transcriptions")
 
 
 def test_unset_dirs_derive_from_an_explicit_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
     monkeypatch.delenv("NTSB_RUNS_DIR", raising=False)
     monkeypatch.delenv("NTSB_DOCKET_DIR", raising=False)
+    monkeypatch.delenv("NTSB_TRANSCRIPTION_DIR", raising=False)
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/somewhere/runs")
     assert settings.docket_dir == Path("/somewhere/docket")
+    assert settings.transcription_dir == Path("/somewhere/transcriptions")
 
 
 def test_explicit_runs_dir_and_docket_dir_override_derivation(
@@ -142,9 +150,11 @@ def test_explicit_runs_dir_and_docket_dir_override_derivation(
     monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
     monkeypatch.setenv("NTSB_RUNS_DIR", "/elsewhere/runs")
     monkeypatch.setenv("NTSB_DOCKET_DIR", "/elsewhere/docket")
+    monkeypatch.setenv("NTSB_TRANSCRIPTION_DIR", "/elsewhere/transcriptions")
     settings = Settings(_env_file=None)
     assert settings.runs_dir == Path("/elsewhere/runs")
     assert settings.docket_dir == Path("/elsewhere/docket")
+    assert settings.transcription_dir == Path("/elsewhere/transcriptions")
 
 
 def test_store_default_is_the_literal_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,3 +231,22 @@ def test_no_module_but_sources_names_a_luna_model() -> None:
         str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
     ]
     assert offenders == []
+
+
+def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Decision 0083: $40 a month during development, until S4."""
+    monkeypatch.delenv("NTSB_MONTHLY_BUDGET_USD", raising=False)
+    assert Settings(_env_file=None).monthly_budget_usd == 40.0
+    assert RunSpec(sample="dev-400", arm="ceiling").budget_usd == 40.0
+
+
+def test_the_transcriber_candidates_are_priced_and_levelled() -> None:
+    """OpenRouter models API, read 2026-09-24 (S2.6 spec §7.2)."""
+    assert sources.price_of("google/gemini-3.6-flash") is sources.GEMINI_36_FLASH
+    assert sources.price_of("qwen/qwen3.5-122b-a10b") is sources.QWEN_35_122B
+    assert sources.LOWEST_REASONING == {
+        "google/gemini-3.1-flash-lite": "minimal",
+        "google/gemini-3.6-flash": "minimal",
+        "openai/gpt-6-luna": "none",
+        "qwen/qwen3.5-122b-a10b": "none",
+    }

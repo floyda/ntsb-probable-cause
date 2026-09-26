@@ -8,9 +8,9 @@ import httpx
 import pytest
 import respx
 
-from ntsb_probable_cause.errors import BatchNotFoundError, ModelError
+from ntsb_probable_cause.errors import BatchNotFoundError, ConfigurationError, ModelError
 from ntsb_probable_cause.model.batch import BatchClient, BatchRequest, BatchStatus
-from ntsb_probable_cause.model.client import ModelSettings, Payload, cost_usd
+from ntsb_probable_cause.model.client import ModelSettings, PageImage, Payload, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.evidence import Evidence
 
@@ -245,6 +245,25 @@ def test_reply_parsed_from_batch_has_no_reported_cost_and_prices_at_batch_rate(
     assert dollars == pytest.approx(expected)
 
 
+def test_a_truncated_batch_result_parses_finish_reason_and_reasoning_tokens(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """S2.6 Task 9A fix round 2: the batch result path parses these the same as a sync reply.
+
+    ``probe-1`` in the fixture is a truncated reply (``finish_reason="length"``,
+    ``completion_tokens_details.reasoning_tokens=300``) -- exactly the shape a real
+    reasoning-budget failure takes through the batch endpoint, not only the sync one.
+    """
+    respx_mock.get(f"{BASE}/b-truncated").mock(
+        return_value=httpx.Response(200, json=FIX["response"])
+    )
+    status = client().poll("b-truncated")
+    truncated = next(r for r in status.results if r.custom_id == "probe-1")
+    assert truncated.reply is not None
+    assert truncated.reply.finish_reason == "length"
+    assert truncated.reply.usage.reasoning_tokens == 300
+
+
 class _FakeClock:
     """A deterministic clock/sleeper pair: ``sleep`` advances ``now`` instead of blocking.
 
@@ -320,3 +339,19 @@ def test_wait_tolerates_a_later_404_blip_after_a_non_terminal_status_was_seen(
     )
     assert status.status == "completed"
     assert clock.sleeps == [10.0, 10.0]
+
+
+def test_the_batch_service_refuses_an_image(respx_mock: respx.MockRouter) -> None:
+    """OpenRouter batch documentation, read 2026-09-24: base64 and data: images are rejected."""
+    route = respx_mock.post(BASE).mock(
+        return_value=httpx.Response(
+            202, json={**FIX["response"], "status": "validating", "results": []}
+        )
+    )
+    image = PageImage(media_type="image/jpeg", data=b"\xff\xd8jpeg")
+    request = BatchRequest(
+        custom_id="p1", payload=Payload.for_page(image), settings=ModelSettings()
+    )
+    with pytest.raises(ConfigurationError, match="images cannot go through the batch service"):
+        client().submit([request])
+    assert route.calls.call_count == 0

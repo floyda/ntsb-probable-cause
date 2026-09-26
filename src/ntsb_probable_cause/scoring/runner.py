@@ -15,6 +15,7 @@ from ntsb_probable_cause.docket import filter as docket_filter
 from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, read_docket
+from ntsb_probable_cause.docket.transcribe import ReadingLookup
 from ntsb_probable_cause.errors import (
     BatchNotFoundError,
     BudgetError,
@@ -61,6 +62,7 @@ from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and
 from ntsb_probable_cause.scoring.metrics import CaseScores, score_case
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
+    EvidenceVersion,
     RunRecord,
     StepRecord,
     fingerprint,
@@ -76,13 +78,22 @@ class RunSpec:
 
     sample: str
     arm: Literal["A", "B", "ceiling"]
+    # Decision 0076: the evidence version this run reads the docket at. v1 and v2 are built
+    # (v2 reads the finished transcriptions, Task 14); v3 is not (deferred by 0090) and is
+    # refused. Only arm B reads the docket, so a version past v1 on arm A or the ceiling is
+    # refused too (Andy, 2026-09-26).
+    evidence_version: EvidenceVersion = "v1"
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
     model: str = sources.DEFAULT_MODEL
     reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT
+    # The reply budget, reasoning included (S2.6 Task 9A). Recorded on every run. Decision 0084:
+    # 8,000, measured on dev-400 (docs/results/s26-reply-budget-dev.txt).
+    max_output_tokens: int = 8000
     price_variant: Literal["batch", "standard"] = "batch"
     cap_usd: float = 0.05
-    budget_usd: float = 25.0
+    # Decision 0083: $40 a month during the development stages, until the live board (S4).
+    budget_usd: float = 40.0
     sync: bool = False
     expected_cost_per_case_usd: float | None = None
 
@@ -90,6 +101,11 @@ class RunSpec:
 SPEC_FILE = "spec.json"
 BATCHES_FILE = "batches.jsonl"
 RUN_FILE = "run.jsonl"
+
+# A batch that ended any of these has no replies to use (S2.6 Task 9B, S2.4's final review).
+# A reused one is, like a lost batch, recorded, its dependants superseded, and resubmitted; a
+# fresh one is recorded and the run stops, so a resume resubmits it (fix rounds 2-3 of 9B).
+ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})
 
 
 def spec_json(
@@ -118,10 +134,12 @@ def spec_json(
     return {
         "sample": spec.sample,
         "arm": spec.arm,
+        "evidence_version": spec.evidence_version,
         "exclusions": sorted(role.value for role in spec.exclusions),
         "include_case_number": spec.include_case_number,
         "model": spec.model,
         "reasoning_effort": spec.reasoning_effort,
+        "max_output_tokens": spec.max_output_tokens,
         "price_variant": spec.price_variant,
         "cap_usd": spec.cap_usd,
         "budget_usd": spec.budget_usd,
@@ -404,6 +422,18 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
 
     Nothing is ever deleted from ``batches.jsonl``; this only filters what is handed back.
 
+    A batch that instead ran to a terminal status other than ``completed`` (Task 9B, S2.4's
+    final review) gets the same treatment: a second row for the id, ``{"batch_id": ...,
+    "stage": ..., "ended": "<status>", "reported_cost_usd": ..., "time": ...}``, appended in
+    ``_submit_and_wait`` -- whether that batch was reused or freshly submitted (fix round 3,
+    review Minor C: a fresh batch is recorded ``ended`` right away too, not only rediscovered
+    by a later resume, which would otherwise race the provider purging it). That row's
+    ``reported_cost_usd`` is what lets ``dead_batches`` (below) carry the dead batch's money
+    into a later resume's ``RunRecord.cost_usd`` -- fix round 1: no case ever prices a dead
+    batch's replies, so without this its cost would be visible only within the one call that
+    discovered it dead, never to ``month_spent`` on any later resume. Neither an ``ended`` row
+    nor the original row for that id is returned here, exactly as for a ``lost`` one.
+
     Args:
         folder: the run folder.
 
@@ -425,7 +455,11 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
                 f"cannot resume: {path} line {number} records no stage and batch id: {row!r}"
             )
         time = row.get("time")
-        unusable = row.get("lost") is True or row.get("superseded") is True
+        unusable = (
+            row.get("lost") is True
+            or row.get("superseded") is True
+            or row.get("ended") in ENDED_UNUSABLE
+        )
         rows.append((stage, batch_id, time if isinstance(time, str) else None, unusable))
     unusable_ids = {batch_id for _stage, batch_id, _time, unusable in rows if unusable}
     return [
@@ -433,6 +467,44 @@ def recorded_batches(folder: Path) -> list[tuple[str, str, str | None]]:
         for stage, batch_id, time, unusable in rows
         if not unusable and batch_id not in unusable_ids
     ]
+
+
+def dead_batches(folder: Path) -> list[tuple[str, float | None]]:
+    """Every ``(batch_id, reported_cost_usd)`` recorded ``ended`` in ``batches.jsonl``.
+
+    Task 9B fix round 1 (review Minors 3-4): a dead batch's replies are never priced into any
+    case's cost, so its money would otherwise be visible only within the one call that first
+    found it dead. ``Runner.run`` seeds a resume's ``run.batch_ids``/``run.costs`` from this
+    list, and adds the sum of its non-``None`` costs into ``RunRecord.cost_usd`` (``dead_cost``
+    in ``build_record``), so the money stays in every later record and in ``month_spent`` too.
+
+    An empty list where the file does not exist, or where nothing has ended yet.
+
+    Args:
+        folder: the run folder.
+
+    Returns:
+        One ``(batch_id, reported_cost_usd)`` pair per distinct ``ended`` row, in the order
+        first recorded. ``reported_cost_usd`` is ``None`` where the batch reported none --
+        carried through, not dropped, so the caller can tell "no batches ended" from "one ended
+        and reported nothing". De-duplicated by ``batch_id``, first row wins (fix round 2,
+        review Nit B): the runner itself can never write two ``ended`` rows for one id
+        (``recorded_batches`` hides an id as soon as its first ``ended`` row exists, so it can
+        never be found dead a second time), but a hand-edited file should not be double-counted.
+    """
+    path = folder / BATCHES_FILE
+    if not path.is_file():
+        return []
+    dead: list[tuple[str, float | None]] = []
+    seen: set[str] = set()
+    for _number, row in _json_lines(path):
+        if row.get("ended") in ENDED_UNUSABLE:
+            batch_id = row.get("batch_id")
+            if isinstance(batch_id, str) and batch_id not in seen:
+                seen.add(batch_id)
+                cost = row.get("reported_cost_usd")
+                dead.append((batch_id, cost if isinstance(cost, int | float) else None))
+    return dead
 
 
 RESULT_FILES = ("cases.jsonl", "steps.jsonl", RUN_FILE)
@@ -563,12 +635,29 @@ def refuse_sync_with_batch_price(spec: RunSpec) -> None:
         )
 
 
+def _reply_detail(reply: ModelReply) -> str:
+    """The trailing detail a reply-format failure carries (S2.6 Task 9A).
+
+    Appended to every ``schema:`` failure text, sync and batch alike, so a truncated or
+    empty reply says why: the finish reason the provider gave and the token counts that let
+    ``scripts/reply_budget.py`` tell a genuine schema violation from a reply cut short by
+    ``max_output_tokens``. ``failure_summary`` (report.py) splits on the first ``":"``, so
+    this trailing text never changes its counts.
+    """
+    return (
+        f" (finish_reason={reply.finish_reason}, "
+        f"completion_tokens={reply.usage.completion_tokens}, "
+        f"reasoning_tokens={reply.usage.reasoning_tokens})"
+    )
+
+
 def _settings(spec: RunSpec, schema: dict[str, object], name: str) -> ModelSettings:
     """Model settings for one call; ``schema`` and ``name`` vary between the two stages."""
     return ModelSettings(
         model=spec.model,
         price_variant=spec.price_variant,
         reasoning_effort=spec.reasoning_effort,
+        max_output_tokens=spec.max_output_tokens,
         json_schema=schema,
         schema_name=name,
     )
@@ -586,20 +675,31 @@ def _sample_split(sample: str) -> Split:
 class DocketReader(Protocol):
     """Where arm B (and later the loop) gets a case's docket from."""
 
+    # Decision 0076: the evidence version the reader builds; ``Runner.run`` refuses a run
+    # whose own version differs, so v2 evidence is never recorded as v1, nor the reverse.
+    version: Literal["v1", "v2"]
+
     def read(self, mkey: int) -> Docket:
         """The docket for a case's internal key."""
         ...
 
 
 class CachedDocketReader:
-    """The real reader: the client's cache (spec §7.1). Decision 0056: no deny-list to apply."""
+    """The real reader: the client's cache (spec §7.1); with readings, evidence version v2.
 
-    def __init__(self, client: DocketClient) -> None:
+    Decision 0056: no deny-list to apply.
+    """
+
+    def __init__(self, client: DocketClient, *, readings: ReadingLookup | None = None) -> None:
         self._client = client
+        self._readings = readings
+        self.version: Literal["v1", "v2"] = "v1" if readings is None else "v2"
 
     def read(self, mkey: int) -> Docket:
         """The docket for a case's internal key, fetched (or read from cache) and classified."""
-        return read_docket(self._client, mkey)
+        if self._readings is None:
+            return read_docket(self._client, mkey)  # v1: S2's call, unchanged
+        return read_docket(self._client, mkey, readings=self._readings)
 
 
 @dataclass(frozen=True)
@@ -614,6 +714,8 @@ class Prepared:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    # Decision 0081: what transcribing this case's docket cost (v2), apart from the cap.
+    preparation_cost_usd: float = 0.0
 
 
 # The two evidence roles arm B is defined by (spec §7.1). Excluding either one leaves the
@@ -704,6 +806,7 @@ def prepare_case(
         tuple(not_read),
         result.not_available,
         documents_attached,
+        docket.preparation_cost_usd,
     )
 
 
@@ -770,8 +873,15 @@ class _CaseContext:
     not_read: tuple[str, ...] = ()
     not_available: tuple[str, ...] = ()
     documents_attached: tuple[str, ...] = ()
+    preparation_cost_usd: float = 0.0
     replies: list[ModelReply] = field(default_factory=list)
     stage1_content: str | None = None
+    # The last SchemaError's reply detail (S2.6 Task 9A fix round 1): kept apart from the
+    # batch path's ``need_retry`` error text, which is also sent back to the model as the
+    # retry prompt ("Your previous reply was rejected: ..."). That text must stay exactly
+    # what it was before this task -- the detail is appended only when a case's *failure* is
+    # finally recorded, by ``_fail_case``, never by ``_retry_system``/``_stage2_system``.
+    schema_detail: str | None = None
 
 
 @dataclass
@@ -786,6 +896,12 @@ class _BatchRun:
     already recorded, emptied as ``_submit_and_wait`` consumes them (0032 point 3). It lives
     here, not on ``Runner``, because a ``Runner`` is reused across runs and this queue
     belongs to one answering pass.
+
+    ``dead_costs`` (Task 9B fix round 1) holds the reported cost of every batch found ``ended``
+    -- seeded from ``dead_batches(folder)`` at the start of a resume, and appended to whenever
+    this pass finds one dead itself. Unlike ``costs``, which mixes in every ordinary batch's
+    cost too, this list is only the money a dead batch's replies were never priced into any
+    case, so ``build_record`` can add exactly that amount into ``RunRecord.cost_usd``.
     """
 
     folder: Path
@@ -797,6 +913,7 @@ class _BatchRun:
     finals: dict[str, Hypothesis] = field(default_factory=dict)
     batch_ids: list[str] = field(default_factory=list)
     costs: list[float | None] = field(default_factory=list)
+    dead_costs: list[float | None] = field(default_factory=list)
 
 
 class Runner:
@@ -827,7 +944,7 @@ class Runner:
         self._now = now
         self._docket = docket
 
-    def run(
+    def run(  # noqa: PLR0912, PLR0915 -- the evidence-version refusals lengthen a long method.
         self,
         spec: RunSpec,
         raws: Sequence[Mapping[str, object]],
@@ -869,12 +986,42 @@ class Runner:
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
+        if spec.evidence_version == "v3":
+            raise ConfigurationError(
+                "evidence version v3 is not built: decision 0090 deferred the pictures"
+            )
+        if spec.arm != "B" and spec.evidence_version != "v1":
+            # Andy's decision, 2026-09-26 (Task 14 review I1): arm A and the ceiling read no
+            # docket, so a run of either labelled v2 would record a version it never read,
+            # and `--latest` for v1 would then skip it. Refused before any reservation.
+            raise ConfigurationError(
+                f"arm {spec.arm} reads no docket, so evidence version "
+                f"{spec.evidence_version} would be a false label on its run: run it at v1"
+            )
+        if spec.arm == "B" and self._docket is not None:
+            wanted = "v1" if spec.evidence_version == "v1" else "v2"
+            if self._docket.version != wanted:
+                raise ConfigurationError(
+                    f"a {spec.evidence_version} run needs a {wanted} docket reader; this one "
+                    f"reads {self._docket.version} evidence (decision 0076)"
+                )
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
+        dead: list[tuple[str, float | None]] = []
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{spec.arm}"
             folder = self._runs_dir / run_id
+            try:
+                folder.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                # Task 9D: two runs started in the same second at the same commit, sample and
+                # arm share an id; mkdir is atomic, so exactly one claims the folder.
+                raise ConfigurationError(
+                    f"run folder {run_id} already exists: another run with this id was "
+                    "started in the same second at the same commit, sample and arm. Wait a "
+                    f"second and start again, or pass --resume {run_id} to continue that run."
+                ) from None
             # Before the first model call, so a folder that dies early still describes
             # itself (0032 point 1).
             write_spec_json(
@@ -888,19 +1035,26 @@ class Runner:
                 spec_json(spec, commit_sha=self._sha, dirty=self._dirty, case_ids=case_ids),
             )
             reusable = recorded_batches(folder)
+            # Task 9B fix round 1: every batch already known dead from an earlier attempt at
+            # this run seeds batch_ids/costs/dead_costs, so its money is never lost from this
+            # resume's record even though the batch that died is found in none of this call's
+            # own waits (a batch found dead *this* call is appended once, as it always was).
+            dead = dead_batches(folder)
         if spec.arm == "B" and self._docket is None:
             raise ConfigurationError("arm B needs a docket reader")
         self._reserve_budget(spec, run_id, len(raws), started)
         self._log_header(spec, run_id, len(case_ids), resumed=resume is not None)
         results: list[CaseResult] = []
-        batch_ids: tuple[str, ...] = ()
+        batch_ids: tuple[str, ...] = tuple(batch_id for batch_id, _cost in dead)
         reported_batch_cost: float | None = None
+        dead_cost = sum(cost for _batch_id, cost in dead if cost is not None)
 
         def build_record(finished: datetime | None, cost_floor: float) -> RunRecord:
             return RunRecord(
                 run_id=run_id,
                 sample=spec.sample,
                 arm=spec.arm,
+                evidence_version=spec.evidence_version,
                 exclusions=tuple(sorted(e.value for e in spec.exclusions)),
                 includes=("case_number",) if spec.include_case_number else (),
                 prompt_version=prompt.PROMPT_VERSION,
@@ -909,6 +1063,7 @@ class Runner:
                 price_variant=spec.price_variant,
                 cap_usd=spec.cap_usd,
                 budget_usd=spec.budget_usd,
+                max_output_tokens=spec.max_output_tokens,
                 commit_sha=self._sha,
                 dirty=self._dirty,
                 started=started,
@@ -922,7 +1077,13 @@ class Runner:
                 # real spending, and ``month_spent`` — which globs ``*/run.jsonl`` and so
                 # cannot see the renamed file — would lose it. On the ordinary path the
                 # floor is inert: this run re-prices every reply the dead one read.
-                cost_usd=max(sum(r.cost_usd for r in results), cost_floor),
+                # Task 9B fix round 1 (review Minors 3-4): ``dead_cost`` adds in the reported
+                # cost of every batch found ``ended`` (seeded from an earlier attempt, plus any
+                # found dead in this call) -- money no case's ``cost_usd`` ever prices, since a
+                # dead batch's replies are discarded rather than answered from. Without this,
+                # that money was never visible outside the one call that found the batch dead,
+                # and ``month_spent`` (which sums exactly this field) would never see it either.
+                cost_usd=max(sum(r.cost_usd for r in results) + dead_cost, cost_floor),
                 reported_batch_cost_usd=reported_batch_cost,
             )
 
@@ -947,7 +1108,13 @@ class Runner:
                 for raw in raws:
                     results.append(self._answer_case(raw, spec))
             else:
-                batch_run = _BatchRun(folder=folder, reusable=reusable)
+                batch_run = _BatchRun(
+                    folder=folder,
+                    reusable=reusable,
+                    batch_ids=[batch_id for batch_id, _cost in dead],
+                    costs=[cost for _batch_id, cost in dead],
+                    dead_costs=[cost for _batch_id, cost in dead],
+                )
                 try:
                     self._answer_batch(raws, spec, batch_run)
                 finally:
@@ -958,6 +1125,7 @@ class Runner:
                     ]
                     batch_ids = tuple(batch_run.batch_ids)
                     reported_batch_cost = self._reported_total(batch_run.costs)
+                    dead_cost = sum(c for c in batch_run.dead_costs if c is not None)
         except BaseException:
             write_outputs(None)
             raise
@@ -1038,6 +1206,14 @@ class Runner:
             price_variant=ctx.spec.price_variant,
             prompt_tokens=sum(r.usage.prompt_tokens for r in ctx.replies),
             completion_tokens=sum(r.usage.completion_tokens for r in ctx.replies),
+            reasoning_tokens=(
+                sum(r.usage.reasoning_tokens or 0 for r in ctx.replies)
+                if any(r.usage.reasoning_tokens is not None for r in ctx.replies)
+                else None
+            ),
+            reply_completion_tokens=tuple(r.usage.completion_tokens for r in ctx.replies),
+            reply_reasoning_tokens=tuple(r.usage.reasoning_tokens for r in ctx.replies),
+            reply_finish_reasons=tuple(r.finish_reason for r in ctx.replies),
             cost_usd=cost,
             cumulative_cost_usd=cost,
             commit_sha=self._sha,
@@ -1072,6 +1248,19 @@ class Runner:
             # step is built (``steps=()``), and that is exactly the case that dropped the
             # most of the docket -- ``cap_summary`` must see it too (fix round 1, Finding 4).
             documents_not_read=ctx.not_read,
+            # S2.6 spec §4.4: copied from the evidence for every case that reached ``_prepare``
+            # (scored and failed-after-evidence alike). ``_leaked_case`` has no ``Evidence`` to
+            # read these from and keeps the defaults, ``()``/``None``.
+            marks=ctx.evidence.marks,
+            narrative_share=ctx.evidence.narrative_share,
+            preparation_cost_usd=ctx.preparation_cost_usd,
+            # Every reply the case received, in call order, whether it was scored or failed
+            # (S2.6 Task 9C) -- the same source ``_step`` reads, but recorded here so a
+            # failed case (``steps=()``) still carries it. Empty when ``ctx.replies`` is
+            # empty (a "cap" failure made no call).
+            reply_completion_tokens=tuple(r.usage.completion_tokens for r in ctx.replies),
+            reply_reasoning_tokens=tuple(r.usage.reasoning_tokens for r in ctx.replies),
+            reply_finish_reasons=tuple(r.finish_reason for r in ctx.replies),
         )
 
     def _failed(
@@ -1161,6 +1350,7 @@ class Runner:
             not_read=prepared.not_read,
             not_available=prepared.not_available,
             documents_attached=prepared.documents_attached,
+            preparation_cost_usd=prepared.preparation_cost_usd,
         )
         if over_cap(prepared.payload.text, prepared.system, spec):
             return self._failed(ctx, "cap", 0.0)
@@ -1169,7 +1359,7 @@ class Runner:
         try:
             hypothesis = self._two_turns(ctx)
         except SchemaError as error:
-            failure = f"schema: {error}"
+            failure = f"schema: {error}{_reply_detail(ctx.replies[-1])}"
         except ModelError as error:
             failure = f"model: {error}"
         cost = self._cost(ctx.replies, spec)
@@ -1327,15 +1517,34 @@ class Runner:
 
         self._write_log_line(body)
 
+    def _log_ended(self, stage: str, batch_id: str, ended: str, *, reused: bool = True) -> None:
+        """One line when a batch ended failed/expired/cancelled.
+
+        A reused batch is resubmitted fresh; a fresh one stops the run, which a resume then
+        resubmits (final review, Minor 1: this line used to say "resubmitting" for both).
+        """
+        then = "resubmitting (new money)" if reused else "the run stops; a resume resubmits it"
+
+        def body() -> str:
+            stage_field = stage.ljust(self._STAGE_WIDTH)
+            word_field = "ENDED".ljust(self._WORD_WIDTH)
+            return f"{stage_field}{word_field}{batch_id} ended {ended}; {then}"
+
+        self._write_log_line(body)
+
     def _log_superseded(self, stage: str, batch_id: str, lost_batch_id: str) -> None:
-        """One line per downstream batch dropped because the batch it depended on is lost."""
+        """One line per downstream batch dropped because the one it depended on has died.
+
+        True whether that batch is lost or ended unusably (task 9B fix round 1, Minor 2: the
+        wording must be true for both, not just say "lost").
+        """
 
         def body() -> str:
             stage_field = stage.ljust(self._STAGE_WIDTH)
             word_field = "SUPERSEDED".ljust(self._WORD_WIDTH)
             return (
-                f"{stage_field}{word_field}{batch_id} depended on {lost_batch_id}, which is "
-                "lost; submitting afresh (new money)"
+                f"{stage_field}{word_field}{batch_id} depended on {lost_batch_id}, which has "
+                "no replies to reuse; submitting afresh (new money)"
             )
 
         self._write_log_line(body)
@@ -1391,6 +1600,40 @@ class Runner:
         with (folder / BATCHES_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
 
+    def _record_ended_batch(
+        self,
+        folder: Path,
+        batch_id: str,
+        stage: str,
+        ended: str,
+        reported_cost_usd: float | None,
+    ) -> None:
+        """Append an ``ended`` row for a batch, reused or fresh, that ended non-completed.
+
+        Task 9B, S2.4's final review: same row shape as ``_record_lost_batch``'s, with
+        ``"ended": ended`` (one of ``ENDED_UNUSABLE``) in place of ``"lost": True``, so a later
+        resume's ``recorded_batches`` skips this id (and its original row) instead of waiting
+        on it again. Nothing is ever deleted from ``batches.jsonl`` -- the original row stays,
+        this is a second row for the same id.
+
+        Fix round 1 (review Minors 3-4): the row also carries ``reported_cost_usd``, the dead
+        batch's own reported cost -- the money the provider may have billed for requests it
+        completed before the batch died. ``dead_batches`` reads it back so a later resume can
+        add it into ``RunRecord.cost_usd`` (``build_record``, in ``Runner.run``) even though no
+        case ever prices that batch's replies. Without this, the money was visible only within
+        the one call that discovered the batch dead, and never to ``month_spent``.
+        """
+        folder.mkdir(parents=True, exist_ok=True)
+        row = {
+            "batch_id": batch_id,
+            "stage": stage,
+            "ended": ended,
+            "reported_cost_usd": reported_cost_usd,
+            "time": self._now().isoformat(),
+        }
+        with (folder / BATCHES_FILE).open("a") as handle:
+            handle.write(json.dumps(row) + "\n")
+
     def _record_superseded_batch(
         self, folder: Path, batch_id: str, stage: str, lost_batch_id: str
     ) -> None:
@@ -1422,6 +1665,9 @@ class Runner:
         one still in ``run.reusable`` (naming the lost batch it depended on) and empties the
         queue, so every downstream stage submits fresh for the rest of this run, and
         ``recorded_batches`` keeps a later resume from ever reusing them either.
+
+        Serves an ``ended`` batch (Task 9B) the same way as a ``lost`` one -- ``lost_batch_id``
+        is simply the id of whichever batch has no replies left to reuse.
         """
         downstream = list(run.reusable)
         run.reusable.clear()
@@ -1497,6 +1743,35 @@ class Runner:
         (final review): otherwise a crash between the two writes would leave a ``lost`` row on
         disk with no ``superseded`` rows for the batches that depended on it, so a resume that
         stopped there would still think those batches are reusable.
+
+        Task 9B (S2.4's final review): a reused batch that instead ran to a terminal status in
+        ``ENDED_UNUSABLE`` (``failed``, ``expired`` or ``cancelled``) is treated the same way --
+        it has no replies left to reuse either. Its id and reported cost are already appended
+        to ``run.batch_ids``/``run.costs`` above, before this check, so that money stays in the
+        run's totals even though the batch cannot be replayed; the same reported cost is also
+        appended to ``run.dead_costs``, which ``build_record`` (``Runner.run``) adds into
+        ``RunRecord.cost_usd`` (fix round 1) -- without that, a dead batch's replies are never
+        priced into any case, so its cost would be genuinely invisible to ``month_spent`` past
+        the one call that found it dead. Only then is ``_supersede_downstream`` called, an
+        ``ended`` row recorded (also carrying the reported cost, so ``dead_batches`` can seed a
+        later resume's ``run.dead_costs`` the same way) and the queue's downstream batches
+        marked ``superseded``, in that order, for the same crash-safety reason as the ``lost``
+        path. Control then falls through to the fresh-submit path below, so a stage with an
+        unusable reused batch resubmits exactly once per call -- a fresh batch that itself ends
+        unusably still raises ``ModelError`` rather than resubmitting again, so a run never
+        re-spends more than once on one stage in one call. That fresh batch is now recorded
+        ``ended`` too, right there, before the raise (fix round 3, review Minor C; the reported
+        cost is appended to ``run.dead_costs`` at the same point, fix round 2's review Minor A)
+        -- not left for a later resume's reused-branch wait to rediscover, which would race the
+        provider purging the batch and undercount its cost. Recording it at once instead means
+        the next ``--resume`` finds no row to reuse for that stage at all (``recorded_batches``
+        excludes an ``ended`` id) and resubmits directly, never waiting on the dead batch again.
+        That is also what makes the run recoverable across repeated resumes: each attempt's own
+        fresh batch, if it too ends unusably, is marked ``ended`` in turn and the one after it
+        finds nothing to wait on either. Money is never double-counted: a batch contributes to
+        ``dead_costs`` exactly once, on the call whose own wait -- reused or fresh -- first
+        finds it dead; every later call only ever re-reads that cost from its ``ended`` row via
+        ``dead_batches``, never re-discovers it as freshly dead.
         """
         if self._batch is None:
             raise ConfigurationError("a batch client is required for a non-sync run")
@@ -1515,10 +1790,19 @@ class Runner:
             else:
                 run.batch_ids.append(status.batch_id)
                 run.costs.append(status.reported_cost_usd)
-                if status.status != "completed":
-                    raise ModelError(f"batch {batch_id} ended {status.status}")
-                refuse_replay_mismatch(batch_id, requests, status)
-                return status
+                if status.status in ENDED_UNUSABLE:
+                    run.dead_costs.append(status.reported_cost_usd)
+                    self._supersede_downstream(run, lost_batch_id=batch_id)
+                    self._record_ended_batch(
+                        run.folder, batch_id, stage, status.status, status.reported_cost_usd
+                    )
+                    self._log_ended(stage, batch_id, status.status)
+                    reused = None
+                else:
+                    if status.status != "completed":
+                        raise ModelError(f"batch {batch_id} ended {status.status}")
+                    refuse_replay_mismatch(batch_id, requests, status)
+                    return status
         batch_id = batch.submit(requests)
         self._record_batch_id(run.folder, batch_id, stage)
         self._log_submitted(stage, batch_id, len(requests))
@@ -1526,6 +1810,24 @@ class Runner:
         run.batch_ids.append(status.batch_id)
         run.costs.append(status.reported_cost_usd)
         if status.status != "completed":
+            if status.status in ENDED_UNUSABLE:
+                # Fix round 2 (review Minor A) plus fix round 3 (review Minor C): this batch is
+                # fresh, not reused, but it is recorded ``ended`` right here, before the raise
+                # -- not left for a later resume's reused-branch wait to rediscover. Rediscovery
+                # would race the provider purging the batch (``BatchNotFoundError``, the lost
+                # path), which would undercount this money; recording it now instead means the
+                # next resume finds no row to reuse for this stage at all and resubmits
+                # directly, never asking the provider about this id again. Nothing downstream
+                # of a fresh batch is ever queued in ``run.reusable`` at this point: a later
+                # stage's row can only exist in the dead run's recording if this stage's own
+                # row does too (rows are appended in submission order), and if this stage's row
+                # had existed it would have been taken by ``_take_reusable`` above -- so there
+                # is nothing to supersede.
+                run.dead_costs.append(status.reported_cost_usd)
+                self._record_ended_batch(
+                    run.folder, batch_id, stage, status.status, status.reported_cost_usd
+                )
+                self._log_ended(stage, batch_id, status.status, reused=False)
             raise ModelError(f"batch {batch_id} ended {status.status}")
         return status
 
@@ -1597,6 +1899,7 @@ class Runner:
                 not_read=prepared.not_read,
                 not_available=prepared.not_available,
                 documents_attached=prepared.documents_attached,
+                preparation_cost_usd=prepared.preparation_cost_usd,
             )
             if over_cap(prepared.payload.text, prepared.system, spec):
                 run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)
@@ -1611,7 +1914,17 @@ class Runner:
         run.results[case_id] = self._result(ctx, (step,), scores, cost)
 
     def _fail_case(self, case_id: str, failure: str, run: _BatchRun) -> None:
+        """Record one case's failure -- the only place ``schema_detail`` reaches a result.
+
+        ``failure`` here is the batch path's ``need_retry`` text, which is also sent back to
+        the model verbatim as the next retry's system message (``_retry_system`` /
+        ``_stage2_system``). The reply-budget detail (S2.6 Task 9A fix round 1) must never
+        reach the model, so it is appended only here, into the *recorded* failure, from
+        ``ctx.schema_detail`` -- set beside ``need_retry`` but never folded into it.
+        """
         ctx = run.contexts[case_id]
+        if failure.startswith("schema:") and ctx.schema_detail is not None:
+            failure = f"{failure}{ctx.schema_detail}"
         cost = self._cost(ctx.replies, ctx.spec)
         run.results[case_id] = self._failed(ctx, failure, cost)
 
@@ -1658,6 +1971,7 @@ class Runner:
                 hypothesis = parse_hypothesis(result.reply.content or "", self._tables)
             except SchemaError as error:
                 need_retry[cid] = f"schema: {error}"
+                run.contexts[cid].schema_detail = _reply_detail(result.reply)
             else:
                 run.hyps[cid] = hypothesis
                 # Pinned once, so a stage-2 retry batch replays the accepted stage-1
@@ -1712,6 +2026,7 @@ class Runner:
                 )
             except SchemaError as error:
                 need_retry[cid] = f"schema: {error}"
+                run.contexts[cid].schema_detail = _reply_detail(result.reply)
         return need_retry
 
     @staticmethod

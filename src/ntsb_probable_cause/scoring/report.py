@@ -16,6 +16,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import baseline
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.metrics import (
@@ -145,6 +146,26 @@ def compare(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
     return "\n".join(lines)
 
 
+def compare_by_fatal(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """``compare`` on the shared cases, then on the fatal and the non-fatal ones apart.
+
+    Spec §9.1 publishes a paired difference "overall, by fatal and non-fatal" (S2.6 final
+    review, I5). A case is fatal or not by its record, the same in both runs; ``a``'s flag is
+    used, with ``b``'s for a case ``a`` lacks, which ``compare`` then leaves out anyway.
+    """
+    fatal = {r.case_id: r.fatal for r in b} | {r.case_id: r.fatal for r in a}
+    blocks = [compare(a, b)]
+    for label, wanted in (("fatal", True), ("non-fatal", False)):
+        blocks.append(
+            f"{label}: "
+            + compare(
+                [r for r in a if fatal[r.case_id] is wanted],
+                [r for r in b if fatal[r.case_id] is wanted],
+            )
+        )
+    return "\n".join(blocks)
+
+
 _THRESHOLDS = tuple(i / 20 for i in range(1, 20))
 
 
@@ -225,8 +246,10 @@ def provenance(record: RunRecord) -> str:
     finished = record.finished.isoformat() if record.finished is not None else "-"
     return (
         f"run {record.run_id} [{status}]\n"
-        f"sample={record.sample} arm={record.arm} model={record.model} "
+        f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
+        f"model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
+        f"max_output_tokens={record.max_output_tokens} "
         f"price_variant={record.price_variant}\n"
         f"exclusions={','.join(record.exclusions) or '-'} "
         f"includes={','.join(record.includes) or '-'}\n"
@@ -328,7 +351,75 @@ def failure_summary(results: Sequence[CaseResult]) -> str:
     return "failures by reason: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))
 
 
-def comparison_heading(this: RunRecord, other: RunRecord) -> str:
+# One line of caution per mark kind whose group is too small to carry a claim.
+MARK_NOTES = {
+    "narrative_coverage": (
+        "at about three development cases this row makes the cases visible; it cannot show "
+        "whether coverage inflates the score (decision 0078 item 3)"
+    ),
+}
+_SHARE_CUTS = (0.25, 0.5, 0.8)
+
+
+def unmarked(results: Sequence[CaseResult]) -> list[CaseResult]:
+    """The cases carrying no mark: the second of the two tables spec §4.4 asks for."""
+    return [r for r in results if not r.marks]
+
+
+def marks_summary(results: Sequence[CaseResult]) -> str:
+    """Each mark kind as its own group: cases, what the marks counted, and top-1."""
+    kinds = sorted({mark.kind for r in results for mark in r.marks})
+    if not kinds:
+        return "marks: none"
+    lines = ["marks (S2.6 spec §4.4; never in the agent's text):"]
+    for kind in kinds:
+        group = [r for r in results if any(m.kind == kind for m in r.marks)]
+        counted = sum(m.count for r in group for m in r.marks if m.kind == kind)
+        cell = proportion([r.scores.occurrence_top1 for r in group if r.scores is not None])
+        lines.append(f"- {kind}: {len(group)} cases ({counted} counted); top-1 {fmt_n(cell)}")
+        if kind in MARK_NOTES:
+            lines.append(f"  {MARK_NOTES[kind]}")
+    return "\n".join(lines)
+
+
+def share_bands(results: Sequence[CaseResult]) -> str:
+    """How many cases reach each cut of the stored share, so another cut needs no re-run."""
+    shares = [r.narrative_share for r in results if r.narrative_share is not None]
+    bands = ", ".join(
+        f"at least {cut:.0%} {sum(1 for s in shares if s >= cut)}" for cut in _SHARE_CUTS
+    )
+    return f"narrative share, largest single document: {bands}, of {len(shares)} cases with a share"
+
+
+def preparation_summary(results: Sequence[CaseResult]) -> str:
+    """Transcription's cost per case, printed apart from the agent's (decision 0081)."""
+    paid = [r.preparation_cost_usd for r in results if r.preparation_cost_usd > 0]
+    total = sum(paid)
+    per_case = total / len(paid) if paid else 0.0
+    return (
+        "evidence preparation (transcription; paid once, apart from the per-case cap, "
+        f"decision 0081): ${per_case:.4f} per case, ${total:.2f} in all, {len(paid)} of "
+        f"{len(results)} cases with transcribed pages"
+    )
+
+
+def refuse_cross_version(this: RunRecord, other: RunRecord, *, versions_compared: bool) -> None:
+    """Two runs on different evidence versions are not an arm comparison (decision 0076).
+
+    Refused unless the caller asked for an evidence-version comparison by name, which is then
+    printed under its own heading, so the output cannot be mistaken for "choosing helps".
+    """
+    if this.evidence_version == other.evidence_version or versions_compared:
+        return
+    raise ConfigurationError(
+        f"{this.run_id} reads the docket at evidence version {this.evidence_version} and "
+        f"{other.run_id} at {other.evidence_version}; a comparison across versions is not an "
+        "arm comparison (decision 0076). Pass --versions-compared to print it under its own "
+        "heading."
+    )
+
+
+def _model_heading(this: RunRecord, other: RunRecord) -> str:
     """The line above a paired comparison; labels one made across models or levels.
 
     Decision 0031 item 2: a table across models is separate and labelled, never a bar. The
@@ -345,6 +436,17 @@ def comparison_heading(this: RunRecord, other: RunRecord) -> str:
         f"model comparison (decision 0031 item 2): {side(this)}, against {side(other)} "
         f"-- run {other.run_id}:"
     )
+
+
+def comparison_heading(this: RunRecord, other: RunRecord) -> str:
+    """The line above a paired comparison: labelled across models (0031) and versions (0076)."""
+    heading = _model_heading(this, other)
+    if this.evidence_version != other.evidence_version:
+        return (
+            f"evidence-version comparison (decision 0076): {this.evidence_version} against "
+            f"{other.evidence_version} -- {heading}"
+        )
+    return heading
 
 
 def _stream_raws_of_split(processed: Path, split: Split) -> Iterator[dict[str, object]]:

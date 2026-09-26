@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 from hypothesis import settings
 
-from ntsb_probable_cause.scoring.records import RunRecord
+from ntsb_probable_cause.scoring.metrics import CaseScores
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -62,4 +63,38 @@ def run_record() -> RunRecord:
         finished=datetime(2026, 9, 15, 1, tzinfo=UTC),
         cases=40,
         cost_usd=1.23,
+    )
+
+
+@pytest.fixture
+def case_result() -> CaseResult:
+    """A scored CaseResult with fixed values, for tests that only need a well-formed result."""
+    return CaseResult(
+        case_id="c0",
+        split="heldout",
+        fatal=False,
+        investigation_class="L",
+        report_flavour=None,
+        verdict_occurrence=("111230",),
+        verdict_findings=("0206304044",),
+        verdict_findings_in_cause=("0206304044",),
+        steps=(),
+        scores=CaseScores(
+            occurrence_top1=True,
+            occurrence_top3=True,
+            event_match=True,
+            pair_unseen=False,
+            finding_precision_10=1.0,
+            finding_recall_10=1.0,
+            finding_precision_8=1.0,
+            finding_recall_8=1.0,
+            finding_precision_6=1.0,
+            finding_recall_6=1.0,
+            finding_precision_all_10=1.0,
+            finding_recall_all_10=1.0,
+            abstained=False,
+            confidence=0.5,
+        ),
+        cost_usd=0.001,
+        failure=None,
     )

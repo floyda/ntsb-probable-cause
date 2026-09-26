@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.gitinfo import commits_since
 from ntsb_probable_cause.scoring import ledger
 from ntsb_probable_cause.scoring.records import RunRecord
 
@@ -54,3 +55,35 @@ def test_commit_state_returns_a_short_sha_and_a_dirty_flag() -> None:
     sha, dirty = ledger.commit_state()
     assert len(sha) >= 7
     assert isinstance(dirty, bool)
+
+
+def test_commits_since_head_is_empty() -> None:
+    """`HEAD..HEAD` holds no commit; this reads no history, only proves the call's shape."""
+    assert commits_since("HEAD") == ()
+
+
+def test_a_new_ledger_carries_the_version_column(tmp_path: Path, run_record: RunRecord) -> None:
+    ledger_path = tmp_path / "ledger.md"
+    ledger.append_row(
+        ledger_path, run_record.model_copy(update={"sample": "heldout-400"}), "r/cases.jsonl"
+    )
+    text = ledger_path.read_text()
+    assert "| evidence |" in text
+    assert "| v1 |" in text
+
+
+def test_an_old_ledger_gains_a_versioned_table_below_it(
+    tmp_path: Path, run_record: RunRecord
+) -> None:
+    ledger_path = tmp_path / "ledger.md"
+    ledger_path.write_text(
+        "# Held-out ledger\n\n| date | sample | arm | exclusions | includes | model | commit "
+        "| cost USD | results |\n|---|---|---|---|---|---|---|---|---|\n| old row |\n"
+    )
+    held = run_record.model_copy(update={"sample": "heldout-400", "evidence_version": "v2"})
+    ledger.append_row(ledger_path, held, "r/cases.jsonl")
+    ledger.append_row(ledger_path, held, "r/cases.jsonl")
+    text = ledger_path.read_text()
+    assert text.count("| evidence |") == 1
+    assert text.index("| old row |") < text.index("From S2.6")
+    assert text.count("| v2 |") == 2

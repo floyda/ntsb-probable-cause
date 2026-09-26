@@ -1,3 +1,4 @@
+import inspect
 import json
 
 import pytest
@@ -6,7 +7,13 @@ from pydantic import ValidationError
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model import client as model_client
-from ntsb_probable_cause.model.client import ModelSettings, Payload, RecordingFakeClient, Turn
+from ntsb_probable_cause.model.client import (
+    ModelSettings,
+    PageImage,
+    Payload,
+    RecordingFakeClient,
+    Turn,
+)
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.records.split import split_record
 
@@ -100,3 +107,27 @@ def test_tool_turn_without_a_payload_is_refused() -> None:
 def test_assistant_turn_refuses_a_payload(record_fixtures: list[dict[str, object]]) -> None:
     with pytest.raises(ValidationError, match="assistant"):
         Turn(role="assistant", content="ok", payload=_payload(record_fixtures))
+
+
+def test_a_page_payload_carries_one_image_and_only_its_text_layer() -> None:
+    image = PageImage(media_type="image/jpeg", data=b"\xff\xd8jpeg")
+    plain = Payload.for_page(image)
+    mixed = Payload.for_page(image, text_layer="FUEL SELECTOR: BOTH")
+    assert plain.images == (image,)
+    assert plain.text == ""
+    assert mixed.text == "FUEL SELECTOR: BOTH"
+    assert image.data_url().startswith("data:image/jpeg;base64,")
+    assert plain != mixed
+
+
+def test_an_evidence_payload_has_no_images_unless_given(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    evidence, _, _ = split_record(record_fixtures[0])
+    assert Payload.from_evidence(evidence).images == ()
+
+
+def test_the_agent_payload_takes_no_images() -> None:
+    """S2.6 final review, I2: the tripwire cannot screen a picture, so the one payload
+    assembler takes evidence alone; images reach a model only through ``for_page``."""
+    assert list(inspect.signature(Payload.from_evidence).parameters) == ["evidence"]

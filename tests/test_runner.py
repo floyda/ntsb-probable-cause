@@ -1,5 +1,6 @@
 """The runner: sync and batch answering passes, the cap, the budget (spec §6)."""
 
+import copy
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -9,10 +10,17 @@ from typing import Literal, cast
 
 import pytest
 from tests.test_attach import _docket as small_docket
+from tests.test_marks import FACTUAL, S1, S2
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
+from ntsb_probable_cause.docket.transcribe import (
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+    TranscriptionKey,
+)
 from ntsb_probable_cause.errors import (
     BatchNotFoundError,
     BudgetError,
@@ -31,7 +39,13 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
-from ntsb_probable_cause.scoring.budget import RESERVATION_FILE, open_reservations, reserve
+from ntsb_probable_cause.records.marks import CaseMark
+from ntsb_probable_cause.scoring.budget import (
+    RESERVATION_FILE,
+    month_spent,
+    open_reservations,
+    reserve,
+)
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
@@ -43,6 +57,7 @@ from ntsb_probable_cause.scoring.runner import (
     RunSpec,
     _BatchRun,
     case_payload,
+    dead_batches,
     estimated_cost_usd,
     over_cap,
     prepare_case,
@@ -239,6 +254,7 @@ def test_budget_refusal_before_any_call(
                 sync=True,
                 price_variant="standard",
                 expected_cost_per_case_usd=0.01,
+                budget_usd=25.0,
             ),
             record_fixtures,
         )
@@ -1338,6 +1354,319 @@ def test_a_superseded_batch_stays_superseded_across_a_second_resume(
     assert record.finished is not None
 
 
+# --- resume: a batch that ended failed/expired/cancelled is resubmitted (task 9B) ---
+
+
+@pytest.mark.parametrize("ended_status", ["expired", "failed", "cancelled"])
+def test_resume_resubmits_a_recorded_batch_that_ended_unusable(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], ended_status: str
+) -> None:
+    """A reused batch that ran to a terminal, non-completed status has no replies left to
+    reuse: it is recorded, resubmitted fresh exactly once, and the run completes."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status=ended_status, reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # b1 resubmitted fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage 2
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]
+    assert len(resumed.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
+    assert record.batch_ids == ("b1", "c1", "c2")  # the dead batch's id stays in the totals
+    assert record.reported_batch_cost_usd == pytest.approx(0.01 + 0.02 + 0.03)
+    assert record.finished is not None
+    (case,) = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    assert case.scores is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("ended")) for row in rows] == [
+        ("stage1", "b1", None),  # the dead run's original row: never deleted
+        ("stage1", "b1", ended_status),  # marks it ended
+        ("stage1", "c1", None),  # the fresh replacement
+        ("stage2", "c2", None),
+    ]
+    # Fix round 1 (review Minors 3-4): the ended row carries the dead batch's reported cost,
+    # so a later resume can add it back into RunRecord.cost_usd.
+    assert rows[1]["reported_cost_usd"] == pytest.approx(0.01)
+    assert dead_batches(folder) == [("b1", 0.01)]
+
+
+def test_an_ended_batch_supersedes_the_batches_recorded_after_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Stage 2's recorded batch depended on stage 1's replies; once stage 1 is found to have
+    ended unusably, stage 2's recorded id is superseded and never waited on."""
+    dead = _died_waiting_on_stage2(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # stage1, resubmitted
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage2, resubmitted
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["b1", "c1", "c2"]  # b2 is never waited on
+    assert len(resumed.submitted) == 2  # both stages paid for fresh; b2 was never reused
+    assert record.finished is not None
+
+    folder = tmp_path / "runs" / _run_id()
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [
+        (row["stage"], row["batch_id"], row.get("ended"), row.get("superseded", False))
+        for row in rows
+    ] == [
+        ("stage1", "b1", None, False),  # the dead run's original rows: never deleted
+        ("stage2", "b2", None, False),
+        ("stage2", "b2", None, True),  # marks b2 superseded, written BEFORE the ended row (9B)
+        ("stage1", "b1", "expired", False),  # marks b1 ended -- after its superseded rows
+        ("stage1", "c1", None, False),  # the fresh replacement
+        ("stage2", "c2", None, False),
+    ]
+    assert rows[2]["depends_on_batch_id"] == "b1"
+
+
+def test_a_fresh_batch_that_ends_failed_still_raises(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A fresh resubmission that itself ends unusably still raises: a run never re-spends
+    more than once on one stage in one call. Fix round 3 (review Minor C): that fresh
+    batch's ``ended`` row is written right there, before the raise, so a second resume never
+    waits on it again -- it finds no row to reuse for stage 1 at all, and resubmits directly
+    -- the recoverability this task exists for -- and this time the fresh batch completes.
+
+    Also pins fix round 1 (review Minors 3-4): both dead batches' reported costs ($0.01 for
+    b1, $0.02 for c1) survive into the final ``RunRecord`` -- in ``batch_ids``, in
+    ``cost_usd`` and in ``month_spent`` -- even though neither batch's replies are ever
+    priced into the scored case.
+    """
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resume1 = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.01),
+            lambda bid, reqs: _status(bid, reqs, None, status="failed", reported_cost=0.02),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    with pytest.raises(ModelError, match="ended failed"):
+        runner(tmp_path, RecordingFakeClient([]), batch=resume1).run(
+            BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+        )
+    assert len(resume1.submitted) == 1  # no second resubmission in this call
+
+    folder = tmp_path / "runs" / _run_id()
+    # Fix round 3: c1's ``ended`` row already exists after resume 1 -- it is written on the
+    # fresh path itself, not only rediscovered by a later resume's reused-branch wait.
+    assert dead_batches(folder) == [("b1", 0.01), ("c1", 0.02)]
+
+    resume2 = FakeBatchClient(
+        handlers=[
+            # c1 is already marked ``ended`` (fix round 3), so ``recorded_batches`` offers no
+            # row for stage 1 at all: this pass resubmits directly, without waiting on c1
+            # first. That is also what protects this money from fix round 2's Minor C -- a
+            # provider that has since purged c1 is never asked about it again.
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.03),  # d1: stage1, fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.04),  # d2: stage2, fresh
+        ],
+        prefix="d",
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resume2).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resume2.waited == ["d1", "d2"]  # never c1 -- it is already known dead
+    assert len(resume2.submitted) == 2  # stage 1 paid for again exactly once, plus stage 2
+    assert record.finished is not None
+    (case,) = read_jsonl(tmp_path / "runs" / _run_id() / "cases.jsonl", CaseResult)
+    assert case.failure is None
+
+    rows = [json.loads(line) for line in (folder / "batches.jsonl").read_text().splitlines()]
+    assert [(row["stage"], row["batch_id"], row.get("ended")) for row in rows] == [
+        ("stage1", "b1", None),
+        ("stage1", "b1", "expired"),
+        ("stage1", "c1", None),
+        ("stage1", "c1", "failed"),
+        ("stage1", "d1", None),
+        ("stage2", "d2", None),
+    ]
+    assert dead_batches(folder) == [("b1", 0.01), ("c1", 0.02)]
+
+    # Fix round 1: both dead batches' money stays visible in the final record and to the
+    # monthly budget guard, even though neither batch's replies were ever priced into the case.
+    assert record.batch_ids == ("b1", "c1", "d1", "d2")
+    assert record.reported_batch_cost_usd == pytest.approx(0.01 + 0.02 + 0.03 + 0.04)
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6  # the two replies that scored the case
+    assert record.cost_usd == pytest.approx(case_cost + 0.01 + 0.02)
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        record.cost_usd
+    )
+
+
+def test_a_dead_batch_with_no_reported_cost_adds_nothing_and_does_not_crash(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: an ended batch that reported no cost is carried through as ``None``, not
+    coerced to ``0.0`` or dropped -- and it must not make ``cost_usd`` crash either."""
+    dead = _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=None),
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),
+        ],
+        prefix="c",
+        preloaded={"b1": dead.submitted[0]},
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    folder = tmp_path / "runs" / _run_id()
+    assert dead_batches(folder) == [("b1", None)]
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6
+    assert record.cost_usd == pytest.approx(case_cost)  # b1's None cost adds nothing
+
+
+def test_a_batch_that_dies_fresh_still_counts_in_the_runs_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2 (review Minor A) plus fix round 3 (review Minor C): a batch that ends
+    unusably on the *fresh* path (not reused) is now recorded ``ended`` at once, right there,
+    before the raise -- carrying its reported cost -- exactly as a reused batch's ending is.
+    Three things this must get right, each pinned below:
+
+    (i) the aborted record from the call that found it dead counts the cost once;
+    (ii) a later resume that completes counts it exactly once more, not twice, because the
+        batch is already ``ended`` and is never waited on again (``recorded_batches`` excludes
+        its id, so ``_take_reusable`` finds no row for the stage and resubmits directly); and
+    (iii) that same fact makes the resume immune to review round 2's Minor C (a resume that
+        re-waits on a fresh-dead batch can race the provider purging it, undercounting the
+        cost) -- there is nothing left to wait on, so nothing can be purged out from under it.
+    ``resumed`` below carries no reply for ``"b1"`` at all: if the fix regressed and the code
+    tried to wait on it anyway, the fake would raise ``KeyError`` rather than silently pass.
+    """
+    fake = FakeBatchClient(
+        handlers=[lambda bid, reqs: _status(bid, reqs, None, status="expired", reported_cost=0.05)]
+    )
+    with pytest.raises(ModelError, match="ended expired"):
+        runner(tmp_path, RecordingFakeClient([]), batch=fake).run(BATCH_SPEC, record_fixtures[:1])
+
+    folder = tmp_path / "runs" / _run_id()
+    (aborted,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    assert aborted.finished is None
+    assert aborted.cost_usd == pytest.approx(0.05)  # (i)
+    # Fix round 3: the fresh batch's ``ended`` row exists already, cost carried on it.
+    assert dead_batches(folder) == [("b1", 0.05)]
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        0.05
+    )
+
+    # b1 is already known ``ended``: this resume never waits on it again (ii, iii) -- it is
+    # excluded from ``recorded_batches``, so stage 1 resubmits directly as a fresh batch.
+    resumed = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.02),  # stage1, fresh
+            lambda bid, reqs: _status(bid, reqs, REFINE, reported_cost=0.03),  # stage2, fresh
+        ],
+        prefix="c",
+    )
+    record = runner(tmp_path, RecordingFakeClient([]), batch=resumed).run(
+        BATCH_SPEC, record_fixtures[:1], resume=_run_id()
+    )
+    assert resumed.waited == ["c1", "c2"]  # never "b1"
+    assert record.finished is not None
+    assert dead_batches(folder) == [("b1", 0.05)]  # unchanged: no new dead batch this call
+    case_cost = 2 * (100 * 0.10 + 50 * 0.60) / 1e6  # the two replies that scored the case
+    # Seeded once from ``dead_batches`` at the top of this resume, never re-discovered: b1's
+    # cost is counted exactly once (ii).
+    assert record.cost_usd == pytest.approx(case_cost + 0.05)
+    assert month_spent(tmp_path / "runs", now=datetime(2026, 9, 15, tzinfo=UTC)) == pytest.approx(
+        record.cost_usd
+    )
+
+
+def test_dead_batches_reads_ended_rows_with_their_reported_cost(tmp_path: Path) -> None:
+    """Pins ``dead_batches``' own contract: one ``(batch_id, reported_cost_usd)`` pair per
+    ``ended`` row, ``None`` carried through rather than dropped or coerced to zero, and a
+    non-``ended`` row ignored."""
+    folder = tmp_path / "runs" / "y"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "a1", "stage": "stage1", "time": "2026-09-25T00:00:00"},
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "failed",
+            "reported_cost_usd": 0.01,
+            "time": "2026-09-25T00:00:01",
+        },
+        {
+            "batch_id": "b1",
+            "stage": "stage2",
+            "ended": "expired",
+            "reported_cost_usd": None,
+            "time": "2026-09-25T00:00:02",
+        },
+        {"batch_id": "c1", "stage": "stage2", "time": "2026-09-25T00:00:03"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert dead_batches(folder) == [("a1", 0.01), ("b1", None)]
+
+
+def test_dead_batches_deduplicates_by_batch_id(tmp_path: Path) -> None:
+    """Fix round 2 (review Nit B): two ``ended`` rows for one id count once, first row wins.
+    The runner itself can never produce this (an id is hidden from ``recorded_batches`` as
+    soon as its first ``ended`` row exists, so it can never be found dead a second time), but
+    a hand-edited file should not be double-counted."""
+    folder = tmp_path / "runs" / "z"
+    folder.mkdir(parents=True)
+    lines = [
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "failed",
+            "reported_cost_usd": 0.01,
+            "time": "2026-09-25T00:00:00",
+        },
+        {
+            "batch_id": "a1",
+            "stage": "stage1",
+            "ended": "expired",
+            "reported_cost_usd": 0.02,
+            "time": "2026-09-25T00:00:01",
+        },
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert dead_batches(folder) == [("a1", 0.01)]
+
+
+def test_recorded_batches_skips_ended_rows(tmp_path: Path) -> None:
+    """The resume queue must never hand back an id that ended unusably, or its ``ended`` row."""
+    folder = tmp_path / "runs" / "x"
+    folder.mkdir(parents=True)
+    lines = [
+        {"batch_id": "a1", "stage": "stage1", "time": "2026-09-25T00:00:00"},
+        {"batch_id": "a1", "stage": "stage1", "ended": "failed", "time": "2026-09-25T00:00:01"},
+        {"batch_id": "b1", "stage": "stage2", "time": "2026-09-25T00:00:02"},
+    ]
+    (folder / "batches.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    assert recorded_batches(folder) == [("stage2", "b1", "2026-09-25T00:00:02")]
+
+
 def test_spec_json_is_written_before_the_first_call(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -1597,7 +1926,9 @@ def test_a_resume_that_aborts_does_not_erase_the_dead_runs_recorded_spend(
         return BatchStatus(batch_id=bid, status="failed", results=(), reported_cost_usd=None)
 
     resumed = FakeBatchClient(
-        handlers=[wait_fails],
+        # b1 (reused) ends "failed" -- task 9B resubmits it fresh as c1, which also ends
+        # "failed": a fresh batch that ends unusably still raises, so this resume aborts too.
+        handlers=[wait_fails, wait_fails],
         prefix="c",
         preloaded={"b1": dead.submitted[0], "b2": dead.submitted[1]},
     )
@@ -1849,6 +2180,50 @@ def test_resume_refuses_a_folder_that_does_not_exist(
         )
 
 
+# --- Task 9D: a fresh run claims its folder atomically ---
+
+
+def test_a_fresh_run_refuses_a_folder_that_already_exists(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9D: two runs started in the same second share an id; the second is refused."""
+    existing = tmp_path / "runs" / _run_id(arm="ceiling")
+    existing.mkdir(parents=True)
+    (existing / "cases.jsonl").write_text("sentinel\n")
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+    assert (existing / "cases.jsonl").read_text() == "sentinel\n"
+    assert not (existing / "spec.json").exists()
+    assert open_reservations(tmp_path / "runs") == {}
+
+
+def test_two_fresh_runs_in_the_same_second_cannot_share_a_folder(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The first run completes; a second fresh run with the same clock is refused."""
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    runner(tmp_path, RecordingFakeClient([GOOD, REFINE])).run(spec, record_fixtures[:1])
+    second = RecordingFakeClient([GOOD, REFINE])
+    with pytest.raises(ConfigurationError, match="already exists"):
+        runner(tmp_path, second).run(spec, record_fixtures[:1])
+    assert second.payloads == []
+
+
 # --- the run log: elapsed, counts and cost per poll; reuse vs. fresh spend; the header ---
 
 
@@ -1887,6 +2262,20 @@ def test_log_status_line_pins_the_briefs_completed_example(
     assert capsys.readouterr().err == (
         "07:10:22Z stage1       completed   401/401   failed=0 $0.2384 (18m11s)\n"
     )
+
+
+def test_log_ended_says_resubmitting_only_for_a_reused_batch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Minor 1: a fresh batch that ends unusably stops the run; nothing is
+    resubmitted then, so the line must not say so."""
+    now = datetime(2026, 9, 16, 7, 10, 22, tzinfo=UTC)
+    r = runner(tmp_path, RecordingFakeClient([]), now=lambda: now)
+    r._log_ended("stage1", "b1", "expired")
+    r._log_ended("stage1", "c1", "failed", reused=False)
+    reused, fresh = capsys.readouterr().err.splitlines()
+    assert reused.endswith("b1 ended expired; resubmitting (new money)")
+    assert fresh.endswith("c1 ended failed; the run stops; a resume resubmits it")
 
 
 def test_log_status_line_pins_the_briefs_retry_example_with_no_cost(
@@ -2167,6 +2556,7 @@ def test_run_is_refused_by_another_runs_open_reservation(
         sync=True,
         price_variant="standard",
         expected_cost_per_case_usd=0.05,
+        budget_usd=25.0,
     )
     with pytest.raises(BudgetError, match="reserved"):
         runner(tmp_path, client).run(spec, record_fixtures[:1])
@@ -2200,7 +2590,7 @@ def test_estimated_cost_reserves_the_maximum_output_at_the_output_price() -> Non
         sample="dev-400", arm="ceiling", model="anthropic/claude-sonnet-5", price_variant="standard"
     )
     price = sources.price_of("anthropic/claude-sonnet-5")
-    call_reserve = ModelSettings().max_output_tokens * price.output_usd_per_mtok / 1e6
+    call_reserve = spec.max_output_tokens * price.output_usd_per_mtok / 1e6
     assert estimated_cost_usd("", "", spec) == pytest.approx(ANSWERING_TURNS * call_reserve)
     assert estimated_cost_usd("x" * 4000, "", spec) == pytest.approx(
         ANSWERING_TURNS * (call_reserve + 1000 * price.input_usd_per_mtok / 1e6)
@@ -2224,9 +2614,10 @@ def test_cap_binds_on_output_alone_for_a_dear_model() -> None:
 
 
 class FakeDocketReader:
-    def __init__(self, docket: Docket) -> None:
+    def __init__(self, docket: Docket, version: Literal["v1", "v2"] = "v1") -> None:
         self.docket = docket
         self.reads: list[int] = []
+        self.version: Literal["v1", "v2"] = version
 
     def read(self, mkey: int) -> Docket:
         self.reads.append(mkey)
@@ -2235,6 +2626,8 @@ class FakeDocketReader:
 
 class _ByMkeyDocketReader:
     """A DocketReader keyed by mKey: each case in a multi-case test gets its own docket."""
+
+    version: Literal["v1", "v2"] = "v1"
 
     def __init__(self, by_mkey: Mapping[int, Docket]) -> None:
         self._by_mkey = by_mkey
@@ -2403,6 +2796,34 @@ def test_arm_b_attaches_the_filtered_documents_and_records_them(
     assert reader.reads == [record_fixtures[0]["mKey"]]
 
 
+def test_arm_b_case_result_carries_the_narrative_coverage_mark(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """A docket document holding half the factual narrative marks the CaseResult (S2.6 §4.4),
+
+    and the mark itself never reaches a payload the model sees (0078).
+    """
+    raw = copy.deepcopy(record_fixtures[0])
+    narratives = raw["narratives"]
+    assert isinstance(narratives, list)
+    narratives[0]["concatenatedFactualNarrative"] = FACTUAL
+    docket = small_docket({1: f"[page 1 of 3]\n{S1}. {S2}.\n"})
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, [raw])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.marks == (CaseMark(kind="narrative_coverage", count=1),)
+    assert case.narrative_share == 0.5
+    for payload in client.payloads:
+        assert "narrative_coverage" not in payload.text
+
+
 def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
@@ -2432,6 +2853,9 @@ def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
         price_variant="standard",
         model="anthropic/claude-sonnet-5",
         cap_usd=0.08,
+        # The costs above were measured at a 2,000-token reply budget; pinned so the
+        # boundary stays where it was measured when the default changes (decision 0084).
+        max_output_tokens=2000,
         expected_cost_per_case_usd=0.001,
     )
     run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, record_fixtures[:1])
@@ -2534,3 +2958,665 @@ def test_every_call_states_the_runs_reasoning_level_and_the_run_records_it(
     folder = tmp_path / "runs" / run.run_id
     assert json.loads((folder / "spec.json").read_text())["reasoning_effort"] == "medium"
     assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].reasoning_effort == "medium"
+
+
+# --- the reply budget, finish reasons and reasoning tokens (S2.6 Task 9A) ---
+
+
+def test_every_call_states_the_runs_reply_budget_and_the_run_records_it(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """The budget is stated on both stages, written to spec.json, right after reasoning_effort,
+    and to the run record."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        max_output_tokens=4000,
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert [s.max_output_tokens for s in client.settings] == [4000, 4000]
+    folder = tmp_path / "runs" / run.run_id
+    recorded = json.loads((folder / "spec.json").read_text())
+    assert recorded["max_output_tokens"] == 4000
+    keys = list(recorded)
+    assert keys.index("max_output_tokens") == keys.index("reasoning_effort") + 1
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[-1].max_output_tokens == 4000
+
+
+def test_stage1_truncated_reply_fails_schema_with_finish_reason_and_token_counts(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.6 Task 9A: the reply budget's own fingerprint on a truncated stage-1 reply."""
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"probable_cause": "the eng',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(handlers=[truncated, truncated])
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)"
+    )
+
+
+def test_batch_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1: the model-facing retry text must stay byte-for-byte what it was before
+    Task 9A -- only the *recorded* failure carries ``(finish_reason=..., ...)``.
+
+    Both stage-1 attempts are truncated (``finish_reason="length"``) so the case ends up
+    failed after its retry; the retry batch's own request is what would have carried a
+    leaked detail if ``need_retry``'s text (also used as the retry prompt) had not been kept
+    separate from the failure text.
+    """
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"probable_cause": "the eng',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(handlers=[truncated, truncated])
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert len(fake.submitted) == 2  # stage1, stage1-retry
+    retry_request = fake.submitted[1][0]
+    assert "Your previous reply was rejected: schema:" in retry_request.system
+    assert "finish_reason=" not in retry_request.system
+    assert "reasoning_tokens=" not in retry_request.system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1900)"
+    )
+
+
+def test_batch_stage2_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 2: the stage-2 twin of ``test_batch_retry_prompt_never_carries_the_reply_detail``.
+
+    Stage 1 succeeds; both stage-2 attempts are truncated, so the case fails after its
+    stage-2 retry -- the retry that ``_stage2_system`` builds is what would have carried a
+    leaked detail if ``_run_stage2_pass``'s ``need_retry`` text had not been kept separate
+    from ``ctx.schema_detail``.
+    """
+
+    def truncated(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content='{"items": [',
+                        finish_reason="length",
+                        usage=Usage(
+                            prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1850
+                        ),
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD, reported_cost=0.01),
+            truncated,
+            truncated,
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert len(fake.submitted) == 3  # stage1, stage2, stage2-retry
+    retry_request = fake.submitted[2][0]
+    assert "Your previous reply was rejected: schema:" in retry_request.system
+    assert "finish_reason=" not in retry_request.system
+    assert "reasoning_tokens=" not in retry_request.system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.endswith(
+        "(finish_reason=length, completion_tokens=2000, reasoning_tokens=1850)"
+    )
+
+
+def test_sync_retry_prompt_never_carries_the_reply_detail(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Mirrors the batch-path test for the sync path (fix round 1).
+
+    The sync retry already builds its prompt from the bare ``SchemaError`` (``_two_turns``
+    never sees ``_reply_detail``, which is only appended in ``_answer_case``'s except
+    block) -- this pins that it stays that way.
+    """
+    client = RecordingFakeClient(["not json", "still not json"])
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    assert len(client.systems) == 2  # first attempt, retry
+    retry_system = client.systems[1]
+    assert "Your previous reply was rejected: reply is not a Hypothesis" in retry_system
+    assert "finish_reason=" not in retry_system
+    assert "reasoning_tokens=" not in retry_system
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert "finish_reason=" in case.failure
+
+
+def test_successful_case_records_reasoning_tokens_summed_over_its_replies(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    usage = [
+        Usage(prompt_tokens=300, completion_tokens=40, reasoning_tokens=100),  # stage 1
+        Usage(prompt_tokens=150, completion_tokens=10, reasoning_tokens=20),  # stage 2
+    ]
+    client = RecordingFakeClient([GOOD, REFINE], usage=usage)
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reasoning_tokens == 120
+
+
+def test_step_reasoning_tokens_is_none_when_no_reply_reported_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])  # default usage: no reasoning_tokens
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reasoning_tokens is None
+
+
+def test_resume_refuses_a_different_reply_budget(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Beside S2.4's test_resume_refuses_a_different_model (0032 point 4).
+
+    ``refuse_unresumable`` compares every ``spec.json`` field, so recording
+    ``max_output_tokens`` is what makes a mismatched resume refuse -- an unrecorded setting
+    is a silent variable, the argument S2.4's reasoning-level decision made.
+    """
+    _died_waiting_on_stage1(tmp_path, record_fixtures[:1])
+    other = FakeBatchClient(handlers=[])
+    recorded = RunSpec.max_output_tokens
+    assert recorded != 4000
+    with pytest.raises(ConfigurationError, match=f"max_output_tokens was {recorded}"):
+        runner(tmp_path, RecordingFakeClient([]), batch=other).run(
+            RunSpec(
+                sample="dev-400",
+                arm="ceiling",
+                sync=False,
+                model="openai/gpt-5.6-luna",
+                max_output_tokens=4000,
+                expected_cost_per_case_usd=0.001,
+            ),
+            record_fixtures[:1],
+            resume=_run_id(),
+        )
+    assert other.submitted == []
+
+
+class _FinishingFakeClient(RecordingFakeClient):
+    """``RecordingFakeClient`` that also stamps each reply with a scripted ``finish_reason``."""
+
+    def __init__(
+        self, replies: Sequence[str], usage: Sequence[Usage], finish_reasons: Sequence[str]
+    ) -> None:
+        super().__init__(replies, usage=usage)
+        self._finish_reasons = tuple(finish_reasons)
+
+    def complete(
+        self,
+        payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        reply = super().complete(payload, settings, system=system, history=history)
+        finish = self._finish_reasons[len(self.payloads) - 1]
+        return reply.model_copy(update={"finish_reason": finish})
+
+
+def test_sync_step_records_every_reply_figure_in_call_order(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9A fix round 4: ``Runner._step`` fills the three per-reply tuples on the sync path.
+
+    Stage 1 is cut off (``length``), its retry succeeds and stage 2 succeeds, so the step
+    carries three replies -- each with its own figures, in call order, never a sum.
+    """
+    usage = [
+        Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+        Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+        Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+    ]
+    client = _FinishingFakeClient(
+        ['{"probable_cause": "the eng', GOOD, REFINE],
+        usage=usage,
+        finish_reasons=["length", "stop", "stop"],
+    )
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reply_completion_tokens == (2000, 300, 250)
+    assert step.reply_reasoning_tokens == (1900, 250, 200)
+    assert step.reply_finish_reasons == ("length", "stop", "stop")
+    # S2.6 Task 9C: a scored case's own tuples equal its step's.
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.reply_completion_tokens == step.reply_completion_tokens
+    assert case.reply_reasoning_tokens == step.reply_reasoning_tokens
+    assert case.reply_finish_reasons == step.reply_finish_reasons
+
+
+def _replying(
+    content: str, finish: str, usage: Usage
+) -> Callable[[str, Sequence[BatchRequest]], BatchStatus]:
+    """A ``FakeBatchClient`` handler: every request answered with one scripted reply."""
+
+    def handler(bid: str, reqs: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=bid,
+            status="completed",
+            results=tuple(
+                BatchResult(
+                    custom_id=r.custom_id,
+                    reply=ModelReply(
+                        content=content,
+                        finish_reason=finish,
+                        usage=usage,
+                        model=r.settings.model_id(),
+                        response_id="fake",
+                    ),
+                    error=None,
+                )
+                for r in reqs
+            ),
+            reported_cost_usd=None,
+            counts=BatchCounts(None, None, None),
+        )
+
+    return handler
+
+
+def test_batch_step_records_every_reply_figure_in_call_order(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9A fix round 4: the batch twin of the sync per-reply test above."""
+    fake = FakeBatchClient(
+        handlers=[
+            _replying(
+                '{"probable_cause": "the eng',
+                "length",
+                Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+            ),
+            _replying(
+                GOOD,
+                "stop",
+                Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+            ),
+            _replying(
+                REFINE,
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+            ),
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert run.batch_ids == ("b1", "b2", "b3")  # stage 1, stage-1 retry, stage 2
+    (step,) = read_jsonl(tmp_path / "runs" / run.run_id / "steps.jsonl", StepRecord)
+    assert step.reply_completion_tokens == (2000, 300, 250)
+    assert step.reply_reasoning_tokens == (1900, 250, 200)
+    assert step.reply_finish_reasons == ("length", "stop", "stop")
+    # S2.6 Task 9C: a scored case's own tuples equal its step's.
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.reply_completion_tokens == step.reply_completion_tokens
+    assert case.reply_reasoning_tokens == step.reply_reasoning_tokens
+    assert case.reply_finish_reasons == step.reply_finish_reasons
+
+
+def test_sync_failed_case_records_every_reply_including_an_earlier_cut_off_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.6 Task 9C: stage 1 is cut off (``length``) and retried successfully; stage 2 then
+    fails schema on both its attempt and its retry. The case's failure text names only its
+    *last* reply, but ``CaseResult`` carries every reply it made, in call order.
+    """
+    usage = [
+        Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+        Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+        Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+        Usage(prompt_tokens=1_000, completion_tokens=260, reasoning_tokens=210),
+    ]
+    client = _FinishingFakeClient(
+        ['{"probable_cause": "the eng', GOOD, "not json", "still not json"],
+        usage=usage,
+        finish_reasons=["length", "stop", "stop", "stop"],
+    )
+    run = runner(tmp_path, client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.steps == ()  # a failed case has no step
+    assert case.reply_completion_tokens == (2000, 300, 250, 260)
+    assert case.reply_reasoning_tokens == (1900, 250, 200, 210)
+    assert case.reply_finish_reasons == ("length", "stop", "stop", "stop")
+
+
+def test_batch_failed_case_records_every_reply_including_an_earlier_cut_off_one(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Task 9C: the batch twin of the sync test above -- four batches, one per attempt."""
+    fake = FakeBatchClient(
+        handlers=[
+            _replying(
+                '{"probable_cause": "the eng',
+                "length",
+                Usage(prompt_tokens=90_000, completion_tokens=2000, reasoning_tokens=1900),
+            ),
+            _replying(
+                GOOD,
+                "stop",
+                Usage(prompt_tokens=90_100, completion_tokens=300, reasoning_tokens=250),
+            ),
+            _replying(
+                "not json",
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=250, reasoning_tokens=200),
+            ),
+            _replying(
+                "still not json",
+                "stop",
+                Usage(prompt_tokens=1_000, completion_tokens=260, reasoning_tokens=210),
+            ),
+        ]
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(
+        RunSpec(sample="dev-400", arm="ceiling", sync=False, expected_cost_per_case_usd=0.001),
+        record_fixtures[:1],
+    )
+    assert run.batch_ids == ("b1", "b2", "b3", "b4")
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is not None
+    assert case.failure.startswith("schema:")
+    assert case.steps == ()
+    assert case.reply_completion_tokens == (2000, 300, 250, 260)
+    assert case.reply_reasoning_tokens == (1900, 250, 200, 210)
+    assert case.reply_finish_reasons == ("length", "stop", "stop", "stop")
+
+
+def test_spec_json_records_the_evidence_version_after_the_arm() -> None:
+    spec = RunSpec(sample="dev-400", arm="B")
+    keys = list(spec_json(spec, commit_sha="abc1234", dirty=False, case_ids=()))
+    assert keys[keys.index("arm") + 1] == "evidence_version"
+    assert (
+        spec_json(spec, commit_sha="abc1234", dirty=False, case_ids=())["evidence_version"] == "v1"
+    )
+
+
+def test_run_refuses_an_evidence_version_that_is_not_built_yet(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """v3 has no reader (deferred by decision 0090); the refusal fires before any model call.
+
+    Task 14 built v2, so this test moved from v2 to v3, the version still unbuilt.
+    """
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        evidence_version="v3",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.0,
+    )
+    with pytest.raises(ConfigurationError, match="v3 is not built"):
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert client.payloads == []
+
+
+@pytest.mark.parametrize("arm", ["A", "ceiling"])
+def test_an_arm_that_reads_no_docket_refuses_a_version_past_v1(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], arm: Literal["A", "ceiling"]
+) -> None:
+    """Andy's decision, 2026-09-26 (Task 14 review I1): arm A and the ceiling read no docket,
+    so a v2 label on their run would be false. Refused before any folder or reservation."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm=arm,
+        evidence_version="v2",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(ConfigurationError, match="reads no docket") as refused:
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert f"arm {arm}" in str(refused.value)
+    assert "false label" in str(refused.value)
+    assert client.payloads == []
+    assert not (tmp_path / "runs").exists()  # no run folder, so no reservation either
+
+
+# --- Task 14: evidence version v2, the reader's version, preparation cost per case ---
+
+
+def _transcribed_docket(cost: float = 0.003) -> Docket:
+    """One document whose first page was read from a transcription costing ``cost``."""
+    docket = small_docket(
+        {1: "[page 1 of 3, transcribed from an image]\nThe crankshaft was intact.\n"}
+    )
+    reading = Transcription(
+        key=TranscriptionKey(
+            document_sha256="d" * 64, page=1, model="m", instruction="t1", dpi=150
+        ),
+        status="transcribed",
+        text="The crankshaft was intact.",
+        cost_usd=cost,
+        created=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    return docket.model_copy(update={"readings": {1: {1: reading}}})
+
+
+def _arm_b(version: Literal["v1", "v2", "v3"], *, sync: bool = True) -> RunSpec:
+    return RunSpec(
+        sample="dev-400",
+        arm="B",
+        evidence_version=version,
+        sync=sync,
+        price_variant="standard" if sync else "batch",
+        expected_cost_per_case_usd=0.001,
+    )
+
+
+def test_a_v2_run_refuses_a_v1_reader_and_a_v1_run_a_v2_reader(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0076: v2 evidence is never recorded as v1, nor the reverse; before any call."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    docket = _transcribed_docket()
+    with pytest.raises(ConfigurationError, match="v1 evidence"):
+        runner(tmp_path, client, docket=FakeDocketReader(docket, "v1")).run(
+            _arm_b("v2"), record_fixtures[:1]
+        )
+    with pytest.raises(ConfigurationError, match="v2 evidence"):
+        runner(tmp_path, client, docket=FakeDocketReader(docket, "v2")).run(
+            _arm_b("v1"), record_fixtures[:1]
+        )
+    assert client.payloads == []
+    assert not (tmp_path / "runs").exists()  # refused before any run folder is claimed
+
+
+def test_a_v2_run_answers_and_records_the_preparation_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(_transcribed_docket(0.003), "v2")
+    run = runner(tmp_path, client, docket=reader).run(_arm_b("v2"), record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    assert case.preparation_cost_usd == pytest.approx(0.003)
+    assert run.evidence_version == "v2"
+    # Decision 0081: the preparation cost is apart from the agent's own cost.
+    assert run.cost_usd == pytest.approx(case.cost_usd)
+    assert "transcribed from an image" in client.payloads[0].text
+
+
+def test_a_v2_batch_run_records_the_preparation_cost_too(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    fake = FakeBatchClient(
+        handlers=[
+            lambda bid, reqs: _status(bid, reqs, GOOD),
+            lambda bid, reqs: _status(bid, reqs, REFINE),
+        ]
+    )
+    reader = FakeDocketReader(_transcribed_docket(0.004), "v2")
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake, docket=reader).run(
+        _arm_b("v2", sync=False), record_fixtures[:1]
+    )
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.preparation_cost_usd == pytest.approx(0.004)
+
+
+def test_a_v1_run_records_no_preparation_cost(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"}))
+    run = runner(tmp_path, client, docket=reader).run(_arm_b("v1"), record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.preparation_cost_usd == 0.0
+
+
+def test_v3_is_still_refused_for_arm_b(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    reader = FakeDocketReader(_transcribed_docket(), "v2")
+    with pytest.raises(ConfigurationError, match="v3 is not built"):
+        runner(tmp_path, client, docket=reader).run(_arm_b("v3"), record_fixtures[:1])
+
+
+def test_the_cached_reader_is_v2_only_with_readings_and_passes_them_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, object] = {}
+    docket = small_docket({1: "[page 1 of 3]\nx\n"})
+
+    def fake_read_docket(client: object, mkey: int, *, readings: object = None) -> Docket:
+        captured["readings"] = readings
+        return docket
+
+    monkeypatch.setattr("ntsb_probable_cause.scoring.runner.read_docket", fake_read_docket)
+    client = cast(DocketClient, object())
+    assert CachedDocketReader(client).version == "v1"
+    lookup = ReadingLookup(TranscriptionCache(tmp_path))
+    reader = CachedDocketReader(client, readings=lookup)
+    assert reader.version == "v2"
+    assert reader.read(7) is docket
+    assert captured["readings"] is lookup

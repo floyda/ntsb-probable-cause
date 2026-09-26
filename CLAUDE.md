@@ -35,7 +35,11 @@ records what was delivered), which amend the brief where they differ.
   `docket/manifest.py` (the document listing), `docket/classify.py` and `docket/extract.py`
   (born-digital text extraction and classification), `docket/filter.py` (arm B's document
   filter) and `docket/attach.py`, with offline fixtures under `tests/fixtures/docket` and arm
-  `B` wired into the eval harness.
+  `B` wired into the eval harness. **Widened in S2.6**: `docket/pages.py` (per-page facts),
+  `docket/render.py` (pages drawn to images with `pypdfium2`, 0075) and `docket/transcribe.py`
+  (words in page images read once per page by the transcriber into a cache under
+  `NTSB_DATA_DIR`, evidence preparation costed apart from the per-case cap, 0079, 0081, 0085);
+  a v2 run reads those transcriptions through the same attach step, split and guard.
 - **Code-constrained output**: the model picks from a supplied list of NTSB occurrence/finding
   codes with their meanings, not free text, so scoring is exact-match. Seed the code lookup
   table from the spike's `decidability_form.build_code_lookups()`.
@@ -43,7 +47,17 @@ records what was delivered), which amend the brief where they differ.
   (slices decided in S1; narrative presence no longer applies, 0013; fatal / non-fatal is
   proposed before investigation class, whose mix differs by era), confidence intervals,
   cost per run, the three arms (0022) and the full and masked availability conditions (0023).
-  The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness.
+  The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness. From S2.6
+  every run records its **evidence version** (0076): v1 is text layers, v2 adds
+  transcriptions, v3 (pictures alongside text) is a name only and every run refuses it (0090);
+  v2 is refused on arm A and the ceiling, which read no docket (0091); `report --against`
+  refuses two versions unless `--versions-compared` labels the comparison.
+- **Case marks** (S2.6, `records/marks.py`, computed inside `split_record`): a docket
+  sentence shared with the analysis narrative reaches the agent and marks the case
+  `analysis_sentence` (0077); a case whose largest single document holds at least 50% of the
+  factual narrative is marked `narrative_coverage`, and the share is stored (0078). A mark
+  never enters the agent's text; the report prints every result for all cases and again for
+  unmarked cases, with each marked group's own row.
 - **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
   document lists with first-seen timestamps; resolution outcomes. **The store's first tables
   are built in S2.5**: `store/` (`db.py`, `schema.py` with numbered migrations, `models.py`,
@@ -199,12 +213,31 @@ ceiling itself scores top-1 10.5% [7.9%, 13.9%], top-3 21.8% [18.0%, 26.1%] (399
 400 cases scored), -0.3% [-3.8%, +3.3%] top-1 against GPT-5.6 Luna's ceiling. Paired against GPT-5.6
 Luna's arm B on 334 cases (a model comparison, decision 0031 item 2, different commits):
 top-1 +4.5% [+0.0%, +9.0%], finding recall@10 +1.4% [-0.8%, +3.6%]. **Arm B on GPT-6 Luna
-is the bar until S2.6 replaces it.** Its 64 failures are 40 guard refusals
+is the bar**: S2.6 deferred its own held-out runs (decisions 0089, 0090), so no later bar
+replaces it yet. Its 64 failures are 40 guard refusals
 (analysis-narrative sentences in docket documents) and 24 reply-format failures, most of
 them truncated replies (an ad-hoc split, not a scripted one: the S2.4 plan's Deviations,
-2026-09-24/25); the reply budget is re-examined in S2.6 before its held-out runs. Failed
+2026-09-24/25). S2.6 re-examined the reply budget on `dev-400` and set it to 8,000 tokens
+for every run from then on (decision 0084); S2.4's held-out run keeps its 2,000. Failed
 cases are excluded from `n`, not counted wrong, and they cluster in fatal cases: 42 of 200
 fatal cases failed against 22 of 200 non-fatal (`s24-bars.txt`'s `failed` column).
+
+**S2.6 measured arm B with transcriptions on `dev-400` only; the numbers live in
+`docs/results/s26-armB-v2-dev.txt`.** Its held-out runs are deferred (decisions 0089, 0090),
+so S2.4's held-out arm B above stays the bar. B-v2 (text layers plus the transcriber's
+reading of words in page images) against B-v1 (text layers only), both on GPT-6 Luna at one
+commit, paired on 399 cases: occurrence top-1 +1.3% [-2.5%, +4.8%], top-3 +2.0% [-2.3%,
++6.3%], finding recall@10 +0.6% [-0.9%, +2.1%] (397 cases); fatal top-1 +2.5% [-3.0%,
++8.6%], non-fatal +0.0% [-5.0%, +4.5%]. The three overall differences are positive and every
+interval includes zero: on development cases, transcription has not been shown to help. B-v2 alone
+scores top-1 22.1% [18.3%, 26.4%], top-3 35.1% [30.6%, 39.9%]. **Most of what B-v2 misses on
+occurrence codes is the NTSB's coding order, not missing evidence**
+(`docs/results/s26-occurrence-misses-dev.txt`): the model's first guess is somewhere in the
+NTSB's ordered sequence of occurrence codes on 140 of 399 cases (35.1%), but is its first
+code on only 88 (22.1%); the commonest miss (33 cases) is "loss of control in flight" coded
+first where the model said "aerodynamic stall/spin". The model receives the code tables as
+bare labels, with no conventions or examples, so coding guidance is the next lever (an S2.7
+Andy has proposed, before S3; decision 0089).
 
 ## Model access
 
@@ -226,6 +259,15 @@ with 0 of 401 format failures (`docs/results/s24-gate-dev.txt`). Model choice is
 parameter, not a constant, and the bar and the agent are always compared on the same model
 (0022, 0031). Evaluation runs use the `:batch` variant (half price, no latency
 requirement); the live path does not.
+
+**The transcriber is a second model, not the agent's** (S2.6): `qwen/qwen3.5-122b-a10b`, at
+its lowest reasoning level, instruction `t1`, pages drawn at 150 dots per inch
+(`docket.transcribe.TRANSCRIBER`). The choice is **provisional and post hoc** (decision 0087):
+no candidate passed the transcriber test's rule in either pass
+(`docs/results/s26-transcriber-test.txt`, `docs/results/s26-transcriber-test-pass2.txt`), and
+0087 overrode that outcome openly. It runs synchronously at the standard price, because the
+batch service does not accept images. It copies words only; it never describes or interprets
+a page (0079).
 
 Two consequences to hold on to:
 - The spike's £0.034/case and 57% top-1 were measured on a different transport, with the
@@ -274,7 +316,28 @@ make change-feed-probe  # uv run python -m scripts.change_feed_probe — the cha
                          #   one-shot (S2.5 §5.3, 0065)
 make recorder-report    # uv run python -m scripts.recorder_report — the recorder's counts-only
                          #   report, from NTSB_STORE (S2.5 §10.2)
+make page-kinds               # scripts.page_kinds — dev-400 page kinds, counts only; free (S2.6)
+make analysis-handcheck       # scripts.analysis_handcheck sheet — the private marking page for
+                              #   analysis sentences in dev-400 dockets; free (S2.6, 0077)
+make s26-reply-budget         # arm B on dev-400 at the old 2,000-token reply budget (S2.6, 0084)
+make s26-reply-budget-roomy   # the same at 16,000 tokens, to size the budget (S2.6, 0084)
+make s26-inventory-probe      # scripts.page_inventory sample + probe: draws the 330 pages,
+                              #   labels one (under a cent)
+make s26-inventory            # scripts.page_inventory label + check (about $0.20)
+make s26-transcriber-keys     # scripts.transcriber_test keys — the answer keys (cents)
+make s26-transcriber-probe    # one invented page per candidate; records the fixtures
+make s26-transcriber-run      # every candidate on every key page, one retry, Andy's pages
+make s26-transcriber-resolution MODEL=<id>  # the chosen model at 200 dpi, one retry
+make s26-transcriber-recheck  # decision 0086's second-pass marking pages; free
+make s26-transcribe-dev-dry PER_PAGE=<usd>  # counts and prices dev-400's pages; free
+make s26-transcribe-dev PER_PAGE=<usd>      # reads dev-400's image pages once, into the
+                                            #   cache (paid; run with 0.0017 on 2026-09-26)
+make s26-dev-runs PER_CASE=<usd>            # arm B v1 then v2 on dev-400, one commit
+                                            #   (run with 0.0042 on 2026-09-26)
 ```
+
+The `s26-*` targets that take `MODEL`, `PER_PAGE` or `PER_CASE` stop with a `make` error when
+the variable is unset. S2.6 wrote no held-out target: its held-out runs are deferred (0090).
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
 `ntsb-eval baseline|run|report|judge|threshold|release`,
@@ -291,19 +354,35 @@ reused; `report` takes a run id or `--latest ARM SAMPLE`, and `--against`/`--aga
 to compare — it prints a `failures by reason:` line and labels cross-model comparisons;
 `judge` refuses a non-`dev-400` run without `--validated` (§8).
 
+S2.6 added: `run --evidence-version v1|v2|v3` (default `v1`; v2 needs arm B and a sample
+`transcribe` has finished; v3 is refused, 0076, 0090, 0091) and `run --max-output-tokens N`
+(default 8,000, recorded on every run, 0084); `report --versions-compared`, which allows a
+comparison across evidence versions under a labelled heading; `report --against` now prints
+each paired block again for fatal and non-fatal cases, and adds blocks for the cases with
+transcribed pages (across versions) and for cases unmarked in both runs (where marks exist); and
+`transcribe --sample S --expected-cost-per-page-usd USD [--workers 8] [--retry-failed]
+[--dry-run]`, which reads a sample's image pages once into the transcription cache (0081). The
+expected cost per page must be above zero; it sets the job's budget reservation, and the job
+stops once that is spent. The finished-transcription marker, which a v2 run checks for, is
+written only when at most 2% of the chosen pages failed. `transcribe` refuses a held-out
+sample (0090). A fresh run, or a preparation job, refuses a run folder that already exists.
+
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
 `NTSB_API_KEY` (the NTSB Enterprise API key, required for `make ingest`, never printed or
 committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
 `OPENROUTER_API_KEY` (the model access decision 0009 uses), `NTSB_RUNS_DIR` (default
-`data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 25),
+`data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 40 during development,
+decision 0083; it also counts transcription and inventory spend rows, 0081),
 `NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
 cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; defaults to
 `<NTSB_DATA_DIR>/docket`, so it moves with `NTSB_DATA_DIR` unless set explicitly; never
-committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
+committed), `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
-production). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
+production) and `NTSB_TRANSCRIPTION_DIR` (where per-page transcriptions are cached; defaults
+to `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly;
+never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
 
 The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
 store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`

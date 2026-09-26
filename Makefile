@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars-ceiling s24-bars-b ongoing-probe record change-feed-probe recorder-report
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs
 
 check: lint type test
 
@@ -128,3 +128,87 @@ recorder-report:
 # feed comparison, regulation changes, the 30-day closure tail, suspected re-numbers and
 # compressed listing-page sizes. Counts only (decision 0024). Its first citable output needs
 # 14 or more recorded nights (spec "Done means" §14).
+
+page-kinds:
+	uv run python -m scripts.page_kinds --sample dev-400 --include-photo-only --out docs/results/s26-page-kinds.txt
+# S2.6 spec §6.2 step 1: free, reads the docket cache; writes the private page frame under data/.
+
+analysis-handcheck:
+	uv run python -m scripts.analysis_handcheck sheet --sample dev-400
+# S2.6 spec §4.2: free; writes the private marking page under data/handcheck/s26-analysis/.
+
+s26-reply-budget:
+	uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 2000 --expected-cost-per-case-usd 0.005
+# S2.6 Task 9A: arm B on dev-400 at the old reply budget, to confirm why replies were truncated.
+
+s26-reply-budget-roomy:
+	uv run ntsb-eval run --arm B --sample dev-400 --max-output-tokens 16000 --expected-cost-per-case-usd 0.008
+# S2.6 Task 9A (Andy's decision B): the same run with a roomy reply budget, to measure uncut need.
+
+s26-inventory-probe:
+	uv run python -m scripts.page_inventory sample
+	uv run python -m scripts.page_inventory probe
+# S2.6 spec §6.2: draws the 330-page sample (free), then labels ONE page (under a cent).
+
+s26-inventory:
+	uv run python -m scripts.page_inventory label
+	uv run python -m scripts.page_inventory check
+# S2.6 spec §6.2: labels the 330 (about $0.20), then writes Andy's 60-page check.
+
+s26-transcriber-keys:
+	uv run python -m scripts.transcriber_test keys
+# S2.6 spec §7.3: draws the three answer keys; labels top-up pages if the inventory is short (cents).
+
+s26-transcriber-probe:
+	uv run python -m scripts.transcriber_test probe
+# One invented page per candidate (under a cent in all); records each reply as a test fixture.
+
+s26-transcriber-run:
+	uv run python -m scripts.transcriber_test run
+	uv run python -m scripts.transcriber_test run --retry-failed
+	uv run python -m scripts.transcriber_test handwriting
+	uv run python -m scripts.transcriber_test photos
+	uv run python -m scripts.transcriber_test mixed
+# All four candidates on every key page at 150 dpi (~$4-8 at standard prices), then one retry
+# of any page that failed (decision 3: a page still failed after this retry counts as wrong;
+# `--retry-failed` pays only for pages that failed, and this recipe calls it once), then
+# Andy's three pages (handwriting, photos, mixed).
+
+s26-transcriber-resolution:
+	$(if $(MODEL),,$(error MODEL is required: the chosen transcriber, e.g. MODEL=qwen/qwen3.5-122b-a10b))
+	uv run python -m scripts.transcriber_test resolution --model $(MODEL)
+	uv run python -m scripts.transcriber_test resolution --model $(MODEL) --retry-failed
+# The chosen model at 200 dpi on the handwriting and typed keys (~$0.30-1), then one retry of
+# any page that failed there too. Run on 2026-09-25 with MODEL=qwen/qwen3.5-122b-a10b (decision
+# 0087; docs/results/s26-transcriber-test-pass2.txt, "resolution").
+
+s26-transcriber-recheck:
+	uv run python -m scripts.transcriber_test photos-recheck
+	uv run python -m scripts.transcriber_test handwriting-recheck
+# Decision 0086's second pass (free: no model call): Andy's two recheck pages, read against the
+# first pass's CSVs kept under <data_dir>/s26/transcriber-test/pass1/.
+
+s26-dev-runs:
+	$(if $(PER_CASE),,$(error PER_CASE is required: the expected cost per case in USD, e.g. PER_CASE=0.0042))
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v1 --expected-cost-per-case-usd $(PER_CASE)
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v2 --expected-cost-per-case-usd $(PER_CASE)
+# S2.6 spec §9.1: both at one commit, marks in force. Development runs write no ledger row, so
+# the tree stays clean and one recipe is safe. PER_CASE: S2.4's arm B cost per case on
+# heldout-400 (docs/results/s24-bars.txt, $0.0028), rounded up by half for v2's added text.
+# Run on 2026-09-26 with PER_CASE=0.0042 (spec.json of 20260926T082427-d19aafa-dev-400-B and
+# 20260926T085904-d19aafa-dev-400-B).
+
+s26-transcribe-dev-dry:
+	$(if $(PER_PAGE),,$(error PER_PAGE is required: the expected cost per page in USD, above zero, e.g. PER_PAGE=0.0017))
+	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE) --dry-run
+# S2.6 spec §8.3, free: counts and prices the pages dev-400 needs. Read its projection before
+# running s26-transcribe-dev (Task 15 Step 2: stop if it is more than a quarter over the estimate).
+
+s26-transcribe-dev:
+	$(if $(PER_PAGE),,$(error PER_PAGE is required: the expected cost per page in USD, above zero, e.g. PER_PAGE=0.0017))
+	uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd $(PER_PAGE)
+# S2.6 spec §8.3, paid: reads every image page dev-400 needs, once, into the cache. PER_PAGE is
+# the transcriber's measured cost per page (docs/results/s26-transcriber-test-pass2.txt), rounded
+# up. Kept apart from the dry run (Task 14 review, I2) so there is a point to stop between them.
+# Run on 2026-09-26 with PER_PAGE=0.0017. The job reserves pages x PER_PAGE and stops once that
+# is spent (final review, I1), so a PER_PAGE set too low stops the job early, within a few in-flight pages of its reservation.
