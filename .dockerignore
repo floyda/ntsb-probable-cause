@@ -1,0 +1,24 @@
+# The recorder image needs pyproject.toml, uv.lock, README.md, LICENSE, src/ and apps/ only
+# (Dockerfile, Task 12). Everything else is excluded so the build context stays small and
+# nothing under data/ -- which is never in git either -- can reach a build layer.
+data/
+tests/
+docs/
+scripts/exploratory/
+infra/
+.git/
+.claude/
+.superpowers/
+.venv/
+**/__pycache__
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.sqlite*
+# Defence in depth (fix round 1, Minor 5): no secret belongs in the image, and none is copied
+# in by name today -- the Dockerfile's own `COPY` lines never mention `.env` -- but a bare
+# `COPY . .` added later should not be able to pick one up either. `!.env.example` re-includes
+# the one committed, non-secret file that `.env.*` would otherwise also exclude.
+.env
+.env.*
+!.env.example

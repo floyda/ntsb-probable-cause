@@ -226,6 +226,10 @@ make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standa
 make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
 make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
 make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
+make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
+make record             # uv run ntsb-record run — one nightly pass (S2.5)
+make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
+make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
 ```
 
 `ntsb-eval` (spec §6.5) is the evaluation harness, installed by `uv sync`; arm `B` and
@@ -282,6 +286,13 @@ no longer exists, and the script is usually the evidence that removed it).
 | `handcheck_page` | one-shot | the private marking page behind the committed hand-check sheet (0049) |
 | `doctype_scan` | **deprecated** | `s2-doctype.txt`; the photograph exclusion it measured was removed by 0052 |
 | `score_handcheck` | **deprecated** | `s2-handcheck.txt`; all three mechanisms it grades were removed by 0051, 0052 and 0056 |
+| `change_feed_probe` | one-shot | `tests/fixtures/api/change_feed_shape.json` and `s25-change-feed.txt` (spec S2.5 §5.3, 0065) |
+| `recorder_report` | live tool | `s25-recorder-report.txt` from `NTSB_STORE` — counts only (spec S2.5 §10.2) |
+| `ongoing_docket_probe` | one-shot | `s25-ongoing-dockets.txt` — fixed the recorder's `no-docket` outcome (spec §10.1); `outcome_for_error` and the "not released" check it used have since moved into the library (0059) |
+
+`scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
+-m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
+ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/recorder-bridge.md`.
 
 `scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result.
 

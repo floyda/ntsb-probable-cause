@@ -1,0 +1,121 @@
+{
+  "last_change_utc_signatures": [
+    "dddd-dd-ddTdd:dd:dd.dddd",
+    "dddd-dd-ddTdd:dd:dd.ddddd",
+    "dddd-dd-ddTdd:dd:dd.dddddd"
+  ],
+  "shape": {
+    "caseClosed": [
+      "bool"
+    ],
+    "caseCreatedDateTimeUtc": [
+      "str"
+    ],
+    "city": [
+      "NoneType",
+      "str"
+    ],
+    "country": [
+      "NoneType",
+      "str"
+    ],
+    "environmentalDamage": [
+      "NoneType",
+      "str"
+    ],
+    "eventDate": [
+      "NoneType",
+      "str"
+    ],
+    "eventTimeUtc": [
+      "NoneType",
+      "str"
+    ],
+    "eventTimeUtcOffsetHours": [
+      "NoneType",
+      "int"
+    ],
+    "eventType": [
+      "NoneType",
+      "str"
+    ],
+    "factualPublishedDate": [
+      "NoneType",
+      "str"
+    ],
+    "hazmatInvolved": [
+      "NoneType",
+      "bool"
+    ],
+    "highestInjuryLevel": [
+      "NoneType",
+      "str"
+    ],
+    "isStudy": [
+      "bool"
+    ],
+    "isUtc": [
+      "NoneType",
+      "bool"
+    ],
+    "lastChangeDateTimeUtc": [
+      "str"
+    ],
+    "lastRevisionDate": [
+      "NoneType",
+      "str"
+    ],
+    "latitude": [
+      "NoneType",
+      "float",
+      "int"
+    ],
+    "legacy": [
+      "bool"
+    ],
+    "location": [
+      "NoneType",
+      "str"
+    ],
+    "longitude": [
+      "NoneType",
+      "float",
+      "int"
+    ],
+    "mkey": [
+      "int"
+    ],
+    "mode": [
+      "str"
+    ],
+    "ntsbnumber": [
+      "str"
+    ],
+    "originalPublishedDate": [
+      "NoneType",
+      "str"
+    ],
+    "propertyDamage": [
+      "NoneType",
+      "int"
+    ],
+    "reportDate": [
+      "NoneType",
+      "str"
+    ],
+    "reportNumber": [
+      "NoneType",
+      "str"
+    ],
+    "stateOrRegion": [
+      "NoneType",
+      "str"
+    ],
+    "stepId": [
+      "str"
+    ],
+    "stepNumber": [
+      "int"
+    ]
+  }
+}

@@ -18,12 +18,6 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      # /usr/share/dict/words. scripts/check_fixtures_redacted.py checks a committed docket
-      # title's capitalised words against the committed vocabulary AND this list; without it
-      # the vocabulary alone flags 158 blocking false positives on the hand-check sheet and
-      # every job that runs the check fails. macOS ships a word list, ubuntu-latest does not,
-      # which is why this was invisible locally (decision 0058).
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq wamerican
       - run: uv sync --locked
       - run: SKIP=no-commit-to-branch uv run pre-commit run --all-files --show-diff-on-failure
       - run: uv run pre-commit run --hook-stage manual check-added-large-files-all --all-files --show-diff-on-failure
@@ -46,12 +40,6 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      # /usr/share/dict/words. scripts/check_fixtures_redacted.py checks a committed docket
-      # title's capitalised words against the committed vocabulary AND this list; without it
-      # the vocabulary alone flags 158 blocking false positives on the hand-check sheet and
-      # every job that runs the check fails. macOS ships a word list, ubuntu-latest does not,
-      # which is why this was invisible locally (decision 0058).
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq wamerican
       - run: uv sync --locked
       - run: uv run pytest
 
@@ -66,3 +54,84 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run pip-audit
+
+  # Builds the recorder's container image (Dockerfile, S2.5 Task 12) on every push and pull
+  # request, so a broken Dockerfile is caught before merge -- the daemon this build needs is
+  # not available in a developer's sandboxed session, so this job is the substitute for a
+  # local `docker build`. Never pushes and never touches AWS credentials.
+  image-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build image (no push)
+        run: |
+          set -euo pipefail
+          docker build --build-arg "COMMIT_SHA=${GITHUB_SHA:0:7}" -t ntsb-recorder:ci .
+
+  # Pushes the image built above to ECR, only from a merge to `main` -- never from a pull
+  # request, which could come from a fork with no business holding this project's AWS
+  # credentials. `id-token: write` (for the GitHub OIDC exchange `aws-actions/
+  # configure-aws-credentials` performs) is scoped to this job alone, not the whole workflow,
+  # per controller note 3. `needs` also names `lint` and `test` (fix round 1, Minor 3), not
+  # only `image-build`: `needs` requires every listed job to succeed, so a commit that fails
+  # lint or the test suite can reach `main` (nothing here blocks that merge) but its image is
+  # never pushed. `concurrency` (fix round 1, Minor 4) serializes pushes across quick
+  # back-to-back merges so `:latest` always ends up as the most recent successful build, never
+  # whichever run's push happened to finish last; `cancel-in-progress: false` because a
+  # half-finished push must never be interrupted mid-way and left as `:latest`.
+  image-push:
+    needs: [image-build, lint, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: image-push
+      cancel-in-progress: false
+    permissions:
+      # OIDC exchange for aws-actions/configure-aws-credentials (fix round 1, Minor 8).
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the deploy role is configured
+        id: role
+        env:
+          # Repository variable, created by the CDK stack in Task 13 (spec §9.2). Read into an
+          # env var here, never interpolated directly into a run script, so a `run:` step never
+          # substitutes an `${{ }}` expression through the shell.
+          ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ROLE_ARN" ]; then
+            echo "::notice::AWS_DEPLOY_ROLE_ARN is not set (Task 13's stack is not deployed yet) -- skipping the image push."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: steps.role.outputs.configured == 'true'
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-2
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        if: steps.role.outputs.configured == 'true'
+        id: ecr-login
+      - name: Build and push image
+        if: steps.role.outputs.configured == 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA:0:7}"
+          docker build \
+            --build-arg "COMMIT_SHA=$short_sha" \
+            -t "$ECR_REGISTRY/ntsb-recorder:$short_sha" \
+            -t "$ECR_REGISTRY/ntsb-recorder:latest" \
+            .
+          docker push "$ECR_REGISTRY/ntsb-recorder:$short_sha"
+          docker push "$ECR_REGISTRY/ntsb-recorder:latest"

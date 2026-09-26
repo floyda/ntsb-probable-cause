@@ -1,5 +1,6 @@
 """The docket text fixture check: every committed document text names its reviewer (0037)."""
 
+import inspect
 import json
 from pathlib import Path
 
@@ -15,7 +16,11 @@ from scripts.check_fixtures_redacted import (
     title_looks_like_a_name,
 )
 
-from ntsb_probable_cause.docket.title_vocab import known_title_words, load_title_vocabulary
+from ntsb_probable_cause.docket.title_vocab import (
+    VENDORED_DICTIONARY_PATH,
+    known_title_words,
+    load_title_vocabulary,
+)
 
 
 def test_docket_text_fixture_without_reviewed_by_is_a_problem(tmp_path: Path) -> None:
@@ -159,7 +164,7 @@ def test_docket_fixture_name_problems_warns_to_stderr_when_dictionary_is_missing
         dictionary_path=tmp_path / "does-not-exist",
     )
     assert any("title 1" in p.message and "X" in p.message for p in problems)
-    assert "no system dictionary" in capsys.readouterr().err
+    assert "vendored word list not found" in capsys.readouterr().err
 
 
 def test_html_listing_with_a_name_shaped_title_is_advisory_only(tmp_path: Path) -> None:
@@ -290,3 +295,39 @@ def test_main_fails_when_document_text_has_no_reviewer(
     out = capsys.readouterr().out
     assert "[blocking]" in out
     assert "reviewed_by" in out
+
+
+def test_name_check_uses_vendored_dictionary_by_default() -> None:
+    """The check uses the vendored dictionary, not the system one (decision 0070).
+
+    This test proves CI will not fail when /usr/share/dict/words is absent, as it is
+    after wamerican is no longer installed. The check finds 0 blocking findings with
+    the vendored dictionary against the committed fixtures.
+    """
+    problems = docket_fixture_name_problems()
+    blocking = [p for p in problems if p.blocking]
+    assert len(blocking) == 0
+
+
+def test_docket_fixture_name_problems_default_path_is_vendored(tmp_path: Path) -> None:
+    """The check function defaults to VENDORED_DICTIONARY_PATH and uses it.
+
+    The default parameter value is the vendored list, and calling with that default
+    clears the check (0 blocking), while calling with a missing path fails it (blocking > 0).
+    """
+    # Assert the signature default is VENDORED_DICTIONARY_PATH
+    sig = inspect.signature(docket_fixture_name_problems)
+    assert sig.parameters["dictionary_path"].default == VENDORED_DICTIONARY_PATH
+
+    # Signature default is VENDORED_DICTIONARY_PATH. On committed fixtures designed
+    # to work with vocabulary + dictionary, it clears. Missing path makes it stricter.
+
+    # With default (vendored dictionary): no blocking findings on committed fixtures
+    problems = docket_fixture_name_problems()
+    blocking_default = [p for p in problems if p.blocking]
+    assert len(blocking_default) == 0
+
+    # With missing path: vocabulary alone is stricter (more findings blocking)
+    problems = docket_fixture_name_problems(dictionary_path=tmp_path / "missing")
+    blocking_missing = [p for p in problems if p.blocking]
+    assert len(blocking_missing) > len(blocking_default)

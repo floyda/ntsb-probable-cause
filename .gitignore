@@ -14,6 +14,23 @@ data/docket/
 # committed sheet this folds into (tests/fixtures/docket/title_handcheck.csv) redacted; this
 # is that sheet's working copy, never the committed artefact.
 data/handcheck/
+# Whole-directory catch-all, kept alongside the specific lines above rather than replacing
+# them (they document *why* each kind of file under data/ is excluded). Without this, a file
+# the specific lines do not enumerate -- e.g. the recorder's data/recorder.log, or its store's
+# WAL/SHM side files before the *.sqlite-wal/-shm lines below existed -- sat untracked but NOT
+# git-ignored, one `git add -A` away from landing open-split text in this public repository
+# (S2.5 Task 10, fix round 1, Important 4). "Nothing under data/ is committed" (CLAUDE.md rule
+# 4) is enforced here as a rule, not only as a list of known cases.
+# Anchored to the repo root (S2.5 Task 10, fix round 3, Important): an unqualified "data/"
+# matches at ANY depth, not only the repo root -- it silently also matched the tracked package
+# `src/ntsb_probable_cause/data/`, which meant every file in that package was untracked-and-
+# ignored (invisible to `git status`) AND skipped entirely by `ruff check` (ruff honours
+# ignore files even for tracked files), so lint stopped covering that package with nobody
+# noticing. The leading slash restricts this rule to the repository root's own `data/`, which
+# is the only one this rule was ever meant to reach -- the specific lines above it (`data/raw/`
+# etc.) were never affected, since a pattern containing an internal slash is already anchored
+# to the `.gitignore`'s own directory by git's own rules.
+/data/
 *.zip
 *.mdb
 *.accdb
@@ -29,6 +46,13 @@ data/handcheck/
 *.sqlite
 *.sqlite3
 *.db
+# SQLite's own WAL-mode side files (store/db.py opens every store with journal_mode=WAL) and
+# the older rollback-journal mode's file -- these hold uncommitted or since-checkpointed page
+# data, which for the recorder's store is open-split text (CLAUDE.md rule 5). *.sqlite above
+# already covers the main file; these cover it mid-write, wherever a store lives.
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
 
 # Account-specific operational values, referenced from docs/runbooks/.
 *.local.md
@@ -44,6 +68,13 @@ __pycache__/
 .mypy_cache/
 .coverage
 cdk.out/
+infra/cdk.out/
+# `infra/app.py` leaves the stack's account unresolved so `cdk synth` never performs a
+# credentialed AWS lookup (S2.5 Task 13 fix round 1, Important 3) -- so this file should never
+# be written by `cdk synth`. Ignored anyway, as defence in depth: a real `cdk deploy --profile
+# ntsb`, which does have credentials, legitimately performs other context lookups and could
+# write one, and it would then carry the project's real AWS account number on disk.
+infra/cdk.context.json
 dist/
 node_modules/
 .DS_Store

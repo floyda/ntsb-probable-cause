@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars-ceiling s24-bars-b
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open s24-probe s24-gate s24-bars-ceiling s24-bars-b ongoing-probe record change-feed-probe recorder-report
 
 check: lint type test
 
@@ -92,3 +92,39 @@ docket-shape-open:
 	uv run python -m scripts.docket_shape_open --out docs/results/s2-shape-open.txt
 # Read and discard (decision 0040): no cache, nothing written under data/. Roughly 500 polite
 # requests to data.ntsb.gov. Launched by the project owner, not CI.
+
+ongoing-probe:
+	uv run python -m scripts.ongoing_docket_probe --out docs/results/s25-ongoing-dockets.txt
+# Read and discard (decision 0024): no cache, nothing written under data/, no case number
+# printed. 100 polite requests to data.ntsb.gov, about 4 minutes at the 2-second floor --
+# that estimate assumes no retries; each persistent retried status (429/500/502/503/504)
+# adds roughly 30 seconds of backoff for that one case (docket/client.py's exponential
+# backoff over up to 5 attempts). Fixes the recorder's "no-docket" outcome (spec S2.5 S10.1)
+# from what the site actually returns for an ongoing case. Launched by the project owner,
+# not CI.
+
+record:
+	uv run ntsb-record run
+# One nightly pass (spec S2.5 §9.1): fetches the month window, the change feed and every
+# watched docket, and writes the result to NTSB_STORE (a local path by default, or an
+# `s3://` URL -- store/sync.py, Task 10). Takes about 40 minutes on a normal night. This is
+# the same command the Mac bridge and the AWS Fargate task both run
+# (docs/runbooks/recorder-bridge.md); `--verbose` and `--dry-run` are also accepted, e.g.
+# `uv run ntsb-record run --dry-run`.
+
+change-feed-probe:
+	uv run python -m scripts.change_feed_probe --out docs/results/s25-change-feed.txt
+# One-shot (spec S2.5 §5.3, decision 0065): calls GetCasesByModifiedDateRange once for the
+# last 7 days and saves tests/fixtures/api/change_feed_shape.json (key -> sorted value type
+# names, never values, decision 0024) alongside docs/results/s25-change-feed.txt (counts
+# only). Needs NTSB_API_KEY. Run once; review both files, then commit them -- once the
+# fixture exists, tests/test_api.py::test_cases_modified_parses_the_confirmed_live_shape
+# stops skipping.
+
+recorder-report:
+	uv run python -m scripts.recorder_report --out docs/results/s25-recorder-report.txt
+# Repeatable (spec S2.5 §10.2): reads NTSB_STORE (local path or s3:// URL, read-only) and
+# prints the run summaries, arrival percentiles per evidence field and for the docket, the
+# feed comparison, regulation changes, the 30-day closure tail, suspected re-numbers and
+# compressed listing-page sizes. Counts only (decision 0024). Its first citable output needs
+# 14 or more recorded nights (spec "Done means" §14).

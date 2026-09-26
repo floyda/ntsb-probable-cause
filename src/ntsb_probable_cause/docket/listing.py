@@ -17,6 +17,46 @@ _ROW = re.compile(
 )
 _ITEMS = re.compile(r"Docket Items:\s*(\d+)")
 _TAGS = re.compile(r"<[^>]+>")
+_INFO_BLOCK = re.compile(r"<h2><b>Docket Information</b></h2>")
+_CREATION = re.compile(r"<b>Creation Date:</b>\s*([^<]*)<")
+_MODIFIED = re.compile(r"<b>Last Modified:</b>\s*([^<]*)<")
+_RELEASE = re.compile(r"Public Release Date &(?:amp;)? Time:\s*([^<]*)<")
+
+# Task 3's live probe (spec §10.1; recorded in the spec's As-built section):
+# the site answers a case with no public docket at all with an ordinary HTTP 200 page
+# (title "NTSB Docket - Docket Management System") carrying this exact sentence in an
+# ``<h5>``, never with an HTTP error or a blank page. Confirmed against ProjectID 999999999,
+# a nonexistent case -- fixture tests/fixtures/docket/not-released.html. Matched after
+# unescaping and whitespace-normalising the page, so a reflow of the surrounding markup does
+# not break it. This was scripts/ongoing_docket_probe.py's own ``_NOT_RELEASED_SENTENCE`` and
+# ``_normalised_text``; Task 8 moved both here so the probe and the recorder share one
+# implementation instead of two copies drifting apart.
+NOT_RELEASED_SENTENCE = "The docket for this investigation has not been released."
+_WHITESPACE = re.compile(r"\s+")
+
+
+def _normalised_text(page: str) -> str:
+    """``page`` with HTML entities unescaped and whitespace collapsed to single spaces."""
+    return _WHITESPACE.sub(" ", html.unescape(page)).strip()
+
+
+def is_not_released(page: str) -> bool:
+    """Whether ``page`` is the site's own "docket has not been released" page.
+
+    Checked before :func:`parse_listing`: this page carries no "Docket Items:" count and no
+    "Docket Information" block, so treating it as an ordinary listing would otherwise misread
+    it as ``no-info-block`` -- indistinguishable from a genuine layout change (spec §6.2).
+    """
+    return NOT_RELEASED_SENTENCE in _normalised_text(page)
+
+
+class DocketInfo(BaseModel):
+    """The docket-level dates the page prints, as printed. Not per document (spec §6.2)."""
+
+    model_config = ConfigDict(frozen=True)
+    creation_date: str | None
+    last_modified: str | None
+    release_date: str | None
 
 
 class ListingEntry(BaseModel):
@@ -47,6 +87,7 @@ class Listing(BaseModel):
     mkey: int
     declared_items: int | None
     entries: tuple[ListingEntry, ...]
+    info: DocketInfo | None = None
 
 
 def _extension(href: str) -> str:
@@ -54,6 +95,20 @@ def _extension(href: str) -> str:
         return ""
     ext = href.rsplit("FileExtension=", maxsplit=1)[-1].split("&", maxsplit=1)[0].strip(".").lower()
     return ext or href.rsplit(".", 1)[-1].lower()
+
+
+def _info(page: str) -> DocketInfo | None:
+    if not _INFO_BLOCK.search(page):
+        return None
+
+    def first(pattern: re.Pattern[str]) -> str | None:
+        match = pattern.search(page)
+        value = html.unescape(match.group(1)).strip() if match else ""
+        return value or None
+
+    return DocketInfo(
+        creation_date=first(_CREATION), last_modified=first(_MODIFIED), release_date=first(_RELEASE)
+    )
 
 
 def parse_listing(page: str, *, mkey: int) -> Listing:
@@ -78,7 +133,7 @@ def parse_listing(page: str, *, mkey: int) -> Listing:
         raise DocketError(
             f"docket {mkey}: page declared {declared} items, parsed {len(entries)} rows"
         )
-    return Listing(mkey=mkey, declared_items=declared, entries=tuple(entries))
+    return Listing(mkey=mkey, declared_items=declared, entries=tuple(entries), info=_info(page))
 
 
 def render_listing(listing: Listing) -> str:

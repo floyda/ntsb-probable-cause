@@ -147,6 +147,47 @@ def test_explicit_runs_dir_and_docket_dir_override_derivation(
     assert settings.docket_dir == Path("/elsewhere/docket")
 
 
+def test_store_default_is_the_literal_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_DATA_DIR", raising=False)
+    monkeypatch.delenv("NTSB_STORE", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.store == "data/recorder.sqlite"
+
+
+def test_unset_store_derives_from_an_explicit_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", "/somewhere")
+    monkeypatch.delenv("NTSB_STORE", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.store == "/somewhere/recorder.sqlite"
+
+
+def test_explicit_s3_store_survives_intact(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `Path("s3://bucket/key")` would collapse the double slash to `s3:/bucket/key`; `store`
+    # is a plain `str` so Task 10's S3 location round-trips untouched (controller resolution 1).
+    monkeypatch.setenv("NTSB_STORE", "s3://bucket/key")
+    settings = Settings(_env_file=None)
+    assert settings.store == "s3://bucket/key"
+
+
+def test_unset_commit_sha_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_COMMIT_SHA", raising=False)
+    assert Settings(_env_file=None).commit_sha is None
+
+
+def test_empty_commit_sha_env_var_counts_as_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The container image's `ARG COMMIT_SHA` has no default (Dockerfile, Task 12); built with
+    # no `--build-arg`, `NTSB_COMMIT_SHA` in the environment is `""`, not absent. That must
+    # read the same as unset, so `apps/recorder/__main__.py:_commit_identity` falls back to
+    # `git` instead of recording a fabricated empty commit (controller note 2).
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "")
+    assert Settings(_env_file=None).commit_sha is None
+
+
+def test_real_commit_sha_env_var_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "abc1234")
+    assert Settings(_env_file=None).commit_sha == "abc1234"
+
+
 def test_gpt_6_luna_is_priced_from_the_models_api() -> None:
     """Decision 0073: read from https://openrouter.ai/api/v1/models on 2026-09-22."""
     assert sources.price_of("openai/gpt-6-luna:batch") is sources.LUNA_6_BATCH

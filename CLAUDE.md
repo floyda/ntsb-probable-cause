@@ -8,15 +8,17 @@ The agent itself: it determines the probable cause of a US general-aviation acci
 investigator-gathered evidence, scored against the NTSB's own published verdict. It is built on
 the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 `../ntsb-spike/docs/spike-report.md` and `../ntsb-spike/docs/build-brief.md`, especially §6
-"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **S0
-(foundation) is built**: strict tooling, data ingestion, the evidence/synthesis/verdict split
-with its layered leakage guard, and a model seam — see "Commands" below. The agent loop, the
-docket tool and the evaluation harness are not built yet. Read build-brief §7 before writing
-any code, then
+"Evaluation plan" and §7 "What a build repo needs that this one does not have"). **S0 to
+S2.4 are built and released**: S0 the foundation (strict tooling, data ingestion, the
+evidence/synthesis/verdict split with its layered leakage guard, a model seam), S1 scoring and
+the evaluation harness, S2 the docket tool and arm B, S2.4 the model switch. **S2.5 (the
+recorder) is built**: a nightly job that records when each open case's evidence fields and
+docket documents first appear, into its own SQLite store, running on AWS. The agent loop is
+not built yet. Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
-takes a part of), and the current stage's specification (S0, closed:
-`docs/specs/2026-09-13-s0-foundation-design.md`), which amend the brief where they differ.
+takes a part of), and each stage's specification under `docs/specs/` (its As-built section
+records what was delivered), which amend the brief where they differ.
 
 ## Required components (build-brief §7)
 
@@ -43,9 +45,18 @@ takes a part of), and the current stage's specification (S0, closed:
   cost per run, the three arms (0022) and the full and masked availability conditions (0023).
   The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness.
 - **SQLite predictions store**: case, evidence-hash, timestamp, answer, cost per row; docket
-  document lists with first-seen timestamps; resolution outcomes.
+  document lists with first-seen timestamps; resolution outcomes. **The store's first tables
+  are built in S2.5**: `store/` (`db.py`, `schema.py` with numbered migrations, `models.py`,
+  `sync.py` for a local or `s3://` location) is the only code that touches SQLite, and holds
+  what the recorder observes, never a synthesis or verdict field. The predictions tables come
+  in S3 and S4.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
-  predictions (design notes suggest committing hashed rows to git for tamper-evidence).
+  predictions (design notes suggest committing hashed rows to git for tamper-evidence). **The
+  polling half is built in S2.5**: the recorder (`recorder/window.py`, `recorder/cases.py`,
+  `recorder/dockets.py`, `recorder/run.py`; the command `ntsb-record run` in
+  `apps/recorder/`) polls every watched open case and its docket listing each night at 03:00
+  UTC, as one scheduled AWS Fargate task defined in `infra/` (`NtsbRecorderStack`), with the
+  store in S3. The resolution watcher and prediction locking come in S4.
 - **Tests and CI**: the layered leakage guard's tests, including a mutation test that proves
   the boundary test can fail (0016); docket parser fixtures; a check that held-out cases never
   appear in development fixtures, judged by event date; a redaction check on fixtures (0015);
@@ -53,8 +64,9 @@ takes a part of), and the current stage's specification (S0, closed:
   retrieval-contamination test if similar-case search is ever added.
 - **Data ingestion as a job** (not `fetch.py <start> <end>`): S0 fetches by event month into a
   hashed manifest and rebuilds one processed file of index columns plus the raw record (0014);
-  incremental updates by modification date and status arrive with the recorder in S2.5. Raw
-  data kept out of git.
+  the S2.5 recorder re-fetches the event months of every watched case nightly, with the
+  change feed stored beside them for comparison, not used as the source (0065). Raw data kept
+  out of git.
 - **Live board**: the public surface — a page for open cases and a trajectory view of the
   agent's steps and costs, in the clinical tone the design notes require.
 
@@ -105,11 +117,15 @@ takes a part of), and the current stage's specification (S0, closed:
     in `docs/plans/`, not the superpowers default. Tick plan tasks in the same commit as their
     code and log deviations in the plan. The pull request that finishes a stage runs the
     `close-stage` skill; `scripts/check_docs.py` fails CI if the close-out is missing.
-11. **Squash merges; each closed stage is a tagged release** (0018). Pull requests are
-    squash-merged only, titled `<stage>: <name>`. The close-out sets `version` in
+11. **A pull request that closes a stage is merged with a merge commit, never squashed or
+    rebased** (0018, amended by 0033); each closed stage is a tagged release. Squash merges
+    stay the default for incidental pull requests that produce no measurements (documentation
+    fixes, tooling, dependency bumps); rebase merging stays disabled entirely. A stage-closing
+    pull request is titled `<stage>: <name>`. The close-out sets `version` in
     `pyproject.toml`; after the merge Andy runs `gh release create --generate-notes`. There is
     no `CHANGELOG.md`. From S1, every evaluation run and prediction row records the commit SHA
-    and whether the tree had uncommitted changes.
+    and whether the tree had uncommitted changes -- 0033 is why: a squashed stage merge would
+    have left that recorded SHA unreachable from `main`'s history.
 
 ## What to carry over from the spike
 
@@ -250,6 +266,14 @@ make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; comm
                       #   ledger row before s24-bars-b
 make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after
                       #   s24-bars-ceiling's row is committed
+make ongoing-probe      # uv run python -m scripts.ongoing_docket_probe — fixes the recorder's
+                         #   no-docket outcome, numbers only (S2.5 §10.1)
+make record             # uv run ntsb-record run — one nightly pass (S2.5, Task 10); --verbose
+                         #   and --dry-run also accepted
+make change-feed-probe  # uv run python -m scripts.change_feed_probe — the change feed's shape,
+                         #   one-shot (S2.5 §5.3, 0065)
+make recorder-report    # uv run python -m scripts.recorder_report — the recorder's counts-only
+                         #   report, from NTSB_STORE (S2.5 §10.2)
 ```
 
 `ntsb-eval` is the evaluation harness (S1 spec §6.5; arm `B` and `release` added in S2):
@@ -280,3 +304,9 @@ cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; default
 committed) and `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
 production). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
+
+The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
+store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`
+URL; `store/sync.py` pulls and pushes it around an S3 working file under `NTSB_DATA_DIR`) and
+`NTSB_COMMIT_SHA` (set only inside the container image, which has no `.git`; everywhere else
+this stays unset and `git` itself supplies the commit).

@@ -248,6 +248,8 @@ cdk bootstrap aws://<PROJECT_ACCOUNT_ID>/eu-west-2 --profile ntsb
 Run this once, when there is a first stack to deploy (build stage S5). Listed here so the
 sequence is complete.
 
+**Stage 5 (recorder stack): deployed 2026-09-23 (`docs/runbooks/recorder-deploy.md`).**
+
 ---
 
 ## Stage 6 — Deferred items

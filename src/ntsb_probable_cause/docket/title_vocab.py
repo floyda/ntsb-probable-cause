@@ -17,8 +17,8 @@ as ``Of`` or ``By`` does not either.
 ``load_title_vocabulary`` reads the committed ``vocab/title_words.txt``: every capitalised word
 ``scripts/build_title_vocab.py`` found in five or more distinct cached dockets, sorted. That
 script's own docstring says how and when to regenerate it. ``known_title_words`` adds the
-system dictionary at ``SYSTEM_DICTIONARY_PATH`` on top, when this machine has one.
-``is_ordinary_word`` is the membership test itself. A title's capitalised word that fails it
+vendored dictionary (decision 0070) on top. ``is_ordinary_word`` is the membership test itself.
+A title's capitalised word that fails it
 is what ``check_fixtures_redacted.title_looks_like_a_name`` flags, and what ``redact_title``
 replaces -- the hand-check sheet (``scripts/make_docket_fixture.py``'s ``handcheck``
 subcommand) cannot be committed with the flagged word left in place, since several of the
@@ -45,10 +45,9 @@ from pathlib import Path
 #: strict Title Case. See the module docstring for why ALL-CAPS acronyms are excluded.
 CAPITALISED_WORD = re.compile(r"[A-Z][a-z]{2,}")
 
-#: The system word list this check falls back to when a title's word is not in the committed
-#: vocabulary. Not every machine has one -- ``known_title_words`` reports that, it never
-#: silently treats a missing dictionary as "nothing to check against".
-SYSTEM_DICTIONARY_PATH = Path("/usr/share/dict/words")
+#: The vendored word list, committed to the repository (decision 0070). Removes the need
+#: for CI to install a system dictionary.
+VENDORED_DICTIONARY_PATH = Path("tests/fixtures/words.txt")
 
 #: The minimum number of distinct dockets a word must appear in to be "ordinary NTSB title
 #: vocabulary" rather than a proper noun specific to one case (scripts/build_title_vocab.py).
@@ -123,7 +122,7 @@ def _system_dictionary(path: Path) -> frozenset[str] | None:
 
 
 def known_title_words(
-    dictionary_path: Path = SYSTEM_DICTIONARY_PATH,
+    dictionary_path: Path = VENDORED_DICTIONARY_PATH,
 ) -> tuple[frozenset[str], bool]:
     """The committed vocabulary, plus the system dictionary if this machine has one.
 

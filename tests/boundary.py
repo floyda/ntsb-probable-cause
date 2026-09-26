@@ -1,7 +1,13 @@
 """The boundary check: inspect what actually reached the (fake) model, not what was intended."""
 
-from collections.abc import Callable, Mapping, Sequence
+import copy
+import gzip
+import json
+import re
+import sqlite3
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.fields import EvidenceValue
@@ -26,6 +32,450 @@ from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.sources import docket_url
 
 Splitter = Callable[[Mapping[str, object]], tuple[Evidence, Synthesis, Verdict]]
+
+# Every occurrence code in the fixtures is 6 digits and every finding code 10 (checked against
+# every development-split fixture; see the Task 7 report). A short numeric code -- the brief's
+# own example is "240" -- is not distinctive: it can appear by chance in a binary SQLite file's
+# row ids, byte counts or other encoded integers, which would make a check built on it flaky or
+# vacuous. Six digits, all-numeric, checked as an exact substring of raw bytes, is long enough
+# that an accidental match against unrelated binary data is not a real risk, and it is also the
+# shortest code this project actually has, so the threshold excludes nothing real.
+CODE_LENGTH_THRESHOLD = 6
+
+# Comfortably under an SQLite page's ~4KB usable payload. A withheld string that clears about
+# 4KB (a long factual narrative does) spans more than one page once it is stored, and the
+# pages are not contiguous in the file, so the whole string stops being one contiguous byte
+# run -- a store boundary check built on the whole string alone would then miss it (Task 7 fix
+# round 1, Important 1). WINDOW_CHARS caps how long a single window is ever allowed to be, so
+# a window that does land inside one page (the common case) is small next to that page's
+# capacity.
+WINDOW_CHARS = 200
+# The minimum length _windows aims for once a text is long enough to subdivide at all (the
+# per-window length is never allowed to go below this). It is NOT the shortest string this
+# module can ever emit as a window: a text no longer than this value in the first place is
+# returned whole, as a single window, however short that actually is (see _windows's own
+# docstring). 50 is long enough that a match at this length cannot plausibly be chance
+# (fix round 2: raised from the guard's 20-character minimum sentence length, which was tuned
+# for a different purpose -- distinguishing real sentence quotation from coincidence in free
+# text -- not for this check's "could this string exist in unrelated binary data by accident"
+# question).
+_MIN_WINDOW_CHARS = 50
+# Windows overlap by at least half their own length (stride = window length // 2). Fix round 2,
+# finding 1a: round 1's windows did not overlap at all, so a withheld string no longer than one
+# window (up to 219 characters) produced exactly ONE window equal to the whole string, and a
+# single SQLite page split landing anywhere inside it defeated the check completely: the
+# reviewer's sweep found 155 of 4200 page alignments (3.7%) undetected.
+#
+# Overlap narrows that gap; it does not close it. Fix round 3 correction of an earlier, false
+# "always" claim here: the reviewer ran the real window arithmetic over every length from 1 to
+# 5000 and every split position within each length. The true, measured bound is full
+# protection -- some window survives any single split -- from 99 characters onward (twice
+# _MIN_WINDOW_CHARS, minus one; see test_windows_gap_below_99_characters_is_the_measured_size
+# for both numbers, pinned). Below 99, texts of 51-98 characters have split positions where
+# every generated window straddles the cut -- this includes the three-window case at 76-98
+# characters, not only the two-window case just above the floor. Measured counts (unprotected
+# split positions / total possible positions): 52 chars -> 47/51, 60 -> 39/59, 75 -> 24/74,
+# 83 -> 16/82, 98 -> 1/97. A text of 50 characters or fewer is one window (_MIN_WINDOW_CHARS)
+# and is unprotected at any split. Exposure per leak event is roughly (unprotected positions)
+# / ~4092 usable bytes per SQLite page: about 1.1% for a 52-character text, 0% from 99
+# characters up. Two of the nine development-fixture probable causes (52 and 83 characters)
+# fall in this 51-98 gap. It is structural, not closable within this scheme: two windows of at
+# least _MIN_WINDOW_CHARS characters, spaced usefully apart, do not fit inside a text shorter
+# than about twice that length. Verified empirically in
+# test_boundary_windows_survive_every_page_alignment (a real-store sweep, using a cause long
+# enough to sit above the 99-character line) and
+# test_windows_gap_below_99_characters_is_the_measured_size (pure arithmetic, below it); the
+# real-store sweep for the 52-character cause specifically misses 47 of 4200 alignments,
+# consistent with the arithmetic count above (see the Task 7 report).
+_STRIDE_DIVISOR = 2
+
+
+def _json_escaped(text: str) -> str:
+    """``text`` as it reads inside a JSON string: backslash escapes, no surrounding quotes.
+
+    ``field_snapshots.value_json`` is written with ``json.dumps``, which rewrites ``"``,
+    ``\\n`` and every non-ASCII character -- so a leak stored there does not read like the
+    source text any more, and a check that only looks for the raw form misses it.
+    """
+    return json.dumps(text)[1:-1]
+
+
+def _window_spans(
+    length: int, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS
+) -> list[tuple[int, int]]:
+    """The ``(start, end)`` index pairs ``_windows`` tiles a text of this ``length`` with.
+
+    Split out from ``_windows`` so the window geometry can be checked with pure arithmetic (no
+    string content, no store) -- see
+    ``test_windows_gap_below_99_characters_is_the_measured_size``.
+    """
+    if length <= min_size:
+        return [(0, length)]
+    window = min(size, max(min_size, length // 2))
+    stride = max(1, window // _STRIDE_DIVISOR)
+    spans: list[tuple[int, int]] = []
+    start = 0
+    while True:
+        if start + window >= length:
+            spans.append((length - window, length))
+            break
+        spans.append((start, start + window))
+        start += stride
+    return spans
+
+
+def _windows(text: str, size: int = WINDOW_CHARS, min_size: int = _MIN_WINDOW_CHARS) -> list[str]:
+    """Overlapping windows tiling ``text``, each at least ``min_size`` characters.
+
+    A text of ``min_size`` characters or fewer (50 by default) is returned whole, as a single
+    window, however short that actually is: there is no room for even one full-length window
+    inside it, so it keeps whatever single-window risk that implies (kept as ``<=``, not `<`,
+    deliberately -- at exactly ``min_size`` characters the two branches produce the identical
+    single window either way, so the choice is prose-only, not behavioural). Otherwise the
+    per-window length is capped at both ``size`` (well under an SQLite page) and half of
+    ``text``'s own length, so a text shorter than one full-size window still gets at least two
+    genuinely overlapping windows rather than the single whole-string window round 1 produced
+    for anything under 219 characters. Consecutive windows are spaced by half a window's length
+    (``_STRIDE_DIVISOR``), and the final window is snapped to end exactly at the text's own
+    end, so the whole text is covered.
+
+    Texts from 51 to 98 characters (inclusive) are not fully protected: a split can land where
+    every generated window straddles it, and this includes the three-window case at 76-98
+    characters, not only the two-window case just above the floor. Full protection -- some
+    window survives any single split -- only starts at 99 characters. See
+    ``_STRIDE_DIVISOR``'s comment for the measured counts and the exposure this implies, and
+    ``test_windows_gap_below_99_characters_is_the_measured_size`` for the pinned bound. This is
+    accepted, not hidden, and is a smaller gap than round 1 left (which covered every text
+    under 219 characters): two windows of at least ``min_size`` characters, spaced usefully
+    apart, do not fit inside a text shorter than about twice ``min_size``, so it cannot be
+    closed within this scheme without lowering the floor itself.
+    """
+    return [text[start:end] for start, end in _window_spans(len(text), size, min_size)]
+
+
+def withheld_windows(raw: Mapping[str, object]) -> list[str]:
+    """Every substring the RAW-BYTES store boundary check should search for.
+
+    The probable cause and both narratives, each in both raw and JSON-escaped form and cut
+    into overlapping windows well under an SQLite page (see ``_windows``, ``_json_escaped``),
+    plus every occurrence and finding code long enough to be distinctive
+    (``CODE_LENGTH_THRESHOLD``) -- codes are short, all-numeric and unaffected by JSON
+    escaping, so they are checked whole, not windowed.
+
+    This is the check built on the file's raw bytes (``assert_raw_bytes_clean``); it is not the
+    whole store boundary test any more. This follow-up adds a second, logical check
+    (``assert_logical_store_clean``) that reads every value back through SQLite instead of
+    scanning bytes, and has no page-split problem and no length floor at all -- together the
+    two checks leave no residual for any withheld string or code that is present in a live row.
+    The residual described below is real, but it belongs to THIS check alone.
+
+    That "no residual" claim depends on the logical check comparing a code against ``INTEGER``
+    and ``REAL`` column values numerically, not only against text
+    (``store_numeric_values``/``_code_present``, fix round 1 of the logical-check follow-up):
+    SQLite type affinity can turn a numeric-looking insert into an actual integer, dropping a
+    leading zero in the process, and several columns are declared ``INTEGER`` regardless
+    (``mkey``, ``doc_id``, ``pages``, ``photos``, every run id). Before that fix a code stored
+    that way was invisible to BOTH checks, not only this one, and the claim above was false.
+
+    Codes are a real, accepted gap this function does NOT close: a 6-to-10-character code that
+    happens to be split across a page boundary is not detected, because a code is too short to
+    subdivide into windows at all without falling below any length that could not also match
+    unrelated binary data by chance (``CODE_LENGTH_THRESHOLD`` already sits at that floor).
+    Likewise a text of 98 characters or fewer is not fully protected (see ``_windows``'s
+    docstring for the measured gap). Both are covered by the logical check instead, for
+    anything still present in a live row; this raw-bytes check is kept regardless, because
+    spec §11 asks for the file read as bytes, and bytes also cover data a SQL query cannot
+    return at all -- a deleted or superseded row's old bytes still physically present in the
+    file, or anything outside the tables the logical check reads (see
+    ``assert_logical_store_clean``'s docstring).
+
+    Empty/``None`` values are omitted.
+    """
+    texts = [
+        text
+        for text in (
+            fields.probable_cause(raw),
+            fields.factual_narrative(raw),
+            fields.analysis_narrative(raw),
+        )
+        if text
+    ]
+    codes = [
+        code
+        for code in fields.occurrence_codes(raw) + fields.finding_codes(raw)
+        if len(code) >= CODE_LENGTH_THRESHOLD
+    ]
+    windows: list[str] = list(codes)
+    for text in texts:
+        windows.extend(_windows(text))
+        windows.extend(_windows(_json_escaped(text)))
+    return windows
+
+
+def assert_raw_bytes_clean(blob: bytes, raw: Mapping[str, object]) -> None:
+    """No windowed withheld string (see ``withheld_windows``) is a contiguous run in ``blob``.
+
+    Unchanged in behaviour from fix round 3 -- this is the existing check, pulled out into a
+    named function only so the raw-bytes and logical checks can be run, and independently
+    tested, side by side (the logical-check follow-up, spec §11).
+    """
+    windows = withheld_windows(raw)
+    assert windows, "nothing to check: this call would be vacuous"
+    for window in windows:
+        assert window.encode() not in blob, "withheld string in store (raw bytes)"
+
+
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _gunzip_if_gzip(data: bytes) -> bytes:
+    """``data`` gunzipped if it starts with the gzip magic number; otherwise ``data`` as-is.
+
+    ``listing_pages.gz`` is always gzip-compressed (Task 8, decision 0063), but this checks
+    the magic number rather than the column name, so any future BLOB column that happens to
+    hold gzip data is unpacked the same way without hard-coding which column to expect it in.
+    """
+    if data[:2] == _GZIP_MAGIC:
+        return gzip.decompress(data)
+    return data
+
+
+def _decode_stored_value(value: object) -> str | None:
+    """One SQLite column value, as text.
+
+    ``str`` is returned as-is; ``bytes`` is gunzipped if it is gzip data, then decoded as
+    UTF-8 with ``errors="replace"`` (a store value is never guaranteed to be valid UTF-8 --
+    ``documents.title`` and ``prelim_narratives.text`` in particular pass through whatever the
+    NTSB site or API sent). Anything else (``None``, ``int``, ``float``) is not text and is not
+    something a withheld string could equal, so it yields nothing to search.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return _gunzip_if_gzip(value).decode("utf-8", errors="replace")
+    return None
+
+
+def _iter_raw_values(db_path: Path) -> Iterator[object]:
+    """Every raw column value SQLite hands back for every row and column of a CLOSED store.
+
+    Opens ``db_path`` read-only (a plain URI connection, ``mode=ro``). The caller must have
+    already called ``Store.close()``, which checkpoints the write-ahead log into the main
+    file, so this sees everything -- ``store_values``/``store_numeric_values`` are only
+    correct read AFTER ``assert_raw_bytes_clean`` has read the same store's bytes, not before
+    (see those functions' docstrings for why the ordering itself matters, separately from
+    ``close()``). Tables are read from ``sqlite_master``, never a hard-coded list, so a table
+    this module does not know about (added by a later stage) is covered automatically;
+    SQLite's own internal ``sqlite_%`` tables are skipped, since they are not this project's
+    data. Table names are read from ``sqlite_master`` (never external input) and quoted in the
+    query, so a table name that happens to collide with a SQL keyword still works.
+    """
+    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        tables = [
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
+        for table in tables:
+            # `table` is read from sqlite_master itself, never external input, and sqlite3 has
+            # no placeholder syntax for identifiers -- there is nothing to parameterise here.
+            for row in connection.execute(f'SELECT * FROM "{table}"'):  # noqa: S608
+                yield from row
+    finally:
+        connection.close()
+
+
+def store_values(db_path: Path) -> list[str]:
+    """Every string value SQLite would hand back for every row and column of a CLOSED store.
+
+    Reassembles each value from SQLite's storage (including any overflow pages) before
+    returning it -- see ``assert_logical_store_clean`` for why that matters. Only ``str`` and
+    ``bytes`` values become text here; an ``int`` or ``float`` column value is not text and
+    cannot be found by a string search at all -- see ``store_numeric_values`` for those.
+
+    Call this only AFTER any raw-bytes check on the same store has already read the file's
+    bytes (``assert_raw_bytes_clean``/``_read_store_bytes``). Opening a read-only connection
+    against a WAL-mode database creates an empty ``-wal`` and a small ``-shm`` file beside the
+    store if they do not already exist; harmless to the data (the main file was already fully
+    checkpointed by ``Store.close()``), but a raw-bytes check run afterwards would be reading a
+    directory with two new files in it that were not there when the store was written, which is
+    avoidable by simply checking bytes first. (``immutable=1`` was considered instead of
+    ``mode=ro`` to suppress the ``-wal``/``-shm`` creation entirely, and rejected: it tells
+    SQLite the file will never change and lets it skip checking for a WAL at all, so a caller
+    who forgot to call ``close()`` -- leaving real, uncommitted data sitting in an actual
+    ``-wal`` file -- would have that data silently ignored instead of read or erroring.)
+    """
+    return [text for value in _iter_raw_values(db_path) if (text := _decode_stored_value(value))]
+
+
+def store_numeric_values(db_path: Path) -> list[int | float]:
+    """Every ``INTEGER`` or ``REAL`` column value read back from a CLOSED store.
+
+    SQLite's type affinity can silently turn a numeric-looking value inserted into an
+    ``INTEGER`` column into an integer -- rewriting the text "550402" to the integer 550402,
+    or "0204151044" to 204151044, dropping the leading zero -- and several columns are
+    declared ``INTEGER`` from the start regardless (``mkey``, ``doc_id``, ``pages``,
+    ``photos``, every run id). ``store_values`` only collects ``str``/``bytes`` values, so a
+    code that ends up stored as a number -- by type affinity, or by any future column that
+    simply holds one numerically -- would be invisible to a text search entirely. This
+    collects the numeric side so ``assert_logical_text_clean`` can compare a code against it
+    with ``==``, not by turning either side into a string.
+    """
+    return [
+        value
+        for value in _iter_raw_values(db_path)
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    ]
+
+
+_CODE_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _code_pattern(code: str) -> re.Pattern[str]:
+    """A code must match as a whole token in a logical read, not as a substring of a number.
+
+    Codes are pure digit strings (see ``CODE_LENGTH_THRESHOLD``'s comment). ``\\b`` marks a
+    transition between a "word" character (digits count as word characters) and a non-word
+    one, and never occurs between two digits -- so ``\\bcode\\b`` cannot match the "552090"
+    inside the longer digit run "12552090345" (there is no boundary there), while it still
+    matches "552090" wherever it genuinely stands alone: surrounded by JSON punctuation, a
+    comma, a quote mark, or the very start or end of the text.
+    """
+    pattern = _CODE_PATTERN_CACHE.get(code)
+    if pattern is None:
+        pattern = re.compile(rf"\b{re.escape(code)}\b")
+        _CODE_PATTERN_CACHE[code] = pattern
+    return pattern
+
+
+def withheld_texts_and_codes(raw: Mapping[str, object]) -> tuple[list[tuple[str, str]], list[str]]:
+    """Every whole withheld string (with its JSON-escaped form) and every code, unwindowed.
+
+    For the logical check only (``assert_logical_store_clean``): a value read back through
+    SQLite is reassembled from any overflow pages before it is returned, so there is no
+    page-split problem to guard against here the way there is for the raw-bytes check's
+    ``withheld_windows`` -- every string can be searched for whole, with no length threshold
+    and no windowing at all. Codes need no escaped form of their own: they are pure digits,
+    which ``json.dumps`` never rewrites, so the escaped and raw forms are identical.
+
+    Text needles are returned labelled, ``(kind, text)``, so a failing assertion can name
+    which withheld field actually leaked (fix round 1 of the logical-check follow-up, Minor 3)
+    instead of a message that is identical whichever needle happened to fire.
+    """
+    labelled: list[tuple[str, str]] = []
+    for kind, text in (
+        ("probable cause", fields.probable_cause(raw)),
+        ("factual narrative", fields.factual_narrative(raw)),
+        ("analysis narrative", fields.analysis_narrative(raw)),
+    ):
+        if text:
+            labelled.append((kind, text))
+            labelled.append((f"{kind} (escaped)", _json_escaped(text)))
+    codes = [code for code in fields.occurrence_codes(raw) + fields.finding_codes(raw) if code]
+    return labelled, codes
+
+
+def _code_present(code: str, logical_text: str, numeric_values: Sequence[int | float]) -> bool:
+    """Whether ``code`` is present, logically, as text or as a numeric column value.
+
+    A code appearing inside a JSON string (``field_snapshots.value_json``, for instance) is
+    found by ``_code_pattern`` against the joined text. A code SQLite has stored as an
+    ``INTEGER`` or ``REAL`` -- by type affinity coercing a numeric-looking insert, or a future
+    column that simply holds one numerically -- is not text at all and would never match a
+    string search; it is compared with ``==`` instead, against the numeric reading of the code
+    itself (``int(code)`` for an ``int`` value, ``float(code)`` for a ``float`` one), never by
+    turning the stored number back into a string. A stringify-and-regex approach was rejected
+    for two reasons found while fixing this: it would still miss a leading-zero finding code
+    (SQLite's own affinity already dropped the zero from the stored integer, so there is
+    nothing left to `str()` that still has it), and comparing mkeys, doc ids, run ids or page
+    counts against a *stringified* code by substring or regex risks a coincidental digit-run
+    collision with an unrelated column that a direct numeric ``==`` does not.
+    """
+    if _code_pattern(code).search(logical_text) is not None:
+        return True
+    return any(
+        (isinstance(value, int) and value == int(code))
+        or (isinstance(value, float) and value == float(code))
+        for value in numeric_values
+    )
+
+
+def assert_logical_text_clean(
+    logical_text: str, numeric_values: Sequence[int | float], raw: Mapping[str, object]
+) -> None:
+    """No withheld text or code is present, whole, in ``logical_text`` or ``numeric_values``.
+
+    ``logical_text`` is every ``store_values`` string, joined; ``numeric_values`` is every
+    ``store_numeric_values`` reading (see ``withheld_texts_and_codes``, ``_code_present``).
+    Split from ``assert_logical_store_clean`` so a caller checking many records against one
+    store (the fixture sweep) can build both once rather than reopening the store per record.
+    """
+    labelled_texts, codes = withheld_texts_and_codes(raw)
+    assert labelled_texts or codes, "nothing to check: this call would be vacuous"
+    for kind, needle in labelled_texts:
+        assert needle not in logical_text, f"withheld string in store (logical read, {kind})"
+    for code in codes:
+        assert not _code_present(code, logical_text, numeric_values), (
+            "withheld string in store (logical read, code)"
+        )
+
+
+def assert_logical_store_clean(db_path: Path, raw: Mapping[str, object]) -> None:
+    """No withheld text or code is present, whole, anywhere SQLite reads back from ``db_path``.
+
+    ``db_path`` is a CLOSED store, read either as text (``store_values``) or as an
+    ``INTEGER``/``REAL`` column value (``store_numeric_values``; see ``_code_present``).
+    Complements ``assert_raw_bytes_clean``: together, the two leave no residual for a withheld
+    string or code present in a live row -- this check has no page-split problem (SQLite
+    reassembles a value's overflow pages before returning it), no length floor, and no blind
+    spot for a code SQLite happens to store numerically. It also sees inside gzip-compressed
+    BLOB columns such as ``listing_pages.gz``, which the raw-bytes check cannot read at all.
+
+    The raw-bytes check is kept anyway: spec §11 asks for the file read as bytes, and bytes
+    also cover data a SQL query cannot return -- a deleted or superseded row's old bytes,
+    still physically present in the file until SQLite reuses that page, and anything outside
+    a live row entirely.
+    """
+    assert_logical_text_clean("\n".join(store_values(db_path)), store_numeric_values(db_path), raw)
+
+
+# fields.WITHHELD_SUBTREES's narrative keys (fields.py:62-69), less the docket roles, which do
+# not exist on a raw API record at all (fields.py:244-249) and so need no stripping.
+_WITHHELD_NARRATIVE_KEYS = ("concatenatedFactualNarrative", "analysisNarrative", "probableCause")
+
+
+def as_ongoing(raw: Mapping[str, object], *, prelim_text: str) -> dict[str, object]:
+    """A deep copy of a closed dev-split record, edited to read like a live one.
+
+    ``completionStatus`` becomes ``Ongoing`` and every ``fields.WITHHELD_SUBTREES`` path is
+    stripped, so the record carries no synthesis or verdict content -- the shape a case
+    actually has while it is open. ``prelim_text`` becomes the preliminary narrative: none of
+    the development fixtures' closed records still carry one (the API clears it at closure).
+    """
+    record = copy.deepcopy(dict(raw))
+    record["completionStatus"] = "Ongoing"
+
+    narratives = record.get("narratives")
+    assert isinstance(narratives, list)
+    assert narratives
+    narrative = narratives[0]
+    assert isinstance(narrative, dict)
+    for key in _WITHHELD_NARRATIVE_KEYS:
+        narrative.pop(key, None)
+    narrative["prelimNarrative"] = prelim_text
+
+    aircrafts = record.get("aircrafts")
+    assert isinstance(aircrafts, list)
+    assert aircrafts
+    for aircraft in aircrafts:
+        assert isinstance(aircraft, dict)
+        aircraft.pop("events", None)
+        aircraft.pop("findings", None)
+
+    record.pop("richNarratives", None)
+    return record
 
 
 def _as_evidence_value(value: object) -> EvidenceValue:

@@ -12,7 +12,20 @@ class ConfigurationError(NtsbError):
 
 
 class ApiError(NtsbError):
-    """The NTSB API returned an unusable response after retries."""
+    """The NTSB API returned an unusable response after retries.
+
+    ``status`` is the HTTP status code that caused the failure (an ``int``), or the class name
+    of a transport exception that exhausted every retry (a ``str``, e.g. ``"ConnectError"``),
+    or ``None`` for a failure with no status to report at all (a malformed body, a missing
+    pagination marker). It exists so a caller can log *what kind* of failure this was --
+    ``401``/``403`` (an expired or revoked key) reads very differently from a transport outage
+    -- without logging ``message``, which can embed up to 200 characters of the response body
+    (Task 9 fix round 1, Important 2).
+    """
+
+    def __init__(self, message: str, *, status: int | str | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class ManifestError(NtsbError):

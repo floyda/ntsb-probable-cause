@@ -528,7 +528,10 @@ reason. Specification: `docs/specs/2026-09-23-s24-model-switch-design.md`.
 *Done means:* the conditions in the specification's §11; or, if the gate fails, the result
 recorded in 0073 and held-out untouched.
 
-### S2.5. The recorder
+### S2.5. The recorder — done
+
+As built: see the stage specification's
+[As-built section](2026-09-22-s25-recorder-design.md#as-built).
 
 Poll open investigations, diff each docket's document listing against the last
 observation, and stamp the time when a document first appears. The first tables in the
