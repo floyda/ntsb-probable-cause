@@ -1,3 +1,4 @@
+import inspect
 import json
 
 import pytest
@@ -124,3 +125,9 @@ def test_an_evidence_payload_has_no_images_unless_given(
 ) -> None:
     evidence, _, _ = split_record(record_fixtures[0])
     assert Payload.from_evidence(evidence).images == ()
+
+
+def test_the_agent_payload_takes_no_images() -> None:
+    """S2.6 final review, I2: the tripwire cannot screen a picture, so the one payload
+    assembler takes evidence alone; images reach a model only through ``for_page``."""
+    assert list(inspect.signature(Payload.from_evidence).parameters) == ["evidence"]

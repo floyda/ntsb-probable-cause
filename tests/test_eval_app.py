@@ -55,6 +55,7 @@ from ntsb_probable_cause.scoring.records import (
     EvidenceVersion,
     RunRecord,
     StepRecord,
+    read_jsonl,
     write_jsonl,
 )
 from ntsb_probable_cause.scoring.runner import BatchRunner, RunSpec
@@ -691,20 +692,30 @@ def test_run_arm_b_then_report_end_to_end(
     assert case_id  # the fixture case id was used to build the sample
 
 
-def _write_judgeable_run(
+def _write_judgeable_run(  # noqa: PLR0913 -- a test-only builder, one keyword per varied field.
     runs_dir: Path,
     run_id: str,
     case_id: str,
     *,
     sample: str = "dev-400",
     arm: str = "ceiling",
+    evidence_version: EvidenceVersion = "v1",
 ) -> None:
     """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
     kwargs = {**_RUN_KWARGS, "sample": sample, "arm": arm}
     write_jsonl(
         runs_dir / run_id / "run.jsonl",
-        [RunRecord(**kwargs, run_id=run_id, started=now, finished=now, cost_usd=1.0)],
+        [
+            RunRecord(
+                **kwargs,
+                run_id=run_id,
+                started=now,
+                finished=now,
+                cost_usd=1.0,
+                evidence_version=evidence_version,
+            )
+        ],
     )
     hypothesis = parse_hypothesis(GOOD, load_tables())
     step = StepRecord(
@@ -789,6 +800,33 @@ def test_judge_on_a_heldout_run_appends_a_ledger_row(
     assert "| heldout-40 |" in ledger_text
     assert "judge.jsonl" in ledger_text  # the row names the judge pass's own results file
     assert "anthropic/claude-haiku-4.5" in ledger_text  # the judge model, not the run's model
+
+
+def test_judge_records_the_judged_run_s_own_evidence_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """S2.6 final review, I4: the judge pass's run record, and so its append-only held-out
+    ledger row, carry the judged run's evidence version, not the default v1."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ledger_path = tmp_path / "heldout-ledger.md"
+    monkeypatch.setenv("NTSB_HELDOUT_LEDGER_PATH", str(ledger_path))
+    monkeypatch.setattr(
+        "ntsb_probable_cause.scoring.ledger.commit_state", lambda *_a, **_k: ("abc1234", False)
+    )
+    run_id = "20260101T000000-abc1234-heldout-40-B"
+    _write_judgeable_run(
+        runs_dir, run_id, case_id, sample="heldout-40", arm="B", evidence_version="v2"
+    )
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([GOOD_LABELS]), None
+
+    assert main(["judge", run_id, "--validated"], client_factory=factory) == 0
+    answering, judge = read_jsonl(runs_dir / run_id / "run.jsonl", RunRecord)
+    assert answering.evidence_version == "v2"
+    assert judge.run_id == f"{run_id}-judge"
+    assert judge.evidence_version == "v2"
+    assert "| heldout-40 | B | v2 |" in ledger_path.read_text()
 
 
 def test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused(

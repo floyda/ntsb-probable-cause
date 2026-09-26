@@ -78,8 +78,10 @@ class RunSpec:
 
     sample: str
     arm: Literal["A", "B", "ceiling"]
-    # Decision 0076: the evidence version this run reads the docket at. Refused past "v1"
-    # until the reader that builds it exists (Task 14 for v2, Task 16 for v3).
+    # Decision 0076: the evidence version this run reads the docket at. v1 and v2 are built
+    # (v2 reads the finished transcriptions, Task 14); v3 is not (deferred by 0090) and is
+    # refused. Only arm B reads the docket, so a version past v1 on arm A or the ceiling is
+    # refused too (Andy, 2026-09-26).
     evidence_version: EvidenceVersion = "v1"
     exclusions: frozenset[EvidenceRole] = frozenset()
     include_case_number: bool = False
@@ -984,7 +986,17 @@ class Runner:
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
         if spec.evidence_version == "v3":
-            raise ConfigurationError("evidence version v3 is not built yet")  # Task 16
+            raise ConfigurationError(
+                "evidence version v3 is not built: decision 0090 deferred the pictures"
+            )
+        if spec.arm != "B" and spec.evidence_version != "v1":
+            # Andy's decision, 2026-09-26 (Task 14 review I1): arm A and the ceiling read no
+            # docket, so a run of either labelled v2 would record a version it never read,
+            # and `--latest` for v1 would then skip it. Refused before any reservation.
+            raise ConfigurationError(
+                f"arm {spec.arm} reads no docket, so evidence version "
+                f"{spec.evidence_version} would be a false label on its run: run it at v1"
+            )
         if spec.arm == "B" and self._docket is not None:
             wanted = "v1" if spec.evidence_version == "v1" else "v2"
             if self._docket.version != wanted:

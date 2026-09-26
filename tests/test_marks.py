@@ -3,6 +3,7 @@
 import copy
 
 import pytest
+from pydantic import ValidationError
 
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model.client import Payload
@@ -169,3 +170,9 @@ def test_a_probable_cause_sentence_beside_a_marked_analysis_sentence_still_refus
     narratives[0]["probableCause"] = TWO_SENTENCE_CAUSE
     with pytest.raises(LeakageError, match="sentence from probable_cause in docket_documents"):
         split_record(raw)
+
+
+def test_the_unbuilt_v3_mark_kind_is_refused() -> None:
+    """S2.6 final review, I2: ``unguarded_images`` belongs to v3's pictures, not built (0090)."""
+    with pytest.raises(ValidationError):
+        CaseMark.model_validate({"kind": "unguarded_images", "count": 1})

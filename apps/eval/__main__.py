@@ -678,6 +678,9 @@ def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fac
         run_id=f"{run_record.run_id}-judge",
         sample=run_record.sample,
         arm=run_record.arm,
+        # The judged run's own version (S2.6 final review, I4): the held-out ledger this row
+        # may be appended to is append-only, so a defaulted "v1" could never be corrected.
+        evidence_version=run_record.evidence_version,
         exclusions=run_record.exclusions,
         includes=run_record.includes,
         prompt_version=run_record.prompt_version,

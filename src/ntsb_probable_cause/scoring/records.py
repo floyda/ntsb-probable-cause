@@ -14,7 +14,8 @@ from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 
 # Decision 0076: what the docket holds once read. v1 = text layers (S2); v2 = + transcriptions
-# (S2.6); v3 = + pictures alongside the text (S2.6 probe). An axis, not an arm.
+# (S2.6); v3 = + pictures alongside the text (decision 0082) -- a name only: not built, deferred
+# by 0090, and refused by every run. An axis, not an arm.
 EvidenceVersion = Literal["v1", "v2", "v3"]
 
 

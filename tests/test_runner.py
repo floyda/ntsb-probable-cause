@@ -3447,7 +3447,7 @@ def test_spec_json_records_the_evidence_version_after_the_arm() -> None:
 def test_run_refuses_an_evidence_version_that_is_not_built_yet(
     tmp_path: Path, record_fixtures: list[dict[str, object]]
 ) -> None:
-    """Until Task 16, v3 has no reader; the refusal fires before any model call.
+    """v3 has no reader (deferred by decision 0090); the refusal fires before any model call.
 
     Task 14 built v2, so this test moved from v2 to v3, the version still unbuilt.
     """
@@ -3460,9 +3460,32 @@ def test_run_refuses_an_evidence_version_that_is_not_built_yet(
         price_variant="standard",
         expected_cost_per_case_usd=0.0,
     )
-    with pytest.raises(ConfigurationError, match="not built yet"):
+    with pytest.raises(ConfigurationError, match="v3 is not built"):
         runner(tmp_path, client).run(spec, record_fixtures[:1])
     assert client.payloads == []
+
+
+@pytest.mark.parametrize("arm", ["A", "ceiling"])
+def test_an_arm_that_reads_no_docket_refuses_a_version_past_v1(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], arm: Literal["A", "ceiling"]
+) -> None:
+    """Andy's decision, 2026-09-26 (Task 14 review I1): arm A and the ceiling read no docket,
+    so a v2 label on their run would be false. Refused before any folder or reservation."""
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm=arm,
+        evidence_version="v2",
+        sync=True,
+        price_variant="standard",
+        expected_cost_per_case_usd=0.001,
+    )
+    with pytest.raises(ConfigurationError, match="reads no docket") as refused:
+        runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert f"arm {arm}" in str(refused.value)
+    assert "false label" in str(refused.value)
+    assert client.payloads == []
+    assert not (tmp_path / "runs").exists()  # no run folder, so no reservation either
 
 
 # --- Task 14: evidence version v2, the reader's version, preparation cost per case ---
@@ -3561,7 +3584,7 @@ def test_v3_is_still_refused_for_arm_b(
 ) -> None:
     client = RecordingFakeClient([GOOD, REFINE])
     reader = FakeDocketReader(_transcribed_docket(), "v2")
-    with pytest.raises(ConfigurationError, match="not built yet"):
+    with pytest.raises(ConfigurationError, match="v3 is not built"):
         runner(tmp_path, client, docket=reader).run(_arm_b("v3"), record_fixtures[:1])
 
 

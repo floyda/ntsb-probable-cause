@@ -38,7 +38,8 @@ class PageImage(BaseModel):
 class Payload:
     """The exact text and images a model would receive.
 
-    Built only by Payload.from_evidence, or for one page's transcription by Payload.for_page.
+    Built only by Payload.from_evidence (evidence text, no images), or for one page's
+    transcription by Payload.for_page (one page image and, on a mixed page, its text layer).
     Immutable: ``__setattr__``/``__delattr__`` refuse any change after construction, and
     ``@final`` closes off subclassing, which would otherwise bypass the construction token.
     """
@@ -60,11 +61,13 @@ class Payload:
         raise AttributeError(f"Payload is immutable: cannot delete {name!r}")
 
     @classmethod
-    def from_evidence(cls, evidence: Evidence, *, images: Sequence[PageImage] = ()) -> Payload:
+    def from_evidence(cls, evidence: Evidence) -> Payload:
         """Render non-null, non-excluded evidence roles; never bookkeeping (guard layer 1).
 
-        ``images`` are the v3 probe's pictures (S2.6 §10), chosen by the runner from pages
-        whose transcription passed this same guard; empty otherwise.
+        Text only. The agent's payload carries no images: the leakage tripwire reads text and
+        cannot screen a picture, so page images reach a model only one at a time, for their
+        own transcription (``for_page``). Pictures for the agent (v3, decision 0082) are not
+        built; S2.6 deferred them (decision 0090) and they need their own guard first.
         """
         values = {
             role.value: list(value) if isinstance(value, tuple) else value
@@ -79,7 +82,6 @@ class Payload:
             )
         return cls(
             json.dumps(values, indent=1, sort_keys=True, ensure_ascii=False),
-            images=tuple(images),
             _token=_CONSTRUCTION_TOKEN,
         )
 
