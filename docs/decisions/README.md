@@ -131,3 +131,4 @@ under `docs/specs/` and the record links to it.
 | [0088](0088-s26-pauses-after-the-dev-comparison.md) | S2.6 pauses after the dev-400 comparison; the held-out step is decided then | Accepted; applies 0083 item 2; corrects 0087 item 2 |
 | [0089](0089-s26-closes-after-the-v3-probe-held-out-deferred.md) | S2.6 closes after the v3 probe on dev-400; its held-out runs are deferred | Accepted; takes 0088's held-out step |
 | [0090](0090-s26-closes-on-its-development-results.md) | S2.6 closes on its development results; the v3 probe and held-out runs are deferred | Accepted; supersedes 0089 item 1 |
+| [0091](0091-evidence-version-refused-on-arms-without-a-docket.md) | A run's evidence version must be true: v2 and v3 are refused on arms that read no docket | Accepted; amends S2.6 spec §3.1 and 0076 |
