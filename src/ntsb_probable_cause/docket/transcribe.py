@@ -441,14 +441,23 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
     chunk: int = 50,
     on_chunk: Callable[[Sequence[Transcription]], None] = lambda _records: None,
     retry_failed: bool = False,
+    stop: Callable[[Sequence[Transcription]], bool] = lambda _done: False,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> list[Transcription]:
     """Read every page not already cached, on a pool of threads with one client each.
 
     ``on_chunk`` is handed every ``chunk`` new readings, and the remainder at the end --
     including on an interruption or an unexpected exception (fix round 1, C2) -- so every
-    dollar spent stays visible to the budget guard, and never twice (M1) even if ``on_chunk``
-    itself raises. A page whose call succeeded but whose cache write then failed is still
+    dollar spent stays visible to the budget guard. Each reading is handed over once even if
+    ``on_chunk`` itself raises (M1); only an interruption landing inside ``take`` can hand one
+    over twice, which overstates the spend rather than hiding it (triage T11-R8).
+
+    ``stop`` (S2.6 final review, I1) is asked after every reading, with every reading so far:
+    once it answers true, no further page is started -- pages not yet started are cancelled,
+    pages already in flight finish and are reported like any other -- and the readings made
+    are returned. A page never started stays uncached, so a later call reads it.
+
+    A page whose call succeeded but whose cache write then failed is still
     reported, with that write error raised only after every page has had its chance to be
     reported (fix round 2, R1): paid means reported, even when the page could not be cached
     (it is simply read again next time, the same as any other cache miss). A page cached as
@@ -497,9 +506,9 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
         """Queue one future's record before marking it handled (fix round 2, R2).
 
         Queuing first means an interruption between the two can at worst cause the fold-in
-        below to see this future as still unhandled and process it again -- itself harmless,
-        since a future's result can be read more than once -- rather than lose the record
-        outright, which reordering the other way around could do.
+        below to see this future as still unhandled and process it again, reporting that one
+        reading twice -- an overstated spend, never a hidden one (triage T11-R8) -- rather than
+        lose the record outright, which reordering the other way around could do.
         """
         record, error = future.result()
         if error is not None:
@@ -514,6 +523,8 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
     try:
         for future in as_completed(futures):
             take(future)
+            if stop(done):
+                break  # the `finally` below cancels what has not started and reports the rest
             if len(unreported) >= chunk:
                 flush()
     finally:

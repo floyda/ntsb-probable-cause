@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 from tests.pdf_builder import PageSpec, build_pdf
 
-from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, PageJob, TranscriptionKey
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    PageJob,
+    TranscriptionCache,
+    TranscriptionKey,
+)
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.model.client import (
     ModelReply,
@@ -20,11 +25,12 @@ from ntsb_probable_cause.model.client import (
     Usage,
 )
 from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
-from ntsb_probable_cause.scoring.preparation import run_preparation
+from ntsb_probable_cause.scoring.preparation import PreparationStoppedError, run_preparation
 from ntsb_probable_cause.settings import Settings
 
 NOW = datetime(2026, 10, 2, tzinfo=UTC)
 DOC = build_pdf([PageSpec(text="Engine sputtered at 800 ft. Switched tanks.")] * 3)
+DOC6 = build_pdf([PageSpec(text="Engine sputtered at 800 ft. Switched tanks.")] * 6)
 
 
 def _jobs(model: str = "google/gemini-3.1-flash-lite") -> list[PageJob]:
@@ -115,7 +121,10 @@ def test_a_missing_key_leaves_no_reservation_and_makes_no_call(tmp_path: Path) -
 class _BoomClient:
     """Answers correctly for ``fail_after`` calls, then raises ``exc`` (M10)."""
 
-    def __init__(self, fail_after: int, exc: BaseException) -> None:
+    def __init__(
+        self, fail_after: int, exc: BaseException, *, calls: list[int] | None = None
+    ) -> None:
+        self._calls = calls if calls is not None else []
         self._inner = RecordingFakeClient(
             [json.dumps({"text": "words", "page_kind": "typed text"})],
             usage=[Usage(prompt_tokens=1000, completion_tokens=100)],
@@ -133,6 +142,7 @@ class _BoomClient:
         history: Sequence[Turn] = (),
     ) -> ModelReply:
         self._n += 1
+        self._calls.append(1)
         if self._n > self._fail_after:
             raise self._exc
         return self._inner.complete(payload, settings, system=system, history=history)
@@ -270,3 +280,127 @@ def test_one_job_one_model(tmp_path: Path) -> None:
             expected_cost_per_page_usd=0.01,
             client_factory=lambda s: lambda: _factory(s),
         )
+
+
+# --- S2.6 final review, I1: the spend is bounded in code ---
+
+
+def _many_jobs(n: int) -> list[PageJob]:
+    """``n`` distinct pages of one document of six pages (each page its own key)."""
+    return [
+        PageJob(
+            TranscriptionKey(
+                document_sha256="e" * 64,
+                page=page,
+                model="google/gemini-3.1-flash-lite",
+                instruction="t1",
+                dpi=150,
+            ),
+            lambda: DOC6,
+            mixed=False,
+        )
+        for page in range(1, n + 1)
+    ]
+
+
+@pytest.mark.parametrize("expected", [0.0, -0.01, float("nan")])
+def test_an_expected_cost_of_zero_or_less_is_refused_before_anything(
+    tmp_path: Path, expected: float
+) -> None:
+    """A $0 estimate would reserve nothing and so bound nothing."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+
+    def factory(_stack: ExitStack) -> Callable[[], RecordingFakeClient]:
+        raise AssertionError("no client is built for a refused job")
+
+    with pytest.raises(ConfigurationError, match="above zero"):
+        run_preparation(
+            kind="transcription",
+            jobs=_jobs(),
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=expected,
+            client_factory=factory,
+            now=lambda: NOW,
+        )
+    assert not settings.runs_dir.exists() or not any(settings.runs_dir.iterdir())
+
+
+def test_a_job_stops_once_its_reservation_is_spent_and_reports_every_paid_page(
+    tmp_path: Path,
+) -> None:
+    """Each page really costs $0.0004; the job expected $0.0001 a page, so it reserved $0.0006
+    for six pages and must stop after the second page, not read all six."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    calls: list[int] = []
+
+    def factory(_stack: ExitStack) -> Callable[[], _BoomClient]:
+        def make() -> _BoomClient:
+            return _BoomClient(10**6, RuntimeError("never"), calls=calls)
+
+        return make
+
+    jobs = _many_jobs(6)
+    with pytest.raises(PreparationStoppedError) as stopped:
+        run_preparation(
+            kind="transcription",
+            jobs=jobs,
+            instruction=TRANSCRIBE,
+            settings=settings,
+            commit=("abc1234", False),
+            expected_cost_per_page_usd=0.0001,
+            workers=1,
+            client_factory=factory,
+            now=lambda: NOW,
+        )
+    error = stopped.value
+    assert isinstance(error, BudgetError)  # `ntsb-eval` exits non-zero on a BudgetError
+    read = error.read
+    # Two pages reach the reservation; at most one more was already in flight.
+    assert 2 <= len(read) <= 3
+    assert error.unread == 6 - len(read)
+    assert f"{error.unread} were left unread" in str(error)
+    # Every paid page is recorded exactly once, and nothing more was paid for.
+    assert len(calls) == len(read)
+    assert month_spent(settings.runs_dir, now=NOW) == pytest.approx(sum(r.cost_usd for r in read))
+    assert open_reservations(settings.runs_dir) == {}
+    # The pages never started stay unread, so a later job reads them.
+    cache = TranscriptionCache(settings.transcription_dir)
+    assert sum(1 for job in jobs if cache.get(job.key) is None) == error.unread
+
+    later = datetime(2026, 10, 2, 0, 0, 1, tzinfo=UTC)
+    done = run_preparation(
+        kind="transcription",
+        jobs=jobs,
+        instruction=TRANSCRIBE,
+        settings=settings,
+        commit=("abc1234", False),
+        expected_cost_per_page_usd=0.01,
+        workers=1,
+        client_factory=factory,
+        now=lambda: later,
+    )
+    assert len(done) == error.unread
+    assert all(cache.get(job.key) is not None for job in jobs)
+    assert all(r.status == "transcribed" for r in done)
+    assert month_spent(settings.runs_dir, now=later) == pytest.approx(6 * 0.0004)
+
+
+def test_a_job_that_spends_exactly_its_reservation_on_its_last_page_is_not_stopped(
+    tmp_path: Path,
+) -> None:
+    """Reaching the reservation with nothing left to read is a finished job, not a stop."""
+    settings = Settings(data_dir=tmp_path, monthly_budget_usd=40.0)
+    done = run_preparation(
+        kind="transcription",
+        jobs=_jobs(),
+        instruction=TRANSCRIBE,
+        settings=settings,
+        commit=("abc1234", False),
+        expected_cost_per_page_usd=0.0004,
+        workers=1,
+        client_factory=lambda stack: lambda: _factory(stack),
+        now=lambda: NOW,
+    )
+    assert len(done) == 3

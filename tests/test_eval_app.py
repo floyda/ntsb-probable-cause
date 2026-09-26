@@ -49,6 +49,7 @@ from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
+from ntsb_probable_cause.scoring.preparation import PreparationStoppedError
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
     EvidenceVersion,
@@ -1483,3 +1484,68 @@ def test_report_on_v2_prints_preparation_and_the_transcribed_cases_comparison(
 
     assert main(["report", "v1-run"]) == 0
     assert "evidence preparation" not in capsys.readouterr().out
+
+
+# --- S2.6 final review: I1 (spend bound) and I3 (held-out refused) on `transcribe` ---
+
+
+@pytest.mark.parametrize("value", ["0", "-0.01", "nan", "cheap"])
+def test_transcribe_refuses_an_expected_cost_of_zero_or_less(
+    value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        main(["transcribe", "--sample", "dev-400", "--expected-cost-per-page-usd", value])
+    assert exited.value.code == 2
+    assert "--expected-cost-per-page-usd" in capsys.readouterr().err
+
+
+def test_transcribe_refuses_a_held_out_sample_before_fetching_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+
+    def no_docket(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a refused sample fetches nothing")
+
+    monkeypatch.setattr("apps.eval.__main__.DocketClient", no_docket)
+    monkeypatch.setattr("apps.eval.__main__.samples.load_cases", no_docket)
+    exit_code = main(
+        ["transcribe", "--sample", "heldout-400", "--expected-cost-per-page-usd", "0.01"]
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "heldout-400" in err
+    assert "decision 0090" in err
+
+
+def test_transcribe_that_spends_its_reservation_stops_and_exits_non_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+
+    def stopping_preparation(*, jobs: Sequence[PageJob], **_kwargs: object) -> list[Transcription]:
+        cache = TranscriptionCache(transcriptions)
+        record = Transcription(
+            key=jobs[0].key,
+            status="transcribed",
+            text="words",
+            mixed=jobs[0].mixed,
+            cost_usd=0.03,
+            created=datetime(2026, 10, 1, tzinfo=UTC),
+        )
+        cache.put(record, instruction=TRANSCRIBE)
+        raise PreparationStoppedError(
+            "preparation job j stopped: 1 were left unread", read=[record], unread=1
+        )
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", stopping_preparation)
+    argv = ["transcribe", "--sample", "dev-400", "--expected-cost-per-page-usd", "0.01"]
+    assert main(argv) == 1
+    captured = capsys.readouterr()
+    assert "read 1 pages now ($0.03)" in captured.out
+    assert "1 were left unread" in captured.err
+    assert "marker is NOT written" in captured.err
+    assert not ReadingLookup(TranscriptionCache(transcriptions)).is_done("dev-400")

@@ -4,6 +4,8 @@ Transcription and the inventory are paid once per page and reused by every run (
 count against the monthly budget like any run: the job reserves its projection before its
 first call, appends a spend row as each chunk of pages returns, and settles the reservation
 when it ends -- also when it is interrupted, since the spend rows already say what it cost.
+It stops starting pages once it has spent its reservation (S2.6 final review, I1), so a low
+estimate cannot take the month past its budget.
 """
 
 import re
@@ -19,7 +21,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TranscriptionCache,
     transcribe_all,
 )
-from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.scoring.budget import (
@@ -31,6 +33,20 @@ from ntsb_probable_cause.scoring.budget import (
 from ntsb_probable_cause.settings import Settings
 
 Kind = Literal["inventory", "transcriber-test", "transcription"]
+
+
+class PreparationStoppedError(BudgetError):
+    """A preparation job spent its reservation with pages still unread (final review, I1).
+
+    Every page read was recorded and the job was settled before this is raised; ``read`` is
+    those pages' readings and ``unread`` how many distinct pages were never started.
+    """
+
+    def __init__(self, message: str, *, read: Sequence[Transcription], unread: int) -> None:
+        super().__init__(message)
+        self.read: tuple[Transcription, ...] = tuple(read)
+        self.unread = unread
+
 
 _NOT_SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -80,17 +96,39 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     client_factory: Callable[[ExitStack], Callable[[], ModelClient]] | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> list[Transcription]:
-    """Read the jobs' pages not yet cached, within the month's budget, recording the spend."""
+    """Read the jobs' pages not yet cached, within the month's budget, recording the spend.
+
+    The spend is bounded in code (S2.6 final review, I1): the expected cost per page must be
+    above zero, and once the pages read cost as much as the job reserved, no further page is
+    started. Every page read is still recorded; the job is settled; and ``PreparationStoppedError``
+    says how many pages were left unread. Those pages stay uncached, so running the same job
+    again -- with a higher expected cost if the estimate was low -- reads them.
+
+    Raises:
+        ConfigurationError: more than one model, an expected cost of zero or less, a job
+            folder already claimed, or no API key.
+        BudgetError: the reservation would take the month over its budget.
+        PreparationStoppedError: the reservation was spent with pages still unread.
+    """
+    if not expected_cost_per_page_usd > 0:
+        raise ConfigurationError(
+            f"the expected cost per page must be above zero, not {expected_cost_per_page_usd}: "
+            "it sets the job's reservation, and the job stops when the reservation is spent"
+        )
     models = {job.key.model for job in jobs}
     if len(models) > 1:
         raise ConfigurationError(f"one model per preparation job, not {sorted(models)}")
     model = next(iter(models), "")
     cache = TranscriptionCache(settings.transcription_dir)
-    pending = sum(
-        1
+    pending_jobs = [
+        job
         for job in jobs
         if (hit := cache.get(job.key)) is None or (retry_failed and hit.status == "failed")
-    )
+    ]
+    pending = len(pending_jobs)
+    # The pages actually paid for: a page listed twice (a shared document) is read once.
+    pending_pages = {job.key.digest() for job in pending_jobs}
+    reservation = pending * expected_cost_per_page_usd
     started = now()
     sha, dirty = commit
     # The model slug (fix round 1, I1) keeps two jobs of the same kind, started one after
@@ -120,10 +158,17 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
     reserve_within_budget(
         settings.runs_dir,
         job_id,
-        pending * expected_cost_per_page_usd,
+        reservation,
         settings.monthly_budget_usd,
         now=started,
     )
+    spent: list[float] = []
+
+    def reservation_spent(done: Sequence[Transcription]) -> bool:
+        # Every reading in `done` is reported through `on_chunk` before `transcribe_all`
+        # returns, so this is the spend the job's rows record.
+        spent[:] = [sum(r.cost_usd for r in done)]
+        return spent[0] >= reservation
 
     def on_chunk(records: Sequence[Transcription]) -> None:
         write_spend(
@@ -142,7 +187,7 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
 
     try:
         with ExitStack() as stack:
-            return transcribe_all(
+            done = transcribe_all(
                 jobs,
                 factory(stack),
                 cache,
@@ -150,7 +195,20 @@ def run_preparation(  # noqa: PLR0913 -- one keyword per fact the job records.
                 workers=workers,
                 on_chunk=on_chunk,
                 retry_failed=retry_failed,
+                stop=reservation_spent,
                 now=now,
             )
     finally:
         settle(settings.runs_dir, job_id)
+    unread = len(pending_pages - {r.key.digest() for r in done})
+    if unread and spent and spent[0] >= reservation:
+        raise PreparationStoppedError(
+            f"preparation job {job_id} stopped: its pages cost ${spent[0]:.4f}, which reached "
+            f"its reservation of ${reservation:.4f} ({pending} pages at "
+            f"${expected_cost_per_page_usd} a page). {len(done)} pages were read and recorded; "
+            f"{unread} were left unread and stay unread. Run the same command again to read "
+            "them, with a higher expected cost per page if the estimate was low.",
+            read=done,
+            unread=unread,
+        )
+    return done

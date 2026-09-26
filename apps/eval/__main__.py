@@ -41,7 +41,7 @@ from ntsb_probable_cause.scoring.judge import (
     judge_run,
     pick_disagreements,
 )
-from ntsb_probable_cause.scoring.preparation import run_preparation
+from ntsb_probable_cause.scoring.preparation import PreparationStoppedError, run_preparation
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
@@ -141,6 +141,17 @@ def _maybe_write(out: str | None, text: str) -> None:
         path.write_text(text if text.endswith("\n") else text + "\n")
 
 
+def _positive_usd(text: str) -> float:
+    """A dollar amount above zero (S2.6 final review, I1): zero would reserve nothing."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"must be above zero, not {text}")
+    return value
+
+
 def _add_common(sub: argparse.ArgumentParser) -> None:
     sub.add_argument("--out", help="also write the printed text to this file")
 
@@ -213,7 +224,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "transcribe", help="read a sample's image pages once, into the cache (S2.6, 0081)"
     )
     transcribe_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
-    transcribe_p.add_argument("--expected-cost-per-page-usd", type=float, required=True)
+    transcribe_p.add_argument(
+        "--expected-cost-per-page-usd",
+        type=_positive_usd,
+        required=True,
+        help="above zero: sets the job's reservation, and the job stops once it is spent",
+    )
     transcribe_p.add_argument("--workers", type=int, default=8)
     transcribe_p.add_argument("--retry-failed", action="store_true")
     transcribe_p.add_argument("--dry-run", action="store_true", help="count and price only")
@@ -549,11 +565,25 @@ def _maybe_mark_done(
 def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
     """Every page v2 needs, for one sample: counted, priced, then read once (0081).
 
-    Counts only are printed: on a held-out sample this reads pages by program and no person
-    sees them. The done file is written only when every chosen page has a reading
-    (transcribed or failed) and failures are within ``MAX_FAILED_SHARE`` (M1), which is what
-    ``run --evidence-version v2`` checks for.
+    Counts only are printed: pages are read by program and no person sees them. The done
+    file is written only when every chosen page has a reading (transcribed or failed) and
+    failures are within ``MAX_FAILED_SHARE`` (M1), which is what ``run --evidence-version v2``
+    checks for.
+
+    A held-out sample is refused before anything is fetched or paid for (S2.6 final review,
+    I3): decision 0090 defers every held-out step, and this command writes no held-out ledger
+    row. A later stage lifts the refusal deliberately, with the ledger row and the dirty-tree
+    check every other held-out entry point has.
+
+    A job that spends its reservation stops (``PreparationStoppedError``, final review I1): what it
+    read is reported, no marker is written, and the exit code is non-zero.
     """
+    if args.sample.startswith("heldout"):
+        raise ConfigurationError(
+            f"transcribing {args.sample} is refused: decision 0090 defers every held-out run, "
+            "and this command writes no held-out ledger row. A later stage lifts this "
+            "deliberately."
+        )
     raws = samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))
     cache = TranscriptionCache(settings.transcription_dir)
     with DocketClient(
@@ -574,26 +604,34 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
         if args.dry_run:
             return 0
         # Nothing to pay for: no job, no reservation and no API key needed.
-        done = (
-            run_preparation(
-                kind="transcription",
-                jobs=jobs,
-                instruction=TRANSCRIBE,
-                settings=settings,
-                commit=ledger.commit_state(),
-                expected_cost_per_page_usd=args.expected_cost_per_page_usd,
-                workers=args.workers,
-                retry_failed=args.retry_failed,
+        stopped: PreparationStoppedError | None = None
+        try:
+            done = (
+                run_preparation(
+                    kind="transcription",
+                    jobs=jobs,
+                    instruction=TRANSCRIBE,
+                    settings=settings,
+                    commit=ledger.commit_state(),
+                    expected_cost_per_page_usd=args.expected_cost_per_page_usd,
+                    workers=args.workers,
+                    retry_failed=args.retry_failed,
+                )
+                if pending
+                else []
             )
-            if pending
-            else []
-        )
+        except PreparationStoppedError as error:
+            stopped = error
+            done = list(error.read)
     readings = [cache.get(j.key) for j in jobs]
     failed = sum(1 for r in readings if r is not None and r.status == "failed")
     print(
         f"read {len(done)} pages now (${sum(r.cost_usd for r in done):.2f}); "
         f"{failed} of {len(jobs)} failed in all"
     )
+    if stopped is not None:
+        print(f"transcribe: {stopped} The marker is NOT written.", file=sys.stderr)
+        return 1
     return _maybe_mark_done(cache, args.sample, jobs, skipped)
 
 
