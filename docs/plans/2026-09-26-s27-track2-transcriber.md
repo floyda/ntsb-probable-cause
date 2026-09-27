@@ -35,7 +35,7 @@ The spec is approved; these are the places where writing this plan found somethi
 
 - **W1. The reasoning level of each new candidate.** `transcribe.settings_for` sends `sources.LOWEST_REASONING[model]` on every call, and a model missing from that table raises `KeyError`. Spec §7.2 and rule 2 forbid guessing it. The saved model list gives, per model, `supported_parameters` (whether `reasoning` is accepted) and a `reasoning` object (`mandatory`, `default_enabled`, sometimes `supported_efforts`). *Planned as:* a fixed rule applied by `transcriber_shortlist.lowest_reasoning` — the lowest of `supported_efforts` in the ladder `none < minimal < low < medium < high < xhigh < max` when the list gives any; else `"minimal"` if reasoning is `mandatory`; else `"none"`. This reproduces S2.6's choices (Gemini 3.6 Flash, mandatory: `minimal`; Qwen, no levels listed: `none`). The probe (Task 7) is the check: a candidate that refuses its level fails the probe and is replaced. **Decided 2026-09-27 (Andy): as planned ("A sounds more complex but probably more thorough so let's go with that").**
 - **W2. The one batch-with-image call.** Spec §7.2 asks for one call testing whether a batch variant now accepts an image part. OpenRouter's batch documentation (read 2026-09-24, quoted in `model/batch.py:136`) already says base64 and `data:` images are rejected on every provider, and public image links were rejected in S2.6 (W1: fatal-accident pages at web addresses). *Planned as:* kept, as one call with the invented probe page, and only for a shortlisted candidate the saved list offers a `:batch` variant for (Task 7). If none does, the test is recorded as "not possible". *Alternative:* drop it and cite the documentation. **Decided 2026-09-27 (Andy): kept, as planned ("A I doubt it has changed but maybe worth checking still").**
-- **W3. Andy's marking load.** Photograph and full-page-scan cards are needed for every new candidate reading that holds words (as in S2.6; `transcriber_test._photo_cards`, `cmd_mixed`); Qwen's pass-2 marks are reused, not repeated. With eight candidates that is at most 8 × 50 photograph cards and 8 × 25 scan cards; S2.6's four candidates produced far fewer, because most readings of a no-word photograph are empty or `[illegible]`. The 0086 rule is printed on the page: a word of the docket's stamped "Photo" label counts as on the page. *Planned as:* all eight candidates marked, in one page per set, each page resumable. *Alternative:* mark only candidates that already pass the four automatic measures (handwriting invention, format, handwriting accuracy, typed errors) and cost, since a candidate that fails any of those cannot be chosen whatever its marks (decision 0100 item 3). That cuts the marking to the candidates that can still win. *Undecided; the alternative is recommended.*
+- **W3. Andy's marking load.** Photograph and full-page-scan cards are needed for every new candidate reading that holds words (as in S2.6; `transcriber_test._photo_cards`, `cmd_mixed`); Qwen's pass-2 marks are reused, not repeated. With eight candidates that is at most 8 × 50 photograph cards and 8 × 25 scan cards; S2.6's four candidates produced far fewer, because most readings of a no-word photograph are empty or `[illegible]`. The 0086 rule is printed on the page: a word of the docket's stamped "Photo" label counts as on the page. *Planned as:* all eight candidates marked, in one page per set, each page resumable. *Alternative:* mark only candidates that already pass the four automatic measures (handwriting invention, format, handwriting accuracy, typed errors) and cost, since a candidate that fails any of those cannot be chosen whatever its marks (decision 0100 item 3). That cuts the marking to the candidates that can still win. *Undecided; the alternative is recommended.* **Decided 2026-09-27 (Andy): the alternative.** Task 9 runs the re-test only; Task 10 prints the candidates still in the running (`automatic`), builds Andy's pages for those only, and prints "not marked (already out on an automatic measure)" for the rest.
 - **W4. The done-marker stamp.** Interface above: S2.6's stamp is kept for `"all"`. *Planned as* stated, so `dev-400`'s S2.6 marker stays valid and a new rule gets its own marker. Nothing for Andy unless he prefers every marker to name its rule (which would invalidate the existing marker and force a free but slow re-check of every `dev-400` page before any v2 run). *Undecided, recommended as planned.*
 - **W5. Fewer than eight candidates.** The filter may leave fewer than eight models, or fewer than eight may pass the probe. *Planned as:* the re-test runs whatever passes, with no top-up from outside the filter; if none passes, the track records "Qwen stays" without a re-test. *Undecided.*
 - **W6. Structured output.** Every transcription call uses a strict JSON schema (`transcribe.settings_for`, `json_schema=instruction.schema()`). A model whose listing lacks `response_format` in `supported_parameters` will fail the probe. *Planned as:* one more filter condition — `response_format` listed — so such a model does not take a shortlist place only to be replaced. It is a departure from spec §7.2's filter, logged if accepted. *Undecided.*
@@ -2016,7 +2016,7 @@ Expected: `verified: ...`. Record in Deviations which CSV pair reproduced it. **
 
 **Cost.** 200 key pages a candidate (100 typed, 25 handwriting, 50 photographs, 25 scans). Every candidate lists an input price at or below Qwen's, and Qwen measured $0.00154 a test page, so eight candidates cost at most about $2.50 (estimate); the reservation uses $0.003 a page, twice Qwen's measured cost, so a job cannot run far past its estimate (`run_preparation` stops at its reservation).
 
-**What Andy marks** (walkthrough W3). Each photograph with no words, and each full-page scan, once, held in view, with one card per candidate reading that holds a word (as S2.6's `_photo_cards` and `cmd_mixed`). The photograph page repeats decision 0086's rule: a word of the docket's stamped "Photo" label is on the page. If Andy chose W3's alternative, `--models` is given only the candidates that pass the automatic measures (Task 10's `automatic_pass`), and `pages` is run after a first `score --automatic-only`.
+**What Andy marks** (walkthrough W3). Each photograph with no words, and each full-page scan, once, held in view, with one card per candidate reading that holds a word (as S2.6's `_photo_cards` and `cmd_mixed`). The photograph page repeats decision 0086's rule: a word of the docket's stamped "Photo" label is on the page. Andy chose W3's alternative (2026-09-27): the pages are built only for the candidates still in the running after the automatic measures (Task 10's `automatic` subcommand), so this task runs the re-test and Task 10 builds and scores the pages.
 
 - [ ] **Step 1: Write the failing test for the cards**
 
@@ -2033,11 +2033,11 @@ def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> N
         rows, lambda k, model: texts[(k, model)], models=("a/m", "b/m"), seed_base=300
     )
     assert sorted(sheet) == [c.row for c in cards]
-    assert {(v["k"], v["model"]) for v in sheet.values()} == {(1, "a/m"), (2, "b/m")}
+    # S2.6's rule, kept exactly so the cards are judged as Qwen's were: a reading "holds a word"
+    # if re.search(r"[A-Za-z0-9]{2,}", text) matches, which "[illegible]" does ("illegible").
+    assert {(v["k"], v["model"]) for v in sheet.values()} == {(1, "a/m"), (2, "a/m"), (2, "b/m")}
     assert all(10 * int(v["k"]) < n < 10 * int(v["k"]) + 10 for n, v in sheet.items())
 ```
-
-(`[illegible]` holds no word in `[A-Za-z0-9]{2,}` after the brackets are removed? It does: "illegible". S2.6's rule counted any `[A-Za-z0-9]{2,}` match, which `[illegible]` meets. Keep S2.6's rule exactly — `re.search(r"[A-Za-z0-9]{2,}", text)` — so the cards are judged as Qwen's were, and fix the test's expectation to include `(2, "a/m")` if that is what the rule gives. Write the test against the rule, not against intuition.)
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -2137,13 +2137,14 @@ s27-retest-run:
 	uv run python -m scripts.stage_spend --estimate 2.50
 	uv run python -m scripts.transcriber_retest run
 	uv run python -m scripts.transcriber_retest run --retry-failed
-	uv run python -m scripts.transcriber_retest pages
 # S2.7 spec §7.4, paid (estimate up to $2.50, standard price, synchronous): every candidate on
-# the four keys, one retry of failed pages, then Andy's two pages under <data_dir>/s27/.
+# the four keys, and one retry of failed pages. No marking page yet (walkthrough W3).
 
 s27-retest-pages:
-	uv run python -m scripts.transcriber_retest pages
-# Free: rebuilds Andy's pages from the cache (marks already made reload from the browser).
+	$(if $(MODELS),,$(error MODELS is required: the candidates still in the running, from s27-retest-automatic))
+	uv run python -m scripts.transcriber_retest pages --models $(MODELS)
+# Free: Andy's two pages under <data_dir>/s27/, for the candidates still in the running only
+# (walkthrough W3); rebuilding keeps marks already made (they reload from the browser).
 ```
 
 - [ ] **Step 4: Run the tests and `make check`**
@@ -2158,16 +2159,14 @@ git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile 
 git commit -m "S2.7 track 2: the re-test run and Andy's marking pages"
 ```
 
-- [ ] **Step 6: STOP — Andy runs the re-test (paid, up to about $2.50; 20–60 minutes) and marks the pages**
+- [ ] **Step 6: STOP — Andy runs the re-test (paid, up to about $2.50; 20–60 minutes)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
 export OPENROUTER_API_KEY="$(pass show api/openrouter)"
 make s27-retest-run
-open "$NTSB_DATA_DIR/s27/transcriber-retest/photos.html"
-open "$NTSB_DATA_DIR/s27/transcriber-retest/mixed.html"
 ```
-Andy downloads each page's CSV into `$NTSB_DATA_DIR/s27/transcriber-retest/`. Record the run's printed costs in Deviations.
+Record the run's printed costs in Deviations. Marking comes after the automatic measures (Task 10, walkthrough W3).
 
 ---
 
@@ -2181,7 +2180,7 @@ Andy downloads each page's CSV into `$NTSB_DATA_DIR/s27/transcriber-retest/`. Re
 
 **Interfaces:**
 - Consumes: Task 8's `key_material`, `choose_against_qwen`, `absolute_notes`, `QWEN_LIMITS`; Task 9's sheets; `transcriber_test._result`, `_reading_counts`.
-- Produces: `automatic_pass(r: CandidateResult) -> bool` (the four measures that need no marks, and cost); `cmd_score(settings, docs, recheck, photos_csv, mixed_csv, *, models) -> str`.
+- Produces: `automatic_pass(r: CandidateResult) -> bool` (the four measures that need no marks, and cost); `cmd_automatic(settings, docs, recheck, *, models) -> tuple[str, tuple[str, ...]]` (the text, and the candidates still in the running; walkthrough W3); `cmd_score(settings, docs, recheck, photos_csv: Path | None, mixed_csv: Path | None, *, models, marked: Collection[str]) -> str`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2207,9 +2206,35 @@ Expected: FAIL.
 
 ```python
 def automatic_pass(r: CandidateResult) -> bool:
-    """Walkthrough W3's alternative: every measure that needs no marks, and cost."""
-    unmarked = CandidateResult(**{**r.__dict__, "photo_invented": 0, "mixed_invented": 0})
-    return not _failures(unmarked, QWEN_LIMITS)
+    """Walkthrough W3 (Andy, 2026-09-27): every measure that needs no marks, and cost."""
+    return not _failures(replace(r, photo_invented=0, mixed_invented=0), QWEN_LIMITS)
+
+
+def cmd_automatic(
+    settings: Settings, docs: CachedDocuments, recheck: Recheck, *, models: Sequence[str]
+) -> tuple[str, tuple[str, ...]]:
+    """The candidates still in the running before any marking (walkthrough W3), and why the
+    others are out. A candidate out on an automatic measure cannot be chosen whatever its
+    marks (decision 0100 item 3), so Andy marks only the ones still in."""
+    material = key_material(settings, docs, recheck)
+    cache = TranscriptionCache(settings.transcription_dir)
+    results = [
+        _result(
+            m, material.keys, material.key_texts, 0, material.typed_answers, cache,
+            dpi=RESOLUTION, mixed_invented=0, format_gate=True,
+        )
+        for m in models
+    ]
+    still_in = tuple(r.model for r in results if automatic_pass(r))
+    lines = [
+        f"{r.model}: still in the running"
+        if r.model in still_in
+        else f"{r.model}: out on an automatic measure -- "
+        + "; ".join(_failures(replace(r, photo_invented=0, mixed_invented=0), QWEN_LIMITS))
+        for r in results
+    ]
+    lines.append(f"to mark: {' '.join(still_in) or 'none (Qwen stays; no marking needed)'}")
+    return "\n".join(lines), still_in
 
 
 def invented_by_model(
@@ -2234,25 +2259,36 @@ def cmd_score(  # noqa: PLR0913 -- the key material's recheck pair and the two n
     docs: CachedDocuments,
     recheck: Recheck,
     photos_csv: Path,
-    mixed_csv: Path,
+    mixed_csv: Path | None,
     *,
     models: Sequence[str],
+    marked: Collection[str],
 ) -> str:
-    """Decision 0100 item 3 over the candidates; Qwen's published row printed as the bar."""
+    """Decision 0100 item 3 over the candidates; Qwen's published row printed as the bar.
+
+    Only ``marked`` candidates (those still in the running after :func:`cmd_automatic`) have
+    photograph and scan marks (walkthrough W3); the rest print "not marked (already out)". With
+    none marked there are no CSVs, and ``photos_csv``/``mixed_csv`` are None.
+    """
     material = key_material(settings, docs, recheck)
     folder = settings.data_dir / RETEST_FOLDER
-    photos = invented_by_model(
-        json.loads((folder / "photos.json").read_text()),
-        read_marks(photos_csv),
-        field="words",
-        invented="some invented",
-    )
-    mixed = invented_by_model(
-        json.loads((folder / "mixed.json").read_text()),
-        read_marks(mixed_csv),
-        field="added words",
-        invented="some invented",
-    )
+    photos: Counter[str] = Counter()
+    mixed: Counter[str] = Counter()
+    if marked:
+        if photos_csv is None or mixed_csv is None:
+            raise SystemExit("score: candidates are marked, so both marks CSVs are required")
+        photos = invented_by_model(
+            json.loads((folder / "photos.json").read_text()),
+            read_marks(photos_csv),
+            field="words",
+            invented="some invented",
+        )
+        mixed = invented_by_model(
+            json.loads((folder / "mixed.json").read_text()),
+            read_marks(mixed_csv),
+            field="added words",
+            invented="some invented",
+        )
     cache = TranscriptionCache(settings.transcription_dir)
     results = [
         _result(
@@ -2279,28 +2315,44 @@ def cmd_score(  # noqa: PLR0913 -- the key material's recheck pair and the two n
         "",
     ]
     for r in results:
+        is_marked = r.model in marked
+        photo_line = (
+            f"{r.photo_invented} of {r.photo_pages} photographs"
+            if is_marked
+            else "photographs not marked (already out on an automatic measure, walkthrough W3)"
+        )
+        scan_line = (
+            f"  full-page scans: invented added words on {r.mixed_invented} of {r.mixed_pages}"
+            if is_marked
+            else "  full-page scans: not marked (already out on an automatic measure, walkthrough W3)"
+        )
         lines += [
             f"## {r.model} (measured ${r.cost_per_page:.5f} per test page)",
             f"  invented: {r.hw_inventing} lines ({float(r.invented_per_100_lines):.1f} per 100 "
-            f"handwriting lines); {r.photo_invented} of {r.photo_pages} photographs",
+            f"handwriting lines); {photo_line}",
             f"  handwriting lines right: {r.hw_right} of {r.hw_lines} ({r.hw_accuracy:.1%})",
             f"  typed errors: {float(r.typed_errors_per_100):.2f} per 100 characters",
-            f"  full-page scans: invented added words on {r.mixed_invented} of {r.mixed_pages}",
+            scan_line,
             f"  format-failed handwriting pages: {r.hw_format_failed} of {r.hw_pages}",
-            *absolute_notes(r),
+            *(absolute_notes(r) if is_marked else ()),
         ]
     lines += ["", "## the rule (decision 0100 item 3, fixed before the run)", *notes]
     return "\n".join(lines)
 ```
 
-(`CandidateResult`'s property names — `invented_per_100_lines`, `hw_accuracy`, `typed_errors_per_100` — are as listed in `scripts/transcriber_test.py:182-225`; check their return types (Fraction or float) and format accordingly. `automatic_pass` uses `dataclasses.replace(r, photo_invented=0, mixed_invented=0)` if `CandidateResult` is a frozen dataclass, which it is: prefer `replace` to `__dict__`.)
+(`CandidateResult`'s property names — `invented_per_100_lines`, `hw_accuracy`, `typed_errors_per_100` — are as listed in `scripts/transcriber_test.py:182-225`; where one is a `Fraction`, `format` with `.1%` works on it directly (Python 3.12 and later), and the others are passed through `float(...)` as above. `CandidateResult` is a frozen dataclass, so `automatic_pass` and `cmd_automatic` use `dataclasses.replace`; add `from collections import Counter`, `from collections.abc import Collection` and `from dataclasses import replace` to the module's imports. `photos_csv` becomes `Path | None` for the same reason as `mixed_csv`.)
 
-Add `score --handwriting-recheck --photos-recheck --photos --mixed --out` to `main`, with `models=S27_CANDIDATES`. Makefile:
+Add to `main`: `automatic --handwriting-recheck --photos-recheck` (prints `cmd_automatic`'s text, `models=S27_CANDIDATES`), and `score --handwriting-recheck --photos-recheck [--photos CSV] [--mixed CSV] --marked [MODEL ...] --out`, with `models=S27_CANDIDATES` and `marked` from `--marked` (empty when none are still in). A test covers `cmd_automatic`'s "to mark" line with one candidate in and one out, and `cmd_score` printing "not marked (already out…)" for a candidate not in `marked`. Makefile:
 
 ```make
+s27-retest-automatic:
+	uv run python -m scripts.transcriber_retest automatic --handwriting-recheck $(or $(HW_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/handwriting-key-pass2.csv) --photos-recheck $(or $(PHOTO_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/photo-words-pass2.csv)
+# S2.7 walkthrough W3, free: the candidates still in the running before any marking.
+
 s27-retest-score:
-	uv run python -m scripts.transcriber_retest score --handwriting-recheck $(or $(HW_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/handwriting-key-pass2.csv) --photos-recheck $(or $(PHOTO_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/photo-words-pass2.csv) --photos $$NTSB_DATA_DIR/s27/transcriber-retest/s27-photo-words.csv --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/s27-mixed-words.csv --out docs/results/s27-transcriber-retest.txt
+	uv run python -m scripts.transcriber_retest score --handwriting-recheck $(or $(HW_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/handwriting-key-pass2.csv) --photos-recheck $(or $(PHOTO_RECHECK),$$NTSB_DATA_DIR/s26/transcriber-test/photo-words-pass2.csv) $(if $(MARKED),--photos $$NTSB_DATA_DIR/s27/transcriber-retest/s27-photo-words.csv --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/s27-mixed-words.csv,) --marked $(MARKED) --out docs/results/s27-transcriber-retest.txt
 # S2.7 spec §7.4, free: decision 0100 item 3 applied; the CSV pair is the one Task 8 verified.
+# MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
 ```
 
 - [ ] **Step 4: Run the tests, `make check`, commit the code**
@@ -2311,11 +2363,27 @@ git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile 
 git commit -m "S2.7 track 2: the re-test's score against Qwen"
 ```
 
-- [ ] **Step 5: Score (free) and commit the results file**
+- [ ] **Step 5: The automatic measures (free)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
-make s27-retest-score
+make s27-retest-automatic
+```
+Expected: one line per candidate, "still in the running" or "out on an automatic measure -- <reasons>", then `to mark: <models>`.
+
+- [ ] **Step 6: STOP — Andy marks the candidates still in the running** (skip if `to mark` is none)
+
+```bash
+make s27-retest-pages MODELS="<the 'to mark' models>"
+open "$NTSB_DATA_DIR/s27/transcriber-retest/photos.html"
+open "$NTSB_DATA_DIR/s27/transcriber-retest/mixed.html"
+```
+Andy downloads each page's CSV into `$NTSB_DATA_DIR/s27/transcriber-retest/`.
+
+- [ ] **Step 7: Score (free) and commit the results file**
+
+```bash
+make s27-retest-score MARKED="<the 'to mark' models, or empty>"
 git add docs/results/s27-transcriber-retest.txt docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: re-test results"
 ```
@@ -2387,3 +2455,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 
 - 2026-09-27, walkthrough W1, Andy's decision (A): each candidate's reasoning level comes from a fixed rule over the saved model list (`transcriber_shortlist.lowest_reasoning`: the lowest listed supported effort; else `minimal` if reasoning is mandatory; else `none`), which reproduces S2.6's hand-set levels; the probe checks it, and a candidate refusing its level is replaced by the next. Spec §7.2 left the level unstated.
 - 2026-09-27, walkthrough W2, Andy's decision (A): the one batch-with-image call of spec §7.2 is kept, with the invented probe page, only for a shortlisted candidate the saved list offers a `:batch` variant for; otherwise it is recorded as "not possible" (Task 7).
+- 2026-09-27, walkthrough W3, Andy's decision (A, the alternative): Andy marks photograph and full-page-scan cards only for candidates still in the running after every measure that needs no marks and cost (decision 0100 item 3 makes the others unchoosable whatever their marks). Task 9 no longer builds the pages; Task 10 gains `cmd_automatic` (`make s27-retest-automatic`), `s27-retest-pages` takes `MODELS`, and `cmd_score` takes `marked` and prints "not marked (already out…)" for the others. The results file therefore does not give every candidate's invention counts on the two marked keys. Also fixed while editing: Task 9's card test now states S2.6's rule (an `[illegible]` reading counts as holding a word) instead of a drafting note.
