@@ -36,10 +36,11 @@ from ntsb_probable_cause.docket.render import render_pages
 from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, parse_reply, request_for, settings_for
 from ntsb_probable_cause.errors import ModelError, SchemaError
 from ntsb_probable_cause.gitinfo import commit_state
-from ntsb_probable_cause.model.batch import BatchClient
+from ntsb_probable_cause.model.batch import TERMINAL, BatchClient
 from ntsb_probable_cause.model.client import ModelReply, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient, request_body
 from ntsb_probable_cause.scoring.budget import (
+    SPEND_FILE,
     SpendRecord,
     reserve_within_budget,
     settle,
@@ -430,11 +431,17 @@ def cmd_batch_image(settings: Settings, model: str) -> str:
 def cmd_batch_poll(settings: Settings, batch_id: str) -> str:
     """The accepted batch's status, and whether its one reply parses.
 
-    Pre-flight 1.2: once the provider reports a cost, it is written as its own spend row,
-    under a distinct job id (the batch id, suffixed ``-poll``) so a batch counted once by
-    ``cmd_batch_image`` and again here is never summed twice by ``stage_spend``. Before the
-    cost is known (``reported_cost_usd is None``), no row is written -- the reservation from
-    ``cmd_batch_image`` was already settled there.
+    Fix round 1: once the batch is **terminal** (``TERMINAL``, ``model/batch.py``) and the
+    provider reports a cost, that cost is written as its own spend row, under a distinct job
+    id (the batch id, suffixed ``-poll``) so a batch counted once by ``cmd_batch_image`` and
+    again here is never summed twice by ``stage_spend``. The row is written at most once per
+    batch: ``write_spend``/``write_jsonl`` appends (``scoring/records.py``), and both
+    ``month_spent`` and ``stage_spend`` sum every row under ``*/spend.jsonl``, so writing on
+    every terminal poll would count the same cost again on a re-poll after completion. The
+    row's own spend file's existence is the guard -- if it is already there, this poll writes
+    nothing more. Before the batch is terminal, no row is written even if ``reported_cost_usd``
+    is already reported (OpenRouter can report a partial ``usage.cost`` mid-batch,
+    ``model/batch.py``'s ``poll``), since a later, terminal poll's cost would then double it.
     """
     key = settings.require_openrouter_key()
     with OpenRouterClient(key, base_url=settings.openrouter_base_url) as http:
@@ -449,7 +456,12 @@ def cmd_batch_poll(settings: Settings, batch_id: str) -> str:
                 parsed = "the reply parses"
             except SchemaError as error:
                 parsed = f"the reply did not parse: {error}"
-    if status.reported_cost_usd is not None:
+    spend_path = settings.runs_dir / f"{batch_id}-poll" / SPEND_FILE
+    if (
+        status.status in TERMINAL
+        and status.reported_cost_usd is not None
+        and not spend_path.exists()
+    ):
         sha, dirty = commit_state()
         write_spend(
             settings.runs_dir,

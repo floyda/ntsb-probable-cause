@@ -421,6 +421,46 @@ def test_cmd_batch_poll_writes_no_spend_before_the_cost_is_known(
     assert list(settings.runs_dir.glob("*/spend.jsonl")) == []
 
 
+def test_cmd_batch_poll_writes_no_spend_for_a_reported_cost_before_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, respx_mock: respx.MockRouter
+) -> None:
+    """Fix round 1: a partial cost reported mid-batch (not yet terminal) writes no row --
+    a later, terminal poll's cost would otherwise double it."""
+    respx_mock.get(f"{_BATCHES}/batch-1").mock(
+        return_value=httpx.Response(
+            200, json={"status": "in_progress", "results": [], "usage": {"cost": 0.001}}
+        )
+    )
+    monkeypatch.setattr(ts, "commit_state", lambda: ("abcd123", False))
+    settings = Settings(data_dir=tmp_path, runs_dir=tmp_path / "runs", openrouter_api_key="k")
+
+    result = ts.cmd_batch_poll(settings, "batch-1")
+
+    assert "cost 0.001" in result
+    assert list(settings.runs_dir.glob("*/spend.jsonl")) == []
+
+
+def test_cmd_batch_poll_twice_after_completion_counts_the_cost_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, respx_mock: respx.MockRouter
+) -> None:
+    """Fix round 1: re-polling a terminal batch (e.g. Andy checking again) must not double
+    ``month_spent`` -- ``write_spend`` appends and both it and ``stage_spend`` sum every row."""
+    respx_mock.get(f"{_BATCHES}/batch-1").mock(
+        return_value=httpx.Response(
+            200, json={"status": "completed", "results": [], "usage": {"cost": 0.002}}
+        )
+    )
+    monkeypatch.setattr(ts, "commit_state", lambda: ("abcd123", False))
+    settings = Settings(data_dir=tmp_path, runs_dir=tmp_path / "runs", openrouter_api_key="k")
+
+    ts.cmd_batch_poll(settings, "batch-1")
+    ts.cmd_batch_poll(settings, "batch-1")
+
+    spend_files = list(settings.runs_dir.glob("*/spend.jsonl"))
+    assert len(spend_files) == 1
+    assert month_spent(settings.runs_dir, now=datetime.now(UTC)) == pytest.approx(0.002)
+
+
 # ---------------------------------------------------------------------------------------
 # Task 7: the CLI wiring.
 # ---------------------------------------------------------------------------------------
