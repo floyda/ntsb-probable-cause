@@ -3692,7 +3692,7 @@ git commit -m "S2.7 Task 11: Round 1's reading rule"
 - Consumes: Tasks 10–11; the two answer sets: B-v1 `20260926T082427-d19aafa-dev-400-B` and Round 0's `REPEAT` (Task 7).
 - Produces: the outcome line (a way, or "no check"), which every later round reads as `CHECK` (empty for "no check").
 
-- [ ] **Step 1: Add the targets and commit them**
+- [x] **Step 1: Add the targets and commit them**
 
 ```make
 s27-check:

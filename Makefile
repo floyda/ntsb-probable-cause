@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results
 
 check: lint type test
 
@@ -253,3 +253,15 @@ s27-round0-results:
 	  echo; uv run python -m scripts.judge_outcomes --runs 20260926T082427-d19aafa-dev-400-B $(REPEAT) 20260926T085904-d19aafa-dev-400-B --label-status $(LABELS); \
 	  echo; uv run python -m scripts.round0_handread score $(MARKS) --run 20260926T082427-d19aafa-dev-400-B; } > docs/results/s27-round0-dev.txt
 # S2.7 spec §4.5, free: Round 0's results file from committed scripts only.
+
+s27-check:
+	$(if $(RUN),,$(error RUN is required: the answer run id))
+	$(if $(WAY),,$(error WAY is required: rule, luna or jev))
+	uv run python -m scripts.stage_spend --estimate $(if $(filter luna,$(WAY)),0.90,0.05)
+	uv run ntsb-eval check $(RUN) --way $(WAY)
+# S2.7 spec §5, post-pass. rule: free. luna: about $0.36 per 400 cases at the standard price
+# (plan W3). jev: a fraction of a cent (self-reported price); needs TYPESAFE_API_KEY.
+
+s27-round1-results:
+	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
+	uv run python -m scripts.round1_report --answers 20260926T082427-d19aafa-dev-400-B $(REPEAT) --out docs/results/s27-round1-dev.txt
