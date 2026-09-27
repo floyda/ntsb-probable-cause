@@ -2387,7 +2387,7 @@ make s27-retest-automatic
 ```
 Expected: one line per candidate, "still in the running" or "out on an automatic measure -- <reasons>", then `to mark: <models>`.
 
-- [ ] **Step 6: STOP — Andy marks the candidates still in the running** (skip if `to mark` is none)
+- [x] **Step 6: STOP — Andy marks the candidates still in the running** (skip if `to mark` is none) — skipped 2026-09-27: `to mark: none`, every candidate out on an automatic measure
 
 ```bash
 make s27-retest-pages MODELS="<the 'to mark' models>"
@@ -2396,7 +2396,7 @@ open "$NTSB_DATA_DIR/s27/transcriber-retest/mixed.html"
 ```
 Andy downloads each page's CSV into `$NTSB_DATA_DIR/s27/transcriber-retest/`.
 
-- [ ] **Step 7: Score (free) and commit the results file**
+- [x] **Step 7: Score (free) and commit the results file**
 
 ```bash
 make s27-retest-score MARKED="<the 'to mark' models, or empty>"
@@ -2522,3 +2522,5 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 10 (controller): the results file states the retries (`RETRY_NOTE`): one retry of failed pages per candidate, except DeepSeek, whose retry stopped at its reservation with 31 pages unread (Task 9 Step 6 above), so its counts include those pages as failed. Each candidate's key pages still failed are also printed from the cache (`transcriber_test._reading_counts`).
 - 2026-09-27, Task 10: safeguards beyond the brief. `automatic` and `score` first re-verify Qwen's row with the pair given and refuse, as `verify` does, if it differs from the published second pass (the check is factored into `_verified`, which `cmd_verify` now also uses); both refuse a candidate with a key page the cache holds no reading of (S2.6's hold on never-read pages, through Task 9's `_missing`). `score` refuses a candidate still in the running that is not in `--marked`, because its photograph and scan counts would be 0 and the rule could choose it without Andy's marks; it refuses a sheet holding cards of a model not in `--marked`; `invented_by_model` also refuses a sheet card missing from the CSV. `score` applies the marked counts with `dataclasses.replace` over the automatic rows instead of a second `_result` call (the same counts). The brief's `float(...)` wrappers are dropped: `CandidateResult`'s properties are already floats. The header names the recheck pair with its folder and says whether it is the `pass2/` pair Andy recalled (W7). `--marked` is limited to `S27_CANDIDATES`; `--out` writes exactly the printed text.
 - 2026-09-27, Task 10 Step 5: `make s27-retest-automatic` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`, at `1230c04`) re-verified Qwen's row with the `pass2/` pair (measured $0.0015362713 a test page) and put all eight candidates out on an automatic measure: seven on inventing lines (65 to 181 in 1548, against Qwen's 54) and handwriting accuracy, some also on the line format or typed errors; DeepSeek on handwriting accuracy, typed errors and cost ($0.0033132 a test page; 75 of 200 key pages failed, its 31 unread among them). A failed page adds no inventing lines, so the seven are out whatever their failed pages would have read. No candidate lies between Qwen's measured cost and $0.00154, so there is no line for Andy. `to mark: none (Qwen stays; no marking needed)`: Step 6 has nothing to mark, and Step 7 scores with `MARKED` empty.
+- 2026-09-27, Task 10 Step 6: skipped, as the step's own condition allows: `to mark: none`, every candidate out on an automatic measure, so no marking pages were built (`s27-retest-pages` not run) and Andy marked nothing; the results file prints "not marked (already out on an automatic measure, walkthrough W3)" for every candidate's photographs and scans.
+- 2026-09-27, Task 10 Step 7: `make s27-retest-score MARKED=` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`) wrote `docs/results/s27-transcriber-retest.txt`; decision 0100 item 3's outcome: "no candidate meets all seven: Qwen stays".
