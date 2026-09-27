@@ -32,7 +32,7 @@
 
 The spec is approved; these are the places where writing the plan found something the spec did not settle, or where an assumption in it turned out false. Each is marked in the task that depends on it. They are taken one per message; each outcome is written beside it below and in the Deviations section.
 
-- **W1. No mapping from the phase group to the three-digit phase exists.** The phase-of-flight evidence is the defining event's CICTT phase group, a name such as `"Landing"` or `"Maneuvering"` (`fields.py:_phase_of_flight`); the code tables' phases are three-digit prefixes (`552`, `452`). Spec §5.2 item 4 and §5.3 need "the phase prefixes within the phase group". *Planned as:* Task 3 learns the mapping from the pool — for each pool case, the defining event's group and its code's first three digits — and a prefix belongs to a group when the pool records it there at all. The report prints the mapping so it can be read. *Rejected:* a hand-written mapping (not from a script; would need defending prefix by prefix).
+- **W1. No mapping from the phase group to the three-digit phase exists.** The phase-of-flight evidence is the defining event's CICTT phase group, a name such as `"Landing"` or `"Maneuvering"` (`fields.py:_phase_of_flight`); the code tables' phases are three-digit prefixes (`552`, `452`). Spec §5.2 item 4 and §5.3 need "the phase prefixes within the phase group". *Planned as:* Task 3 learns the mapping from the pool — for each pool case, the defining event's group and its code's first three digits — and a prefix belongs to a group when the pool records it there at all. The report prints the mapping so it can be read. *Rejected:* a hand-written mapping (not from a script; would need defending prefix by prefix). **Decided 2026-09-27 (Andy): "A with a 'clear habit' safeguard."** An ad-hoc probe found every phase code the NTSB used for a defining event belongs to exactly one group, so the membership pushes nothing; Andy's concern was that the *counts* push every case toward the most common combination. Decision [0101](../decisions/0101-the-clear-habit-safeguard.md) amends 0096 and 0098: the plain rule changes the model's event or phase only on a **clear habit** (at least 60% of at least 20 pool cases), guidance names a habit only when it is clear, and every check step and round result records how many first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 carry it.
 - **W2. The ordering check runs as a post-pass, not inside the runner.** Spec §5.5 put it "after the answer, before the finding refinement turn". Inside the runner it would need a third batch stage for the model-asked ways and a second path for sync runs. The check touches only the occurrence codes, and the refinement turn only the findings, so the order between them changes no score. *Planned as:* `ntsb-eval check RUN_ID --way rule|luna|jev` reads a finished run and writes a derived folder `<run id>-check-<way>` whose cases carry the original step plus a second step, `tool="ordering_check"`, with the reordered hypothesis, its input fingerprint, model and cost; occurrence scores are recomputed, finding scores carried over. Its run record's cost is the check's cost only, so month and stage spend never count the answer twice. `report --against` compares derived folders like any run. *Rejected:* building it into `Runner` (a third batch stage, more code on the path every arm uses, for no change in any score).
 - **W3. GPT-6 Luna's check runs synchronously at the standard price.** A post-pass has no batch plumbing, and 399 short calls take minutes. Estimate (arithmetic, $0.10/$0.50 per million tokens, about 1,500 prompt and 1,500 output tokens a case including reasoning): about $0.90 per 1,000 cases, so **about $0.36 per answer set, $0.72 for Round 1**, against the spec's $0.12 per set at batch prices. *Planned as:* synchronous, standard price, recorded on each step. *Rejected:* batch (more code for about $0.36 saved).
 - **W4. The judge writes into the run it judges.** `ntsb-eval judge` is standard-price only (`scoring/judge.py:_ensure_priced` refuses batch), writes `judge.jsonl` inside the judged run's folder (replacing any earlier one) and appends a `<run id>-judge` cost row to its `run.jsonl`. Round 0 judges S2.6's B-v1 and B-v2 folders. *Planned as:* Task 7 first checks neither folder holds a `judge.jsonl` (none is expected: S2.6 judged no run); if one does, it is copied aside under `data/s27/` before judging. The cost row carries S2.7's commit, so the stage counts it. *Rejected:* copying the S2.6 run folders first (two copies of the same cases, and `month_spent` would count their costs twice).
@@ -2318,7 +2318,7 @@ Report to Andy in plain English: the six groups' sizes, the noise floor (the pai
 
 **Interfaces:**
 - Consumes: `coding_stats.CodingStats`, `NO_GROUP` (Task 3); `hypothesis.Hypothesis`, `OccurrenceGuess`; `codes.CodeTables`; `errors.SchemaError`.
-- Produces: constants `MAX_CANDIDATES = 8`, `LINK_MIN_SHARE = Fraction(1, 4)`, `LINK_MIN_CASES = 20`, `GROUP_CODES = 2`, `PHASE_VARIANT_MIN_CASES = 10`, `RULE_MIN_CASES = 20`; `candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]`; `plain_rule(guesses, group, stats) -> tuple[str, ...]`; `CHECK_SYSTEM: str`; `RANKING_SCHEMA: dict[str, object]`; `check_text(guesses, options, group, narrative, stats, tables) -> str`; `parse_ranking(content: str, options: Sequence[str]) -> tuple[str, ...]`; `JEV_INSTRUCTIONS: str`; `jev_question(options, tables) -> dict[str, object]`; `ranking_from_probabilities(probabilities: Mapping[str, float]) -> tuple[str, ...]`; `reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis`.
+- Produces: constants `MAX_CANDIDATES = 8`, `LINK_MIN_SHARE = Fraction(1, 4)`, `LINK_MIN_CASES = 20`, `GROUP_CODES = 2`, `PHASE_VARIANT_MIN_CASES = 10`, `CLEAR_HABIT_SHARE = Fraction(3, 5)`, `CLEAR_HABIT_MIN_CASES = 20` (decision 0101); `candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]`; `clear_habit(counts: Mapping[str, int]) -> str | None`; `plain_rule(guesses, group, stats) -> tuple[str, ...]`; `toward_more_common(before: str, after: str, group: str | None, stats: CodingStats) -> bool`; `CHECK_SYSTEM: str`; `RANKING_SCHEMA: dict[str, object]`; `check_text(guesses, options, group, narrative, stats, tables) -> str`; `parse_ranking(content: str, options: Sequence[str]) -> tuple[str, ...]`; `JEV_INSTRUCTIONS: str`; `jev_question(options, tables) -> dict[str, object]`; `ranking_from_probabilities(probabilities: Mapping[str, float]) -> tuple[str, ...]`; `reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis`.
 - Task 10 consumes all of them.
 
 **An example of the candidate list.** The model guessed `(452241, 452470, 450241)` — stall/spin at low altitude first — and the phase group is `Maneuvering`. The list starts with those three. If the pool shows that when `452241` appears, `452240` (loss of control in flight) is defining in at least a quarter of at least 20 cases, `452240` joins as a **linked code**. The two commonest defining codes for `Maneuvering` join as **group codes**. For every code so far, the same event under another prefix the pool uses for `Maneuvering` (for example `450` or `452`) joins as a **phase variant** if the pool shows it as defining in that group at least 10 times. Duplicates go; the guesses stay first; the rest are ordered by how often the pool flags them as defining; the list is cut at eight.
@@ -2373,9 +2373,31 @@ def test_plain_rule_keeps_the_first_guess_on_thin_counts() -> None:
     assert ordering.plain_rule(("999999",), "Maneuvering", _stats())[0] == "999999"
 
 
-def test_plain_rule_keeps_the_models_phase_on_a_tie() -> None:
-    ranking = ordering.plain_rule((LOC,), "Maneuvering", _stats())
-    assert ranking[0] == LOC  # 452 defining 30 times, 450 12 times: 452 stays
+def test_plain_rule_keeps_the_models_phase_when_no_phase_is_a_clear_habit() -> None:
+    split = build(
+        [PoolCase(2012, "Maneuvering", (LOC_450,))] * 12 + [PoolCase(2013, "Maneuvering", (LOC,))] * 10,
+        built_from="test",
+    )
+    # 450 holds 12 of 22 (55%): not a clear habit, so the model's 452 stands (decision 0101)
+    assert ordering.plain_rule((LOC,), "Maneuvering", split) == (LOC,)
+
+
+def test_plain_rule_moves_the_phase_on_a_clear_habit() -> None:
+    # in _stats(), event 240 in Maneuvering: 452 holds 30 of 42 (71%), a clear habit
+    assert ordering.plain_rule((LOC_450,), "Maneuvering", _stats())[0] == LOC
+
+
+def test_clear_habit_needs_60_percent_of_20_cases() -> None:
+    assert ordering.clear_habit({"a": 12, "b": 8}) == "a"
+    assert ordering.clear_habit({"a": 11, "b": 9}) is None
+    assert ordering.clear_habit({"a": 15}) is None
+
+
+def test_toward_more_common_compares_pool_counts_in_the_group() -> None:
+    stats = _stats()
+    assert ordering.toward_more_common(LOC_450, LOC, "Maneuvering", stats)  # 12 -> 30
+    assert not ordering.toward_more_common(LOC, LOC_450, "Maneuvering", stats)
+    assert not ordering.toward_more_common(LOC, LOC, "Maneuvering", stats)
 
 
 def test_check_text_holds_codes_counts_group_and_narrative_only() -> None:
@@ -2452,7 +2474,9 @@ LINK_MIN_SHARE = Fraction(1, 4)
 LINK_MIN_CASES = 20
 GROUP_CODES = 2
 PHASE_VARIANT_MIN_CASES = 10
-RULE_MIN_CASES = 20
+# Decision 0101: the plain rule follows the NTSB's most common choice only on a clear habit.
+CLEAR_HABIT_SHARE = Fraction(3, 5)
+CLEAR_HABIT_MIN_CASES = 20
 
 
 def candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]:
@@ -2475,21 +2499,39 @@ def candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) ->
     return tuple((first + rest)[:MAX_CANDIDATES])
 
 
+def clear_habit(counts: Mapping[str, int]) -> str | None:
+    """The option holding at least 60% of at least 20 cases, or None (decision 0101)."""
+    total = sum(counts.values())
+    if total < CLEAR_HABIT_MIN_CASES:
+        return None
+    best, n = max(sorted(counts.items()), key=lambda kv: kv[1])
+    return best if Fraction(n, total) >= CLEAR_HABIT_SHARE else None
+
+
 def plain_rule(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]:
-    """The free way (spec §5.3 item 2): the pool's defining code, then its commonest phase."""
+    """The free way (spec §5.3 item 2, as amended by decision 0101).
+
+    Event step: among pool cases containing the model's first guess, if one code is defining in
+    a clear habit and it is a candidate, it goes first. Phase step: among pool cases with this
+    phase group and that event, if one phase is a clear habit, it is used. At either step,
+    without a clear habit the model's own choice stands.
+    """
     chosen = guesses[0]
-    if stats.present_n(chosen) >= RULE_MIN_CASES:
-        given = stats.defining_given(chosen)
-        options = candidates(guesses, group, stats)
-        best = max(options, key=lambda c: (given.get(c, 0), -options.index(c)))
-        if given.get(best, 0) > 0:
-            chosen = best
+    habit = clear_habit(stats.defining_given(chosen))
+    if habit is not None and habit in candidates(guesses, group, stats):
+        chosen = habit
     name = group or NO_GROUP
     by_phase = {p: stats.group_defining_n(name, p + chosen[3:]) for p in stats.group_phases(name)}
-    top = max(by_phase.values(), default=0)
-    if top > 0 and by_phase.get(chosen[:3], 0) < top:
-        chosen = min(p for p, k in by_phase.items() if k == top) + chosen[3:]
+    phase = clear_habit({p: k for p, k in by_phase.items() if k})
+    if phase is not None:
+        chosen = phase + chosen[3:]
     return tuple(dict.fromkeys((chosen, *guesses)))[:3]
+
+
+def toward_more_common(before: str, after: str, group: str | None, stats: CodingStats) -> bool:
+    """Whether a change of first code moved toward a more common option in the group (0101)."""
+    name = group or NO_GROUP
+    return after != before and stats.group_defining_n(name, after) > stats.group_defining_n(name, before)
 
 
 CHECK_SYSTEM = """You are checking how the NTSB would code an accident that an analyst has \
@@ -2751,7 +2793,7 @@ git commit -m "S2.7 Task 9: the Jev client, ported from typesafe-probe for the o
 
 **Interfaces:**
 - Consumes: Task 3 (`load_stats`), Task 8 (all of `ordering`), Task 9 (`TypeSafeClient`), `samples.refuse_sealed` (Task 2).
-- Produces: `metrics.rescore_occurrence(scores: CaseScores, codes: Sequence[str], truth: Sequence[str], *, seen_pairs: AbstractSet[str]) -> CaseScores`; `checkpass.Way = Literal["rule", "luna", "jev"]`, `WAYS`, `CHECK_TOOL = "ordering_check"`, `EXPECTED_COST_PER_CASE_USD: Mapping[Way, float]`; `CheckOutcome(ranking, model, cost_usd, fingerprint, prompt_tokens=0, completion_tokens=0, note="")`; `Checker = Callable[[Hypothesis, str | None], CheckOutcome]`; `rule_checker(stats) -> Checker`; `luna_checker(client, stats, tables, *, model=sources.DEFAULT_MODEL, reasoning_effort=sources.DEFAULT_REASONING_EFFORT) -> Checker`; `jev_checker(client, stats, tables) -> Checker`; `checked_case(case, outcome, *, seen_pairs, commit) -> CaseResult`; `check_run(source: Path, way: Way, checker: Checker, *, runs_dir, groups, seen_pairs, commit, now) -> RunRecord`; `derived_id(run_id: str, way: Way) -> str` (`f"{run_id}-check-{way}"`). CLI: `ntsb-eval check RUN_ID --way {rule,luna,jev} [--budget-usd USD]`.
+- Produces: `metrics.rescore_occurrence(scores: CaseScores, codes: Sequence[str], truth: Sequence[str], *, seen_pairs: AbstractSet[str]) -> CaseScores`; `checkpass.Way = Literal["rule", "luna", "jev"]`, `WAYS`, `CHECK_TOOL = "ordering_check"`, `EXPECTED_COST_PER_CASE_USD: Mapping[Way, float]`; `CheckOutcome(ranking, model, cost_usd, fingerprint, prompt_tokens=0, completion_tokens=0, note="", toward_more_common=False)` (the last recorded in the step's `arguments`, decision 0101); `Checker = Callable[[Hypothesis, str | None], CheckOutcome]`; `rule_checker(stats) -> Checker`; `luna_checker(client, stats, tables, *, model=sources.DEFAULT_MODEL, reasoning_effort=sources.DEFAULT_REASONING_EFFORT) -> Checker`; `jev_checker(client, stats, tables) -> Checker`; `checked_case(case, outcome, *, seen_pairs, commit) -> CaseResult`; `check_run(source: Path, way: Way, checker: Checker, *, runs_dir, groups, seen_pairs, commit, now) -> RunRecord`; `derived_id(run_id: str, way: Way) -> str` (`f"{run_id}-check-{way}"`). CLI: `ntsb-eval check RUN_ID --way {rule,luna,jev} [--budget-usd USD]`.
 - Tasks 11, 12, 14, 15, 17 and 18 consume `ntsb-eval check` and `derived_id`.
 
 **What a derived folder holds.** `<run id>-check-<way>/cases.jsonl`: each answered case with its original step and a second step (`step` = 1, `tool = "ordering_check"`, `arguments = {"ranking": [...]}`, the reordered hypothesis, the check's model, tokens, cost and input fingerprint); occurrence scores recomputed by `rescore_occurrence`; finding scores unchanged; an abstained or failed case copied unchanged. `run.jsonl`: the source's record with the derived id, `prompt_version` suffixed `+check-<way>`, S2.7's commit, and **`cost_usd` = the check's cost only** (the answers were paid for, and counted, in the source run; W2). Written in a `finally`, so an interrupted pass still records what it spent, with `finished` empty so the report calls it aborted.
@@ -2876,6 +2918,7 @@ def test_the_rule_pass_writes_a_derived_run_with_a_check_step(tmp_path: Path) ->
     step = cases["C1"].steps[-1]
     assert step.tool == checkpass.CHECK_TOOL
     assert [g.phase + g.event for g in step.hypothesis.occurrence][0] == LOC
+    assert step.arguments["toward_more_common"] is True  # stall (5) -> loss of control (30), 0101
     assert cases["C1"].scores is not None and cases["C1"].scores.occurrence_top1
     assert len(cases["C2"].steps) == 1
 
@@ -2972,6 +3015,8 @@ class CheckOutcome:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     note: str = ""
+    # Decision 0101: whether the first code moved toward a more common option in the group.
+    toward_more_common: bool = False
 
 
 Checker = Callable[[Hypothesis, str | None], CheckOutcome]
@@ -2985,16 +3030,22 @@ def _fingerprint(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _toward(guesses: Sequence[str], ranking: Sequence[str], group: str | None, stats: CodingStats) -> bool:
+    return ordering.toward_more_common(guesses[0], ranking[0], group, stats)
+
+
 def rule_checker(stats: CodingStats) -> Checker:
-    """The free way: :func:`ordering.plain_rule`."""
+    """The free way: :func:`ordering.plain_rule` (clear habits only, decision 0101)."""
 
     def check(hypothesis: Hypothesis, group: str | None) -> CheckOutcome:
         guesses = _codes(hypothesis)
+        ranking = ordering.plain_rule(guesses, group, stats)
         return CheckOutcome(
-            ranking=ordering.plain_rule(guesses, group, stats),
+            ranking=ranking,
             model="rule",
             cost_usd=0.0,
             fingerprint=_fingerprint(f"{guesses}|{group}"),
+            toward_more_common=_toward(guesses, ranking, group, stats),
         )
 
     return check
@@ -3038,7 +3089,10 @@ def luna_checker(
             except SchemaError as caught:
                 error = caught
                 continue
-            return CheckOutcome(ranking, model, spent, _fingerprint(system), prompt, completion)
+            return CheckOutcome(
+                ranking, model, spent, _fingerprint(system), prompt, completion,
+                toward_more_common=_toward(guesses, ranking, group, stats),
+            )
         return CheckOutcome(
             guesses, model, spent, _fingerprint(system), prompt, completion,
             note=f"check failed, answer unchanged: {error}",
@@ -3057,12 +3111,14 @@ def jev_checker(client: TypeSafeClient, stats: CodingStats, tables: CodeTables) 
         exchange = client.ask_state(text, {"defining": ordering.jev_question(options, tables)})
         answer = exchange.reply.choice("defining")
         tokens = exchange.reply.usage.input_tokens
+        ranking = ordering.ranking_from_probabilities(answer.probabilities)
         return CheckOutcome(
-            ranking=ordering.ranking_from_probabilities(answer.probabilities),
+            ranking=ranking,
             model=exchange.reply.model,
             cost_usd=tokens * sources.JEV.input_usd_per_mtok / 1_000_000,
             fingerprint=_fingerprint(text),
             prompt_tokens=tokens,
+            toward_more_common=_toward(guesses, ranking, group, stats),
         )
 
     return check
@@ -3078,7 +3134,10 @@ def checked_case(
         update={
             "step": last.step + 1,
             "tool": CHECK_TOOL,
-            "arguments": {"ranking": list(outcome.ranking)},
+            "arguments": {
+                "ranking": list(outcome.ranking),
+                "toward_more_common": outcome.toward_more_common,
+            },
             "reason": outcome.note,
             "returned_roles": (),
             "documents_attached": (),
@@ -3329,7 +3388,7 @@ git commit -m "S2.7 Task 10: the ordering check as a post-pass (ntsb-eval check)
 
 **Interfaces:**
 - Consumes: derived folders `derived_id(source, way)` (Task 10); `misses.miss_group` (Task 4); `metrics.paired_difference`.
-- Produces: `Paired(mean, low, high, n, fixes, breaks)` (frozen dataclass); `paired(a: Mapping[str, bool], b: Mapping[str, bool], ids: Sequence[str] | None = None) -> Paired`; `choose(results: Mapping[str, Mapping[str, tuple[Paired, Paired | None]]]) -> str` (returns a way or `"no check"`); `main(argv)` with `--answers RUN_A RUN_B`, `--out`.
+- Produces: `Paired(mean, low, high, n, fixes, breaks)` (frozen dataclass); `paired(a: Mapping[str, bool], b: Mapping[str, bool], ids: Sequence[str] | None = None) -> Paired`; `choose(results: Mapping[str, Mapping[str, tuple[Paired, Paired | None]]]) -> str` (returns a way or `"no check"`); `push(checked: Sequence[CaseResult], none: Mapping[str, bool]) -> tuple[int, int, int, int]` (first codes changed; of those, toward a more common option; their fixes; their breaks — decision 0101 item 4); `main(argv)` with `--answers RUN_A RUN_B`, `--out`.
 
 **The rule, as code will apply it** (decision 0096 item 5). For each answer set and each way: *vs none* is the way's paired top-1 difference against the source run; *vs rule* is a model way's difference against the rule's derived run. A way **works** if *vs none*'s lower bound is above zero on both answer sets. A model way is **chosen** if *vs rule*'s lower bound is above zero on both sets; if both model ways qualify, the one with the larger mean gain over the rule, averaged over the two sets. Otherwise the rule is chosen if it works; otherwise no check is kept. A way whose derived folders are missing (for example Jev without access) is printed "not run" and cannot be chosen.
 
@@ -3371,6 +3430,27 @@ def test_a_model_is_chosen_only_when_it_beats_the_rule_on_both_sets() -> None:
 def test_nothing_is_kept_when_nothing_works_on_both_sets() -> None:
     results = {"A": {"rule": (_p(0.01), None)}, "B": {"rule": (_p(-0.01), None)}}
     assert r1.choose(results) == "no check"
+
+
+def test_push_counts_changes_toward_a_more_common_option() -> None:
+    from dataclasses import replace
+
+    from tests.test_occurrence_misses import _SCORES, _case
+
+    base = _case("C1", ("452240",), ("452241",))
+    last = base.steps[-1]
+    moved = last.model_copy(
+        update={
+            "step": 1,
+            "tool": "ordering_check",
+            "arguments": {"ranking": ["452240"], "toward_more_common": True},
+            "hypothesis": last.hypothesis.model_copy(
+                update={"occurrence": (last.hypothesis.occurrence[0].model_copy(update={"event": "240"}),)}
+            ),
+        }
+    )
+    checked = base.model_copy(update={"steps": (last, moved), "scores": replace(_SCORES, occurrence_top1=True)})
+    assert r1.push([checked], {"C1": False}) == (1, 1, 1, 0)  # changed, toward, fixes, breaks
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -3449,6 +3529,25 @@ def _top1(cases: Sequence[CaseResult]) -> dict[str, bool]:
     return {c.case_id: c.scores.occurrence_top1 for c in cases if c.scores is not None and c.steps}
 
 
+def push(checked: Sequence[CaseResult], none: Mapping[str, bool]) -> tuple[int, int, int, int]:
+    """Decision 0101 item 4: (first codes changed, of which toward a more common option,
+    fixes among those, breaks among those)."""
+    changed = toward = fixes = breaks = 0
+    for case in checked:
+        if len(case.steps) < 2 or case.steps[-1].tool != "ordering_check" or case.scores is None:
+            continue
+        before = case.steps[0].hypothesis.occurrence[0]
+        after = case.steps[-1].hypothesis.occurrence[0]
+        if (before.phase, before.event) == (after.phase, after.event):
+            continue
+        changed += 1
+        if case.steps[-1].arguments.get("toward_more_common") is True:
+            toward += 1
+            fixes += case.scores.occurrence_top1 and not none.get(case.case_id, False)
+            breaks += none.get(case.case_id, False) and not case.scores.occurrence_top1
+    return changed, toward, fixes, breaks
+
+
 def _line(label: str, p: Paired) -> str:
     return f"  {label}: {p.mean:+.1%} [{p.low:+.1%}, {p.high:+.1%}] on n={p.n}; fixes {p.fixes}, breaks {p.breaks}"
 
@@ -3479,12 +3578,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         fatal = {c.case_id for c in base if c.fatal}
         lines += ["", f"## answer set {source}"]
         loaded: dict[str, dict[str, bool]] = {}
+        pushes: dict[str, tuple[int, int, int, int]] = {}
         for way in WAYS:
             folder = runs / derived_id(source, way)
             if not (folder / "cases.jsonl").exists():
                 lines.append(f"- {way}: not run")
                 continue
-            loaded[way] = _top1(read_jsonl(folder / "cases.jsonl", CaseResult))
+            derived = read_jsonl(folder / "cases.jsonl", CaseResult)
+            loaded[way] = _top1(derived)
+            pushes[way] = push(derived, none)
         results[source] = {}
         for way, top1 in loaded.items():
             vs_none = paired(top1, none)
@@ -3494,6 +3596,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             lines.append(_line("against no check", vs_none))
             if vs_rule is not None:
                 lines.append(_line("against the plain rule", vs_rule))
+            changed, toward, t_fixes, t_breaks = pushes[way]
+            lines.append(
+                f"  first codes changed: {changed}; toward a more common option (decision 0101): "
+                f"{toward}, fixes {t_fixes}, breaks {t_breaks}"
+            )
             lines.append(_line("fatal, against no check", paired(top1, none, sorted(fatal))))
             lines.append(_line("non-fatal, against no check", paired(top1, none, sorted(set(none) - fatal))))
             for group in ("exact", *MISS_GROUPS):
@@ -3965,7 +4072,7 @@ git commit -m "S2.7 Task 13: guidance files, the prompt version, and the registr
 
 **Interfaces:**
 - Consumes: `metrics.bootstrap_mean`; run folders.
-- Produces: `Diff(mean, low, high, n)`; `diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff`; `Reading(primary, noise, secondary, kept, reason)`; `read(run, reference, noise_a, noise_b, *, finding_round: bool) -> Reading` over case lists; `main(argv)` with `--run`, `--reference`, `--noise A B`, `--finding-round`, `--append PATH`.
+- Produces: `Diff(mean, low, high, n)`; `diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff`; `Reading(primary, noise, secondary, kept, reason)`; `read(run, reference, noise_a, noise_b, *, finding_round: bool) -> Reading` over case lists; `push_line(run, reference, groups: Mapping[str, str | None], stats: CodingStats) -> str` (decision 0101 item 4); `main(argv)` with `--run`, `--reference`, `--noise A B`, `--finding-round`, `--append PATH`.
 
 **The rule, as code applies it.** An occurrence round's **primary** score is top-1 and its **secondary** finding recall@10; a finding round swaps them. The **noise** is the absolute mean of the primary score's paired difference between the two identical Round 0 runs (or their derived check folders when a check is kept). The round is **kept** if the primary difference's lower bound is above zero, its mean is larger than the noise, and the secondary difference's upper bound is not below zero (do no harm). Example: top-1 +3.5% [+0.8%, +6.1%], noise 1.5%, finding recall@10 −0.4% [−1.9%, +1.1%] → kept. Top-1 +1.2% [+0.1%, +2.4%] with noise 1.5% → dropped: inside the noise.
 
@@ -4017,6 +4124,23 @@ def test_a_gain_that_harms_the_other_score_is_dropped() -> None:
     reading = rr.read(run, reference, reference, reference, finding_round=False)
     assert not reading.kept
     assert "harm" in reading.reason
+
+
+def test_push_line_counts_first_codes_moved_toward_a_more_common_option() -> None:
+    from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+
+    stats = build(
+        [PoolCase(2012, "Maneuvering", ("452240",))] * 30 + [PoolCase(2013, "Maneuvering", ("452241",))] * 5,
+        built_from="test",
+    )
+    reference = [_case("C1", ("452240",), ("452241",)), _case("C2", ("452240",), ("452240",))]
+    run = [
+        _case("C1", ("452240",), ("452240",)).model_copy(update={"scores": replace(_SCORES, occurrence_top1=True)}),
+        _case("C2", ("452240",), ("452241",)),
+    ]
+    reference[1] = reference[1].model_copy(update={"scores": replace(_SCORES, occurrence_top1=True)})
+    text = rr.push_line(run, reference, {"C1": "Maneuvering", "C2": "Maneuvering"}, stats)
+    assert "first codes changed: 2; toward a more common option: 1, fixes 1, breaks 0" in text
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -4045,7 +4169,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ntsb_probable_cause import fields
+from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
 from ntsb_probable_cause.scoring.metrics import bootstrap_mean
+from ntsb_probable_cause.scoring.ordering import toward_more_common
 from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
 from ntsb_probable_cause.settings import Settings
 
@@ -4114,6 +4243,51 @@ def read(
     return Reading(primary, noise, secondary, True, "kept")
 
 
+def _first(case: CaseResult) -> str:
+    guess = case.steps[-1].hypothesis.occurrence[0]
+    return guess.phase + guess.event
+
+
+def push_line(
+    run: Sequence[CaseResult],
+    reference: Sequence[CaseResult],
+    groups: Mapping[str, str | None],
+    stats: CodingStats,
+) -> str:
+    """Decision 0101 item 4: first codes changed against the reference, and how many moved
+    toward a more common option in the case's phase group, with their fixes and breaks."""
+    before = {c.case_id: c for c in reference if c.scores is not None and c.steps}
+    changed = toward = fixes = breaks = 0
+    for case in run:
+        old = before.get(case.case_id)
+        if case.scores is None or not case.steps or old is None or old.scores is None:
+            continue
+        if _first(case) == _first(old):
+            continue
+        changed += 1
+        if toward_more_common(_first(old), _first(case), groups.get(case.case_id), stats):
+            toward += 1
+            fixes += case.scores.occurrence_top1 and not old.scores.occurrence_top1
+            breaks += old.scores.occurrence_top1 and not case.scores.occurrence_top1
+    return (
+        f"- first codes changed: {changed}; toward a more common option: {toward}, "
+        f"fixes {fixes}, breaks {breaks} (decision 0101 item 4)"
+    )
+
+
+_GROUP_FIELD = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+
+def _groups(cases: Sequence[CaseResult]) -> dict[str, str | None]:
+    """Each case's phase group, the evidence value (read from the processed file, locally)."""
+    ids = [c.case_id for c in cases]
+    raws = samples.load_cases(Settings().data_dir / "processed", ids)
+    return {
+        i: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
+        for i, raw in zip(ids, raws, strict=True)
+    }
+
+
 def _load(run_id: str) -> list[CaseResult]:
     if "heldout" in run_id:
         raise SystemExit(f"round_result: {run_id} is a held-out run; development runs only")
@@ -4133,10 +4307,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--finding-round", action="store_true")
     parser.add_argument("--append", default=None, type=Path)
     args = parser.parse_args(argv)
+    run, reference = _load(args.run), _load(args.reference)
     reading = read(
-        _load(args.run), _load(args.reference), _load(args.noise[0]), _load(args.noise[1]),
+        run, reference, _load(args.noise[0]), _load(args.noise[1]),
         finding_round=args.finding_round,
     )
+    push = push_line(run, reference, _groups(run), load_stats())
     primary, secondary = ("finding recall@10", "occurrence top-1") if args.finding_round else ("occurrence top-1", "finding recall@10")
     text = "\n".join(
         [
@@ -4146,6 +4322,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"- {primary}: {_fmt(reading.primary)}",
             f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",
             f"- {secondary} (do no harm): {_fmt(reading.secondary)}",
+            push,
             f"- outcome: {reading.reason}",
         ]
     )
@@ -4195,7 +4372,7 @@ From `docs/results/s27-round0-dev.txt`: the largest miss group Andy's hand-read 
 
 - [ ] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
 
-Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). An example of the form (the numbers come from the committed counts, never from this plan):
+Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). **A habit is stated as the usual choice only when it is a clear habit** — at least 60% of at least 20 pool cases (decision 0101 item 3). Below that line, the guidance lists the options with their counts and says the evidence decides, for example: "for a stall on approach the NTSB has used the final leg (40 of 131 past cases), the go-around (37) and the base leg (24); code the leg the evidence places the stall on." An example of a clear habit, in the form it takes (the numbers come from the committed counts, never from this plan):
 
 > When a loss of control in flight and an aerodynamic stall or spin both appear in an accident, the NTSB flagged the loss of control in flight as the defining event in N of M past cases. Put the stall or spin first only when the evidence shows the stall itself, not a loss of control, began the accident sequence; otherwise put loss of control in flight first and keep the stall among your guesses.
 
@@ -4511,3 +4688,5 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 ## Deviations
 
 *Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
+
+- 2026-09-27, walkthrough W1, Andy's decision ("A with a 'clear habit' safeguard."): the phase group's phase codes are learned from the pool (spec §5.2 item 4, §5.3 item 2). An ad-hoc probe (development cases outside `dev-400`, 2026-09-27; re-derived by Task 3) found all 43 phase codes used for a defining event fall under exactly one of 12 phase groups, and on B-v1 the first guess's phase was the NTSB's on 210 of 394 answered cases, with 35 first guesses using a phase the NTSB never used under the given group. On Andy's concern that the counts would push every case toward the most common combination, decision 0101 amends 0096 item 4 and 0098 item 2: the plain rule changes the model's event or phase only on a clear habit (at least 60% of at least 20 pool cases; `ordering.clear_habit`, replacing `RULE_MIN_CASES`), guidance names a habit only when it is clear, and every check step (`arguments["toward_more_common"]`), Round 1's report (`round1_report.push`) and every round's result (`round_result.push_line`) count first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 were edited before any code.

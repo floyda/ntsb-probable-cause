@@ -136,8 +136,9 @@ under `docs/specs/` and the record links to it.
 | [0093](0093-s27-runs-as-two-tracks-guidance-on-v1.md) | S2.7 runs as two tracks: coding guidance on v1, transcription alongside | Accepted |
 | [0094](0094-coding-statistics-from-a-pool-outside-the-samples.md) | Coding statistics come from development verdicts outside the samples | Accepted |
 | [0095](0095-a-sealed-development-sample.md) | A sealed development sample, dev-seal-400, opened once | Accepted |
-| [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted |
+| [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted; item 4 amended by 0101 |
 | [0097](0097-jev-as-an-ordering-check-model-on-development-cases.md) | Jev is admitted as an ordering-check model, on development cases only | Accepted; amends 0009 for this role |
-| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted |
+| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101 |
 | [0099](0099-the-judges-narrative-label-and-four-outcomes.md) | The judge's narrative label gives four outcomes, validated by Andy's hand-read before it is cited | Accepted |
 | [0100](0100-the-transcriber-retest-and-page-rule.md) | The transcriber re-test is judged against Qwen, and the page rule is measured before it is chosen | Accepted |
+| [0101](0101-the-clear-habit-safeguard.md) | Counts act only on a clear habit: the plain rule and guidance follow the NTSB's most common choice only above 60% of 20 cases | Accepted; amends 0096 item 4 and 0098 item 2 |
