@@ -741,6 +741,8 @@ def _write_judgeable_run(  # noqa: PLR0913 -- a test-only builder, one keyword p
     sample: str = "dev-400",
     arm: str = "ceiling",
     evidence_version: EvidenceVersion = "v1",
+    guidance: tuple[str, ...] = (),
+    guidance_sha256: str | None = None,
 ) -> None:
     """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
@@ -755,6 +757,8 @@ def _write_judgeable_run(  # noqa: PLR0913 -- a test-only builder, one keyword p
                 finished=now,
                 cost_usd=1.0,
                 evidence_version=evidence_version,
+                guidance=guidance,
+                guidance_sha256=guidance_sha256,
             )
         ],
     )
@@ -868,6 +872,34 @@ def test_judge_records_the_judged_run_s_own_evidence_version(
     assert judge.run_id == f"{run_id}-judge"
     assert judge.evidence_version == "v2"
     assert "| heldout-40 | B | v2 |" in ledger_path.read_text()
+
+
+def test_judge_records_the_judged_run_s_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1, item 2: the judge pass's cost row must not lose which guidance ran."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(
+        "ntsb_probable_cause.scoring.ledger.commit_state", lambda *_a, **_k: ("abc1234", False)
+    )
+    run_id = "20260101T000000-abc1234-dev-400-B"
+    _write_judgeable_run(
+        runs_dir,
+        run_id,
+        case_id,
+        arm="B",
+        guidance=("r2-loc-stall", "r3-phase"),
+        guidance_sha256="a" * 64,
+    )
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([GOOD_LABELS]), None
+
+    assert main(["judge", run_id], client_factory=factory) == 0
+    answering, judge = read_jsonl(runs_dir / run_id / "run.jsonl", RunRecord)
+    assert answering.guidance == ("r2-loc-stall", "r3-phase")
+    assert judge.guidance == answering.guidance
+    assert judge.guidance_sha256 == answering.guidance_sha256 == "a" * 64
 
 
 def test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused(

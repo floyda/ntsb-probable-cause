@@ -268,10 +268,13 @@ s27-round1-results:
 
 s27-round:
 	$(if $(PER_CASE),,$(error PER_CASE is required: the last run's cost per case rounded up))
+	$(if $(or $(GUIDANCE),$(NO_GUIDANCE)),,$(error GUIDANCE is required: every kept file and the new one, in stacking order (NO_GUIDANCE=1 for a run with none)))
 	uv run python -m scripts.stage_spend --estimate $(or $(EST),1.40)
 	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version $(or $(EVIDENCE),v1) --expected-cost-per-case-usd $(PER_CASE) $(foreach g,$(GUIDANCE),--guidance $(g))
 # S2.7 spec §6, paid (about $1.18 at v1): one guidance round's arm B run on dev-400. GUIDANCE
-# lists every kept file and the new one, in stacking order; each needs its registration committed.
+# lists every kept file and the new one, in stacking order (each needs its registration
+# committed); pass NO_GUIDANCE=1 instead for a deliberate run with no guidance at all
+# (Task 17's v2 run, if every round is dropped).
 
 s27-check-guidance:
 	$(if $(GUIDANCE),,$(error GUIDANCE is required))

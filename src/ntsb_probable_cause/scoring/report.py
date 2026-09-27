@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.scoring import baseline
+from ntsb_probable_cause.scoring import baseline, prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.metrics import (
     CaseScores,
@@ -246,7 +246,7 @@ def provenance(record: RunRecord) -> str:
     finished = record.finished.isoformat() if record.finished is not None else "-"
     guidance_line = ""
     if record.guidance:
-        fingerprint = (record.guidance_sha256 or "")[:12]
+        fingerprint = (record.guidance_sha256 or "")[: prompt.FINGERPRINT_CHARS]
         guidance_line = f"guidance={'+'.join(record.guidance)} sha256={fingerprint}\n"
     return (
         f"run {record.run_id} [{status}]\n"
