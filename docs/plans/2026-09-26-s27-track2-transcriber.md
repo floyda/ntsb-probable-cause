@@ -512,7 +512,7 @@ git add apps/eval/__main__.py tests/test_eval_app.py docs/plans/2026-09-26-s27-t
 git commit -m "S2.7 track 2: ntsb-eval transcribe takes a model and a page rule"
 ```
 
-- [ ] **Step 6: Re-create `dev-400`'s marker under the new name** (free: every page is already cached; walkthrough W4)
+- [x] **Step 6: Re-create `dev-400`'s marker under the new name** (free: every page is already cached; walkthrough W4)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -520,7 +520,7 @@ uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017
 ```
 Expected: the projection line ends `0 not yet read; projected $0.00`. If any page is not yet read, stop and report it: the S2.6 cache was expected to hold every page. Then the same command without `--dry-run`: with nothing pending it makes no job, no reservation and no model call, and writes the marker (at most 2% of pages failed: S2.6 recorded 59 of 12,458). It lists every page of every `dev-400` document again, which takes some minutes.
 
-- [ ] **Step 7: Confirm the marker is found** (read-only)
+- [x] **Step 7: Confirm the marker is found** (read-only)
 
 Re-run Task 2 Step 5's command. Expected: `True`. The marker file holds `"page_rule": "all"` beside `"model"` and `"dpi"`. S2.6's old file stays in place, unused; log both file names in Deviations.
 
@@ -2485,3 +2485,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 3 (pre-flight 2.4): `test_transcribe_refuses_a_page_rule_it_does_not_know` gained a `capsys` fixture and asserts `"invalid choice: 'every-page'"` is in stderr, rather than only checking that `SystemExit` is raised (argparse's own message, from `choices=PAGE_RULES`).
 - 2026-09-27, Task 3 (pre-flight 2.5): `_StubDocuments` alone serves only image-only pages (`_SCAN`), so `{j.mixed for j in calls[0]} == {False}` under `--page-rule image-only` would hold under `"all"` too and cannot show the rule is doing anything. Rather than editing the shared `_StubDocuments`/`_SCAN` (used by every other `transcribe` test, whose page counts are pinned in already-committed assertions, e.g. the dry-run test's "4 pages"), a new subclass `_StubDocumentsWithMixedPage` adds one more document holding a text-and-image page (`_MIXED_SCAN`, built with `PageSpec(text=_MIXED_TEXT, images=(...))`, chars over `SCAN_PAGE_MAX_CHARS`), used only by the new model/page-rule test via its own `monkeypatch.setattr`. Under `"image-only"` that page is never chosen (`page_choice` returns `None` for a "text and image" page); under `"all"` it would be. This keeps every existing test's page counts and assertions unchanged.
 - 2026-09-27, Task 3 (pre-flight 2.7): Step 6's plan text ("the projection line ends `0 not yet read; projected $0.00`") is read as "contains" — the real line ends with the skipped-documents clause (`_cmd_transcribe`'s `print`), which the plan's own Step 3 code shows.
+- 2026-09-27, Task 3 Steps 6–7: the dry run's projection line read `dev-400: 12458 pages to read with qwen/qwen3.5-122b-a10b at 150 dpi, rule all, 0 not yet read; projected $0.00; 8 document(s) could not be listed, fetched or parsed`, so the real command was run per the safeguard. It made no job, no reservation and no model call (`read 0 pages now ($0.00); 59 of 12458 failed in all`, within the 2% retry threshold) and wrote `dev-400`'s marker under the new stamp. S2.6's old marker file, `data/transcriptions/done/dev-400-940436639bbd.json`, stays on disk unused; the new one is `data/transcriptions/done/dev-400-60ddd78408f8.json`, holding `"model": "qwen/qwen3.5-122b-a10b"`, `"page_rule": "all"` and `"dpi": 150` beside its counts. Task 2 Step 5's command now prints `True` for `dev-400`.
