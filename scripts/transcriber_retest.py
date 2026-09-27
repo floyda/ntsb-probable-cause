@@ -411,6 +411,37 @@ def _missing(
     return out
 
 
+def _refuse_moved_marks(out: Path, sheets: Mapping[str, dict[int, dict[str, object]]]) -> None:
+    """Refuse a rebuild whose sheet would renumber cards already written (as S2.6's recheck).
+
+    A marking page keeps Andy's marks in the browser by row number, under a fixed storage key.
+    The shuffle depends on the set of candidates, so a rebuild with another set can give row
+    ``10k + i`` to another model: an earlier mark would show on, and be scored against, a
+    reading Andy never marked. A rebuild with the same candidates writes the same sheet.
+
+    Raises:
+        ConfigurationError: An existing sheet in ``out`` differs from the one to be written.
+    """
+    changed: list[str] = []
+    for name, sheet in sheets.items():
+        path = out / name
+        if not path.exists():
+            continue
+        old = json.loads(path.read_text())
+        new = json.loads(json.dumps(sheet))
+        rows = sorted(int(n) for n in old.keys() | new.keys() if old.get(n) != new.get(n))
+        if rows:
+            changed.append(f"{name} rows {rows}")
+    if changed:
+        raise ConfigurationError(
+            "these candidates would renumber cards already on Andy's pages, so marks saved in "
+            "the browser would sit on other models' readings: "
+            + "; ".join(changed)
+            + f". Rebuild with the same candidates, or to start over deliberately, move {out} "
+            "aside and clear the pages' saved marks in the browser"
+        )
+
+
 def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str]) -> str:
     """Andy's two pages (walkthrough W3): the named candidates' words, in S2.6's layout.
 
@@ -440,13 +471,23 @@ def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str
         raise ConfigurationError(
             "not in the transcription cache: " + "; ".join(missing) + " -- run the re-test first"
         )
-    out = settings.data_dir / RETEST_FOLDER
-    out.mkdir(parents=True, exist_ok=True)
-    pages = os.path.relpath(FOLDER / "pages", RETEST_FOLDER)
-
     photo_sheet, photo_cards = word_cards(
         photos, _reading_of(settings, photos), models=ordered, seed_base=_PHOTO_SEED_BASE
     )
+    layers = _scan_layers(scans, docs)
+    scan_sheet, scan_cards = word_cards(
+        scans,
+        _reading_of(settings, scans),
+        models=ordered,
+        seed_base=_SCAN_SEED_BASE,
+        choices=(_SCAN_WORDS,),
+        body=_scan_body(layers),
+    )
+    out = settings.data_dir / RETEST_FOLDER
+    _refuse_moved_marks(out, {"photos.json": photo_sheet, "mixed.json": scan_sheet})
+    out.mkdir(parents=True, exist_ok=True)
+    pages = os.path.relpath(FOLDER / "pages", RETEST_FOLDER)
+
     (out / "photos.json").write_text(json.dumps(photo_sheet))
     photo_intro = (
         _GROUPED_LAYOUT + "<p>Each photograph is shown once on the left, held in view, with the "
@@ -468,15 +509,6 @@ def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str
         )
     )
 
-    layers = _scan_layers(scans, docs)
-    scan_sheet, scan_cards = word_cards(
-        scans,
-        _reading_of(settings, scans),
-        models=ordered,
-        seed_base=_SCAN_SEED_BASE,
-        choices=(_SCAN_WORDS,),
-        body=_scan_body(layers),
-    )
     (out / "mixed.json").write_text(json.dumps(scan_sheet))
     (out / "mixed.html").write_text(
         marking_page.render(

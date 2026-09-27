@@ -423,6 +423,33 @@ def test_cmd_pages_numbers_the_cards_the_same_whatever_the_order_of_the_models(
     assert (out / "mixed.json").read_text() == first
 
 
+def _page_files(out: Path) -> dict[str, bytes]:
+    return {p.name: p.read_bytes() for p in sorted(out.iterdir())}
+
+
+def test_cmd_pages_rebuilds_the_same_candidates_identically(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    out = settings.data_dir / tr.RETEST_FOLDER
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    first = _page_files(out)
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    assert _page_files(out) == first
+
+
+def test_cmd_pages_refuses_a_rebuild_that_would_move_marks_and_leaves_the_pages(
+    tmp_path: Path,
+) -> None:
+    # Marks are kept in the browser by row number: a different set of candidates renumbers the
+    # rows, so an earlier mark would sit on another model's reading (as S2.6's recheck guard).
+    settings, docs = _keys_for_pages(tmp_path)
+    out = settings.data_dir / tr.RETEST_FOLDER
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    first = _page_files(out)
+    with pytest.raises(ConfigurationError, match=r"mixed\.json.*move .* aside"):
+        tr.cmd_pages(settings, docs, models=("a/m",))
+    assert _page_files(out) == first
+
+
 def test_cmd_pages_refuses_a_candidate_whose_readings_are_not_cached(tmp_path: Path) -> None:
     settings, docs = _keys_for_pages(tmp_path)
     with pytest.raises(ConfigurationError, match="2 readings of c/m"):

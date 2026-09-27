@@ -272,4 +272,5 @@ s27-retest-pages:
 	uv run python -m scripts.transcriber_retest pages --models $(MODELS)
 # Free: Andy's two pages under <data_dir>/s27/transcriber-retest/, for the candidates still in
 # the running only (walkthrough W3); MODELS is space-separated. Rebuilding with the same
-# candidates keeps marks already made (they reload from the browser).
+# candidates keeps marks already made (they reload from the browser); a different set is refused,
+# because it would renumber the cards those marks belong to.
