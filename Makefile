@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round s27-check-guidance
 
 check: lint type test
 
@@ -265,3 +265,15 @@ s27-check:
 s27-round1-results:
 	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
 	uv run python -m scripts.round1_report --answers 20260926T082427-d19aafa-dev-400-B $(REPEAT) --out docs/results/s27-round1-dev.txt
+
+s27-round:
+	$(if $(PER_CASE),,$(error PER_CASE is required: the last run's cost per case rounded up))
+	uv run python -m scripts.stage_spend --estimate $(or $(EST),1.40)
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version $(or $(EVIDENCE),v1) --expected-cost-per-case-usd $(PER_CASE) $(foreach g,$(GUIDANCE),--guidance $(g))
+# S2.7 spec §6, paid (about $1.18 at v1): one guidance round's arm B run on dev-400. GUIDANCE
+# lists every kept file and the new one, in stacking order; each needs its registration committed.
+
+s27-check-guidance:
+	$(if $(GUIDANCE),,$(error GUIDANCE is required))
+	uv run python -m scripts.check_guidance $(GUIDANCE)
+# S2.7 plan W6, free and local: no guidance sentence may appear in a development case's withheld text.

@@ -146,6 +146,14 @@ def test_provenance_shows_status_commit_and_totals(run_record: RunRecord) -> Non
     assert "cases=40 total_cost_usd=1.2300" in text
 
 
+def test_provenance_shows_guidance_when_present(run_record: RunRecord) -> None:
+    guided = run_record.model_copy(
+        update={"guidance": ("r2-loc-stall", "r3-phase"), "guidance_sha256": "a" * 64}
+    )
+    assert "guidance=r2-loc-stall+r3-phase sha256=aaaaaaaaaaaa\n" in report.provenance(guided)
+    assert "guidance=" not in report.provenance(run_record)
+
+
 def test_provenance_marks_an_aborted_run_and_a_dirty_commit(run_record: RunRecord) -> None:
     aborted = run_record.model_copy(update={"finished": None, "dirty": True})
     text = report.provenance(aborted)

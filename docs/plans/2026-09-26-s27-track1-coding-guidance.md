@@ -3758,7 +3758,7 @@ Report in plain English: each way's gain over no check on both answer sets, fixe
 
 **Where guidance sits.** After the code tables, under its own heading: `SYSTEM_ANSWER`, the tables, then `## Coding guidance (how the NTSB codes)` and each file's text in stacking order. The evidence payload is untouched, so S0's provenance check and every boundary test read it unchanged (decision 0098 item 1).
 
-- [ ] **Step 1: Write the failing prompt tests** (append to `tests/test_prompt.py`)
+- [x] **Step 1: Write the failing prompt tests** (append to `tests/test_prompt.py`)
 
 ```python
 from pathlib import Path
@@ -3806,7 +3806,7 @@ def test_registration_path() -> None:
     assert prompt.registration_path("r2-loc-stall") == Path("docs/rounds/s27-round-2.md")
 ```
 
-- [ ] **Step 2: Run them to verify they fail, then implement in `prompt.py`**
+- [x] **Step 2: Run them to verify they fail, then implement in `prompt.py`**
 
 Run: `uv run pytest tests/test_prompt.py -v` (Expected: FAIL, attributes missing)
 
@@ -3871,7 +3871,7 @@ Create `src/ntsb_probable_cause/scoring/guidance/__init__.py` with only a docstr
 
 Run: `uv run pytest tests/test_prompt.py -v` (Expected: PASS)
 
-- [ ] **Step 3: Write the failing runner tests** (append to `tests/test_runner.py`, using its `runner`, `GOOD`, `REFINE` helpers and the `guidance_dir` idea)
+- [x] **Step 3: Write the failing runner tests** (append to `tests/test_runner.py`, using its `runner`, `GOOD`, `REFINE` helpers and the `guidance_dir` idea)
 
 ```python
 def test_guidance_reaches_the_system_text_and_the_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures) -> None:
@@ -3902,7 +3902,7 @@ def test_a_run_without_guidance_writes_the_old_spec_keys(tmp_path: Path, record_
 
 (Use the arguments `tests/test_runner.py`'s other sync ceiling tests pass; the ceiling needs no docket.)
 
-- [ ] **Step 4: Run them to verify they fail, then implement in the runner, records and report**
+- [x] **Step 4: Run them to verify they fail, then implement in the runner, records and report**
 
 Run: `uv run pytest tests/test_runner.py -v -k guidance` (Expected: FAIL, `RunSpec` has no `guidance`)
 
@@ -3915,7 +3915,7 @@ Run: `uv run pytest tests/test_runner.py -v -k guidance` (Expected: FAIL, `RunSp
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_records.py -v` (Expected: PASS)
 
-- [ ] **Step 5: The CLI and the registration refusal**
+- [x] **Step 5: The CLI and the registration refusal**
 
 In `_build_parser`'s `run_p`: `run_p.add_argument("--guidance", action="append", default=[], metavar="NAME", help="a guidance file r<N>-<slug>, in stacking order (decision 0098)")`. In `_cmd_run`, after the sealed refusal:
 
@@ -3947,7 +3947,7 @@ def test_run_refuses_guidance_whose_registration_is_not_committed(
 
 Run: `uv run pytest tests/test_eval_app.py -v -k "guidance or resolve"` (Expected: PASS)
 
-- [ ] **Step 6: The CI check on committed guidance, and the local sentence check (W6)**
+- [x] **Step 6: The CI check on committed guidance, and the local sentence check (W6)**
 
 `tests/test_guidance_files.py`:
 
@@ -4063,7 +4063,7 @@ def test_sentences_and_matches() -> None:
 
 (`fields.factual_narrative`, `analysis_narrative`, `probable_cause` exist on `main`; if a name differs, use the one in `fields.py`. Scripts are outside the import-linter contracts, as `analysis_handcheck.py` already is.)
 
-- [ ] **Step 7: The rounds folder and its template** (`docs/rounds/README.md`)
+- [x] **Step 7: The rounds folder and its template** (`docs/rounds/README.md`)
 
 ```markdown
 # S2.7 rounds
@@ -4095,7 +4095,7 @@ it is edited. `s27-sealed.md` registers the final setup before the sealed sample
     <the file's text, verbatim>
 ```
 
-- [ ] **Step 8: Makefile targets**
+- [x] **Step 8: Makefile targets**
 
 ```make
 s27-round:
@@ -4111,7 +4111,7 @@ s27-check-guidance:
 # S2.7 plan W6, free and local: no guidance sentence may appear in a development case's withheld text.
 ```
 
-- [ ] **Step 9: Run the full check and commit**
+- [x] **Step 9: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4757,6 +4757,8 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 
 - 2026-09-27, walkthrough W1, Andy's decision ("A with a 'clear habit' safeguard."): the phase group's phase codes are learned from the pool (spec §5.2 item 4, §5.3 item 2). An ad-hoc probe (development cases outside `dev-400`, 2026-09-27; re-derived by Task 3) found all 43 phase codes used for a defining event fall under exactly one of 12 phase groups, and on B-v1 the first guess's phase was the NTSB's on 210 of 394 answered cases, with 35 first guesses using a phase the NTSB never used under the given group. On Andy's concern that the counts would push every case toward the most common combination, decision 0101 amends 0096 item 4 and 0098 item 2: the plain rule changes the model's event or phase only on a clear habit (at least 60% of at least 20 pool cases; `ordering.clear_habit`, replacing `RULE_MIN_CASES`), guidance names a habit only when it is clear, and every check step (`arguments["toward_more_common"]`), Round 1's report (`round1_report.push`) and every round's result (`round_result.push_line`) count first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 were edited before any code.
 - 2026-09-27, walkthrough W2, Andy's decision (A): the ordering check runs as a post-pass over a finished run (`ntsb-eval check`, Task 10), writing a derived folder `<run id>-check-<way>`, not inside the runner "before the finding refinement turn" as spec §5.5 wrote. The check changes only the occurrence codes and the refinement turn only the finding items, so the order between them changes no score; the post-pass leaves the runner untouched, works the same for batch and sync runs, and lets Round 1 re-use the recorded B-v1 answers and their repeat.
+- 2026-09-27, Task 13 Step 2: `src/ntsb_probable_cause/scoring/guidance/__init__.py`'s docstring is split onto two lines with a summary line and a description line (pydocstyle D205, one blank line between them) rather than the brief's one-line form, which is 105 characters and over the project's 100-character line length; the wording is otherwise unchanged.
+- 2026-09-27, Task 13 Step 4: added `test_system_text_without_guidance_is_byte_for_byte_unchanged` to `tests/test_runner.py` and `test_provenance_shows_guidance_when_present` to `tests/test_report.py`, beyond the brief's own test text, to give the "no-guidance system text is unchanged" and the `report.provenance` guidance line direct test coverage (the brief's runner tests exercise both indirectly but not exactly).
 - 2026-09-27, walkthrough W3, Andy's decision ("A is fine"): the GPT-6 Luna check runs synchronously at the standard price, not on batch as spec §5.3 and §10 priced it. Estimate (arithmetic, replaced by the recorded cost): about $0.36 per 400-case answer set, $0.72 for Round 1, against the spec's $0.12 per set.
 - 2026-09-27, walkthrough W4, Andy's decision (A): the judge runs on S2.6's B-v1 and B-v2 folders in place (Task 7 Step 2 checks first that neither holds a `judge.jsonl`, copying any aside under `data/s27/`). The folders gain `judge.jsonl` and a `<run id>-judge` cost row carrying S2.7's commit; their answers and records are untouched.
 - 2026-09-27, walkthrough W5, Andy's decision ("Could we use version and short fingerprint?"): spec §6.1's example (`s27-g1`, a hand-bumped version) is replaced by `s1-v5+g<first 12 characters of the guidance fingerprint>`; the guidance names and the full fingerprint are recorded beside it (`RunRecord.guidance`, `RunRecord.guidance_sha256`). Task 13's `prompt_version` and its tests carry it.

@@ -33,7 +33,7 @@ from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.split import split_record
-from ntsb_probable_cause.scoring import checkpass, ledger, report, samples
+from ntsb_probable_cause.scoring import checkpass, ledger, prompt, report, samples
 from ntsb_probable_cause.scoring.budget import (
     month_spent,
     open_reservations,
@@ -127,6 +127,8 @@ def resolve_latest(
             continue
         if record.exclusions or record.includes:
             continue
+        if record.guidance:  # a guided run (S2.7) is not the plain arm
+            continue
         if model is not None and record.model != model:
             continue
         if record.evidence_version != version:
@@ -199,6 +201,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
     run_p.add_argument("--expected-cost-per-case-usd", type=float, default=None)
+    run_p.add_argument(
+        "--guidance",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="a guidance file r<N>-<slug>, in stacking order (decision 0098)",
+    )
     run_p.add_argument("--sync", action="store_true")
     run_p.add_argument("--limit", type=int, default=None, help="only the first N sample cases")
     run_p.add_argument(
@@ -299,6 +308,14 @@ def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLo
 
 def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
     samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    for name in args.guidance:
+        registration = prompt.registration_path(name)
+        if not gitinfo.is_committed(registration):
+            raise ConfigurationError(
+                f"guidance {name}: its registration {registration} is not committed; a round "
+                "is registered before it runs (decision 0098 item 3)"
+            )
+    prompt.guidance_text(args.guidance)  # a missing file is refused before any money moves
     readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
@@ -324,6 +341,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         expected_cost_per_case_usd=args.expected_cost_per_case_usd
         if args.expected_cost_per_case_usd is not None
         else settings.expected_cost_per_case_usd,
+        guidance=tuple(args.guidance),
     )
     docket_cm = (
         DocketClient(settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request)

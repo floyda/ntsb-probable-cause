@@ -96,6 +96,9 @@ class RunSpec:
     budget_usd: float = 40.0
     sync: bool = False
     expected_cost_per_case_usd: float | None = None
+    # S2.7 (decision 0098): coding guidance files, in stacking order. Empty is the plain
+    # arm -- byte-for-byte the run this project has always produced (plan W5).
+    guidance: tuple[str, ...] = ()
 
 
 SPEC_FILE = "spec.json"
@@ -129,9 +132,10 @@ def spec_json(
         case_ids: the run's case ids, in order; what makes ``--limit`` safe to resume.
 
     Returns:
-        A JSON-serialisable object, one key per recorded field.
+        A JSON-serialisable object, one key per recorded field. A run without guidance
+        writes exactly the keys an older run folder wrote (plan W5), so it still resumes.
     """
-    return {
+    recorded: dict[str, object] = {
         "sample": spec.sample,
         "arm": spec.arm,
         "evidence_version": spec.evidence_version,
@@ -145,11 +149,19 @@ def spec_json(
         "budget_usd": spec.budget_usd,
         "sync": spec.sync,
         "expected_cost_per_case_usd": spec.expected_cost_per_case_usd,
-        "prompt_version": prompt.PROMPT_VERSION,
+        "prompt_version": prompt.prompt_version(spec.guidance),
+    }
+    if spec.guidance:
+        recorded |= {
+            "guidance": list(spec.guidance),
+            "guidance_sha256": prompt.guidance_sha256(spec.guidance),
+        }
+    recorded |= {
         "commit_sha": commit_sha,
         "dirty": dirty,
         "case_ids": list(case_ids),
     }
+    return recorded
 
 
 def write_spec_json(
@@ -742,7 +754,8 @@ def _system_text(raw: Mapping[str, object], spec: RunSpec, tables: CodeTables, c
                 f"{case_id}: the case number may be included on development cases only"
             )
         case_number = case_id
-    return f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables, case_number=case_number)}"
+    tables_text = prompt.tables_block(tables, case_number=case_number)
+    return f"{prompt.SYSTEM_ANSWER}\n\n{tables_text}{prompt.guidance_block(spec.guidance)}"
 
 
 def _split_and_render(
@@ -1057,7 +1070,9 @@ class Runner:
                 evidence_version=spec.evidence_version,
                 exclusions=tuple(sorted(e.value for e in spec.exclusions)),
                 includes=("case_number",) if spec.include_case_number else (),
-                prompt_version=prompt.PROMPT_VERSION,
+                prompt_version=prompt.prompt_version(spec.guidance),
+                guidance=spec.guidance,
+                guidance_sha256=prompt.guidance_sha256(spec.guidance),
                 model=spec.model,
                 reasoning_effort=spec.reasoning_effort,
                 price_variant=spec.price_variant,

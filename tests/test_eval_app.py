@@ -286,6 +286,44 @@ def test_run_resume_reaches_the_runner_and_refuses_an_unknown_run_id(
     assert fake.payloads == []
 
 
+def test_run_refuses_guidance_whose_registration_is_not_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(
+        gitinfo, "is_committed", lambda path, repo=Path(): path.name != "s27-round-2.md"
+    )
+    assert (
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--guidance", "r2-loc-stall"],
+            client_factory=lambda s: (RecordingFakeClient([]), None),
+        )
+        == 1
+    )
+    assert "registration" in capsys.readouterr().err
+
+
+def test_resolve_latest_skips_a_guided_run(tmp_path: Path) -> None:
+    """A guided run (S2.7) is not "the plain arm" -- --latest must not silently pick it up."""
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
+    kwargs = dict(_RUN_KWARGS) | {"arm": "B"}
+    guided = RunRecord(
+        **kwargs,
+        run_id="20260927T000000-abc1234-dev-400-B",
+        started=when,
+        finished=when,
+        guidance=("r2-loc-stall",),
+        guidance_sha256="a" * 64,
+    )
+    write_jsonl(runs / guided.run_id / "run.jsonl", [guided])
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
+
+
 class _ScriptedBatchClient:
     """A batch client for the app-level resume tests: one scripted reply per ``wait``.
 

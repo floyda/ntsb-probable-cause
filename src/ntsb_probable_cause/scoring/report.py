@@ -244,6 +244,10 @@ def provenance(record: RunRecord) -> str:
     """
     status = "complete" if record.finished is not None else "ABORTED (partial results)"
     finished = record.finished.isoformat() if record.finished is not None else "-"
+    guidance_line = ""
+    if record.guidance:
+        fingerprint = (record.guidance_sha256 or "")[:12]
+        guidance_line = f"guidance={'+'.join(record.guidance)} sha256={fingerprint}\n"
     return (
         f"run {record.run_id} [{status}]\n"
         f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
@@ -253,6 +257,7 @@ def provenance(record: RunRecord) -> str:
         f"price_variant={record.price_variant}\n"
         f"exclusions={','.join(record.exclusions) or '-'} "
         f"includes={','.join(record.includes) or '-'}\n"
+        f"{guidance_line}"
         f"commit={record.commit_sha}{'*' if record.dirty else ''} "
         f"started={record.started.isoformat()} finished={finished}\n"
         f"cases={record.cases} total_cost_usd={record.cost_usd:.4f}\n"

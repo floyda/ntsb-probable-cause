@@ -4,9 +4,20 @@ PROMPT_VERSION names everything that elicits the answer, not only the text here:
 from v4 in the stage-1 JSON schema (``item8`` removed -- see ``hypothesis._stage1_schema``),
 with the prompt text unchanged.
 
+From S2.7 (decision 0098) a run may add coding guidance files; ``prompt_version`` then names
+them.
+
 Spec §3.5.
 """
 
+import hashlib
+import re
+from collections.abc import Sequence
+from importlib import resources
+from importlib.resources.abc import Traversable
+from pathlib import Path
+
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
@@ -48,6 +59,64 @@ written. The item code is not the six-digit category code, and it is never the c
 with the modifier appended -- it is one specific line from the list, copied exactly. Return
 only that eight-digit item code, never its label text. Reply only with JSON matching the
 schema: one entry per finding index."""
+
+
+GUIDANCE_DIR: Traversable = resources.files("ntsb_probable_cause.scoring").joinpath("guidance")
+_GUIDANCE_NAME = re.compile(r"^r(?P<round>[1-9][0-9]*)-[a-z0-9]+(?:-[a-z0-9]+)*$")
+GUIDANCE_HEADING = "## Coding guidance (how the NTSB codes)"
+
+
+def guidance_round(name: str) -> int:
+    """The round a guidance file belongs to, from its name ``r<N>-<slug>``."""
+    match = _GUIDANCE_NAME.match(name)
+    if match is None:
+        raise ConfigurationError(
+            f"guidance {name!r}: names are r<N>-<slug>, lower case (decision 0098)"
+        )
+    return int(match["round"])
+
+
+def guidance_text(names: Sequence[str]) -> str:
+    """The guidance files' text, in stacking order."""
+    parts: list[str] = []
+    for name in names:
+        guidance_round(name)
+        path = GUIDANCE_DIR.joinpath(f"{name}.md")
+        if not path.is_file():
+            raise ConfigurationError(f"no guidance file {name}.md in scoring/guidance")
+        parts.append(path.read_text().strip())
+    return "\n\n".join(parts)
+
+
+def guidance_sha256(names: Sequence[str]) -> str | None:
+    """The SHA-256 of the names and their text, or None with no guidance."""
+    if not names:
+        return None
+    return hashlib.sha256(f"{list(names)}\n{guidance_text(names)}".encode()).hexdigest()
+
+
+# Plan W5 (Andy): the version carries a short fingerprint of the guidance, not the names; the
+# names are stored beside it on every run record. Twelve characters, as the transcription
+# marker's stamp (docket/transcribe.py:ReadingLookup.done_file).
+FINGERPRINT_CHARS = 12
+
+
+def prompt_version(names: Sequence[str]) -> str:
+    """What elicits the answer: the base version, plus a short fingerprint of the guidance."""
+    fingerprint = guidance_sha256(names)
+    if fingerprint is None:
+        return PROMPT_VERSION
+    return f"{PROMPT_VERSION}+g{fingerprint[:FINGERPRINT_CHARS]}"
+
+
+def registration_path(name: str) -> Path:
+    """The round registration a guidance file needs committed before any run (0098 item 3)."""
+    return Path("docs/rounds") / f"s27-round-{guidance_round(name)}.md"
+
+
+def guidance_block(names: Sequence[str]) -> str:
+    """The text appended to the system prompt after the tables; empty with no guidance."""
+    return "" if not names else f"\n\n{GUIDANCE_HEADING}\n{guidance_text(names)}"
 
 
 def tables_block(tables: CodeTables, *, case_number: str | None = None) -> str:
