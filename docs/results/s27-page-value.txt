@@ -1,0 +1,27 @@
+# page value: what each page rule keeps of S2.6's transcriptions (S2.7 spec §7.3, decision 0100 item 4) -- counts only
+sample dev-400: 401 cases, 3662 PDFs; 12458 image-bearing pages; readings: S2.6's transcriber, instruction t1, 150 dpi
+pages with no reading: 0
+
+## by rule
+  rule                    pages   chars      cost  failed  fatal pages  non-fatal pages
+  all                     12458  3859016  $  13.25      59         9698             2760
+  image-only               3596  3186943  $   5.39      42         2900              696
+  image-only+thin-layer    5398  3251001  $   6.92      49         4436              962
+
+## text-and-image pages by text-layer characters
+  band        pages  near-empty  chars  cost
+  50-200       1802        1564  64058 $1.53
+  200-1000     2941        2494 194604 $2.37
+  1000+        4119        3687 413411 $3.96
+
+## text-and-image pages by image cover
+  band        pages  near-empty  chars  cost
+  0-0.1        1239        1149  38667 $1.04
+  0.1-0.7      2695        2272 125532 $2.21
+  0.7+         4928        4324 507874 $4.61
+
+## the choice (decision 0100 item 4, fixed before this ran)
+all: 12458 pages, 100.0% of the characters (admissible)
+image-only: 3596 pages, 82.6% of the characters (under 90%)
+image-only+thin-layer: 5398 pages, 84.2% of the characters (under 90%)
+chosen: all
