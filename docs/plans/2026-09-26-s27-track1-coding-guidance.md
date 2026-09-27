@@ -492,7 +492,7 @@ git add src/ntsb_probable_cause/gitinfo.py src/ntsb_probable_cause/scoring/budge
 git commit -m "S2.7 Task 1: the stage's spend by commit on both branches, against the \$25 line"
 ```
 
-- [ ] **Step 16: Cut both track branches from the parent** (decision 0102)
+- [x] **Step 16: Cut both track branches from the parent** (decision 0102)
 
 Task 1 was done on the parent, `s27-coding-guidance`. Both tracks start here (Global Constraints). From the main checkout:
 
