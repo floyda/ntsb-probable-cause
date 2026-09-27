@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast, get_args
 
@@ -56,8 +57,25 @@ def _strings(value: object) -> tuple[str, ...]:
     return tuple(str(v) for v in value) if isinstance(value, list) else ()
 
 
+def _price(pricing: Mapping[str, object], name: str) -> Decimal | None:
+    """The listed per-token price as an exact ``Decimal``, or ``None`` if it is not a number."""
+    try:
+        return Decimal(str(pricing.get(name)))
+    except InvalidOperation:
+        return None
+
+
 def _per_mtok(pricing: Mapping[str, object], name: str) -> float:
-    return float(str(pricing.get(name, "inf"))) * 1_000_000
+    """The per-million-token price, computed exactly and rounded once at the very end."""
+    price = _price(pricing, name)
+    return float("inf") if price is None else float(price * 1_000_000)
+
+
+def _free_or_unpriced(pricing: Mapping[str, object]) -> bool:
+    """True if either price is missing, not a number, or not strictly positive."""
+    return any(
+        (price := _price(pricing, name)) is None or price <= 0 for name in ("prompt", "completion")
+    )
 
 
 # One return per refusal, in the fixed order of decision 0100 item 1.
@@ -81,7 +99,10 @@ def refusal(entry: Mapping[str, object], *, ids: AbstractSet[str]) -> str | None
     created = entry.get("created")
     if not isinstance(created, int) or datetime.fromtimestamp(created, UTC) < RELEASED_FROM:
         return "released before 2026-06-01"
-    if _per_mtok(_map(entry.get("pricing")), "prompt") > sources.QWEN_35_122B.input_usd_per_mtok:
+    pricing = _map(entry.get("pricing"))
+    if _free_or_unpriced(pricing):
+        return "free or unpriced listing"  # Andy, 2026-09-27
+    if _per_mtok(pricing, "prompt") > sources.QWEN_35_122B.input_usd_per_mtok:
         return "input price above Qwen3.5 122B's"
     if model_id in S26_CANDIDATES:
         return "an S2.6 candidate"

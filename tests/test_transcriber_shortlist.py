@@ -1,6 +1,7 @@
 """S2.7 track 2, Tasks 5-7: the model-list filter, the reasoning rule and the probe."""
 
 import json
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -53,6 +54,18 @@ def _entry(model_id: str, **over: object) -> dict[str, object]:
         ),
         ({"id": "qwen/qwen3.5-122b-a10b"}, "an S2.6 candidate"),
         ({"supported_parameters": ["reasoning"]}, "no structured output"),
+        (
+            {"pricing": {"prompt": "0", "completion": "0.00000013"}},
+            "free or unpriced listing",
+        ),
+        (
+            {"pricing": {"prompt": "-1", "completion": "0.00000013"}},
+            "free or unpriced listing",
+        ),
+        (
+            {"pricing": {"prompt": "not-a-number", "completion": "0.00000013"}},
+            "free or unpriced listing",
+        ),
     ],
 )
 def test_the_filter_refuses_with_the_first_reason_that_applies(
@@ -104,10 +117,35 @@ def test_the_lowest_reasoning_rule(
     assert ts.lowest_reasoning(entry) == lowest
 
 
+def test_a_free_listing_is_refused_and_does_not_bump_its_paid_sibling() -> None:
+    entries = [
+        _entry("v/paid", canonical_slug="v/model-2026"),
+        _entry(
+            "v/paid:free",
+            canonical_slug="v/model-2026",
+            pricing={"prompt": "0", "completion": "0"},
+        ),
+    ]
+    listed, refused = ts.shortlist(entries)
+    assert [x.model_id for x in listed] == ["v/paid"]
+    assert refused["free or unpriced listing"] == 1
+    assert "same model as a cheaper listing" not in refused
+
+
 def test_a_batch_variant_in_the_list_is_noted() -> None:
     listed, _ = ts.shortlist([_entry("v/m"), _entry("v/m:batch")])
     assert [x.model_id for x in listed] == ["v/m"]
     assert listed[0].batch_variant is True
+
+
+def test_prices_are_computed_exactly_not_by_float_arithmetic() -> None:
+    listed, _ = ts.shortlist(
+        [_entry("v/m", pricing={"prompt": "0.0000001", "completion": "0.0000002"})]
+    )
+    assert listed[0].input_usd_per_mtok == 0.1
+    assert listed[0].output_usd_per_mtok == 0.2
+    rendered = ts.render_shortlist(listed, Counter(), source=Path("x.json"), fetched="2026-09-27")
+    assert "$0.1/$0.2" in rendered
 
 
 @respx.mock
