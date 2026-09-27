@@ -13,6 +13,10 @@ Status
                    walkthrough W3: those ``automatic`` leaves in the running)
       score     -- decision 0100 item 3's choice rule (``choose_against_qwen``, fixed before
                    any candidate was run) over every candidate, with Andy's marks (free)
+      routing-pages, routing-tally
+                -- exploratory, outside that rule (Andy, 2026-09-27): a full-page-scan page
+                   for the named candidates in its own folder, and the tally of Andy's marks,
+                   for routing text-and-image pages to a cheaper model (free)
     ``automatic`` and ``score`` first re-verify Qwen's row from the cache (as ``verify``) and
     refuse a candidate with a key page never read.
     Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there;
@@ -763,6 +767,29 @@ def _refuse_moved_marks(out: Path, sheets: Mapping[str, dict[int, dict[str, obje
         )
 
 
+def _scan_cards(
+    settings: Settings,
+    docs: CachedDocuments,
+    scans: Sequence[Mapping[str, object]],
+    models: Sequence[str],
+) -> tuple[dict[int, str], dict[int, dict[str, object]], list[Card]]:
+    """The full-page scans' text layers, sheet and cards, shuffled with the re-test's scan seed.
+
+    Shared by the re-test's scan page and the routing page, so the same candidates give the
+    same card numbers on both.
+    """
+    layers = _scan_layers(scans, docs)
+    sheet, cards = word_cards(
+        scans,
+        _reading_of(settings, scans),
+        models=models,
+        seed_base=_SCAN_SEED_BASE,
+        choices=(_SCAN_WORDS,),
+        body=_scan_body(layers),
+    )
+    return layers, sheet, cards
+
+
 def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str]) -> str:
     """Andy's two pages (walkthrough W3): the named candidates' words, in S2.6's layout.
 
@@ -795,15 +822,7 @@ def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str
     photo_sheet, photo_cards = word_cards(
         photos, _reading_of(settings, photos), models=ordered, seed_base=_PHOTO_SEED_BASE
     )
-    layers = _scan_layers(scans, docs)
-    scan_sheet, scan_cards = word_cards(
-        scans,
-        _reading_of(settings, scans),
-        models=ordered,
-        seed_base=_SCAN_SEED_BASE,
-        choices=(_SCAN_WORDS,),
-        body=_scan_body(layers),
-    )
+    layers, scan_sheet, scan_cards = _scan_cards(settings, docs, scans, ordered)
     out = settings.data_dir / RETEST_FOLDER
     _refuse_moved_marks(out, {"photos.json": photo_sheet, "mixed.json": scan_sheet})
     out.mkdir(parents=True, exist_ok=True)
@@ -847,6 +866,121 @@ def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str
     )
 
 
+# Andy, 2026-09-27 ("now"): whether cheaper candidates invent added words on text-and-image
+# pages, for decision 120's open idea of routing those pages to a cheaper model. Exploratory:
+# outside decision 0100 item 3's rule, and it changes neither the rule nor the re-test's outcome.
+ROUTING_FOLDER = RETEST_FOLDER / "routing"
+_ROUTING_INTRO = (
+    "<p>This page marks, for each candidate's reading of S2.6's full-page scans, whether its "
+    "added words are on the page, repeat the text layer, or are invented. It serves a question "
+    "outside the re-test's rule: whether text-and-image pages could be routed to a cheaper "
+    "model. Qwen's readings are not shown: S2.6 already marked them (0 of 25 invented).</p>"
+)
+# docs/results/s26-transcriber-test-pass2.txt, Qwen's "full-page scans (decision W7)" line.
+_QWEN_S26_SCANS = "invented added words on 0 of 25; repeated the text layer on 0"
+
+
+def cmd_routing_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str]) -> str:
+    """Andy's full-page-scan page for the named candidates, in its own folder (routing).
+
+    The re-test's scan page (:func:`cmd_pages`) with its own folder, storage key and CSV name,
+    so marks made here never mix with the re-test's. The candidates are sorted first, and a
+    rebuild that would renumber cards already written is refused.
+
+    Args:
+        settings: Where S2.6's keys and the transcription cache are.
+        docs: The docket cache, offline, for the scans' text layers.
+        models: The candidates to show.
+
+    Returns:
+        One line per candidate with its number of cards, and where the page is.
+
+    Raises:
+        ConfigurationError: A candidate has a scan with no cached reading, or the sheet would
+            change under marks already made.
+    """
+    keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
+    scans = [r for r in keys if r["set"] == "mixed"]
+    ordered = tuple(sorted(set(models)))
+    missing = _missing(settings, scans, ordered)
+    if missing:
+        raise ConfigurationError(
+            "not in the transcription cache: " + "; ".join(missing) + " -- run the re-test first"
+        )
+    layers, sheet, cards = _scan_cards(settings, docs, scans, ordered)
+    out = settings.data_dir / ROUTING_FOLDER
+    _refuse_moved_marks(out, {"mixed.json": sheet})
+    out.mkdir(parents=True, exist_ok=True)
+    pages = os.path.relpath(FOLDER / "pages", ROUTING_FOLDER)
+    (out / "mixed.json").write_text(json.dumps(sheet))
+    page = out / "scans.html"
+    page.write_text(
+        marking_page.render(
+            title="Words added to full-page scans, for routing (S2.7, exploratory)",
+            intro_html=_GROUPED_LAYOUT + _ROUTING_INTRO + _MIXED_INTRO,
+            cards=cards,
+            storage_key="s27-routing-scan-words",
+            csv_name="s27-routing-scan-words.csv",
+            groups={str(k): _scan_group(k, layer, pages) for k, layer in layers.items()},
+        )
+    )
+    per_model = Counter(str(v["model"]) for v in sheet.values())
+    lines = [f"{m}: {per_model[m]} card{'' if per_model[m] == 1 else 's'}" for m in ordered]
+    return "\n".join([*lines, f"page at {page}"])
+
+
+def cmd_routing_tally(settings: Settings, *, models: Sequence[str], mixed_csv: Path) -> str:
+    """Each candidate's marks on the routing page, with its failed readings (exploratory).
+
+    Args:
+        settings: Where S2.6's keys, the routing sheet and the transcription cache are.
+        models: The candidates the page was built for.
+        mixed_csv: Andy's marks, downloaded from the routing page.
+
+    Returns:
+        The text: the key, Qwen's S2.6 figure, and one line per candidate.
+
+    Raises:
+        SystemExit: A card is unmarked or missing from the CSV, or the sheet holds cards of a
+            model not in ``models``.
+    """
+    keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
+    scans = [r for r in keys if r["set"] == "mixed"]
+    sheet = json.loads((settings.data_dir / ROUTING_FOLDER / "mixed.json").read_text())
+    others = sorted({str(v["model"]) for v in sheet.values()} - set(models))
+    if others:
+        raise SystemExit(
+            "routing-tally: cards of models not named in --models: " + " ".join(others)
+        )
+    marks = read_marks(mixed_csv)
+    field = "added words"
+    invented = invented_by_model(sheet, marks, field=field, invented="some invented")
+    repeated = invented_by_model(sheet, marks, field=field, invented="repeats the text layer")
+    new = invented_by_model(sheet, marks, field=field, invented="all on the page and new")
+    cards = Counter(str(v["model"]) for v in sheet.values())
+    cache = TranscriptionCache(settings.transcription_dir)
+    lines = [
+        "# routing text-and-image pages: words added to S2.6's full-page scans -- counts only",
+        "exploratory (Andy, 2026-09-27): evidence for decision 120's open idea of routing "
+        "text-and-image pages to a cheaper model; outside decision 0100 item 3's rule, and it "
+        "changes neither that rule nor the re-test's outcome "
+        "(docs/results/s27-transcriber-retest.txt)",
+        f"key: S2.6's {len(scans)} full-page scans (docs/results/s26-transcriber-test-pass2.txt); "
+        "150 dpi; instruction t1; each reading's added words marked by Andy on the routing page",
+        f"for comparison, {QWEN} in S2.6 (docs/results/s26-transcriber-test-pass2.txt): "
+        + _QWEN_S26_SCANS,
+        "",
+    ]
+    for m in models:
+        failed = _reading_counts(cache, scans, m, dpi=RESOLUTION)["mixed"].failed
+        lines.append(
+            f"{m}: invented added words on {invented[m]} of {len(scans)} scans; repeated the "
+            f"text layer on {repeated[m]}; all on the page and new on {new[m]}; no words added "
+            f"/ no card on {len(scans) - cards[m] - failed}; failed to read {failed}"
+        )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_retest")
@@ -868,6 +1002,12 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--models", nargs="+", choices=S27_CANDIDATES, default=S27_CANDIDATES)
     pages_p = commands.add_parser("pages")
     pages_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
+    routing_p = commands.add_parser("routing-pages")
+    routing_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
+    tally_p = commands.add_parser("routing-tally")
+    tally_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
+    tally_p.add_argument("--mixed", type=Path, required=True)
+    tally_p.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     settings = Settings()
     # As transcriber_test.main: offline, one attempt -- a cache miss is a bug, not a fault.
@@ -876,6 +1016,12 @@ def main(argv: list[str] | None = None) -> int:
         text = cmd_run(settings, docs, models=args.models, retry_failed=args.retry_failed)
     elif args.command == "pages":
         text = cmd_pages(settings, docs, models=args.models)
+    elif args.command == "routing-pages":
+        text = cmd_routing_pages(settings, docs, models=args.models)
+    elif args.command == "routing-tally":
+        text = cmd_routing_tally(settings, models=args.models, mixed_csv=args.mixed)
+        if args.out is not None:
+            args.out.write_text(text + "\n")
     else:
         recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
         if args.command == "automatic":

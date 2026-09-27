@@ -832,3 +832,154 @@ def test_main_score_refuses_a_marked_model_that_is_not_a_candidate(
     with pytest.raises(SystemExit):
         tr.main(argv)
     assert "invalid choice: 'a/m'" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------------------
+# Andy, 2026-09-27 ("now"): a scan-only page for routing text-and-image pages -- exploratory,
+# outside decision 0100 item 3's rule.
+# ---------------------------------------------------------------------------------------
+
+
+def _routing_keys(tmp_path: Path) -> tuple[Settings, CachedDocuments]:
+    """``_keys_for_pages``, plus ``c/m`` whose reading of the full-page scan failed."""
+    settings, docs = _keys_for_pages(tmp_path)
+    scan = next(
+        r for r in tt._read(settings.data_dir / tt.FOLDER / "keys.jsonl") if r["set"] == "mixed"
+    )
+    TranscriptionCache(settings.transcription_dir).put(
+        Transcription(
+            key=tt._key(scan, "c/m", instruction=TRANSCRIBE, dpi=RESOLUTION, mixed=True),
+            status="failed",
+            error="no reply",
+            mixed=True,
+            created=datetime.now(UTC),
+        )
+    )
+    return settings, docs
+
+
+def test_routing_pages_writes_only_the_scan_page_in_its_own_folder(tmp_path: Path) -> None:
+    settings, docs = _routing_keys(tmp_path)
+    text = tr.cmd_routing_pages(settings, docs, models=("c/m", "b/m", "a/m"))
+    retest = settings.data_dir / tr.RETEST_FOLDER
+    assert sorted(p.name for p in retest.iterdir()) == ["routing"]
+    out = settings.data_dir / tr.ROUTING_FOLDER
+    assert sorted(p.name for p in out.iterdir()) == ["mixed.json", "scans.html"]
+    sheet = json.loads((out / "mixed.json").read_text())
+    assert sorted(v["model"] for v in sheet.values()) == ["a/m", "b/m"]  # c/m failed: no card
+    page = (out / "scans.html").read_text()
+    assert "s27-routing-scan-words" in page
+    assert "s27-routing-scan-words.csv" in page
+    assert 'src="../../../s26/transcriber-test/pages/mixed-2.jpg"' in page
+    assert "repeats the text layer" in page  # the re-test's scan choice and instructions
+    assert "0 of 25" in page  # why Qwen's readings are not shown
+    assert text.splitlines() == [
+        "a/m: 1 card",
+        "b/m: 1 card",
+        "c/m: 0 cards",
+        f"page at {out / 'scans.html'}",
+    ]
+
+
+def test_routing_pages_number_the_cards_as_the_retest_scan_page_does(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("b/m", "a/m"))
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    routing = (settings.data_dir / tr.ROUTING_FOLDER / "mixed.json").read_text()
+    assert routing == (settings.data_dir / tr.RETEST_FOLDER / "mixed.json").read_text()
+
+
+def test_routing_pages_refuse_a_rebuild_that_would_move_marks(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    out = settings.data_dir / tr.ROUTING_FOLDER
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    first = _page_files(out)
+    tr.cmd_routing_pages(settings, docs, models=("b/m", "a/m"))
+    assert _page_files(out) == first
+    with pytest.raises(ConfigurationError, match=r"mixed\.json.*move .* aside"):
+        tr.cmd_routing_pages(settings, docs, models=("a/m",))
+    assert _page_files(out) == first
+
+
+def test_routing_pages_refuse_a_model_whose_scans_are_not_cached(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    with pytest.raises(ConfigurationError, match="1 readings of d/m"):
+        tr.cmd_routing_pages(settings, docs, models=("a/m", "d/m"))
+    assert not (settings.data_dir / tr.ROUTING_FOLDER).exists()
+
+
+def _routing_marks(settings: Settings, marks: dict[str, str]) -> Path:
+    """Andy's CSV for the routing page, one mark per model's card."""
+    out = settings.data_dir / tr.ROUTING_FOLDER
+    sheet = json.loads((out / "mixed.json").read_text())
+    csv = out / "s27-routing-scan-words.csv"
+    _write_csv(csv, ["row", "added words"], [[n, marks[str(v["model"])]] for n, v in sheet.items()])
+    return csv
+
+
+def test_routing_tally_counts_each_models_marks_and_failed_readings(tmp_path: Path) -> None:
+    settings, docs = _routing_keys(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m", "c/m"))
+    csv = _routing_marks(settings, {"a/m": "some invented", "b/m": "repeats the text layer"})
+    text = tr.cmd_routing_tally(settings, models=("a/m", "b/m", "c/m"), mixed_csv=csv)
+    lines = text.splitlines()
+    assert any("exploratory" in line and "decision 0100" in line for line in lines)
+    assert any("150 dpi" in line and "instruction t1" in line for line in lines)
+    assert any(
+        "qwen/qwen3.5-122b-a10b" in line
+        and "invented added words on 0 of 25; repeated the text layer on 0" in line
+        for line in lines
+    )
+    assert lines[-3:] == [
+        "a/m: invented added words on 1 of 1 scans; repeated the text layer on 0; all on the "
+        "page and new on 0; no words added / no card on 0; failed to read 0",
+        "b/m: invented added words on 0 of 1 scans; repeated the text layer on 1; all on the "
+        "page and new on 0; no words added / no card on 0; failed to read 0",
+        "c/m: invented added words on 0 of 1 scans; repeated the text layer on 0; all on the "
+        "page and new on 0; no words added / no card on 0; failed to read 1",
+    ]
+
+
+def test_routing_tally_refuses_an_unmarked_card(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    csv = _routing_marks(settings, {"a/m": "some invented", "b/m": ""})
+    with pytest.raises(SystemExit, match="unmarked"):
+        tr.cmd_routing_tally(settings, models=("a/m", "b/m"), mixed_csv=csv)
+
+
+def test_routing_tally_refuses_cards_of_a_model_not_named(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    csv = _routing_marks(settings, {"a/m": "some invented", "b/m": "some invented"})
+    with pytest.raises(SystemExit, match="cards of models not named in --models: b/m"):
+        tr.cmd_routing_tally(settings, models=("a/m",), mixed_csv=csv)
+
+
+def test_main_routing_pages_and_tally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, _ = _keys_for_pages(tmp_path)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tr, "S27_CANDIDATES", ("a/m", "b/m"))
+    assert tr.main(["routing-pages", "--models", "a/m", "b/m"]) == 0
+    assert capsys.readouterr().out.startswith("a/m: 1 card\nb/m: 1 card\n")
+    csv = _routing_marks(
+        settings, {"a/m": "all on the page and new", "b/m": "repeats the text layer"}
+    )
+    out = tmp_path / "routing.txt"
+    argv = ["routing-tally", "--models", "a/m", "b/m", "--mixed", str(csv), "--out", str(out)]
+    assert tr.main(argv) == 0
+    printed = capsys.readouterr().out
+    assert out.read_text() == printed
+    assert "a/m: invented added words on 0 of 1 scans" in printed
+    assert "all on the page and new on 1" in printed
+
+
+def test_main_routing_pages_refuses_a_model_that_is_not_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    with pytest.raises(SystemExit):
+        tr.main(["routing-pages", "--models", "a/m"])
+    assert "invalid choice: 'a/m'" in capsys.readouterr().err

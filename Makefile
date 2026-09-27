@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally
 
 check: lint type test
 
@@ -285,3 +285,15 @@ s27-retest-score:
 # S2.7 spec §7.4, free: decision 0100 item 3 applied; the CSV pair is the one Task 8 verified.
 # MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
 # It refuses a candidate still in the running that is not in MARKED.
+
+s27-routing-pages:
+	$(if $(MODELS),,$(error MODELS is required: the candidates whose full-page scan readings Andy marks))
+	uv run python -m scripts.transcriber_retest routing-pages --models $(MODELS)
+# Andy, 2026-09-27, free and exploratory (outside decision 0100 item 3's rule): the full-page
+# scan page alone, for the named candidates, under <data_dir>/s27/transcriber-retest/routing/,
+# for routing text-and-image pages to a cheaper model. MODELS is space-separated.
+
+s27-routing-tally:
+	$(if $(MODELS),,$(error MODELS is required: the candidates s27-routing-pages was built for))
+	uv run python -m scripts.transcriber_retest routing-tally --models $(MODELS) --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/routing/s27-routing-scan-words.csv --out docs/results/s27-routing-scans.txt
+# Free: the tally of Andy's marks from s27-routing-pages; refuses an unmarked card.
