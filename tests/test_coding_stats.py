@@ -53,6 +53,13 @@ def test_groups_give_defining_codes_and_phase_prefixes() -> None:
     assert stats.group_defining_n(NO_GROUP, CFIT) == 1
 
 
+def test_defining_n_counts_over_every_group_and_half() -> None:
+    stats = _stats()
+    assert stats.defining_n(LOC) == 2
+    assert stats.defining_n(STALL) == 1
+    assert stats.defining_n(CFIT) == 1
+
+
 def test_json_round_trip() -> None:
     stats = _stats()
     assert CodingStats.model_validate_json(stats.to_json()) == stats
