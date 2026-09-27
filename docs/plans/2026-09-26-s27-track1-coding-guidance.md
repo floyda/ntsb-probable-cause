@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Branch and base.** Work on `s27-coding-guidance` in `.claude/worktrees/s27-coding-guidance`, cut from `main` at the S2.6 merge `971ee40`. Track 2 (`docs/plans/2026-09-26-s27-track2-transcriber.md`) runs on `s27-transcriber`, which is cut from this branch **after Task 1 is committed** (it needs `scripts/stage_spend.py`), and merges back in Task 16. Until then this plan never edits `docket/transcribe.py`, `scripts/transcriber_test.py`, `apps/eval/__main__.py:_cmd_transcribe` beyond the sealed-sample refusal of Task 2, or the transcriber entries of `sources.py`; track 2 never edits `scoring/runner.py`, `scoring/records.py`, `scoring/report.py` or `_cmd_run` (spec §11).
+- **Branches (decision 0102).** The parent is `s27-coding-guidance` (`.claude/worktrees/s27-coding-guidance`), cut from `main` at the S2.6 merge `971ee40`; it holds the specification, the decisions and both plans, and becomes the stage pull request. **Task 1 is done on the parent.** Then both track branches are cut from it (Task 1 Step 16): **track 1 on `s27-guidance`** (`.claude/worktrees/s27-guidance`), where Tasks 2–15 are done, and track 2 (`docs/plans/2026-09-26-s27-track2-transcriber.md`) on `s27-transcriber`. Each track merges back into the parent with a merge commit (track 1 after Task 15; track 2 in its Task 12); Tasks 16–19 are done on the parent. The track branch names do not change. Until then this plan never edits `docket/transcribe.py`, `scripts/transcriber_test.py`, `apps/eval/__main__.py:_cmd_transcribe` beyond the sealed-sample refusal of Task 2, or the transcriber entries of `sources.py`; track 2 never edits `scoring/runner.py`, `scoring/records.py`, `scoring/report.py` or `_cmd_run` (spec §11).
 - **The split is the only split** (CLAUDE.md rule 1). No new code builds evidence from a raw record except through `records/split.py:split_record` or the existing `fields` extractors the baseline already uses. The ordering check's payload is built from a finished run's recorded hypothesis, the committed count table and the phase-group evidence value, never from the verdict, the synthesis or the docket (decision 0096 item 2).
 - **Development cases only.** Every script and command added here refuses a held-out or open-split run or sample, before reading its cases. `dev-seal-400` is refused everywhere until `docs/rounds/s27-sealed.md` is committed (decision 0095). The statistics pool never holds a `dev-400`, `dev-seal-400`, held-out or open case (decision 0094).
 - **Private material lives under `data/`** (git-ignored) and is never committed: marking pages, sheets, marks CSVs, judge rows. Only counts go to `docs/results/` and `docs/rounds/`.
@@ -39,7 +39,7 @@ The spec is approved; these are the places where writing the plan found somethin
 - **W5. The prompt version for guided runs.** Spec §6.1 said "for example `s27-g1`". *Planned as:* `prompt.prompt_version(guidance)` returns `s1-v5` with no guidance and `s1-v5+r2-loc-stall+r3-…` with guidance — the base version plus every guidance file in order — and the run record also stores the files' combined SHA-256. The new `spec.json` keys are written only when guidance is present, so resuming a pre-S2.7 run is unaffected. *Rejected:* a hand-bumped constant per round (two rounds with the same number but different files would look identical). **Decided 2026-09-27 (Andy), a third form he proposed: "version and short fingerprint".** A guided run's prompt version is `s1-v5+g` plus the first 12 characters of the guidance fingerprint (for example `s1-v5+g3f9a2c1b7d04`); the names, in stacking order, and the full fingerprint are stored beside it on the run record, and `provenance` prints both, so the stack stays readable while the version stays short.
 - **W6. The "no sentence shared with a development narrative" check cannot run in CI.** CI holds no case data. *Planned as:* CI checks the guidance files and the count table for case-number patterns; `scripts/check_guidance.py` checks every guidance sentence against every development case's factual narrative, analysis narrative and probable cause on the local processed file, and a round's registration is committed only after it passes (Task 13, Task 15 Step 3). The same holds for spec §12's "the draw is reproducible": re-drawing needs the processed file, so it is `scripts/draw_sealed.py --verify`, run locally when the list is drawn and again before the sealed run (Task 2 Step 8, Task 18 Step 4); CI checks the committed list's shape and disjointness (Task 2 Step 9). *Rejected:* committing development narratives, or the processed file's index, as a CI fixture (withheld text, or data, in the repository). **Decided 2026-09-27 (Andy): A, as planned ("I guess A").**
 - **W7. A miss group may hold fewer than eight cases.** Spec §4.4 draws 8 per miss group. *Planned as:* a group with fewer than 8 contributes all its cases; the shortfall is not topped up from another group, and the results file prints each group's card count. *Rejected:* topping up (it would over-weight the largest group in the validation). **Decided 2026-09-27 (Andy): A, as planned.**
-- **W8. Stage spend is counted on both branches.** Before the merge back, `git rev-list 971ee40..HEAD` on this branch does not see track 2's commits, so track 2's spend would be missed and the $25 line under-counted. *Planned as:* `scripts/stage_spend.py` counts commits reachable from `HEAD`, `s27-coding-guidance` and `s27-transcriber` (those that exist), excluding `971ee40`'s ancestors. *Rejected:* counting by date (S2.6 found a date filter caught another stage's runs).
+- **W8. Stage spend is counted on both branches.** Before the merge back, `git rev-list 971ee40..HEAD` on this branch does not see track 2's commits, so track 2's spend would be missed and the $25 line under-counted. *Planned as:* `scripts/stage_spend.py` counts commits reachable from `HEAD`, `s27-coding-guidance` and `s27-transcriber` (those that exist), excluding `971ee40`'s ancestors. *Rejected:* counting by date (S2.6 found a date filter caught another stage's runs). **Decided 2026-09-27 (Andy), in a form he set:** a parent S2.7 branch cut from `main`, a branch per track stacked on it, costs traced on every branch grown from the parent, and constant track names — parent `s27-coding-guidance`, track 1 `s27-guidance`, track 2 `s27-transcriber` ("A is fine"). Decision [0102](../decisions/0102-a-parent-branch-with-a-branch-per-track.md) amends 0093 item 3. `scripts/stage_spend.py` finds the stage's branches as every local branch whose history holds S2.7's first commit (`94f5d42`), `main` excepted, and prints them (`gitinfo.branches_containing`, replacing the fixed branch list).
 
 ---
 
@@ -47,7 +47,7 @@ The spec is approved; these are the places where writing the plan found somethin
 
 | path | task | responsibility |
 |---|---|---|
-| `src/ntsb_probable_cause/gitinfo.py` | 1, 2 | `commits_between`, `branch_exists`, `is_committed` |
+| `src/ntsb_probable_cause/gitinfo.py` | 1, 2 | `commits_between`, `branches_containing`, `is_committed` |
 | `src/ntsb_probable_cause/scoring/budget.py` | 1 | `in_stage`, `stage_spent` |
 | `scripts/stage_spend.py` | 1 | S2.7's spend by commit on both branches; refuses a step past $25 |
 | `src/ntsb_probable_cause/scoring/samples.py` | 2 | `dev-seal-400`; `draw(..., exclude=)`; `refuse_sealed` |
@@ -85,7 +85,7 @@ Task numbers in this table are final; the tasks below use them.
 - Test: `tests/test_gitinfo.py` (create), `tests/test_budget.py`, `tests/test_stage_spend.py` (create)
 
 **Interfaces:**
-- Produces: `gitinfo.commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tuple[str, ...]`; `gitinfo.branch_exists(name: str, repo: Path = Path()) -> bool`; `budget.in_stage(sha: str, stage_commits: Collection[str]) -> bool`; `budget.stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]` (evaluation runs, preparation spend rows); `scripts.stage_spend.STAGE_BASE = "971ee40"`, `STAGE_LINE_USD = 25.0`, `stage_commits(repo: Path = Path()) -> frozenset[str]`, `main(argv) -> int` (exit 1 when over the line). Track 2 calls `uv run python -m scripts.stage_spend --estimate USD` and `make stage-spend EST=USD`.
+- Produces: `gitinfo.commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tuple[str, ...]`; `gitinfo.branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]`; `budget.in_stage(sha: str, stage_commits: Collection[str]) -> bool`; `budget.stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]` (evaluation runs, preparation spend rows); `scripts.stage_spend.STAGE_BASE = "971ee40"`, `STAGE_FIRST = "94f5d42"`, `STAGE_LINE_USD = 25.0`, `stage_branches(repo: Path = Path()) -> tuple[str, ...]`, `stage_commits(branches: Sequence[str], repo: Path = Path()) -> frozenset[str]`, `main(argv) -> int` (exit 1 when over the line). Track 2 calls `uv run python -m scripts.stage_spend --estimate USD` and `make stage-spend EST=USD`.
 
 **Why a library function.** `scripts/transcriber_test.py` already counts S2.6's spend by commit (`_stage_commits`, `_in_stage`), privately. S2.7 needs the same count from two tracks and from every paid target; moving the counting into `scoring/budget.py` gives one tested implementation. `transcriber_test.py` is not changed (it is S2.6's record).
 
@@ -139,10 +139,14 @@ def test_commits_between_counts_every_head_once_and_never_the_base(tmp_path: Pat
     assert len(found) == len(set(found))
 
 
-def test_branch_exists(tmp_path: Path) -> None:
+def test_branches_containing_finds_every_branch_grown_from_a_commit(tmp_path: Path) -> None:
     repo, _base = _repo(tmp_path)
-    assert gitinfo.branch_exists("main", repo)
-    assert not gitinfo.branch_exists("s27-transcriber", repo)
+    first = _commit(repo, "spec.txt")  # the stage's first commit, on the parent
+    _git(repo, "checkout", "-q", "-b", "s27-guidance")
+    _commit(repo, "track1.txt")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "checkout", "-q", "-b", "unrelated", _base)  # cut before the stage began
+    assert set(gitinfo.branches_containing(first, repo)) == {"main", "s27-guidance"}
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -158,9 +162,9 @@ Add `from collections.abc import Sequence` to the imports, and after `commits_si
 def commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tuple[str, ...]:
     """Full SHAs reachable from any of ``heads`` but not from ``base``, each once.
 
-    S2.7 runs as two branches until track 2 merges back (decision 0093); a stage's spend
-    must count both, so this takes several heads where :func:`commits_since` takes HEAD.
-    Raises as :func:`commits_since` does.
+    S2.7 runs as a parent branch with a branch per track stacked on it (decision 0102); a
+    stage's spend must count them all, so this takes several heads where
+    :func:`commits_since` takes HEAD. Raises as :func:`commits_since` does.
     """
     listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell
         ["git", "-C", str(repo), "rev-list", *heads, f"^{base}"],  # noqa: S607 -- git on PATH
@@ -171,15 +175,18 @@ def commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tup
     return tuple(dict.fromkeys(listing.split()))
 
 
-def branch_exists(name: str, repo: Path = Path()) -> bool:
-    """Whether a local branch called ``name`` exists."""
-    found = subprocess.run(  # noqa: S603 -- fixed argv, no shell
-        ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"],  # noqa: S607
+def branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]:
+    """Local branches whose history contains ``commit``, by short name (decision 0102)."""
+    listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        [  # noqa: S607 -- git on PATH
+            "git", "-C", str(repo), "for-each-ref", "--contains", commit,
+            "--format=%(refname:short)", "refs/heads",
+        ],
         capture_output=True,
         text=True,
-        check=False,
-    )
-    return found.returncode == 0
+        check=True,
+    ).stdout
+    return tuple(listing.split())
 ```
 
 - [ ] **Step 4: Run the gitinfo tests to verify they pass**
@@ -319,24 +326,40 @@ def test_report_passes_under_the_line_and_refuses_over_it() -> None:
     assert "refused" in text
 
 
-def test_main_exits_1_over_the_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_main_exits_1_over_the_line_and_names_the_branches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("NTSB_RUNS_DIR", str(tmp_path))
-    monkeypatch.setattr(ss, "stage_commits", lambda repo=Path(): frozenset())
+    monkeypatch.setattr(ss, "stage_branches", lambda repo=Path(): ("s27-coding-guidance", "s27-guidance"))
+    monkeypatch.setattr(ss, "stage_commits", lambda branches, repo=Path(): frozenset())
     monkeypatch.setattr(ss, "stage_spent", lambda runs_dir, commits: (24.0, 0.5))
     assert ss.main(["--estimate", "0.40"]) == 0
+    assert "branches counted: s27-coding-guidance, s27-guidance" in capsys.readouterr().out
     assert ss.main(["--estimate", "0.60"]) == 1
 
 
-def test_stage_commits_asks_for_the_branches_that_exist(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stage_branches_are_those_grown_from_the_first_commit_except_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ss,
+        "branches_containing",
+        lambda commit, repo=Path(): ("main", "s27-coding-guidance", "s27-guidance", "s27-transcriber")
+        if commit == "94f5d42"
+        else (),
+    )
+    assert ss.stage_branches() == ("s27-coding-guidance", "s27-guidance", "s27-transcriber")
+
+
+def test_stage_commits_counts_head_and_every_stage_branch(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list[list[str]] = []
-    monkeypatch.setattr(ss, "branch_exists", lambda name, repo=Path(): name == "s27-transcriber")
     monkeypatch.setattr(
         ss,
         "commits_between",
         lambda base, heads, repo=Path(): asked.append([base, *heads]) or ("c1",),
     )
-    assert ss.stage_commits() == frozenset({"c1"})
-    assert asked == [["971ee40", "HEAD", "s27-transcriber"]]
+    assert ss.stage_commits(("s27-coding-guidance", "s27-transcriber")) == frozenset({"c1"})
+    assert asked == [["971ee40", "HEAD", "s27-coding-guidance", "s27-transcriber"]]
 ```
 
 - [ ] **Step 10: Run them to verify they fail**
@@ -347,7 +370,7 @@ Expected: FAIL with `ImportError: cannot import name 'stage_spend' from 'scripts
 - [ ] **Step 11: Write `scripts/stage_spend.py`**
 
 ```python
-"""S2.7's spend, counted by commit on both of its branches, against its $25 line.
+"""S2.7's spend, counted by commit on every branch grown from its parent, against its $25 line.
 
 Status
     Live check for S2.7 (decision 0098 item 6). Every paid ``make`` target of both tracks runs
@@ -356,8 +379,10 @@ Status
 
 Why
     The line is the stage's stop rule's second half. Spend is counted by commit because S2.6
-    found a date filter caught another stage's runs, and on both branches because until track
-    2 merges back its commits are not reachable from this branch's HEAD (plan walkthrough W8).
+    found a date filter caught another stage's runs. S2.7 is a parent branch with a branch per
+    track stacked on it (decision 0102); until the tracks merge back, neither sees the other's
+    commits, so the count takes every local branch whose history holds S2.7's first commit --
+    the parent and everything grown from it -- and prints them.
 
 Usage
     uv run python -m scripts.stage_spend [--estimate USD]
@@ -369,22 +394,37 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.gitinfo import branch_exists, commits_between
+from ntsb_probable_cause.gitinfo import branches_containing, commits_between
 from ntsb_probable_cause.scoring.budget import stage_spent
 from ntsb_probable_cause.settings import Settings
 
 STAGE_BASE = "971ee40"
-STAGE_LINE_USD = 25.0
-BRANCHES = ("s27-coding-guidance", "s27-transcriber")
+# S2.7's first commit (the specification's first draft, on the parent s27-coding-guidance).
+# Every branch whose history holds it grew from the parent (decision 0102).
+STAGE_FIRST = "94f5d42"
+# main holds every stage once merged, and later stages' commits too; it is never counted.
+EXCLUDED_BRANCHES = frozenset({"main"})
 
 
-def stage_commits(repo: Path = Path()) -> frozenset[str]:
-    """Every commit of the stage: reachable from HEAD or either branch, not from the base."""
-    heads = ["HEAD", *(name for name in BRANCHES if branch_exists(name, repo))]
+def _git_error(error: Exception) -> ConfigurationError:
+    return ConfigurationError(f"stage_spend: git could not list the stage's commits: {error}")
+
+
+def stage_branches(repo: Path = Path()) -> tuple[str, ...]:
+    """The parent and every branch grown from it: those holding S2.7's first commit."""
     try:
-        return frozenset(commits_between(STAGE_BASE, heads, repo))
+        found = branches_containing(STAGE_FIRST, repo)
     except (OSError, subprocess.CalledProcessError) as error:
-        raise ConfigurationError(f"stage_spend: git could not list the stage's commits: {error}") from error
+        raise _git_error(error) from error
+    return tuple(name for name in found if name not in EXCLUDED_BRANCHES)
+
+
+def stage_commits(branches: Sequence[str], repo: Path = Path()) -> frozenset[str]:
+    """Every commit of the stage: reachable from HEAD or a stage branch, not from the base."""
+    try:
+        return frozenset(commits_between(STAGE_BASE, ["HEAD", *branches], repo))
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _git_error(error) from error
 
 
 def report(*, runs: float, spend: float, estimate: float) -> tuple[str, bool]:
@@ -393,7 +433,8 @@ def report(*, runs: float, spend: float, estimate: float) -> tuple[str, bool]:
     over = spent + estimate > STAGE_LINE_USD
     lines = [
         f"S2.7 spend so far: ${spent:.2f} (${runs:.2f} evaluation runs, ${spend:.2f} "
-        f"preparation spend rows; counted by commit from {STAGE_BASE} on both branches)",
+        f"preparation spend rows; counted by commit from {STAGE_BASE} on every branch grown "
+        "from the parent)",
         f"this step's estimate: ${estimate:.2f}; the stage line: ${STAGE_LINE_USD:.2f}",
         (
             f"refused: ${spent + estimate:.2f} would pass the line (decision 0098 item 6)"
@@ -409,8 +450,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="stage_spend")
     parser.add_argument("--estimate", type=float, default=0.0, metavar="USD")
     args = parser.parse_args(argv)
-    runs, spend = stage_spent(Settings().runs_dir, stage_commits())
+    branches = stage_branches()
+    runs, spend = stage_spent(Settings().runs_dir, stage_commits(branches))
     text, over = report(runs=runs, spend=spend, estimate=args.estimate)
+    print(f"branches counted: {', '.join(branches) or 'none found'}")
     print(text)
     return 1 if over else 0
 
@@ -449,14 +492,17 @@ git add src/ntsb_probable_cause/gitinfo.py src/ntsb_probable_cause/scoring/budge
 git commit -m "S2.7 Task 1: the stage's spend by commit on both branches, against the \$25 line"
 ```
 
-- [ ] **Step 16: Cut the track 2 branch**
+- [ ] **Step 16: Cut both track branches from the parent** (decision 0102)
 
-Track 2 starts here (Global Constraints). From the main checkout:
+Task 1 was done on the parent, `s27-coding-guidance`. Both tracks start here (Global Constraints). From the main checkout:
 
 ```bash
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause worktree add .claude/worktrees/s27-guidance -b s27-guidance s27-coding-guidance
 git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause worktree add .claude/worktrees/s27-transcriber -b s27-transcriber s27-coding-guidance
-git push -u origin s27-transcriber
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause push -u origin s27-guidance s27-transcriber
 ```
+
+Check the spending script sees all three: `make stage-spend` prints `branches counted: s27-coding-guidance, s27-guidance, s27-transcriber`. Tasks 2–15 are done in `.claude/worktrees/s27-guidance`.
 
 ---
 
@@ -4429,7 +4475,7 @@ The reading is appended to the registration. Commit it: `git commit -am "S2.7 ro
 
 ## Part E — the meeting point, the sealed sample and the close (spec §7.5, §8, §9)
 
-### Task 16: Merge track 2 back, and record the transcriber and page rule on v2 runs (spec §7.5)
+### Task 16: Merge both tracks into the parent, and record the transcriber and page rule on v2 runs (spec §7.5; decision 0102)
 
 **Files:**
 - Modify: `scoring/runner.py` (`RunSpec`, `spec_json`, `Runner.run` refusals, `build_record`), `scoring/records.py` (`RunRecord`), `scoring/report.py` (`refuse_cross_version`, `provenance`), `apps/eval/__main__.py` (`run --transcriber --page-rule`, `_readings_for_run`)
@@ -4439,9 +4485,16 @@ The reading is appended to the registration. Commit it: `git commit -am "S2.7 ro
 - Consumes (from track 2, after the merge): `docket.transcribe.TRANSCRIBER: str`, `PAGE_RULE: PageRule`, `PAGE_RULES: tuple[PageRule, ...]`, `ReadingLookup(cache, *, model=TRANSCRIBER, instruction=TRANSCRIBE, dpi=RESOLUTION, page_rule=PAGE_RULE)` with `.model` and `.page_rule`.
 - Produces: `RunSpec.transcriber: str | None = None`, `RunSpec.page_rule: str | None = None`; `RunRecord.transcriber`, `RunRecord.page_rule` (defaults None); `report.S26_V2_READING = ("qwen/qwen3.5-122b-a10b", "all")` (what a v2 record without the fields means: S2.6's transcriber and rule); CLI `run --transcriber MODEL --page-rule RULE` (defaults `TRANSCRIBER`, `PAGE_RULE`; used only at v2).
 
-- [ ] **Step 1: STOP — track 2's merge back**
+- [ ] **Step 1: STOP — both tracks merge into the parent**
 
-Track 2's last task merges `s27-transcriber` into this branch with a merge commit, on Andy's go-ahead. When it has: `git log --oneline -3` shows the merge; run `make check` (Expected: PASS). If `sources.py`, the `Makefile` or the decisions index conflicted, the resolution is in the merge commit; log it in Deviations.
+On Andy's go-ahead, each track merges into `s27-coding-guidance` with a merge commit (never squashed or rebased, decision 0033): track 1 (`s27-guidance`) once Task 15's stop rule has ended the rounds, and track 2 (`s27-transcriber`) in its own Task 12. From the parent's worktree:
+
+```bash
+git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-guidance -m "Merge track 1 (s27-guidance) into the S2.7 parent"
+git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-transcriber -m "Merge track 2 (s27-transcriber) into the S2.7 parent"
+```
+
+(Track 2's plan does its own merge in its Task 12; whichever comes second resolves any conflict.) When both have landed: `git log --oneline --graph -8` shows the two merges; run `make check` (Expected: PASS). If `sources.py`, the `Makefile`, `apps/eval/__main__.py` or the decisions index conflicted, the resolution is in the merge commit; log it in Deviations. From here to Task 19, work on the parent in `.claude/worktrees/s27-coding-guidance`.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -4709,3 +4762,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W5, Andy's decision ("Could we use version and short fingerprint?"): spec §6.1's example (`s27-g1`, a hand-bumped version) is replaced by `s1-v5+g<first 12 characters of the guidance fingerprint>`; the guidance names and the full fingerprint are recorded beside it (`RunRecord.guidance`, `RunRecord.guidance_sha256`). Task 13's `prompt_version` and its tests carry it.
 - 2026-09-27, walkthrough W6, Andy's decision ("I guess A"): spec §12's "no sentence shared with a development narrative" and "the draw is reproducible" each split into a data-free CI test (guidance names, registrations and case-number patterns; the sealed list's size, years and disjointness) and a full local check at fixed steps (`scripts/check_guidance.py` before each round's registration, recorded in it; `scripts/draw_sealed.py --verify` at the draw and before the sealed run). CI holds no case data (rule 4).
 - 2026-09-27, walkthrough W7, Andy's decision (A): a miss group with fewer than 8 cases gives all its cases to the hand-read, with no top-up; the results file prints each group's card count (`round0_handread.draw_cards`, Task 6).
+- 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
