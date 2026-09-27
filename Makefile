@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify
 
 check: lint type test
 
@@ -244,3 +244,16 @@ s27-batch-image:
 	uv run python -m scripts.transcriber_shortlist batch-image --model $(MODEL)
 # S2.7 spec §7.2 and walkthrough W2, paid (a fraction of a cent): one batch request carrying
 # the invented probe image.
+
+# S2.7 walkthrough W7 (pre-flight 1.1): S2.6's second-pass recheck CSV pair, defined once here
+# and used by every s27-retest target. The pass2/ pair is the default because Andy recalls it
+# as final; the top-level pair (.../transcriber-test/handwriting-key-pass2.csv and
+# .../transcriber-test/photo-words-pass2.csv) is the other one S2.6 left on disk.
+HW_RECHECK ?= $$NTSB_DATA_DIR/s26/transcriber-test/pass2/handwriting-key-pass2-2.csv
+PHOTO_RECHECK ?= $$NTSB_DATA_DIR/s26/transcriber-test/pass2/photo-words-pass2.csv
+
+s27-retest-verify:
+	uv run python -m scripts.transcriber_retest verify --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)
+# S2.7 walkthrough W7, free: Qwen's second pass must be reproduced exactly from the cache before
+# any candidate is scored. If the default pair does not reproduce it, try the top-level pair by
+# overriding HW_RECHECK and PHOTO_RECHECK; if neither pair reproduces it, stop and report.

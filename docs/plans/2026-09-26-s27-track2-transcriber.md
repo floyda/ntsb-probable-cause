@@ -1695,7 +1695,7 @@ If no model passed: record it, skip Tasks 8–10, and write the decision record 
 
 0080's absolute limits (2 invented lines per 100; 1 in 20 photographs; 1 in 20 scans; 1 in 20 format-failed pages) are printed beside each candidate and decide nothing.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Tasks 8-10: the re-test against Qwen."""
@@ -1779,12 +1779,12 @@ def test_verify_accepts_only_qwens_published_counts() -> None:
     assert tr.matches_qwen_pass2(_result(tr.QWEN, hw_right=1035)) == ["hw_right 1035, published 1036"]
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Implement the rule and `verify`**
+- [x] **Step 3: Implement the rule and `verify`**
 
 ```python
 """The transcriber re-test: new candidates on S2.6's answer keys, judged against Qwen (S2.7 §7.4).
@@ -2002,7 +2002,7 @@ s27-retest-verify:
 # (and the pass2/ photo CSV); if neither pair reproduces it, stop and report.
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v && make check`
 Expected: PASS.
@@ -2503,3 +2503,7 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 7 Steps 6-7: the probe (`make s27-transcriber-probe`) and the batch-with-image call (`make s27-batch-image MODEL=deepseek/deepseek-v4.1-flash`, then `batch-poll`) were run by Claude, not by Andy, on Andy's explicit go-ahead ("You can run those now it's Sunday!") relayed by the coordinator at ~13:10 UTC on commit `076ce08` -- a departure from Step 6's plan text, which has Andy run them himself.
 - 2026-09-27, Task 7 Step 7: of the 11 shortlisted models probed, 9 were called before 8 passed. `meta/muse-spark-1.2-contributor` and `meta/muse-spark-1.3-contributor` (shortlist ranks 6-7) both failed with a 403 from OpenRouter's own account gate (18+ age confirmation, `openrouter.ai/settings/preferences`), not from anything about reading the page -- they were replaced, in order, by reserves 9 and 11 (`xiaomi/mimo-v2.6-flash`, `qwen/qwen3.8-omni-flash`) under the fixed probe rule (walkthrough W5: a failure is replaced by the next model in the list, no top-up from outside the filter). Reserve 10, `qwen/qwen3.8-flash`, was called in between (its rank comes before reserve 11's) and failed to parse ("reply is not a JSON object"), so it is not a candidate either. `S27_CANDIDATES` is the 8 that passed, in shortlist/probe order: `inclusionai/ling-3.0-flash-vl`, `qwen/qwen3.7-flash`, `deepseek/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash`, `prism-ml/ternary-bonsai-2-27b`, `openai/gpt-6-luna-pro`, `xiaomi/mimo-v2.6-flash`, `qwen/qwen3.8-omni-flash`. Their 8 fixtures are committed under `tests/fixtures/openrouter/transcription/`; `qwen/qwen3.8-flash`'s unparsable reply stays only under the git-ignored `data/s27/probe-replies/` (pre-flight 1.3), never committed.
 - 2026-09-27, Task 7 Step 7 (walkthrough W2): the one batch-with-image call, for `deepseek/deepseek-v4.1-flash` (the first passed candidate with a batch variant), was accepted at submission and then failed: OpenRouter's batch service still refuses `image_url` content outright ("Only public http(s) image URLs are supported in batch; base64/data-URI images ... are rejected"), confirming `model/batch.py:136`'s documentation quote and S2.6 decision W1 -- every re-test call (Task 9) stays synchronous at the standard price.
+- 2026-09-27, Task 8 (pre-flight 1.1): the recheck CSV pair is defined once in the Makefile as `HW_RECHECK ?=` and `PHOTO_RECHECK ?=`, defaulting to the `pass2/` pair (`$$NTSB_DATA_DIR/s26/transcriber-test/pass2/handwriting-key-pass2-2.csv`, `.../pass2/photo-words-pass2.csv`), which W7 says is tried first; `s27-retest-verify` uses them, and Task 10's targets are to reuse them. The brief's target defaulted to the top-level pair through `$(or ...)` inside the recipe.
+- 2026-09-27, Task 8 (pre-flight 2.6, the `absolute_notes` part): `absolute_notes` takes 0080's photograph and scan limits from `transcriber_test.GATE_INVENTED_PHOTO_SHARE` and `GATE_INVENTED_MIXED_SHARE` rather than hard-coding `Fraction(1, 20)`; because those two constants are floats (`1 / 20`), each limit is turned into an exact fraction (`Fraction(x).limit_denominator()`, exactly 1/20) before the within/over comparison, so exactly 1 in 20 prints "within", as 0080's "more than 1 in 20" gate judges it.
+- 2026-09-27, Task 8: `RESOLUTION` is imported from `ntsb_probable_cause.docket.render`, its home, not from `scripts.transcriber_test` as the brief listed: mypy --strict refuses a name the script module only imports and does not re-export. Every division in the rule and the notes goes through `transcriber_test._fraction` (exact, and 0 for an empty denominator) instead of a bare `Fraction(a, b)`.
+- 2026-09-27, Task 8: the module's Status paragraph names only what is built (`verify` and the rule) and says the run and score come in Tasks 9 and 10, rather than listing the `run`, `pages` and `score` subcommands before they exist (`pages` is also superseded by W3's `automatic`). Tests beyond the brief's: the boundary arithmetic checked with `Fraction`, the cost tie-break by model id, `absolute_notes`' within/over at exactly 1 in 20, `key_material` (the recheck applied, only Qwen's photograph and scan marks counted), `cmd_verify` passing and refusing, and `main` offline; they reuse `tests/test_transcriber_test.py`'s fixture helpers by import.
