@@ -1335,7 +1335,7 @@ git commit -m "S2.7 Task 3: the statistics pool's coding counts, guarded against
 
 **The groups, with an example each.** The NTSB's sequence is `(452240, 452241)` (loss of control in flight, defining; then stall/spin). A first guess of `452240` is *exact*; `450240` is *right event, wrong phase*; `452241` is *in sequence, not defining*; guesses `(470470, 452241)` are *a later guess in sequence*; `(450241,)` is *event under another phase*; `(552300,)` is *nothing in common*. The groups are tested in that order, so each case lands in exactly one.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_misses.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_misses.py`)
 
 ```python
 """scoring/misses.py: where a first guess lands, and how deep a finding miss goes."""
@@ -1398,12 +1398,12 @@ def test_names_event_is_a_fixed_phrase_list() -> None:
     assert names_event("anything", "999") is None
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_misses.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scoring/misses.py`**
+- [x] **Step 3: Write `scoring/misses.py`**
 
 ```python
 """Where a first occurrence guess lands in the NTSB's sequence, and how deep a finding miss goes.
@@ -1522,12 +1522,12 @@ def names_event(text: str, event: str) -> bool | None:
     return any(phrase in lowered for phrase in phrases)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass; add the import-linter entry**
+- [x] **Step 4: Run the tests to verify they pass; add the import-linter entry**
 
 Run: `uv run pytest tests/test_misses.py -v && uv run lint-imports`
 Expected: PASS; contracts kept (after adding `"ntsb_probable_cause.scoring.misses",` to the "Only the splitter…" source list).
 
-- [ ] **Step 5: Write the failing script tests** (append to `tests/test_occurrence_misses.py`, reusing its `_case`, `_step`, `CASES`, `_write_run`)
+- [x] **Step 5: Write the failing script tests** (append to `tests/test_occurrence_misses.py`, reusing its `_case`, `_step`, `CASES`, `_write_run`)
 
 ```python
 def test_detail_prints_the_six_groups_confidence_and_own_words() -> None:
@@ -1575,12 +1575,12 @@ def test_main_with_against_prints_churn(
 
 (Add `from dataclasses import replace` to the test module's imports. `churn` counts "gained" as right in this run and wrong in the second, "lost" the other way.)
 
-- [ ] **Step 6: Run them to verify they fail**
+- [x] **Step 6: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_occurrence_misses.py -v`
 Expected: the new tests FAIL (`detail`, `churn`, `--against` missing); the old ones PASS.
 
-- [ ] **Step 7: Extend `scripts/occurrence_misses.py`**
+- [x] **Step 7: Extend `scripts/occurrence_misses.py`**
 
 Add to the imports `import statistics`, `from ntsb_probable_cause.scoring.misses import GROUPS, FindingDepth, finding_depth, miss_group, names_event`. Add to the module docstring's Status: "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." Then:
 
@@ -1700,12 +1700,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 ```
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_occurrence_misses.py tests/test_misses.py -v`
 Expected: PASS
 
-- [ ] **Step 9: Run the full check and commit**
+- [x] **Step 9: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4766,3 +4766,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.
 - 2026-09-27, Task 2 implementation, plain adaptations of the brief's text to this file's real helpers (no behaviour change, as the brief itself invited): (1) `tests/test_samples.py`'s real `_raw(*, fatal, occurrence_codes=())` takes no case id or class keyword, and `_write_cases` wants 5-tuples, so `test_draw_excludes_the_given_cases_and_is_unchanged_without_them` builds 40 explicit 5-tuples (case id, event date, split, class "F" throughout as the brief's snippet used, `_raw(fatal=...)` for the raw JSON) instead of calling `_raw` with the brief's invented keywords. (2) `test_refuse_sealed_opens_only_on_a_committed_registration`'s `is_committed=lambda path: seen.append(path) or True` fails the same `mypy --strict` "`list.append` returns `None`, used as a value" check as Task 1's fix above; replaced with a small typed `_record_and_confirm` function, same observable behaviour. (3) `ruff format` wrapped `scripts/draw_sealed.py`'s final `print(...)` call and one `assert main([...]) == 1` call in `tests/test_eval_app.py` onto multiple lines. (4) Adding `dev_seal_400_ids.csv` (a development-split list) to `tests/fixtures/eval/` made `test_evaluation_cases_are_held_out_by_event_date` fail, since it asserted every eval id list except `dev_400_ids` is held-out; the brief did not mention this test, but it iterates every `*_ids.csv` fixture the `eval_ids` fixture picks up, so the new file could not avoid it. Added `dev_seal_400_ids` next to `dev_400_ids` in that test's exclusion set; its own purity is checked by the brief's `test_the_sealed_sample_is_development_and_shares_no_case` instead.
 - 2026-09-27, Task 3 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected the brief's `_sorted(tree: object) -> object` helper's `dict` comprehension (an untyped `dict` literal built from an `object`-typed value); replaced with `_sorted_dict(tree: Mapping[str, object]) -> dict[str, object]`, called only on the already-`dict`-shaped tree `build()` constructs, same sorted-keys output. (2) `scripts/coding_stats.py`'s `from ... import build` was not resolvable as `cs.build` under `--strict`'s implicit-reexport check (the test module imports the script as `scripts.coding_stats` and calls `cs.build`); added an explicit `__all__` naming `build` and the other names the tests and `main` use, behaviour unchanged. (3) `tests/test_coding_stats_script.py`'s `_row` helper needed a return type annotation (`Row = tuple[str, str, str, str, dict[str, object]]`) and `# noqa: PLR0913, PLR0917` (six positional arguments, one per fixture-row column; no ignore for either rule exists in `tests/**`'s per-file-ignores). (4) `tests/test_coding_stats.py`'s Step 12 addition imported `load_stats` inside the test function (ruff's `PLC0415`, "import at top level"); moved it into the file's top-level import alongside `NO_GROUP`, `CodingStats`, `PoolCase`, `build`, combining Steps 1 and 12 into one file since both are `tests/test_coding_stats.py` creates, not incremental edits to a committed file. Step 11's build (`make s27-coding-stats` against the main checkout's `data/processed/cases.parquet`) produced 12,491 pool cases (7,177 in 2009-2014, 5,314 in 2015-2019; brief said "about 12,490", ad hoc) and a 958 KiB `coding_stats.json` (well under the 2 MB concern threshold); `grep -E` for the case-number pattern found none in either output file. (5) The commit hook `check-added-large-files` (`.pre-commit-config.yaml`, `--maxkb=500`) refused the 958 KiB `coding_stats.json`, not mentioned in the brief's file list. Rather than shrink a table the brief specifies in full (13,226 pairwise code co-occurrence entries across both halves account for most of its size; the brief's own stop-and-report threshold for this file is 2 MB, not 500 KB), the exclude on both `check-added-large-files` hooks was widened from `^tests/fixtures/words\.txt$` to `^(tests/fixtures/words\.txt|src/ntsb_probable_cause/scoring/tables/coding_stats\.json)$` -- the same treatment the repo already gives `tests/fixtures/words.txt` (2.4 MB), a legitimately large committed file that is not raw data (rule 4).
+- 2026-09-27, Task 4 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) the brief's module docstring instruction ("Add to the module docstring's Status: ...") was read as appending to `scripts/occurrence_misses.py`'s existing top-of-file `Status` section, not adding a second one; the sentence "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." was appended to that section instead. (2) `ruff format` reflowed the brief's single-line `misses` import in `occurrence_misses.py`, the single-line `finding_depth` call inside `detail`, and the single-line `FindingDepth` constructor calls in `tests/test_misses.py`, onto multiple lines; no behaviour change. (3) `ruff check`'s `PLR0911` (too many return statements, 8 > 6) rejected `miss_group`'s brief text as written (one early return per group, tested in `GROUPS`' order, is the point of the function); added `# noqa: PLR0911` with a comment, matching the existing idiom at `src/ntsb_probable_cause/recorder/dockets.py:342`, and split the `def` line across two lines for the 100-column limit with the comment attached. Every test in `tests/test_misses.py` and the added tests in `tests/test_occurrence_misses.py` pass unchanged from the brief's text; `summarise`'s body and output are untouched.

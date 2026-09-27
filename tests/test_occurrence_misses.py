@@ -1,5 +1,6 @@
 """scripts/occurrence_misses.py: counts of where the first guess lands in the NTSB's sequence."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -206,3 +207,46 @@ def test_a_run_holding_a_case_outside_the_dev_split_is_refused(
     with pytest.raises(SystemExit, match="outside the dev split"):
         om.main(["--run", "mixed-run"])
     assert capsys.readouterr().out == ""
+
+
+def test_detail_prints_the_six_groups_confidence_and_own_words() -> None:
+    text = om.detail(CASES, load_tables())
+    assert "## the six groups (first guess)" in text
+    for group in ("exact", "right event, wrong phase", "nothing in common"):
+        assert group in text
+    assert "median confidence" in text
+    assert "## the model's own words" in text
+
+
+def _hit(case: CaseResult, top1: bool) -> CaseResult:
+    return case.model_copy(update={"scores": replace(_SCORES, occurrence_top1=top1)})
+
+
+def test_churn_counts_changed_first_guesses_and_hits_gained_and_lost() -> None:
+    # this run: C1 right, C2 wrong; the second run: C1 wrong (other guess), C2 wrong (same guess)
+    this = [
+        _hit(_case("C1", ("452240",), ("452240",)), top1=True),
+        _hit(_case("C2", ("452240",), ("452241",)), top1=False),
+    ]
+    other = [
+        _hit(_case("C1", ("452240",), ("452241",)), top1=False),
+        _hit(_case("C2", ("452240",), ("452241",)), top1=False),
+    ]
+    text = om.churn(this, other)
+    assert "same first guess: 1 of 2" in text
+    assert "top-1 gained 1, lost 0" in text
+
+
+def test_main_with_against_prints_churn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    first, second = "20260926T000000-abc1234-dev-400-B", "20260927T000000-abc1234-dev-400-B"
+    for run_id in (first, second):
+        folder = _write_run(runs, run_id)
+        write_jsonl(folder / "cases.jsonl", CASES)
+    assert om.main(["--run", first, "--against", second]) == 0
+    out = capsys.readouterr().out
+    assert "## the six groups (first guess)" in out
+    assert "same first guess: 5 of 5" in out
