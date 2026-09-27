@@ -257,3 +257,5 @@ s27-retest-verify:
 # S2.7 walkthrough W7, free: Qwen's second pass must be reproduced exactly from the cache before
 # any candidate is scored. If the default pair does not reproduce it, try the top-level pair by
 # overriding HW_RECHECK and PHOTO_RECHECK; if neither pair reproduces it, stop and report.
+# Run on 2026-09-27: the default pass2/ pair reproduced every count; the top-level pair did not
+# (1551 handwriting key lines and 55 inventing lines, against the published 1548 and 54).
