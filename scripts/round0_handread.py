@@ -32,7 +32,7 @@ from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.judge import JudgeLabels
 from ntsb_probable_cause.scoring.metrics import wilson
 from ntsb_probable_cause.scoring.misses import MISS_GROUPS, miss_group
-from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 from scripts import marking_page
 from scripts.judge_outcomes import read_labels
@@ -102,11 +102,23 @@ def _card(
 
 
 def _run(settings: Settings, run_id: str) -> list[CaseResult]:
+    """A development run's cases, after every refusal (held-out, then split).
+
+    Mirrors ``judge_outcomes._load``: run.jsonl's recorded sample is checked before
+    cases.jsonl is read at all, so a run whose id looks like development but was recorded on
+    a held-out sample is refused before any per-case data is touched.
+    """
     if "heldout" in run_id or "-dev-" not in run_id:
         raise SystemExit(
             f"round0_handread: {run_id} is not a development run; development runs only"
         )
-    cases = read_jsonl(settings.runs_dir / run_id / "cases.jsonl", CaseResult)
+    folder = settings.runs_dir / run_id
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    if not record.sample.startswith("dev"):
+        raise SystemExit(
+            f"round0_handread: {run_id} is a held-out run ({record.sample}); development runs only"
+        )
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"round0_handread: {run_id} holds a case outside the dev split")
     return cases
@@ -141,8 +153,8 @@ def cmd_cards(settings: Settings, run_id: str) -> str:
     )
     with (folder / "sheet.csv").open("w", newline="") as handle:
         writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(["row", "case_id", "group"])
-        writer.writerows((n, c, g) for n, (c, g) in enumerate(drawn, start=1))
+        writer.writerow(["row", "case_id", "group", "run_id"])
+        writer.writerows((n, c, g, run_id) for n, (c, g) in enumerate(drawn, start=1))
     counts = Counter(g for _c, g in drawn)
     return f"{len(drawn)} cards written to {folder}: " + ", ".join(
         f"{g} {n}" for g, n in counts.items()
@@ -169,7 +181,10 @@ def score(
         if andy == "can't tell":
             continue
         decidable += 1
-        judge_yes = labels[row["case_id"]].narrative == "consistent"
+        label = labels.get(row["case_id"])
+        if label is None:
+            raise SystemExit(f"round0_handread: row {row['row']} has no judge label")
+        judge_yes = label.narrative == "consistent"
         andy_yes = andy == "yes"
         agree += judge_yes == andy_yes
         generous += judge_yes and not andy_yes
@@ -191,6 +206,15 @@ def score(
     return "\n".join(lines)
 
 
+def _refuse_mismatched_run(sheet: Sequence[Mapping[str, str]], run_id: str) -> None:
+    """Refuse a sheet drawn from a different run than the one now being scored (review fix)."""
+    mismatched = {row.get("run_id", "") for row in sheet} - {run_id}
+    if mismatched:
+        raise SystemExit(
+            f"round0_handread: sheet.csv was drawn from {sorted(mismatched)[0]}, not {run_id}"
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``cards`` or ``score``."""
     parser = argparse.ArgumentParser(prog="round0_handread")
@@ -209,6 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _run(settings, args.run)
     with (settings.data_dir / FOLDER / "sheet.csv").open(newline="") as handle:
         sheet = list(csv.DictReader(handle))
+    _refuse_mismatched_run(sheet, args.run)
     text = score(
         sheet, marking_page.read_marks(args.marks), read_labels(settings.runs_dir / args.run)
     )

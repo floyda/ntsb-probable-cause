@@ -1,13 +1,14 @@
 """scripts/round0_handread.py: the cards, and the narrative-label validation (decision 0099)."""
 
+import csv
 from pathlib import Path
 
 import pytest
 from scripts import round0_handread as rh
-from tests.test_occurrence_misses import _case
+from tests.test_occurrence_misses import _case, _write_run
 
 from ntsb_probable_cause.scoring.judge import JudgeLabels
-from ntsb_probable_cause.scoring.records import CaseResult
+from ntsb_probable_cause.scoring.records import CaseResult, write_jsonl
 
 
 def _cases() -> list[CaseResult]:
@@ -80,7 +81,64 @@ def test_score_refuses_an_unmarked_card() -> None:
         rh.score(sheet, {1: {"key fact": "", "why": ""}}, _labels({"C0": "consistent"}))
 
 
+def test_score_refuses_a_case_missing_from_the_judge_labels() -> None:
+    sheet = _sheet([("C0", "nothing in common")])
+    with pytest.raises(SystemExit, match="row 1"):
+        rh.score(sheet, {1: {"key fact": "yes", "why": "other"}}, {})
+
+
 def test_cards_refuses_a_held_out_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     with pytest.raises(SystemExit, match="development"):
         rh.main(["cards", "--run", "20260926T000000-abc1234-heldout-400-B"])
+
+
+def test_cards_refuses_a_run_recorded_as_held_out_before_cases_are_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run id says development, but run.jsonl's recorded sample says otherwise: refused
+    before cases.jsonl is even opened (review fix round 1, item 1). No cases.jsonl is written,
+    so the test would fail with a missing-file error, not a clean SystemExit, if the run.jsonl
+    check ran after (or not at all)."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    runs_dir = tmp_path / "runs"
+    _write_run(runs_dir, "20260926T000000-abc1234-dev-400-B", sample="heldout-400")
+    with pytest.raises(SystemExit, match="held-out run"):
+        rh.main(["cards", "--run", "20260926T000000-abc1234-dev-400-B"])
+
+
+def test_cards_refuses_a_run_holding_a_case_outside_the_dev_split(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    runs_dir = tmp_path / "runs"
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = _write_run(runs_dir, run_id)
+    write_jsonl(
+        folder / "cases.jsonl",
+        [
+            _case("C1", ("452240",), ("452240",)),
+            _case("C2", ("452240",), ("452240",), split="heldout"),
+        ],
+    )
+    with pytest.raises(SystemExit, match="outside the dev split"):
+        rh.main(["cards", "--run", run_id])
+
+
+def test_score_refuses_a_sheet_drawn_from_a_different_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    runs_dir = tmp_path / "runs"
+    run_id = "20260927T120000-abc1234-dev-400-B"
+    other_run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = _write_run(runs_dir, run_id)
+    write_jsonl(folder / "cases.jsonl", [_case("C1", ("452240",), ("452240",))])
+    sheet_dir = tmp_path / rh.FOLDER
+    sheet_dir.mkdir(parents=True)
+    with (sheet_dir / "sheet.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["row", "case_id", "group", "run_id"])
+        writer.writerow([1, "C1", "exact", other_run_id])
+    with pytest.raises(SystemExit, match=other_run_id):
+        rh.main(["score", "unused.csv", "--run", run_id])
