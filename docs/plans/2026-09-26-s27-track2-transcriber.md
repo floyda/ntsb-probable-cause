@@ -55,7 +55,7 @@ The spec is approved; these are the places where writing this plan found somethi
 | `scripts/transcriber_retest.py` | 8, 9, 10 | T2: reproduce Qwen's second pass; run the candidates on the four keys; Andy's pages; the choice rule against Qwen; `docs/results/s27-transcriber-retest.txt` |
 | `tests/fixtures/openrouter/transcription/*.json` | 7 | the new candidates' recorded probe replies (the invented page) |
 | `tests/test_docket_transcribe.py`, `tests/test_eval_app.py`, `tests/test_page_value.py`, `tests/test_transcriber_shortlist.py`, `tests/test_transcriber_retest.py`, `tests/test_sources_settings.py` | 2–10 | tests |
-| `Makefile` | 4–10 | `s27-page-value`, `s27-models-fetch`, `s27-shortlist`, `s27-transcriber-probe`, `s27-batch-image`, `s27-retest-verify`, `s27-retest-run`, `s27-retest-pages`, `s27-retest-score` |
+| `Makefile` | 4–10 | `s27-page-value`, `s27-models-fetch`, `s27-shortlist`, `s27-transcriber-probe`, `s27-batch-image`, `s27-retest-verify`, `s27-retest-run`, `s27-retest-pages`, `s27-retest-automatic`, `s27-retest-score` |
 | `docs/decisions/` (number 120) and its index row | 11 | the transcriber and page rule, or "Qwen stays" |
 
 Task numbers in this table are final.
@@ -2198,7 +2198,7 @@ Record the run's printed costs in Deviations. Marking comes after the automatic 
 - Consumes: Task 8's `key_material`, `choose_against_qwen`, `absolute_notes`, `QWEN_LIMITS`; Task 9's sheets; `transcriber_test._result`, `_reading_counts`.
 - Produces: `automatic_pass(r: CandidateResult) -> bool` (the four measures that need no marks, and cost); `cmd_automatic(settings, docs, recheck, *, models) -> tuple[str, tuple[str, ...]]` (the text, and the candidates still in the running; walkthrough W3); `cmd_score(settings, docs, recheck, photos_csv: Path | None, mixed_csv: Path | None, *, models, marked: Collection[str]) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_automatic_pass_ignores_the_marked_measures() -> None:
@@ -2213,12 +2213,12 @@ def test_score_refuses_an_unmarked_card(tmp_path: Path) -> None:
         tr.invented_by_model(sheet, marks, field="words", invented="some invented")
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -k "automatic or unmarked" -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 def automatic_pass(r: CandidateResult) -> bool:
@@ -2371,7 +2371,7 @@ s27-retest-score:
 # MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
 ```
 
-- [ ] **Step 4: Run the tests, `make check`, commit the code**
+- [x] **Step 4: Run the tests, `make check`, commit the code**
 
 ```bash
 uv run pytest tests/test_transcriber_retest.py -v && make check
@@ -2515,3 +2515,9 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 9 fix round 1 (review finding, Important): `cmd_pages` builds both sheets first and refuses (`ConfigurationError`, before writing anything) when an existing `photos.json` or `mixed.json` in `<data_dir>/s27/transcriber-retest/` differs from the sheet it would write, naming the file and the rows that differ and saying how to start over deliberately (move the folder aside and clear the pages' saved marks). Marks are kept in the browser by row number under a fixed storage key, and the shuffle depends on the set of candidates, so a rebuild with another set would put an earlier mark on another model's reading; this follows S2.6's guard in `cmd_photos_recheck`. A rebuild with the same candidates, in any order, passes and rewrites every file byte for byte. Tests: `test_cmd_pages_rebuilds_the_same_candidates_identically`, `test_cmd_pages_refuses_a_rebuild_that_would_move_marks_and_leaves_the_pages`.
 - 2026-09-27, Task 9 Step 6, Andy's decision (option A): the first `make s27-retest-run` stopped at the $25 check before any model call, spending nothing. Track 1's Task 13 (`b0cdcc2` on `s27-guidance`) added two optional `RunRecord` fields (`guidance`, `guidance_sha256`); track 1's runs since write them into `data/runs/`; this branch's `RunRecord`, which forbids unknown fields, could not read them, so `stage_spend` and `month_spent` both failed. Track 1's identical four lines were landed on the parent (`42e67a7`) and the parent merged into `s27-transcriber` with a merge commit (`5d2bc2d`); track 2 still never edits `scoring/records.py` on its own branch. The re-test was then run by Claude on Andy's go-ahead ("can you run it for me?"), not by Andy as Step 6 planned.
 - 2026-09-27, Task 9 Step 6, Andy's decision (option A): the retry pass stopped on DeepSeek's reservation (PreparationStoppedError: $0.2861 against $0.2820, 63 of its 94 failed pages re-read, 31 left unread), which ended the command before five candidates were retried. `run` gained `--models`; the one retry was finished for glm-5.3-flash, ternary-bonsai-2-27b, gpt-6-luna-pro, mimo-v2.6-flash and qwen3.8-omni-flash, and DeepSeek's 31 pages were left unread: its first pass alone cost $0.0031 a test page, twice Qwen's $0.00154, so decision 0100 item 3's cost condition rules it out whatever its retry reads. First pass $1.40 for all eight; the re-test's spend before the finishing retry $1.71.
+- 2026-09-27, Task 10 (pre-flight 1.1): `s27-retest-automatic` and `s27-retest-score` pass `--handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)`, the shared variables Task 8 defined (default: the `pass2/` pair its `verify` confirmed), not the brief's `$(or $(HW_RECHECK),...)` fallback to the top-level pair, which contradicted W7 and Task 8's verified result.
+- 2026-09-27, Task 10 (pre-flight 3.5): `test_score_refuses_an_unmarked_card` takes no `tmp_path` fixture; the brief's version had an unused fixture typed with an unimported `Path`.
+- 2026-09-27, Task 10 (pre-flight 1.6): the File-structure table's `Makefile` row gains `s27-retest-automatic`.
+- 2026-09-27, Task 10 (Task 8 review, Qwen's cost bar): the rule's cost bar stays S2.6's rounded $0.00154 and `choose_against_qwen` is unchanged. The results file's bar is not hard-coded prose: `automatic` and `score` compute Qwen's row from the cache with the same `_result` call as the candidates (as `verify` does) and print its measured counts and its cost to 10 places ($0.0015362713) beside the rounded bar. Each candidate's cost is printed to 7 places, including in `_failures`' cost text, which now reads "not below the rule's $0.00154" rather than "not below Qwen's" (display only). Any candidate whose measured cost lies in [Qwen's measured cost, $0.00154) gets a line "FOR ANDY: <model> costs $x, below the rule's $0.00154 but above Qwen's measured $y; the rule as written admits it" in both outputs.
+- 2026-09-27, Task 10 (controller): the results file states the retries (`RETRY_NOTE`): one retry of failed pages per candidate, except DeepSeek, whose retry stopped at its reservation with 31 pages unread (Task 9 Step 6 above), so its counts include those pages as failed. Each candidate's key pages still failed are also printed from the cache (`transcriber_test._reading_counts`).
+- 2026-09-27, Task 10: safeguards beyond the brief. `automatic` and `score` first re-verify Qwen's row with the pair given and refuse, as `verify` does, if it differs from the published second pass (the check is factored into `_verified`, which `cmd_verify` now also uses); both refuse a candidate with a key page the cache holds no reading of (S2.6's hold on never-read pages, through Task 9's `_missing`). `score` refuses a candidate still in the running that is not in `--marked`, because its photograph and scan counts would be 0 and the rule could choose it without Andy's marks; it refuses a sheet holding cards of a model not in `--marked`; `invented_by_model` also refuses a sheet card missing from the CSV. `score` applies the marked counts with `dataclasses.replace` over the automatic rows instead of a second `_result` call (the same counts). The brief's `float(...)` wrappers are dropped: `CandidateResult`'s properties are already floats. The header names the recheck pair with its folder and says whether it is the `pass2/` pair Andy recalled (W7). `--marked` is limited to `S27_CANDIDATES`; `--out` writes exactly the printed text.

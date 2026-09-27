@@ -1,16 +1,20 @@
 """The transcriber re-test: new candidates on S2.6's answer keys, judged against Qwen (S2.7 §7.4).
 
 Status
-    One-shot (S2.7 track 2, Tasks 8-10). Built so far (Tasks 8 and 9):
-      verify  -- re-score Qwen's cached readings on S2.6's keys and require its published
-                 second-pass counts exactly (free; walkthrough W7)
-      run     -- every candidate reads S2.6's four keys once at 150 dpi, synchronously at the
-                 standard price (paid, up to about $2.50); ``--models`` names a subset, as
-                 when the retry was finished for the five candidates a stopped one missed
-      pages   -- Andy's photograph and full-page-scan pages, for the candidates named (free;
-                 walkthrough W3: those still in the running after Task 10's automatic measures)
-    and decision 0100 item 3's choice rule (``choose_against_qwen``), fixed before any
-    candidate is run. The score comes in Task 10.
+    One-shot (S2.7 track 2, Tasks 8-10). Built (Tasks 8 to 10):
+      verify    -- re-score Qwen's cached readings on S2.6's keys and require its published
+                   second-pass counts exactly (free; walkthrough W7)
+      run       -- every candidate reads S2.6's four keys once at 150 dpi, synchronously at
+                   the standard price (paid, up to about $2.50); ``--models`` names a subset,
+                   as when the retry was finished for the five candidates a stopped one missed
+      automatic -- the candidates still in the running on every measure that needs no marks,
+                   and cost; Andy marks only those (free; walkthrough W3)
+      pages     -- Andy's photograph and full-page-scan pages, for the candidates named (free;
+                   walkthrough W3: those ``automatic`` leaves in the running)
+      score     -- decision 0100 item 3's choice rule (``choose_against_qwen``, fixed before
+                   any candidate was run) over every candidate, with Andy's marks (free)
+    ``automatic`` and ``score`` first re-verify Qwen's row from the cache (as ``verify``) and
+    refuse a candidate with a key page never read.
     Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there;
     the pages and their sheets go under <data_dir>/s27/transcriber-retest/, and the readings
     into the transcription cache. Counts only.
@@ -19,8 +23,9 @@ Status
 import argparse
 import json
 import os
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -56,6 +61,7 @@ from scripts.transcriber_test import (
     _photo_body,
     _photo_group,
     _read,
+    _reading_counts,
     _reading_of,
     _result,
     _scan_body,
@@ -140,7 +146,9 @@ def _failures(r: CandidateResult, limits: Limits) -> list[str]:
     if 100 * _fraction(r.typed_errors, r.typed_chars) > limits.typed_errors_per_100:
         out.append(f"{r.typed_errors} typed errors in {r.typed_chars} characters")
     if not r.cost_per_page < limits.cost_per_page:
-        out.append(f"${r.cost_per_page:.5f} a test page, not below Qwen's")
+        out.append(
+            f"${r.cost_per_page:.7f} a test page, not below the rule's ${limits.cost_per_page:.5f}"
+        )
     return out
 
 
@@ -296,6 +304,54 @@ def key_material(settings: Settings, docs: CachedDocuments, recheck: Recheck) ->
     )
 
 
+def _scored(
+    model: str,
+    material: KeyMaterial,
+    cache: TranscriptionCache,
+    *,
+    photo_invented: int = 0,
+    mixed_invented: int = 0,
+) -> CandidateResult:
+    """One model's counts on the four keys, scored exactly as S2.6's second pass scored Qwen."""
+    return _result(
+        model,
+        material.keys,
+        material.key_texts,
+        photo_invented,
+        material.typed_answers,
+        cache,
+        dpi=RESOLUTION,
+        mixed_invented=mixed_invented,
+        format_gate=True,
+    )
+
+
+def _verified(
+    settings: Settings, docs: CachedDocuments, recheck: Recheck
+) -> tuple[KeyMaterial, CandidateResult]:
+    """The key material, and Qwen's row re-scored from the cache, which must be its published one.
+
+    Raises:
+        SystemExit: Any count differs; the message names the pair and every difference.
+    """
+    material = key_material(settings, docs, recheck)
+    qwen = _scored(
+        QWEN,
+        material,
+        TranscriptionCache(settings.transcription_dir),
+        photo_invented=material.qwen_photo_invented,
+        mixed_invented=material.qwen_mixed_invented,
+    )
+    differences = matches_qwen_pass2(qwen)
+    if differences:
+        raise SystemExit(
+            "Qwen's re-scored counts differ from docs/results/s26-transcriber-test-pass2.txt "
+            f"with the recheck CSVs {recheck.handwriting_csv.name}, {recheck.photos_csv.name}: "
+            + "; ".join(differences)
+        )
+    return material, qwen
+
+
 def cmd_verify(settings: Settings, docs: CachedDocuments, recheck: Recheck) -> str:
     """Walkthrough W7: Qwen re-scored from the cache must equal its published second pass.
 
@@ -310,29 +366,293 @@ def cmd_verify(settings: Settings, docs: CachedDocuments, recheck: Recheck) -> s
     Raises:
         SystemExit: Any count differs; the message names the pair and every difference.
     """
-    material = key_material(settings, docs, recheck)
-    qwen = _result(
-        QWEN,
-        material.keys,
-        material.key_texts,
-        material.qwen_photo_invented,
-        material.typed_answers,
-        TranscriptionCache(settings.transcription_dir),
-        dpi=RESOLUTION,
-        mixed_invented=material.qwen_mixed_invented,
-        format_gate=True,
-    )
-    differences = matches_qwen_pass2(qwen)
-    if differences:
-        raise SystemExit(
-            "Qwen's re-scored counts differ from docs/results/s26-transcriber-test-pass2.txt "
-            f"with the recheck CSVs {recheck.handwriting_csv.name}, {recheck.photos_csv.name}: "
-            + "; ".join(differences)
-        )
+    _verified(settings, docs, recheck)
     return (
         f"verified: Qwen's second pass reproduced exactly from the cache with "
         f"{recheck.handwriting_csv} and {recheck.photos_csv}"
     )
+
+
+# The re-test's retries, as run (the S2.7 track 2 plan's Deviations, Task 9 Step 6): stated in
+# the results file because a page still failed after them is scored as wrong.
+RETRY_NOTE = (
+    "retries: each candidate had one retry of failed pages (run --retry-failed), except "
+    "deepseek/deepseek-v4.1-flash, whose retry stopped at its reservation with 31 pages "
+    "unread (the S2.7 track 2 plan's Deviations, Task 9 Step 6); its counts include those "
+    "pages as failed, and a failed page is scored as wrong for its reader"
+)
+
+
+def automatic_pass(r: CandidateResult) -> bool:
+    """Walkthrough W3 (Andy, 2026-09-27): every measure that needs no marks, and cost.
+
+    Args:
+        r: One candidate's counts; its photograph and scan counts are ignored.
+
+    Returns:
+        True when ``r`` meets decision 0100 item 3 on every measure but the two marked ones.
+    """
+    return not _failures(replace(r, photo_invented=0, mixed_invented=0), QWEN_LIMITS)
+
+
+def _refuse_unread(
+    settings: Settings, rows: Sequence[Mapping[str, object]], models: Sequence[str]
+) -> None:
+    """Refuse a candidate with a key page never read: it would be scored as wrong, unseen.
+
+    Raises:
+        SystemExit: The cache holds no reading of some key page for some candidate.
+    """
+    missing = _missing(settings, rows, models)
+    if missing:
+        raise SystemExit(
+            "not in the transcription cache: " + "; ".join(missing) + " -- run the re-test first"
+        )
+
+
+def _failed_line(cache: TranscriptionCache, material: KeyMaterial, r: CandidateResult) -> str:
+    """The candidate's measured cost to 7 places, and its key pages still failed after retry."""
+    counts = _reading_counts(cache, material.keys, r.model, dpi=RESOLUTION)
+    failed = sum(c.failed for c in counts.values())
+    return (
+        f"  measured ${r.cost_per_page:.7f} a test page; {failed} of {len(material.keys)} key "
+        "pages failed to read"
+    )
+
+
+def _pair(recheck: Recheck) -> str:
+    """The recheck CSV pair, each named with its folder (``pass2/...``)."""
+    return " and ".join(
+        f"{p.parent.name}/{p.name}" for p in (recheck.handwriting_csv, recheck.photos_csv)
+    )
+
+
+def _bar_lines(qwen: CandidateResult, recheck: Recheck) -> list[str]:
+    """The rule's published bar, and Qwen's row as the cache gives it, unrounded cost included.
+
+    The rule's cost bar is S2.6's rounded $0.00154; Qwen's measured cost is printed beside it
+    to 10 places so a candidate between the two can be seen (Task 8 review).
+    """
+    return [
+        "the bar: decision 0100 item 3's limits, from Qwen3.5 122B's published second pass "
+        "(docs/results/s26-transcriber-test-pass2.txt); its cost bar is S2.6's rounded "
+        f"${QWEN_LIMITS.cost_per_page:.5f} a test page",
+        f"Qwen re-scored from the cache as the candidates are, with {_pair(recheck)}: "
+        f"{qwen.hw_right} of {qwen.hw_lines} handwriting lines right ({qwen.hw_accuracy:.1%}), "
+        f"{qwen.hw_inventing} inventing lines, {qwen.photo_invented} of {qwen.photo_pages} "
+        f"photographs and {qwen.mixed_invented} of {qwen.mixed_pages} scans with invented "
+        f"words, {qwen.hw_format_failed} of {qwen.hw_pages} format-failed handwriting pages, "
+        f"{qwen.typed_errors_per_100:.2f} typed errors per 100 characters; measured "
+        f"${qwen.cost_per_page:.10f} a test page against the rule's "
+        f"${QWEN_LIMITS.cost_per_page:.5f}",
+    ]
+
+
+def _for_andy(results: Sequence[CandidateResult], qwen: CandidateResult) -> list[str]:
+    """Candidates dearer than Qwen's measured cost yet below the rule's rounded bar.
+
+    The rule is not changed (decision 0100 item 3 was fixed before the run); the line only
+    makes the gap between S2.6's rounded $0.00154 and Qwen's measured cost visible to Andy.
+    """
+    bar = QWEN_LIMITS.cost_per_page
+    return [
+        f"FOR ANDY: {r.model} costs ${r.cost_per_page:.7f}, below the rule's ${bar:.5f} but "
+        f"above Qwen's measured ${qwen.cost_per_page:.7f}; the rule as written admits it"
+        for r in results
+        if qwen.cost_per_page <= r.cost_per_page < bar
+    ]
+
+
+def cmd_automatic(
+    settings: Settings, docs: CachedDocuments, recheck: Recheck, *, models: Sequence[str]
+) -> tuple[str, tuple[str, ...]]:
+    """The candidates still in the running before any marking (walkthrough W3), and why not.
+
+    A candidate out on an automatic measure cannot be chosen whatever its marks (decision
+    0100 item 3), so Andy marks only the ones still in.
+
+    Args:
+        settings: Where S2.6's keys and the transcription cache are.
+        docs: The docket cache, offline.
+        recheck: The second-pass CSV pair; Qwen's row must reproduce with it.
+        models: The candidates.
+
+    Returns:
+        The text (Qwen's bar, one entry per candidate, any line for Andy, and "to mark"), and
+        the candidates still in the running.
+    """
+    material, qwen = _verified(settings, docs, recheck)
+    _refuse_unread(settings, material.keys, models)
+    cache = TranscriptionCache(settings.transcription_dir)
+    results = [_scored(m, material, cache) for m in models]
+    still_in = tuple(r.model for r in results if automatic_pass(r))
+    lines = [*_bar_lines(qwen, recheck), ""]
+    for r in results:
+        lines.append(
+            f"{r.model}: still in the running"
+            if r.model in still_in
+            else f"{r.model}: out on an automatic measure -- "
+            + "; ".join(_failures(replace(r, photo_invented=0, mixed_invented=0), QWEN_LIMITS))
+        )
+        lines.append(_failed_line(cache, material, r))
+    lines += _for_andy(results, qwen)
+    lines.append(f"to mark: {' '.join(still_in) or 'none (Qwen stays; no marking needed)'}")
+    return "\n".join(lines), still_in
+
+
+def invented_by_model(
+    sheet: Mapping[str, Mapping[str, object]],
+    marks: Mapping[int, Mapping[str, str]],
+    *,
+    field: str,
+    invented: str,
+) -> Counter[str]:
+    """Cards marked ``invented``, by model; every card on the sheet must be marked.
+
+    Args:
+        sheet: Card row number (as a string) to its page ``k`` and ``model``.
+        marks: Andy's downloaded CSV, by row number.
+        field: The mark's column.
+        invented: The choice that counts.
+
+    Returns:
+        The number of cards marked ``invented``, by model.
+
+    Raises:
+        SystemExit: A card on the sheet is unmarked, or missing from the CSV.
+    """
+    if any(marks.get(int(n), {}).get(field, "") == "" for n in sheet):
+        raise SystemExit(f"some cards are unmarked ({field})")
+    return Counter(
+        str(sheet[str(n)]["model"])
+        for n, fields in marks.items()
+        if str(n) in sheet and fields.get(field) == invented
+    )
+
+
+def _marked_counts(
+    folder: Path, photos_csv: Path, mixed_csv: Path, marked: Collection[str]
+) -> tuple[Counter[str], Counter[str]]:
+    """The marked candidates' photographs and scans with invented words, from Andy's CSVs.
+
+    Raises:
+        SystemExit: A card is unmarked, or a sheet holds cards of a model not in ``marked``.
+    """
+    counts: list[Counter[str]] = []
+    for sheet_name, csv, field in (
+        ("photos.json", photos_csv, "words"),
+        ("mixed.json", mixed_csv, "added words"),
+    ):
+        sheet = json.loads((folder / sheet_name).read_text())
+        others = sorted({str(v["model"]) for v in sheet.values()} - set(marked))
+        if others:
+            raise SystemExit(
+                f"score: {sheet_name} holds cards of models not named in --marked: "
+                + " ".join(others)
+            )
+        counts.append(
+            invented_by_model(sheet, read_marks(csv), field=field, invented="some invented")
+        )
+    return counts[0], counts[1]
+
+
+def cmd_score(  # noqa: PLR0913 -- the key material's recheck pair and the two new CSVs.
+    settings: Settings,
+    docs: CachedDocuments,
+    recheck: Recheck,
+    photos_csv: Path | None,
+    mixed_csv: Path | None,
+    *,
+    models: Sequence[str],
+    marked: Collection[str],
+) -> str:
+    """Decision 0100 item 3 over the candidates; Qwen's row printed as the bar.
+
+    Only ``marked`` candidates (those still in the running after :func:`cmd_automatic`) have
+    photograph and scan marks (walkthrough W3); the rest print "not marked (already out)". With
+    none marked there are no CSVs, and ``photos_csv``/``mixed_csv`` are None.
+
+    Args:
+        settings: Where S2.6's keys, the re-test's sheets and the transcription cache are.
+        docs: The docket cache, offline.
+        recheck: The second-pass CSV pair; Qwen's row must reproduce with it.
+        photos_csv: Andy's marks on the re-test's photograph page, or None if none marked.
+        mixed_csv: Andy's marks on the re-test's full-page scan page, or None if none marked.
+        models: The candidates.
+        marked: The candidates Andy marked: exactly those still in the running.
+
+    Returns:
+        The results file's text.
+
+    Raises:
+        SystemExit: A candidate still in the running was not marked (the rule would score
+            its marked measures as 0), a CSV is missing or has an unmarked card, or a
+            candidate has a key page never read.
+    """
+    material, qwen = _verified(settings, docs, recheck)
+    _refuse_unread(settings, material.keys, models)
+    cache = TranscriptionCache(settings.transcription_dir)
+    automatic = [_scored(m, material, cache) for m in models]
+    unmarked = [r.model for r in automatic if automatic_pass(r) and r.model not in marked]
+    if unmarked:
+        raise SystemExit(
+            "score: still in the running but not marked: "
+            + " ".join(unmarked)
+            + " -- build their pages (s27-retest-pages) and mark them first"
+        )
+    photos: Counter[str] = Counter()
+    mixed: Counter[str] = Counter()
+    if marked:
+        if photos_csv is None or mixed_csv is None:
+            raise SystemExit("score: candidates are marked, so both marks CSVs are required")
+        photos, mixed = _marked_counts(
+            settings.data_dir / RETEST_FOLDER, photos_csv, mixed_csv, marked
+        )
+    results = [
+        replace(r, photo_invented=photos[r.model], mixed_invented=mixed[r.model]) for r in automatic
+    ]
+    _chosen, notes = choose_against_qwen(results)  # the notes' last line names the outcome
+    recollection = (
+        "the pass2/ pair Andy recalled as final"
+        if recheck.handwriting_csv.parent.name == "pass2"
+        else "not the pass2/ pair Andy recalled as final"
+    )
+    lines = [
+        "# the transcriber re-test (S2.7 spec §7.4, decision 0100) -- counts only",
+        "keys: S2.6's four (docs/results/s26-transcriber-test-pass2.txt); 150 dpi; instruction "
+        f"t1; decision 0086's corrections; the second-pass recheck CSVs {_pair(recheck)}, "
+        f"which reproduce Qwen's published counts exactly (walkthrough W7; {recollection})",
+        RETRY_NOTE,
+        *_bar_lines(qwen, recheck),
+        "",
+    ]
+    out_note = "not marked (already out on an automatic measure, walkthrough W3)"
+    for r in results:
+        is_marked = r.model in marked
+        photo_line = (
+            f"{r.photo_invented} of {r.photo_pages} photographs"
+            if is_marked
+            else f"photographs {out_note}"
+        )
+        scan_line = (
+            f"  full-page scans: invented added words on {r.mixed_invented} of {r.mixed_pages}"
+            if is_marked
+            else f"  full-page scans: {out_note}"
+        )
+        lines += [
+            f"## {r.model} (measured ${r.cost_per_page:.7f} per test page)",
+            f"  invented: {r.hw_inventing} lines ({r.invented_per_100_lines:.1f} per 100 "
+            f"handwriting lines); {photo_line}",
+            f"  handwriting lines right: {r.hw_right} of {r.hw_lines} ({r.hw_accuracy:.1%})",
+            f"  typed errors: {r.typed_errors_per_100:.2f} per 100 characters",
+            scan_line,
+            f"  format-failed handwriting pages: {r.hw_format_failed} of {r.hw_pages}",
+            _failed_line(cache, material, r),
+            *(absolute_notes(r) if is_marked else ()),
+        ]
+    lines += _for_andy(results, qwen)
+    lines += ["", "## the rule (decision 0100 item 3, fixed before the run)", *notes]
+    return "\n".join(lines)
 
 
 def cmd_run(
@@ -532,8 +852,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="transcriber_retest")
     commands = parser.add_subparsers(dest="command", required=True)
     verify_p = commands.add_parser("verify")
-    verify_p.add_argument("--handwriting-recheck", type=Path, required=True)
-    verify_p.add_argument("--photos-recheck", type=Path, required=True)
+    automatic_p = commands.add_parser("automatic")
+    score_p = commands.add_parser("score")
+    for p in (verify_p, automatic_p, score_p):
+        p.add_argument("--handwriting-recheck", type=Path, required=True)
+        p.add_argument("--photos-recheck", type=Path, required=True)
+    score_p.add_argument("--photos", type=Path, default=None)
+    score_p.add_argument("--mixed", type=Path, default=None)
+    # The candidates Andy marked (``automatic``'s "to mark" line); none when none are still in.
+    score_p.add_argument("--marked", nargs="*", choices=S27_CANDIDATES, default=[])
+    score_p.add_argument("--out", type=Path, default=None)
     run_p = commands.add_parser("run")
     run_p.add_argument("--retry-failed", action="store_true")
     # Task 9 Step 6 (Andy, option A): to finish a retry for the candidates a stopped one missed.
@@ -550,7 +878,22 @@ def main(argv: list[str] | None = None) -> int:
         text = cmd_pages(settings, docs, models=args.models)
     else:
         recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
-        text = cmd_verify(settings, docs, recheck)
+        if args.command == "automatic":
+            text, _still_in = cmd_automatic(settings, docs, recheck, models=S27_CANDIDATES)
+        elif args.command == "score":
+            text = cmd_score(
+                settings,
+                docs,
+                recheck,
+                args.photos,
+                args.mixed,
+                models=S27_CANDIDATES,
+                marked=tuple(args.marked),
+            )
+            if args.out is not None:
+                args.out.write_text(text + "\n")
+        else:
+            text = cmd_verify(settings, docs, recheck)
     print(text)
     return 0
 

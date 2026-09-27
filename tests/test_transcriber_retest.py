@@ -3,6 +3,7 @@
 import hashlib
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import cast
@@ -541,3 +542,293 @@ def test_main_pages_refuses_a_model_that_is_not_a_candidate(
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     with pytest.raises(SystemExit):
         tr.main(["pages", "--models", "a/m"])
+
+
+# ---------------------------------------------------------------------------------------
+# Task 10: the automatic measures (walkthrough W3), and the score against Qwen.
+# ---------------------------------------------------------------------------------------
+
+
+def test_automatic_pass_ignores_the_marked_measures() -> None:
+    assert tr.automatic_pass(_result("a/m", photo_invented=9, mixed_invented=9))
+    assert not tr.automatic_pass(_result("a/m", hw_inventing=60))
+
+
+def test_score_refuses_an_unmarked_card() -> None:
+    sheet = {"11": {"k": 1, "model": "a/m"}}
+    marks = {11: {"words": ""}}
+    with pytest.raises(SystemExit, match="unmarked"):
+        tr.invented_by_model(sheet, marks, field="words", invented="some invented")
+
+
+def test_score_refuses_a_card_missing_from_the_csv() -> None:
+    sheet = {"11": {"k": 1, "model": "a/m"}, "12": {"k": 1, "model": "b/m"}}
+    with pytest.raises(SystemExit, match="unmarked"):
+        tr.invented_by_model(
+            sheet, {11: {"words": "some invented"}}, field="words", invented="some invented"
+        )
+
+
+def test_invented_by_model_counts_only_invented_cards_on_the_sheet() -> None:
+    sheet = {"11": {"k": 1, "model": "a/m"}, "12": {"k": 1, "model": "b/m"}}
+    marks = {
+        11: {"words": "some invented"},
+        12: {"words": "all on the page"},
+        99: {"words": "some invented"},  # not on the sheet: ignored
+    }
+    counted = tr.invented_by_model(sheet, marks, field="words", invented="some invented")
+    assert counted == {"a/m": 1}
+
+
+_GOOD, _BAD = "a/good", "b/bad"
+_KEY = "Fuel BOTH\nMixture RICH\nEngine ROUGH"
+
+
+def _retest_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, good_cost: float = 0.0005
+) -> tuple[Settings, CachedDocuments, tt.Recheck]:
+    """S2.6's folder (Qwen at $0.001 a page, verified) and two candidates' readings.
+
+    ``a/good`` reads every page as the key has it; ``b/bad`` adds two lines to the handwriting
+    page (2 inventing lines in 3, far over 3.5 per 100), and its full-page scan reading failed.
+    Both cost less than Qwen, so neither is flagged for Andy unless ``good_cost`` says so.
+    """
+    settings, docs, recheck, typed_chars = _s26_folder(tmp_path)
+    monkeypatch.setattr(tr, "QWEN_PASS2", _fixture_counts(typed_chars))
+    material = tr.key_material(settings, docs, recheck)
+    cache = TranscriptionCache(settings.transcription_dir)
+    for row in material.keys:
+        if row["set"] == "typed":
+            text = material.typed_answers[1]
+        elif row["set"] == "handwriting":
+            text = _KEY
+        else:
+            text = ""
+        _put(cache, row, _GOOD, text, cost_usd=good_cost)
+        if row["set"] == "mixed":
+            cache.put(
+                Transcription(
+                    key=tt._key(row, _BAD, instruction=TRANSCRIBE, dpi=RESOLUTION, mixed=True),
+                    status="failed",
+                    error="no reply",
+                    mixed=True,
+                    cost_usd=0.0008,
+                    created=datetime.now(UTC),
+                )
+            )
+        else:
+            invented = _KEY + "\nGear DOWN\nFlaps UP" if text == _KEY else text
+            _put(cache, row, _BAD, invented, cost_usd=0.0008)
+    return settings, docs, recheck
+
+
+def test_cmd_automatic_names_who_is_still_in_and_why_the_others_are_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    text, still_in = tr.cmd_automatic(settings, docs, recheck, models=(_GOOD, _BAD))
+    assert still_in == (_GOOD,)
+    lines = text.splitlines()
+    assert f"{_GOOD}: still in the running" in lines
+    assert any(
+        line.startswith(f"{_BAD}: out on an automatic measure -- 2 inventing lines in 3")
+        for line in lines
+    )
+    # Each candidate's measured cost to 7 places, and its failed readings after the retry.
+    assert "  measured $0.0005000 a test page; 0 of 5 key pages failed to read" in lines
+    assert "  measured $0.0008000 a test page; 1 of 5 key pages failed to read" in lines
+    # Qwen's bar: its row re-scored from the cache, measured cost beside the rounded bar.
+    assert any("Qwen" in line and "$0.0010000" in line and "$0.00154" in line for line in lines)
+    assert not any("FOR ANDY" in line for line in lines)
+    assert lines[-1] == f"to mark: {_GOOD}"
+
+
+def test_cmd_automatic_says_there_is_nothing_to_mark_when_every_candidate_is_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    text, still_in = tr.cmd_automatic(settings, docs, recheck, models=(_BAD,))
+    assert still_in == ()
+    assert text.splitlines()[-1] == "to mark: none (Qwen stays; no marking needed)"
+
+
+def _write_retest_marks(settings: Settings, *, photo: str, scan: str) -> None:
+    """The re-test's two sheets as ``pages`` would write them for ``a/good``, and Andy's CSVs."""
+    folder = settings.data_dir / tr.RETEST_FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": _GOOD}}))
+    (folder / "mixed.json").write_text(json.dumps({"11": {"k": 1, "model": _GOOD}}))
+    _write_csv(folder / "s27-photo-words.csv", ["row", "words"], [["11", photo]])
+    _write_csv(folder / "s27-mixed-words.csv", ["row", "added words"], [["11", scan]])
+
+
+def test_a_candidate_dearer_than_qwen_but_under_the_rounded_bar_is_flagged_for_andy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Qwen's measured cost is $0.001 here; $0.0012 is dearer, yet below the rule's $0.00154.
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch, good_cost=0.0012)
+    text, still_in = tr.cmd_automatic(settings, docs, recheck, models=(_GOOD, _BAD))
+    flag = (
+        f"FOR ANDY: {_GOOD} costs $0.0012000, below the rule's $0.00154 but above Qwen's "
+        "measured $0.0010000; the rule as written admits it"
+    )
+    assert still_in == (_GOOD,)  # the rule is not changed
+    assert flag in text.splitlines()
+    _write_retest_marks(settings, photo="all on the page", scan="all on the page and new")
+    folder = settings.data_dir / tr.RETEST_FOLDER
+    score = tr.cmd_score(
+        settings,
+        docs,
+        recheck,
+        folder / "s27-photo-words.csv",
+        folder / "s27-mixed-words.csv",
+        models=(_GOOD, _BAD),
+        marked=(_GOOD,),
+    )
+    assert flag in score.splitlines()
+    assert f"chosen: {_GOOD}, the cheapest of 1 meeting all seven" in score
+
+
+def test_cmd_score_counts_the_marked_candidates_invented_words(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    _write_retest_marks(settings, photo="some invented", scan="some invented")
+    folder = settings.data_dir / tr.RETEST_FOLDER
+    text = tr.cmd_score(
+        settings,
+        docs,
+        recheck,
+        folder / "s27-photo-words.csv",
+        folder / "s27-mixed-words.csv",
+        models=(_GOOD, _BAD),
+        marked=(_GOOD,),
+    )
+    lines = text.splitlines()
+    assert f"## {_GOOD} (measured $0.0005000 per test page)" in lines
+    assert any("1 of 2 photographs" in line for line in lines)
+    assert "  full-page scans: invented added words on 1 of 1" in lines
+    assert any(line.startswith("  0080's limit") for line in lines)  # for a marked candidate
+    assert f"{_GOOD}: out -- 1 of 1 scans with invented added words" in lines
+    assert lines[-1] == "no candidate meets all seven: Qwen stays (decision 0100 item 3)"
+    # The pair that reproduced Qwen, and the retries, as the results file must state them.
+    assert any("hw2.csv" in line and "photos2.csv" in line for line in lines)
+    assert any("one retry of failed pages" in line and "31 pages" in line for line in lines)
+
+
+def test_cmd_score_prints_not_marked_for_a_candidate_already_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    text = tr.cmd_score(settings, docs, recheck, None, None, models=(_BAD,), marked=())
+    lines = text.splitlines()
+    assert any(
+        "photographs not marked (already out on an automatic measure" in line for line in lines
+    )
+    scans = "  full-page scans: not marked (already out on an automatic measure, walkthrough W3)"
+    assert scans in lines
+    assert not any(line.startswith("  0080's limit") for line in lines)
+    assert lines[-1] == "no candidate meets all seven: Qwen stays (decision 0100 item 3)"
+
+
+def test_cmd_score_refuses_a_candidate_still_in_that_was_not_marked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Unmarked, its photograph and scan counts would be 0 and the rule could choose it unseen.
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match=f"still in the running but not marked: {_GOOD}"):
+        tr.cmd_score(settings, docs, recheck, None, None, models=(_GOOD, _BAD), marked=())
+
+
+def test_cmd_score_needs_both_csvs_when_candidates_are_marked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match="both marks CSVs are required"):
+        tr.cmd_score(settings, docs, recheck, None, None, models=(_GOOD,), marked=(_GOOD,))
+
+
+def test_cmd_score_refuses_a_sheet_card_of_a_model_not_marked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    _write_retest_marks(settings, photo="all on the page", scan="all on the page and new")
+    folder = settings.data_dir / tr.RETEST_FOLDER
+    (folder / "photos.json").write_text(json.dumps({"11": {"k": 1, "model": _BAD}}))
+    with pytest.raises(SystemExit, match=f"cards of models not named in --marked: {_BAD}"):
+        tr.cmd_score(
+            settings,
+            docs,
+            recheck,
+            folder / "s27-photo-words.csv",
+            folder / "s27-mixed-words.csv",
+            models=(_GOOD, _BAD),
+            marked=(_GOOD,),
+        )
+
+
+def test_automatic_and_score_refuse_a_candidate_with_unread_key_pages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, docs, recheck = _retest_folder(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match="5 readings of c/m"):
+        tr.cmd_automatic(settings, docs, recheck, models=(_GOOD, "c/m"))
+    with pytest.raises(SystemExit, match="5 readings of c/m"):
+        tr.cmd_score(settings, docs, recheck, None, None, models=("c/m",), marked=())
+
+
+def test_automatic_refuses_a_recheck_pair_that_does_not_reproduce_qwen(tmp_path: Path) -> None:
+    # Without the fixture's counts patched in, Qwen's row differs from the published one.
+    settings, docs, recheck, _ = _s26_folder(tmp_path)
+    with pytest.raises(SystemExit, match="hw_lines 3, published 1548"):
+        tr.cmd_automatic(settings, docs, recheck, models=())
+
+
+def test_main_automatic_prints_the_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, recheck = _retest_folder(tmp_path, monkeypatch)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tr, "S27_CANDIDATES", (_GOOD, _BAD))
+    argv = [
+        "automatic",
+        "--handwriting-recheck",
+        str(recheck.handwriting_csv),
+        "--photos-recheck",
+        str(recheck.photos_csv),
+    ]
+    assert tr.main(argv) == 0
+    assert capsys.readouterr().out.rstrip("\n").endswith(f"to mark: {_GOOD}")
+
+
+def test_main_score_with_nothing_marked_writes_the_results_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, recheck = _retest_folder(tmp_path, monkeypatch)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tr, "S27_CANDIDATES", (_BAD,))
+    out = tmp_path / "results.txt"
+    argv = [
+        "score",
+        "--handwriting-recheck",
+        str(recheck.handwriting_csv),
+        "--photos-recheck",
+        str(recheck.photos_csv),
+        "--marked",
+        "--out",
+        str(out),
+    ]
+    assert tr.main(argv) == 0
+    printed = capsys.readouterr().out
+    assert out.read_text() == printed
+    assert printed.rstrip("\n").endswith("Qwen stays (decision 0100 item 3)")
+
+
+def test_main_score_refuses_a_marked_model_that_is_not_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    argv = ["score", "--handwriting-recheck", "a", "--photos-recheck", "b", "--marked", "a/m"]
+    with pytest.raises(SystemExit):
+        tr.main(argv)
+    assert "invalid choice: 'a/m'" in capsys.readouterr().err

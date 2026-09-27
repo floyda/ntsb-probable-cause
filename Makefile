@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score
 
 check: lint type test
 
@@ -274,3 +274,14 @@ s27-retest-pages:
 # the running only (walkthrough W3); MODELS is space-separated. Rebuilding with the same
 # candidates keeps marks already made (they reload from the browser); a different set is refused,
 # because it would renumber the cards those marks belong to.
+
+s27-retest-automatic:
+	uv run python -m scripts.transcriber_retest automatic --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)
+# S2.7 walkthrough W3, free: the candidates still in the running before any marking. Re-verifies
+# Qwen's row with the shared recheck pair first (pre-flight 1.1: the pair Task 8 verified).
+
+s27-retest-score:
+	uv run python -m scripts.transcriber_retest score --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK) $(if $(MARKED),--photos $$NTSB_DATA_DIR/s27/transcriber-retest/s27-photo-words.csv --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/s27-mixed-words.csv,) --marked $(MARKED) --out docs/results/s27-transcriber-retest.txt
+# S2.7 spec §7.4, free: decision 0100 item 3 applied; the CSV pair is the one Task 8 verified.
+# MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
+# It refuses a candidate still in the running that is not in MARKED.
