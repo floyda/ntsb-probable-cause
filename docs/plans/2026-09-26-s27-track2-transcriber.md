@@ -68,7 +68,7 @@ Task numbers in this table are final.
 
 **Files:** none changed.
 
-- [ ] **Step 1: Cut the branch and the worktree**
+- [x] **Step 1: Cut the branch and the worktree**
 
 ```bash
 cd /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause
@@ -78,12 +78,12 @@ cd .claude/worktrees/s27-transcriber
 uv sync
 ```
 
-- [ ] **Step 2: Confirm the base is green and the spend check exists**
+- [x] **Step 2: Confirm the base is green and the spend check exists**
 
 Run: `make check && uv run python -m scripts.stage_spend --estimate 0`
 Expected: `make check` passes; `stage_spend` prints S2.7's spend so far and exits 0.
 
-- [ ] **Step 3: Push the branch**
+- [x] **Step 3: Push the branch**
 
 ```bash
 git push -u origin s27-transcriber
@@ -2476,3 +2476,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, walkthrough W5, Andy's decision (A): if fewer than eight models pass the filter or the probe, the re-test runs on those that do, with no top-up from outside the filter; if none does, the decision record says "Qwen stays" without a re-test.
 - 2026-09-27, walkthrough W6, Andy's decision (A): spec §7.2's filter gains one condition — the model's listing names `response_format` in its supported parameters — because every transcription call uses a strict JSON schema; a model without it could only take a shortlist place to fail its probe (Task 5's filter).
 - 2026-09-27, walkthrough W7, Andy's decision (A, with his recollection): Task 8's `verify` chooses S2.6's second-pass CSV pair by reproducing Qwen's published figures exactly, trying the `data/s26/transcriber-test/pass2/` pair (`handwriting-key-pass2-2.csv`, `photo-words-pass2.csv`) first, which Andy recalls as final (the re-marking after the stamped "Photo" label, partly hidden by an icon, was scored as invented; decision 0086 item 1). If neither pair reproduces the figures, the track stops for Andy.
+- 2026-09-27, Task 1: Steps 1 and 3 were done by track 1's session as its Task 1 Step 16 (decision 0102), which cut `s27-transcriber` from the local parent at `21dca2b` rather than from `origin/s27-coding-guidance`, and pushed it. Track 2's Task 1 only confirmed the branch, the worktree and `scripts/stage_spend.py`, then ran Step 2: `make check` passed (1514 tests, coverage 97.71%) and `stage_spend --estimate 0` counted `s27-coding-guidance, s27-guidance, s27-transcriber` at $0.00 of the $25 line.
