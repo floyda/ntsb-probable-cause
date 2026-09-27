@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages
 
 check: lint type test
 
@@ -259,3 +259,17 @@ s27-retest-verify:
 # overriding HW_RECHECK and PHOTO_RECHECK; if neither pair reproduces it, stop and report.
 # Run on 2026-09-27: the default pass2/ pair reproduced every count; the top-level pair did not
 # (1551 handwriting key lines and 55 inventing lines, against the published 1548 and 54).
+
+s27-retest-run:
+	uv run python -m scripts.stage_spend --estimate 2.50
+	uv run python -m scripts.transcriber_retest run
+	uv run python -m scripts.transcriber_retest run --retry-failed
+# S2.7 spec §7.4, paid (estimate up to $2.50, standard price, synchronous): every candidate on
+# the four keys, and one retry of failed pages. No marking page yet (walkthrough W3).
+
+s27-retest-pages:
+	$(if $(MODELS),,$(error MODELS is required: the candidates still in the running, from s27-retest-automatic))
+	uv run python -m scripts.transcriber_retest pages --models $(MODELS)
+# Free: Andy's two pages under <data_dir>/s27/transcriber-retest/, for the candidates still in
+# the running only (walkthrough W3); MODELS is space-separated. Rebuilding with the same
+# candidates keeps marks already made (they reload from the browser).

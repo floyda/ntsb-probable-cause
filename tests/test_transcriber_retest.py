@@ -2,18 +2,28 @@
 
 import hashlib
 import json
+from collections.abc import Sequence
 from fractions import Fraction
 from pathlib import Path
+from typing import cast
 
 import pytest
 from scripts import transcriber_retest as tr
 from scripts import transcriber_test as tt
+from scripts.transcriber_shortlist import S27_CANDIDATES
 from scripts.transcriber_test import CandidateResult
 from tests.test_transcriber_test import _offline_docs, _put, _seed, _text_pdf, _write_csv
 
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.pages import page_text
-from ntsb_probable_cause.docket.transcribe import TranscriptionCache
+from ntsb_probable_cause.docket.render import RESOLUTION
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    PageJob,
+    Transcription,
+    TranscriptionCache,
+)
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.settings import Settings
 
 
@@ -265,3 +275,198 @@ def test_main_verify_reads_the_data_dir_offline(
     ]
     assert tr.main(argv) == 0
     assert capsys.readouterr().out.startswith("verified: ")
+
+
+# ---------------------------------------------------------------------------------------
+# Task 9: the candidates' run on the four keys, and Andy's two marking pages.
+# ---------------------------------------------------------------------------------------
+
+
+def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> None:
+    rows = [{"k": 1}, {"k": 2}]
+    texts = {
+        (1, "a/m"): "Photo 3",
+        (1, "b/m"): "",
+        (2, "a/m"): "[illegible]",
+        (2, "b/m"): "N123AB left wing",
+    }
+    sheet, cards = tr.word_cards(
+        rows, lambda k, model: texts[(k, model)], models=("a/m", "b/m"), seed_base=300
+    )
+    assert sorted(sheet) == [c.row for c in cards]
+    # S2.6's rule, kept exactly so the cards are judged as Qwen's were: a reading "holds a word"
+    # if re.search(r"[A-Za-z0-9]{2,}", text) matches, which "[illegible]" does ("illegible").
+    assert {(v["k"], v["model"]) for v in sheet.values()} == {(1, "a/m"), (2, "a/m"), (2, "b/m")}
+    assert all(10 * tt._int(v, "k") < n < 10 * tt._int(v, "k") + 10 for n, v in sheet.items())
+
+
+def test_word_cards_carry_the_photograph_choice_and_note_a_repeated_version() -> None:
+    sheet, cards = tr.word_cards(
+        [{"k": 4}], lambda _k, _model: "N123AB", models=("a/m", "b/m"), seed_base=300
+    )
+    assert len(sheet) == len(cards) == 2
+    assert all(card.choices == (tt._PHOTO_WORDS,) and card.group == "4" for card in cards)
+    assert "Photograph 4, version B -- same words as version A" in cards[1].body_html
+
+
+def test_word_cards_refuse_more_models_than_version_letters() -> None:
+    models = tuple(f"m/{i}" for i in range(9))
+    with pytest.raises(ValueError, match="at most 8"):
+        tr.word_cards([{"k": 1}], lambda _k, _m: "x", models=models, seed_base=300)
+
+
+def _keys_for_run(tmp_path: Path) -> Settings:
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    keys = [
+        {"set": name, "k": 1, "mkey": 1, "document": 1, "page": 1, "document_sha256": c * 64}
+        for name, c in (("typed", "a"), ("handwriting", "b"), ("photo", "c"), ("mixed", "d"))
+    ]
+    (folder / "keys.jsonl").write_text("".join(json.dumps(r) + "\n" for r in keys))
+    return settings
+
+
+def test_cmd_run_reads_every_key_page_per_candidate_at_the_retest_price(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = _keys_for_run(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def fake_run_preparation(**kwargs: object) -> list[Transcription]:
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(tt, "run_preparation", fake_run_preparation)
+    text = tr.cmd_run(settings, _offline_docs(settings), models=("a/m", "b/m"), retry_failed=True)
+    assert [call["expected_cost_per_page_usd"] for call in calls] == [0.003, 0.003]
+    assert all(call["retry_failed"] is True for call in calls)
+    assert all(call["kind"] == "transcriber-test" for call in calls)
+    assert all(call["instruction"] is TRANSCRIBE for call in calls)
+    jobs = cast("list[PageJob]", calls[0]["jobs"])
+    # All four keys at 150 dpi, the full-page scan read as a mixed page (as S2.6's run).
+    assert len(jobs) == 4
+    assert {job.key.dpi for job in jobs} == {RESOLUTION}
+    assert [job.mixed for job in jobs] == [False, False, False, True]
+    assert {job.key.model for job in jobs} == {"a/m"}
+    assert text == (
+        "a/m at 150 dpi: 0 pages read, 0 failed, $0.0000\n"
+        "b/m at 150 dpi: 0 pages read, 0 failed, $0.0000"
+    )
+
+
+def _keys_for_pages(tmp_path: Path) -> tuple[Settings, CachedDocuments]:
+    """One no-word photograph and one full-page scan, each read by two candidates."""
+    settings = Settings(data_dir=tmp_path)
+    folder = settings.data_dir / tt.FOLDER
+    folder.mkdir(parents=True)
+    _seed(settings.docket_dir, 1, _text_pdf("the page's own text layer"))
+    photo: dict[str, object] = {"set": "photo", "k": 3, "document_sha256": "b" * 64, "page": 1}
+    scan: dict[str, object] = {
+        "set": "mixed",
+        "k": 2,
+        "mkey": 1,
+        "document": 1,
+        "page": 1,
+        "document_sha256": "c" * 64,
+    }
+    (folder / "keys.jsonl").write_text(json.dumps(photo) + "\n" + json.dumps(scan) + "\n")
+    cache = TranscriptionCache(settings.transcription_dir)
+    _put(cache, photo, "a/m", "Photo")
+    _put(cache, photo, "b/m", "")
+    _put(cache, scan, "a/m", "a handwritten margin note")
+    _put(cache, scan, "b/m", "the page's own text layer")
+    return settings, _offline_docs(settings)
+
+
+def test_cmd_pages_writes_both_pages_under_the_retest_folder_only(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    s26 = settings.data_dir / tt.FOLDER
+    before = sorted(p.name for p in s26.iterdir())
+
+    text = tr.cmd_pages(settings, docs, models=("b/m", "a/m"))
+
+    assert sorted(p.name for p in s26.iterdir()) == before
+    out = settings.data_dir / tr.RETEST_FOLDER
+    assert sorted(p.name for p in out.iterdir()) == [
+        "mixed.html",
+        "mixed.json",
+        "photos.html",
+        "photos.json",
+    ]
+    photos = json.loads((out / "photos.json").read_text())
+    assert [v["model"] for v in photos.values()] == ["a/m"]
+    assert all(30 < int(n) < 40 for n in photos)
+    mixed = json.loads((out / "mixed.json").read_text())
+    assert sorted(v["model"] for v in mixed.values()) == ["a/m", "b/m"]
+    photo_page = (out / "photos.html").read_text()
+    # S2.6's own page images, by a path relative to the new page: no image is copied.
+    assert 'src="../../s26/transcriber-test/pages/photo-3.jpg"' in photo_page
+    assert "photo label counts as on the page" in photo_page  # decision 0086's rule
+    assert "s27-photo-words" in photo_page
+    mixed_page = (out / "mixed.html").read_text()
+    assert 'src="../../s26/transcriber-test/pages/mixed-2.jpg"' in mixed_page
+    assert "repeats the text layer" in mixed_page
+    assert "s27-mixed-words" in mixed_page
+    assert "1 photograph outputs with words" in text
+    assert "2 full-page scan outputs with added words" in text
+
+
+def test_cmd_pages_numbers_the_cards_the_same_whatever_the_order_of_the_models(
+    tmp_path: Path,
+) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    out = settings.data_dir / tr.RETEST_FOLDER
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    first = (out / "mixed.json").read_text()
+    tr.cmd_pages(settings, docs, models=("b/m", "a/m"))
+    assert (out / "mixed.json").read_text() == first
+
+
+def test_cmd_pages_refuses_a_candidate_whose_readings_are_not_cached(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    with pytest.raises(ConfigurationError, match="2 readings of c/m"):
+        tr.cmd_pages(settings, docs, models=("a/m", "c/m"))
+    assert not (settings.data_dir / tr.RETEST_FOLDER).exists()
+
+
+def test_main_run_passes_every_candidate_and_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run(
+        settings: Settings,
+        docs: CachedDocuments,
+        *,
+        models: Sequence[str],
+        retry_failed: bool = False,
+    ) -> str:
+        seen.update(models=tuple(models), retry_failed=retry_failed)
+        return "ran"
+
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tr, "cmd_run", fake_run)
+    assert tr.main(["run", "--retry-failed"]) == 0
+    assert seen == {"models": S27_CANDIDATES, "retry_failed": True}
+    assert capsys.readouterr().out == "ran\n"
+
+
+def test_main_pages_takes_the_candidates_still_in_the_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, _ = _keys_for_pages(tmp_path)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    cache = TranscriptionCache(settings.transcription_dir)
+    for row in tt._read(settings.data_dir / tt.FOLDER / "keys.jsonl"):
+        _put(cache, row, S27_CANDIDATES[0], "")
+    assert tr.main(["pages", "--models", S27_CANDIDATES[0]]) == 0
+    assert "0 photograph outputs with words" in capsys.readouterr().out
+
+
+def test_main_pages_refuses_a_model_that_is_not_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    with pytest.raises(SystemExit):
+        tr.main(["pages", "--models", "a/m"])

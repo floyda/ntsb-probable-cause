@@ -1,18 +1,24 @@
 """The transcriber re-test: new candidates on S2.6's answer keys, judged against Qwen (S2.7 §7.4).
 
 Status
-    One-shot (S2.7 track 2, Tasks 8-10). Built so far (Task 8):
+    One-shot (S2.7 track 2, Tasks 8-10). Built so far (Tasks 8 and 9):
       verify  -- re-score Qwen's cached readings on S2.6's keys and require its published
                  second-pass counts exactly (free; walkthrough W7)
+      run     -- every candidate reads S2.6's four keys once at 150 dpi, synchronously at the
+                 standard price (paid, up to about $2.50)
+      pages   -- Andy's photograph and full-page-scan pages, for the candidates named (free;
+                 walkthrough W3: those still in the running after Task 10's automatic measures)
     and decision 0100 item 3's choice rule (``choose_against_qwen``), fixed before any
-    candidate is run. The candidates' run (paid) and the score come in Tasks 9 and 10.
-    Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there.
-    Counts only.
+    candidate is run. The score comes in Task 10.
+    Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there;
+    the pages and their sheets go under <data_dir>/s27/transcriber-retest/, and the readings
+    into the transcription cache. Counts only.
 """
 
 import argparse
 import json
-from collections.abc import Sequence
+import os
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -21,10 +27,19 @@ from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.pages import page_text
 from ntsb_probable_cause.docket.render import RESOLUTION
-from ntsb_probable_cause.docket.transcribe import TranscriptionCache
+from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, TranscriptionCache
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.settings import Settings
-from scripts.marking_page import read_marks
+from scripts import marking_page
+from scripts import transcriber_test as tt
+from scripts.marking_page import Card, Choice, read_marks
+from scripts.transcriber_shortlist import S27_CANDIDATES
 from scripts.transcriber_test import (
+    _GROUPED_LAYOUT,
+    _MIXED_INTRO,
+    _PHOTO_LABEL_RULE,
+    _PHOTO_WORDS,
+    _SCAN_WORDS,
     FOLDER,
     GATE_FORMAT_FAILED_SHARE,
     GATE_INVENTED_LINES_PER_100,
@@ -35,10 +50,26 @@ from scripts.transcriber_test import (
     _apply_recheck,
     _fraction,
     _int,
+    _key,
     _offline,
+    _photo_body,
+    _photo_group,
     _read,
+    _reading_of,
     _result,
+    _scan_body,
+    _scan_group,
+    _scan_layers,
+    _version_cards,
 )
+
+RETEST_FOLDER = Path("s27") / "transcriber-retest"
+# The reservation's price per page: twice Qwen's measured $0.00154; every candidate lists an
+# input price at or below Qwen's (decision 0100 item 1).
+EXPECTED_COST_PER_PAGE_USD = 0.003
+# The re-test's own shuffles (S2.6's photographs used 100, its scans 200), so a page's version
+# letters do not follow S2.6's order.
+_PHOTO_SEED_BASE, _SCAN_SEED_BASE = 300, 400
 
 QWEN = "qwen/qwen3.5-122b-a10b"
 # docs/results/s26-transcriber-test-pass2.txt, Qwen's second-pass row (decision 0086).
@@ -303,6 +334,166 @@ def cmd_verify(settings: Settings, docs: CachedDocuments, recheck: Recheck) -> s
     )
 
 
+def cmd_run(
+    settings: Settings, docs: CachedDocuments, *, models: Sequence[str], retry_failed: bool = False
+) -> str:
+    """Each candidate reads every key page once at 150 dpi, instruction t1 (as S2.6's run).
+
+    S2.6's own run (``transcriber_test.cmd_run``, pre-flight 2.6) with one reservation price
+    for every candidate: each model is one ``run_preparation`` job, which reserves within the
+    month's budget and stops once its pages cost what it reserved. Every call is synchronous
+    at the standard price (``transcribe.settings_for``; the batch service refuses images).
+
+    Args:
+        settings: Where S2.6's keys, the transcription cache and the spend records are.
+        docs: The docket cache, offline.
+        models: The candidates to run.
+        retry_failed: Re-read each page whose cached reading failed, once.
+
+    Returns:
+        One line per candidate: pages read, pages failed, and their cost.
+    """
+    return tt.cmd_run(
+        settings,
+        docs,
+        models=models,
+        dpi=RESOLUTION,
+        retry_failed=retry_failed,
+        expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD,
+    )
+
+
+def word_cards(  # noqa: PLR0913 -- one keyword per fact a page's cards differ by.
+    rows: Sequence[Mapping[str, object]],
+    text_of: Callable[[int, str], str],
+    *,
+    models: Sequence[str],
+    seed_base: int,
+    choices: tuple[Choice, ...] = (_PHOTO_WORDS,),
+    body: Callable[[int, str, str], str] = _photo_body,
+) -> tuple[dict[int, dict[str, object]], list[Card]]:
+    """One card per candidate reading holding a word; rows 10k+i, candidates shuffled per page.
+
+    S2.6's own card loop (``transcriber_test._version_cards``), so a re-test card is numbered,
+    lettered and judged as Qwen's were: a reading holds a word if it has two letters or digits
+    in a row, which ``[illegible]`` does.
+
+    Args:
+        rows: The key pages, each with its number ``k``.
+        text_of: A candidate's reading of page ``k``.
+        models: The candidates, at most eight.
+        seed_base: Added to S2.6's seed and ``k`` to shuffle the candidates on each page.
+        choices: The card's choices; the photograph page's by default.
+        body: The card's HTML from ``(k, version, text)``; a photograph card's by default.
+
+    Returns:
+        The sheet (row number to page and model) and the cards, in page order.
+    """
+    return _version_cards(
+        rows, text_of, models=models, seed_base=seed_base, body=body, choices=choices
+    )
+
+
+def _missing(
+    settings: Settings, rows: Sequence[Mapping[str, object]], models: Sequence[str]
+) -> list[str]:
+    """One line per candidate with key pages the cache holds no reading of (not yet run)."""
+    cache = TranscriptionCache(settings.transcription_dir)
+    out: list[str] = []
+    for model in models:
+        keys = (
+            _key(row, model, instruction=TRANSCRIBE, dpi=RESOLUTION, mixed=row["set"] == "mixed")
+            for row in rows
+        )
+        absent = sum(1 for key in keys if cache.get(key) is None)
+        if absent:
+            out.append(f"{absent} readings of {model}")
+    return out
+
+
+def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str]) -> str:
+    """Andy's two pages (walkthrough W3): the named candidates' words, in S2.6's layout.
+
+    One page for the no-word photographs, one for the full-page scans. The candidates are
+    put in sort order first, so the same candidates give the same card numbers whatever order
+    they are named in, and marks already made reload on a rebuild. Each page shows S2.6's own
+    page images through a path relative to it; none is copied.
+
+    Args:
+        settings: Where S2.6's keys and the transcription cache are.
+        docs: The docket cache, offline, for the scans' text layers.
+        models: The candidates still in the running (Task 10's automatic measures).
+
+    Returns:
+        The number of cards on each page, and where the pages are.
+
+    Raises:
+        ConfigurationError: A candidate has key pages with no cached reading; the pages
+            would show those readings as holding no words.
+    """
+    keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
+    photos = [r for r in keys if r["set"] == "photo"]
+    scans = [r for r in keys if r["set"] == "mixed"]
+    ordered = tuple(sorted(set(models)))
+    missing = _missing(settings, [*photos, *scans], ordered)
+    if missing:
+        raise ConfigurationError(
+            "not in the transcription cache: " + "; ".join(missing) + " -- run the re-test first"
+        )
+    out = settings.data_dir / RETEST_FOLDER
+    out.mkdir(parents=True, exist_ok=True)
+    pages = os.path.relpath(FOLDER / "pages", RETEST_FOLDER)
+
+    photo_sheet, photo_cards = word_cards(
+        photos, _reading_of(settings, photos), models=ordered, seed_base=_PHOTO_SEED_BASE
+    )
+    (out / "photos.json").write_text(json.dumps(photo_sheet))
+    photo_intro = (
+        _GROUPED_LAYOUT + "<p>Each photograph is shown once on the left, held in view, with the "
+        "words each candidate transcriber wrote for it as cards on the right, one per version. "
+        "These photographs hold no words of their own apart from the docket's labels, so most "
+        "versions are empty and are not shown. <b>Decision 0086's rule:</b> "
+        + _PHOTO_LABEL_RULE
+        + " Mark <b>some invented</b> if any other word is not on the page. Click a photograph "
+        "to enlarge it.</p>"
+    )
+    (out / "photos.html").write_text(
+        marking_page.render(
+            title="Invented words on photographs (S2.7 re-test, spec §7.4)",
+            intro_html=photo_intro,
+            cards=photo_cards,
+            storage_key="s27-photo-words",
+            csv_name="s27-photo-words.csv",
+            groups={str(_int(r, "k")): _photo_group(_int(r, "k"), pages) for r in photos},
+        )
+    )
+
+    layers = _scan_layers(scans, docs)
+    scan_sheet, scan_cards = word_cards(
+        scans,
+        _reading_of(settings, scans),
+        models=ordered,
+        seed_base=_SCAN_SEED_BASE,
+        choices=(_SCAN_WORDS,),
+        body=_scan_body(layers),
+    )
+    (out / "mixed.json").write_text(json.dumps(scan_sheet))
+    (out / "mixed.html").write_text(
+        marking_page.render(
+            title="Words added to full-page scans (S2.7 re-test, spec §7.4)",
+            intro_html=_GROUPED_LAYOUT + _MIXED_INTRO,
+            cards=scan_cards,
+            storage_key="s27-mixed-words",
+            csv_name="s27-mixed-words.csv",
+            groups={str(k): _scan_group(k, layer, pages) for k, layer in layers.items()},
+        )
+    )
+    return (
+        f"{len(photo_cards)} photograph outputs with words; page at {out / 'photos.html'}\n"
+        f"{len(scan_cards)} full-page scan outputs with added words; page at {out / 'mixed.html'}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_retest")
@@ -310,12 +501,22 @@ def main(argv: list[str] | None = None) -> int:
     verify_p = commands.add_parser("verify")
     verify_p.add_argument("--handwriting-recheck", type=Path, required=True)
     verify_p.add_argument("--photos-recheck", type=Path, required=True)
+    run_p = commands.add_parser("run")
+    run_p.add_argument("--retry-failed", action="store_true")
+    pages_p = commands.add_parser("pages")
+    pages_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
     args = parser.parse_args(argv)
     settings = Settings()
     # As transcriber_test.main: offline, one attempt -- a cache miss is a bug, not a fault.
     docs = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline(), max_attempts=1))
-    recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
-    print(cmd_verify(settings, docs, recheck))
+    if args.command == "run":
+        text = cmd_run(settings, docs, models=S27_CANDIDATES, retry_failed=args.retry_failed)
+    elif args.command == "pages":
+        text = cmd_pages(settings, docs, models=args.models)
+    else:
+        recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
+        text = cmd_verify(settings, docs, recheck)
+    print(text)
     return 0
 
 

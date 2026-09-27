@@ -2028,13 +2028,13 @@ Expected: `verified: ...`. Record in Deviations which CSV pair reproduced it. **
 
 **Interfaces:**
 - Consumes: `scripts.transcriber_test` — `_key`, `_text`, `_int`, `_read`, `_image_head`, `_same_as`, `_against_layer`, `_GROUPED_LAYOUT`, `_PHOTO_WORDS`, `FOLDER`, `SEED`; `scripts.marking_page` — `Card`, `Choice`, `render`; `scoring.preparation.run_preparation`; `docket.transcribe.PageJob`, `TRANSCRIBE`; `gitinfo.commit_state`; `transcriber_shortlist.S27_CANDIDATES`.
-- Produces: `RETEST_FOLDER = Path("s27") / "transcriber-retest"`; `EXPECTED_COST_PER_PAGE_USD = 0.003`; `word_cards(rows, texts, *, set_name, seed_base) -> tuple[dict[int, dict[str, object]], list[Card]]` (pure, tested); `cmd_run(settings, docs, *, models, retry_failed=False) -> str`; `cmd_pages(settings, docs, *, models) -> str`.
+- Produces: `RETEST_FOLDER = Path("s27") / "transcriber-retest"`; `EXPECTED_COST_PER_PAGE_USD = 0.003`; `word_cards(rows, text_of, *, models, seed_base, choices=(_PHOTO_WORDS,), body=_photo_body) -> tuple[dict[int, dict[str, object]], list[Card]]` (pure, tested); `cmd_run(settings, docs, *, models, retry_failed=False) -> str`; `cmd_pages(settings, docs, *, models) -> str`.
 
 **Cost.** 200 key pages a candidate (100 typed, 25 handwriting, 50 photographs, 25 scans). Every candidate lists an input price at or below Qwen's, and Qwen measured $0.00154 a test page, so eight candidates cost at most about $2.50 (estimate); the reservation uses $0.003 a page, twice Qwen's measured cost, so a job cannot run far past its estimate (`run_preparation` stops at its reservation).
 
 **What Andy marks** (walkthrough W3). Each photograph with no words, and each full-page scan, once, held in view, with one card per candidate reading that holds a word (as S2.6's `_photo_cards` and `cmd_mixed`). The photograph page repeats decision 0086's rule: a word of the docket's stamped "Photo" label is on the page. Andy chose W3's alternative (2026-09-27): the pages are built only for the candidates still in the running after the automatic measures (Task 10's `automatic` subcommand), so this task runs the re-test and Task 10 builds and scores the pages.
 
-- [ ] **Step 1: Write the failing test for the cards**
+- [x] **Step 1: Write the failing test for the cards**
 
 ```python
 def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> None:
@@ -2055,12 +2055,12 @@ def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> N
     assert all(10 * int(v["k"]) < n < 10 * int(v["k"]) + 10 for n, v in sheet.items())
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -k word_cards -v`
 Expected: FAIL (`AttributeError: ... 'word_cards'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 RETEST_FOLDER = Path("s27") / "transcriber-retest"
@@ -2163,12 +2163,12 @@ s27-retest-pages:
 # (walkthrough W3); rebuilding keeps marks already made (they reload from the browser).
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -2508,3 +2508,7 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 8: `RESOLUTION` is imported from `ntsb_probable_cause.docket.render`, its home, not from `scripts.transcriber_test` as the brief listed: mypy --strict refuses a name the script module only imports and does not re-export. Every division in the rule and the notes goes through `transcriber_test._fraction` (exact, and 0 for an empty denominator) instead of a bare `Fraction(a, b)`.
 - 2026-09-27, Task 8: the module's Status paragraph names only what is built (`verify` and the rule) and says the run and score come in Tasks 9 and 10, rather than listing the `run`, `pages` and `score` subcommands before they exist (`pages` is also superseded by W3's `automatic`). Tests beyond the brief's: the boundary arithmetic checked with `Fraction`, the cost tie-break by model id, `absolute_notes`' within/over at exactly 1 in 20, `key_material` (the recheck applied, only Qwen's photograph and scan marks counted), `cmd_verify` passing and refusing, and `main` offline; they reuse `tests/test_transcriber_test.py`'s fixture helpers by import.
 - 2026-09-27, Task 8 Step 5 (walkthrough W7): `make s27-retest-verify` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`) reproduced every one of Qwen's published second-pass counts exactly with the default `pass2/` pair (`pass2/handwriting-key-pass2-2.csv`, `pass2/photo-words-pass2.csv`), which matches Andy's recollection that `pass2/` is final. The top-level pair (`handwriting-key-pass2.csv`, `photo-words-pass2.csv`) was also run, for comparison, and does not reproduce them: 1551 handwriting key lines and 55 inventing lines against the published 1548 and 54 (the two photograph CSVs are byte-identical; the two handwriting CSVs differ). The Makefile defaults stay on `pass2/`, and its comment records the run. Step 5's commit was split: the code first, then this line and the tick once the run had passed.
+- 2026-09-27, Task 9 (pre-flight 1.4): the Interfaces line gives `word_cards` its real signature, `word_cards(rows, text_of, *, models, seed_base, choices=(_PHOTO_WORDS,), body=_photo_body)`, as the brief's own code and test have it (no `set_name`); `choices` and `body` are the keywords Step 3 allows, defaulting to the photograph card so the brief's test runs unchanged.
+- 2026-09-27, Task 9 (pre-flight 2.6): `cmd_run` is not a copy of `transcriber_test.cmd_run`; that function gains one keyword, `expected_cost_per_page_usd: float | None = None` (left out, each S2.6 candidate reserves at its own `EXPECTED_COST_PER_PAGE_USD` entry, as before), and the re-test's `cmd_run` calls it with `dpi=RESOLUTION` and $0.003. Its printed line is therefore S2.6's (`<model> at 150 dpi: N pages read, F failed, $C`), not the brief's shorter one. The card loop of `_photo_cards` and `cmd_mixed` moved into `transcriber_test._version_cards` (with `_WORD` as the words test, not a second `_WORDS`), and the pieces both S2.6 and the re-test need were named there: `_photo_body`, `_scan_body`, `_photo_group`, `_scan_group`, `_scan_layers`, `_reading_of`, `_SCAN_WORDS`, `_MIXED_INTRO` and `_PHOTO_LABEL_RULE` (0086's rule, as the recheck page words it). `word_cards` is that loop with the photograph card as its default. S2.6's behaviour is unchanged: before and after the change, `cmd_photos`, `cmd_mixed` and `cmd_photos_recheck` were run over a temporary copy of S2.6's keys and `pass1/` CSVs, reading the real transcription and docket caches, and all five outputs (`photos.json`, `mixed.json`, `photos.html`, `mixed.html`, `photos-recheck.html`) were byte-identical to each other and to the files S2.6 left under `data/s26/transcriber-test/`; every existing S2.6 test passes unedited.
+- 2026-09-27, Task 9 (pre-flight 3.4): the brief's test reads `tt._int(v, "k")`, not `int(v["k"])`, which mypy --strict refuses on `dict[str, object]`.
+- 2026-09-27, Task 9: no `_SEED` constant; the shuffles use S2.6's `SEED` through the shared loop, with the re-test's own bases `_PHOTO_SEED_BASE, _SCAN_SEED_BASE = 300, 400` (S2.6 used 100 and 200). `cmd_pages` puts the candidates in sort order before building, so the same candidates give the same card numbers whatever order `MODELS` names them in, and it refuses (`ConfigurationError`, before writing anything) when a candidate has key pages with no cached reading, since the page would otherwise show them as holding no words. The image paths are computed (`os.path.relpath(FOLDER / "pages", RETEST_FOLDER)`, giving `../../s26/transcriber-test/pages`). `pages --models` takes space-separated ids limited to `S27_CANDIDATES`. Tests beyond the brief's: the photograph choice and repeated-version note, the eight-model limit, `cmd_run`'s jobs and price through a fake `run_preparation`, both pages' files, paths, 0086 rule and storage keys with S2.6's folder unchanged, the order-independence, the refusal, and `main`'s `run` and `pages`.
