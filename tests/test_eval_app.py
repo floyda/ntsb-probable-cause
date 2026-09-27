@@ -1668,6 +1668,38 @@ def test_transcribe_reads_with_another_model_and_rule_and_marks_that_pair_done(
     assert f"with {model}" in capsys.readouterr().out
 
 
+def test_transcribe_with_a_mixed_page_sends_it_under_the_all_rule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Companion to the test above (review fix round 1, pre-flight 2.5's second half): the
+    same stub's text-and-image page, absent under ``image-only``, is present under ``all`` --
+    so that absence assertion shows the rule is actually doing something, rather than being
+    true of the stub regardless of which rule is passed.
+    """
+    _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr("apps.eval.__main__.CachedDocuments", _StubDocumentsWithMixedPage)
+    calls: list[Sequence[PageJob]] = []
+
+    def fake_preparation(*, jobs: Sequence[PageJob], **_kwargs: object) -> list[Transcription]:
+        calls.append(jobs)
+        return []
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", fake_preparation)
+    argv = [
+        "transcribe",
+        "--sample",
+        "dev-400",
+        "--expected-cost-per-page-usd",
+        "0.001",
+        "--page-rule",
+        "all",
+    ]
+    assert main(argv) == 0
+    assert True in {j.mixed for j in calls[0]}  # "all" sends the mixed page too
+
+
 def test_transcribe_refuses_a_model_with_no_price_before_fetching_anything(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
