@@ -74,6 +74,10 @@ No examples: they would have to come from real cases.
   0.01) are broken by the model's own order: the model's guesses first, in its order, then
   the other candidates in the candidate list's order.
 - If `none_of_these` ranks first, the answer is left unchanged (the model's own guesses).
+  **Clarified 2026-09-27, before any call (Andy: "Option A"):** `none_of_these` ranks first
+  whenever no code has a strictly higher probability, so a tie at the top between
+  `none_of_these` and any code leaves the answer unchanged. The tie order above applies among
+  codes only.
 - Otherwise the new occurrence order is the top three ranked codes, `none_of_these` left out,
   scored exactly as the other ways (`ordering.reorder`, `metrics.rescore_occurrence`).
 - **Recorded on every step**, in the step's `arguments` (no new record fields): the ranking,
