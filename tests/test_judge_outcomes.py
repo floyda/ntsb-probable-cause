@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 from scripts import judge_outcomes as jo
-from tests.test_occurrence_misses import _SCORES, _case  # the shared CaseResult builders
+from tests.test_occurrence_misses import _SCORES, _case, _write_run  # shared builders
 
 from ntsb_probable_cause.scoring.judge import JudgeLabels
+from ntsb_probable_cause.scoring.records import write_jsonl
 
 
 def _labels(narrative: str, cause: str = "related") -> JudgeLabels:
@@ -62,3 +63,76 @@ def test_shares_says_unvalidated_and_splits_fatal() -> None:
     assert "unvalidated" in text
     assert "misread: 1 of 2" in text
     assert "fatal (1 cases):" in text
+
+
+def test_a_held_out_run_id_is_refused_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(tmp_path / "runs"))
+    with pytest.raises(SystemExit, match="development runs only"):
+        jo.main(["--runs", "20260926T000000-abc1234-heldout-400-B"])
+
+
+def test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    _write_run(runs_dir, "renamed-run", sample="heldout-400")  # no cases.jsonl written
+    with pytest.raises(SystemExit, match="held-out run"):
+        jo.main(["--runs", "renamed-run"])
+
+
+def test_a_run_holding_a_case_outside_the_dev_split_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    folder = _write_run(runs_dir, "mixed-run")
+    write_jsonl(
+        folder / "cases.jsonl",
+        [
+            _case("C1", ("452240",), ("452240",)),
+            _case("C2", ("452240",), ("452240",), split="heldout"),
+        ],
+    )
+    with pytest.raises(SystemExit, match="outside the dev split"):
+        jo.main(["--runs", "mixed-run"])
+
+
+def test_main_with_three_runs_prints_movement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    cases = [
+        _case("C1", ("452240",), ("452240",)).model_copy(
+            update={"scores": replace(_SCORES, occurrence_top1=True)}
+        ),
+        _case("C2", ("452240",), ("452241",)),
+    ]
+    rows = [
+        {
+            "case_id": "C1",
+            "cost_usd": 0.001,
+            "narrative": "consistent",
+            "cause": "same_cause",
+            "lay": "does_not",
+        },
+        {
+            "case_id": "C2",
+            "cost_usd": 0.001,
+            "narrative": "contradicts",
+            "cause": "different",
+            "lay": "does_not",
+        },
+    ]
+    for run_id in ("v1-run", "repeat-run", "v2-run"):
+        folder = _write_run(runs_dir, run_id)
+        write_jsonl(folder / "cases.jsonl", cases)
+        (folder / "judge.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert jo.main(["--runs", "v1-run", "repeat-run", "v2-run"]) == 0
+    printed = capsys.readouterr().out
+    assert "## movement between runs" in printed
+    assert "v1 against its repeat: 0 of 2 cases change outcome" in printed
+    assert "v1 against v2: 0 of 2 cases change outcome" in printed

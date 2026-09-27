@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from ntsb_probable_cause.scoring.judge import JudgeLabels
-from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 
 Outcome = Literal["right", "understood, miscoded", "thin evidence", "misread"]
@@ -51,7 +51,7 @@ def read_labels(folder: Path) -> dict[str, JudgeLabels]:
         if line:
             row: dict[str, object] = json.loads(line)
             case_id = row.pop("case_id")
-            if not isinstance(case_id, str):  # pragma: no cover - malformed row
+            if not isinstance(case_id, str):  # a malformed row
                 raise TypeError(f"judge row case_id is not a string: {case_id!r}")
             labels[case_id] = JudgeLabels.model_validate(
                 {k: v for k, v in row.items() if k != "cost_usd"}
@@ -104,9 +104,15 @@ def movement(a: Mapping[str, Outcome], b: Mapping[str, Outcome]) -> tuple[int, i
 
 
 def _load(settings: Settings, run_id: str) -> tuple[list[CaseResult], dict[str, JudgeLabels]]:
+    """A development run's cases and labels, after every refusal (held-out, then split)."""
     if "heldout" in run_id:
         raise SystemExit(f"judge_outcomes: {run_id} is a held-out run; development runs only")
     folder = settings.runs_dir / run_id
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    if not record.sample.startswith("dev"):
+        raise SystemExit(
+            f"judge_outcomes: {run_id} is a held-out run ({record.sample}); development runs only"
+        )
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"judge_outcomes: {run_id} holds a case outside the dev split")
