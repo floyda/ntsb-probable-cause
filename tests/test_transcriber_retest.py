@@ -479,6 +479,50 @@ def test_main_run_passes_every_candidate_and_the_retry(
     assert capsys.readouterr().out == "ran\n"
 
 
+def test_main_run_passes_only_the_named_candidates_in_their_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Task 9 Step 6 (Andy, option A): finish the one retry for the candidates it never reached.
+    seen: dict[str, object] = {}
+    calls: list[str] = []
+
+    def fake_run_preparation(**kwargs: object) -> list[Transcription]:
+        jobs = cast("list[PageJob]", kwargs["jobs"])
+        calls.append(jobs[0].key.model)
+        return []
+
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    _keys_for_run(tmp_path)
+    real_cmd_run = tr.cmd_run
+
+    def spy(
+        settings: Settings,
+        docs: CachedDocuments,
+        *,
+        models: Sequence[str],
+        retry_failed: bool = False,
+    ) -> str:
+        seen.update(models=tuple(models), retry_failed=retry_failed)
+        return real_cmd_run(settings, docs, models=models, retry_failed=retry_failed)
+
+    monkeypatch.setattr(tt, "run_preparation", fake_run_preparation)
+    monkeypatch.setattr(tr, "cmd_run", spy)
+    named = [S27_CANDIDATES[4], S27_CANDIDATES[3]]
+    assert tr.main(["run", "--retry-failed", "--models", *named]) == 0
+    assert seen == {"models": tuple(named), "retry_failed": True}
+    assert calls == named
+    assert capsys.readouterr().out.startswith(f"{named[0]} at 150 dpi:")
+
+
+def test_main_run_refuses_a_model_that_is_not_a_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    with pytest.raises(SystemExit):
+        tr.main(["run", "--models", "a/m"])
+    assert "invalid choice: 'a/m'" in capsys.readouterr().err
+
+
 def test_main_pages_takes_the_candidates_still_in_the_running(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

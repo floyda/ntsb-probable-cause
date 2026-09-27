@@ -5,7 +5,8 @@ Status
       verify  -- re-score Qwen's cached readings on S2.6's keys and require its published
                  second-pass counts exactly (free; walkthrough W7)
       run     -- every candidate reads S2.6's four keys once at 150 dpi, synchronously at the
-                 standard price (paid, up to about $2.50)
+                 standard price (paid, up to about $2.50); ``--models`` names a subset, as
+                 when the retry was finished for the five candidates a stopped one missed
       pages   -- Andy's photograph and full-page-scan pages, for the candidates named (free;
                  walkthrough W3: those still in the running after Task 10's automatic measures)
     and decision 0100 item 3's choice rule (``choose_against_qwen``), fixed before any
@@ -535,6 +536,8 @@ def main(argv: list[str] | None = None) -> int:
     verify_p.add_argument("--photos-recheck", type=Path, required=True)
     run_p = commands.add_parser("run")
     run_p.add_argument("--retry-failed", action="store_true")
+    # Task 9 Step 6 (Andy, option A): to finish a retry for the candidates a stopped one missed.
+    run_p.add_argument("--models", nargs="+", choices=S27_CANDIDATES, default=S27_CANDIDATES)
     pages_p = commands.add_parser("pages")
     pages_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
     args = parser.parse_args(argv)
@@ -542,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
     # As transcriber_test.main: offline, one attempt -- a cache miss is a bug, not a fault.
     docs = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline(), max_attempts=1))
     if args.command == "run":
-        text = cmd_run(settings, docs, models=S27_CANDIDATES, retry_failed=args.retry_failed)
+        text = cmd_run(settings, docs, models=args.models, retry_failed=args.retry_failed)
     elif args.command == "pages":
         text = cmd_pages(settings, docs, models=args.models)
     else:
