@@ -27,14 +27,16 @@ from ntsb_probable_cause.docket.transcribe import (
     pages_to_read,
 )
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, DocketError
-from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.fields import EVIDENCE_FIELDS, EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.split import split_record
-from ntsb_probable_cause.scoring import ledger, report, samples
-from ntsb_probable_cause.scoring.budget import month_spent, open_reservations, release
+from ntsb_probable_cause.scoring import checkpass, ledger, report, samples
+from ntsb_probable_cause.scoring.budget import budget_lock, month_spent, open_reservations, release
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.judge import (
     JUDGE_MODEL,
     JudgeItem,
@@ -44,7 +46,13 @@ from ntsb_probable_cause.scoring.judge import (
 )
 from ntsb_probable_cause.scoring.preparation import PreparationStoppedError, run_preparation
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
-from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
+from ntsb_probable_cause.scoring.runner import (
+    BatchRunner,
+    CachedDocketReader,
+    Runner,
+    RunSpec,
+    refuse_over_budget,
+)
 from ntsb_probable_cause.settings import Settings
 
 # ``month_spent`` moved to ``ntsb_probable_cause.scoring.budget`` (0045); tests still import
@@ -60,6 +68,14 @@ def _default_client_factory(settings: Settings) -> tuple[ModelClient, BatchRunne
         settings.require_openrouter_key(), base_url=settings.openrouter_base_url
     )
     return http, BatchClient(http)
+
+
+JevFactory = Callable[[Settings], TypeSafeClient]
+
+
+def _default_jev_factory(settings: Settings) -> TypeSafeClient:
+    """The real TypeSafe client, for the ordering check's ``jev`` way (decision 0097)."""
+    return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
 
 
 def answering_run_record(folder: Path) -> RunRecord:
@@ -100,6 +116,9 @@ def resolve_latest(
     """
     candidates: list[tuple[str, str]] = []
     for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
+        # A derived ordering-check run (S2.7, plan W2) is not a new answering run.
+        if "-check-" in folder.name:
+            continue
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
         record = answering_run_record(folder)
@@ -220,6 +239,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
     release_p = commands.add_parser("release", help="clear a dead run's budget reservation")
     release_p.add_argument("run_id")
+
+    check_p = commands.add_parser(
+        "check", help="the ordering check, as a post-pass over a finished run"
+    )
+    check_p.add_argument("run_id")
+    check_p.add_argument("--way", choices=checkpass.WAYS, required=True)
+    check_p.add_argument(
+        "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
+    )
 
     transcribe_p = commands.add_parser(
         "transcribe", help="read a sample's image pages once, into the cache (S2.6, 0081)"
@@ -646,6 +674,59 @@ def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
     return 1
 
 
+_GROUP_FIELD = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+
+def _cmd_check(
+    args: argparse.Namespace,
+    settings: Settings,
+    client_factory: ClientFactory,
+    jev_factory: JevFactory,
+) -> None:
+    folder = settings.runs_dir / args.run_id
+    record = answering_run_record(folder)
+    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    if not record.sample.startswith("dev") or "heldout" in args.run_id or record.arm != "B":
+        raise ConfigurationError(
+            f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
+            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+        )
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    processed = settings.data_dir / "processed"
+    ids = [c.case_id for c in cases]
+    groups = {
+        case_id: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
+        for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
+    }
+    stats, tables = load_stats(), load_tables()
+    way: checkpass.Way = args.way
+    if way == "rule":
+        checker = checkpass.rule_checker(stats)
+    else:
+        budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
+        projected = len(cases) * checkpass.EXPECTED_COST_PER_CASE_USD[way]
+        with budget_lock(settings.runs_dir):
+            reserved = sum(open_reservations(settings.runs_dir).values())
+            spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
+            refuse_over_budget(projected, spent, budget, reserved=reserved)
+        checker = (
+            checkpass.luna_checker(client_factory(settings)[0], stats, tables)
+            if way == "luna"
+            else checkpass.jev_checker(jev_factory(settings), stats, tables)
+        )
+    derived = checkpass.check_run(
+        folder,
+        way,
+        checker,
+        runs_dir=settings.runs_dir,
+        groups=groups,
+        seen_pairs=samples.seen_pairs(processed),
+        commit=ledger.commit_state(),
+        now=lambda: datetime.now(UTC),
+    )
+    print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
+
+
 def _judge_items(
     cases: Sequence[CaseResult],
     raws: Mapping[str, Mapping[str, object]],
@@ -793,6 +874,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     client_factory: ClientFactory = _default_client_factory,
+    jev_factory: JevFactory = _default_jev_factory,
 ) -> int:
     """Parse arguments and run one eval command.
 
@@ -815,6 +897,8 @@ def main(
             _cmd_threshold(args, settings)
         elif args.command == "release":
             return _cmd_release(args, settings)
+        elif args.command == "check":
+            _cmd_check(args, settings, client_factory, jev_factory)
         elif args.command == "transcribe":
             return _cmd_transcribe(args, settings)
     except (BudgetError, ConfigurationError) as error:

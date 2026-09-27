@@ -1,0 +1,128 @@
+"""scoring/checkpass.py: the ordering check as a post-pass (decision 0096; plan W2)."""
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from tests.test_occurrence_misses import _case
+
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.model.client import RecordingFakeClient
+from ntsb_probable_cause.scoring import checkpass
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
+
+NOW = datetime(2026, 9, 28, tzinfo=UTC)
+LOC, STALL = "452240", "452241"
+STATS = build(
+    [PoolCase(2012, "Maneuvering", (LOC, STALL))] * 30
+    + [PoolCase(2016, "Maneuvering", (STALL, LOC))] * 5,
+    built_from="test",
+)
+
+
+def _source(runs: Path, run_id: str = "20260926T000000-abc1234-dev-400-B") -> Path:
+    folder = runs / run_id
+    folder.mkdir(parents=True)
+    record = RunRecord(
+        run_id=run_id,
+        sample="dev-400",
+        arm="B",
+        exclusions=(),
+        includes=(),
+        prompt_version="s1-v5",
+        model="openai/gpt-6-luna",
+        price_variant="batch",
+        cap_usd=0.05,
+        budget_usd=40.0,
+        commit_sha="abc1234",
+        dirty=False,
+        started=NOW,
+        finished=NOW,
+        cases=2,
+        cost_usd=1.0,
+    )
+    write_jsonl(folder / "run.jsonl", [record])
+    write_jsonl(
+        folder / "cases.jsonl",
+        [
+            _case("C1", (LOC, STALL), (STALL,)),  # stall first; LOC is defining
+            _case("C2", (LOC, STALL), (LOC,), abstain=True),  # abstained: unchanged
+        ],
+    )
+    return folder
+
+
+def test_the_rule_pass_writes_a_derived_run_with_a_check_step(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    record = checkpass.check_run(
+        source,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={"C1": "Maneuvering", "C2": "Maneuvering"},
+        seen_pairs=frozenset({LOC}),
+        commit=("def5678", False),
+        now=lambda: NOW,
+    )
+    assert record.run_id == "20260926T000000-abc1234-dev-400-B-check-rule"
+    assert record.cost_usd == 0.0
+    assert record.prompt_version == "s1-v5+check-rule"
+    cases = {c.case_id: c for c in read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)}
+    step = cases["C1"].steps[-1]
+    assert step.tool == checkpass.CHECK_TOOL
+    assert next(g.phase + g.event for g in step.hypothesis.occurrence) == LOC
+    assert step.arguments["toward_more_common"] is True  # stall (5) -> loss of control (30), 0101
+    assert cases["C1"].scores is not None
+    assert cases["C1"].scores.occurrence_top1
+    assert len(cases["C2"].steps) == 1
+
+
+def test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+
+    def run(folder: Path) -> RunRecord:
+        return checkpass.check_run(
+            folder,
+            "rule",
+            checkpass.rule_checker(STATS),
+            runs_dir=runs,
+            groups={},
+            seen_pairs=frozenset(),
+            commit=("d", False),
+            now=lambda: NOW,
+        )
+
+    run(source)
+    with pytest.raises(ConfigurationError, match="exists"):
+        run(source)
+    held = _source(runs, "20260926T000000-abc1234-heldout-400-B")
+    with pytest.raises(ConfigurationError, match="development"):
+        run(held)
+
+
+def test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking() -> None:
+    client = RecordingFakeClient(
+        [json.dumps({"ranking": ["111111"]}), json.dumps({"ranking": [LOC, STALL]})]
+    )
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (LOC, STALL)
+    assert len(client.systems) == 2
+    assert "rejected" in client.systems[1]
+    assert client.payloads[0].text == "{}"  # everything is in the system text; no evidence payload
+    assert client.settings[0].price_variant == "standard"
+
+
+def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -> None:
+    client = RecordingFakeClient(["not json", "still not json"])
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (STALL,)
+    assert outcome.note.startswith("check failed")

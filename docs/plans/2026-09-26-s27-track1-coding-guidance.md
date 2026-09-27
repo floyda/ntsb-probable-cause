@@ -2844,7 +2844,7 @@ git commit -m "S2.7 Task 9: the Jev client, ported from typesafe-probe for the o
 
 **What a derived folder holds.** `<run id>-check-<way>/cases.jsonl`: each answered case with its original step and a second step (`step` = 1, `tool = "ordering_check"`, `arguments = {"ranking": [...]}`, the reordered hypothesis, the check's model, tokens, cost and input fingerprint); occurrence scores recomputed by `rescore_occurrence`; finding scores unchanged; an abstained or failed case copied unchanged. `run.jsonl`: the source's record with the derived id, `prompt_version` suffixed `+check-<way>`, S2.7's commit, and **`cost_usd` = the check's cost only** (the answers were paid for, and counted, in the source run; W2). Written in a `finally`, so an interrupted pass still records what it spent, with `finished` empty so the report calls it aborted.
 
-- [ ] **Step 1: Write the failing `rescore_occurrence` test** (append to `tests/test_metrics.py`)
+- [x] **Step 1: Write the failing `rescore_occurrence` test** (append to `tests/test_metrics.py`)
 
 ```python
 from dataclasses import replace
@@ -2878,7 +2878,7 @@ def test_rescore_occurrence_equals_score_case_on_the_reordered_codes() -> None:
     assert rescore_occurrence(replace(before, abstained=True), ("452240",), ("452240",), seen_pairs=seen).occurrence_top1 is False
 ```
 
-- [ ] **Step 2: Run it to verify it fails, then implement**
+- [x] **Step 2: Run it to verify it fails, then implement**
 
 Run: `uv run pytest tests/test_metrics.py -v -k rescore` (Expected: FAIL, `ImportError`)
 
@@ -2906,7 +2906,7 @@ def rescore_occurrence(
 
 Run: `uv run pytest tests/test_metrics.py -v` (Expected: PASS)
 
-- [ ] **Step 3: Write the failing post-pass tests** (`tests/test_checkpass.py`)
+- [x] **Step 3: Write the failing post-pass tests** (`tests/test_checkpass.py`)
 
 ```python
 """scoring/checkpass.py: the ordering check as a post-pass (decision 0096; plan W2)."""
@@ -3004,12 +3004,12 @@ def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -
 
 (`Payload.from_evidence` of an `Evidence` with no roles renders an empty text, as the judge's payload does; if it renders a placeholder, assert on that placeholder instead.)
 
-- [ ] **Step 4: Run them to verify they fail**
+- [x] **Step 4: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_checkpass.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 5: Write `scoring/checkpass.py`**
+- [x] **Step 5: Write `scoring/checkpass.py`**
 
 ```python
 """The ordering check as a post-pass over a finished run (decision 0096; plan walkthrough W2).
@@ -3280,12 +3280,12 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
 
 (Replace the `assert` in `checked_case` with an explicit `if case.scores is None: raise ValueError(...)` if the lint config forbids `assert` in library code; `check_run` never passes an unscored case.)
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_checkpass.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 7: Write the failing app tests** (append to `tests/test_eval_app.py`)
+- [x] **Step 7: Write the failing app tests** (append to `tests/test_eval_app.py`)
 
 ```python
 def test_check_refuses_a_held_out_run_before_any_client_is_built(
@@ -3313,7 +3313,7 @@ def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
 
 (Use the real keyword names of `_write_judgeable_run` and `_write_run`; import `resolve_latest` from `apps.eval.__main__`.)
 
-- [ ] **Step 8: Implement the command** in `apps/eval/__main__.py`
+- [x] **Step 8: Implement the command** in `apps/eval/__main__.py`
 
 Imports: `from ntsb_probable_cause.model.typesafe import TypeSafeClient`, `from ntsb_probable_cause.scoring import checkpass`, `from ntsb_probable_cause.scoring.coding_stats import load_stats`, `from ntsb_probable_cause.scoring.budget import budget_lock, open_reservations`, `from ntsb_probable_cause.scoring.runner import refuse_over_budget` (skip any already imported).
 
@@ -3382,12 +3382,12 @@ def _cmd_check(args: argparse.Namespace, settings: Settings, client_factory: Cli
 
 (`fields` and `EvidenceRole` imports: add if missing. If `open_reservations` returns a mapping of floats, `.values()` is right; match its real return type.)
 
-- [ ] **Step 9: Run the tests to verify they pass**
+- [x] **Step 9: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_eval_app.py tests/test_checkpass.py -v`
 Expected: PASS
 
-- [ ] **Step 10: Add the boundary test for the check's payload** (append to `tests/test_boundary.py`)
+- [x] **Step 10: Add the boundary test for the check's payload** (append to `tests/test_boundary.py`)
 
 ```python
 def test_the_ordering_check_sends_no_withheld_text(record_fixtures) -> None:
@@ -3415,7 +3415,7 @@ Then prove it can fail: temporarily append `+ (verdict.probable_cause or "")` to
 
 (This test module may import `records.split`; `tests/` is outside the import allow-list, as the existing boundary tests already do.)
 
-- [ ] **Step 11: Run the full check and commit**
+- [x] **Step 11: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4774,3 +4774,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, Task 8: the brief's Jev ranking test expected (LOC, CFIT, STALL); ties go by code, so the tie between 452241 and 452470 puts 452241 first; the assertion is (LOC, STALL, CFIT).
 - 2026-09-27, Task 8 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` reflowed four lines in `ordering.py` (the `candidates` linked-code comprehension, `toward_more_common`'s return, `check_text`'s guesses line) and five in `tests/test_ordering.py` (a `build()` call's concatenated list, a `check_text` call, and three multi-element asserts) onto multiple lines; no behaviour change. (2) `ruff check`'s `PLR0913`/`PLR0917` (too many arguments, 6 > 5) rejected `check_text`'s brief signature as written (one parameter per fact the check-text prompt shows, the point of the function); added `# noqa: PLR0913, PLR0917` with a comment, matching the existing idiom at `tests/test_boundary.py:870` and `tests/test_coding_stats_script.py:11`. (3) `ruff check`'s `E501` (line too long, 100-column limit) rejected two of the brief's single lines inside `check_text` (the per-candidate summary line and the paired-count line); each was split across two adjacent f-strings, same rendered text. (4) `ruff check`'s `PLR2004` (magic value `3` in `parse_ranking`'s length check) was fixed with a named module constant `_MAX_RANKING = 3`, matching Task 5's `_TRIPLE` idiom (no existing PLR2004-noqa idiom to match instead), same behaviour. (5) `ruff check`'s `I001` (unsorted import block) reordered the test file's `from ntsb_probable_cause.scoring import ordering` ahead of `.codes`/`.coding_stats`/`.hypothesis`, fixed by hand to match the project's isort settings; this reorders one import line. (6) `ruff check`'s `PT018` (assertion should be broken down) rejected `test_check_text_holds_codes_counts_group_and_narrative_only`'s combined `assert STALL in text and LOC in text`; split into two separate `assert` statements, same coverage. (7) `mypy --strict` rejected the test file's `_stats()` (missing return type; used in a typed context) and `test_jev_question_and_ranking`'s `set(question["criteria"])` (`jev_question` returns `dict[str, object]`, so `question["criteria"]` types as `object`, not `Iterable`); annotated `_stats() -> CodingStats` and wrapped the criteria access in `cast("dict[str, str]", ...)`, matching the repo's existing cast idiom (e.g. `tests/test_openrouter.py:35`, `tests/test_records.py:73`), same observable behaviour. Every test in `tests/test_ordering.py` passes with the values verbatim from the brief's text apart from the Jev ranking assertion above; `candidates`, `clear_habit`, `plain_rule`, `toward_more_common`, `check_text`, `parse_ranking`, `jev_question`, `ranking_from_probabilities` and `reorder` are otherwise verbatim from the brief. `make check` passes (1575 tests, 97.76% coverage); `uv run lint-imports` keeps all three contracts with the new `ntsb_probable_cause.scoring.ordering` source-list entry.
 - 2026-09-27, Task 9 implementation, one mechanical fix to satisfy `make check` (behaviour unchanged from the brief's text): Step 3's failing-test snippet, appended literally, put `from ntsb_probable_cause.model.client import PageImage` after the test functions rather than at the top of the file, which `ruff check`'s `E402`/`I001` (module-level import not at top of file / unsorted import block) rejected once Step 4 made the module importable. Folded `PageImage` into the file's existing `from ntsb_probable_cause.model.client import Payload` line instead of adding a second import statement, and removed the now-empty stray import line before the test function; same test, same assertions, same place in the file otherwise. `git show 0c5d24c:src/ntsb_probable_cause/model/typesafe.py`, its four fixtures and `tests/test_typesafe_client.py` were otherwise copied and renumbered (0060 to 0097) verbatim -- `grep -rn "0060\|0036"` over all four copied files returns nothing. No other file needed a mechanical fix: `settings.py`'s two additions, `sources.py`'s `JEV` price and three `TYPESAFE_*` constants, `model/typesafe.py`'s image refusal, `.env.example`'s new line and `pyproject.toml`'s `ANC` typos entry and fixtures exclude are verbatim from the brief. `make check` passes (1587 tests, 97.72% coverage); `uv run vulture` (`min_confidence = 80`) reported nothing on `ScoreAnswer`, `NoulAnswer` or `TYPESAFE_MODELS`, so no name needed keeping against a vulture finding. The `pre-commit` `typos` hook (not part of `make check`; it carries its own `exclude` regex separate from `pyproject.toml`'s `[tool.typos.files]`) failed on one of `tests/fixtures/typesafe/choices.json`'s verbatim NTSB labels (an occurrence-code description carrying the same source-data misspelling `pyproject.toml`'s existing comment already names, of "necessary", for the scoring-tables CSVs; not spelled out here for the same reason that comment gives -- this plan is itself spell-checked) because the brief's pyproject.toml edit alone does not reach the pre-commit hook's own exclude list. The brief did not list `.pre-commit-config.yaml` among Task 9's files; added `tests/fixtures/typesafe/.*\.json$` to that hook's existing `exclude` alternation, the same treatment already given `tests/fixtures/docket/`, so the commit runs the real `typos` hook rather than skipping it.
+- 2026-09-27, Task 10 implementation, adaptations of the brief's text to the real code and to `make check` (behaviour unchanged except where the brief itself flagged the possibility): (1) as the brief's own parenthetical warned, `Payload.from_evidence(Evidence(case_id="check", docket_url=None))` renders `"{}"` (an empty JSON object), not `""` -- confirmed against `scoring/judge.py`'s identical "empty" payload, which is the same placeholder, never plain text. `test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking`'s assertion is `client.payloads[0].text == "{}"`. (2) `checked_case`'s `assert case.scores is not None` (the brief's own text) is replaced with `if case.scores is None: raise ValueError(...)`, per the brief's own fallback note: `S101` (assert used) is selected project-wide and ignored only under `tests/**`, so `src/` code cannot use `assert`. (3) `tests/test_metrics.py`: the brief's Step 1 snippet's imports (`from dataclasses import replace`, `rescore_occurrence`, `score_case`, `OccurrenceGuess`) are merged into the file's existing top-of-file import block rather than inserted mid-file, avoiding `ruff check`'s `E402`; the test body and values are otherwise verbatim (renamed the local `_hyp` helper to `_hyp_for_rescore` since the file already has an unrelated `hyp` helper). (4) `tests/test_checkpass.py`: `ruff check` rejected three lint rules in the brief's literal text -- `RUF015` (`[...][0]` on `step.hypothesis.occurrence`, replaced with `next(...)`), `PT018` (the combined `cases["C1"].scores is not None and ...occurrence_top1` assertion, split in two) and `C408` (`kwargs = dict(...)`, replaced with a dict literal). `mypy --strict` then rejected splatting that literal (`**dict[str, object]`) into `check_run`'s differently-typed keyword parameters in `test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused`; replaced the shared `kwargs` dict with a small local `run(folder)` closure that calls `check_run` with the same five keyword arguments spelled out, called three times, same observable behaviour and same three assertions. (5) `apps/eval/__main__.py`: added `from ntsb_probable_cause.fields import EVIDENCE_FIELDS` (folded into the existing `EvidenceRole` import line, brief's "add if missing"), `checkpass`, `load_stats`, `TypeSafeClient` and `budget_lock`/`refuse_over_budget` imports as the brief listed; `ruff format` wrapped `_cmd_check`'s signature and the budget-import line onto multiple lines. `resolve_latest`'s `if "-check-" in folder.name: continue` guard was added exactly as the brief asked, though it is currently unreachable: `runs_dir.glob(f"*-{sample}-{arm}")`'s pattern already excludes a derived id (`<run id>-check-<way>` does not end in `-{arm}`), confirmed with `fnmatch.fnmatch`. Left in as the brief's explicit, documented safeguard rather than omitted as dead code. (6) `tests/test_eval_app.py`: the brief's `_write_run(..., finished=True, ...)` does not match the real `_write_run(*, finished: datetime | None, ...)` signature (a `bool` where a `datetime` is required); `test_resolve_latest_skips_derived_check_runs` passes a real `datetime(2026, 9, 26, tzinfo=UTC)` instead. The brief's single `def boom(_settings: object) -> object` (passed as both `client_factory` and `jev_factory`) fails `mypy --strict` (`Callable[[object], object]` is not assignable to either factory's real, differently-shaped `Callable` type); split into `boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]` and `boom_jev(_settings: Settings) -> TypeSafeClient`, each raising the same `AssertionError`, and added the missing `from ntsb_probable_cause.model.typesafe import TypeSafeClient` import; same refusal, same message asserted. (7) `tests/test_boundary.py`: `ruff check`'s `PLC0415` (import not at top level) rejected the brief's five function-local imports in `test_the_ordering_check_sends_no_withheld_text`; two (`split_record`, `load_tables`) and `RecordingFakeClient` were already imported at module level, so only `checkpass`, `coding_stats.PoolCase`/`build` and `tests.test_occurrence_misses._case` were added to the file's existing top-of-file import block, alphabetised among the file's existing `ntsb_probable_cause.scoring`/`tests.*` imports; the test's body, assertions and docstring are verbatim from the brief. The parameter `record_fixtures` was given the file's own convention type annotation `list[dict[str, object]]` (the brief's snippet left it bare). Mutation check (brief's own instruction, Step 10): temporarily changed `hypothesis = _case(...).steps[-1].hypothesis` to append `verdict.probable_cause` to its `evidence_narrative` before calling the checker; `uv run pytest tests/test_boundary.py -k ordering_check` then failed with `assert "The pilot's misidentification..." not in '...'`, confirming the boundary test catches a leaked probable cause; the mutation was then reverted (`tests/test_boundary.py` is byte-identical to before the mutation, checked with the pre-mutation copy). `make check` passes (1595 tests, 97.55% coverage).

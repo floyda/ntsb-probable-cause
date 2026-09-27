@@ -44,6 +44,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.budget import open_reservations, reserve
@@ -1657,3 +1658,37 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
         == 1
     )
     assert "sealed" in capsys.readouterr().err
+
+
+def test_check_refuses_a_held_out_run_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-heldout-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="heldout-400", arm="B")
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a held-out run")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a held-out run")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "jev"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "development" in capsys.readouterr().err
+
+
+def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B-check-rule", finished=when, arm="B")
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
