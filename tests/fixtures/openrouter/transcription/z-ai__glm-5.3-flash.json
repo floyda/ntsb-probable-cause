@@ -1,0 +1,13 @@
+{
+ "content": "{ \"page_kind\": \"typed text\", \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\n\\nEngine sputtered at 800 ft.\\n\\nSwitched to right tank, no change.\\n\\nFuel selector BOTH, mixture RICH.\" }",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 2873,
+  "completion_tokens": 59,
+  "reported_cost_usd": 0.00046045,
+  "reasoning_tokens": 0
+ },
+ "model": "z-ai/glm-5.3-flash",
+ "response_id": "gen-1790514620-ukx5IT3CLzs86AHodBJl"
+}

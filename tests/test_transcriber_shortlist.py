@@ -13,6 +13,7 @@ import respx
 from scripts import transcriber_shortlist as ts
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, parse_reply
 from ntsb_probable_cause.errors import BudgetError, ModelError
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -234,6 +235,20 @@ def test_the_probe_stops_once_enough_pass() -> None:
     passed, _ = ts.probe(("a", "b", "c"), complete, wanted=2)
     assert passed == ["a", "b"]
     assert called == ["a", "b"]
+
+
+@pytest.mark.parametrize("model", ts.S27_CANDIDATES)
+def test_every_passed_candidates_recorded_reply_parses(model: str) -> None:
+    """Each S2.7 candidate's real probe reply parses (pre-flight 1.3: only that it parses).
+
+    S2.6's stricter fixture test, ``test_every_recorded_candidate_reply_parses`` in
+    ``tests/test_transcriber_test.py``, judges only S2.6's four fixtures by name; S2.7's
+    shortlist is judged only by the probe's own pass rule (``probe()``), not by copying
+    ``PROBE_LINES`` or a particular page kind.
+    """
+    path = Path("tests/fixtures/openrouter/transcription") / (model.replace("/", "__") + ".json")
+    reply = ModelReply.model_validate_json(path.read_text())
+    parse_reply(reply.content or "", TRANSCRIBE)
 
 
 class _FakeCompleter:

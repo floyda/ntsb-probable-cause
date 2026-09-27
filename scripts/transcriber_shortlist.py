@@ -250,9 +250,18 @@ PROBE_WANTED = 8
 # Expected cost of one probe call, for the reservation (S2.6's probe: under $0.005 a model).
 PROBE_EXPECTED_USD = 0.005
 
-# The shortlisted models that passed the probe (Task 7 Step 6, set in Step 7), in shortlist
-# order: the candidates of the re-test (decision 0100 item 2). Empty until Step 7 runs.
-S27_CANDIDATES: tuple[str, ...] = ()
+# The shortlisted models that passed the probe (Task 7 Step 6, 2026-09-27), in shortlist
+# order: the candidates of the re-test (decision 0100 item 2).
+S27_CANDIDATES: tuple[str, ...] = (
+    "inclusionai/ling-3.0-flash-vl",
+    "qwen/qwen3.7-flash",
+    "deepseek/deepseek-v4.1-flash",
+    "z-ai/glm-5.3-flash",
+    "prism-ml/ternary-bonsai-2-27b",
+    "openai/gpt-6-luna-pro",
+    "xiaomi/mimo-v2.6-flash",
+    "qwen/qwen3.8-omni-flash",
+)
 
 
 def probe(

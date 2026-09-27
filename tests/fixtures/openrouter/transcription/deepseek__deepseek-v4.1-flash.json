@@ -1,0 +1,13 @@
+{
+ "content": "{\n  \"page_kind\": \"typed text\",\n  \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\nEngine sputtered at 800 ft.\\nSwitched to right tank, no change.\\nFuel selector BOTH, mixture RICH.\"\n}",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 1155,
+  "completion_tokens": 568,
+  "reported_cost_usd": 0.0010281,
+  "reasoning_tokens": 510
+ },
+ "model": "deepseek/deepseek-v4.1-flash",
+ "response_id": "gen-1790514616-MGBMQH9Ft0R0dSQBmFGA"
+}
