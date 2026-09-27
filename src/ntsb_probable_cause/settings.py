@@ -23,6 +23,8 @@ class Settings(BaseSettings):
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
     openrouter_base_url: str = "https://openrouter.ai"
+    typesafe_api_key: SecretStr | None = Field(default=None, validation_alias="TYPESAFE_API_KEY")
+    typesafe_base_url: str = "https://api.typesafe.ai"
     runs_dir: Path = Path("data/runs")
     # Decision 0083: $40 a month during the development stages, until the live board (S4).
     monthly_budget_usd: float = Field(default=40.0, gt=0)
@@ -111,3 +113,11 @@ class Settings(BaseSettings):
                 "OPENROUTER_API_KEY is not set; export it or load it from the password store."
             )
         return self.openrouter_api_key.get_secret_value()
+
+    def require_typesafe_key(self) -> str:
+        """Return the TypeSafe key, or raise if it is not set (decision 0097)."""
+        if self.typesafe_api_key is None or not self.typesafe_api_key.get_secret_value():
+            raise ConfigurationError(
+                "TYPESAFE_API_KEY is not set; export it or load it from the password store."
+            )
+        return self.typesafe_api_key.get_secret_value()
