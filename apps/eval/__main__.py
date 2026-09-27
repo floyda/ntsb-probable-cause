@@ -701,7 +701,16 @@ def _cmd_check(
             f"includes={record.includes}): rebuilding its phase-of-flight group would read "
             "back a field the source run withheld from the model"
         )
-    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    way: checkpass.Way = args.way
+    # Every refusal `check_run` would make, run once here, before anything is reserved or
+    # written (fix round 2, Important): the old code called `checkpass.check_run` only after
+    # reserving the budget, so a refusal inside it (a repeat check of an already-finished
+    # derived run, an unfinished source, a source that was itself a derived check run) left an
+    # open reservation, and for the "itself a derived check run" case an empty derived folder
+    # too, since `reserve_within_budget` creates it as a side effect. `preflight` is read-only:
+    # nothing here can leave anything behind.
+    pre = checkpass.preflight(folder, way, settings.runs_dir)
+    cases = pre.cases
     processed = settings.data_dir / "processed"
     ids = [c.case_id for c in cases]
     groups = {
@@ -709,36 +718,58 @@ def _cmd_check(
         for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
     }
     stats, tables = load_stats(), load_tables()
-    way: checkpass.Way = args.way
-    run_id = checkpass.derived_id(record.run_id, way)
+    # Computed before any reservation too (fix round 2): a failure in either call must not
+    # leave a reservation with nothing left to settle it.
+    seen_pairs = samples.seen_pairs(processed)
+    commit = ledger.commit_state()
+    run_id = pre.run_id
     if way == "rule":
         checker = checkpass.rule_checker(stats)
+        derived = checkpass.check_run(
+            folder,
+            way,
+            checker,
+            runs_dir=settings.runs_dir,
+            groups=groups,
+            seen_pairs=seen_pairs,
+            commit=commit,
+            now=lambda: datetime.now(UTC),
+        )
     else:
         # Reserved, not just checked, before any client is built (fix round 1, Important 1):
         # a ~400-call synchronous pass would otherwise be invisible to a concurrent paid job
         # for the whole run, since nothing recorded its projected spend until this pass's own
         # `finally`. `reserve_within_budget` raises before touching the filesystem if the
         # projection would bust the budget, so an over-budget call never reaches
-        # `client_factory`/`jev_factory` below; `checkpass.check_run` settles this reservation
-        # once the pass's actual spend is on disk, whether it finished or was interrupted.
+        # `client_factory`/`jev_factory` below.
         budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
         projected = len(cases) * checkpass.EXPECTED_COST_PER_CASE_USD[way]
         reserve_within_budget(settings.runs_dir, run_id, projected, budget, now=datetime.now(UTC))
-        checker = (
-            checkpass.luna_checker(client_factory(settings)[0], stats, tables)
-            if way == "luna"
-            else checkpass.jev_checker(jev_factory(settings), stats, tables)
-        )
-    derived = checkpass.check_run(
-        folder,
-        way,
-        checker,
-        runs_dir=settings.runs_dir,
-        groups=groups,
-        seen_pairs=samples.seen_pairs(processed),
-        commit=ledger.commit_state(),
-        now=lambda: datetime.now(UTC),
-    )
+        # From here to the end of `check_run`'s own pass, nothing may raise without releasing
+        # what was just reserved (fix round 2, Important): `check_run` settles it once the
+        # pass's real spend is on disk, but a factory that raises (a missing key) or a refusal
+        # `preflight` already cleared yet `check_run` re-finds (a genuine race) never reaches
+        # that `finally`, and would otherwise hold the reservation open until someone ran
+        # `ntsb-eval release` by hand.
+        try:
+            checker = (
+                checkpass.luna_checker(client_factory(settings)[0], stats, tables)
+                if way == "luna"
+                else checkpass.jev_checker(jev_factory(settings), stats, tables)
+            )
+            derived = checkpass.check_run(
+                folder,
+                way,
+                checker,
+                runs_dir=settings.runs_dir,
+                groups=groups,
+                seen_pairs=seen_pairs,
+                commit=commit,
+                now=lambda: datetime.now(UTC),
+            )
+        except BaseException:
+            release(settings.runs_dir, run_id)
+            raise
     print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
 
 

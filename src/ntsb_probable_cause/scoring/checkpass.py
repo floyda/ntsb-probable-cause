@@ -250,6 +250,40 @@ def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -
         raise ConfigurationError(f"{record.run_id} holds a case outside the development split")
 
 
+@dataclass(frozen=True)
+class Preflight:
+    """Everything `check_run` would refuse, read and checked once, before any side effect.
+
+    Fix round 2, Important: a caller who reserves a check's projected cost calls this first,
+    so the reservation is only ever made once every refusal below has already passed -- the
+    same "nothing refusable after the reservation" rule ``scoring/preparation.py``'s jobs
+    follow.
+    """
+
+    record: RunRecord
+    cases: tuple[CaseResult, ...]
+    run_id: str
+
+
+def preflight(source: Path, way: Way, runs_dir: Path) -> Preflight:
+    """Read and refuse a source run exactly as `check_run` would, before any side effect.
+
+    Refuses a source that isn't a finished development arm B run, that is itself a derived
+    check run, or that holds a case outside the development split (`_refuse_unless_development`);
+    and refuses a derived id whose folder already holds a finished check's output. Read-only:
+    no folder is created and no reservation is touched, so a refusal here -- including of a
+    source whose own id already contains ``-check-`` -- leaves nothing behind to clean up.
+    """
+    record = read_jsonl(source / "run.jsonl", RunRecord)[0]
+    cases = read_jsonl(source / "cases.jsonl", CaseResult)
+    _refuse_unless_development(record, cases)
+    run_id = derived_id(record.run_id, way)
+    folder = runs_dir / run_id
+    if (folder / "cases.jsonl").exists() or (folder / "run.jsonl").exists():
+        raise ConfigurationError(f"{run_id} exists: a check is run once per source run")
+    return Preflight(record=record, cases=tuple(cases), run_id=run_id)
+
+
 def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests vary.
     source: Path,
     way: Way,
@@ -261,19 +295,21 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
     commit: tuple[str, bool],
     now: Callable[[], datetime],
 ) -> RunRecord:
-    """Run the check over a finished run; write and return the derived run's record."""
-    record = read_jsonl(source / "run.jsonl", RunRecord)[0]
-    cases = read_jsonl(source / "cases.jsonl", CaseResult)
-    _refuse_unless_development(record, cases)
-    run_id = derived_id(record.run_id, way)
+    """Run the check over a finished run; write and return the derived run's record.
+
+    Calls :func:`preflight` itself (fix round 2): a caller that already reserved a budget
+    against this pass has necessarily called it first and found nothing to refuse, so this is
+    defence in depth, not the first line -- it will not fire in the normal CLI path.
+    """
+    pre = preflight(source, way, runs_dir)
+    cases = pre.cases
+    run_id = pre.run_id
     folder = runs_dir / run_id
     # `exist_ok=True`, not an atomic claim (fix round 1, Important 1): the caller may have
     # already created this folder to hold a budget reservation (`reserve_within_budget`,
-    # under this same derived id) before any client is built. What must not already exist is
-    # the derived run's own output, so a check is refused only once it has actually run.
+    # under this same derived id) before any client is built. `preflight` just confirmed
+    # neither of this folder's own output files exists yet.
     folder.mkdir(parents=True, exist_ok=True)
-    if (folder / "cases.jsonl").exists() or (folder / "run.jsonl").exists():
-        raise ConfigurationError(f"{run_id} exists: a check is run once per source run")
     started = now()
     results: list[CaseResult] = []
     spent = 0.0
@@ -289,10 +325,10 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
         finished = now()
     finally:
         write_jsonl(folder / "cases.jsonl", results)
-        derived = record.model_copy(
+        derived = pre.record.model_copy(
             update={
                 "run_id": run_id,
-                "prompt_version": f"{record.prompt_version}+check-{way}",
+                "prompt_version": f"{pre.record.prompt_version}+check-{way}",
                 "commit_sha": commit[0],
                 "dirty": commit[1],
                 "started": started,

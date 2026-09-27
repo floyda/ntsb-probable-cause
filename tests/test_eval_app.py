@@ -34,7 +34,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TranscriptionCache,
     TranscriptionKey,
 )
-from ntsb_probable_cause.errors import DocketError, ModelError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -1896,6 +1896,109 @@ def test_check_way_rule_writes_a_derived_run_and_prints_the_summary(
     assert f"check {derived_id}:" in out
     assert (runs / derived_id / "cases.jsonl").exists()
     assert (runs / derived_id / "run.jsonl").exists()
+
+
+def test_check_way_luna_run_twice_is_refused_the_second_time_with_nothing_leaked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: a repeat check of an already-finished derived run must not
+    reserve anything the second time, and must not touch the first run's own output. The old
+    code reserved before `checkpass.check_run` ran its own "already exists" refusal, so a
+    repeated check left an open reservation behind even though `run.jsonl` was untouched."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    fake = RecordingFakeClient([json.dumps({"ranking": ["552241"]})])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    first_exit = main(
+        ["check", run_id, "--way", "luna"], client_factory=factory, jev_factory=boom_jev
+    )
+    assert first_exit == 0
+    derived = runs / f"{run_id}-check-luna"
+    first_run_jsonl = (derived / "run.jsonl").read_text()
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("a repeated check must not reach the client factory")
+
+    def boom_jev_again(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("a repeated check must not reach the jev factory")
+
+    second_exit = main(
+        ["check", run_id, "--way", "luna"],
+        client_factory=boom_client,
+        jev_factory=boom_jev_again,
+    )
+    assert second_exit == 1
+    assert "exists" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert (derived / "run.jsonl").read_text() == first_run_jsonl
+
+
+def test_check_way_luna_releases_its_reservation_when_the_client_factory_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: a factory that raises after the reservation was made (a missing
+    API key, say) must not leave that reservation open with nothing left to settle it."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def broken_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise ConfigurationError("OPENROUTER_API_KEY is not set")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=broken_client, jev_factory=boom_jev
+    )
+    assert exit_code == 1
+    assert "OPENROUTER_API_KEY" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+
+
+def test_check_refuses_a_check_run_as_its_own_source_leaving_no_new_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: refusing a source that is itself a derived check run must not
+    create the empty `<id>-check-<way>` folder `reserve_within_budget` would otherwise leave
+    behind -- the old code reserved before `checkpass.check_run`'s own refusal of this shape
+    of source ever ran."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B-check-luna"
+    _write_checkable_run(runs, run_id)
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a stacked-check source")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a stacked-check source")
+
+    before = {p.name for p in runs.iterdir()}
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=boom_client, jev_factory=boom_jev
+    )
+    assert exit_code == 1
+    assert "stacked" in capsys.readouterr().err
+    assert {p.name for p in runs.iterdir()} == before
+    assert open_reservations(runs) == {}
 
 
 def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
