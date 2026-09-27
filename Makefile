@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results
 
 check: lint type test
 
@@ -227,3 +227,29 @@ s27-round0-cards:
 	$(if $(RUN),,$(error RUN is required: the B-v1 run id))
 	uv run python -m scripts.round0_handread cards --run $(RUN)
 # S2.7 spec §4.4, free: writes Andy's private marking page under data/handcheck/s27-round0/.
+
+s27-noise-floor:
+	$(if $(PER_CASE),,$(error PER_CASE is required: B-v1's cost per case rounded up, e.g. PER_CASE=0.0042))
+	uv run python -m scripts.stage_spend --estimate 1.40
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v1 --expected-cost-per-case-usd $(PER_CASE)
+# S2.7 spec §4.2, paid (about $1.18, B-v1's cost): B-v1 again, identical settings, at S2.7's
+# commit. The noise floor every round is read against.
+
+s27-judge:
+	$(if $(RUN),,$(error RUN is required: a development run id to judge))
+	uv run python -m scripts.stage_spend --estimate 0.60
+	uv run ntsb-eval judge $(RUN)
+# S2.7 spec §4.3, paid (about $0.50 at the judge's conservative $0.00125 a case; standard
+# price only): writes judge.jsonl into the run's folder and a <run>-judge cost row.
+
+s27-round0-results:
+	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
+	$(if $(MARKS),,$(error MARKS is required: Andy's downloaded marks CSV))
+	$(if $(LABELS),,$(error LABELS is required: validated or unvalidated, from the score line))
+	{ uv run python -m scripts.occurrence_misses --run 20260926T082427-d19aafa-dev-400-B --against $(REPEAT); \
+	  echo; uv run python -m scripts.occurrence_misses --run 20260926T085904-d19aafa-dev-400-B --against 20260926T082427-d19aafa-dev-400-B; \
+	  echo; uv run python -m scripts.occurrence_misses --run $(REPEAT); \
+	  echo; uv run ntsb-eval report 20260926T082427-d19aafa-dev-400-B --against $(REPEAT); \
+	  echo; uv run python -m scripts.judge_outcomes --runs 20260926T082427-d19aafa-dev-400-B $(REPEAT) 20260926T085904-d19aafa-dev-400-B --label-status $(LABELS); \
+	  echo; uv run python -m scripts.round0_handread score $(MARKS) --run 20260926T082427-d19aafa-dev-400-B; } > docs/results/s27-round0-dev.txt
+# S2.7 spec §4.5, free: Round 0's results file from committed scripts only.

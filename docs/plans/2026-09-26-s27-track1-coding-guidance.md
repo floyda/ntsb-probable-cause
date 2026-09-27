@@ -2276,7 +2276,7 @@ git commit -m "S2.7 Task 6: Round 0's hand-read cards and the narrative-label va
 
 The two S2.6 runs are `20260926T082427-d19aafa-dev-400-B` (B-v1) and `20260926T085904-d19aafa-dev-400-B` (B-v2).
 
-- [ ] **Step 1: Add the targets**
+- [x] **Step 1: Add the targets**
 
 ```make
 s27-noise-floor:
@@ -2308,7 +2308,7 @@ s27-round0-results:
 
 Commit the Makefile (`S2.7 Task 7: Round 0 targets`).
 
-- [ ] **Step 2: Check the S2.6 run folders hold no judge rows (W4)**
+- [x] **Step 2: Check the S2.6 run folders hold no judge rows (W4)**
 
 Run:
 ```bash
