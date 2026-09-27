@@ -25,7 +25,7 @@ from typing import Literal, cast
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket.pages import document_facts, page_text
+from ntsb_probable_cause.docket.pages import PageKind, document_facts, page_text
 from ntsb_probable_cause.docket.render import (
     MEDIA_TYPE,
     RESOLUTION,
@@ -78,6 +78,20 @@ MIXED_PAGE_MIN_IMAGE_SHARE = 0.0
 # unchanged -- S2.4's held-out arm B stays the bar (decisions 0089, 0090).
 TRANSCRIBER = "qwen/qwen3.5-122b-a10b"
 _ERROR_CHARS = 200
+
+# S2.7 spec §7.3 and §7.5, decision 0100 items 4-5: which pages v2 sends to the transcriber,
+# by name, so a run and a finished-transcription marker can say which rule built their
+# evidence. "all" is S2.6's rule: every image-only page, and every text-and-image page whose
+# images cover at least MIXED_PAGE_MIN_IMAGE_SHARE of it (0.0, so every one). The other two
+# are the rules S2.7's T3 measures (scripts/page_value.py). PAGE_RULE is the rule in force; it
+# changes only by the track-2 decision record of S2.7 (number 120), as TRANSCRIBER does.
+PageRule = Literal["all", "image-only", "image-only+thin-layer"]
+PAGE_RULES: tuple[PageRule, ...] = ("all", "image-only", "image-only+thin-layer")
+PAGE_RULE: PageRule = "all"
+# Under "image-only+thin-layer", a text-and-image page is sent only when its text layer holds
+# fewer characters than this (decision 0100 item 4): a scanned form with a typed header, not a
+# typed report with a logo.
+THIN_LAYER_MAX_CHARS = 200
 
 
 @dataclass(frozen=True)
@@ -550,21 +564,36 @@ def transcribe_all(  # noqa: PLR0913 -- every parameter is a seam a test or a ca
     return done
 
 
-def pages_to_read(data: bytes) -> list[tuple[int, bool]]:
-    """``(page, mixed)`` for every page v2 transcribes (0074, 0079 item 3, decision W3).
+def page_choice(kind: PageKind, chars: int, share: float, *, page_rule: PageRule) -> bool | None:
+    """Whether a page is sent, and how: ``None`` not sent, ``False`` full, ``True`` mixed.
 
-    Every image-only page; a text-and-image page only when its images cover at least
-    ``MIXED_PAGE_MIN_IMAGE_SHARE`` of it; never a text-only or blank page. A file that is not
-    a PDF raises ``DocketError``, as in ``extract.extract_pdf``.
+    ``chars`` is the page's text-layer length as ``docket.pages`` counts it; ``share`` is the
+    part of the page its images cover (``render.image_area_shares``). A text-only or blank page
+    is never sent; an image-only page always is, in full (0074).
+    """
+    if kind == "image only":
+        return False
+    if kind != "text and image" or share < MIXED_PAGE_MIN_IMAGE_SHARE:
+        return None
+    if page_rule == "all":
+        return True
+    if page_rule == "image-only":
+        return None
+    return True if chars < THIN_LAYER_MAX_CHARS else None
+
+
+def pages_to_read(data: bytes, *, page_rule: PageRule = PAGE_RULE) -> list[tuple[int, bool]]:
+    """``(page, mixed)`` for every page v2 transcribes under ``page_rule`` (0074, 0079, 0100).
+
+    A file that is not a PDF raises ``DocketError``, as in ``extract.extract_pdf``.
     """
     chosen: list[tuple[int, bool]] = []
     shares = image_area_shares(data)
     for number, page in enumerate(document_facts(data), start=1):
         share = shares[number - 1] if number <= len(shares) else 0.0
-        if page.kind == "image only":
-            chosen.append((number, False))
-        elif page.kind == "text and image" and share >= MIXED_PAGE_MIN_IMAGE_SHARE:
-            chosen.append((number, True))
+        mixed = page_choice(page.kind, page.chars, share, page_rule=page_rule)
+        if mixed is not None:
+            chosen.append((number, mixed))
     return chosen
 
 
@@ -578,11 +607,23 @@ class ReadingLookup:
         model: str = TRANSCRIBER,
         instruction: Instruction = TRANSCRIBE,
         dpi: Resolution = RESOLUTION,
+        page_rule: PageRule = PAGE_RULE,
     ) -> None:
         self._cache = cache
         self._model = model
         self._instruction = instruction
         self._dpi: Resolution = dpi
+        self._page_rule: PageRule = page_rule
+
+    @property
+    def model(self) -> str:
+        """The transcriber whose readings this lookup finds."""
+        return self._model
+
+    @property
+    def page_rule(self) -> PageRule:
+        """The page rule that decides which pages are looked up (S2.7 spec §7.5)."""
+        return self._page_rule
 
     def for_document(self, data: bytes) -> dict[int, Transcription]:
         """Every page v2 would read that has a reading, by page number.
@@ -595,7 +636,7 @@ class ReadingLookup:
         """
         sha = hashlib.sha256(data).hexdigest()
         try:
-            chosen = pages_to_read(data)
+            chosen = pages_to_read(data, page_rule=self._page_rule)
         except Exception:  # the same boundary as extract: an unreadable file has no readings
             return {}
         readings: dict[int, Transcription] = {}
@@ -613,10 +654,14 @@ class ReadingLookup:
         return readings
 
     def done_file(self, sample: str) -> Path:
-        """Where ``ntsb-eval transcribe`` records that a sample's readings are complete."""
-        stamp = hashlib.sha256(
-            f"{self._model}|{self._instruction.version}|{self._dpi}".encode()
-        ).hexdigest()[:12]
+        """Where ``ntsb-eval transcribe`` records that a sample's readings are complete.
+
+        S2.7 walkthrough W4 (Andy, B): every marker names its page rule, S2.6's "all"
+        included, so one stamp form holds everywhere. S2.6's dev-400 marker (written before
+        rules had names) no longer matches and is re-created from the cache (Task 3 Step 6).
+        """
+        stamped = f"{self._model}|{self._instruction.version}|{self._dpi}|{self._page_rule}"
+        stamp = hashlib.sha256(stamped.encode()).hexdigest()[:12]
         return self._cache.root / "done" / f"{sample}-{stamp}.json"
 
     def is_done(self, sample: str) -> bool:

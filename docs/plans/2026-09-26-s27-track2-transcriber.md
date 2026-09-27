@@ -105,7 +105,7 @@ git push -u origin s27-transcriber
 
 **What each rule sends.** Example document: page 1 image-only; page 2 text-and-image with a 55-character text layer (a scanned form with a typed header); page 3 text-and-image with a 900-character text layer (a typed report with a logo); page 4 text only. `"all"` sends 1 (full), 2 and 3 (mixed). `"image-only"` sends 1. `"image-only+thin-layer"` sends 1 and 2.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_docket_transcribe.py` (it already imports `build_pdf`, `PageSpec`, `TYPED`, `TranscriptionCache`, `pages_to_read`, `transcribe_module`, `hashlib`; add the new names to its import from `ntsb_probable_cause.docket.transcribe`: `PAGE_RULE`, `PAGE_RULES`, `THIN_LAYER_MAX_CHARS`, `ReadingLookup`, `page_choice`, `Transcription`, `TranscriptionKey`, `TRANSCRIBER`, `TRANSCRIBE`, `key_instruction`):
 
@@ -207,12 +207,12 @@ def test_a_lookup_under_a_rule_finds_only_that_rules_pages(tmp_path: Path) -> No
     assert sorted(thin.for_document(document)) == [1, 2]
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_transcribe.py -k "rule or done_file or page_choice" -v`
 Expected: FAIL with `ImportError: cannot import name 'PAGE_RULE'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/ntsb_probable_cause/docket/transcribe.py`, add `from ntsb_probable_cause.docket.pages import PageKind` to the existing `docket.pages` import, and add below `TRANSCRIBER` (:79):
 
@@ -312,12 +312,12 @@ In `for_document`, change `chosen = pages_to_read(data)` to `chosen = pages_to_r
 
 `_maybe_mark_done` in `apps/eval/__main__.py` also writes `"page_rule"` into the marker's summary beside `"model"` and `"dpi"` (Task 3 passes the rule through), so a marker file says which rule it covers.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_docket_transcribe.py -v`
 Expected: PASS, including every S2.6 test of `pages_to_read` (the default rule is S2.6's).
 
-- [ ] **Step 5: Confirm S2.6's marker no longer matches** (read-only, no model call)
+- [x] **Step 5: Confirm S2.6's marker no longer matches** (read-only, no model call)
 
 ```bash
 NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data uv run python -c "
@@ -327,7 +327,7 @@ print(ReadingLookup(TranscriptionCache(Settings().transcription_dir)).is_done('d
 ```
 Expected: `False` (walkthrough W4). S2.6's file `data/transcriptions/done/dev-400-940436639bbd.json` is left where it is, unused. It is re-created under the new name, free, in Task 3 Step 6, once `ntsb-eval transcribe` takes `--page-rule`.
 
-- [ ] **Step 6: `make check`, then commit**
+- [x] **Step 6: `make check`, then commit**
 
 ```bash
 make check
@@ -2477,3 +2477,7 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, walkthrough W6, Andy's decision (A): spec §7.2's filter gains one condition — the model's listing names `response_format` in its supported parameters — because every transcription call uses a strict JSON schema; a model without it could only take a shortlist place to fail its probe (Task 5's filter).
 - 2026-09-27, walkthrough W7, Andy's decision (A, with his recollection): Task 8's `verify` chooses S2.6's second-pass CSV pair by reproducing Qwen's published figures exactly, trying the `data/s26/transcriber-test/pass2/` pair (`handwriting-key-pass2-2.csv`, `photo-words-pass2.csv`) first, which Andy recalls as final (the re-marking after the stamped "Photo" label, partly hidden by an icon, was scored as invented; decision 0086 item 1). If neither pair reproduces the figures, the track stops for Andy.
 - 2026-09-27, Task 1: Steps 1 and 3 were done by track 1's session as its Task 1 Step 16 (decision 0102), which cut `s27-transcriber` from the local parent at `21dca2b` rather than from `origin/s27-coding-guidance`, and pushed it. Track 2's Task 1 only confirmed the branch, the worktree and `scripts/stage_spend.py`, then ran Step 2: `make check` passed (1514 tests, coverage 97.71%) and `stage_spend --estimate 0` counted `s27-coding-guidance, s27-guidance, s27-transcriber` at $0.00 of the $25 line.
+- 2026-09-27, Task 2 (pre-flight 1.6): the code comment on `ReadingLookup.done_file` says the S2.6 `dev-400` marker "is re-created from the cache (Task 3 Step 6)", not "Step 5" — Task 2's own Step 5 only confirms the marker no longer matches; it does not recreate it.
+- 2026-09-27, Task 2 (pre-flight 2.3): `page_rule="all"` is stated explicitly, rather than left to the default, in every existing test that depends on S2.6's rule (`test_pages_to_read_takes_image_pages_and_mixed_pages_over_the_cut`, `test_pages_to_read_leaves_out_a_mixed_page_under_the_cut`, `test_the_lookup_finds_a_mixed_reading_and_never_a_full_reading_for_it`) and in Task 2's own new tests, except `test_the_rule_in_force_is_s26s_until_a_decision_changes_it` and `test_the_default_rule_is_the_rule_in_force`, whose purpose is to check the default itself.
+- 2026-09-27, Task 2 (pre-flight 3.3): `test_the_thin_layer_rule_cuts_at_the_limit` annotates `rule: PageRule = "image-only+thin-layer"` and imports `PageRule`, so mypy --strict does not infer `str` for a `page_rule` argument.
+- 2026-09-27, Task 2 (pre-flight 3.6): the import added to `tests/test_docket_transcribe.py` from `ntsb_probable_cause.docket.transcribe` names only `PAGE_RULE`, `PAGE_RULES`, `THIN_LAYER_MAX_CHARS`, `PageRule`, `TRANSCRIBER`, `key_instruction` and `page_choice` — the names the brief also listed that were already imported (`ReadingLookup`, `Transcription`, `TranscriptionCache`, `TranscriptionKey`, `TRANSCRIBE`) are left as they were, to avoid a duplicate-name lint error.
