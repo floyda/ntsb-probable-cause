@@ -1403,7 +1403,7 @@ git commit -m "S2.7 track 2: prices and reasoning levels of the shortlisted mode
 
 **What passes.** A model passes if it answers and its reply parses under instruction t1 (`parse_reply`), as in S2.6's probe. How many probe lines it copies is printed, not judged: the answer keys judge reading.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from ntsb_probable_cause.model.client import ModelReply, Usage
@@ -1448,12 +1448,12 @@ def test_the_probe_stops_once_enough_pass() -> None:
 
 (Check `ModelReply` and `Usage` constructor fields in `model/client.py` before writing: `Usage` may need `reported_cost_usd` and `reasoning_tokens` defaults. Adjust the helper to the real fields.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -k probe -v`
 Expected: FAIL (`AttributeError: ... has no attribute 'probe'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 PROBE_WANTED = 8
@@ -1609,12 +1609,12 @@ s27-batch-image:
 # the invented probe image.
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -2492,3 +2492,10 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 5 (pre-flight 1.5): `render_shortlist` prints `input_usd_per_mtok`/`output_usd_per_mtok` at full float precision (`${x.input_usd_per_mtok}`), not `:.3f` as the brief's code showed, so Task 6 copies exact prices from the results file rather than rounded ones.
 - 2026-09-27, Task 5, Andy's decision: spec §7.2's filter gains a condition — a listing priced at $0 (or unpriced) is refused — because a free or preview listing can be withdrawn or rate-limited and cannot be kept as the build's transcriber, and it would win the cost comparison with Qwen by default. On the 2026-09-27 list this refused 7 listings, dropping eligible from 16 to 14; two of the seven had reached the shortlist itself (stealth/space-bunny-alpha at rank 1, dots-studio/dots-3-note-preview:free at rank 2), so reserves 9 and 10 (meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro) moved onto the shortlist, which now reads: inclusionai/ling-3.0-flash-vl, qwen/qwen3.7-flash, deepseek/deepseek-v4.1-flash, z-ai/glm-5.3-flash, prism-ml/ternary-bonsai-2-27b, meta/muse-spark-1.2-contributor, meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro. Andy allowed an exception for NVIDIA's free listings if any qualified; none of the five did: nemotron-3.5-lightning, nemotron-3-ultra-550b-a55b and nemotron-3-super-120b-a12b are refused for no image input; nemotron-3-nano-omni-30b-a3b-reasoning for release before 2026-06-01; nemotron-3.5-content-safety, which previously reached "no structured output" (2026-09-27's first run), is one of the seven now refused earlier, as "free or unpriced listing" — so none is coded. `_per_mtok`/`_price` also moved to exact `Decimal` arithmetic (rather than `float(str) * 1_000_000`) so the results file prints exact prices (e.g. `$0.1`, not `$0.09999999999999999`), matching pre-flight 1.5's requirement more precisely than the first pass did.
 - 2026-09-27, Task 6 (pre-flight 1.5 and 2.2): every price in `sources.py` was double-checked against the saved JSON at `$NTSB_DATA_DIR/s27/openrouter-models-2026-09-27.json` (a short read-only script, discarded after use) and matches the results file exactly. Two of the 14 eligible models already had a `ModelPrice` entry from an earlier stage: `openai/gpt-5.6-luna` (`LUNA`, read 2026-09-15) lists the same $0.2/$1.2 today, so no new constant was added for it — `price_of` already returns a matching, correctly-sourced price. `z-ai/glm-5.3-flash` (`GLM_53_FLASH`, read 2026-09-16) is priced differently today ($0.045/$0.14 against the old $0.09/$0.30); a new constant `S27_GLM_53_FLASH` holds the current price and is placed after `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` in the `_PRICES` tuple so `price_of("z-ai/glm-5.3-flash")` returns the current price (`_PRICES` is a dict comprehension over the tuple; the later entry wins on a shared key). The old `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` constants are left in place, since nothing outside `sources.py` references them by name and removing them is outside this task's scope — flagged for Andy in the Task 6 report rather than decided here. `test_sources_settings.py`'s `test_the_transcriber_candidates_are_priced_and_levelled` was changed from `assert sources.LOWEST_REASONING == {...}` to four `assert sources.LOWEST_REASONING["..."] == "..."` lines, per pre-flight 2.2, since S2.7 adds ten more entries to the same dict.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 3.2): `request_body` is called with `history=()` (the brief's own code omitted it), because `history` has no default on the real signature (`model/openrouter.py`).
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 1.2): `cmd_batch_image` reserves within the monthly budget before its POST (`PROBE_EXPECTED_USD`, the same estimate as one probe call) and writes a `SpendRecord` (kind `transcriber-test`) in a `finally`, then settles, whether the batch service accepts or refuses the image; its own row's `cost_usd` is 0.0, because a batch's real cost is not known until it is polled. `cmd_batch_poll` writes its own spend row, under the distinct job id `<batch_id>-poll`, only once `status.reported_cost_usd` is known, so `stage_spend` counts the real cost exactly once and a batch job counted by `cmd_batch_image` is never summed a second time by a later poll. Neither function existed with a budget guard in the brief's code; both are added because the brief's own code submits a paid batch with no reservation and no spend row at all.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 1.3): `cmd_probe` saves every reply it actually receives (whether it parses or not) under the git-ignored `<data_dir>/s27/probe-replies/`, and copies only a passed model's reply into the committed `tests/fixtures/openrouter/transcription/` folder, once the whole probe is done and `passed` is known — the brief's own code wrote every reply straight into the committed folder. `tests/test_transcriber_test.py`'s `test_every_recorded_candidate_reply_parses` is narrowed from a glob of that folder to S2.6's four fixtures by name (`google__gemini-3.1-flash-lite.json`, `google__gemini-3.6-flash.json`, `openai__gpt-6-luna.json`, `qwen__qwen3.5-122b-a10b.json`), so once Task 7 Step 7 adds S2.7's own fixtures under the same folder, a candidate that passed the probe with a different page kind, or copying none of `PROBE_LINES`, cannot fail this stricter, S2.6-specific test; S2.7's own fixtures get their own test in Step 7 (`test_every_passed_candidates_recorded_reply_parses`), which checks only that each parses.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 2.6-cmd_probe, implementer's judgment): `cmd_probe` is its own function, not a call into `transcriber_test.cmd_probe`, because that function is fixed to S2.6's four `CANDIDATES` and its own per-page cost table, and `scripts/transcriber_test.py` is not in Task 7's Files list. It mirrors that function's reserve/spend/settle order and shape exactly (client factory built before the reservation; the spend row written, with `settle`, in a `finally`) rather than introducing a different frame.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 3.6): every new import (`Callable`, `ExitStack`, `render_pages`, `TRANSCRIBE`/`parse_reply`/`request_for`/`settings_for`, `ModelError`/`SchemaError`, `commit_state`, `BatchClient`, `ModelReply`/`cost_usd`, `OpenRouterClient`/`request_body`, `SpendRecord`/`reserve_within_budget`/`settle`/`write_spend`, `openrouter_clients`, `FIXTURES`/`PROBE_LINES`/`probe_page`) is hoisted to the top of `scripts/transcriber_shortlist.py`, alongside the existing imports, rather than inlined near the new functions.
+- 2026-09-27, Task 7 Steps 1-5: `S27_CANDIDATES` is defined now as `()` (an empty tuple, with a comment saying it is set in Step 7), since the probe itself (Step 6, paid) has not run — this task stops after Step 5, before Step 6's STOP, per the assignment ("Steps 1-5 ONLY... Step 6 is Andy's (paid) and Step 7 records its outcome — do not run or start either").
+- 2026-09-27, Task 7 Steps 1-5: the brief's own Step 1 tests use fictitious model ids (`a/ok`, `vendor/model`, ...) that are not in `sources.LOWEST_REASONING` or `sources.price_of`'s table; `settings_for` and `cost_usd` both look a model id up in those tables and raise `KeyError` for an unknown one. The `cmd_probe`/`cmd_batch_image` tests (not in the brief, added for this task's budget/spend coverage per the assignment's instruction) monkeypatch `sources.LOWEST_REASONING` to add the fictitious ids, and `_reply`'s `Usage` carries a `reported_cost_usd` so `cost_usd` never has to price one.

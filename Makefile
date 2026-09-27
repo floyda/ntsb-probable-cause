@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image
 
 check: lint type test
 
@@ -230,3 +230,17 @@ s27-shortlist:
 	$(if $(MODELS),,$(error MODELS is required: the saved list, e.g. MODELS=$$NTSB_DATA_DIR/s27/openrouter-models-2026-09-27.json))
 	uv run python -m scripts.transcriber_shortlist shortlist --models $(MODELS) --out docs/results/s27-transcriber-shortlist.txt
 # S2.7 spec §7.2, free: decision 0100 item 1's filter over the saved list.
+
+s27-transcriber-probe:
+	uv run python -m scripts.stage_spend --estimate 0.10
+	uv run python -m scripts.transcriber_shortlist probe
+# S2.7 spec §7.2, paid (estimate under $0.10): one invented page to each shortlisted model,
+# replacing failures in order, until eight pass. Replies saved under
+# tests/fixtures/openrouter/transcription/.
+
+s27-batch-image:
+	$(if $(MODEL),,$(error MODEL is required: a passed candidate with a batch variant))
+	uv run python -m scripts.stage_spend --estimate 0.01
+	uv run python -m scripts.transcriber_shortlist batch-image --model $(MODEL)
+# S2.7 spec §7.2 and walkthrough W2, paid (a fraction of a cent): one batch request carrying
+# the invented probe image.

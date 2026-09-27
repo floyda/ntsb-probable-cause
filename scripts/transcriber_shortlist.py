@@ -2,12 +2,17 @@
 
 Status
     Repeatable. Subcommands, in order:
-      fetch      -- read OpenRouter's public model list and save it under
-                    <data_dir>/s27/openrouter-models-<date>.json (free, no key)
-      shortlist  -- apply decision 0100 item 1's filter to a saved list; write
-                    docs/results/s27-transcriber-shortlist.txt (free)
-    Later tasks add ``probe`` (one invented page to each shortlisted model, paid) and
-    ``batch-image``/``batch-poll`` (one batch request carrying an image, paid).
+      fetch        -- read OpenRouter's public model list and save it under
+                      <data_dir>/s27/openrouter-models-<date>.json (free, no key)
+      shortlist    -- apply decision 0100 item 1's filter to a saved list; write
+                      docs/results/s27-transcriber-shortlist.txt (free)
+      probe        -- one invented page to each shortlisted model, in order, until eight
+                      pass; each reply saved under <data_dir>/s27/probe-replies/, and a
+                      passed model's reply also under tests/fixtures/openrouter/transcription/
+                      (paid, cents; Task 7 Step 6)
+      batch-image  -- walkthrough W2: one batch request carrying the invented page's image,
+                      for a passed candidate with a batch variant (paid, a fraction of a cent)
+      batch-poll   -- that batch's status, and whether its one reply parses (free)
     The saved list, not memory, is the source of every id, price, date and reasoning level
     (rule 2). The recorded replies are of an invented page and hold no docket text.
 """
@@ -15,8 +20,9 @@ Status
 import argparse
 import json
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -26,8 +32,23 @@ from typing import cast, get_args
 import httpx
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.docket.render import render_pages
+from ntsb_probable_cause.docket.transcribe import TRANSCRIBE, parse_reply, request_for, settings_for
+from ntsb_probable_cause.errors import ModelError, SchemaError
+from ntsb_probable_cause.gitinfo import commit_state
+from ntsb_probable_cause.model.batch import BatchClient
+from ntsb_probable_cause.model.client import ModelReply, cost_usd
+from ntsb_probable_cause.model.openrouter import OpenRouterClient, request_body
+from ntsb_probable_cause.scoring.budget import (
+    SpendRecord,
+    reserve_within_budget,
+    settle,
+    write_spend,
+)
+from ntsb_probable_cause.scoring.preparation import openrouter_clients
 from ntsb_probable_cause.settings import Settings
 from scripts.transcriber_test import CANDIDATES as S26_CANDIDATES
+from scripts.transcriber_test import FIXTURES, PROBE_LINES, probe_page
 
 MODELS_URL = "https://openrouter.ai/api/v1/models"
 RELEASED_FROM = datetime(2026, 6, 1, tzinfo=UTC)
@@ -224,6 +245,228 @@ def cmd_shortlist(path: Path) -> str:
     return render_shortlist(listed, refused, source=path, fetched=fetched)
 
 
+PROBE_WANTED = 8
+# Expected cost of one probe call, for the reservation (S2.6's probe: under $0.005 a model).
+PROBE_EXPECTED_USD = 0.005
+
+# The shortlisted models that passed the probe (Task 7 Step 6, set in Step 7), in shortlist
+# order: the candidates of the re-test (decision 0100 item 2). Empty until Step 7 runs.
+S27_CANDIDATES: tuple[str, ...] = ()
+
+
+def probe(
+    models: Sequence[str],
+    complete: Callable[[str], ModelReply],
+    *,
+    wanted: int = PROBE_WANTED,
+) -> tuple[list[str], list[str]]:
+    """Probe models in order until ``wanted`` pass; a failure is replaced by the next.
+
+    A model passes if it answers and the reply parses under instruction t1 (spec §7.2). How
+    many of ``PROBE_LINES`` it copies is printed, never judged here -- the re-test's answer
+    keys judge reading (Task 9).
+    """
+    passed: list[str] = []
+    lines: list[str] = []
+    for model in models:
+        if len(passed) == wanted:
+            break
+        try:
+            reply = complete(model)
+        except ModelError as error:
+            lines.append(f"{model}: FAILED -- {type(error).__name__}: {str(error)[:200]}")
+            continue
+        try:
+            text, kind = parse_reply(reply.content or "", TRANSCRIBE)
+        except SchemaError as error:
+            lines.append(f"{model}: the reply did not parse -- {error}")
+            continue
+        copied = sum(1 for line in PROBE_LINES if line in text)
+        lines.append(f"{model}: ok, kind {kind}, {copied} of {len(PROBE_LINES)} lines copied")
+        passed.append(model)
+    return passed, lines
+
+
+def cmd_probe(settings: Settings) -> str:
+    """One invented page to each shortlisted model, in order, until eight pass (spec §7.2).
+
+    Reserved, spent and settled as S2.6's probe was (``transcriber_test.cmd_probe``): the
+    client factory is built (which raises if ``OPENROUTER_API_KEY`` is missing) before the
+    reservation, and the spend row is written -- with ``settle`` -- in a ``finally``, so an
+    exception partway through still records what was spent. Pre-flight 2.6-cmd_probe: kept as
+    its own frame rather than calling ``transcriber_test.cmd_probe`` directly, which is fixed
+    to S2.6's four ``CANDIDATES`` and its own per-page cost table -- both outside this task's
+    files (``scripts/transcriber_test.py`` is not in Task 7's Files list) -- but it mirrors
+    that frame's shape and order exactly.
+
+    Pre-flight 1.3: every reply actually received (whether it parses or not) is saved first
+    under the git-ignored data directory; only a model that passes has its reply copied into
+    the committed fixtures folder, once the whole probe is done and ``passed`` is known.
+    """
+    (rendered,) = render_pages(probe_page())
+    payload, system = request_for(rendered, TRANSCRIBE, text_layer=None)
+    replies_dir = settings.data_dir / "s27" / "probe-replies"
+    replies_dir.mkdir(parents=True, exist_ok=True)
+    FIXTURES.mkdir(parents=True, exist_ok=True)
+    sha, dirty = commit_state()
+    started = datetime.now(UTC)
+    job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-s27-transcriber-probe"
+    factory = openrouter_clients(settings)
+    reserve_within_budget(
+        settings.runs_dir,
+        job_id,
+        len(S27_SHORTLIST) * PROBE_EXPECTED_USD,
+        settings.monthly_budget_usd,
+        now=started,
+    )
+    spent = 0.0
+    calls = 0
+    replies: dict[str, ModelReply] = {}
+    try:
+        with ExitStack() as stack:
+            make = factory(stack)
+
+            def complete(model: str) -> ModelReply:
+                nonlocal spent, calls
+                model_settings = settings_for(model, TRANSCRIBE)
+                reply = make().complete(payload, model_settings, system=system)
+                calls += 1
+                spent += cost_usd(reply, model_settings)[0]
+                replies[model] = reply
+                name = model.replace("/", "__") + ".json"
+                (replies_dir / name).write_text(reply.model_dump_json(indent=1) + "\n")
+                return reply
+
+            passed, lines = probe(S27_SHORTLIST, complete)
+    finally:
+        write_spend(
+            settings.runs_dir,
+            SpendRecord(
+                job_id=job_id,
+                kind="transcriber-test",
+                model="s27-shortlist",
+                started=started,
+                calls=calls,
+                cost_usd=spent,
+                commit_sha=sha,
+                dirty=dirty,
+            ),
+        )
+        settle(settings.runs_dir, job_id)
+    for model in passed:
+        name = model.replace("/", "__") + ".json"
+        (FIXTURES / name).write_text(replies[model].model_dump_json(indent=1) + "\n")
+    lines.append(f"passed ({len(passed)}): " + ", ".join(passed))
+    return "\n".join(lines)
+
+
+def cmd_batch_image(settings: Settings, model: str) -> str:
+    """Walkthrough W2: does OpenRouter's batch service now accept one image part?
+
+    ``BatchClient.submit`` refuses images by design (S2.6 decision W1) and must keep
+    refusing them, so this call is sent by hand: the batch request body ``BatchClient.submit``
+    would build, posted through ``OpenRouterClient.request_json`` directly.
+
+    Pre-flight 1.2: reserved and settled like ``cmd_probe``. The monthly budget guard runs
+    before the POST, and a ``SpendRecord`` (kind ``transcriber-test``) is written in a
+    ``finally`` whether the batch service accepts or refuses the image, so ``stage_spend``
+    always sees this call. The batch's own cost is not known until it is polled -- OpenRouter
+    prices a batch once its requests complete -- so this row's ``cost_usd`` is 0.0; a real
+    cost is recorded, in its own row, by ``cmd_batch_poll`` once ``reported_cost_usd`` is known.
+    """
+    (rendered,) = render_pages(probe_page())
+    payload, system = request_for(rendered, TRANSCRIBE, text_layer=None)
+    model_settings = settings_for(model, TRANSCRIBE).model_copy(update={"price_variant": "batch"})
+    sha, dirty = commit_state()
+    started = datetime.now(UTC)
+    job_id = f"{started:%Y%m%dT%H%M%S}-{sha}-s27-batch-image"
+    reserve_within_budget(
+        settings.runs_dir, job_id, PROBE_EXPECTED_USD, settings.monthly_budget_usd, now=started
+    )
+    calls = 0
+    result = ""
+    try:
+        body: dict[str, object] = {
+            "endpoint": "/v1/chat/completions",
+            "model": model_settings.model_id(),
+            "requests": [
+                {
+                    "custom_id": "s27-probe",
+                    "body": request_body(payload, model_settings, system=system, history=()),
+                }
+            ],
+        }
+        key = settings.require_openrouter_key()
+        with OpenRouterClient(key, base_url=settings.openrouter_base_url) as http:
+            try:
+                submitted = http.request_json(
+                    sources.BATCHES, method="POST", body=body, retry=False
+                )
+                calls = 1
+                result = (
+                    f"{model_settings.model_id()}: accepted as batch {submitted['id']}; "
+                    "poll it with batch-poll"
+                )
+            except ModelError as error:
+                result = f"{model_settings.model_id()}: refused -- {str(error)[:300]}"
+        return result
+    finally:
+        write_spend(
+            settings.runs_dir,
+            SpendRecord(
+                job_id=job_id,
+                kind="transcriber-test",
+                model=model_settings.model_id(),
+                started=started,
+                calls=calls,
+                cost_usd=0.0,
+                commit_sha=sha,
+                dirty=dirty,
+            ),
+        )
+        settle(settings.runs_dir, job_id)
+
+
+def cmd_batch_poll(settings: Settings, batch_id: str) -> str:
+    """The accepted batch's status, and whether its one reply parses.
+
+    Pre-flight 1.2: once the provider reports a cost, it is written as its own spend row,
+    under a distinct job id (the batch id, suffixed ``-poll``) so a batch counted once by
+    ``cmd_batch_image`` and again here is never summed twice by ``stage_spend``. Before the
+    cost is known (``reported_cost_usd is None``), no row is written -- the reservation from
+    ``cmd_batch_image`` was already settled there.
+    """
+    key = settings.require_openrouter_key()
+    with OpenRouterClient(key, base_url=settings.openrouter_base_url) as http:
+        status = BatchClient(http).poll(batch_id)
+    parsed = "no result yet"
+    for result in status.results:
+        if result.reply is None:
+            parsed = f"error: {result.error}"
+        else:
+            try:
+                parse_reply(result.reply.content or "", TRANSCRIBE)
+                parsed = "the reply parses"
+            except SchemaError as error:
+                parsed = f"the reply did not parse: {error}"
+    if status.reported_cost_usd is not None:
+        sha, dirty = commit_state()
+        write_spend(
+            settings.runs_dir,
+            SpendRecord(
+                job_id=f"{batch_id}-poll",
+                kind="transcriber-test",
+                model=batch_id,
+                started=datetime.now(UTC),
+                calls=1,
+                cost_usd=status.reported_cost_usd,
+                commit_sha=sha,
+                dirty=dirty,
+            ),
+        )
+    return f"batch {batch_id}: {status.status}; {parsed}; cost {status.reported_cost_usd}"
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one subcommand."""
     parser = argparse.ArgumentParser(prog="transcriber_shortlist")
@@ -234,14 +477,25 @@ def main(argv: list[str] | None = None) -> int:
     short_p = commands.add_parser("shortlist")
     short_p.add_argument("--models", type=Path, required=True)
     short_p.add_argument("--out", type=Path)
+    commands.add_parser("probe")
+    batch_image_p = commands.add_parser("batch-image")
+    batch_image_p.add_argument("--model", required=True)
+    batch_poll_p = commands.add_parser("batch-poll")
+    batch_poll_p.add_argument("--batch-id", required=True)
     args = parser.parse_args(argv)
     settings = Settings()
     if args.command == "fetch":
         text = cmd_fetch(settings, args.date)
-    else:
+    elif args.command == "shortlist":
         text = cmd_shortlist(args.models)
         if args.out is not None:
             args.out.write_text(text + "\n")
+    elif args.command == "probe":
+        text = cmd_probe(settings)
+    elif args.command == "batch-image":
+        text = cmd_batch_image(settings, args.model)
+    else:
+        text = cmd_batch_poll(settings, args.batch_id)
     print(text)
     return 0
 
