@@ -542,7 +542,7 @@ Re-run Task 2 Step 5's command. Expected: `True`. The marker file holds `"page_r
 
 **The choice, fixed now** (decision 0100 item 4): of the three rules, the one with the fewest pages whose transcribed characters are at least 90% of the characters `"all"` transcribed; ties go to the earlier rule in `PAGE_RULES`. Its effect on answers is measured at the meeting point, not here.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Task 4: the page-value counts and the page-rule choice."""
@@ -658,12 +658,12 @@ def test_main_refuses_a_sample_that_is_not_dev_400() -> None:
 
 (Move the `ReadingLookup` import to the top when writing the file; ruff's import-order rule requires it.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_page_value.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.page_value'`.
 
-- [ ] **Step 3: Implement `scripts/page_value.py`**
+- [x] **Step 3: Implement `scripts/page_value.py`**
 
 ```python
 """What each page rule keeps of S2.6's transcriptions on dev-400 (S2.7 spec §7.3, T3).
@@ -897,19 +897,19 @@ s27-page-value:
 # S2.7 spec §7.3 (T3), free: reads the dev-400 docket and transcription caches; no model call.
 ```
 
-- [ ] **Step 4: Run the tests, then `make check`**
+- [x] **Step 4: Run the tests, then `make check`**
 
 Run: `uv run pytest tests/test_page_value.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/page_value.py tests/test_page_value.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: T3, the page-value counts and the page-rule choice"
 ```
 
-- [ ] **Step 6: Run it on `dev-400` (free) and commit the results file**
+- [x] **Step 6: Run it on `dev-400` (free) and commit the results file**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -2486,3 +2486,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 3 (pre-flight 2.5): `_StubDocuments` alone serves only image-only pages (`_SCAN`), so `{j.mixed for j in calls[0]} == {False}` under `--page-rule image-only` would hold under `"all"` too and cannot show the rule is doing anything. Rather than editing the shared `_StubDocuments`/`_SCAN` (used by every other `transcribe` test, whose page counts are pinned in already-committed assertions, e.g. the dry-run test's "4 pages"), a new subclass `_StubDocumentsWithMixedPage` adds one more document holding a text-and-image page (`_MIXED_SCAN`, built with `PageSpec(text=_MIXED_TEXT, images=(...))`, chars over `SCAN_PAGE_MAX_CHARS`), used only by the new model/page-rule test via its own `monkeypatch.setattr`. Under `"image-only"` that page is never chosen (`page_choice` returns `None` for a "text and image" page); under `"all"` it would be. This keeps every existing test's page counts and assertions unchanged. **Review fix round 1:** the ruling asked for both halves -- present under `all`, absent under `image-only` -- and only the absence half existed. Added a second test, `test_transcribe_with_a_mixed_page_sends_it_under_the_all_rule`, on the same `_StubDocumentsWithMixedPage` stub with `--page-rule all`, asserting `True in {j.mixed for j in calls[0]}`, so the image-only test's absence assertion is now shown to depend on the rule rather than being true of the stub regardless.
 - 2026-09-27, Task 3 (pre-flight 2.7): Step 6's plan text ("the projection line ends `0 not yet read; projected $0.00`") is read as "contains" — the real line ends with the skipped-documents clause (`_cmd_transcribe`'s `print`), which the plan's own Step 3 code shows.
 - 2026-09-27, Task 3 Steps 6–7: the dry run's projection line read `dev-400: 12458 pages to read with qwen/qwen3.5-122b-a10b at 150 dpi, rule all, 0 not yet read; projected $0.00; 8 document(s) could not be listed, fetched or parsed`, so the real command was run per the safeguard. It made no job, no reservation and no model call (`read 0 pages now ($0.00); 59 of 12458 failed in all`, within the 2% retry threshold) and wrote `dev-400`'s marker under the new stamp. S2.6's old marker file, `data/transcriptions/done/dev-400-940436639bbd.json`, stays on disk unused; the new one is `data/transcriptions/done/dev-400-60ddd78408f8.json`, holding `"model": "qwen/qwen3.5-122b-a10b"`, `"page_rule": "all"` and `"dpi": 150` beside its counts. Task 2 Step 5's command now prints `True` for `dev-400`.
+- 2026-09-27, Task 4 (pre-flight risk 2): `main`'s docket-listing loop catches `DocketError` from `docs.listing(mkey)`, counting the case as skipped (the same boundary `_page_jobs`, `apps/eval/__main__.py`, draws), and prints the skipped count as a separate line after the report text — the brief's Step 3 code only wrapped `docs.document`, not `docs.listing`. `report()`'s signature is unchanged (`sample`, `cases`, `pdfs`); the skipped count is not folded into the results file, only printed to stdout, since the brief did not ask for a fourth field there.

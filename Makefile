@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value
 
 check: lint type test
 
@@ -217,3 +217,7 @@ stage-spend:
 	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
 # S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
 # S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
+
+s27-page-value:
+	uv run python -m scripts.page_value --sample dev-400 --out docs/results/s27-page-value.txt
+# S2.7 spec §7.3 (T3), free: reads the dev-400 docket and transcription caches; no model call.
