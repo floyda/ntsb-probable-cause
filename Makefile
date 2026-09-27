@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend
 
 check: lint type test
 
@@ -212,3 +212,8 @@ s26-transcribe-dev:
 # up. Kept apart from the dry run (Task 14 review, I2) so there is a point to stop between them.
 # Run on 2026-09-26 with PER_PAGE=0.0017. The job reserves pages x PER_PAGE and stops once that
 # is spent (final review, I1), so a PER_PAGE set too low stops the job early, within a few in-flight pages of its reservation.
+
+stage-spend:
+	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
+# S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
+# S2.7 target runs this first with its estimate and stops if the $25 line would be passed.

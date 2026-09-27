@@ -89,7 +89,7 @@ Task numbers in this table are final; the tasks below use them.
 
 **Why a library function.** `scripts/transcriber_test.py` already counts S2.6's spend by commit (`_stage_commits`, `_in_stage`), privately. S2.7 needs the same count from two tracks and from every paid target; moving the counting into `scoring/budget.py` gives one tested implementation. `transcriber_test.py` is not changed (it is S2.6's record).
 
-- [ ] **Step 1: Write the failing gitinfo tests**
+- [x] **Step 1: Write the failing gitinfo tests**
 
 ```python
 """gitinfo: commits reachable from several heads, branches, and committed files (S2.7)."""
@@ -149,12 +149,12 @@ def test_branches_containing_finds_every_branch_grown_from_a_commit(tmp_path: Pa
     assert set(gitinfo.branches_containing(first, repo)) == {"main", "s27-guidance"}
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_gitinfo.py -v`
 Expected: FAIL with `AttributeError: module 'ntsb_probable_cause.gitinfo' has no attribute 'commits_between'`
 
-- [ ] **Step 3: Add the two functions to `gitinfo.py`**
+- [x] **Step 3: Add the two functions to `gitinfo.py`**
 
 Add `from collections.abc import Sequence` to the imports, and after `commits_since`:
 
@@ -189,12 +189,12 @@ def branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]:
     return tuple(listing.split())
 ```
 
-- [ ] **Step 4: Run the gitinfo tests to verify they pass**
+- [x] **Step 4: Run the gitinfo tests to verify they pass**
 
 Run: `uv run pytest tests/test_gitinfo.py -v`
 Expected: PASS (2 tests)
 
-- [ ] **Step 5: Write the failing budget tests** (append to `tests/test_budget.py`)
+- [x] **Step 5: Write the failing budget tests** (append to `tests/test_budget.py`)
 
 ```python
 from datetime import UTC, datetime
@@ -260,12 +260,12 @@ def test_stage_spent_counts_runs_and_spend_rows_of_the_stage_only(tmp_path) -> N
     assert stage_spent(runs, _STAGE) == (1.25, 0.5)
 ```
 
-- [ ] **Step 6: Run them to verify they fail**
+- [x] **Step 6: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_budget.py -v -k stage`
 Expected: FAIL with `ImportError: cannot import name 'in_stage'`
 
-- [ ] **Step 7: Add `in_stage` and `stage_spent` to `scoring/budget.py`**
+- [x] **Step 7: Add `in_stage` and `stage_spent` to `scoring/budget.py`**
 
 Add `from collections.abc import Collection` and `from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl` if not already imported (check the module's imports; `month_spent` already reads both record kinds), then:
 
@@ -301,12 +301,12 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
     return runs, spend
 ```
 
-- [ ] **Step 8: Run the budget tests to verify they pass**
+- [x] **Step 8: Run the budget tests to verify they pass**
 
 Run: `uv run pytest tests/test_budget.py -v`
 Expected: PASS
 
-- [ ] **Step 9: Write the failing script tests** (`tests/test_stage_spend.py`)
+- [x] **Step 9: Write the failing script tests** (`tests/test_stage_spend.py`)
 
 ```python
 """scripts/stage_spend.py: S2.7's spend against its $25 line (decision 0098 item 6)."""
@@ -362,12 +362,12 @@ def test_stage_commits_counts_head_and_every_stage_branch(monkeypatch: pytest.Mo
     assert asked == [["971ee40", "HEAD", "s27-coding-guidance", "s27-transcriber"]]
 ```
 
-- [ ] **Step 10: Run them to verify they fail**
+- [x] **Step 10: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_stage_spend.py -v`
 Expected: FAIL with `ImportError: cannot import name 'stage_spend' from 'scripts'`
 
-- [ ] **Step 11: Write `scripts/stage_spend.py`**
+- [x] **Step 11: Write `scripts/stage_spend.py`**
 
 ```python
 """S2.7's spend, counted by commit on every branch grown from its parent, against its $25 line.
@@ -464,12 +464,12 @@ if __name__ == "__main__":
 
 (`ruff` may ask to wrap the long `raise` line; wrap it, behaviour unchanged.)
 
-- [ ] **Step 12: Run the script tests to verify they pass**
+- [x] **Step 12: Run the script tests to verify they pass**
 
 Run: `uv run pytest tests/test_stage_spend.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 13: Add the Makefile target**
+- [x] **Step 13: Add the Makefile target**
 
 Add `stage-spend` to `.PHONY`, and:
 
@@ -480,12 +480,12 @@ stage-spend:
 # S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
 ```
 
-- [ ] **Step 14: Run the full check**
+- [x] **Step 14: Run the full check**
 
 Run: `make check`
 Expected: PASS
 
-- [ ] **Step 15: Commit**
+- [x] **Step 15: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/gitinfo.py src/ntsb_probable_cause/scoring/budget.py scripts/stage_spend.py Makefile tests/test_gitinfo.py tests/test_budget.py tests/test_stage_spend.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -4763,3 +4763,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W6, Andy's decision ("I guess A"): spec §12's "no sentence shared with a development narrative" and "the draw is reproducible" each split into a data-free CI test (guidance names, registrations and case-number patterns; the sealed list's size, years and disjointness) and a full local check at fixed steps (`scripts/check_guidance.py` before each round's registration, recorded in it; `scripts/draw_sealed.py --verify` at the draw and before the sealed run). CI holds no case data (rule 4).
 - 2026-09-27, walkthrough W7, Andy's decision (A): a miss group with fewer than 8 cases gives all its cases to the hand-read, with no top-up; the results file prints each group's card count (`round0_handread.draw_cards`, Task 6).
 - 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
+- 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.

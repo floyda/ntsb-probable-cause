@@ -10,14 +10,17 @@ from ntsb_probable_cause.scoring.budget import (
     RESERVATION_FILE,
     SpendRecord,
     budget_lock,
+    in_stage,
     month_spent,
     open_reservations,
     release,
     reserve,
     reserve_within_budget,
     settle,
+    stage_spent,
     write_spend,
 )
+from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 from ntsb_probable_cause.scoring.runner import refuse_over_budget
 
 NOW = datetime(2026, 9, 18, tzinfo=UTC)
@@ -92,3 +95,56 @@ def test_reserve_within_budget_refuses_past_the_month(tmp_path: Path) -> None:
         reserve_within_budget(tmp_path, "t2", 11.0, 40.0, now=now)
     reserve_within_budget(tmp_path, "t2", 9.0, 40.0, now=now)
     assert open_reservations(tmp_path) == {"t2": 9.0}
+
+
+_STAGE = frozenset({"abcdef1234567890", "1234567abcdef000"})
+
+
+def _run(runs_dir: Path, run_id: str, sha: str, cost: float) -> None:
+    write_jsonl(
+        runs_dir / run_id / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=(),
+                includes=(),
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha=sha,
+                dirty=False,
+                started=datetime(2026, 9, 27, tzinfo=UTC),
+                cost_usd=cost,
+            )
+        ],
+    )
+
+
+def test_in_stage_matches_a_short_sha_by_prefix_and_refuses_a_too_short_one() -> None:
+    assert in_stage("abcdef1", _STAGE)
+    assert not in_stage("abc", _STAGE)
+    assert not in_stage("fffffff", _STAGE)
+
+
+def test_stage_spent_counts_runs_and_spend_rows_of_the_stage_only(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _run(runs, "in-stage", "abcdef1", 1.25)
+    _run(runs, "other-stage", "9999999", 7.0)
+    write_spend(
+        runs,
+        SpendRecord(
+            job_id="job",
+            kind="transcription",
+            model="m",
+            started=datetime(2026, 9, 27, tzinfo=UTC),
+            calls=3,
+            cost_usd=0.5,
+            commit_sha="1234567",
+            dirty=False,
+        ),
+    )
+    assert stage_spent(runs, _STAGE) == (1.25, 0.5)
