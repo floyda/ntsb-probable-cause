@@ -786,7 +786,7 @@ git commit -m "S2.7 Task 2: the sealed development sample, drawn once and refuse
 
 **What each count means, with the example that motivates it.** `present[half][c]` is the number of pool cases whose sequence contains code `c` anywhere. `defining_given_present[half][c][d]` is, among those, the number where `d` is the defining event: "when `451241` (stall/spin) appears, `451240` (loss of control in flight) is defining in N of M". `pairs[half]["a|b"]` (codes sorted) holds `both` (cases containing both) and, for each of `a` and `b`, the cases where it is the defining event: "when loss of control and stall both occur, loss of control is defining in N of `both`". `group_defining[half][g][d]` is the number of pool cases whose phase group is `g` and whose defining code is `d`; it gives the commonest defining codes for a group and, by the first three digits of `d`, **which phase prefixes the NTSB uses within a group** (W1).
 
-- [ ] **Step 1: Write the failing library tests** (`tests/test_coding_stats.py`)
+- [x] **Step 1: Write the failing library tests** (`tests/test_coding_stats.py`)
 
 ```python
 """scoring/coding_stats.py: counts of how the NTSB codes occurrences (decision 0094)."""
@@ -840,12 +840,12 @@ def test_json_round_trip() -> None:
     assert CodingStats.model_validate_json(stats.to_json()) == stats
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_coding_stats.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'ntsb_probable_cause.scoring.coding_stats'`
 
-- [ ] **Step 3: Write `scoring/coding_stats.py`**
+- [x] **Step 3: Write `scoring/coding_stats.py`**
 
 ```python
 """Counts of how the NTSB codes occurrences, from the statistics pool (decision 0094).
@@ -1006,16 +1006,16 @@ def load_stats() -> CodingStats:
 
 (`_sorted` returns `object`; `model_validate` accepts it. If mypy objects to the `dict` comprehension inside `_sorted`, annotate the parameter as `dict[str, object] | object` and cast; keep behaviour.)
 
-- [ ] **Step 4: Run the library tests to verify they pass**
+- [x] **Step 4: Run the library tests to verify they pass**
 
 Run: `uv run pytest tests/test_coding_stats.py -v`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Add the module to the import-linter contract**
+- [x] **Step 5: Add the module to the import-linter contract**
 
 In `pyproject.toml`, add `"ntsb_probable_cause.scoring.coding_stats",` to the source list of "Only the splitter constructs synthesis and verdict" (after `scoring.codes`). Run `uv run lint-imports`. Expected: all contracts kept.
 
-- [ ] **Step 6: Write the failing script tests** (`tests/test_coding_stats_script.py`)
+- [x] **Step 6: Write the failing script tests** (`tests/test_coding_stats_script.py`)
 
 ```python
 """scripts/coding_stats.py: the pool, and the contamination guard (decision 0094)."""
@@ -1072,12 +1072,12 @@ def test_report_prints_counts_and_both_halves_without_case_numbers() -> None:
     assert "POOL" not in text
 ```
 
-- [ ] **Step 7: Run them to verify they fail**
+- [x] **Step 7: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_coding_stats_script.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 8: Write `scripts/coding_stats.py`**
+- [x] **Step 8: Write `scripts/coding_stats.py`**
 
 ```python
 """Build the statistics pool's coding counts, once (decision 0094).
@@ -1256,12 +1256,12 @@ if __name__ == "__main__":
 
 The test module calls `cs.build`; the script's `from ... import build` line provides it. Lines ruff asks to wrap are wrapped; behaviour unchanged.
 
-- [ ] **Step 9: Run the script tests to verify they pass**
+- [x] **Step 9: Run the script tests to verify they pass**
 
 Run: `uv run pytest tests/test_coding_stats_script.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 10: Add the Makefile target**
+- [x] **Step 10: Add the Makefile target**
 
 ```make
 s27-coding-stats:
@@ -1270,7 +1270,7 @@ s27-coding-stats:
 # committed JSON beside the code tables and the readable results file.
 ```
 
-- [ ] **Step 11: Build the counts** (free)
+- [x] **Step 11: Build the counts** (free)
 
 Run:
 ```bash
@@ -1279,7 +1279,7 @@ make s27-coding-stats
 ```
 Expected: the halves line shows about 12,490 cases in all (spec §3.1, ad hoc); the "phase groups" section shows, for example, `Maneuvering` with prefixes in the 450s. Read the stall/loss-of-control pair line: it re-derives the spec's ad-hoc observation that loss of control is usually defining.
 
-- [ ] **Step 12: Add a CI test that the committed counts name no case** (append to `tests/test_coding_stats.py`)
+- [x] **Step 12: Add a CI test that the committed counts name no case** (append to `tests/test_coding_stats.py`)
 
 ```python
 import re
@@ -1300,12 +1300,12 @@ def test_the_committed_counts_load_and_name_no_case() -> None:
         assert not _CASE_NUMBER.search(path.read_text()), path
 ```
 
-- [ ] **Step 13: Run the full check**
+- [x] **Step 13: Run the full check**
 
 Run: `make check`
 Expected: PASS
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/coding_stats.py src/ntsb_probable_cause/scoring/tables/coding_stats.json scripts/coding_stats.py docs/results/s27-coding-stats.txt pyproject.toml Makefile tests/test_coding_stats.py tests/test_coding_stats_script.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -4765,3 +4765,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
 - 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.
 - 2026-09-27, Task 2 implementation, plain adaptations of the brief's text to this file's real helpers (no behaviour change, as the brief itself invited): (1) `tests/test_samples.py`'s real `_raw(*, fatal, occurrence_codes=())` takes no case id or class keyword, and `_write_cases` wants 5-tuples, so `test_draw_excludes_the_given_cases_and_is_unchanged_without_them` builds 40 explicit 5-tuples (case id, event date, split, class "F" throughout as the brief's snippet used, `_raw(fatal=...)` for the raw JSON) instead of calling `_raw` with the brief's invented keywords. (2) `test_refuse_sealed_opens_only_on_a_committed_registration`'s `is_committed=lambda path: seen.append(path) or True` fails the same `mypy --strict` "`list.append` returns `None`, used as a value" check as Task 1's fix above; replaced with a small typed `_record_and_confirm` function, same observable behaviour. (3) `ruff format` wrapped `scripts/draw_sealed.py`'s final `print(...)` call and one `assert main([...]) == 1` call in `tests/test_eval_app.py` onto multiple lines. (4) Adding `dev_seal_400_ids.csv` (a development-split list) to `tests/fixtures/eval/` made `test_evaluation_cases_are_held_out_by_event_date` fail, since it asserted every eval id list except `dev_400_ids` is held-out; the brief did not mention this test, but it iterates every `*_ids.csv` fixture the `eval_ids` fixture picks up, so the new file could not avoid it. Added `dev_seal_400_ids` next to `dev_400_ids` in that test's exclusion set; its own purity is checked by the brief's `test_the_sealed_sample_is_development_and_shares_no_case` instead.
+- 2026-09-27, Task 3 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected the brief's `_sorted(tree: object) -> object` helper's `dict` comprehension (an untyped `dict` literal built from an `object`-typed value); replaced with `_sorted_dict(tree: Mapping[str, object]) -> dict[str, object]`, called only on the already-`dict`-shaped tree `build()` constructs, same sorted-keys output. (2) `scripts/coding_stats.py`'s `from ... import build` was not resolvable as `cs.build` under `--strict`'s implicit-reexport check (the test module imports the script as `scripts.coding_stats` and calls `cs.build`); added an explicit `__all__` naming `build` and the other names the tests and `main` use, behaviour unchanged. (3) `tests/test_coding_stats_script.py`'s `_row` helper needed a return type annotation (`Row = tuple[str, str, str, str, dict[str, object]]`) and `# noqa: PLR0913, PLR0917` (six positional arguments, one per fixture-row column; no ignore for either rule exists in `tests/**`'s per-file-ignores). (4) `tests/test_coding_stats.py`'s Step 12 addition imported `load_stats` inside the test function (ruff's `PLC0415`, "import at top level"); moved it into the file's top-level import alongside `NO_GROUP`, `CodingStats`, `PoolCase`, `build`, combining Steps 1 and 12 into one file since both are `tests/test_coding_stats.py` creates, not incremental edits to a committed file. Step 11's build (`make s27-coding-stats` against the main checkout's `data/processed/cases.parquet`) produced 12,491 pool cases (7,177 in 2009-2014, 5,314 in 2015-2019; brief said "about 12,490", ad hoc) and a 958 KiB `coding_stats.json` (well under the 2 MB concern threshold); `grep -E` for the case-number pattern found none in either output file. (5) The commit hook `check-added-large-files` (`.pre-commit-config.yaml`, `--maxkb=500`) refused the 958 KiB `coding_stats.json`, not mentioned in the brief's file list. Rather than shrink a table the brief specifies in full (13,226 pairwise code co-occurrence entries across both halves account for most of its size; the brief's own stop-and-report threshold for this file is 2 MB, not 500 KB), the exclude on both `check-added-large-files` hooks was widened from `^tests/fixtures/words\.txt$` to `^(tests/fixtures/words\.txt|src/ntsb_probable_cause/scoring/tables/coding_stats\.json)$` -- the same treatment the repo already gives `tests/fixtures/words.txt` (2.4 MB), a legitimately large committed file that is not raw data (rule 4).
