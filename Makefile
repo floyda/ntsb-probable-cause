@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round s27-check-guidance s27-round-result
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result
 
 check: lint type test
 
@@ -256,15 +256,21 @@ s27-round0-results:
 
 s27-check:
 	$(if $(RUN),,$(error RUN is required: the answer run id))
-	$(if $(WAY),,$(error WAY is required: rule, luna or jev))
+	$(if $(WAY),,$(error WAY is required: rule, luna, jev or jev2))
 	uv run python -m scripts.stage_spend --estimate $(if $(filter luna,$(WAY)),0.90,0.05)
 	uv run ntsb-eval check $(RUN) --way $(WAY)
 # S2.7 spec §5, post-pass. rule: free. luna: about $0.36 per 400 cases at the standard price
 # (plan W3). jev: a fraction of a cent (self-reported price); needs TYPESAFE_API_KEY.
+# jev2: the registered second Jev check (decision 0103), the same price and key as jev.
 
 s27-round1-results:
 	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
 	uv run python -m scripts.round1_report --answers 20260926T082427-d19aafa-dev-400-B $(REPEAT) --out docs/results/s27-round1-dev.txt
+
+s27-round1-jev2-results:
+	uv run python -m scripts.round1_jev2_report --answers 20260926T082427-d19aafa-dev-400-B 20260927T111202-fbab38a-dev-400-B --out docs/results/s27-round1-jev2-dev.txt
+# S2.7 Task 12a, free: jev2 against no check, the rule, Luna and Round 1's Jev on the two answer
+# sets the registration names (docs/rounds/s27-round1-jev2.md), and decision 0103's outcome.
 
 s27-round:
 	$(if $(PER_CASE),,$(error PER_CASE is required: the last run's cost per case rounded up))

@@ -76,3 +76,11 @@ def test_the_committed_counts_load_and_name_no_case() -> None:
         Path("docs/results/s27-coding-stats.txt"),
     ):
         assert not _CASE_NUMBER.search(path.read_text()), path
+
+
+def test_group_n_counts_every_past_case_in_a_group() -> None:
+    stats = _stats()
+    assert stats.group_n("Maneuvering") == 3
+    assert stats.group_n("Landing") == 1  # the empty-sequence case is not counted
+    assert stats.group_n(NO_GROUP) == 1
+    assert stats.group_n("Cruise") == 0

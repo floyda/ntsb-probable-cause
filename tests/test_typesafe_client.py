@@ -11,6 +11,7 @@ import respx
 from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.client import PageImage, Payload
 from ntsb_probable_cause.model.typesafe import (
+    JEV_PINNED,
     NoulAnswer,
     ScoreAnswer,
     TypeSafeClient,
@@ -152,3 +153,29 @@ def test_ask_refuses_a_payload_that_carries_images() -> None:
     payload = Payload.for_page(PageImage(media_type="image/jpeg", data=b"\xff\xd8"))
     with TypeSafeClient("k", base_url=BASE) as client, pytest.raises(ModelError, match="images"):
         client.ask(payload, QUESTIONS)
+
+
+def test_jev_pinned_is_the_registered_model_by_name_not_the_alias() -> None:
+    assert JEV_PINNED == "jev-1.13.0"  # decision 0103: pinned, not jev-latest
+
+
+@respx.mock
+def test_ask_state_sends_an_object_state_as_a_json_object() -> None:
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=saved_response("choices")))
+    state: dict[str, object] = {
+        "phase_of_flight_group": "Landing",
+        "candidates": [{"code": "552300", "meaning": "Landing / Hard landing"}],
+    }
+    with TypeSafeClient("k", base_url=BASE, sleep=lambda _: None) as client:
+        client.ask_state(state, QUESTIONS, model=JEV_PINNED)
+    body = json.loads(route.calls[0].request.content)
+    assert body == {"state": state, "model": "jev-1.13.0", "questions": QUESTIONS}
+
+
+@respx.mock
+def test_ask_state_still_sends_a_string_state_as_a_string() -> None:
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=saved_response("choices")))
+    with TypeSafeClient("k", base_url=BASE, sleep=lambda _: None) as client:
+        client.ask_state("plain text", QUESTIONS)
+    body = json.loads(route.calls[0].request.content)
+    assert body == {"state": "plain text", "model": "jev-latest", "questions": QUESTIONS}

@@ -4,13 +4,14 @@ A finished arm B run is read; each answered case gets a second step whose hypoth
 re-ordered occurrence codes; occurrence scores are recomputed and finding scores kept. The result
 is a derived run folder ``<run id>-check-<way>`` that the report compares like any run. Its run
 record's cost is the check's alone: the answers were paid for, and counted, in the source run.
-Development runs only; the Jev way exists for this purpose alone (decision 0097).
+Development runs only; the Jev ways exist for this purpose alone (decisions 0097, 0103).
 """
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -18,7 +19,7 @@ from typing import Literal
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ConfigurationError, SchemaError
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings, Payload, cost_usd
-from ntsb_probable_cause.model.typesafe import TypeSafeClient
+from ntsb_probable_cause.model.typesafe import JEV_PINNED, TypeSafeClient
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.scoring import ordering
 from ntsb_probable_cause.scoring.budget import settle
@@ -28,12 +29,21 @@ from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import rescore_occurrence
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 
-Way = Literal["rule", "luna", "jev"]
+Way = Literal["rule", "luna", "jev", "jev2"]
+# Round 1's ways, exactly as ``scripts/round1_report.py`` reads them; that report and its
+# results file are not changed by the second, registered Jev check (decision 0103 item 4).
 WAYS: tuple[Way, ...] = ("rule", "luna", "jev")
+# Every way ``ntsb-eval check`` accepts: Round 1's, and ``jev2`` (decision 0103).
+CHECK_WAYS: tuple[Way, ...] = (*WAYS, "jev2")
 CHECK_TOOL = "ordering_check"
 # Estimates for the budget guard (plan W3): GPT-6 Luna at the standard price, about 1,500
 # prompt and 1,500 output tokens a case; Jev at its self-reported input price.
-EXPECTED_COST_PER_CASE_USD: Mapping[Way, float] = {"rule": 0.0, "luna": 0.002, "jev": 0.0001}
+EXPECTED_COST_PER_CASE_USD: Mapping[Way, float] = {
+    "rule": 0.0,
+    "luna": 0.002,
+    "jev": 0.0001,
+    "jev2": 0.0001,
+}
 MAX_OUTPUT_TOKENS = 4000
 
 
@@ -50,6 +60,11 @@ class CheckOutcome:
     note: str = ""
     # Decision 0101: whether the first code moved toward a more common option in the group.
     toward_more_common: bool = False
+    # Anything else a way records, written into the step's ``arguments`` beside the ranking and
+    # the push; empty for rule, luna and jev, so their steps are exactly as before. ``jev2``
+    # records Jev's choice, confidence and every option's probability here (decision 0103),
+    # because no record gains a field (a new field once broke track 2's budget checks, 42e67a7).
+    details: Mapping[str, object] = field(default_factory=dict)
 
 
 Checker = Callable[[Hypothesis, str | None], CheckOutcome]
@@ -175,6 +190,61 @@ def jev_checker(client: TypeSafeClient, stats: CodingStats, tables: CodeTables) 
     return check
 
 
+JEV2_UNCHANGED = "none_of_these ranked first: answer unchanged (decision 0103)"
+
+
+def jev2_checker(client: TypeSafeClient, stats: CodingStats, tables: CodeTables) -> Checker:
+    """The registered second Jev check (decision 0103; ``docs/rounds/s27-round1-jev2.md``).
+
+    One request per case, one Choice named ``defining``, sent to the pinned model with the
+    object state. Options are ranked by Jev's probabilities, ties by the model's own order; if
+    ``none_of_these`` ranks first the answer is left unchanged. No confidence cut-off: the
+    confidence is recorded, never used to decide.
+    """
+
+    def check(hypothesis: Hypothesis, group: str | None) -> CheckOutcome:
+        guesses = _codes(hypothesis)
+        options = ordering.candidates(guesses, group, stats)
+        state = ordering.jev2_state(
+            guesses, options, group, hypothesis.evidence_narrative, stats, tables
+        )
+        question = ordering.jev2_question(options, tables)
+        exchange = client.ask_state(state, {"defining": question}, model=JEV_PINNED)
+        answer = exchange.reply.choice("defining")
+        tokens = exchange.reply.usage.input_tokens
+        order = ordering.jev2_order(answer.probabilities, guesses, options)
+        ranking = ordering.jev2_ranking(answer.probabilities, guesses, options)
+        details: dict[str, object] = {
+            "choice": answer.choice,
+            "confidence": answer.confidence,
+            # In the ranked order, ties already broken by the model's order.
+            "probabilities": {label: answer.probabilities[label] for label in order},
+        }
+        cost = tokens * sources.JEV.input_usd_per_mtok / 1_000_000
+        fingerprint = _fingerprint(json.dumps({"state": state, "question": question}))
+        if not ranking:
+            return CheckOutcome(
+                ranking=guesses,
+                model=exchange.reply.model,
+                cost_usd=cost,
+                fingerprint=fingerprint,
+                prompt_tokens=tokens,
+                note=JEV2_UNCHANGED,
+                details=details,
+            )
+        return CheckOutcome(
+            ranking=ranking,
+            model=exchange.reply.model,
+            cost_usd=cost,
+            fingerprint=fingerprint,
+            prompt_tokens=tokens,
+            toward_more_common=_toward(guesses, ranking, group, stats),
+            details=details,
+        )
+
+    return check
+
+
 def checked_case(
     case: CaseResult,
     outcome: CheckOutcome,
@@ -192,6 +262,7 @@ def checked_case(
             "arguments": {
                 "ranking": list(outcome.ranking),
                 "toward_more_common": outcome.toward_more_common,
+                **outcome.details,
             },
             "reason": outcome.note,
             "returned_roles": (),

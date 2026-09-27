@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -2077,3 +2078,162 @@ def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
     _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
     _write_run(runs, "20260926T000000-abc1234-dev-400-B-check-rule", finished=when, arm="B")
     assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
+
+
+# --- `check --way jev2` (decision 0103): the same refusals and reservation as `jev` ---
+
+
+def _boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+    raise AssertionError("the jev2 way needs no OpenRouter client")
+
+
+def _boom_jev(_settings: Settings) -> TypeSafeClient:
+    raise AssertionError("no TypeSafe client may be built for a refused jev2 check")
+
+
+def _jev2_client(runs: Path, seen: list[dict[str, object]]) -> TypeSafeClient:
+    """A TypeSafe client on a mock transport: answers every option, notes open reservations."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append({"body": body, "reserved": bool(open_reservations(runs))})
+        labels = list(body["questions"]["defining"]["criteria"])
+        probabilities = dict.fromkeys(labels, 0.0)
+        probabilities[labels[-2]] = 1.0  # the last code, not none_of_these
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 1500, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": labels[-2],
+                        "confidence": 0.7,
+                        "probabilities": probabilities,
+                    }
+                },
+            },
+        )
+
+    return TypeSafeClient(
+        "k", base_url="https://api.typesafe.ai", transport=httpx.MockTransport(handler)
+    )
+
+
+def _checkable_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+    return runs
+
+
+def test_check_way_jev2_reserves_calls_the_pinned_model_and_settles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    seen: list[dict[str, object]] = []
+    exit_code = main(
+        ["check", run_id, "--way", "jev2"],
+        client_factory=_boom_client,
+        jev_factory=lambda _settings: _jev2_client(runs, seen),
+    )
+    assert exit_code == 0
+    assert len(seen) == 1
+    assert seen[0]["reserved"] is True  # the reservation is open for the paid call
+    body = cast("dict[str, object]", seen[0]["body"])
+    assert body["model"] == "jev-1.13.0"
+    assert isinstance(body["state"], dict)
+    assert open_reservations(runs) == {}
+    derived = runs / f"{run_id}-check-jev2"
+    step = read_jsonl(derived / "cases.jsonl", CaseResult)[0].steps[-1]
+    assert {"choice", "confidence", "probabilities"} <= set(step.arguments)
+    assert f"check {run_id}-check-jev2:" in capsys.readouterr().out
+
+
+def test_check_way_jev2_run_twice_is_refused_the_second_time_before_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    seen: list[dict[str, object]] = []
+    assert (
+        main(
+            ["check", run_id, "--way", "jev2"],
+            client_factory=_boom_client,
+            jev_factory=lambda _settings: _jev2_client(runs, seen),
+        )
+        == 0
+    )
+    derived = runs / f"{run_id}-check-jev2"
+    first = (derived / "run.jsonl").read_text()
+    assert (
+        main(["check", run_id, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "exists" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert (derived / "run.jsonl").read_text() == first
+
+
+def test_check_way_jev2_refuses_an_unfinished_source_before_reserving_or_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = _write_checkable_run(runs, run_id)
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    (folder / "run.jsonl").unlink()
+    write_jsonl(folder / "run.jsonl", [record.model_copy(update={"finished": None})])
+    before = {p.name for p in runs.iterdir()}
+    assert (
+        main(["check", run_id, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "finished" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert {p.name for p in runs.iterdir()} == before
+
+
+def test_check_way_jev2_refuses_an_ablation_source_and_a_held_out_run_before_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    ablation = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, ablation, exclusions=("phase_of_flight",))
+    assert (
+        main(
+            ["check", ablation, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev
+        )
+        == 1
+    )
+    assert "ablation" in capsys.readouterr().err
+    held = "20260926T000000-abc1234-heldout-400-B"
+    _write_judgeable_run(runs, held, "c1", sample="heldout-400", arm="B")
+    assert (
+        main(["check", held, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "development" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+
+
+def test_check_way_jev2_is_refused_over_budget_without_building_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    exit_code = main(
+        ["check", run_id, "--way", "jev2", "--budget-usd", "0.00001"],
+        client_factory=_boom_client,
+        jev_factory=_boom_jev,
+    )
+    assert exit_code == 1
+    assert "budget" in capsys.readouterr().err
+    assert open_reservations(runs) == {}

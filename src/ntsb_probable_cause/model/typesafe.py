@@ -21,6 +21,8 @@ from ntsb_probable_cause.errors import ModelError
 from ntsb_probable_cause.model.client import Payload
 
 DEFAULT_MODEL = "jev-latest"
+# Decision 0103: the registered second check (`jev2`) names its model version, not the alias.
+JEV_PINNED = "jev-1.13.0"
 
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _USER_AGENT = "ntsb-probable-cause (https://github.com/floyda/ntsb-probable-cause)"
@@ -88,16 +90,20 @@ class SystemOneReply(BaseModel):
 
 
 def _body(
-    state: str,
+    state: str | Mapping[str, object],
     questions: Mapping[str, Mapping[str, object]],
     *,
     model: str,
 ) -> dict[str, object]:
-    """The exact JSON sent, for either a ``Payload`` or a raw state string."""
+    """The exact JSON sent, for a ``Payload``, a raw state string or a state object.
+
+    The API accepts a state that is a string, an object or an array (its OpenAPI schema, read
+    2026-09-27); an object is sent as a JSON object, a string exactly as before.
+    """
     if not questions:
         raise ValueError("a System One request needs at least one question")
     return {
-        "state": state,
+        "state": state if isinstance(state, str) else dict(state),
         "model": model,
         "questions": {name: dict(question) for name, question in questions.items()},
     }
@@ -186,12 +192,12 @@ class TypeSafeClient:
 
     def ask_state(
         self,
-        state: str,
+        state: str | Mapping[str, object],
         questions: Mapping[str, Mapping[str, object]],
         *,
         model: str = DEFAULT_MODEL,
     ) -> Exchange:
-        """Send one request over a raw state string; retry as ``ask`` does.
+        """Send one request over a raw state string or a state object; retry as ``ask`` does.
 
         Two callers use this instead of ``ask``, because neither has a payload built from
         ``Evidence``: the ordering check's ``jev_checker`` (``scoring/checkpass.py``, decision
@@ -199,7 +205,8 @@ class TypeSafeClient:
         narrative -- as a raw state string; and the conditioned two-call mode only
         (``scripts/exploratory/jev_dev400.py``), whose state is the payload text plus one
         sentence of the model's own earlier output. ``ask`` is the normal path and stays the
-        one every other caller uses.
+        one every other caller uses. The registered second check, ``jev2_checker`` (decision
+        0103), sends a state object with named fields instead of a string.
         """
         body = _body(state, questions, model=model)
         retried: list[str] = []

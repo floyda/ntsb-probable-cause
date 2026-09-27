@@ -73,7 +73,7 @@ JevFactory = Callable[[Settings], TypeSafeClient]
 
 
 def _default_jev_factory(settings: Settings) -> TypeSafeClient:
-    """The real TypeSafe client, for the ordering check's ``jev`` way (decision 0097)."""
+    """The real TypeSafe client, for the ordering check's ``jev`` and ``jev2`` ways (0097, 0103)."""
     return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
 
 
@@ -252,7 +252,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "check", help="the ordering check, as a post-pass over a finished run"
     )
     check_p.add_argument("run_id")
-    check_p.add_argument("--way", choices=checkpass.WAYS, required=True)
+    check_p.add_argument("--way", choices=checkpass.CHECK_WAYS, required=True)
     check_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
@@ -770,11 +770,13 @@ def _cmd_check(
         # that `finally`, and would otherwise hold the reservation open until someone ran
         # `ntsb-eval release` by hand.
         try:
-            checker = (
-                checkpass.luna_checker(client_factory(settings)[0], stats, tables)
-                if way == "luna"
-                else checkpass.jev_checker(jev_factory(settings), stats, tables)
-            )
+            if way == "luna":
+                checker = checkpass.luna_checker(client_factory(settings)[0], stats, tables)
+            elif way == "jev2":
+                # The registered second Jev check (decision 0103): the same path as `jev`.
+                checker = checkpass.jev2_checker(jev_factory(settings), stats, tables)
+            else:
+                checker = checkpass.jev_checker(jev_factory(settings), stats, tables)
             derived = checkpass.check_run(
                 folder,
                 way,

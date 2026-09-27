@@ -73,6 +73,10 @@ class CodingStats(BaseModel):
         """Pool cases with phase group ``group`` whose defining code is ``code``."""
         return sum(half.get(group, {}).get(code, 0) for half in self.group_defining.values())
 
+    def group_n(self, group: str) -> int:
+        """Pool cases with phase group ``group``, whatever their defining code (decision 0103)."""
+        return sum(sum(half.get(group, {}).values()) for half in self.group_defining.values())
+
     def defining_n(self, code: str) -> int:
         """Pool cases whose defining code is ``code``, over every group."""
         return sum(

@@ -204,3 +204,141 @@ def reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis:
         for code in ranking
     )
     return hypothesis.model_copy(update={"occurrence": occurrence})
+
+
+# --- jev2: the registered second Jev check (decision 0103) ----------------------------------
+#
+# Built exactly as ``docs/rounds/s27-round1-jev2.md`` registers it, before any call: an object
+# state with four named fields, every count written as words (``jev-1.13`` is weak at counting),
+# each option described with ``what`` and, from the other candidates only, ``not_for``, and a
+# ``none_of_these`` option. No example text anywhere: it would have to come from real cases.
+
+NONE_OF_THESE = "none_of_these"
+
+JEV2_QUESTION = (
+    "Which of these occurrence codes would the NTSB flag as the defining event of this accident?"
+)
+# The same guidance GPT-6 Luna's check receives in CHECK_SYSTEM.
+JEV2_FOCUS = (
+    "Judge from the analyst's account which event began the accident sequence. Past habits are "
+    "a guide, not a rule: prefer the option the account supports."
+)
+_NONE_OF_THESE_CRITERION: dict[str, str] = {
+    "what": "The defining event is none of the codes listed",
+    "not_for": "any listed code",
+}
+
+
+def habit_words(share_k: int, base_n: int) -> str:
+    """A count as words, by the registration's five rules, applied in their order (0103).
+
+    ``share_k`` of ``base_n`` past cases had the code as the defining event. The thresholds are
+    decision 0101's clear habit and decision 0096 item 3's link; no new number is introduced.
+    """
+    if base_n < min(CLEAR_HABIT_MIN_CASES, LINK_MIN_CASES):
+        return "too few past cases to say"
+    share = Fraction(share_k, base_n)
+    if share >= CLEAR_HABIT_SHARE:
+        return "usually the defining event (a clear habit)"
+    if share >= LINK_MIN_SHARE:
+        return "often the defining event"
+    if share > 0:
+        return "seldom the defining event"
+    return "never the defining event in past cases"
+
+
+def jev2_state(  # noqa: PLR0913, PLR0917 -- one parameter per fact the state holds, as check_text.
+    guesses: Sequence[str],
+    options: Sequence[str],
+    group: str | None,
+    narrative: str,
+    stats: CodingStats,
+    tables: CodeTables,
+) -> dict[str, object]:
+    """The registered state: four named fields, and no count or share written as a number."""
+    name = group or NO_GROUP
+    first = guesses[0]
+    group_base = stats.group_n(name)
+    rows: list[dict[str, str]] = []
+    for code in options:
+        row = {
+            "code": code,
+            "meaning": _words(code, tables),
+            "past_cases_when_it_appears": habit_words(
+                stats.defining_given(code).get(code, 0), stats.present_n(code)
+            ),
+            "past_cases_in_this_phase_group": habit_words(
+                stats.group_defining_n(name, code), group_base
+            ),
+        }
+        if code != first:
+            pair = stats.pair(code, first)
+            row["past_cases_with_the_first_guess"] = habit_words(pair.get(code, 0), pair["both"])
+        rows.append(row)
+    return {
+        "phase_of_flight_group": group or "not recorded",
+        "analyst_guesses": [{"code": g, "meaning": _words(g, tables)} for g in guesses],
+        "candidates": rows,
+        "analyst_account": narrative,
+    }
+
+
+def _not_for(code: str, options: Sequence[str], tables: CodeTables) -> str:
+    """What ``code`` is not for, written from the other candidates only (0103)."""
+    parts: list[str] = []
+    for other in options:
+        if other == code:
+            continue
+        same_phase, same_event = other[:3] == code[:3], other[3:] == code[3:]
+        if same_event and not same_phase:
+            parts.append(
+                f"the same event in the {tables.phases.get(other[:3], '?')} phase ({other})"
+            )
+        elif same_phase and not same_event:
+            parts.append(
+                f"{tables.events.get(other[3:], '?')}, which is listed separately ({other})"
+            )
+    return "; ".join(parts)
+
+
+def jev2_question(options: Sequence[str], tables: CodeTables) -> dict[str, object]:
+    """One Choice named ``defining``: object instructions, object criteria, ``none_of_these``."""
+    criteria: dict[str, object] = {}
+    for code in options:
+        criterion = {"what": _words(code, tables)}
+        if not_for := _not_for(code, options, tables):
+            criterion["not_for"] = not_for
+        criteria[code] = criterion
+    criteria[NONE_OF_THESE] = dict(_NONE_OF_THESE_CRITERION)
+    return {
+        "type": "choice",
+        "instructions": {"question": JEV2_QUESTION, "focus": JEV2_FOCUS},
+        "criteria": criteria,
+    }
+
+
+def jev2_order(
+    probabilities: Mapping[str, float], guesses: Sequence[str], options: Sequence[str]
+) -> tuple[str, ...]:
+    """Every option, highest probability first; ties by the model's own order (0103).
+
+    The model's guesses come first, in its order, then the other candidates in the candidate
+    list's order. ``none_of_these`` is neither a guess nor a candidate, so it comes after every
+    code on a tie. Never by code number. A label Jev was not asked about is a ``SchemaError``.
+    """
+    tie_order = [*dict.fromkeys([*(g for g in guesses if g in options), *options]), NONE_OF_THESE]
+    if set(probabilities) != set(tie_order):
+        raise SchemaError(
+            f"Jev's labels {sorted(probabilities)} are not the options asked {sorted(tie_order)}"
+        )
+    return tuple(sorted(tie_order, key=lambda label: -probabilities[label]))
+
+
+def jev2_ranking(
+    probabilities: Mapping[str, float], guesses: Sequence[str], options: Sequence[str]
+) -> tuple[str, ...]:
+    """The top three codes, ``none_of_these`` left out; ``()`` when it ranks first (unchanged)."""
+    order = jev2_order(probabilities, guesses, options)
+    if order[0] == NONE_OF_THESE:
+        return ()
+    return tuple(label for label in order if label != NONE_OF_THESE)[:3]
