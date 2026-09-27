@@ -36,7 +36,7 @@ The spec is approved; these are the places where writing the plan found somethin
 - **W2. The ordering check runs as a post-pass, not inside the runner.** Spec §5.5 put it "after the answer, before the finding refinement turn". Inside the runner it would need a third batch stage for the model-asked ways and a second path for sync runs. The check touches only the occurrence codes, and the refinement turn only the findings, so the order between them changes no score. *Planned as:* `ntsb-eval check RUN_ID --way rule|luna|jev` reads a finished run and writes a derived folder `<run id>-check-<way>` whose cases carry the original step plus a second step, `tool="ordering_check"`, with the reordered hypothesis, its input fingerprint, model and cost; occurrence scores are recomputed, finding scores carried over. Its run record's cost is the check's cost only, so month and stage spend never count the answer twice. `report --against` compares derived folders like any run. *Rejected:* building it into `Runner` (a third batch stage, more code on the path every arm uses, for no change in any score). **Decided 2026-09-27 (Andy): A, the post-pass, as planned.**
 - **W3. GPT-6 Luna's check runs synchronously at the standard price.** A post-pass has no batch plumbing, and 399 short calls take minutes. Estimate (arithmetic, $0.10/$0.50 per million tokens, about 1,500 prompt and 1,500 output tokens a case including reasoning): about $0.90 per 1,000 cases, so **about $0.36 per answer set, $0.72 for Round 1**, against the spec's $0.12 per set at batch prices. *Planned as:* synchronous, standard price, recorded on each step. *Rejected:* batch (more code for about $0.36 saved). **Decided 2026-09-27 (Andy): A, as planned ("A is fine").**
 - **W4. The judge writes into the run it judges.** `ntsb-eval judge` is standard-price only (`scoring/judge.py:_ensure_priced` refuses batch), writes `judge.jsonl` inside the judged run's folder (replacing any earlier one) and appends a `<run id>-judge` cost row to its `run.jsonl`. Round 0 judges S2.6's B-v1 and B-v2 folders. *Planned as:* Task 7 first checks neither folder holds a `judge.jsonl` (none is expected: S2.6 judged no run); if one does, it is copied aside under `data/s27/` before judging. The cost row carries S2.7's commit, so the stage counts it. *Rejected:* copying the S2.6 run folders first (two copies of the same cases, and `month_spent` would count their costs twice). **Decided 2026-09-27 (Andy): A, as planned.**
-- **W5. The prompt version for guided runs.** Spec §6.1 said "for example `s27-g1`". *Planned as:* `prompt.prompt_version(guidance)` returns `s1-v5` with no guidance and `s1-v5+r2-loc-stall+r3-…` with guidance — the base version plus every guidance file in order — and the run record also stores the files' combined SHA-256. The new `spec.json` keys are written only when guidance is present, so resuming a pre-S2.7 run is unaffected. *Rejected:* a hand-bumped constant per round (two rounds with the same number but different files would look identical).
+- **W5. The prompt version for guided runs.** Spec §6.1 said "for example `s27-g1`". *Planned as:* `prompt.prompt_version(guidance)` returns `s1-v5` with no guidance and `s1-v5+r2-loc-stall+r3-…` with guidance — the base version plus every guidance file in order — and the run record also stores the files' combined SHA-256. The new `spec.json` keys are written only when guidance is present, so resuming a pre-S2.7 run is unaffected. *Rejected:* a hand-bumped constant per round (two rounds with the same number but different files would look identical). **Decided 2026-09-27 (Andy), a third form he proposed: "version and short fingerprint".** A guided run's prompt version is `s1-v5+g` plus the first 12 characters of the guidance fingerprint (for example `s1-v5+g3f9a2c1b7d04`); the names, in stacking order, and the full fingerprint are stored beside it on the run record, and `provenance` prints both, so the stack stays readable while the version stays short.
 - **W6. The "no sentence shared with a development narrative" check cannot run in CI.** CI holds no case data. *Planned as:* CI checks the guidance files and the count table for case-number patterns; `scripts/check_guidance.py` checks every guidance sentence against every development case's factual narrative, analysis narrative and probable cause on the local processed file, and a round's registration is committed only after it passes (Task 13, Task 15 Step 3). The same holds for spec §12's "the draw is reproducible": re-drawing needs the processed file, so it is `scripts/draw_sealed.py --verify`, run locally when the list is drawn and again before the sealed run (Task 2 Step 8, Task 18 Step 4); CI checks the committed list's shape and disjointness (Task 2 Step 9). *Rejected:* committing development narratives, or the processed file's index, as a CI fixture (withheld text, or data, in the repository).
 - **W7. A miss group may hold fewer than eight cases.** Spec §4.4 draws 8 per miss group. *Planned as:* a group with fewer than 8 contributes all its cases; the shortfall is not topped up from another group, and the results file prints each group's card count. *Rejected:* topping up (it would over-weight the largest group in the validation).
 - **W8. Stage spend is counted on both branches.** Before the merge back, `git rev-list 971ee40..HEAD` on this branch does not see track 2's commits, so track 2's spend would be missed and the $25 line under-counted. *Planned as:* `scripts/stage_spend.py` counts commits reachable from `HEAD`, `s27-coding-guidance` and `s27-transcriber` (those that exist), excluding `971ee40`'s ancestors. *Rejected:* counting by date (S2.6 found a date filter caught another stage's runs).
@@ -3707,7 +3707,7 @@ Report in plain English: each way's gain over no check on both answer sets, fixe
 - Test: `tests/test_prompt.py`, `tests/test_runner.py`, `tests/test_eval_app.py`, `tests/test_check_guidance.py` (create), `tests/test_guidance_files.py` (create)
 
 **Interfaces:**
-- Produces: `prompt.GUIDANCE_DIR: Traversable` (the `scoring/guidance` folder); `prompt.guidance_round(name: str) -> int` (names are `r<N>-<slug>`, lower case; `ConfigurationError` otherwise); `prompt.guidance_text(names: Sequence[str]) -> str`; `prompt.guidance_sha256(names) -> str | None`; `prompt.prompt_version(names) -> str` (`"s1-v5"` or `"s1-v5+" + "+".join(names)`); `prompt.registration_path(name) -> Path` (`docs/rounds/s27-round-<N>.md`); `RunSpec.guidance: tuple[str, ...] = ()`; `RunRecord.guidance: tuple[str, ...] = ()`, `RunRecord.guidance_sha256: str | None = None`; CLI `ntsb-eval run --guidance NAME` (repeatable, in stacking order). `scripts/check_guidance.py NAME...` exits 1 on any guidance sentence found in a development narrative or probable cause.
+- Produces: `prompt.GUIDANCE_DIR: Traversable` (the `scoring/guidance` folder); `prompt.guidance_round(name: str) -> int` (names are `r<N>-<slug>`, lower case; `ConfigurationError` otherwise); `prompt.guidance_text(names: Sequence[str]) -> str`; `prompt.guidance_sha256(names) -> str | None`; `prompt.prompt_version(names) -> str` (`"s1-v5"`, or `"s1-v5+g"` plus the first 12 characters of `guidance_sha256(names)`; plan W5); `prompt.FINGERPRINT_CHARS = 12`; `prompt.registration_path(name) -> Path` (`docs/rounds/s27-round-<N>.md`); `RunSpec.guidance: tuple[str, ...] = ()`; `RunRecord.guidance: tuple[str, ...] = ()`, `RunRecord.guidance_sha256: str | None = None`; CLI `ntsb-eval run --guidance NAME` (repeatable, in stacking order). `scripts/check_guidance.py NAME...` exits 1 on any guidance sentence found in a development narrative or probable cause.
 - Tasks 14, 15, 17, 18 consume these.
 
 **Where guidance sits.** After the code tables, under its own heading: `SYSTEM_ANSWER`, the tables, then `## Coding guidance (how the NTSB codes)` and each file's text in stacking order. The evidence payload is untouched, so S0's provenance check and every boundary test read it unchanged (decision 0098 item 1).
@@ -3731,9 +3731,15 @@ def guidance_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def test_prompt_version_names_every_guidance_file_in_order(guidance_dir: Path) -> None:
+def test_prompt_version_carries_a_short_fingerprint_of_the_stack(guidance_dir: Path) -> None:
     assert prompt.prompt_version(()) == prompt.PROMPT_VERSION
-    assert prompt.prompt_version(("r2-loc-stall", "r3-phase")) == f"{prompt.PROMPT_VERSION}+r2-loc-stall+r3-phase"
+    stack = ("r2-loc-stall", "r3-phase")
+    fingerprint = prompt.guidance_sha256(stack)
+    assert fingerprint is not None
+    assert prompt.prompt_version(stack) == f"{prompt.PROMPT_VERSION}+g{fingerprint[:12]}"
+    assert prompt.prompt_version(stack) != prompt.prompt_version(tuple(reversed(stack)))
+    (guidance_dir / "r3-phase.md").write_text("Edited text.\n")
+    assert prompt.prompt_version(stack) != f"{prompt.PROMPT_VERSION}+g{fingerprint[:12]}"
 
 
 def test_guidance_text_and_hash(guidance_dir: Path) -> None:
@@ -3793,9 +3799,16 @@ def guidance_sha256(names: Sequence[str]) -> str | None:
     return hashlib.sha256(f"{list(names)}\n{guidance_text(names)}".encode()).hexdigest()
 
 
+# Plan W5 (Andy): the version carries a short fingerprint of the guidance, not the names; the
+# names are stored beside it on every run record. Twelve characters, as the transcription
+# marker's stamp (docket/transcribe.py:ReadingLookup.done_file).
+FINGERPRINT_CHARS = 12
+
+
 def prompt_version(names: Sequence[str]) -> str:
-    """What elicits the answer: the base version, plus every guidance file in order (plan W5)."""
-    return PROMPT_VERSION if not names else "+".join((PROMPT_VERSION, *names))
+    """What elicits the answer: the base version, plus a short fingerprint of the guidance."""
+    fingerprint = guidance_sha256(names)
+    return PROMPT_VERSION if fingerprint is None else f"{PROMPT_VERSION}+g{fingerprint[:FINGERPRINT_CHARS]}"
 
 
 def registration_path(name: str) -> Path:
@@ -3826,7 +3839,7 @@ def test_guidance_reaches_the_system_text_and_the_records(tmp_path: Path, monkey
     assert "GUIDANCE-MARKER" in client.systems[0]
     assert "GUIDANCE-MARKER" not in client.payloads[0].text
     assert record.guidance == ("r2-loc-stall",)
-    assert record.prompt_version.endswith("+r2-loc-stall")
+    assert record.prompt_version == f"{prompt.PROMPT_VERSION}+g{record.guidance_sha256[:12]}"
     assert record.guidance_sha256 is not None
     written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
     assert written["guidance"] == ["r2-loc-stall"]
@@ -4693,3 +4706,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W2, Andy's decision (A): the ordering check runs as a post-pass over a finished run (`ntsb-eval check`, Task 10), writing a derived folder `<run id>-check-<way>`, not inside the runner "before the finding refinement turn" as spec §5.5 wrote. The check changes only the occurrence codes and the refinement turn only the finding items, so the order between them changes no score; the post-pass leaves the runner untouched, works the same for batch and sync runs, and lets Round 1 re-use the recorded B-v1 answers and their repeat.
 - 2026-09-27, walkthrough W3, Andy's decision ("A is fine"): the GPT-6 Luna check runs synchronously at the standard price, not on batch as spec §5.3 and §10 priced it. Estimate (arithmetic, replaced by the recorded cost): about $0.36 per 400-case answer set, $0.72 for Round 1, against the spec's $0.12 per set.
 - 2026-09-27, walkthrough W4, Andy's decision (A): the judge runs on S2.6's B-v1 and B-v2 folders in place (Task 7 Step 2 checks first that neither holds a `judge.jsonl`, copying any aside under `data/s27/`). The folders gain `judge.jsonl` and a `<run id>-judge` cost row carrying S2.7's commit; their answers and records are untouched.
+- 2026-09-27, walkthrough W5, Andy's decision ("Could we use version and short fingerprint?"): spec §6.1's example (`s27-g1`, a hand-bumped version) is replaced by `s1-v5+g<first 12 characters of the guidance fingerprint>`; the guidance names and the full fingerprint are recorded beside it (`RunRecord.guidance`, `RunRecord.guidance_sha256`). Task 13's `prompt_version` and its tests carry it.
