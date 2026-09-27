@@ -1298,7 +1298,7 @@ git add scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py Mak
 git commit -m "S2.7 track 2: T1, the model-list filter and the shortlist"
 ```
 
-- [ ] **Step 6: Fetch, filter, commit the results file** (free)
+- [x] **Step 6: Fetch, filter, commit the results file** (free)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
