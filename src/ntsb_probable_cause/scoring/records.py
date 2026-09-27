@@ -32,6 +32,10 @@ class RunRecord(BaseModel):
     exclusions: tuple[str, ...]
     includes: tuple[str, ...]
     prompt_version: str
+    # S2.7 (decision 0098): the coding guidance files this run added, in stacking order, and
+    # their combined fingerprint. Empty/None on a run from before S2.7, which added none.
+    guidance: tuple[str, ...] = ()
+    guidance_sha256: str | None = None
     model: str
     # None on a run from before S2.4, which sent no level and used the provider's default.
     reasoning_effort: str | None = None
