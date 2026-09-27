@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round s27-check-guidance
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round s27-check-guidance s27-round-result
 
 check: lint type test
 
@@ -280,3 +280,11 @@ s27-check-guidance:
 	$(if $(GUIDANCE),,$(error GUIDANCE is required))
 	uv run python -m scripts.check_guidance $(GUIDANCE)
 # S2.7 plan W6, free and local: no guidance sentence may appear in a development case's withheld text.
+
+s27-round-result:
+	$(if $(N),,$(error N is required: the round number))
+	$(if $(RUN),,$(error RUN is required))
+	$(if $(REFERENCE),,$(error REFERENCE is required))
+	$(if $(NOISE),,$(error NOISE is required: the two identical runs, space-separated, in quotes))
+	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) $(if $(FINDING),--finding-round,) --append docs/rounds/s27-round-$(N).md
+# S2.7 spec §6.4, free: decision 0098 item 4's reading, appended to the round's registration.
