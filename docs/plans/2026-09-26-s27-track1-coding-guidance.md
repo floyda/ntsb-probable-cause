@@ -523,7 +523,7 @@ Check the spending script sees all three: `make stage-spend` prints `branches co
 
 **Why the guard reads git, not a flag.** A flag can be passed by mistake; a committed registration naming the final setup is the event decision 0095 opens the sample on, and git records when it happened.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_gitinfo.py` (reusing `_repo` and `_git` from Task 1):
 
@@ -566,12 +566,12 @@ def test_refuse_sealed_opens_only_on_a_committed_registration() -> None:
 
 (Match `_raw`'s real keyword names in `tests/test_samples.py`; if it takes the class as `investigation_class=`, use that.)
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v -k "committed or exclude or sealed"`
 Expected: FAIL (`is_committed`, `exclude`, `refuse_sealed` missing)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `gitinfo.py`:
 
@@ -633,12 +633,12 @@ In `draw`, add the keyword `exclude: AbstractSet[str] = frozenset()` and filter 
     samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Write the failing app test** (append to `tests/test_eval_app.py`)
+- [x] **Step 5: Write the failing app test** (append to `tests/test_eval_app.py`)
 
 ```python
 def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
@@ -656,12 +656,12 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
 
 (Add `from ntsb_probable_cause import gitinfo` to the test's imports. `main` prints a `ConfigurationError` to stderr and returns 1, as for every other refusal.)
 
-- [ ] **Step 6: Run it, confirm it passes with Step 3's app change**
+- [x] **Step 6: Run it, confirm it passes with Step 3's app change**
 
 Run: `uv run pytest tests/test_eval_app.py -v -k sealed`
 Expected: PASS. Then comment out the `refuse_sealed` line in `_cmd_run` and re-run: Expected FAIL (the run tries to read the missing ids file). Restore the line.
 
-- [ ] **Step 7: Write `scripts/draw_sealed.py`**
+- [x] **Step 7: Write `scripts/draw_sealed.py`**
 
 ```python
 """Draw the sealed development sample once, or verify the committed list against a re-draw.
@@ -727,7 +727,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 8: Draw the sample** (free; reads the processed file's index columns and raw injury level only)
+- [x] **Step 8: Draw the sample** (free; reads the processed file's index columns and raw injury level only)
 
 Run:
 ```bash
@@ -737,7 +737,7 @@ uv run python -m scripts.draw_sealed --verify
 ```
 Expected: about 400 cases written (the rounding in `draw` gave 401 for `dev-400`); the verify line ends `identical: True`.
 
-- [ ] **Step 9: Write the contamination tests** (append to `tests/test_contamination.py`, using its `eval_ids` fixture)
+- [x] **Step 9: Write the contamination tests** (append to `tests/test_contamination.py`, using its `eval_ids` fixture)
 
 ```python
 def test_the_sealed_sample_is_development_and_shares_no_case(eval_ids) -> None:
@@ -751,12 +751,12 @@ def test_the_sealed_sample_is_development_and_shares_no_case(eval_ids) -> None:
 
 Add a line for `dev_seal_400_ids.csv` to `tests/fixtures/eval/README.md` ("the sealed development sample, decision 0095; drawn by `scripts/draw_sealed.py`, seed 20260926, excluding `dev-400`; opened once").
 
-- [ ] **Step 10: Run the full check**
+- [x] **Step 10: Run the full check**
 
 Run: `make check`
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/samples.py src/ntsb_probable_cause/gitinfo.py scripts/draw_sealed.py tests/fixtures/eval/dev_seal_400_ids.csv tests/fixtures/eval/README.md apps/eval/__main__.py tests/test_samples.py tests/test_gitinfo.py tests/test_contamination.py tests/test_eval_app.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -4764,3 +4764,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W7, Andy's decision (A): a miss group with fewer than 8 cases gives all its cases to the hand-read, with no top-up; the results file prints each group's card count (`round0_handread.draw_cards`, Task 6).
 - 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
 - 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.
+- 2026-09-27, Task 2 implementation, plain adaptations of the brief's text to this file's real helpers (no behaviour change, as the brief itself invited): (1) `tests/test_samples.py`'s real `_raw(*, fatal, occurrence_codes=())` takes no case id or class keyword, and `_write_cases` wants 5-tuples, so `test_draw_excludes_the_given_cases_and_is_unchanged_without_them` builds 40 explicit 5-tuples (case id, event date, split, class "F" throughout as the brief's snippet used, `_raw(fatal=...)` for the raw JSON) instead of calling `_raw` with the brief's invented keywords. (2) `test_refuse_sealed_opens_only_on_a_committed_registration`'s `is_committed=lambda path: seen.append(path) or True` fails the same `mypy --strict` "`list.append` returns `None`, used as a value" check as Task 1's fix above; replaced with a small typed `_record_and_confirm` function, same observable behaviour. (3) `ruff format` wrapped `scripts/draw_sealed.py`'s final `print(...)` call and one `assert main([...]) == 1` call in `tests/test_eval_app.py` onto multiple lines. (4) Adding `dev_seal_400_ids.csv` (a development-split list) to `tests/fixtures/eval/` made `test_evaluation_cases_are_held_out_by_event_date` fail, since it asserted every eval id list except `dev_400_ids` is held-out; the brief did not mention this test, but it iterates every `*_ids.csv` fixture the `eval_ids` fixture picks up, so the new file could not avoid it. Added `dev_seal_400_ids` next to `dev_400_ids` in that test's exclusion set; its own purity is checked by the brief's `test_the_sealed_sample_is_development_and_shares_no_case` instead.

@@ -31,12 +31,14 @@ def test_both_evaluation_lists_are_present(eval_ids: dict[str, dict[str, str]]) 
 
 
 def test_evaluation_cases_are_held_out_by_event_date(eval_ids: dict[str, dict[str, str]]) -> None:
-    # dev_400_ids is the one development-split list among the eval id lists (spec §5.3); it
-    # gets its own purity test below rather than being asserted held-out here.
+    # dev_400_ids and dev_seal_400_ids are the development-split lists among the eval id
+    # lists (spec §5.3, decision 0095); each gets its own purity test below rather than being
+    # asserted held-out here.
+    development = {"dev_400_ids", "dev_seal_400_ids"}
     offenders = [
         case
         for name, cases in eval_ids.items()
-        if name != "dev_400_ids"
+        if name not in development
         for case, day in cases.items()
         if _split(day) is not Split.HELDOUT
     ]
@@ -72,6 +74,17 @@ def test_case_number_year_would_misclassify_labelled_cases(
     cases = {case: day for name in original for case, day in eval_ids.get(name, {}).items()}
     mismatched = [c for c, day in cases.items() if 2000 + int(c[3:5]) != int(day[:4])]
     assert len(mismatched) == 16
+
+
+def test_the_sealed_sample_is_development_and_shares_no_case(
+    eval_ids: dict[str, dict[str, str]],
+) -> None:
+    sealed = eval_ids["dev_seal_400_ids"]
+    assert 395 <= len(sealed) <= 405
+    assert all(date[:4] <= "2019" for date in sealed.values())
+    assert not set(sealed) & set(eval_ids["dev_400_ids"])
+    assert not set(sealed) & set(eval_ids["heldout_400_ids"])
+    assert not set(sealed) & set(eval_ids["decidability_ids"])
 
 
 def test_docket_fixtures_are_dev_400_cases_by_event_date(

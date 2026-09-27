@@ -20,6 +20,7 @@ from apps.eval.__main__ import (
 from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as small_docket
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -1642,3 +1643,17 @@ def test_report_against_prints_each_paired_block_by_fatal_and_non_fatal(
     assert "\nnon-fatal: paired difference (a - b) on 1 shared" in transcribed
     assert "\nfatal: paired difference (a - b) on 2 shared" in unmarked
     assert "\nnon-fatal: paired difference (a - b) on 1 shared" in unmarked
+
+
+def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["run", "--arm", "B", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+    assert (
+        main(["transcribe", "--sample", "dev-seal-400", "--expected-cost-per-page-usd", "0.001"])
+        == 1
+    )
+    assert "sealed" in capsys.readouterr().err

@@ -62,3 +62,17 @@ def test_branches_containing_finds_every_branch_grown_from_a_commit(tmp_path: Pa
     _git(repo, "checkout", "-q", "main")
     _git(repo, "checkout", "-q", "-b", "unrelated", _base)  # cut before the stage began
     assert set(gitinfo.branches_containing(first, repo)) == {"main", "s27-guidance"}
+
+
+def test_is_committed_needs_a_tracked_unchanged_file(tmp_path: Path) -> None:
+    repo, _base = _repo(tmp_path)
+    target = repo / "docs" / "rounds" / "s27-sealed.md"
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)
+    target.parent.mkdir(parents=True)
+    target.write_text("setup\n")
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)  # untracked
+    _git(repo, "add", "docs/rounds/s27-sealed.md")
+    _git(repo, "commit", "-q", "-m", "register")
+    assert gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)
+    target.write_text("changed\n")
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)  # modified

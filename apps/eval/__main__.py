@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -270,6 +271,7 @@ def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLo
 
 
 def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
     readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
@@ -578,6 +580,7 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
     A job that spends its reservation stops (``PreparationStoppedError``, final review I1): what it
     read is reported, no marker is written, and the exit code is non-zero.
     """
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
     if args.sample.startswith("heldout"):
         raise ConfigurationError(
             f"transcribing {args.sample} is refused: decision 0090 defers every held-out run, "
