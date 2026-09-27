@@ -938,7 +938,7 @@ git commit -m "S2.7 track 2: T3 results on dev-400"
 
 **The filter, fixed now** (decision 0100 item 1, with walkthrough W6's condition marked): an entry is refused, with the first reason that applies, if it is a `:batch` variant; an alias (`~` id or an `alias_target`); does not take image input; does not return text only; was created before 2026-06-01; lists an input price above Qwen3.5 122B's $0.26 per million tokens; is one of S2.6's four candidates; (W6) does not list `response_format`. The eligible models are ordered by input price, then output price, then id; duplicates of one `canonical_slug` keep the first. The first eight are the shortlist; the rest are the replacements Task 7 takes in order.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Tasks 5-7: the model-list filter, the reasoning rule and the probe."""
@@ -1050,12 +1050,12 @@ def test_fetch_saves_the_list_it_read(tmp_path: Path, monkeypatch: pytest.Monkey
 
 Note: `pytest-socket` blocks real network access; `respx.mock` intercepts the `httpx` call before any socket opens, as in `tests/test_typesafe_client.py` on the `typesafe-probe` branch and every OpenRouter test on `main`.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.transcriber_shortlist'`.
 
-- [ ] **Step 3: Implement `fetch` and `shortlist`**
+- [x] **Step 3: Implement `fetch` and `shortlist`**
 
 ```python
 """The transcriber shortlist: newer vision models by a fixed filter, then probed (S2.7 §7.2).
@@ -1286,12 +1286,12 @@ s27-shortlist:
 # S2.7 spec §7.2, free: decision 0100 item 1's filter over the saved list.
 ```
 
-- [ ] **Step 4: Run the tests, then `make check`**
+- [x] **Step 4: Run the tests, then `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -2487,3 +2487,6 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 3 (pre-flight 2.7): Step 6's plan text ("the projection line ends `0 not yet read; projected $0.00`") is read as "contains" — the real line ends with the skipped-documents clause (`_cmd_transcribe`'s `print`), which the plan's own Step 3 code shows.
 - 2026-09-27, Task 3 Steps 6–7: the dry run's projection line read `dev-400: 12458 pages to read with qwen/qwen3.5-122b-a10b at 150 dpi, rule all, 0 not yet read; projected $0.00; 8 document(s) could not be listed, fetched or parsed`, so the real command was run per the safeguard. It made no job, no reservation and no model call (`read 0 pages now ($0.00); 59 of 12458 failed in all`, within the 2% retry threshold) and wrote `dev-400`'s marker under the new stamp. S2.6's old marker file, `data/transcriptions/done/dev-400-940436639bbd.json`, stays on disk unused; the new one is `data/transcriptions/done/dev-400-60ddd78408f8.json`, holding `"model": "qwen/qwen3.5-122b-a10b"`, `"page_rule": "all"` and `"dpi": 150` beside its counts. Task 2 Step 5's command now prints `True` for `dev-400`.
 - 2026-09-27, Task 4 (pre-flight risk 2): `main`'s docket-listing loop catches `DocketError` from `docs.listing(mkey)`, counting the case as skipped (the same boundary `_page_jobs`, `apps/eval/__main__.py`, draws), and prints the skipped count as a separate line after the report text — the brief's Step 3 code only wrapped `docs.document`, not `docs.listing`. `report()`'s signature is unchanged (`sample`, `cases`, `pdfs`); the skipped count is not folded into the results file, only printed to stdout, since the brief did not ask for a fourth field there.
+- 2026-09-27, Task 5 (pre-flight 2.8): `cmd_fetch`'s default `--date` uses `datetime.now(UTC).date()`, not `date.today()`, so it always matches Step 6's `date -u +%Y-%m-%d` in the Makefile target; the unused `date` import was dropped.
+- 2026-09-27, Task 5 (pre-flight 3.1): `refusal`'s `ids` parameter is typed `collections.abc.Set as AbstractSet` (imported as `from collections.abc import Set as AbstractSet`), not `collections.abc.AbstractSet`, which does not exist.
+- 2026-09-27, Task 5 (pre-flight 1.5): `render_shortlist` prints `input_usd_per_mtok`/`output_usd_per_mtok` at full float precision (`${x.input_usd_per_mtok}`), not `:.3f` as the brief's code showed, so Task 6 copies exact prices from the results file rather than rounded ones.
