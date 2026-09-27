@@ -129,6 +129,7 @@ source_modules = [
     "ntsb_probable_cause.scoring.coding_stats",
     "ntsb_probable_cause.scoring.hypothesis",
     "ntsb_probable_cause.scoring.misses",
+    "ntsb_probable_cause.scoring.ordering",
     "ntsb_probable_cause.scoring.prompt",
     "ntsb_probable_cause.scoring.samples",
     "ntsb_probable_cause.store",
