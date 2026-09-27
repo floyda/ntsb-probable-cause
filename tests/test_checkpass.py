@@ -255,6 +255,7 @@ def test_the_jev2_checker_sends_the_registered_state_and_question_to_the_pinned_
     assert outcome.details == {
         "choice": LOC,
         "confidence": 0.8,
+        "jev_order": [LOC, STALL, ordering.NONE_OF_THESE],
         # every option's probability, in the ranked order (ties broken by the model's order)
         "probabilities": {LOC: 0.6, STALL: 0.3, ordering.NONE_OF_THESE: 0.1},
     }
@@ -317,6 +318,7 @@ def test_a_jev2_pass_records_choice_confidence_and_probabilities_in_the_steps_ar
         "toward_more_common": False,
         "choice": ordering.NONE_OF_THESE,
         "confidence": 0.5,
+        "jev_order": [ordering.NONE_OF_THESE, STALL, LOC],
         "probabilities": {ordering.NONE_OF_THESE: 0.6, STALL: 0.2, LOC: 0.2},
     }
     assert [g.phase + g.event for g in step.hypothesis.occurrence] == [STALL]

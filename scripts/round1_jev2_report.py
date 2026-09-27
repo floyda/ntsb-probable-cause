@@ -21,6 +21,9 @@ import statistics
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.checkpass import CHECK_TOOL, Way, derived_id
 from ntsb_probable_cause.scoring.ordering import NONE_OF_THESE
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
@@ -73,15 +76,12 @@ def _checked_step_arguments(case: CaseResult) -> Mapping[str, object] | None:
 def none_first(case: CaseResult) -> bool:
     """Whether ``none_of_these`` ranked first on this case's check.
 
-    ``jev2_checker`` records every option's probability in the ranked order, ties already
-    broken by the model's own order, so a stable sort by probability keeps that order.
+    Read from ``jev_order``, Jev's full ranked option order after the tie rules, which
+    ``jev2_checker`` records on every step -- never from the order a mapping was stored in.
     """
     arguments = _checked_step_arguments(case)
-    probabilities = arguments.get("probabilities") if arguments is not None else None
-    if not isinstance(probabilities, Mapping) or not probabilities:
-        return False
-    ranked = sorted(probabilities.items(), key=lambda kv: -float(kv[1]))
-    return bool(ranked[0][0] == NONE_OF_THESE)
+    order = arguments.get("jev_order") if arguments is not None else None
+    return isinstance(order, list) and bool(order) and order[0] == NONE_OF_THESE
 
 
 def _confidence(case: CaseResult) -> float | None:
@@ -94,11 +94,11 @@ def _top1(cases: Sequence[CaseResult]) -> dict[str, bool]:
     return {c.case_id: c.scores.occurrence_top1 for c in cases if c.scores is not None and c.steps}
 
 
-def _load(runs: Path, run_id: str) -> list[CaseResult]:
-    """A development run's cases, after every refusal (held-out id, recorded sample, split).
+def _refuse(runs: Path, run_id: str) -> None:
+    """Every refusal that needs only the run's id and ``run.jsonl``: held-out, sealed.
 
-    The recorded sample is read from ``run.jsonl`` before ``cases.jsonl`` is touched, as every
-    S2.7 script does (``round1_report._load``).
+    The sealed sample is refused until its registration is committed (decision 0095), as
+    ``ntsb-eval`` refuses it; nothing here reads ``cases.jsonl``.
     """
     if "heldout" in run_id:
         raise SystemExit(f"round1_jev2_report: {run_id} is a held-out run; development runs only")
@@ -108,6 +108,19 @@ def _load(runs: Path, run_id: str) -> list[CaseResult]:
             f"round1_jev2_report: {run_id} is a held-out run ({record.sample}); "
             "development runs only"
         )
+    try:
+        samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    except ConfigurationError as error:
+        raise SystemExit(f"round1_jev2_report: {run_id}: {error}") from error
+
+
+def _load(runs: Path, run_id: str) -> list[CaseResult]:
+    """A development run's cases, after every refusal (held-out, sealed, then split).
+
+    The recorded sample is read from ``run.jsonl`` before ``cases.jsonl`` is touched, as every
+    S2.7 script does (``round1_report._load``).
+    """
+    _refuse(runs, run_id)
     cases = read_jsonl(runs / run_id / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"round1_jev2_report: {run_id} holds a case outside the development split")
@@ -187,6 +200,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "designed after Round 1 from the vendor's documentation "
         "(scripts/round1_jev2_report.py; counts only; design: docs/rounds/s27-round1-jev2.md)"
     ]
+    # Both sources' records are checked before any run's cases are read (fix round 1).
+    for source in args.answers:
+        _refuse(runs, source)
     results: dict[str, dict[str, Paired | None]] = {}
     for source in args.answers:
         set_lines, against = _answer_set(runs, source)

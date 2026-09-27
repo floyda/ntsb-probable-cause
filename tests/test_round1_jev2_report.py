@@ -1,15 +1,23 @@
 """scripts/round1_jev2_report.py: the second, registered Jev check's report (decision 0103)."""
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from scripts import round1_jev2_report as r2
 from scripts.round1_report import Paired, derived_id
 from tests.test_occurrence_misses import _SCORES, _case, _write_run  # shared builders
 
+from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
+from ntsb_probable_cause.scoring import checkpass
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.ordering import NONE_OF_THESE
-from ntsb_probable_cause.scoring.records import CaseResult, write_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl, write_jsonl
 
 LOC, STALL = "452240", "452241"
 
@@ -47,13 +55,14 @@ def test_luna_stays_when_an_answer_set_has_no_jev2_result() -> None:
     assert not r2.jev2_wins({"A": _against(0.05, 0.05, 0.05)})
 
 
-def _checked(
+def _checked(  # noqa: PLR0913 -- a test-only builder, one keyword per varied field.
     case: CaseResult,
     first: str,
     *,
     top1: bool,
     probabilities: dict[str, float],
     confidence: float,
+    jev_order: list[str] | None = None,
 ) -> CaseResult:
     last = case.steps[-1]
     guess = last.hypothesis.occurrence[0].model_copy(
@@ -68,6 +77,7 @@ def _checked(
                 "toward_more_common": first == LOC,
                 "choice": max(probabilities, key=lambda k: probabilities[k]),
                 "confidence": confidence,
+                "jev_order": jev_order or list(probabilities),
                 "probabilities": probabilities,
             },
             "hypothesis": last.hypothesis.model_copy(update={"occurrence": (guess,)}),
@@ -78,17 +88,75 @@ def _checked(
     )
 
 
-def test_none_first_follows_the_recorded_order_on_a_tie() -> None:
+def test_none_first_reads_the_recorded_jev_order_not_the_probabilities_order() -> None:
     base = _case("C1", (LOC,), (STALL,))
-    tied_code_first = _checked(
-        base, STALL, top1=False, probabilities={STALL: 0.5, NONE_OF_THESE: 0.5}, confidence=0.4
+    # A tie at the top: none_of_these ranks first (registration, Andy: option A), whatever order
+    # the probabilities happen to be stored in.
+    tied = _checked(
+        base,
+        STALL,
+        top1=False,
+        probabilities={STALL: 0.5, NONE_OF_THESE: 0.5},
+        confidence=0.4,
+        jev_order=[NONE_OF_THESE, STALL],
     )
-    none_first = _checked(
-        base, STALL, top1=False, probabilities={NONE_OF_THESE: 0.6, STALL: 0.4}, confidence=0.4
+    code_first = _checked(
+        base,
+        STALL,
+        top1=False,
+        probabilities={NONE_OF_THESE: 0.4, STALL: 0.6},
+        confidence=0.4,
+        jev_order=[STALL, NONE_OF_THESE],
     )
-    assert r2.none_first(tied_code_first) is False
-    assert r2.none_first(none_first) is True
+    assert r2.none_first(tied) is True
+    assert r2.none_first(code_first) is False
     assert r2.none_first(base) is False  # not a checked case
+
+
+@respx.mock
+def test_a_tie_at_the_top_survives_the_round_trip_through_cases_jsonl(tmp_path: Path) -> None:
+    """jev2_checker -> check_run -> cases.jsonl on disk -> the report reads none_of_these first."""
+    respx.post("https://api.typesafe.ai/v1/systemone").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 100, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": STALL,  # Jev's own pick on the tie; the rule decides
+                        "confidence": 0.3,
+                        "probabilities": {STALL: 0.45, LOC: 0.1, NONE_OF_THESE: 0.45},
+                    }
+                },
+            },
+        )
+    )
+    runs = tmp_path / "runs"
+    source = "20260926T000000-abc1234-dev-400-B"
+    folder = _write_run(runs, source)
+    write_jsonl(folder / "cases.jsonl", [_case("C1", (LOC, STALL), (STALL,))])
+    stats = build(
+        [PoolCase(2012, "Maneuvering", (LOC, STALL))] * 30
+        + [PoolCase(2016, "Maneuvering", (STALL, LOC))] * 5,
+        built_from="test",
+    )
+    with TypeSafeClient("k", base_url="https://api.typesafe.ai") as client:
+        record = checkpass.check_run(
+            folder,
+            "jev2",
+            checkpass.jev2_checker(client, stats, load_tables()),
+            runs_dir=runs,
+            groups={"C1": "Maneuvering"},
+            seen_pairs=frozenset(),
+            commit=("def5678", False),
+            now=lambda: datetime(2026, 9, 28, tzinfo=UTC),
+        )
+    (case,) = read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)
+    assert case.steps[-1].arguments["jev_order"] == [NONE_OF_THESE, STALL, LOC]
+    assert [g.phase + g.event for g in case.steps[-1].hypothesis.occurrence] == [STALL]
+    assert r2.none_first(case) is True
 
 
 def _source_cases() -> list[CaseResult]:
@@ -194,5 +262,21 @@ def test_a_held_out_run_id_and_a_case_outside_the_dev_split_are_refused(
     with pytest.raises(SystemExit, match="held-out run"):
         r2.main(["--answers", "x-heldout-400-B", "other-run"])
     _write(runs, "mixed", [*_source_cases(), _case("H1", (LOC,), (LOC,), split="heldout")])
+    _write(runs, "other-run", _source_cases())
     with pytest.raises(SystemExit, match="outside the development split"):
         r2.main(["--answers", "mixed", "other-run"])
+
+
+def test_a_sealed_source_is_refused_before_any_run_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``dev-seal-400`` is refused until its registration is committed (decision 0095), and both
+    sources' records are checked before either's cases are read: the first source here has no
+    cases.jsonl, so reading it first would fail with a missing file, not this refusal."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    _write_run(runs, "dev-run")  # no cases.jsonl
+    _write_run(runs, "sealed-run", sample="dev-seal-400")  # no cases.jsonl
+    with pytest.raises(SystemExit, match="sealed"):
+        r2.main(["--answers", "dev-run", "sealed-run"])

@@ -325,10 +325,24 @@ def test_jev2_ranking_never_returns_none_of_these() -> None:
     options = (STALL, LOC, CFIT, LOC_450)
     probabilities = {STALL: 0.4, ordering.NONE_OF_THESE: 0.3, LOC: 0.2, CFIT: 0.1, LOC_450: 0.0}
     assert ordering.jev2_ranking(probabilities, (STALL,), options) == (STALL, LOC, CFIT)
-    # A tie with a code puts none_of_these after every code: it is neither a guess nor a
-    # candidate, so the model's order does not place it first.
+
+
+def test_a_tie_at_the_top_with_none_of_these_leaves_the_answer_unchanged() -> None:
+    """The registration's clarification (2026-09-27, Andy: option A): ``none_of_these`` ranks
+    first whenever no code has a strictly higher probability."""
+    options = (STALL, LOC, CFIT, LOC_450)
     tied = {STALL: 0.5, ordering.NONE_OF_THESE: 0.5, LOC: 0.0, CFIT: 0.0, LOC_450: 0.0}
-    assert ordering.jev2_ranking(tied, (STALL,), options) == (STALL, LOC, CFIT)
+    assert ordering.jev2_ranking(tied, (STALL,), options) == ()
+    assert ordering.jev2_order(tied, (STALL,), options)[0] == ordering.NONE_OF_THESE
+    # A code other than the first guess tying none_of_these at the top: still unchanged.
+    tied_later = {LOC: 0.4, ordering.NONE_OF_THESE: 0.4, STALL: 0.2, CFIT: 0.0, LOC_450: 0.0}
+    assert ordering.jev2_ranking(tied_later, (STALL,), options) == ()
+
+
+def test_a_code_strictly_above_none_of_these_still_ranks_first() -> None:
+    options = (STALL, LOC)
+    probabilities = {STALL: 0.34, ordering.NONE_OF_THESE: 0.33, LOC: 0.33}
+    assert ordering.jev2_ranking(probabilities, (STALL,), options) == (STALL, LOC)
 
 
 def test_jev2_ranking_refuses_labels_it_did_not_ask_for() -> None:
@@ -342,3 +356,8 @@ def test_jev2_order_puts_probabilities_in_the_tie_order() -> None:
         {LOC: 0.3, ordering.NONE_OF_THESE: 0.1, LOC_450: 0.3, CFIT: 0.3}, (CFIT, LOC_450), options
     )
     assert order == (CFIT, LOC_450, LOC, ordering.NONE_OF_THESE)
+    # Ties among codes go by the model's order; none_of_these wins any tie it is part of.
+    tied = ordering.jev2_order(
+        {LOC: 0.3, ordering.NONE_OF_THESE: 0.3, LOC_450: 0.3, CFIT: 0.1}, (CFIT, LOC_450), options
+    )
+    assert tied == (ordering.NONE_OF_THESE, LOC_450, LOC, CFIT)

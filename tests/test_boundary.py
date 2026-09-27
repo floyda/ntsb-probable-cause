@@ -64,6 +64,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
 )
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
@@ -1312,3 +1313,69 @@ def test_the_ordering_check_sends_no_withheld_text(
     ):
         if withheld:
             assert withheld[:80] not in sent
+
+
+def _jev2_sent_texts(body: bytes) -> list[str]:
+    """The body as sent (JSON-escaped bytes, decoded) and every string it holds, unescaped."""
+    leaves: list[str] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                leaves.append(str(key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, str):
+            leaves.append(value)
+
+    walk(json.loads(body))
+    return [body.decode(), "\n".join(leaves)]
+
+
+@respx.mock
+def test_the_jev2_check_sends_no_withheld_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Layer 5 (0016) for the registered second Jev check (decision 0103): the JSON body sent
+    holds the state and question, and no window of the factual narrative, the analysis
+    narrative or the probable cause. Codes are left out of the windows: choosing among codes
+    is the check's job, and its candidates come from the pool, as the Luna test's do."""
+    raw = record_fixtures[0]
+    _evidence, _synthesis, verdict = split_record(raw)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        labels = list(json.loads(request.content)["questions"]["defining"]["criteria"])
+        probabilities = dict.fromkeys(labels, 0.0)
+        probabilities[labels[0]] = 1.0
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": labels[0],
+                        "confidence": 0.5,
+                        "probabilities": probabilities,
+                    }
+                },
+            },
+        )
+
+    route = respx.post("https://api.typesafe.ai/v1/systemone").mock(side_effect=answer)
+    stats = build(
+        [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
+    )
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
+    with TypeSafeClient("k", base_url="https://api.typesafe.ai") as client:
+        checkpass.jev2_checker(client, stats, load_tables())(hypothesis, "Landing")
+    assert route.call_count == 1
+    for sent in _jev2_sent_texts(route.calls[0].request.content):
+        for window in windows:
+            assert window not in sent

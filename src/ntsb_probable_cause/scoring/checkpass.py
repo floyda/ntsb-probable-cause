@@ -217,7 +217,9 @@ def jev2_checker(client: TypeSafeClient, stats: CodingStats, tables: CodeTables)
         details: dict[str, object] = {
             "choice": answer.choice,
             "confidence": answer.confidence,
-            # In the ranked order, ties already broken by the model's order.
+            # Jev's full ranked option order after the tie rules, none_of_these included: the
+            # report reads "none_of_these ranked first" from this, not from dict order.
+            "jev_order": list(order),
             "probabilities": {label: answer.probabilities[label] for label in order},
         }
         cost = tokens * sources.JEV.input_usd_per_mtok / 1_000_000

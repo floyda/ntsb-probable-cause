@@ -322,11 +322,14 @@ def jev2_order(
 ) -> tuple[str, ...]:
     """Every option, highest probability first; ties by the model's own order (0103).
 
-    The model's guesses come first, in its order, then the other candidates in the candidate
-    list's order. ``none_of_these`` is neither a guess nor a candidate, so it comes after every
-    code on a tie. Never by code number. A label Jev was not asked about is a ``SchemaError``.
+    ``none_of_these`` wins any tie it is part of: the registration's clarification (2026-09-27,
+    before any call; Andy: option A) ranks it first whenever no code has a strictly higher
+    probability, so a tie at the top leaves the answer unchanged. Among codes, ties go by the
+    model's own order: its guesses first, in its order, then the other candidates in the
+    candidate list's order -- never by code number. A label Jev was not asked about is a
+    ``SchemaError``.
     """
-    tie_order = [*dict.fromkeys([*(g for g in guesses if g in options), *options]), NONE_OF_THESE]
+    tie_order = [NONE_OF_THESE, *dict.fromkeys([*(g for g in guesses if g in options), *options])]
     if set(probabilities) != set(tie_order):
         raise SchemaError(
             f"Jev's labels {sorted(probabilities)} are not the options asked {sorted(tie_order)}"
