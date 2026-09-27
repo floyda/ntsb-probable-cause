@@ -193,10 +193,13 @@ class TypeSafeClient:
     ) -> Exchange:
         """Send one request over a raw state string; retry as ``ask`` does.
 
-        For the conditioned two-call mode only (``scripts/exploratory/jev_dev400.py``): the
-        state there is the payload text plus one sentence of the model's own earlier output,
-        never a payload built any other way. ``ask`` is the normal path and stays the one
-        every other caller uses.
+        Two callers use this instead of ``ask``, because neither has a payload built from
+        ``Evidence``: the ordering check's ``jev_checker`` (``scoring/checkpass.py``, decision
+        0097) sends the check text -- guesses, candidate codes, counts and the model's own
+        narrative -- as a raw state string; and the conditioned two-call mode only
+        (``scripts/exploratory/jev_dev400.py``), whose state is the payload text plus one
+        sentence of the model's own earlier output. ``ask`` is the normal path and stays the
+        one every other caller uses.
         """
         body = _body(state, questions, model=model)
         retried: list[str] = []

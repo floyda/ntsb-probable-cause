@@ -4,11 +4,15 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from tests.test_occurrence_misses import _case
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.model.client import RecordingFakeClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.scoring import checkpass
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
@@ -23,7 +27,12 @@ STATS = build(
 )
 
 
-def _source(runs: Path, run_id: str = "20260926T000000-abc1234-dev-400-B") -> Path:
+def _source(
+    runs: Path,
+    run_id: str = "20260926T000000-abc1234-dev-400-B",
+    *,
+    finished: datetime | None = NOW,
+) -> Path:
     folder = runs / run_id
     folder.mkdir(parents=True)
     record = RunRecord(
@@ -40,7 +49,7 @@ def _source(runs: Path, run_id: str = "20260926T000000-abc1234-dev-400-B") -> Pa
         commit_sha="abc1234",
         dirty=False,
         started=NOW,
-        finished=NOW,
+        finished=finished,
         cases=2,
         cost_usd=1.0,
     )
@@ -126,3 +135,63 @@ def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -
     outcome = checker(hypothesis, "Maneuvering")
     assert outcome.ranking == (STALL,)
     assert outcome.note.startswith("check failed")
+
+
+def _run(folder: Path, runs: Path) -> RunRecord:
+    return checkpass.check_run(
+        folder,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={},
+        seen_pairs=frozenset(),
+        commit=("d", False),
+        now=lambda: NOW,
+    )
+
+
+def test_check_run_refuses_a_source_that_has_not_finished(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs, finished=None)
+    with pytest.raises(ConfigurationError, match="finished"):
+        _run(source, runs)
+
+
+def test_check_run_refuses_a_source_that_is_itself_a_derived_check_run(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs, "20260926T000000-abc1234-dev-400-B-check-rule")
+    with pytest.raises(ConfigurationError, match="stacked"):
+        _run(source, runs)
+
+
+JEV_BASE = "https://api.typesafe.ai"
+JEV_URL = f"{JEV_BASE}/v1/systemone"
+
+
+@respx.mock
+def test_the_jev_checker_ranks_reports_the_model_and_prices_input_tokens() -> None:
+    respx.post(JEV_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 1000, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": LOC,
+                        "confidence": 0.9,
+                        "probabilities": {LOC: 0.7, STALL: 0.3},
+                    }
+                },
+            },
+        )
+    )
+    tables = load_tables()
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    with TypeSafeClient("k", base_url=JEV_BASE) as client:
+        checker = checkpass.jev_checker(client, STATS, tables)
+        outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (LOC, STALL)
+    assert outcome.model == "jev-1.13.0"
+    assert outcome.cost_usd == pytest.approx(1000 * sources.JEV.input_usd_per_mtok / 1_000_000)

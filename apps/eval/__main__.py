@@ -34,7 +34,12 @@ from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import checkpass, ledger, report, samples
-from ntsb_probable_cause.scoring.budget import budget_lock, month_spent, open_reservations, release
+from ntsb_probable_cause.scoring.budget import (
+    month_spent,
+    open_reservations,
+    release,
+    reserve_within_budget,
+)
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.judge import (
@@ -46,13 +51,7 @@ from ntsb_probable_cause.scoring.judge import (
 )
 from ntsb_probable_cause.scoring.preparation import PreparationStoppedError, run_preparation
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
-from ntsb_probable_cause.scoring.runner import (
-    BatchRunner,
-    CachedDocketReader,
-    Runner,
-    RunSpec,
-    refuse_over_budget,
-)
+from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
 
 # ``month_spent`` moved to ``ntsb_probable_cause.scoring.budget`` (0045); tests still import
@@ -691,6 +690,17 @@ def _cmd_check(
             f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
             f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
         )
+    # Before any case is read (fix round 1, Important 2): an ablation run withheld a field --
+    # possibly phase_of_flight -- from the model, and reading it back from the raw record
+    # below to rebuild `groups` would hand the check evidence the source run never had.
+    # `resolve_latest` treats the same shape of run (exclusions or includes set) as unfit to
+    # stand for its arm; the check refuses it outright rather than silently reading around it.
+    if record.exclusions or record.includes:
+        raise ConfigurationError(
+            f"check: {args.run_id} is an ablation (exclusions={record.exclusions}, "
+            f"includes={record.includes}): rebuilding its phase-of-flight group would read "
+            "back a field the source run withheld from the model"
+        )
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     processed = settings.data_dir / "processed"
     ids = [c.case_id for c in cases]
@@ -700,15 +710,20 @@ def _cmd_check(
     }
     stats, tables = load_stats(), load_tables()
     way: checkpass.Way = args.way
+    run_id = checkpass.derived_id(record.run_id, way)
     if way == "rule":
         checker = checkpass.rule_checker(stats)
     else:
+        # Reserved, not just checked, before any client is built (fix round 1, Important 1):
+        # a ~400-call synchronous pass would otherwise be invisible to a concurrent paid job
+        # for the whole run, since nothing recorded its projected spend until this pass's own
+        # `finally`. `reserve_within_budget` raises before touching the filesystem if the
+        # projection would bust the budget, so an over-budget call never reaches
+        # `client_factory`/`jev_factory` below; `checkpass.check_run` settles this reservation
+        # once the pass's actual spend is on disk, whether it finished or was interrupted.
         budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
         projected = len(cases) * checkpass.EXPECTED_COST_PER_CASE_USD[way]
-        with budget_lock(settings.runs_dir):
-            reserved = sum(open_reservations(settings.runs_dir).values())
-            spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
-            refuse_over_budget(projected, spent, budget, reserved=reserved)
+        reserve_within_budget(settings.runs_dir, run_id, projected, budget, now=datetime.now(UTC))
         checker = (
             checkpass.luna_checker(client_factory(settings)[0], stats, tables)
             if way == "luna"

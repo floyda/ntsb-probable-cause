@@ -19,6 +19,7 @@ from apps.eval.__main__ import (
 )
 from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as small_docket
+from tests.test_occurrence_misses import _case
 
 from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
@@ -1660,6 +1661,46 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
     assert "sealed" in capsys.readouterr().err
 
 
+def _write_checkable_run(
+    runs: Path,
+    run_id: str = "20260926T000000-abc1234-dev-400-B",
+    *,
+    exclusions: tuple[str, ...] = (),
+    includes: tuple[str, ...] = (),
+) -> Path:
+    """A dev-400 arm B run with one scored, stepped case: enough for `ntsb-eval check`."""
+    folder = runs / run_id
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    write_jsonl(
+        folder / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=exclusions,
+                includes=includes,
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha="abc1234",
+                dirty=False,
+                started=when,
+                finished=when,
+                cases=1,
+                cost_usd=1.0,
+            )
+        ],
+    )
+    write_jsonl(
+        folder / "cases.jsonl",
+        [_case("c1", ("552240", "552241"), ("552241",))],
+    )
+    return folder
+
+
 def test_check_refuses_a_held_out_run_before_any_client_is_built(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1684,6 +1725,177 @@ def test_check_refuses_a_held_out_run_before_any_client_is_built(
         == 1
     )
     assert "development" in capsys.readouterr().err
+
+
+def test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 2: reading the phase group back from the raw record would hand
+    the check a field an ablation run withheld from the model. Refused before `cases.jsonl` is
+    even read (no such file is written here: a read attempt would raise, not refuse cleanly)."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = runs / run_id
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    write_jsonl(
+        folder / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=("phase_of_flight",),
+                includes=(),
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha="abc1234",
+                dirty=False,
+                started=when,
+                finished=when,
+                cases=1,
+                cost_usd=1.0,
+            )
+        ],
+    )
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for an ablation source")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for an ablation source")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "rule"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "ablation" in capsys.readouterr().err
+
+
+def test_check_way_luna_is_refused_over_budget_without_building_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 1: the budget guard runs, and refuses, before any client is
+    built -- an over-budget `luna`/`jev` pass must never reach `client_factory`/`jev_factory`."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for an over-budget check")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for an over-budget check")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna", "--budget-usd", "0.00001"],
+        client_factory=boom_client,
+        jev_factory=boom_jev,
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "budget" in err
+    assert open_reservations(runs) == {}
+
+
+class _ReservationSpyClient:
+    """A fake client that notices whether a budget reservation is open when it is called."""
+
+    def __init__(self, reply_text: str, runs_dir: Path) -> None:
+        self._reply_text = reply_text
+        self._runs_dir = runs_dir
+        self.saw_a_reservation = False
+
+    def complete(
+        self,
+        _payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        self.saw_a_reservation = bool(open_reservations(self._runs_dir))
+        return ModelReply(
+            content=self._reply_text,
+            usage=Usage(prompt_tokens=0, completion_tokens=0),
+            model=settings.model_id(),
+            response_id="fake",
+        )
+
+
+def test_check_way_luna_settles_its_reservation_after_a_successful_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix round 1, Important 1: the reservation made before the client is built is visible to
+    a concurrent job for the whole synchronous pass, and settled once the pass's real spend is
+    on disk, so it never sits open against the month's budget."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    spy = _ReservationSpyClient(json.dumps({"ranking": ["552241"]}), runs)
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return spy, None
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=factory, jev_factory=boom_jev
+    )
+    assert exit_code == 0
+    assert spy.saw_a_reservation is True  # open for the duration of the paid call, not $0
+    assert open_reservations(runs) == {}
+    derived = runs / f"{run_id}-check-luna"
+    assert (derived / "cases.jsonl").exists()
+    assert (derived / "run.jsonl").exists()
+
+
+def test_check_way_rule_writes_a_derived_run_and_prints_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 3(b): a happy-path `ntsb-eval check RUN --way rule` through
+    `main`, needing no client at all."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("the rule way needs no client")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the rule way needs no client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "rule"], client_factory=boom_client, jev_factory=boom_jev
+    )
+    assert exit_code == 0
+    derived_id = f"{run_id}-check-rule"
+    out = capsys.readouterr().out
+    assert f"check {derived_id}:" in out
+    assert (runs / derived_id / "cases.jsonl").exists()
+    assert (runs / derived_id / "run.jsonl").exists()
 
 
 def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:

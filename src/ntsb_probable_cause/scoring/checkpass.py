@@ -21,6 +21,7 @@ from ntsb_probable_cause.model.client import ModelClient, ModelSettings, Payload
 from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.scoring import ordering
+from ntsb_probable_cause.scoring.budget import settle
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
@@ -237,6 +238,14 @@ def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -
             f"the ordering check runs on development arm B runs only; {record.run_id} is "
             f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
         )
+    if "-check-" in record.run_id:
+        raise ConfigurationError(
+            f"{record.run_id} is itself a derived check run: no stacked checks"
+        )
+    if record.finished is None:
+        raise ConfigurationError(
+            f"{record.run_id} has not finished: the check needs a complete answer for every case"
+        )
     if any(c.split != "dev" for c in cases):
         raise ConfigurationError(f"{record.run_id} holds a case outside the development split")
 
@@ -258,10 +267,13 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
     _refuse_unless_development(record, cases)
     run_id = derived_id(record.run_id, way)
     folder = runs_dir / run_id
-    try:
-        folder.mkdir(parents=True, exist_ok=False)
-    except FileExistsError as error:
-        raise ConfigurationError(f"{run_id} exists: a check is run once per source run") from error
+    # `exist_ok=True`, not an atomic claim (fix round 1, Important 1): the caller may have
+    # already created this folder to hold a budget reservation (`reserve_within_budget`,
+    # under this same derived id) before any client is built. What must not already exist is
+    # the derived run's own output, so a check is refused only once it has actually run.
+    folder.mkdir(parents=True, exist_ok=True)
+    if (folder / "cases.jsonl").exists() or (folder / "run.jsonl").exists():
+        raise ConfigurationError(f"{run_id} exists: a check is run once per source run")
     started = now()
     results: list[CaseResult] = []
     spent = 0.0
@@ -292,4 +304,9 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
             }
         )
         write_jsonl(folder / "run.jsonl", [derived])
+        # Settled here, not by the caller (fix round 1, Important 1): a reservation the
+        # caller made under this derived id is released the moment its actual spend is on
+        # disk, whether the pass finished or was interrupted; a `rule` pass never reserved
+        # one, and `settle` is a no-op then.
+        settle(runs_dir, run_id)
     return derived
