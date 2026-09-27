@@ -4569,7 +4569,7 @@ git commit -m "S2.7 Task 16: v2 runs record their transcriber and page rule (spe
 
 - [ ] **Step 1: Apply track 2's outcome to `dev-400`**
 
-If track 2's decision kept Qwen with the rule `all`, nothing to do: S2.6's readings and marker stand. Otherwise run track 2's transcription targets for `dev-400` with the chosen `--model` and `--page-rule`: the dry run first (free; prints pages and projected cost), then — **STOP** for Andy — the paid run (estimate $1–7, spec §8).
+If track 2's decision kept Qwen with the rule `all`, nothing is paid: S2.6's readings stand, and track 2 already re-created `dev-400`'s marker under the rule-naming stamp (its Task 3 Step 6, track 2 walkthrough W4); check it with `ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017 --page-rule all --dry-run` (`0 not yet read`). Otherwise run track 2's transcription targets for `dev-400` with the chosen `--model` and `--page-rule`: the dry run first (free; prints pages and projected cost), then — **STOP** for Andy — the paid run (estimate $1–7, spec §8).
 
 - [ ] **Step 2: STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
 

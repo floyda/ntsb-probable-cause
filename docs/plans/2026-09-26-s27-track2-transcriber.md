@@ -15,7 +15,7 @@
 - **Branch and base (decision 0102).** `s27-coding-guidance` is S2.7's parent branch; track 1 works on `s27-guidance` and track 2 on `s27-transcriber`, both stacked on the parent, with constant names. Track 2 works on `s27-transcriber` in `.claude/worktrees/s27-transcriber`, cut from `s27-coding-guidance` **after track 1's Task 1 has landed there** (it builds `scripts/stage_spend.py`, which traces spend on every branch grown from the parent). It merges back into `s27-coding-guidance` with a merge commit (never squashed, never rebased; decision 0033) in Task 12, before the meeting point. Never commit to `main`.
 - **What track 2 does not touch.** `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `RunSpec`, `RunRecord`, and `_cmd_run` in `apps/eval/__main__.py` belong to track 1. After the merge back, track 1 adds `RunSpec.transcriber` and `RunSpec.page_rule`, the run flags `--transcriber` and `--page-rule`, and the report's refusal to compare two v2 runs that differ in either (spec §7.5). Track 2 provides the names they read, exactly as below, and nothing else in those files.
 - **The interface track 1 relies on** (fixed; do not rename): in `src/ntsb_probable_cause/docket/transcribe.py` — `PageRule = Literal["all", "image-only", "image-only+thin-layer"]`; `PAGE_RULES: tuple[PageRule, ...] = ("all", "image-only", "image-only+thin-layer")`; `THIN_LAYER_MAX_CHARS = 200`; `PAGE_RULE: PageRule` (the rule in force, `"all"` until the track-2 decision record changes it); `TRANSCRIBER: str` (unchanged name; changed only by that record); `pages_to_read(data: bytes, *, page_rule: PageRule = PAGE_RULE) -> list[tuple[int, bool]]`; `ReadingLookup(cache, *, model: str = TRANSCRIBER, instruction: Instruction = TRANSCRIBE, dpi: Resolution = RESOLUTION, page_rule: PageRule = PAGE_RULE)` with read-only properties `.model` and `.page_rule`; `ntsb-eval transcribe --model` (default `TRANSCRIBER`) and `--page-rule` (choices `PAGE_RULES`, default `PAGE_RULE`).
-- **The done marker stays valid.** `ReadingLookup.done_file` keeps S2.6's stamp, `sha256(f"{model}|{version}|{dpi}")[:12]`, when `page_rule == "all"`, so `data/transcriptions/done/dev-400-940436639bbd.json` still says `dev-400` is transcribed. Any other rule adds `f"|{page_rule}"` to the stamped string.
+- **Every marker names its page rule** (walkthrough W4, Andy: B). `ReadingLookup.done_file` stamps `sha256(f"{model}|{version}|{dpi}|{page_rule}")[:12]` for every rule, `"all"` included. S2.6's `data/transcriptions/done/dev-400-940436639bbd.json` no longer matches; it is left in place, unused, and `dev-400`'s marker is re-created under the new name, free, from the cache (Task 3 Step 6) before any v2 run.
 - **The $25 stage line** (decision 0098 item 6). Every paid `make` target first runs `uv run python -m scripts.stage_spend --estimate <USD>` (track 1, Task 1; the Makefile's `stage-spend EST=<USD>` does the same), which exits 1 if S2.7's spend plus the estimate would pass $25. The $40 monthly guard (0083) applies separately, inside every paid job, as in S2.6.
 - **Development cases only.** `page_value.py` refuses any sample but `dev-400`; the re-test reads only S2.6's answer keys, which came from `dev-400` (S2.6 plan, Task 13). No held-out or open-split page is rendered, read or sent anywhere (rule 5, 0024). `ntsb-eval transcribe` keeps refusing held-out samples (0090).
 - **Private material lives under `data/`** (git-ignored) and is never committed: the saved model list, answer keys, page images, marking pages and CSVs, transcriptions. Only counts and model ids go to `docs/results/`. Recorded probe replies are of the invented probe page (`scripts/transcriber_test.py:probe_page`) and hold no docket text.
@@ -36,7 +36,7 @@ The spec is approved; these are the places where writing this plan found somethi
 - **W1. The reasoning level of each new candidate.** `transcribe.settings_for` sends `sources.LOWEST_REASONING[model]` on every call, and a model missing from that table raises `KeyError`. Spec §7.2 and rule 2 forbid guessing it. The saved model list gives, per model, `supported_parameters` (whether `reasoning` is accepted) and a `reasoning` object (`mandatory`, `default_enabled`, sometimes `supported_efforts`). *Planned as:* a fixed rule applied by `transcriber_shortlist.lowest_reasoning` — the lowest of `supported_efforts` in the ladder `none < minimal < low < medium < high < xhigh < max` when the list gives any; else `"minimal"` if reasoning is `mandatory`; else `"none"`. This reproduces S2.6's choices (Gemini 3.6 Flash, mandatory: `minimal`; Qwen, no levels listed: `none`). The probe (Task 7) is the check: a candidate that refuses its level fails the probe and is replaced. **Decided 2026-09-27 (Andy): as planned ("A sounds more complex but probably more thorough so let's go with that").**
 - **W2. The one batch-with-image call.** Spec §7.2 asks for one call testing whether a batch variant now accepts an image part. OpenRouter's batch documentation (read 2026-09-24, quoted in `model/batch.py:136`) already says base64 and `data:` images are rejected on every provider, and public image links were rejected in S2.6 (W1: fatal-accident pages at web addresses). *Planned as:* kept, as one call with the invented probe page, and only for a shortlisted candidate the saved list offers a `:batch` variant for (Task 7). If none does, the test is recorded as "not possible". *Alternative:* drop it and cite the documentation. **Decided 2026-09-27 (Andy): kept, as planned ("A I doubt it has changed but maybe worth checking still").**
 - **W3. Andy's marking load.** Photograph and full-page-scan cards are needed for every new candidate reading that holds words (as in S2.6; `transcriber_test._photo_cards`, `cmd_mixed`); Qwen's pass-2 marks are reused, not repeated. With eight candidates that is at most 8 × 50 photograph cards and 8 × 25 scan cards; S2.6's four candidates produced far fewer, because most readings of a no-word photograph are empty or `[illegible]`. The 0086 rule is printed on the page: a word of the docket's stamped "Photo" label counts as on the page. *Planned as:* all eight candidates marked, in one page per set, each page resumable. *Alternative:* mark only candidates that already pass the four automatic measures (handwriting invention, format, handwriting accuracy, typed errors) and cost, since a candidate that fails any of those cannot be chosen whatever its marks (decision 0100 item 3). That cuts the marking to the candidates that can still win. *Undecided; the alternative is recommended.* **Decided 2026-09-27 (Andy): the alternative.** Task 9 runs the re-test only; Task 10 prints the candidates still in the running (`automatic`), builds Andy's pages for those only, and prints "not marked (already out on an automatic measure)" for the rest.
-- **W4. The done-marker stamp.** Interface above: S2.6's stamp is kept for `"all"`. *Planned as* stated, so `dev-400`'s S2.6 marker stays valid and a new rule gets its own marker. Nothing for Andy unless he prefers every marker to name its rule (which would invalidate the existing marker and force a free but slow re-check of every `dev-400` page before any v2 run). *Undecided, recommended as planned.*
+- **W4. The done-marker stamp.** Interface above: S2.6's stamp is kept for `"all"`. *Planned as* stated, so `dev-400`'s S2.6 marker stays valid and a new rule gets its own marker. Nothing for Andy unless he prefers every marker to name its rule (which would invalidate the existing marker and force a free but slow re-check of every `dev-400` page before any v2 run). *Undecided, recommended as planned.* **Decided 2026-09-27 (Andy): B — every marker names its rule**, one stamp form everywhere; S2.6's `dev-400` marker is re-created from the cache (Task 2 Steps 3 and 5, Task 3 Steps 6–7).
 - **W5. Fewer than eight candidates.** The filter may leave fewer than eight models, or fewer than eight may pass the probe. *Planned as:* the re-test runs whatever passes, with no top-up from outside the filter; if none passes, the track records "Qwen stays" without a re-test. *Undecided.*
 - **W6. Structured output.** Every transcription call uses a strict JSON schema (`transcribe.settings_for`, `json_schema=instruction.schema()`). A model whose listing lacks `response_format` in `supported_parameters` will fail the probe. *Planned as:* one more filter condition — `response_format` listed — so such a model does not take a shortlist place only to be replaced. It is a departure from spec §7.2's filter, logged if accepted. *Undecided.*
 - **W7. Which second-pass CSVs are S2.6's final ones.** `data/s26/transcriber-test/` holds `handwriting-key-pass2.csv` and `photo-words-pass2.csv`, and `pass2/` holds `handwriting-key-pass2-2.csv` and a second `photo-words-pass2.csv`. S2.6's published second pass was scored from one pair. *Planned as:* Task 8's `verify` takes the pair as arguments and must reproduce Qwen's published second-pass figures exactly from the cache (1036 of 1548 handwriting lines right, 54 inventing lines, 2 of 50 photographs, 0 of 25 scans, 2 of 25 format-failed pages, 20219 typed errors in 164464 characters); the pair that reproduces them is the one the re-test uses, and it is named in the results file. If neither does, the track stops (**STOP**). Nothing for Andy unless neither pair reproduces.
@@ -158,10 +158,13 @@ def test_the_thin_layer_rule_cuts_at_the_limit() -> None:
     assert page_choice("text and image", THIN_LAYER_MAX_CHARS, 0.5, page_rule=rule) is None
 
 
-def test_the_done_file_for_s26s_rule_keeps_s26s_stamp(tmp_path: Path) -> None:
+def test_every_done_file_names_its_page_rule_even_s26s(tmp_path: Path) -> None:
     lookup = ReadingLookup(TranscriptionCache(tmp_path))
     old = hashlib.sha256(f"{TRANSCRIBER}|{TRANSCRIBE.version}|150".encode()).hexdigest()[:12]
-    assert lookup.done_file("dev-400") == tmp_path / "done" / f"dev-400-{old}.json"
+    new = hashlib.sha256(f"{TRANSCRIBER}|{TRANSCRIBE.version}|150|all".encode()).hexdigest()[:12]
+    # Walkthrough W4 (Andy, B): one stamp form for every rule; S2.6's marker name no longer matches
+    assert lookup.done_file("dev-400") == tmp_path / "done" / f"dev-400-{new}.json"
+    assert lookup.done_file("dev-400") != tmp_path / "done" / f"dev-400-{old}.json"
     assert lookup.page_rule == "all"
     assert lookup.model == TRANSCRIBER
 
@@ -299,21 +302,22 @@ In `ReadingLookup`, add the parameter, the properties, the rule in the lookup, a
 In `for_document`, change `chosen = pages_to_read(data)` to `chosen = pages_to_read(data, page_rule=self._page_rule)`. Replace `done_file`'s body with:
 
 ```python
-        # S2.7 walkthrough W4: S2.6's rule keeps S2.6's stamp, so the dev-400 marker written
-        # on 2026-09-26 stays valid; any other rule is part of the stamped string.
-        stamped = f"{self._model}|{self._instruction.version}|{self._dpi}"
-        if self._page_rule != "all":
-            stamped += f"|{self._page_rule}"
+        # S2.7 walkthrough W4 (Andy, B): every marker names its page rule, S2.6's "all"
+        # included, so one stamp form holds everywhere. S2.6's dev-400 marker (written before
+        # rules had names) no longer matches and is re-created from the cache (Step 5).
+        stamped = f"{self._model}|{self._instruction.version}|{self._dpi}|{self._page_rule}"
         stamp = hashlib.sha256(stamped.encode()).hexdigest()[:12]
         return self._cache.root / "done" / f"{sample}-{stamp}.json"
 ```
+
+`_maybe_mark_done` in `apps/eval/__main__.py` also writes `"page_rule"` into the marker's summary beside `"model"` and `"dpi"` (Task 3 passes the rule through), so a marker file says which rule it covers.
 
 - [ ] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_docket_transcribe.py -v`
 Expected: PASS, including every S2.6 test of `pages_to_read` (the default rule is S2.6's).
 
-- [ ] **Step 5: Check the real marker still matches** (read-only, no model call)
+- [ ] **Step 5: Confirm S2.6's marker no longer matches** (read-only, no model call)
 
 ```bash
 NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data uv run python -c "
@@ -321,7 +325,7 @@ from ntsb_probable_cause.docket.transcribe import ReadingLookup, TranscriptionCa
 from ntsb_probable_cause.settings import Settings
 print(ReadingLookup(TranscriptionCache(Settings().transcription_dir)).is_done('dev-400'))"
 ```
-Expected: `True`.
+Expected: `False` (walkthrough W4). S2.6's file `data/transcriptions/done/dev-400-940436639bbd.json` is left where it is, unused. It is re-created under the new name, free, in Task 3 Step 6, once `ntsb-eval transcribe` takes `--page-rule`.
 
 - [ ] **Step 6: `make check`, then commit**
 
@@ -507,6 +511,18 @@ make check
 git add apps/eval/__main__.py tests/test_eval_app.py docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: ntsb-eval transcribe takes a model and a page rule"
 ```
+
+- [ ] **Step 6: Re-create `dev-400`'s marker under the new name** (free: every page is already cached; walkthrough W4)
+
+```bash
+export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
+uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017 --page-rule all --dry-run
+```
+Expected: the projection line ends `0 not yet read; projected $0.00`. If any page is not yet read, stop and report it: the S2.6 cache was expected to hold every page. Then the same command without `--dry-run`: with nothing pending it makes no job, no reservation and no model call, and writes the marker (at most 2% of pages failed: S2.6 recorded 59 of 12,458). It lists every page of every `dev-400` document again, which takes some minutes.
+
+- [ ] **Step 7: Confirm the marker is found** (read-only)
+
+Re-run Task 2 Step 5's command. Expected: `True`. The marker file holds `"page_rule": "all"` beside `"model"` and `"dpi"`. S2.6's old file stays in place, unused; log both file names in Deviations.
 
 ---
 
@@ -2456,3 +2472,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, walkthrough W1, Andy's decision (A): each candidate's reasoning level comes from a fixed rule over the saved model list (`transcriber_shortlist.lowest_reasoning`: the lowest listed supported effort; else `minimal` if reasoning is mandatory; else `none`), which reproduces S2.6's hand-set levels; the probe checks it, and a candidate refusing its level is replaced by the next. Spec §7.2 left the level unstated.
 - 2026-09-27, walkthrough W2, Andy's decision (A): the one batch-with-image call of spec §7.2 is kept, with the invented probe page, only for a shortlisted candidate the saved list offers a `:batch` variant for; otherwise it is recorded as "not possible" (Task 7).
 - 2026-09-27, walkthrough W3, Andy's decision (A, the alternative): Andy marks photograph and full-page-scan cards only for candidates still in the running after every measure that needs no marks and cost (decision 0100 item 3 makes the others unchoosable whatever their marks). Task 9 no longer builds the pages; Task 10 gains `cmd_automatic` (`make s27-retest-automatic`), `s27-retest-pages` takes `MODELS`, and `cmd_score` takes `marked` and prints "not marked (already out…)" for the others. The results file therefore does not give every candidate's invention counts on the two marked keys. Also fixed while editing: Task 9's card test now states S2.6's rule (an `[illegible]` reading counts as holding a word) instead of a drafting note.
+- 2026-09-27, walkthrough W4, Andy's decision (B): every finished-transcription marker names its page rule, S2.6's `"all"` included, so the stamp has one form (`ReadingLookup.done_file`, Task 2). S2.6's `dev-400` marker no longer matches; it stays on disk unused, and the marker is re-created free from the cache by `ntsb-eval transcribe --sample dev-400 --page-rule all` with nothing pending (Task 3 Steps 6–7), before any v2 run.
