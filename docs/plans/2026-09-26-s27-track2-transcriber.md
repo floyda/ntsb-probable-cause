@@ -349,7 +349,7 @@ git commit -m "S2.7 track 2: named page rules; the rule is part of a new marker'
 
 **Why here.** The meeting point (track 1) re-reads `dev-400` with track 2's winner and rule, and the sealed sample may need the same. Without these flags that means editing constants before a paid run. A model with no price or no reasoning level is refused before anything is fetched, because `transcribe.settings_for` would otherwise raise `KeyError` mid-job.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_eval_app.py` (it already has `_transcribe_env`, `main`, `ReadingLookup`, `TranscriptionCache`, `Transcription`, `TRANSCRIBE`, `PageJob`):
 
@@ -430,12 +430,12 @@ def test_transcribe_refuses_a_page_rule_it_does_not_know(
 
 (`ruff format` will re-wrap the `argv` lists; keep the values.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_eval_app.py -k "another_model or no_price or page_rule_it" -v`
 Expected: FAIL (`unrecognized arguments: --model`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In the `transcribe` sub-parser, add:
 
@@ -499,12 +499,12 @@ Pass `model=args.model, page_rule=args.page_rule` to `_page_jobs` and `_maybe_ma
         )
 ```
 
-- [ ] **Step 4: Run the transcribe tests**
+- [x] **Step 4: Run the transcribe tests**
 
 Run: `uv run pytest tests/test_eval_app.py -k transcribe -v`
 Expected: PASS, including the S2.6 tests (the defaults are S2.6's model and rule).
 
-- [ ] **Step 5: `make check`, then commit**
+- [x] **Step 5: `make check`, then commit**
 
 ```bash
 make check
@@ -2481,3 +2481,7 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 2 (pre-flight 2.3): `page_rule="all"` is stated explicitly, rather than left to the default, in every existing test that depends on S2.6's rule (`test_pages_to_read_takes_image_pages_and_mixed_pages_over_the_cut`, `test_pages_to_read_leaves_out_a_mixed_page_under_the_cut`, `test_the_lookup_finds_a_mixed_reading_and_never_a_full_reading_for_it`) and in Task 2's own new tests, except `test_the_rule_in_force_is_s26s_until_a_decision_changes_it` and `test_the_default_rule_is_the_rule_in_force`, whose purpose is to check the default itself.
 - 2026-09-27, Task 2 (pre-flight 3.3): `test_the_thin_layer_rule_cuts_at_the_limit` annotates `rule: PageRule = "image-only+thin-layer"` and imports `PageRule`, so mypy --strict does not infer `str` for a `page_rule` argument.
 - 2026-09-27, Task 2 (pre-flight 3.6): the import added to `tests/test_docket_transcribe.py` from `ntsb_probable_cause.docket.transcribe` names only `PAGE_RULE`, `PAGE_RULES`, `THIN_LAYER_MAX_CHARS`, `PageRule`, `TRANSCRIBER`, `key_instruction` and `page_choice` — the names the brief also listed that were already imported (`ReadingLookup`, `Transcription`, `TranscriptionCache`, `TranscriptionKey`, `TRANSCRIBE`) are left as they were, to avoid a duplicate-name lint error.
+- 2026-09-27, Task 3 (pre-flight 2.1): `tests/test_eval_app.py`'s dry-run assertion (S2.6's original test, formerly at line 1283) is updated to expect `"rule all,"` in the projection line, alongside the existing `TRANSCRIBER`/dpi/count text — the sub-string the new `--page-rule` argument's default prints.
+- 2026-09-27, Task 3 (pre-flight 2.4): `test_transcribe_refuses_a_page_rule_it_does_not_know` gained a `capsys` fixture and asserts `"invalid choice: 'every-page'"` is in stderr, rather than only checking that `SystemExit` is raised (argparse's own message, from `choices=PAGE_RULES`).
+- 2026-09-27, Task 3 (pre-flight 2.5): `_StubDocuments` alone serves only image-only pages (`_SCAN`), so `{j.mixed for j in calls[0]} == {False}` under `--page-rule image-only` would hold under `"all"` too and cannot show the rule is doing anything. Rather than editing the shared `_StubDocuments`/`_SCAN` (used by every other `transcribe` test, whose page counts are pinned in already-committed assertions, e.g. the dry-run test's "4 pages"), a new subclass `_StubDocumentsWithMixedPage` adds one more document holding a text-and-image page (`_MIXED_SCAN`, built with `PageSpec(text=_MIXED_TEXT, images=(...))`, chars over `SCAN_PAGE_MAX_CHARS`), used only by the new model/page-rule test via its own `monkeypatch.setattr`. Under `"image-only"` that page is never chosen (`page_choice` returns `None` for a "text and image" page); under `"all"` it would be. This keeps every existing test's page counts and assertions unchanged.
+- 2026-09-27, Task 3 (pre-flight 2.7): Step 6's plan text ("the projection line ends `0 not yet read; projected $0.00`") is read as "contains" — the real line ends with the skipped-documents clause (`_cmd_transcribe`'s `print`), which the plan's own Step 3 code shows.

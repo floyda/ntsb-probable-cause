@@ -11,13 +11,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
+    PAGE_RULE,
+    PAGE_RULES,
     TRANSCRIBE,
     TRANSCRIBER,
     PageJob,
+    PageRule,
     ReadingLookup,
     Transcription,
     TranscriptionCache,
@@ -233,6 +237,18 @@ def _build_parser() -> argparse.ArgumentParser:
     transcribe_p.add_argument("--workers", type=int, default=8)
     transcribe_p.add_argument("--retry-failed", action="store_true")
     transcribe_p.add_argument("--dry-run", action="store_true", help="count and price only")
+    transcribe_p.add_argument(
+        "--model",
+        default=TRANSCRIBER,
+        help="the transcriber (S2.7 spec §8 step 1); needs a price and a reasoning level in "
+        "sources.py",
+    )
+    transcribe_p.add_argument(
+        "--page-rule",
+        choices=PAGE_RULES,
+        default=PAGE_RULE,
+        help="which pages are sent (decision 0100 item 4); the rule in force by default",
+    )
 
     return parser
 
@@ -475,7 +491,11 @@ def _top_failure_reasons(readings: Sequence[Transcription | None], limit: int = 
 
 
 def _page_jobs(
-    raws: Sequence[Mapping[str, object]], docs: CachedDocuments
+    raws: Sequence[Mapping[str, object]],
+    docs: CachedDocuments,
+    *,
+    model: str = TRANSCRIBER,
+    page_rule: PageRule = PAGE_RULE,
 ) -> tuple[list[PageJob], int]:
     """One job per page v2 reads, over every PDF in every case's docket.
 
@@ -483,7 +503,8 @@ def _page_jobs(
     is not a PDF is not a failure and is not counted. A case whose docket cannot be listed, a
     document that cannot be fetched, and a document that cannot be parsed for its pages *are*
     counted rather than silently dropped (Task 14 review, finding M2); the second return value
-    is that count.
+    is that count. ``model`` and ``page_rule`` are S2.7 track 2 Task 3's re-test flags (spec
+    §8 step 1; decision 0100 item 5).
     """
     jobs: list[PageJob] = []
     skipped = 0
@@ -501,7 +522,7 @@ def _page_jobs(
                 continue
             try:
                 data = docs.document(mkey, entry.index)
-                chosen = pages_to_read(data)
+                chosen = pages_to_read(data, page_rule=page_rule)
             except DocketError:
                 skipped += 1
                 continue
@@ -512,7 +533,7 @@ def _page_jobs(
                 key = TranscriptionKey(
                     document_sha256=sha,
                     page=page,
-                    model=TRANSCRIBER,
+                    model=model,
                     instruction=key_instruction(TRANSCRIBE, mixed=mixed),
                     dpi=RESOLUTION,
                 )
@@ -520,8 +541,14 @@ def _page_jobs(
     return jobs, skipped
 
 
-def _maybe_mark_done(
-    cache: TranscriptionCache, sample: str, jobs: Sequence[PageJob], skipped: int
+def _maybe_mark_done(  # noqa: PLR0913 -- model and page_rule (S2.7 T3) name the pair covered.
+    cache: TranscriptionCache,
+    sample: str,
+    jobs: Sequence[PageJob],
+    skipped: int,
+    *,
+    model: str = TRANSCRIBER,
+    page_rule: PageRule = PAGE_RULE,
 ) -> int:
     """Write the finished-transcription marker only within the retry threshold (M1).
 
@@ -530,7 +557,8 @@ def _maybe_mark_done(
     ``MAX_FAILED_SHARE`` of the pages chosen; otherwise nothing is written, the failure count,
     share and the three most common failure reasons are printed (never page text), the
     operator is told to re-run with ``--retry-failed``, and the exit code is non-zero so this
-    cannot pass unnoticed in a script.
+    cannot pass unnoticed in a script. ``model`` and ``page_rule`` (S2.7 track 2 Task 3) name
+    the pair the marker covers, so each model/rule pair gets its own marker (spec §8 step 1).
     """
     readings = [cache.get(j.key) for j in jobs]
     if not all(r is not None for r in readings):
@@ -547,14 +575,15 @@ def _maybe_mark_done(
             "--retry-failed."
         )
         return 1
-    ReadingLookup(cache).mark_done(
+    ReadingLookup(cache, model=model, page_rule=page_rule).mark_done(
         sample,
         {
             "pages": total,
             "failed": failed,
             "failed_share": share,
             "skipped_documents": skipped,
-            "model": TRANSCRIBER,
+            "model": model,
+            "page_rule": page_rule,
             "dpi": RESOLUTION,
         },
     )
@@ -584,12 +613,26 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
             "and this command writes no held-out ledger row. A later stage lifts this "
             "deliberately."
         )
+    # S2.7 track 2, Task 3: a model the price table or the reasoning table does not know would
+    # fail inside the job (transcribe.settings_for); refuse it before anything is fetched.
+    try:
+        sources.price_of(args.model)
+    except KeyError:
+        raise ConfigurationError(
+            f"no price on file for {args.model}; add it to sources.py"
+        ) from None
+    if args.model not in sources.LOWEST_REASONING:
+        raise ConfigurationError(
+            f"no reasoning level on file for {args.model}; add it to sources.LOWEST_REASONING"
+        )
     raws = samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))
     cache = TranscriptionCache(settings.transcription_dir)
     with DocketClient(
         settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
     ) as client:
-        jobs, skipped = _page_jobs(raws, CachedDocuments(client))
+        jobs, skipped = _page_jobs(
+            raws, CachedDocuments(client), model=args.model, page_rule=args.page_rule
+        )
         pending = [
             j
             for j in jobs
@@ -597,9 +640,9 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
         ]
         projected = len(pending) * args.expected_cost_per_page_usd
         print(
-            f"{args.sample}: {len(jobs)} pages to read with {TRANSCRIBER} at {RESOLUTION} dpi, "
-            f"{len(pending)} not yet read; projected ${projected:.2f}; {skipped} document(s) "
-            "could not be listed, fetched or parsed"
+            f"{args.sample}: {len(jobs)} pages to read with {args.model} at {RESOLUTION} dpi, "
+            f"rule {args.page_rule}, {len(pending)} not yet read; projected ${projected:.2f}; "
+            f"{skipped} document(s) could not be listed, fetched or parsed"
         )
         if args.dry_run:
             return 0
@@ -632,7 +675,9 @@ def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
     if stopped is not None:
         print(f"transcribe: {stopped} The marker is NOT written.", file=sys.stderr)
         return 1
-    return _maybe_mark_done(cache, args.sample, jobs, skipped)
+    return _maybe_mark_done(
+        cache, args.sample, jobs, skipped, model=args.model, page_rule=args.page_rule
+    )
 
 
 def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
