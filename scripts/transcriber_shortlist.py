@@ -35,6 +35,25 @@ SHORTLIST_SIZE = 8
 RESULTS = Path("docs/results/s27-transcriber-shortlist.txt")
 _LADDER: tuple[sources.ReasoningEffort, ...] = get_args(sources.ReasoningEffort)
 
+# The results file's eligible models, in its order (Task 6): the first SHORTLIST_SIZE are the
+# shortlist, the rest replace a failed probe in order. Every one is priced in sources.py.
+S27_SHORTLIST: tuple[str, ...] = (
+    "inclusionai/ling-3.0-flash-vl",
+    "qwen/qwen3.7-flash",
+    "deepseek/deepseek-v4.1-flash",
+    "z-ai/glm-5.3-flash",
+    "prism-ml/ternary-bonsai-2-27b",
+    "meta/muse-spark-1.2-contributor",
+    "meta/muse-spark-1.3-contributor",
+    "openai/gpt-6-luna-pro",
+    "xiaomi/mimo-v2.6-flash",
+    "qwen/qwen3.8-flash",
+    "qwen/qwen3.8-omni-flash",
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-luna-pro",
+    "deepseek/deepseek-v4-flash-vision-exp",
+)
+
 
 @dataclass(frozen=True)
 class Listed:

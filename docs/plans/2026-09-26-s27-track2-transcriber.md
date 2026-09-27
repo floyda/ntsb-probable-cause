@@ -1323,7 +1323,7 @@ If fewer than eight models are eligible, record the count in Deviations (walkthr
 
 **Why every eligible model, reserves included.** Task 7 replaces a failed probe by the next model in order; each needs a price and a level before it is called, or `settings_for` and `cost_usd` raise mid-probe.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_transcriber_shortlist.py`:
 
@@ -1345,12 +1345,12 @@ def test_every_shortlisted_model_is_priced_and_has_a_reasoning_level() -> None:
         assert model in sources.LOWEST_REASONING
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -k "constant or priced" -v`
 Expected: FAIL (`AttributeError: ... has no attribute 'S27_SHORTLIST'`).
 
-- [ ] **Step 3: Add the entries, copied from the results file**
+- [x] **Step 3: Add the entries, copied from the results file**
 
 For each line of `docs/results/s27-transcriber-shortlist.txt` that starts `candidate` or `reserve`, add in `sources.py`, below `QWEN_35_122B`, one constant with a source comment naming the saved list, for example:
 
@@ -1375,12 +1375,12 @@ S27_SHORTLIST: tuple[str, ...] = (
 
 These are data copied from a committed results file, not choices; the two tests prove the copy.
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py tests/test_sources_settings.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/sources.py scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -2491,3 +2491,4 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, Task 5 (pre-flight 3.1): `refusal`'s `ids` parameter is typed `collections.abc.Set as AbstractSet` (imported as `from collections.abc import Set as AbstractSet`), not `collections.abc.AbstractSet`, which does not exist.
 - 2026-09-27, Task 5 (pre-flight 1.5): `render_shortlist` prints `input_usd_per_mtok`/`output_usd_per_mtok` at full float precision (`${x.input_usd_per_mtok}`), not `:.3f` as the brief's code showed, so Task 6 copies exact prices from the results file rather than rounded ones.
 - 2026-09-27, Task 5, Andy's decision: spec §7.2's filter gains a condition — a listing priced at $0 (or unpriced) is refused — because a free or preview listing can be withdrawn or rate-limited and cannot be kept as the build's transcriber, and it would win the cost comparison with Qwen by default. On the 2026-09-27 list this refused 7 listings, dropping eligible from 16 to 14; two of the seven had reached the shortlist itself (stealth/space-bunny-alpha at rank 1, dots-studio/dots-3-note-preview:free at rank 2), so reserves 9 and 10 (meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro) moved onto the shortlist, which now reads: inclusionai/ling-3.0-flash-vl, qwen/qwen3.7-flash, deepseek/deepseek-v4.1-flash, z-ai/glm-5.3-flash, prism-ml/ternary-bonsai-2-27b, meta/muse-spark-1.2-contributor, meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro. Andy allowed an exception for NVIDIA's free listings if any qualified; none of the five did: nemotron-3.5-lightning, nemotron-3-ultra-550b-a55b and nemotron-3-super-120b-a12b are refused for no image input; nemotron-3-nano-omni-30b-a3b-reasoning for release before 2026-06-01; nemotron-3.5-content-safety, which previously reached "no structured output" (2026-09-27's first run), is one of the seven now refused earlier, as "free or unpriced listing" — so none is coded. `_per_mtok`/`_price` also moved to exact `Decimal` arithmetic (rather than `float(str) * 1_000_000`) so the results file prints exact prices (e.g. `$0.1`, not `$0.09999999999999999`), matching pre-flight 1.5's requirement more precisely than the first pass did.
+- 2026-09-27, Task 6 (pre-flight 1.5 and 2.2): every price in `sources.py` was double-checked against the saved JSON at `$NTSB_DATA_DIR/s27/openrouter-models-2026-09-27.json` (a short read-only script, discarded after use) and matches the results file exactly. Two of the 14 eligible models already had a `ModelPrice` entry from an earlier stage: `openai/gpt-5.6-luna` (`LUNA`, read 2026-09-15) lists the same $0.2/$1.2 today, so no new constant was added for it — `price_of` already returns a matching, correctly-sourced price. `z-ai/glm-5.3-flash` (`GLM_53_FLASH`, read 2026-09-16) is priced differently today ($0.045/$0.14 against the old $0.09/$0.30); a new constant `S27_GLM_53_FLASH` holds the current price and is placed after `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` in the `_PRICES` tuple so `price_of("z-ai/glm-5.3-flash")` returns the current price (`_PRICES` is a dict comprehension over the tuple; the later entry wins on a shared key). The old `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` constants are left in place, since nothing outside `sources.py` references them by name and removing them is outside this task's scope — flagged for Andy in the Task 6 report rather than decided here. `test_sources_settings.py`'s `test_the_transcriber_candidates_are_priced_and_levelled` was changed from `assert sources.LOWEST_REASONING == {...}` to four `assert sources.LOWEST_REASONING["..."] == "..."` lines, per pre-flight 2.2, since S2.7 adds ten more entries to the same dict.

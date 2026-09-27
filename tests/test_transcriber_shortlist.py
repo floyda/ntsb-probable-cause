@@ -10,6 +10,8 @@ import pytest
 import respx
 from scripts import transcriber_shortlist as ts
 
+from ntsb_probable_cause import sources
+
 _JUNE = int(datetime(2026, 7, 1, tzinfo=UTC).timestamp())
 _MAY = int(datetime(2026, 5, 1, tzinfo=UTC).timestamp())
 
@@ -155,3 +157,16 @@ def test_fetch_saves_the_list_it_read(tmp_path: Path, monkeypatch: pytest.Monkey
     assert ts.main(["fetch", "--date", "2026-09-27"]) == 0
     saved = tmp_path / "s27" / "openrouter-models-2026-09-27.json"
     assert json.loads(saved.read_text())["data"][0]["id"] == "v/m"
+
+
+def test_the_shortlist_constant_matches_the_committed_results_file() -> None:
+    lines = Path("docs/results/s27-transcriber-shortlist.txt").read_text().splitlines()
+    listed = [line.split()[2] for line in lines if line.startswith(("candidate ", "reserve "))]
+    assert list(ts.S27_SHORTLIST) == listed
+
+
+def test_every_shortlisted_model_is_priced_and_has_a_reasoning_level() -> None:
+    for model in ts.S27_SHORTLIST:
+        price = sources.price_of(model)
+        assert "OpenRouter models API, 2026-09" in price.source
+        assert model in sources.LOWEST_REASONING
