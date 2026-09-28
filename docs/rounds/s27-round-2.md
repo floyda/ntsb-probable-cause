@@ -42,3 +42,12 @@
     When the group is Approach, the NTSB used Approach-VFR Pattern Final in 466 of 1403 past cases, the general Approach code in 307, Approach-VFR Go-Around in 230, Approach-VFR Pattern Downwind in 142 and Approach-VFR Pattern Base in 130, with fewer under the other approach codes.
 
     None of these counts is a rule: code the part of the flight the evidence places the event in.
+
+## Result (scripts/round_result.py, decision 0098 item 4)
+
+- run: 20260928T110233-2402e72-dev-400-B-check-luna; reference: 20260927T111202-fbab38a-dev-400-B-check-luna; noise pair: 20260926T082427-d19aafa-dev-400-B-check-luna, 20260927T111202-fbab38a-dev-400-B-check-luna
+- occurrence top-1: +2.5% [-1.8%, +6.8%] on n=399
+- noise floor (occurrence top-1, the two identical runs): 1.0%
+- finding recall@10 (do no harm): -1.4% [-3.2%, +0.3%] on n=397
+- first codes changed: 197; toward a more common option: 98, fixes 30, breaks 9 (decision 0101 item 4)
+- outcome: dropped: the gain's interval includes zero
