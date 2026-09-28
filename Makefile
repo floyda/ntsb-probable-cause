@@ -292,8 +292,9 @@ s27-round-result:
 	$(if $(RUN),,$(error RUN is required))
 	$(if $(REFERENCE),,$(error REFERENCE is required))
 	$(if $(NOISE),,$(error NOISE is required: the two identical runs, space-separated, in quotes))
-	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) $(if $(FINDING),--finding-round,) --append docs/rounds/s27-round-$(N).md
+	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) $(if $(FINDING),--finding-round,) $(if $(SUPPLEMENT),--supplement,) --append docs/rounds/s27-round-$(N).md
 # S2.7 spec §6.4, free: decision 0098 item 4's reading, appended to the round's registration.
+# SUPPLEMENT=1 adds decision 0105 item 4's line (Round 5: its run has the added codes, its reference not).
 
 s27-page-value:
 	uv run python -m scripts.page_value --sample dev-400 --out docs/results/s27-page-value.txt

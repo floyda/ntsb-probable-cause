@@ -9,7 +9,10 @@ Why
 
 Usage
     uv run python -m scripts.round_result --run RUN --reference REF --noise A B
-    [--finding-round] [--append PATH]
+    [--finding-round] [--supplement] [--append PATH]
+
+    ``--supplement`` (decision 0105 item 4) adds a line for the cases a code added to the tables
+    touches, for the first round whose run has the added codes and whose reference does not.
 """
 
 import argparse
@@ -19,7 +22,7 @@ from pathlib import Path
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.fields import EvidenceRole
-from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring import codes, samples
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
 from ntsb_probable_cause.scoring.metrics import bootstrap_mean
 from ntsb_probable_cause.scoring.ordering import toward_more_common
@@ -140,6 +143,33 @@ def push_line(
     )
 
 
+def _added(code: str, supplement: Mapping[codes.TableName, Mapping[str, str]]) -> bool:
+    return code[:3] in supplement.get("phases", {}) or code[3:] in supplement.get("events", {})
+
+
+def supplement_line(run: Sequence[CaseResult], reference: Sequence[CaseResult]) -> str:
+    """Decision 0105 item 4: the cases a code added to the tables touches, apart from the rest."""
+    supplement = codes.read_supplement()
+    touched = {
+        c.case_id for c in run if any(_added(code, supplement) for code in c.verdict_occurrence)
+    }
+    defining = len(
+        [c for c in run if c.verdict_occurrence and _added(c.verdict_occurrence[0], supplement)]
+    )
+    ran, ref = _top1(run), _top1(reference)
+    rest = diff(
+        {k: v for k, v in ran.items() if k not in touched},
+        {k: v for k, v in ref.items() if k not in touched},
+    )
+    return (
+        f"- cases whose NTSB sequence holds a code decision 0105 added: {len(touched)} "
+        f"(defining: {defining}); top-1 hits there: reference "
+        f"{sum(v for k, v in ref.items() if k in touched):.0f}, run "
+        f"{sum(v for k, v in ran.items() if k in touched):.0f}; occurrence top-1 on the other "
+        f"cases: {_fmt(rest)}"
+    )
+
+
 _GROUP_FIELD = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
 
 
@@ -189,6 +219,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--noise", nargs=2, required=True, metavar="RUN_ID")
     parser.add_argument("--finding-round", action="store_true")
     parser.add_argument("--append", default=None, type=Path)
+    parser.add_argument("--supplement", action="store_true")
     args = parser.parse_args(argv)
     run, reference = _load(args.run), _load(args.reference)
     reading = read(
@@ -214,6 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",
             f"- {secondary} (do no harm): {_fmt(reading.secondary)}",
             push,
+            *([supplement_line(run, reference)] if args.supplement else []),
             f"- outcome: {reading.reason}",
         ]
     )

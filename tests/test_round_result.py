@@ -95,6 +95,26 @@ def _run_record(run_id: str, *, sample: str = "dev-400", arm: str = "B") -> RunR
 # 2026-09-27 addition beyond the brief: round_result._load mirrors the sibling scripts on this
 # branch (judge_outcomes._load, round0_handread._run, round1_report._load), which check
 # run.jsonl's recorded sample before cases.jsonl is read at all.
+def test_supplement_line_splits_cases_by_a_code_decision_0105_added() -> None:
+    hit = {"scores": replace(_SCORES, occurrence_top1=True)}
+    reference = [
+        _case("C1", ("553470",), ("550470",)),
+        _case("C2", ("452240", "601092"), ("452240",)).model_copy(update=hit),
+        _case("C3", ("452240",), ("452240",)).model_copy(update=hit),
+        _case("C4", ("452240",), ("452241",)),
+    ]
+    run = [
+        _case("C1", ("553470",), ("553470",)).model_copy(update=hit),
+        _case("C2", ("452240", "601092"), ("452240",)).model_copy(update=hit),
+        _case("C3", ("452240",), ("452240",)).model_copy(update=hit),
+        _case("C4", ("452240",), ("452241",)),
+    ]
+    text = rr.supplement_line(run, reference)
+    assert "NTSB sequence holds a code decision 0105 added: 2 (defining: 1)" in text
+    assert "top-1 hits there: reference 1, run 2" in text
+    assert "occurrence top-1 on the other cases: +0.0%" in text
+
+
 def test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
