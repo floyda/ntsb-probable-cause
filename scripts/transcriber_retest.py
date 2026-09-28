@@ -772,11 +772,12 @@ def _scan_cards(
     docs: CachedDocuments,
     scans: Sequence[Mapping[str, object]],
     models: Sequence[str],
+    choice: Choice = _SCAN_WORDS,
 ) -> tuple[dict[int, str], dict[int, dict[str, object]], list[Card]]:
     """The full-page scans' text layers, sheet and cards, shuffled with the re-test's scan seed.
 
     Shared by the re-test's scan page and the routing page, so the same candidates give the
-    same card numbers on both.
+    same card numbers on both. ``choice`` changes only the cards' options, never the sheet.
     """
     layers = _scan_layers(scans, docs)
     sheet, cards = word_cards(
@@ -784,7 +785,7 @@ def _scan_cards(
         _reading_of(settings, scans),
         models=models,
         seed_base=_SCAN_SEED_BASE,
-        choices=(_SCAN_WORDS,),
+        choices=(choice,),
         body=_scan_body(layers),
     )
     return layers, sheet, cards
@@ -874,8 +875,16 @@ _ROUTING_INTRO = (
     "<p>This page marks, for each candidate's reading of S2.6's full-page scans, whether its "
     "added words are on the page, repeat the text layer, or are invented. It serves a question "
     "outside the re-test's rule: whether text-and-image pages could be routed to a cheaper "
-    "model. Qwen's readings are not shown: S2.6 already marked them (0 of 25 invented).</p>"
+    "model. Qwen's readings are not shown: S2.6 already marked them (0 of 25 invented). "
+    "Pick <b>can't judge</b> when the part of the page the added words would come from cannot "
+    "be read; those cards are counted apart and not as invented.</p>"
 )
+# Andy, 2026-09-28 (A): a fourth choice on the routing page alone, for added words from a
+# part of the page he cannot read. S2.6's ``_SCAN_WORDS`` and the re-test's page keep three.
+_CANT_JUDGE = "can't judge — I can't read this part of the page"
+_ROUTING_SCAN_WORDS = Choice(_SCAN_WORDS.name, (*_SCAN_WORDS.options, _CANT_JUDGE))
+# The page's model list, beside its sheet: a candidate with no card was still on the page.
+_ROUTING_MODELS = "models.json"
 # docs/results/s26-transcriber-test-pass2.txt, Qwen's "full-page scans (decision W7)" line.
 _QWEN_S26_SCANS = "invented added words on 0 of 25; repeated the text layer on 0"
 
@@ -907,12 +916,13 @@ def cmd_routing_pages(settings: Settings, docs: CachedDocuments, *, models: Sequ
         raise ConfigurationError(
             "not in the transcription cache: " + "; ".join(missing) + " -- run the re-test first"
         )
-    layers, sheet, cards = _scan_cards(settings, docs, scans, ordered)
+    layers, sheet, cards = _scan_cards(settings, docs, scans, ordered, _ROUTING_SCAN_WORDS)
     out = settings.data_dir / ROUTING_FOLDER
     _refuse_moved_marks(out, {"mixed.json": sheet})
     out.mkdir(parents=True, exist_ok=True)
     pages = os.path.relpath(FOLDER / "pages", ROUTING_FOLDER)
     (out / "mixed.json").write_text(json.dumps(sheet))
+    (out / _ROUTING_MODELS).write_text(json.dumps(list(ordered)))
     page = out / "scans.html"
     page.write_text(
         marking_page.render(
@@ -941,22 +951,44 @@ def cmd_routing_tally(settings: Settings, *, models: Sequence[str], mixed_csv: P
         The text: the key, Qwen's S2.6 figure, and one line per candidate.
 
     Raises:
-        SystemExit: A card is unmarked or missing from the CSV, or the sheet holds cards of a
-            model not in ``models``.
+        SystemExit: A card is unmarked, missing from the CSV or marked with an unknown choice;
+            the sheet holds cards of a model not in ``models``; or a model in ``models`` was
+            not on the page when it was built (or the page has no model list).
     """
     keys = _read(settings.data_dir / FOLDER / "keys.jsonl")
     scans = [r for r in keys if r["set"] == "mixed"]
-    sheet = json.loads((settings.data_dir / ROUTING_FOLDER / "mixed.json").read_text())
+    folder = settings.data_dir / ROUTING_FOLDER
+    sheet = json.loads((folder / "mixed.json").read_text())
     others = sorted({str(v["model"]) for v in sheet.values()} - set(models))
     if others:
         raise SystemExit(
             "routing-tally: cards of models not named in --models: " + " ".join(others)
         )
+    if not (folder / _ROUTING_MODELS).exists():
+        raise SystemExit(
+            f"routing-tally: {folder / _ROUTING_MODELS} is missing, so a model with no card "
+            "cannot be told from one never shown -- rebuild the page (s27-routing-pages) with "
+            "the same models"
+        )
+    built = set(json.loads((folder / _ROUTING_MODELS).read_text()))
+    never_built = [m for m in models if m not in built]
+    if never_built:
+        raise SystemExit(
+            "routing-tally: the routing page was not built for: " + " ".join(never_built)
+        )
     marks = read_marks(mixed_csv)
-    field = "added words"
+    field = _ROUTING_SCAN_WORDS.name
+    unknown = sorted(
+        n
+        for n in sheet
+        if marks.get(int(n), {}).get(field, "") not in {"", *_ROUTING_SCAN_WORDS.options}
+    )
+    if unknown:
+        raise SystemExit(f"routing-tally: cards marked with an unknown choice: {unknown}")
     invented = invented_by_model(sheet, marks, field=field, invented="some invented")
     repeated = invented_by_model(sheet, marks, field=field, invented="repeats the text layer")
     new = invented_by_model(sheet, marks, field=field, invented="all on the page and new")
+    cant_judge = invented_by_model(sheet, marks, field=field, invented=_CANT_JUDGE)
     cards = Counter(str(v["model"]) for v in sheet.values())
     cache = TranscriptionCache(settings.transcription_dir)
     lines = [
@@ -975,8 +1007,9 @@ def cmd_routing_tally(settings: Settings, *, models: Sequence[str], mixed_csv: P
         failed = _reading_counts(cache, scans, m, dpi=RESOLUTION)["mixed"].failed
         lines.append(
             f"{m}: invented added words on {invented[m]} of {len(scans)} scans; repeated the "
-            f"text layer on {repeated[m]}; all on the page and new on {new[m]}; no words added "
-            f"/ no card on {len(scans) - cards[m] - failed}; failed to read {failed}"
+            f"text layer on {repeated[m]}; all on the page and new on {new[m]}; could not be "
+            f"judged on {cant_judge[m]}; no words added / no card on "
+            f"{len(scans) - cards[m] - failed}; failed to read {failed}"
         )
     return "\n".join(lines)
 

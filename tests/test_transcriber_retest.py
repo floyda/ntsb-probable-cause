@@ -1,6 +1,7 @@
 """S2.7 track 2, Tasks 8-10: the re-test against Qwen."""
 
 import hashlib
+import html
 import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -864,9 +865,11 @@ def test_routing_pages_writes_only_the_scan_page_in_its_own_folder(tmp_path: Pat
     retest = settings.data_dir / tr.RETEST_FOLDER
     assert sorted(p.name for p in retest.iterdir()) == ["routing"]
     out = settings.data_dir / tr.ROUTING_FOLDER
-    assert sorted(p.name for p in out.iterdir()) == ["mixed.json", "scans.html"]
+    assert sorted(p.name for p in out.iterdir()) == ["mixed.json", "models.json", "scans.html"]
     sheet = json.loads((out / "mixed.json").read_text())
     assert sorted(v["model"] for v in sheet.values()) == ["a/m", "b/m"]  # c/m failed: no card
+    # The page's model list, so the tally can tell "built, no cards" from "never built".
+    assert json.loads((out / "models.json").read_text()) == ["a/m", "b/m", "c/m"]
     page = (out / "scans.html").read_text()
     assert "s27-routing-scan-words" in page
     assert "s27-routing-scan-words.csv" in page
@@ -887,6 +890,41 @@ def test_routing_pages_number_the_cards_as_the_retest_scan_page_does(tmp_path: P
     tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
     routing = (settings.data_dir / tr.ROUTING_FOLDER / "mixed.json").read_text()
     assert routing == (settings.data_dir / tr.RETEST_FOLDER / "mixed.json").read_text()
+
+
+def test_only_the_routing_page_offers_cant_judge(tmp_path: Path) -> None:
+    # Andy, 2026-09-28 (A): a fourth choice on the routing page alone; S2.6's choice and the
+    # re-test's scan page are unchanged.
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    cant_judge = "can't judge — I can't read this part of the page"
+    assert tr._ROUTING_SCAN_WORDS.options == (*tt._SCAN_WORDS.options, cant_judge)
+    assert tt._SCAN_WORDS.options == (
+        "all on the page and new",
+        "repeats the text layer",
+        "some invented",
+    )
+    routing = (settings.data_dir / tr.ROUTING_FOLDER / "scans.html").read_text()
+    assert html.escape(cant_judge) in routing
+    assert "counted apart and not as invented" in routing
+    retest = (settings.data_dir / tr.RETEST_FOLDER / "mixed.html").read_text()
+    assert html.escape(cant_judge) not in retest
+
+
+def test_a_rebuild_after_the_new_choice_keeps_the_sheet_and_its_rows(tmp_path: Path) -> None:
+    # The sheet built before the change had S2.6's three choices; the re-test's scan page still
+    # builds it that way, with the same seed. Put it where the routing page keeps its sheet, as
+    # the page Andy may already have marked left it: the rebuild must pass the guard and leave
+    # it byte-identical, so marks saved in the browser keep their rows.
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_pages(settings, docs, models=("a/m", "b/m"))
+    before = (settings.data_dir / tr.RETEST_FOLDER / "mixed.json").read_bytes()
+    out = settings.data_dir / tr.ROUTING_FOLDER
+    out.mkdir(parents=True)
+    (out / "mixed.json").write_bytes(before)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    assert (out / "mixed.json").read_bytes() == before
 
 
 def test_routing_pages_refuse_a_rebuild_that_would_move_marks(tmp_path: Path) -> None:
@@ -932,12 +970,60 @@ def test_routing_tally_counts_each_models_marks_and_failed_readings(tmp_path: Pa
     )
     assert lines[-3:] == [
         "a/m: invented added words on 1 of 1 scans; repeated the text layer on 0; all on the "
-        "page and new on 0; no words added / no card on 0; failed to read 0",
+        "page and new on 0; could not be judged on 0; no words added / no card on 0; "
+        "failed to read 0",
         "b/m: invented added words on 0 of 1 scans; repeated the text layer on 1; all on the "
-        "page and new on 0; no words added / no card on 0; failed to read 0",
+        "page and new on 0; could not be judged on 0; no words added / no card on 0; "
+        "failed to read 0",
         "c/m: invented added words on 0 of 1 scans; repeated the text layer on 0; all on the "
-        "page and new on 0; no words added / no card on 0; failed to read 1",
+        "page and new on 0; could not be judged on 0; no words added / no card on 0; "
+        "failed to read 1",
     ]
+
+
+def test_routing_tally_counts_cant_judge_apart_from_invented(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    csv = _routing_marks(
+        settings,
+        {"a/m": "can't judge — I can't read this part of the page", "b/m": "some invented"},
+    )
+    lines = tr.cmd_routing_tally(settings, models=("a/m", "b/m"), mixed_csv=csv).splitlines()
+    assert lines[-2:] == [
+        "a/m: invented added words on 0 of 1 scans; repeated the text layer on 0; all on the "
+        "page and new on 0; could not be judged on 1; no words added / no card on 0; "
+        "failed to read 0",
+        "b/m: invented added words on 1 of 1 scans; repeated the text layer on 0; all on the "
+        "page and new on 0; could not be judged on 0; no words added / no card on 0; "
+        "failed to read 0",
+    ]
+
+
+def test_routing_tally_refuses_a_model_the_page_was_never_built_for(tmp_path: Path) -> None:
+    # b/m has readings but no card on a page built for a/m alone: "never built", not "no cards".
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m",))
+    csv = _routing_marks(settings, {"a/m": "some invented"})
+    with pytest.raises(SystemExit, match="the routing page was not built for: b/m"):
+        tr.cmd_routing_tally(settings, models=("a/m", "b/m"), mixed_csv=csv)
+
+
+def test_routing_tally_refuses_a_mark_that_is_not_one_of_the_four_choices(tmp_path: Path) -> None:
+    # Such a card would fall in none of the categories, and they would no longer add up.
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    csv = _routing_marks(settings, {"a/m": "some invented", "b/m": "maybe"})
+    with pytest.raises(SystemExit, match="unknown choice"):
+        tr.cmd_routing_tally(settings, models=("a/m", "b/m"), mixed_csv=csv)
+
+
+def test_routing_tally_refuses_a_page_without_its_model_list(tmp_path: Path) -> None:
+    settings, docs = _keys_for_pages(tmp_path)
+    tr.cmd_routing_pages(settings, docs, models=("a/m", "b/m"))
+    (settings.data_dir / tr.ROUTING_FOLDER / "models.json").unlink()
+    csv = _routing_marks(settings, {"a/m": "some invented", "b/m": "some invented"})
+    with pytest.raises(SystemExit, match=r"models\.json.*rebuild the page"):
+        tr.cmd_routing_tally(settings, models=("a/m", "b/m"), mixed_csv=csv)
 
 
 def test_routing_tally_refuses_an_unmarked_card(tmp_path: Path) -> None:
