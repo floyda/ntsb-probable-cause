@@ -69,6 +69,23 @@ class CodingStats(BaseModel):
             total.update(half.get(_pair_key(a, b), {}))
         return dict(total)
 
+    def event_pair(self, a: str, b: str) -> dict[str, int]:
+        """:meth:`pair` summed over every phase, keyed by three-digit event suffix.
+
+        Counts code pairs, so a case holding one event under two phases counts once per pair.
+        """
+        total: Counter[str] = Counter({"both": 0})
+        if a == b:
+            return dict(total)
+        for half in self.pairs.values():
+            for key, counts in half.items():
+                x, y = key.split("|")
+                if {x[3:], y[3:]} != {a, b}:
+                    continue
+                for code, n in counts.items():
+                    total[code if code == "both" else code[3:]] += n
+        return dict(total)
+
     def group_defining_n(self, group: str, code: str) -> int:
         """Pool cases with phase group ``group`` whose defining code is ``code``."""
         return sum(half.get(group, {}).get(code, 0) for half in self.group_defining.values())

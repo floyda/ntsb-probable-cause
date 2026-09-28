@@ -45,6 +45,21 @@ def test_pairs_count_both_and_each_side_defining() -> None:
     assert stats.pair(LOC, "999999") == {"both": 0}
 
 
+def test_event_pairs_sum_every_phase_by_event_suffix() -> None:
+    stats = build(
+        [
+            PoolCase(year=2010, group="Enroute", sequence=("402192", "402341")),
+            PoolCase(year=2011, group="Enroute", sequence=("402341", "402192")),
+            PoolCase(year=2016, group="Approach", sequence=("500192", "502341")),
+            PoolCase(year=2017, group="Approach", sequence=("502341", "502341")),
+        ],
+        built_from="test",
+    )
+    assert stats.event_pair("192", "341") == {"both": 3, "192": 2, "341": 1}
+    assert stats.event_pair("341", "341") == {"both": 0}
+    assert stats.event_pair("192", "999") == {"both": 0}
+
+
 def test_groups_give_defining_codes_and_phase_prefixes() -> None:
     stats = _stats()
     assert stats.group_defining_n("Maneuvering", LOC) == 2
