@@ -172,11 +172,13 @@ def score(
         raise SystemExit(f"round0_handread: {len(unmarked)} unmarked cards, e.g. row {unmarked[0]}")
     agree = generous = harsh = decidable = 0
     why: Counter[str] = Counter()
+    why_by_group: dict[str, Counter[str]] = {g: Counter() for g in MISS_GROUPS}
     cards_by_group = Counter(r["group"] for r in sheet)
     for row in sheet:
         mark = marks[int(row["row"])]
         if row["group"] != "exact" and mark.get("why"):
             why[mark["why"]] += 1
+            why_by_group[row["group"]][mark["why"]] += 1
         andy = mark["key fact"]
         if andy == "can't tell":
             continue
@@ -203,6 +205,12 @@ def score(
         f"outcome: {'validated' if validated else 'not validated'}",
         "why the misses happened (Andy): " + ", ".join(f"{w} {why[w]}" for w in WHY),
     ]
+    lines.extend(
+        f"why by group -- {group} ({cards_by_group[group]} cards): "
+        + ", ".join(f"{w} {why_by_group[group][w]}" for w in WHY)
+        for group in MISS_GROUPS
+        if cards_by_group[group]
+    )
     return "\n".join(lines)
 
 

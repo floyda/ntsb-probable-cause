@@ -75,6 +75,32 @@ def test_score_is_not_validated_when_errors_run_one_way() -> None:
     assert "outcome: not validated" in text
 
 
+def test_score_prints_why_by_miss_group() -> None:
+    sheet = _sheet(
+        [
+            ("C0", "right event, wrong phase"),
+            ("C1", "right event, wrong phase"),
+            ("C2", "nothing in common"),
+        ]
+    )
+    marks = {
+        1: {"key fact": "yes", "why": "coding convention"},
+        2: {"key fact": "yes", "why": "wrong phase"},
+        3: {"key fact": "no", "why": "other"},
+    }
+    labels = _labels({"C0": "consistent", "C1": "consistent", "C2": "consistent"})
+    text = rh.score(sheet, marks, labels)
+    lines = text.splitlines()
+    assert (
+        "why by group -- right event, wrong phase (2 cards): coding convention 1, "
+        "wrong phase 1, misread or missing fact 0, NTSB code arguable 0, other 0"
+    ) in lines
+    assert (
+        "why by group -- nothing in common (1 cards): coding convention 0, wrong phase 0, "
+        "misread or missing fact 0, NTSB code arguable 0, other 1"
+    ) in lines
+
+
 def test_score_refuses_an_unmarked_card() -> None:
     sheet = _sheet([("C0", "nothing in common")])
     with pytest.raises(SystemExit, match="unmarked"):
