@@ -2440,7 +2440,7 @@ git commit -m "S2.7 track 2: decision record 120, the transcriber and the page r
 
 ### Task 12: Merge back into the stage branch (spec §11)
 
-- [ ] **Step 1: Bring the stage branch in and re-check**
+- [x] **Step 1: Bring the stage branch in and re-check** — 2026-09-28: the parent had no new commits since `42e67a7` (already merged at `5d2bc2d`); `make check` 1648 passed, 97.76%; `check_docs` exit 0
 
 ```bash
 git fetch origin
