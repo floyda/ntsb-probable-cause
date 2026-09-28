@@ -134,7 +134,8 @@ Accepted, 2026-09-28. Item 1: Andy, "Ok suppose we need to stick with qwen and t
 2: Andy, "Im swaying towards B because in the grand schema of things the transcription didn't
 provide the big boost i was hoping for", with the cost line quoted in Context. Item 3, on the
 shape "off by default, a tool the agent can choose later": Andy, "yes that shape i think makes
-sense". Items 4 to 7 apply these decisions and 0100's rules.
+sense". Items 4 to 7 apply these decisions and 0100's rules. The whole record, items 5 and 7
+included, signed off by Andy on 2026-09-28: "yes this child branch track is signed off".
 
 ## Glossary
 
