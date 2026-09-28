@@ -17,6 +17,10 @@ Status
                 -- exploratory, outside that rule (Andy, 2026-09-27): a full-page-scan page
                    for the named candidates in its own folder, and the tally of Andy's marks,
                    for routing text-and-image pages to a cheaper model (free)
+      readable-split
+                -- a post-hoc check of that rule against Andy's challenge (2026-09-28): each
+                   model's handwriting counts on fully readable pages and on pages whose key
+                   holds [illegible], adding up to its committed totals (free)
     ``automatic`` and ``score`` first re-verify Qwen's row from the cache (as ``verify``) and
     refuse a candidate with a key page never read.
     Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there;
@@ -71,7 +75,10 @@ from scripts.transcriber_test import (
     _scan_body,
     _scan_group,
     _scan_layers,
+    _text,
     _version_cards,
+    lines_of,
+    typed_errors,
 )
 
 RETEST_FOLDER = Path("s27") / "transcriber-retest"
@@ -867,6 +874,139 @@ def cmd_pages(settings: Settings, docs: CachedDocuments, *, models: Sequence[str
     )
 
 
+# Andy's challenge (2026-09-28): a word where the handwriting key has [illegible] counts as
+# invented (decision 0079), so do those pages decide the candidates' rejection? A post-hoc
+# check, split by page; it changes neither decision 0100 item 3's rule nor the verdict.
+_ILLEGIBLE = "[illegible]"
+
+
+def _holds_illegible(text: str) -> bool:
+    """Whether a key page or line holds ``[illegible]`` (in any case)."""
+    return _ILLEGIBLE in text.lower()
+
+
+def _group_line(
+    name: str,
+    rows: Sequence[Mapping[str, object]],
+    model: str,
+    material: KeyMaterial,
+    cache: TranscriptionCache,
+) -> tuple[str, CandidateResult]:
+    """One page group's counts for ``model``, from the committed scorer, and its line.
+
+    ``_result`` is called on the group's handwriting rows alone, so decision 0086's format
+    rule and every other rule of the committed totals apply exactly as they do there.
+    """
+    r = _result(
+        model,
+        rows,
+        material.key_texts,
+        0,
+        material.typed_answers,
+        cache,
+        dpi=RESOLUTION,
+        format_gate=True,
+    )
+    errors = chars = 0
+    for row in rows:
+        e, c = typed_errors(
+            material.key_texts[_int(row, "k")], _text(cache, row, model, dpi=RESOLUTION)
+        )
+        errors, chars = errors + e, chars + c
+    per_100 = 100 * errors / chars if chars else 0.0
+    return (
+        f"  {name} ({len(rows)}): {r.hw_inventing} inventing lines; {r.hw_right} of "
+        f"{r.hw_lines} key lines right; {r.hw_format_failed} format-failed pages; character "
+        f"errors {per_100:.1f} per 100 ({errors} in {chars})"
+    ), r
+
+
+def readable_split(
+    material: KeyMaterial, cache: TranscriptionCache, models: Sequence[str], *, pair: str
+) -> str:
+    """Each model's handwriting counts on fully readable pages and on pages with [illegible].
+
+    Args:
+        material: The key material (S2.6's keys, Andy's final handwriting key).
+        cache: The transcription cache holding each model's readings.
+        models: The models, Qwen first.
+        pair: The recheck CSV pair, as named in the text.
+
+    Returns:
+        The text: the header, the page and line counts, and per model its two groups and a
+        check that they add up to its committed totals.
+
+    Raises:
+        SystemExit: A model's two groups do not add up to its committed totals.
+    """
+    hw = [r for r in material.keys if r["set"] == "handwriting"]
+    illegible = [r for r in hw if _holds_illegible(material.key_texts[_int(r, "k")])]
+    readable = [r for r in hw if r not in illegible]
+    key_lines = [line for r in hw for line in lines_of(material.key_texts[_int(r, "k")])]
+    out = [
+        "# a post-hoc check of decision 0100 item 3's rule against Andy's challenge "
+        "(2026-09-28): do the handwriting key's [illegible] lines decide the candidates' "
+        "rejection? -- counts only",
+        "it changes neither the rule nor the re-test's verdict "
+        "(docs/results/s27-transcriber-retest.txt: Qwen stays)",
+        "keys: S2.6's handwriting pages (docs/results/s26-transcriber-test-pass2.txt); 150 dpi; "
+        f"instruction t1; decision 0086's corrections; the recheck CSVs {pair}",
+        "scored per page group by the committed scorer (transcriber_test._result, decision "
+        "0086's format rule included); a word where the key has [illegible] counts as "
+        "invented (decision 0079)",
+        "character errors: transcriber_test.typed_errors on each page's key and reading, "
+        "whitespace collapsed so line breaks do not count; a failed reading counts as empty",
+        f"pages whose key holds [illegible]: {len(illegible)} of {len(hw)}; key lines holding "
+        f"[illegible]: {sum(1 for line in key_lines if _holds_illegible(line))} of "
+        f"{len(key_lines)}",
+    ]
+    for model in models:
+        a_line, a = _group_line("(a) fully readable pages", readable, model, material, cache)
+        b_line, b = _group_line("(b) pages with [illegible]", illegible, model, material, cache)
+        total = _scored(model, material, cache)
+        sums = (
+            a.hw_inventing + b.hw_inventing,
+            a.hw_right + b.hw_right,
+            a.hw_lines + b.hw_lines,
+            a.hw_format_failed + b.hw_format_failed,
+        )
+        committed = (total.hw_inventing, total.hw_right, total.hw_lines, total.hw_format_failed)
+        if sums != committed:
+            raise SystemExit(
+                f"readable-split: {model}: (a)+(b) {sums} do not equal its committed totals "
+                f"{committed} (inventing, right, key lines, format-failed)"
+            )
+        out += [
+            "",
+            f"## {model}",
+            a_line,
+            b_line,
+            f"  check: (a)+(b) equal its committed totals from the same scorer: "
+            f"{total.hw_inventing} inventing lines, {total.hw_right} of {total.hw_lines} key "
+            f"lines right, {total.hw_format_failed} format-failed pages",
+        ]
+    return "\n".join(out)
+
+
+def cmd_readable_split(
+    settings: Settings, docs: CachedDocuments, recheck: Recheck, *, models: Sequence[str]
+) -> str:
+    """:func:`readable_split` for Qwen and the candidates, after re-verifying Qwen's row.
+
+    Raises:
+        SystemExit: Qwen's row does not reproduce with ``recheck``, a model has a key page
+            never read, or a model's groups do not add up to its committed totals.
+    """
+    material, _qwen = _verified(settings, docs, recheck)
+    _refuse_unread(settings, material.keys, models)
+    return readable_split(
+        material,
+        TranscriptionCache(settings.transcription_dir),
+        (QWEN, *models),
+        pair=_pair(recheck),
+    )
+
+
 # Andy, 2026-09-27 ("now"): whether cheaper candidates invent added words on text-and-image
 # pages, for decision 120's open idea of routing those pages to a cheaper model. Exploratory:
 # outside decision 0100 item 3's rule, and it changes neither the rule nor the re-test's outcome.
@@ -1014,16 +1154,18 @@ def cmd_routing_tally(settings: Settings, *, models: Sequence[str], mixed_csv: P
     return "\n".join(lines)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run one subcommand."""
+def _parser() -> argparse.ArgumentParser:
+    """Every subcommand and its arguments."""
     parser = argparse.ArgumentParser(prog="transcriber_retest")
     commands = parser.add_subparsers(dest="command", required=True)
     verify_p = commands.add_parser("verify")
     automatic_p = commands.add_parser("automatic")
     score_p = commands.add_parser("score")
-    for p in (verify_p, automatic_p, score_p):
+    readable_p = commands.add_parser("readable-split")
+    for p in (verify_p, automatic_p, score_p, readable_p):
         p.add_argument("--handwriting-recheck", type=Path, required=True)
         p.add_argument("--photos-recheck", type=Path, required=True)
+    readable_p.add_argument("--out", type=Path, default=None)
     score_p.add_argument("--photos", type=Path, default=None)
     score_p.add_argument("--mixed", type=Path, default=None)
     # The candidates Andy marked (``automatic``'s "to mark" line); none when none are still in.
@@ -1041,7 +1183,33 @@ def main(argv: list[str] | None = None) -> int:
     tally_p.add_argument("--models", nargs="+", required=True, choices=S27_CANDIDATES)
     tally_p.add_argument("--mixed", type=Path, required=True)
     tally_p.add_argument("--out", type=Path, default=None)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _with_recheck(args: argparse.Namespace, settings: Settings, docs: CachedDocuments) -> str:
+    """The subcommands that read S2.6's second-pass recheck CSV pair."""
+    recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
+    if args.command == "automatic":
+        text, _still_in = cmd_automatic(settings, docs, recheck, models=S27_CANDIDATES)
+        return text
+    if args.command == "readable-split":
+        return cmd_readable_split(settings, docs, recheck, models=S27_CANDIDATES)
+    if args.command == "score":
+        return cmd_score(
+            settings,
+            docs,
+            recheck,
+            args.photos,
+            args.mixed,
+            models=S27_CANDIDATES,
+            marked=tuple(args.marked),
+        )
+    return cmd_verify(settings, docs, recheck)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run one subcommand; with ``--out``, also write exactly what it prints."""
+    args = _parser().parse_args(argv)
     settings = Settings()
     # As transcriber_test.main: offline, one attempt -- a cache miss is a bug, not a fault.
     docs = CachedDocuments(DocketClient(settings.docket_dir, transport=_offline(), max_attempts=1))
@@ -1053,26 +1221,11 @@ def main(argv: list[str] | None = None) -> int:
         text = cmd_routing_pages(settings, docs, models=args.models)
     elif args.command == "routing-tally":
         text = cmd_routing_tally(settings, models=args.models, mixed_csv=args.mixed)
-        if args.out is not None:
-            args.out.write_text(text + "\n")
     else:
-        recheck = Recheck(handwriting_csv=args.handwriting_recheck, photos_csv=args.photos_recheck)
-        if args.command == "automatic":
-            text, _still_in = cmd_automatic(settings, docs, recheck, models=S27_CANDIDATES)
-        elif args.command == "score":
-            text = cmd_score(
-                settings,
-                docs,
-                recheck,
-                args.photos,
-                args.mixed,
-                models=S27_CANDIDATES,
-                marked=tuple(args.marked),
-            )
-            if args.out is not None:
-                args.out.write_text(text + "\n")
-        else:
-            text = cmd_verify(settings, docs, recheck)
+        text = _with_recheck(args, settings, docs)
+    out: Path | None = getattr(args, "out", None)
+    if out is not None:
+        out.write_text(text + "\n")
     print(text)
     return 0
 

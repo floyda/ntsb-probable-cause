@@ -1069,3 +1069,125 @@ def test_main_routing_pages_refuses_a_model_that_is_not_a_candidate(
     with pytest.raises(SystemExit):
         tr.main(["routing-pages", "--models", "a/m"])
     assert "invalid choice: 'a/m'" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------------------
+# Andy's challenge (2026-09-28): the handwriting key's [illegible] lines, split out -- a
+# post-hoc check of decision 0100's rule that changes neither the rule nor the verdict.
+# ---------------------------------------------------------------------------------------
+
+_READABLE_KEY = "Fuel BOTH\nMixture RICH"
+_ILLEGIBLE_KEY = "Oil [illegible]\nGear DOWN\nFlaps UP\nTrim SET"
+
+
+def _split_material(tmp_path: Path) -> tuple[tr.KeyMaterial, TranscriptionCache]:
+    """Two invented handwriting pages, one of them with [illegible], read by two models.
+
+    ``a/m`` reads page 1 exactly and guesses the illegible word on page 2 (one inventing
+    line, 3 of 4 right). ``f/m`` reads page 1 exactly but returns one line for page 2's
+    four, which decision 0086 scores as format-failed: its one exact line there counts
+    for nothing, as in the committed scorer.
+    """
+    rows: list[dict[str, object]] = [
+        {"set": "handwriting", "k": 1, "document_sha256": "a" * 64, "page": 1},
+        {"set": "handwriting", "k": 2, "document_sha256": "b" * 64, "page": 1},
+    ]
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    readings = {
+        "a/m": (_READABLE_KEY, "Oil PRESSURE\nGear DOWN\nFlaps UP\nTrim SET"),
+        "f/m": (_READABLE_KEY, "Gear DOWN"),
+    }
+    for model, texts in readings.items():
+        for row, text in zip(rows, texts, strict=True):
+            _put(cache, row, model, text)
+    material = tr.KeyMaterial(
+        keys=rows,
+        key_texts={1: _READABLE_KEY, 2: _ILLEGIBLE_KEY},
+        typed_answers={},
+        qwen_photo_invented=0,
+        qwen_mixed_invented=0,
+    )
+    return material, cache
+
+
+def _errors(key: str, reading: str) -> str:
+    errors, chars = tt.typed_errors(key, reading)
+    return f"character errors {100 * errors / chars:.1f} per 100 ({errors} in {chars})"
+
+
+def test_readable_split_counts_the_illegible_pages_and_lines(tmp_path: Path) -> None:
+    material, cache = _split_material(tmp_path)
+    lines = tr.readable_split(material, cache, ("a/m",), pair="p/hw.csv and p/ph.csv").splitlines()
+    assert any("post-hoc" in line and "decision 0100" in line for line in lines)
+    assert any("changes neither the rule nor" in line for line in lines)
+    assert any("p/hw.csv and p/ph.csv" in line for line in lines)
+    assert "pages whose key holds [illegible]: 1 of 2; key lines holding [illegible]: 1 of 6" in (
+        lines
+    )
+
+
+def test_readable_split_scores_each_group_with_the_committed_scorer(tmp_path: Path) -> None:
+    material, cache = _split_material(tmp_path)
+    text = tr.readable_split(material, cache, ("a/m", "f/m"), pair="p")
+    lines = text.splitlines()
+    a_at = lines.index("## a/m")
+    assert lines[a_at + 1 : a_at + 4] == [
+        "  (a) fully readable pages (1): 0 inventing lines; 2 of 2 key lines right; "
+        "0 format-failed pages; " + _errors(_READABLE_KEY, _READABLE_KEY),
+        "  (b) pages with [illegible] (1): 1 inventing lines; 3 of 4 key lines right; "
+        "0 format-failed pages; "
+        + _errors(_ILLEGIBLE_KEY, "Oil PRESSURE\nGear DOWN\nFlaps UP\nTrim SET"),
+        "  check: (a)+(b) equal its committed totals from the same scorer: 1 inventing lines, "
+        "5 of 6 key lines right, 0 format-failed pages",
+    ]
+    f_at = lines.index("## f/m")
+    # Decision 0086's format rule: the ad-hoc count that ignored it gave 3 right, not 2.
+    assert lines[f_at + 2].startswith(
+        "  (b) pages with [illegible] (1): 0 inventing lines; 0 of 4 key lines right; "
+        "1 format-failed pages; "
+    )
+    assert lines[f_at + 3] == (
+        "  check: (a)+(b) equal its committed totals from the same scorer: 0 inventing lines, "
+        "2 of 6 key lines right, 1 format-failed pages"
+    )
+
+
+def test_readable_split_refuses_when_the_groups_do_not_add_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    material, cache = _split_material(tmp_path)
+    real = tr._scored
+
+    def off_by_one(model: str, m: tr.KeyMaterial, c: TranscriptionCache) -> CandidateResult:
+        r = real(model, m, c)
+        return CandidateResult(**{**r.__dict__, "hw_right": r.hw_right + 1})
+
+    monkeypatch.setattr(tr, "_scored", off_by_one)
+    with pytest.raises(SystemExit, match=r"a/m: .* do not equal its committed totals"):
+        tr.readable_split(material, cache, ("a/m",), pair="p")
+
+
+def test_main_readable_split_verifies_qwen_and_writes_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, _, recheck = _retest_folder(tmp_path, monkeypatch)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tr, "S27_CANDIDATES", (_GOOD, _BAD))
+    out = tmp_path / "readable.txt"
+    argv = [
+        "readable-split",
+        "--handwriting-recheck",
+        str(recheck.handwriting_csv),
+        "--photos-recheck",
+        str(recheck.photos_csv),
+        "--out",
+        str(out),
+    ]
+    assert tr.main(argv) == 0
+    printed = capsys.readouterr().out
+    assert out.read_text() == printed
+    assert [line for line in printed.splitlines() if line.startswith("## ")] == [
+        f"## {tr.QWEN}",
+        f"## {_GOOD}",
+        f"## {_BAD}",
+    ]

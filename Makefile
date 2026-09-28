@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable
 
 check: lint type test
 
@@ -297,3 +297,9 @@ s27-routing-tally:
 	$(if $(MODELS),,$(error MODELS is required: the candidates s27-routing-pages was built for))
 	uv run python -m scripts.transcriber_retest routing-tally --models $(MODELS) --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/routing/s27-routing-scan-words.csv --out docs/results/s27-routing-scans.txt
 # Free: the tally of Andy's marks from s27-routing-pages; refuses an unmarked card.
+
+s27-retest-readable:
+	uv run python -m scripts.transcriber_retest readable-split --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK) --out docs/results/s27-transcriber-retest-readable.txt
+# Free, post-hoc (Andy's challenge, 2026-09-28): Qwen's and each candidate's handwriting counts
+# on fully readable pages and on pages whose key holds [illegible], from the committed scorer,
+# checked to add up to its committed totals. Changes neither decision 0100's rule nor the verdict.
