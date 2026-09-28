@@ -75,7 +75,10 @@ MIXED_PAGE_MIN_IMAGE_SHARE = 0.0
 # chose no candidate in either pass (docs/results/s26-transcriber-test.txt, -pass2.txt). The
 # dev-400 B-v2 against B-v1 comparison is done (top-1 +1.3% [-2.5%, +4.8%],
 # docs/results/s26-armB-v2-dev.txt): v2 is available and is not the default, and the bar is
-# unchanged -- S2.4's held-out arm B stays the bar (decisions 0089, 0090).
+# unchanged -- S2.4's held-out arm B stays the bar (decisions 0089, 0090). Decision 0120: Qwen
+# stays, by 0100 item 3's rule fixed before S2.7's re-test
+# (docs/results/s27-transcriber-retest.txt); transcription itself is off by default from 0120
+# (see PAGE_RULE below), for cost.
 TRANSCRIBER = "qwen/qwen3.5-122b-a10b"
 _ERROR_CHARS = 200
 
@@ -85,6 +88,10 @@ _ERROR_CHARS = 200
 # images cover at least MIXED_PAGE_MIN_IMAGE_SHARE of it (0.0, so every one). The other two
 # are the rules S2.7's T3 measures (scripts/page_value.py). PAGE_RULE is the rule in force; it
 # changes only by the track-2 decision record of S2.7 (number 120), as TRANSCRIBER does.
+# Decision 0120 item 4: "all" stays the rule if transcription is used again, by 0100 item 4 (no
+# thinner rule keeps at least 90% of the characters). Decision 0120 item 2: transcription
+# itself is off by default -- runs and new batches read text layers only (evidence v1) -- so
+# PAGE_RULE applies only when transcription is chosen for a batch.
 PageRule = Literal["all", "image-only", "image-only+thin-layer"]
 PAGE_RULES: tuple[PageRule, ...] = ("all", "image-only", "image-only+thin-layer")
 PAGE_RULE: PageRule = "all"

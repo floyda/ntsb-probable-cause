@@ -22,9 +22,12 @@ typing slip corrected): "I really need to be getting costs down to about $4-5 pe
 batch of 400 if I am going to be able to keep saying yes to these tests".
 
 **T1, the shortlist and probe** (`docs/results/s27-transcriber-shortlist.txt`). OpenRouter's
-model list of 2026-09-27, filtered by 0100 item 1 plus two conditions added in the track's plan:
-the listing offers structured output (walkthrough W6), and it is not free or unpriced (Andy,
-2026-09-27). 14 models were eligible. The probe of 2026-09-27 passed eight. Two Meta models
+model list of 2026-09-27, filtered by 0100 item 1 plus three conditions added in the track's
+plan: the listing offers structured output (walkthrough W6), it is not free or unpriced (Andy,
+2026-09-27), and its output is text-only (stricter than spec §7.2's and 0100 item 1's "returns
+text"; it refused 13 listings and changed nothing on the shortlist, since the one image-and-text
+listing among them would have ranked as reserve 15). 14 models were eligible. The probe of
+2026-09-27 passed eight. Two Meta models
 failed on the account's OpenRouter 18+ age setting, not on reading the page, and reserves took
 their places (W5). One reserve, `qwen/qwen3.8-flash`, returned a reply that did not parse. The
 one batch call with an image (W2) was accepted, then failed: the batch service still refuses
@@ -95,10 +98,15 @@ models read badly.
 1. **Transcription did not give the gain its cost needs.** +1.3% top-1, with an interval from
    -2.5% to +4.8%, for about ten times the answering cost. Andy: "the transcription didn't
    provide the big boost i was hoping for".
-2. **No measured way of transcribing meets Andy's line of $4-5 per batch of 400.** Transcription
-   alone costs $13.25 under `all`. `image-only`, which fails 0100's 90% floor, still costs $5.39
-   before any answer. The eight cheaper models all failed the re-test. With transcription off,
-   answering `dev-400` at v1 cost $1.1805.
+2. **No measured way of transcribing meets Andy's line of $4-5 per batch of 400.** Three figures
+   describe `dev-400`'s transcription, and they count different things: $13.06 is the cost
+   attributed to `dev-400`'s 401 cases (Context, above); $13.25 is the page-value script's cost
+   of the cached readings under the `all` rule (T3); $13.56, cited in
+   `docs/specs/2026-09-26-s27-coding-guidance-design.md` §7.1, is what S2.6 actually spent,
+   including retried pages. Whichever figure is used, transcription alone costs far more than
+   $4-5. `image-only`, which fails 0100's 90% floor, still costs $5.39 before any answer. The
+   eight cheaper models all failed the re-test. With transcription off, answering `dev-400` at
+   v1 cost $1.1805.
 3. **A tool puts the cost where it can pay.** A page is read only when the loop judges it needed,
    and 0022's comparison with arm B measures whether that choice was worth its cost. 0074's
    reason, equal evidence for arm B and the loop, is kept at the tool level: under 0022 item 1,

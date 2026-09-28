@@ -1,26 +1,28 @@
 """The transcriber re-test: new candidates on S2.6's answer keys, judged against Qwen (S2.7 §7.4).
 
 Status
-    One-shot (S2.7 track 2, Tasks 8-10). Built (Tasks 8 to 10):
+    One-shot (S2.7 track 2, Tasks 8-11). Built:
       verify    -- re-score Qwen's cached readings on S2.6's keys and require its published
-                   second-pass counts exactly (free; walkthrough W7)
+                   second-pass counts exactly (free; walkthrough W7) (Task 8)
       run       -- every candidate reads S2.6's four keys once at 150 dpi, synchronously at
                    the standard price (paid, up to about $2.50); ``--models`` names a subset,
                    as when the retry was finished for the five candidates a stopped one missed
+                   (Task 9)
       automatic -- the candidates still in the running on every measure that needs no marks,
-                   and cost; Andy marks only those (free; walkthrough W3)
+                   and cost; Andy marks only those (free; walkthrough W3) (Task 10)
       pages     -- Andy's photograph and full-page-scan pages, for the candidates named (free;
-                   walkthrough W3: those ``automatic`` leaves in the running)
+                   walkthrough W3: those ``automatic`` leaves in the running) (Task 10)
       score     -- decision 0100 item 3's choice rule (``choose_against_qwen``, fixed before
                    any candidate was run) over every candidate, with Andy's marks (free)
+                   (Task 10)
       routing-pages, routing-tally
                 -- exploratory, outside that rule (Andy, 2026-09-27): a full-page-scan page
                    for the named candidates in its own folder, and the tally of Andy's marks,
-                   for routing text-and-image pages to a cheaper model (free)
+                   for routing text-and-image pages to a cheaper model (free) (Task 11 Step 1)
       readable-split
                 -- a post-hoc check of that rule against Andy's challenge (2026-09-28): each
                    model's handwriting counts on fully readable pages and on pages whose key
-                   holds [illegible], adding up to its committed totals (free)
+                   holds [illegible], adding up to its committed totals (free) (Task 11 Step 1)
     ``automatic`` and ``score`` first re-verify Qwen's row from the cache (as ``verify``) and
     refuse a candidate with a key page never read.
     Reads S2.6's keys and marks under <data_dir>/s26/transcriber-test/ and never writes there;

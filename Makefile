@@ -235,7 +235,8 @@ s27-transcriber-probe:
 	uv run python -m scripts.stage_spend --estimate 0.10
 	uv run python -m scripts.transcriber_shortlist probe
 # S2.7 spec §7.2, paid (estimate under $0.10): one invented page to each shortlisted model,
-# replacing failures in order, until eight pass. Replies saved under
+# replacing failures in order, until eight pass. Every reply is saved under
+# <data_dir>/s27/probe-replies/; only passed models' replies are also written to
 # tests/fixtures/openrouter/transcription/.
 
 s27-batch-image:
