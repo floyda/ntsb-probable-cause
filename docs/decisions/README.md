@@ -114,7 +114,7 @@ under `docs/specs/` and the record links to it.
 | [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted; taken up by 0078 in S2.6 |
 | [0072](0072-recorders-one-exempted-import-link.md) | The recorder's call to `split_record` is the one link exempted from the synthesis-and-verdict import rule | Accepted; narrows 0016 |
 | [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted; gate passed 2026-09-24; replaces 0031 item 1 |
-| [0074](0074-words-in-images-are-read-in-the-build.md) | Words in images are read in the build, not in "phase 2"; an inventory decides what is transcribed | Accepted; replaces 0047 item 3 |
+| [0074](0074-words-in-images-are-read-in-the-build.md) | Words in images are read in the build, not in "phase 2"; an inventory decides what is transcribed | Accepted; replaces 0047 item 3; default amended by 0120 |
 | [0075](0075-pages-are-rendered-with-pypdfium2.md) | Pages are rendered with `pypdfium2`, a ready-built package that passes 0047's reproducibility test | Accepted; extends 0047 |
 | [0076](0076-evidence-version-is-an-axis-not-an-arm.md) | Evidence version (v1, v2, v3) is an axis, not an arm; runs record it and cross-version comparisons are refused unless labelled | Accepted; extends 0022 |
 | [0077](0077-analysis-sentences-in-docket-documents-mark-the-case.md) | Analysis-narrative sentences in docket documents reach the agent and mark the case, after Andy's hand-check | Accepted; adopted after the hand-check 2026-09-24; extends 0050 |
@@ -145,3 +145,4 @@ under `docs/specs/` and the record links to it.
 | [0102](0102-a-parent-branch-with-a-branch-per-track.md) | S2.7 is a parent branch with a branch per track; its spend is traced on every branch grown from the parent | Accepted; amends 0093 item 3 |
 | [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
 | [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
+| [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |

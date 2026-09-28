@@ -1,0 +1,13 @@
+{
+ "content": "\n\n{\"page_kind\":\"typed text\",\"text\":\"PILOT STATEMENT - INVENTED TEST PAGE\\nEngine sputtered at 800 ft.\\nSwitched to right tank, no change.\\nFuel selector BOTH, mixture RICH.\"}",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 1516,
+  "completion_tokens": 170,
+  "reported_cost_usd": 0.0001987,
+  "reasoning_tokens": 116
+ },
+ "model": "prism-ml/ternary-bonsai-2-27b",
+ "response_id": "gen-1790514622-GP4p9m5YbfOCpLnVBktk"
+}

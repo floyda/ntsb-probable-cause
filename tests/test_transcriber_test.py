@@ -217,11 +217,27 @@ def test_choose_resolution_refuses_a_float() -> None:
         tt.choose_resolution(0.80, 0.85)  # type: ignore[arg-type]
 
 
+# S2.6's four candidates, named rather than globbed (pre-flight 1.3, S2.7 Task 7): once S2.7's
+# probe (scripts/transcriber_shortlist.py) adds its own fixtures to the same folder, a model
+# that passed that probe with a different page kind, or copying none of PROBE_LINES, would
+# fail this test's stricter assertions -- which judge only S2.6's fixed rule (spec §7.4) and
+# were never meant to judge S2.7's shortlist. S2.7's own fixtures get their own test
+# (scripts/transcriber_shortlist.py's ``test_every_passed_candidates_recorded_reply_parses``,
+# Task 7 Step 7), which checks only that each parses.
+_S26_CANDIDATE_FIXTURES = (
+    "google__gemini-3.1-flash-lite.json",
+    "google__gemini-3.6-flash.json",
+    "openai__gpt-6-luna.json",
+    "qwen__qwen3.5-122b-a10b.json",
+)
+
+
 @pytest.mark.parametrize(
-    "path", sorted(Path("tests/fixtures/openrouter/transcription").glob("*.json"))
+    "path",
+    [Path("tests/fixtures/openrouter/transcription") / name for name in _S26_CANDIDATE_FIXTURES],
 )
 def test_every_recorded_candidate_reply_parses(path: Path) -> None:
-    """Each candidate's real reply to the invented probe page (Step 7) parses as a reading."""
+    """Each of S2.6's four candidates' real reply to the invented probe page parses."""
     reply = json.loads(path.read_text())
     text, kind = parse_reply(reply["content"], TRANSCRIBE)
     assert "Engine sputtered at 800 ft." in text

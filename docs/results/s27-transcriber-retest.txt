@@ -1,0 +1,73 @@
+# the transcriber re-test (S2.7 spec §7.4, decision 0100) -- counts only
+keys: S2.6's four (docs/results/s26-transcriber-test-pass2.txt); 150 dpi; instruction t1; decision 0086's corrections; the second-pass recheck CSVs pass2/handwriting-key-pass2-2.csv and pass2/photo-words-pass2.csv, which reproduce Qwen's published counts exactly (walkthrough W7; the pass2/ pair Andy recalled as final)
+retries: each candidate had one retry of failed pages (run --retry-failed), except deepseek/deepseek-v4.1-flash, whose retry stopped at its reservation with 31 pages unread (the S2.7 track 2 plan's Deviations, Task 9 Step 6); its counts include those pages as failed, and a failed page is scored as wrong for its reader
+the bar: decision 0100 item 3's limits, from Qwen3.5 122B's published second pass (docs/results/s26-transcriber-test-pass2.txt); its cost bar is S2.6's rounded $0.00154 a test page
+Qwen re-scored from the cache as the candidates are, with pass2/handwriting-key-pass2-2.csv and pass2/photo-words-pass2.csv: 1036 of 1548 handwriting lines right (66.9%), 54 inventing lines, 2 of 50 photographs and 0 of 25 scans with invented words, 2 of 25 format-failed handwriting pages, 12.29 typed errors per 100 characters; measured $0.0015362713 a test page against the rule's $0.00154
+
+## inclusionai/ling-3.0-flash-vl (measured $0.0002252 per test page)
+  invented: 113 lines (7.3 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 802 of 1548 (51.8%)
+  typed errors: 12.94 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 2 of 25
+  measured $0.0002252 a test page; 1 of 200 key pages failed to read
+## qwen/qwen3.7-flash (measured $0.0001281 per test page)
+  invented: 68 lines (4.4 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 457 of 1548 (29.5%)
+  typed errors: 11.74 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 8 of 25
+  measured $0.0001281 a test page; 1 of 200 key pages failed to read
+## deepseek/deepseek-v4.1-flash (measured $0.0033132 per test page)
+  invented: 9 lines (0.6 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 100 of 1548 (6.5%)
+  typed errors: 40.91 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 1 of 25
+  measured $0.0033132 a test page; 75 of 200 key pages failed to read
+## z-ai/glm-5.3-flash (measured $0.0006885 per test page)
+  invented: 75 lines (4.8 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 661 of 1548 (42.7%)
+  typed errors: 11.57 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 1 of 25
+  measured $0.0006885 a test page; 0 of 200 key pages failed to read
+## prism-ml/ternary-bonsai-2-27b (measured $0.0006740 per test page)
+  invented: 181 lines (11.7 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 488 of 1548 (31.5%)
+  typed errors: 15.17 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 2 of 25
+  measured $0.0006740 a test page; 6 of 200 key pages failed to read
+## openai/gpt-6-luna-pro (measured $0.0012628 per test page)
+  invented: 65 lines (4.2 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 691 of 1548 (44.6%)
+  typed errors: 10.56 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 0 of 25
+  measured $0.0012628 a test page; 0 of 200 key pages failed to read
+## xiaomi/mimo-v2.6-flash (measured $0.0005176 per test page)
+  invented: 113 lines (7.3 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 764 of 1548 (49.4%)
+  typed errors: 13.07 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 0 of 25
+  measured $0.0005176 a test page; 5 of 200 key pages failed to read
+## qwen/qwen3.8-omni-flash (measured $0.0004135 per test page)
+  invented: 89 lines (5.7 per 100 handwriting lines); photographs not marked (already out on an automatic measure, walkthrough W3)
+  handwriting lines right: 391 of 1548 (25.3%)
+  typed errors: 14.79 per 100 characters
+  full-page scans: not marked (already out on an automatic measure, walkthrough W3)
+  format-failed handwriting pages: 4 of 25
+  measured $0.0004135 a test page; 31 of 200 key pages failed to read
+
+## the rule (decision 0100 item 3, fixed before the run)
+inclusionai/ling-3.0-flash-vl: out -- 113 inventing lines in 1548; 802 of 1548 handwriting lines right
+qwen/qwen3.7-flash: out -- 68 inventing lines in 1548; 8 of 25 handwriting pages fail the format; 457 of 1548 handwriting lines right
+deepseek/deepseek-v4.1-flash: out -- 100 of 1548 handwriting lines right; 67279 typed errors in 164464 characters; $0.0033132 a test page, not below the rule's $0.00154
+z-ai/glm-5.3-flash: out -- 75 inventing lines in 1548; 661 of 1548 handwriting lines right
+prism-ml/ternary-bonsai-2-27b: out -- 181 inventing lines in 1548; 488 of 1548 handwriting lines right; 24955 typed errors in 164464 characters
+openai/gpt-6-luna-pro: out -- 65 inventing lines in 1548; 691 of 1548 handwriting lines right
+xiaomi/mimo-v2.6-flash: out -- 113 inventing lines in 1548; 764 of 1548 handwriting lines right
+qwen/qwen3.8-omni-flash: out -- 89 inventing lines in 1548; 4 of 25 handwriting pages fail the format; 391 of 1548 handwriting lines right; 24324 typed errors in 164464 characters
+no candidate meets all seven: Qwen stays (decision 0100 item 3)

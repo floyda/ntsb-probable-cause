@@ -33,7 +33,7 @@ import re
 import statistics
 import subprocess
 from collections import Counter
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -705,15 +705,20 @@ def cmd_probe(settings: Settings) -> str:
     return "\n".join(lines)
 
 
-def cmd_run(
+def cmd_run(  # noqa: PLR0913 -- S2.7's re-test adds one keyword, its reservation price.
     settings: Settings,
     docs: CachedDocuments,
     *,
     models: Sequence[str],
     dpi: int,
     retry_failed: bool = False,
+    expected_cost_per_page_usd: float | None = None,
 ) -> str:
     """Each model reads every key page it is asked to, at one resolution.
+
+    ``expected_cost_per_page_usd`` (S2.7's re-test, pre-flight 2.6) is one reservation price
+    for every model; left out, each of S2.6's candidates reserves at its own
+    ``EXPECTED_COST_PER_PAGE_USD`` entry, as S2.6 ran.
 
     Fix round 3, R1 (decision 3, "after one retry"): ``retry_failed`` re-reads every page a
     model's cached reading records as ``"failed"`` -- one retry per invocation, not a bounded
@@ -741,7 +746,11 @@ def cmd_run(
             instruction=TRANSCRIBE,
             settings=settings,
             commit=commit_state(),
-            expected_cost_per_page_usd=EXPECTED_COST_PER_PAGE_USD[model],
+            expected_cost_per_page_usd=(
+                EXPECTED_COST_PER_PAGE_USD[model]
+                if expected_cost_per_page_usd is None
+                else expected_cost_per_page_usd
+            ),
             workers=4,
             retry_failed=retry_failed,
         )
@@ -1039,7 +1048,124 @@ def _against_layer(text: str, layer: str) -> str:
 
 
 _PHOTO_WORDS = Choice("words", ("all on the page", "some invented"))
-_PhotoCards = tuple[dict[int, dict[str, object]], list[Card], dict[str, tuple[str, str]]]
+_SCAN_WORDS = Choice(
+    "added words", ("all on the page and new", "repeats the text layer", "some invented")
+)
+# Decision 0086 item 1's rule for a photograph's words, as the recheck page first stated it.
+_PHOTO_LABEL_RULE = (
+    "A word printed on the page as part of the docket's "
+    "photo label counts as on the page, even when the icon hides part of it (for example "
+    '"Photo", whose "Pho" the icon covers). Anything else is judged as before: a misread '
+    "registration is still invented."
+)
+_MIXED_INTRO = (
+    "<p>Each scanned page is shown once on the left, held in view. On the "
+    "right are its machine-read text layer and the words each transcriber added, one card "
+    "per version. Added words are coloured: "
+    '<span class="inlayer">already in the text layer</span>, '
+    '<span class="new">not in the text layer (check against the image)</span>. '
+    "Mark <b>some invented</b> if any added word is not on the page; <b>repeats the text "
+    "layer</b> if the added words are already in the text layer; otherwise <b>all on the "
+    "page and new</b>. Click the image to enlarge it.</p>"
+)
+# One letter a version; a page's cards are numbered 10k+1 to 10k+8, so eight models at most.
+_VERSION_LETTERS = "ABCDEFGH"
+_Sheet = dict[int, dict[str, object]]
+_PhotoCards = tuple[_Sheet, list[Card], dict[str, tuple[str, str]]]
+
+
+def _version_cards(  # noqa: PLR0913 -- one keyword per fact a page's cards differ by.
+    rows: Sequence[Mapping[str, object]],
+    text_of: Callable[[int, str], str],
+    *,
+    models: Sequence[str],
+    seed_base: int,
+    body: Callable[[int, str, str], str],
+    choices: tuple[Choice, ...],
+) -> tuple[_Sheet, list[Card]]:
+    """One card per model's reading that holds a word: the sheet of rows, and the cards.
+
+    Shared by S2.6's photograph and full-page-scan pages and S2.7's re-test pages, so every
+    page numbers and shows a card the same way. Page ``k``'s models are shuffled with
+    ``SEED + seed_base + k`` and lettered A, B, ... in that order; a reading holding a word
+    (``_WORD``) becomes card ``10k + i``. ``body(k, version, text)`` is the card's HTML, where
+    ``version`` is the letter with a note if an earlier version's words are the same.
+
+    Raises:
+        ValueError: More models than version letters (the row numbers would collide).
+    """
+    if len(models) > len(_VERSION_LETTERS):
+        raise ValueError(
+            f"at most {len(_VERSION_LETTERS)} models a page, one letter each: got {len(models)}"
+        )
+    sheet: _Sheet = {}
+    cards: list[Card] = []
+    for row in rows:
+        k = _int(row, "k")
+        order = random.Random(SEED + seed_base + k).sample(models, len(models))  # noqa: S311
+        seen: dict[str, str] = {}
+        for i, model in enumerate(order, start=1):
+            text = text_of(k, model)
+            if not _WORD.search(text):
+                continue
+            number = 10 * k + i
+            sheet[number] = {"k": k, "model": model}
+            letter = _VERSION_LETTERS[i - 1]
+            version = letter + _same_as(seen, text, letter)
+            cards.append(
+                Card(row=number, body_html=body(k, version, text), choices=choices, group=str(k))
+            )
+    return sheet, cards
+
+
+def _photo_body(k: int, version: str, text: str) -> str:
+    """A photograph card's HTML: which version, and its words."""
+    return f'<p class="meta">Photograph {k}, version {version}</p><pre>{html.escape(text)}</pre>'
+
+
+def _scan_body(layers: Mapping[int, str]) -> Callable[[int, str, str], str]:
+    """A full-page scan card's HTML, the added words coloured against page ``k``'s layer."""
+
+    def body(k: int, version: str, text: str) -> str:
+        return (
+            f'<p class="meta">Full-page scan {k}, version {version}'
+            "</p><p>Words this version added:</p>"
+            f"<pre>{_against_layer(text, layers[k])}</pre>"
+        )
+
+    return body
+
+
+def _photo_group(k: int, pages: str) -> tuple[str, str]:
+    """A photograph's group: its image from the ``pages`` folder, and nothing beside it."""
+    return _image_head(f"Photograph {k}", f"{pages}/photo-{k}.jpg"), ""
+
+
+def _scan_group(k: int, layer: str, pages: str) -> tuple[str, str]:
+    """A full-page scan's group: its image from the ``pages`` folder, and its text layer."""
+    return (
+        _image_head(f"Full-page scan {k}", f"{pages}/mixed-{k}.jpg"),
+        f'<p>The page\'s text layer:</p><pre class="layer">{html.escape(layer)}</pre>',
+    )
+
+
+def _scan_layers(rows: Sequence[Mapping[str, object]], docs: CachedDocuments) -> dict[int, str]:
+    """Each full-page scan's text layer, by key number."""
+    return {
+        _int(row, "k"): page_text(
+            docs.document(_int(row, "mkey"), _int(row, "document")), _int(row, "page")
+        )
+        for row in rows
+    }
+
+
+def _reading_of(
+    settings: Settings, rows: Sequence[Mapping[str, object]]
+) -> Callable[[int, str], str]:
+    """A model's 150 dpi reading of key page ``k`` among ``rows``, from the cache."""
+    cache = TranscriptionCache(settings.transcription_dir)
+    by_k = {_int(row, "k"): row for row in rows}
+    return lambda k, model: _text(cache, by_k[k], model, dpi=RESOLUTION)
 
 
 def _photo_cards(settings: Settings) -> _PhotoCards:
@@ -1050,34 +1176,15 @@ def _photo_cards(settings: Settings) -> _PhotoCards:
     """
     folder = settings.data_dir / FOLDER
     rows = [r for r in _read(folder / "keys.jsonl") if r["set"] == "photo"]
-    cache = TranscriptionCache(settings.transcription_dir)
-    sheet: dict[int, dict[str, object]] = {}
-    cards: list[Card] = []
-    groups: dict[str, tuple[str, str]] = {}
-    for row in rows:
-        k = _int(row, "k")
-        order = random.Random(SEED + 100 + k).sample(CANDIDATES, len(CANDIDATES))  # noqa: S311
-        seen: dict[str, str] = {}
-        groups[str(k)] = (_image_head(f"Photograph {k}", f"pages/photo-{k}.jpg"), "")
-        for i, model in enumerate(order, start=1):
-            text = _text(cache, row, model, dpi=RESOLUTION)
-            if not re.search(r"[A-Za-z0-9]{2,}", text):
-                continue
-            number = 10 * k + i
-            sheet[number] = {"k": k, "model": model}
-            letter = LETTERS[i - 1]
-            cards.append(
-                Card(
-                    row=number,
-                    body_html=(
-                        f'<p class="meta">Photograph {k}, version {letter}'
-                        + _same_as(seen, text, letter)
-                        + f"</p><pre>{html.escape(text)}</pre>"
-                    ),
-                    choices=(_PHOTO_WORDS,),
-                    group=str(k),
-                )
-            )
+    sheet, cards = _version_cards(
+        rows,
+        _reading_of(settings, rows),
+        models=CANDIDATES,
+        seed_base=100,
+        body=_photo_body,
+        choices=(_PHOTO_WORDS,),
+    )
+    groups = {str(_int(row, "k")): _photo_group(_int(row, "k"), "pages") for row in rows}
     return sheet, cards, groups
 
 
@@ -1132,11 +1239,8 @@ def cmd_photos_recheck(settings: Settings) -> str:
     intro = (
         _GROUPED_LAYOUT + "<p><b>Second pass (decision 0086).</b> These are the "
         f"{len(kept)} outputs you marked <b>some invented</b> in the first pass; mark each "
-        "again under one corrected rule. A word printed on the page as part of the docket's "
-        "photo label counts as on the page, even when the icon hides part of it (for example "
-        '"Photo", whose "Pho" the icon covers). Anything else is judged as before: a misread '
-        "registration is still invented. Mark <b>some invented</b> if any other word is not on "
-        "the page. Click a photograph to enlarge it.</p>"
+        "again under one corrected rule. " + _PHOTO_LABEL_RULE + " Mark <b>some invented</b> "
+        "if any other word is not on the page. Click a photograph to enlarge it.</p>"
     )
     (folder / "photos-recheck.html").write_text(
         marking_page.render(
@@ -1155,60 +1259,21 @@ def cmd_mixed(settings: Settings, docs: CachedDocuments) -> str:
     """Andy's page (decision W7): the words each candidate added to a full-page scan."""
     folder = settings.data_dir / FOLDER
     rows = [r for r in _read(folder / "keys.jsonl") if r["set"] == "mixed"]
-    cache = TranscriptionCache(settings.transcription_dir)
-    sheet: dict[int, dict[str, object]] = {}
-    cards: list[Card] = []
-    groups: dict[str, tuple[str, str]] = {}
-    for row in rows:
-        k = _int(row, "k")
-        data = docs.document(_int(row, "mkey"), _int(row, "document"))
-        layer = page_text(data, _int(row, "page"))
-        order = random.Random(SEED + 200 + k).sample(CANDIDATES, len(CANDIDATES))  # noqa: S311
-        seen: dict[str, str] = {}
-        groups[str(k)] = (
-            _image_head(f"Full-page scan {k}", f"pages/mixed-{k}.jpg"),
-            f'<p>The page\'s text layer:</p><pre class="layer">{html.escape(layer)}</pre>',
-        )
-        for i, model in enumerate(order, start=1):
-            text = _text(cache, row, model, dpi=RESOLUTION)
-            if not re.search(r"[A-Za-z0-9]{2,}", text):
-                continue
-            number = 10 * k + i
-            sheet[number] = {"k": k, "model": model}
-            letter = LETTERS[i - 1]
-            cards.append(
-                Card(
-                    row=number,
-                    body_html=(
-                        f'<p class="meta">Full-page scan {k}, version {letter}'
-                        + _same_as(seen, text, letter)
-                        + "</p><p>Words this version added:</p>"
-                        + f"<pre>{_against_layer(text, layer)}</pre>"
-                    ),
-                    choices=(
-                        Choice(
-                            "added words",
-                            ("all on the page and new", "repeats the text layer", "some invented"),
-                        ),
-                    ),
-                    group=str(k),
-                )
-            )
-    (folder / "mixed.json").write_text(json.dumps(sheet))
-    intro = (
-        _GROUPED_LAYOUT + "<p>Each scanned page is shown once on the left, held in view. On the "
-        "right are its machine-read text layer and the words each transcriber added, one card "
-        "per version. Added words are coloured: "
-        '<span class="inlayer">already in the text layer</span>, '
-        '<span class="new">not in the text layer (check against the image)</span>. '
-        "Mark <b>some invented</b> if any added word is not on the page; <b>repeats the text "
-        "layer</b> if the added words are already in the text layer; otherwise <b>all on the "
-        "page and new</b>. Click the image to enlarge it.</p>"
+    layers = _scan_layers(rows, docs)
+    sheet, cards = _version_cards(
+        rows,
+        _reading_of(settings, rows),
+        models=CANDIDATES,
+        seed_base=200,
+        body=_scan_body(layers),
+        choices=(_SCAN_WORDS,),
     )
+    groups = {str(k): _scan_group(k, layer, "pages") for k, layer in layers.items()}
+    (folder / "mixed.json").write_text(json.dumps(sheet))
     (folder / "mixed.html").write_text(
         marking_page.render(
             title="Words added to full-page scans (S2.6, decision W7)",
-            intro_html=intro,
+            intro_html=_GROUPED_LAYOUT + _MIXED_INTRO,
             cards=cards,
             storage_key="s26-mixed-words",
             csv_name="mixed-words.csv",
