@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable
 
 check: lint type test
 
@@ -217,3 +217,90 @@ stage-spend:
 	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
 # S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
 # S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
+
+s27-page-value:
+	uv run python -m scripts.page_value --sample dev-400 --out docs/results/s27-page-value.txt
+# S2.7 spec §7.3 (T3), free: reads the dev-400 docket and transcription caches; no model call.
+
+s27-models-fetch:
+	uv run python -m scripts.transcriber_shortlist fetch
+# S2.7 spec §7.2, free: saves OpenRouter's public model list under <data_dir>/s27/.
+
+s27-shortlist:
+	$(if $(MODELS),,$(error MODELS is required: the saved list, e.g. MODELS=$$NTSB_DATA_DIR/s27/openrouter-models-2026-09-27.json))
+	uv run python -m scripts.transcriber_shortlist shortlist --models $(MODELS) --out docs/results/s27-transcriber-shortlist.txt
+# S2.7 spec §7.2, free: decision 0100 item 1's filter over the saved list.
+
+s27-transcriber-probe:
+	uv run python -m scripts.stage_spend --estimate 0.10
+	uv run python -m scripts.transcriber_shortlist probe
+# S2.7 spec §7.2, paid (estimate under $0.10): one invented page to each shortlisted model,
+# replacing failures in order, until eight pass. Every reply is saved under
+# <data_dir>/s27/probe-replies/; only passed models' replies are also written to
+# tests/fixtures/openrouter/transcription/.
+
+s27-batch-image:
+	$(if $(MODEL),,$(error MODEL is required: a passed candidate with a batch variant))
+	uv run python -m scripts.stage_spend --estimate 0.01
+	uv run python -m scripts.transcriber_shortlist batch-image --model $(MODEL)
+# S2.7 spec §7.2 and walkthrough W2, paid (a fraction of a cent): one batch request carrying
+# the invented probe image.
+
+# S2.7 walkthrough W7 (pre-flight 1.1): S2.6's second-pass recheck CSV pair, defined once here
+# and used by every s27-retest target. The pass2/ pair is the default because Andy recalls it
+# as final; the top-level pair (.../transcriber-test/handwriting-key-pass2.csv and
+# .../transcriber-test/photo-words-pass2.csv) is the other one S2.6 left on disk.
+HW_RECHECK ?= $$NTSB_DATA_DIR/s26/transcriber-test/pass2/handwriting-key-pass2-2.csv
+PHOTO_RECHECK ?= $$NTSB_DATA_DIR/s26/transcriber-test/pass2/photo-words-pass2.csv
+
+s27-retest-verify:
+	uv run python -m scripts.transcriber_retest verify --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)
+# S2.7 walkthrough W7, free: Qwen's second pass must be reproduced exactly from the cache before
+# any candidate is scored. If the default pair does not reproduce it, try the top-level pair by
+# overriding HW_RECHECK and PHOTO_RECHECK; if neither pair reproduces it, stop and report.
+# Run on 2026-09-27: the default pass2/ pair reproduced every count; the top-level pair did not
+# (1551 handwriting key lines and 55 inventing lines, against the published 1548 and 54).
+
+s27-retest-run:
+	uv run python -m scripts.stage_spend --estimate 2.50
+	uv run python -m scripts.transcriber_retest run
+	uv run python -m scripts.transcriber_retest run --retry-failed
+# S2.7 spec §7.4, paid (estimate up to $2.50, standard price, synchronous): every candidate on
+# the four keys, and one retry of failed pages. No marking page yet (walkthrough W3).
+
+s27-retest-pages:
+	$(if $(MODELS),,$(error MODELS is required: the candidates still in the running, from s27-retest-automatic))
+	uv run python -m scripts.transcriber_retest pages --models $(MODELS)
+# Free: Andy's two pages under <data_dir>/s27/transcriber-retest/, for the candidates still in
+# the running only (walkthrough W3); MODELS is space-separated. Rebuilding with the same
+# candidates keeps marks already made (they reload from the browser); a different set is refused,
+# because it would renumber the cards those marks belong to.
+
+s27-retest-automatic:
+	uv run python -m scripts.transcriber_retest automatic --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)
+# S2.7 walkthrough W3, free: the candidates still in the running before any marking. Re-verifies
+# Qwen's row with the shared recheck pair first (pre-flight 1.1: the pair Task 8 verified).
+
+s27-retest-score:
+	uv run python -m scripts.transcriber_retest score --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK) $(if $(MARKED),--photos $$NTSB_DATA_DIR/s27/transcriber-retest/s27-photo-words.csv --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/s27-mixed-words.csv,) --marked $(MARKED) --out docs/results/s27-transcriber-retest.txt
+# S2.7 spec §7.4, free: decision 0100 item 3 applied; the CSV pair is the one Task 8 verified.
+# MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
+# It refuses a candidate still in the running that is not in MARKED.
+
+s27-routing-pages:
+	$(if $(MODELS),,$(error MODELS is required: the candidates whose full-page scan readings Andy marks))
+	uv run python -m scripts.transcriber_retest routing-pages --models $(MODELS)
+# Andy, 2026-09-27, free and exploratory (outside decision 0100 item 3's rule): the full-page
+# scan page alone, for the named candidates, under <data_dir>/s27/transcriber-retest/routing/,
+# for routing text-and-image pages to a cheaper model. MODELS is space-separated.
+
+s27-routing-tally:
+	$(if $(MODELS),,$(error MODELS is required: the candidates s27-routing-pages was built for))
+	uv run python -m scripts.transcriber_retest routing-tally --models $(MODELS) --mixed $$NTSB_DATA_DIR/s27/transcriber-retest/routing/s27-routing-scan-words.csv --out docs/results/s27-routing-scans.txt
+# Free: the tally of Andy's marks from s27-routing-pages; refuses an unmarked card.
+
+s27-retest-readable:
+	uv run python -m scripts.transcriber_retest readable-split --handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK) --out docs/results/s27-transcriber-retest-readable.txt
+# Free, post-hoc (Andy's challenge, 2026-09-28): Qwen's and each candidate's handwriting counts
+# on fully readable pages and on pages whose key holds [illegible], from the committed scorer,
+# checked to add up to its committed totals. Changes neither decision 0100's rule nor the verdict.

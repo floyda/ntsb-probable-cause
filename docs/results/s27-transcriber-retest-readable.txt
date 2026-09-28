@@ -1,0 +1,51 @@
+# a post-hoc check of decision 0100 item 3's rule against Andy's challenge (2026-09-28): do the handwriting key's [illegible] lines decide the candidates' rejection? -- counts only
+it changes neither the rule nor the re-test's verdict (docs/results/s27-transcriber-retest.txt: Qwen stays)
+keys: S2.6's handwriting pages (docs/results/s26-transcriber-test-pass2.txt); 150 dpi; instruction t1; decision 0086's corrections; the recheck CSVs pass2/handwriting-key-pass2-2.csv and pass2/photo-words-pass2.csv
+scored per page group by the committed scorer (transcriber_test._result, decision 0086's format rule included); a word where the key has [illegible] counts as invented (decision 0079)
+character errors: transcriber_test.typed_errors on each page's key and reading, whitespace collapsed so line breaks do not count; a failed reading counts as empty
+pages whose key holds [illegible]: 12 of 25; key lines holding [illegible]: 37 of 1548
+
+## qwen/qwen3.5-122b-a10b
+  (a) fully readable pages (13): 19 inventing lines; 620 of 779 key lines right; 1 format-failed pages; character errors 10.9 per 100 (2704 in 24885)
+  (b) pages with [illegible] (12): 35 inventing lines; 416 of 769 key lines right; 1 format-failed pages; character errors 14.1 per 100 (3036 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 54 inventing lines, 1036 of 1548 key lines right, 2 format-failed pages
+
+## inclusionai/ling-3.0-flash-vl
+  (a) fully readable pages (13): 47 inventing lines; 458 of 779 key lines right; 1 format-failed pages; character errors 22.4 per 100 (5583 in 24885)
+  (b) pages with [illegible] (12): 66 inventing lines; 344 of 769 key lines right; 1 format-failed pages; character errors 17.3 per 100 (3715 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 113 inventing lines, 802 of 1548 key lines right, 2 format-failed pages
+
+## qwen/qwen3.7-flash
+  (a) fully readable pages (13): 28 inventing lines; 316 of 779 key lines right; 3 format-failed pages; character errors 22.3 per 100 (5546 in 24885)
+  (b) pages with [illegible] (12): 40 inventing lines; 141 of 769 key lines right; 5 format-failed pages; character errors 27.8 per 100 (5977 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 68 inventing lines, 457 of 1548 key lines right, 8 format-failed pages
+
+## deepseek/deepseek-v4.1-flash
+  (a) fully readable pages (13): 4 inventing lines; 78 of 779 key lines right; 1 format-failed pages; character errors 70.1 per 100 (17437 in 24885)
+  (b) pages with [illegible] (12): 5 inventing lines; 22 of 769 key lines right; 0 format-failed pages; character errors 90.4 per 100 (19423 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 9 inventing lines, 100 of 1548 key lines right, 1 format-failed pages
+
+## z-ai/glm-5.3-flash
+  (a) fully readable pages (13): 24 inventing lines; 337 of 779 key lines right; 0 format-failed pages; character errors 21.9 per 100 (5448 in 24885)
+  (b) pages with [illegible] (12): 51 inventing lines; 324 of 769 key lines right; 1 format-failed pages; character errors 19.5 per 100 (4193 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 75 inventing lines, 661 of 1548 key lines right, 1 format-failed pages
+
+## prism-ml/ternary-bonsai-2-27b
+  (a) fully readable pages (13): 89 inventing lines; 328 of 779 key lines right; 0 format-failed pages; character errors 25.2 per 100 (6271 in 24885)
+  (b) pages with [illegible] (12): 92 inventing lines; 160 of 769 key lines right; 2 format-failed pages; character errors 29.4 per 100 (6310 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 181 inventing lines, 488 of 1548 key lines right, 2 format-failed pages
+
+## openai/gpt-6-luna-pro
+  (a) fully readable pages (13): 18 inventing lines; 383 of 779 key lines right; 0 format-failed pages; character errors 22.1 per 100 (5492 in 24885)
+  (b) pages with [illegible] (12): 47 inventing lines; 308 of 769 key lines right; 0 format-failed pages; character errors 23.3 per 100 (4993 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 65 inventing lines, 691 of 1548 key lines right, 0 format-failed pages
+
+## xiaomi/mimo-v2.6-flash
+  (a) fully readable pages (13): 47 inventing lines; 365 of 779 key lines right; 0 format-failed pages; character errors 36.6 per 100 (9103 in 24885)
+  (b) pages with [illegible] (12): 66 inventing lines; 399 of 769 key lines right; 0 format-failed pages; character errors 18.7 per 100 (4011 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 113 inventing lines, 764 of 1548 key lines right, 0 format-failed pages
+
+## qwen/qwen3.8-omni-flash
+  (a) fully readable pages (13): 21 inventing lines; 284 of 779 key lines right; 1 format-failed pages; character errors 22.4 per 100 (5586 in 24885)
+  (b) pages with [illegible] (12): 68 inventing lines; 107 of 769 key lines right; 3 format-failed pages; character errors 25.5 per 100 (5477 in 21475)
+  check: (a)+(b) equal its committed totals from the same scorer: 89 inventing lines, 391 of 1548 key lines right, 4 format-failed pages

@@ -1159,7 +1159,7 @@ class _StubDocuments:
     """Stands in for ``CachedDocuments``: a scan, a photo-only scan, a non-PDF; no HTTP."""
 
     def __init__(self, _client: object) -> None:
-        self.entries = (
+        self.entries: tuple[ListingEntry, ...] = (
             _entry(1, pages=2),
             _entry(2, pages=2, photos=2),  # photo-only: v2 reads it too (decision W2)
             _entry(3, pages=0, extension="csv"),
@@ -1280,7 +1280,9 @@ def test_transcribe_dry_run_counts_and_prices_and_calls_no_model(
     assert exit_code == 0
     out = capsys.readouterr().out
     # Two scans of two image pages each (the photo-only one included, decision W2).
-    assert f"dev-400: 4 pages to read with {TRANSCRIBER} at 150 dpi, 4 not yet read" in out
+    assert (
+        f"dev-400: 4 pages to read with {TRANSCRIBER} at 150 dpi, rule all, 4 not yet read" in out
+    )
     assert "projected $0.04" in out
     # entry 4 fails to fetch (_StubDocuments): counted rather than silently dropped (M2).
     assert "1 document(s) could not be listed, fetched or parsed" in out
@@ -1587,6 +1589,161 @@ def test_transcribe_that_spends_its_reservation_stops_and_exits_non_zero(
     assert "1 were left unread" in captured.err
     assert "marker is NOT written" in captured.err
     assert not ReadingLookup(TranscriptionCache(transcriptions)).is_done("dev-400")
+
+
+# --- S2.7 track 2 Task 3: `transcribe --model --page-rule` ---
+
+_MIXED_TEXT = "Engine sputtered at 800 ft. Switched tanks, no change."
+_MIXED_SCAN = build_pdf([PageSpec(text=_MIXED_TEXT, images=("/DCTDecode",))])
+
+
+class _StubDocumentsWithMixedPage(_StubDocuments):
+    """``_StubDocuments`` plus one text-and-image document (pre-flight 2.5).
+
+    ``_StubDocuments`` alone serves only image-only scans, so a rule that drops
+    text-and-image pages (``image-only``) could never be told apart from ``all`` by the jobs
+    it produces. This adds one such page, own to this test's stub so the shared fixture (and
+    every other test's page counts) stays exactly as it was.
+    """
+
+    def __init__(self, client: object) -> None:
+        super().__init__(client)
+        self.entries = (*self.entries, _entry(5, pages=1))
+
+    def document(self, mkey: int, index: int) -> bytes:
+        if index == 5:
+            return _MIXED_SCAN
+        return super().document(mkey, index)
+
+
+def test_transcribe_reads_with_another_model_and_rule_and_marks_that_pair_done(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transcriptions = _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr("apps.eval.__main__.CachedDocuments", _StubDocumentsWithMixedPage)
+    model = "google/gemini-3.1-flash-lite"  # priced, with a reasoning level (sources.py)
+    calls: list[Sequence[PageJob]] = []
+
+    def fake_preparation(*, jobs: Sequence[PageJob], **_kwargs: object) -> list[Transcription]:
+        calls.append(jobs)
+        cache = TranscriptionCache(transcriptions)
+        for job in jobs:
+            if cache.get(job.key) is None:
+                cache.put(
+                    Transcription(
+                        key=job.key,
+                        status="transcribed",
+                        text="words",
+                        mixed=job.mixed,
+                        cost_usd=0.001,
+                        created=datetime(2026, 10, 1, tzinfo=UTC),
+                    ),
+                    instruction=TRANSCRIBE,
+                )
+        return []
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", fake_preparation)
+    argv = [
+        "transcribe",
+        "--sample",
+        "dev-400",
+        "--expected-cost-per-page-usd",
+        "0.001",
+        "--model",
+        model,
+        "--page-rule",
+        "image-only",
+    ]
+    assert main(argv) == 0
+    assert {j.key.model for j in calls[0]} == {model}
+    assert {j.mixed for j in calls[0]} == {False}  # image-only sends no mixed page
+    cache = TranscriptionCache(transcriptions)
+    done = ReadingLookup(cache, model=model, page_rule="image-only")
+    assert done.is_done("dev-400")
+    assert json.loads(done.done_file("dev-400").read_text())["page_rule"] == "image-only"
+    assert not ReadingLookup(cache).is_done("dev-400")  # S2.6's pair is not claimed
+    assert f"with {model}" in capsys.readouterr().out
+
+
+def test_transcribe_with_a_mixed_page_sends_it_under_the_all_rule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Companion to the test above (review fix round 1, pre-flight 2.5's second half): the
+    same stub's text-and-image page, absent under ``image-only``, is present under ``all`` --
+    so that absence assertion shows the rule is actually doing something, rather than being
+    true of the stub regardless of which rule is passed.
+    """
+    _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr("apps.eval.__main__.CachedDocuments", _StubDocumentsWithMixedPage)
+    calls: list[Sequence[PageJob]] = []
+
+    def fake_preparation(*, jobs: Sequence[PageJob], **_kwargs: object) -> list[Transcription]:
+        calls.append(jobs)
+        return []
+
+    monkeypatch.setattr("apps.eval.__main__.run_preparation", fake_preparation)
+    argv = [
+        "transcribe",
+        "--sample",
+        "dev-400",
+        "--expected-cost-per-page-usd",
+        "0.001",
+        "--page-rule",
+        "all",
+    ]
+    assert main(argv) == 0
+    assert True in {j.mixed for j in calls[0]}  # "all" sends the mixed page too
+
+
+def test_transcribe_refuses_a_model_with_no_price_before_fetching_anything(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+
+    def no_fetch(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("nothing is fetched for a refused model")
+
+    monkeypatch.setattr("apps.eval.__main__._page_jobs", no_fetch)
+    argv = [
+        "transcribe",
+        "--sample",
+        "dev-400",
+        "--expected-cost-per-page-usd",
+        "0.001",
+        "--model",
+        "vendor/unpriced-model",
+    ]
+    assert main(argv) == 1
+    assert "no price on file for vendor/unpriced-model" in capsys.readouterr().err
+
+
+def test_transcribe_refuses_a_page_rule_it_does_not_know(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _transcribe_env(tmp_path, monkeypatch, record_fixtures[0])
+    argv = [
+        "transcribe",
+        "--sample",
+        "dev-400",
+        "--expected-cost-per-page-usd",
+        "0.001",
+        "--page-rule",
+        "every-page",
+    ]
+    with pytest.raises(SystemExit):
+        main(argv)
+    assert "invalid choice: 'every-page'" in capsys.readouterr().err
 
 
 def test_report_against_prints_each_paired_block_by_fatal_and_non_fatal(

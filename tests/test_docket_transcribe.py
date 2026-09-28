@@ -17,13 +17,20 @@ from ntsb_probable_cause.docket.transcribe import (
     ILLEGIBLE,
     LABEL,
     MIXED_PAGE_MIN_IMAGE_SHARE,
+    PAGE_RULE,
+    PAGE_RULES,
+    THIN_LAYER_MAX_CHARS,
     TRANSCRIBE,
+    TRANSCRIBER,
     Instruction,
     PageJob,
+    PageRule,
     ReadingLookup,
     Transcription,
     TranscriptionCache,
     TranscriptionKey,
+    key_instruction,
+    page_choice,
     pages_to_read,
     parse_reply,
     read_page,
@@ -616,7 +623,7 @@ def test_pages_to_read_takes_image_pages_and_mixed_pages_over_the_cut() -> None:
         ]
     )
     # A 100 x 100 image on a letter page covers about 2% of it.
-    chosen = pages_to_read(document)
+    chosen = pages_to_read(document, page_rule="all")
     assert (2, False) in chosen
     logo_share = 100 * 100 / (612 * 792)
     assert ((3, True) in chosen) == (logo_share >= MIXED_PAGE_MIN_IMAGE_SHARE)
@@ -630,9 +637,9 @@ def test_pages_to_read_leaves_out_a_mixed_page_under_the_cut(
         [PageSpec(images=("/DCTDecode",)), PageSpec(text=TYPED, images=("/DCTDecode",))]
     )
     monkeypatch.setattr(transcribe_module, "MIXED_PAGE_MIN_IMAGE_SHARE", 0.05)
-    assert pages_to_read(document) == [(1, False)]
+    assert pages_to_read(document, page_rule="all") == [(1, False)]
     monkeypatch.setattr(transcribe_module, "MIXED_PAGE_MIN_IMAGE_SHARE", 0.0)
-    assert pages_to_read(document) == [(1, False), (2, True)]
+    assert pages_to_read(document, page_rule="all") == [(1, False), (2, True)]
 
 
 def test_pages_to_read_refuses_a_file_that_is_not_a_pdf() -> None:
@@ -665,7 +672,7 @@ def test_the_lookup_finds_a_mixed_reading_and_never_a_full_reading_for_it(
     context that happened to read it without the layer -- must never be returned for it."""
     cache = TranscriptionCache(tmp_path)
     document = build_pdf([PageSpec(text=TYPED, images=("/DCTDecode",))])  # text and image
-    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150, page_rule="all")
     sha = hashlib.sha256(document).hexdigest()
     mixed_key = TranscriptionKey(
         document_sha256=sha, page=1, model="m", instruction="t1+layer", dpi=150
@@ -718,3 +725,100 @@ def test_the_done_file_is_per_model_instruction_and_resolution(tmp_path: Path) -
     )
     assert base.done_file("dev-400") != base.done_file("heldout-400")
     assert cache.root == tmp_path
+
+
+# --- S2.7 track 2, Task 2: named page rules ---
+
+_LONG_LAYER = " ".join([TYPED] * 5)  # about 275 characters: over THIN_LAYER_MAX_CHARS
+
+
+def _three_kinds() -> bytes:
+    return build_pdf(
+        [
+            PageSpec(images=("/CCITTFaxDecode",)),
+            PageSpec(text=TYPED, images=("/DCTDecode",)),
+            PageSpec(text=_LONG_LAYER, images=("/DCTDecode",)),
+            PageSpec(text=TYPED),
+            PageSpec(),
+        ]
+    )
+
+
+def test_the_rule_in_force_is_s26s_until_a_decision_changes_it() -> None:
+    assert PAGE_RULE == "all"
+    assert PAGE_RULES == ("all", "image-only", "image-only+thin-layer")
+    assert THIN_LAYER_MAX_CHARS == 200
+
+
+def test_each_rule_sends_its_own_pages() -> None:
+    document = _three_kinds()
+    assert pages_to_read(document, page_rule="all") == [(1, False), (2, True), (3, True)]
+    assert pages_to_read(document, page_rule="image-only") == [(1, False)]
+    assert pages_to_read(document, page_rule="image-only+thin-layer") == [(1, False), (2, True)]
+
+
+def test_the_default_rule_is_the_rule_in_force() -> None:
+    document = _three_kinds()
+    assert pages_to_read(document) == pages_to_read(document, page_rule=PAGE_RULE)
+
+
+def test_page_choice_never_sends_a_text_only_or_blank_page() -> None:
+    for rule in PAGE_RULES:
+        assert page_choice("text only", 900, 0.0, page_rule=rule) is None
+        assert page_choice("blank", 0, 0.0, page_rule=rule) is None
+        assert page_choice("image only", 0, 1.0, page_rule=rule) is False
+
+
+def test_the_thin_layer_rule_cuts_at_the_limit() -> None:
+    rule: PageRule = "image-only+thin-layer"
+    assert page_choice("text and image", THIN_LAYER_MAX_CHARS - 1, 0.5, page_rule=rule) is True
+    assert page_choice("text and image", THIN_LAYER_MAX_CHARS, 0.5, page_rule=rule) is None
+
+
+def test_every_done_file_names_its_page_rule_even_s26s(tmp_path: Path) -> None:
+    lookup = ReadingLookup(TranscriptionCache(tmp_path))
+    old = hashlib.sha256(f"{TRANSCRIBER}|{TRANSCRIBE.version}|150".encode()).hexdigest()[:12]
+    new = hashlib.sha256(f"{TRANSCRIBER}|{TRANSCRIBE.version}|150|all".encode()).hexdigest()[:12]
+    # Walkthrough W4 (Andy, B): one stamp form for every rule; S2.6's marker name no longer matches
+    assert lookup.done_file("dev-400") == tmp_path / "done" / f"dev-400-{new}.json"
+    assert lookup.done_file("dev-400") != tmp_path / "done" / f"dev-400-{old}.json"
+    assert lookup.page_rule == "all"
+    assert lookup.model == TRANSCRIBER
+
+
+def test_another_rule_has_its_own_done_file(tmp_path: Path) -> None:
+    cache = TranscriptionCache(tmp_path)
+    s26 = ReadingLookup(cache)
+    other = ReadingLookup(cache, page_rule="image-only")
+    assert other.done_file("dev-400") != s26.done_file("dev-400")
+    other.mark_done("dev-400", {"pages": 1})
+    assert other.is_done("dev-400")
+    assert not s26.is_done("dev-400")
+
+
+def test_a_lookup_under_a_rule_finds_only_that_rules_pages(tmp_path: Path) -> None:
+    cache = TranscriptionCache(tmp_path)
+    document = _three_kinds()
+    sha = hashlib.sha256(document).hexdigest()
+    for page, mixed in pages_to_read(document, page_rule="all"):
+        key = TranscriptionKey(
+            document_sha256=sha,
+            page=page,
+            model=TRANSCRIBER,
+            instruction=key_instruction(TRANSCRIBE, mixed=mixed),
+            dpi=150,
+        )
+        cache.put(
+            Transcription(
+                key=key,
+                status="transcribed",
+                text=f"page {page}",
+                mixed=mixed,
+                created=datetime(2026, 9, 27, tzinfo=UTC),
+            ),
+            instruction=TRANSCRIBE,
+        )
+    assert sorted(ReadingLookup(cache).for_document(document)) == [1, 2, 3]
+    assert sorted(ReadingLookup(cache, page_rule="image-only").for_document(document)) == [1]
+    thin = ReadingLookup(cache, page_rule="image-only+thin-layer")
+    assert sorted(thin.for_document(document)) == [1, 2]

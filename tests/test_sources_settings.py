@@ -241,12 +241,15 @@ def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch
 
 
 def test_the_transcriber_candidates_are_priced_and_levelled() -> None:
-    """OpenRouter models API, read 2026-09-24 (S2.6 spec §7.2)."""
+    """OpenRouter models API, read 2026-09-24 (S2.6 spec §7.2).
+
+    pre-flight 2.2 (S2.7 track 2, Task 6): S2.7 adds more entries to ``LOWEST_REASONING`` for
+    its own shortlist, so this checks S2.6's four entries are still present rather than
+    asserting the dict's exact contents.
+    """
     assert sources.price_of("google/gemini-3.6-flash") is sources.GEMINI_36_FLASH
     assert sources.price_of("qwen/qwen3.5-122b-a10b") is sources.QWEN_35_122B
-    assert sources.LOWEST_REASONING == {
-        "google/gemini-3.1-flash-lite": "minimal",
-        "google/gemini-3.6-flash": "minimal",
-        "openai/gpt-6-luna": "none",
-        "qwen/qwen3.5-122b-a10b": "none",
-    }
+    assert sources.LOWEST_REASONING["google/gemini-3.1-flash-lite"] == "minimal"
+    assert sources.LOWEST_REASONING["google/gemini-3.6-flash"] == "minimal"
+    assert sources.LOWEST_REASONING["openai/gpt-6-luna"] == "none"
+    assert sources.LOWEST_REASONING["qwen/qwen3.5-122b-a10b"] == "none"

@@ -55,7 +55,7 @@ The spec is approved; these are the places where writing this plan found somethi
 | `scripts/transcriber_retest.py` | 8, 9, 10 | T2: reproduce Qwen's second pass; run the candidates on the four keys; Andy's pages; the choice rule against Qwen; `docs/results/s27-transcriber-retest.txt` |
 | `tests/fixtures/openrouter/transcription/*.json` | 7 | the new candidates' recorded probe replies (the invented page) |
 | `tests/test_docket_transcribe.py`, `tests/test_eval_app.py`, `tests/test_page_value.py`, `tests/test_transcriber_shortlist.py`, `tests/test_transcriber_retest.py`, `tests/test_sources_settings.py` | 2–10 | tests |
-| `Makefile` | 4–10 | `s27-page-value`, `s27-models-fetch`, `s27-shortlist`, `s27-transcriber-probe`, `s27-batch-image`, `s27-retest-verify`, `s27-retest-run`, `s27-retest-pages`, `s27-retest-score` |
+| `Makefile` | 4–10 | `s27-page-value`, `s27-models-fetch`, `s27-shortlist`, `s27-transcriber-probe`, `s27-batch-image`, `s27-retest-verify`, `s27-retest-run`, `s27-retest-pages`, `s27-retest-automatic`, `s27-retest-score` |
 | `docs/decisions/` (number 120) and its index row | 11 | the transcriber and page rule, or "Qwen stays" |
 
 Task numbers in this table are final.
@@ -68,7 +68,7 @@ Task numbers in this table are final.
 
 **Files:** none changed.
 
-- [ ] **Step 1: Cut the branch and the worktree**
+- [x] **Step 1: Cut the branch and the worktree**
 
 ```bash
 cd /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause
@@ -78,12 +78,12 @@ cd .claude/worktrees/s27-transcriber
 uv sync
 ```
 
-- [ ] **Step 2: Confirm the base is green and the spend check exists**
+- [x] **Step 2: Confirm the base is green and the spend check exists**
 
 Run: `make check && uv run python -m scripts.stage_spend --estimate 0`
 Expected: `make check` passes; `stage_spend` prints S2.7's spend so far and exits 0.
 
-- [ ] **Step 3: Push the branch**
+- [x] **Step 3: Push the branch**
 
 ```bash
 git push -u origin s27-transcriber
@@ -105,7 +105,7 @@ git push -u origin s27-transcriber
 
 **What each rule sends.** Example document: page 1 image-only; page 2 text-and-image with a 55-character text layer (a scanned form with a typed header); page 3 text-and-image with a 900-character text layer (a typed report with a logo); page 4 text only. `"all"` sends 1 (full), 2 and 3 (mixed). `"image-only"` sends 1. `"image-only+thin-layer"` sends 1 and 2.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_docket_transcribe.py` (it already imports `build_pdf`, `PageSpec`, `TYPED`, `TranscriptionCache`, `pages_to_read`, `transcribe_module`, `hashlib`; add the new names to its import from `ntsb_probable_cause.docket.transcribe`: `PAGE_RULE`, `PAGE_RULES`, `THIN_LAYER_MAX_CHARS`, `ReadingLookup`, `page_choice`, `Transcription`, `TranscriptionKey`, `TRANSCRIBER`, `TRANSCRIBE`, `key_instruction`):
 
@@ -207,12 +207,12 @@ def test_a_lookup_under_a_rule_finds_only_that_rules_pages(tmp_path: Path) -> No
     assert sorted(thin.for_document(document)) == [1, 2]
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_docket_transcribe.py -k "rule or done_file or page_choice" -v`
 Expected: FAIL with `ImportError: cannot import name 'PAGE_RULE'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/ntsb_probable_cause/docket/transcribe.py`, add `from ntsb_probable_cause.docket.pages import PageKind` to the existing `docket.pages` import, and add below `TRANSCRIBER` (:79):
 
@@ -312,12 +312,12 @@ In `for_document`, change `chosen = pages_to_read(data)` to `chosen = pages_to_r
 
 `_maybe_mark_done` in `apps/eval/__main__.py` also writes `"page_rule"` into the marker's summary beside `"model"` and `"dpi"` (Task 3 passes the rule through), so a marker file says which rule it covers.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_docket_transcribe.py -v`
 Expected: PASS, including every S2.6 test of `pages_to_read` (the default rule is S2.6's).
 
-- [ ] **Step 5: Confirm S2.6's marker no longer matches** (read-only, no model call)
+- [x] **Step 5: Confirm S2.6's marker no longer matches** (read-only, no model call)
 
 ```bash
 NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data uv run python -c "
@@ -327,7 +327,7 @@ print(ReadingLookup(TranscriptionCache(Settings().transcription_dir)).is_done('d
 ```
 Expected: `False` (walkthrough W4). S2.6's file `data/transcriptions/done/dev-400-940436639bbd.json` is left where it is, unused. It is re-created under the new name, free, in Task 3 Step 6, once `ntsb-eval transcribe` takes `--page-rule`.
 
-- [ ] **Step 6: `make check`, then commit**
+- [x] **Step 6: `make check`, then commit**
 
 ```bash
 make check
@@ -349,7 +349,7 @@ git commit -m "S2.7 track 2: named page rules; the rule is part of a new marker'
 
 **Why here.** The meeting point (track 1) re-reads `dev-400` with track 2's winner and rule, and the sealed sample may need the same. Without these flags that means editing constants before a paid run. A model with no price or no reasoning level is refused before anything is fetched, because `transcribe.settings_for` would otherwise raise `KeyError` mid-job.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_eval_app.py` (it already has `_transcribe_env`, `main`, `ReadingLookup`, `TranscriptionCache`, `Transcription`, `TRANSCRIBE`, `PageJob`):
 
@@ -430,12 +430,12 @@ def test_transcribe_refuses_a_page_rule_it_does_not_know(
 
 (`ruff format` will re-wrap the `argv` lists; keep the values.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_eval_app.py -k "another_model or no_price or page_rule_it" -v`
 Expected: FAIL (`unrecognized arguments: --model`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In the `transcribe` sub-parser, add:
 
@@ -499,12 +499,12 @@ Pass `model=args.model, page_rule=args.page_rule` to `_page_jobs` and `_maybe_ma
         )
 ```
 
-- [ ] **Step 4: Run the transcribe tests**
+- [x] **Step 4: Run the transcribe tests**
 
 Run: `uv run pytest tests/test_eval_app.py -k transcribe -v`
 Expected: PASS, including the S2.6 tests (the defaults are S2.6's model and rule).
 
-- [ ] **Step 5: `make check`, then commit**
+- [x] **Step 5: `make check`, then commit**
 
 ```bash
 make check
@@ -512,7 +512,7 @@ git add apps/eval/__main__.py tests/test_eval_app.py docs/plans/2026-09-26-s27-t
 git commit -m "S2.7 track 2: ntsb-eval transcribe takes a model and a page rule"
 ```
 
-- [ ] **Step 6: Re-create `dev-400`'s marker under the new name** (free: every page is already cached; walkthrough W4)
+- [x] **Step 6: Re-create `dev-400`'s marker under the new name** (free: every page is already cached; walkthrough W4)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -520,7 +520,7 @@ uv run ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017
 ```
 Expected: the projection line ends `0 not yet read; projected $0.00`. If any page is not yet read, stop and report it: the S2.6 cache was expected to hold every page. Then the same command without `--dry-run`: with nothing pending it makes no job, no reservation and no model call, and writes the marker (at most 2% of pages failed: S2.6 recorded 59 of 12,458). It lists every page of every `dev-400` document again, which takes some minutes.
 
-- [ ] **Step 7: Confirm the marker is found** (read-only)
+- [x] **Step 7: Confirm the marker is found** (read-only)
 
 Re-run Task 2 Step 5's command. Expected: `True`. The marker file holds `"page_rule": "all"` beside `"model"` and `"dpi"`. S2.6's old file stays in place, unused; log both file names in Deviations.
 
@@ -542,7 +542,7 @@ Re-run Task 2 Step 5's command. Expected: `True`. The marker file holds `"page_r
 
 **The choice, fixed now** (decision 0100 item 4): of the three rules, the one with the fewest pages whose transcribed characters are at least 90% of the characters `"all"` transcribed; ties go to the earlier rule in `PAGE_RULES`. Its effect on answers is measured at the meeting point, not here.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Task 4: the page-value counts and the page-rule choice."""
@@ -658,12 +658,12 @@ def test_main_refuses_a_sample_that_is_not_dev_400() -> None:
 
 (Move the `ReadingLookup` import to the top when writing the file; ruff's import-order rule requires it.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_page_value.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.page_value'`.
 
-- [ ] **Step 3: Implement `scripts/page_value.py`**
+- [x] **Step 3: Implement `scripts/page_value.py`**
 
 ```python
 """What each page rule keeps of S2.6's transcriptions on dev-400 (S2.7 spec §7.3, T3).
@@ -897,19 +897,19 @@ s27-page-value:
 # S2.7 spec §7.3 (T3), free: reads the dev-400 docket and transcription caches; no model call.
 ```
 
-- [ ] **Step 4: Run the tests, then `make check`**
+- [x] **Step 4: Run the tests, then `make check`**
 
 Run: `uv run pytest tests/test_page_value.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/page_value.py tests/test_page_value.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: T3, the page-value counts and the page-rule choice"
 ```
 
-- [ ] **Step 6: Run it on `dev-400` (free) and commit the results file**
+- [x] **Step 6: Run it on `dev-400` (free) and commit the results file**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -938,7 +938,7 @@ git commit -m "S2.7 track 2: T3 results on dev-400"
 
 **The filter, fixed now** (decision 0100 item 1, with walkthrough W6's condition marked): an entry is refused, with the first reason that applies, if it is a `:batch` variant; an alias (`~` id or an `alias_target`); does not take image input; does not return text only; was created before 2026-06-01; lists an input price above Qwen3.5 122B's $0.26 per million tokens; is one of S2.6's four candidates; (W6) does not list `response_format`. The eligible models are ordered by input price, then output price, then id; duplicates of one `canonical_slug` keep the first. The first eight are the shortlist; the rest are the replacements Task 7 takes in order.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Tasks 5-7: the model-list filter, the reasoning rule and the probe."""
@@ -1050,12 +1050,12 @@ def test_fetch_saves_the_list_it_read(tmp_path: Path, monkeypatch: pytest.Monkey
 
 Note: `pytest-socket` blocks real network access; `respx.mock` intercepts the `httpx` call before any socket opens, as in `tests/test_typesafe_client.py` on the `typesafe-probe` branch and every OpenRouter test on `main`.
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'scripts.transcriber_shortlist'`.
 
-- [ ] **Step 3: Implement `fetch` and `shortlist`**
+- [x] **Step 3: Implement `fetch` and `shortlist`**
 
 ```python
 """The transcriber shortlist: newer vision models by a fixed filter, then probed (S2.7 §7.2).
@@ -1286,19 +1286,19 @@ s27-shortlist:
 # S2.7 spec §7.2, free: decision 0100 item 1's filter over the saved list.
 ```
 
-- [ ] **Step 4: Run the tests, then `make check`**
+- [x] **Step 4: Run the tests, then `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: T1, the model-list filter and the shortlist"
 ```
 
-- [ ] **Step 6: Fetch, filter, commit the results file** (free)
+- [x] **Step 6: Fetch, filter, commit the results file** (free)
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -1323,7 +1323,7 @@ If fewer than eight models are eligible, record the count in Deviations (walkthr
 
 **Why every eligible model, reserves included.** Task 7 replaces a failed probe by the next model in order; each needs a price and a level before it is called, or `settings_for` and `cost_usd` raise mid-probe.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_transcriber_shortlist.py`:
 
@@ -1345,12 +1345,12 @@ def test_every_shortlisted_model_is_priced_and_has_a_reasoning_level() -> None:
         assert model in sources.LOWEST_REASONING
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -k "constant or priced" -v`
 Expected: FAIL (`AttributeError: ... has no attribute 'S27_SHORTLIST'`).
 
-- [ ] **Step 3: Add the entries, copied from the results file**
+- [x] **Step 3: Add the entries, copied from the results file**
 
 For each line of `docs/results/s27-transcriber-shortlist.txt` that starts `candidate` or `reserve`, add in `sources.py`, below `QWEN_35_122B`, one constant with a source comment naming the saved list, for example:
 
@@ -1375,12 +1375,12 @@ S27_SHORTLIST: tuple[str, ...] = (
 
 These are data copied from a committed results file, not choices; the two tests prove the copy.
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py tests/test_sources_settings.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/sources.py scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -1403,7 +1403,7 @@ git commit -m "S2.7 track 2: prices and reasoning levels of the shortlisted mode
 
 **What passes.** A model passes if it answers and its reply parses under instruction t1 (`parse_reply`), as in S2.6's probe. How many probe lines it copies is printed, not judged: the answer keys judge reading.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from ntsb_probable_cause.model.client import ModelReply, Usage
@@ -1448,12 +1448,12 @@ def test_the_probe_stops_once_enough_pass() -> None:
 
 (Check `ModelReply` and `Usage` constructor fields in `model/client.py` before writing: `Usage` may need `reported_cost_usd` and `reasoning_tokens` defaults. Adjust the helper to the real fields.)
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -k probe -v`
 Expected: FAIL (`AttributeError: ... has no attribute 'probe'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 PROBE_WANTED = 8
@@ -1609,19 +1609,19 @@ s27-batch-image:
 # the invented probe image.
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_shortlist.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit the code**
+- [x] **Step 5: Commit the code**
 
 ```bash
 git add scripts/transcriber_shortlist.py tests/test_transcriber_shortlist.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: the shortlist probe and the batch-with-image call"
 ```
 
-- [ ] **Step 6: STOP — Andy runs the probe (paid, under $0.10, a minute or two)**
+- [x] **Step 6: STOP — Andy runs the probe (paid, under $0.10, a minute or two)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -1632,7 +1632,7 @@ make s27-batch-image MODEL=<model id>
 uv run python -m scripts.transcriber_shortlist batch-poll --batch-id <id printed>   # a few minutes later
 ```
 
-- [ ] **Step 7: Record the passed candidates and the fixtures**
+- [x] **Step 7: Record the passed candidates and the fixtures**
 
 Set, from the probe's `passed (...)` line:
 
@@ -1695,7 +1695,7 @@ If no model passed: record it, skip Tasks 8–10, and write the decision record 
 
 0080's absolute limits (2 invented lines per 100; 1 in 20 photographs; 1 in 20 scans; 1 in 20 format-failed pages) are printed beside each candidate and decide nothing.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """S2.7 track 2, Tasks 8-10: the re-test against Qwen."""
@@ -1779,12 +1779,12 @@ def test_verify_accepts_only_qwens_published_counts() -> None:
     assert tr.matches_qwen_pass2(_result(tr.QWEN, hw_right=1035)) == ["hw_right 1035, published 1036"]
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Implement the rule and `verify`**
+- [x] **Step 3: Implement the rule and `verify`**
 
 ```python
 """The transcriber re-test: new candidates on S2.6's answer keys, judged against Qwen (S2.7 §7.4).
@@ -2002,12 +2002,12 @@ s27-retest-verify:
 # (and the pass2/ photo CSV); if neither pair reproduces it, stop and report.
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit, then verify on the real keys (free)**
+- [x] **Step 5: Commit, then verify on the real keys (free)**
 
 ```bash
 git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
@@ -2028,13 +2028,13 @@ Expected: `verified: ...`. Record in Deviations which CSV pair reproduced it. **
 
 **Interfaces:**
 - Consumes: `scripts.transcriber_test` — `_key`, `_text`, `_int`, `_read`, `_image_head`, `_same_as`, `_against_layer`, `_GROUPED_LAYOUT`, `_PHOTO_WORDS`, `FOLDER`, `SEED`; `scripts.marking_page` — `Card`, `Choice`, `render`; `scoring.preparation.run_preparation`; `docket.transcribe.PageJob`, `TRANSCRIBE`; `gitinfo.commit_state`; `transcriber_shortlist.S27_CANDIDATES`.
-- Produces: `RETEST_FOLDER = Path("s27") / "transcriber-retest"`; `EXPECTED_COST_PER_PAGE_USD = 0.003`; `word_cards(rows, texts, *, set_name, seed_base) -> tuple[dict[int, dict[str, object]], list[Card]]` (pure, tested); `cmd_run(settings, docs, *, models, retry_failed=False) -> str`; `cmd_pages(settings, docs, *, models) -> str`.
+- Produces: `RETEST_FOLDER = Path("s27") / "transcriber-retest"`; `EXPECTED_COST_PER_PAGE_USD = 0.003`; `word_cards(rows, text_of, *, models, seed_base, choices=(_PHOTO_WORDS,), body=_photo_body) -> tuple[dict[int, dict[str, object]], list[Card]]` (pure, tested); `cmd_run(settings, docs, *, models, retry_failed=False) -> str`; `cmd_pages(settings, docs, *, models) -> str`.
 
 **Cost.** 200 key pages a candidate (100 typed, 25 handwriting, 50 photographs, 25 scans). Every candidate lists an input price at or below Qwen's, and Qwen measured $0.00154 a test page, so eight candidates cost at most about $2.50 (estimate); the reservation uses $0.003 a page, twice Qwen's measured cost, so a job cannot run far past its estimate (`run_preparation` stops at its reservation).
 
 **What Andy marks** (walkthrough W3). Each photograph with no words, and each full-page scan, once, held in view, with one card per candidate reading that holds a word (as S2.6's `_photo_cards` and `cmd_mixed`). The photograph page repeats decision 0086's rule: a word of the docket's stamped "Photo" label is on the page. Andy chose W3's alternative (2026-09-27): the pages are built only for the candidates still in the running after the automatic measures (Task 10's `automatic` subcommand), so this task runs the re-test and Task 10 builds and scores the pages.
 
-- [ ] **Step 1: Write the failing test for the cards**
+- [x] **Step 1: Write the failing test for the cards**
 
 ```python
 def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> None:
@@ -2055,12 +2055,12 @@ def test_word_cards_make_one_card_per_reading_with_words_numbered_by_page() -> N
     assert all(10 * int(v["k"]) < n < 10 * int(v["k"]) + 10 for n, v in sheet.items())
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -k word_cards -v`
 Expected: FAIL (`AttributeError: ... 'word_cards'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 RETEST_FOLDER = Path("s27") / "transcriber-retest"
@@ -2163,19 +2163,19 @@ s27-retest-pages:
 # (walkthrough W3); rebuilding keeps marks already made (they reload from the browser).
 ```
 
-- [ ] **Step 4: Run the tests and `make check`**
+- [x] **Step 4: Run the tests and `make check`**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -v && make check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile docs/plans/2026-09-26-s27-track2-transcriber.md
 git commit -m "S2.7 track 2: the re-test run and Andy's marking pages"
 ```
 
-- [ ] **Step 6: STOP — Andy runs the re-test (paid, up to about $2.50; 20–60 minutes)**
+- [x] **Step 6: STOP — Andy runs the re-test (paid, up to about $2.50; 20–60 minutes)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -2198,7 +2198,7 @@ Record the run's printed costs in Deviations. Marking comes after the automatic 
 - Consumes: Task 8's `key_material`, `choose_against_qwen`, `absolute_notes`, `QWEN_LIMITS`; Task 9's sheets; `transcriber_test._result`, `_reading_counts`.
 - Produces: `automatic_pass(r: CandidateResult) -> bool` (the four measures that need no marks, and cost); `cmd_automatic(settings, docs, recheck, *, models) -> tuple[str, tuple[str, ...]]` (the text, and the candidates still in the running; walkthrough W3); `cmd_score(settings, docs, recheck, photos_csv: Path | None, mixed_csv: Path | None, *, models, marked: Collection[str]) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_automatic_pass_ignores_the_marked_measures() -> None:
@@ -2213,12 +2213,12 @@ def test_score_refuses_an_unmarked_card(tmp_path: Path) -> None:
         tr.invented_by_model(sheet, marks, field="words", invented="some invented")
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `uv run pytest tests/test_transcriber_retest.py -k "automatic or unmarked" -v`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 def automatic_pass(r: CandidateResult) -> bool:
@@ -2371,7 +2371,7 @@ s27-retest-score:
 # MARKED: the candidates Andy marked (s27-retest-automatic's "to mark" line); empty if none.
 ```
 
-- [ ] **Step 4: Run the tests, `make check`, commit the code**
+- [x] **Step 4: Run the tests, `make check`, commit the code**
 
 ```bash
 uv run pytest tests/test_transcriber_retest.py -v && make check
@@ -2379,7 +2379,7 @@ git add scripts/transcriber_retest.py tests/test_transcriber_retest.py Makefile 
 git commit -m "S2.7 track 2: the re-test's score against Qwen"
 ```
 
-- [ ] **Step 5: The automatic measures (free)**
+- [x] **Step 5: The automatic measures (free)**
 
 ```bash
 export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
@@ -2387,7 +2387,7 @@ make s27-retest-automatic
 ```
 Expected: one line per candidate, "still in the running" or "out on an automatic measure -- <reasons>", then `to mark: <models>`.
 
-- [ ] **Step 6: STOP — Andy marks the candidates still in the running** (skip if `to mark` is none)
+- [x] **Step 6: STOP — Andy marks the candidates still in the running** (skip if `to mark` is none) — skipped 2026-09-27: `to mark: none`, every candidate out on an automatic measure
 
 ```bash
 make s27-retest-pages MODELS="<the 'to mark' models>"
@@ -2396,7 +2396,7 @@ open "$NTSB_DATA_DIR/s27/transcriber-retest/mixed.html"
 ```
 Andy downloads each page's CSV into `$NTSB_DATA_DIR/s27/transcriber-retest/`.
 
-- [ ] **Step 7: Score (free) and commit the results file**
+- [x] **Step 7: Score (free) and commit the results file**
 
 ```bash
 make s27-retest-score MARKED="<the 'to mark' models, or empty>"
@@ -2415,9 +2415,9 @@ git commit -m "S2.7 track 2: re-test results"
 
 **What the record says.** Context: the three results files (page value, shortlist with probe, re-test), with their numbers quoted from the files. Decision: (1) the transcriber — the re-test's chosen model, or "Qwen3.5 122B stays"; (2) the page rule — T3's chosen rule; (3) that `dev-400` is re-read with them at the meeting point (spec §8 step 1) with `ntsb-eval transcribe --model <m> --page-rule <r>`, and that v2 runs record both (track 1). Why, and What this rules out, in the house format; Status: Accepted with Andy's words.
 
-- [ ] **Step 1: STOP — bring Andy the three results, one decision per message** (the transcriber, then the page rule), in simplified English with a glossary, as the project's memory asks.
-- [ ] **Step 2: Write the record and its index row** with Andy's decisions verbatim in Status. It cites decisions 0080, 0086, 0087 and 0100, and no number above 0100 except its own.
-- [ ] **Step 3: If the transcriber or the rule changes, set the constants in the same commit**
+- [x] **Step 1: STOP — bring Andy the three results, one decision per message** (the transcriber, then the page rule), in simplified English with a glossary, as the project's memory asks.
+- [x] **Step 2: Write the record and its index row** with Andy's decisions verbatim in Status. It cites decisions 0080, 0086, 0087 and 0100, and no number above 0100 except its own.
+- [x] **Step 3: If the transcriber or the rule changes, set the constants in the same commit** — not needed: neither constant changes (decision 0120 items 1 and 4).
 
 ```python
 # S2.7 track 2 decision record (number 120): <one line why>. Changed from qwen/qwen3.5-122b-a10b
@@ -2428,7 +2428,7 @@ PAGE_RULE: PageRule = "<chosen rule>"
 
 After this, `ReadingLookup().is_done("dev-400")` is false until the meeting point re-reads `dev-400`, which is correct: a v2 run must not read S2.6's evidence under the new name. S2.6's readings stay in the cache under their own keys, and S2.6's results stay citable.
 
-- [ ] **Step 4: `make check` and `uv run python -m scripts.check_docs`, then commit**
+- [x] **Step 4: `make check` and `uv run python -m scripts.check_docs`, then commit**
 
 ```bash
 make check && uv run python -m scripts.check_docs
@@ -2440,7 +2440,7 @@ git commit -m "S2.7 track 2: decision record 120, the transcriber and the page r
 
 ### Task 12: Merge back into the stage branch (spec §11)
 
-- [ ] **Step 1: Bring the stage branch in and re-check**
+- [x] **Step 1: Bring the stage branch in and re-check** — 2026-09-28: the parent had no new commits since `42e67a7` (already merged at `5d2bc2d`); `make check` 1648 passed, 97.76%; `check_docs` exit 0
 
 ```bash
 git fetch origin
@@ -2449,7 +2449,7 @@ make check && uv run python -m scripts.check_docs
 git push
 ```
 
-- [ ] **Step 2: STOP — Andy's go-ahead to merge back.** Report: the decision record, the three results files, what changed in `transcribe.py`, `sources.py` and `apps/eval`, and the track's spend (`uv run python -m scripts.stage_spend --estimate 0`).
+- [x] **Step 2: STOP — Andy's go-ahead to merge back.** Given 2026-09-28 ("go"), after he signed off decision 120. Report: the decision record, the three results files, what changed in `transcribe.py`, `sources.py` and `apps/eval`, and the track's spend (`uv run python -m scripts.stage_spend --estimate 0`).
 
 - [ ] **Step 3: Merge with a merge commit, from the stage branch's worktree**
 
@@ -2476,3 +2476,60 @@ This plan stays in `docs/plans/` until the stage closes; the close-out deletes i
 - 2026-09-27, walkthrough W5, Andy's decision (A): if fewer than eight models pass the filter or the probe, the re-test runs on those that do, with no top-up from outside the filter; if none does, the decision record says "Qwen stays" without a re-test.
 - 2026-09-27, walkthrough W6, Andy's decision (A): spec §7.2's filter gains one condition — the model's listing names `response_format` in its supported parameters — because every transcription call uses a strict JSON schema; a model without it could only take a shortlist place to fail its probe (Task 5's filter).
 - 2026-09-27, walkthrough W7, Andy's decision (A, with his recollection): Task 8's `verify` chooses S2.6's second-pass CSV pair by reproducing Qwen's published figures exactly, trying the `data/s26/transcriber-test/pass2/` pair (`handwriting-key-pass2-2.csv`, `photo-words-pass2.csv`) first, which Andy recalls as final (the re-marking after the stamped "Photo" label, partly hidden by an icon, was scored as invented; decision 0086 item 1). If neither pair reproduces the figures, the track stops for Andy.
+- 2026-09-27, Task 1: Steps 1 and 3 were done by track 1's session as its Task 1 Step 16 (decision 0102), which cut `s27-transcriber` from the local parent at `21dca2b` rather than from `origin/s27-coding-guidance`, and pushed it. Track 2's Task 1 only confirmed the branch, the worktree and `scripts/stage_spend.py`, then ran Step 2: `make check` passed (1514 tests, coverage 97.71%) and `stage_spend --estimate 0` counted `s27-coding-guidance, s27-guidance, s27-transcriber` at $0.00 of the $25 line.
+- 2026-09-27, Task 2 (pre-flight 1.6): the code comment on `ReadingLookup.done_file` says the S2.6 `dev-400` marker "is re-created from the cache (Task 3 Step 6)", not "Step 5" — Task 2's own Step 5 only confirms the marker no longer matches; it does not recreate it.
+- 2026-09-27, Task 2 (pre-flight 2.3): `page_rule="all"` is stated explicitly, rather than left to the default, in every existing test that depends on S2.6's rule (`test_pages_to_read_takes_image_pages_and_mixed_pages_over_the_cut`, `test_pages_to_read_leaves_out_a_mixed_page_under_the_cut`, `test_the_lookup_finds_a_mixed_reading_and_never_a_full_reading_for_it`) and in Task 2's own new tests, except `test_the_rule_in_force_is_s26s_until_a_decision_changes_it` and `test_the_default_rule_is_the_rule_in_force`, whose purpose is to check the default itself.
+- 2026-09-27, Task 2 (pre-flight 3.3): `test_the_thin_layer_rule_cuts_at_the_limit` annotates `rule: PageRule = "image-only+thin-layer"` and imports `PageRule`, so mypy --strict does not infer `str` for a `page_rule` argument.
+- 2026-09-27, Task 2 (pre-flight 3.6): the import added to `tests/test_docket_transcribe.py` from `ntsb_probable_cause.docket.transcribe` names only `PAGE_RULE`, `PAGE_RULES`, `THIN_LAYER_MAX_CHARS`, `PageRule`, `TRANSCRIBER`, `key_instruction` and `page_choice` — the names the brief also listed that were already imported (`ReadingLookup`, `Transcription`, `TranscriptionCache`, `TranscriptionKey`, `TRANSCRIBE`) are left as they were, to avoid a duplicate-name lint error.
+- 2026-09-27, Task 3 (pre-flight 2.1): `tests/test_eval_app.py`'s dry-run assertion (S2.6's original test, formerly at line 1283) is updated to expect `"rule all,"` in the projection line, alongside the existing `TRANSCRIBER`/dpi/count text — the sub-string the new `--page-rule` argument's default prints.
+- 2026-09-27, Task 3 (pre-flight 2.4): `test_transcribe_refuses_a_page_rule_it_does_not_know` gained a `capsys` fixture and asserts `"invalid choice: 'every-page'"` is in stderr, rather than only checking that `SystemExit` is raised (argparse's own message, from `choices=PAGE_RULES`).
+- 2026-09-27, Task 3 (pre-flight 2.5): `_StubDocuments` alone serves only image-only pages (`_SCAN`), so `{j.mixed for j in calls[0]} == {False}` under `--page-rule image-only` would hold under `"all"` too and cannot show the rule is doing anything. Rather than editing the shared `_StubDocuments`/`_SCAN` (used by every other `transcribe` test, whose page counts are pinned in already-committed assertions, e.g. the dry-run test's "4 pages"), a new subclass `_StubDocumentsWithMixedPage` adds one more document holding a text-and-image page (`_MIXED_SCAN`, built with `PageSpec(text=_MIXED_TEXT, images=(...))`, chars over `SCAN_PAGE_MAX_CHARS`), used only by the new model/page-rule test via its own `monkeypatch.setattr`. Under `"image-only"` that page is never chosen (`page_choice` returns `None` for a "text and image" page); under `"all"` it would be. This keeps every existing test's page counts and assertions unchanged. **Review fix round 1:** the ruling asked for both halves -- present under `all`, absent under `image-only` -- and only the absence half existed. Added a second test, `test_transcribe_with_a_mixed_page_sends_it_under_the_all_rule`, on the same `_StubDocumentsWithMixedPage` stub with `--page-rule all`, asserting `True in {j.mixed for j in calls[0]}`, so the image-only test's absence assertion is now shown to depend on the rule rather than being true of the stub regardless.
+- 2026-09-27, Task 3 (pre-flight 2.7): Step 6's plan text ("the projection line ends `0 not yet read; projected $0.00`") is read as "contains" — the real line ends with the skipped-documents clause (`_cmd_transcribe`'s `print`), which the plan's own Step 3 code shows.
+- 2026-09-27, Task 3 Steps 6–7: the dry run's projection line read `dev-400: 12458 pages to read with qwen/qwen3.5-122b-a10b at 150 dpi, rule all, 0 not yet read; projected $0.00; 8 document(s) could not be listed, fetched or parsed`, so the real command was run per the safeguard. It made no job, no reservation and no model call (`read 0 pages now ($0.00); 59 of 12458 failed in all`, within the 2% retry threshold) and wrote `dev-400`'s marker under the new stamp. S2.6's old marker file, `data/transcriptions/done/dev-400-940436639bbd.json`, stays on disk unused; the new one is `data/transcriptions/done/dev-400-60ddd78408f8.json`, holding `"model": "qwen/qwen3.5-122b-a10b"`, `"page_rule": "all"` and `"dpi": 150` beside its counts. Task 2 Step 5's command now prints `True` for `dev-400`.
+- 2026-09-27, Task 4 (pre-flight risk 2): `main`'s docket-listing loop catches `DocketError` from `docs.listing(mkey)`, counting the case as skipped (the same boundary `_page_jobs`, `apps/eval/__main__.py`, draws), and prints the skipped count as a separate line after the report text — the brief's Step 3 code only wrapped `docs.document`, not `docs.listing`. `report()`'s signature is unchanged (`sample`, `cases`, `pdfs`); the skipped count is not folded into the results file, only printed to stdout, since the brief did not ask for a fourth field there.
+- 2026-09-27, Task 5 (pre-flight 2.8): `cmd_fetch`'s default `--date` uses `datetime.now(UTC).date()`, not `date.today()`, so it always matches Step 6's `date -u +%Y-%m-%d` in the Makefile target; the unused `date` import was dropped.
+- 2026-09-27, Task 5 (pre-flight 3.1): `refusal`'s `ids` parameter is typed `collections.abc.Set as AbstractSet` (imported as `from collections.abc import Set as AbstractSet`), not `collections.abc.AbstractSet`, which does not exist.
+- 2026-09-27, Task 5 (pre-flight 1.5): `render_shortlist` prints `input_usd_per_mtok`/`output_usd_per_mtok` at full float precision (`${x.input_usd_per_mtok}`), not `:.3f` as the brief's code showed, so Task 6 copies exact prices from the results file rather than rounded ones.
+- 2026-09-27, Task 5, Andy's decision: spec §7.2's filter gains a condition — a listing priced at $0 (or unpriced) is refused — because a free or preview listing can be withdrawn or rate-limited and cannot be kept as the build's transcriber, and it would win the cost comparison with Qwen by default. On the 2026-09-27 list this refused 7 listings, dropping eligible from 16 to 14; two of the seven had reached the shortlist itself (stealth/space-bunny-alpha at rank 1, dots-studio/dots-3-note-preview:free at rank 2), so reserves 9 and 10 (meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro) moved onto the shortlist, which now reads: inclusionai/ling-3.0-flash-vl, qwen/qwen3.7-flash, deepseek/deepseek-v4.1-flash, z-ai/glm-5.3-flash, prism-ml/ternary-bonsai-2-27b, meta/muse-spark-1.2-contributor, meta/muse-spark-1.3-contributor, openai/gpt-6-luna-pro. Andy allowed an exception for NVIDIA's free listings if any qualified; none of the five did: nemotron-3.5-lightning, nemotron-3-ultra-550b-a55b and nemotron-3-super-120b-a12b are refused for no image input; nemotron-3-nano-omni-30b-a3b-reasoning for release before 2026-06-01; nemotron-3.5-content-safety, which previously reached "no structured output" (2026-09-27's first run), is one of the seven now refused earlier, as "free or unpriced listing" — so none is coded. `_per_mtok`/`_price` also moved to exact `Decimal` arithmetic (rather than `float(str) * 1_000_000`) so the results file prints exact prices (e.g. `$0.1`, not `$0.09999999999999999`), matching pre-flight 1.5's requirement more precisely than the first pass did.
+- 2026-09-27, Task 6 (pre-flight 1.5 and 2.2): every price in `sources.py` was double-checked against the saved JSON at `$NTSB_DATA_DIR/s27/openrouter-models-2026-09-27.json` (a short read-only script, discarded after use) and matches the results file exactly. Two of the 14 eligible models already had a `ModelPrice` entry from an earlier stage: `openai/gpt-5.6-luna` (`LUNA`, read 2026-09-15) lists the same $0.2/$1.2 today, so no new constant was added for it — `price_of` already returns a matching, correctly-sourced price. `z-ai/glm-5.3-flash` (`GLM_53_FLASH`, read 2026-09-16) is priced differently today ($0.045/$0.14 against the old $0.09/$0.30); a new constant `S27_GLM_53_FLASH` holds the current price and is placed after `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` in the `_PRICES` tuple so `price_of("z-ai/glm-5.3-flash")` returns the current price (`_PRICES` is a dict comprehension over the tuple; the later entry wins on a shared key). The old `GLM_53_FLASH`/`GLM_53_FLASH_BATCH` constants are left in place, since nothing outside `sources.py` references them by name and removing them is outside this task's scope — flagged for Andy in the Task 6 report rather than decided here. `test_sources_settings.py`'s `test_the_transcriber_candidates_are_priced_and_levelled` was changed from `assert sources.LOWEST_REASONING == {...}` to four `assert sources.LOWEST_REASONING["..."] == "..."` lines, per pre-flight 2.2, since S2.7 adds ten more entries to the same dict.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 3.2): `request_body` is called with `history=()` (the brief's own code omitted it), because `history` has no default on the real signature (`model/openrouter.py`).
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 1.2): `cmd_batch_image` reserves within the monthly budget before its POST (`PROBE_EXPECTED_USD`, the same estimate as one probe call) and writes a `SpendRecord` (kind `transcriber-test`) in a `finally`, then settles, whether the batch service accepts or refuses the image; its own row's `cost_usd` is 0.0, because a batch's real cost is not known until it is polled. `cmd_batch_poll` writes its own spend row, under the distinct job id `<batch_id>-poll`, only once `status.reported_cost_usd` is known, so `stage_spend` counts the real cost exactly once and a batch job counted by `cmd_batch_image` is never summed a second time by a later poll. Neither function existed with a budget guard in the brief's code; both are added because the brief's own code submits a paid batch with no reservation and no spend row at all.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 1.3): `cmd_probe` saves every reply it actually receives (whether it parses or not) under the git-ignored `<data_dir>/s27/probe-replies/`, and copies only a passed model's reply into the committed `tests/fixtures/openrouter/transcription/` folder, once the whole probe is done and `passed` is known — the brief's own code wrote every reply straight into the committed folder. `tests/test_transcriber_test.py`'s `test_every_recorded_candidate_reply_parses` is narrowed from a glob of that folder to S2.6's four fixtures by name (`google__gemini-3.1-flash-lite.json`, `google__gemini-3.6-flash.json`, `openai__gpt-6-luna.json`, `qwen__qwen3.5-122b-a10b.json`), so once Task 7 Step 7 adds S2.7's own fixtures under the same folder, a candidate that passed the probe with a different page kind, or copying none of `PROBE_LINES`, cannot fail this stricter, S2.6-specific test; S2.7's own fixtures get their own test in Step 7 (`test_every_passed_candidates_recorded_reply_parses`), which checks only that each parses.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 2.6-cmd_probe, implementer's judgment): `cmd_probe` is its own function, not a call into `transcriber_test.cmd_probe`, because that function is fixed to S2.6's four `CANDIDATES` and its own per-page cost table, and `scripts/transcriber_test.py` is not in Task 7's Files list. It mirrors that function's reserve/spend/settle order and shape exactly (client factory built before the reservation; the spend row written, with `settle`, in a `finally`) rather than introducing a different frame.
+- 2026-09-27, Task 7 Steps 1-5 (pre-flight 3.6): every new import (`Callable`, `ExitStack`, `render_pages`, `TRANSCRIBE`/`parse_reply`/`request_for`/`settings_for`, `ModelError`/`SchemaError`, `commit_state`, `BatchClient`, `ModelReply`/`cost_usd`, `OpenRouterClient`/`request_body`, `SpendRecord`/`reserve_within_budget`/`settle`/`write_spend`, `openrouter_clients`, `FIXTURES`/`PROBE_LINES`/`probe_page`) is hoisted to the top of `scripts/transcriber_shortlist.py`, alongside the existing imports, rather than inlined near the new functions.
+- 2026-09-27, Task 7 Steps 1-5: `S27_CANDIDATES` is defined now as `()` (an empty tuple, with a comment saying it is set in Step 7), since the probe itself (Step 6, paid) has not run — this task stops after Step 5, before Step 6's STOP, per the assignment ("Steps 1-5 ONLY... Step 6 is Andy's (paid) and Step 7 records its outcome — do not run or start either").
+- 2026-09-27, Task 7 Steps 1-5: the brief's own Step 1 tests use fictitious model ids (`a/ok`, `vendor/model`, ...) that are not in `sources.LOWEST_REASONING` or `sources.price_of`'s table; `settings_for` and `cost_usd` both look a model id up in those tables and raise `KeyError` for an unknown one. The `cmd_probe`/`cmd_batch_image` tests (not in the brief, added for this task's budget/spend coverage per the assignment's instruction) monkeypatch `sources.LOWEST_REASONING` to add the fictitious ids, and `_reply`'s `Usage` carries a `reported_cost_usd` so `cost_usd` never has to price one.
+- 2026-09-27, Task 7 fix round 1 (review finding, Important): `cmd_batch_poll` wrote a spend row on every poll that saw `status.reported_cost_usd`, but `write_spend`/`write_jsonl` appends and both `month_spent` and `stage_spend` sum every row under `*/spend.jsonl` -- so a re-poll after completion, or a poll that catches a partial `usage.cost` reported mid-batch (`model/batch.py`'s `poll` returns whatever cost is present regardless of status) followed by a later, terminal poll, would count the batch's cost twice. Fixed: the row is written only once the batch's status is in `TERMINAL` (`model/batch.py`), and only if `<runs_dir>/<batch_id>-poll/spend.jsonl` does not already exist -- so a second terminal poll of the same batch writes nothing more. Corrected the docstring's claim (it already said "never summed twice" without the guard that makes it true). Added `test_cmd_batch_poll_writes_no_spend_for_a_reported_cost_before_terminal` and `test_cmd_batch_poll_twice_after_completion_counts_the_cost_once` (asserts `month_spent` equals one cost after two terminal polls).
+- 2026-09-27, Task 7 Steps 6-7: the probe (`make s27-transcriber-probe`) and the batch-with-image call (`make s27-batch-image MODEL=deepseek/deepseek-v4.1-flash`, then `batch-poll`) were run by Claude, not by Andy, on Andy's explicit go-ahead ("You can run those now it's Sunday!") relayed by the coordinator at ~13:10 UTC on commit `076ce08` -- a departure from Step 6's plan text, which has Andy run them himself.
+- 2026-09-27, Task 7 Step 7: of the 11 shortlisted models probed, 9 were called before 8 passed. `meta/muse-spark-1.2-contributor` and `meta/muse-spark-1.3-contributor` (shortlist ranks 6-7) both failed with a 403 from OpenRouter's own account gate (18+ age confirmation, `openrouter.ai/settings/preferences`), not from anything about reading the page -- they were replaced, in order, by reserves 9 and 11 (`xiaomi/mimo-v2.6-flash`, `qwen/qwen3.8-omni-flash`) under the fixed probe rule (walkthrough W5: a failure is replaced by the next model in the list, no top-up from outside the filter). Reserve 10, `qwen/qwen3.8-flash`, was called in between (its rank comes before reserve 11's) and failed to parse ("reply is not a JSON object"), so it is not a candidate either. `S27_CANDIDATES` is the 8 that passed, in shortlist/probe order: `inclusionai/ling-3.0-flash-vl`, `qwen/qwen3.7-flash`, `deepseek/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash`, `prism-ml/ternary-bonsai-2-27b`, `openai/gpt-6-luna-pro`, `xiaomi/mimo-v2.6-flash`, `qwen/qwen3.8-omni-flash`. Their 8 fixtures are committed under `tests/fixtures/openrouter/transcription/`; `qwen/qwen3.8-flash`'s unparsable reply stays only under the git-ignored `data/s27/probe-replies/` (pre-flight 1.3), never committed.
+- 2026-09-27, Task 7 Step 7 (walkthrough W2): the one batch-with-image call, for `deepseek/deepseek-v4.1-flash` (the first passed candidate with a batch variant), was accepted at submission and then failed: OpenRouter's batch service still refuses `image_url` content outright ("Only public http(s) image URLs are supported in batch; base64/data-URI images ... are rejected"), confirming `model/batch.py:136`'s documentation quote and S2.6 decision W1 -- every re-test call (Task 9) stays synchronous at the standard price.
+- 2026-09-27, Task 8 (pre-flight 1.1): the recheck CSV pair is defined once in the Makefile as `HW_RECHECK ?=` and `PHOTO_RECHECK ?=`, defaulting to the `pass2/` pair (`$$NTSB_DATA_DIR/s26/transcriber-test/pass2/handwriting-key-pass2-2.csv`, `.../pass2/photo-words-pass2.csv`), which W7 says is tried first; `s27-retest-verify` uses them, and Task 10's targets are to reuse them. The brief's target defaulted to the top-level pair through `$(or ...)` inside the recipe.
+- 2026-09-27, Task 8 (pre-flight 2.6, the `absolute_notes` part): `absolute_notes` takes 0080's photograph and scan limits from `transcriber_test.GATE_INVENTED_PHOTO_SHARE` and `GATE_INVENTED_MIXED_SHARE` rather than hard-coding `Fraction(1, 20)`; because those two constants are floats (`1 / 20`), each limit is turned into an exact fraction (`Fraction(x).limit_denominator()`, exactly 1/20) before the within/over comparison, so exactly 1 in 20 prints "within", as 0080's "more than 1 in 20" gate judges it.
+- 2026-09-27, Task 8: `RESOLUTION` is imported from `ntsb_probable_cause.docket.render`, its home, not from `scripts.transcriber_test` as the brief listed: mypy --strict refuses a name the script module only imports and does not re-export. Every division in the rule and the notes goes through `transcriber_test._fraction` (exact, and 0 for an empty denominator) instead of a bare `Fraction(a, b)`.
+- 2026-09-27, Task 8: the module's Status paragraph names only what is built (`verify` and the rule) and says the run and score come in Tasks 9 and 10, rather than listing the `run`, `pages` and `score` subcommands before they exist (`pages` is also superseded by W3's `automatic`). Tests beyond the brief's: the boundary arithmetic checked with `Fraction`, the cost tie-break by model id, `absolute_notes`' within/over at exactly 1 in 20, `key_material` (the recheck applied, only Qwen's photograph and scan marks counted), `cmd_verify` passing and refusing, and `main` offline; they reuse `tests/test_transcriber_test.py`'s fixture helpers by import.
+- 2026-09-27, Task 8 Step 5 (walkthrough W7): `make s27-retest-verify` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`) reproduced every one of Qwen's published second-pass counts exactly with the default `pass2/` pair (`pass2/handwriting-key-pass2-2.csv`, `pass2/photo-words-pass2.csv`), which matches Andy's recollection that `pass2/` is final. The top-level pair (`handwriting-key-pass2.csv`, `photo-words-pass2.csv`) was also run, for comparison, and does not reproduce them: 1551 handwriting key lines and 55 inventing lines against the published 1548 and 54 (the two photograph CSVs are byte-identical; the two handwriting CSVs differ). The Makefile defaults stay on `pass2/`, and its comment records the run. Step 5's commit was split: the code first, then this line and the tick once the run had passed.
+- 2026-09-27, Task 9 (pre-flight 1.4): the Interfaces line gives `word_cards` its real signature, `word_cards(rows, text_of, *, models, seed_base, choices=(_PHOTO_WORDS,), body=_photo_body)`, as the brief's own code and test have it (no `set_name`); `choices` and `body` are the keywords Step 3 allows, defaulting to the photograph card so the brief's test runs unchanged.
+- 2026-09-27, Task 9 (pre-flight 2.6): `cmd_run` is not a copy of `transcriber_test.cmd_run`; that function gains one keyword, `expected_cost_per_page_usd: float | None = None` (left out, each S2.6 candidate reserves at its own `EXPECTED_COST_PER_PAGE_USD` entry, as before), and the re-test's `cmd_run` calls it with `dpi=RESOLUTION` and $0.003. Its printed line is therefore S2.6's (`<model> at 150 dpi: N pages read, F failed, $C`), not the brief's shorter one. The card loop of `_photo_cards` and `cmd_mixed` moved into `transcriber_test._version_cards` (with `_WORD` as the words test, not a second `_WORDS`), and the pieces both S2.6 and the re-test need were named there: `_photo_body`, `_scan_body`, `_photo_group`, `_scan_group`, `_scan_layers`, `_reading_of`, `_SCAN_WORDS`, `_MIXED_INTRO` and `_PHOTO_LABEL_RULE` (0086's rule, as the recheck page words it). `word_cards` is that loop with the photograph card as its default. S2.6's behaviour is unchanged: before and after the change, `cmd_photos`, `cmd_mixed` and `cmd_photos_recheck` were run over a temporary copy of S2.6's keys and `pass1/` CSVs, reading the real transcription and docket caches, and all five outputs (`photos.json`, `mixed.json`, `photos.html`, `mixed.html`, `photos-recheck.html`) were byte-identical to each other and to the files S2.6 left under `data/s26/transcriber-test/`; every existing S2.6 test passes unedited.
+- 2026-09-27, Task 9 (pre-flight 3.4): the brief's test reads `tt._int(v, "k")`, not `int(v["k"])`, which mypy --strict refuses on `dict[str, object]`.
+- 2026-09-27, Task 9: no `_SEED` constant; the shuffles use S2.6's `SEED` through the shared loop, with the re-test's own bases `_PHOTO_SEED_BASE, _SCAN_SEED_BASE = 300, 400` (S2.6 used 100 and 200). `cmd_pages` puts the candidates in sort order before building, so the same candidates give the same card numbers whatever order `MODELS` names them in, and it refuses (`ConfigurationError`, before writing anything) when a candidate has key pages with no cached reading, since the page would otherwise show them as holding no words. The image paths are computed (`os.path.relpath(FOLDER / "pages", RETEST_FOLDER)`, giving `../../s26/transcriber-test/pages`). `pages --models` takes space-separated ids limited to `S27_CANDIDATES`. Tests beyond the brief's: the photograph choice and repeated-version note, the eight-model limit, `cmd_run`'s jobs and price through a fake `run_preparation`, both pages' files, paths, 0086 rule and storage keys with S2.6's folder unchanged, the order-independence, the refusal, and `main`'s `run` and `pages`.
+- 2026-09-27, Task 9 fix round 1 (review finding, Important): `cmd_pages` builds both sheets first and refuses (`ConfigurationError`, before writing anything) when an existing `photos.json` or `mixed.json` in `<data_dir>/s27/transcriber-retest/` differs from the sheet it would write, naming the file and the rows that differ and saying how to start over deliberately (move the folder aside and clear the pages' saved marks). Marks are kept in the browser by row number under a fixed storage key, and the shuffle depends on the set of candidates, so a rebuild with another set would put an earlier mark on another model's reading; this follows S2.6's guard in `cmd_photos_recheck`. A rebuild with the same candidates, in any order, passes and rewrites every file byte for byte. Tests: `test_cmd_pages_rebuilds_the_same_candidates_identically`, `test_cmd_pages_refuses_a_rebuild_that_would_move_marks_and_leaves_the_pages`.
+- 2026-09-27, Task 9 Step 6, Andy's decision (option A): the first `make s27-retest-run` stopped at the $25 check before any model call, spending nothing. Track 1's Task 13 (`b0cdcc2` on `s27-guidance`) added two optional `RunRecord` fields (`guidance`, `guidance_sha256`); track 1's runs since write them into `data/runs/`; this branch's `RunRecord`, which forbids unknown fields, could not read them, so `stage_spend` and `month_spent` both failed. Track 1's identical four lines were landed on the parent (`42e67a7`) and the parent merged into `s27-transcriber` with a merge commit (`5d2bc2d`); track 2 still never edits `scoring/records.py` on its own branch. The re-test was then run by Claude on Andy's go-ahead ("can you run it for me?"), not by Andy as Step 6 planned.
+- 2026-09-27, Task 9 Step 6, Andy's decision (option A): the retry pass stopped on DeepSeek's reservation (PreparationStoppedError: $0.2861 against $0.2820, 63 of its 94 failed pages re-read, 31 left unread), which ended the command before five candidates were retried. `run` gained `--models`; the one retry was finished for glm-5.3-flash, ternary-bonsai-2-27b, gpt-6-luna-pro, mimo-v2.6-flash and qwen3.8-omni-flash, and DeepSeek's 31 pages were left unread: its first pass alone cost $0.0031 a test page, twice Qwen's $0.00154, so decision 0100 item 3's cost condition rules it out whatever its retry reads. First pass $1.40 for all eight; the re-test's spend before the finishing retry $1.71.
+- 2026-09-27, Task 10 (pre-flight 1.1): `s27-retest-automatic` and `s27-retest-score` pass `--handwriting-recheck $(HW_RECHECK) --photos-recheck $(PHOTO_RECHECK)`, the shared variables Task 8 defined (default: the `pass2/` pair its `verify` confirmed), not the brief's `$(or $(HW_RECHECK),...)` fallback to the top-level pair, which contradicted W7 and Task 8's verified result.
+- 2026-09-27, Task 10 (pre-flight 3.5): `test_score_refuses_an_unmarked_card` takes no `tmp_path` fixture; the brief's version had an unused fixture typed with an unimported `Path`.
+- 2026-09-27, Task 10 (pre-flight 1.6): the File-structure table's `Makefile` row gains `s27-retest-automatic`.
+- 2026-09-27, Task 10 (Task 8 review, Qwen's cost bar): the rule's cost bar stays S2.6's rounded $0.00154 and `choose_against_qwen` is unchanged. The results file's bar is not hard-coded prose: `automatic` and `score` compute Qwen's row from the cache with the same `_result` call as the candidates (as `verify` does) and print its measured counts and its cost to 10 places ($0.0015362713) beside the rounded bar. Each candidate's cost is printed to 7 places, including in `_failures`' cost text, which now reads "not below the rule's $0.00154" rather than "not below Qwen's" (display only). Any candidate whose measured cost lies in [Qwen's measured cost, $0.00154) gets a line "FOR ANDY: <model> costs $x, below the rule's $0.00154 but above Qwen's measured $y; the rule as written admits it" in both outputs.
+- 2026-09-27, Task 10 (controller): the results file states the retries (`RETRY_NOTE`): one retry of failed pages per candidate, except DeepSeek, whose retry stopped at its reservation with 31 pages unread (Task 9 Step 6 above), so its counts include those pages as failed. Each candidate's key pages still failed are also printed from the cache (`transcriber_test._reading_counts`).
+- 2026-09-27, Task 10: safeguards beyond the brief. `automatic` and `score` first re-verify Qwen's row with the pair given and refuse, as `verify` does, if it differs from the published second pass (the check is factored into `_verified`, which `cmd_verify` now also uses); both refuse a candidate with a key page the cache holds no reading of (S2.6's hold on never-read pages, through Task 9's `_missing`). `score` refuses a candidate still in the running that is not in `--marked`, because its photograph and scan counts would be 0 and the rule could choose it without Andy's marks; it refuses a sheet holding cards of a model not in `--marked`; `invented_by_model` also refuses a sheet card missing from the CSV. `score` applies the marked counts with `dataclasses.replace` over the automatic rows instead of a second `_result` call (the same counts). The brief's `float(...)` wrappers are dropped: `CandidateResult`'s properties are already floats. The header names the recheck pair with its folder and says whether it is the `pass2/` pair Andy recalled (W7). `--marked` is limited to `S27_CANDIDATES`; `--out` writes exactly the printed text.
+- 2026-09-27, Task 10 Step 5: `make s27-retest-automatic` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`, at `1230c04`) re-verified Qwen's row with the `pass2/` pair (measured $0.0015362713 a test page) and put all eight candidates out on an automatic measure: seven on inventing lines (65 to 181 in 1548, against Qwen's 54) and handwriting accuracy, some also on the line format or typed errors; DeepSeek on handwriting accuracy, typed errors and cost ($0.0033132 a test page; 75 of 200 key pages failed, its 31 unread among them). A failed page adds no inventing lines, so the seven are out whatever their failed pages would have read. No candidate lies between Qwen's measured cost and $0.00154, so there is no line for Andy. `to mark: none (Qwen stays; no marking needed)`: Step 6 has nothing to mark, and Step 7 scores with `MARKED` empty.
+- 2026-09-27, Task 10 Step 6: skipped, as the step's own condition allows: `to mark: none`, every candidate out on an automatic measure, so no marking pages were built (`s27-retest-pages` not run) and Andy marked nothing; the results file prints "not marked (already out on an automatic measure, walkthrough W3)" for every candidate's photographs and scans.
+- 2026-09-27, Task 10 Step 7: `make s27-retest-score MARKED=` (free; `env -u OPENROUTER_API_KEY`, `NTSB_DATA_DIR` at the main checkout's `data/`) wrote `docs/results/s27-transcriber-retest.txt`; decision 0100 item 3's outcome: "no candidate meets all seven: Qwen stays".
+- 2026-09-27, Task 11 Step 1, Andy's decision ("now"): while deciding the page rule, Andy asked whether different models could read pages by how much text they hold. Three cheaper candidates made fewer typed errors than Qwen (openai/gpt-6-luna-pro 10.56, z-ai/glm-5.3-flash 11.57, qwen/qwen3.7-flash 11.74 per 100 characters, against Qwen's 12.29), but because W3 marks only candidates still in the running, nobody marked whether they invent added words on S2.6's 25 full-page scans (Qwen: 0 of 25). `scripts/transcriber_retest.py` gains `routing-pages` (`make s27-routing-pages MODELS=...`): the re-test's full-page-scan page alone, for the named candidates, in its own folder (`<data_dir>/s27/transcriber-retest/routing/`, sheet `mixed.json`, page `scans.html`) with its own storage key and CSV name, the re-test's scan shuffle (the shared `_scan_cards`, which `cmd_pages` now also uses) and its refuse-if-the-sheet-would-change guard. It also gains `routing-tally` (`make s27-routing-tally MODELS=...`, writing `docs/results/s27-routing-scans.txt`), which refuses an unmarked card and prints per model the scans with invented added words, repeated text layer, all words on the page and new, no card, and failed readings. Both are free: the readings are cached, and no model is called. This is exploratory evidence for decision 120's open idea of routing text-and-image pages to a cheaper model. It changes neither decision 0100 item 3's rule nor the re-test's outcome. No Task 11 step is ticked.
+- 2026-09-28, Task 11 Step 1, Andy's decision (A): the routing page's scan cards gain a fourth choice, "can't judge — I can't read this part of the page", for added words that would come from handwriting Andy cannot read. It is its own constant (`_ROUTING_SCAN_WORDS`); S2.6's `_SCAN_WORDS`, S2.6's pages and the re-test's own scan page keep their three choices. The intro gains one sentence: pick it when the part of the page the added words would come from cannot be read, and such cards are counted apart, not as invented. The choice changes only the cards' options: the card numbers, `mixed.json`, the storage key and the CSV name are unchanged, so the rebuild passes the guard, leaves the sheet byte-identical, and marks already saved in the browser (by row, field and choice text) keep their rows. `routing-tally` counts "could not be judged on V" per model, so the categories still add up to the 25 scans; "invented added words" counts only "some invented". Following the review's minor finding, `routing-pages` also writes the page's model list (`models.json`). `routing-tally` refuses a model in `--models` that the page was not built for, a page with no model list, and a card marked with an unknown choice, which would otherwise fall outside every category.
+- 2026-09-28, Task 11 Step 1: a post-hoc check prompted by Andy's challenge. Andy asked whether the handwriting key's `[illegible]` lines caused the candidates' rejection, since any word a model writes there counts as invented (decision 0079). `scripts/transcriber_retest.py` gains `readable-split` (`make s27-retest-readable`, free; uses the verified `HW_RECHECK`/`PHOTO_RECHECK` pair; writes `docs/results/s27-transcriber-retest-readable.txt`). For Qwen and each candidate it prints: inventing lines, lines right of key lines, format-failed pages, and handwriting character errors per 100 characters (`transcriber_test.typed_errors`, whitespace collapsed), on (a) fully readable pages and (b) pages whose key holds `[illegible]`. Each group is scored by calling the committed scorer (`transcriber_test._result`) on that group's pages alone, and a check line (a refusal if it fails) confirms that (a)+(b) equal the model's committed totals. A coordinator's ad-hoc count had given Qwen 1041 lines right, not the published 1036, because it summed exact lines on every page: it skipped decision 0086's format rule, which scores a format-failed page (Qwen has 2) as none right. Calling `_result` itself removes that gap. Qwen's row is re-verified first, as in `automatic` and `score`. The check changes neither decision 0100 item 3's rule nor the re-test's verdict.
+- 2026-09-28, Task 11 Step 1, Andy's decision: transcription is off by default, for cost ("Im swaying towards B because in the grand schema of things the transcription didn't provide the big boost i was hoping for"; "yes that shape i think makes sense" to "off by default, a tool the agent can choose later"). Runs and new batches read text layers only (evidence version v1), and in S3 transcribing a document becomes a tool the loop may call. This departs from the plan and spec §8, which kept v2 open as S2.7's evidence after the meeting point: v2 is not the default evidence for S2.7's runs, and spec §8 step 1 re-reads nothing (Qwen stays with rule `all`, and `dev-400`'s readings are cached). Recorded in decision 0120 items 2, 3 and 5, which amends 0074's default (0074 stays in place, with an appended note).
+- 2026-09-28, Task 11 Step 1: the page rule was not brought to Andy as a separate decision. T3's outcome under decision 0100 item 4 is `all`, and with transcription off by default the rule applies only if transcription is used again; decision 0120 item 4 records `PAGE_RULE = "all"` for that case, with `TRANSCRIBER` (Andy: "Ok suppose we need to stick with qwen and the costs").
+- 2026-09-28, Task 11 Step 3: not needed. Neither `TRANSCRIBER` nor `PAGE_RULE` changes, so `docket/transcribe.py` and `test_the_rule_in_force_is_s26s_until_a_decision_changes_it` are untouched. Item (3) of Task 11's "What the record says" (re-read `dev-400` with `ntsb-eval transcribe --model --page-rule` at the meeting point) is replaced by decision 0120 item 5.
+- 2026-09-28, Task 5, final review (Important #2): `scripts/transcriber_shortlist.py:138-139`'s `refusal` refuses a listing whose output is not exactly `("text",)`. Spec §7.2 and decision 0100 item 1 say only "returns text"; this stricter form is not in either, and no Deviations line recorded it at the time. It refused 13 listings (`docs/results/s27-transcriber-shortlist.txt:3`, "not text-only output 13") and changed nothing on the shortlist: the one image-and-text listing among the 13, `google/gemini-3.1-flash-lite-image`, is priced ($0.25/$1.5 per M tokens) above `deepseek/deepseek-v4-flash-vision-exp`'s $0.2156 input price and would have ranked as reserve 15 (verified read-only against `data/s27/openrouter-models-2026-09-27.json`), past the 14 that were eligible without it. Decision 0120's Context T1 paragraph is corrected from "two conditions" to "three conditions", naming this one.
+- 2026-09-28, Task 5, final review (Minor #1): the probe and batch sections of `docs/results/s27-transcriber-shortlist.txt` (the two `meta/muse-spark-1.2-contributor` and `meta/muse-spark-1.3-contributor` 403 lines, the cost line, and the batch-with-an-image section) were written from the probe's printed output, the spend file's cost row, and the batch service's reply, not regenerated by the script: the two 403 lines are shortened from the printed `FAILED -- {ErrorType}: {message[:200]}` form. The file's numbers are left as they are.
+- 2026-09-28, Task 5, final review (Minor #7): `scripts/page_value.py` prints the near-empty (under-20-character) share only for the text-and-image page band, not for each page kind, as spec §7.3 describes. It does not affect the page rule's choice (T3, decision 0100 item 4). Left as printed; not regenerated.
