@@ -43,3 +43,24 @@
     When the phase-of-flight group recorded in the evidence is Approach, Enroute or Landing, the NTSB coded the defining event under a sub-phase, not the general code, in most past cases: in 1096 of 1403 Approach cases, in 1501 of 1994 Enroute cases, and in 3107 of 4306 Landing cases, 92 of them under 553 Landing-aborted after touchdown.
 
     In these three families, code the defining event under the sub-phase the evidence places it in, and use the general code only when the evidence does not show which part of the approach, the en route flight or the landing the event happened in.
+
+## Result (scripts/round_result.py, decision 0098 item 4)
+
+- run: 20260928T210719-c590e44-dev-400-B-check-luna; reference: 20260928T144353-031e97e-dev-400-B-check-luna; noise pair: 20260926T082427-d19aafa-dev-400-B-check-luna, 20260927T111202-fbab38a-dev-400-B-check-luna
+- occurrence top-1: -3.5% [-7.5%, +0.5%] on n=399
+- noise floor (occurrence top-1, the two identical runs): 1.0%
+- finding recall@10 (do no harm): -1.3% [-3.0%, +0.1%] on n=397
+- first codes changed: 181; toward a more common option: 92, fixes 18, breaks 17 (decision 0101 item 4)
+- cases whose NTSB sequence holds a code decision 0105 added: 19 (defining: 4); top-1 hits there: reference 5, run 3; occurrence top-1 on the other cases: -3.2% [-7.4%, +0.8%] on n=380
+- outcome: dropped: the gain's interval includes zero
+
+## Note (ad-hoc counts, 2026-09-28; not part of the reading)
+
+- The model followed the guidance: first guesses under the general Approach, Enroute or Landing
+  code fell from 75 (Round 3) to 49. Where only the phase changed within those families, 8 were
+  fixed and 7 broken; 10 moved to a sub-phase that was still not the NTSB's.
+- Decision 0105's codes: the model chose phase 553 in six guesses and event 850 in four; none was
+  the NTSB's defining code. Top-1 hits among the 19 cases an added code touches went from 5 to 3.
+  The fix stays (decision 0105 item 4), and it gained nothing on `dev-400`.
+- Round 5 against the repeat is +1.3% [-2.8%, +5.5%].
+- Two dropped rounds in a row: the occurrence rounds end (decision 0098 item 5).
