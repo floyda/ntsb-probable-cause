@@ -39,3 +39,22 @@
     Where fuel exhaustion and a total loss of engine power both appeared, the NTSB flagged the fuel exhaustion as the defining event in 173 of 240 past cases, and the loss of engine power in 56. Where fuel starvation and a total loss of engine power both appeared, it flagged the fuel starvation in 136 of 213 such cases, and the loss of engine power in 59. Where fuel starvation and a partial loss of engine power both appeared, it flagged the fuel starvation in 20 of 30 such cases, and the loss of engine power in 5.
 
     When the evidence shows that the engine lost power because of fuel starvation or fuel exhaustion, put that fuel event first, and keep the loss of engine power among your guesses.
+
+## Result (scripts/round_result.py, decision 0098 item 4)
+
+- run: 20260928T165443-1c9ecdf-dev-400-B-check-luna; reference: 20260928T144353-031e97e-dev-400-B-check-luna; noise pair: 20260926T082427-d19aafa-dev-400-B-check-luna, 20260927T111202-fbab38a-dev-400-B-check-luna
+- occurrence top-1: -4.0% [-7.8%, -0.3%] on n=399
+- noise floor (occurrence top-1, the two identical runs): 1.0%
+- finding recall@10 (do no harm): -0.9% [-2.4%, +0.7%] on n=397
+- first codes changed: 174; toward a more common option: 69, fixes 14, breaks 10 (decision 0101 item 4)
+- outcome: dropped: the gain's interval includes zero
+
+## Note (ad-hoc counts, 2026-09-28; not part of the reading)
+
+The fall is not only in the cases the guidance speaks to. Checked top-1 hits among the 87 cases
+whose NTSB defining event is a fuel or engine-power event: B-v1 23, the repeat 27, Round 2 33,
+Round 3 35, Round 4 28; among the 117 whose defining event is loss of control or stall: 38, 36,
+41, 47, 41. Runs with no fuel guidance already differ by up to 12 hits in the fuel group, so the
+difference between two identical runs (1.0 point on one pair) understates how much a run moves.
+Round 4 against the repeat is +0.8% [-3.3%, +5.0%]. The sealed sample (decision 0095) is where
+the kept stack is tested on cases no round was read on.
