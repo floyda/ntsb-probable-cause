@@ -2449,7 +2449,7 @@ make check && uv run python -m scripts.check_docs
 git push
 ```
 
-- [ ] **Step 2: STOP — Andy's go-ahead to merge back.** Report: the decision record, the three results files, what changed in `transcribe.py`, `sources.py` and `apps/eval`, and the track's spend (`uv run python -m scripts.stage_spend --estimate 0`).
+- [x] **Step 2: STOP — Andy's go-ahead to merge back.** Given 2026-09-28 ("go"), after he signed off decision 120. Report: the decision record, the three results files, what changed in `transcribe.py`, `sources.py` and `apps/eval`, and the track's spend (`uv run python -m scripts.stage_spend --estimate 0`).
 
 - [ ] **Step 3: Merge with a merge commit, from the stage branch's worktree**
 
