@@ -39,3 +39,12 @@
     In the general Maneuvering phase, the NTSB flagged the loss of control in flight as the defining event in 23 of 36 past cases where both appeared, and the stall or spin in 8. In the Takeoff phase, it flagged the loss of control in 33 of 49 such cases and the stall or spin in 13. On the VFR pattern final approach, it flagged the loss of control in 16 of 24 such cases and the stall or spin in 6. In these three phases, put Loss of control in flight first unless the evidence shows that the stall itself, not a loss of control, began the accident sequence, and keep the stall or spin among your guesses.
 
     In the other phases the choice was closer. In Initial Climb the loss of control was defining in 45 of 84 such cases and the stall or spin in 29; in Maneuvering-Low-alt flying, in 19 of 32 and in 11. There, code first whichever the evidence shows began the accident sequence.
+
+## Result (scripts/round_result.py, decision 0098 item 4)
+
+- run: 20260928T144353-031e97e-dev-400-B-check-luna; reference: 20260927T111202-fbab38a-dev-400-B-check-luna; noise pair: 20260926T082427-d19aafa-dev-400-B-check-luna, 20260927T111202-fbab38a-dev-400-B-check-luna
+- occurrence top-1: +4.8% [+0.8%, +8.8%] on n=399
+- noise floor (occurrence top-1, the two identical runs): 1.0%
+- finding recall@10 (do no harm): -0.9% [-2.5%, +0.8%] on n=397
+- first codes changed: 180; toward a more common option: 89, fixes 26, breaks 8 (decision 0101 item 4)
+- outcome: kept
