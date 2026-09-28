@@ -1,0 +1,8 @@
+# routing text-and-image pages: words added to S2.6's full-page scans -- counts only
+exploratory (Andy, 2026-09-27): evidence for decision 120's open idea of routing text-and-image pages to a cheaper model; outside decision 0100 item 3's rule, and it changes neither that rule nor the re-test's outcome (docs/results/s27-transcriber-retest.txt)
+key: S2.6's 25 full-page scans (docs/results/s26-transcriber-test-pass2.txt); 150 dpi; instruction t1; each reading's added words marked by Andy on the routing page
+for comparison, qwen/qwen3.5-122b-a10b in S2.6 (docs/results/s26-transcriber-test-pass2.txt): invented added words on 0 of 25; repeated the text layer on 0
+
+openai/gpt-6-luna-pro: invented added words on 1 of 25 scans; repeated the text layer on 0; all on the page and new on 4; could not be judged on 2; no words added / no card on 18; failed to read 0
+qwen/qwen3.7-flash: invented added words on 1 of 25 scans; repeated the text layer on 1; all on the page and new on 20; could not be judged on 2; no words added / no card on 1; failed to read 0
+z-ai/glm-5.3-flash: invented added words on 0 of 25 scans; repeated the text layer on 0; all on the page and new on 8; could not be judged on 2; no words added / no card on 15; failed to read 0
