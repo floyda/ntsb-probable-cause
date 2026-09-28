@@ -164,7 +164,7 @@ def test_sync_run_writes_three_files_and_one_step_per_case(
     assert all(c.scores is not None and c.failure is None for c in cases)
     assert steps[0].tool == "none"
     assert steps[0].stop_reason == "answered"
-    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v5"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v6"
     assert len(client.payloads) == 2 * len(record_fixtures)  # two turns per case
 
 
@@ -1681,7 +1681,7 @@ def test_spec_json_is_written_before_the_first_call(
     assert recorded["sample"] == "dev-400"
     assert recorded["arm"] == "ceiling"
     assert recorded["model"] == BATCH_SPEC.model
-    assert recorded["prompt_version"] == "s1-v5"
+    assert recorded["prompt_version"] == "s1-v6"
     assert recorded["commit_sha"] == "abc1234"
     assert recorded["dirty"] is False  # a dirty tree means the code is not the sha
     assert recorded["case_ids"] == [str(record_fixtures[0]["ntsbNumber"])]

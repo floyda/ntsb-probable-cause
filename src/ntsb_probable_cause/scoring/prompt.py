@@ -2,7 +2,9 @@
 
 PROMPT_VERSION names everything that elicits the answer, not only the text here: v5 differs
 from v4 in the stage-1 JSON schema (``item8`` removed -- see ``hypothesis._stage1_schema``),
-with the prompt text unchanged.
+with the prompt text unchanged. v6 differs from v5 in the code tables the prompt shows: two
+phases and four events the NTSB uses, missing from its data dictionary, are added (decision
+0105), with the prompt text unchanged.
 
 From S2.7 (decision 0098) a run may add coding guidance files; ``prompt_version`` then names
 them.
@@ -21,7 +23,7 @@ from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
-PROMPT_VERSION = "s1-v5"
+PROMPT_VERSION = "s1-v6"
 
 SYSTEM_ANSWER = """You are an aviation accident analyst working from the evidence investigators
 recorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,
