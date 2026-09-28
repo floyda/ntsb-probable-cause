@@ -48,3 +48,43 @@
 - finding recall@10 (do no harm): -0.9% [-2.5%, +0.8%] on n=397
 - first codes changed: 180; toward a more common option: 89, fixes 26, breaks 8 (decision 0101 item 4)
 - outcome: kept
+
+## Judge outcomes (plan Task 15 Step 8)
+
+The earlier run is the repeat's own folder, `20260927T111202-fbab38a-dev-400-B`: its checked folder was never judged, so its outcomes are without the Luna check and this one's are with it. The misread count moved from 116 to 99, inside Round 0's label churn (123 of 399 cases change outcome between two identical runs), so it does not show the guidance doing something other than coding. The narrative label is unvalidated (decision 0099).
+
+judge outcomes (scripts/judge_outcomes.py; counts only, decision 0099)
+
+## 20260927T111202-fbab38a-dev-400-B -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 67 of 399; cause label: different 11, related 24, same_cause 32
+  understood, miscoded: 181 of 399; cause label: related 96, same_cause 85
+  thin evidence: 35 of 399; cause label: different 4, related 26, same_cause 5
+  misread: 116 of 399; cause label: different 64, related 45, same_cause 7
+fatal (198 cases):
+  right: 33 of 198; cause label: different 4, related 13, same_cause 16
+  understood, miscoded: 107 of 198; cause label: related 64, same_cause 43
+  thin evidence: 11 of 198; cause label: different 1, related 10
+  misread: 47 of 198; cause label: different 27, related 17, same_cause 3
+non-fatal (201 cases):
+  right: 34 of 201; cause label: different 7, related 11, same_cause 16
+  understood, miscoded: 74 of 201; cause label: related 32, same_cause 42
+  thin evidence: 24 of 201; cause label: different 3, related 16, same_cause 5
+  misread: 69 of 201; cause label: different 37, related 28, same_cause 4
+
+## 20260928T144353-031e97e-dev-400-B-check-luna -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 125 of 399; cause label: different 20, related 57, same_cause 48
+  understood, miscoded: 139 of 399; cause label: related 78, same_cause 61
+  thin evidence: 36 of 399; cause label: different 2, related 30, same_cause 4
+  misread: 99 of 399; cause label: different 60, related 33, same_cause 6
+fatal (198 cases):
+  right: 67 of 198; cause label: different 11, related 28, same_cause 28
+  understood, miscoded: 79 of 198; cause label: related 43, same_cause 36
+  thin evidence: 14 of 198; cause label: different 1, related 12, same_cause 1
+  misread: 38 of 198; cause label: different 22, related 15, same_cause 1
+non-fatal (201 cases):
+  right: 58 of 201; cause label: different 9, related 29, same_cause 20
+  understood, miscoded: 60 of 201; cause label: related 35, same_cause 25
+  thin evidence: 22 of 201; cause label: different 1, related 18, same_cause 3
+  misread: 61 of 201; cause label: different 38, related 18, same_cause 5
