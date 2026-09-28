@@ -123,7 +123,7 @@ under `docs/specs/` and the record links to it.
 | [0080](0080-the-transcriber-test-and-its-choice-rule.md) | The transcriber is chosen by a test on our own pages, by a rule fixed in advance | Accepted |
 | [0081](0081-transcription-is-evidence-preparation.md) | Transcription is evidence preparation, costed apart from the agent's per-case cap | Accepted; extends 0030 |
 | [0082](0082-the-v3-probe-pictures-alongside-text.md) | The v3 probe: pictures alongside the text, on development cases only | Accepted |
-| [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030 |
+| [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030; item 1 raised to $50 for September 2026 by 0104 |
 | [0084](0084-the-reply-budget-is-8000-tokens.md) | The reply budget is 8,000 tokens, measured on dev-400 by a rule fixed before the runs | Accepted |
 | [0085](0085-the-transcription-cache-is-keyed-by-document-and-page.md) | The transcription cache is keyed by document and page, not by image | Accepted; amends 0081 item 1 |
 | [0086](0086-the-transcriber-test-second-pass.md) | The transcriber test gets a second pass, with three corrections fixed before re-marking | Accepted; amends the scoring of 0080 |
@@ -144,3 +144,4 @@ under `docs/specs/` and the record links to it.
 | [0101](0101-the-clear-habit-safeguard.md) | Counts act only on a clear habit: the plain rule and guidance follow the NTSB's most common choice only above 60% of 20 cases | Accepted; amends 0096 item 4 and 0098 item 2 |
 | [0102](0102-a-parent-branch-with-a-branch-per-track.md) | S2.7 is a parent branch with a branch per track; its spend is traced on every branch grown from the parent | Accepted; amends 0093 item 3 |
 | [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
+| [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
