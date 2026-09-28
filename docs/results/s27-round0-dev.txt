@@ -1,0 +1,282 @@
+occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)
+run 20260926T082427-d19aafa-dev-400-B [complete]
+sample=dev-400 arm=B evidence=v1 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+commit=d19aafa started=2026-09-26T08:24:27.548753+00:00 finished=2026-09-26T08:59:01.414418+00:00
+cases=401 total_cost_usd=1.1805
+
+scored cases: 399 (abstained, counted as misses on every rate: 5; NTSB sequence empty, counted as misses: 0)
+first guess = the NTSB's first code: 83 of 399 (20.8%)
+first guess's event = the first event (any phase): 144 of 399 (36.1%)
+first guess's phase = the first phase: 210 of 399 (52.6%)
+first guess anywhere in the NTSB's sequence: 128 of 399 (32.1%)
+any of the 3 guesses anywhere in the NTSB's sequence: 175 of 399 (43.9%)
+NTSB sequence length (codes per case): 1: 63, 2: 130, 3: 117, 4: 50, 5: 30, 6: 7, 7: 2
+
+most common misses by event, NTSB's first event -> model's first-guess event (the 12 commonest of 111 pairs; 250 cases whose first-guess event is not the first event):
+- 33  Loss of control in flight -> Aerodynamic stall/spin
+- 20  Loss of control on ground -> Runway excursion
+- 9  Loss of engine power (total) -> Loss of engine power (partial)
+- 8  Loss of control in flight -> Control flight into terr/obj
+- 7  Loss of control in flight -> Collision with terr/obj (non-CFIT)
+- 6  Low altitude operations -> Collision with terr/obj (non-CFIT)
+- 6  Aerodynamic stall/spin -> Loss of control in flight
+- 5  Fuel starvation -> Loss of engine power (total)
+- 5  Fuel exhaustion -> Loss of engine power (total)
+- 5  Loss of engine power (total) -> Loss of control in flight
+- 5  Loss of engine power (partial) -> Loss of engine power (total)
+- 4  Collision during takeoff/land -> Collision with terr/obj (non-CFIT)
+
+## the six groups (first guess)
+- exact: 83 of 399 (20.8%); median confidence 0.78
+- right event, wrong phase: 61 of 399 (15.3%); median confidence 0.78
+- in sequence, not defining: 45 of 399 (11.3%); median confidence 0.82
+- a later guess in sequence: 44 of 399 (11.0%); median confidence 0.72
+- event under another phase: 74 of 399 (18.5%); median confidence 0.72
+- nothing in common: 87 of 399 (21.8%); median confidence 0.70
+- abstained: 5 of 399 (1.3%); median confidence 0.05
+
+## finding depth (the NTSB's flagged findings, each at its deepest match)
+flagged 1111: found 114; item right, modifier wrong 48; category right, item wrong 103; category wrong 846
+
+## the model's own words (misses whose NTSB event has a phrase list, scoring/misses.py:EVENT_PHRASES)
+the model's narrative or cause names the NTSB's defining event: 100 of 225 (44.4%)
+
+## churn against the second run (cases scored in both)
+same first guess: 246 of 399
+top-1 gained 35, lost 19 (this run against the second)
+second run: 20260927T111202-fbab38a-dev-400-B
+
+occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)
+run 20260926T085904-d19aafa-dev-400-B [complete]
+sample=dev-400 arm=B evidence=v2 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+commit=d19aafa started=2026-09-26T08:59:04.830020+00:00 finished=2026-09-26T09:43:50.917613+00:00
+cases=401 total_cost_usd=1.3301
+
+scored cases: 399 (abstained, counted as misses on every rate: 1; NTSB sequence empty, counted as misses: 0)
+first guess = the NTSB's first code: 88 of 399 (22.1%)
+first guess's event = the first event (any phase): 152 of 399 (38.1%)
+first guess's phase = the first phase: 219 of 399 (54.9%)
+first guess anywhere in the NTSB's sequence: 140 of 399 (35.1%)
+any of the 3 guesses anywhere in the NTSB's sequence: 192 of 399 (48.1%)
+NTSB sequence length (codes per case): 1: 63, 2: 130, 3: 117, 4: 50, 5: 30, 6: 7, 7: 2
+
+most common misses by event, NTSB's first event -> model's first-guess event (the 12 commonest of 111 pairs; 246 cases whose first-guess event is not the first event):
+- 33  Loss of control in flight -> Aerodynamic stall/spin
+- 19  Loss of control on ground -> Runway excursion
+- 12  Loss of engine power (total) -> Loss of engine power (partial)
+- 9  Loss of control in flight -> Collision with terr/obj (non-CFIT)
+- 7  Low altitude operations -> Collision with terr/obj (non-CFIT)
+- 7  Loss of control in flight -> Control flight into terr/obj
+- 6  Fuel starvation -> Loss of engine power (total)
+- 5  Aerodynamic stall/spin -> Loss of control in flight
+- 4  Unknown or undetermined -> Loss of control in flight
+- 4  Control flight into terr/obj -> Collision with terr/obj (non-CFIT)
+- 4  Loss of engine power (partial) -> Loss of engine power (total)
+- 3  Abnormal runway contact -> Hard landing
+
+## the six groups (first guess)
+- exact: 88 of 399 (22.1%); median confidence 0.82
+- right event, wrong phase: 64 of 399 (16.0%); median confidence 0.80
+- in sequence, not defining: 52 of 399 (13.0%); median confidence 0.78
+- a later guess in sequence: 48 of 399 (12.0%); median confidence 0.78
+- event under another phase: 73 of 399 (18.3%); median confidence 0.72
+- nothing in common: 73 of 399 (18.3%); median confidence 0.78
+- abstained: 1 of 399 (0.3%); median confidence 0.05
+
+## finding depth (the NTSB's flagged findings, each at its deepest match)
+flagged 1111: found 113; item right, modifier wrong 60; category right, item wrong 107; category wrong 831
+
+## the model's own words (misses whose NTSB event has a phrase list, scoring/misses.py:EVENT_PHRASES)
+the model's narrative or cause names the NTSB's defining event: 118 of 221 (53.4%)
+
+## churn against the second run (cases scored in both)
+same first guess: 218 of 399
+top-1 gained 31, lost 26 (this run against the second)
+second run: 20260926T082427-d19aafa-dev-400-B
+
+occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)
+run 20260927T111202-fbab38a-dev-400-B [complete]
+sample=dev-400 arm=B evidence=v1 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+commit=fbab38a started=2026-09-27T11:12:02.044031+00:00 finished=2026-09-27T11:44:40.607575+00:00
+cases=401 total_cost_usd=1.1593
+
+scored cases: 399 (abstained, counted as misses on every rate: 4; NTSB sequence empty, counted as misses: 0)
+first guess = the NTSB's first code: 67 of 399 (16.8%)
+first guess's event = the first event (any phase): 135 of 399 (33.8%)
+first guess's phase = the first phase: 204 of 399 (51.1%)
+first guess anywhere in the NTSB's sequence: 111 of 399 (27.8%)
+any of the 3 guesses anywhere in the NTSB's sequence: 170 of 399 (42.6%)
+NTSB sequence length (codes per case): 1: 63, 2: 130, 3: 117, 4: 50, 5: 30, 6: 7, 7: 2
+
+most common misses by event, NTSB's first event -> model's first-guess event (the 12 commonest of 107 pairs; 260 cases whose first-guess event is not the first event):
+- 37  Loss of control in flight -> Aerodynamic stall/spin
+- 19  Loss of control on ground -> Runway excursion
+- 11  Loss of control in flight -> Control flight into terr/obj
+- 10  Loss of engine power (total) -> Loss of engine power (partial)
+- 7  Unknown or undetermined -> Loss of control in flight
+- 6  Control flight into terr/obj -> Collision with terr/obj (non-CFIT)
+- 6  Fuel exhaustion -> Loss of engine power (total)
+- 6  Low altitude operations -> Collision with terr/obj (non-CFIT)
+- 6  Loss of control in flight -> Collision with terr/obj (non-CFIT)
+- 6  Loss of engine power (partial) -> Loss of engine power (total)
+- 5  Fuel starvation -> Loss of engine power (total)
+- 4  Control flight into terr/obj -> Aerodynamic stall/spin
+
+## the six groups (first guess)
+- exact: 67 of 399 (16.8%); median confidence 0.80
+- right event, wrong phase: 68 of 399 (17.0%); median confidence 0.82
+- in sequence, not defining: 44 of 399 (11.0%); median confidence 0.79
+- a later guess in sequence: 56 of 399 (14.0%); median confidence 0.68
+- event under another phase: 75 of 399 (18.8%); median confidence 0.65
+- nothing in common: 85 of 399 (21.3%); median confidence 0.72
+- abstained: 4 of 399 (1.0%); median confidence 0.10
+
+## finding depth (the NTSB's flagged findings, each at its deepest match)
+flagged 1111: found 122; item right, modifier wrong 56; category right, item wrong 97; category wrong 836
+
+## the model's own words (misses whose NTSB event has a phrase list, scoring/misses.py:EVENT_PHRASES)
+the model's narrative or cause names the NTSB's defining event: 108 of 235 (46.0%)
+
+run 20260926T082427-d19aafa-dev-400-B [complete]
+sample=dev-400 arm=B evidence=v1 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+commit=d19aafa started=2026-09-26T08:24:27.548753+00:00 finished=2026-09-26T08:59:01.414418+00:00
+cases=401 total_cost_usd=1.1805
+
+| slice | n | top-1 | top-3 | event | pair unseen | abstain | answered top-1 | finding P@10 | R@10 | P@8 | R@8 | P@6 | R@6 | R@10 all | failed | cost/case USD |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all | 399 | 20.8% [17.1%, 25.1%] | 33.1% [28.6%, 37.8%] | 36.1% [31.5%, 40.9%] | 3.8% [2.3%, 6.1%] | 1.3% [0.5%, 2.9%] | 21.1% [17.3%, 25.4%] | 16.6% [13.7%, 19.7%] | 10.4% [8.3%, 12.4%] | 21.1% [17.8%, 24.6%] | 13.7% [11.3%, 16.0%] | 34.4% [30.5%, 38.4%] | 22.8% [19.9%, 25.7%] | 9.0% [7.3%, 10.7%] | 2 of 401 | 0.0029 |
+| fatal | 198 | 20.2% [15.2%, 26.3%] | 37.9% [31.4%, 44.8%] | 34.8% [28.6%, 41.7%] | 3.0% [1.4%, 6.5%] | 0.5% [0.1%, 2.8%] | 20.3% [15.3%, 26.5%] | 20.2% [15.8%, 24.8%] | 12.3% [9.5%, 15.4%] | 24.8% [20.2%, 29.8%] | 15.5% [12.3%, 19.0%] | 37.2% [31.6%, 42.8%] | 22.9% [19.4%, 26.7%] | 10.8% [8.5%, 13.2%] | 2 of 200 | 0.0038 |
+| non-fatal | 201 | 21.4% [16.3%, 27.6%] | 28.4% [22.6%, 35.0%] | 37.3% [30.9%, 44.2%] | 4.5% [2.4%, 8.3%] | 2.0% [0.8%, 5.0%] | 21.8% [16.6%, 28.1%] | 13.1% [9.0%, 17.4%] | 8.4% [5.7%, 11.4%] | 17.5% [12.8%, 22.4%] | 12.0% [8.8%, 15.6%] | 31.6% [26.0%, 37.2%] | 22.8% [18.4%, 27.3%] | 7.2% [4.9%, 9.6%] | 0 of 201 | 0.0020 |
+| class C | 113 | 15.9% [10.3%, 23.8%] | 23.9% [17.0%, 32.5%] | 28.3% [20.8%, 37.2%] | 5.3% [2.5%, 11.1%] | 2.7% [0.9%, 7.5%] | 16.4% [10.6%, 24.4%] | 12.8% [7.4%, 18.7%] | 6.8% [4.0%, 9.9%] | 15.8% [10.2%, 22.0%] | 9.1% [5.9%, 12.7%] | 30.8% [23.3%, 38.6%] | 20.4% [15.5%, 25.5%] | 6.4% [3.9%, 9.2%] | 0 of 113 | 0.0017 |
+| class F | 158 | 20.9% [15.3%, 27.9%] | 34.8% [27.8%, 42.5%] | 36.7% [29.6%, 44.5%] | 3.2% [1.4%, 7.2%] | 0.6% [0.1%, 3.5%] | 21.0% [15.4%, 28.0%] | 20.5% [15.7%, 25.4%] | 12.8% [9.6%, 16.1%] | 24.9% [19.6%, 30.3%] | 15.6% [12.1%, 19.3%] | 38.8% [32.5%, 45.1%] | 24.0% [19.6%, 28.3%] | 10.9% [8.3%, 13.7%] | 1 of 159 | 0.0044 |
+| class L | 128 | 25.0% [18.3%, 33.2%] | 39.1% [31.0%, 47.7%] | 42.2% [34.0%, 50.8%] | 3.1% [1.2%, 7.8%] | 0.8% [0.1%, 4.3%] | 25.2% [18.5%, 33.4%] | 15.2% [9.9%, 21.2%] | 10.6% [6.6%, 14.9%] | 21.2% [15.0%, 27.9%] | 15.5% [10.9%, 20.7%] | 32.1% [24.7%, 38.9%] | 23.6% [18.1%, 29.9%] | 8.9% [5.9%, 12.3%] | 1 of 129 | 0.0022 |
+| flavour Standard report | 175 | 25.1% [19.3%, 32.1%] | 36.6% [29.8%, 43.9%] | 42.9% [35.8%, 50.3%] | 2.3% [0.9%, 5.7%] | 0.6% [0.1%, 3.2%] | 25.3% [19.4%, 32.2%] | 18.7% [14.0%, 23.5%] | 12.4% [9.3%, 16.0%] | 22.9% [17.9%, 28.0%] | 15.5% [12.0%, 19.4%] | 36.5% [30.6%, 42.5%] | 25.3% [21.1%, 29.9%] | 10.6% [7.9%, 13.4%] | 1 of 176 | 0.0028 |
+| flavour Basic (no factual) | 113 | 15.9% [10.3%, 23.8%] | 23.9% [17.0%, 32.5%] | 28.3% [20.8%, 37.2%] | 5.3% [2.5%, 11.1%] | 2.7% [0.9%, 7.5%] | 16.4% [10.6%, 24.4%] | 12.8% [7.4%, 18.7%] | 6.8% [4.0%, 9.9%] | 15.8% [10.2%, 22.0%] | 9.1% [5.9%, 12.7%] | 30.8% [23.3%, 38.6%] | 20.4% [15.5%, 25.5%] | 6.4% [3.9%, 9.2%] | 0 of 113 | 0.0017 |
+| flavour Detailed (ICAO headers) | 109 | 19.3% [13.0%, 27.7%] | 37.6% [29.1%, 47.0%] | 33.9% [25.7%, 43.2%] | 3.7% [1.4%, 9.1%] | 0.9% [0.2%, 5.0%] | 19.4% [13.1%, 27.9%] | 17.6% [12.1%, 23.6%] | 11.1% [7.0%, 15.4%] | 24.2% [17.8%, 30.9%] | 16.0% [11.2%, 21.4%] | 35.2% [27.8%, 43.4%] | 21.9% [16.8%, 27.2%] | 9.3% [6.1%, 12.6%] | 1 of 110 | 0.0045 |
+
+failures by reason: leak (probable_cause) 2
+
+unmarked cases only (S2.6 spec §4.4):
+| slice | n | top-1 | top-3 | event | pair unseen | abstain | answered top-1 | finding P@10 | R@10 | P@8 | R@8 | P@6 | R@6 | R@10 all | failed | cost/case USD |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all | 381 | 20.7% [17.0%, 25.1%] | 32.5% [28.0%, 37.4%] | 36.5% [31.8%, 41.4%] | 3.4% [2.0%, 5.7%] | 1.3% [0.6%, 3.0%] | 21.0% [17.2%, 25.4%] | 16.1% [13.1%, 19.4%] | 10.1% [8.1%, 12.2%] | 20.5% [17.0%, 23.9%] | 13.3% [11.0%, 15.7%] | 34.2% [30.0%, 38.5%] | 22.6% [19.8%, 25.5%] | 8.7% [7.0%, 10.5%] | 2 of 383 | 0.0029 |
+| fatal | 186 | 19.9% [14.8%, 26.2%] | 37.1% [30.5%, 44.2%] | 34.9% [28.5%, 42.0%] | 3.2% [1.5%, 6.9%] | 0.5% [0.1%, 3.0%] | 20.0% [14.9%, 26.3%] | 19.1% [14.9%, 23.8%] | 11.8% [8.9%, 14.9%] | 23.3% [18.8%, 28.3%] | 14.5% [11.4%, 17.9%] | 36.1% [30.5%, 41.9%] | 22.0% [18.3%, 25.9%] | 10.2% [7.9%, 12.7%] | 2 of 188 | 0.0037 |
+| non-fatal | 195 | 21.5% [16.3%, 27.8%] | 28.2% [22.4%, 34.9%] | 37.9% [31.4%, 44.9%] | 3.6% [1.7%, 7.2%] | 2.1% [0.8%, 5.2%] | 22.0% [16.7%, 28.4%] | 13.2% [9.0%, 17.8%] | 8.5% [5.7%, 11.7%] | 17.8% [13.1%, 22.8%] | 12.1% [8.7%, 15.5%] | 32.3% [26.6%, 38.1%] | 23.2% [18.8%, 27.7%] | 7.3% [5.0%, 10.0%] | 0 of 195 | 0.0021 |
+| class C | 112 | 16.1% [10.4%, 24.0%] | 24.1% [17.1%, 32.8%] | 28.6% [21.0%, 37.5%] | 4.5% [1.9%, 10.0%] | 2.7% [0.9%, 7.6%] | 16.5% [10.7%, 24.6%] | 12.9% [7.3%, 18.8%] | 6.8% [4.0%, 9.8%] | 15.9% [10.3%, 21.9%] | 9.1% [5.9%, 12.7%] | 31.1% [23.8%, 38.7%] | 20.5% [15.3%, 25.9%] | 6.5% [3.9%, 9.1%] | 0 of 112 | 0.0017 |
+| class F | 147 | 20.4% [14.7%, 27.6%] | 33.3% [26.2%, 41.3%] | 36.7% [29.4%, 44.8%] | 3.4% [1.5%, 7.7%] | 0.7% [0.1%, 3.8%] | 20.5% [14.8%, 27.8%] | 18.9% [14.1%, 23.5%] | 12.1% [8.6%, 15.4%] | 23.1% [17.9%, 28.0%] | 14.4% [10.8%, 17.9%] | 37.5% [31.2%, 43.8%] | 23.0% [18.7%, 27.0%] | 10.0% [7.2%, 12.8%] | 1 of 148 | 0.0043 |
+| class L | 122 | 25.4% [18.5%, 33.8%] | 39.3% [31.1%, 48.2%] | 43.4% [35.0%, 52.3%] | 2.5% [0.8%, 7.0%] | 0.8% [0.1%, 4.5%] | 25.6% [18.7%, 34.1%] | 15.6% [10.0%, 21.4%] | 10.9% [6.5%, 15.7%] | 21.5% [15.2%, 28.3%] | 15.8% [10.7%, 21.5%] | 33.0% [25.7%, 40.1%] | 24.2% [18.6%, 30.6%] | 9.1% [5.9%, 12.7%] | 1 of 123 | 0.0022 |
+| flavour Standard report | 162 | 25.3% [19.2%, 32.5%] | 36.4% [29.4%, 44.1%] | 43.8% [36.4%, 51.5%] | 1.9% [0.6%, 5.3%] | 0.6% [0.1%, 3.4%] | 25.5% [19.4%, 32.7%] | 17.8% [13.3%, 22.5%] | 12.2% [8.7%, 16.1%] | 21.9% [17.1%, 26.9%] | 15.2% [11.4%, 19.4%] | 36.4% [30.3%, 42.8%] | 25.4% [20.9%, 30.5%] | 10.2% [7.4%, 13.0%] | 1 of 163 | 0.0026 |
+| flavour Basic (no factual) | 112 | 16.1% [10.4%, 24.0%] | 24.1% [17.1%, 32.8%] | 28.6% [21.0%, 37.5%] | 4.5% [1.9%, 10.0%] | 2.7% [0.9%, 7.6%] | 16.5% [10.7%, 24.6%] | 12.9% [7.3%, 18.8%] | 6.8% [4.0%, 9.8%] | 15.9% [10.3%, 21.9%] | 9.1% [5.9%, 12.7%] | 31.1% [23.8%, 38.7%] | 20.5% [15.3%, 25.9%] | 6.5% [3.9%, 9.1%] | 0 of 112 | 0.0017 |
+| flavour Detailed (ICAO headers) | 105 | 19.0% [12.7%, 27.6%] | 36.2% [27.6%, 45.7%] | 34.3% [25.9%, 43.8%] | 3.8% [1.5%, 9.4%] | 1.0% [0.2%, 5.2%] | 19.2% [12.8%, 27.8%] | 17.1% [11.3%, 23.0%] | 10.8% [6.6%, 15.1%] | 23.6% [16.8%, 30.1%] | 15.1% [10.1%, 20.1%] | 34.7% [26.5%, 42.7%] | 21.1% [15.6%, 26.5%] | 8.9% [5.7%, 12.3%] | 1 of 106 | 0.0045 |
+
+marks (S2.6 spec §4.4; never in the agent's text):
+- analysis_sentence: 17 cases (24 counted); top-1 17.6% [6.2%, 41.0%] (n=17)
+- narrative_coverage: 1 cases (1 counted); top-1 100.0% [20.7%, 100.0%] (n=1)
+  at about three development cases this row makes the cases visible; it cannot show whether coverage inflates the score (decision 0078 item 3)
+narrative share, largest single document: at least 25% 21, at least 50% 1, at least 80% 1, of 377 cases with a share
+
+cap: 0 of 401 cases hit the cap; 0 documents not read (fatal 0 cases/0 documents, non-fatal 0/0)
+
+against 20260927T111202-fbab38a-dev-400-B:
+paired difference (a - b) on 399 shared, scored cases:
+- occurrence top-1: +4.0% [+0.5%, +7.5%] on n=399 cases
+- occurrence top-3: +0.8% [-3.3%, +5.0%] on n=399 cases
+- finding recall@10: -1.7% [-3.3%, -0.2%] on n=397 cases
+fatal: paired difference (a - b) on 198 shared, scored cases:
+- occurrence top-1: +3.5% [-2.0%, +8.6%] on n=198 cases
+- occurrence top-3: +1.0% [-5.1%, +7.1%] on n=198 cases
+- finding recall@10: -1.7% [-4.1%, +0.6%] on n=198 cases
+non-fatal: paired difference (a - b) on 201 shared, scored cases:
+- occurrence top-1: +4.5% [-0.5%, +9.5%] on n=201 cases
+- occurrence top-3: +0.5% [-5.5%, +6.0%] on n=201 cases
+- finding recall@10: -1.7% [-4.2%, +0.5%] on n=199 cases
+
+on cases unmarked in both runs (18 marked cases left out):
+paired difference (a - b) on 381 shared, scored cases:
+- occurrence top-1: +3.9% [+0.5%, +7.9%] on n=381 cases
+- occurrence top-3: +0.5% [-3.7%, +4.7%] on n=381 cases
+- finding recall@10: -2.0% [-3.7%, -0.4%] on n=379 cases
+fatal: paired difference (a - b) on 186 shared, scored cases:
+- occurrence top-1: +3.2% [-2.2%, +8.6%] on n=186 cases
+- occurrence top-3: +1.1% [-5.4%, +7.0%] on n=186 cases
+- finding recall@10: -2.1% [-4.4%, +0.2%] on n=186 cases
+non-fatal: paired difference (a - b) on 195 shared, scored cases:
+- occurrence top-1: +4.6% [+0.0%, +9.2%] on n=195 cases
+- occurrence top-3: +0.0% [-5.6%, +5.6%] on n=195 cases
+- finding recall@10: -2.0% [-4.4%, +0.2%] on n=193 cases
+
+judge outcomes (scripts/judge_outcomes.py; counts only, decision 0099)
+
+## 20260926T082427-d19aafa-dev-400-B -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 83 of 399; cause label: different 10, related 44, same_cause 29
+  understood, miscoded: 163 of 399; cause label: different 1, related 90, same_cause 72
+  thin evidence: 30 of 399; cause label: different 3, related 25, same_cause 2
+  misread: 123 of 399; cause label: different 64, related 49, same_cause 10
+fatal (198 cases):
+  right: 40 of 198; cause label: different 5, related 22, same_cause 13
+  understood, miscoded: 97 of 198; cause label: different 1, related 50, same_cause 46
+  thin evidence: 10 of 198; cause label: different 1, related 8, same_cause 1
+  misread: 51 of 198; cause label: different 29, related 18, same_cause 4
+non-fatal (201 cases):
+  right: 43 of 201; cause label: different 5, related 22, same_cause 16
+  understood, miscoded: 66 of 201; cause label: related 40, same_cause 26
+  thin evidence: 20 of 201; cause label: different 2, related 17, same_cause 1
+  misread: 72 of 201; cause label: different 35, related 31, same_cause 6
+
+## 20260927T111202-fbab38a-dev-400-B -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 67 of 399; cause label: different 11, related 24, same_cause 32
+  understood, miscoded: 181 of 399; cause label: related 96, same_cause 85
+  thin evidence: 35 of 399; cause label: different 4, related 26, same_cause 5
+  misread: 116 of 399; cause label: different 64, related 45, same_cause 7
+fatal (198 cases):
+  right: 33 of 198; cause label: different 4, related 13, same_cause 16
+  understood, miscoded: 107 of 198; cause label: related 64, same_cause 43
+  thin evidence: 11 of 198; cause label: different 1, related 10
+  misread: 47 of 198; cause label: different 27, related 17, same_cause 3
+non-fatal (201 cases):
+  right: 34 of 201; cause label: different 7, related 11, same_cause 16
+  understood, miscoded: 74 of 201; cause label: related 32, same_cause 42
+  thin evidence: 24 of 201; cause label: different 3, related 16, same_cause 5
+  misread: 69 of 201; cause label: different 37, related 28, same_cause 4
+
+## 20260926T085904-d19aafa-dev-400-B -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 88 of 399; cause label: different 8, related 36, same_cause 44
+  understood, miscoded: 175 of 399; cause label: different 1, related 96, same_cause 78
+  thin evidence: 24 of 399; cause label: different 3, related 17, same_cause 4
+  misread: 112 of 399; cause label: different 54, related 50, same_cause 8
+fatal (198 cases):
+  right: 45 of 198; cause label: different 4, related 16, same_cause 25
+  understood, miscoded: 98 of 198; cause label: different 1, related 49, same_cause 48
+  thin evidence: 14 of 198; cause label: different 1, related 11, same_cause 2
+  misread: 41 of 198; cause label: different 24, related 14, same_cause 3
+non-fatal (201 cases):
+  right: 43 of 201; cause label: different 4, related 20, same_cause 19
+  understood, miscoded: 77 of 201; cause label: related 47, same_cause 30
+  thin evidence: 10 of 201; cause label: different 2, related 6, same_cause 2
+  misread: 71 of 201; cause label: different 30, related 36, same_cause 5
+
+## movement between runs (label churn is the repeat's movement)
+
+v1 against its repeat: 123 of 399 cases change outcome
+
+v1 against v2: 155 of 399 cases change outcome
+
+Round 0 hand-read (scripts/round0_handread.py; counts only, decision 0099)
+cards by group: a later guess in sequence 8, event under another phase 8, exact 10, in sequence, not defining 8, nothing in common 8, right event, wrong phase 8
+decidable cards (not "can't tell"): 46 of 50
+agreement: 32 of 46 (69.6% [55.2%, 80.9%]); rule: at least 75%
+judge errors: generous (judge consistent, Andy no) 3; harsh (judge not consistent, Andy yes) 11; rule: at least 1 each way
+outcome: not validated
+why the misses happened (Andy): coding convention 19, wrong phase 15, misread or missing fact 4, NTSB code arguable 2, other 0
+why by group -- right event, wrong phase (8 cards): coding convention 0, wrong phase 8, misread or missing fact 0, NTSB code arguable 0, other 0
+why by group -- in sequence, not defining (8 cards): coding convention 7, wrong phase 0, misread or missing fact 1, NTSB code arguable 0, other 0
+why by group -- a later guess in sequence (8 cards): coding convention 6, wrong phase 0, misread or missing fact 1, NTSB code arguable 1, other 0
+why by group -- event under another phase (8 cards): coding convention 3, wrong phase 4, misread or missing fact 1, NTSB code arguable 0, other 0
+why by group -- nothing in common (8 cards): coding convention 3, wrong phase 3, misread or missing fact 1, NTSB code arguable 1, other 0

@@ -2330,19 +2330,19 @@ Hand Andy: "`make s27-judge RUN=20260926T082427-d19aafa-dev-400-B`, then `RUN=<R
 Run: `make s27-round0-cards RUN=20260926T082427-d19aafa-dev-400-B`
 Expected: about 50 cards; the printed group counts (a group under 8 is taken whole, W7).
 
-- [ ] **Step 6: STOP — Andy's hand-read**
+- [x] **Step 6: STOP — Andy's hand-read**
 
 Hand Andy: "Open `$NTSB_DATA_DIR/handcheck/s27-round0/index.html`, mark every card (two clicks each, about an hour; it keeps progress), then download the marks CSV." When it is back:
 
 Run: `uv run python -m scripts.round0_handread score <marks.csv> --run 20260926T082427-d19aafa-dev-400-B`
 Read the `outcome:` line: `validated` or `not validated`.
 
-- [ ] **Step 7: Write the results file** (free)
+- [x] **Step 7: Write the results file** (free)
 
 Run: `make s27-round0-results REPEAT=<REPEAT> MARKS=<marks.csv> LABELS=<validated|unvalidated>`
 Expected: `docs/results/s27-round0-dev.txt` holds, in order, the misses and churn for B-v1 (against the repeat), B-v2 (against B-v1) and the repeat; the noise floor (`report --against`); the four outcomes with their movement; the hand-read's counts. Check that it names no case number: `grep -E '[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}' docs/results/s27-round0-dev.txt` prints nothing.
 
-- [ ] **Step 8: Commit, and report Round 0 to Andy**
+- [x] **Step 8: Commit, and report Round 0 to Andy**
 
 ```bash
 git add docs/results/s27-round0-dev.txt docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -4822,3 +4822,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, Task 12a review fix round 1. (1) Registration change (Important), following the registration's dated clarification committed before any call (`f078d9e`; Andy: option A): `none_of_these` ranks first whenever no code has a strictly higher probability, so a tie at the top between `none_of_these` and any code leaves the answer unchanged; `ordering.jev2_order` now puts `none_of_these` first in the tie order (it wins any tie it is part of) and the model-order tie rule applies among codes only. This replaces item (2) of the Task 12a implementation bullet above; the tests that pinned the old reading are rewritten and a test for exactly this tie is added. (2) Every `jev2` step now records Jev's full ranked option order after the tie rules, `none_of_these` included, as `arguments["jev_order"]`; `scripts/round1_jev2_report.py` reads "none_of_these ranked first" from it, not from the order the probabilities mapping was stored in (item (4) above no longer carries that job), with a round-trip test of a tie through `cases.jsonl` on disk. (3) `tests/test_boundary.py` gains the `jev2` counterpart of the ordering check's boundary test: the JSON body sent, both as escaped bytes and as its unescaped strings, holds no window (`withheld_windows`, codes left out because choosing among codes is the check's job) of the factual narrative, the analysis narrative or the probable cause of a real fixture; a temporary mutation (the hypothesis's account replaced by the fixture's analysis narrative) made it fail, and it was then restored. (4) `scripts/round1_jev2_report.py` refuses `dev-seal-400` through `samples.refuse_sealed(..., is_committed=gitinfo.is_committed)`, and checks both sources' records (held-out, sealed) before any run's cases are read; one existing refusal test now writes its second source, since that source's record is read first.
 - 2026-09-27, Task 12a Steps 8-9: Andy ran both `jev2` checks from the clean checkout at `8c40dbd` ($0.0313 and $0.0314). `docs/results/s27-round1-jev2-dev.txt` ends `luna stays (CHECK=luna)`: `jev2` was below GPT-6 Luna on both answer sets and did not clearly beat no check on the first. The documented changes did not improve on Round 1's Jev on these answer sets. Published as it came out (decision 0103).
 - 2026-09-28, Task 7 Step 7: `round0_handread score` gained one line per miss group of Andy's "why" answers, because Task 15 Step 1 chooses the first round by miss group and the score printed totals only; existing lines unchanged.
+- 2026-09-28, Task 7 Steps 6-8: Andy marked the 50 cards (a private copy of his marks is kept at `data/handcheck/s27-round0/marks.csv`). The narrative label was **not validated**: agreement 32 of 46 decidable cards (69.6% [55.2%, 80.9%], rule at least 75%), with 11 harsh and 3 generous judge errors; so `LABELS=unvalidated` and the four outcomes carry no claim (decision 0099 item 3). The noise floor between B-v1 and `REPEAT` is +4.0 points of top-1 [+0.5%, +7.5%] on 399 cases (`ntsb-eval report --against`), larger than the plan assumed; between their Luna-checked folders it is +1.0 [-3.0%, +5.0%]. `docs/results/s27-round0-dev.txt` written by `make s27-round0-results`.
