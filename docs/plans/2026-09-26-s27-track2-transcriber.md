@@ -2451,7 +2451,7 @@ git push
 
 - [x] **Step 2: STOP — Andy's go-ahead to merge back.** Given 2026-09-28 ("go"), after he signed off decision 120. Report: the decision record, the three results files, what changed in `transcribe.py`, `sources.py` and `apps/eval`, and the track's spend (`uv run python -m scripts.stage_spend --estimate 0`).
 
-- [ ] **Step 3: Merge with a merge commit, from the stage branch's worktree**
+- [x] **Step 3: Merge with a merge commit, from the stage branch's worktree** — 2026-09-28: `535d418`, no conflicts; `make check` 1648 passed, 97.76%; `check_docs` exit 0
 
 ```bash
 cd /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s27-coding-guidance
