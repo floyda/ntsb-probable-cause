@@ -10,14 +10,53 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
+import httpx
+
 from ntsb_probable_cause.docket.classify import Kind
+from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket, Status
+from ntsb_probable_cause.docket.transcribe import ReadingLookup, TranscriptionCache
+from ntsb_probable_cause.scoring.runner import CachedDocketReader
 from ntsb_probable_cause.scoring.samples import sample_ids
+from ntsb_probable_cause.settings import Settings
 
 # The four cells this probe balances over: whether the case is fatal, and whether its v2
 # docket holds at least one scanned or partial-text page with a cached transcription. Fixed
 # order, so a cell's position in a report or an error message is always the same.
 CELLS: tuple[tuple[bool, bool], ...] = ((False, False), (False, True), (True, False), (True, True))
+
+# Field name in the raw record that carries the docket's internal key (scoring/runner.py,
+# scripts/docket_leak_scan.py). Shared by ``select`` (Task 1) and ``run`` (Task 5).
+MKEY_FIELD = "mKey"
+
+# ``select``'s default draw seed, named so ``run``'s ``probe.json`` can record it without
+# duplicating the literal.
+SELECTION_SEED = 20260929
+
+
+def offline_transport() -> httpx.BaseTransport:
+    """A transport refusing every request, so a docket cache miss is loud and costs no fetch.
+
+    The ``_offline()`` pattern in ``scripts/docket_leak_scan.py``: a case whose docket or
+    transcriptions are not already cached fails with ``DocketError`` instead of fetching.
+    """
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline: the S3 probe reads the docket cache only")
+
+    return httpx.MockTransport(refuse)
+
+
+def docket_reader(settings: Settings) -> CachedDocketReader:
+    """The probe's one docket reader: the cache only, evidence version v2.
+
+    Shared by ``select`` and ``run`` so the offline transport and the v2 reading lookup are
+    built in exactly one place.
+    """
+    return CachedDocketReader(
+        DocketClient(settings.docket_dir, transport=offline_transport()),
+        readings=ReadingLookup(TranscriptionCache(settings.transcription_dir)),
+    )
 
 
 @dataclass(frozen=True)
@@ -71,7 +110,7 @@ def select(
     candidates: Sequence[CaseInfo],
     *,
     per_cell: int = 5,
-    seed: int = 20260929,
+    seed: int = SELECTION_SEED,
 ) -> tuple[str, ...]:
     """Draw ``per_cell`` case IDs from each of the four fatal x has-scan cells.
 

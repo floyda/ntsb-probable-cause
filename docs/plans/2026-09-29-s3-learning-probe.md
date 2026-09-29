@@ -100,11 +100,11 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** modify `scripts/s3_probe/__main__.py` (add `run`), create `tests/test_s3_probe_run.py`.
 
-- [ ] `python -m scripts.s3_probe run [--limit N] [--workers 4]`: reads `cases.json` (refuses if absent), refuses any case outside `dev-400`, checks the monthly budget and reserves `RUN_CAP_USD` (Global Constraints), creates `<data_dir>/probes/s3-probe/<job_id>/` with `probe.json` (job ID, commit SHA and dirty flag via the repository's `gitinfo`, model, reasoning effort, price variant, max output tokens, prompt version, guidance, caps, seed, case count, started), runs cases on a thread pool of `--workers` with **one `OpenRouterClient` per worker** (the `transcribe_all` pattern), appends each `CaseTrail` to `trails.jsonl` as it finishes (so a crash keeps finished cases), writes a `SpendRecord` every 5 finished cases and at the end, settles the reservation in a `finally`, and prints one line per finished case (index, stop reason, cost — no case number).
-- [ ] The OpenRouter key comes from `Settings().require_openrouter_key()`; never printed.
-- [ ] `--dry-run` runs the whole path with a `RecordingFakeClient` that returns schema-valid canned replies, spending nothing and writing nothing to `runs_dir` (used by the controller before the paid run).
-- [ ] Tests: refusal without `cases.json`; refusal of a non-dev-400 ID; budget refusal when the month is nearly spent; reservation settled after an exception; spend rows written with `kind="inventory"` and the job ID; `--dry-run` produces a `trails.jsonl` and no spend.
-- [ ] `make check` green; commit.
+- [x] `python -m scripts.s3_probe run [--limit N] [--workers 4]`: reads `cases.json` (refuses if absent), refuses any case outside `dev-400`, checks the monthly budget and reserves `RUN_CAP_USD` (Global Constraints), creates `<data_dir>/probes/s3-probe/<job_id>/` with `probe.json` (job ID, commit SHA and dirty flag via the repository's `gitinfo`, model, reasoning effort, price variant, max output tokens, prompt version, guidance, caps, seed, case count, started), runs cases on a thread pool of `--workers` with **one `OpenRouterClient` per worker** (the `transcribe_all` pattern), appends each `CaseTrail` to `trails.jsonl` as it finishes (so a crash keeps finished cases), writes a `SpendRecord` every 5 finished cases and at the end, settles the reservation in a `finally`, and prints one line per finished case (index, stop reason, cost — no case number).
+- [x] The OpenRouter key comes from `Settings().require_openrouter_key()`; never printed.
+- [x] `--dry-run` runs the whole path with a schema-valid canned-reply client, spending nothing and writing nothing to `runs_dir` (used by the controller before the paid run).
+- [x] Tests: refusal without `cases.json`; refusal of a non-dev-400 ID; budget refusal when the month is nearly spent; reservation settled after an exception; spend rows written with `kind="inventory"` and the job ID; `--dry-run` produces a `trails.jsonl` and no spend.
+- [x] `make check` green; commit.
 
 ## Task 6: The report and readable trails
 
@@ -236,3 +236,41 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   diagnosis*: a test asserts no docket title or document text appears in a dumped trail; a new
   `Stage.detail` keeps H_all's failure detail (the parser's last error on `failed: parse`, the
   guard's message on `failed: leak`).
+
+- **2026-09-29 (Task 5) — a purpose-built `DryRunClient`, not a `RecordingFakeClient`.** The
+  brief's line for `--dry-run` names `RecordingFakeClient`, but that class replays a fixed,
+  ordered list of scripted replies and repeats its last entry once exhausted; `run`'s cases have
+  different document counts and read choices, so no single script's length or content is right
+  for every case, and a shared instance across cases (one client per worker thread, reused for
+  many cases) would run off the end of its script and start returning stale, wrong-shaped
+  replies. `DryRunClient` instead builds a schema-valid reply from `settings.schema_name` on
+  every call: a hypothesis with one valid occurrence guess and no findings (so the refinement
+  step is always `"not run: no findings"`), a read choice that reads the first offered document
+  and marks the rest unread (read straight from `prompts.menu`'s listing lines in the system
+  text via a regular expression, never from state of its own), and a coding action that is
+  always `done`. It is stateless and deterministic, so one instance safely answers any number of
+  calls across any number of cases, and it is used as a context manager (`__enter__`/`__exit__`)
+  so the same `Callable[[ExitStack], Callable[[], ModelClient]]` factory shape serves both the
+  dry run and the paid run.
+- **2026-09-29 (Task 5) — a `SpendRecord`'s `calls` counts model calls, not cases.** A chunk's
+  row reports `sum(len(trail.calls) for trail in chunk)`, matching how `scoring/preparation.py`
+  uses the same field (one call per page read), rather than the chunk's case count.
+- **2026-09-29 (Task 5) — `cases.py` gained `docket_reader`, `offline_transport`, `MKEY_FIELD`
+  and `SELECTION_SEED`.** Task 1's `select` command built its offline transport and
+  `CachedDocketReader` inline in `__main__.py`; `run` needs the identical construction, so it
+  was factored into `cases.py` (as the brief's "Reuse Task 1's offline docket reader
+  construction ... factor it into a shared helper if needed" asks) and `select` was left
+  behaviourally unchanged -- `MKEY_FIELD` and the seed default moved with it, as named
+  constants rather than a duplicated literal `"mKey"` / `20260929`.
+- **2026-09-29 (Task 5) — the monthly-budget refusal test uses a near-zero `monthly_budget_usd`,
+  not pre-existing spend.** `reserve_within_budget`'s guard is `month_spent + open reservations +
+  projected > budget`; setting `Settings(monthly_budget_usd=0.01)` exercises the same comparison
+  deterministically, without needing to fabricate a prior run's spend rows to approach the real
+  $40 (decision 0083) limit.
+- **2026-09-29 (Task 5) — the "run cap reached -> cases not started" path has no dedicated
+  test.** It is implemented (`_run_cases` cancels every future not yet started once a trail's
+  `stop_reason` is `"run_cap"`, folding in any that finished anyway before the pool's shutdown
+  completes, so a paid-for case is never left unreported), but the brief's required test list
+  for Task 5 does not name it and it is not exercised directly. `RunBudget`'s own cap mechanics
+  are already covered thoroughly by Task 4's tests (`test_s3_probe_loop.py`); what Task 5 adds
+  on top is the pool-level bookkeeping, left as a self-review note rather than a ninth test.
