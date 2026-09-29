@@ -69,10 +69,10 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** create `scripts/s3_probe/tools.py`, `tests/test_s3_probe_tools.py`.
 
-- [ ] Implement the three tools exactly as in "The coding tools" above, as pure functions of `(tables: CodeTables, stats: CodingStats, kind, codes)` returning `ToolResult(text: str, argument_errors: int)`. `TOOL_NAMES = ("describe_codes", "occurrence_usage", "past_findings")` and `run_tool(name, kind, codes, *, tables, stats) -> ToolResult` dispatching by name (unknown name → error result, not an exception). Enforce the per-tool code-count limits (excess codes are dropped and counted as argument errors).
-- [ ] `TOOL_DESCRIPTIONS: str` — the text block listing each tool, its arguments and what it returns, for the system text.
-- [ ] Tests with a small hand-built `CodingStats` (construct it via `coding_stats.build` from a few `PoolCase`s, or directly) and `load_tables()`: each tool's output lines, the fewer-than-20 warning, invalid codes, the pair section, the phase counts summed across groups and halves.
-- [ ] `make check` green; commit.
+- [x] Implement the three tools exactly as in "The coding tools" above, as pure functions of `(tables: CodeTables, stats: CodingStats, kind, codes)` returning `ToolResult(text: str, argument_errors: int)`. `TOOL_NAMES = ("describe_codes", "occurrence_usage", "past_findings")` and `run_tool(name, kind, codes, *, tables, stats) -> ToolResult` dispatching by name (unknown name → error result, not an exception). Enforce the per-tool code-count limits (excess codes are dropped and counted as argument errors).
+- [x] `TOOL_DESCRIPTIONS: str` — the text block listing each tool, its arguments and what it returns, for the system text.
+- [x] Tests with a small hand-built `CodingStats` (construct it via `coding_stats.build` from a few `PoolCase`s, or directly) and `load_tables()`: each tool's output lines, the fewer-than-20 warning, invalid codes, the pair section, the phase counts summed across groups and halves.
+- [x] `make check` green; commit.
 
 ## Task 3: Prompts, schemas and menu
 
@@ -134,4 +134,21 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 - **2026-09-29 — H0 reads the structured evidence, not the start facts alone.** The design agreed in conversation said "first hypothesis from the start facts alone". On a closed case the structured fields (pilot, weather) are present, and the read choice should rest on the best hypothesis available before any document; start facts alone would make every read choice look better-informed-by-reading than it is. Andy to confirm.
 - **2026-09-29 — The comparison is the probe's own H_all, not an old arm B run.** H_all uses the same prompt, guidance and evidence version as the probe's other calls, so a difference is the reading, not the prompt.
 - **2026-09-29 — Spend is recorded with `kind="inventory"`.** No existing kind fits and adding one would break `month_spent` on the branches sharing `data/runs`. The job ID (`s3-probe-…`) identifies it. Andy to decide whether a `probe` kind is added on `main` later and the row relabelled.
+- **2026-09-29 (Task 2) — exact text layout chosen where the brief specifies content but not
+  characters.** The brief pins the exact line for `past_findings` (`"{finding10}: {item
+  label} — {modifier label}: {n} of {cases} cases ({share:.0%})"`) and for `describe_codes`'s
+  occurrence case, but leaves `describe_codes`'s `finding_category` block, and
+  `occurrence_usage`'s per-code and pair lines, as prose ("its label and up to 20 items under
+  it"; "cases containing it … the phases … with counts"; "cases with both, and how often each
+  was defining"). `tools.py` renders these as: `finding_category` → `"{code}: {label}"` then
+  one indented `"  {item8}: {label}"` line per item (first 20, sorted by code, with a `"  ...
+  and N more"` line if truncated); `occurrence_usage`'s per-code block → three lines (label,
+  `"  present: N; defining: M (X% of present)"` or `"(no pool cases present)"`, `"  top
+  phases for event EEE: ..."` joined `"; "` or `"none"`); its pair line →
+  `"{a} & {b}: both in N; {a} defining in Na; {b} defining in Nb"`, with an indented `"  events
+  ... across phases: ..."` line added only when `a[:3] != b[:3]` (read as "share no phase").
+  These are internally consistent and covered by exact-text tests in
+  `tests/test_s3_probe_tools.py`, but Task 4/6 code reading these strings, or a future reviewer
+  comparing against the brief, should treat this layout as this implementation's choice, not a
+  quoted requirement.
 - **2026-09-29 (Task 1) — `Settings` has no `processed_dir`.** The brief's `load_cases(settings.processed_dir …)` names a field that does not exist; every caller in the library (`apps/eval/__main__.py`, `scripts/docket_leak_scan.py`) derives it as `settings.data_dir / "processed"`, which `scripts/s3_probe/__main__.py` does too. The docket cache directory is read as `settings.docket_dir` (which `model_post_init` already derives from `data_dir` when unset) rather than `docket_leak_scan.py`'s literal `settings.data_dir / "docket"`; both resolve to the same path by default.
