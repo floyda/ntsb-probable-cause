@@ -307,6 +307,8 @@ def _resolve_run_id(runs_dir: Path, run_id: str | None, latest: Sequence[str] | 
 
 
 def _cmd_baseline(args: argparse.Namespace, settings: Settings) -> None:
+    if args.sample:
+        samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
     ids = samples.sample_ids(args.sample) if args.sample else None
     text = report.baseline_report(settings.data_dir / "processed", ids, load_tables())
     print(text)

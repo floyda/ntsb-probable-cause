@@ -1889,6 +1889,28 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
     assert "sealed" in capsys.readouterr().err
 
 
+def test_baseline_refuses_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval baseline --sample dev-seal-400`` scored the
+    sealed sample today, free and with one flag."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """``--sample`` is optional on ``baseline``; the sealed guard must not fire on ``None``."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline"]) == 0
+
+
 def _write_checkable_run(
     runs: Path,
     run_id: str = "20260926T000000-abc1234-dev-400-B",
@@ -1953,6 +1975,35 @@ def test_check_refuses_a_held_out_run_before_any_client_is_built(
         == 1
     )
     assert "development" in capsys.readouterr().err
+
+
+def test_check_refuses_the_sealed_sample_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval check`` already calls ``refuse_sealed``
+    (``__main__.py``), but no test confirmed it before this one."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    run_id = "20260926T000000-abc1234-dev-seal-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="dev-seal-400", arm="B")
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a sealed run")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a sealed run")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "jev"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "sealed" in capsys.readouterr().err
 
 
 def test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built(
