@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.scoring import baseline
+from ntsb_probable_cause.scoring import baseline, prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.metrics import (
     CaseScores,
@@ -244,15 +244,21 @@ def provenance(record: RunRecord) -> str:
     """
     status = "complete" if record.finished is not None else "ABORTED (partial results)"
     finished = record.finished.isoformat() if record.finished is not None else "-"
+    guidance_line = ""
+    if record.guidance:
+        fingerprint = (record.guidance_sha256 or "")[: prompt.FINGERPRINT_CHARS]
+        guidance_line = f"guidance={'+'.join(record.guidance)} sha256={fingerprint}\n"
     return (
         f"run {record.run_id} [{status}]\n"
         f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
+        f"prompt={record.prompt_version} "
         f"model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
         f"max_output_tokens={record.max_output_tokens} "
         f"price_variant={record.price_variant}\n"
         f"exclusions={','.join(record.exclusions) or '-'} "
         f"includes={','.join(record.includes) or '-'}\n"
+        f"{guidance_line}"
         f"commit={record.commit_sha}{'*' if record.dirty else ''} "
         f"started={record.started.isoformat()} finished={finished}\n"
         f"cases={record.cases} total_cost_usd={record.cost_usd:.4f}\n"

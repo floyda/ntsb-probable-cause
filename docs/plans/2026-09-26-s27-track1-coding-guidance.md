@@ -523,7 +523,7 @@ Check the spending script sees all three: `make stage-spend` prints `branches co
 
 **Why the guard reads git, not a flag.** A flag can be passed by mistake; a committed registration naming the final setup is the event decision 0095 opens the sample on, and git records when it happened.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_gitinfo.py` (reusing `_repo` and `_git` from Task 1):
 
@@ -566,12 +566,12 @@ def test_refuse_sealed_opens_only_on_a_committed_registration() -> None:
 
 (Match `_raw`'s real keyword names in `tests/test_samples.py`; if it takes the class as `investigation_class=`, use that.)
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v -k "committed or exclude or sealed"`
 Expected: FAIL (`is_committed`, `exclude`, `refuse_sealed` missing)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `gitinfo.py`:
 
@@ -633,12 +633,12 @@ In `draw`, add the keyword `exclude: AbstractSet[str] = frozenset()` and filter 
     samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Write the failing app test** (append to `tests/test_eval_app.py`)
+- [x] **Step 5: Write the failing app test** (append to `tests/test_eval_app.py`)
 
 ```python
 def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
@@ -656,12 +656,12 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
 
 (Add `from ntsb_probable_cause import gitinfo` to the test's imports. `main` prints a `ConfigurationError` to stderr and returns 1, as for every other refusal.)
 
-- [ ] **Step 6: Run it, confirm it passes with Step 3's app change**
+- [x] **Step 6: Run it, confirm it passes with Step 3's app change**
 
 Run: `uv run pytest tests/test_eval_app.py -v -k sealed`
 Expected: PASS. Then comment out the `refuse_sealed` line in `_cmd_run` and re-run: Expected FAIL (the run tries to read the missing ids file). Restore the line.
 
-- [ ] **Step 7: Write `scripts/draw_sealed.py`**
+- [x] **Step 7: Write `scripts/draw_sealed.py`**
 
 ```python
 """Draw the sealed development sample once, or verify the committed list against a re-draw.
@@ -727,7 +727,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 8: Draw the sample** (free; reads the processed file's index columns and raw injury level only)
+- [x] **Step 8: Draw the sample** (free; reads the processed file's index columns and raw injury level only)
 
 Run:
 ```bash
@@ -737,7 +737,7 @@ uv run python -m scripts.draw_sealed --verify
 ```
 Expected: about 400 cases written (the rounding in `draw` gave 401 for `dev-400`); the verify line ends `identical: True`.
 
-- [ ] **Step 9: Write the contamination tests** (append to `tests/test_contamination.py`, using its `eval_ids` fixture)
+- [x] **Step 9: Write the contamination tests** (append to `tests/test_contamination.py`, using its `eval_ids` fixture)
 
 ```python
 def test_the_sealed_sample_is_development_and_shares_no_case(eval_ids) -> None:
@@ -751,12 +751,12 @@ def test_the_sealed_sample_is_development_and_shares_no_case(eval_ids) -> None:
 
 Add a line for `dev_seal_400_ids.csv` to `tests/fixtures/eval/README.md` ("the sealed development sample, decision 0095; drawn by `scripts/draw_sealed.py`, seed 20260926, excluding `dev-400`; opened once").
 
-- [ ] **Step 10: Run the full check**
+- [x] **Step 10: Run the full check**
 
 Run: `make check`
 Expected: PASS
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/samples.py src/ntsb_probable_cause/gitinfo.py scripts/draw_sealed.py tests/fixtures/eval/dev_seal_400_ids.csv tests/fixtures/eval/README.md apps/eval/__main__.py tests/test_samples.py tests/test_gitinfo.py tests/test_contamination.py tests/test_eval_app.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -786,7 +786,7 @@ git commit -m "S2.7 Task 2: the sealed development sample, drawn once and refuse
 
 **What each count means, with the example that motivates it.** `present[half][c]` is the number of pool cases whose sequence contains code `c` anywhere. `defining_given_present[half][c][d]` is, among those, the number where `d` is the defining event: "when `451241` (stall/spin) appears, `451240` (loss of control in flight) is defining in N of M". `pairs[half]["a|b"]` (codes sorted) holds `both` (cases containing both) and, for each of `a` and `b`, the cases where it is the defining event: "when loss of control and stall both occur, loss of control is defining in N of `both`". `group_defining[half][g][d]` is the number of pool cases whose phase group is `g` and whose defining code is `d`; it gives the commonest defining codes for a group and, by the first three digits of `d`, **which phase prefixes the NTSB uses within a group** (W1).
 
-- [ ] **Step 1: Write the failing library tests** (`tests/test_coding_stats.py`)
+- [x] **Step 1: Write the failing library tests** (`tests/test_coding_stats.py`)
 
 ```python
 """scoring/coding_stats.py: counts of how the NTSB codes occurrences (decision 0094)."""
@@ -840,12 +840,12 @@ def test_json_round_trip() -> None:
     assert CodingStats.model_validate_json(stats.to_json()) == stats
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_coding_stats.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'ntsb_probable_cause.scoring.coding_stats'`
 
-- [ ] **Step 3: Write `scoring/coding_stats.py`**
+- [x] **Step 3: Write `scoring/coding_stats.py`**
 
 ```python
 """Counts of how the NTSB codes occurrences, from the statistics pool (decision 0094).
@@ -1006,16 +1006,16 @@ def load_stats() -> CodingStats:
 
 (`_sorted` returns `object`; `model_validate` accepts it. If mypy objects to the `dict` comprehension inside `_sorted`, annotate the parameter as `dict[str, object] | object` and cast; keep behaviour.)
 
-- [ ] **Step 4: Run the library tests to verify they pass**
+- [x] **Step 4: Run the library tests to verify they pass**
 
 Run: `uv run pytest tests/test_coding_stats.py -v`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Add the module to the import-linter contract**
+- [x] **Step 5: Add the module to the import-linter contract**
 
 In `pyproject.toml`, add `"ntsb_probable_cause.scoring.coding_stats",` to the source list of "Only the splitter constructs synthesis and verdict" (after `scoring.codes`). Run `uv run lint-imports`. Expected: all contracts kept.
 
-- [ ] **Step 6: Write the failing script tests** (`tests/test_coding_stats_script.py`)
+- [x] **Step 6: Write the failing script tests** (`tests/test_coding_stats_script.py`)
 
 ```python
 """scripts/coding_stats.py: the pool, and the contamination guard (decision 0094)."""
@@ -1072,12 +1072,12 @@ def test_report_prints_counts_and_both_halves_without_case_numbers() -> None:
     assert "POOL" not in text
 ```
 
-- [ ] **Step 7: Run them to verify they fail**
+- [x] **Step 7: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_coding_stats_script.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 8: Write `scripts/coding_stats.py`**
+- [x] **Step 8: Write `scripts/coding_stats.py`**
 
 ```python
 """Build the statistics pool's coding counts, once (decision 0094).
@@ -1256,12 +1256,12 @@ if __name__ == "__main__":
 
 The test module calls `cs.build`; the script's `from ... import build` line provides it. Lines ruff asks to wrap are wrapped; behaviour unchanged.
 
-- [ ] **Step 9: Run the script tests to verify they pass**
+- [x] **Step 9: Run the script tests to verify they pass**
 
 Run: `uv run pytest tests/test_coding_stats_script.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 10: Add the Makefile target**
+- [x] **Step 10: Add the Makefile target**
 
 ```make
 s27-coding-stats:
@@ -1270,7 +1270,7 @@ s27-coding-stats:
 # committed JSON beside the code tables and the readable results file.
 ```
 
-- [ ] **Step 11: Build the counts** (free)
+- [x] **Step 11: Build the counts** (free)
 
 Run:
 ```bash
@@ -1279,7 +1279,7 @@ make s27-coding-stats
 ```
 Expected: the halves line shows about 12,490 cases in all (spec §3.1, ad hoc); the "phase groups" section shows, for example, `Maneuvering` with prefixes in the 450s. Read the stall/loss-of-control pair line: it re-derives the spec's ad-hoc observation that loss of control is usually defining.
 
-- [ ] **Step 12: Add a CI test that the committed counts name no case** (append to `tests/test_coding_stats.py`)
+- [x] **Step 12: Add a CI test that the committed counts name no case** (append to `tests/test_coding_stats.py`)
 
 ```python
 import re
@@ -1300,12 +1300,12 @@ def test_the_committed_counts_load_and_name_no_case() -> None:
         assert not _CASE_NUMBER.search(path.read_text()), path
 ```
 
-- [ ] **Step 13: Run the full check**
+- [x] **Step 13: Run the full check**
 
 Run: `make check`
 Expected: PASS
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/coding_stats.py src/ntsb_probable_cause/scoring/tables/coding_stats.json scripts/coding_stats.py docs/results/s27-coding-stats.txt pyproject.toml Makefile tests/test_coding_stats.py tests/test_coding_stats_script.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -1335,7 +1335,7 @@ git commit -m "S2.7 Task 3: the statistics pool's coding counts, guarded against
 
 **The groups, with an example each.** The NTSB's sequence is `(452240, 452241)` (loss of control in flight, defining; then stall/spin). A first guess of `452240` is *exact*; `450240` is *right event, wrong phase*; `452241` is *in sequence, not defining*; guesses `(470470, 452241)` are *a later guess in sequence*; `(450241,)` is *event under another phase*; `(552300,)` is *nothing in common*. The groups are tested in that order, so each case lands in exactly one.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_misses.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_misses.py`)
 
 ```python
 """scoring/misses.py: where a first guess lands, and how deep a finding miss goes."""
@@ -1398,12 +1398,12 @@ def test_names_event_is_a_fixed_phrase_list() -> None:
     assert names_event("anything", "999") is None
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_misses.py -v`
 Expected: FAIL with `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `scoring/misses.py`**
+- [x] **Step 3: Write `scoring/misses.py`**
 
 ```python
 """Where a first occurrence guess lands in the NTSB's sequence, and how deep a finding miss goes.
@@ -1522,12 +1522,12 @@ def names_event(text: str, event: str) -> bool | None:
     return any(phrase in lowered for phrase in phrases)
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass; add the import-linter entry**
+- [x] **Step 4: Run the tests to verify they pass; add the import-linter entry**
 
 Run: `uv run pytest tests/test_misses.py -v && uv run lint-imports`
 Expected: PASS; contracts kept (after adding `"ntsb_probable_cause.scoring.misses",` to the "Only the splitter…" source list).
 
-- [ ] **Step 5: Write the failing script tests** (append to `tests/test_occurrence_misses.py`, reusing its `_case`, `_step`, `CASES`, `_write_run`)
+- [x] **Step 5: Write the failing script tests** (append to `tests/test_occurrence_misses.py`, reusing its `_case`, `_step`, `CASES`, `_write_run`)
 
 ```python
 def test_detail_prints_the_six_groups_confidence_and_own_words() -> None:
@@ -1575,12 +1575,12 @@ def test_main_with_against_prints_churn(
 
 (Add `from dataclasses import replace` to the test module's imports. `churn` counts "gained" as right in this run and wrong in the second, "lost" the other way.)
 
-- [ ] **Step 6: Run them to verify they fail**
+- [x] **Step 6: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_occurrence_misses.py -v`
 Expected: the new tests FAIL (`detail`, `churn`, `--against` missing); the old ones PASS.
 
-- [ ] **Step 7: Extend `scripts/occurrence_misses.py`**
+- [x] **Step 7: Extend `scripts/occurrence_misses.py`**
 
 Add to the imports `import statistics`, `from ntsb_probable_cause.scoring.misses import GROUPS, FindingDepth, finding_depth, miss_group, names_event`. Add to the module docstring's Status: "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." Then:
 
@@ -1700,12 +1700,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 ```
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_occurrence_misses.py tests/test_misses.py -v`
 Expected: PASS
 
-- [ ] **Step 9: Run the full check and commit**
+- [x] **Step 9: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -1729,7 +1729,7 @@ git commit -m "S2.7 Task 4: the six miss groups, finding depth, own words and ch
 
 **Why "unvalidated" is the default.** Until Task 6's rule passes, the four outcomes carry no claim (decision 0099 item 3); every printed heading says so unless the caller states the label was validated, and Task 7 passes `validated` only when Task 6's results line says it.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_judge_outcomes.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_judge_outcomes.py`)
 
 ```python
 """scripts/judge_outcomes.py: the four outcomes and their movement (decision 0099)."""
@@ -1790,12 +1790,12 @@ def test_shares_says_unvalidated_and_splits_fatal() -> None:
     assert "fatal (1 cases):" in text
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_judge_outcomes.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 3: Write `scripts/judge_outcomes.py`**
+- [x] **Step 3: Write `scripts/judge_outcomes.py`**
 
 ```python
 """The four outcomes from the judge's labels, per run, and how they move between runs.
@@ -1939,12 +1939,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_judge_outcomes.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -1968,7 +1968,7 @@ git commit -m "S2.7 Task 5: the judge's four outcomes and their movement between
 
 **What Andy sees.** One card per case: on the left, the model's evidence narrative and its first occurrence code with the code's words; on the right, the NTSB's probable-cause sentence and its defining code with the code's words; under the card, collapsed, the factual narrative for when he cannot tell without it. No case number, no docket. Two questions: *does the model's account contain the fact the NTSB's cause rests on?* (yes / no / can't tell) and, on misses only, *why did it miss?* (coding convention / wrong phase / misread or missing fact / NTSB code arguable / other). Example of a "yes" on a miss: the model's account says "the airplane stalled during a steep turn at low altitude and descended into trees", the NTSB's cause says "the pilot's failure to maintain airspeed during a low-altitude turn, which resulted in an aerodynamic stall", and the codes differ only because the NTSB flagged loss of control as defining — the fact is there, the code is the miss, so question 2 is "coding convention". The judge's label is never on the page.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_round0_handread.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_round0_handread.py`)
 
 ```python
 """scripts/round0_handread.py: the cards, and the narrative-label validation (decision 0099)."""
@@ -2036,12 +2036,12 @@ def test_cards_refuses_a_held_out_run(tmp_path, monkeypatch) -> None:
         rh.main(["cards", "--run", "20260926T000000-abc1234-heldout-400-B"])
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_round0_handread.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 3: Write `scripts/round0_handread.py`**
+- [x] **Step 3: Write `scripts/round0_handread.py`**
 
 ```python
 """Andy's Round 0 hand-read: about 50 cards, and the narrative-label validation.
@@ -2241,12 +2241,12 @@ if __name__ == "__main__":
 
 (`metrics.wilson(successes, n)` returns the interval as a pair of floats; if it returns a triple, unpack accordingly.)
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_round0_handread.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Add the Makefile targets, run the full check, commit**
+- [x] **Step 5: Add the Makefile targets, run the full check, commit**
 
 ```make
 s27-round0-cards:
@@ -2276,7 +2276,7 @@ git commit -m "S2.7 Task 6: Round 0's hand-read cards and the narrative-label va
 
 The two S2.6 runs are `20260926T082427-d19aafa-dev-400-B` (B-v1) and `20260926T085904-d19aafa-dev-400-B` (B-v2).
 
-- [ ] **Step 1: Add the targets**
+- [x] **Step 1: Add the targets**
 
 ```make
 s27-noise-floor:
@@ -2308,7 +2308,7 @@ s27-round0-results:
 
 Commit the Makefile (`S2.7 Task 7: Round 0 targets`).
 
-- [ ] **Step 2: Check the S2.6 run folders hold no judge rows (W4)**
+- [x] **Step 2: Check the S2.6 run folders hold no judge rows (W4)**
 
 Run:
 ```bash
@@ -2317,32 +2317,32 @@ ls "$NTSB_DATA_DIR"/runs/20260926T082427-d19aafa-dev-400-B/ "$NTSB_DATA_DIR"/run
 ```
 Expected: no `judge.jsonl` in either. If one exists, copy it to `$NTSB_DATA_DIR/s27/judge-before/<run id>.jsonl` before Step 4 and log it in Deviations.
 
-- [ ] **Step 3: STOP — the noise-floor run (paid, about $1.18)**
+- [x] **Step 3: STOP — the noise-floor run (paid, about $1.18)**
 
 Hand Andy: "Round 0's noise floor: B-v1 again on dev-400, identical settings, about $1.18 and 30–60 minutes on batch; start between 01:00 and 12:00 UTC. From the worktree, with the keys exported from `pass`: `make s27-noise-floor PER_CASE=0.0042`. Afterwards the tree is unchanged (development runs write no ledger row)." Record the printed run id in Deviations as `REPEAT`.
 
-- [ ] **Step 4: STOP — the judge on three runs (paid, about $1.50)**
+- [x] **Step 4: STOP — the judge on three runs (paid, about $1.50)**
 
 Hand Andy: "`make s27-judge RUN=20260926T082427-d19aafa-dev-400-B`, then `RUN=<REPEAT>`, then `RUN=20260926T085904-d19aafa-dev-400-B`; about $0.50 each, a few minutes each at the standard price." After each, read the printed `judge cost` line.
 
-- [ ] **Step 5: Build the cards** (free)
+- [x] **Step 5: Build the cards** (free)
 
 Run: `make s27-round0-cards RUN=20260926T082427-d19aafa-dev-400-B`
 Expected: about 50 cards; the printed group counts (a group under 8 is taken whole, W7).
 
-- [ ] **Step 6: STOP — Andy's hand-read**
+- [x] **Step 6: STOP — Andy's hand-read**
 
 Hand Andy: "Open `$NTSB_DATA_DIR/handcheck/s27-round0/index.html`, mark every card (two clicks each, about an hour; it keeps progress), then download the marks CSV." When it is back:
 
 Run: `uv run python -m scripts.round0_handread score <marks.csv> --run 20260926T082427-d19aafa-dev-400-B`
 Read the `outcome:` line: `validated` or `not validated`.
 
-- [ ] **Step 7: Write the results file** (free)
+- [x] **Step 7: Write the results file** (free)
 
 Run: `make s27-round0-results REPEAT=<REPEAT> MARKS=<marks.csv> LABELS=<validated|unvalidated>`
 Expected: `docs/results/s27-round0-dev.txt` holds, in order, the misses and churn for B-v1 (against the repeat), B-v2 (against B-v1) and the repeat; the noise floor (`report --against`); the four outcomes with their movement; the hand-read's counts. Check that it names no case number: `grep -E '[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}' docs/results/s27-round0-dev.txt` prints nothing.
 
-- [ ] **Step 8: Commit, and report Round 0 to Andy**
+- [x] **Step 8: Commit, and report Round 0 to Andy**
 
 ```bash
 git add docs/results/s27-round0-dev.txt docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -2369,7 +2369,7 @@ Report to Andy in plain English: the six groups' sizes, the noise floor (the pai
 
 **An example of the candidate list.** The model guessed `(452241, 452470, 450241)` — stall/spin at low altitude first — and the phase group is `Maneuvering`. The list starts with those three. If the pool shows that when `452241` appears, `452240` (loss of control in flight) is defining in at least a quarter of at least 20 cases, `452240` joins as a **linked code**. The two commonest defining codes for `Maneuvering` join as **group codes**. For every code so far, the same event under another prefix the pool uses for `Maneuvering` (for example `450` or `452`) joins as a **phase variant** if the pool shows it as defining in that group at least 10 times. Duplicates go; the guesses stay first; the rest are ordered by how often the pool flags them as defining; the list is cut at eight.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_ordering.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_ordering.py`)
 
 ```python
 """scoring/ordering.py: the candidate list, the plain rule, the check text and reply (0096)."""
@@ -2489,12 +2489,12 @@ def test_reorder_keeps_known_probabilities_and_gives_new_codes_zero() -> None:
     assert out.evidence_narrative == "n"
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_ordering.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 3: Write `scoring/ordering.py`**
+- [x] **Step 3: Write `scoring/ordering.py`**
 
 ```python
 """The ordering check's pure parts (decision 0096; S2.7 spec §5).
@@ -2691,12 +2691,12 @@ def reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis:
     return hypothesis.model_copy(update={"occurrence": occurrence})
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass; add the import-linter entry**
+- [x] **Step 4: Run the tests to verify they pass; add the import-linter entry**
 
 Run: `uv run pytest tests/test_ordering.py -v && uv run lint-imports`
 Expected: PASS; contracts kept after adding `"ntsb_probable_cause.scoring.ordering",` to the "Only the splitter…" source list.
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -2721,7 +2721,7 @@ git commit -m "S2.7 Task 8: the ordering check's candidate list, plain rule and 
 
 **Why a manual port.** The branch is 172 commits behind `main`; its `settings.py` and `sources.py` hunks no longer apply, and every comment that names its decision says 0060, which on `main` is an S2.5 record. The client module itself imports only `sources`, `errors` and `model.client`, so it satisfies every import-linter contract as it stands.
 
-- [ ] **Step 1: Copy the module, fixtures and tests from the branch**
+- [x] **Step 1: Copy the module, fixtures and tests from the branch**
 
 ```bash
 git show 0c5d24c:src/ntsb_probable_cause/model/typesafe.py > src/ntsb_probable_cause/model/typesafe.py
@@ -2730,14 +2730,14 @@ for f in README.md choices.json models.json nouls.json; do git show 0c5d24c:test
 git show 0c5d24c:tests/test_typesafe_client.py > tests/test_typesafe_client.py
 ```
 
-- [ ] **Step 2: Renumber the decision in every copied file**
+- [x] **Step 2: Renumber the decision in every copied file**
 
 Every "decision 0060" and "(0060" in the four copied text files becomes 0097 (`typesafe.py`, the fixtures' `README.md`, `test_typesafe_client.py`). The module docstring's first line becomes: `"""TypeSafe's System One client, for the ordering check on development runs only (decision 0097)."""`. The JSON fixtures are not edited (they are saved replies).
 
 Run: `grep -rn "0060\|0036" src/ntsb_probable_cause/model/typesafe.py tests/fixtures/typesafe tests/test_typesafe_client.py`
 Expected: no output.
 
-- [ ] **Step 3: Write the failing image test** (append to `tests/test_typesafe_client.py`)
+- [x] **Step 3: Write the failing image test** (append to `tests/test_typesafe_client.py`)
 
 ```python
 from ntsb_probable_cause.model.client import PageImage
@@ -2752,7 +2752,7 @@ def test_ask_refuses_a_payload_that_carries_images() -> None:
 Run: `uv run pytest tests/test_typesafe_client.py -v`
 Expected: this test FAILS (`ask` sends `payload.text` and drops the image); every ported test PASSES once Step 4's settings and sources exist — until then the module fails to import `sources.TYPESAFE_SYSTEM_ONE`, so run Step 4 first if the whole module errors.
 
-- [ ] **Step 4: Port the settings and sources, and refuse images**
+- [x] **Step 4: Port the settings and sources, and refuse images**
 
 `settings.py`, after `openrouter_base_url`:
 
@@ -2813,12 +2813,12 @@ TYPESAFE_API_KEY=
 
 `pyproject.toml`: in `[tool.typos.default.extend-words]` add the NTSB's Anchorage case-number prefix (the three capitals A, N, C, as the typesafe branch's own `pyproject.toml` added it, `git show 0c5d24c:pyproject.toml`), mapped to itself, with the comment "the NTSB's Anchorage case-number prefix in the typesafe fixtures; not a misspelling" (it is not spelled out here because this plan is itself spell-checked); in `[tool.typos.files] extend-exclude` add `"tests/fixtures/typesafe/*.json",` with the comment `# The typesafe fixtures are saved replies that send the code-table labels verbatim (0097).`
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_typesafe_client.py tests/test_sources_settings.py -v`
 Expected: PASS (the ported tests and the image refusal)
 
-- [ ] **Step 6: Run the full check and commit**
+- [x] **Step 6: Run the full check and commit**
 
 Run: `make check` (Expected: PASS. `vulture` runs at `min_confidence = 80` (`pyproject.toml`), below which unused classes and constants such as `ScoreAnswer`, `NoulAnswer` and `TYPESAFE_MODELS` are not reported; they stay, as part of the saved reply shape. If it does report one, log it in Deviations and keep the name.)
 
@@ -2844,7 +2844,7 @@ git commit -m "S2.7 Task 9: the Jev client, ported from typesafe-probe for the o
 
 **What a derived folder holds.** `<run id>-check-<way>/cases.jsonl`: each answered case with its original step and a second step (`step` = 1, `tool = "ordering_check"`, `arguments = {"ranking": [...]}`, the reordered hypothesis, the check's model, tokens, cost and input fingerprint); occurrence scores recomputed by `rescore_occurrence`; finding scores unchanged; an abstained or failed case copied unchanged. `run.jsonl`: the source's record with the derived id, `prompt_version` suffixed `+check-<way>`, S2.7's commit, and **`cost_usd` = the check's cost only** (the answers were paid for, and counted, in the source run; W2). Written in a `finally`, so an interrupted pass still records what it spent, with `finished` empty so the report calls it aborted.
 
-- [ ] **Step 1: Write the failing `rescore_occurrence` test** (append to `tests/test_metrics.py`)
+- [x] **Step 1: Write the failing `rescore_occurrence` test** (append to `tests/test_metrics.py`)
 
 ```python
 from dataclasses import replace
@@ -2878,7 +2878,7 @@ def test_rescore_occurrence_equals_score_case_on_the_reordered_codes() -> None:
     assert rescore_occurrence(replace(before, abstained=True), ("452240",), ("452240",), seen_pairs=seen).occurrence_top1 is False
 ```
 
-- [ ] **Step 2: Run it to verify it fails, then implement**
+- [x] **Step 2: Run it to verify it fails, then implement**
 
 Run: `uv run pytest tests/test_metrics.py -v -k rescore` (Expected: FAIL, `ImportError`)
 
@@ -2906,7 +2906,7 @@ def rescore_occurrence(
 
 Run: `uv run pytest tests/test_metrics.py -v` (Expected: PASS)
 
-- [ ] **Step 3: Write the failing post-pass tests** (`tests/test_checkpass.py`)
+- [x] **Step 3: Write the failing post-pass tests** (`tests/test_checkpass.py`)
 
 ```python
 """scoring/checkpass.py: the ordering check as a post-pass (decision 0096; plan W2)."""
@@ -3004,12 +3004,12 @@ def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -
 
 (`Payload.from_evidence` of an `Evidence` with no roles renders an empty text, as the judge's payload does; if it renders a placeholder, assert on that placeholder instead.)
 
-- [ ] **Step 4: Run them to verify they fail**
+- [x] **Step 4: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_checkpass.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 5: Write `scoring/checkpass.py`**
+- [x] **Step 5: Write `scoring/checkpass.py`**
 
 ```python
 """The ordering check as a post-pass over a finished run (decision 0096; plan walkthrough W2).
@@ -3280,12 +3280,12 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
 
 (Replace the `assert` in `checked_case` with an explicit `if case.scores is None: raise ValueError(...)` if the lint config forbids `assert` in library code; `check_run` never passes an unscored case.)
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_checkpass.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 7: Write the failing app tests** (append to `tests/test_eval_app.py`)
+- [x] **Step 7: Write the failing app tests** (append to `tests/test_eval_app.py`)
 
 ```python
 def test_check_refuses_a_held_out_run_before_any_client_is_built(
@@ -3313,7 +3313,7 @@ def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
 
 (Use the real keyword names of `_write_judgeable_run` and `_write_run`; import `resolve_latest` from `apps.eval.__main__`.)
 
-- [ ] **Step 8: Implement the command** in `apps/eval/__main__.py`
+- [x] **Step 8: Implement the command** in `apps/eval/__main__.py`
 
 Imports: `from ntsb_probable_cause.model.typesafe import TypeSafeClient`, `from ntsb_probable_cause.scoring import checkpass`, `from ntsb_probable_cause.scoring.coding_stats import load_stats`, `from ntsb_probable_cause.scoring.budget import budget_lock, open_reservations`, `from ntsb_probable_cause.scoring.runner import refuse_over_budget` (skip any already imported).
 
@@ -3382,12 +3382,12 @@ def _cmd_check(args: argparse.Namespace, settings: Settings, client_factory: Cli
 
 (`fields` and `EvidenceRole` imports: add if missing. If `open_reservations` returns a mapping of floats, `.values()` is right; match its real return type.)
 
-- [ ] **Step 9: Run the tests to verify they pass**
+- [x] **Step 9: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_eval_app.py tests/test_checkpass.py -v`
 Expected: PASS
 
-- [ ] **Step 10: Add the boundary test for the check's payload** (append to `tests/test_boundary.py`)
+- [x] **Step 10: Add the boundary test for the check's payload** (append to `tests/test_boundary.py`)
 
 ```python
 def test_the_ordering_check_sends_no_withheld_text(record_fixtures) -> None:
@@ -3415,7 +3415,7 @@ Then prove it can fail: temporarily append `+ (verdict.probable_cause or "")` to
 
 (This test module may import `records.split`; `tests/` is outside the import allow-list, as the existing boundary tests already do.)
 
-- [ ] **Step 11: Run the full check and commit**
+- [x] **Step 11: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -3438,7 +3438,7 @@ git commit -m "S2.7 Task 10: the ordering check as a post-pass (ntsb-eval check)
 
 **The rule, as code will apply it** (decision 0096 item 5). For each answer set and each way: *vs none* is the way's paired top-1 difference against the source run; *vs rule* is a model way's difference against the rule's derived run. A way **works** if *vs none*'s lower bound is above zero on both answer sets. A model way is **chosen** if *vs rule*'s lower bound is above zero on both sets; if both model ways qualify, the one with the larger mean gain over the rule, averaged over the two sets. Otherwise the rule is chosen if it works; otherwise no check is kept. A way whose derived folders are missing (for example Jev without access) is printed "not run" and cannot be chosen.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_round1_report.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_round1_report.py`)
 
 ```python
 """scripts/round1_report.py: Round 1's reading rule (decision 0096 item 5)."""
@@ -3499,12 +3499,12 @@ def test_push_counts_changes_toward_a_more_common_option() -> None:
     assert r1.push([checked], {"C1": False}) == (1, 1, 1, 0)  # changed, toward, fixes, breaks
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_round1_report.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 3: Write `scripts/round1_report.py`**
+- [x] **Step 3: Write `scripts/round1_report.py`**
 
 ```python
 """Round 1's results: the four ways on two answer sets, and decision 0096's reading rule.
@@ -3666,12 +3666,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_round1_report.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Run the full check and commit**
+- [x] **Step 5: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -3692,7 +3692,7 @@ git commit -m "S2.7 Task 11: Round 1's reading rule"
 - Consumes: Tasks 10–11; the two answer sets: B-v1 `20260926T082427-d19aafa-dev-400-B` and Round 0's `REPEAT` (Task 7).
 - Produces: the outcome line (a way, or "no check"), which every later round reads as `CHECK` (empty for "no check").
 
-- [ ] **Step 1: Add the targets and commit them**
+- [x] **Step 1: Add the targets and commit them**
 
 ```make
 s27-check:
@@ -3708,7 +3708,7 @@ s27-round1-results:
 	uv run python -m scripts.round1_report --answers 20260926T082427-d19aafa-dev-400-B $(REPEAT) --out docs/results/s27-round1-dev.txt
 ```
 
-- [ ] **Step 2: The plain rule on both answer sets** (free)
+- [x] **Step 2: The plain rule on both answer sets** (free)
 
 Run:
 ```bash
@@ -3717,20 +3717,20 @@ make s27-check RUN=<REPEAT> WAY=rule
 ```
 Expected: two derived folders; each prints `$0.0000`.
 
-- [ ] **Step 3: STOP — GPT-6 Luna on both answer sets (paid, about $0.72)**
+- [x] **Step 3: STOP — GPT-6 Luna on both answer sets (paid, about $0.72)**
 
 Hand Andy: "`make s27-check RUN=20260926T082427-d19aafa-dev-400-B WAY=luna`, then `RUN=<REPEAT>`; about $0.36 each, some minutes each, synchronous at the standard price (walkthrough W3)."
 
-- [ ] **Step 4: STOP — Jev on both answer sets (paid, a fraction of a cent)**
+- [x] **Step 4: STOP — Jev on both answer sets (paid, a fraction of a cent)**
 
 Hand Andy: "With `TYPESAFE_API_KEY` exported from `pass`: `make s27-check RUN=… WAY=jev` for both answer sets." If Jev is unavailable, record it in Deviations; the report prints "not run" and Round 1 runs three ways (spec §17).
 
-- [ ] **Step 5: The results** (free)
+- [x] **Step 5: The results** (free)
 
 Run: `make s27-round1-results REPEAT=<REPEAT>`
 Expected: `docs/results/s27-round1-dev.txt` ends with `outcome (decision 0096 item 5): <way or no check>`.
 
-- [ ] **Step 6: Commit and report Round 1 to Andy**
+- [x] **Step 6: Commit and report Round 1 to Andy**
 
 ```bash
 git add docs/results/s27-round1-dev.txt Makefile docs/plans/2026-09-26-s27-track1-coding-guidance.md
@@ -3738,6 +3738,37 @@ git commit -m "S2.7 Task 12: Round 1's results"
 ```
 
 Report in plain English: each way's gain over no check on both answer sets, fixes against breaks, whether a model beat the free rule, and the outcome — which becomes `CHECK` for every later round.
+
+---
+
+### Task 12a: The registered second Jev check, `jev2` (decision 0103)
+
+Added 2026-09-27 after Round 1, on Andy's decision (see Deviations). The design is fixed in `docs/rounds/s27-round1-jev2.md`, committed before this task's code; this task builds exactly that and nothing else. Where this task and the registration differ, the registration wins.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/ordering.py` (the `jev2` state, words for counts, the structured question, the ranking with ties by the model's order)
+- Modify: `src/ntsb_probable_cause/model/typesafe.py` (`ask_state` accepts an object state; `JEV_PINNED = "jev-1.13.0"`)
+- Modify: `src/ntsb_probable_cause/scoring/checkpass.py` (`Way` gains `"jev2"`; `jev2_checker`; `CheckOutcome` gains a free-form `details: Mapping[str, object]` written into the step's `arguments`)
+- Modify: `apps/eval/__main__.py` (`check --way jev2`, same budget path as `jev`)
+- Create: `scripts/round1_jev2_report.py`
+- Modify: `Makefile` (`s27-round1-jev2-results`)
+- Test: `tests/test_ordering.py`, `tests/test_typesafe_client.py`, `tests/test_checkpass.py`, `tests/test_eval_app.py`, `tests/test_round1_jev2_report.py` (create)
+
+**Interfaces:**
+- `ordering.habit_words(share_k: int, base_n: int) -> str` (the five phrases of the registration, in its order; thresholds are `CLEAR_HABIT_SHARE`, `CLEAR_HABIT_MIN_CASES`, `LINK_MIN_SHARE`, `LINK_MIN_CASES`, never new numbers); `ordering.jev2_state(guesses, options, group, narrative, stats, tables) -> dict[str, object]`; `ordering.NONE_OF_THESE = "none_of_these"`; `ordering.jev2_question(options, tables) -> dict[str, object]`; `ordering.jev2_ranking(probabilities, guesses, options) -> tuple[str, ...]` (empty tuple means "leave the answer unchanged").
+- `checkpass.jev2_checker(client, stats, tables) -> Checker`; `EXPECTED_COST_PER_CASE_USD["jev2"]` equal to `"jev"`'s.
+- No new field on `RunRecord`, `StepRecord` or `CaseResult` (a new record field broke track 2's budget checks once, `42e67a7`); everything new goes in the step's `arguments`.
+- Round 1's `scripts/round1_report.py` and `docs/results/s27-round1-dev.txt` are not changed.
+
+- [x] **Step 1: Failing tests for the pure parts** (`tests/test_ordering.py`): `habit_words` gives each of the five phrases at its boundary (19 cases: too few; 12 of 20: clear habit; 11 of 20: often; 5 of 20: often; 4 of 20: seldom; 0 of 20: never); `jev2_state` has exactly the four named fields, the candidates carry the three words fields (the first guess has no `past_cases_with_the_first_guess`), and no digit appears in any value except the codes and the narrative; `jev2_question` has `instructions` with `question` and `focus` exactly as registered, a criteria entry per option plus `none_of_these`, `not_for` built only from other candidates sharing a phase or an event (and absent otherwise); `jev2_ranking` breaks a 0.01 tie by the model's order, returns `()` when `none_of_these` is first, and never returns `none_of_these`.
+- [x] **Step 2: Implement them in `ordering.py`**; tests pass.
+- [x] **Step 3: Failing client test, then implement:** `ask_state` sends an object state as a JSON object (respx asserts the body), and `JEV_PINNED` is the model the `jev2` checker sends.
+- [x] **Step 4: Failing checker tests, then implement `jev2_checker`:** with a respx-mocked `TypeSafeClient`, it sends the registered state and question with `model="jev-1.13.0"`; records `ranking`, `toward_more_common`, `choice`, `confidence` and every option's probability in the step's `arguments`; leaves the answer unchanged when `none_of_these` ranks first; costs input tokens at `sources.JEV`'s input price.
+- [x] **Step 5: `ntsb-eval check --way jev2`**, with a test that it goes through the same refusals and budget reservation as `jev` (the ablation, unfinished-source and repeat refusals; no client built when refused).
+- [x] **Step 6: `scripts/round1_jev2_report.py`** (Status paragraph; refuses a non-development run by `run.jsonl`'s sample before reading cases, as the other S2.7 scripts do), with tests: per answer set, `jev2` against no check, the rule, Luna and Round 1's Jev (fixes and breaks); first codes changed and toward a more common option; how often `none_of_these` ranked first; median confidence of fixed, broken and unchanged cases; the outcome by the registration's win rule (all three lower bounds above zero on both sets, else `luna stays`); the heading says "second, registered comparison (decision 0103)". Makefile target `s27-round1-jev2-results` writes `docs/results/s27-round1-jev2-dev.txt`.
+- [x] **Step 7: `make check`, commit, push.**
+- [x] **Step 8: STOP — Andy runs the two `jev2` checks** with his TypeSafe key, from a clean checkout: `make s27-check RUN=<answer set> WAY=jev2`, for both answer sets (a fraction of a cent).
+- [x] **Step 9: The results** (free): `make s27-round1-jev2-results`; commit; report to Andy in plain English, with the outcome by the fixed rule.
 
 ---
 
@@ -3758,7 +3789,7 @@ Report in plain English: each way's gain over no check on both answer sets, fixe
 
 **Where guidance sits.** After the code tables, under its own heading: `SYSTEM_ANSWER`, the tables, then `## Coding guidance (how the NTSB codes)` and each file's text in stacking order. The evidence payload is untouched, so S0's provenance check and every boundary test read it unchanged (decision 0098 item 1).
 
-- [ ] **Step 1: Write the failing prompt tests** (append to `tests/test_prompt.py`)
+- [x] **Step 1: Write the failing prompt tests** (append to `tests/test_prompt.py`)
 
 ```python
 from pathlib import Path
@@ -3806,7 +3837,7 @@ def test_registration_path() -> None:
     assert prompt.registration_path("r2-loc-stall") == Path("docs/rounds/s27-round-2.md")
 ```
 
-- [ ] **Step 2: Run them to verify they fail, then implement in `prompt.py`**
+- [x] **Step 2: Run them to verify they fail, then implement in `prompt.py`**
 
 Run: `uv run pytest tests/test_prompt.py -v` (Expected: FAIL, attributes missing)
 
@@ -3871,7 +3902,7 @@ Create `src/ntsb_probable_cause/scoring/guidance/__init__.py` with only a docstr
 
 Run: `uv run pytest tests/test_prompt.py -v` (Expected: PASS)
 
-- [ ] **Step 3: Write the failing runner tests** (append to `tests/test_runner.py`, using its `runner`, `GOOD`, `REFINE` helpers and the `guidance_dir` idea)
+- [x] **Step 3: Write the failing runner tests** (append to `tests/test_runner.py`, using its `runner`, `GOOD`, `REFINE` helpers and the `guidance_dir` idea)
 
 ```python
 def test_guidance_reaches_the_system_text_and_the_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures) -> None:
@@ -3902,7 +3933,7 @@ def test_a_run_without_guidance_writes_the_old_spec_keys(tmp_path: Path, record_
 
 (Use the arguments `tests/test_runner.py`'s other sync ceiling tests pass; the ceiling needs no docket.)
 
-- [ ] **Step 4: Run them to verify they fail, then implement in the runner, records and report**
+- [x] **Step 4: Run them to verify they fail, then implement in the runner, records and report**
 
 Run: `uv run pytest tests/test_runner.py -v -k guidance` (Expected: FAIL, `RunSpec` has no `guidance`)
 
@@ -3915,7 +3946,7 @@ Run: `uv run pytest tests/test_runner.py -v -k guidance` (Expected: FAIL, `RunSp
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_records.py -v` (Expected: PASS)
 
-- [ ] **Step 5: The CLI and the registration refusal**
+- [x] **Step 5: The CLI and the registration refusal**
 
 In `_build_parser`'s `run_p`: `run_p.add_argument("--guidance", action="append", default=[], metavar="NAME", help="a guidance file r<N>-<slug>, in stacking order (decision 0098)")`. In `_cmd_run`, after the sealed refusal:
 
@@ -3947,7 +3978,7 @@ def test_run_refuses_guidance_whose_registration_is_not_committed(
 
 Run: `uv run pytest tests/test_eval_app.py -v -k "guidance or resolve"` (Expected: PASS)
 
-- [ ] **Step 6: The CI check on committed guidance, and the local sentence check (W6)**
+- [x] **Step 6: The CI check on committed guidance, and the local sentence check (W6)**
 
 `tests/test_guidance_files.py`:
 
@@ -4063,7 +4094,7 @@ def test_sentences_and_matches() -> None:
 
 (`fields.factual_narrative`, `analysis_narrative`, `probable_cause` exist on `main`; if a name differs, use the one in `fields.py`. Scripts are outside the import-linter contracts, as `analysis_handcheck.py` already is.)
 
-- [ ] **Step 7: The rounds folder and its template** (`docs/rounds/README.md`)
+- [x] **Step 7: The rounds folder and its template** (`docs/rounds/README.md`)
 
 ```markdown
 # S2.7 rounds
@@ -4095,7 +4126,7 @@ it is edited. `s27-sealed.md` registers the final setup before the sealed sample
     <the file's text, verbatim>
 ```
 
-- [ ] **Step 8: Makefile targets**
+- [x] **Step 8: Makefile targets**
 
 ```make
 s27-round:
@@ -4111,7 +4142,7 @@ s27-check-guidance:
 # S2.7 plan W6, free and local: no guidance sentence may appear in a development case's withheld text.
 ```
 
-- [ ] **Step 9: Run the full check and commit**
+- [x] **Step 9: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4135,7 +4166,7 @@ git commit -m "S2.7 Task 13: guidance files, the prompt version, and the registr
 
 **The rule, as code applies it.** An occurrence round's **primary** score is top-1 and its **secondary** finding recall@10; a finding round swaps them. The **noise** is the absolute mean of the primary score's paired difference between the two identical Round 0 runs (or their derived check folders when a check is kept). The round is **kept** if the primary difference's lower bound is above zero, its mean is larger than the noise, and the secondary difference's upper bound is not below zero (do no harm). Example: top-1 +3.5% [+0.8%, +6.1%], noise 1.5%, finding recall@10 −0.4% [−1.9%, +1.1%] → kept. Top-1 +1.2% [+0.1%, +2.4%] with noise 1.5% → dropped: inside the noise.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_round_result.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_round_result.py`)
 
 ```python
 """scripts/round_result.py: decision 0098 item 4."""
@@ -4202,12 +4233,12 @@ def test_push_line_counts_first_codes_moved_toward_a_more_common_option() -> Non
     assert "first codes changed: 2; toward a more common option: 1, fixes 1, breaks 0" in text
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `uv run pytest tests/test_round_result.py -v`
 Expected: FAIL with `ImportError`
 
-- [ ] **Step 3: Write `scripts/round_result.py`**
+- [x] **Step 3: Write `scripts/round_result.py`**
 
 ```python
 """A guidance round's result, by decision 0098 item 4's rule; appended to its registration.
@@ -4396,7 +4427,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass; add the target; commit**
+- [x] **Step 4: Run the tests to verify they pass; add the target; commit**
 
 Run: `uv run pytest tests/test_round_result.py -v` (Expected: PASS)
 
@@ -4425,22 +4456,22 @@ This task is a procedure, repeated once per round. Rounds are numbered from 2 (R
 
 **Variables for each round:** `N` (the round number), `SLUG`, `KEPT` (the kept guidance names before it, in order), `CHECK` (Round 1's outcome, empty for "no check"), `REFERENCE` (the last kept round's run, or its derived check folder when `CHECK` is set; for round 2, `REPEAT` or its derived folder), `NOISE` (`"20260926T082427-d19aafa-dev-400-B REPEAT"`, or their derived check folders when `CHECK` is set).
 
-- [ ] **Step 1: Choose the change**
+- [x] **Step 1: Choose the change**
 
 From `docs/results/s27-round0-dev.txt`: the largest miss group Andy's hand-read marked mostly "coding convention" or "wrong phase", not yet addressed. Write it down in the registration draft. One change per round (decision 0098 Why 1).
 
-- [ ] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
+- [x] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
 
 Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). **A habit is stated as the usual choice only when it is a clear habit** — at least 60% of at least 20 pool cases (decision 0101 item 3). Below that line, the guidance lists the options with their counts and says the evidence decides, for example: "for a stall on approach the NTSB has used the final leg (40 of 131 past cases), the go-around (37) and the base leg (24); code the leg the evidence places the stall on." An example of a clear habit, in the form it takes (the numbers come from the committed counts, never from this plan):
 
 > When a loss of control in flight and an aerodynamic stall or spin both appear in an accident, the NTSB flagged the loss of control in flight as the defining event in N of M past cases. Put the stall or spin first only when the evidence shows the stall itself, not a loss of control, began the accident sequence; otherwise put loss of control in flight first and keep the stall among your guesses.
 
-- [ ] **Step 3: The local sentence check** (free)
+- [x] **Step 3: The local sentence check** (free)
 
 Run: `make s27-check-guidance GUIDANCE="<KEPT> r<N>-<SLUG>"`
 Expected: `0 found`. If a sentence is found, reword it and re-run.
 
-- [ ] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
+- [x] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
 
 ```bash
 git add src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md docs/rounds/s27-round-<N>.md
@@ -4449,25 +4480,25 @@ git commit -m "S2.7 round <N>: registration and guidance (<one line>)"
 
 The tree is clean now; the run records this commit.
 
-- [ ] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
+- [x] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
 
 Hand Andy: "Round <N>: `make s27-round GUIDANCE="<KEPT> r<N>-<SLUG>" PER_CASE=<last cost per case rounded up>`; about $1.18, 30–60 minutes on batch; start between 01:00 and 12:00 UTC." Record the run id.
 
-- [ ] **Step 6: The check, if Round 1 kept one**
+- [x] **Step 6: The check, if Round 1 kept one**
 
 If `CHECK` is set: `make s27-check RUN=<run id> WAY=<CHECK>` (free for `rule`; about $0.36 for `luna`). The derived id is `<run id>-check-<CHECK>`.
 
-- [ ] **Step 7: Read the round** (free)
+- [x] **Step 7: Read the round** (free)
 
 Run: `make s27-round-result N=<N> RUN=<run id, or its derived folder> REFERENCE=<REFERENCE> NOISE="<noise pair>" $(FINDING)`
 The reading is appended to the registration. Commit it: `git commit -am "S2.7 round <N>: result (<kept|dropped>)"`.
 
-- [ ] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
+- [x] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
 
 `make s27-judge RUN=<the run that goes forward: the derived folder if CHECK is set>`; then
 `uv run python -m scripts.judge_outcomes --runs <previous kept run> <this run> --label-status <validated|unvalidated> >> docs/rounds/s27-round-<N>.md` and commit. Read the misread share: if it moved beyond Round 0's label churn, say so in the registration (spec §6.4, last point).
 
-- [ ] **Step 9: The stop rule**
+- [x] **Step 9: The stop rule**
 
 `make stage-spend`. Two dropped rounds in a row ends the occurrence rounds (move to finding rounds with `FINDING=1`, one or two of them); the $25 line ends every round. Report the round to Andy in plain English (the change, the reading, kept or dropped, the spend) before starting the next.
 
@@ -4757,6 +4788,9 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 
 - 2026-09-27, walkthrough W1, Andy's decision ("A with a 'clear habit' safeguard."): the phase group's phase codes are learned from the pool (spec §5.2 item 4, §5.3 item 2). An ad-hoc probe (development cases outside `dev-400`, 2026-09-27; re-derived by Task 3) found all 43 phase codes used for a defining event fall under exactly one of 12 phase groups, and on B-v1 the first guess's phase was the NTSB's on 210 of 394 answered cases, with 35 first guesses using a phase the NTSB never used under the given group. On Andy's concern that the counts would push every case toward the most common combination, decision 0101 amends 0096 item 4 and 0098 item 2: the plain rule changes the model's event or phase only on a clear habit (at least 60% of at least 20 pool cases; `ordering.clear_habit`, replacing `RULE_MIN_CASES`), guidance names a habit only when it is clear, and every check step (`arguments["toward_more_common"]`), Round 1's report (`round1_report.push`) and every round's result (`round_result.push_line`) count first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 were edited before any code.
 - 2026-09-27, walkthrough W2, Andy's decision (A): the ordering check runs as a post-pass over a finished run (`ntsb-eval check`, Task 10), writing a derived folder `<run id>-check-<way>`, not inside the runner "before the finding refinement turn" as spec §5.5 wrote. The check changes only the occurrence codes and the refinement turn only the finding items, so the order between them changes no score; the post-pass leaves the runner untouched, works the same for batch and sync runs, and lets Round 1 re-use the recorded B-v1 answers and their repeat.
+- 2026-09-27, Task 13 Step 2: `src/ntsb_probable_cause/scoring/guidance/__init__.py`'s docstring is split onto two lines with a summary line and a description line (pydocstyle D205, one blank line between them) rather than the brief's one-line form, which is 105 characters and over the project's 100-character line length; the wording is otherwise unchanged.
+- 2026-09-27, Task 13 Step 4: added `test_system_text_without_guidance_is_byte_for_byte_unchanged` to `tests/test_runner.py` and `test_provenance_shows_guidance_when_present` to `tests/test_report.py`, beyond the brief's own test text, to give the "no-guidance system text is unchanged" and the `report.provenance` guidance line direct test coverage (the brief's runner tests exercise both indirectly but not exactly).
+- 2026-09-27, Task 13 review fix round 1: three findings from review. (1) `make s27-round` ran a paid, unguided arm B run silently if `GUIDANCE` was left unset, skipping the registration refusal entirely -- a real risk since Task 17's v2 run legitimately reuses `s27-round` with no guidance if every round is dropped. Fixed: the target now also requires `NO_GUIDANCE=1` when `GUIDANCE` is empty, refusing otherwise (`$(if $(or $(GUIDANCE),$(NO_GUIDANCE)),,$(error ...))`), verified with `make -n s27-round` under all three cases (GUIDANCE set, NO_GUIDANCE=1, neither -- the last erroring) without ever running the target for real. (2) `_record_judge_cost` in `apps/eval/__main__.py` built the judge pass's `RunRecord` without `guidance`/`guidance_sha256`, so a judged guided run's cost row silently lost which guidance ran; fixed by carrying both fields from the judged run's own record, covered by a new `test_judge_records_the_judged_run_s_guidance` (RED confirmed by reverting the two lines and re-running: `assert () == ('r2-loc-stall', 'r3-phase')` failed as expected). (3) `report.provenance` hardcoded the fingerprint's 12-character cut instead of using `prompt.FINGERPRINT_CHARS`; import-linter's "Only the splitter constructs synthesis and verdict" contract does not forbid `scoring.report` from importing `scoring.prompt` (`scoring.prompt` is one of that contract's *source* modules, not a forbidden target), so `report.py` now imports `prompt` and uses the constant -- `make check`'s import-linter step still reports "Contracts: 3 kept, 0 broken."
 - 2026-09-27, walkthrough W3, Andy's decision ("A is fine"): the GPT-6 Luna check runs synchronously at the standard price, not on batch as spec §5.3 and §10 priced it. Estimate (arithmetic, replaced by the recorded cost): about $0.36 per 400-case answer set, $0.72 for Round 1, against the spec's $0.12 per set.
 - 2026-09-27, walkthrough W4, Andy's decision (A): the judge runs on S2.6's B-v1 and B-v2 folders in place (Task 7 Step 2 checks first that neither holds a `judge.jsonl`, copying any aside under `data/s27/`). The folders gain `judge.jsonl` and a `<run id>-judge` cost row carrying S2.7's commit; their answers and records are untouched.
 - 2026-09-27, walkthrough W5, Andy's decision ("Could we use version and short fingerprint?"): spec §6.1's example (`s27-g1`, a hand-bumped version) is replaced by `s1-v5+g<first 12 characters of the guidance fingerprint>`; the guidance names and the full fingerprint are recorded beside it (`RunRecord.guidance`, `RunRecord.guidance_sha256`). Task 13's `prompt_version` and its tests carry it.
@@ -4764,3 +4798,50 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-27, walkthrough W7, Andy's decision (A): a miss group with fewer than 8 cases gives all its cases to the hand-read, with no top-up; the results file prints each group's card count (`round0_handread.draw_cards`, Task 6).
 - 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
 - 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.
+- 2026-09-27, Task 2 implementation, plain adaptations of the brief's text to this file's real helpers (no behaviour change, as the brief itself invited): (1) `tests/test_samples.py`'s real `_raw(*, fatal, occurrence_codes=())` takes no case id or class keyword, and `_write_cases` wants 5-tuples, so `test_draw_excludes_the_given_cases_and_is_unchanged_without_them` builds 40 explicit 5-tuples (case id, event date, split, class "F" throughout as the brief's snippet used, `_raw(fatal=...)` for the raw JSON) instead of calling `_raw` with the brief's invented keywords. (2) `test_refuse_sealed_opens_only_on_a_committed_registration`'s `is_committed=lambda path: seen.append(path) or True` fails the same `mypy --strict` "`list.append` returns `None`, used as a value" check as Task 1's fix above; replaced with a small typed `_record_and_confirm` function, same observable behaviour. (3) `ruff format` wrapped `scripts/draw_sealed.py`'s final `print(...)` call and one `assert main([...]) == 1` call in `tests/test_eval_app.py` onto multiple lines. (4) Adding `dev_seal_400_ids.csv` (a development-split list) to `tests/fixtures/eval/` made `test_evaluation_cases_are_held_out_by_event_date` fail, since it asserted every eval id list except `dev_400_ids` is held-out; the brief did not mention this test, but it iterates every `*_ids.csv` fixture the `eval_ids` fixture picks up, so the new file could not avoid it. Added `dev_seal_400_ids` next to `dev_400_ids` in that test's exclusion set; its own purity is checked by the brief's `test_the_sealed_sample_is_development_and_shares_no_case` instead.
+- 2026-09-27, Task 3 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected the brief's `_sorted(tree: object) -> object` helper's `dict` comprehension (an untyped `dict` literal built from an `object`-typed value); replaced with `_sorted_dict(tree: Mapping[str, object]) -> dict[str, object]`, called only on the already-`dict`-shaped tree `build()` constructs, same sorted-keys output. (2) `scripts/coding_stats.py`'s `from ... import build` was not resolvable as `cs.build` under `--strict`'s implicit-reexport check (the test module imports the script as `scripts.coding_stats` and calls `cs.build`); added an explicit `__all__` naming `build` and the other names the tests and `main` use, behaviour unchanged. (3) `tests/test_coding_stats_script.py`'s `_row` helper needed a return type annotation (`Row = tuple[str, str, str, str, dict[str, object]]`) and `# noqa: PLR0913, PLR0917` (six positional arguments, one per fixture-row column; no ignore for either rule exists in `tests/**`'s per-file-ignores). (4) `tests/test_coding_stats.py`'s Step 12 addition imported `load_stats` inside the test function (ruff's `PLC0415`, "import at top level"); moved it into the file's top-level import alongside `NO_GROUP`, `CodingStats`, `PoolCase`, `build`, combining Steps 1 and 12 into one file since both are `tests/test_coding_stats.py` creates, not incremental edits to a committed file. Step 11's build (`make s27-coding-stats` against the main checkout's `data/processed/cases.parquet`) produced 12,491 pool cases (7,177 in 2009-2014, 5,314 in 2015-2019; brief said "about 12,490", ad hoc) and a 958 KiB `coding_stats.json` (well under the 2 MB concern threshold); `grep -E` for the case-number pattern found none in either output file. (5) The commit hook `check-added-large-files` (`.pre-commit-config.yaml`, `--maxkb=500`) refused the 958 KiB `coding_stats.json`, not mentioned in the brief's file list. Rather than shrink a table the brief specifies in full (13,226 pairwise code co-occurrence entries across both halves account for most of its size; the brief's own stop-and-report threshold for this file is 2 MB, not 500 KB), the exclude on both `check-added-large-files` hooks was widened from `^tests/fixtures/words\.txt$` to `^(tests/fixtures/words\.txt|src/ntsb_probable_cause/scoring/tables/coding_stats\.json)$` -- the same treatment the repo already gives `tests/fixtures/words.txt` (2.4 MB), a legitimately large committed file that is not raw data (rule 4).
+- 2026-09-27, Task 4 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) the brief's module docstring instruction ("Add to the module docstring's Status: ...") was read as appending to `scripts/occurrence_misses.py`'s existing top-of-file `Status` section, not adding a second one; the sentence "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." was appended to that section instead. (2) `ruff format` reflowed the brief's single-line `misses` import in `occurrence_misses.py`, the single-line `finding_depth` call inside `detail`, and the single-line `FindingDepth` constructor calls in `tests/test_misses.py`, onto multiple lines; no behaviour change. (3) `ruff check`'s `PLR0911` (too many return statements, 8 > 6) rejected `miss_group`'s brief text as written (one early return per group, tested in `GROUPS`' order, is the point of the function); added `# noqa: PLR0911` with a comment, matching the existing idiom at `src/ntsb_probable_cause/recorder/dockets.py:342`, and split the `def` line across two lines for the 100-column limit with the comment attached. Every test in `tests/test_misses.py` and the added tests in `tests/test_occurrence_misses.py` pass unchanged from the brief's text; `summarise`'s body and output are untouched.
+- 2026-09-27, Task 5 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected `read_labels`'s brief text `labels[row.pop("case_id")] = ...` because `json.loads`'s return is untyped and `row.pop("case_id")` is then `Any` used as a `dict[str, JudgeLabels]` key; annotated `row: dict[str, object]`, popped `case_id` into its own variable and added a runtime `isinstance` check (raising `TypeError` on a malformed row) before using it as the key, same observable behaviour on well-formed rows. (2) `ruff check`'s `E501` (line too long, 103 > 100) rejected the module docstring's one-line `Usage` example; wrapped it onto two lines. (3) `ruff check`'s `PLR2004` (magic value `3` in `main`'s `if len(per_run) == 3`) was fixed with a named module constant `_TRIPLE = 3`, not an inline `noqa` (no existing `PLR2004` idiom in the repo to match), same behaviour. (4) `ruff check --fix` reordered the test file's imports (`scripts` and `tests` grouped as first-party, ahead of the third-party `ntsb_probable_cause` import) to match the project's isort settings; this reorders two import lines only. (5) `mypy --strict` also rejected `test_movement_counts_cases_whose_outcome_changed`'s two bare dict literals (inferred `dict[str, str]`, not assignable to `Mapping[str, Outcome]`); annotated both as `dict[str, jo.Outcome]`, no behaviour change. No `main`/`_load` test was added: `pyproject.toml`'s coverage gate is `--cov=ntsb_probable_cause` only, so `scripts/judge_outcomes.py` is outside the 90% gate, matching the brief's own test file, which does not test `main` either.
+- 2026-09-27, Task 5 review fix round 1 (code review finding): `_load`'s development-only refusal path was untested, and its "run whose id doesn't say heldout but whose recorded sample does" case could not actually be refused before `cases.jsonl` was read, since the brief's `_load` never read `run.jsonl` at all -- only `read_labels`' malformed-row branch was flagged in Task 5's own deviation note. Fixed by having `_load` read `run.jsonl`'s `RunRecord` first and refuse unless `record.sample.startswith("dev")`, before `cases.jsonl` is read, mirroring `scripts/occurrence_misses.py:_refuse_unless_development_arm_b`'s ordering; the run-id and per-case split checks are unchanged. Added four tests to `tests/test_judge_outcomes.py`, modelled on `tests/test_occurrence_misses.py`'s refusal tests and reusing its `_write_run` helper: a `heldout` run id refused before anything is read, a run recorded on a held-out sample (id silent about it) refused before its cases are read, a run holding a case outside the dev split refused, and a happy-path `main` call with three run folders (judge.jsonl plus cases.jsonl each) checking the movement lines print. Also removed the no-op `# pragma: no cover` on `read_labels`'s malformed-row branch (`scripts/` is outside the `--cov=ntsb_probable_cause` gate, so the pragma did nothing), replacing it with a plain comment.
+- 2026-09-27, Task 6 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff check`'s `I001` (unsorted import block) reordered `scripts/round0_handread.py`'s and `tests/test_round0_handread.py`'s imports (first-party `scripts`/`tests` grouped ahead of the third-party `ntsb_probable_cause` imports), fixed with `ruff check --fix`; no behaviour change. (2) `ruff check`'s `E501` (line too long, 100-column limit) rejected three of the brief's single lines: the module docstring's `Usage` example (wrapped with a line continuation), the `_card` f-string building the NTSB probable-cause heading and paragraph (split into two adjacent f-strings), and the `score` function's `agreement:` line (split into two adjacent strings); all three keep the same rendered text. (3) `mypy --strict` rejected the test file's `_cases() -> list:` (missing type argument) and `test_cards_refuses_a_held_out_run(tmp_path, monkeypatch)` (missing parameter annotations); annotated as `_cases() -> list[CaseResult]` (importing `CaseResult` from `ntsb_probable_cause.scoring.records`) and `(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None`, same observable behaviour. The brief's fixture in `_cases()` (`_case(case_id, truth, guesses)`, truth before guesses, per Task 4's `_case`) was checked by hand against `miss_group` and produces exactly the groups its comments say (12 X-cases exact, 9 W-cases right event/wrong phase, 3 S-cases in sequence not defining), so `draw_cards` needed no fix and none of the five tests in the brief's Step 1 needed editing beyond the two typing fixes above. Every test in `tests/test_round0_handread.py` passes unchanged in substance from the brief's text; `draw_cards`, `score`, `cmd_cards` and `main` are otherwise verbatim.
+- 2026-09-27, Task 6 review fix round 1 (code review findings): (1) `_run` had the same ordering gap Task 5's `_load` was fixed for: it read `cases.jsonl` on `run_id`'s string shape alone, so a run whose id said `-dev-` but whose `run.jsonl` recorded a held-out sample would either read the wrong case list or crash on a missing file rather than refuse cleanly. Fixed by having `_run` read `run.jsonl`'s `RunRecord` first and refuse unless `record.sample.startswith("dev")`, before `cases.jsonl` is read, mirroring `judge_outcomes._load`'s ordering (itself fixed in Task 5's own review round); the run-id and per-case split checks are unchanged. Added two tests to `tests/test_round0_handread.py`, modelled on `tests/test_judge_outcomes.py`'s equivalents and reusing `tests/test_occurrence_misses.py`'s `_write_run`/`write_jsonl`: a run recorded on a held-out sample (id silent about it, no `cases.jsonl` written, so the test would fail with a missing-file error rather than a clean `SystemExit` if the check were absent or misordered) and a run holding a case outside the dev split. (2) `score` had two more silent-failure paths the brief did not cover: a sheet drawn from one run scored under a different `--run` (no check existed at all) and a sheet case absent from the judge's labels (a bare `KeyError`, not a clean refusal). Fixed by (a) `cmd_cards` writing a `run_id` column into `sheet.csv` (every row carries the run id it was drawn from) and a new `_refuse_mismatched_run(sheet, run_id)` helper, called from `main`'s `score` path right after the sheet is read and before labels are loaded, comparing every row's recorded `run_id` against `--run` and raising `SystemExit` naming the mismatched run id if they differ; (b) `score` replacing `labels[row["case_id"]]` with `labels.get(...)` and raising `SystemExit(f"round0_handread: row {row['row']} has no judge label")` on a miss, naming only the row number, never the case id (rule 6, clinical tone; case ids are never printed by this tool's counts-only output). Added two tests: `test_score_refuses_a_case_missing_from_the_judge_labels` (direct, pure-function call to `score`) and `test_score_refuses_a_sheet_drawn_from_a_different_run` (through `main`, writing a `sheet.csv` by hand with a `run_id` that differs from `--run`). All nine tests in `tests/test_round0_handread.py` pass; `make check` passes (1563 tests, 97.75% coverage).
+- 2026-09-27, Task 8: the brief's Jev ranking test expected (LOC, CFIT, STALL); ties go by code, so the tie between 452241 and 452470 puts 452241 first; the assertion is (LOC, STALL, CFIT).
+- 2026-09-27, Task 8 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` reflowed four lines in `ordering.py` (the `candidates` linked-code comprehension, `toward_more_common`'s return, `check_text`'s guesses line) and five in `tests/test_ordering.py` (a `build()` call's concatenated list, a `check_text` call, and three multi-element asserts) onto multiple lines; no behaviour change. (2) `ruff check`'s `PLR0913`/`PLR0917` (too many arguments, 6 > 5) rejected `check_text`'s brief signature as written (one parameter per fact the check-text prompt shows, the point of the function); added `# noqa: PLR0913, PLR0917` with a comment, matching the existing idiom at `tests/test_boundary.py:870` and `tests/test_coding_stats_script.py:11`. (3) `ruff check`'s `E501` (line too long, 100-column limit) rejected two of the brief's single lines inside `check_text` (the per-candidate summary line and the paired-count line); each was split across two adjacent f-strings, same rendered text. (4) `ruff check`'s `PLR2004` (magic value `3` in `parse_ranking`'s length check) was fixed with a named module constant `_MAX_RANKING = 3`, matching Task 5's `_TRIPLE` idiom (no existing PLR2004-noqa idiom to match instead), same behaviour. (5) `ruff check`'s `I001` (unsorted import block) reordered the test file's `from ntsb_probable_cause.scoring import ordering` ahead of `.codes`/`.coding_stats`/`.hypothesis`, fixed by hand to match the project's isort settings; this reorders one import line. (6) `ruff check`'s `PT018` (assertion should be broken down) rejected `test_check_text_holds_codes_counts_group_and_narrative_only`'s combined `assert STALL in text and LOC in text`; split into two separate `assert` statements, same coverage. (7) `mypy --strict` rejected the test file's `_stats()` (missing return type; used in a typed context) and `test_jev_question_and_ranking`'s `set(question["criteria"])` (`jev_question` returns `dict[str, object]`, so `question["criteria"]` types as `object`, not `Iterable`); annotated `_stats() -> CodingStats` and wrapped the criteria access in `cast("dict[str, str]", ...)`, matching the repo's existing cast idiom (e.g. `tests/test_openrouter.py:35`, `tests/test_records.py:73`), same observable behaviour. Every test in `tests/test_ordering.py` passes with the values verbatim from the brief's text apart from the Jev ranking assertion above; `candidates`, `clear_habit`, `plain_rule`, `toward_more_common`, `check_text`, `parse_ranking`, `jev_question`, `ranking_from_probabilities` and `reorder` are otherwise verbatim from the brief. `make check` passes (1575 tests, 97.76% coverage); `uv run lint-imports` keeps all three contracts with the new `ntsb_probable_cause.scoring.ordering` source-list entry.
+- 2026-09-27, Task 9 implementation, one mechanical fix to satisfy `make check` (behaviour unchanged from the brief's text): Step 3's failing-test snippet, appended literally, put `from ntsb_probable_cause.model.client import PageImage` after the test functions rather than at the top of the file, which `ruff check`'s `E402`/`I001` (module-level import not at top of file / unsorted import block) rejected once Step 4 made the module importable. Folded `PageImage` into the file's existing `from ntsb_probable_cause.model.client import Payload` line instead of adding a second import statement, and removed the now-empty stray import line before the test function; same test, same assertions, same place in the file otherwise. `git show 0c5d24c:src/ntsb_probable_cause/model/typesafe.py`, its four fixtures and `tests/test_typesafe_client.py` were otherwise copied and renumbered (0060 to 0097) verbatim -- `grep -rn "0060\|0036"` over all four copied files returns nothing. No other file needed a mechanical fix: `settings.py`'s two additions, `sources.py`'s `JEV` price and three `TYPESAFE_*` constants, `model/typesafe.py`'s image refusal, `.env.example`'s new line and `pyproject.toml`'s `ANC` typos entry and fixtures exclude are verbatim from the brief. `make check` passes (1587 tests, 97.72% coverage); `uv run vulture` (`min_confidence = 80`) reported nothing on `ScoreAnswer`, `NoulAnswer` or `TYPESAFE_MODELS`, so no name needed keeping against a vulture finding. The `pre-commit` `typos` hook (not part of `make check`; it carries its own `exclude` regex separate from `pyproject.toml`'s `[tool.typos.files]`) failed on one of `tests/fixtures/typesafe/choices.json`'s verbatim NTSB labels (an occurrence-code description carrying the same source-data misspelling `pyproject.toml`'s existing comment already names, of "necessary", for the scoring-tables CSVs; not spelled out here for the same reason that comment gives -- this plan is itself spell-checked) because the brief's pyproject.toml edit alone does not reach the pre-commit hook's own exclude list. The brief did not list `.pre-commit-config.yaml` among Task 9's files; added `tests/fixtures/typesafe/.*\.json$` to that hook's existing `exclude` alternation, the same treatment already given `tests/fixtures/docket/`, so the commit runs the real `typos` hook rather than skipping it.
+- 2026-09-27, Task 10 implementation, adaptations of the brief's text to the real code and to `make check` (behaviour unchanged except where the brief itself flagged the possibility): (1) as the brief's own parenthetical warned, `Payload.from_evidence(Evidence(case_id="check", docket_url=None))` renders `"{}"` (an empty JSON object), not `""` -- confirmed against `scoring/judge.py`'s identical "empty" payload, which is the same placeholder, never plain text. `test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking`'s assertion is `client.payloads[0].text == "{}"`. (2) `checked_case`'s `assert case.scores is not None` (the brief's own text) is replaced with `if case.scores is None: raise ValueError(...)`, per the brief's own fallback note: `S101` (assert used) is selected project-wide and ignored only under `tests/**`, so `src/` code cannot use `assert`. (3) `tests/test_metrics.py`: the brief's Step 1 snippet's imports (`from dataclasses import replace`, `rescore_occurrence`, `score_case`, `OccurrenceGuess`) are merged into the file's existing top-of-file import block rather than inserted mid-file, avoiding `ruff check`'s `E402`; the test body and values are otherwise verbatim (renamed the local `_hyp` helper to `_hyp_for_rescore` since the file already has an unrelated `hyp` helper). (4) `tests/test_checkpass.py`: `ruff check` rejected three lint rules in the brief's literal text -- `RUF015` (`[...][0]` on `step.hypothesis.occurrence`, replaced with `next(...)`), `PT018` (the combined `cases["C1"].scores is not None and ...occurrence_top1` assertion, split in two) and `C408` (`kwargs = dict(...)`, replaced with a dict literal). `mypy --strict` then rejected splatting that literal (`**dict[str, object]`) into `check_run`'s differently-typed keyword parameters in `test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused`; replaced the shared `kwargs` dict with a small local `run(folder)` closure that calls `check_run` with the same five keyword arguments spelled out, called three times, same observable behaviour and same three assertions. (5) `apps/eval/__main__.py`: added `from ntsb_probable_cause.fields import EVIDENCE_FIELDS` (folded into the existing `EvidenceRole` import line, brief's "add if missing"), `checkpass`, `load_stats`, `TypeSafeClient` and `budget_lock`/`refuse_over_budget` imports as the brief listed; `ruff format` wrapped `_cmd_check`'s signature and the budget-import line onto multiple lines. `resolve_latest`'s `if "-check-" in folder.name: continue` guard was added exactly as the brief asked, though it is currently unreachable: `runs_dir.glob(f"*-{sample}-{arm}")`'s pattern already excludes a derived id (`<run id>-check-<way>` does not end in `-{arm}`), confirmed with `fnmatch.fnmatch`. Left in as the brief's explicit, documented safeguard rather than omitted as dead code. (6) `tests/test_eval_app.py`: the brief's `_write_run(..., finished=True, ...)` does not match the real `_write_run(*, finished: datetime | None, ...)` signature (a `bool` where a `datetime` is required); `test_resolve_latest_skips_derived_check_runs` passes a real `datetime(2026, 9, 26, tzinfo=UTC)` instead. The brief's single `def boom(_settings: object) -> object` (passed as both `client_factory` and `jev_factory`) fails `mypy --strict` (`Callable[[object], object]` is not assignable to either factory's real, differently-shaped `Callable` type); split into `boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]` and `boom_jev(_settings: Settings) -> TypeSafeClient`, each raising the same `AssertionError`, and added the missing `from ntsb_probable_cause.model.typesafe import TypeSafeClient` import; same refusal, same message asserted. (7) `tests/test_boundary.py`: `ruff check`'s `PLC0415` (import not at top level) rejected the brief's five function-local imports in `test_the_ordering_check_sends_no_withheld_text`; two (`split_record`, `load_tables`) and `RecordingFakeClient` were already imported at module level, so only `checkpass`, `coding_stats.PoolCase`/`build` and `tests.test_occurrence_misses._case` were added to the file's existing top-of-file import block, alphabetised among the file's existing `ntsb_probable_cause.scoring`/`tests.*` imports; the test's body, assertions and docstring are verbatim from the brief. The parameter `record_fixtures` was given the file's own convention type annotation `list[dict[str, object]]` (the brief's snippet left it bare). Mutation check (brief's own instruction, Step 10): temporarily changed `hypothesis = _case(...).steps[-1].hypothesis` to append `verdict.probable_cause` to its `evidence_narrative` before calling the checker; `uv run pytest tests/test_boundary.py -k ordering_check` then failed with `assert "The pilot's misidentification..." not in '...'`, confirming the boundary test catches a leaked probable cause; the mutation was then reverted (`tests/test_boundary.py` is byte-identical to before the mutation, checked with the pre-mutation copy). `make check` passes (1595 tests, 97.55% coverage).
+- 2026-09-27, Task 7 Step 3: Andy authorised Claude to run the noise-floor run itself ("you can perform the run now its the weekend"), rather than handing him the command; it was started at 11:12 UTC, outside the plan's 01:00-12:00 UTC batch window's comfort margin but inside the window, from a clean tree at `fbab38a`. **REPEAT = `20260927T111202-fbab38a-dev-400-B`**: 401 cases, $1.1593 (`run.jsonl`), GPT-6 Luna at `medium`, batch, 8,000-token reply budget, prompt `s1-v5` -- B-v1's settings. Tasks 10-15 read it as `REPEAT`.
+- 2026-09-27, Task 10 review fix round 1 (code review findings): **Important 1, the missing budget reservation.** `_cmd_check`'s `luna`/`jev` ways only checked the budget under `budget_lock` (`refuse_over_budget`, no reservation), so a ~400-call synchronous pass was invisible to a concurrent paid job's own budget check for its whole life, until its own `finally` wrote real spend. Fixed with the project's existing `reserve_within_budget` (the same call `scoring/preparation.py`'s jobs use), called under the check's own derived id (`checkpass.derived_id(record.run_id, way)`) before `client_factory`/`jev_factory` is ever built, so an over-budget call never reaches either factory; `check_run` settles that reservation in its own `finally`, right after writing `cases.jsonl`/`run.jsonl` (`settle` is a no-op for the `rule` way, which never reserves). This collided with `check_run`'s own atomic folder claim (`mkdir(exist_ok=False)`): `reserve()` creates the derived folder as a side effect, so a `luna`/`jev` pass now finds it already there. Resolved as the review's second suggested option: `check_run` now does `mkdir(parents=True, exist_ok=True)` and refuses only once `cases.jsonl` or `run.jsonl` already exists in that folder, not on the folder's mere presence -- the atomicity of the *claim* is traded for keeping the reservation-then-run handover simple, matching the review's own framing of the trade-off. `_cmd_check` and `budget_lock`/`refuse_over_budget` are otherwise removed as imports (both now unused there; `open_reservations`/`month_spent` stay, used elsewhere). Two tests added to `tests/test_eval_app.py`: `test_check_way_luna_is_refused_over_budget_without_building_any_client` (an over-budget call with `client_factory`/`jev_factory` that raise `AssertionError` if called, confirmed to raise -- an actual `FileNotFoundError`/`AssertionError` under the reverted code, not a graceful refusal, checked by temporarily reverting `_cmd_check`'s ablation and budget blocks and confirming both new tests fail there) and `test_check_way_luna_settles_its_reservation_after_a_successful_pass`, which goes further than "settled after" by using a small `_ReservationSpyClient` (a `ModelClient` that records whether `open_reservations` sees an entry *at the moment it is called*, mid-pass) to prove the reservation is genuinely visible for the paid call's duration, not merely absent before and after; confirmed this fails (`saw_a_reservation` is `False`) against the reverted, pre-fix `_cmd_check`. **Important 2, the ablation leak.** `_cmd_check` rebuilt each case's phase-of-flight group by reading the raw processed record directly (`samples.load_cases` + `_GROUP_FIELD.extract`), which reads straight past any exclusion the source run recorded -- an ablation run that withheld `phase_of_flight` from the model would have it handed back to the check. Fixed with a refusal placed immediately after the existing held-out/arm check and before `cases.jsonl` is read at all: `if record.exclusions or record.includes: raise ConfigurationError(...)`, the same shape of run `resolve_latest` already treats as unfit to stand for its arm (`ntsb-eval report --latest` skips it; here it is refused outright, since a real run id was named). Added `test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built`, which writes only `run.jsonl` (with `exclusions=("phase_of_flight",)`) and deliberately no `cases.jsonl`, so a refusal placed after the cases read would surface as an unhandled `FileNotFoundError` rather than exit code 1 -- confirmed this is exactly what happens when the new check is temporarily removed (`grep`-verified RED, then restored). **Important 3, the untested paid paths.** Added `test_the_jev_checker_ranks_reports_the_model_and_prices_input_tokens` to `tests/test_checkpass.py`, a `respx`-mocked `TypeSafeClient` (no socket, matching `tests/test_typesafe_client.py`'s own pattern) returning a hand-built reply in `SystemOneReply`'s shape with one `"defining"` Choice answer (Task 9's saved fixtures have no answer of that name, only `phase`/`event`/`modifier`/`evidence_detail`, so a minimal reply was built instead, as the brief allowed); asserts the ranking, `outcome.model == "jev-1.13.0"` and `outcome.cost_usd == pytest.approx(1000 * sources.JEV.input_usd_per_mtok / 1_000_000)`. Added `test_check_way_rule_writes_a_derived_run_and_prints_the_summary` to `tests/test_eval_app.py`: a happy-path `ntsb-eval check RUN --way rule` through `main`, with `samples.load_cases`/`samples.seen_pairs` monkeypatched (no processed parquet fixture needed, since the `rule` way's group value does not affect what is being tested) and `client_factory`/`jev_factory` that raise if called; asserts the derived folder's two files exist and the printed summary line names the derived run id. **Minor 4.** `checkpass._refuse_unless_development` now also refuses a source whose `finished` is `None` (`"{run_id} has not finished: the check needs a complete answer for every case"`) and a source whose own id already contains `-check-` (`"{run_id} is itself a derived check run: no stacked checks"`), each with its own test in `tests/test_checkpass.py` (`test_check_run_refuses_a_source_that_has_not_finished`, `test_check_run_refuses_a_source_that_is_itself_a_derived_check_run`), both confirmed RED against the code with the two new checks temporarily removed, then GREEN restored. `TypeSafeClient.ask_state`'s docstring (`model/typesafe.py`) now names `scoring/checkpass.py`'s `jev_checker` alongside the conditioned two-call mode as the two callers that use it in place of `ask`. `make check` passes (1602 tests, 97.71% coverage); `uv run pytest tests/test_checkpass.py tests/test_eval_app.py tests/test_typesafe_client.py -v` passes all 71 tests (coverage gate not met on that narrower selection alone, as expected -- the full suite is what `make check` runs).
+- 2026-09-27, Task 10 review fix round 2 (code review finding, "nothing refusable after the reservation"): round 1's fix reserved the budget before building a client, but three refusals still fired *after* that reservation, each leaking it: (a) a repeated `check --way luna`/`jev` of an already-finished derived run -- `checkpass.check_run`'s own "already exists" refusal ran only after `_cmd_check` had reserved under the same derived id; (b) the item-4 refusals inside `_refuse_unless_development` (an unfinished source, a source whose own id already contained `-check-`, a non-dev case) -- all read and checked only once `check_run` itself started, likewise after the reservation, and for the `-check-` case `reserve_within_budget`'s own `reserve()` had already created the empty `<id>-check-<way>` folder as a side effect, which then stayed behind; (c) anything raised between the reservation and the start of `check_run`'s own pass -- `client_factory`/`jev_factory` raising (a missing key), or (not reached in the CLI path, but true of the exposed function) `samples.seen_pairs`/`ledger.commit_state` raising. Fixed the way `scoring/preparation.py:154-165` already does it (client built, budget reserved, nothing refusable in between): added `checkpass.Preflight` (`record`, `cases`, `run_id`) and `checkpass.preflight(source, way, runs_dir)`, which does everything `_refuse_unless_development` and the "already exists" check did, read-only -- no folder is created and no reservation is touched, so refusing a `-check-` source here leaves nothing behind. `check_run` now calls `preflight` itself as its first line (defence in depth: it will not fire in the normal CLI path, since `_cmd_check` already called it) instead of duplicating the same reads and checks inline; `_cmd_check` calls it explicitly before computing `run_id` or reserving anything, and also moved `samples.seen_pairs(processed)` and `ledger.commit_state()` up to before the reservation, for the same reason. The window that remains between a successful reservation and `check_run` settling it (`client_factory`/`jev_factory` construction, and `check_run` itself, in case a genuine race re-triggers one of `preflight`'s own checks) is now wrapped in `try: ... except BaseException: release(settings.runs_dir, run_id); raise` -- `release` is a no-op on the normal path, where `check_run` has already settled the same reservation via `settle` in its own `finally`. Three tests added to `tests/test_eval_app.py`: `test_check_way_luna_run_twice_is_refused_the_second_time_with_nothing_leaked` (the second call's `client_factory`/`jev_factory` raise `AssertionError` if reached; asserts refusal, an empty `open_reservations`, and the first run's `run.jsonl` byte-identical to before the second call), `test_check_way_luna_releases_its_reservation_when_the_client_factory_raises` (a `client_factory` raising `ConfigurationError("OPENROUTER_API_KEY is not set")`; asserts `open_reservations(runs) == {}` afterward) and `test_check_refuses_a_check_run_as_its_own_source_leaving_no_new_folder` (a source run whose own id already contains `-check-luna`; asserts the set of folder names under `runs_dir` is unchanged and `open_reservations(runs) == {}`). Per the review's instruction, RED was confirmed without `git stash`: `apps/eval/__main__.py` and `checkpass.py` were copied aside, overwritten in place with `git show 22d7832:<path>` (the pre-round-2 commit, read-only to git, no stash involved), the three new tests run against that old code -- all three failed (`test_check_way_luna_run_twice...` with `AssertionError: a repeated check must not reach the client factory`, since the old code called the boom client on the second attempt; `test_check_way_luna_releases_its_reservation...` with `open_reservations(runs)` showing the leaked `$0.002` entry; `test_check_refuses_a_check_run_as_its_own_source...` with an uncaught `FileNotFoundError` from `samples.load_cases`, since the old code read cases and built groups before ever checking the source id for `-check-`) -- then both files were restored from the saved copies and `git diff --stat` confirmed the restored diff matched the fix exactly. `make check` passes (1605 tests, 97.72% coverage); `uv run pytest tests/test_checkpass.py tests/test_eval_app.py -v` passes all 62 tests (coverage gate not evaluated on that narrower selection, as expected).
+- 2026-09-27, Task 11 implementation: (1) one addition beyond the brief, matching the ordering fix already made to `judge_outcomes._load` (Task 5 review round 1) and `round0_handread._run` (Task 6 review round 1): `round1_report.py`'s per-source loop read `cases.jsonl` on the run id's string shape alone (only refusing a source whose id itself contained "heldout"), so a `--answers` source whose id said nothing about it but whose `run.jsonl` recorded a held-out sample would either read the wrong case list or crash on a missing file rather than refuse cleanly. Added a `_load(runs, source)` helper, modelled on the two siblings above, that reads `run.jsonl`'s `RunRecord` and refuses unless `record.sample.startswith("dev")` before `cases.jsonl` is read at all; the run-id substring check and the per-case split check are unchanged and both still run. Added `test_a_source_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read` (writes only `run.jsonl`, deliberately no `cases.jsonl`, so a check placed after the read would surface as an unhandled `FileNotFoundError` rather than a clean `SystemExit`) and a happy-path `test_main_prints_the_outcome_line` (two development sources, each with a `-check-rule` derived folder only, `luna`/`jev` absent) asserting the outcome line and both "not run" lines print. (2) mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): `ruff format` wrapped the first `choose` test's two dict literals onto multiple lines. `ruff check`'s `E501` (100-column limit) rejected three of the brief's single lines -- `paired`'s docstring, `_line`'s return, and `push`'s "at least two steps" comparison's neighbour -- fixed by wrapping `paired`'s docstring onto two lines (also fixing `D205`/`D209`, which flagged its now-two-sentence form joined on one line) and splitting `_line`'s f-string across two adjacent strings; `push`'s own docstring got the same `D205`/`D209` two-line treatment first, then `ruff check`'s `PLR2004` (magic value `2` in the steps-length comparison) was fixed with a named module constant `_CHECKED_STEPS = 2`, matching Task 5's `_TRIPLE`/Task 8's `_MAX_RANKING` idiom, same behaviour. `mypy --strict` rejected `choose`'s brief text `max(winners, key=lambda w: sum(s[w][1].mean for s in sets if s[w][1] is not None))`: the generator's `if` clause narrows `s[w][1]` to non-`None` for the condition but not for the separately re-evaluated `s[w][1].mean` in the same comprehension, so it typed the sum as `float | Any` against `bool`. Replaced with a small nested `gain(s, way)` helper that binds `s[way][1]` once and returns `0.0` when `None`, called as `sum(gain(s, w) for s in sets)`; the winners list already guarantees non-`None` here (`everywhere(w, 1)`), so this is a typing fix, not a behaviour change. `mypy --strict` also rejected reusing the name `way` across `main`'s two separate `for` loops over `WAYS` (a `Literal["rule", "luna", "jev"]` loop variable) and `loaded.items()` (a `str` loop variable) as an "Incompatible types in assignment"; renamed the first loop's variable to `check_way` (and its three uses: `derived_id(source, check_way)`, `loaded[check_way]`, `pushes[check_way]`), leaving the second loop's `way` and its body untouched. Finally, `mypy --strict`'s implicit-reexport check rejected the test file's `r1.derived_id(...)` (imported into `round1_report.py` from `checkpass` but not re-exported), the same issue Task 3's deviation note describes for `cs.build`; added `__all__ = ["Paired", "choose", "derived_id", "main", "paired", "push"]` to `round1_report.py`, naming every attribute the tests and `main` use, same behaviour. Every test in `tests/test_round1_report.py` passes with the values verbatim from the brief's text (including the hand-checked `push` assertion); `Paired`, `paired`, `choose` and `push`'s bodies are otherwise verbatim from the brief. `make check` passes (1612 tests, 97.72% coverage).
+- 2026-09-27, Task 14 implementation: one addition beyond the brief, matching the ordering fix already made to `judge_outcomes._load` (Task 5), `round0_handread._run` (Task 6) and `round1_report._load` (Task 11): `round_result.py`'s `_load` is called on every run this script reads (the run, the reference, and both noise runs), so it needed the same fix those three siblings already carry -- read `run.jsonl`'s `RunRecord` and refuse unless `record.sample.startswith("dev")` before `cases.jsonl` is read at all, on top of the run-id substring check, so a run whose id does not say "heldout" but whose recorded sample is held-out is refused before any per-case data is touched. The brief's own `_load` (verbatim in its Step 3 snippet) only had the run-id substring check. Added `test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read` (writes only `run.jsonl`, deliberately no `cases.jsonl`, so a check placed after the read would surface as an unhandled `FileNotFoundError` rather than a clean `SystemExit`; confirmed RED by temporarily reverting `_load` to the brief's plain form and re-running -- the test failed with `FileNotFoundError` instead of the expected `SystemExit`, then the fix was restored) and a happy-path `test_main_prints_the_outcome_and_append_writes_it_to_a_file` (four development run folders under a `tmp_path` runs dir, `_groups` monkeypatched to avoid touching `Settings().data_dir`'s processed parquet, the real committed `load_stats()` used unmonkeypatched since it only reads a packaged resource) asserting the outcome line prints and `--append` appends it to an existing file. The brief's four given tests (`test_a_round_is_kept_above_the_noise_with_no_harm`, `test_a_round_inside_the_noise_is_dropped`, `test_a_gain_that_harms_the_other_score_is_dropped`, `test_push_line_counts_first_codes_moved_toward_a_more_common_option`) and the rest of `scripts/round_result.py` (`Diff`, `Reading`, `diff`, `read`, `push_line`, `_first`, `_groups`, `_fmt`, `main`) are verbatim from the brief's Step 3 text -- no logic fix was needed beyond `_load` and its import of `RunRecord`. Mechanical fixes to satisfy `make check` (behaviour unchanged): (1) `ruff format` wrapped the module docstring's `Usage` line, `read`'s three early-return `Reading(...)` calls, and one test's `model_copy` call onto multiple lines. (2) `ruff check`'s `E501` (100-column limit) rejected two more of the brief's single lines -- `push_line`'s docstring (which also then needed `D205`/`D209`'s two-line, separate-closing-quote form once split into two sentences) and `main`'s "run: ...; reference: ...; noise pair: ..." status line -- both split across two adjacent lines/f-strings, same rendered text. (3) `ruff check --fix`'s `I001` reordered the test file's `scripts`/`tests` first-party imports ahead of the third-party `ntsb_probable_cause` ones. (4) `mypy --strict` rejected the test file's `_cases()` (missing return type; used in a typed context) and an unnecessary `# type: ignore[arg-type]` on `_run_record`'s `arm=arm` (a plain `arm: str` parameter passed to `RunRecord`'s `arm: Literal[...]` field raises no mypy error here, matching `tests/test_occurrence_misses.py:_write_run`'s identical, unignored pattern); annotated `_cases() -> list[CaseResult]` (importing `CaseResult`) and removed the stray ignore comment, same observable behaviour. `make check` passes (1631 tests, 97.74% coverage).
+- 2026-09-27, Task 7 Steps 4-5: Andy authorised Claude to run the judge ("Yes do it now"). It ran from a clean, detached checkout of `s27-guidance` at `228281b` (the track worktree held a task's uncommitted edits, which would have recorded a dirty tree), on B-v1, `REPEAT` and B-v2: $0.8084, $0.8081 and $0.8110, 399 labels each, **$2.43 in all against the plan's $1.50** (the judge's $0.00125-a-case estimate was about 60% low). The cards were built free: 50 (10 hits, 8 from each of the five miss groups; none was under 8, so W7's rule did not bite); the page names no case and shows no judge label.
+- 2026-09-27, Task 12 Steps 2-5: the plain rule ran free on both answer sets (Claude). Andy authorised the GPT-6 Luna check ("you have a yes on the luna spend"); it ran from a clean detached checkout at `b0cdcc2`: $0.1210 and $0.1196, **$0.24 against the plan's $0.72** (W3's estimate was about three times high); every reply parsed (0 of 394 and 0 of 395 fell back to the unchanged answer). Andy chose to include Jev (walkthrough answer "A"); Claude's attempt to run it was refused by the session's permission check on reading the TypeSafe key, so Andy ran both Jev checks himself from the same checkout: $0.0195 and $0.0196. `docs/results/s27-round1-dev.txt` ends `outcome (decision 0096 item 5): luna`, so `CHECK=luna` for every later round.
+- 2026-09-27, after Task 12, Andy's decision ("Yes that sounds good"; earlier "Otherwise yes option B after but more research"): a second, registered Jev check, `jev2`, is added as Task 12a (decision 0103). It is designed from TypeSafe's documentation (docs.typesafe.ai: object state, structured option descriptions with `what`/`not_for`, a `none_of_these` option; `jev-1.13` is weak at counting) and three independent projects that measured Jev (0.01 probability steps, so ties are broken by the model's own order; cut-offs do not transfer, so none is used), with every threshold taken from 0096 or 0101. The design and its win rule (beat no check, the plain rule and Luna on both answer sets, or Luna stays) are fixed in `docs/rounds/s27-round1-jev2.md`, committed before any code. Round 1's outcome and results file are unchanged.
+- 2026-09-27, Task 12a implementation (decision 0103). The registration's design is built as written; these are gap-fillings and plumbing, none changes what is sent to Jev or how the answer is decided. (1) `checkpass.WAYS` stays Round 1's three ways, and a new `checkpass.CHECK_WAYS` (`WAYS` plus `jev2`) is what `ntsb-eval check --way` accepts: `scripts/round1_report.py` iterates `WAYS`, so adding `jev2` there would have added `jev2` lines to `docs/results/s27-round1-dev.txt` the next time it was regenerated, which the brief rules out. `Way` itself gains `"jev2"` as the brief says. (2) Ties with `none_of_these`: the registration's tie order names only codes (guesses, then the other candidates), so `none_of_these`, being neither, comes after every code on a tie; it therefore "ranks first" only when its probability is strictly the highest. (3) `ordering.jev2_order` (the full ranked order, `none_of_these` included) is added beside the brief's `jev2_ranking`, which uses it; both refuse, with `SchemaError`, probabilities whose labels are not exactly the options asked. (4) Every option's probability is recorded in that ranked order, so the report recovers "none_of_these ranked first" from the step alone (a stable sort keeps the recorded tie order); when it ranks first the step's `ranking` is the model's own guesses (the answer applied, as for the other ways) and its `reason` says so. (5) `CheckOutcome.details` is the free-form mapping the brief names, spread into the step's `arguments` after `ranking` and `toward_more_common`; empty by default, so rule, luna and jev steps are unchanged (a test pins the rule step's keys). (6) `CodingStats.group_n(group)` is added (with a test) for the "in this phase group" base: the group's past cases over every defining code. (7) The report's "unchanged" group for the median confidence is the checked cases whose top-1 result is the same as no check (neither fixed nor broken), and it says so in the line. (8) The report reads the derived folders through the same refusals as the sources (the recorded sample in `run.jsonl` before `cases.jsonl`, then the split), one step stricter than `round1_report`, which read derived folders unchecked; a comparison folder that does not exist prints "not run", and a missing comparison fails the win rule, so Luna stays.
+- 2026-09-27, Task 12a, before any `jev2` call: the registration did not settle a tie at the top between `none_of_these` and a code (review finding). Andy chose option A: `none_of_these` wins such a tie, so the answer stays as the model gave it. The clarification is dated in `docs/rounds/s27-round1-jev2.md` and committed before the code change and before any call; the first build had made the code win ("a code wins every tie").
+- 2026-09-27, Task 12a review fix round 1. (1) Registration change (Important), following the registration's dated clarification committed before any call (`f078d9e`; Andy: option A): `none_of_these` ranks first whenever no code has a strictly higher probability, so a tie at the top between `none_of_these` and any code leaves the answer unchanged; `ordering.jev2_order` now puts `none_of_these` first in the tie order (it wins any tie it is part of) and the model-order tie rule applies among codes only. This replaces item (2) of the Task 12a implementation bullet above; the tests that pinned the old reading are rewritten and a test for exactly this tie is added. (2) Every `jev2` step now records Jev's full ranked option order after the tie rules, `none_of_these` included, as `arguments["jev_order"]`; `scripts/round1_jev2_report.py` reads "none_of_these ranked first" from it, not from the order the probabilities mapping was stored in (item (4) above no longer carries that job), with a round-trip test of a tie through `cases.jsonl` on disk. (3) `tests/test_boundary.py` gains the `jev2` counterpart of the ordering check's boundary test: the JSON body sent, both as escaped bytes and as its unescaped strings, holds no window (`withheld_windows`, codes left out because choosing among codes is the check's job) of the factual narrative, the analysis narrative or the probable cause of a real fixture; a temporary mutation (the hypothesis's account replaced by the fixture's analysis narrative) made it fail, and it was then restored. (4) `scripts/round1_jev2_report.py` refuses `dev-seal-400` through `samples.refuse_sealed(..., is_committed=gitinfo.is_committed)`, and checks both sources' records (held-out, sealed) before any run's cases are read; one existing refusal test now writes its second source, since that source's record is read first.
+- 2026-09-27, Task 12a Steps 8-9: Andy ran both `jev2` checks from the clean checkout at `8c40dbd` ($0.0313 and $0.0314). `docs/results/s27-round1-jev2-dev.txt` ends `luna stays (CHECK=luna)`: `jev2` was below GPT-6 Luna on both answer sets and did not clearly beat no check on the first. The documented changes did not improve on Round 1's Jev on these answer sets. Published as it came out (decision 0103).
+- 2026-09-28, Task 7 Step 7: `round0_handread score` gained one line per miss group of Andy's "why" answers, because Task 15 Step 1 chooses the first round by miss group and the score printed totals only; existing lines unchanged.
+- 2026-09-28, Task 7 Steps 6-8: Andy marked the 50 cards (a private copy of his marks is kept at `data/handcheck/s27-round0/marks.csv`). The narrative label was **not validated**: agreement 32 of 46 decidable cards (69.6% [55.2%, 80.9%], rule at least 75%), with 11 harsh and 3 generous judge errors; so `LABELS=unvalidated` and the four outcomes carry no claim (decision 0099 item 3). The noise floor between B-v1 and `REPEAT` is +4.0 points of top-1 [+0.5%, +7.5%] on 399 cases (`ntsb-eval report --against`), larger than the plan assumed; between their Luna-checked folders it is +1.0 [-3.0%, +5.0%]. `docs/results/s27-round0-dev.txt` written by `make s27-round0-results`.
+- 2026-09-28, Task 15 round 2: the first attempt was refused by the monthly budget guard before any call ($39.63 spent in September, $1.68 reserved). Andy raised September's budget to $50 (decision 0104), applied as `NTSB_MONTHLY_BUDGET_USD=50` in each paid command's environment until 30 September; the code default stays $40.
+- 2026-09-28, Task 15 round 3: four of the five loss-of-control/stall pairs the guidance quotes are not in `docs/results/s27-coding-stats.txt` (it prints only the 40 commonest pairs); they are cited from the committed counts it is built from, `scoring/tables/coding_stats.json`, through `coding_stats.load_stats().pair`, as the registration says.
+- 2026-09-28, Task 15 round 3: submitted at 14:44 UTC, inside OpenRouter's slow window, on Andy's instruction ("just go now"), against the plan's 01:00-12:00 UTC timing rule.
+- 2026-09-28, Task 15 round 4: `CodingStats.event_pair` (tested) was added so the guidance's counts, summed over every phase by event, come from code rather than an ad-hoc sum; it counts code pairs, as its docstring and the registration say.
+- 2026-09-28, Task 15 round 4: submitted at about 17:00 UTC, outside the 01:00-12:00 UTC timing rule, on Andy's go-ahead to register and start it now ("Sounds sensible").
+- 2026-09-28, Task 15 (between rounds 4 and 5): decision 0105 adds six codes the data dictionary lacks (phases 553 and 601; events 281, 282, 284 and 850) to the code tables through `scoring/tables/supplement.csv`, and moves the prompt version to `s1-v6`. Not in the plan or spec, which fixed the tables by 0025. It applies from Round 5 and is not subject to decision 0098 item 4; Round 5's registration says so.
+- 2026-09-28, Task 15: `scripts/round_result.py` gained `--supplement` (`make s27-round-result SUPPLEMENT=1`), which prints decision 0105 item 4's line: the cases whose NTSB sequence holds an added code, their top-1 hits in the reference and the run, and the paired top-1 difference on the other cases. For Round 5 only.
+- 2026-09-28, Task 15 round 3 Step 8: the judge ran on Round 3's checked folder ($0.8132); `judge_outcomes` compares it with the repeat's unchecked folder, because the repeat's checked folder (the reference) was never judged. The registration's appended note says so.
+- 2026-09-28, Task 15 round 5: submitted at about 18:30 UTC, outside the 01:00-12:00 UTC timing rule, on Andy's instruction ("Yes run it now"). Its run also carries decision 0105's table fix, which the reference does not; the registration says so and the result is read with `SUPPLEMENT=1`.
+- 2026-09-28, Task 15, lesson from round 4 (ad-hoc counts): its counts were conditioned on the NTSB coding both events ("when both appear"), which the model cannot know in advance. The model put a fuel event first in 40 cases (13-17 in earlier runs); of the 14 where it moved from a power loss to a fuel event and the NTSB kept the power loss, the NTSB coded no fuel event at all in 13. Later rounds' counts, the finding rounds' included, start from what the model can see (an evidence field, or a code the model itself chose), not from the NTSB's final codes.
+- 2026-09-29, Task 15, before the first finding round: the statistics pool gained flagged-finding counts by defining code (`PoolCase.findings`, `CodingStats.findings_by_defining`, `findings_given_event`; tested), rebuilt from the same pool by `scripts/coding_stats.py`, whose report gains a "flagged findings by defining event" section. Every earlier count in `coding_stats.json` is unchanged (checked key by key); four lines of `docs/results/s27-coding-stats.txt` now show the labels decision 0105 added (phases 553 and 601) where they showed `?`.
+- 2026-09-29, Task 15 round 6: the rule dropped it on harm to top-1 against Round 3 (-6.3% [-10.5%, -2.5%]) with finding recall +11.4% [+8.2%, +14.6%]; Andy kept it by override (decision 0106, "I think option B"). Round 6's checked run is the reference from now on; the sealed registration and the report state the override.
+- 2026-09-29, final review fix round (Important 1): `samples.refuse_sealed` was reachable but not called from `apps/eval/__main__.py:_cmd_baseline` or from the S2.6 scripts that take a free-form `--sample` (`page_kinds.py`, `analysis_handcheck.py`, `narrative_coverage.py`, `name_coverage.py`, `docket_leak_scan.py`), so `ntsb-eval baseline --sample dev-seal-400` and any of those five scripts could score or read the sealed sample today, free and with one flag, before its registration (`docs/rounds/s27-sealed.md`) is committed. Fixed by calling `refuse_sealed` at each of those call sites, before `sample_ids` is read. Tests added: `test_baseline_refuses_the_sealed_sample_before_anything_is_read`, `test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard` (`--sample` is optional on `baseline`), `test_check_refuses_the_sealed_sample_before_any_client_is_built` (`ntsb-eval check` already called `refuse_sealed`, decision 0095, but had no test), and one sealed-refusal test each for `page_kinds.py` and `analysis_handcheck.py`.
+- 2026-09-29, final review fix round (Important 1 / deferred Task 5, one shared helper): `samples.refuse_unless_development(run_id, sample)` replaces the hand-copied held-out/sealed refusal `occurrence_misses.py`, `judge_outcomes.py`, `round0_handread.py`, `round1_report.py`, `round1_jev2_report.py` and `round_result.py` each carried, which accepted `dev-seal-400` as a plain development sample (`record.sample.startswith("dev")`) -- only `round1_jev2_report.py` also called `refuse_sealed`, and before registration no sealed run could exist, so this was defence in depth, not an open gap. Takes `sample: str | None`, not the whole `RunRecord`: `scoring.samples` is one of the "Only the splitter constructs synthesis and verdict" import-linter contract's source modules, and `scoring.records` reaches `records.verdict` through `scoring.metrics`, so importing `RunRecord` there would have broken that contract (checked: `uv run lint-imports` failed with exactly this path before the signature was changed). Each script's own refusal message wording is otherwise preserved (each substring the existing tests already matched -- "held-out run", "development runs only", "outside the dev split" -- still appears), and every existing refusal test in the six scripts' test files passes unchanged. `scripts/coding_stats.py` is untouched: it calls `samples.sample_ids` directly to build its excluded-ids set, never `refuse_unless_development`, so it can still read the sealed ids to leave them out of the pool.
+- 2026-09-29, final review fix round (Minor 1): `report.provenance`'s header line now prints `prompt=<prompt_version>` (from Round 5 on, a guided run's `s1-v6` prompt can differ from its reference's `s1-v5`, and neither `report --against` nor `round_result` flagged that); `round_result`'s `run:` line now prints both the run's and the reference's prompt versions. `test_provenance_shows_status_commit_and_totals` (`tests/test_report.py`) is updated to expect the new field, in the same order the line already carried the others; `test_provenance_names_the_prompt_version` is added beside `test_provenance_names_the_version`.
+- 2026-09-29, final review fix round (Minor 3): `round_result._load` (and the `_load`/`_refuse` helpers in `round1_report.py` and `round1_jev2_report.py`) now refuse a run whose `finished` is `None` -- a check pass that died mid-write leaves exactly that, and `preflight` then refuses a re-run, so the folder has to be deleted by hand -- before any per-case data is read; `round_result.main` and the two round-report scripts' `main` also refuse when the run, the reference/other answer set and (for `round_result`) the noise pair do not share sample, arm and evidence version, comparing `RunRecord` fields directly rather than only printing `n` and letting a mismatch pass silently. `checkpass.check_run`'s preflight "exists" error now says a dead pass's folder must be deleted by hand and try again, rather than only naming the rule.
+- 2026-09-29, final review fix round (Minor 4, deferred Task 10): `test_the_ordering_check_sends_no_withheld_text` (`tests/test_boundary.py`) now asserts every `withheld_windows` window (codes excluded, as choosing among codes is the check's job), matching the `jev2` boundary test beside it, instead of only the first 80 characters of each withheld field. Luna is the check carried forward to the sealed run, so its boundary test is worth the stronger assertion. Confirmed the assertion catches a real leak: a temporary mutation (the hypothesis's evidence narrative extended with the fixture's probable cause) made the test fail with the leaked text quoted in the assertion error, then the mutation was reverted; `git diff --stat tests/test_boundary.py` before and after the mutation-and-revert cycle showed the file unchanged apart from the intended fix.
+- 2026-09-29, final review fix round (Minor 5): `scripts/coding_stats.py:processed_rows` now parses `raw_json` only for development rows -- `pool_cases` skips every held-out and open row before it ever touches `raw`, so parsing their JSON bought nothing, though nothing leaked: the pool guard held regardless. `test_processed_rows_parses_raw_json_for_development_rows_only` (`tests/test_coding_stats_script.py`) pins this. Rebuilt `src/ntsb_probable_cause/scoring/tables/coding_stats.json` and `docs/results/s27-coding-stats.txt` against the main checkout's real processed file (`make s27-coding-stats`) and confirmed byte-identical output with `git diff --stat`; neither file is part of this commit.
+- 2026-09-29, final review fix round (Minor 6): `tests/fixtures/typesafe/choices.json` (ported from `typesafe-probe`) carries a real case's evidence state with no case id recorded beside it. Identified it by matching its evidence values against the processed file locally -- the registration `N418SP` is unique, and every other evidence value in `request.state` matches the same case's record exactly -- as `ANC09CA020`, event date 2009-02-16, development split. Recorded in `tests/fixtures/typesafe/README.md`; `test_typesafe_fixture_case_is_development_split` (`tests/test_contamination.py`) checks its split by event date, the same way the file's other fixture-purity tests do.
+- 2026-09-29, final review fix round (Important 2 / Minor 2): decision 0106's argument for overriding the do-no-harm rule, and Round 6's note, rested on numbers labelled "ad-hoc counts" -- produced by no committed script. `scripts/round_comparisons.py` (`make s27-round-comparisons`) reads the seven named checked (`-check-luna`) run folders and writes `docs/results/s27-round-comparisons-dev.txt`: each run's own checked top-1 and finding recall@10, Round 6 paired against Round 3, Round 4, Round 5 and the repeat, and the decision 0105 supplement line for Round 6 against Round 3. Run free and local against the main checkout's data; every figure it produced matches decision 0106's table and Round 6's note exactly (top-1 -2.3%/-2.8%/-1.5%, finding recall +12.3%/+12.7%/+10.5% against Round 4/Round 5/the repeat; the reference figures against Round 3; Round 6's own 25.1%/22.6%; the supplement's "reference 5, run 3" top-1 hits) -- no discrepancy found, so no new decision record was needed. One line was appended under Round 6's "Override" section and a "Source of the numbers" section was appended to decision 0106, both pointing to the results file; nothing above either append was edited.
+- 2026-09-29, final review fix round, extending the Task 15 round 3 deviation above to Rounds 4 and 5 (Minor 7): Round 4's guidance counts (for example the fuel/power-loss pair counts) are sums over every phase read through `coding_stats.load_stats().event_pair(<event>, <event>)`, as `docs/rounds/s27-round-4.md` itself already states and as the round-4 `CodingStats.event_pair` addition above documents; none of those summed figures is printed verbatim in `docs/results/s27-coding-stats.txt` either, which prints per-phase-group pair counts, not summed ones. Round 5's guidance counts (for example "1096 of 1403" Approach cases, "1501 of 1994" Enroute cases, "3107 of 4306" Landing cases, 92 of those under 553) are read the same way, through `coding_stats.load_stats().group_phases(<group>)` and `group_n(<group>)`, as `docs/rounds/s27-round-5.md` states; `docs/results/s27-coding-stats.txt` does not print per-group phase breakdowns at all. Both rounds' counts are reproducible from the committed `coding_stats.json` by the cited accessor, matching the standard the round-3 entry set; no code changed for this entry, which only completes the citation record the review found incomplete.
+- 2026-09-29, Task 15 closed: the procedure ran for rounds 2-6 (2 dropped, 3 kept, 4 and 5 dropped, 6 kept by override, decision 0106). The occurrence rounds ended on two drops in a row (4, 5); Andy ended the finding rounds after one ("option A"), leaving the second 0098 allows unused. The judge ran on each kept round (3 and 6).

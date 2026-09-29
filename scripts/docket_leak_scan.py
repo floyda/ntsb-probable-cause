@@ -34,14 +34,15 @@ from pathlib import Path
 
 import httpx
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import DocketError, LeakageError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole, VerdictRole
 from ntsb_probable_cause.records.guard import find_leaks
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring.runner import CachedDocketReader
-from ntsb_probable_cause.scoring.samples import load_cases, sample_ids
+from ntsb_probable_cause.scoring.samples import load_cases, refuse_sealed, sample_ids
 from ntsb_probable_cause.settings import Settings
 
 CANDIDATES = (20, 30, 40, 60, 80, 100, 120, 150, 200, 250, 300, 400)
@@ -192,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    try:
+        refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    except ConfigurationError as error:
+        raise SystemExit(f"docket_leak_scan: {error}") from error
     settings = Settings()
     reader = CachedDocketReader(DocketClient(settings.data_dir / "docket", transport=_offline()))
     records = load_cases(settings.data_dir / "processed", sample_ids(args.sample))

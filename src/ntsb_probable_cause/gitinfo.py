@@ -62,6 +62,25 @@ def commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tup
     return tuple(dict.fromkeys(listing.split()))
 
 
+def is_committed(path: Path, repo: Path = Path()) -> bool:
+    """Whether ``path`` (relative to ``repo``) is tracked and has no uncommitted change."""
+    tracked = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "ls-files", "--error-unmatch", str(path)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if tracked.returncode != 0:
+        return False
+    status = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "status", "--porcelain", "--", str(path)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return not status.strip()
+
+
 def branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]:
     """Local branches whose history contains ``commit``, by short name (decision 0102)."""
     listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell

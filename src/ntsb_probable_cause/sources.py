@@ -91,6 +91,12 @@ GLM_53_FLASH_BATCH = ModelPrice(
     "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
 )
 
+# TypeSafe AI's launch post (typesafe.ai/blog/introducing-system-one-models-and-jev), read
+# 2026-09-16: $0.042 per million input tokens, output unmetered. Self-reported and, in the
+# vendor's words, not shown to be unsubsidised (decisions 0030, 0097). ``jev-latest`` is the
+# SDK's default model name; every reply records the version it resolved to.
+JEV = ModelPrice("jev-latest", 0.042, 0.0, "TypeSafe launch post, 2026-09-16, self-reported")
+
 # https://openrouter.ai/api/v1/models, read 2026-09-24: the transcriber candidates of S2.6
 # spec §7.2 that S1 had not priced. Standard prices only: an image cannot go through the batch
 # service (https://openrouter.ai/docs/batch-quickstart, read 2026-09-24), and Qwen has no
@@ -163,6 +169,7 @@ _PRICES = {
         GEMINI_31_FLASH_LITE_BATCH,
         GLM_53_FLASH,
         GLM_53_FLASH_BATCH,
+        JEV,
         GEMINI_36_FLASH,
         QWEN_35_122B,
         S27_LING_30_FLASH_VL,
@@ -231,3 +238,10 @@ DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 CHAT_COMPLETIONS = "/api/v1/chat/completions"
 BATCHES = "/api/beta/batches"
+
+# https://api.typesafe.ai/openapi.json, as generated into ``typesafe-sdk`` 0.6.0 on PyPI (read
+# 2026-09-17). The saved responses under tests/fixtures/typesafe/ confirm the shape (0097).
+TYPESAFE_SYSTEM_ONE = "/v1/systemone"
+TYPESAFE_MODELS = "/v1/models"
+# The vendor's documented ceiling on labels in one Choice question.
+TYPESAFE_MAX_CHOICE_LABELS = 255

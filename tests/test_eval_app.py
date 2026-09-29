@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import cast
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -19,7 +20,9 @@ from apps.eval.__main__ import (
 )
 from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as small_docket
+from tests.test_occurrence_misses import _case
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -32,7 +35,7 @@ from ntsb_probable_cause.docket.transcribe import (
     TranscriptionCache,
     TranscriptionKey,
 )
-from ntsb_probable_cause.errors import DocketError, ModelError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
@@ -43,6 +46,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
 )
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.budget import open_reservations, reserve
@@ -281,6 +285,44 @@ def test_run_resume_reaches_the_runner_and_refuses_an_unknown_run_id(
     assert "cannot resume: no run folder" in err
     assert "Traceback" not in err
     assert fake.payloads == []
+
+
+def test_run_refuses_guidance_whose_registration_is_not_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(
+        gitinfo, "is_committed", lambda path, repo=Path(): path.name != "s27-round-2.md"
+    )
+    assert (
+        main(
+            ["run", "--arm", "ceiling", "--sample", "dev-400", "--guidance", "r2-loc-stall"],
+            client_factory=lambda s: (RecordingFakeClient([]), None),
+        )
+        == 1
+    )
+    assert "registration" in capsys.readouterr().err
+
+
+def test_resolve_latest_skips_a_guided_run(tmp_path: Path) -> None:
+    """A guided run (S2.7) is not "the plain arm" -- --latest must not silently pick it up."""
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
+    kwargs = dict(_RUN_KWARGS) | {"arm": "B"}
+    guided = RunRecord(
+        **kwargs,
+        run_id="20260927T000000-abc1234-dev-400-B",
+        started=when,
+        finished=when,
+        guidance=("r2-loc-stall",),
+        guidance_sha256="a" * 64,
+    )
+    write_jsonl(runs / guided.run_id / "run.jsonl", [guided])
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
 
 
 class _ScriptedBatchClient:
@@ -700,6 +742,8 @@ def _write_judgeable_run(  # noqa: PLR0913 -- a test-only builder, one keyword p
     sample: str = "dev-400",
     arm: str = "ceiling",
     evidence_version: EvidenceVersion = "v1",
+    guidance: tuple[str, ...] = (),
+    guidance_sha256: str | None = None,
 ) -> None:
     """A run folder with one scored, stepped case: the minimum ``judge`` can act on."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
@@ -714,6 +758,8 @@ def _write_judgeable_run(  # noqa: PLR0913 -- a test-only builder, one keyword p
                 finished=now,
                 cost_usd=1.0,
                 evidence_version=evidence_version,
+                guidance=guidance,
+                guidance_sha256=guidance_sha256,
             )
         ],
     )
@@ -827,6 +873,34 @@ def test_judge_records_the_judged_run_s_own_evidence_version(
     assert judge.run_id == f"{run_id}-judge"
     assert judge.evidence_version == "v2"
     assert "| heldout-40 | B | v2 |" in ledger_path.read_text()
+
+
+def test_judge_records_the_judged_run_s_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Fix round 1, item 2: the judge pass's cost row must not lose which guidance ran."""
+    case_id, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(
+        "ntsb_probable_cause.scoring.ledger.commit_state", lambda *_a, **_k: ("abc1234", False)
+    )
+    run_id = "20260101T000000-abc1234-dev-400-B"
+    _write_judgeable_run(
+        runs_dir,
+        run_id,
+        case_id,
+        arm="B",
+        guidance=("r2-loc-stall", "r3-phase"),
+        guidance_sha256="a" * 64,
+    )
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return RecordingFakeClient([GOOD_LABELS]), None
+
+    assert main(["judge", run_id], client_factory=factory) == 0
+    answering, judge = read_jsonl(runs_dir / run_id / "run.jsonl", RunRecord)
+    assert answering.guidance == ("r2-loc-stall", "r3-phase")
+    assert judge.guidance == answering.guidance
+    assert judge.guidance_sha256 == answering.guidance_sha256 == "a" * 64
 
 
 def test_judge_on_a_heldout_run_from_a_dirty_tree_is_refused(
@@ -1799,3 +1873,575 @@ def test_report_against_prints_each_paired_block_by_fatal_and_non_fatal(
     assert "\nnon-fatal: paired difference (a - b) on 1 shared" in transcribed
     assert "\nfatal: paired difference (a - b) on 2 shared" in unmarked
     assert "\nnon-fatal: paired difference (a - b) on 1 shared" in unmarked
+
+
+def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["run", "--arm", "B", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+    assert (
+        main(["transcribe", "--sample", "dev-seal-400", "--expected-cost-per-page-usd", "0.001"])
+        == 1
+    )
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_baseline_refuses_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval baseline --sample dev-seal-400`` scored the
+    sealed sample today, free and with one flag."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """``--sample`` is optional on ``baseline``; the sealed guard must not fire on ``None``."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline"]) == 0
+
+
+def _write_checkable_run(
+    runs: Path,
+    run_id: str = "20260926T000000-abc1234-dev-400-B",
+    *,
+    exclusions: tuple[str, ...] = (),
+    includes: tuple[str, ...] = (),
+) -> Path:
+    """A dev-400 arm B run with one scored, stepped case: enough for `ntsb-eval check`."""
+    folder = runs / run_id
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    write_jsonl(
+        folder / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=exclusions,
+                includes=includes,
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha="abc1234",
+                dirty=False,
+                started=when,
+                finished=when,
+                cases=1,
+                cost_usd=1.0,
+            )
+        ],
+    )
+    write_jsonl(
+        folder / "cases.jsonl",
+        [_case("c1", ("552240", "552241"), ("552241",))],
+    )
+    return folder
+
+
+def test_check_refuses_a_held_out_run_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-heldout-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="heldout-400", arm="B")
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a held-out run")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a held-out run")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "jev"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "development" in capsys.readouterr().err
+
+
+def test_check_refuses_the_sealed_sample_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval check`` already calls ``refuse_sealed``
+    (``__main__.py``), but no test confirmed it before this one."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    run_id = "20260926T000000-abc1234-dev-seal-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="dev-seal-400", arm="B")
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a sealed run")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a sealed run")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "jev"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 2: reading the phase group back from the raw record would hand
+    the check a field an ablation run withheld from the model. Refused before `cases.jsonl` is
+    even read (no such file is written here: a read attempt would raise, not refuse cleanly)."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = runs / run_id
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    write_jsonl(
+        folder / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=("phase_of_flight",),
+                includes=(),
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha="abc1234",
+                dirty=False,
+                started=when,
+                finished=when,
+                cases=1,
+                cost_usd=1.0,
+            )
+        ],
+    )
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for an ablation source")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for an ablation source")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "rule"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "ablation" in capsys.readouterr().err
+
+
+def test_check_way_luna_is_refused_over_budget_without_building_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 1: the budget guard runs, and refuses, before any client is
+    built -- an over-budget `luna`/`jev` pass must never reach `client_factory`/`jev_factory`."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for an over-budget check")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for an over-budget check")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna", "--budget-usd", "0.00001"],
+        client_factory=boom_client,
+        jev_factory=boom_jev,
+    )
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "budget" in err
+    assert open_reservations(runs) == {}
+
+
+class _ReservationSpyClient:
+    """A fake client that notices whether a budget reservation is open when it is called."""
+
+    def __init__(self, reply_text: str, runs_dir: Path) -> None:
+        self._reply_text = reply_text
+        self._runs_dir = runs_dir
+        self.saw_a_reservation = False
+
+    def complete(
+        self,
+        _payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        self.saw_a_reservation = bool(open_reservations(self._runs_dir))
+        return ModelReply(
+            content=self._reply_text,
+            usage=Usage(prompt_tokens=0, completion_tokens=0),
+            model=settings.model_id(),
+            response_id="fake",
+        )
+
+
+def test_check_way_luna_settles_its_reservation_after_a_successful_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix round 1, Important 1: the reservation made before the client is built is visible to
+    a concurrent job for the whole synchronous pass, and settled once the pass's real spend is
+    on disk, so it never sits open against the month's budget."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    spy = _ReservationSpyClient(json.dumps({"ranking": ["552241"]}), runs)
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return spy, None
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=factory, jev_factory=boom_jev
+    )
+    assert exit_code == 0
+    assert spy.saw_a_reservation is True  # open for the duration of the paid call, not $0
+    assert open_reservations(runs) == {}
+    derived = runs / f"{run_id}-check-luna"
+    assert (derived / "cases.jsonl").exists()
+    assert (derived / "run.jsonl").exists()
+
+
+def test_check_way_rule_writes_a_derived_run_and_prints_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, Important 3(b): a happy-path `ntsb-eval check RUN --way rule` through
+    `main`, needing no client at all."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("the rule way needs no client")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the rule way needs no client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "rule"], client_factory=boom_client, jev_factory=boom_jev
+    )
+    assert exit_code == 0
+    derived_id = f"{run_id}-check-rule"
+    out = capsys.readouterr().out
+    assert f"check {derived_id}:" in out
+    assert (runs / derived_id / "cases.jsonl").exists()
+    assert (runs / derived_id / "run.jsonl").exists()
+
+
+def test_check_way_luna_run_twice_is_refused_the_second_time_with_nothing_leaked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: a repeat check of an already-finished derived run must not
+    reserve anything the second time, and must not touch the first run's own output. The old
+    code reserved before `checkpass.check_run` ran its own "already exists" refusal, so a
+    repeated check left an open reservation behind even though `run.jsonl` was untouched."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    fake = RecordingFakeClient([json.dumps({"ranking": ["552241"]})])
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return fake, None
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    first_exit = main(
+        ["check", run_id, "--way", "luna"], client_factory=factory, jev_factory=boom_jev
+    )
+    assert first_exit == 0
+    derived = runs / f"{run_id}-check-luna"
+    first_run_jsonl = (derived / "run.jsonl").read_text()
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("a repeated check must not reach the client factory")
+
+    def boom_jev_again(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("a repeated check must not reach the jev factory")
+
+    second_exit = main(
+        ["check", run_id, "--way", "luna"],
+        client_factory=boom_client,
+        jev_factory=boom_jev_again,
+    )
+    assert second_exit == 1
+    assert "exists" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert (derived / "run.jsonl").read_text() == first_run_jsonl
+
+
+def test_check_way_luna_releases_its_reservation_when_the_client_factory_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: a factory that raises after the reservation was made (a missing
+    API key, say) must not leave that reservation open with nothing left to settle it."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+
+    def broken_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise ConfigurationError("OPENROUTER_API_KEY is not set")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("the luna way needs no jev client")
+
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=broken_client, jev_factory=boom_jev
+    )
+    assert exit_code == 1
+    assert "OPENROUTER_API_KEY" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+
+
+def test_check_refuses_a_check_run_as_its_own_source_leaving_no_new_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 2, Important: refusing a source that is itself a derived check run must not
+    create the empty `<id>-check-<way>` folder `reserve_within_budget` would otherwise leave
+    behind -- the old code reserved before `checkpass.check_run`'s own refusal of this shape
+    of source ever ran."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-dev-400-B-check-luna"
+    _write_checkable_run(runs, run_id)
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a stacked-check source")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a stacked-check source")
+
+    before = {p.name for p in runs.iterdir()}
+    exit_code = main(
+        ["check", run_id, "--way", "luna"], client_factory=boom_client, jev_factory=boom_jev
+    )
+    assert exit_code == 1
+    assert "stacked" in capsys.readouterr().err
+    assert {p.name for p in runs.iterdir()} == before
+    assert open_reservations(runs) == {}
+
+
+def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B-check-rule", finished=when, arm="B")
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
+
+
+# --- `check --way jev2` (decision 0103): the same refusals and reservation as `jev` ---
+
+
+def _boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+    raise AssertionError("the jev2 way needs no OpenRouter client")
+
+
+def _boom_jev(_settings: Settings) -> TypeSafeClient:
+    raise AssertionError("no TypeSafe client may be built for a refused jev2 check")
+
+
+def _jev2_client(runs: Path, seen: list[dict[str, object]]) -> TypeSafeClient:
+    """A TypeSafe client on a mock transport: answers every option, notes open reservations."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append({"body": body, "reserved": bool(open_reservations(runs))})
+        labels = list(body["questions"]["defining"]["criteria"])
+        probabilities = dict.fromkeys(labels, 0.0)
+        probabilities[labels[-2]] = 1.0  # the last code, not none_of_these
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 1500, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": labels[-2],
+                        "confidence": 0.7,
+                        "probabilities": probabilities,
+                    }
+                },
+            },
+        )
+
+    return TypeSafeClient(
+        "k", base_url="https://api.typesafe.ai", transport=httpx.MockTransport(handler)
+    )
+
+
+def _checkable_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+    return runs
+
+
+def test_check_way_jev2_reserves_calls_the_pinned_model_and_settles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    seen: list[dict[str, object]] = []
+    exit_code = main(
+        ["check", run_id, "--way", "jev2"],
+        client_factory=_boom_client,
+        jev_factory=lambda _settings: _jev2_client(runs, seen),
+    )
+    assert exit_code == 0
+    assert len(seen) == 1
+    assert seen[0]["reserved"] is True  # the reservation is open for the paid call
+    body = cast("dict[str, object]", seen[0]["body"])
+    assert body["model"] == "jev-1.13.0"
+    assert isinstance(body["state"], dict)
+    assert open_reservations(runs) == {}
+    derived = runs / f"{run_id}-check-jev2"
+    step = read_jsonl(derived / "cases.jsonl", CaseResult)[0].steps[-1]
+    assert {"choice", "confidence", "probabilities"} <= set(step.arguments)
+    assert f"check {run_id}-check-jev2:" in capsys.readouterr().out
+
+
+def test_check_way_jev2_run_twice_is_refused_the_second_time_before_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    seen: list[dict[str, object]] = []
+    assert (
+        main(
+            ["check", run_id, "--way", "jev2"],
+            client_factory=_boom_client,
+            jev_factory=lambda _settings: _jev2_client(runs, seen),
+        )
+        == 0
+    )
+    derived = runs / f"{run_id}-check-jev2"
+    first = (derived / "run.jsonl").read_text()
+    assert (
+        main(["check", run_id, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "exists" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert (derived / "run.jsonl").read_text() == first
+
+
+def test_check_way_jev2_refuses_an_unfinished_source_before_reserving_or_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    folder = _write_checkable_run(runs, run_id)
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    (folder / "run.jsonl").unlink()
+    write_jsonl(folder / "run.jsonl", [record.model_copy(update={"finished": None})])
+    before = {p.name for p in runs.iterdir()}
+    assert (
+        main(["check", run_id, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "finished" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+    assert {p.name for p in runs.iterdir()} == before
+
+
+def test_check_way_jev2_refuses_an_ablation_source_and_a_held_out_run_before_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    ablation = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, ablation, exclusions=("phase_of_flight",))
+    assert (
+        main(
+            ["check", ablation, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev
+        )
+        == 1
+    )
+    assert "ablation" in capsys.readouterr().err
+    held = "20260926T000000-abc1234-heldout-400-B"
+    _write_judgeable_run(runs, held, "c1", sample="heldout-400", arm="B")
+    assert (
+        main(["check", held, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
+        == 1
+    )
+    assert "development" in capsys.readouterr().err
+    assert open_reservations(runs) == {}
+
+
+def test_check_way_jev2_is_refused_over_budget_without_building_any_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    exit_code = main(
+        ["check", run_id, "--way", "jev2", "--budget-usd", "0.00001"],
+        client_factory=_boom_client,
+        jev_factory=_boom_jev,
+    )
+    assert exit_code == 1
+    assert "budget" in capsys.readouterr().err
+    assert open_reservations(runs) == {}

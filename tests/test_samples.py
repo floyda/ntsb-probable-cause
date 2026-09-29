@@ -10,6 +10,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.splits import Split
@@ -275,6 +277,70 @@ def test_draw_applies_proportional_quotas_per_class(tmp_path: Path) -> None:
     processed = _write_cases(tmp_path, rows)
     drawn = {case_id for case_id, _ in samples.draw(processed, Split.DEV, per_slice=10)}
     assert drawn == {r[0] for r in rows}
+
+
+def test_draw_excludes_the_given_cases_and_is_unchanged_without_them(tmp_path: Path) -> None:
+    # Adapted from the brief's `_raw(f"CEN1{i}FA{i:03d}", fatal=i % 2 == 0, klass="F")`: this
+    # file's real `_raw` takes no case id or class keyword, and `_write_cases` wants 5-tuples,
+    # so the class ("F" for every row, as the brief's snippet did) goes in the tuple itself.
+    rows = [
+        (f"CEN1{i}FA{i:03d}", "2018-01-01", "dev", "F", _raw(fatal=i % 2 == 0)) for i in range(40)
+    ]
+    processed = _write_cases(tmp_path, rows)
+    plain = samples.draw(processed, Split.DEV, per_slice=5, seed=7)
+    assert samples.draw(processed, Split.DEV, per_slice=5, seed=7, exclude=frozenset()) == plain
+    excluded = frozenset(case for case, _date in plain)
+    again = samples.draw(processed, Split.DEV, per_slice=5, seed=7, exclude=excluded)
+    assert not excluded & {case for case, _date in again}
+
+
+def test_refuse_sealed_opens_only_on_a_committed_registration() -> None:
+    samples.refuse_sealed("dev-400", is_committed=lambda _path: False)
+    with pytest.raises(ConfigurationError, match="sealed"):
+        samples.refuse_sealed("dev-seal-400", is_committed=lambda _path: False)
+    seen: list[Path] = []
+
+    def _record_and_confirm(path: Path) -> bool:
+        seen.append(path)
+        return True
+
+    samples.refuse_sealed("dev-seal-400", is_committed=_record_and_confirm)
+    assert seen == [Path("docs/rounds/s27-sealed.md")]
+
+
+def test_refuse_unless_development_checks_the_run_id_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A held-out run id is refused before ``sample`` is even known (``sample=None``)."""
+    with pytest.raises(ConfigurationError, match="development runs only"):
+        samples.refuse_unless_development("20260926T000000-abc1234-heldout-400-B", None)
+    # A development-looking id with sample=None is not yet refusable: run.jsonl has not
+    # been read, so nothing is known about the sample yet.
+    samples.refuse_unless_development("20260926T000000-abc1234-dev-400-B", None)
+
+
+def test_refuse_unless_development_refuses_a_recorded_held_out_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run id silent about it is still refused once the recorded sample says held-out."""
+    with pytest.raises(ConfigurationError, match="held-out run"):
+        samples.refuse_unless_development("renamed-run", "heldout-400")
+
+
+def test_refuse_unless_development_refuses_the_sealed_sample_until_committed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    with pytest.raises(ConfigurationError, match="sealed"):
+        samples.refuse_unless_development("dev-run", "dev-seal-400")
+
+
+def test_refuse_unless_development_allows_a_committed_dev_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
+    samples.refuse_unless_development("dev-run", "dev-400")
+    samples.refuse_unless_development("sealed-run", "dev-seal-400")
 
 
 def test_draw_clamps_a_class_quota_larger_than_its_pool(tmp_path: Path) -> None:

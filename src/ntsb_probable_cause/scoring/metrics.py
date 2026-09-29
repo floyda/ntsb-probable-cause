@@ -3,7 +3,7 @@
 import random
 from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import sqrt
 
 from ntsb_probable_cause.records.verdict import Verdict
@@ -90,6 +90,25 @@ def score_case(
         finding_recall_all_10=ra,
         abstained=hypothesis.abstain,
         confidence=hypothesis.confidence,
+    )
+
+
+def rescore_occurrence(
+    scores: CaseScores, codes: Sequence[str], truth: Sequence[str], *, seen_pairs: AbstractSet[str]
+) -> CaseScores:
+    """The occurrence scores after the codes are re-ordered; finding scores stand (0096).
+
+    Exactly :func:`score_case`'s occurrence rules. An abstained case is returned unchanged.
+    """
+    if scores.abstained or not codes:
+        return scores
+    defining = truth[0] if truth else None
+    return replace(
+        scores,
+        occurrence_top1=codes[0] == defining,
+        occurrence_top3=defining in codes,
+        event_match=defining is not None and codes[0][3:] == defining[3:],
+        pair_unseen=codes[0] not in seen_pairs,
     )
 
 

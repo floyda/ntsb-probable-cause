@@ -141,9 +141,17 @@ def test_fmt_n_includes_the_count() -> None:
 def test_provenance_shows_status_commit_and_totals(run_record: RunRecord) -> None:
     text = report.provenance(run_record)
     assert text.startswith(f"run {run_record.run_id} [complete]")
-    assert "sample=heldout-40 arm=ceiling evidence=v1 model=openai/gpt-5.6-luna" in text
+    assert "sample=heldout-40 arm=ceiling evidence=v1 prompt=v1 model=openai/gpt-5.6-luna" in text
     assert f"commit={run_record.commit_sha} " in text
     assert "cases=40 total_cost_usd=1.2300" in text
+
+
+def test_provenance_shows_guidance_when_present(run_record: RunRecord) -> None:
+    guided = run_record.model_copy(
+        update={"guidance": ("r2-loc-stall", "r3-phase"), "guidance_sha256": "a" * 64}
+    )
+    assert "guidance=r2-loc-stall+r3-phase sha256=aaaaaaaaaaaa\n" in report.provenance(guided)
+    assert "guidance=" not in report.provenance(run_record)
 
 
 def test_provenance_marks_an_aborted_run_and_a_dirty_commit(run_record: RunRecord) -> None:
@@ -589,6 +597,14 @@ def test_a_cross_version_comparison_is_labelled(run_record: RunRecord) -> None:
 
 def test_provenance_names_the_version(run_record: RunRecord) -> None:
     assert "evidence=v1" in report.provenance(run_record)
+
+
+def test_provenance_names_the_prompt_version(run_record: RunRecord) -> None:
+    """Final review, Minor 1: from Round 5 on, a guided run's prompt version (``s1-v6``) can
+    differ from its reference's (``s1-v5``); ``provenance`` must show which ran."""
+    assert "prompt=v1" in report.provenance(run_record)
+    bumped = run_record.model_copy(update={"prompt_version": "s1-v6"})
+    assert "prompt=s1-v6" in report.provenance(bumped)
 
 
 def test_unmarked_drops_every_marked_case(case_result: CaseResult) -> None:

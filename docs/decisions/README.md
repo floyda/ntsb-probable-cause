@@ -65,7 +65,7 @@ under `docs/specs/` and the record links to it.
 | [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted |
 | [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted |
 | [0024](0024-open-split-enters-measurements-only-as-numbers.md) | Open-split cases enter a measurement only as numbers | Accepted |
-| [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022 |
+| [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022; item 1 amended by 0105 |
 | [0026](0026-slices-fixed-samples-and-heldout-ledger.md) | Slices by fatality first; fixed samples; a held-out ledger | Accepted |
 | [0027](0027-registration-rule-and-case-number-probe.md) | The registration rule, and the case-number probe measure memorisation | Accepted |
 | [0028](0028-prose-graded-by-validated-judge-never-a-bar.md) | Prose outputs are graded by a validated judge, and are never a bar | Accepted |
@@ -123,7 +123,7 @@ under `docs/specs/` and the record links to it.
 | [0080](0080-the-transcriber-test-and-its-choice-rule.md) | The transcriber is chosen by a test on our own pages, by a rule fixed in advance | Accepted |
 | [0081](0081-transcription-is-evidence-preparation.md) | Transcription is evidence preparation, costed apart from the agent's per-case cap | Accepted; extends 0030 |
 | [0082](0082-the-v3-probe-pictures-alongside-text.md) | The v3 probe: pictures alongside the text, on development cases only | Accepted |
-| [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030 |
+| [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030; item 1 raised to $50 for September 2026 by 0104 |
 | [0084](0084-the-reply-budget-is-8000-tokens.md) | The reply budget is 8,000 tokens, measured on dev-400 by a rule fixed before the runs | Accepted |
 | [0085](0085-the-transcription-cache-is-keyed-by-document-and-page.md) | The transcription cache is keyed by document and page, not by image | Accepted; amends 0081 item 1 |
 | [0086](0086-the-transcriber-test-second-pass.md) | The transcriber test gets a second pass, with three corrections fixed before re-marking | Accepted; amends the scoring of 0080 |
@@ -136,11 +136,15 @@ under `docs/specs/` and the record links to it.
 | [0093](0093-s27-runs-as-two-tracks-guidance-on-v1.md) | S2.7 runs as two tracks: coding guidance on v1, transcription alongside | Accepted; item 3 amended by 0102 |
 | [0094](0094-coding-statistics-from-a-pool-outside-the-samples.md) | Coding statistics come from development verdicts outside the samples | Accepted |
 | [0095](0095-a-sealed-development-sample.md) | A sealed development sample, dev-seal-400, opened once | Accepted |
-| [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted; item 4 amended by 0101 |
-| [0097](0097-jev-as-an-ordering-check-model-on-development-cases.md) | Jev is admitted as an ordering-check model, on development cases only | Accepted; amends 0009 for this role |
-| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101 |
+| [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted; item 4 amended by 0101, item 5 by 0103 |
+| [0097](0097-jev-as-an-ordering-check-model-on-development-cases.md) | Jev is admitted as an ordering-check model, on development cases only | Accepted; amends 0009 for this role; item 1 amended by 0103 |
+| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101; item 4's outcome for Round 6 overridden by 0106 |
 | [0099](0099-the-judges-narrative-label-and-four-outcomes.md) | The judge's narrative label gives four outcomes, validated by Andy's hand-read before it is cited | Accepted |
 | [0100](0100-the-transcriber-retest-and-page-rule.md) | The transcriber re-test is judged against Qwen, and the page rule is measured before it is chosen | Accepted |
 | [0101](0101-the-clear-habit-safeguard.md) | Counts act only on a clear habit: the plain rule and guidance follow the NTSB's most common choice only above 60% of 20 cases | Accepted; amends 0096 item 4 and 0098 item 2 |
 | [0102](0102-a-parent-branch-with-a-branch-per-track.md) | S2.7 is a parent branch with a branch per track; its spend is traced on every branch grown from the parent | Accepted; amends 0093 item 3 |
+| [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
+| [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
+| [0105](0105-codes-missing-from-the-dictionary-join-the-tables.md) | Two phases and four events the NTSB uses, missing from its data dictionary, join the code tables from a separate supplement file, labelled from its own records; prompt version s1-v6 | Accepted; amends 0025 item 1 |
+| [0106](0106-round-6-kept-by-override.md) | S2.7's Round 6 (Aircraft control / Pilot, finding round 1) is kept by override of the do-no-harm rule: recall +11.4 points, top-1 -6.3 against a reference known to be high, no clear harm against three other runs | Accepted; overrides 0098 item 4's outcome for Round 6 only |
 | [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |

@@ -40,6 +40,7 @@ from ntsb_probable_cause.model.client import (
     Usage,
 )
 from ntsb_probable_cause.records.marks import CaseMark
+from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import (
     RESERVATION_FILE,
     month_spent,
@@ -56,6 +57,7 @@ from ntsb_probable_cause.scoring.runner import (
     Runner,
     RunSpec,
     _BatchRun,
+    _system_text,
     case_payload,
     dead_batches,
     estimated_cost_usd,
@@ -162,7 +164,7 @@ def test_sync_run_writes_three_files_and_one_step_per_case(
     assert all(c.scores is not None and c.failure is None for c in cases)
     assert steps[0].tool == "none"
     assert steps[0].stop_reason == "answered"
-    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v5"
+    assert read_jsonl(folder / "run.jsonl", RunRecord)[0].prompt_version == "s1-v6"
     assert len(client.payloads) == 2 * len(record_fixtures)  # two turns per case
 
 
@@ -1679,7 +1681,7 @@ def test_spec_json_is_written_before_the_first_call(
     assert recorded["sample"] == "dev-400"
     assert recorded["arm"] == "ceiling"
     assert recorded["model"] == BATCH_SPEC.model
-    assert recorded["prompt_version"] == "s1-v5"
+    assert recorded["prompt_version"] == "s1-v6"
     assert recorded["commit_sha"] == "abc1234"
     assert recorded["dirty"] is False  # a dirty tree means the code is not the sha
     assert recorded["case_ids"] == [str(record_fixtures[0]["ntsbNumber"])]
@@ -3620,3 +3622,47 @@ def test_the_cached_reader_is_v2_only_with_readings_and_passes_them_on(
     assert reader.version == "v2"
     assert reader.read(7) is docket
     assert captured["readings"] is lookup
+
+
+def test_system_text_without_guidance_is_byte_for_byte_unchanged() -> None:
+    """S2.7's guidance block must be a pure addition (Task 13 hard requirement)."""
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, price_variant="standard")
+    tables = load_tables()
+    text = _system_text({}, spec, tables, "c1")
+    assert text == f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables, case_number=None)}"
+
+
+def test_guidance_reaches_the_system_text_and_the_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    guidance = tmp_path / "guidance"
+    guidance.mkdir()
+    (guidance / "r2-loc-stall.md").write_text("GUIDANCE-MARKER sentence.\n")
+    monkeypatch.setattr(prompt, "GUIDANCE_DIR", guidance)
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        guidance=("r2-loc-stall",),
+    )
+    record = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert "GUIDANCE-MARKER" in client.systems[0]
+    assert "GUIDANCE-MARKER" not in client.payloads[0].text
+    assert record.guidance == ("r2-loc-stall",)
+    assert record.guidance_sha256 is not None
+    assert record.prompt_version == f"{prompt.PROMPT_VERSION}+g{record.guidance_sha256[:12]}"
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert written["guidance"] == ["r2-loc-stall"]
+
+
+def test_a_run_without_guidance_writes_the_old_spec_keys(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, price_variant="standard")
+    record = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert "guidance" not in written
+    assert written["prompt_version"] == prompt.PROMPT_VERSION

@@ -1,0 +1,363 @@
+coding counts from the statistics pool (scripts/coding_stats.py; counts only, decision 0094)
+built from: development split, classes C/F/L, excluding dev-400 and dev-seal-400 (scripts/coding_stats.py, decision 0094)
+2009-2014: 7177 cases; 2015-2019: 5314 cases
+
+## when a code appears, which code is defining (the 40 commonest codes; n = cases containing it)
+- 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): n=1528 (2009-2014 n=1011, 2015-2019 n=517)
+    defining: 350240 Initial Climb / Loss of control in flight 157
+    defining: 450240 Maneuvering / Loss of control in flight 80
+    defining: 300240 Takeoff / Loss of control in flight 75
+- 552230 Landing-Landing Roll / Loss of control on ground: n=1188 (2009-2014 n=703, 2015-2019 n=485)
+    defining: 552230 Landing-Landing Roll / Loss of control on ground 985
+    defining: 552330 Landing-Landing Roll / Sys/Comp malf/fail (non-power) 30
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 21
+- 600440 Emergency Descent / Off-field or emergency landing: n=1127 (2009-2014 n=772, 2015-2019 n=355)
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 159
+    defining: 350341 Initial Climb / Loss of engine power (total) 101
+    defining: 350342 Initial Climb / Loss of engine power (partial) 66
+- 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT): n=1093 (2009-2014 n=630, 2015-2019 n=463)
+    defining: 552230 Landing-Landing Roll / Loss of control on ground 413
+    defining: 552300 Landing-Landing Roll / Runway excursion 67
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 56
+- 552300 Landing-Landing Roll / Runway excursion: n=1090 (2009-2014 n=664, 2015-2019 n=426)
+    defining: 552230 Landing-Landing Roll / Loss of control on ground 542
+    defining: 552300 Landing-Landing Roll / Runway excursion 158
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 45
+- 550470 Landing / Collision with terr/obj (non-CFIT): n=872 (2009-2014 n=317, 2015-2019 n=555)
+    defining: 550230 Landing / Loss of control on ground 118
+    defining: 550240 Landing / Loss of control in flight 63
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 46
+- 552096 Landing-Landing Roll / Nose over/nose down: n=674 (2009-2014 n=426, 2015-2019 n=248)
+    defining: 552230 Landing-Landing Roll / Loss of control on ground 215
+    defining: 552096 Landing-Landing Roll / Nose over/nose down 141
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 26
+- 551092 Landing-Flare/Touchdown / Hard landing: n=664 (2009-2014 n=454, 2015-2019 n=210)
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 432
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 24
+    defining: 551240 Landing-Flare/Touchdown / Loss of control in flight 18
+- 600470 Emergency Descent / Collision with terr/obj (non-CFIT): n=573 (2009-2014 n=354, 2015-2019 n=219)
+    defining: 350341 Initial Climb / Loss of engine power (total) 71
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 48
+    defining: 350342 Initial Climb / Loss of engine power (partial) 36
+- 551090 Landing-Flare/Touchdown / Abnormal runway contact: n=487 (2009-2014 n=273, 2015-2019 n=214)
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 256
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 45
+    defining: 551230 Landing-Flare/Touchdown / Loss of control on ground 27
+- 402341 Enroute-Cruise / Loss of engine power (total): n=460 (2009-2014 n=308, 2015-2019 n=152)
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 334
+    defining: 402192 Enroute-Cruise / Fuel exhaustion 39
+    defining: 402191 Enroute-Cruise / Fuel starvation 29
+- 300470 Takeoff / Collision with terr/obj (non-CFIT): n=451 (2009-2014 n=207, 2015-2019 n=244)
+    defining: 300230 Takeoff / Loss of control on ground 178
+    defining: 300240 Takeoff / Loss of control in flight 113
+    defining: 300241 Takeoff / Aerodynamic stall/spin 22
+- 550440 Landing / Off-field or emergency landing: n=425 (2009-2014 n=171, 2015-2019 n=254)
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 35
+    defining: 350341 Initial Climb / Loss of engine power (total) 24
+    defining: 350342 Initial Climb / Loss of engine power (partial) 20
+- 300230 Takeoff / Loss of control on ground: n=422 (2009-2014 n=225, 2015-2019 n=197)
+    defining: 300230 Takeoff / Loss of control on ground 375
+    defining: 300300 Takeoff / Runway excursion 9
+    defining: 300240 Takeoff / Loss of control in flight 5
+- 552094 Landing-Landing Roll / Landing gear collapse: n=416 (2009-2014 n=236, 2015-2019 n=180)
+    defining: 552094 Landing-Landing Roll / Landing gear collapse 142
+    defining: 552230 Landing-Landing Roll / Loss of control on ground 121
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 18
+- 550230 Landing / Loss of control on ground: n=411 (2009-2014 n=77, 2015-2019 n=334)
+    defining: 550230 Landing / Loss of control on ground 318
+    defining: 550092 Landing / Hard landing 18
+    defining: 550090 Landing / Abnormal runway contact 12
+- 350240 Initial Climb / Loss of control in flight: n=367 (2009-2014 n=218, 2015-2019 n=149)
+    defining: 350240 Initial Climb / Loss of control in flight 269
+    defining: 350241 Initial Climb / Aerodynamic stall/spin 29
+    defining: 350193 Initial Climb / Fuel contamination 6
+- 300240 Takeoff / Loss of control in flight: n=363 (2009-2014 n=207, 2015-2019 n=156)
+    defining: 300240 Takeoff / Loss of control in flight 299
+    defining: 300241 Takeoff / Aerodynamic stall/spin 13
+    defining: 300333 Takeoff / Flight control sys malf/fail 5
+- 550092 Landing / Hard landing: n=353 (2009-2014 n=112, 2015-2019 n=241)
+    defining: 550092 Landing / Hard landing 164
+    defining: 550240 Landing / Loss of control in flight 16
+    defining: 550230 Landing / Loss of control on ground 15
+- 550300 Landing / Runway excursion: n=344 (2009-2014 n=88, 2015-2019 n=256)
+    defining: 550230 Landing / Loss of control on ground 147
+    defining: 550300 Landing / Runway excursion 26
+    defining: 550240 Landing / Loss of control in flight 22
+- 350341 Initial Climb / Loss of engine power (total): n=336 (2009-2014 n=201, 2015-2019 n=135)
+    defining: 350341 Initial Climb / Loss of engine power (total) 261
+    defining: 350191 Initial Climb / Fuel starvation 31
+    defining: 350340 Initial Climb / Powerplant sys/comp malf/fail 6
+- 550096 Landing / Nose over/nose down: n=334 (2009-2014 n=80, 2015-2019 n=254)
+    defining: 550230 Landing / Loss of control on ground 86
+    defining: 550096 Landing / Nose over/nose down 40
+    defining: 550092 Landing / Hard landing 13
+- 551470 Landing-Flare/Touchdown / Collision with terr/obj (non-CFIT): n=333 (2009-2014 n=214, 2015-2019 n=119)
+    defining: 551240 Landing-Flare/Touchdown / Loss of control in flight 41
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 22
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 20
+- 300300 Takeoff / Runway excursion: n=299 (2009-2014 n=165, 2015-2019 n=134)
+    defining: 300230 Takeoff / Loss of control on ground 201
+    defining: 300300 Takeoff / Runway excursion 36
+    defining: 300240 Takeoff / Loss of control in flight 21
+- 350342 Initial Climb / Loss of engine power (partial): n=287 (2009-2014 n=180, 2015-2019 n=107)
+    defining: 350342 Initial Climb / Loss of engine power (partial) 206
+    defining: 350240 Initial Climb / Loss of control in flight 16
+    defining: 350241 Initial Climb / Aerodynamic stall/spin 7
+- 100040 Prior to Flight / Aircraft maintenance event: n=246 (2009-2014 n=146, 2015-2019 n=100)
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 26
+    defining: 552094 Landing-Landing Roll / Landing gear collapse 13
+    defining: 350341 Initial Climb / Loss of engine power (total) 12
+- 551230 Landing-Flare/Touchdown / Loss of control on ground: n=242 (2009-2014 n=150, 2015-2019 n=92)
+    defining: 551230 Landing-Flare/Touchdown / Loss of control on ground 177
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 16
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 13
+- 550090 Landing / Abnormal runway contact: n=241 (2009-2014 n=61, 2015-2019 n=180)
+    defining: 550090 Landing / Abnormal runway contact 89
+    defining: 550230 Landing / Loss of control on ground 34
+    defining: 550092 Landing / Hard landing 21
+- 100030 Prior to Flight / Preflight or dispatch event: n=212 (2009-2014 n=129, 2015-2019 n=83)
+    defining: 402192 Enroute-Cruise / Fuel exhaustion 13
+    defining: 400192 Enroute / Fuel exhaustion 11
+    defining: 300240 Takeoff / Loss of control in flight 7
+- 450240 Maneuvering / Loss of control in flight: n=206 (2009-2014 n=135, 2015-2019 n=71)
+    defining: 450240 Maneuvering / Loss of control in flight 158
+    defining: 450241 Maneuvering / Aerodynamic stall/spin 8
+    defining: 402330 Enroute-Cruise / Sys/Comp malf/fail (non-power) 3
+- 452470 Maneuvering-Low-alt flying / Collision with terr/obj (non-CFIT): n=199 (2009-2014 n=108, 2015-2019 n=91)
+    defining: 452220 Maneuvering-Low-alt flying / Low altitude operations 67
+    defining: 452240 Maneuvering-Low-alt flying / Loss of control in flight 46
+    defining: 452241 Maneuvering-Low-alt flying / Aerodynamic stall/spin 14
+- 550094 Landing / Landing gear collapse: n=191 (2009-2014 n=53, 2015-2019 n=138)
+    defining: 550230 Landing / Loss of control on ground 40
+    defining: 550092 Landing / Hard landing 23
+    defining: 550094 Landing / Landing gear collapse 18
+- 400341 Enroute / Loss of engine power (total): n=189 (2009-2014 n=84, 2015-2019 n=105)
+    defining: 400341 Enroute / Loss of engine power (total) 128
+    defining: 400192 Enroute / Fuel exhaustion 31
+    defining: 400340 Enroute / Powerplant sys/comp malf/fail 8
+- 350241 Initial Climb / Aerodynamic stall/spin: n=183 (2009-2014 n=99, 2015-2019 n=84)
+    defining: 350241 Initial Climb / Aerodynamic stall/spin 95
+    defining: 350240 Initial Climb / Loss of control in flight 45
+    defining: 350342 Initial Climb / Loss of engine power (partial) 6
+- 452240 Maneuvering-Low-alt flying / Loss of control in flight: n=183 (2009-2014 n=98, 2015-2019 n=85)
+    defining: 452240 Maneuvering-Low-alt flying / Loss of control in flight 137
+    defining: 452241 Maneuvering-Low-alt flying / Aerodynamic stall/spin 11
+    defining: 452220 Maneuvering-Low-alt flying / Low altitude operations 9
+- 551094 Landing-Flare/Touchdown / Landing gear collapse: n=177 (2009-2014 n=111, 2015-2019 n=66)
+    defining: 551094 Landing-Flare/Touchdown / Landing gear collapse 49
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 43
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 26
+- 700170 Post-Impact / Fire/smoke (post-impact): n=174 (2009-2014 n=86, 2015-2019 n=88)
+    defining: 350240 Initial Climb / Loss of control in flight 10
+    defining: 350341 Initial Climb / Loss of engine power (total) 8
+    defining: 300240 Takeoff / Loss of control in flight 7
+- 550240 Landing / Loss of control in flight: n=170 (2009-2014 n=65, 2015-2019 n=105)
+    defining: 550240 Landing / Loss of control in flight 136
+    defining: 550241 Landing / Aerodynamic stall/spin 3
+    defining: 506341 Approach-VFR Pattern Downwind / Loss of engine power (total) 2
+- 551240 Landing-Flare/Touchdown / Loss of control in flight: n=168 (2009-2014 n=129, 2015-2019 n=39)
+    defining: 551240 Landing-Flare/Touchdown / Loss of control in flight 134
+    defining: 551092 Landing-Flare/Touchdown / Hard landing 7
+    defining: 551090 Landing-Flare/Touchdown / Abnormal runway contact 6
+- 402342 Enroute-Cruise / Loss of engine power (partial): n=167 (2009-2014 n=91, 2015-2019 n=76)
+    defining: 402342 Enroute-Cruise / Loss of engine power (partial) 129
+    defining: 402340 Enroute-Cruise / Powerplant sys/comp malf/fail 9
+    defining: 402341 Enroute-Cruise / Loss of engine power (total) 5
+
+## pairs occurring together (the 40 commonest)
+- 552230 Landing-Landing Roll / Loss of control on ground + 552300 Landing-Landing Roll / Runway excursion: both 633, 552230 defining 542, 552300 defining 15 (2009-2014: both 372, 552230 322, 552300 5; 2015-2019: both 261, 552230 220, 552300 10)
+- 552300 Landing-Landing Roll / Runway excursion + 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT): both 479, 552300 defining 67, 552470 defining 4 (2009-2014: both 258, 552300 38, 552470 4; 2015-2019: both 221, 552300 29, 552470 0)
+- 552230 Landing-Landing Roll / Loss of control on ground + 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT): both 475, 552230 defining 413, 552470 defining 3 (2009-2014: both 242, 552230 216, 552470 3; 2015-2019: both 233, 552230 197, 552470 0)
+- 552096 Landing-Landing Roll / Nose over/nose down + 552230 Landing-Landing Roll / Loss of control on ground: both 255, 552096 defining 17, 552230 defining 215 (2009-2014: both 142, 552096 10, 552230 124; 2015-2019: both 113, 552096 7, 552230 91)
+- 300230 Takeoff / Loss of control on ground + 300300 Takeoff / Runway excursion: both 221, 300230 defining 201, 300300 defining 9 (2009-2014: both 112, 300230 103, 300300 5; 2015-2019: both 109, 300230 98, 300300 4)
+- 350240 Initial Climb / Loss of control in flight + 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): both 219, 350240 defining 157, 650470 defining 0 (2009-2014: both 142, 350240 103, 650470 0; 2015-2019: both 77, 350240 54, 650470 0)
+- 402341 Enroute-Cruise / Loss of engine power (total) + 600440 Emergency Descent / Off-field or emergency landing: both 215, 402341 defining 159, 600440 defining 0 (2009-2014: both 154, 402341 108, 600440 0; 2015-2019: both 61, 402341 51, 600440 0)
+- 600440 Emergency Descent / Off-field or emergency landing + 600470 Emergency Descent / Collision with terr/obj (non-CFIT): both 210, 600440 defining 0, 600470 defining 2 (2009-2014: both 162, 600440 0, 600470 2; 2015-2019: both 48, 600440 0, 600470 0)
+- 300230 Takeoff / Loss of control on ground + 300470 Takeoff / Collision with terr/obj (non-CFIT): both 196, 300230 defining 178, 300470 defining 1 (2009-2014: both 78, 300230 71, 300470 1; 2015-2019: both 118, 300230 107, 300470 0)
+- 552096 Landing-Landing Roll / Nose over/nose down + 552300 Landing-Landing Roll / Runway excursion: both 192, 552096 defining 9, 552300 defining 14 (2009-2014: both 111, 552096 6, 552300 11; 2015-2019: both 81, 552096 3, 552300 3)
+- 550230 Landing / Loss of control on ground + 550300 Landing / Runway excursion: both 185, 550230 defining 147, 550300 defining 1 (2009-2014: both 22, 550230 18, 550300 0; 2015-2019: both 163, 550230 129, 550300 1)
+- 550470 Landing / Collision with terr/obj (non-CFIT) + 600440 Emergency Descent / Off-field or emergency landing: both 174, 550470 defining 2, 600440 defining 0 (2009-2014: both 89, 550470 2, 600440 0; 2015-2019: both 85, 550470 0, 600440 0)
+- 552094 Landing-Landing Roll / Landing gear collapse + 552300 Landing-Landing Roll / Runway excursion: both 159, 552094 defining 32, 552300 defining 16 (2009-2014: both 84, 552094 19, 552300 7; 2015-2019: both 75, 552094 13, 552300 9)
+- 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT) + 600440 Emergency Descent / Off-field or emergency landing: both 158, 552470 defining 0, 600440 defining 0 (2009-2014: both 119, 552470 0, 600440 0; 2015-2019: both 39, 552470 0, 600440 0)
+- 552094 Landing-Landing Roll / Landing gear collapse + 552230 Landing-Landing Roll / Loss of control on ground: both 157, 552094 defining 13, 552230 defining 121 (2009-2014: both 81, 552094 5, 552230 61; 2015-2019: both 76, 552094 8, 552230 60)
+- 300300 Takeoff / Runway excursion + 300470 Takeoff / Collision with terr/obj (non-CFIT): both 143, 300300 defining 17, 300470 defining 0 (2009-2014: both 56, 300300 7, 300470 0; 2015-2019: both 87, 300300 10, 300470 0)
+- 550230 Landing / Loss of control on ground + 550470 Landing / Collision with terr/obj (non-CFIT): both 138, 550230 defining 118, 550470 defining 0 (2009-2014: both 19, 550230 17, 550470 0; 2015-2019: both 119, 550230 101, 550470 0)
+- 300240 Takeoff / Loss of control in flight + 300470 Takeoff / Collision with terr/obj (non-CFIT): both 135, 300240 defining 113, 300470 defining 2 (2009-2014: both 60, 300240 50, 300470 2; 2015-2019: both 75, 300240 63, 300470 0)
+- 550300 Landing / Runway excursion + 550470 Landing / Collision with terr/obj (non-CFIT): both 134, 550300 defining 9, 550470 defining 1 (2009-2014: both 30, 550300 6, 550470 1; 2015-2019: both 104, 550300 3, 550470 0)
+- 350241 Initial Climb / Aerodynamic stall/spin + 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): both 126, 350241 defining 68, 650470 defining 0 (2009-2014: both 74, 350241 37, 650470 0; 2015-2019: both 52, 350241 31, 650470 0)
+- 350341 Initial Climb / Loss of engine power (total) + 600440 Emergency Descent / Off-field or emergency landing: both 125, 350341 defining 101, 600440 defining 0 (2009-2014: both 86, 350341 71, 600440 0; 2015-2019: both 39, 350341 30, 600440 0)
+- 552096 Landing-Landing Roll / Nose over/nose down + 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT): both 122, 552096 defining 14, 552470 defining 3 (2009-2014: both 55, 552096 8, 552470 3; 2015-2019: both 67, 552096 6, 552470 0)
+- 550440 Landing / Off-field or emergency landing + 550470 Landing / Collision with terr/obj (non-CFIT): both 119, 550440 defining 0, 550470 defining 2 (2009-2014: both 39, 550440 0, 550470 2; 2015-2019: both 80, 550440 0, 550470 0)
+- 450240 Maneuvering / Loss of control in flight + 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): both 107, 450240 defining 80, 650470 defining 0 (2009-2014: both 72, 450240 54, 650470 0; 2015-2019: both 35, 450240 26, 650470 0)
+- 550096 Landing / Nose over/nose down + 550230 Landing / Loss of control on ground: both 103, 550096 defining 0, 550230 defining 86 (2009-2014: both 8, 550096 0, 550230 6; 2015-2019: both 95, 550096 0, 550230 80)
+- 300240 Takeoff / Loss of control in flight + 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): both 97, 300240 defining 75, 650470 defining 0 (2009-2014: both 66, 300240 50, 650470 0; 2015-2019: both 31, 300240 25, 650470 0)
+- 552060 Landing-Landing Roll / Attempted remediation/recovery + 552230 Landing-Landing Roll / Loss of control on ground: both 95, 552060 defining 0, 552230 defining 82 (2009-2014: both 10, 552060 0, 552230 6; 2015-2019: both 85, 552060 0, 552230 76)
+- 552094 Landing-Landing Roll / Landing gear collapse + 552470 Landing-Landing Roll / Collision with terr/obj (non-CFIT): both 93, 552094 defining 17, 552470 defining 0 (2009-2014: both 41, 552094 10, 552470 0; 2015-2019: both 52, 552094 7, 552470 0)
+- 452240 Maneuvering-Low-alt flying / Loss of control in flight + 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT): both 91, 452240 defining 73, 650470 defining 0 (2009-2014: both 54, 452240 43, 650470 0; 2015-2019: both 37, 452240 30, 650470 0)
+- 550060 Landing / Attempted remediation/recovery + 550230 Landing / Loss of control on ground: both 91, 550060 defining 0, 550230 defining 72 (2009-2014: both 2, 550060 0, 550230 2; 2015-2019: both 89, 550060 0, 550230 70)
+- 552096 Landing-Landing Roll / Nose over/nose down + 600440 Emergency Descent / Off-field or emergency landing: both 87, 552096 defining 3, 600440 defining 0 (2009-2014: both 65, 552096 3, 600440 0; 2015-2019: both 22, 552096 0, 600440 0)
+- 350240 Initial Climb / Loss of control in flight + 350241 Initial Climb / Aerodynamic stall/spin: both 84, 350240 defining 45, 350241 defining 29 (2009-2014: both 46, 350240 28, 350241 13; 2015-2019: both 38, 350240 17, 350241 16)
+- 550096 Landing / Nose over/nose down + 550300 Landing / Runway excursion: both 82, 550096 defining 1, 550300 defining 1 (2009-2014: both 6, 550096 0, 550300 0; 2015-2019: both 76, 550096 1, 550300 1)
+- 551470 Landing-Flare/Touchdown / Collision with terr/obj (non-CFIT) + 600440 Emergency Descent / Off-field or emergency landing: both 82, 551470 defining 0, 600440 defining 0 (2009-2014: both 61, 551470 0, 600440 0; 2015-2019: both 21, 551470 0, 600440 0)
+- 350342 Initial Climb / Loss of engine power (partial) + 600440 Emergency Descent / Off-field or emergency landing: both 81, 350342 defining 66, 600440 defining 0 (2009-2014: both 59, 350342 51, 600440 0; 2015-2019: both 22, 350342 15, 600440 0)
+- 350341 Initial Climb / Loss of engine power (total) + 600470 Emergency Descent / Collision with terr/obj (non-CFIT): both 79, 350341 defining 71, 600470 defining 0 (2009-2014: both 55, 350341 51, 600470 0; 2015-2019: both 24, 350341 20, 600470 0)
+- 452220 Maneuvering-Low-alt flying / Low altitude operations + 452470 Maneuvering-Low-alt flying / Collision with terr/obj (non-CFIT): both 78, 452220 defining 67, 452470 defining 0 (2009-2014: both 40, 452220 38, 452470 0; 2015-2019: both 38, 452220 29, 452470 0)
+- 550240 Landing / Loss of control in flight + 550470 Landing / Collision with terr/obj (non-CFIT): both 78, 550240 defining 63, 550470 defining 0 (2009-2014: both 22, 550240 16, 550470 0; 2015-2019: both 56, 550240 47, 550470 0)
+- 552230 Landing-Landing Roll / Loss of control on ground + 552400 Landing-Landing Roll / Other weather encounter: both 78, 552230 defining 73, 552400 defining 0 (2009-2014: both 20, 552230 18, 552400 0; 2015-2019: both 58, 552230 55, 552400 0)
+- 650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT) + 700170 Post-Impact / Fire/smoke (post-impact): both 77, 650470 defining 0, 700170 defining 0 (2009-2014: both 40, 650470 0, 700170 0; 2015-2019: both 37, 650470 0, 700170 0)
+
+## phase groups: phase prefixes used, and the three commonest defining codes
+- Approach: phases 508 Approach-VFR Pattern Final 466, 500 Approach 307, 509 Approach-VFR Go-Around 230, 506 Approach-VFR Pattern Downwind 142, 507 Approach-VFR Pattern Base 130, 502 Approach-IFR Final Approach 50, 501 Approach-IFR Initial Approach 27, 504 Approach-IFR Missed Approach 26, 505 Approach-VFR Pattern Crosswind 18, 503 Approach-Circling (IFR) 7
+    509240 Approach-VFR Go-Around / Loss of control in flight 110
+    508240 Approach-VFR Pattern Final / Loss of control in flight 106
+    508341 Approach-VFR Pattern Final / Loss of engine power (total) 67
+- EmergencyDescent: phases 601 Autorotation 87, 600 Emergency Descent 58
+    601092 Autorotation / Hard landing 43
+    600341 Emergency Descent / Loss of engine power (total) 13
+    601240 Autorotation / Loss of control in flight 13
+- Enroute: phases 402 Enroute-Cruise 1105, 400 Enroute 493, 401 Enroute-Climb to cruise 202, 404 Enroute-Descent 178, 403 Enroute-Change of cruise level 15, 405 Enroute-Holding (IFR) 1
+    402341 Enroute-Cruise / Loss of engine power (total) 334
+    402342 Enroute-Cruise / Loss of engine power (partial) 129
+    400341 Enroute / Loss of engine power (total) 128
+- InitialClimb: phases 350 Initial Climb 1267
+    350240 Initial Climb / Loss of control in flight 269
+    350341 Initial Climb / Loss of engine power (total) 261
+    350342 Initial Climb / Loss of engine power (partial) 206
+- Landing: phases 552 Landing-Landing Roll 1663, 551 Landing-Flare/Touchdown 1352, 550 Landing 1199, 553 Landing-aborted after touchdown 92
+    552230 Landing-Landing Roll / Loss of control on ground 985
+    551092 Landing-Flare/Touchdown / Hard landing 432
+    550230 Landing / Loss of control on ground 318
+- Maneuvering: phases 450 Maneuvering 621, 452 Maneuvering-Low-alt flying 500, 453 Maneuvering-Hover 103, 451 Maneuvering-Aerobatics 78
+    450240 Maneuvering / Loss of control in flight 158
+    452240 Maneuvering-Low-alt flying / Loss of control in flight 137
+    452220 Maneuvering-Low-alt flying / Low altitude operations 123
+- Post-Impact: phases 700 Post-Impact 3
+    700200 Post-Impact / Ground collision 2
+    700094 Post-Impact / Landing gear collapse 1
+- Standing: phases 152 Standing-Engine(s) Start-up 79, 153 Standing-Engine(s) Operating 47, 100 Prior to Flight 39, 150 Standing 14, 151 Standing-Engine(s) Not Oper 6, 154 Standing-Engine(s) Shutdown 2
+    152230 Standing-Engine(s) Start-up / Loss of control on ground 33
+    152150 Standing-Engine(s) Start-up / Fire/smoke (non-impact) 12
+    152200 Standing-Engine(s) Start-up / Ground collision 11
+- Takeoff: phases 300 Takeoff 1341, 301 Takeoff-Rejected Takeoff 148
+    300230 Takeoff / Loss of control on ground 375
+    300240 Takeoff / Loss of control in flight 299
+    300342 Takeoff / Loss of engine power (partial) 94
+- Taxi: phases 250 Taxi 117, 253 Taxi-from Runway 95, 251 Taxi-to Runway 79, 252 Taxi-into Takeoff Position 17
+    250200 Taxi / Ground collision 52
+    250230 Taxi / Loss of control on ground 31
+    251200 Taxi-to Runway / Ground collision 31
+- UncontrolledDescent: phases 650 Uncontrolled Descent 16
+    650470 Uncontrolled Descent / Collision with terr/obj (non-CFIT) 6
+    650337 Uncontrolled Descent / Aircraft structural failure 3
+    650000 Uncontrolled Descent / Unknown or undetermined 2
+- Unknown: phases 990 Unknown 52, 800 Other 19
+    990000 Unknown / Unknown or undetermined 28
+    990240 Unknown / Loss of control in flight 8
+    990990 Unknown / Missing aircraft 5
+
+## flagged findings by defining event (the 15 commonest defining events, every phase; the 6 commonest findings each; n = cases flagging it)
+- 230 Loss of control on ground: 2055 cases
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 1498
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 1420
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 207
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 128
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 76
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 72
+- 240 Loss of control in flight: 1784 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 1094
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 358
+    0106201020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed / Not attained/maintained 301
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 227
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 208
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 156
+- 341 Loss of engine power (total): 1263 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 449
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 109
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 98
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 82
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 75
+    0105852001 Aircraft — Aircraft power plant — Engine (reciprocating) — Recip engine power section / Failure 67
+- 342 Loss of engine power (partial): 663 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 249
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 50
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 39
+    0303103081 Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Conducive to carburetor icing / Effect on equipment 39
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 30
+    0105853001 Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng cyl section / Failure 26
+- 092 Hard landing: 639 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 288
+    0106204120 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Not attained/maintained 191
+    0106204111 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Incorrect use/operation 148
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 109
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 75
+    0204102540 Personnel issues — Action/decision — Action — Delayed action / Instructor/check pilot 48
+- 241 Aerodynamic stall/spin: 472 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 335
+    0106201020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed / Not attained/maintained 286
+    0106204208 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack / Capability exceeded 107
+    0106204220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack / Not attained/maintained 84
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 48
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 46
+- 090 Abnormal runway contact: 396 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 223
+    0106204120 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Not attained/maintained 134
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 70
+    0106204111 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Incorrect use/operation 51
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 45
+    0106202220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Pitch control / Not attained/maintained 38
+- 192 Fuel exhaustion: 334 cases
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 244
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 206
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 92
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 51
+    0206151044 Personnel issues — Task performance — Inspection — Preflight inspection / Pilot 43
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 21
+- 120 Control flight into terr/obj: 320 cases
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 133
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 96
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 46
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 31
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 25
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 24
+- 490 Collision during takeoff/land: 313 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 95
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 64
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 44
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 37
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 29
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 21
+- 900 Miscellaneous/other: 301 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 56
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 43
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 25
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 22
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 20
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 16
+- 300 Runway excursion: 296 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 121
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 78
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 77
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 42
+    0204102544 Personnel issues — Action/decision — Action — Delayed action / Pilot 30
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 23
+- 191 Fuel starvation: 251 cases
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 134
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 79
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 53
+    0102282311 Aircraft — Aircraft systems — Fuel system — Fuel selector/shutoff valve / Incorrect use/operation 41
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 41
+    0206151044 Personnel issues — Task performance — Inspection — Preflight inspection / Pilot 22
+- 096 Nose over/nose down: 248 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 87
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 50
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 42
+    0102324211 Aircraft — Aircraft systems — Landing gear system — Brake / Incorrect use/operation 31
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 22
+    0106204511 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Surface speed/braking / Incorrect use/operation 21
+- 094 Landing gear collapse: 242 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 43
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 26
+    0102321001 Aircraft — Aircraft systems — Landing gear system — Main landing gear / Failure 20
+    0102323001 Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys / Failure 16
+    0102322001 Aircraft — Aircraft systems — Landing gear system — Nose/tail landing gear / Failure 14
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 14
