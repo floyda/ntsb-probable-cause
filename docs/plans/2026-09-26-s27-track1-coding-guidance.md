@@ -4527,7 +4527,7 @@ git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-transcriber -m "M
 
 (Track 2's plan does its own merge in its Task 12; whichever comes second resolves any conflict.) When both have landed: `git log --oneline --graph -8` shows the two merges; run `make check` (Expected: PASS). If `sources.py`, the `Makefile`, `apps/eval/__main__.py` or the decisions index conflicted, the resolution is in the merge commit; log it in Deviations. From here to Task 19, work on the parent in `.claude/worktrees/s27-coding-guidance`.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/test_runner.py`:
 
@@ -4569,7 +4569,7 @@ def test_two_v2_runs_with_different_readings_are_refused_unless_labelled(run_rec
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py -v -k "reading or transcriber"` (Expected: FAIL)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - `RunSpec`: `transcriber: str | None = None`, `page_rule: str | None = None`.
 - `Runner.run`, beside the v2/v3 refusals: a v2 arm B run with either field None raises `ConfigurationError("a v2 run records its transcriber and page rule (S2.7 spec §7.5)")`; a v1 run with either set raises `ConfigurationError("a v1 run reads no transcription; transcriber and page rule are for v2 runs")`.
@@ -4580,7 +4580,7 @@ Run: `uv run pytest tests/test_runner.py tests/test_report.py -v -k "reading or 
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_eval_app.py -v` (Expected: PASS)
 
-- [ ] **Step 4: Run the full check and commit**
+- [x] **Step 4: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4598,15 +4598,15 @@ git commit -m "S2.7 Task 16: v2 runs record their transcriber and page rule (spe
 - Create (by running): `docs/results/s27-meeting-dev.txt`
 - Create: one decision record for Andy's v2 and v3 decisions (the next free number above 0100)
 
-- [ ] **Step 1: Apply track 2's outcome to `dev-400`**
+- [x] **Step 1 (skipped, Andy 2026-09-29; see Deviations): Apply track 2's outcome to `dev-400`**
 
 If track 2's decision kept Qwen with the rule `all`, nothing is paid: S2.6's readings stand, and track 2 already re-created `dev-400`'s marker under the rule-naming stamp (its Task 3 Step 6, track 2 walkthrough W4); check it with `ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017 --page-rule all --dry-run` (`0 not yet read`). Otherwise run track 2's transcription targets for `dev-400` with the chosen `--model` and `--page-rule`: the dry run first (free; prints pages and projected cost), then — **STOP** for Andy — the paid run (estimate $1–7, spec §8).
 
-- [ ] **Step 2: STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
+- [x] **Step 2 (skipped, Andy 2026-09-29): STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
 
 Hand Andy: `make s27-round GUIDANCE="<every kept name>" EVIDENCE=v2 PER_CASE=0.0042 EST=1.60` (the v2 run needs the transcriber and rule flags only if they differ from the defaults Task 16 set). Then, if `CHECK` is set, `make s27-check RUN=<v2 run> WAY=<CHECK>`; then `make s27-judge RUN=<the v2 run that goes forward>`.
 
-- [ ] **Step 3: The comparison** (free)
+- [x] **Step 3 (skipped, Andy 2026-09-29): The comparison** (free)
 
 ```make
 s27-meeting-results:
@@ -4618,7 +4618,7 @@ s27-meeting-results:
 
 Run it, commit the Makefile and the results file.
 
-- [ ] **Step 4: STOP — Andy's decisions**
+- [x] **Step 4 (skipped, Andy 2026-09-29): STOP — Andy's decisions**
 
 Report in plain English, one decision per message: (1) does v2 go forward (top-1, top-3, finding recall@10 and the outcomes, v2 against v1 under the final guidance)? (2) does the picture probe (v3) run in S2.7? Write one decision record holding both answers, with Andy's words, in the project's format; add it to `docs/decisions/README.md`; commit.
 
@@ -4846,3 +4846,5 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-29, final review fix round, extending the Task 15 round 3 deviation above to Rounds 4 and 5 (Minor 7): Round 4's guidance counts (for example the fuel/power-loss pair counts) are sums over every phase read through `coding_stats.load_stats().event_pair(<event>, <event>)`, as `docs/rounds/s27-round-4.md` itself already states and as the round-4 `CodingStats.event_pair` addition above documents; none of those summed figures is printed verbatim in `docs/results/s27-coding-stats.txt` either, which prints per-phase-group pair counts, not summed ones. Round 5's guidance counts (for example "1096 of 1403" Approach cases, "1501 of 1994" Enroute cases, "3107 of 4306" Landing cases, 92 of those under 553) are read the same way, through `coding_stats.load_stats().group_phases(<group>)` and `group_n(<group>)`, as `docs/rounds/s27-round-5.md` states; `docs/results/s27-coding-stats.txt` does not print per-group phase breakdowns at all. Both rounds' counts are reproducible from the committed `coding_stats.json` by the cited accessor, matching the standard the round-3 entry set; no code changed for this entry, which only completes the citation record the review found incomplete.
 - 2026-09-29, Task 15 closed: the procedure ran for rounds 2-6 (2 dropped, 3 kept, 4 and 5 dropped, 6 kept by override, decision 0106). The occurrence rounds ended on two drops in a row (4, 5); Andy ended the finding rounds after one ("option A"), leaving the second 0098 allows unused. The judge ran on each kept round (3 and 6).
 - 2026-09-29, Task 16 Step 1: track 2 merged into the parent first (its Task 12, 87f74f1) and the parent was merged into track 1 on 2026-09-28 (973eff1, conflicts in the `Makefile`, `apps/eval/__main__.py` and the decisions index resolved there as unions), so track 1's merge into the parent (c08ca2c, Andy: "yes go ahead and merge") had no conflicts. `make check` on the parent: 1,847 passed, 97.82% coverage.
+- 2026-09-29, Task 16 Steps 2-4: built as planned, with three details. The refusal is one helper, `runner.refuse_unnamed_reading`, called after the docket-version check, so arm A and the ceiling at v2 keep their earlier refusal message. `report.refuse_cross_version` compares the two v2 readings through `_v2_reading`, which reads a record with no fields as `S26_V2_READING`; `provenance` prints the reading on every v2 record, S2.6's included. The run command's "not fully transcribed" message now names the transcriber and page rule and the exact `transcribe` command. Tests: `tests/test_runner.py`'s `_arm_b` helper gives a v2 spec S2.6's reading, so the S2.6 v2 tests keep running unchanged; three new runner tests, two report tests, one app test, and the existing app v2 test now also checks the recorded reading.
+- 2026-09-29, Task 17 (the meeting point, spec §8) skipped, Andy's decision ("A, skip it and carry on here"): decision 0120 already settled v2's default for cost (transcription off by default, a tool the S3 loop may choose), so the v1-against-v2 comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether transcription helps once coding is improved (the question decision 0090 item 2 hoped S2.7 would free); it moves to S3, where reading a transcription is the agent's own choice. The sealed run (Task 18) is therefore at v1.

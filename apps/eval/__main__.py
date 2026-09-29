@@ -225,6 +225,17 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
     run_p.add_argument("--evidence-version", choices=("v1", "v2", "v3"), default="v1")
+    run_p.add_argument(
+        "--transcriber",
+        default=TRANSCRIBER,
+        help="v2 only: the transcriber whose readings the run reads (S2.7 spec §7.5)",
+    )
+    run_p.add_argument(
+        "--page-rule",
+        choices=PAGE_RULES,
+        default=PAGE_RULE,
+        help="v2 only: the page rule the readings were chosen by (S2.7 spec §7.5)",
+    )
     run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
     run_p.add_argument("--include", action="append", default=[], choices=("case_number",))
     run_p.add_argument("--model", default=RunSpec.model)
@@ -323,11 +334,18 @@ def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLo
     """
     if args.arm != "B" or args.evidence_version == "v1":
         return None
-    readings = ReadingLookup(TranscriptionCache(settings.transcription_dir))
+    # S2.7 Task 16 (spec §7.5): the marker checked is the one for this run's own transcriber
+    # and page rule, so a v2 run never reads pages chosen or read differently from its label.
+    readings = ReadingLookup(
+        TranscriptionCache(settings.transcription_dir),
+        model=args.transcriber,
+        page_rule=args.page_rule,
+    )
     if not readings.is_done(args.sample):
         raise ConfigurationError(
-            f"{args.sample} is not fully transcribed: run ntsb-eval transcribe --sample "
-            f"{args.sample} first"
+            f"{args.sample} is not fully transcribed with transcriber {args.transcriber} and "
+            f"page rule {args.page_rule}: run ntsb-eval transcribe --sample {args.sample} "
+            f"--model {args.transcriber} --page-rule {args.page_rule} first"
         )
     return readings
 
@@ -368,6 +386,10 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         if args.expected_cost_per_case_usd is not None
         else settings.expected_cost_per_case_usd,
         guidance=tuple(args.guidance),
+        # S2.7 Task 16: a v2 run names its reading; a v1 run names none (runner refuses both
+        # the other way round).
+        transcriber=args.transcriber if args.evidence_version == "v2" else None,
+        page_rule=args.page_rule if args.evidence_version == "v2" else None,
     )
     docket_cm = (
         DocketClient(settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request)

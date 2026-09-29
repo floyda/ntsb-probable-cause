@@ -27,6 +27,7 @@ from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
+    PAGE_RULE,
     TRANSCRIBE,
     TRANSCRIBER,
     PageJob,
@@ -1326,7 +1327,46 @@ def test_run_v2_with_a_finished_transcription_reads_with_a_v2_reader(
     assert exit_code == 0
     assert isinstance(seen[0], ReadingLookup)
     (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
-    assert answering_run_record(run_folder).evidence_version == "v2"
+    record = answering_run_record(run_folder)
+    assert record.evidence_version == "v2"
+    # S2.7 Task 16 (spec §7.5): the defaults name the transcriber and rule in force.
+    assert (record.transcriber, record.page_rule) == (TRANSCRIBER, PAGE_RULE)
+
+
+def test_run_v2_under_another_page_rule_needs_that_rules_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """S2.7 Task 16: the marker checked is the one for the run's own transcriber and rule."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ReadingLookup(TranscriptionCache(tmp_path / "data" / "transcriptions")).mark_done(
+        "dev-400", {"pages": 0}
+    )
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no model client is built for a refused run")
+
+    exit_code = main(
+        [
+            "run",
+            "--arm",
+            "B",
+            "--sample",
+            "dev-400",
+            "--evidence-version",
+            "v2",
+            "--page-rule",
+            "image-only",
+            "--sync",
+            "--price-variant",
+            "standard",
+        ],
+        client_factory=factory,
+    )
+    assert exit_code == 1
+    assert "not fully transcribed with transcriber" in capsys.readouterr().err
 
 
 def test_transcribe_dry_run_counts_and_prices_and_calls_no_model(

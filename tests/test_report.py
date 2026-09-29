@@ -646,3 +646,39 @@ def test_preparation_summary_with_nothing_transcribed(case_result: CaseResult) -
         "evidence preparation (transcription; paid once, apart from the per-case cap, "
         "decision 0081): $0.0000 per case, $0.00 in all, 0 of 1 cases with transcribed pages"
     )
+
+
+def test_two_v2_runs_with_different_readings_are_refused_unless_labelled(
+    run_record: RunRecord,
+) -> None:
+    """S2.7 Task 16 (spec §7.5): a v2 docket read by another transcriber or page rule is other
+    evidence; a v2 record from before S2.7 read S2.6's Qwen with every page."""
+    a = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m1", "page_rule": "all"}
+    )
+    b = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m2", "page_rule": "all"}
+    )
+    with pytest.raises(ConfigurationError, match="transcriber"):
+        report.refuse_cross_version(a, b, versions_compared=False)
+    report.refuse_cross_version(a, b, versions_compared=True)
+    s26 = run_record.model_copy(update={"evidence_version": "v2"})
+    same_as_s26 = run_record.model_copy(
+        update={
+            "evidence_version": "v2",
+            "transcriber": "qwen/qwen3.5-122b-a10b",
+            "page_rule": "all",
+        }
+    )
+    report.refuse_cross_version(s26, same_as_s26, versions_compared=False)
+    narrower = same_as_s26.model_copy(update={"page_rule": "image-only"})
+    with pytest.raises(ConfigurationError, match="page rule"):
+        report.refuse_cross_version(s26, narrower, versions_compared=False)
+
+
+def test_provenance_names_a_v2_runs_reading(run_record: RunRecord) -> None:
+    v2 = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m1", "page_rule": "image-only"}
+    )
+    assert "transcriber=m1 page_rule=image-only" in report.provenance(v2)
+    assert "transcriber=" not in report.provenance(run_record)

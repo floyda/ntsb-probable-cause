@@ -99,6 +99,10 @@ class RunSpec:
     # S2.7 (decision 0098): coding guidance files, in stacking order. Empty is the plain
     # arm -- byte-for-byte the run this project has always produced (plan W5).
     guidance: tuple[str, ...] = ()
+    # S2.7 spec §7.5: a v2 docket read by another transcriber or page rule is other evidence,
+    # so a v2 run names both and a v1 run names neither (refused otherwise, in Runner.run).
+    transcriber: str | None = None
+    page_rule: str | None = None
 
 
 SPEC_FILE = "spec.json"
@@ -156,6 +160,9 @@ def spec_json(
             "guidance": list(spec.guidance),
             "guidance_sha256": prompt.guidance_sha256(spec.guidance),
         }
+    if spec.evidence_version == "v2":
+        # S2.7 spec §7.5: written for v2 runs only, so a v1 folder keeps exactly its old keys.
+        recorded |= {"transcriber": spec.transcriber, "page_rule": spec.page_rule}
     recorded |= {
         "commit_sha": commit_sha,
         "dirty": dirty,
@@ -629,6 +636,27 @@ def refuse_over_budget(
         )
 
 
+def refuse_unnamed_reading(spec: RunSpec) -> None:
+    """A v2 run names its transcriber and page rule; a v1 run names neither (S2.7 spec §7.5).
+
+    Transcribed pages read by another model, or chosen by another page rule, are other
+    evidence, so a v2 run that did not name its reading could be compared with one that read
+    differently without anyone knowing (decision 0120 makes transcription a choice). Refused
+    before any folder, reservation or model call.
+    """
+    named = spec.transcriber is not None and spec.page_rule is not None
+    if spec.evidence_version == "v2" and not named:
+        raise ConfigurationError(
+            "a v2 run records its transcriber and page rule (S2.7 spec §7.5): set both"
+        )
+    if spec.evidence_version == "v1" and (
+        spec.transcriber is not None or spec.page_rule is not None
+    ):
+        raise ConfigurationError(
+            "a v1 run reads no transcription; transcriber and page rule are for v2 runs"
+        )
+
+
 def refuse_sync_with_batch_price(spec: RunSpec) -> None:
     """A sync run cannot use the ``batch`` price variant: it is a different API endpoint.
 
@@ -1018,6 +1046,7 @@ class Runner:
                     f"a {spec.evidence_version} run needs a {wanted} docket reader; this one "
                     f"reads {self._docket.version} evidence (decision 0076)"
                 )
+        refuse_unnamed_reading(spec)
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         reusable: list[tuple[str, str, str | None]] = []
@@ -1079,6 +1108,8 @@ class Runner:
                 cap_usd=spec.cap_usd,
                 budget_usd=spec.budget_usd,
                 max_output_tokens=spec.max_output_tokens,
+                transcriber=spec.transcriber,
+                page_rule=spec.page_rule,
                 commit_sha=self._sha,
                 dirty=self._dirty,
                 started=started,
