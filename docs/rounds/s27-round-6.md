@@ -72,3 +72,10 @@
   +13.7%].
 - First guesses on loss of control or stall events: 186, against 168-183 in the earlier runs.
 - The outcome above stands as the rule gives it: dropped, on harm to top-1 against the reference.
+
+## Override (decision 0106)
+
+Kept by override of the do-no-harm rule, 2026-09-29 (Andy: "I think option B, its clearly
+something to pursue at a later stage"). The outcome above is left as the rule gave it. Round 6's
+guidance stacks after `r3-loc-stall`, and its checked run,
+`20260929T053953-674c92e-dev-400-B-check-luna`, is the reference for any later round.

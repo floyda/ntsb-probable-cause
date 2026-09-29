@@ -138,7 +138,7 @@ under `docs/specs/` and the record links to it.
 | [0095](0095-a-sealed-development-sample.md) | A sealed development sample, dev-seal-400, opened once | Accepted |
 | [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted; item 4 amended by 0101, item 5 by 0103 |
 | [0097](0097-jev-as-an-ordering-check-model-on-development-cases.md) | Jev is admitted as an ordering-check model, on development cases only | Accepted; amends 0009 for this role; item 1 amended by 0103 |
-| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101 |
+| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101; item 4's outcome for Round 6 overridden by 0106 |
 | [0099](0099-the-judges-narrative-label-and-four-outcomes.md) | The judge's narrative label gives four outcomes, validated by Andy's hand-read before it is cited | Accepted |
 | [0100](0100-the-transcriber-retest-and-page-rule.md) | The transcriber re-test is judged against Qwen, and the page rule is measured before it is chosen | Accepted |
 | [0101](0101-the-clear-habit-safeguard.md) | Counts act only on a clear habit: the plain rule and guidance follow the NTSB's most common choice only above 60% of 20 cases | Accepted; amends 0096 item 4 and 0098 item 2 |
@@ -146,4 +146,5 @@ under `docs/specs/` and the record links to it.
 | [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
 | [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
 | [0105](0105-codes-missing-from-the-dictionary-join-the-tables.md) | Two phases and four events the NTSB uses, missing from its data dictionary, join the code tables from a separate supplement file, labelled from its own records; prompt version s1-v6 | Accepted; amends 0025 item 1 |
+| [0106](0106-round-6-kept-by-override.md) | S2.7's Round 6 (Aircraft control / Pilot, finding round 1) is kept by override of the do-no-harm rule: recall +11.4 points, top-1 -6.3 against a reference known to be high, no clear harm against three other runs | Accepted; overrides 0098 item 4's outcome for Round 6 only |
 | [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |
