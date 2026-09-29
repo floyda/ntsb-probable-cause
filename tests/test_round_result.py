@@ -8,6 +8,7 @@ import pytest
 from scripts import round_result as rr
 from tests.test_occurrence_misses import _SCORES, _case
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
 
@@ -127,6 +128,56 @@ def test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_rea
     assert not (folder / "cases.jsonl").exists()
 
 
+def test_a_run_recorded_on_the_sealed_sample_is_refused_until_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    write_jsonl(
+        runs_dir / "sealed-run" / "run.jsonl",
+        [_run_record("sealed-run", sample="dev-seal-400")],
+    )
+    with pytest.raises(SystemExit, match="sealed"):
+        rr._load("sealed-run")
+
+
+def test_a_run_that_has_not_finished_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    dead = _run_record("dead-run").model_copy(update={"finished": None})
+    write_jsonl(runs_dir / "dead-run" / "run.jsonl", [dead])
+    with pytest.raises(SystemExit, match="has not finished"):
+        rr._load("dead-run")
+    assert not (runs_dir / "dead-run" / "cases.jsonl").exists()
+
+
+def test_main_refuses_a_reference_run_on_a_different_sample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    write_jsonl(runs_dir / "run-id" / "run.jsonl", [_run_record("run-id")])
+    write_jsonl(
+        runs_dir / "ref-id" / "run.jsonl",
+        [_run_record("ref-id", arm="ceiling")],
+    )
+    with pytest.raises(SystemExit, match="arm"):
+        rr.main(
+            [
+                "--run",
+                "run-id",
+                "--reference",
+                "ref-id",
+                "--noise",
+                "run-id",
+                "run-id",
+            ]
+        )
+
+
 def test_main_prints_the_outcome_and_append_writes_it_to_a_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -167,4 +218,6 @@ def test_main_prints_the_outcome_and_append_writes_it_to_a_file(
     )
     printed = capsys.readouterr().out
     assert "outcome: kept" in printed
+    assert "run-id (prompt s1-v5)" in printed
+    assert "ref-id (prompt s1-v5)" in printed
     assert out.read_text() == "# a round\n" + "\n" + printed

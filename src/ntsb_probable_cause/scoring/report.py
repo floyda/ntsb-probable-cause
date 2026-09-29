@@ -251,6 +251,7 @@ def provenance(record: RunRecord) -> str:
     return (
         f"run {record.run_id} [{status}]\n"
         f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
+        f"prompt={record.prompt_version} "
         f"model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
         f"max_output_tokens={record.max_output_tokens} "

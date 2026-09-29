@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from scripts import occurrence_misses as om
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -183,6 +184,17 @@ def test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_rea
     _write_run(runs_dir, "renamed-run", sample="heldout-400")  # no cases.jsonl written
     with pytest.raises(SystemExit, match="held-out run"):
         om.main(["--run", "renamed-run"])
+
+
+def test_a_run_recorded_on_the_sealed_sample_is_refused_until_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    _write_run(runs_dir, "sealed-run", sample="dev-seal-400")  # no cases.jsonl written
+    with pytest.raises(SystemExit, match="sealed"):
+        om.main(["--run", "sealed-run"])
 
 
 def test_a_run_that_is_not_arm_b_is_refused(

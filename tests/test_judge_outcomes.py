@@ -8,6 +8,7 @@ import pytest
 from scripts import judge_outcomes as jo
 from tests.test_occurrence_misses import _SCORES, _case, _write_run  # shared builders
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.scoring.judge import JudgeLabels
 from ntsb_probable_cause.scoring.records import write_jsonl
 
@@ -81,6 +82,17 @@ def test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_rea
     _write_run(runs_dir, "renamed-run", sample="heldout-400")  # no cases.jsonl written
     with pytest.raises(SystemExit, match="held-out run"):
         jo.main(["--runs", "renamed-run"])
+
+
+def test_a_run_recorded_on_the_sealed_sample_is_refused_until_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    _write_run(runs_dir, "sealed-run", sample="dev-seal-400")  # no cases.jsonl written
+    with pytest.raises(SystemExit, match="sealed"):
+        jo.main(["--runs", "sealed-run"])
 
 
 def test_a_run_holding_a_case_outside_the_dev_split_is_refused(

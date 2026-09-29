@@ -22,6 +22,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.judge import JudgeLabels
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
@@ -104,15 +106,14 @@ def movement(a: Mapping[str, Outcome], b: Mapping[str, Outcome]) -> tuple[int, i
 
 
 def _load(settings: Settings, run_id: str) -> tuple[list[CaseResult], dict[str, JudgeLabels]]:
-    """A development run's cases and labels, after every refusal (held-out, then split)."""
-    if "heldout" in run_id:
-        raise SystemExit(f"judge_outcomes: {run_id} is a held-out run; development runs only")
+    """A development run's cases and labels, after every refusal (held-out, sealed, split)."""
     folder = settings.runs_dir / run_id
-    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    if not record.sample.startswith("dev"):
-        raise SystemExit(
-            f"judge_outcomes: {run_id} is a held-out run ({record.sample}); development runs only"
-        )
+    try:
+        samples.refuse_unless_development(run_id, None)
+        record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+        samples.refuse_unless_development(run_id, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"judge_outcomes: {error}") from error
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"judge_outcomes: {run_id} holds a case outside the dev split")

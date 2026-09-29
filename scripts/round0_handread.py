@@ -26,6 +26,7 @@ from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from pathlib import Path
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
@@ -102,11 +103,12 @@ def _card(
 
 
 def _run(settings: Settings, run_id: str) -> list[CaseResult]:
-    """A development run's cases, after every refusal (held-out, then split).
+    """A development run's cases, after every refusal (held-out, sealed, then split).
 
     Mirrors ``judge_outcomes._load``: run.jsonl's recorded sample is checked before
     cases.jsonl is read at all, so a run whose id looks like development but was recorded on
-    a held-out sample is refused before any per-case data is touched.
+    a held-out sample is refused before any per-case data is touched; the sealed sample is
+    refused too, until its registration is committed (decision 0095).
     """
     if "heldout" in run_id or "-dev-" not in run_id:
         raise SystemExit(
@@ -114,10 +116,10 @@ def _run(settings: Settings, run_id: str) -> list[CaseResult]:
         )
     folder = settings.runs_dir / run_id
     record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    if not record.sample.startswith("dev"):
-        raise SystemExit(
-            f"round0_handread: {run_id} is a held-out run ({record.sample}); development runs only"
-        )
+    try:
+        samples.refuse_unless_development(run_id, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"round0_handread: {error}") from error
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"round0_handread: {run_id} holds a case outside the dev split")
