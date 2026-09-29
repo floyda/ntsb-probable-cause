@@ -1296,23 +1296,27 @@ def test_a_transcription_naming_the_owner_reaches_the_payload_with_the_name_repl
 def test_the_ordering_check_sends_no_withheld_text(
     record_fixtures: list[dict[str, object]],
 ) -> None:
-    """Layer 5 (0016) for the check: the body sent holds the check text and nothing withheld."""
+    """Layer 5 (0016) for the check: the body sent holds the check text and nothing withheld.
+
+    Final review, Minor 4: asserts the same ``withheld_windows`` (codes excluded, as choosing
+    among codes is the check's job) the ``jev2`` boundary test beside it already uses, not only
+    the first 80 characters of each withheld field -- Luna is the check carried forward to the
+    sealed run.
+    """
     raw = record_fixtures[0]
-    _evidence, synthesis, verdict = split_record(raw)
+    _evidence, _synthesis, verdict = split_record(raw)
     stats = build(
         [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
     )
     client = RecordingFakeClient(['{"ranking": ["552300"]}'])
     hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
     checkpass.luna_checker(client, stats, load_tables())(hypothesis, "Landing")
     sent = client.systems[0] + client.payloads[0].text
-    for withheld in (
-        synthesis.factual_narrative,
-        synthesis.analysis_narrative,
-        verdict.probable_cause,
-    ):
-        if withheld:
-            assert withheld[:80] not in sent
+    for window in windows:
+        assert window not in sent
 
 
 def _jev2_sent_texts(body: bytes) -> list[str]:
