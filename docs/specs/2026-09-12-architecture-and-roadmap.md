@@ -597,6 +597,20 @@ once (0095). Specification: `docs/specs/2026-09-26-s27-coding-guidance-design.md
 
 *Done means:* the specification's §15. The bar S3's loop faces is set after this stage (0089).
 
+### S2.8. Coding lookup
+
+*Added 2026-09-29 (0130–0134).* Arm B finds about one in nine of the NTSB's flagged findings,
+while a plain table of the pool's most often flagged findings for the model's own occurrence
+finds about a third (ad-hoc, spec §1). S2.8 builds that table from the statistics pool (0130),
+a memory of the model's own answers from drawn development batches (0132), and a third turn in
+arm B's conversation, run over finished checked runs, in which the model revises its findings
+from a closed list (0131). The model must beat the plain table at the same count on two answer
+sets, and memory must then beat the model (0133). The result fills two slots in S3: whether the
+loop has a coding-lookup tool, and arm B's fixed call (0134). Specification:
+`docs/specs/2026-09-29-s28-coding-lookup-design.md`.
+
+*Done means:* the specification's §13. S3's bar is set after this stage.
+
 ### S3. The agent loop
 
 Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.
