@@ -1,0 +1,8 @@
+the sealed sample (scripts/sealed_report.py; counts only, decisions 0095, 0098)
+dev-400 (20260929T053953-674c92e-dev-400-B-check-luna): top-1 25.1% [21.1%, 29.5%], 100 of 399; finding recall@10 22.6% over 397 cases
+dev-seal-400 (20260929T114049-9cbe5c5-dev-seal-400-B-check-luna): top-1 27.5% [23.3%, 32.0%], 109 of 397; finding recall@10 22.0% over 397 cases
+
+the prediction (decision 0098 item 7):
+top-1 on dev-400 between 30% and 36%: 25.1% -- not met
+sealed below dev-400 by less than 5 points: -2.4 points -- not met
+misread share: not scored (the narrative label was not validated)

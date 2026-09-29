@@ -4757,7 +4757,7 @@ Run: `uv run python -m scripts.draw_sealed --verify` (Expected: `identical: True
 
 At v2, hand Andy track 2's transcription dry run for `dev-seal-400` (free; its live docket client fetches the dockets, about 3,500 documents at 2 seconds per request, a few hours), then the paid transcription (estimate $1–14, spec §9.1). At v1, the run of Step 6 fetches the dockets itself.
 
-- [ ] **Step 6: STOP — the sealed run, once (paid, about $1.20–1.35 plus the judge)**
+- [x] **Step 6: STOP — the sealed run, once (paid, about $1.20–1.35 plus the judge)**
 
 ```make
 s27-sealed-run:
@@ -4768,7 +4768,7 @@ s27-sealed-run:
 
 Hand Andy: `make s27-sealed-run GUIDANCE="<kept names>" EVIDENCE=<v1|v2> PER_CASE=<…>`; then the check (if kept) and `make s27-judge` on the run that goes forward. `ntsb-eval judge` refuses a sample other than `dev-400` without `--validated`: pass `--validated` only if Task 6's outcome was `validated`; otherwise skip the judge on the sealed run and record that.
 
-- [ ] **Step 7: The results and the prediction** (free)
+- [x] **Step 7: The results and the prediction** (free)
 
 Run: `uv run python -m scripts.sealed_report --dev <final dev-400 run> --sealed <sealed run> --misread-moved <yes|no|unvalidated> --out docs/results/s27-sealed-dev.txt`
 Commit. Report to Andy in plain English, with the prediction scored whichever way it came out; then **STOP** for his held-out decision (spec §9.3).
@@ -4850,3 +4850,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-29, Task 17 (the meeting point, spec §8) skipped, Andy's decision ("A, skip it and carry on here"): decision 0120 already settled v2's default for cost (transcription off by default, a tool the S3 loop may choose), so the v1-against-v2 comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether transcription helps once coding is improved (the question decision 0090 item 2 hoped S2.7 would free); it moves to S3, where reading a transcription is the agent's own choice. The sealed run (Task 18) is therefore at v1.
 - 2026-09-29, close-out, decision 0107 (amends 0102 item 3): `scripts/stage_spend.py` counted every branch holding S2.7's first commit, which by then included `s28-coding-lookup` (S2.8's draft design) and `s3-probe`, both cut from `s27-guidance`, and it counted HEAD. It now counts only branches named `s27-` and not HEAD. The stage total was unchanged by the fix ($13.81: neither later branch had spent), `uv run python -m scripts.stage_spend`, 2026-09-29.
 - 2026-09-29, Task 18 Steps 1-2: `scripts/sealed_report.py` as planned, plus finding recall@10 for both runs beside top-1 (Round 6, the kept finding round, moved it) and a held-out refusal; four tests. The `s27-sealed-run` target names the two guidance files itself, so the sealed run cannot be started with another stack; `s27-sealed-results` fixes the `dev-400` side to Round 6's checked run. The sealed run is at v1 (Task 17 skipped), so Step 5's transcription does not apply: the run fetches the sealed dockets itself.
+- 2026-09-29, Task 18 Steps 6-7, run by the controller on Andy's instruction ("Can you just get this started now for me"). The first attempt, 11:40 UTC, was refused by the monthly guard before any call ($1.68 projected plus $47.75 spent against the code's $40 default): the launch script had not set decision 0104's `NTSB_MONTHLY_BUDGET_USD=50` for September. It left one folder holding only `spec.json`, `20260929T114018-9cbe5c5-dev-seal-400-B`, kept under `data/runs` and unused. The second attempt, with 0104's setting, is the sealed run: `20260929T114049-9cbe5c5-dev-seal-400-B`, commit `9cbe5c5`, clean tree, prompt `s1-v6+ge17fecdc66ec`, 401 cases, $1.1802; 397 answered, 3 refused by the leakage guard, 1 reply-format failure. Its batch was submitted at 14:34 UTC, inside the slow window, and still finished at 15:06. The Luna check, `...-check-luna`, cost $0.1133. The judge was not run (decision 0099; the registration). Results: `docs/results/s27-sealed-dev.txt`: sealed top-1 27.5% [23.3%, 32.0%] (109 of 397) against `dev-400`'s 25.1% [21.1%, 29.5%] (100 of 399); finding recall@10 22.0% and 22.6%. Decision 0098 item 7: `dev-400` top-1 between 30% and 36% not met (25.1%); the sealed sample lower by less than 5 points not met, because it was 2.4 points higher; the misread part not scored.
