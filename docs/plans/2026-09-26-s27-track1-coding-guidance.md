@@ -4745,15 +4745,15 @@ if __name__ == "__main__":
 
 Run: `uv run pytest tests/test_sealed_report.py -v` (Expected: PASS); commit (`S2.7 Task 18: the sealed report`).
 
-- [ ] **Step 3: Register the final setup** (`docs/rounds/s27-sealed.md`)
+- [x] **Step 3: Register the final setup** (`docs/rounds/s27-sealed.md`)
 
 Name exactly: every kept guidance file in order and the `guidance_sha256` of the last kept run; the check way (or none); the evidence version and, at v2, the transcriber and page rule; model `openai/gpt-6-luna` at `medium`, batch, reply budget 8,000; the `dev-400` run it is compared with. Commit it alone: `git commit -m "S2.7: the sealed sample's registration (decision 0095)"`. From this commit, `dev-seal-400` opens.
 
-- [ ] **Step 4: Verify the sealed list** (free)
+- [x] **Step 4: Verify the sealed list** (free)
 
 Run: `uv run python -m scripts.draw_sealed --verify` (Expected: `identical: True`)
 
-- [ ] **Step 5: STOP — fetch and, at v2, transcribe the sealed sample**
+- [x] **Step 5 (not needed at v1; see Deviations): STOP — fetch and, at v2, transcribe the sealed sample**
 
 At v2, hand Andy track 2's transcription dry run for `dev-seal-400` (free; its live docket client fetches the dockets, about 3,500 documents at 2 seconds per request, a few hours), then the paid transcription (estimate $1–14, spec §9.1). At v1, the run of Step 6 fetches the dockets itself.
 
