@@ -29,14 +29,23 @@ def test_main_exits_1_over_the_line_and_names_the_branches(
     assert ss.main(["--estimate", "0.60"]) == 1
 
 
-def test_stage_branches_are_those_grown_from_the_first_commit_except_main(
+def test_stage_branches_are_s27_branches_grown_from_the_first_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Decision 0107: a later stage cut from an S2.7 branch also holds the first commit, and
+    main holds it once merged; neither is S2.7's spend."""
     monkeypatch.setattr(
         ss,
         "branches_containing",
         lambda commit, repo=Path(): (
-            ("main", "s27-coding-guidance", "s27-guidance", "s27-transcriber")
+            (
+                "main",
+                "s27-coding-guidance",
+                "s27-guidance",
+                "s27-transcriber",
+                "s28-coding-lookup",
+                "s3-probe",
+            )
             if commit == "94f5d42"
             else ()
         ),
@@ -44,7 +53,11 @@ def test_stage_branches_are_those_grown_from_the_first_commit_except_main(
     assert ss.stage_branches() == ("s27-coding-guidance", "s27-guidance", "s27-transcriber")
 
 
-def test_stage_commits_counts_head_and_every_stage_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stage_commits_counts_the_stage_branches_only_not_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Decision 0107: HEAD is not counted, so running this from another stage's branch cannot
+    count that stage's commits."""
     asked: list[list[str]] = []
 
     def _fake_commits_between(base: str, heads: list[str], repo: Path = Path()) -> tuple[str, ...]:
@@ -53,4 +66,5 @@ def test_stage_commits_counts_head_and_every_stage_branch(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(ss, "commits_between", _fake_commits_between)
     assert ss.stage_commits(("s27-coding-guidance", "s27-transcriber")) == frozenset({"c1"})
-    assert asked == [["971ee40", "HEAD", "s27-coding-guidance", "s27-transcriber"]]
+    assert asked == [["971ee40", "s27-coding-guidance", "s27-transcriber"]]
+    assert ss.stage_commits(()) == frozenset()

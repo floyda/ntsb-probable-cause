@@ -1,4 +1,4 @@
-"""S2.7's spend, counted by commit on every branch grown from its parent, against its $25 line.
+"""S2.7's spend, counted by commit on S2.7's own branches, against its $25 line.
 
 Status
     Live check for S2.7 (decision 0098 item 6). Every paid ``make`` target of both tracks runs
@@ -9,8 +9,9 @@ Why
     The line is the stage's stop rule's second half. Spend is counted by commit because S2.6
     found a date filter caught another stage's runs. S2.7 is a parent branch with a branch per
     track stacked on it (decision 0102); until the tracks merge back, neither sees the other's
-    commits, so the count takes every local branch whose history holds S2.7's first commit --
-    the parent and everything grown from it -- and prints them.
+    commits, so the count takes every local branch whose history holds S2.7's first commit and
+    whose name starts ``s27-`` -- the parent and its tracks, not a later stage cut from one
+    (decision 0107) -- and prints them.
 
 Usage
     uv run python -m scripts.stage_spend [--estimate USD]
@@ -33,6 +34,9 @@ STAGE_FIRST = "94f5d42"
 STAGE_LINE_USD = 25.0
 # main holds every stage once merged, and later stages' commits too; it is never counted.
 EXCLUDED_BRANCHES = frozenset({"main"})
+# Decision 0107: a later stage cut from an S2.7 branch (s28-coding-lookup, s3-probe) also
+# holds the first commit; only branches named for S2.7 are its own.
+STAGE_BRANCH_PREFIX = "s27-"
 
 
 def _git_error(error: Exception) -> ConfigurationError:
@@ -40,18 +44,28 @@ def _git_error(error: Exception) -> ConfigurationError:
 
 
 def stage_branches(repo: Path = Path()) -> tuple[str, ...]:
-    """The parent and every branch grown from it: those holding S2.7's first commit."""
+    """S2.7's branches: those holding its first commit and named for it (decisions 0102, 0107)."""
     try:
         found = branches_containing(STAGE_FIRST, repo)
     except (OSError, subprocess.CalledProcessError) as error:
         raise _git_error(error) from error
-    return tuple(name for name in found if name not in EXCLUDED_BRANCHES)
+    return tuple(
+        name
+        for name in found
+        if name not in EXCLUDED_BRANCHES and name.startswith(STAGE_BRANCH_PREFIX)
+    )
 
 
 def stage_commits(branches: Sequence[str], repo: Path = Path()) -> frozenset[str]:
-    """Every commit of the stage: reachable from HEAD or a stage branch, not from the base."""
+    """Every commit reachable from a stage branch and not from the base.
+
+    HEAD is not counted (decision 0107): run from another stage's branch, it would count that
+    stage's commits. Every S2.7 commit is on an S2.7 branch.
+    """
+    if not branches:
+        return frozenset()
     try:
-        return frozenset(commits_between(STAGE_BASE, ["HEAD", *branches], repo))
+        return frozenset(commits_between(STAGE_BASE, list(branches), repo))
     except (OSError, subprocess.CalledProcessError) as error:
         raise _git_error(error) from error
 
@@ -62,8 +76,8 @@ def report(*, runs: float, spend: float, estimate: float) -> tuple[str, bool]:
     over = spent + estimate > STAGE_LINE_USD
     lines = [
         f"S2.7 spend so far: ${spent:.2f} (${runs:.2f} evaluation runs, ${spend:.2f} "
-        f"preparation spend rows; counted by commit from {STAGE_BASE} on every branch grown "
-        "from the parent)",
+        f"preparation spend rows; counted by commit from {STAGE_BASE} on S2.7's own branches, "
+        "decision 0107)",
         f"this step's estimate: ${estimate:.2f}; the stage line: ${STAGE_LINE_USD:.2f}",
         (
             f"refused: ${spent + estimate:.2f} would pass the line (decision 0098 item 6)"
