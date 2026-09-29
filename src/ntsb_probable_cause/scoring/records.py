@@ -44,6 +44,10 @@ class RunRecord(BaseModel):
     budget_usd: float
     # 2000 on a run from before S2.6 Task 9A: the old ModelSettings default.
     max_output_tokens: int = 2000
+    # S2.7 spec §7.5: the transcriber and page rule a v2 run read. None on a v1 run, and on a
+    # v2 run from before S2.7, which read S2.6's (report.S26_V2_READING).
+    transcriber: str | None = None
+    page_rule: str | None = None
     commit_sha: str
     dirty: bool
     started: datetime

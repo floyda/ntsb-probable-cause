@@ -1,0 +1,19 @@
+S2.7 round comparisons (scripts/round_comparisons.py; counts only, decisions 0098, 0105, 0106)
+
+## Each run's own checked score
+- B-v1 (20260926T082427-d19aafa-dev-400-B-check-luna): top-1 27.6% [23.3%, 32.1%] n=399; finding recall@10 10.4% [8.3%, 12.4%] n=397
+- the repeat (20260927T111202-fbab38a-dev-400-B-check-luna): top-1 26.6% [22.3%, 31.1%] n=399; finding recall@10 12.1% [9.8%, 14.5%] n=397
+- Round 2 (20260928T110233-2402e72-dev-400-B-check-luna): top-1 29.1% [24.6%, 33.6%] n=399; finding recall@10 10.7% [8.7%, 12.9%] n=397
+- Round 3 (20260928T144353-031e97e-dev-400-B-check-luna): top-1 31.3% [26.6%, 36.1%] n=399; finding recall@10 11.2% [9.0%, 13.5%] n=397
+- Round 4 (20260928T165443-1c9ecdf-dev-400-B-check-luna): top-1 27.3% [22.8%, 31.8%] n=399; finding recall@10 10.3% [8.4%, 12.5%] n=397
+- Round 5 (20260928T210719-c590e44-dev-400-B-check-luna): top-1 27.8% [23.6%, 32.6%] n=399; finding recall@10 9.9% [7.9%, 11.9%] n=397
+- Round 6 (20260929T053953-674c92e-dev-400-B-check-luna): top-1 25.1% [20.8%, 29.6%] n=399; finding recall@10 22.6% [19.8%, 25.6%] n=397
+
+## Round 6 paired against
+- Round 3 (reference): top-1 -6.3% [-10.5%, -2.5%] on n=399; finding recall@10 +11.4% [+8.2%, +14.6%] on n=397
+- Round 4: top-1 -2.3% [-6.3%, +1.8%] on n=399; finding recall@10 +12.3% [+9.1%, +15.4%] on n=397
+- Round 5: top-1 -2.8% [-7.0%, +1.3%] on n=399; finding recall@10 +12.7% [+9.8%, +15.8%] on n=397
+- the repeat: top-1 -1.5% [-5.8%, +2.5%] on n=399; finding recall@10 +10.5% [+7.2%, +13.7%] on n=397
+
+## Decision 0105 item 4 supplement (Round 6 against Round 3)
+- cases whose NTSB sequence holds a code decision 0105 added: 19 (defining: 4); top-1 hits there: reference 5, run 3; occurrence top-1 on the other cases: -6.1% [-9.7%, -2.1%] on n=380

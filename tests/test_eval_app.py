@@ -27,6 +27,7 @@ from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
 from ntsb_probable_cause.docket.transcribe import (
+    PAGE_RULE,
     TRANSCRIBE,
     TRANSCRIBER,
     PageJob,
@@ -1326,7 +1327,46 @@ def test_run_v2_with_a_finished_transcription_reads_with_a_v2_reader(
     assert exit_code == 0
     assert isinstance(seen[0], ReadingLookup)
     (run_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
-    assert answering_run_record(run_folder).evidence_version == "v2"
+    record = answering_run_record(run_folder)
+    assert record.evidence_version == "v2"
+    # S2.7 Task 16 (spec §7.5): the defaults name the transcriber and rule in force.
+    assert (record.transcriber, record.page_rule) == (TRANSCRIBER, PAGE_RULE)
+
+
+def test_run_v2_under_another_page_rule_needs_that_rules_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """S2.7 Task 16: the marker checked is the one for the run's own transcriber and rule."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ReadingLookup(TranscriptionCache(tmp_path / "data" / "transcriptions")).mark_done(
+        "dev-400", {"pages": 0}
+    )
+
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no model client is built for a refused run")
+
+    exit_code = main(
+        [
+            "run",
+            "--arm",
+            "B",
+            "--sample",
+            "dev-400",
+            "--evidence-version",
+            "v2",
+            "--page-rule",
+            "image-only",
+            "--sync",
+            "--price-variant",
+            "standard",
+        ],
+        client_factory=factory,
+    )
+    assert exit_code == 1
+    assert "not fully transcribed with transcriber" in capsys.readouterr().err
 
 
 def test_transcribe_dry_run_counts_and_prices_and_calls_no_model(
@@ -1889,6 +1929,28 @@ def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
     assert "sealed" in capsys.readouterr().err
 
 
+def test_baseline_refuses_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval baseline --sample dev-seal-400`` scored the
+    sealed sample today, free and with one flag."""
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """``--sample`` is optional on ``baseline``; the sealed guard must not fire on ``None``."""
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["baseline"]) == 0
+
+
 def _write_checkable_run(
     runs: Path,
     run_id: str = "20260926T000000-abc1234-dev-400-B",
@@ -1953,6 +2015,35 @@ def test_check_refuses_a_held_out_run_before_any_client_is_built(
         == 1
     )
     assert "development" in capsys.readouterr().err
+
+
+def test_check_refuses_the_sealed_sample_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Final review, Important 1: ``ntsb-eval check`` already calls ``refuse_sealed``
+    (``__main__.py``), but no test confirmed it before this one."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    run_id = "20260926T000000-abc1234-dev-seal-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="dev-seal-400", arm="B")
+
+    def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a sealed run")
+
+    def boom_jev(_settings: Settings) -> TypeSafeClient:
+        raise AssertionError("no client may be built for a sealed run")
+
+    assert (
+        main(
+            ["check", run_id, "--way", "jev"],
+            client_factory=boom_client,
+            jev_factory=boom_jev,
+        )
+        == 1
+    )
+    assert "sealed" in capsys.readouterr().err
 
 
 def test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built(

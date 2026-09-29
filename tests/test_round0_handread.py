@@ -7,6 +7,7 @@ import pytest
 from scripts import round0_handread as rh
 from tests.test_occurrence_misses import _case, _write_run
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.scoring.judge import JudgeLabels
 from ntsb_probable_cause.scoring.records import CaseResult, write_jsonl
 
@@ -131,6 +132,18 @@ def test_cards_refuses_a_run_recorded_as_held_out_before_cases_are_read(
     _write_run(runs_dir, "20260926T000000-abc1234-dev-400-B", sample="heldout-400")
     with pytest.raises(SystemExit, match="held-out run"):
         rh.main(["cards", "--run", "20260926T000000-abc1234-dev-400-B"])
+
+
+def test_cards_refuses_the_sealed_sample_until_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    runs_dir = tmp_path / "runs"
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_run(runs_dir, run_id, sample="dev-seal-400")  # no cases.jsonl written
+    with pytest.raises(SystemExit, match="sealed"):
+        rh.main(["cards", "--run", run_id])
 
 
 def test_cards_refuses_a_run_holding_a_case_outside_the_dev_split(

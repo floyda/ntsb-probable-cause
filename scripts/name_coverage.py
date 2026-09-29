@@ -17,8 +17,10 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.data.redaction import REDACTED_FIELDS
-from ntsb_probable_cause.scoring.samples import load_cases, sample_ids
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring.samples import load_cases, refuse_sealed, sample_ids
 from ntsb_probable_cause.settings import Settings
 
 # Name-bearing fields, as opposed to the addresses, postcodes and certificate number that
@@ -174,6 +176,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sample", default="dev-400")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    try:
+        refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    except ConfigurationError as error:
+        raise SystemExit(f"name_coverage: {error}") from error
     settings = Settings()
     records = load_cases(settings.data_dir / "processed", sample_ids(args.sample))
     text = report(records)

@@ -4456,22 +4456,22 @@ This task is a procedure, repeated once per round. Rounds are numbered from 2 (R
 
 **Variables for each round:** `N` (the round number), `SLUG`, `KEPT` (the kept guidance names before it, in order), `CHECK` (Round 1's outcome, empty for "no check"), `REFERENCE` (the last kept round's run, or its derived check folder when `CHECK` is set; for round 2, `REPEAT` or its derived folder), `NOISE` (`"20260926T082427-d19aafa-dev-400-B REPEAT"`, or their derived check folders when `CHECK` is set).
 
-- [ ] **Step 1: Choose the change**
+- [x] **Step 1: Choose the change**
 
 From `docs/results/s27-round0-dev.txt`: the largest miss group Andy's hand-read marked mostly "coding convention" or "wrong phase", not yet addressed. Write it down in the registration draft. One change per round (decision 0098 Why 1).
 
-- [ ] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
+- [x] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
 
 Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). **A habit is stated as the usual choice only when it is a clear habit** — at least 60% of at least 20 pool cases (decision 0101 item 3). Below that line, the guidance lists the options with their counts and says the evidence decides, for example: "for a stall on approach the NTSB has used the final leg (40 of 131 past cases), the go-around (37) and the base leg (24); code the leg the evidence places the stall on." An example of a clear habit, in the form it takes (the numbers come from the committed counts, never from this plan):
 
 > When a loss of control in flight and an aerodynamic stall or spin both appear in an accident, the NTSB flagged the loss of control in flight as the defining event in N of M past cases. Put the stall or spin first only when the evidence shows the stall itself, not a loss of control, began the accident sequence; otherwise put loss of control in flight first and keep the stall among your guesses.
 
-- [ ] **Step 3: The local sentence check** (free)
+- [x] **Step 3: The local sentence check** (free)
 
 Run: `make s27-check-guidance GUIDANCE="<KEPT> r<N>-<SLUG>"`
 Expected: `0 found`. If a sentence is found, reword it and re-run.
 
-- [ ] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
+- [x] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
 
 ```bash
 git add src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md docs/rounds/s27-round-<N>.md
@@ -4480,25 +4480,25 @@ git commit -m "S2.7 round <N>: registration and guidance (<one line>)"
 
 The tree is clean now; the run records this commit.
 
-- [ ] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
+- [x] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
 
 Hand Andy: "Round <N>: `make s27-round GUIDANCE="<KEPT> r<N>-<SLUG>" PER_CASE=<last cost per case rounded up>`; about $1.18, 30–60 minutes on batch; start between 01:00 and 12:00 UTC." Record the run id.
 
-- [ ] **Step 6: The check, if Round 1 kept one**
+- [x] **Step 6: The check, if Round 1 kept one**
 
 If `CHECK` is set: `make s27-check RUN=<run id> WAY=<CHECK>` (free for `rule`; about $0.36 for `luna`). The derived id is `<run id>-check-<CHECK>`.
 
-- [ ] **Step 7: Read the round** (free)
+- [x] **Step 7: Read the round** (free)
 
 Run: `make s27-round-result N=<N> RUN=<run id, or its derived folder> REFERENCE=<REFERENCE> NOISE="<noise pair>" $(FINDING)`
 The reading is appended to the registration. Commit it: `git commit -am "S2.7 round <N>: result (<kept|dropped>)"`.
 
-- [ ] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
+- [x] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
 
 `make s27-judge RUN=<the run that goes forward: the derived folder if CHECK is set>`; then
 `uv run python -m scripts.judge_outcomes --runs <previous kept run> <this run> --label-status <validated|unvalidated> >> docs/rounds/s27-round-<N>.md` and commit. Read the misread share: if it moved beyond Round 0's label churn, say so in the registration (spec §6.4, last point).
 
-- [ ] **Step 9: The stop rule**
+- [x] **Step 9: The stop rule**
 
 `make stage-spend`. Two dropped rounds in a row ends the occurrence rounds (move to finding rounds with `FINDING=1`, one or two of them); the $25 line ends every round. Report the round to Andy in plain English (the change, the reading, kept or dropped, the spend) before starting the next.
 
@@ -4516,7 +4516,7 @@ The reading is appended to the registration. Commit it: `git commit -am "S2.7 ro
 - Consumes (from track 2, after the merge): `docket.transcribe.TRANSCRIBER: str`, `PAGE_RULE: PageRule`, `PAGE_RULES: tuple[PageRule, ...]`, `ReadingLookup(cache, *, model=TRANSCRIBER, instruction=TRANSCRIBE, dpi=RESOLUTION, page_rule=PAGE_RULE)` with `.model` and `.page_rule`.
 - Produces: `RunSpec.transcriber: str | None = None`, `RunSpec.page_rule: str | None = None`; `RunRecord.transcriber`, `RunRecord.page_rule` (defaults None); `report.S26_V2_READING = ("qwen/qwen3.5-122b-a10b", "all")` (what a v2 record without the fields means: S2.6's transcriber and rule); CLI `run --transcriber MODEL --page-rule RULE` (defaults `TRANSCRIBER`, `PAGE_RULE`; used only at v2).
 
-- [ ] **Step 1: STOP — both tracks merge into the parent**
+- [x] **Step 1: STOP — both tracks merge into the parent**
 
 On Andy's go-ahead, each track merges into `s27-coding-guidance` with a merge commit (never squashed or rebased, decision 0033): track 1 (`s27-guidance`) once Task 15's stop rule has ended the rounds, and track 2 (`s27-transcriber`) in its own Task 12. From the parent's worktree:
 
@@ -4527,7 +4527,7 @@ git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-transcriber -m "M
 
 (Track 2's plan does its own merge in its Task 12; whichever comes second resolves any conflict.) When both have landed: `git log --oneline --graph -8` shows the two merges; run `make check` (Expected: PASS). If `sources.py`, the `Makefile`, `apps/eval/__main__.py` or the decisions index conflicted, the resolution is in the merge commit; log it in Deviations. From here to Task 19, work on the parent in `.claude/worktrees/s27-coding-guidance`.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/test_runner.py`:
 
@@ -4569,7 +4569,7 @@ def test_two_v2_runs_with_different_readings_are_refused_unless_labelled(run_rec
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py -v -k "reading or transcriber"` (Expected: FAIL)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - `RunSpec`: `transcriber: str | None = None`, `page_rule: str | None = None`.
 - `Runner.run`, beside the v2/v3 refusals: a v2 arm B run with either field None raises `ConfigurationError("a v2 run records its transcriber and page rule (S2.7 spec §7.5)")`; a v1 run with either set raises `ConfigurationError("a v1 run reads no transcription; transcriber and page rule are for v2 runs")`.
@@ -4580,7 +4580,7 @@ Run: `uv run pytest tests/test_runner.py tests/test_report.py -v -k "reading or 
 
 Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_eval_app.py -v` (Expected: PASS)
 
-- [ ] **Step 4: Run the full check and commit**
+- [x] **Step 4: Run the full check and commit**
 
 Run: `make check` (Expected: PASS)
 
@@ -4598,15 +4598,15 @@ git commit -m "S2.7 Task 16: v2 runs record their transcriber and page rule (spe
 - Create (by running): `docs/results/s27-meeting-dev.txt`
 - Create: one decision record for Andy's v2 and v3 decisions (the next free number above 0100)
 
-- [ ] **Step 1: Apply track 2's outcome to `dev-400`**
+- [x] **Step 1 (skipped, Andy 2026-09-29; see Deviations): Apply track 2's outcome to `dev-400`**
 
 If track 2's decision kept Qwen with the rule `all`, nothing is paid: S2.6's readings stand, and track 2 already re-created `dev-400`'s marker under the rule-naming stamp (its Task 3 Step 6, track 2 walkthrough W4); check it with `ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017 --page-rule all --dry-run` (`0 not yet read`). Otherwise run track 2's transcription targets for `dev-400` with the chosen `--model` and `--page-rule`: the dry run first (free; prints pages and projected cost), then — **STOP** for Andy — the paid run (estimate $1–7, spec §8).
 
-- [ ] **Step 2: STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
+- [x] **Step 2 (skipped, Andy 2026-09-29): STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
 
 Hand Andy: `make s27-round GUIDANCE="<every kept name>" EVIDENCE=v2 PER_CASE=0.0042 EST=1.60` (the v2 run needs the transcriber and rule flags only if they differ from the defaults Task 16 set). Then, if `CHECK` is set, `make s27-check RUN=<v2 run> WAY=<CHECK>`; then `make s27-judge RUN=<the v2 run that goes forward>`.
 
-- [ ] **Step 3: The comparison** (free)
+- [x] **Step 3 (skipped, Andy 2026-09-29): The comparison** (free)
 
 ```make
 s27-meeting-results:
@@ -4618,7 +4618,7 @@ s27-meeting-results:
 
 Run it, commit the Makefile and the results file.
 
-- [ ] **Step 4: STOP — Andy's decisions**
+- [x] **Step 4 (skipped, Andy 2026-09-29): STOP — Andy's decisions**
 
 Report in plain English, one decision per message: (1) does v2 go forward (top-1, top-3, finding recall@10 and the outcomes, v2 against v1 under the final guidance)? (2) does the picture probe (v3) run in S2.7? Write one decision record holding both answers, with Andy's words, in the project's format; add it to `docs/decisions/README.md`; commit.
 
@@ -4635,7 +4635,7 @@ Report in plain English, one decision per message: (1) does v2 go forward (top-1
 **Interfaces:**
 - Produces: `sealed_report.prediction_lines(dev_top1: float, sealed_top1: float, misread_moved: bool | None) -> list[str]`; `main(argv)` with `--dev RUN`, `--sealed RUN`, `--misread-moved {yes,no,unvalidated}`, `--out`.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_sealed_report.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_sealed_report.py`)
 
 ```python
 """scripts/sealed_report.py: the prediction of decision 0098 item 7, scored."""
@@ -4657,7 +4657,7 @@ def test_prediction_lines_report_a_miss_plainly() -> None:
     assert "misread share: not scored (the narrative label was not validated)" in lines
 ```
 
-- [ ] **Step 2: Run them to verify they fail, then write `scripts/sealed_report.py`**
+- [x] **Step 2: Run them to verify they fail, then write `scripts/sealed_report.py`**
 
 ```python
 """The sealed sample's result beside dev-400's, and the prediction of decision 0098 item 7.
@@ -4745,19 +4745,19 @@ if __name__ == "__main__":
 
 Run: `uv run pytest tests/test_sealed_report.py -v` (Expected: PASS); commit (`S2.7 Task 18: the sealed report`).
 
-- [ ] **Step 3: Register the final setup** (`docs/rounds/s27-sealed.md`)
+- [x] **Step 3: Register the final setup** (`docs/rounds/s27-sealed.md`)
 
 Name exactly: every kept guidance file in order and the `guidance_sha256` of the last kept run; the check way (or none); the evidence version and, at v2, the transcriber and page rule; model `openai/gpt-6-luna` at `medium`, batch, reply budget 8,000; the `dev-400` run it is compared with. Commit it alone: `git commit -m "S2.7: the sealed sample's registration (decision 0095)"`. From this commit, `dev-seal-400` opens.
 
-- [ ] **Step 4: Verify the sealed list** (free)
+- [x] **Step 4: Verify the sealed list** (free)
 
 Run: `uv run python -m scripts.draw_sealed --verify` (Expected: `identical: True`)
 
-- [ ] **Step 5: STOP — fetch and, at v2, transcribe the sealed sample**
+- [x] **Step 5 (not needed at v1; see Deviations): STOP — fetch and, at v2, transcribe the sealed sample**
 
 At v2, hand Andy track 2's transcription dry run for `dev-seal-400` (free; its live docket client fetches the dockets, about 3,500 documents at 2 seconds per request, a few hours), then the paid transcription (estimate $1–14, spec §9.1). At v1, the run of Step 6 fetches the dockets itself.
 
-- [ ] **Step 6: STOP — the sealed run, once (paid, about $1.20–1.35 plus the judge)**
+- [x] **Step 6: STOP — the sealed run, once (paid, about $1.20–1.35 plus the judge)**
 
 ```make
 s27-sealed-run:
@@ -4768,7 +4768,7 @@ s27-sealed-run:
 
 Hand Andy: `make s27-sealed-run GUIDANCE="<kept names>" EVIDENCE=<v1|v2> PER_CASE=<…>`; then the check (if kept) and `make s27-judge` on the run that goes forward. `ntsb-eval judge` refuses a sample other than `dev-400` without `--validated`: pass `--validated` only if Task 6's outcome was `validated`; otherwise skip the judge on the sealed run and record that.
 
-- [ ] **Step 7: The results and the prediction** (free)
+- [x] **Step 7: The results and the prediction** (free)
 
 Run: `uv run python -m scripts.sealed_report --dev <final dev-400 run> --sealed <sealed run> --misread-moved <yes|no|unvalidated> --out docs/results/s27-sealed-dev.txt`
 Commit. Report to Andy in plain English, with the prediction scored whichever way it came out; then **STOP** for his held-out decision (spec §9.3).
@@ -4777,7 +4777,7 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 
 ### Task 19: Close-out (decision 0017)
 
-- [ ] **Step 1:** Update `CLAUDE.md` (this repository): S2.7's line in "What this repo is", the `make` targets added by both tracks in **Commands**, `ntsb-eval check` and `run --guidance/--transcriber/--page-rule` in the `ntsb-eval` paragraph, `TYPESAFE_API_KEY` in the settings paragraph, and the eval-bars section's pointer to S2.7's results. Commit.
+- [x] **Step 1:** Update `CLAUDE.md` (this repository): S2.7's line in "What this repo is", the `make` targets added by both tracks in **Commands**, `ntsb-eval check` and `run --guidance/--transcriber/--page-rule` in the `ntsb-eval` paragraph, `TYPESAFE_API_KEY` in the settings paragraph, and the eval-bars section's pointer to S2.7's results. Commit.
 - [ ] **Step 2:** Run the `close-stage` skill: the As-built record on the specification (every Deviations entry of both plans, grouped and rewritten plainly), specification status Implemented, the roadmap's S2.7 entry marked done, both plans deleted, `version` set in `pyproject.toml`.
 - [ ] **Step 3:** `uv run python -m scripts.check_docs` and `make check`. Expected: both clean.
 - [ ] **Step 4:** Push and open the pull request `S2.7: coding guidance` (merge commit, never squashed; decision 0033). Andy creates the release after the merge.
@@ -4835,3 +4835,19 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-28, Task 15, lesson from round 4 (ad-hoc counts): its counts were conditioned on the NTSB coding both events ("when both appear"), which the model cannot know in advance. The model put a fuel event first in 40 cases (13-17 in earlier runs); of the 14 where it moved from a power loss to a fuel event and the NTSB kept the power loss, the NTSB coded no fuel event at all in 13. Later rounds' counts, the finding rounds' included, start from what the model can see (an evidence field, or a code the model itself chose), not from the NTSB's final codes.
 - 2026-09-29, Task 15, before the first finding round: the statistics pool gained flagged-finding counts by defining code (`PoolCase.findings`, `CodingStats.findings_by_defining`, `findings_given_event`; tested), rebuilt from the same pool by `scripts/coding_stats.py`, whose report gains a "flagged findings by defining event" section. Every earlier count in `coding_stats.json` is unchanged (checked key by key); four lines of `docs/results/s27-coding-stats.txt` now show the labels decision 0105 added (phases 553 and 601) where they showed `?`.
 - 2026-09-29, Task 15 round 6: the rule dropped it on harm to top-1 against Round 3 (-6.3% [-10.5%, -2.5%]) with finding recall +11.4% [+8.2%, +14.6%]; Andy kept it by override (decision 0106, "I think option B"). Round 6's checked run is the reference from now on; the sealed registration and the report state the override.
+- 2026-09-29, final review fix round (Important 1): `samples.refuse_sealed` was reachable but not called from `apps/eval/__main__.py:_cmd_baseline` or from the S2.6 scripts that take a free-form `--sample` (`page_kinds.py`, `analysis_handcheck.py`, `narrative_coverage.py`, `name_coverage.py`, `docket_leak_scan.py`), so `ntsb-eval baseline --sample dev-seal-400` and any of those five scripts could score or read the sealed sample today, free and with one flag, before its registration (`docs/rounds/s27-sealed.md`) is committed. Fixed by calling `refuse_sealed` at each of those call sites, before `sample_ids` is read. Tests added: `test_baseline_refuses_the_sealed_sample_before_anything_is_read`, `test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard` (`--sample` is optional on `baseline`), `test_check_refuses_the_sealed_sample_before_any_client_is_built` (`ntsb-eval check` already called `refuse_sealed`, decision 0095, but had no test), and one sealed-refusal test each for `page_kinds.py` and `analysis_handcheck.py`.
+- 2026-09-29, final review fix round (Important 1 / deferred Task 5, one shared helper): `samples.refuse_unless_development(run_id, sample)` replaces the hand-copied held-out/sealed refusal `occurrence_misses.py`, `judge_outcomes.py`, `round0_handread.py`, `round1_report.py`, `round1_jev2_report.py` and `round_result.py` each carried, which accepted `dev-seal-400` as a plain development sample (`record.sample.startswith("dev")`) -- only `round1_jev2_report.py` also called `refuse_sealed`, and before registration no sealed run could exist, so this was defence in depth, not an open gap. Takes `sample: str | None`, not the whole `RunRecord`: `scoring.samples` is one of the "Only the splitter constructs synthesis and verdict" import-linter contract's source modules, and `scoring.records` reaches `records.verdict` through `scoring.metrics`, so importing `RunRecord` there would have broken that contract (checked: `uv run lint-imports` failed with exactly this path before the signature was changed). Each script's own refusal message wording is otherwise preserved (each substring the existing tests already matched -- "held-out run", "development runs only", "outside the dev split" -- still appears), and every existing refusal test in the six scripts' test files passes unchanged. `scripts/coding_stats.py` is untouched: it calls `samples.sample_ids` directly to build its excluded-ids set, never `refuse_unless_development`, so it can still read the sealed ids to leave them out of the pool.
+- 2026-09-29, final review fix round (Minor 1): `report.provenance`'s header line now prints `prompt=<prompt_version>` (from Round 5 on, a guided run's `s1-v6` prompt can differ from its reference's `s1-v5`, and neither `report --against` nor `round_result` flagged that); `round_result`'s `run:` line now prints both the run's and the reference's prompt versions. `test_provenance_shows_status_commit_and_totals` (`tests/test_report.py`) is updated to expect the new field, in the same order the line already carried the others; `test_provenance_names_the_prompt_version` is added beside `test_provenance_names_the_version`.
+- 2026-09-29, final review fix round (Minor 3): `round_result._load` (and the `_load`/`_refuse` helpers in `round1_report.py` and `round1_jev2_report.py`) now refuse a run whose `finished` is `None` -- a check pass that died mid-write leaves exactly that, and `preflight` then refuses a re-run, so the folder has to be deleted by hand -- before any per-case data is read; `round_result.main` and the two round-report scripts' `main` also refuse when the run, the reference/other answer set and (for `round_result`) the noise pair do not share sample, arm and evidence version, comparing `RunRecord` fields directly rather than only printing `n` and letting a mismatch pass silently. `checkpass.check_run`'s preflight "exists" error now says a dead pass's folder must be deleted by hand and try again, rather than only naming the rule.
+- 2026-09-29, final review fix round (Minor 4, deferred Task 10): `test_the_ordering_check_sends_no_withheld_text` (`tests/test_boundary.py`) now asserts every `withheld_windows` window (codes excluded, as choosing among codes is the check's job), matching the `jev2` boundary test beside it, instead of only the first 80 characters of each withheld field. Luna is the check carried forward to the sealed run, so its boundary test is worth the stronger assertion. Confirmed the assertion catches a real leak: a temporary mutation (the hypothesis's evidence narrative extended with the fixture's probable cause) made the test fail with the leaked text quoted in the assertion error, then the mutation was reverted; `git diff --stat tests/test_boundary.py` before and after the mutation-and-revert cycle showed the file unchanged apart from the intended fix.
+- 2026-09-29, final review fix round (Minor 5): `scripts/coding_stats.py:processed_rows` now parses `raw_json` only for development rows -- `pool_cases` skips every held-out and open row before it ever touches `raw`, so parsing their JSON bought nothing, though nothing leaked: the pool guard held regardless. `test_processed_rows_parses_raw_json_for_development_rows_only` (`tests/test_coding_stats_script.py`) pins this. Rebuilt `src/ntsb_probable_cause/scoring/tables/coding_stats.json` and `docs/results/s27-coding-stats.txt` against the main checkout's real processed file (`make s27-coding-stats`) and confirmed byte-identical output with `git diff --stat`; neither file is part of this commit.
+- 2026-09-29, final review fix round (Minor 6): `tests/fixtures/typesafe/choices.json` (ported from `typesafe-probe`) carries a real case's evidence state with no case id recorded beside it. Identified it by matching its evidence values against the processed file locally -- the registration `N418SP` is unique, and every other evidence value in `request.state` matches the same case's record exactly -- as `ANC09CA020`, event date 2009-02-16, development split. Recorded in `tests/fixtures/typesafe/README.md`; `test_typesafe_fixture_case_is_development_split` (`tests/test_contamination.py`) checks its split by event date, the same way the file's other fixture-purity tests do.
+- 2026-09-29, final review fix round (Important 2 / Minor 2): decision 0106's argument for overriding the do-no-harm rule, and Round 6's note, rested on numbers labelled "ad-hoc counts" -- produced by no committed script. `scripts/round_comparisons.py` (`make s27-round-comparisons`) reads the seven named checked (`-check-luna`) run folders and writes `docs/results/s27-round-comparisons-dev.txt`: each run's own checked top-1 and finding recall@10, Round 6 paired against Round 3, Round 4, Round 5 and the repeat, and the decision 0105 supplement line for Round 6 against Round 3. Run free and local against the main checkout's data; every figure it produced matches decision 0106's table and Round 6's note exactly (top-1 -2.3%/-2.8%/-1.5%, finding recall +12.3%/+12.7%/+10.5% against Round 4/Round 5/the repeat; the reference figures against Round 3; Round 6's own 25.1%/22.6%; the supplement's "reference 5, run 3" top-1 hits) -- no discrepancy found, so no new decision record was needed. One line was appended under Round 6's "Override" section and a "Source of the numbers" section was appended to decision 0106, both pointing to the results file; nothing above either append was edited.
+- 2026-09-29, final review fix round, extending the Task 15 round 3 deviation above to Rounds 4 and 5 (Minor 7): Round 4's guidance counts (for example the fuel/power-loss pair counts) are sums over every phase read through `coding_stats.load_stats().event_pair(<event>, <event>)`, as `docs/rounds/s27-round-4.md` itself already states and as the round-4 `CodingStats.event_pair` addition above documents; none of those summed figures is printed verbatim in `docs/results/s27-coding-stats.txt` either, which prints per-phase-group pair counts, not summed ones. Round 5's guidance counts (for example "1096 of 1403" Approach cases, "1501 of 1994" Enroute cases, "3107 of 4306" Landing cases, 92 of those under 553) are read the same way, through `coding_stats.load_stats().group_phases(<group>)` and `group_n(<group>)`, as `docs/rounds/s27-round-5.md` states; `docs/results/s27-coding-stats.txt` does not print per-group phase breakdowns at all. Both rounds' counts are reproducible from the committed `coding_stats.json` by the cited accessor, matching the standard the round-3 entry set; no code changed for this entry, which only completes the citation record the review found incomplete.
+- 2026-09-29, Task 15 closed: the procedure ran for rounds 2-6 (2 dropped, 3 kept, 4 and 5 dropped, 6 kept by override, decision 0106). The occurrence rounds ended on two drops in a row (4, 5); Andy ended the finding rounds after one ("option A"), leaving the second 0098 allows unused. The judge ran on each kept round (3 and 6).
+- 2026-09-29, Task 16 Step 1: track 2 merged into the parent first (its Task 12, 87f74f1) and the parent was merged into track 1 on 2026-09-28 (973eff1, conflicts in the `Makefile`, `apps/eval/__main__.py` and the decisions index resolved there as unions), so track 1's merge into the parent (c08ca2c, Andy: "yes go ahead and merge") had no conflicts. `make check` on the parent: 1,847 passed, 97.82% coverage.
+- 2026-09-29, Task 16 Steps 2-4: built as planned, with three details. The refusal is one helper, `runner.refuse_unnamed_reading`, called after the docket-version check, so arm A and the ceiling at v2 keep their earlier refusal message. `report.refuse_cross_version` compares the two v2 readings through `_v2_reading`, which reads a record with no fields as `S26_V2_READING`; `provenance` prints the reading on every v2 record, S2.6's included. The run command's "not fully transcribed" message now names the transcriber and page rule and the exact `transcribe` command. Tests: `tests/test_runner.py`'s `_arm_b` helper gives a v2 spec S2.6's reading, so the S2.6 v2 tests keep running unchanged; three new runner tests, two report tests, one app test, and the existing app v2 test now also checks the recorded reading.
+- 2026-09-29, Task 17 (the meeting point, spec §8) skipped, Andy's decision ("A, skip it and carry on here"): decision 0120 already settled v2's default for cost (transcription off by default, a tool the S3 loop may choose), so the v1-against-v2 comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether transcription helps once coding is improved (the question decision 0090 item 2 hoped S2.7 would free); it moves to S3, where reading a transcription is the agent's own choice. The sealed run (Task 18) is therefore at v1.
+- 2026-09-29, close-out, decision 0107 (amends 0102 item 3): `scripts/stage_spend.py` counted every branch holding S2.7's first commit, which by then included `s28-coding-lookup` (S2.8's draft design) and `s3-probe`, both cut from `s27-guidance`, and it counted HEAD. It now counts only branches named `s27-` and not HEAD. The stage total was unchanged by the fix ($13.81: neither later branch had spent), `uv run python -m scripts.stage_spend`, 2026-09-29.
+- 2026-09-29, Task 18 Steps 1-2: `scripts/sealed_report.py` as planned, plus finding recall@10 for both runs beside top-1 (Round 6, the kept finding round, moved it) and a held-out refusal; four tests. The `s27-sealed-run` target names the two guidance files itself, so the sealed run cannot be started with another stack; `s27-sealed-results` fixes the `dev-400` side to Round 6's checked run. The sealed run is at v1 (Task 17 skipped), so Step 5's transcription does not apply: the run fetches the sealed dockets itself.
+- 2026-09-29, Task 18 Steps 6-7, run by the controller on Andy's instruction ("Can you just get this started now for me"). The first attempt, 11:40 UTC, was refused by the monthly guard before any call ($1.68 projected plus $47.75 spent against the code's $40 default): the launch script had not set decision 0104's `NTSB_MONTHLY_BUDGET_USD=50` for September. It left one folder holding only `spec.json`, `20260929T114018-9cbe5c5-dev-seal-400-B`, kept under `data/runs` and unused. The second attempt, with 0104's setting, is the sealed run: `20260929T114049-9cbe5c5-dev-seal-400-B`, commit `9cbe5c5`, clean tree, prompt `s1-v6+ge17fecdc66ec`, 401 cases, $1.1802; 397 answered, 3 refused by the leakage guard, 1 reply-format failure. Its batch was submitted at 14:34 UTC, inside the slow window, and still finished at 15:06. The Luna check, `...-check-luna`, cost $0.1133. The judge was not run (decision 0099; the registration). Results: `docs/results/s27-sealed-dev.txt`: sealed top-1 27.5% [23.3%, 32.0%] (109 of 397) against `dev-400`'s 25.1% [21.1%, 29.5%] (100 of 399); finding recall@10 22.0% and 22.6%. Decision 0098 item 7: `dev-400` top-1 between 30% and 36% not met (25.1%); the sealed sample lower by less than 5 points not met, because it was 2.4 points higher; the misread part not scored.

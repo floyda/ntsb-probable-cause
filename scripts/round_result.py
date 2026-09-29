@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.scoring import codes, samples
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
@@ -183,24 +184,52 @@ def _groups(cases: Sequence[CaseResult]) -> dict[str, str | None]:
     }
 
 
-def _load(run_id: str) -> list[CaseResult]:
-    """A development run's cases, after every refusal (held-out, then split).
+def _record(run_id: str) -> RunRecord:
+    """A run's own record, after every refusal but the per-case split.
 
-    2026-09-27 addition beyond the brief: mirrors the sibling scripts already on this branch
-    (``judge_outcomes._load``, ``round0_handread._run``, ``round1_report._load``), which check
+    Held-out, sealed, finished. 2026-09-27 addition beyond the brief: mirrors the sibling
+    scripts already on this branch (``judge_outcomes._load``, ``round0_handread._run``,
+    ``round1_report._load``), which check
     ``run.jsonl``'s recorded sample before ``cases.jsonl`` is read at all, on top of the run-id
     substring check -- so a run whose id does not say "heldout" but whose recorded sample is a
-    held-out one is still refused before any per-case data is touched. Called on every run this
-    script reads: the run, the reference, and both noise runs.
+    held-out one is still refused before any per-case data is touched; the sealed sample is
+    refused too, until its registration is committed (decision 0095). Final review, Minor 3: a
+    check pass that died mid-write leaves a run whose ``finished`` is ``None`` and a partial
+    ``cases.jsonl``; refused here before it is read at all.
     """
-    if "heldout" in run_id:
-        raise SystemExit(f"round_result: {run_id} is a held-out run; development runs only")
+    try:
+        samples.refuse_unless_development(run_id, None)
+        record = read_jsonl(Settings().runs_dir / run_id / "run.jsonl", RunRecord)[0]
+        samples.refuse_unless_development(run_id, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"round_result: {error}") from error
+    if record.finished is None:
+        raise SystemExit(f"round_result: {run_id} has not finished: it did not complete a pass")
+    return record
+
+
+def _refuse_mismatched(
+    label: str, reference: RunRecord, other_label: str, other: RunRecord
+) -> None:
+    """Refuse a run/reference/noise pairing whose sample, arm or evidence version differ.
+
+    Final review, Minor 3: nothing checked that the run, the reference and the noise pair were
+    even comparable -- ``n`` was printed either way, so a mismatch would be silent rather than
+    refused.
+    """
+    for attribute in ("sample", "arm", "evidence_version"):
+        mine, theirs = getattr(reference, attribute), getattr(other, attribute)
+        if mine != theirs:
+            raise SystemExit(
+                f"round_result: {other_label} {attribute}={theirs!r} does not match "
+                f"{label} {attribute}={mine!r}"
+            )
+
+
+def _load(run_id: str) -> list[CaseResult]:
+    """A development run's cases, after every refusal (held-out, sealed, finished, split)."""
+    _record(run_id)
     folder = Settings().runs_dir / run_id
-    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    if not record.sample.startswith("dev"):
-        raise SystemExit(
-            f"round_result: {run_id} is a held-out run ({record.sample}); development runs only"
-        )
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"round_result: {run_id} holds a case outside the dev split")
@@ -221,6 +250,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--append", default=None, type=Path)
     parser.add_argument("--supplement", action="store_true")
     args = parser.parse_args(argv)
+    run_record = _record(args.run)
+    reference_record = _record(args.reference)
+    noise_a_record = _record(args.noise[0])
+    noise_b_record = _record(args.noise[1])
+    _refuse_mismatched(args.run, run_record, args.reference, reference_record)
+    _refuse_mismatched(args.run, run_record, args.noise[0], noise_a_record)
+    _refuse_mismatched(args.run, run_record, args.noise[1], noise_b_record)
     run, reference = _load(args.run), _load(args.reference)
     reading = read(
         run,
@@ -239,7 +275,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         [
             "## Result (scripts/round_result.py, decision 0098 item 4)",
             "",
-            f"- run: {args.run}; reference: {args.reference}; "
+            f"- run: {args.run} (prompt {run_record.prompt_version}); "
+            f"reference: {args.reference} (prompt {reference_record.prompt_version}); "
             f"noise pair: {args.noise[0]}, {args.noise[1]}",
             f"- {primary}: {_fmt(reading.primary)}",
             f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",

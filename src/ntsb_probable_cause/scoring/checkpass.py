@@ -353,7 +353,11 @@ def preflight(source: Path, way: Way, runs_dir: Path) -> Preflight:
     run_id = derived_id(record.run_id, way)
     folder = runs_dir / run_id
     if (folder / "cases.jsonl").exists() or (folder / "run.jsonl").exists():
-        raise ConfigurationError(f"{run_id} exists: a check is run once per source run")
+        raise ConfigurationError(
+            f"{run_id} exists: a check is run once per source run; if this is a dead pass "
+            f"(one that died mid-write, leaving a partial cases.jsonl/run.jsonl), delete "
+            f"{folder} by hand and try again"
+        )
     return Preflight(record=record, cases=tuple(cases), run_id=run_id)
 
 

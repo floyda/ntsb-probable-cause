@@ -79,3 +79,46 @@ Kept by override of the do-no-harm rule, 2026-09-29 (Andy: "I think option B, it
 something to pursue at a later stage"). The outcome above is left as the rule gave it. Round 6's
 guidance stacks after `r3-loc-stall`, and its checked run,
 `20260929T053953-674c92e-dev-400-B-check-luna`, is the reference for any later round.
+
+The numbers above ("Note", this section) are reproduced from committed code, free and local, by
+`make s27-round-comparisons` (`scripts/round_comparisons.py`); `docs/results/s27-round-comparisons-dev.txt` holds the run, no figure differs (final review, I2/M2).
+
+## Judge outcomes (plan Task 15 Step 8)
+
+The earlier run is Round 3's checked folder (judged 2026-09-28). The misread count moved from 99 to 109, inside Round 0's label churn (123 of 399 cases change outcome between two identical runs), so it does not show the finding guidance changing how the evidence is read. The narrative label is unvalidated (decision 0099). Judge cost $0.8187.
+
+judge outcomes (scripts/judge_outcomes.py; counts only, decision 0099)
+
+## 20260928T144353-031e97e-dev-400-B-check-luna -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 125 of 399; cause label: different 20, related 57, same_cause 48
+  understood, miscoded: 139 of 399; cause label: related 78, same_cause 61
+  thin evidence: 36 of 399; cause label: different 2, related 30, same_cause 4
+  misread: 99 of 399; cause label: different 60, related 33, same_cause 6
+fatal (198 cases):
+  right: 67 of 198; cause label: different 11, related 28, same_cause 28
+  understood, miscoded: 79 of 198; cause label: related 43, same_cause 36
+  thin evidence: 14 of 198; cause label: different 1, related 12, same_cause 1
+  misread: 38 of 198; cause label: different 22, related 15, same_cause 1
+non-fatal (201 cases):
+  right: 58 of 201; cause label: different 9, related 29, same_cause 20
+  understood, miscoded: 60 of 201; cause label: related 35, same_cause 25
+  thin evidence: 22 of 201; cause label: different 1, related 18, same_cause 3
+  misread: 61 of 201; cause label: different 38, related 18, same_cause 5
+
+## 20260929T053953-674c92e-dev-400-B-check-luna -- outcomes (unvalidated narrative label, decision 0099)
+all (399 cases):
+  right: 100 of 399; cause label: different 17, related 47, same_cause 36
+  understood, miscoded: 151 of 399; cause label: related 83, same_cause 68
+  thin evidence: 39 of 399; cause label: different 1, related 34, same_cause 4
+  misread: 109 of 399; cause label: different 63, related 38, same_cause 8
+fatal (198 cases):
+  right: 48 of 198; cause label: different 9, related 23, same_cause 16
+  understood, miscoded: 85 of 198; cause label: related 48, same_cause 37
+  thin evidence: 19 of 198; cause label: related 17, same_cause 2
+  misread: 46 of 198; cause label: different 27, related 16, same_cause 3
+non-fatal (201 cases):
+  right: 52 of 201; cause label: different 8, related 24, same_cause 20
+  understood, miscoded: 66 of 201; cause label: related 35, same_cause 31
+  thin evidence: 20 of 201; cause label: different 1, related 17, same_cause 2
+  misread: 63 of 201; cause label: different 36, related 22, same_cause 5

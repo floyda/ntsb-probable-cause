@@ -17,6 +17,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.checkpass import WAYS, derived_id
 from ntsb_probable_cause.scoring.metrics import paired_difference
 from ntsb_probable_cause.scoring.misses import MISS_GROUPS, miss_group
@@ -109,22 +111,32 @@ def _line(label: str, p: Paired) -> str:
     )
 
 
-def _load(runs: Path, source: str) -> list[CaseResult]:
-    """A development run's cases, after every refusal (held-out, then split).
+def _record(runs: Path, source: str) -> RunRecord:
+    """A source's own record, after every refusal but the per-case split.
 
-    2026-09-27 addition beyond the brief: every sibling script on this branch
-    (``judge_outcomes._load``, ``round0_handread._run``) refuses a non-development run by
-    reading ``run.jsonl``'s recorded sample before ``cases.jsonl`` is read at all, on top of
-    the run-id substring check -- so a source whose id does not say "heldout" but whose
-    recorded sample is held-out is still refused before any per-case data is touched.
+    Held-out, sealed, finished. 2026-09-27 addition beyond the brief: every sibling script on
+    this branch (``judge_outcomes._load``, ``round0_handread._run``) refuses a non-development
+    run by reading ``run.jsonl``'s recorded sample before ``cases.jsonl`` is read at all, on
+    top of the run-id substring check -- so a source whose id does not say "heldout" but whose
+    recorded sample is held-out is still refused before any per-case data is touched. The
+    sealed sample is refused too, until its registration is committed (decision 0095). Final
+    review, Minor 3: a source whose ``finished`` is ``None`` (a dead check pass) is refused
+    before its cases are read at all.
     """
-    if "heldout" in source:
-        raise SystemExit(f"round1_report: {source} is a held-out run; development runs only")
-    record = read_jsonl(runs / source / "run.jsonl", RunRecord)[0]
-    if not record.sample.startswith("dev"):
-        raise SystemExit(
-            f"round1_report: {source} is a held-out run ({record.sample}); development runs only"
-        )
+    try:
+        samples.refuse_unless_development(source, None)
+        record = read_jsonl(runs / source / "run.jsonl", RunRecord)[0]
+        samples.refuse_unless_development(source, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"round1_report: {error}") from error
+    if record.finished is None:
+        raise SystemExit(f"round1_report: {source} has not finished: it did not complete a pass")
+    return record
+
+
+def _load(runs: Path, source: str) -> list[CaseResult]:
+    """A development run's cases, after every refusal (held-out, sealed, finished, split)."""
+    _record(runs, source)
     cases = read_jsonl(runs / source / "cases.jsonl", CaseResult)
     if any(c.split != "dev" for c in cases):
         raise SystemExit(f"round1_report: {source} holds a case outside the development split")
@@ -138,6 +150,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
     runs = Settings().runs_dir
+    a_record, b_record = (_record(runs, source) for source in args.answers)
+    for attribute in ("sample", "arm", "evidence_version"):
+        a_value, b_value = getattr(a_record, attribute), getattr(b_record, attribute)
+        if a_value != b_value:
+            raise SystemExit(
+                f"round1_report: {args.answers[0]} {attribute}={a_value!r} does not match "
+                f"{args.answers[1]} {attribute}={b_value!r}"
+            )
     lines = ["Round 1: the ordering check (scripts/round1_report.py; counts only, decision 0096)"]
     results: dict[str, dict[str, tuple[Paired, Paired | None]]] = {}
     for source in args.answers:

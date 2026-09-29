@@ -17,7 +17,7 @@ from ntsb_probable_cause.scoring import checkpass
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.ordering import NONE_OF_THESE
-from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl, write_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 
 LOC, STALL = "452240", "452241"
 
@@ -280,3 +280,27 @@ def test_a_sealed_source_is_refused_before_any_run_is_read(
     _write_run(runs, "sealed-run", sample="dev-seal-400")  # no cases.jsonl
     with pytest.raises(SystemExit, match="sealed"):
         r2.main(["--answers", "dev-run", "sealed-run"])
+
+
+def test_a_source_that_has_not_finished_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    folder = _write_run(runs, "dead-run")
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    (folder / "run.jsonl").unlink()  # write_jsonl appends; replace, not add, the row
+    write_jsonl(folder / "run.jsonl", [record.model_copy(update={"finished": None})])
+    with pytest.raises(SystemExit, match="has not finished"):
+        r2.main(["--answers", "dead-run", "other-run"])
+
+
+def test_main_refuses_answer_sets_on_different_arms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    _write_run(runs, "source-a", arm="B")
+    _write_run(runs, "source-b", arm="ceiling")
+    with pytest.raises(SystemExit, match="arm"):
+        r2.main(["--answers", "source-a", "source-b"])

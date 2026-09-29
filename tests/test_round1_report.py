@@ -7,7 +7,8 @@ import pytest
 from scripts import round1_report as r1
 from tests.test_occurrence_misses import _SCORES, _case, _write_run  # shared builders
 
-from ntsb_probable_cause.scoring.records import write_jsonl
+from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl, write_jsonl
 
 
 def _p(low: float, mean: float = 0.05) -> r1.Paired:
@@ -89,6 +90,41 @@ def test_a_source_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_
     _write_run(runs_dir, "renamed-run", sample="heldout-400")  # no cases.jsonl written
     with pytest.raises(SystemExit, match="held-out run"):
         r1.main(["--answers", "renamed-run", "other-run"])
+
+
+def test_a_sealed_source_is_refused_until_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    _write_run(runs_dir, "sealed-run", sample="dev-seal-400")  # no cases.jsonl written
+    with pytest.raises(SystemExit, match="sealed"):
+        r1.main(["--answers", "sealed-run", "other-run"])
+
+
+def test_a_source_that_has_not_finished_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    folder = _write_run(runs_dir, "dead-run")
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    (folder / "run.jsonl").unlink()  # write_jsonl appends; replace, not add, the row
+    write_jsonl(folder / "run.jsonl", [record.model_copy(update={"finished": None})])
+    with pytest.raises(SystemExit, match="has not finished"):
+        r1.main(["--answers", "dead-run", "other-run"])
+
+
+def test_main_refuses_answer_sets_on_different_arms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    _write_run(runs_dir, "source-a", arm="B")
+    _write_run(runs_dir, "source-b", arm="ceiling")
+    with pytest.raises(SystemExit, match="arm"):
+        r1.main(["--answers", "source-a", "source-b"])
 
 
 def test_main_prints_the_outcome_line(

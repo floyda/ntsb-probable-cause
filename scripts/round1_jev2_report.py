@@ -21,7 +21,6 @@ import statistics
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.checkpass import CHECK_TOOL, Way, derived_id
@@ -94,28 +93,28 @@ def _top1(cases: Sequence[CaseResult]) -> dict[str, bool]:
     return {c.case_id: c.scores.occurrence_top1 for c in cases if c.scores is not None and c.steps}
 
 
-def _refuse(runs: Path, run_id: str) -> None:
-    """Every refusal that needs only the run's id and ``run.jsonl``: held-out, sealed.
+def _refuse(runs: Path, run_id: str) -> RunRecord:
+    """Every refusal that needs only the run's id and ``run.jsonl``: held-out, sealed, finished.
 
     The sealed sample is refused until its registration is committed (decision 0095), as
-    ``ntsb-eval`` refuses it; nothing here reads ``cases.jsonl``.
+    ``ntsb-eval`` refuses it; nothing here reads ``cases.jsonl``. Final review, Minor 3: a
+    source whose ``finished`` is ``None`` (a dead check pass) is refused here too.
     """
-    if "heldout" in run_id:
-        raise SystemExit(f"round1_jev2_report: {run_id} is a held-out run; development runs only")
-    record = read_jsonl(runs / run_id / "run.jsonl", RunRecord)[0]
-    if not record.sample.startswith("dev"):
-        raise SystemExit(
-            f"round1_jev2_report: {run_id} is a held-out run ({record.sample}); "
-            "development runs only"
-        )
     try:
-        samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+        samples.refuse_unless_development(run_id, None)
+        record = read_jsonl(runs / run_id / "run.jsonl", RunRecord)[0]
+        samples.refuse_unless_development(run_id, record.sample)
     except ConfigurationError as error:
         raise SystemExit(f"round1_jev2_report: {run_id}: {error}") from error
+    if record.finished is None:
+        raise SystemExit(
+            f"round1_jev2_report: {run_id} has not finished: it did not complete a pass"
+        )
+    return record
 
 
 def _load(runs: Path, run_id: str) -> list[CaseResult]:
-    """A development run's cases, after every refusal (held-out, sealed, then split).
+    """A development run's cases, after every refusal (held-out, sealed, finished, split).
 
     The recorded sample is read from ``run.jsonl`` before ``cases.jsonl`` is touched, as every
     S2.7 script does (``round1_report._load``).
@@ -201,8 +200,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "(scripts/round1_jev2_report.py; counts only; design: docs/rounds/s27-round1-jev2.md)"
     ]
     # Both sources' records are checked before any run's cases are read (fix round 1).
-    for source in args.answers:
-        _refuse(runs, source)
+    a_record, b_record = (_refuse(runs, source) for source in args.answers)
+    for attribute in ("sample", "arm", "evidence_version"):
+        a_value, b_value = getattr(a_record, attribute), getattr(b_record, attribute)
+        if a_value != b_value:
+            raise SystemExit(
+                f"round1_jev2_report: {args.answers[0]} {attribute}={a_value!r} does not "
+                f"match {args.answers[1]} {attribute}={b_value!r}"
+            )
     results: dict[str, dict[str, Paired | None]] = {}
     for source in args.answers:
         set_lines, against = _answer_set(runs, source)

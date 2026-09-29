@@ -10,7 +10,7 @@ from typing import Literal
 
 import pyarrow.parquet as pq
 
-from ntsb_probable_cause import fields
+from ntsb_probable_cause import fields, gitinfo
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.splits import Split
@@ -85,6 +85,40 @@ def refuse_sealed(sample: str, *, is_committed: Callable[[Path], bool]) -> None:
             f"{sample} is sealed: commit {SEALED_REGISTRATION}, naming the final setup, "
             "before anything reads it (decision 0095)"
         )
+
+
+def refuse_unless_development(run_id: str, sample: str | None) -> None:
+    """Refuse a run the S2.7 report scripts must never read: held-out, or an unopened seal.
+
+    Every one of those scripts (``occurrence_misses``, ``judge_outcomes``,
+    ``round0_handread``, ``round1_report``, ``round1_jev2_report``, ``round_result``) checked
+    the same two things in a slightly different, hand-copied way (final review, Important 1 /
+    deferred Task 5): the run id, which is known before ``run.jsonl`` exists to read, and the
+    sample ``run.jsonl`` itself records (``record.sample``), which catches a renamed or
+    relabelled run whose id says nothing about it. Call once with ``sample=None`` before
+    ``run.jsonl`` is opened (a missing or renamed run folder is still refused by its id
+    alone), then again with the loaded record's ``sample``. Takes the sample name, not the
+    whole ``RunRecord``, so this module -- one of the "Only the splitter constructs synthesis
+    and verdict" contract's source modules -- never has to import ``scoring.records``, which
+    reaches ``records.verdict`` through ``scoring.metrics``.
+
+    The sealed sample (``dev-seal-400``) passes the "development" checks -- its own
+    registration is what gates it (decision 0095) -- so it is refused last, through
+    :func:`refuse_sealed`.
+
+    Raises:
+        ConfigurationError: ``run_id`` or ``sample`` names a held-out sample, or the sample is
+            sealed and its registration is not committed.
+    """
+    if "heldout" in run_id:
+        raise ConfigurationError(f"{run_id} is a held-out run; development runs only")
+    if sample is None:
+        return
+    if sample.startswith("heldout"):
+        raise ConfigurationError(f"{run_id} is a held-out run ({sample}); development runs only")
+    if not sample.startswith("dev"):
+        raise ConfigurationError(f"{sample} is not a development sample")
+    refuse_sealed(sample, is_committed=gitinfo.is_committed)
 
 
 def sample_ids(name: str) -> tuple[str, ...]:

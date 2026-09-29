@@ -37,6 +37,8 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.misses import (
     GROUPS,
@@ -59,14 +61,11 @@ def _share(count: int, total: int) -> str:
 
 
 def _refuse_unless_development_arm_b(run_id: str, record: RunRecord) -> None:
-    """Held-out runs never feed this script (CLAUDE.md rule 5); nor does any arm but B."""
-    if "heldout" in run_id or record.sample.startswith("heldout"):
-        raise SystemExit(
-            f"occurrence_misses: {run_id} is a held-out run ({record.sample}); this script "
-            "reads development runs only"
-        )
-    if not record.sample.startswith("dev"):
-        raise SystemExit(f"occurrence_misses: {record.sample} is not a development sample")
+    """Held-out and sealed runs never feed this script; nor does any arm but B."""
+    try:
+        samples.refuse_unless_development(run_id, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"occurrence_misses: {error}") from error
     if record.arm != "B":
         raise SystemExit(f"occurrence_misses: {run_id} is arm {record.arm}, not arm B")
 
@@ -207,11 +206,10 @@ def churn(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
 def _read_run(run_id: str) -> tuple[RunRecord, list[CaseResult]]:
     """One development arm B run's record and cases, after every refusal."""
     folder = Settings().runs_dir / run_id
-    if "heldout" in run_id:
-        raise SystemExit(
-            f"occurrence_misses: {run_id} is a held-out run; this script reads development "
-            "runs only"
-        )
+    try:
+        samples.refuse_unless_development(run_id, None)
+    except ConfigurationError as error:
+        raise SystemExit(f"occurrence_misses: {error}") from error
     record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
     _refuse_unless_development_arm_b(run_id, record)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)

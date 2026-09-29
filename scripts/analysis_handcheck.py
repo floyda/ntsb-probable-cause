@@ -33,16 +33,17 @@ from pathlib import Path
 
 import httpx
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
-from ntsb_probable_cause.errors import DocketError, LeakageError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole, SynthesisRole, VerdictRole
 from ntsb_probable_cause.records.guard import find_leaks, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring.metrics import wilson
 from ntsb_probable_cause.scoring.runner import CachedDocketReader
-from ntsb_probable_cause.scoring.samples import load_cases, sample_ids
+from ntsb_probable_cause.scoring.samples import load_cases, refuse_sealed, sample_ids
 from ntsb_probable_cause.settings import Settings
 from scripts import marking_page
 from scripts.marking_page import Card, Choice
@@ -265,6 +266,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sheet":
         if not args.sample.startswith("dev"):
             raise SystemExit("the hand-check reads development cases only")
+        try:
+            refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+        except ConfigurationError as error:
+            raise SystemExit(f"analysis_handcheck: {error}") from error
         reader = CachedDocketReader(DocketClient(settings.docket_dir, transport=_offline()))
         rows: list[SheetRow] = []
         skipped = 0

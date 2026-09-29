@@ -3,7 +3,7 @@
 import copy
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, cast
@@ -3525,6 +3525,8 @@ def _transcribed_docket(cost: float = 0.003) -> Docket:
 
 
 def _arm_b(version: Literal["v1", "v2", "v3"], *, sync: bool = True) -> RunSpec:
+    # S2.7 Task 16 (spec §7.5): a v2 run names its reading; S2.6's transcriber and rule here.
+    v2 = version == "v2"
     return RunSpec(
         sample="dev-400",
         arm="B",
@@ -3532,6 +3534,8 @@ def _arm_b(version: Literal["v1", "v2", "v3"], *, sync: bool = True) -> RunSpec:
         sync=sync,
         price_variant="standard" if sync else "batch",
         expected_cost_per_case_usd=0.001,
+        transcriber="qwen/qwen3.5-122b-a10b" if v2 else None,
+        page_rule="all" if v2 else None,
     )
 
 
@@ -3666,3 +3670,51 @@ def test_a_run_without_guidance_writes_the_old_spec_keys(
     written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
     assert "guidance" not in written
     assert written["prompt_version"] == prompt.PROMPT_VERSION
+
+
+# --- S2.7 Task 16: a v2 run records its transcriber and page rule (spec §7.5) ---
+
+
+def test_a_v2_run_records_its_transcriber_and_page_rule(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    reader = FakeDocketReader(_transcribed_docket(), "v2")
+    spec = replace(_arm_b("v2"), page_rule="image-only")
+    record = runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=reader).run(
+        spec, record_fixtures[:1]
+    )
+    assert (record.transcriber, record.page_rule) == ("qwen/qwen3.5-122b-a10b", "image-only")
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert (written["transcriber"], written["page_rule"]) == (
+        "qwen/qwen3.5-122b-a10b",
+        "image-only",
+    )
+
+
+def test_a_v1_run_writes_no_reading_keys(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    reader = FakeDocketReader(_transcribed_docket())
+    record = runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=reader).run(
+        _arm_b("v1"), record_fixtures[:1]
+    )
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert "transcriber" not in written
+    assert "page_rule" not in written
+    assert (record.transcriber, record.page_rule) == (None, None)
+
+
+def test_a_v2_run_without_its_reading_and_a_v1_run_with_one_are_refused(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    v2_reader = FakeDocketReader(_transcribed_docket(), "v2")
+    with pytest.raises(ConfigurationError, match="transcriber and page rule"):
+        runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=v2_reader).run(
+            replace(_arm_b("v2"), transcriber=None), record_fixtures[:1]
+        )
+    v1_reader = FakeDocketReader(_transcribed_docket())
+    with pytest.raises(ConfigurationError, match="v1 run reads no transcription"):
+        runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=v1_reader).run(
+            replace(_arm_b("v1"), transcriber="x", page_rule="all"), record_fixtures[:1]
+        )
+    assert not (tmp_path / "runs").exists() or not any((tmp_path / "runs").iterdir())
