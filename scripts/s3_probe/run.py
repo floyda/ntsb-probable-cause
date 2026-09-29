@@ -16,6 +16,20 @@ the plan's Deviations). The run reserves ``RUN_CAP_USD`` against the monthly bud
 0083, $40) before it starts and settles that reservation in a ``finally``, exactly as
 ``run_preparation`` does for its own jobs.
 
+Everything that can fail for a reason that has nothing to do with money -- a malformed
+``cases.json``, a missing ``OPENROUTER_API_KEY`` -- is made to fail *before* the reservation is
+made (``run_preparation``'s own "built before the reservation" fix, fix round 1, I2): a
+reservation is never left open with nothing left in the function to settle it, because nothing
+between the reservation and the ``finally`` that settles it can raise for a reason unrelated to
+the run itself. A single case's own failure (a transport error ``run_case`` cannot recover
+from) never aborts the run either: it is caught, counted, and printed as
+``"failed: exception <type>"`` with no case number, and every other case still runs. The last
+``SpendRecord`` reconciles to ``RunBudget.spent`` exactly (not to the sum of the trails it
+happens to have on hand), so a call that was paid for by a case that then failed -- and so
+never produced a trail of its own -- is never money the run drops on the floor. If any case
+failed, ``cmd_run`` still finishes normally (settles, writes the final ``probe.json``, prints
+the summary) and returns 1 rather than 0.
+
 ``--dry-run`` runs the identical path against :class:`DryRunClient`, which returns
 schema-valid, zero-cost replies with no model call, no API key and no OpenRouter account: it
 writes trails under the job folder but nothing at all to ``runs_dir`` (no reservation, no
@@ -68,6 +82,7 @@ CASES_RELATIVE = Path("probes/s3-probe/cases.json")
 PROBE_ROOT = Path("probes/s3-probe")
 SPEND_KIND = "inventory"  # the closest existing SpendRecord.kind (Deviations); a known mislabel.
 CHUNK = 5
+_RECONCILE_EPSILON_USD = 1e-9  # a float rounding sliver, never a real dollar
 
 
 # ------------------------------------------------------------------------------------------
@@ -83,6 +98,25 @@ def _cells(settings: Settings) -> dict[str, dict[str, bool]]:
             f"{path} is missing; run `python -m scripts.s3_probe select` first"
         )
     return cast("dict[str, dict[str, bool]]", json.loads(path.read_text()))
+
+
+def _validate_cells(cells: Mapping[str, object]) -> None:
+    """Refuse a malformed ``cases.json`` before it can raise later, mid-reservation.
+
+    ``_cell_counts`` reads ``v["fatal"]``/``v["has_scan"]`` unchecked; without this, a
+    corrupted or hand-edited ``cases.json`` would raise ``KeyError`` from inside the
+    reservation's ``try`` block, a config problem the reservation guard was never meant to
+    pay for.
+    """
+    for case_id, cell in cells.items():
+        if (
+            not isinstance(cell, Mapping)
+            or not isinstance(cell.get("fatal"), bool)
+            or not isinstance(cell.get("has_scan"), bool)
+        ):
+            raise ConfigurationError(
+                f"{case_id}: malformed cell in cases.json (need boolean 'fatal' and 'has_scan')"
+            )
 
 
 def _refuse_outside_dev_400(ids: Sequence[str]) -> None:
@@ -266,16 +300,24 @@ def _run_cases(  # noqa: PLR0913 -- one seam per collaborator, as run_case's own
     run_budget: RunBudget,
     workers: int,
     on_finished: Callable[[CaseTrail], None],
-) -> int:
-    """Run every item on a pool of ``workers`` threads; return how many were never started.
+    on_failed: Callable[[BaseException], None],
+) -> tuple[int, int]:
+    """Run every item on a pool of ``workers`` threads; return ``(not_started, failed)``.
 
     Each finished trail is handed to ``on_finished`` in completion order, immediately -- the
     caller appends it to ``trails.jsonl`` and counts it towards the next spend chunk. Once a
     trail's ``stop_reason`` is ``"run_cap"``, every future not yet started is cancelled and
     counted as "not started"; a case already running when the run cap is hit is still awaited
     and reported -- a paid-for case is never silently dropped (the ``transcribe_all`` pattern
-    in ``docket/transcribe.py``). ``run_case`` itself never overspends the shared
-    ``run_budget`` (``scripts.s3_probe.budget``).
+    in ``docket/transcribe.py``).
+
+    A case that raises (a transport error ``run_case`` itself could not recover from) never
+    aborts the run: its exception is caught, handed to ``on_failed``, and counted in
+    ``failed`` -- every other case, whether already finished, still running, or not yet
+    started, is unaffected. Whatever money that case's own successful calls already spent is
+    still in ``run_budget.spent``; reconciling that against what the caller's spend rows
+    actually cover is the caller's job (``cmd_run``'s final ``SpendRecord``), not this
+    function's.
     """
     local = threading.local()
 
@@ -294,19 +336,31 @@ def _run_cases(  # noqa: PLR0913 -- one seam per collaborator, as run_case's own
             budget=run_budget,
         )
 
+    handled: set[int] = set()
+    failed = 0
+
+    def take(future: Future[CaseTrail]) -> bool:
+        """Report one future's outcome; ``True`` only when it ends the run (``run_cap``)."""
+        nonlocal failed
+        handled.add(id(future))
+        try:
+            trail = future.result()
+        except Exception as error:
+            failed += 1
+            on_failed(error)
+            return False
+        on_finished(trail)
+        return trail.stop_reason == "run_cap"
+
     pool = ThreadPoolExecutor(max_workers=workers)
     futures: list[Future[CaseTrail]] = [pool.submit(work, item) for item in items]
-    handled: set[int] = set()
     try:
         pending = set(futures)
         stopped = False
         while pending and not stopped:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
             for future in done:
-                handled.add(id(future))
-                trail = future.result()
-                on_finished(trail)
-                if trail.stop_reason == "run_cap":
+                if take(future):
                     stopped = True
         if stopped:
             for future in pending:
@@ -320,8 +374,9 @@ def _run_cases(  # noqa: PLR0913 -- one seam per collaborator, as run_case's own
         for future in futures:
             if id(future) in handled or future.cancelled():
                 continue
-            on_finished(future.result())
-    return sum(1 for future in futures if future.cancelled())
+            take(future)
+    not_started = sum(1 for future in futures if future.cancelled())
+    return not_started, failed
 
 
 # ------------------------------------------------------------------------------------------
@@ -404,18 +459,23 @@ def cmd_run(
 ) -> int:
     """Run the selected ``dev-400`` cases through the eight-step loop.
 
-    Refuses (before any model call) if ``cases.json`` is absent, if a case it names is not in
-    ``dev-400``, or -- for a paid run -- if the monthly budget has no room for
-    ``RUN_CAP_USD``. Writes ``trails.jsonl`` and ``probe.json`` under
-    ``<data_dir>/probes/s3-probe/<job_id>/``; a paid run also writes ``spend.jsonl`` under
-    ``runs_dir/<job_id>/`` and reserves, then settles, ``RUN_CAP_USD`` against the monthly
-    budget. Prints one line per finished case: index, stop reason, cost -- never a case
-    number.
+    Refuses (before any model call, and before any reservation) if ``cases.json`` is absent
+    or malformed, if a case it names is not in ``dev-400``, or -- for a paid run -- if
+    ``OPENROUTER_API_KEY`` is unset. Then, for a paid run, refuses if the monthly budget has
+    no room for ``RUN_CAP_USD``. Everything from that reservation onward -- the job folder,
+    ``probe.json``, the pool -- runs inside one ``try``/``finally`` that settles the
+    reservation whatever happens (`run_preparation`'s "built before the reservation" fix,
+    applied here to a second seam it did not have: a case's own failure). Writes
+    ``trails.jsonl`` and ``probe.json`` under ``<data_dir>/probes/s3-probe/<job_id>/``; a paid
+    run also writes ``spend.jsonl`` under ``runs_dir/<job_id>/``. Prints one line per finished
+    or failed case: index, stop reason (or ``"failed: exception <type>"``), cost -- never a
+    case number.
 
     Returns:
-        0.
+        0 if every case finished without raising, 1 if any case failed.
     """
     cells = _cells(settings)
+    _validate_cells(cells)
     ids = tuple(sorted(cells))
     _refuse_outside_dev_400(ids)
     run_ids = ids[:limit] if limit is not None else ids
@@ -428,15 +488,6 @@ def cmd_run(
     started = now()
     sha, dirty = gitinfo.commit_state()
     job_id = f"s3-probe-{started:%Y%m%dT%H%M%S}-{sha}"
-    if not dry_run:
-        reserve_within_budget(
-            settings.runs_dir, job_id, RUN_CAP_USD, settings.monthly_budget_usd, now=started
-        )
-
-    job_dir = settings.data_dir / PROBE_ROOT / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    trails_path = job_dir / "trails.jsonl"
-    probe_path = job_dir / "probe.json"
     meta = _RunMeta(
         job_id=job_id,
         sha=sha,
@@ -451,101 +502,130 @@ def cmd_run(
         cases_run=len(run_ids),
         started=started,
     )
-    _write_probe(probe_path, meta)
-
-    finished: list[CaseTrail] = []
-    write_lock = threading.Lock()
-    chunk: list[CaseTrail] = []
-
-    def flush_remainder() -> None:
-        if chunk:
-            _flush_spend(settings, meta, chunk)
-            chunk.clear()
-
-    def on_finished(trail: CaseTrail) -> None:
-        with write_lock:
-            write_jsonl(trails_path, [trail])
-            finished.append(trail)
-            chunk.append(trail)
-            print(f"{len(finished)}/{len(run_ids)} {trail.stop_reason} ${trail.cost_usd:.4f}")
-            if not dry_run and len(chunk) >= CHUNK:
-                _flush_spend(settings, meta, chunk)
-                chunk.clear()
-
+    # Built (and, for OpenRouter, its key checked) before the reservation: a missing key must
+    # refuse here, not after a reservation nothing left in this function would ever settle.
     client_factory_builder = _dry_run_factory(tables) if dry_run else _openrouter_factory(settings)
-    not_started = _answer(
-        settings,
-        job_id,
-        items,
-        client_factory_builder=client_factory_builder,
-        tables=tables,
-        stats=stats,
-        seen=seen,
-        workers=workers,
-        on_finished=on_finished,
-        dry_run=dry_run,
-        flush_remainder=flush_remainder,
-    )
 
-    _write_probe(probe_path, meta, finished=now())
-    print(f"{len(finished)} cases finished, {not_started} not started; wrote {job_dir}")
-    return 0
-
-
-def _answer(  # noqa: PLR0913 -- one seam per collaborator the pool and the budget guard need.
-    settings: Settings,
-    job_id: str,
-    items: Sequence[tuple[str, Mapping[str, object], Docket]],
-    *,
-    client_factory_builder: Callable[[ExitStack], Callable[[], ModelClient]],
-    tables: CodeTables,
-    stats: CodingStats,
-    seen: frozenset[str],
-    workers: int,
-    on_finished: Callable[[CaseTrail], None],
-    dry_run: bool,
-    flush_remainder: Callable[[], None],
-) -> int:
-    """Run the pool on one exit stack, then settle the run's reservation in a ``finally``.
-
-    A paid run's reservation is settled -- and its last, partial spend chunk flushed -- even
-    when the pool raises: ``run_case`` itself catches every failure it can recover from, so
-    what reaches here is a genuine defect (a transport error the retries in
-    ``model/openrouter.py`` could not fix), and the money already spent must still be
-    recorded. A dry run reserves nothing, so there is nothing to settle and no chunk to flush.
-    """
-    run_budget = RunBudget()
+    if not dry_run:
+        reserve_within_budget(
+            settings.runs_dir, job_id, RUN_CAP_USD, settings.monthly_budget_usd, now=started
+        )
+    job_dir = settings.data_dir / PROBE_ROOT / job_id
+    # Declared before the reservation's try/finally, and checked for None inside it: a
+    # failure as early as `job_dir.mkdir` must still settle the reservation, even though
+    # `accounting` (which owns the last spend row) was never built to flush.
+    accounting: _Accounting | None = None
     try:
+        job_dir.mkdir(parents=True, exist_ok=True)
+        _write_probe(job_dir / "probe.json", meta)
+        run_budget = RunBudget()
+        accounting = _Accounting(
+            settings, meta, job_dir / "trails.jsonl", len(run_ids), run_budget, dry_run=dry_run
+        )
         with ExitStack() as stack:
-            client_factory = client_factory_builder(stack)
-            return _run_cases(
+            not_started, failed = _run_cases(
                 items,
-                client_factory,
+                client_factory_builder(stack),
                 tables=tables,
                 stats=stats,
                 seen=seen,
                 run_budget=run_budget,
                 workers=workers,
-                on_finished=on_finished,
+                on_finished=accounting.on_finished,
+                on_failed=accounting.on_failed,
             )
     finally:
         if not dry_run:
-            flush_remainder()
+            if accounting is not None:
+                accounting.flush_final()
             settle(settings.runs_dir, job_id)
 
-
-def _flush_spend(settings: Settings, meta: _RunMeta, chunk: Sequence[CaseTrail]) -> None:
-    """One ``SpendRecord`` for a chunk of finished cases: its own calls and cost only."""
-    write_spend(
-        settings.runs_dir,
-        SpendRecord(
-            job_id=meta.job_id,
-            kind=SPEND_KIND,
-            model=sources.DEFAULT_MODEL,
-            started=meta.started,
-            calls=sum(len(trail.calls) for trail in chunk),
-            cost_usd=sum(trail.cost_usd for trail in chunk),
-            commit_sha=meta.sha,
-            dirty=meta.dirty,
-        ),
+    _write_probe(job_dir / "probe.json", meta, finished=now())
+    print(
+        f"{len(accounting.finished)} cases finished, {failed} failed, "
+        f"{not_started} not started; wrote {job_dir}"
     )
+    return 1 if failed else 0
+
+
+class _Accounting:
+    """Every finished or failed case's bookkeeping: the trail file, the print line, spend.
+
+    One instance per run, built after the job folder exists and before the pool starts.
+    ``flush_final`` reconciles the last spend row to ``run_budget.spent`` exactly -- not to
+    the sum of the trails on hand -- so a call billed to a case that then failed (and so
+    produced no trail of its own) is still counted (Task 5 review, fix round 1, finding 2).
+    """
+
+    def __init__(  # noqa: PLR0913 -- one seam per fact a spend row or the trail file needs.
+        self,
+        settings: Settings,
+        meta: _RunMeta,
+        trails_path: Path,
+        total: int,
+        run_budget: RunBudget,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """Hold what every callback needs; nothing here talks to the pool."""
+        self._settings = settings
+        self._meta = meta
+        self._trails_path = trails_path
+        self._total = total
+        self._run_budget = run_budget
+        self._dry_run = dry_run
+        self._lock = threading.Lock()
+        self._chunk: list[CaseTrail] = []
+        self._written_usd = 0.0
+        self._processed = 0
+        self.finished: list[CaseTrail] = []
+
+    def on_finished(self, trail: CaseTrail) -> None:
+        """Record one finished case: its trail line, the print line, and its spend chunk."""
+        with self._lock:
+            write_jsonl(self._trails_path, [trail])
+            self.finished.append(trail)
+            self._chunk.append(trail)
+            self._processed += 1
+            print(f"{self._processed}/{self._total} {trail.stop_reason} ${trail.cost_usd:.4f}")
+            if not self._dry_run and len(self._chunk) >= CHUNK:
+                self._flush_periodic()
+
+    def on_failed(self, error: BaseException) -> None:
+        """Record one failed case: no trail (there is none), a print line, no case number."""
+        with self._lock:
+            self._processed += 1
+            print(f"{self._processed}/{self._total} failed: exception {type(error).__name__}")
+
+    def _flush_periodic(self) -> None:
+        """A chunk of finished cases: its own calls and cost, known exactly from the trails."""
+        amount = sum(t.cost_usd for t in self._chunk)
+        self._write_row(calls=sum(len(t.calls) for t in self._chunk), cost=amount)
+        self._written_usd += amount
+        self._chunk.clear()
+
+    def flush_final(self) -> None:
+        """The remainder, reconciled to ``run_budget.spent`` -- including any orphaned cost."""
+        with self._lock:
+            remainder = self._run_budget.spent - self._written_usd
+            if not self._chunk and remainder < _RECONCILE_EPSILON_USD:
+                return
+            cost = max(remainder, 0.0)  # a float rounding sliver never writes a negative row
+            self._write_row(calls=sum(len(t.calls) for t in self._chunk), cost=cost)
+            self._written_usd += cost
+            self._chunk.clear()
+
+    def _write_row(self, *, calls: int, cost: float) -> None:
+        write_spend(
+            self._settings.runs_dir,
+            SpendRecord(
+                job_id=self._meta.job_id,
+                kind=SPEND_KIND,
+                model=sources.DEFAULT_MODEL,
+                started=self._meta.started,
+                calls=calls,
+                cost_usd=cost,
+                commit_sha=self._meta.sha,
+                dirty=self._meta.dirty,
+            ),
+        )

@@ -274,3 +274,51 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   for Task 5 does not name it and it is not exercised directly. `RunBudget`'s own cap mechanics
   are already covered thoroughly by Task 4's tests (`test_s3_probe_loop.py`); what Task 5 adds
   on top is the pool-level bookkeeping, left as a self-review note rather than a ninth test.
+
+- **2026-09-29 (Task 5, review fix round 1) — two Important findings on the shared monthly
+  budget, both fixed.**
+  1. *A failure between reserving and settling could leave an open reservation.* `cmd_run`
+     used to reserve, then build the job folder, `probe.json` and the client factory (whose
+     `require_openrouter_key()` is the likeliest way to raise) only afterward, inside a
+     `finally` that started later than the reservation itself -- so a missing key, a malformed
+     `cases.json` (`_cell_counts`'s unchecked `v["fatal"]` could raise `KeyError`), or a
+     `job_dir.mkdir` failure would all leave `RUN_CAP_USD` reserved with nothing left in the
+     function to settle it, the exact bug `scoring/preparation.py` fixed for its own jobs
+     ("Built before the reservation", fix round 1, I2). Fixed by building the client factory
+     (and so checking the key) and validating `cases.json` (`_validate_cells`, new) before the
+     reservation, and moving the reservation's own `try`/`finally` to wrap everything from
+     `job_dir.mkdir` onward, guarding the `finally`'s `accounting.flush_final()` with an
+     `accounting is not None` check in case even `job_dir.mkdir` itself fails. New test:
+     `test_refuses_before_reserving_when_the_key_is_missing`.
+  2. *A case that raised after some paid calls left that money unrecorded, and a second
+     raising future in the fold-in could abort the whole report.* `run_case` re-raises what it
+     cannot recover from, so a case that failed after an earlier call inside it had already
+     succeeded (and been billed to `RunBudget`) produced no trail, and no spend row ever
+     summed that call in; and `_run_cases`'s fold-in loop called `future.result()` unguarded,
+     so a second such failure aborted the loop and dropped every later trail from
+     `trails.jsonl`. Fixed with two changes: (a) `_run_cases` now wraps every
+     `future.result()` (both in the main wait loop and the fold-in) in one `take()` helper
+     that catches the exception, counts it, and hands it to a new `on_failed` callback instead
+     of letting it propagate -- a case's own failure no longer aborts the run, and `_run_cases`
+     now returns `(not_started, failed)`; (b) spend accounting moved into a new `_Accounting`
+     class whose `flush_final` writes the run's last `SpendRecord` as `run_budget.spent -
+     sum(rows already written)`, not the sum of the trails still in its chunk, so every dollar
+     `RunBudget` recorded lands in exactly one row whatever the path, including a call billed
+     to a case that never produced a trail. `cmd_run` now prints `"N/total failed: exception
+     <type>"` for a failed case (no case number), still settles and writes the final
+     `probe.json` on the way out, and returns 1 instead of 0 when any case failed (rather than
+     re-raising, so the summary and `probe.json` are never skipped). New tests:
+     `test_a_failing_case_settles_the_reservation_and_does_not_abort_the_run`,
+     `test_spend_reconciles_when_a_case_fails_after_some_paid_calls` (a shared, stateful fake
+     client whose second call raises; asserts the spend rows' total exceeds the one surviving
+     trail's own cost, proving the failed case's billed H0 call was folded in), and
+     `test_spend_rows_chunk_at_five_and_sum_to_the_trails_total` (six cases, exactly two spend
+     rows, summing to the trails' total). `test_reservation_settled_after_an_exception` was
+     renamed `test_a_failing_case_settles_the_reservation_and_does_not_abort_the_run` and its
+     assertion changed from `pytest.raises(RuntimeError)` to `result == 1`, matching the new
+     behaviour.
+  A consequence of (2)(b): the final spend row's `calls` field is still summed only from the
+  trails actually on hand (a case that failed mid-flow has no trail to count calls from), so
+  it can slightly undercount against the exactly-reconciled `cost_usd` on the rare run where a
+  case fails after a paid call. This is a cosmetic gap in one integer field, not a money gap,
+  and is left as-is.
