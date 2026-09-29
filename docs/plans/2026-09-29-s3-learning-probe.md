@@ -90,11 +90,11 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** create `scripts/s3_probe/trail.py`, `scripts/s3_probe/loop.py`, `tests/test_s3_probe_loop.py`.
 
-- [ ] `trail.py`: the pydantic models in "Per-case trail record" (`CallRecord`, `ReadChoiceRecord`, `CodingStep`, `CaseTrail`), frozen, `extra="forbid"`.
-- [ ] `loop.py`: `CaseBudget` (per-case spend, the run-wide spend behind a `threading.Lock`, both caps, `estimate(system, payload, history, settings) -> float`, `check(...)` raising a private stop signal), and `run_case(raw, docket, *, client: ModelClient, tables, stats, seen_pairs, budget) -> CaseTrail` implementing the eight steps of "The flow for one case" exactly. Use `split_record`, `Payload.from_evidence`, `prepare_attachment(raw, docket)`, `Attachment.context_for`, `parse_hypothesis`, `parse_refinement`, `score_case`, `cost_usd`. A parse failure after its one retry ends the case with `stop_reason="failed: <phase>"` and keeps everything recorded so far. A `LeakageError` from the split ends the case with `failed: leak` (it must never be swallowed silently).
-- [ ] Refuse (raise) if the case ID is not in `dev-400`.
-- [ ] Tests (all with `RecordingFakeClient` scripted replies and a fixture docket carrying at least one born-digital document and one document with a cached transcription — reuse `tests/fixtures/docket` and the fakes in `tests/test_attach.py` / `tests/test_docket_transcribe.py`): the happy path records every phase in order; the payloads the fake received contain no text outside evidence roles (assert via the fake's recorded payloads that each is a `Payload` produced by the split, and that docket titles appear only in payloads, never in `client.systems`); choosing nothing skips H1; reading everything skips H_all as `not needed`; a coding loop that never sets `done` stops at 6; an unknown tool code is recorded as an argument error; the case cap stops the case before the call that would pass it; the run cap stops a second case; a malformed reply is retried once then fails the case; the refinement stage runs only when findings exist and the answer does not abstain.
-- [ ] `make check` green; commit.
+- [x] `trail.py`: the pydantic models in "Per-case trail record" (`CallRecord`, `ReadChoiceRecord`, `CodingStep`, `CaseTrail`), frozen, `extra="forbid"`.
+- [x] `loop.py`: `CaseBudget` (per-case spend, the run-wide spend behind a `threading.Lock`, both caps, `estimate(system, payload, history, settings) -> float`, `check(...)` raising a private stop signal), and `run_case(raw, docket, *, client: ModelClient, tables, stats, seen_pairs, budget) -> CaseTrail` implementing the eight steps of "The flow for one case" exactly. Use `split_record`, `Payload.from_evidence`, `prepare_attachment(raw, docket)`, `Attachment.context_for`, `parse_hypothesis`, `parse_refinement`, `score_case`, `cost_usd`. A parse failure after its one retry ends the case with `stop_reason="failed: <phase>"` and keeps everything recorded so far. A `LeakageError` from the split ends the case with `failed: leak` (it must never be swallowed silently).
+- [x] Refuse (raise) if the case ID is not in `dev-400`.
+- [x] Tests (all with `RecordingFakeClient` scripted replies and a fixture docket carrying at least one born-digital document and one document with a cached transcription — reuse `tests/fixtures/docket` and the fakes in `tests/test_attach.py` / `tests/test_docket_transcribe.py`): the happy path records every phase in order; the payloads the fake received contain no text outside evidence roles (assert via the fake's recorded payloads that each is a `Payload` produced by the split, and that docket titles appear only in payloads, never in `client.systems`); choosing nothing skips H1; reading everything skips H_all as `not needed`; a coding loop that never sets `done` stops at 6; an unknown tool code is recorded as an argument error; the case cap stops the case before the call that would pass it; the run cap stops a second case; a malformed reply is retried once then fails the case; the refinement stage runs only when findings exist and the answer does not abstain.
+- [x] `make check` green; commit.
 
 ## Task 5: The run command
 
@@ -170,3 +170,30 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   document can never appear in this line — so `menu` reads it over all of `facts`, which lets
   the model see the full menu of what exists but cannot be read, not only what changed since
   the previous step.
+- **2026-09-29 (Task 4) — choices the flow leaves open, fixed in `loop.py`.**
+  (1) *Choice 2's payload* is `context_for(chosen1)` -- the structured evidence, the listing and
+  the documents already read -- because a second choice made without sight of what the first
+  one read would not be a second look. (2) *The coding payload* is `context_for(everything
+  read)`: equal to the H2 payload whenever H2 or H1 was a call; when nothing was read at all it
+  is the listing payload (structured evidence plus listing), not the H0 payload, because the
+  coding history then holds read-choice replies made against the listing. (3) *With no
+  attachable document* both read choices are skipped (`"skipped: nothing to offer"` /
+  `"skipped: nothing left to offer"`) and H_all is `"not needed"`. (4) *A skipped stage* (H1 or
+  H2 with nothing chosen) carries the previous hypothesis and is scored again, with its note;
+  the history then holds only the replies actually made. (5) *The refined stage*, when stage 2
+  does not run (abstained, or no findings), carries the final hypothesis with a
+  `"not run: …"` note, as the runner returns the stage-1 hypothesis. (6) *The run budget*
+  reserves each call's estimate under the lock before the call and settles to the actual cost
+  after, so parallel cases cannot together pass `RUN_CAP_USD`; `run_case` takes that shared
+  `RunBudget` (which also holds the case cap) and makes the case's own `CaseBudget` itself, so
+  a case budget can never be reused across cases. (7) *The trail* adds three fields to the
+  design's list: `estimated_usd` per call (to see how far the estimate is from the cost),
+  `failure` (the parser's last error on `failed: <phase>`) and `leak` (the guard's message on
+  `failed: leak`, which names role, kind and source, never withheld text). (8) *A parse failure
+  or leak in H_all ends the case*, as the design says of every phase, although H_all is only a
+  comparison; a leak can arise there from a document the agent chose not to read.
+  (9) *Test records*: no committed fixture record is a `dev-400` case, so the tests relabel
+  `ANC09CA024` with a `dev-400` ID; the docket is built in memory as in `tests/test_attach.py`
+  (a scanned document "read through a transcription" is a `DocumentRecord` with
+  `status="read"`, `kind="scan"`, `transcribed_pages=2`). (10) `loop.py` is 597 lines, past
+  the ~500 the brief set as the point to report rather than split.
