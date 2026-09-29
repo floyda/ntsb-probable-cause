@@ -51,3 +51,24 @@
     Where the defining event was Loss of control on ground, the NTSB flagged item 02063040 Aircraft control (category 020630) with modifier 44 Pilot in 1420 of 2055 past cases, and item 01062020 Directional control (category 010620) with modifier 20 Not attained/maintained in 1498. Where it was Aerodynamic stall/spin, it flagged Aircraft control with modifier Pilot in 335 of 472 such cases, and item 01062010 Airspeed with modifier Not attained/maintained in 286. Where it was Loss of control in flight, it flagged Aircraft control with modifier Pilot in 1094 of 1784 such cases; the parameter varied, with modifier Not attained/maintained: item 01062000, the general performance/control parameters item, in 358, Airspeed in 301 and Directional control in 208. In the same three groups it flagged item 02041015 Incorrect action performance with modifier Pilot in only 76, 48 and 95 cases.
 
     When your defining event is one of these three and the evidence shows the aircraft was not kept under control, include Aircraft control with modifier Pilot among your findings (modifier 46 Student pilot when a student pilot was flying), and the parameter the evidence shows was not held, with modifier Not attained/maintained.
+
+## Result (scripts/round_result.py, decision 0098 item 4)
+
+- run: 20260929T053953-674c92e-dev-400-B-check-luna; reference: 20260928T144353-031e97e-dev-400-B-check-luna; noise pair: 20260926T082427-d19aafa-dev-400-B-check-luna, 20260927T111202-fbab38a-dev-400-B-check-luna
+- finding recall@10: +11.4% [+8.2%, +14.6%] on n=397
+- noise floor (finding recall@10, the two identical runs): 1.7%
+- occurrence top-1 (do no harm): -6.3% [-10.5%, -2.5%] on n=399
+- first codes changed: 171; toward a more common option: 83, fixes 13, breaks 19 (decision 0101 item 4)
+- outcome: dropped: harm to the other score (interval wholly below zero)
+
+## Note (ad-hoc counts, 2026-09-29; not part of the reading)
+
+- Checked scores across the runs: top-1 / finding recall@10 — B-v1 27.6% / 10.4%, the repeat
+  26.6% / 12.1%, Round 3 31.3% / 11.2%, Round 4 27.3% / 10.3%, Round 5 27.8% / 9.9%, Round 6
+  25.1% / 22.6%. Findings given per case rose from about 1.7 to 2.20.
+- Round 6 against the other runs that carry Round 3's guidance: Round 4, top-1 -2.3% [-6.3%,
+  +1.8%], recall +12.3% [+9.1%, +15.4%]; Round 5, top-1 -2.8% [-7.0%, +1.3%], recall +12.7%
+  [+9.8%, +15.8%]. Against the repeat: top-1 -1.5% [-5.8%, +2.5%], recall +10.5% [+7.2%,
+  +13.7%].
+- First guesses on loss of control or stall events: 186, against 168-183 in the earlier runs.
+- The outcome above stands as the rule gives it: dropped, on harm to top-1 against the reference.
