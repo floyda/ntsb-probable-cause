@@ -12,9 +12,13 @@ the decision made in `../ntsb-spike/` (spike complete, decision: build — see
 S2.4 are built and released**: S0 the foundation (strict tooling, data ingestion, the
 evidence/synthesis/verdict split with its layered leakage guard, a model seam), S1 scoring and
 the evaluation harness, S2 the docket tool and arm B, S2.4 the model switch. **S2.5 (the
-recorder) is built**: a nightly job that records when each open case's evidence fields and
-docket documents first appear, into its own SQLite store, running on AWS. The agent loop is
-not built yet. Read build-brief §7 before writing any code, then
+recorder) and S2.6 (the widened docket) are built and released**: S2.5 a nightly job that
+records when each open case's evidence fields and docket documents first appear, into its own
+SQLite store, running on AWS; S2.6 the transcription of words in page images (evidence
+version v2), off by default since S2.7 for cost (decision 0120). **S2.7 (coding guidance) is
+built**: an ordering check after the answer (`ntsb-eval check`), coding guidance files named
+on every run (`run --guidance`), the statistics pool behind both, and a sealed development
+sample opened once. The agent loop is not built yet. Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
 takes a part of), and each stage's specification under `docs/specs/` (its As-built section
@@ -239,6 +243,24 @@ first where the model said "aerodynamic stall/spin". The model receives the code
 bare labels, with no conventions or examples, so coding guidance is the next lever (an S2.7
 Andy has proposed, before S3; decision 0089).
 
+**S2.7 measured coding guidance on `dev-400` and checked it once on a sealed development
+sample; it ran no held-out case, so S2.4's held-out arm B above stays the bar.** Two identical
+arm B runs differ by occurrence top-1 +4.0% [+0.5%, +7.5%] and change the first guess on 153
+of 399 cases (`docs/results/s27-round0-dev.txt`): a round must beat that noise. Andy's
+hand-read of 40 misses put 34 down to coding (19 convention, 15 wrong phase) and 4 to a misread
+or missing fact; the judge's narrative label failed its validation (32 of 46 agreements,
+69.6%, against 75%) and carries no claim. **The GPT-6 Luna ordering check** (a second call that
+re-orders the answer's occurrence codes with the pool's counts and the model's own account)
+raised top-1 by +6.8% [+3.3%, +10.3%] and +9.8% [+6.0%, +13.8%] on two answer sets and beat
+the plain lookup rule on both (`docs/results/s27-round1-dev.txt`); Jev did not
+(`docs/results/s27-round1-jev2-dev.txt`). Of five guidance rounds, round 3 (loss of control
+against stall/spin, +4.8% [+0.8%, +8.8%]) was kept, round 6 (the Aircraft control / Pilot
+finding: finding recall@10 +11.4% [+8.2%, +14.6%], top-1 -6.3% [-10.5%, -2.5%]) was kept by
+Andy's override of the do-no-harm rule (decision 0106), and rounds 2, 4 and 5 were dropped
+(`docs/rounds/`). **The final setup on the sealed sample** (`docs/results/s27-sealed-dev.txt`):
+top-1 27.5% [23.3%, 32.0%] against `dev-400`'s 25.1% [21.1%, 29.5%]; finding recall@10 22.0%
+against 22.6%. The prediction that `dev-400` top-1 would end between 30% and 36% was not met.
+
 ## Model access
 
 **Claude Code develops and maintains this project.** Every model call the *product* makes —
@@ -267,7 +289,17 @@ no candidate passed the transcriber test's rule in either pass
 (`docs/results/s26-transcriber-test.txt`, `docs/results/s26-transcriber-test-pass2.txt`), and
 0087 overrode that outcome openly. It runs synchronously at the standard price, because the
 batch service does not accept images. It copies words only; it never describes or interprets
-a page (0079).
+a page (0079). **S2.7 kept it and turned transcription off by default** (decision 0120): none
+of eight newer, cheaper vision models met the re-test's rule against Qwen
+(`docs/results/s27-transcriber-retest.txt`), and transcribing a sample cost about ten times
+answering it; a run reads transcriptions only at `--evidence-version v2`, and the S3 loop may
+choose them as a tool. Every v2 run records its transcriber and page rule.
+
+**The ordering check** (S2.7, decisions 0096, 0101, 0103) is a GPT-6 Luna call after the
+answer, synchronous at the standard price (about $0.12 per 400 cases), run as a post-pass over
+a finished run. **Jev** (TypeSafe's System One model) is admitted on a second transport for
+the ordering check on development runs only (decision 0097), with `TYPESAFE_API_KEY`; it was
+not kept.
 
 Two consequences to hold on to:
 - The spike's £0.034/case and 57% top-1 were measured on a different transport, with the
@@ -336,6 +368,39 @@ make s26-dev-runs PER_CASE=<usd>            # arm B v1 then v2 on dev-400, one c
                                             #   (run with 0.0042 on 2026-09-26)
 ```
 
+S2.7's targets (`s27-*`; each paid one first runs `make stage-spend EST=<usd>`, which refuses a
+step past the stage's $25 line, counted by commit on S2.7's own branches, decisions 0098, 0107):
+
+```bash
+make stage-spend EST=<usd>          # S2.7's spend so far; exit 1 past the $25 line; free
+make s27-coding-stats               # the statistics pool's coding counts, once (0094); free
+make s27-noise-floor PER_CASE=<usd> # B-v1 repeated: the noise floor (paid)
+make s27-judge RUN=<id>             # the judge on a development run (paid, standard price)
+make s27-round0-cards RUN=<id>      # Andy's Round 0 marking page; free
+make s27-round0-results REPEAT=<id> MARKS=<csv> LABELS=<v>  # Round 0's results file; free
+make s27-check RUN=<id> WAY=rule|luna|jev|jev2  # the ordering check as a post-pass
+make s27-round1-results REPEAT=<id> # Round 1's reading rule; free
+make s27-round1-jev2-results        # the registered second Jev check (0103); free
+make s27-check-guidance GUIDANCE="<names>"  # no guidance sentence in withheld text; free, local
+make s27-round GUIDANCE="<names>" PER_CASE=<usd>  # one guidance round's run (paid)
+make s27-round-result N=<n> RUN=<id> REFERENCE=<id> NOISE="<a> <b>" [FINDING=1]  # its reading
+make s27-round-comparisons          # the numbers decision 0106 cites; free
+make s27-sealed-run PER_CASE=<usd>  # the final setup on dev-seal-400, ONCE (paid)
+make s27-sealed-results SEALED=<id> # the sealed result and the prediction; free
+make s27-page-value                 # what each page rule keeps, from the dev-400 cache; free
+make s27-models-fetch               # OpenRouter's public model list, saved; free
+make s27-shortlist                  # decision 0100's filter over the saved list; free
+make s27-transcriber-probe          # one invented page per shortlisted model (paid, cents)
+make s27-batch-image                # one batch request with an image (paid, a fraction of a cent)
+make s27-retest-verify              # Qwen's second pass reproduced from the cache; free
+make s27-retest-run                 # every candidate on S2.6's four keys (paid)
+make s27-retest-automatic           # the candidates still in the running before marking; free
+make s27-retest-pages MODELS="<ids>"  # Andy's photo and scan marking pages; free
+make s27-retest-score MARKED="<ids>"  # decision 0100's rule applied; free
+make s27-routing-pages / s27-routing-tally  # exploratory: text-and-image page routing; free
+make s27-retest-readable            # the post-hoc readable-lines check; free
+```
+
 The `s26-*` targets that take `MODEL`, `PER_PAGE` or `PER_CASE` stop with a `make` error when
 the variable is unset. S2.6 wrote no held-out target: its held-out runs are deferred (0090).
 
@@ -367,6 +432,19 @@ stops once that is spent. The finished-transcription marker, which a v2 run chec
 written only when at most 2% of the chosen pages failed. `transcribe` refuses a held-out
 sample (0090). A fresh run, or a preparation job, refuses a run folder that already exists.
 
+S2.7 added: `run --guidance NAME` (repeatable, in stacking order; files
+`scoring/guidance/r<N>-<slug>.md`; refused unless the round's registration
+`docs/rounds/s27-round-<N>.md` is committed, 0098; a guided run's prompt version is the base,
+`s1-v6` since decision 0105, plus `+g` and 12 characters of the guidance fingerprint, and the
+run record names the files); `run --transcriber MODEL --page-rule all|image-only|image-only+thin-layer`
+(v2 only; a v2 run must name both and a v1 run neither, and `report --against` refuses two v2
+runs that read differently unless `--versions-compared`); `check RUN_ID --way
+rule|luna|jev|jev2`, the ordering check as a post-pass writing a derived run folder
+`<run id>-check-<way>` whose cost is the check's alone (0096; `resolve_latest` skips derived
+and guided runs); and `transcribe --model --page-rule` (every finished-transcription marker names
+its page rule). The sample `dev-seal-400` (the sealed development sample, 0095) is refused by
+every command until `docs/rounds/s27-sealed.md` is committed; it was used once, on 2026-09-29.
+
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
@@ -374,7 +452,10 @@ close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) 
 committed), `NTSB_DATA_DIR` (default `data`; nothing under it is committed),
 `OPENROUTER_API_KEY` (the model access decision 0009 uses), `NTSB_RUNS_DIR` (default
 `data/runs`, never committed), `NTSB_MONTHLY_BUDGET_USD` (default 40 during development,
-decision 0083; it also counts transcription and inventory spend rows, 0081),
+decision 0083; it also counts transcription and inventory spend rows, 0081; set to 50 in the
+environment of every paid command in September 2026 only, decision 0104),
+`TYPESAFE_API_KEY` (Jev, for the S2.7 ordering check on development runs only, 0097; never
+printed or committed),
 `NTSB_EXPECTED_COST_PER_CASE_USD` (unset until `make probe` measures one; falls back to the
 cost cap), `NTSB_DOCKET_DIR` (where fetched docket documents are cached; defaults to
 `<NTSB_DATA_DIR>/docket`, so it moves with `NTSB_DATA_DIR` unless set explicitly; never

@@ -4777,7 +4777,7 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 
 ### Task 19: Close-out (decision 0017)
 
-- [ ] **Step 1:** Update `CLAUDE.md` (this repository): S2.7's line in "What this repo is", the `make` targets added by both tracks in **Commands**, `ntsb-eval check` and `run --guidance/--transcriber/--page-rule` in the `ntsb-eval` paragraph, `TYPESAFE_API_KEY` in the settings paragraph, and the eval-bars section's pointer to S2.7's results. Commit.
+- [x] **Step 1:** Update `CLAUDE.md` (this repository): S2.7's line in "What this repo is", the `make` targets added by both tracks in **Commands**, `ntsb-eval check` and `run --guidance/--transcriber/--page-rule` in the `ntsb-eval` paragraph, `TYPESAFE_API_KEY` in the settings paragraph, and the eval-bars section's pointer to S2.7's results. Commit.
 - [ ] **Step 2:** Run the `close-stage` skill: the As-built record on the specification (every Deviations entry of both plans, grouped and rewritten plainly), specification status Implemented, the roadmap's S2.7 entry marked done, both plans deleted, `version` set in `pyproject.toml`.
 - [ ] **Step 3:** `uv run python -m scripts.check_docs` and `make check`. Expected: both clean.
 - [ ] **Step 4:** Push and open the pull request `S2.7: coding guidance` (merge commit, never squashed; decision 0033). Andy creates the release after the merge.
