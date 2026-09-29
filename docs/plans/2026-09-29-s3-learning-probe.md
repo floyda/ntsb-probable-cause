@@ -78,13 +78,13 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** create `scripts/s3_probe/prompts.py`, `tests/test_s3_probe_prompts.py`.
 
-- [ ] `GUIDANCE`, `base_system(tables) -> str` (= `SYSTEM_ANSWER + "\n\n" + tables_block(tables) + guidance_block(GUIDANCE)`, matching `runner._system_text` with no case number).
-- [ ] `READ_CHOICE_INSTRUCTIONS`, `READ_CHOICE_SCHEMA` (strict JSON schema; build it from a pydantic model with `hypothesis.strict_schema`), `parse_read_choice(text, offered: Sequence[int]) -> ReadChoice` (every offered index exactly once; otherwise `SchemaError`).
-- [ ] `menu(facts: Sequence[DocketFacts], offered: Sequence[int]) -> str` in the format given in the flow, step 2 — numbers and kinds only, never a title.
-- [ ] `CODING_INSTRUCTIONS` (substance as in the flow, step 7), `CODING_ACTION_SCHEMA`, `parse_coding_action(text, tables) -> CodingAction` (validates phase/event digits; `done=False` requires a tool name).
-- [ ] `FINAL_INSTRUCTION`.
-- [ ] Tests: schemas are strict (every object `additionalProperties: false`, all properties required); parsers accept good replies and reject missing/duplicate/unknown indices, bad digits, `done=False` without a tool; the menu never contains a title (build a docket fixture with a distinctive title and assert it is absent).
-- [ ] `make check` green; commit.
+- [x] `GUIDANCE`, `base_system(tables) -> str` (= `SYSTEM_ANSWER + "\n\n" + tables_block(tables) + guidance_block(GUIDANCE)`, matching `runner._system_text` with no case number).
+- [x] `READ_CHOICE_INSTRUCTIONS`, `READ_CHOICE_SCHEMA` (strict JSON schema; build it from a pydantic model with `hypothesis.strict_schema`), `parse_read_choice(text, offered: Sequence[int]) -> ReadChoice` (every offered index exactly once; otherwise `SchemaError`).
+- [x] `menu(facts: Sequence[DocketFacts], offered: Sequence[int]) -> str` in the format given in the flow, step 2 — numbers and kinds only, never a title.
+- [x] `CODING_INSTRUCTIONS` (substance as in the flow, step 7), `CODING_ACTION_SCHEMA`, `parse_coding_action(text, tables) -> CodingAction` (validates phase/event digits; `done=False` requires a tool name).
+- [x] `FINAL_INSTRUCTION`.
+- [x] Tests: schemas are strict (every object `additionalProperties: false`, all properties required); parsers accept good replies and reject missing/duplicate/unknown indices, bad digits, `done=False` without a tool; the menu never contains a title (build a docket fixture with a distinctive title and assert it is absent).
+- [x] `make check` green; commit.
 
 ## Task 4: The case loop and trail record
 
@@ -152,3 +152,21 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   comparing against the brief, should treat this layout as this implementation's choice, not a
   quoted requirement.
 - **2026-09-29 (Task 1) — `Settings` has no `processed_dir`.** The brief's `load_cases(settings.processed_dir …)` names a field that does not exist; every caller in the library (`apps/eval/__main__.py`, `scripts/docket_leak_scan.py`) derives it as `settings.data_dir / "processed"`, which `scripts/s3_probe/__main__.py` does too. The docket cache directory is read as `settings.docket_dir` (which `model_post_init` already derives from `data_dir` when unset) rather than `docket_leak_scan.py`'s literal `settings.data_dir / "docket"`; both resolve to the same path by default.
+- **2026-09-29 (Task 3) — `hypothesis.strict_schema` handles nullable enum fields natively.**
+  The task-3 brief asked me to check whether `strict_schema` supports nullable fields
+  (`str | None`) under OpenAI strict mode and, if not, build the coding schema by hand. It
+  does: pydantic v2 renders `Literal[...] | None` as `{"anyOf": [{"enum": [...], "type":
+  "string"}, {"type": "null"}]}`, which `_strict` already leaves untouched (it only touches
+  `object` nodes), and the field is still listed in `required` because it has no default. So
+  `CODING_ACTION_SCHEMA`'s `tool` (`Literal[*tools.TOOL_NAMES] | None`) and `kind`
+  (`Literal["occurrence", "finding_category", "item"] | None`) fields are built the same way
+  as every other schema in the library, via `strict_schema(CodingAction)`, with no hand-rolled
+  schema needed.
+- **2026-09-29 (Task 3) — `menu`'s "not available" line is computed from every document in
+  `facts`, not only the offered ones.** The brief's line ("then, if any documents have
+  `status != "read"`, a line…") does not say whether "documents" means every document in the
+  case or only the ones offered at this step; since offered documents are by construction
+  attachable (`status == "read"`), the two readings are equivalent in practice — an offered
+  document can never appear in this line — so `menu` reads it over all of `facts`, which lets
+  the model see the full menu of what exists but cannot be read, not only what changed since
+  the previous step.
