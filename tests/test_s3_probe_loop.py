@@ -1,4 +1,4 @@
-"""Tests for ``scripts/s3_probe/loop.py`` and ``trail.py``: one case's flow, offline.
+"""Tests for ``scripts/s3_probe/loop.py``, ``budget.py`` and ``trail.py``: one case, offline.
 
 Every test drives ``run_case`` with a ``RecordingFakeClient`` and scripted, schema-valid
 replies. The record is a real development fixture (``ANC09CA024``) relabelled with a
@@ -14,14 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from scripts.s3_probe.loop import (
-    CODING_RESERVE_USD,
-    MAX_CODING_CALLS,
-    CaseBudget,
-    RunBudget,
-    call_settings,
-    run_case,
-)
+from scripts.s3_probe.budget import CODING_RESERVE_USD, CaseBudget, RunBudget, call_settings
+from scripts.s3_probe.loop import MAX_CODING_CALLS, run_case
 from scripts.s3_probe.prompts import base_system
 from scripts.s3_probe.trail import NOT_REACHED, CaseTrail
 
@@ -213,6 +207,7 @@ def test_happy_path_records_every_phase_in_order() -> None:
     usage = (Usage(prompt_tokens=1000, completion_tokens=100),)
     trail, client = _run(HAPPY, usage=usage)
     assert trail.stop_reason == "done"
+    assert trail.coding_stop == "done"
     assert _phases(trail) == [
         "h0",
         "choice1",
@@ -392,7 +387,10 @@ def test_choosing_nothing_skips_h1_and_h2() -> None:
 
 
 def test_reading_everything_skips_h_all_as_not_needed() -> None:
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), DONE, _hyp(), REFINE]
+    # H1 (and so H2) without findings: the answer reserve then prices the refinement's
+    # system text without a findings block.
+    h1 = _hyp(findings=False)
+    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), h1, DONE, _hyp(), REFINE]
     trail, client = _run(replies)
     assert _phases(trail) == ["h0", "choice1", "h1", "coding", "final", "refine"]
     assert trail.choice2 is None
@@ -424,6 +422,7 @@ def test_a_coding_loop_that_never_sets_done_stops_at_six_tool_calls() -> None:
     ]
     trail, client = _run(replies)
     assert trail.stop_reason == "max_calls"
+    assert trail.coding_stop == "max_calls"
     assert len(trail.coding_steps) == MAX_CODING_CALLS
     assert not any(s.done for s in trail.coding_steps)
     assert _phases(trail).count("coding") == MAX_CODING_CALLS
@@ -531,6 +530,62 @@ def test_a_leak_from_the_split_ends_the_case_and_is_recorded() -> None:
     assert len(client.payloads) == 2  # nothing was sent after the refused split
 
 
+def test_a_parse_failure_in_h_all_is_recorded_and_the_case_goes_on() -> None:
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: False, 4: False}),
+        _hyp(),
+        _choice({2: False, 4: False}),
+        "not json",  # h_all
+        "still not json",  # h_all retry
+        DONE,
+        _hyp(),
+        REFINE,
+    ]
+    trail, _ = _run(replies)
+    assert trail.h_all.hypothesis is None
+    assert trail.h_all.note == "failed: parse"
+    assert _phases(trail) == [
+        "h0",
+        "choice1",
+        "h1",
+        "choice2",
+        "h_all",
+        "h_all",
+        "coding",
+        "final",
+        "refine",
+    ]
+    assert trail.stop_reason == "done"
+    assert trail.coding_stop == "done"
+    assert trail.final.hypothesis is not None
+    assert trail.failure is None
+
+
+def test_a_leak_in_a_document_not_chosen_refuses_h_all_only() -> None:
+    narrative = factual_narrative(_raw()) or ""
+    docket = _docket({**TEXTS, 4: f"[page 1 of 2]\nAs the NTSB found: {narrative}\n"})
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: False, 4: False}),
+        _hyp(),
+        _choice({2: False, 4: False}),
+        DONE,
+        _hyp(),
+        REFINE,
+    ]
+    trail, client = _run(replies, docket=docket)
+    assert trail.h_all.note == "failed: leak"
+    assert trail.leak is not None
+    assert "docket_documents" in trail.leak
+    assert "h_all" not in _phases(trail)  # refused at the split, before any call
+    assert _phases(trail)[-3:] == ["coding", "final", "refine"]
+    assert trail.stop_reason == "done"
+    assert trail.final.hypothesis is not None
+    for payload in client.payloads:
+        assert narrative not in payload.text
+
+
 def test_a_case_outside_dev_400_is_refused_before_any_call() -> None:
     client = RecordingFakeClient([_hyp()])
     with pytest.raises(ValueError, match="not in dev-400"):
@@ -591,6 +646,35 @@ def test_h_all_is_not_run_when_it_would_leave_no_room_for_the_coding_checks() ->
     assert trail.h_all.note == "not run: cap"
     assert "h_all" not in _phases(trail)
     assert trail.stop_reason == "done"
+
+
+def test_the_coding_checks_stop_early_to_keep_room_for_the_answer() -> None:
+    # Every single call fits under $0.01 (about $0.004 of reply budget plus the input); a
+    # coding call plus the final call plus the refinement (about $0.013) does not.
+    budget = RunBudget(case_cap_usd=0.01)
+    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), _hyp(), REFINE]
+    trail, _ = _run(replies, budget=budget)
+    assert _phases(trail) == ["h0", "choice1", "h1", "final", "refine"]
+    assert trail.coding_steps == ()
+    assert trail.coding_stop == "cap"
+    assert trail.stop_reason == "coding_cap"
+    assert trail.final.hypothesis is not None
+    assert trail.refined.note is None
+    assert all(c.estimated_usd <= 0.01 for c in trail.calls)
+
+
+def test_the_coding_checks_stop_after_a_tool_call_when_the_room_runs_out() -> None:
+    # Zero cost until the first coding call, which costs enough that the next one, with the
+    # answer held back (about $0.013), would pass the cap; the final call alone still fits.
+    free = Usage(prompt_tokens=0, completion_tokens=0)
+    spent = Usage(prompt_tokens=0, completion_tokens=0, reported_cost_usd=0.02)
+    budget = RunBudget(case_cap_usd=0.03)
+    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), _coding(), _hyp(), REFINE]
+    trail, _ = _run(replies, budget=budget, usage=(free, free, free, spent, free))
+    assert _phases(trail) == ["h0", "choice1", "h1", "coding", "final", "refine"]
+    assert len(trail.coding_steps) == 1
+    assert trail.coding_stop == "cap"
+    assert trail.stop_reason == "coding_cap"
 
 
 def test_the_run_cap_stops_a_second_case() -> None:

@@ -195,5 +195,24 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   (9) *Test records*: no committed fixture record is a `dev-400` case, so the tests relabel
   `ANC09CA024` with a `dev-400` ID; the docket is built in memory as in `tests/test_attach.py`
   (a scanned document "read through a transcription" is a `DocumentRecord` with
-  `status="read"`, `kind="scan"`, `transcribed_pages=2`). (10) `loop.py` is 597 lines, past
-  the ~500 the brief set as the point to report rather than split.
+  `status="read"`, `kind="scan"`, `transcribed_pages=2`). (10) `loop.py` was 597 lines, past
+  the ~500 the brief set as the point to report rather than split (resolved by the fix round
+  below).
+- **2026-09-29 (Task 4, fix round 1, controller's decisions) — three changes to the flow's
+  edges.** (1) *Module split*: the caps (`CASE_CAP_USD`, `RUN_CAP_USD`, `CODING_RESERVE_USD`,
+  `MAX_OUTPUT_TOKENS`), `call_settings`, `RunBudget`, `CaseBudget` and the stop signal (now the
+  public `CapReached`, since `loop.py` must catch it across the module boundary) live in
+  `scripts/s3_probe/budget.py`; `loop.py` imports them and re-exports nothing; Task 5 imports
+  from `budget.py`. `MAX_CODING_CALLS` stays in `loop.py`. `loop.py` is now 543 lines.
+  (2) *H_all does not end the case*: it is a side comparison, not the agent's path, so a parse
+  failure after its retry is recorded as `h_all.note = "failed: parse"` and a leak from its
+  split as `"failed: leak"` (the guard's message in `leak`), and the case goes on to the coding
+  checks. This supersedes point (8) above. A leak from a document the agent chose still ends
+  the case, and always did so before H_all (at H1, choice 2 or H2). (3) *Room for the answer*:
+  before each coding call the loop estimates that call plus the final call and the refinement
+  (the refinement priced from H2's findings, with the last reply standing in for the final
+  one); if together they would pass the case cap it stops the checks with the new trail field
+  `coding_stop = "cap"` and goes to the final answer. `coding_stop` records how the checks
+  ended (`done`, `max_calls`, `cap`, or `None` if not reached). The case's `stop_reason` is
+  then `"coding_cap"`; `"cap"` stays reserved for a call on the answer's own path that the cap
+  refused.

@@ -16,21 +16,23 @@ else (the "one payload route"). System text carries the existing prompt texts, t
 instructions, per-document numbers keyed by listing index, and tool results (code labels and
 pool counts). History carries only the agent's own earlier replies.
 
-Cost is checked before every call (:class:`CaseBudget`): the per-case cap stops the case with
-``stop_reason="cap"``, the run-wide cap -- shared across the threads Task 5 runs cases on --
-with ``"run_cap"``. A reply that fails to parse after its one retry ends the case with
-``"failed: <phase>"``; a ``LeakageError`` from the split ends it with ``"failed: leak"``, the
-guard's message recorded in the trail. Any other exception propagates.
+Cost is checked before every call (:mod:`scripts.s3_probe.budget`): the per-case cap stops
+the case with ``stop_reason="cap"``, the run-wide cap -- shared across the threads Task 5 runs
+cases on -- with ``"run_cap"``. The coding checks stop taking tool calls early
+(``coding_stop="cap"``, ``stop_reason="coding_cap"``) when the next one would leave no room for
+the final answer and its refinement. A reply that fails to parse after its one retry ends the
+case with ``"failed: <phase>"``; a ``LeakageError`` from the split ends it with
+``"failed: leak"``, the guard's message recorded in the trail. H_all is the exception: it is a
+side comparison, not the agent's path, so its parse failure or leak is recorded as the stage's
+note and the case goes on. Any other exception propagates.
 """
 
-import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from functools import cache
 
-from ntsb_probable_cause import sources
 from ntsb_probable_cause.docket.attach import DOCKET_KEY, Attachment, prepare_attachment
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import LeakageError, SchemaError
@@ -49,6 +51,13 @@ from ntsb_probable_cause.scoring.hypothesis import (
 )
 from ntsb_probable_cause.scoring.metrics import primary_occurrence, score_case
 from ntsb_probable_cause.scoring.samples import sample_ids
+from scripts.s3_probe.budget import (
+    CODING_RESERVE_USD,
+    CapReached,
+    CaseBudget,
+    RunBudget,
+    call_settings,
+)
 from scripts.s3_probe.cases import DocketFacts, facts, has_scan
 from scripts.s3_probe.prompts import (
     CODING_ACTION_SCHEMA,
@@ -75,73 +84,8 @@ from scripts.s3_probe.trail import (
     TrailDocument,
 )
 
-CASE_CAP_USD = 0.15
-RUN_CAP_USD = 3.00
-# Held back for the coding checks and the final answer when deciding whether H_all runs.
-CODING_RESERVE_USD = 0.03
 MAX_CODING_CALLS = 6
-MAX_OUTPUT_TOKENS = 8000  # decision 0084
-_CHARS_PER_TOKEN = 4
 _STAGES = ("h0", "h1", "h2", "h_all", "final", "refined")
-
-
-def call_settings(schema: dict[str, object], name: str) -> ModelSettings:
-    """The settings every probe call uses; only the reply schema and its name vary."""
-    return ModelSettings(
-        model=sources.DEFAULT_MODEL,
-        price_variant="standard",
-        reasoning_effort=sources.DEFAULT_REASONING_EFFORT,
-        max_output_tokens=MAX_OUTPUT_TOKENS,
-        temperature=0.0,
-        json_schema=schema,
-        schema_name=name,
-    )
-
-
-class RunBudget:
-    """The run-wide spend, shared by every case thread, and both caps.
-
-    A call reserves its estimate before it is made and settles to its actual cost after, all
-    under one lock, so threads checking at the same moment cannot together pass the run cap.
-    """
-
-    def __init__(
-        self, *, run_cap_usd: float = RUN_CAP_USD, case_cap_usd: float = CASE_CAP_USD
-    ) -> None:
-        """Start a run with nothing spent."""
-        self.run_cap_usd = run_cap_usd
-        self.case_cap_usd = case_cap_usd
-        self._lock = threading.Lock()
-        self._spent = 0.0
-        self._reserved = 0.0
-
-    @property
-    def spent(self) -> float:
-        """Actual dollars spent by settled calls."""
-        with self._lock:
-            return self._spent
-
-    def reserve(self, estimate: float) -> bool:
-        """Hold ``estimate`` against the run cap; ``False`` (nothing held) if it would pass it."""
-        with self._lock:
-            if self._spent + self._reserved + estimate > self.run_cap_usd:
-                return False
-            self._reserved += estimate
-            return True
-
-    def settle(self, estimate: float, actual: float) -> None:
-        """Release a reservation and add the call's actual cost."""
-        with self._lock:
-            self._reserved -= estimate
-            self._spent += actual
-
-
-class _Stop(Exception):  # noqa: N818 -- a signal, not an error
-    """A cap refused the next call; ``reason`` is ``"cap"`` or ``"run_cap"``."""
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
 
 
 class _Failed(Exception):  # noqa: N818 -- a signal, not an error
@@ -151,43 +95,6 @@ class _Failed(Exception):  # noqa: N818 -- a signal, not an error
         super().__init__(detail)
         self.phase = phase
         self.detail = detail
-
-
-class CaseBudget:
-    """One case's spend, checked with the run's before every call."""
-
-    def __init__(self, run: RunBudget) -> None:
-        """Start a case with nothing spent, against ``run``'s caps."""
-        self.run = run
-        self.spent = 0.0
-
-    @staticmethod
-    def estimate(
-        system: str, payload: Payload, history: Sequence[Turn], settings: ModelSettings
-    ) -> float:
-        """Estimated dollars: all input text at 4 characters a token, plus the full reply budget."""
-        chars = len(system) + len(payload.text) + sum(len(t.content or "") for t in history)
-        price = sources.price_of(settings.model_id())
-        return (
-            chars / _CHARS_PER_TOKEN * price.input_usd_per_mtok
-            + settings.max_output_tokens * price.output_usd_per_mtok
-        ) / 1e6
-
-    def fits(self, estimate: float, *, reserve: float = 0.0) -> bool:
-        """Whether a call of ``estimate``, with ``reserve`` held back, stays under the case cap."""
-        return self.spent + estimate + reserve <= self.run.case_cap_usd
-
-    def check(self, estimate: float) -> None:
-        """Reserve ``estimate`` or stop the case: the case cap first, then the run cap."""
-        if not self.fits(estimate):
-            raise _Stop("cap")
-        if not self.run.reserve(estimate):
-            raise _Stop("run_cap")
-
-    def settle(self, estimate: float, actual: float) -> None:
-        """Record a finished (or failed) call's actual cost, here and on the run."""
-        self.spent += actual
-        self.run.settle(estimate, actual)
 
 
 @cache
@@ -228,6 +135,7 @@ class _State:
     verdict: Verdict | None = None
     leak: str | None = None
     failure: str | None = None
+    coding_stop: str | None = None
 
 
 class _Case:
@@ -367,7 +275,7 @@ class _Case:
     # --- the flow ---
 
     def flow(self) -> str:
-        """Steps 1-8; returns the stop reason (``"done"`` or ``"max_calls"``)."""
+        """Steps 1-8; returns the stop reason: ``"done"``, ``"max_calls"`` or ``"coding_cap"``."""
         evidence, _, verdict = split_record(self.raw)
         self.state.verdict = verdict
         # 1. H0 from the structured evidence.
@@ -422,12 +330,24 @@ class _Case:
         if set(read) == set(attachable):
             self._stage("h_all", None, "not needed")
             return
-        payload = _payload(attachment.context_for(attachable).context)
+        # A side comparison: its leak or parse failure is recorded and the case goes on. A
+        # leak here comes from a document the agent did not choose; one it chose has already
+        # ended the case at H1, choice 2 or H2.
+        try:
+            payload = _payload(attachment.context_for(attachable).context)
+        except LeakageError as error:
+            self.state.leak = str(error)
+            self._stage("h_all", None, "failed: leak")
+            return
         estimate = CaseBudget.estimate(self.system, payload, (), _SETTINGS["h_all"])
         if not self.budget.fits(estimate, reserve=CODING_RESERVE_USD):
             self._stage("h_all", None, "not run: cap")
             return
-        h_all, _ = self._hypothesis("h_all", payload, ())
+        try:
+            h_all, _ = self._hypothesis("h_all", payload, ())
+        except _Failed:
+            self._stage("h_all", None, "failed: parse")
+            return
         self._stage("h_all", h_all)
 
     def _coding_and_final(self, payload: Payload, turns: list[Turn]) -> str:
@@ -435,10 +355,17 @@ class _Case:
         results: list[str] = []
         stop = "done"
         while True:
+            system = _coding_system(base, results)
+            if not self.budget.fits(
+                CaseBudget.estimate(system, payload, turns, _SETTINGS["coding"]),
+                reserve=self._answer_estimate(payload, system, turns),
+            ):
+                stop = "cap"
+                break
             action, text = self._ask(
                 "coding",
                 payload,
-                _coding_system(base, results),
+                system,
                 turns,
                 lambda reply: parse_coding_action(reply, self.tables),
             )
@@ -457,9 +384,11 @@ class _Case:
             if len(results) >= MAX_CODING_CALLS:
                 stop = "max_calls"
                 break
+        self.state.coding_stop = stop
         final_system = f"{_coding_system(base, results)}\n\n{FINAL_INSTRUCTION}"
         final, final_text = self._hypothesis("final", payload, turns, final_system)
         self._stage("final", final)
+        stop = "coding_cap" if stop == "cap" else stop
         if final.abstain or not final.findings:
             self._stage(
                 "refined", final, f"not run: {'abstained' if final.abstain else 'no findings'}"
@@ -475,6 +404,22 @@ class _Case:
         )
         self._stage("refined", refined)
         return stop
+
+    def _answer_estimate(self, payload: Payload, coding_system: str, turns: list[Turn]) -> float:
+        """Estimated cost of the final call and the refinement, held back by each coding call.
+
+        The final call's system and history are the coding call's own plus the instruction; the
+        refinement is estimated from H2's findings (the final ones are not yet known) with the
+        last reply standing in for the final one.
+        """
+        final = CaseBudget.estimate(
+            f"{coding_system}\n\n{FINAL_INSTRUCTION}", payload, turns, _SETTINGS["final"]
+        )
+        h2 = self.state.stages["h2"].hypothesis
+        refine_system = prompt.SYSTEM_REFINE
+        if h2 is not None and h2.findings:
+            refine_system += f"\n\n{prompt.refine_message(h2, self.tables)}"
+        return final + CaseBudget.estimate(refine_system, payload, turns[-1:], _SETTINGS["refine"])
 
     # --- the record ---
 
@@ -519,6 +464,7 @@ class _Case:
             true_in_arguments=true_in_arguments,
             leak=st.leak,
             failure=st.failure,
+            coding_stop=st.coding_stop,
             stop_reason=stop_reason,
             cost_usd=sum(call.cost_usd for call in st.calls),
         )
@@ -585,7 +531,7 @@ def run_case(  # noqa: PLR0913 -- fixed by the plan's Task 4.
     )
     try:
         stop_reason = case.flow()
-    except _Stop as stop:
+    except CapReached as stop:
         stop_reason = stop.reason
     except _Failed as failed:
         case.state.failure = failed.detail

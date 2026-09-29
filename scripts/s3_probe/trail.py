@@ -79,7 +79,8 @@ class Stage(_Frozen):
 
     ``note`` is ``None`` when the stage's own call produced the hypothesis. Otherwise it says
     why not: ``"skipped: nothing chosen"`` (a copy of the stage before, no call),
-    ``"not needed"``, ``"not run: cap"``, ``"not run: abstained"`` and the like, or
+    ``"not needed"``, ``"not run: cap"``, ``"not run: abstained"``, ``"failed: parse"`` or
+    ``"failed: leak"`` (H_all alone: a side comparison that does not end the case), or
     ``"not reached"`` when the case stopped first.
     """
 
@@ -107,7 +108,10 @@ class CodingStep(_Frozen):
     argument_errors: int
 
 
-StopReason = str  # "done", "max_calls", "cap", "run_cap", or "failed: <phase>"
+# "done", "max_calls" or "coding_cap" (the case answered; the coding checks ended on done, six
+# tool calls, or the reserve for the answer), "cap" (the case cap refused a call on the answer's
+# own path), "run_cap", or "failed: <phase>" / "failed: leak".
+StopReason = str
 
 
 class CaseTrail(_Frozen):
@@ -135,9 +139,14 @@ class CaseTrail(_Frozen):
     follows_pool: bool | None
     true_primary: str | None
     true_in_arguments: bool | None
-    # The guard's message on ``failed: leak`` (role, kind and source -- never withheld text).
+    # The guard's message whenever it refused a payload (role, kind and source -- never withheld
+    # text): with ``stop_reason="failed: leak"`` it ended the case; with ``h_all.note ==
+    # "failed: leak"`` it refused only the side comparison.
     leak: str | None
     # The parser's last error on ``failed: <phase>``: about the agent's own reply.
     failure: str | None
+    # How the coding checks ended: "done", "max_calls", "cap" (no room left for another call and
+    # the answer), or None when they were not reached.
+    coding_stop: str | None
     stop_reason: StopReason
     cost_usd: float
