@@ -216,3 +216,23 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   ended (`done`, `max_calls`, `cap`, or `None` if not reached). The case's `stop_reason` is
   then `"coding_cap"`; `"cap"` stays reserved for a call on the answer's own path that the cap
   refused.
+- **2026-09-29 (Task 4, fix round 2, controller's decisions) — four changes affecting the
+  probe's measurements.** (1) *No H_all call ends the case on the case cap*: H_all's call and
+  its parse retry are each checked against the case cap with `CODING_RESERVE_USD` held back; a
+  refusal is recorded as `h_all.note = "not run: cap"` and the case goes on. A coding call and
+  its parse retry are each checked with the answer reserve (the final call plus the
+  refinement); a refusal stops the checks (`coding_stop = "cap"`). The run cap still ends the
+  case wherever it binds. (2) *`true_in_arguments` is `None`* when the case ended before the
+  coding checks (step 7) were reached; `False` means they were reached and no argument held the
+  true code. (3) *Message order*: the transport sends the system text, then the payload, then
+  the history, so the model reads the current evidence before replies it wrote with less of it.
+  Every call with history now ends its system text with `prompts.HISTORY_NOTE` ("Your earlier
+  replies follow the evidence in this conversation. Some of them were written before you had
+  read every document now included in the evidence. Where they differ from the evidence, the
+  evidence given here is current."); calls without history do not carry it. This includes the
+  refinement, whose system text is therefore no longer byte-for-byte the runner's
+  `SYSTEM_REFINE + refine_message(...)`: the same text with the note appended. The note's
+  characters are counted in every estimate, including the answer reserve. (4) *Trail safety and
+  diagnosis*: a test asserts no docket title or document text appears in a dumped trail; a new
+  `Stage.detail` keeps H_all's failure detail (the parser's last error on `failed: parse`, the
+  guard's message on `failed: leak`).

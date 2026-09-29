@@ -86,6 +86,9 @@ class Stage(_Frozen):
 
     hypothesis: Hypothesis | None
     note: str | None
+    # H_all's failure detail: the parser's last error (about the agent's own reply) on
+    # "failed: parse", the guard's message on "failed: leak". None otherwise.
+    detail: str | None = None
     scores: StageScores | None
 
 

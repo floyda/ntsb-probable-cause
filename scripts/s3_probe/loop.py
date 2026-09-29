@@ -63,6 +63,7 @@ from scripts.s3_probe.prompts import (
     CODING_ACTION_SCHEMA,
     CODING_INSTRUCTIONS,
     FINAL_INSTRUCTION,
+    HISTORY_NOTE,
     READ_CHOICE_INSTRUCTIONS,
     READ_CHOICE_SCHEMA,
     CodingAction,
@@ -136,6 +137,7 @@ class _State:
     leak: str | None = None
     failure: str | None = None
     coding_stop: str | None = None
+    coding_reached: bool = False
 
 
 class _Case:
@@ -178,11 +180,28 @@ class _Case:
 
     # --- calls ---
 
-    def _call(
-        self, phase: Phase, payload: Payload, system: str, history: Sequence[Turn], *, retry: bool
+    def _call(  # noqa: PLR0913 -- the reserve is per call, as is the retry flag.
+        self,
+        phase: Phase,
+        payload: Payload,
+        system: str,
+        history: Sequence[Turn],
+        *,
+        retry: bool,
+        reserve: float,
     ) -> str:
+        """One model call, after the cap check; ``reserve`` is held back for what must follow.
+
+        A call with history carries :data:`HISTORY_NOTE` at the end of its system text: the
+        transport sends the payload before the history, so the model reads the current evidence
+        before replies it wrote with less of it.
+        """
         settings = _SETTINGS[phase]
+        if history:
+            system = f"{system}\n\n{HISTORY_NOTE}"
         estimate = CaseBudget.estimate(system, payload, history, settings)
+        if not self.budget.fits(estimate, reserve=reserve):
+            raise CapReached("cap")
         self.budget.check(estimate)
         start = time.monotonic()
         try:
@@ -208,28 +227,39 @@ class _Case:
         )
         return reply.content or ""
 
-    def _ask[T](
+    def _ask[T](  # noqa: PLR0913 -- the reserve is per call.
         self,
         phase: Phase,
         payload: Payload,
         system: str,
         history: Sequence[Turn],
         parse: Callable[[str], T],
+        *,
+        reserve: float = 0.0,
     ) -> tuple[T, str]:
-        """One call and, on a parse error, one retry naming the error (as the runner does)."""
-        text = self._call(phase, payload, system, history, retry=False)
+        """One call and, on a parse error, one retry naming the error (as the runner does).
+
+        The retry is checked against the same ``reserve`` as the first call.
+        """
+        text = self._call(phase, payload, system, history, retry=False, reserve=reserve)
         try:
             return parse(text), text
         except SchemaError as error:
             retry_system = f"{system}\n\nYour previous reply was rejected: {error}"
-            text = self._call(phase, payload, retry_system, history, retry=True)
+            text = self._call(phase, payload, retry_system, history, retry=True, reserve=reserve)
             try:
                 return parse(text), text
             except SchemaError as second:
                 raise _Failed(phase, str(second)) from second
 
     def _hypothesis(
-        self, phase: Phase, payload: Payload, history: Sequence[Turn], system: str | None = None
+        self,
+        phase: Phase,
+        payload: Payload,
+        history: Sequence[Turn],
+        system: str | None = None,
+        *,
+        reserve: float = 0.0,
     ) -> tuple[Hypothesis, str]:
         """A hypothesis call; the system text is the H0 system unless given."""
         return self._ask(
@@ -238,9 +268,16 @@ class _Case:
             self.system if system is None else system,
             history,
             lambda text: parse_hypothesis(text, self.tables),
+            reserve=reserve,
         )
 
-    def _stage(self, name: str, hypothesis: Hypothesis | None, note: str | None = None) -> None:
+    def _stage(
+        self,
+        name: str,
+        hypothesis: Hypothesis | None,
+        note: str | None = None,
+        detail: str | None = None,
+    ) -> None:
         scores = None
         if hypothesis is not None and self.state.verdict is not None:
             s = score_case(hypothesis, self.state.verdict, self.tables, seen_pairs=self.seen_pairs)
@@ -249,7 +286,9 @@ class _Case:
                 occurrence_top3=s.occurrence_top3,
                 finding_recall_10=s.finding_recall_10 if name == "refined" else None,
             )
-        self.state.stages[name] = Stage(hypothesis=hypothesis, note=note, scores=scores)
+        self.state.stages[name] = Stage(
+            hypothesis=hypothesis, note=note, detail=detail, scores=scores
+        )
 
     def _choose(
         self,
@@ -337,16 +376,18 @@ class _Case:
             payload = _payload(attachment.context_for(attachable).context)
         except LeakageError as error:
             self.state.leak = str(error)
-            self._stage("h_all", None, "failed: leak")
+            self._stage("h_all", None, "failed: leak", str(error))
             return
-        estimate = CaseBudget.estimate(self.system, payload, (), _SETTINGS["h_all"])
-        if not self.budget.fits(estimate, reserve=CODING_RESERVE_USD):
+        # The call and its retry each hold CODING_RESERVE_USD back for steps 7-8.
+        try:
+            h_all, _ = self._hypothesis("h_all", payload, (), reserve=CODING_RESERVE_USD)
+        except CapReached as stop:
+            if stop.reason != "cap":
+                raise
             self._stage("h_all", None, "not run: cap")
             return
-        try:
-            h_all, _ = self._hypothesis("h_all", payload, ())
-        except _Failed:
-            self._stage("h_all", None, "failed: parse")
+        except _Failed as failed:
+            self._stage("h_all", None, "failed: parse", failed.detail)
             return
         self._stage("h_all", h_all)
 
@@ -354,21 +395,24 @@ class _Case:
         base = f"{self.system}\n\n{CODING_INSTRUCTIONS}\n\n{TOOL_DESCRIPTIONS}"
         results: list[str] = []
         stop = "done"
+        self.state.coding_reached = True
         while True:
             system = _coding_system(base, results)
-            if not self.budget.fits(
-                CaseBudget.estimate(system, payload, turns, _SETTINGS["coding"]),
-                reserve=self._answer_estimate(payload, system, turns),
-            ):
+            # The call and its retry each hold the final call and the refinement back.
+            try:
+                action, text = self._ask(
+                    "coding",
+                    payload,
+                    system,
+                    turns,
+                    lambda reply: parse_coding_action(reply, self.tables),
+                    reserve=self._answer_estimate(payload, system, turns),
+                )
+            except CapReached as cap:
+                if cap.reason != "cap":
+                    raise
                 stop = "cap"
                 break
-            action, text = self._ask(
-                "coding",
-                payload,
-                system,
-                turns,
-                lambda reply: parse_coding_action(reply, self.tables),
-            )
             turns.append(Turn(role="assistant", content=text))
             if action.done or action.tool is None:
                 self.state.coding_steps.append(_step(action, None, 0))
@@ -413,10 +457,13 @@ class _Case:
         last reply standing in for the final one.
         """
         final = CaseBudget.estimate(
-            f"{coding_system}\n\n{FINAL_INSTRUCTION}", payload, turns, _SETTINGS["final"]
+            f"{coding_system}\n\n{FINAL_INSTRUCTION}\n\n{HISTORY_NOTE}",
+            payload,
+            turns,
+            _SETTINGS["final"],
         )
         h2 = self.state.stages["h2"].hypothesis
-        refine_system = prompt.SYSTEM_REFINE
+        refine_system = f"{prompt.SYSTEM_REFINE}\n\n{HISTORY_NOTE}"
         if h2 is not None and h2.findings:
             refine_system += f"\n\n{prompt.refine_message(h2, self.tables)}"
         return final + CaseBudget.estimate(refine_system, payload, turns[-1:], _SETTINGS["refine"])
@@ -436,7 +483,7 @@ class _Case:
         truth = primary_occurrence(st.verdict) if st.verdict is not None else None
         true_in_arguments = (
             None
-            if truth is None
+            if truth is None or not st.coding_reached
             else any(
                 truth in step.codes for step in st.coding_steps if step.kind in ("occurrence", None)
             )

@@ -222,3 +222,10 @@ def parse_coding_action(text: str, tables: CodeTables) -> CodingAction:
 
 
 FINAL_INSTRUCTION = "Give your final hypothesis after the checks."
+
+# Appended to the system text of every call that carries history (Task 4 fix round 2): the
+# transport sends the payload before the history, so the model reads the current evidence
+# before its own earlier replies, some of which were written with less of it.
+HISTORY_NOTE = """Your earlier replies follow the evidence in this conversation. Some of them were
+written before you had read every document now included in the evidence. Where they differ
+from the evidence, the evidence given here is current."""
