@@ -36,14 +36,15 @@ from pathlib import Path
 
 import httpx
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import DocketError, LeakageError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole, SynthesisRole
 from ntsb_probable_cause.records.guard import find_leaks
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring.runner import CachedDocketReader
-from ntsb_probable_cause.scoring.samples import load_cases, sample_ids
+from ntsb_probable_cause.scoring.samples import load_cases, refuse_sealed, sample_ids
 from ntsb_probable_cause.settings import Settings
 from scripts.docket_scan import quantiles
 
@@ -195,6 +196,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--out", default=None)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
+    try:
+        refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    except ConfigurationError as error:
+        raise SystemExit(f"narrative_coverage: {error}") from error
     settings = Settings()
     ids = sample_ids(args.sample)
     records = list(load_cases(settings.data_dir / "processed", ids))

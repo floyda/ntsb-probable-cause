@@ -1,0 +1,44 @@
+# the transcriber shortlist (S2.7 spec §7.2, decision 0100 item 1) -- model ids only
+model list: https://openrouter.ai/api/v1/models, read 2026-09-27, saved as openrouter-models-2026-09-27.json
+eligible: 14; refused: alias 18, an S2.6 candidate 1, batch variant 72, free or unpriced listing 7, input price above Qwen3.5 122B's 44, no image input 161, no structured output 2, not text-only output 13, released before 2026-06-01 126
+
+## eligible, cheapest input first (the first 8 are the shortlist; the rest replace a failed probe, in order)
+candidate  1 inclusionai/ling-3.0-flash-vl  $0.021/$0.0616 per M tokens; created 2026-09-10; lowest reasoning none; batch variant no
+candidate  2 qwen/qwen3.7-flash  $0.03/$0.13 per M tokens; created 2026-07-27; lowest reasoning none; batch variant no
+candidate  3 deepseek/deepseek-v4.1-flash  $0.035/$0.29 per M tokens; created 2026-09-10; lowest reasoning low; batch variant yes
+candidate  4 z-ai/glm-5.3-flash  $0.045/$0.14 per M tokens; created 2026-08-26; lowest reasoning low; batch variant yes
+candidate  5 prism-ml/ternary-bonsai-2-27b  $0.075/$0.5 per M tokens; created 2026-09-18; lowest reasoning medium; batch variant no
+candidate  6 meta/muse-spark-1.2-contributor  $0.1/$0.2 per M tokens; created 2026-08-21; lowest reasoning minimal; batch variant no
+candidate  7 meta/muse-spark-1.3-contributor  $0.1/$0.2 per M tokens; created 2026-09-02; lowest reasoning minimal; batch variant no
+candidate  8 openai/gpt-6-luna-pro  $0.1/$0.5 per M tokens; created 2026-09-22; lowest reasoning none; batch variant yes
+reserve    9 xiaomi/mimo-v2.6-flash  $0.14/$0.28 per M tokens; created 2026-09-21; lowest reasoning none; batch variant no
+reserve   10 qwen/qwen3.8-flash  $0.15/$0.47 per M tokens; created 2026-08-26; lowest reasoning none; batch variant no
+reserve   11 qwen/qwen3.8-omni-flash  $0.15/$0.47 per M tokens; created 2026-09-21; lowest reasoning none; batch variant no
+reserve   12 openai/gpt-5.6-luna  $0.2/$1.2 per M tokens; created 2026-07-09; lowest reasoning none; batch variant yes
+reserve   13 openai/gpt-5.6-luna-pro  $0.2/$1.2 per M tokens; created 2026-07-09; lowest reasoning none; batch variant yes
+reserve   14 deepseek/deepseek-v4-flash-vision-exp  $0.2156/$0.6468 per M tokens; created 2026-08-21; lowest reasoning low; batch variant no
+
+## probe (2026-09-27)
+inclusionai/ling-3.0-flash-vl: ok, kind typed text, 4 of 4 lines copied
+qwen/qwen3.7-flash: ok, kind typed text, 4 of 4 lines copied
+deepseek/deepseek-v4.1-flash: ok, kind typed text, 4 of 4 lines copied
+z-ai/glm-5.3-flash: ok, kind typed text, 4 of 4 lines copied
+prism-ml/ternary-bonsai-2-27b: ok, kind typed text, 4 of 4 lines copied
+meta/muse-spark-1.2-contributor: FAILED -- 403: the account has not confirmed OpenRouter's 18+ age setting
+meta/muse-spark-1.3-contributor: FAILED -- 403: the account has not confirmed OpenRouter's 18+ age setting
+openai/gpt-6-luna-pro: ok, kind typed text, 4 of 4 lines copied
+xiaomi/mimo-v2.6-flash: ok, kind typed text, 4 of 4 lines copied
+qwen/qwen3.8-flash: the reply did not parse -- reply is not a JSON object
+qwen/qwen3.8-omni-flash: ok, kind typed text, 4 of 4 lines copied
+passed (8): inclusionai/ling-3.0-flash-vl, qwen/qwen3.7-flash, deepseek/deepseek-v4.1-flash, z-ai/glm-5.3-flash, prism-ml/ternary-bonsai-2-27b, openai/gpt-6-luna-pro, xiaomi/mimo-v2.6-flash, qwen/qwen3.8-omni-flash
+cost: 9 calls, $0.0034038700000000007 (data/runs/20260927T131008-076ce08-s27-transcriber-probe/spend.jsonl)
+
+## batch with an image (walkthrough W2)
+model: deepseek/deepseek-v4.1-flash (the first passed candidate with a batch variant)
+accepted at submission (batch batch-1790514694-SYmW9IJZutYu9OfTZRFc), then failed: "Batch
+request 's27-probe' contains unsupported 'image_url' content. Only public http(s) image URLs
+are supported in batch; base64/data-URI images, audio, video, and file content parts are
+rejected." (request_counts total 1, failed 1; finalized 4s after creation; no cost, usage
+null). The batch service still refuses base64 images, as model/batch.py:136's documentation
+quote and S2.6 decision W1 said; every re-test call (Task 9) stays synchronous at the
+standard price.

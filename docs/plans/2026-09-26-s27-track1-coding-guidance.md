@@ -1,0 +1,4853 @@
+# S2.7 — Coding guidance, track 1: implementation plan
+
+**Spec:** docs/specs/2026-09-26-s27-coding-guidance-design.md
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Tick a step in the same commit as its code (decision 0017). Log every departure from the specification in the **Deviations** section at the end. A step marked **STOP** is Andy's: stop there, report, and wait.
+
+**Goal:** Measure where arm B's `dev-400` misses come from (Round 0), test an ordering check after the answer (Round 1), add coding guidance in registered rounds until the stop rule, then — with track 2's transcriber — compare v1 against v2 and check the final setup once on a sealed development sample, so S3's loop faces arm B without coding-convention losses (decisions 0093–0099).
+
+**Architecture:** Everything new is either a pure library function under `scoring/` (`misses.py`, `coding_stats.py`, `ordering.py`, `checkpass.py`, and guidance files under `scoring/guidance/`) or a committed script under `scripts/` that prints counts to `docs/results/`. The ordering check runs as a **post-pass** over a finished run's `cases.jsonl` and writes a derived run folder, so it works the same for batch and sync runs and never touches the answering path (walkthrough W2). Guidance enters only the system text next to the code tables, is named on every run record, and a run refuses guidance whose round registration is not committed. The sealed sample and the statistics pool are guarded in code, with tests that prove the guards can fail.
+
+**Tech Stack:** Python 3.14, uv + hatchling, pydantic v2, httpx + respx, pyarrow, pytest + pytest-socket + hypothesis, ruff, mypy --strict, import-linter. No new dependency.
+
+## Global Constraints
+
+- **Branches (decision 0102).** The parent is `s27-coding-guidance` (`.claude/worktrees/s27-coding-guidance`), cut from `main` at the S2.6 merge `971ee40`; it holds the specification, the decisions and both plans, and becomes the stage pull request. **Task 1 is done on the parent.** Then both track branches are cut from it (Task 1 Step 16): **track 1 on `s27-guidance`** (`.claude/worktrees/s27-guidance`), where Tasks 2–15 are done, and track 2 (`docs/plans/2026-09-26-s27-track2-transcriber.md`) on `s27-transcriber`. Each track merges back into the parent with a merge commit (track 1 after Task 15; track 2 in its Task 12); Tasks 16–19 are done on the parent. The track branch names do not change. Until then this plan never edits `docket/transcribe.py`, `scripts/transcriber_test.py`, `apps/eval/__main__.py:_cmd_transcribe` beyond the sealed-sample refusal of Task 2, or the transcriber entries of `sources.py`; track 2 never edits `scoring/runner.py`, `scoring/records.py`, `scoring/report.py` or `_cmd_run` (spec §11).
+- **The split is the only split** (CLAUDE.md rule 1). No new code builds evidence from a raw record except through `records/split.py:split_record` or the existing `fields` extractors the baseline already uses. The ordering check's payload is built from a finished run's recorded hypothesis, the committed count table and the phase-group evidence value, never from the verdict, the synthesis or the docket (decision 0096 item 2).
+- **Development cases only.** Every script and command added here refuses a held-out or open-split run or sample, before reading its cases. `dev-seal-400` is refused everywhere until `docs/rounds/s27-sealed.md` is committed (decision 0095). The statistics pool never holds a `dev-400`, `dev-seal-400`, held-out or open case (decision 0094).
+- **Private material lives under `data/`** (git-ignored) and is never committed: marking pages, sheets, marks CSVs, judge rows. Only counts go to `docs/results/` and `docs/rounds/`.
+- **Every model call goes through `ModelClient`** (OpenRouter, decision 0009), except Jev, which goes through `model/typesafe.py` for the ordering check on development runs only (decision 0097). Tests never reach the network (`--disable-socket`); replies are `RecordingFakeClient` or respx-mocked saved fixtures.
+- **Budget.** $40 a month (0083) and **$25 for S2.7** (0098 item 6), counted by commit from `971ee40` on both branches. Every paid `make` target runs `uv run python -m scripts.stage_spend --estimate <USD>` first and stops if it would pass the line.
+- **Paid commands handed to Andy** always state: `export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data`, the expected cost and duration, and what the tree looks like afterwards. They are run from a shell script that exports `OPENROUTER_API_KEY="$(pass show api/openrouter)"` (and, for Jev, `TYPESAFE_API_KEY="$(pass show api/typesafe)"`) and never prints either.
+- **Batch timing.** Paid batches are submitted between about 01:00 and 12:00 UTC (OpenRouter's slow window is 12:00–19:00 UTC). A batch run in trouble is resumed with `--resume`, never re-run.
+- **One reply budget.** Every arm B run uses 8,000 output tokens (0084) and GPT-6 Luna at `medium` (0073); guidance never changes either.
+- **Numbers reported anywhere come from a script.** The ad-hoc numbers in the spec are re-derived by Tasks 3, 4 and 5 before they are cited.
+- **Decision numbers.** Records written during this track take the next free number above 0100, up to 119 (spec §11). Never write a four-digit number in any document until its record exists: `scripts/check_docs.py` fails on it.
+- `make check` = ruff format, ruff check, lint-imports, deptry, vulture, mypy --strict, pytest; coverage gate `--cov-fail-under=90`, branch coverage. Google-style docstrings on every public symbol; line length 100. Every module in `scripts/` carries a `Status` paragraph beneath its summary line (decision 0059).
+- Commit messages end with the attribution lines the session gives. Never commit to `main`. The stage pull request is titled `S2.7: coding guidance` and merged with a merge commit, never squashed (0033).
+
+---
+
+## Decisions for Andy before any code (the walkthrough)
+
+The spec is approved; these are the places where writing the plan found something the spec did not settle, or where an assumption in it turned out false. Each is marked in the task that depends on it. They are taken one per message; each outcome is written beside it below and in the Deviations section.
+
+- **W1. No mapping from the phase group to the three-digit phase exists.** The phase-of-flight evidence is the defining event's CICTT phase group, a name such as `"Landing"` or `"Maneuvering"` (`fields.py:_phase_of_flight`); the code tables' phases are three-digit prefixes (`552`, `452`). Spec §5.2 item 4 and §5.3 need "the phase prefixes within the phase group". *Planned as:* Task 3 learns the mapping from the pool — for each pool case, the defining event's group and its code's first three digits — and a prefix belongs to a group when the pool records it there at all. The report prints the mapping so it can be read. *Rejected:* a hand-written mapping (not from a script; would need defending prefix by prefix). **Decided 2026-09-27 (Andy): "A with a 'clear habit' safeguard."** An ad-hoc probe found every phase code the NTSB used for a defining event belongs to exactly one group, so the membership pushes nothing; Andy's concern was that the *counts* push every case toward the most common combination. Decision [0101](../decisions/0101-the-clear-habit-safeguard.md) amends 0096 and 0098: the plain rule changes the model's event or phase only on a **clear habit** (at least 60% of at least 20 pool cases), guidance names a habit only when it is clear, and every check step and round result records how many first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 carry it.
+- **W2. The ordering check runs as a post-pass, not inside the runner.** Spec §5.5 put it "after the answer, before the finding refinement turn". Inside the runner it would need a third batch stage for the model-asked ways and a second path for sync runs. The check touches only the occurrence codes, and the refinement turn only the findings, so the order between them changes no score. *Planned as:* `ntsb-eval check RUN_ID --way rule|luna|jev` reads a finished run and writes a derived folder `<run id>-check-<way>` whose cases carry the original step plus a second step, `tool="ordering_check"`, with the reordered hypothesis, its input fingerprint, model and cost; occurrence scores are recomputed, finding scores carried over. Its run record's cost is the check's cost only, so month and stage spend never count the answer twice. `report --against` compares derived folders like any run. *Rejected:* building it into `Runner` (a third batch stage, more code on the path every arm uses, for no change in any score). **Decided 2026-09-27 (Andy): A, the post-pass, as planned.**
+- **W3. GPT-6 Luna's check runs synchronously at the standard price.** A post-pass has no batch plumbing, and 399 short calls take minutes. Estimate (arithmetic, $0.10/$0.50 per million tokens, about 1,500 prompt and 1,500 output tokens a case including reasoning): about $0.90 per 1,000 cases, so **about $0.36 per answer set, $0.72 for Round 1**, against the spec's $0.12 per set at batch prices. *Planned as:* synchronous, standard price, recorded on each step. *Rejected:* batch (more code for about $0.36 saved). **Decided 2026-09-27 (Andy): A, as planned ("A is fine").**
+- **W4. The judge writes into the run it judges.** `ntsb-eval judge` is standard-price only (`scoring/judge.py:_ensure_priced` refuses batch), writes `judge.jsonl` inside the judged run's folder (replacing any earlier one) and appends a `<run id>-judge` cost row to its `run.jsonl`. Round 0 judges S2.6's B-v1 and B-v2 folders. *Planned as:* Task 7 first checks neither folder holds a `judge.jsonl` (none is expected: S2.6 judged no run); if one does, it is copied aside under `data/s27/` before judging. The cost row carries S2.7's commit, so the stage counts it. *Rejected:* copying the S2.6 run folders first (two copies of the same cases, and `month_spent` would count their costs twice). **Decided 2026-09-27 (Andy): A, as planned.**
+- **W5. The prompt version for guided runs.** Spec §6.1 said "for example `s27-g1`". *Planned as:* `prompt.prompt_version(guidance)` returns `s1-v5` with no guidance and `s1-v5+r2-loc-stall+r3-…` with guidance — the base version plus every guidance file in order — and the run record also stores the files' combined SHA-256. The new `spec.json` keys are written only when guidance is present, so resuming a pre-S2.7 run is unaffected. *Rejected:* a hand-bumped constant per round (two rounds with the same number but different files would look identical). **Decided 2026-09-27 (Andy), a third form he proposed: "version and short fingerprint".** A guided run's prompt version is `s1-v5+g` plus the first 12 characters of the guidance fingerprint (for example `s1-v5+g3f9a2c1b7d04`); the names, in stacking order, and the full fingerprint are stored beside it on the run record, and `provenance` prints both, so the stack stays readable while the version stays short.
+- **W6. The "no sentence shared with a development narrative" check cannot run in CI.** CI holds no case data. *Planned as:* CI checks the guidance files and the count table for case-number patterns; `scripts/check_guidance.py` checks every guidance sentence against every development case's factual narrative, analysis narrative and probable cause on the local processed file, and a round's registration is committed only after it passes (Task 13, Task 15 Step 3). The same holds for spec §12's "the draw is reproducible": re-drawing needs the processed file, so it is `scripts/draw_sealed.py --verify`, run locally when the list is drawn and again before the sealed run (Task 2 Step 8, Task 18 Step 4); CI checks the committed list's shape and disjointness (Task 2 Step 9). *Rejected:* committing development narratives, or the processed file's index, as a CI fixture (withheld text, or data, in the repository). **Decided 2026-09-27 (Andy): A, as planned ("I guess A").**
+- **W7. A miss group may hold fewer than eight cases.** Spec §4.4 draws 8 per miss group. *Planned as:* a group with fewer than 8 contributes all its cases; the shortfall is not topped up from another group, and the results file prints each group's card count. *Rejected:* topping up (it would over-weight the largest group in the validation). **Decided 2026-09-27 (Andy): A, as planned.**
+- **W8. Stage spend is counted on both branches.** Before the merge back, `git rev-list 971ee40..HEAD` on this branch does not see track 2's commits, so track 2's spend would be missed and the $25 line under-counted. *Planned as:* `scripts/stage_spend.py` counts commits reachable from `HEAD`, `s27-coding-guidance` and `s27-transcriber` (those that exist), excluding `971ee40`'s ancestors. *Rejected:* counting by date (S2.6 found a date filter caught another stage's runs). **Decided 2026-09-27 (Andy), in a form he set:** a parent S2.7 branch cut from `main`, a branch per track stacked on it, costs traced on every branch grown from the parent, and constant track names — parent `s27-coding-guidance`, track 1 `s27-guidance`, track 2 `s27-transcriber` ("A is fine"). Decision [0102](../decisions/0102-a-parent-branch-with-a-branch-per-track.md) amends 0093 item 3. `scripts/stage_spend.py` finds the stage's branches as every local branch whose history holds S2.7's first commit (`94f5d42`), `main` excepted, and prints them (`gitinfo.branches_containing`, replacing the fixed branch list).
+
+---
+
+## File structure
+
+| path | task | responsibility |
+|---|---|---|
+| `src/ntsb_probable_cause/gitinfo.py` | 1, 2 | `commits_between`, `branches_containing`, `is_committed` |
+| `src/ntsb_probable_cause/scoring/budget.py` | 1 | `in_stage`, `stage_spent` |
+| `scripts/stage_spend.py` | 1 | S2.7's spend by commit on both branches; refuses a step past $25 |
+| `src/ntsb_probable_cause/scoring/samples.py` | 2 | `dev-seal-400`; `draw(..., exclude=)`; `refuse_sealed` |
+| `scripts/draw_sealed.py`, `tests/fixtures/eval/dev_seal_400_ids.csv` | 2 | the sealed draw, once, and its verification |
+| `src/ntsb_probable_cause/scoring/coding_stats.py` | 3 | `PoolCase`, `CodingStats`, `build`, `load_stats` |
+| `scripts/coding_stats.py`, `src/ntsb_probable_cause/scoring/tables/coding_stats.json` | 3 | the pool, the counts, `docs/results/s27-coding-stats.txt` |
+| `src/ntsb_probable_cause/scoring/misses.py` | 4 | the six groups, finding depth, event phrases |
+| `scripts/occurrence_misses.py` | 4 | extended: groups, finding depth, confidence, own words, churn |
+| `scripts/judge_outcomes.py` | 5 | the four outcomes from `judge.jsonl`, and their movement |
+| `scripts/round0_handread.py` | 6 | Andy's cards and the narrative-label validation |
+| `src/ntsb_probable_cause/scoring/ordering.py` | 8 | candidate list, plain rule, check text, ranking parse, reorder |
+| `src/ntsb_probable_cause/model/typesafe.py`, `settings.py`, `sources.py` | 9 | the Jev client, ported |
+| `src/ntsb_probable_cause/scoring/checkpass.py`, `scoring/metrics.py`, `apps/eval` `check` | 10 | the post-pass and `rescore_occurrence` |
+| `scripts/round1_report.py` | 11 | Round 1's reading rule |
+| `src/ntsb_probable_cause/scoring/guidance/`, `scoring/prompt.py`, `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `apps/eval` `run` | 13 | guidance files, prompt version, run fields, the registration refusal |
+| `scripts/check_guidance.py` | 13 | the local sentence check |
+| `scripts/round_result.py`, `docs/rounds/` | 14, 15 | a round's reading rule; registrations and results |
+| `scoring/runner.py`, `scoring/records.py`, `scoring/report.py`, `apps/eval` `run` | 16 | `transcriber` and `page_rule` on v2 runs |
+| `scripts/sealed_report.py` | 18 | the sealed result beside `dev-400`; the prediction scored |
+| `docs/results/s27-*.txt` | throughout | the stage's results, counts only |
+
+Task numbers in this table are final; the tasks below use them.
+
+---
+
+## Part A — foundation (free)
+
+### Task 1: S2.7's spend, counted by commit on both branches (spec §10, decision 0098 item 6; W8)
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/gitinfo.py`
+- Modify: `src/ntsb_probable_cause/scoring/budget.py`
+- Create: `scripts/stage_spend.py`
+- Modify: `Makefile`
+- Test: `tests/test_gitinfo.py` (create), `tests/test_budget.py`, `tests/test_stage_spend.py` (create)
+
+**Interfaces:**
+- Produces: `gitinfo.commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tuple[str, ...]`; `gitinfo.branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]`; `budget.in_stage(sha: str, stage_commits: Collection[str]) -> bool`; `budget.stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]` (evaluation runs, preparation spend rows); `scripts.stage_spend.STAGE_BASE = "971ee40"`, `STAGE_FIRST = "94f5d42"`, `STAGE_LINE_USD = 25.0`, `stage_branches(repo: Path = Path()) -> tuple[str, ...]`, `stage_commits(branches: Sequence[str], repo: Path = Path()) -> frozenset[str]`, `main(argv) -> int` (exit 1 when over the line). Track 2 calls `uv run python -m scripts.stage_spend --estimate USD` and `make stage-spend EST=USD`.
+
+**Why a library function.** `scripts/transcriber_test.py` already counts S2.6's spend by commit (`_stage_commits`, `_in_stage`), privately. S2.7 needs the same count from two tracks and from every paid target; moving the counting into `scoring/budget.py` gives one tested implementation. `transcriber_test.py` is not changed (it is S2.6's record).
+
+- [x] **Step 1: Write the failing gitinfo tests**
+
+```python
+"""gitinfo: commits reachable from several heads, branches, and committed files (S2.7)."""
+
+import subprocess
+from pathlib import Path
+
+from ntsb_probable_cause import gitinfo
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=t@example.com", "-c", "user.name=t", *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _repo(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "a.txt").write_text("a\n")
+    _git(repo, "add", "a.txt")
+    _git(repo, "commit", "-q", "-m", "base")
+    return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def _commit(repo: Path, name: str) -> str:
+    (repo / name).write_text(name + "\n")
+    _git(repo, "add", name)
+    _git(repo, "commit", "-q", "-m", name)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_commits_between_counts_every_head_once_and_never_the_base(tmp_path: Path) -> None:
+    repo, base = _repo(tmp_path)
+    one = _commit(repo, "one.txt")
+    _git(repo, "checkout", "-q", "-b", "other")
+    two = _commit(repo, "two.txt")
+    _git(repo, "checkout", "-q", "main")
+    three = _commit(repo, "three.txt")
+    found = gitinfo.commits_between(base, ["HEAD", "other"], repo)
+    assert set(found) == {one, two, three}
+    assert base not in found
+    assert len(found) == len(set(found))
+
+
+def test_branches_containing_finds_every_branch_grown_from_a_commit(tmp_path: Path) -> None:
+    repo, _base = _repo(tmp_path)
+    first = _commit(repo, "spec.txt")  # the stage's first commit, on the parent
+    _git(repo, "checkout", "-q", "-b", "s27-guidance")
+    _commit(repo, "track1.txt")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "checkout", "-q", "-b", "unrelated", _base)  # cut before the stage began
+    assert set(gitinfo.branches_containing(first, repo)) == {"main", "s27-guidance"}
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_gitinfo.py -v`
+Expected: FAIL with `AttributeError: module 'ntsb_probable_cause.gitinfo' has no attribute 'commits_between'`
+
+- [x] **Step 3: Add the two functions to `gitinfo.py`**
+
+Add `from collections.abc import Sequence` to the imports, and after `commits_since`:
+
+```python
+def commits_between(base: str, heads: Sequence[str], repo: Path = Path()) -> tuple[str, ...]:
+    """Full SHAs reachable from any of ``heads`` but not from ``base``, each once.
+
+    S2.7 runs as a parent branch with a branch per track stacked on it (decision 0102); a
+    stage's spend must count them all, so this takes several heads where
+    :func:`commits_since` takes HEAD. Raises as :func:`commits_since` does.
+    """
+    listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "rev-list", *heads, f"^{base}"],  # noqa: S607 -- git on PATH
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return tuple(dict.fromkeys(listing.split()))
+
+
+def branches_containing(commit: str, repo: Path = Path()) -> tuple[str, ...]:
+    """Local branches whose history contains ``commit``, by short name (decision 0102)."""
+    listing = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        [  # noqa: S607 -- git on PATH
+            "git", "-C", str(repo), "for-each-ref", "--contains", commit,
+            "--format=%(refname:short)", "refs/heads",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return tuple(listing.split())
+```
+
+- [x] **Step 4: Run the gitinfo tests to verify they pass**
+
+Run: `uv run pytest tests/test_gitinfo.py -v`
+Expected: PASS (2 tests)
+
+- [x] **Step 5: Write the failing budget tests** (append to `tests/test_budget.py`)
+
+```python
+from datetime import UTC, datetime
+
+from ntsb_probable_cause.scoring.budget import (
+    SpendRecord,
+    in_stage,
+    stage_spent,
+    write_spend,
+)
+from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
+
+_STAGE = frozenset({"abcdef1234567890", "1234567abcdef000"})
+
+
+def _run(runs_dir, run_id: str, sha: str, cost: float) -> None:
+    write_jsonl(
+        runs_dir / run_id / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=(),
+                includes=(),
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha=sha,
+                dirty=False,
+                started=datetime(2026, 9, 27, tzinfo=UTC),
+                cost_usd=cost,
+            )
+        ],
+    )
+
+
+def test_in_stage_matches_a_short_sha_by_prefix_and_refuses_a_too_short_one() -> None:
+    assert in_stage("abcdef1", _STAGE)
+    assert not in_stage("abc", _STAGE)
+    assert not in_stage("fffffff", _STAGE)
+
+
+def test_stage_spent_counts_runs_and_spend_rows_of_the_stage_only(tmp_path) -> None:
+    runs = tmp_path / "runs"
+    _run(runs, "in-stage", "abcdef1", 1.25)
+    _run(runs, "other-stage", "9999999", 7.0)
+    write_spend(
+        runs,
+        SpendRecord(
+            job_id="job",
+            kind="transcription",
+            model="m",
+            started=datetime(2026, 9, 27, tzinfo=UTC),
+            calls=3,
+            cost_usd=0.5,
+            commit_sha="1234567",
+            dirty=False,
+        ),
+    )
+    assert stage_spent(runs, _STAGE) == (1.25, 0.5)
+```
+
+- [x] **Step 6: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_budget.py -v -k stage`
+Expected: FAIL with `ImportError: cannot import name 'in_stage'`
+
+- [x] **Step 7: Add `in_stage` and `stage_spent` to `scoring/budget.py`**
+
+Add `from collections.abc import Collection` and `from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl` if not already imported (check the module's imports; `month_spent` already reads both record kinds), then:
+
+```python
+# Recorded commit SHAs are short (``git rev-parse --short``); a stage's commits are full. A
+# recorded SHA matches by prefix, and one shorter than this is refused as ambiguous.
+MIN_SHA_PREFIX = 4
+
+
+def in_stage(sha: str, stage_commits: Collection[str]) -> bool:
+    """Whether a recorded (short) commit SHA is one of a stage's (full) commits."""
+    return len(sha) >= MIN_SHA_PREFIX and any(full.startswith(sha) for full in stage_commits)
+
+
+def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]:
+    """A stage's spend by commit: (evaluation run records, preparation spend rows).
+
+    Counted by commit, not by date, because S2.6 found a date filter caught another stage's
+    runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
+    """
+    runs = sum(
+        record.cost_usd
+        for path in sorted(runs_dir.glob("*/run.jsonl"))
+        for record in read_jsonl(path, RunRecord)
+        if in_stage(record.commit_sha, stage_commits)
+    )
+    spend = sum(
+        row.cost_usd
+        for path in sorted(runs_dir.glob(f"*/{SPEND_FILE}"))
+        for row in read_jsonl(path, SpendRecord)
+        if in_stage(row.commit_sha, stage_commits)
+    )
+    return runs, spend
+```
+
+- [x] **Step 8: Run the budget tests to verify they pass**
+
+Run: `uv run pytest tests/test_budget.py -v`
+Expected: PASS
+
+- [x] **Step 9: Write the failing script tests** (`tests/test_stage_spend.py`)
+
+```python
+"""scripts/stage_spend.py: S2.7's spend against its $25 line (decision 0098 item 6)."""
+
+from pathlib import Path
+
+import pytest
+from scripts import stage_spend as ss
+
+
+def test_report_passes_under_the_line_and_refuses_over_it() -> None:
+    text, over = ss.report(runs=10.0, spend=5.0, estimate=9.0)
+    assert not over
+    assert "S2.7 spend so far: $15.00" in text
+    text, over = ss.report(runs=10.0, spend=5.0, estimate=10.01)
+    assert over
+    assert "refused" in text
+
+
+def test_main_exits_1_over_the_line_and_names_the_branches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(tmp_path))
+    monkeypatch.setattr(ss, "stage_branches", lambda repo=Path(): ("s27-coding-guidance", "s27-guidance"))
+    monkeypatch.setattr(ss, "stage_commits", lambda branches, repo=Path(): frozenset())
+    monkeypatch.setattr(ss, "stage_spent", lambda runs_dir, commits: (24.0, 0.5))
+    assert ss.main(["--estimate", "0.40"]) == 0
+    assert "branches counted: s27-coding-guidance, s27-guidance" in capsys.readouterr().out
+    assert ss.main(["--estimate", "0.60"]) == 1
+
+
+def test_stage_branches_are_those_grown_from_the_first_commit_except_main(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ss,
+        "branches_containing",
+        lambda commit, repo=Path(): ("main", "s27-coding-guidance", "s27-guidance", "s27-transcriber")
+        if commit == "94f5d42"
+        else (),
+    )
+    assert ss.stage_branches() == ("s27-coding-guidance", "s27-guidance", "s27-transcriber")
+
+
+def test_stage_commits_counts_head_and_every_stage_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[list[str]] = []
+    monkeypatch.setattr(
+        ss,
+        "commits_between",
+        lambda base, heads, repo=Path(): asked.append([base, *heads]) or ("c1",),
+    )
+    assert ss.stage_commits(("s27-coding-guidance", "s27-transcriber")) == frozenset({"c1"})
+    assert asked == [["971ee40", "HEAD", "s27-coding-guidance", "s27-transcriber"]]
+```
+
+- [x] **Step 10: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_stage_spend.py -v`
+Expected: FAIL with `ImportError: cannot import name 'stage_spend' from 'scripts'`
+
+- [x] **Step 11: Write `scripts/stage_spend.py`**
+
+```python
+"""S2.7's spend, counted by commit on every branch grown from its parent, against its $25 line.
+
+Status
+    Live check for S2.7 (decision 0098 item 6). Every paid ``make`` target of both tracks runs
+    it first with the step's estimate; it exits 1 when the stage's spend plus the estimate
+    would pass the line. Free: reads run folders only.
+
+Why
+    The line is the stage's stop rule's second half. Spend is counted by commit because S2.6
+    found a date filter caught another stage's runs. S2.7 is a parent branch with a branch per
+    track stacked on it (decision 0102); until the tracks merge back, neither sees the other's
+    commits, so the count takes every local branch whose history holds S2.7's first commit --
+    the parent and everything grown from it -- and prints them.
+
+Usage
+    uv run python -m scripts.stage_spend [--estimate USD]
+"""
+
+import argparse
+import subprocess
+from collections.abc import Sequence
+from pathlib import Path
+
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.gitinfo import branches_containing, commits_between
+from ntsb_probable_cause.scoring.budget import stage_spent
+from ntsb_probable_cause.settings import Settings
+
+STAGE_BASE = "971ee40"
+# S2.7's first commit (the specification's first draft, on the parent s27-coding-guidance).
+# Every branch whose history holds it grew from the parent (decision 0102).
+STAGE_FIRST = "94f5d42"
+# main holds every stage once merged, and later stages' commits too; it is never counted.
+EXCLUDED_BRANCHES = frozenset({"main"})
+
+
+def _git_error(error: Exception) -> ConfigurationError:
+    return ConfigurationError(f"stage_spend: git could not list the stage's commits: {error}")
+
+
+def stage_branches(repo: Path = Path()) -> tuple[str, ...]:
+    """The parent and every branch grown from it: those holding S2.7's first commit."""
+    try:
+        found = branches_containing(STAGE_FIRST, repo)
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _git_error(error) from error
+    return tuple(name for name in found if name not in EXCLUDED_BRANCHES)
+
+
+def stage_commits(branches: Sequence[str], repo: Path = Path()) -> frozenset[str]:
+    """Every commit of the stage: reachable from HEAD or a stage branch, not from the base."""
+    try:
+        return frozenset(commits_between(STAGE_BASE, ["HEAD", *branches], repo))
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _git_error(error) from error
+
+
+def report(*, runs: float, spend: float, estimate: float) -> tuple[str, bool]:
+    """The printed lines, and whether the step is refused."""
+    spent = runs + spend
+    over = spent + estimate > STAGE_LINE_USD
+    lines = [
+        f"S2.7 spend so far: ${spent:.2f} (${runs:.2f} evaluation runs, ${spend:.2f} "
+        f"preparation spend rows; counted by commit from {STAGE_BASE} on every branch grown "
+        "from the parent)",
+        f"this step's estimate: ${estimate:.2f}; the stage line: ${STAGE_LINE_USD:.2f}",
+        (
+            f"refused: ${spent + estimate:.2f} would pass the line (decision 0098 item 6)"
+            if over
+            else f"within the line: ${STAGE_LINE_USD - spent - estimate:.2f} left after this step"
+        ),
+    ]
+    return "\n".join(lines), over
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print the stage's spend; exit 1 if the estimate would pass the line."""
+    parser = argparse.ArgumentParser(prog="stage_spend")
+    parser.add_argument("--estimate", type=float, default=0.0, metavar="USD")
+    args = parser.parse_args(argv)
+    branches = stage_branches()
+    runs, spend = stage_spent(Settings().runs_dir, stage_commits(branches))
+    text, over = report(runs=runs, spend=spend, estimate=args.estimate)
+    print(f"branches counted: {', '.join(branches) or 'none found'}")
+    print(text)
+    return 1 if over else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+(`ruff` may ask to wrap the long `raise` line; wrap it, behaviour unchanged.)
+
+- [x] **Step 12: Run the script tests to verify they pass**
+
+Run: `uv run pytest tests/test_stage_spend.py -v`
+Expected: PASS (3 tests)
+
+- [x] **Step 13: Add the Makefile target**
+
+Add `stage-spend` to `.PHONY`, and:
+
+```make
+stage-spend:
+	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
+# S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
+# S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
+```
+
+- [x] **Step 14: Run the full check**
+
+Run: `make check`
+Expected: PASS
+
+- [x] **Step 15: Commit**
+
+```bash
+git add src/ntsb_probable_cause/gitinfo.py src/ntsb_probable_cause/scoring/budget.py scripts/stage_spend.py Makefile tests/test_gitinfo.py tests/test_budget.py tests/test_stage_spend.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 1: the stage's spend by commit on both branches, against the \$25 line"
+```
+
+- [x] **Step 16: Cut both track branches from the parent** (decision 0102)
+
+Task 1 was done on the parent, `s27-coding-guidance`. Both tracks start here (Global Constraints). From the main checkout:
+
+```bash
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause worktree add .claude/worktrees/s27-guidance -b s27-guidance s27-coding-guidance
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause worktree add .claude/worktrees/s27-transcriber -b s27-transcriber s27-coding-guidance
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause push -u origin s27-guidance s27-transcriber
+```
+
+Check the spending script sees all three: `make stage-spend` prints `branches counted: s27-coding-guidance, s27-guidance, s27-transcriber`. Tasks 2–15 are done in `.claude/worktrees/s27-guidance`.
+
+---
+
+### Task 2: The sealed sample (spec §3.1, §9.1, decision 0095)
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/samples.py`
+- Modify: `src/ntsb_probable_cause/gitinfo.py`
+- Create: `scripts/draw_sealed.py`
+- Create (by running the script): `tests/fixtures/eval/dev_seal_400_ids.csv`
+- Modify: `apps/eval/__main__.py` (`_cmd_run`, `_cmd_transcribe`: one line each)
+- Modify: `tests/fixtures/eval/README.md`
+- Test: `tests/test_samples.py`, `tests/test_gitinfo.py`, `tests/test_contamination.py`, `tests/test_eval_app.py`
+
+**Interfaces:**
+- Consumes: `gitinfo` (Task 1).
+- Produces: `samples.SAMPLES` includes `"dev-seal-400"`; `samples.SEALED_REGISTRATION = Path("docs/rounds/s27-sealed.md")`; `samples.refuse_sealed(sample: str, *, is_committed: Callable[[Path], bool]) -> None` (raises `ConfigurationError`); `samples.draw(processed, split, *, per_slice=200, seed=20260914, exclude: AbstractSet[str] = frozenset())`; `gitinfo.is_committed(path: Path, repo: Path = Path()) -> bool`. Task 10 and Task 13 call `refuse_sealed` too.
+
+**Why the guard reads git, not a flag.** A flag can be passed by mistake; a committed registration naming the final setup is the event decision 0095 opens the sample on, and git records when it happened.
+
+- [x] **Step 1: Write the failing tests**
+
+In `tests/test_gitinfo.py` (reusing `_repo` and `_git` from Task 1):
+
+```python
+def test_is_committed_needs_a_tracked_unchanged_file(tmp_path: Path) -> None:
+    repo, _base = _repo(tmp_path)
+    target = repo / "docs" / "rounds" / "s27-sealed.md"
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)
+    target.parent.mkdir(parents=True)
+    target.write_text("setup\n")
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)  # untracked
+    _git(repo, "add", "docs/rounds/s27-sealed.md")
+    _git(repo, "commit", "-q", "-m", "register")
+    assert gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)
+    target.write_text("changed\n")
+    assert not gitinfo.is_committed(Path("docs/rounds/s27-sealed.md"), repo)  # modified
+```
+
+In `tests/test_samples.py` (reusing its `_raw` and `_write_cases` helpers):
+
+```python
+def test_draw_excludes_the_given_cases_and_is_unchanged_without_them(tmp_path) -> None:
+    rows = [_raw(f"CEN1{i}FA{i:03d}", fatal=i % 2 == 0, klass="F") for i in range(40)]
+    processed = _write_cases(tmp_path, rows)
+    plain = samples.draw(processed, Split.DEV, per_slice=5, seed=7)
+    assert samples.draw(processed, Split.DEV, per_slice=5, seed=7, exclude=frozenset()) == plain
+    excluded = frozenset(case for case, _date in plain)
+    again = samples.draw(processed, Split.DEV, per_slice=5, seed=7, exclude=excluded)
+    assert not excluded & {case for case, _date in again}
+
+
+def test_refuse_sealed_opens_only_on_a_committed_registration() -> None:
+    samples.refuse_sealed("dev-400", is_committed=lambda _path: False)
+    with pytest.raises(ConfigurationError, match="sealed"):
+        samples.refuse_sealed("dev-seal-400", is_committed=lambda _path: False)
+    seen: list[Path] = []
+    samples.refuse_sealed("dev-seal-400", is_committed=lambda path: seen.append(path) or True)
+    assert seen == [Path("docs/rounds/s27-sealed.md")]
+```
+
+(Match `_raw`'s real keyword names in `tests/test_samples.py`; if it takes the class as `investigation_class=`, use that.)
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v -k "committed or exclude or sealed"`
+Expected: FAIL (`is_committed`, `exclude`, `refuse_sealed` missing)
+
+- [x] **Step 3: Implement**
+
+`gitinfo.py`:
+
+```python
+def is_committed(path: Path, repo: Path = Path()) -> bool:
+    """Whether ``path`` (relative to ``repo``) is tracked and has no uncommitted change."""
+    tracked = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "ls-files", "--error-unmatch", str(path)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if tracked.returncode != 0:
+        return False
+    status = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(repo), "status", "--porcelain", "--", str(path)],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return not status.strip()
+```
+
+`samples.py`: add `from collections.abc import Callable, Sequence, Set as AbstractSet` (keep `Sequence`), `from ntsb_probable_cause.errors import ConfigurationError`, then:
+
+```python
+SAMPLES = ("heldout-40", "heldout-400", "dev-400", "dev-seal-400")
+_FILES = {
+    "heldout-40": "decidability_ids.csv",
+    "heldout-400": "heldout_400_ids.csv",
+    "dev-400": "dev_400_ids.csv",
+    "dev-seal-400": "dev_seal_400_ids.csv",
+}
+# Decision 0095: the sealed development sample opens once, when the registration naming the
+# final setup is committed. Every command that would score, read, fetch or transcribe it calls
+# :func:`refuse_sealed` first.
+SEALED = frozenset({"dev-seal-400"})
+SEALED_REGISTRATION = Path("docs/rounds/s27-sealed.md")
+
+
+def refuse_sealed(sample: str, *, is_committed: Callable[[Path], bool]) -> None:
+    """Refuse a sealed sample until its registration is committed (decision 0095).
+
+    Raises:
+        ConfigurationError: ``sample`` is sealed and the registration is not committed.
+    """
+    if sample in SEALED and not is_committed(SEALED_REGISTRATION):
+        raise ConfigurationError(
+            f"{sample} is sealed: commit {SEALED_REGISTRATION}, naming the final setup, "
+            "before anything reads it (decision 0095)"
+        )
+```
+
+In `draw`, add the keyword `exclude: AbstractSet[str] = frozenset()` and filter it in the row comprehension (`if s == split.value and c in {"C", "F", "L"} and n not in exclude`); document it in the docstring: "``exclude``: case ids never drawn (``dev-seal-400`` excludes ``dev-400``, decision 0095)". With `exclude` empty the draw is byte-for-byte the old one.
+
+`apps/eval/__main__.py`: import `from ntsb_probable_cause import gitinfo`; first line of `_cmd_run` and of `_cmd_transcribe`:
+
+```python
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+```
+
+- [x] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_gitinfo.py tests/test_samples.py -v`
+Expected: PASS
+
+- [x] **Step 5: Write the failing app test** (append to `tests/test_eval_app.py`)
+
+```python
+def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    assert main(["run", "--arm", "B", "--sample", "dev-seal-400"]) == 1
+    assert "sealed" in capsys.readouterr().err
+    assert main(
+        ["transcribe", "--sample", "dev-seal-400", "--expected-cost-per-page-usd", "0.001"]
+    ) == 1
+    assert "sealed" in capsys.readouterr().err
+```
+
+(Add `from ntsb_probable_cause import gitinfo` to the test's imports. `main` prints a `ConfigurationError` to stderr and returns 1, as for every other refusal.)
+
+- [x] **Step 6: Run it, confirm it passes with Step 3's app change**
+
+Run: `uv run pytest tests/test_eval_app.py -v -k sealed`
+Expected: PASS. Then comment out the `refuse_sealed` line in `_cmd_run` and re-run: Expected FAIL (the run tries to read the missing ids file). Restore the line.
+
+- [x] **Step 7: Write `scripts/draw_sealed.py`**
+
+```python
+"""Draw the sealed development sample once, or verify the committed list against a re-draw.
+
+Status
+    One-shot for S2.7 (decision 0095): ``draw`` writes tests/fixtures/eval/dev_seal_400_ids.csv
+    and refuses to overwrite it; ``--verify`` re-draws and compares, free, reading only the
+    processed file's index columns (no case is scored, read or fetched).
+
+Why
+    The sealed sample is the one clean check that guidance written from dev-400 generalises.
+    It is drawn exactly as dev-400 was (0026) with a new seed and every dev-400 case excluded.
+
+Usage
+    NTSB_DATA_DIR=... uv run python -m scripts.draw_sealed [--verify]
+"""
+
+import argparse
+import csv
+from collections import Counter
+from collections.abc import Sequence
+
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.settings import Settings
+from ntsb_probable_cause.splits import Split
+
+SEED = 20260926
+OUT = samples.EVAL_DIR / "dev_seal_400_ids.csv"
+
+
+def drawn() -> list[tuple[str, str]]:
+    """The sealed draw: dev split, classes C/F/L, 200 fatal and 200 non-fatal, no dev-400 case."""
+    processed = Settings().data_dir / "processed"
+    return samples.draw(
+        processed, Split.DEV, seed=SEED, exclude=frozenset(samples.sample_ids("dev-400"))
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Write the list once, or verify it."""
+    parser = argparse.ArgumentParser(prog="draw_sealed")
+    parser.add_argument("--verify", action="store_true")
+    args = parser.parse_args(argv)
+    rows = drawn()
+    if args.verify:
+        with OUT.open(newline="") as handle:
+            committed = [(r["case_id"], r["event_date"]) for r in csv.DictReader(handle)]
+        same = committed == rows
+        print(f"dev-seal-400: {len(committed)} committed, {len(rows)} re-drawn, identical: {same}")
+        return 0 if same else 1
+    if OUT.exists():
+        raise SystemExit(f"{OUT} exists: the sealed sample is drawn once (decision 0095)")
+    with OUT.open("w", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["case_id", "event_date"])
+        writer.writerows(rows)
+    years = Counter(date[:4] for _case, date in rows)
+    print(f"dev-seal-400: {len(rows)} cases written to {OUT}; by year {dict(sorted(years.items()))}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+- [x] **Step 8: Draw the sample** (free; reads the processed file's index columns and raw injury level only)
+
+Run:
+```bash
+export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
+uv run python -m scripts.draw_sealed
+uv run python -m scripts.draw_sealed --verify
+```
+Expected: about 400 cases written (the rounding in `draw` gave 401 for `dev-400`); the verify line ends `identical: True`.
+
+- [x] **Step 9: Write the contamination tests** (append to `tests/test_contamination.py`, using its `eval_ids` fixture)
+
+```python
+def test_the_sealed_sample_is_development_and_shares_no_case(eval_ids) -> None:
+    sealed = eval_ids["dev_seal_400_ids"]
+    assert 395 <= len(sealed) <= 405
+    assert all(date[:4] <= "2019" for date in sealed.values())
+    assert not set(sealed) & set(eval_ids["dev_400_ids"])
+    assert not set(sealed) & set(eval_ids["heldout_400_ids"])
+    assert not set(sealed) & set(eval_ids["decidability_ids"])
+```
+
+Add a line for `dev_seal_400_ids.csv` to `tests/fixtures/eval/README.md` ("the sealed development sample, decision 0095; drawn by `scripts/draw_sealed.py`, seed 20260926, excluding `dev-400`; opened once").
+
+- [x] **Step 10: Run the full check**
+
+Run: `make check`
+Expected: PASS
+
+- [x] **Step 11: Commit**
+
+```bash
+git add src/ntsb_probable_cause/scoring/samples.py src/ntsb_probable_cause/gitinfo.py scripts/draw_sealed.py tests/fixtures/eval/dev_seal_400_ids.csv tests/fixtures/eval/README.md apps/eval/__main__.py tests/test_samples.py tests/test_gitinfo.py tests/test_contamination.py tests/test_eval_app.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 2: the sealed development sample, drawn once and refused until registered"
+```
+
+---
+
+### Task 3: The statistics pool and the coding counts (spec §3.2, decision 0094; W1)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/scoring/coding_stats.py`
+- Create: `scripts/coding_stats.py`
+- Create (by running the script): `src/ntsb_probable_cause/scoring/tables/coding_stats.json`, `docs/results/s27-coding-stats.txt`
+- Modify: `pyproject.toml` (import-linter: add `ntsb_probable_cause.scoring.coding_stats` to the "Only the splitter constructs synthesis and verdict" source list)
+- Modify: `Makefile`
+- Test: `tests/test_coding_stats.py` (create), `tests/test_coding_stats_script.py` (create)
+
+**Interfaces:**
+- Produces:
+  - `coding_stats.PoolCase(year: int, group: str | None, sequence: tuple[str, ...])` (frozen dataclass; `sequence[0]` is the defining event, as `fields.occurrence_codes` orders it).
+  - `coding_stats.HALVES: tuple[tuple[str, int, int], ...] = (("2009-2014", 2009, 2014), ("2015-2019", 2015, 2019))`.
+  - `coding_stats.CodingStats` (pydantic, frozen) with fields `built_from: str`, `cases: dict[str, int]`, `present: dict[str, dict[str, int]]`, `defining_given_present: dict[str, dict[str, dict[str, int]]]`, `pairs: dict[str, dict[str, dict[str, int]]]`, `group_defining: dict[str, dict[str, dict[str, int]]]` — each keyed first by half — and methods `present_n(code) -> int`, `defining_given(code) -> dict[str, int]`, `pair(a, b) -> dict[str, int]`, `group_defining_n(group, code) -> int`, `group_top(group, k) -> list[str]`, `group_phases(group) -> dict[str, int]`, `defining_n(code) -> int`, `to_json() -> str`.
+  - `coding_stats.build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats`; `coding_stats.load_stats() -> CodingStats` (cached; reads the committed JSON); `coding_stats.NO_GROUP = "(none)"`.
+  - `scripts.coding_stats.pool_cases(rows, *, excluded: AbstractSet[str]) -> tuple[list[PoolCase], list[str]]` and `scripts.coding_stats.check_pool(ids, *, excluded, splits) -> None` (raises `LeakageError`).
+- Task 8 consumes `CodingStats` and `load_stats`.
+
+**What each count means, with the example that motivates it.** `present[half][c]` is the number of pool cases whose sequence contains code `c` anywhere. `defining_given_present[half][c][d]` is, among those, the number where `d` is the defining event: "when `451241` (stall/spin) appears, `451240` (loss of control in flight) is defining in N of M". `pairs[half]["a|b"]` (codes sorted) holds `both` (cases containing both) and, for each of `a` and `b`, the cases where it is the defining event: "when loss of control and stall both occur, loss of control is defining in N of `both`". `group_defining[half][g][d]` is the number of pool cases whose phase group is `g` and whose defining code is `d`; it gives the commonest defining codes for a group and, by the first three digits of `d`, **which phase prefixes the NTSB uses within a group** (W1).
+
+- [x] **Step 1: Write the failing library tests** (`tests/test_coding_stats.py`)
+
+```python
+"""scoring/coding_stats.py: counts of how the NTSB codes occurrences (decision 0094)."""
+
+from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, CodingStats, PoolCase, build
+
+LOC, STALL, CFIT = "452240", "452241", "452120"
+
+CASES = [
+    PoolCase(year=2010, group="Maneuvering", sequence=(LOC, STALL)),
+    PoolCase(year=2012, group="Maneuvering", sequence=(LOC, STALL, CFIT)),
+    PoolCase(year=2016, group="Maneuvering", sequence=(STALL, LOC)),
+    PoolCase(year=2017, group="Landing", sequence=("552300",)),
+    PoolCase(year=2018, group=None, sequence=(CFIT,)),
+    PoolCase(year=2019, group="Landing", sequence=()),  # no codes: not counted
+]
+
+
+def _stats() -> CodingStats:
+    return build(CASES, built_from="test")
+
+
+def test_cases_are_counted_by_half_and_empty_sequences_skipped() -> None:
+    stats = _stats()
+    assert stats.cases == {"2009-2014": 2, "2015-2019": 3}
+
+
+def test_present_and_defining_given_present() -> None:
+    stats = _stats()
+    assert stats.present_n(STALL) == 3
+    assert stats.defining_given(STALL) == {LOC: 2, STALL: 1}
+    assert stats.defining_given(CFIT) == {LOC: 1, CFIT: 1}
+
+
+def test_pairs_count_both_and_each_side_defining() -> None:
+    stats = _stats()
+    assert stats.pair(STALL, LOC) == {"both": 3, LOC: 2, STALL: 1}
+    assert stats.pair(LOC, "999999") == {"both": 0}
+
+
+def test_groups_give_defining_codes_and_phase_prefixes() -> None:
+    stats = _stats()
+    assert stats.group_defining_n("Maneuvering", LOC) == 2
+    assert stats.group_top("Maneuvering", 2) == [LOC, STALL]
+    assert stats.group_phases("Maneuvering") == {"452": 3}
+    assert stats.group_defining_n(NO_GROUP, CFIT) == 1
+
+
+def test_json_round_trip() -> None:
+    stats = _stats()
+    assert CodingStats.model_validate_json(stats.to_json()) == stats
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_coding_stats.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'ntsb_probable_cause.scoring.coding_stats'`
+
+- [x] **Step 3: Write `scoring/coding_stats.py`**
+
+```python
+"""Counts of how the NTSB codes occurrences, from the statistics pool (decision 0094).
+
+The pool is every development case in classes C, F and L outside ``dev-400`` and
+``dev-seal-400``; ``scripts/coding_stats.py`` builds it and commits the counts beside the code
+tables. This module holds the counts and reads them; it never reads a case, and nothing here
+names one. Every count is kept per half of the decade so a habit that changed is visible.
+"""
+
+from collections import Counter, defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass
+from functools import cache
+from importlib import resources
+
+from pydantic import BaseModel, ConfigDict
+
+HALVES: tuple[tuple[str, int, int], ...] = (("2009-2014", 2009, 2014), ("2015-2019", 2015, 2019))
+# A case whose phase-of-flight evidence is blank is counted under this group name.
+NO_GROUP = "(none)"
+_RESOURCE = "tables/coding_stats.json"
+
+
+@dataclass(frozen=True)
+class PoolCase:
+    """One pool case, reduced to what is counted: no case number, no text."""
+
+    year: int
+    group: str | None
+    sequence: tuple[str, ...]
+
+
+def _half(year: int) -> str:
+    for name, first, last in HALVES:
+        if first <= year <= last:
+            return name
+    raise ValueError(f"year {year} is outside the development split's halves")
+
+
+def _pair_key(a: str, b: str) -> str:
+    return "|".join(sorted((a, b)))
+
+
+class CodingStats(BaseModel):
+    """The counts, keyed first by half (see :data:`HALVES`)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    built_from: str
+    cases: dict[str, int]
+    present: dict[str, dict[str, int]]
+    defining_given_present: dict[str, dict[str, dict[str, int]]]
+    pairs: dict[str, dict[str, dict[str, int]]]
+    group_defining: dict[str, dict[str, dict[str, int]]]
+
+    def present_n(self, code: str) -> int:
+        """Pool cases whose sequence contains ``code``."""
+        return sum(half.get(code, 0) for half in self.present.values())
+
+    def defining_given(self, code: str) -> dict[str, int]:
+        """Among pool cases containing ``code``: defining code -> cases."""
+        total: Counter[str] = Counter()
+        for half in self.defining_given_present.values():
+            total.update(half.get(code, {}))
+        return dict(total)
+
+    def pair(self, a: str, b: str) -> dict[str, int]:
+        """Cases holding both codes (``both``), and for each code the cases it is defining."""
+        total: Counter[str] = Counter({"both": 0})
+        for half in self.pairs.values():
+            total.update(half.get(_pair_key(a, b), {}))
+        return dict(total)
+
+    def group_defining_n(self, group: str, code: str) -> int:
+        """Pool cases with phase group ``group`` whose defining code is ``code``."""
+        return sum(half.get(group, {}).get(code, 0) for half in self.group_defining.values())
+
+    def defining_n(self, code: str) -> int:
+        """Pool cases whose defining code is ``code``, over every group."""
+        return sum(
+            codes.get(code, 0) for half in self.group_defining.values() for codes in half.values()
+        )
+
+    def group_top(self, group: str, k: int) -> list[str]:
+        """The ``k`` commonest defining codes in ``group``; ties by code."""
+        total: Counter[str] = Counter()
+        for half in self.group_defining.values():
+            total.update(half.get(group, {}))
+        return [code for code, _n in sorted(total.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
+
+    def group_phases(self, group: str) -> dict[str, int]:
+        """Phase prefix -> pool cases in ``group`` whose defining code has it (plan W1)."""
+        total: Counter[str] = Counter()
+        for half in self.group_defining.values():
+            for code, n in half.get(group, {}).items():
+                total[code[:3]] += n
+        return dict(total)
+
+    def to_json(self) -> str:
+        """The committed form: one-space indent, keys as built (sorted)."""
+        return self.model_dump_json(indent=1)
+
+
+def _sorted(tree: object) -> object:
+    if isinstance(tree, dict):
+        return {key: _sorted(tree[key]) for key in sorted(tree)}
+    return tree
+
+
+def build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats:
+    """Count ``cases``; a case with no occurrence codes is skipped."""
+    counted: Counter[str] = Counter()
+    present: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    given: defaultdict[str, defaultdict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    pairs: defaultdict[str, defaultdict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    groups: defaultdict[str, defaultdict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    for case in cases:
+        if not case.sequence:
+            continue
+        half = _half(case.year)
+        counted[half] += 1
+        defining = case.sequence[0]
+        codes = sorted(set(case.sequence))
+        for code in codes:
+            present[half][code] += 1
+            given[half][code][defining] += 1
+        for i, a in enumerate(codes):
+            for b in codes[i + 1 :]:
+                key = _pair_key(a, b)
+                pairs[half][key]["both"] += 1
+                if defining in (a, b):
+                    pairs[half][key][defining] += 1
+        groups[half][case.group or NO_GROUP][defining] += 1
+    return CodingStats.model_validate(
+        _sorted(
+            {
+                "built_from": built_from,
+                "cases": dict(counted),
+                "present": {h: dict(c) for h, c in present.items()},
+                "defining_given_present": {
+                    h: {c: dict(d) for c, d in by.items()} for h, by in given.items()
+                },
+                "pairs": {h: {k: dict(v) for k, v in by.items()} for h, by in pairs.items()},
+                "group_defining": {
+                    h: {g: dict(d) for g, d in by.items()} for h, by in groups.items()
+                },
+            }
+        )
+    )
+
+
+@cache
+def load_stats() -> CodingStats:
+    """The committed counts (``scoring/tables/coding_stats.json``)."""
+    text = resources.files("ntsb_probable_cause.scoring").joinpath(_RESOURCE).read_text()
+    return CodingStats.model_validate_json(text)
+```
+
+(`_sorted` returns `object`; `model_validate` accepts it. If mypy objects to the `dict` comprehension inside `_sorted`, annotate the parameter as `dict[str, object] | object` and cast; keep behaviour.)
+
+- [x] **Step 4: Run the library tests to verify they pass**
+
+Run: `uv run pytest tests/test_coding_stats.py -v`
+Expected: PASS (5 tests)
+
+- [x] **Step 5: Add the module to the import-linter contract**
+
+In `pyproject.toml`, add `"ntsb_probable_cause.scoring.coding_stats",` to the source list of "Only the splitter constructs synthesis and verdict" (after `scoring.codes`). Run `uv run lint-imports`. Expected: all contracts kept.
+
+- [x] **Step 6: Write the failing script tests** (`tests/test_coding_stats_script.py`)
+
+```python
+"""scripts/coding_stats.py: the pool, and the contamination guard (decision 0094)."""
+
+import pytest
+from scripts import coding_stats as cs
+
+from ntsb_probable_cause.errors import LeakageError
+
+
+def _row(case: str, date: str, split: str, klass: str, codes: tuple[str, ...], group: str):
+    events = [
+        {
+            "eventCode": code,
+            "isDefiningEvent": i == 0,
+            "sequenceNumber": i + 1,
+            "cicttPhaseSOEGroup": group,
+        }
+        for i, code in enumerate(codes)
+    ]
+    return case, date, split, klass, {"aircrafts": [{"events": events}]}
+
+
+ROWS = [
+    _row("POOL1", "2011-05-01", "dev", "C", ("552300",), "Landing"),
+    _row("POOL2", "2016-05-01", "dev", "F", ("452240", "452241"), "Maneuvering"),
+    _row("DEV400", "2012-01-01", "dev", "C", ("552300",), "Landing"),
+    _row("OTHERCLASS", "2012-01-01", "dev", "I", ("552300",), "Landing"),
+    _row("HELD", "2021-01-01", "heldout", "C", ("552300",), "Landing"),
+    _row("OPEN", "2025-01-01", "open", "C", ("552300",), "Landing"),
+]
+
+
+def test_pool_keeps_dev_classes_c_f_l_outside_the_samples() -> None:
+    cases, ids = cs.pool_cases(ROWS, excluded=frozenset({"DEV400"}))
+    assert ids == ["POOL1", "POOL2"]
+    assert [c.sequence for c in cases] == [("552300",), ("452240", "452241")]
+    assert cases[1].group == "Maneuvering"
+
+
+def test_check_pool_refuses_a_sample_case_or_a_non_development_case() -> None:
+    cs.check_pool(["POOL1"], excluded=frozenset({"DEV400"}), splits={"POOL1": "dev"})
+    with pytest.raises(LeakageError, match="DEV400"):
+        cs.check_pool(["DEV400"], excluded=frozenset({"DEV400"}), splits={"DEV400": "dev"})
+    with pytest.raises(LeakageError, match="HELD"):
+        cs.check_pool(["HELD"], excluded=frozenset(), splits={"HELD": "heldout"})
+
+
+def test_report_prints_counts_and_both_halves_without_case_numbers() -> None:
+    cases, _ids = cs.pool_cases(ROWS, excluded=frozenset({"DEV400"}))
+    stats = cs.build(cases, built_from="test")
+    text = cs.report(stats)
+    assert "2009-2014: 1 cases; 2015-2019: 1 cases" in text
+    assert "POOL" not in text
+```
+
+- [x] **Step 7: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_coding_stats_script.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 8: Write `scripts/coding_stats.py`**
+
+```python
+"""Build the statistics pool's coding counts, once (decision 0094).
+
+Status
+    One build for S2.7, free: streams the processed file, writes
+    src/ntsb_probable_cause/scoring/tables/coding_stats.json (the counts the ordering check and
+    the guidance read) and docs/results/s27-coding-stats.txt (the same counts, readable).
+    Counts and code labels only; no case number or text is written.
+
+Why
+    The ordering check and the guidance need the NTSB's own coding habits. They come from
+    development cases outside both samples, so no scored case helps answer itself; a guard
+    refuses the build if a sample, held-out or open case reaches the pool.
+
+Usage
+    NTSB_DATA_DIR=... uv run python -m scripts.coding_stats [--out PATH]
+"""
+
+import argparse
+import json
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Set as AbstractSet
+from pathlib import Path
+
+import pyarrow.parquet as pq
+
+from ntsb_probable_cause import fields
+from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
+from ntsb_probable_cause.scoring.coding_stats import HALVES, CodingStats, PoolCase, build
+from ntsb_probable_cause.settings import Settings
+
+POOL_CLASSES = frozenset({"C", "F", "L"})
+EXCLUDED_SAMPLES = ("dev-400", "dev-seal-400")
+JSON_OUT = Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json")
+BUILT_FROM = (
+    "development split, classes C/F/L, excluding dev-400 and dev-seal-400 "
+    "(scripts/coding_stats.py, decision 0094)"
+)
+TOP = 40
+_GROUP = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+Row = tuple[str, str, str, str, Mapping[str, object]]
+
+
+def processed_rows(processed: Path) -> Iterator[Row]:
+    """Stream (case, event date, split, class, raw) from the processed file."""
+    columns = ["ntsb_number", "event_date", "split", "investigation_class", "raw_json"]
+    with pq.ParquetFile(processed / "cases.parquet") as parquet:
+        for batch in parquet.iter_batches(batch_size=512, columns=columns):
+            yield from (
+                (str(n), str(d), str(s), str(c), json.loads(r))
+                for n, d, s, c, r in zip(
+                    *(batch.column(col).to_pylist() for col in columns), strict=True
+                )
+            )
+
+
+def pool_cases(rows: Iterable[Row], *, excluded: AbstractSet[str]) -> tuple[list[PoolCase], list[str]]:
+    """The pool: development, classes C/F/L, not in ``excluded``; and its case ids, in order."""
+    cases: list[PoolCase] = []
+    ids: list[str] = []
+    for case, date, split, klass, raw in rows:
+        if split != "dev" or klass not in POOL_CLASSES or case in excluded:
+            continue
+        group = _GROUP.extract(raw)
+        cases.append(
+            PoolCase(
+                year=int(date[:4]),
+                group=group if isinstance(group, str) else None,
+                sequence=fields.occurrence_codes(raw),
+            )
+        )
+        ids.append(case)
+    return cases, ids
+
+
+def check_pool(ids: Sequence[str], *, excluded: AbstractSet[str], splits: Mapping[str, str]) -> None:
+    """Refuse a pool holding a sample case or any case outside the development split."""
+    leaked = sorted(set(ids) & excluded)
+    if leaked:
+        raise LeakageError(f"the statistics pool holds sample cases: {leaked[:5]} (decision 0094)")
+    foreign = sorted(i for i in ids if splits.get(i) != "dev")
+    if foreign:
+        raise LeakageError(f"the statistics pool holds non-development cases: {foreign[:5]}")
+
+
+def _label(code: str, tables: CodeTables) -> str:
+    return f"{code} {tables.phases.get(code[:3], '?')} / {tables.events.get(code[3:], '?')}"
+
+
+def report(stats: CodingStats, tables: CodeTables | None = None) -> str:
+    """The readable counts: both halves printed beside the total."""
+    tables = tables or load_tables()
+    halves = [name for name, _first, _last in HALVES]
+    lines = [
+        "coding counts from the statistics pool (scripts/coding_stats.py; counts only, decision 0094)",
+        f"built from: {stats.built_from}",
+        "; ".join(f"{h}: {stats.cases.get(h, 0)} cases" for h in halves),
+        "",
+        f"## when a code appears, which code is defining (the {TOP} commonest codes; n = cases containing it)",
+    ]
+    commonest = sorted(
+        {c for half in stats.present.values() for c in half},
+        key=lambda c: (-stats.present_n(c), c),
+    )[:TOP]
+    for code in commonest:
+        given = sorted(stats.defining_given(code).items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        by_half = ", ".join(
+            f"{h} n={stats.present.get(h, {}).get(code, 0)}" for h in halves
+        )
+        lines.append(f"- {_label(code, tables)}: n={stats.present_n(code)} ({by_half})")
+        lines.extend(f"    defining: {_label(d, tables)} {k}" for d, k in given)
+    lines += ["", f"## pairs occurring together (the {TOP} commonest)"]
+    pairs = sorted(
+        {key for half in stats.pairs.values() for key in half},
+        key=lambda key: (-stats.pair(*key.split("|"))["both"], key),
+    )[:TOP]
+    for key in pairs:
+        a, b = key.split("|")
+        counts = stats.pair(a, b)
+        halves_text = "; ".join(
+            f"{h}: both {stats.pairs.get(h, {}).get(key, {}).get('both', 0)}, "
+            f"{a} {stats.pairs.get(h, {}).get(key, {}).get(a, 0)}, "
+            f"{b} {stats.pairs.get(h, {}).get(key, {}).get(b, 0)}"
+            for h in halves
+        )
+        lines.append(
+            f"- {_label(a, tables)} + {_label(b, tables)}: both {counts['both']}, "
+            f"{a} defining {counts.get(a, 0)}, {b} defining {counts.get(b, 0)} ({halves_text})"
+        )
+    lines += ["", "## phase groups: phase prefixes used, and the three commonest defining codes"]
+    groups = sorted({g for half in stats.group_defining.values() for g in half})
+    for group in groups:
+        phases = sorted(stats.group_phases(group).items(), key=lambda kv: (-kv[1], kv[0]))
+        lines.append(f"- {group}: phases " + ", ".join(f"{p} {tables.phases.get(p, '?')} {n}" for p, n in phases))
+        lines.extend(
+            f"    {_label(c, tables)} {stats.group_defining_n(group, c)}" for c in stats.group_top(group, 3)
+        )
+    return "\n".join(lines)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Build the pool, guard it, write the JSON and the report."""
+    parser = argparse.ArgumentParser(prog="coding_stats")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    processed = Settings().data_dir / "processed"
+    excluded = frozenset(i for name in EXCLUDED_SAMPLES for i in samples.sample_ids(name))
+    # One streaming pass: holding every raw record at once costs about 600 MB (the note on
+    # samples.seen_pairs); only each case's split is kept beside the pool.
+    splits: dict[str, str] = {}
+
+    def tapped() -> Iterator[Row]:
+        for row in processed_rows(processed):
+            splits[row[0]] = row[2]
+            yield row
+
+    cases, ids = pool_cases(tapped(), excluded=excluded)
+    check_pool(ids, excluded=excluded, splits=splits)
+    stats = build(cases, built_from=BUILT_FROM)
+    JSON_OUT.write_text(stats.to_json() + "\n")
+    text = report(stats)
+    print(text)
+    if args.out is not None:
+        Path(args.out).write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+The test module calls `cs.build`; the script's `from ... import build` line provides it. Lines ruff asks to wrap are wrapped; behaviour unchanged.
+
+- [x] **Step 9: Run the script tests to verify they pass**
+
+Run: `uv run pytest tests/test_coding_stats_script.py -v`
+Expected: PASS (3 tests)
+
+- [x] **Step 10: Add the Makefile target**
+
+```make
+s27-coding-stats:
+	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt
+# S2.7 spec §3.2, free: the statistics pool's coding counts, once (decision 0094). Writes the
+# committed JSON beside the code tables and the readable results file.
+```
+
+- [x] **Step 11: Build the counts** (free)
+
+Run:
+```bash
+export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
+make s27-coding-stats
+```
+Expected: the halves line shows about 12,490 cases in all (spec §3.1, ad hoc); the "phase groups" section shows, for example, `Maneuvering` with prefixes in the 450s. Read the stall/loss-of-control pair line: it re-derives the spec's ad-hoc observation that loss of control is usually defining.
+
+- [x] **Step 12: Add a CI test that the committed counts name no case** (append to `tests/test_coding_stats.py`)
+
+```python
+import re
+from pathlib import Path
+
+_CASE_NUMBER = re.compile(r"\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z]?\b")
+
+
+def test_the_committed_counts_load_and_name_no_case() -> None:
+    from ntsb_probable_cause.scoring.coding_stats import load_stats
+
+    stats = load_stats()
+    assert "excluding dev-400 and dev-seal-400" in stats.built_from
+    for path in (
+        Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json"),
+        Path("docs/results/s27-coding-stats.txt"),
+    ):
+        assert not _CASE_NUMBER.search(path.read_text()), path
+```
+
+- [x] **Step 13: Run the full check**
+
+Run: `make check`
+Expected: PASS
+
+- [x] **Step 14: Commit**
+
+```bash
+git add src/ntsb_probable_cause/scoring/coding_stats.py src/ntsb_probable_cause/scoring/tables/coding_stats.json scripts/coding_stats.py docs/results/s27-coding-stats.txt pyproject.toml Makefile tests/test_coding_stats.py tests/test_coding_stats_script.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 3: the statistics pool's coding counts, guarded against contamination"
+```
+
+---
+
+## Part B — Round 0: look before changing anything (spec §4)
+
+### Task 4: The six miss groups, finding depth and the model's own words (spec §4.1)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/scoring/misses.py`
+- Modify: `scripts/occurrence_misses.py`
+- Modify: `pyproject.toml` (import-linter source list: add `ntsb_probable_cause.scoring.misses`)
+- Test: `tests/test_misses.py` (create), `tests/test_occurrence_misses.py`
+
+**Interfaces:**
+- Produces:
+  - `misses.MissGroup = Literal["exact", "right event, wrong phase", "in sequence, not defining", "a later guess in sequence", "event under another phase", "nothing in common", "abstained"]`; `misses.GROUPS: tuple[MissGroup, ...]` in that order; `misses.MISS_GROUPS` = the five miss groups (every group but `exact` and `abstained`).
+  - `misses.miss_group(guesses: Sequence[str], truth: Sequence[str], *, abstain: bool) -> MissGroup`.
+  - `misses.FindingDepth` (frozen dataclass: `flagged`, `found`, `item_right_modifier_wrong`, `category_right_item_wrong`, `category_wrong`, all `int`; `__add__`); `misses.finding_depth(predicted: Sequence[str], flagged: Sequence[str]) -> FindingDepth`.
+  - `misses.EVENT_PHRASES: Mapping[str, tuple[str, ...]]`; `misses.names_event(text: str, event: str) -> bool | None` (None when the event has no phrase list).
+  - `scripts.occurrence_misses.detail(cases, tables) -> str`; `scripts.occurrence_misses.churn(a, b) -> str`; `main` gains `--against RUN_ID`.
+- Tasks 6 and 11 consume `miss_group` and `MISS_GROUPS`.
+
+**The groups, with an example each.** The NTSB's sequence is `(452240, 452241)` (loss of control in flight, defining; then stall/spin). A first guess of `452240` is *exact*; `450240` is *right event, wrong phase*; `452241` is *in sequence, not defining*; guesses `(470470, 452241)` are *a later guess in sequence*; `(450241,)` is *event under another phase*; `(552300,)` is *nothing in common*. The groups are tested in that order, so each case lands in exactly one.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_misses.py`)
+
+```python
+"""scoring/misses.py: where a first guess lands, and how deep a finding miss goes."""
+
+import pytest
+
+from ntsb_probable_cause.scoring.misses import (
+    GROUPS,
+    MISS_GROUPS,
+    FindingDepth,
+    finding_depth,
+    miss_group,
+    names_event,
+)
+
+TRUTH = ("452240", "452241")
+
+
+@pytest.mark.parametrize(
+    ("guesses", "group"),
+    [
+        (("452240",), "exact"),
+        (("450240", "452241"), "right event, wrong phase"),
+        (("452241",), "in sequence, not defining"),
+        (("470470", "452241"), "a later guess in sequence"),
+        (("450241",), "event under another phase"),
+        (("552300",), "nothing in common"),
+    ],
+)
+def test_each_case_lands_in_one_group(guesses: tuple[str, ...], group: str) -> None:
+    assert miss_group(guesses, TRUTH, abstain=False) == group
+
+
+def test_abstained_and_empty_truth() -> None:
+    assert miss_group(("452240",), TRUTH, abstain=True) == "abstained"
+    assert miss_group(("452240",), (), abstain=False) == "nothing in common"
+
+
+def test_the_group_lists() -> None:
+    assert GROUPS[0] == "exact"
+    assert "exact" not in MISS_GROUPS
+    assert "abstained" not in MISS_GROUPS
+    assert len(MISS_GROUPS) == 5
+
+
+def test_finding_depth_counts_each_flagged_finding_once_at_its_deepest_match() -> None:
+    flagged = ("0106201220", "0206304044", "0303403591", "0204152044")
+    predicted = ("0106201220", "0206304099", "0303403000")
+    assert finding_depth(predicted, flagged) == FindingDepth(
+        flagged=4, found=1, item_right_modifier_wrong=1, category_right_item_wrong=1, category_wrong=1
+    )
+    assert finding_depth((), ()) + finding_depth((), ("0106201220",)) == FindingDepth(
+        flagged=1, found=0, item_right_modifier_wrong=0, category_right_item_wrong=0, category_wrong=1
+    )
+
+
+def test_names_event_is_a_fixed_phrase_list() -> None:
+    assert names_event("The pilot LOST CONTROL of the airplane.", "240") is True
+    assert names_event("The airplane stalled.", "240") is False
+    assert names_event("anything", "999") is None
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_misses.py -v`
+Expected: FAIL with `ModuleNotFoundError`
+
+- [x] **Step 3: Write `scoring/misses.py`**
+
+```python
+"""Where a first occurrence guess lands in the NTSB's sequence, and how deep a finding miss goes.
+
+S2.7 spec §4.1. Pure functions over codes: no case, no text but the model's own. A six-digit
+occurrence code is a three-digit phase and a three-digit event; the NTSB's sequence lists the
+defining event first (``fields.occurrence_codes``).
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Literal
+
+MissGroup = Literal[
+    "exact",
+    "right event, wrong phase",
+    "in sequence, not defining",
+    "a later guess in sequence",
+    "event under another phase",
+    "nothing in common",
+    "abstained",
+]
+GROUPS: tuple[MissGroup, ...] = (
+    "exact",
+    "right event, wrong phase",
+    "in sequence, not defining",
+    "a later guess in sequence",
+    "event under another phase",
+    "nothing in common",
+    "abstained",
+)
+MISS_GROUPS: tuple[MissGroup, ...] = GROUPS[1:6]
+
+
+def miss_group(guesses: Sequence[str], truth: Sequence[str], *, abstain: bool) -> MissGroup:
+    """The one group a case's first guess falls in, tested in the order of :data:`GROUPS`."""
+    if abstain:
+        return "abstained"
+    if not truth or not guesses:
+        return "nothing in common"
+    first, defining = guesses[0], truth[0]
+    if first == defining:
+        return "exact"
+    if first[3:] == defining[3:]:
+        return "right event, wrong phase"
+    if first in truth:
+        return "in sequence, not defining"
+    if any(guess in truth for guess in guesses[1:]):
+        return "a later guess in sequence"
+    if any(guess[3:] == code[3:] for guess in guesses for code in truth):
+        return "event under another phase"
+    return "nothing in common"
+
+
+@dataclass(frozen=True)
+class FindingDepth:
+    """For the NTSB's flagged findings: how many the model found, and how deep each miss was."""
+
+    flagged: int
+    found: int
+    item_right_modifier_wrong: int
+    category_right_item_wrong: int
+    category_wrong: int
+
+    def __add__(self, other: FindingDepth) -> FindingDepth:
+        return FindingDepth(
+            self.flagged + other.flagged,
+            self.found + other.found,
+            self.item_right_modifier_wrong + other.item_right_modifier_wrong,
+            self.category_right_item_wrong + other.category_right_item_wrong,
+            self.category_wrong + other.category_wrong,
+        )
+
+
+def finding_depth(predicted: Sequence[str], flagged: Sequence[str]) -> FindingDepth:
+    """Each flagged ten-digit finding at its deepest match among the model's findings."""
+    found = modifier = item = category = 0
+    for code in flagged:
+        if code in predicted:
+            found += 1
+        elif any(p[:8] == code[:8] for p in predicted):
+            modifier += 1
+        elif any(p[:6] == code[:6] for p in predicted):
+            item += 1
+        else:
+            category += 1
+    return FindingDepth(len(flagged), found, modifier, item, category)
+
+
+# A fixed, crude list, committed so "the model's own words name the NTSB's event" is counted
+# the same way every time (spec §4.1 item 4). Lower case; matched as substrings.
+EVENT_PHRASES: Mapping[str, tuple[str, ...]] = {
+    "090": ("bounced", "porpois", "abnormal runway contact"),
+    "092": ("hard landing", "landed hard"),
+    "120": ("controlled flight into terrain", "cfit"),
+    "191": ("fuel starvation", "starved", "fuel selector"),
+    "192": ("fuel exhaustion", "ran out of fuel", "exhausted the fuel", "no usable fuel"),
+    "220": ("low altitude", "low-altitude", "low level", "low-level"),
+    "230": ("loss of control", "lost control", "ground loop", "veered"),
+    "240": ("loss of control", "lost control", "loss of aircraft control"),
+    "241": ("stall", "spin"),
+    "300": ("runway excursion", "departed the runway", "exited the runway", "ran off", "overran"),
+    "341": ("total loss of engine power", "total loss of power", "engine stopped", "engine quit"),
+    "342": ("partial loss of engine power", "partial loss of power", "lost partial power"),
+    "401": ("instrument meteorological", "imc", "cloud", "fog", "visibility"),
+    "470": ("collided with", "collision with", "struck", "impacted"),
+}
+
+
+def names_event(text: str, event: str) -> bool | None:
+    """Whether ``text`` names ``event`` by the fixed list; None when the event has no list."""
+    phrases = EVENT_PHRASES.get(event)
+    if phrases is None:
+        return None
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in phrases)
+```
+
+- [x] **Step 4: Run the tests to verify they pass; add the import-linter entry**
+
+Run: `uv run pytest tests/test_misses.py -v && uv run lint-imports`
+Expected: PASS; contracts kept (after adding `"ntsb_probable_cause.scoring.misses",` to the "Only the splitter…" source list).
+
+- [x] **Step 5: Write the failing script tests** (append to `tests/test_occurrence_misses.py`, reusing its `_case`, `_step`, `CASES`, `_write_run`)
+
+```python
+def test_detail_prints_the_six_groups_confidence_and_own_words() -> None:
+    text = om.detail(CASES, load_tables())
+    assert "## the six groups (first guess)" in text
+    for group in ("exact", "right event, wrong phase", "nothing in common"):
+        assert group in text
+    assert "median confidence" in text
+    assert "## the model's own words" in text
+
+
+def _hit(case: CaseResult, top1: bool) -> CaseResult:
+    return case.model_copy(update={"scores": replace(_SCORES, occurrence_top1=top1)})
+
+
+def test_churn_counts_changed_first_guesses_and_hits_gained_and_lost() -> None:
+    # this run: C1 right, C2 wrong; the second run: C1 wrong (other guess), C2 wrong (same guess)
+    this = [
+        _hit(_case("C1", ("452240",), ("452240",)), top1=True),
+        _hit(_case("C2", ("452240",), ("452241",)), top1=False),
+    ]
+    other = [
+        _hit(_case("C1", ("452240",), ("452241",)), top1=False),
+        _hit(_case("C2", ("452240",), ("452241",)), top1=False),
+    ]
+    text = om.churn(this, other)
+    assert "same first guess: 1 of 2" in text
+    assert "top-1 gained 1, lost 0" in text
+
+
+def test_main_with_against_prints_churn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    first, second = "20260926T000000-abc1234-dev-400-B", "20260927T000000-abc1234-dev-400-B"
+    for run_id in (first, second):
+        folder = _write_run(runs, run_id)
+        write_jsonl(folder / "cases.jsonl", CASES)
+    assert om.main(["--run", first, "--against", second]) == 0
+    out = capsys.readouterr().out
+    assert "## the six groups (first guess)" in out
+    assert "same first guess: 5 of 5" in out
+```
+
+(Add `from dataclasses import replace` to the test module's imports. `churn` counts "gained" as right in this run and wrong in the second, "lost" the other way.)
+
+- [x] **Step 6: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_occurrence_misses.py -v`
+Expected: the new tests FAIL (`detail`, `churn`, `--against` missing); the old ones PASS.
+
+- [x] **Step 7: Extend `scripts/occurrence_misses.py`**
+
+Add to the imports `import statistics`, `from ntsb_probable_cause.scoring.misses import GROUPS, FindingDepth, finding_depth, miss_group, names_event`. Add to the module docstring's Status: "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." Then:
+
+```python
+def _guesses(case: CaseResult) -> tuple[str, ...]:
+    return tuple(g.phase + g.event for g in case.steps[-1].hypothesis.occurrence)
+
+
+def _scored(cases: Sequence[CaseResult]) -> list[CaseResult]:
+    return [c for c in cases if c.scores is not None and c.steps]
+
+
+def detail(cases: Sequence[CaseResult], tables: CodeTables) -> str:
+    """S2.7 §4.1: the six groups, confidence, finding depth, and the model's own words."""
+    scored = _scored(cases)
+    by_group: dict[str, list[CaseResult]] = {g: [] for g in GROUPS}
+    depth = FindingDepth(0, 0, 0, 0, 0)
+    named = asked = 0
+    for case in scored:
+        hypothesis = case.steps[-1].hypothesis
+        group = miss_group(_guesses(case), case.verdict_occurrence, abstain=hypothesis.abstain)
+        by_group[group].append(case)
+        depth = depth + finding_depth(hypothesis.finding_codes(tables), case.verdict_findings_in_cause)
+        if group not in ("exact", "abstained") and case.verdict_occurrence:
+            said = names_event(
+                f"{hypothesis.evidence_narrative} {hypothesis.probable_cause}",
+                case.verdict_occurrence[0][3:],
+            )
+            if said is not None:
+                asked += 1
+                named += said
+    total = len(scored)
+    lines = ["", "## the six groups (first guess)"]
+    for group in GROUPS:
+        members = by_group[group]
+        median = (
+            f"{statistics.median(c.steps[-1].hypothesis.confidence for c in members):.2f}"
+            if members
+            else "-"
+        )
+        lines.append(f"- {group}: {_share(len(members), total)}; median confidence {median}")
+    lines += [
+        "",
+        "## finding depth (the NTSB's flagged findings, each at its deepest match)",
+        f"flagged {depth.flagged}: found {depth.found}; item right, modifier wrong "
+        f"{depth.item_right_modifier_wrong}; category right, item wrong "
+        f"{depth.category_right_item_wrong}; category wrong {depth.category_wrong}",
+        "",
+        "## the model's own words (misses whose NTSB event has a phrase list, "
+        "scoring/misses.py:EVENT_PHRASES)",
+        f"the model's narrative or cause names the NTSB's defining event: {_share(named, asked)}",
+    ]
+    return "\n".join(lines)
+
+
+def churn(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """Two runs on the same cases: how many first guesses changed, and top-1 gained and lost."""
+    right = {c.case_id: c for c in _scored(b)}
+    pairs = [(c, right[c.case_id]) for c in _scored(a) if c.case_id in right]
+    same = sum(_guesses(x)[:1] == _guesses(y)[:1] for x, y in pairs)
+    gained = sum(bool(x.scores and x.scores.occurrence_top1) and not (y.scores and y.scores.occurrence_top1) for x, y in pairs)
+    lost = sum(bool(y.scores and y.scores.occurrence_top1) and not (x.scores and x.scores.occurrence_top1) for x, y in pairs)
+    return "\n".join(
+        [
+            "",
+            "## churn against the second run (cases scored in both)",
+            f"same first guess: {same} of {len(pairs)}",
+            f"top-1 gained {gained}, lost {lost} (this run against the second)",
+        ]
+    )
+```
+
+Replace `main` with this version (the refusals are unchanged and now apply to both runs; `summarise`'s output is unchanged, so S2.6's results file stays reproducible):
+
+```python
+def _read_run(run_id: str) -> tuple[RunRecord, list[CaseResult]]:
+    """One development arm B run's record and cases, after every refusal."""
+    folder = Settings().runs_dir / run_id
+    if "heldout" in run_id:
+        raise SystemExit(
+            f"occurrence_misses: {run_id} is a held-out run; this script reads development "
+            "runs only"
+        )
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    _refuse_unless_development_arm_b(run_id, record)
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    if any(case.split != "dev" for case in cases):
+        raise SystemExit(f"occurrence_misses: {run_id} holds a case outside the dev split")
+    return record, cases
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print, and with ``--out`` also write, one run's counts (and churn against a second)."""
+    parser = argparse.ArgumentParser(prog="occurrence_misses")
+    parser.add_argument("--run", required=True, metavar="RUN_ID")
+    parser.add_argument("--against", default=None, metavar="RUN_ID")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    record, cases = _read_run(args.run)
+    tables = load_tables()
+    text = (
+        "occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)\n"
+        + provenance(record).rstrip("\n")
+        + "\n\n"
+        + summarise(cases, tables)
+        + "\n"
+        + detail(cases, tables)
+    )
+    if args.against is not None:
+        _other_record, other = _read_run(args.against)
+        text += "\n" + churn(cases, other) + f"\nsecond run: {args.against}"
+    print(text)
+    if args.out is not None:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text + "\n")
+    return 0
+```
+
+- [x] **Step 8: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_occurrence_misses.py tests/test_misses.py -v`
+Expected: PASS
+
+- [x] **Step 9: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add src/ntsb_probable_cause/scoring/misses.py scripts/occurrence_misses.py pyproject.toml tests/test_misses.py tests/test_occurrence_misses.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 4: the six miss groups, finding depth, own words and churn"
+```
+
+---
+
+### Task 5: The four outcomes from the judge's labels (spec §4.3, decision 0099)
+
+**Files:**
+- Create: `scripts/judge_outcomes.py`
+- Test: `tests/test_judge_outcomes.py` (create)
+
+**Interfaces:**
+- Consumes: a judged run folder holds `judge.jsonl` (rows `case_id, cost_usd, narrative, cause, lay`, written by `ntsb-eval judge`) beside `cases.jsonl`; `scoring.judge.JudgeLabels`.
+- Produces: `Outcome = Literal["right", "understood, miscoded", "thin evidence", "misread"]`; `outcome(top1: bool, narrative: str) -> Outcome`; `read_labels(folder: Path) -> dict[str, JudgeLabels]`; `outcomes(cases, labels) -> dict[str, Outcome]`; `shares(name, cases, outs, labels) -> str`; `movement(a: Mapping[str, Outcome], b: Mapping[str, Outcome]) -> tuple[int, int]`; `main(argv) -> int` with `--runs V1 REPEAT V2`, `--label-status {validated,unvalidated}` (default `unvalidated`), `--out`.
+- Task 6 consumes `read_labels`; Task 15 runs `main` on each kept round.
+
+**Why "unvalidated" is the default.** Until Task 6's rule passes, the four outcomes carry no claim (decision 0099 item 3); every printed heading says so unless the caller states the label was validated, and Task 7 passes `validated` only when Task 6's results line says it.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_judge_outcomes.py`)
+
+```python
+"""scripts/judge_outcomes.py: the four outcomes and their movement (decision 0099)."""
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+from scripts import judge_outcomes as jo
+
+from ntsb_probable_cause.scoring.judge import JudgeLabels
+from tests.test_occurrence_misses import _SCORES, _case  # the shared CaseResult builders
+
+
+def _labels(narrative: str, cause: str = "related") -> JudgeLabels:
+    return JudgeLabels(narrative=narrative, cause=cause, lay="does_not")
+
+
+@pytest.mark.parametrize(
+    ("top1", "narrative", "expected"),
+    [
+        (True, "contradicts", "right"),
+        (False, "consistent", "understood, miscoded"),
+        (False, "less_detailed", "thin evidence"),
+        (False, "contradicts", "misread"),
+        (False, "adds_unsupported_facts", "misread"),
+    ],
+)
+def test_outcome(top1: bool, narrative: str, expected: str) -> None:
+    assert jo.outcome(top1, narrative) == expected
+
+
+def test_read_labels_reads_judge_rows(tmp_path: Path) -> None:
+    rows = [{"case_id": "C1", "cost_usd": 0.001, "narrative": "consistent", "cause": "same_cause", "lay": "does_not"}]
+    (tmp_path / "judge.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert jo.read_labels(tmp_path) == {"C1": _labels("consistent", "same_cause")}
+
+
+def test_movement_counts_cases_whose_outcome_changed() -> None:
+    a = {"C1": "misread", "C2": "right", "C3": "thin evidence"}
+    b = {"C1": "understood, miscoded", "C2": "right"}
+    assert jo.movement(a, b) == (1, 2)
+
+
+def test_shares_says_unvalidated_and_splits_fatal() -> None:
+    right = _case("C1", ("452240",), ("452240",)).model_copy(
+        update={"fatal": True, "scores": replace(_SCORES, occurrence_top1=True)}
+    )
+    wrong = _case("C2", ("452240",), ("452241",))
+    cases = [right, wrong]
+    labels = {"C1": _labels("consistent"), "C2": _labels("contradicts")}
+    outs = jo.outcomes(cases, labels)
+    assert outs == {"C1": "right", "C2": "misread"}
+    text = jo.shares("B-v1", cases, outs, labels, status="unvalidated")
+    assert "unvalidated" in text
+    assert "misread: 1 of 2" in text
+    assert "fatal (1 cases):" in text
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_judge_outcomes.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 3: Write `scripts/judge_outcomes.py`**
+
+```python
+"""The four outcomes from the judge's labels, per run, and how they move between runs.
+
+Status
+    Live for S2.7 (spec §4.3, decision 0099), free: reads judge.jsonl and cases.jsonl from
+    judged development run folders; counts only. Round 0 runs it on B-v1, its repeat and B-v2;
+    each kept guidance round runs it again.
+
+Why
+    A miss is either "understood, miscoded" (guidance can fix it) or "misread"/"thin evidence"
+    (reading better can). The judge's narrative label separates them, once validated by Andy's
+    hand-read (scripts/round0_handread.py); until then every heading says "unvalidated".
+
+Usage
+    uv run python -m scripts.judge_outcomes --runs V1 REPEAT V2 [--label-status validated] [--out PATH]
+"""
+
+import argparse
+import json
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Literal
+
+from ntsb_probable_cause.scoring.judge import JudgeLabels
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.settings import Settings
+
+Outcome = Literal["right", "understood, miscoded", "thin evidence", "misread"]
+OUTCOMES: tuple[Outcome, ...] = ("right", "understood, miscoded", "thin evidence", "misread")
+JUDGE_FILE = "judge.jsonl"
+
+
+def outcome(top1: bool, narrative: str) -> Outcome:
+    """Decision 0099 item 1."""
+    if top1:
+        return "right"
+    if narrative == "consistent":
+        return "understood, miscoded"
+    if narrative == "less_detailed":
+        return "thin evidence"
+    return "misread"
+
+
+def read_labels(folder: Path) -> dict[str, JudgeLabels]:
+    """A judged run's labels by case id."""
+    labels: dict[str, JudgeLabels] = {}
+    for line in (folder / JUDGE_FILE).read_text().splitlines():
+        if line:
+            row = json.loads(line)
+            labels[row.pop("case_id")] = JudgeLabels.model_validate(
+                {k: v for k, v in row.items() if k != "cost_usd"}
+            )
+    return labels
+
+
+def outcomes(cases: Sequence[CaseResult], labels: Mapping[str, JudgeLabels]) -> dict[str, Outcome]:
+    """Each judged, scored case's outcome."""
+    return {
+        c.case_id: outcome(c.scores.occurrence_top1, labels[c.case_id].narrative)
+        for c in cases
+        if c.scores is not None and c.case_id in labels
+    }
+
+
+def _block(title: str, ids: Sequence[str], outs: Mapping[str, Outcome], labels: Mapping[str, JudgeLabels]) -> list[str]:
+    counts = Counter(outs[i] for i in ids)
+    lines = [f"{title} ({len(ids)} cases):"]
+    for name in OUTCOMES:
+        causes = Counter(labels[i].cause for i in ids if outs[i] == name)
+        cause_text = ", ".join(f"{k} {v}" for k, v in sorted(causes.items()))
+        lines.append(f"  {name}: {counts[name]} of {len(ids)}; cause label: {cause_text or '-'}")
+    return lines
+
+
+def shares(
+    name: str,
+    cases: Sequence[CaseResult],
+    outs: Mapping[str, Outcome],
+    labels: Mapping[str, JudgeLabels],
+    *,
+    status: str,
+) -> str:
+    """One run's outcome shares, all cases and fatal / non-fatal."""
+    judged = [c for c in cases if c.case_id in outs]
+    lines = [f"## {name} -- outcomes ({status} narrative label, decision 0099)"]
+    lines += _block("all", [c.case_id for c in judged], outs, labels)
+    lines += _block("fatal", [c.case_id for c in judged if c.fatal], outs, labels)
+    lines += _block("non-fatal", [c.case_id for c in judged if not c.fatal], outs, labels)
+    return "\n".join(lines)
+
+
+def movement(a: Mapping[str, Outcome], b: Mapping[str, Outcome]) -> tuple[int, int]:
+    """(cases whose outcome differs, cases judged in both)."""
+    shared = sorted(set(a) & set(b))
+    return sum(a[i] != b[i] for i in shared), len(shared)
+
+
+def _load(settings: Settings, run_id: str) -> tuple[list[CaseResult], dict[str, JudgeLabels]]:
+    if "heldout" in run_id:
+        raise SystemExit(f"judge_outcomes: {run_id} is a held-out run; development runs only")
+    folder = settings.runs_dir / run_id
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    if any(c.split != "dev" for c in cases):
+        raise SystemExit(f"judge_outcomes: {run_id} holds a case outside the dev split")
+    return cases, read_labels(folder)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print each run's outcomes, then v1 against v2 and v1 against its repeat."""
+    parser = argparse.ArgumentParser(prog="judge_outcomes")
+    parser.add_argument("--runs", nargs="+", required=True, metavar="RUN_ID")
+    parser.add_argument("--label-status", choices=("validated", "unvalidated"), default="unvalidated")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    settings = Settings()
+    loaded = [(run_id, *_load(settings, run_id)) for run_id in args.runs]
+    per_run = [(run_id, cases, labels, outcomes(cases, labels)) for run_id, cases, labels in loaded]
+    parts = [
+        "judge outcomes (scripts/judge_outcomes.py; counts only, decision 0099)",
+        *(shares(r, c, o, lab, status=args.label_status) for r, c, lab, o in per_run),
+    ]
+    if len(per_run) == 3:
+        v1, repeat, v2 = (p[3] for p in per_run)
+        moved_repeat, n_repeat = movement(v1, repeat)
+        moved_v2, n_v2 = movement(v1, v2)
+        parts += [
+            "## movement between runs (label churn is the repeat's movement)",
+            f"v1 against its repeat: {moved_repeat} of {n_repeat} cases change outcome",
+            f"v1 against v2: {moved_v2} of {n_v2} cases change outcome",
+        ]
+    text = "\n\n".join(parts)
+    print(text)
+    if args.out is not None:
+        Path(args.out).write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+- [x] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_judge_outcomes.py -v`
+Expected: PASS
+
+- [x] **Step 5: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add scripts/judge_outcomes.py tests/test_judge_outcomes.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 5: the judge's four outcomes and their movement between runs"
+```
+
+---
+
+### Task 6: Andy's hand-read, which validates the narrative label (spec §4.4, decision 0099 item 3; W7)
+
+**Files:**
+- Create: `scripts/round0_handread.py`
+- Modify: `Makefile`
+- Test: `tests/test_round0_handread.py` (create)
+
+**Interfaces:**
+- Consumes: `misses.miss_group`, `misses.MISS_GROUPS` (Task 4); `judge_outcomes.read_labels` (Task 5); `scripts.marking_page.Card`, `Choice`, `render`, `read_marks`; `samples.load_cases`; `records.split.split_record`; `codes.load_tables`.
+- Produces: `SEED = 20260927`, `PER_GROUP = 8`, `HITS = 10`, `FOLDER = Path("handcheck") / "s27-round0"`; `draw_cards(cases, *, seed) -> list[tuple[str, str]]` (case id, group); `score(sheet, marks, labels) -> str`; `main(argv)` with subcommands `cards --run RUN_ID` and `score MARKS_CSV --run RUN_ID [--out PATH]`.
+
+**What Andy sees.** One card per case: on the left, the model's evidence narrative and its first occurrence code with the code's words; on the right, the NTSB's probable-cause sentence and its defining code with the code's words; under the card, collapsed, the factual narrative for when he cannot tell without it. No case number, no docket. Two questions: *does the model's account contain the fact the NTSB's cause rests on?* (yes / no / can't tell) and, on misses only, *why did it miss?* (coding convention / wrong phase / misread or missing fact / NTSB code arguable / other). Example of a "yes" on a miss: the model's account says "the airplane stalled during a steep turn at low altitude and descended into trees", the NTSB's cause says "the pilot's failure to maintain airspeed during a low-altitude turn, which resulted in an aerodynamic stall", and the codes differ only because the NTSB flagged loss of control as defining — the fact is there, the code is the miss, so question 2 is "coding convention". The judge's label is never on the page.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_round0_handread.py`)
+
+```python
+"""scripts/round0_handread.py: the cards, and the narrative-label validation (decision 0099)."""
+
+import pytest
+from scripts import round0_handread as rh
+
+from ntsb_probable_cause.scoring.judge import JudgeLabels
+from tests.test_occurrence_misses import _case
+
+
+def _cases() -> list:
+    cases = [_case(f"X{i:02d}", ("452240",), ("452240",)) for i in range(12)]  # hits
+    cases += [_case(f"W{i:02d}", ("452240",), ("450240",)) for i in range(9)]  # right event, wrong phase
+    cases += [_case(f"S{i:02d}", ("452240", "452241"), ("452241",)) for i in range(3)]  # in sequence
+    return cases
+
+
+def test_draw_cards_takes_eight_per_miss_group_or_all_and_ten_hits() -> None:
+    drawn = rh.draw_cards(_cases(), seed=1)
+    groups = [g for _id, g in drawn]
+    assert groups.count("exact") == 10
+    assert groups.count("right event, wrong phase") == 8
+    assert groups.count("in sequence, not defining") == 3  # fewer than 8: all (plan W7)
+    assert rh.draw_cards(_cases(), seed=1) == drawn
+
+
+def _sheet(rows: list[tuple[str, str]]) -> list[dict[str, str]]:
+    return [{"row": str(n), "case_id": c, "group": g} for n, (c, g) in enumerate(rows, start=1)]
+
+
+def _labels(narratives: dict[str, str]) -> dict[str, JudgeLabels]:
+    return {c: JudgeLabels(narrative=n, cause="related", lay="does_not") for c, n in narratives.items()}
+
+
+def test_score_validates_at_75_percent_with_errors_both_ways() -> None:
+    sheet = _sheet([(f"C{i}", "nothing in common") for i in range(8)])
+    # Andy: yes on C0-C3, no on C4-C7. Judge: consistent on C0-C2 and C4 (one generous error),
+    # not consistent on C3 (one harsh error) and C5-C7: 6 of 8 agree = 75%.
+    marks = {n: {"key fact": "yes" if n <= 4 else "no", "why": "coding convention"} for n in range(1, 9)}
+    labels = _labels({"C0": "consistent", "C1": "consistent", "C2": "consistent", "C3": "contradicts",
+                      "C4": "consistent", "C5": "less_detailed", "C6": "contradicts", "C7": "contradicts"})
+    text = rh.score(sheet, marks, labels)
+    assert "agreement: 6 of 8" in text
+    assert "outcome: validated" in text
+
+
+def test_score_is_not_validated_when_errors_run_one_way() -> None:
+    sheet = _sheet([(f"C{i}", "nothing in common") for i in range(4)])
+    marks = {n: {"key fact": "yes", "why": "other"} for n in range(1, 5)}
+    labels = _labels({"C0": "consistent", "C1": "consistent", "C2": "consistent", "C3": "contradicts"})
+    text = rh.score(sheet, marks, labels)
+    assert "outcome: not validated" in text
+
+
+def test_score_refuses_an_unmarked_card() -> None:
+    sheet = _sheet([("C0", "nothing in common")])
+    with pytest.raises(SystemExit, match="unmarked"):
+        rh.score(sheet, {1: {"key fact": "", "why": ""}}, _labels({"C0": "consistent"}))
+
+
+def test_cards_refuses_a_held_out_run(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    with pytest.raises(SystemExit, match="development"):
+        rh.main(["cards", "--run", "20260926T000000-abc1234-heldout-400-B"])
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_round0_handread.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 3: Write `scripts/round0_handread.py`**
+
+```python
+"""Andy's Round 0 hand-read: about 50 cards, and the narrative-label validation.
+
+Status
+    Live for S2.7 (spec §4.4, decision 0099 item 3), free. ``cards`` draws a seeded sample from
+    one development run (8 per miss group, or all of a smaller group, and 10 hits) and writes a
+    private marking page under data/handcheck/s27-round0/; ``score`` reads Andy's marks and the
+    judge's labels and prints counts only.
+
+Why
+    The judge's narrative label separates "understood, miscoded" from "misread" but was never
+    validated. Andy judges whether the model's account holds the key fact; the rule, fixed in
+    advance, compares that with the label. His second answer says why each miss happened.
+
+Usage
+    NTSB_DATA_DIR=... uv run python -m scripts.round0_handread cards --run RUN_ID
+    NTSB_DATA_DIR=... uv run python -m scripts.round0_handread score MARKS.csv --run RUN_ID [--out PATH]
+"""
+
+import argparse
+import csv
+import html
+import random
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from fractions import Fraction
+from pathlib import Path
+
+from scripts import marking_page
+from scripts.judge_outcomes import read_labels
+
+from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
+from ntsb_probable_cause.scoring.judge import JudgeLabels
+from ntsb_probable_cause.scoring.metrics import wilson
+from ntsb_probable_cause.scoring.misses import MISS_GROUPS, miss_group
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.settings import Settings
+
+SEED = 20260927
+PER_GROUP = 8
+HITS = 10
+FOLDER = Path("handcheck") / "s27-round0"
+KEY_FACT = ("yes", "no", "can't tell")
+WHY = ("coding convention", "wrong phase", "misread or missing fact", "NTSB code arguable", "other")
+# Decision 0099 item 3: validated at 75% agreement on decidable cards, errors both ways.
+MIN_AGREEMENT = Fraction(3, 4)
+
+
+def _guesses(case: CaseResult) -> tuple[str, ...]:
+    return tuple(g.phase + g.event for g in case.steps[-1].hypothesis.occurrence)
+
+
+def draw_cards(cases: Sequence[CaseResult], *, seed: int) -> list[tuple[str, str]]:
+    """(case id, group): ``PER_GROUP`` per miss group (all of a smaller one) and ``HITS`` hits."""
+    rng = random.Random(seed)  # noqa: S311 -- reproducible sampling, not security
+    by_group: dict[str, list[str]] = {}
+    for case in sorted((c for c in cases if c.scores is not None and c.steps), key=lambda c: c.case_id):
+        group = miss_group(_guesses(case), case.verdict_occurrence, abstain=case.steps[-1].hypothesis.abstain)
+        by_group.setdefault(group, []).append(case.case_id)
+    drawn: list[tuple[str, str]] = []
+    for group, size in (("exact", HITS), *((g, PER_GROUP) for g in MISS_GROUPS)):
+        members = by_group.get(group, [])
+        chosen = members if len(members) <= size else rng.sample(members, size)
+        drawn.extend((case_id, group) for case_id in sorted(chosen))
+    rng.shuffle(drawn)
+    return drawn
+
+
+def _code_words(code: str, tables: CodeTables) -> str:
+    return f"{code} ({tables.phases.get(code[:3], '?')} / {tables.events.get(code[3:], '?')})"
+
+
+def _card(row: int, case: CaseResult, raw: Mapping[str, object], group: str, tables: CodeTables) -> marking_page.Card:
+    _evidence, synthesis, verdict = split_record(raw)
+    hypothesis = case.steps[-1].hypothesis
+    first = _guesses(case)[0]
+    defining = case.verdict_occurrence[0] if case.verdict_occurrence else ""
+    body = (
+        "<div class='pair'>"
+        f"<div><h4>The model's account</h4><p>{html.escape(hypothesis.evidence_narrative)}</p>"
+        f"<p><b>Its first code:</b> {html.escape(_code_words(first, tables))}</p></div>"
+        f"<div><h4>The NTSB's probable cause</h4><p>{html.escape(verdict.probable_cause or '(none)')}</p>"
+        f"<p><b>Its defining code:</b> {html.escape(_code_words(defining, tables))}</p></div>"
+        "</div>"
+        "<details><summary>The investigators' factual narrative (open only if needed)</summary>"
+        f"<p>{html.escape(synthesis.factual_narrative or '(none)')}</p></details>"
+    )
+    choices = [marking_page.Choice("key fact", KEY_FACT)]
+    if group != "exact":
+        choices.append(marking_page.Choice("why", WHY))
+    return marking_page.Card(row=row, body_html=body, choices=tuple(choices), text_fields=(("notes", ""),))
+
+
+def _run(settings: Settings, run_id: str) -> list[CaseResult]:
+    if "heldout" in run_id or "-dev-" not in run_id:
+        raise SystemExit(f"round0_handread: {run_id} is not a development run; development runs only")
+    cases = read_jsonl(settings.runs_dir / run_id / "cases.jsonl", CaseResult)
+    if any(c.split != "dev" for c in cases):
+        raise SystemExit(f"round0_handread: {run_id} holds a case outside the dev split")
+    return cases
+
+
+def cmd_cards(settings: Settings, run_id: str) -> str:
+    """Write the private page and sheet; return a one-line summary."""
+    cases = {c.case_id: c for c in _run(settings, run_id)}
+    drawn = draw_cards(list(cases.values()), seed=SEED)
+    raws = samples.load_cases(settings.data_dir / "processed", [c for c, _g in drawn])
+    tables = load_tables()
+    cards = [_card(n, cases[c], raw, g, tables) for n, ((c, g), raw) in enumerate(zip(drawn, raws, strict=True), start=1)]
+    folder = settings.data_dir / FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    intro = (
+        "<p>Each card: the model's account and first code beside the NTSB's probable cause and "
+        "defining code. Question 1: does the model's account contain the fact the NTSB's cause "
+        "rests on? Question 2 (misses only): why did it miss? Open the factual narrative only "
+        "when you cannot tell without it.</p>"
+    )
+    (folder / "index.html").write_text(
+        marking_page.render(title="S2.7 Round 0 hand-read", intro_html=intro, cards=cards,
+                            storage_key="s27-round0-handread", csv_name="s27-round0-marks.csv")
+    )
+    with (folder / "sheet.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["row", "case_id", "group"])
+        writer.writerows((n, c, g) for n, (c, g) in enumerate(drawn, start=1))
+    counts = Counter(g for _c, g in drawn)
+    return f"{len(drawn)} cards written to {folder}: " + ", ".join(f"{g} {n}" for g, n in counts.items())
+
+
+def score(sheet: Sequence[Mapping[str, str]], marks: Mapping[int, Mapping[str, str]], labels: Mapping[str, JudgeLabels]) -> str:
+    """The validation rule and the miss types, counts only."""
+    unmarked = [r["row"] for r in sheet if not marks.get(int(r["row"]), {}).get("key fact")]
+    if unmarked:
+        raise SystemExit(f"round0_handread: {len(unmarked)} unmarked cards, e.g. row {unmarked[0]}")
+    agree = generous = harsh = decidable = 0
+    why: Counter[str] = Counter()
+    cards_by_group = Counter(r["group"] for r in sheet)
+    for row in sheet:
+        mark = marks[int(row["row"])]
+        if row["group"] != "exact" and mark.get("why"):
+            why[mark["why"]] += 1
+        andy = mark["key fact"]
+        if andy == "can't tell":
+            continue
+        decidable += 1
+        judge_yes = labels[row["case_id"]].narrative == "consistent"
+        andy_yes = andy == "yes"
+        agree += judge_yes == andy_yes
+        generous += judge_yes and not andy_yes
+        harsh += andy_yes and not judge_yes
+    share = Fraction(agree, decidable) if decidable else Fraction(0)
+    validated = decidable > 0 and share >= MIN_AGREEMENT and generous >= 1 and harsh >= 1
+    low, high = wilson(agree, decidable) if decidable else (0.0, 0.0)
+    lines = [
+        "Round 0 hand-read (scripts/round0_handread.py; counts only, decision 0099)",
+        "cards by group: " + ", ".join(f"{g} {n}" for g, n in sorted(cards_by_group.items())),
+        f"decidable cards (not \"can't tell\"): {decidable} of {len(sheet)}",
+        f"agreement: {agree} of {decidable} ({float(share):.1%} [{low:.1%}, {high:.1%}]); rule: at least 75%",
+        f"judge errors: generous (judge consistent, Andy no) {generous}; harsh (judge not consistent, Andy yes) {harsh}; rule: at least 1 each way",
+        f"outcome: {'validated' if validated else 'not validated'}",
+        "why the misses happened (Andy): " + ", ".join(f"{w} {why[w]}" for w in WHY),
+    ]
+    return "\n".join(lines)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """``cards`` or ``score``."""
+    parser = argparse.ArgumentParser(prog="round0_handread")
+    commands = parser.add_subparsers(dest="command", required=True)
+    cards_p = commands.add_parser("cards")
+    cards_p.add_argument("--run", required=True)
+    score_p = commands.add_parser("score")
+    score_p.add_argument("marks", type=Path)
+    score_p.add_argument("--run", required=True)
+    score_p.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    settings = Settings()
+    if args.command == "cards":
+        print(cmd_cards(settings, args.run))
+        return 0
+    _run(settings, args.run)
+    with (settings.data_dir / FOLDER / "sheet.csv").open(newline="") as handle:
+        sheet = list(csv.DictReader(handle))
+    text = score(sheet, marking_page.read_marks(args.marks), read_labels(settings.runs_dir / args.run))
+    print(text)
+    if args.out is not None:
+        Path(args.out).write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+(`metrics.wilson(successes, n)` returns the interval as a pair of floats; if it returns a triple, unpack accordingly.)
+
+- [x] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_round0_handread.py -v`
+Expected: PASS
+
+- [x] **Step 5: Add the Makefile targets, run the full check, commit**
+
+```make
+s27-round0-cards:
+	$(if $(RUN),,$(error RUN is required: the B-v1 run id))
+	uv run python -m scripts.round0_handread cards --run $(RUN)
+# S2.7 spec §4.4, free: writes Andy's private marking page under data/handcheck/s27-round0/.
+```
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add scripts/round0_handread.py tests/test_round0_handread.py Makefile docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 6: Round 0's hand-read cards and the narrative-label validation"
+```
+
+---
+
+### Task 7: Round 0's runs and its results file (spec §4.2–§4.5; W4)
+
+**Files:**
+- Modify: `Makefile`
+- Create (by running): `docs/results/s27-round0-dev.txt`
+
+**Interfaces:**
+- Consumes: Tasks 1, 4, 5, 6; `ntsb-eval run`, `ntsb-eval judge`.
+- Produces: the noise-floor run id (written into this step's Deviations entry and read by Tasks 10–15 as `REPEAT`); `docs/results/s27-round0-dev.txt`.
+
+The two S2.6 runs are `20260926T082427-d19aafa-dev-400-B` (B-v1) and `20260926T085904-d19aafa-dev-400-B` (B-v2).
+
+- [x] **Step 1: Add the targets**
+
+```make
+s27-noise-floor:
+	$(if $(PER_CASE),,$(error PER_CASE is required: B-v1's cost per case rounded up, e.g. PER_CASE=0.0042))
+	uv run python -m scripts.stage_spend --estimate 1.40
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version v1 --expected-cost-per-case-usd $(PER_CASE)
+# S2.7 spec §4.2, paid (about $1.18, B-v1's cost): B-v1 again, identical settings, at S2.7's
+# commit. The noise floor every round is read against.
+
+s27-judge:
+	$(if $(RUN),,$(error RUN is required: a development run id to judge))
+	uv run python -m scripts.stage_spend --estimate 0.60
+	uv run ntsb-eval judge $(RUN)
+# S2.7 spec §4.3, paid (about $0.50 at the judge's conservative $0.00125 a case; standard
+# price only): writes judge.jsonl into the run's folder and a <run>-judge cost row.
+
+s27-round0-results:
+	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
+	$(if $(MARKS),,$(error MARKS is required: Andy's downloaded marks CSV))
+	$(if $(LABELS),,$(error LABELS is required: validated or unvalidated, from the score line))
+	{ uv run python -m scripts.occurrence_misses --run 20260926T082427-d19aafa-dev-400-B --against $(REPEAT); \
+	  echo; uv run python -m scripts.occurrence_misses --run 20260926T085904-d19aafa-dev-400-B --against 20260926T082427-d19aafa-dev-400-B; \
+	  echo; uv run python -m scripts.occurrence_misses --run $(REPEAT); \
+	  echo; uv run ntsb-eval report 20260926T082427-d19aafa-dev-400-B --against $(REPEAT); \
+	  echo; uv run python -m scripts.judge_outcomes --runs 20260926T082427-d19aafa-dev-400-B $(REPEAT) 20260926T085904-d19aafa-dev-400-B --label-status $(LABELS); \
+	  echo; uv run python -m scripts.round0_handread score $(MARKS) --run 20260926T082427-d19aafa-dev-400-B; } > docs/results/s27-round0-dev.txt
+# S2.7 spec §4.5, free: Round 0's results file from committed scripts only.
+```
+
+Commit the Makefile (`S2.7 Task 7: Round 0 targets`).
+
+- [x] **Step 2: Check the S2.6 run folders hold no judge rows (W4)**
+
+Run:
+```bash
+export NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data
+ls "$NTSB_DATA_DIR"/runs/20260926T082427-d19aafa-dev-400-B/ "$NTSB_DATA_DIR"/runs/20260926T085904-d19aafa-dev-400-B/
+```
+Expected: no `judge.jsonl` in either. If one exists, copy it to `$NTSB_DATA_DIR/s27/judge-before/<run id>.jsonl` before Step 4 and log it in Deviations.
+
+- [x] **Step 3: STOP — the noise-floor run (paid, about $1.18)**
+
+Hand Andy: "Round 0's noise floor: B-v1 again on dev-400, identical settings, about $1.18 and 30–60 minutes on batch; start between 01:00 and 12:00 UTC. From the worktree, with the keys exported from `pass`: `make s27-noise-floor PER_CASE=0.0042`. Afterwards the tree is unchanged (development runs write no ledger row)." Record the printed run id in Deviations as `REPEAT`.
+
+- [x] **Step 4: STOP — the judge on three runs (paid, about $1.50)**
+
+Hand Andy: "`make s27-judge RUN=20260926T082427-d19aafa-dev-400-B`, then `RUN=<REPEAT>`, then `RUN=20260926T085904-d19aafa-dev-400-B`; about $0.50 each, a few minutes each at the standard price." After each, read the printed `judge cost` line.
+
+- [x] **Step 5: Build the cards** (free)
+
+Run: `make s27-round0-cards RUN=20260926T082427-d19aafa-dev-400-B`
+Expected: about 50 cards; the printed group counts (a group under 8 is taken whole, W7).
+
+- [x] **Step 6: STOP — Andy's hand-read**
+
+Hand Andy: "Open `$NTSB_DATA_DIR/handcheck/s27-round0/index.html`, mark every card (two clicks each, about an hour; it keeps progress), then download the marks CSV." When it is back:
+
+Run: `uv run python -m scripts.round0_handread score <marks.csv> --run 20260926T082427-d19aafa-dev-400-B`
+Read the `outcome:` line: `validated` or `not validated`.
+
+- [x] **Step 7: Write the results file** (free)
+
+Run: `make s27-round0-results REPEAT=<REPEAT> MARKS=<marks.csv> LABELS=<validated|unvalidated>`
+Expected: `docs/results/s27-round0-dev.txt` holds, in order, the misses and churn for B-v1 (against the repeat), B-v2 (against B-v1) and the repeat; the noise floor (`report --against`); the four outcomes with their movement; the hand-read's counts. Check that it names no case number: `grep -E '[A-Z]{3}[0-9]{2}[A-Z]{2}[0-9]{3}' docs/results/s27-round0-dev.txt` prints nothing.
+
+- [x] **Step 8: Commit, and report Round 0 to Andy**
+
+```bash
+git add docs/results/s27-round0-dev.txt docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 7: Round 0's results"
+```
+
+Report to Andy in plain English: the six groups' sizes, the noise floor (the paired top-1 difference of the two B-v1 runs and the churn), whether the narrative label was validated, the four outcomes, what transcription changed beyond label churn, and which miss group is largest and fixable — which sets the first guidance round (Task 15).
+
+---
+
+## Part C — Round 1: the ordering check (spec §5, decisions 0096, 0097)
+
+### Task 8: The ordering check's pure parts (spec §5.1–§5.3, decision 0096)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/scoring/ordering.py`
+- Modify: `pyproject.toml` (import-linter source list: add `ntsb_probable_cause.scoring.ordering`)
+- Test: `tests/test_ordering.py` (create)
+
+**Interfaces:**
+- Consumes: `coding_stats.CodingStats`, `NO_GROUP` (Task 3); `hypothesis.Hypothesis`, `OccurrenceGuess`; `codes.CodeTables`; `errors.SchemaError`.
+- Produces: constants `MAX_CANDIDATES = 8`, `LINK_MIN_SHARE = Fraction(1, 4)`, `LINK_MIN_CASES = 20`, `GROUP_CODES = 2`, `PHASE_VARIANT_MIN_CASES = 10`, `CLEAR_HABIT_SHARE = Fraction(3, 5)`, `CLEAR_HABIT_MIN_CASES = 20` (decision 0101); `candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]`; `clear_habit(counts: Mapping[str, int]) -> str | None`; `plain_rule(guesses, group, stats) -> tuple[str, ...]`; `toward_more_common(before: str, after: str, group: str | None, stats: CodingStats) -> bool`; `CHECK_SYSTEM: str`; `RANKING_SCHEMA: dict[str, object]`; `check_text(guesses, options, group, narrative, stats, tables) -> str`; `parse_ranking(content: str, options: Sequence[str]) -> tuple[str, ...]`; `JEV_INSTRUCTIONS: str`; `jev_question(options, tables) -> dict[str, object]`; `ranking_from_probabilities(probabilities: Mapping[str, float]) -> tuple[str, ...]`; `reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis`.
+- Task 10 consumes all of them.
+
+**An example of the candidate list.** The model guessed `(452241, 452470, 450241)` — stall/spin at low altitude first — and the phase group is `Maneuvering`. The list starts with those three. If the pool shows that when `452241` appears, `452240` (loss of control in flight) is defining in at least a quarter of at least 20 cases, `452240` joins as a **linked code**. The two commonest defining codes for `Maneuvering` join as **group codes**. For every code so far, the same event under another prefix the pool uses for `Maneuvering` (for example `450` or `452`) joins as a **phase variant** if the pool shows it as defining in that group at least 10 times. Duplicates go; the guesses stay first; the rest are ordered by how often the pool flags them as defining; the list is cut at eight.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_ordering.py`)
+
+```python
+"""scoring/ordering.py: the candidate list, the plain rule, the check text and reply (0096)."""
+
+import json
+
+import pytest
+
+from ntsb_probable_cause.errors import SchemaError
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
+from ntsb_probable_cause.scoring import ordering
+
+LOC, STALL, LOC_450, CFIT = "452240", "452241", "450240", "452470"
+
+
+def _stats():
+    cases = (
+        [PoolCase(2012, "Maneuvering", (LOC, STALL))] * 30  # stall appears: LOC defining 30 times
+        + [PoolCase(2016, "Maneuvering", (STALL, LOC))] * 5  # ... stall defining 5 times
+        + [PoolCase(2013, "Maneuvering", (LOC_450,))] * 12  # the 450 phase variant, 12 times
+        + [PoolCase(2014, "Maneuvering", (CFIT,))] * 3
+        + [PoolCase(2015, "Landing", ("552300",))] * 40
+    )
+    return build(cases, built_from="test")
+
+
+def test_candidates_are_guesses_then_linked_group_and_phase_variants() -> None:
+    options = ordering.candidates((STALL, CFIT), "Maneuvering", _stats())
+    assert options[:2] == (STALL, CFIT)
+    assert LOC in options  # linked (30 of 35) and a group code
+    assert LOC_450 in options  # phase variant of LOC in Maneuvering (12 >= 10)
+    assert len(options) == len(set(options)) <= ordering.MAX_CANDIDATES
+
+
+def test_candidates_without_a_group_still_start_with_the_guesses() -> None:
+    options = ordering.candidates(("552300",), None, _stats())
+    assert options[0] == "552300"
+
+
+def test_plain_rule_moves_the_pools_defining_code_first() -> None:
+    assert ordering.plain_rule((STALL, CFIT), "Maneuvering", _stats()) == (LOC, STALL, CFIT)
+
+
+def test_plain_rule_keeps_the_first_guess_on_thin_counts() -> None:
+    assert ordering.plain_rule(("999999",), "Maneuvering", _stats())[0] == "999999"
+
+
+def test_plain_rule_keeps_the_models_phase_when_no_phase_is_a_clear_habit() -> None:
+    split = build(
+        [PoolCase(2012, "Maneuvering", (LOC_450,))] * 12 + [PoolCase(2013, "Maneuvering", (LOC,))] * 10,
+        built_from="test",
+    )
+    # 450 holds 12 of 22 (55%): not a clear habit, so the model's 452 stands (decision 0101)
+    assert ordering.plain_rule((LOC,), "Maneuvering", split) == (LOC,)
+
+
+def test_plain_rule_moves_the_phase_on_a_clear_habit() -> None:
+    # in _stats(), event 240 in Maneuvering: 452 holds 30 of 42 (71%), a clear habit
+    assert ordering.plain_rule((LOC_450,), "Maneuvering", _stats())[0] == LOC
+
+
+def test_clear_habit_needs_60_percent_of_20_cases() -> None:
+    assert ordering.clear_habit({"a": 12, "b": 8}) == "a"
+    assert ordering.clear_habit({"a": 11, "b": 9}) is None
+    assert ordering.clear_habit({"a": 15}) is None
+
+
+def test_toward_more_common_compares_pool_counts_in_the_group() -> None:
+    stats = _stats()
+    assert ordering.toward_more_common(LOC_450, LOC, "Maneuvering", stats)  # 12 -> 30
+    assert not ordering.toward_more_common(LOC, LOC_450, "Maneuvering", stats)
+    assert not ordering.toward_more_common(LOC, LOC, "Maneuvering", stats)
+
+
+def test_check_text_holds_codes_counts_group_and_narrative_only() -> None:
+    options = ordering.candidates((STALL,), "Maneuvering", _stats())
+    text = ordering.check_text((STALL,), options, "Maneuvering", "The airplane stalled.", _stats(), load_tables())
+    assert "Maneuvering" in text
+    assert "The airplane stalled." in text
+    assert STALL in text and LOC in text
+    assert "defining in 30 of 35" in text
+
+
+def test_parse_ranking_accepts_listed_codes_only() -> None:
+    options = (STALL, LOC, CFIT)
+    assert ordering.parse_ranking(json.dumps({"ranking": [LOC, STALL]}), options) == (LOC, STALL)
+    with pytest.raises(SchemaError):
+        ordering.parse_ranking(json.dumps({"ranking": ["111111"]}), options)
+    with pytest.raises(SchemaError):
+        ordering.parse_ranking(json.dumps({"ranking": [LOC, LOC]}), options)
+    with pytest.raises(SchemaError):
+        ordering.parse_ranking("not json", options)
+
+
+def test_jev_question_and_ranking() -> None:
+    question = ordering.jev_question((STALL, LOC), load_tables())
+    assert question["type"] == "choice"
+    assert set(question["criteria"]) == {STALL, LOC}
+    assert ordering.ranking_from_probabilities({STALL: 0.2, LOC: 0.7, CFIT: 0.2}) == (LOC, CFIT, STALL)
+
+
+def test_reorder_keeps_known_probabilities_and_gives_new_codes_zero() -> None:
+    hypothesis = Hypothesis(
+        evidence_narrative="n",
+        occurrence=(OccurrenceGuess(phase="452", event="241", probability=0.6),),
+        findings=(),
+        probable_cause="p",
+        lay_explanation="l",
+        confidence=0.5,
+        abstain=False,
+        evidence_used=(),
+    )
+    out = ordering.reorder(hypothesis, (LOC, STALL))
+    assert [(g.phase + g.event, g.probability) for g in out.occurrence] == [(LOC, 0.0), (STALL, 0.6)]
+    assert out.evidence_narrative == "n"
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_ordering.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 3: Write `scoring/ordering.py`**
+
+```python
+"""The ordering check's pure parts (decision 0096; S2.7 spec §5).
+
+The check takes a finished answer and re-orders its occurrence codes, choosing which code the
+NTSB would flag as the defining event. It sees the model's guesses, a candidate list, the pool's
+counts for those candidates (decision 0094), the phase group already given as evidence, and the
+model's own narrative -- never the verdict, the synthesis or the docket. Every threshold here was
+fixed in decision 0096 before any count was computed.
+"""
+
+import json
+from collections.abc import Mapping, Sequence
+from fractions import Fraction
+
+from ntsb_probable_cause.errors import SchemaError
+from ntsb_probable_cause.scoring.codes import CodeTables
+from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, CodingStats
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
+
+MAX_CANDIDATES = 8
+LINK_MIN_SHARE = Fraction(1, 4)
+LINK_MIN_CASES = 20
+GROUP_CODES = 2
+PHASE_VARIANT_MIN_CASES = 10
+# Decision 0101: the plain rule follows the NTSB's most common choice only on a clear habit.
+CLEAR_HABIT_SHARE = Fraction(3, 5)
+CLEAR_HABIT_MIN_CASES = 20
+
+
+def candidates(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]:
+    """The codes the check may choose among (decision 0096 item 3)."""
+    name = group or NO_GROUP
+    first = list(dict.fromkeys(guesses))
+    extra: set[str] = set()
+    for guess in first:
+        n = stats.present_n(guess)
+        if n >= LINK_MIN_CASES:
+            extra.update(d for d, k in stats.defining_given(guess).items() if Fraction(k, n) >= LINK_MIN_SHARE)
+    extra.update(stats.group_top(name, GROUP_CODES))
+    phases = stats.group_phases(name)
+    for code in sorted(set(first) | extra):
+        for phase in phases:
+            variant = phase + code[3:]
+            if variant != code and stats.group_defining_n(name, variant) >= PHASE_VARIANT_MIN_CASES:
+                extra.add(variant)
+    rest = sorted(extra - set(first), key=lambda c: (-stats.defining_n(c), c))
+    return tuple((first + rest)[:MAX_CANDIDATES])
+
+
+def clear_habit(counts: Mapping[str, int]) -> str | None:
+    """The option holding at least 60% of at least 20 cases, or None (decision 0101)."""
+    total = sum(counts.values())
+    if total < CLEAR_HABIT_MIN_CASES:
+        return None
+    best, n = max(sorted(counts.items()), key=lambda kv: kv[1])
+    return best if Fraction(n, total) >= CLEAR_HABIT_SHARE else None
+
+
+def plain_rule(guesses: Sequence[str], group: str | None, stats: CodingStats) -> tuple[str, ...]:
+    """The free way (spec §5.3 item 2, as amended by decision 0101).
+
+    Event step: among pool cases containing the model's first guess, if one code is defining in
+    a clear habit and it is a candidate, it goes first. Phase step: among pool cases with this
+    phase group and that event, if one phase is a clear habit, it is used. At either step,
+    without a clear habit the model's own choice stands.
+    """
+    chosen = guesses[0]
+    habit = clear_habit(stats.defining_given(chosen))
+    if habit is not None and habit in candidates(guesses, group, stats):
+        chosen = habit
+    name = group or NO_GROUP
+    by_phase = {p: stats.group_defining_n(name, p + chosen[3:]) for p in stats.group_phases(name)}
+    phase = clear_habit({p: k for p, k in by_phase.items() if k})
+    if phase is not None:
+        chosen = phase + chosen[3:]
+    return tuple(dict.fromkeys((chosen, *guesses)))[:3]
+
+
+def toward_more_common(before: str, after: str, group: str | None, stats: CodingStats) -> bool:
+    """Whether a change of first code moved toward a more common option in the group (0101)."""
+    name = group or NO_GROUP
+    return after != before and stats.group_defining_n(name, after) > stats.group_defining_n(name, before)
+
+
+CHECK_SYSTEM = """You are checking how the NTSB would code an accident that an analyst has \
+already studied. The NTSB records each accident as an ordered sequence of occurrence codes and \
+flags one of them as the defining event. You are given the analyst's own account of the \
+evidence, the phase-of-flight group recorded as evidence, the analyst's first guesses, and a \
+short list of candidate codes, each with how often the NTSB flagged it as the defining event in \
+past cases. Past habits are a guide, not a rule: prefer the candidate the analyst's account \
+supports. Rank the three candidates the NTSB would most likely flag as the defining event, most \
+likely first. Choose only from the candidate list and copy each six-digit code exactly. Reply \
+only with JSON matching the schema."""
+
+RANKING_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "ranking": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^[0-9]{6}$"},
+            "minItems": 1,
+            "maxItems": 3,
+        }
+    },
+    "required": ["ranking"],
+    "additionalProperties": False,
+}
+
+
+def _words(code: str, tables: CodeTables) -> str:
+    return f"{tables.phases.get(code[:3], '?')} / {tables.events.get(code[3:], '?')}"
+
+
+def check_text(
+    guesses: Sequence[str],
+    options: Sequence[str],
+    group: str | None,
+    narrative: str,
+    stats: CodingStats,
+    tables: CodeTables,
+) -> str:
+    """The text the model-asked ways receive: codes, counts, the group and the narrative."""
+    name = group or NO_GROUP
+    lines = [f"Phase-of-flight group recorded as evidence: {group or 'not recorded'}", ""]
+    lines.append("The analyst's guesses, in order: " + ", ".join(f"{g} ({_words(g, tables)})" for g in guesses))
+    lines += ["", "Candidate codes:"]
+    for code in options:
+        n = stats.present_n(code)
+        k = stats.defining_given(code).get(code, 0)
+        lines.append(
+            f"- {code} ({_words(code, tables)}): when it appears in a past case, defining in {k} of {n}; "
+            f"defining in this phase group in {stats.group_defining_n(name, code)} past cases"
+        )
+        if code != guesses[0]:
+            pair = stats.pair(code, guesses[0])
+            if pair["both"]:
+                lines.append(
+                    f"  when it and {guesses[0]} both appear ({pair['both']} past cases): "
+                    f"{code} defining in {pair.get(code, 0)}, {guesses[0]} defining in {pair.get(guesses[0], 0)}"
+                )
+    lines += ["", "The analyst's own account of the evidence:", narrative]
+    return "\n".join(lines)
+
+
+def parse_ranking(content: str, options: Sequence[str]) -> tuple[str, ...]:
+    """The ranking, if every code is a listed candidate and none repeats; else ``SchemaError``."""
+    try:
+        ranking = json.loads(content)["ranking"]
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise SchemaError(f"ranking reply is not the schema's JSON: {error}") from error
+    if not isinstance(ranking, list) or not 1 <= len(ranking) <= 3:
+        raise SchemaError("ranking must list one to three codes")
+    codes = tuple(str(code) for code in ranking)
+    if len(set(codes)) != len(codes):
+        raise SchemaError(f"ranking repeats a code: {codes}")
+    outside = [c for c in codes if c not in options]
+    if outside:
+        raise SchemaError(f"ranking names codes not in the candidate list: {outside}")
+    return codes
+
+
+JEV_INSTRUCTIONS = (
+    "Which of these occurrence codes would the NTSB flag as the defining event of this "
+    "accident? Each label is a six-digit NTSB occurrence code: phase, then event."
+)
+
+
+def jev_question(options: Sequence[str], tables: CodeTables) -> dict[str, object]:
+    """One Choice over the candidates, labelled with their words (decision 0097)."""
+    return {
+        "type": "choice",
+        "instructions": JEV_INSTRUCTIONS,
+        "criteria": {code: _words(code, tables) for code in options},
+    }
+
+
+def ranking_from_probabilities(probabilities: Mapping[str, float]) -> tuple[str, ...]:
+    """The three most probable codes; ties by code (Jev rounds to two decimals)."""
+    return tuple(c for c, _p in sorted(probabilities.items(), key=lambda kv: (-kv[1], kv[0]))[:3])
+
+
+def reorder(hypothesis: Hypothesis, ranking: Sequence[str]) -> Hypothesis:
+    """The hypothesis with its occurrence guesses replaced by ``ranking``.
+
+    A code the model gave keeps its probability; a code it did not give gets 0.0, so the
+    probabilities still sum to at most 1. Nothing else changes.
+    """
+    given = {g.phase + g.event: g.probability for g in hypothesis.occurrence}
+    occurrence = tuple(
+        OccurrenceGuess(phase=code[:3], event=code[3:], probability=given.get(code, 0.0))
+        for code in ranking
+    )
+    return hypothesis.model_copy(update={"occurrence": occurrence})
+```
+
+- [x] **Step 4: Run the tests to verify they pass; add the import-linter entry**
+
+Run: `uv run pytest tests/test_ordering.py -v && uv run lint-imports`
+Expected: PASS; contracts kept after adding `"ntsb_probable_cause.scoring.ordering",` to the "Only the splitter…" source list.
+
+- [x] **Step 5: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add src/ntsb_probable_cause/scoring/ordering.py pyproject.toml tests/test_ordering.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 8: the ordering check's candidate list, plain rule and check text"
+```
+
+---
+
+### Task 9: The Jev client, ported from `typesafe-probe` (decision 0097)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/model/typesafe.py` (from `origin/typesafe-probe`, commit `0c5d24c`)
+- Modify: `src/ntsb_probable_cause/settings.py`, `src/ntsb_probable_cause/sources.py`, `.env.example`, `pyproject.toml` (typos)
+- Create: `tests/fixtures/typesafe/README.md`, `choices.json`, `models.json`, `nouls.json` (from the branch)
+- Create: `tests/test_typesafe_client.py` (from the branch)
+
+**Interfaces:**
+- Produces: `model.typesafe.TypeSafeClient(api_key, *, base_url, transport=None, sleep=time.sleep, clock=time.monotonic, max_attempts=5, backoff_seconds=2.0)` with `ask(payload, questions, *, model=DEFAULT_MODEL) -> Exchange` (refuses a payload carrying images) and `ask_state(state: str, questions, *, model=DEFAULT_MODEL) -> Exchange`; `Exchange(reply: SystemOneReply, attempts, retried_statuses, seconds)`; `SystemOneReply.choice(name) -> ChoiceAnswer` (`.probabilities: dict[str, float]`, `.model` on the reply); `Settings.typesafe_api_key`, `Settings.typesafe_base_url = "https://api.typesafe.ai"`, `Settings.require_typesafe_key() -> str`; `sources.JEV` (`ModelPrice("jev-latest", 0.042, 0.0, ...)`), `sources.TYPESAFE_SYSTEM_ONE = "/v1/systemone"`, `sources.TYPESAFE_MODELS`, `sources.TYPESAFE_MAX_CHOICE_LABELS = 255`.
+- Task 10 consumes `TypeSafeClient.ask_state` and `sources.JEV`.
+
+**Why a manual port.** The branch is 172 commits behind `main`; its `settings.py` and `sources.py` hunks no longer apply, and every comment that names its decision says 0060, which on `main` is an S2.5 record. The client module itself imports only `sources`, `errors` and `model.client`, so it satisfies every import-linter contract as it stands.
+
+- [x] **Step 1: Copy the module, fixtures and tests from the branch**
+
+```bash
+git show 0c5d24c:src/ntsb_probable_cause/model/typesafe.py > src/ntsb_probable_cause/model/typesafe.py
+mkdir -p tests/fixtures/typesafe
+for f in README.md choices.json models.json nouls.json; do git show 0c5d24c:tests/fixtures/typesafe/$f > tests/fixtures/typesafe/$f; done
+git show 0c5d24c:tests/test_typesafe_client.py > tests/test_typesafe_client.py
+```
+
+- [x] **Step 2: Renumber the decision in every copied file**
+
+Every "decision 0060" and "(0060" in the four copied text files becomes 0097 (`typesafe.py`, the fixtures' `README.md`, `test_typesafe_client.py`). The module docstring's first line becomes: `"""TypeSafe's System One client, for the ordering check on development runs only (decision 0097)."""`. The JSON fixtures are not edited (they are saved replies).
+
+Run: `grep -rn "0060\|0036" src/ntsb_probable_cause/model/typesafe.py tests/fixtures/typesafe tests/test_typesafe_client.py`
+Expected: no output.
+
+- [x] **Step 3: Write the failing image test** (append to `tests/test_typesafe_client.py`)
+
+```python
+from ntsb_probable_cause.model.client import PageImage
+
+
+def test_ask_refuses_a_payload_that_carries_images() -> None:
+    payload = Payload.for_page(PageImage(media_type="image/jpeg", data=b"\xff\xd8"))
+    with TypeSafeClient("k", base_url=BASE) as client, pytest.raises(ModelError, match="images"):
+        client.ask(payload, QUESTIONS)
+```
+
+Run: `uv run pytest tests/test_typesafe_client.py -v`
+Expected: this test FAILS (`ask` sends `payload.text` and drops the image); every ported test PASSES once Step 4's settings and sources exist — until then the module fails to import `sources.TYPESAFE_SYSTEM_ONE`, so run Step 4 first if the whole module errors.
+
+- [x] **Step 4: Port the settings and sources, and refuse images**
+
+`settings.py`, after `openrouter_base_url`:
+
+```python
+    typesafe_api_key: SecretStr | None = Field(default=None, validation_alias="TYPESAFE_API_KEY")
+    typesafe_base_url: str = "https://api.typesafe.ai"
+```
+
+and after `require_openrouter_key`:
+
+```python
+    def require_typesafe_key(self) -> str:
+        """Return the TypeSafe key, or raise if it is not set (decision 0097)."""
+        if self.typesafe_api_key is None or not self.typesafe_api_key.get_secret_value():
+            raise ConfigurationError(
+                "TYPESAFE_API_KEY is not set; export it or load it from the password store."
+            )
+        return self.typesafe_api_key.get_secret_value()
+```
+
+`sources.py`, beside the other price constants (and `JEV` added to `_PRICES`):
+
+```python
+# TypeSafe AI's launch post (typesafe.ai/blog/introducing-system-one-models-and-jev), read
+# 2026-09-16: $0.042 per million input tokens, output unmetered. Self-reported and, in the
+# vendor's words, not shown to be unsubsidised (decisions 0030, 0097). ``jev-latest`` is the
+# SDK's default model name; every reply records the version it resolved to.
+JEV = ModelPrice("jev-latest", 0.042, 0.0, "TypeSafe launch post, 2026-09-16, self-reported")
+```
+
+and at the end of the module:
+
+```python
+# https://api.typesafe.ai/openapi.json, as generated into ``typesafe-sdk`` 0.6.0 on PyPI (read
+# 2026-09-17). The saved responses under tests/fixtures/typesafe/ confirm the shape (0097).
+TYPESAFE_SYSTEM_ONE = "/v1/systemone"
+TYPESAFE_MODELS = "/v1/models"
+# The vendor's documented ceiling on labels in one Choice question.
+TYPESAFE_MAX_CHOICE_LABELS = 255
+```
+
+`model/typesafe.py`, first lines of `TypeSafeClient.ask`:
+
+```python
+        if payload.images:
+            raise ModelError(
+                "Jev reads text only, and this payload carries images; it would send the text "
+                "and silently drop them (decision 0097)"
+            )
+```
+
+`.env.example`, after `OPENROUTER_API_KEY=`:
+
+```
+# TypeSafe System One (Jev): the S2.7 ordering check on development runs only (decision 0097).
+TYPESAFE_API_KEY=
+```
+
+`pyproject.toml`: in `[tool.typos.default.extend-words]` add the NTSB's Anchorage case-number prefix (the three capitals A, N, C, as the typesafe branch's own `pyproject.toml` added it, `git show 0c5d24c:pyproject.toml`), mapped to itself, with the comment "the NTSB's Anchorage case-number prefix in the typesafe fixtures; not a misspelling" (it is not spelled out here because this plan is itself spell-checked); in `[tool.typos.files] extend-exclude` add `"tests/fixtures/typesafe/*.json",` with the comment `# The typesafe fixtures are saved replies that send the code-table labels verbatim (0097).`
+
+- [x] **Step 5: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_typesafe_client.py tests/test_sources_settings.py -v`
+Expected: PASS (the ported tests and the image refusal)
+
+- [x] **Step 6: Run the full check and commit**
+
+Run: `make check` (Expected: PASS. `vulture` runs at `min_confidence = 80` (`pyproject.toml`), below which unused classes and constants such as `ScoreAnswer`, `NoulAnswer` and `TYPESAFE_MODELS` are not reported; they stay, as part of the saved reply shape. If it does report one, log it in Deviations and keep the name.)
+
+```bash
+git add src/ntsb_probable_cause/model/typesafe.py src/ntsb_probable_cause/settings.py src/ntsb_probable_cause/sources.py .env.example pyproject.toml tests/fixtures/typesafe tests/test_typesafe_client.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 9: the Jev client, ported from typesafe-probe for the ordering check (0097)"
+```
+
+---
+
+### Task 10: The check as a post-pass, and `ntsb-eval check` (spec §5.4–§5.5; W2, W3)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/scoring/checkpass.py`
+- Modify: `src/ntsb_probable_cause/scoring/metrics.py` (`rescore_occurrence`)
+- Modify: `apps/eval/__main__.py` (the `check` subcommand; `resolve_latest` skips derived runs; `main` gains `jev_factory`)
+- Test: `tests/test_checkpass.py` (create), `tests/test_metrics.py`, `tests/test_eval_app.py`
+
+**Interfaces:**
+- Consumes: Task 3 (`load_stats`), Task 8 (all of `ordering`), Task 9 (`TypeSafeClient`), `samples.refuse_sealed` (Task 2).
+- Produces: `metrics.rescore_occurrence(scores: CaseScores, codes: Sequence[str], truth: Sequence[str], *, seen_pairs: AbstractSet[str]) -> CaseScores`; `checkpass.Way = Literal["rule", "luna", "jev"]`, `WAYS`, `CHECK_TOOL = "ordering_check"`, `EXPECTED_COST_PER_CASE_USD: Mapping[Way, float]`; `CheckOutcome(ranking, model, cost_usd, fingerprint, prompt_tokens=0, completion_tokens=0, note="", toward_more_common=False)` (the last recorded in the step's `arguments`, decision 0101); `Checker = Callable[[Hypothesis, str | None], CheckOutcome]`; `rule_checker(stats) -> Checker`; `luna_checker(client, stats, tables, *, model=sources.DEFAULT_MODEL, reasoning_effort=sources.DEFAULT_REASONING_EFFORT) -> Checker`; `jev_checker(client, stats, tables) -> Checker`; `checked_case(case, outcome, *, seen_pairs, commit) -> CaseResult`; `check_run(source: Path, way: Way, checker: Checker, *, runs_dir, groups, seen_pairs, commit, now) -> RunRecord`; `derived_id(run_id: str, way: Way) -> str` (`f"{run_id}-check-{way}"`). CLI: `ntsb-eval check RUN_ID --way {rule,luna,jev} [--budget-usd USD]`.
+- Tasks 11, 12, 14, 15, 17 and 18 consume `ntsb-eval check` and `derived_id`.
+
+**What a derived folder holds.** `<run id>-check-<way>/cases.jsonl`: each answered case with its original step and a second step (`step` = 1, `tool = "ordering_check"`, `arguments = {"ranking": [...]}`, the reordered hypothesis, the check's model, tokens, cost and input fingerprint); occurrence scores recomputed by `rescore_occurrence`; finding scores unchanged; an abstained or failed case copied unchanged. `run.jsonl`: the source's record with the derived id, `prompt_version` suffixed `+check-<way>`, S2.7's commit, and **`cost_usd` = the check's cost only** (the answers were paid for, and counted, in the source run; W2). Written in a `finally`, so an interrupted pass still records what it spent, with `finished` empty so the report calls it aborted.
+
+- [x] **Step 1: Write the failing `rescore_occurrence` test** (append to `tests/test_metrics.py`)
+
+```python
+from dataclasses import replace
+
+from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
+from ntsb_probable_cause.scoring.metrics import rescore_occurrence, score_case
+
+
+def _hyp(codes: tuple[str, ...]) -> Hypothesis:
+    return Hypothesis(
+        evidence_narrative="n",
+        occurrence=tuple(OccurrenceGuess(phase=c[:3], event=c[3:], probability=0.2) for c in codes),
+        findings=(),
+        probable_cause="p",
+        lay_explanation="l",
+        confidence=0.5,
+        abstain=False,
+        evidence_used=(),
+    )
+
+
+def test_rescore_occurrence_equals_score_case_on_the_reordered_codes() -> None:
+    tables = load_tables()
+    verdict = Verdict(probable_cause=None, occurrence_codes=("452240", "452241"), finding_codes=(), finding_codes_in_cause=())
+    seen = frozenset({"452240"})
+    before = score_case(_hyp(("452241", "452240")), verdict, tables, seen_pairs=seen)
+    after = rescore_occurrence(before, ("452240", "452241"), verdict.occurrence_codes, seen_pairs=seen)
+    assert after == score_case(_hyp(("452240", "452241")), verdict, tables, seen_pairs=seen)
+    assert rescore_occurrence(replace(before, abstained=True), ("452240",), ("452240",), seen_pairs=seen).occurrence_top1 is False
+```
+
+- [x] **Step 2: Run it to verify it fails, then implement**
+
+Run: `uv run pytest tests/test_metrics.py -v -k rescore` (Expected: FAIL, `ImportError`)
+
+Add to `metrics.py` (with `from dataclasses import replace`):
+
+```python
+def rescore_occurrence(
+    scores: CaseScores, codes: Sequence[str], truth: Sequence[str], *, seen_pairs: AbstractSet[str]
+) -> CaseScores:
+    """The occurrence scores after the codes are re-ordered; finding scores stand (0096).
+
+    Exactly :func:`score_case`'s occurrence rules. An abstained case is returned unchanged.
+    """
+    if scores.abstained or not codes:
+        return scores
+    defining = truth[0] if truth else None
+    return replace(
+        scores,
+        occurrence_top1=codes[0] == defining,
+        occurrence_top3=defining in codes,
+        event_match=defining is not None and codes[0][3:] == defining[3:],
+        pair_unseen=codes[0] not in seen_pairs,
+    )
+```
+
+Run: `uv run pytest tests/test_metrics.py -v` (Expected: PASS)
+
+- [x] **Step 3: Write the failing post-pass tests** (`tests/test_checkpass.py`)
+
+```python
+"""scoring/checkpass.py: the ordering check as a post-pass (decision 0096; plan W2)."""
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.model.client import RecordingFakeClient
+from ntsb_probable_cause.scoring import checkpass
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
+from tests.test_occurrence_misses import _case
+
+NOW = datetime(2026, 9, 28, tzinfo=UTC)
+LOC, STALL = "452240", "452241"
+STATS = build(
+    [PoolCase(2012, "Maneuvering", (LOC, STALL))] * 30 + [PoolCase(2016, "Maneuvering", (STALL, LOC))] * 5,
+    built_from="test",
+)
+
+
+def _source(runs: Path, run_id: str = "20260926T000000-abc1234-dev-400-B") -> Path:
+    folder = runs / run_id
+    folder.mkdir(parents=True)
+    record = RunRecord(
+        run_id=run_id, sample="dev-400", arm="B", exclusions=(), includes=(), prompt_version="s1-v5",
+        model="openai/gpt-6-luna", price_variant="batch", cap_usd=0.05, budget_usd=40.0,
+        commit_sha="abc1234", dirty=False, started=NOW, finished=NOW, cases=2, cost_usd=1.0,
+    )
+    write_jsonl(folder / "run.jsonl", [record])
+    write_jsonl(folder / "cases.jsonl", [
+        _case("C1", (LOC, STALL), (STALL,)),  # stall first; LOC is defining
+        _case("C2", (LOC, STALL), (LOC,), abstain=True),  # abstained: unchanged
+    ])
+    return folder
+
+
+def test_the_rule_pass_writes_a_derived_run_with_a_check_step(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    record = checkpass.check_run(
+        source, "rule", checkpass.rule_checker(STATS), runs_dir=runs,
+        groups={"C1": "Maneuvering", "C2": "Maneuvering"}, seen_pairs=frozenset({LOC}),
+        commit=("def5678", False), now=lambda: NOW,
+    )
+    assert record.run_id == "20260926T000000-abc1234-dev-400-B-check-rule"
+    assert record.cost_usd == 0.0
+    assert record.prompt_version == "s1-v5+check-rule"
+    cases = {c.case_id: c for c in read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)}
+    step = cases["C1"].steps[-1]
+    assert step.tool == checkpass.CHECK_TOOL
+    assert [g.phase + g.event for g in step.hypothesis.occurrence][0] == LOC
+    assert step.arguments["toward_more_common"] is True  # stall (5) -> loss of control (30), 0101
+    assert cases["C1"].scores is not None and cases["C1"].scores.occurrence_top1
+    assert len(cases["C2"].steps) == 1
+
+
+def test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    kwargs = dict(runs_dir=runs, groups={}, seen_pairs=frozenset(), commit=("d", False), now=lambda: NOW)
+    checkpass.check_run(source, "rule", checkpass.rule_checker(STATS), **kwargs)
+    with pytest.raises(ConfigurationError, match="exists"):
+        checkpass.check_run(source, "rule", checkpass.rule_checker(STATS), **kwargs)
+    held = _source(runs, "20260926T000000-abc1234-heldout-400-B")
+    with pytest.raises(ConfigurationError, match="development"):
+        checkpass.check_run(held, "rule", checkpass.rule_checker(STATS), **kwargs)
+
+
+def test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking() -> None:
+    client = RecordingFakeClient([json.dumps({"ranking": ["111111"]}), json.dumps({"ranking": [LOC, STALL]})])
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (LOC, STALL)
+    assert len(client.systems) == 2
+    assert "rejected" in client.systems[1]
+    assert client.payloads[0].text == ""  # everything is in the system text; no evidence payload
+    assert client.settings[0].price_variant == "standard"
+
+
+def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -> None:
+    client = RecordingFakeClient(["not json", "still not json"])
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (STALL,)
+    assert outcome.note.startswith("check failed")
+```
+
+(`Payload.from_evidence` of an `Evidence` with no roles renders an empty text, as the judge's payload does; if it renders a placeholder, assert on that placeholder instead.)
+
+- [x] **Step 4: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_checkpass.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 5: Write `scoring/checkpass.py`**
+
+```python
+"""The ordering check as a post-pass over a finished run (decision 0096; plan walkthrough W2).
+
+A finished arm B run is read; each answered case gets a second step whose hypothesis carries the
+re-ordered occurrence codes; occurrence scores are recomputed and finding scores kept. The result
+is a derived run folder ``<run id>-check-<way>`` that the report compares like any run. Its run
+record's cost is the check's alone: the answers were paid for, and counted, in the source run.
+Development runs only; the Jev way exists for this purpose alone (decision 0097).
+"""
+
+import hashlib
+from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Literal
+
+from ntsb_probable_cause import sources
+from ntsb_probable_cause.errors import ConfigurationError, SchemaError
+from ntsb_probable_cause.model.client import ModelClient, ModelSettings, Payload, cost_usd
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
+from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.scoring import ordering
+from ntsb_probable_cause.scoring.codes import CodeTables
+from ntsb_probable_cause.scoring.coding_stats import CodingStats
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis
+from ntsb_probable_cause.scoring.metrics import rescore_occurrence
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
+
+Way = Literal["rule", "luna", "jev"]
+WAYS: tuple[Way, ...] = ("rule", "luna", "jev")
+CHECK_TOOL = "ordering_check"
+# Estimates for the budget guard (plan W3): GPT-6 Luna at the standard price, about 1,500
+# prompt and 1,500 output tokens a case; Jev at its self-reported input price.
+EXPECTED_COST_PER_CASE_USD: Mapping[Way, float] = {"rule": 0.0, "luna": 0.002, "jev": 0.0001}
+MAX_OUTPUT_TOKENS = 4000
+
+
+@dataclass(frozen=True)
+class CheckOutcome:
+    """One case's check: the ranking, who made it, and what it cost."""
+
+    ranking: tuple[str, ...]
+    model: str
+    cost_usd: float
+    fingerprint: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    note: str = ""
+    # Decision 0101: whether the first code moved toward a more common option in the group.
+    toward_more_common: bool = False
+
+
+Checker = Callable[[Hypothesis, str | None], CheckOutcome]
+
+
+def _codes(hypothesis: Hypothesis) -> tuple[str, ...]:
+    return tuple(g.phase + g.event for g in hypothesis.occurrence)
+
+
+def _fingerprint(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _toward(guesses: Sequence[str], ranking: Sequence[str], group: str | None, stats: CodingStats) -> bool:
+    return ordering.toward_more_common(guesses[0], ranking[0], group, stats)
+
+
+def rule_checker(stats: CodingStats) -> Checker:
+    """The free way: :func:`ordering.plain_rule` (clear habits only, decision 0101)."""
+
+    def check(hypothesis: Hypothesis, group: str | None) -> CheckOutcome:
+        guesses = _codes(hypothesis)
+        ranking = ordering.plain_rule(guesses, group, stats)
+        return CheckOutcome(
+            ranking=ranking,
+            model="rule",
+            cost_usd=0.0,
+            fingerprint=_fingerprint(f"{guesses}|{group}"),
+            toward_more_common=_toward(guesses, ranking, group, stats),
+        )
+
+    return check
+
+
+def luna_checker(
+    client: ModelClient,
+    stats: CodingStats,
+    tables: CodeTables,
+    *,
+    model: str = sources.DEFAULT_MODEL,
+    reasoning_effort: sources.ReasoningEffort | None = sources.DEFAULT_REASONING_EFFORT,
+) -> Checker:
+    """GPT-6 Luna asked, synchronously at the standard price (plan W3); one retry."""
+    settings = ModelSettings(
+        model=model,
+        price_variant="standard",
+        reasoning_effort=reasoning_effort,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        json_schema=ordering.RANKING_SCHEMA,
+        schema_name="ranking",
+    )
+    empty = Payload.from_evidence(Evidence(case_id="check", docket_url=None))
+
+    def check(hypothesis: Hypothesis, group: str | None) -> CheckOutcome:
+        guesses = _codes(hypothesis)
+        options = ordering.candidates(guesses, group, stats)
+        text = ordering.check_text(guesses, options, group, hypothesis.evidence_narrative, stats, tables)
+        system = f"{ordering.CHECK_SYSTEM}\n\n{text}"
+        spent = 0.0
+        prompt = completion = 0
+        error: SchemaError | None = None
+        for attempt in range(2):
+            this_system = system if attempt == 0 else f"{system}\n\nYour previous reply was rejected: {error}"
+            reply = client.complete(empty, settings, system=this_system)
+            spent += cost_usd(reply, settings)[0]
+            prompt += reply.usage.prompt_tokens
+            completion += reply.usage.completion_tokens
+            try:
+                ranking = ordering.parse_ranking(reply.content or "", options)
+            except SchemaError as caught:
+                error = caught
+                continue
+            return CheckOutcome(
+                ranking, model, spent, _fingerprint(system), prompt, completion,
+                toward_more_common=_toward(guesses, ranking, group, stats),
+            )
+        return CheckOutcome(
+            guesses, model, spent, _fingerprint(system), prompt, completion,
+            note=f"check failed, answer unchanged: {error}",
+        )
+
+    return check
+
+
+def jev_checker(client: TypeSafeClient, stats: CodingStats, tables: CodeTables) -> Checker:
+    """Jev asked, one Choice over the candidates (decision 0097)."""
+
+    def check(hypothesis: Hypothesis, group: str | None) -> CheckOutcome:
+        guesses = _codes(hypothesis)
+        options = ordering.candidates(guesses, group, stats)
+        text = ordering.check_text(guesses, options, group, hypothesis.evidence_narrative, stats, tables)
+        exchange = client.ask_state(text, {"defining": ordering.jev_question(options, tables)})
+        answer = exchange.reply.choice("defining")
+        tokens = exchange.reply.usage.input_tokens
+        ranking = ordering.ranking_from_probabilities(answer.probabilities)
+        return CheckOutcome(
+            ranking=ranking,
+            model=exchange.reply.model,
+            cost_usd=tokens * sources.JEV.input_usd_per_mtok / 1_000_000,
+            fingerprint=_fingerprint(text),
+            prompt_tokens=tokens,
+            toward_more_common=_toward(guesses, ranking, group, stats),
+        )
+
+    return check
+
+
+def checked_case(
+    case: CaseResult, outcome: CheckOutcome, *, seen_pairs: AbstractSet[str], commit: tuple[str, bool]
+) -> CaseResult:
+    """The case with the check's step appended and its occurrence scores recomputed."""
+    last = case.steps[-1]
+    hypothesis = ordering.reorder(last.hypothesis, outcome.ranking)
+    step = last.model_copy(
+        update={
+            "step": last.step + 1,
+            "tool": CHECK_TOOL,
+            "arguments": {
+                "ranking": list(outcome.ranking),
+                "toward_more_common": outcome.toward_more_common,
+            },
+            "reason": outcome.note,
+            "returned_roles": (),
+            "documents_attached": (),
+            "documents_not_read": (),
+            "payload_fingerprint": outcome.fingerprint,
+            "hypothesis": hypothesis,
+            "model": outcome.model,
+            "price_variant": "standard",
+            "prompt_tokens": outcome.prompt_tokens,
+            "completion_tokens": outcome.completion_tokens,
+            "reasoning_tokens": None,
+            "reply_completion_tokens": (),
+            "reply_reasoning_tokens": (),
+            "reply_finish_reasons": (),
+            "cost_usd": outcome.cost_usd,
+            "cumulative_cost_usd": last.cumulative_cost_usd + outcome.cost_usd,
+            "commit_sha": commit[0],
+            "dirty": commit[1],
+        }
+    )
+    assert case.scores is not None  # the caller passes scored cases only
+    scores = rescore_occurrence(case.scores, _codes(hypothesis), case.verdict_occurrence, seen_pairs=seen_pairs)
+    return case.model_copy(update={"steps": (*case.steps, step), "scores": scores, "cost_usd": case.cost_usd + outcome.cost_usd})
+
+
+def derived_id(run_id: str, way: Way) -> str:
+    """The derived run's id."""
+    return f"{run_id}-check-{way}"
+
+
+def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -> None:
+    if not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm != "B":
+        raise ConfigurationError(
+            f"the ordering check runs on development arm B runs only; {record.run_id} is "
+            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+        )
+    if any(c.split != "dev" for c in cases):
+        raise ConfigurationError(f"{record.run_id} holds a case outside the development split")
+
+
+def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests vary.
+    source: Path,
+    way: Way,
+    checker: Checker,
+    *,
+    runs_dir: Path,
+    groups: Mapping[str, str | None],
+    seen_pairs: AbstractSet[str],
+    commit: tuple[str, bool],
+    now: Callable[[], datetime],
+) -> RunRecord:
+    """Run the check over a finished run; write and return the derived run's record."""
+    record = read_jsonl(source / "run.jsonl", RunRecord)[0]
+    cases = read_jsonl(source / "cases.jsonl", CaseResult)
+    _refuse_unless_development(record, cases)
+    run_id = derived_id(record.run_id, way)
+    folder = runs_dir / run_id
+    try:
+        folder.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise ConfigurationError(f"{run_id} exists: a check is run once per source run") from error
+    started = now()
+    results: list[CaseResult] = []
+    spent = 0.0
+    finished: datetime | None = None
+    try:
+        for case in cases:
+            if case.scores is None or not case.steps or case.steps[-1].hypothesis.abstain:
+                results.append(case)
+                continue
+            outcome = checker(case.steps[-1].hypothesis, groups.get(case.case_id))
+            spent += outcome.cost_usd
+            results.append(checked_case(case, outcome, seen_pairs=seen_pairs, commit=commit))
+        finished = now()
+    finally:
+        write_jsonl(folder / "cases.jsonl", results)
+        derived = record.model_copy(
+            update={
+                "run_id": run_id,
+                "prompt_version": f"{record.prompt_version}+check-{way}",
+                "commit_sha": commit[0],
+                "dirty": commit[1],
+                "started": started,
+                "finished": finished,
+                "batch_ids": (),
+                "cases": len(results),
+                "cost_usd": spent,
+                "reported_batch_cost_usd": None,
+            }
+        )
+        write_jsonl(folder / "run.jsonl", [derived])
+    return derived
+```
+
+(Replace the `assert` in `checked_case` with an explicit `if case.scores is None: raise ValueError(...)` if the lint config forbids `assert` in library code; `check_run` never passes an unscored case.)
+
+- [x] **Step 6: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_checkpass.py -v`
+Expected: PASS (4 tests)
+
+- [x] **Step 7: Write the failing app tests** (append to `tests/test_eval_app.py`)
+
+```python
+def test_check_refuses_a_held_out_run_before_any_client_is_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20260926T000000-abc1234-heldout-400-B"
+    _write_judgeable_run(runs, run_id, "c1", sample="heldout-400", arm="B")
+
+    def boom(_settings: object) -> object:
+        raise AssertionError("no client may be built for a held-out run")
+
+    assert main(["check", run_id, "--way", "jev"], client_factory=boom, jev_factory=boom) == 1
+    assert "development" in capsys.readouterr().err
+
+
+def test_resolve_latest_skips_derived_check_runs(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=True, arm="B")
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B-check-rule", finished=True, arm="B")
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
+```
+
+(Use the real keyword names of `_write_judgeable_run` and `_write_run`; import `resolve_latest` from `apps.eval.__main__`.)
+
+- [x] **Step 8: Implement the command** in `apps/eval/__main__.py`
+
+Imports: `from ntsb_probable_cause.model.typesafe import TypeSafeClient`, `from ntsb_probable_cause.scoring import checkpass`, `from ntsb_probable_cause.scoring.coding_stats import load_stats`, `from ntsb_probable_cause.scoring.budget import budget_lock, open_reservations`, `from ntsb_probable_cause.scoring.runner import refuse_over_budget` (skip any already imported).
+
+```python
+JevFactory = Callable[[Settings], TypeSafeClient]
+
+
+def _default_jev_factory(settings: Settings) -> TypeSafeClient:
+    return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
+```
+
+In `_build_parser`:
+
+```python
+    check_p = commands.add_parser("check", help="the ordering check, as a post-pass over a finished run")
+    check_p.add_argument("run_id")
+    check_p.add_argument("--way", choices=checkpass.WAYS, required=True)
+    check_p.add_argument("--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD")
+```
+
+```python
+_GROUP_FIELD = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+
+def _cmd_check(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory, jev_factory: JevFactory) -> None:
+    folder = settings.runs_dir / args.run_id
+    record = answering_run_record(folder)
+    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    if not record.sample.startswith("dev") or "heldout" in args.run_id or record.arm != "B":
+        raise ConfigurationError(
+            f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
+            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+        )
+    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
+    processed = settings.data_dir / "processed"
+    ids = [c.case_id for c in cases]
+    groups = {
+        case_id: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
+        for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
+    }
+    stats, tables = load_stats(), load_tables()
+    way: checkpass.Way = args.way
+    if way == "rule":
+        checker = checkpass.rule_checker(stats)
+    else:
+        budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
+        projected = len(cases) * checkpass.EXPECTED_COST_PER_CASE_USD[way]
+        with budget_lock(settings.runs_dir):
+            reserved = sum(open_reservations(settings.runs_dir).values())
+            spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
+            refuse_over_budget(projected, spent, budget, reserved=reserved)
+        checker = (
+            checkpass.luna_checker(client_factory(settings)[0], stats, tables)
+            if way == "luna"
+            else checkpass.jev_checker(jev_factory(settings), stats, tables)
+        )
+    derived = checkpass.check_run(
+        folder, way, checker, runs_dir=settings.runs_dir, groups=groups,
+        seen_pairs=samples.seen_pairs(processed), commit=ledger.commit_state(),
+        now=lambda: datetime.now(UTC),
+    )
+    print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
+```
+
+`main` gains `jev_factory: JevFactory = _default_jev_factory` beside `client_factory`, and dispatches `"check"` to `_cmd_check(args, settings, client_factory, jev_factory)`. In `resolve_latest`, skip any candidate whose id contains `"-check-"`, with a comment: "a derived ordering-check run (S2.7, plan W2) is not a new answering run".
+
+(`fields` and `EvidenceRole` imports: add if missing. If `open_reservations` returns a mapping of floats, `.values()` is right; match its real return type.)
+
+- [x] **Step 9: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_eval_app.py tests/test_checkpass.py -v`
+Expected: PASS
+
+- [x] **Step 10: Add the boundary test for the check's payload** (append to `tests/test_boundary.py`)
+
+```python
+def test_the_ordering_check_sends_no_withheld_text(record_fixtures) -> None:
+    """Layer 5 (0016) for the check: the body sent holds the check text and nothing withheld."""
+    from ntsb_probable_cause.records.split import split_record
+    from ntsb_probable_cause.scoring import checkpass
+    from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+    from ntsb_probable_cause.scoring.codes import load_tables
+    from ntsb_probable_cause.model.client import RecordingFakeClient
+    from tests.test_occurrence_misses import _case
+
+    raw = record_fixtures[0]
+    _evidence, synthesis, verdict = split_record(raw)
+    stats = build([PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t")
+    client = RecordingFakeClient(['{"ranking": ["552300"]}'])
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    checkpass.luna_checker(client, stats, load_tables())(hypothesis, "Landing")
+    sent = client.systems[0] + client.payloads[0].text
+    for withheld in (synthesis.factual_narrative, synthesis.analysis_narrative, verdict.probable_cause):
+        if withheld:
+            assert withheld[:80] not in sent
+```
+
+Then prove it can fail: temporarily append `+ (verdict.probable_cause or "")` to the narrative passed in (`hypothesis.model_copy(update={"evidence_narrative": verdict.probable_cause})`) and confirm the assertion fails; restore. Log the mutation check in the commit message.
+
+(This test module may import `records.split`; `tests/` is outside the import allow-list, as the existing boundary tests already do.)
+
+- [x] **Step 11: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add src/ntsb_probable_cause/scoring/checkpass.py src/ntsb_probable_cause/scoring/metrics.py apps/eval/__main__.py tests/test_checkpass.py tests/test_metrics.py tests/test_eval_app.py tests/test_boundary.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 10: the ordering check as a post-pass (ntsb-eval check), with its boundary test"
+```
+
+---
+
+### Task 11: Round 1's reading rule (spec §5.4, decision 0096 item 5)
+
+**Files:**
+- Create: `scripts/round1_report.py`
+- Test: `tests/test_round1_report.py` (create)
+
+**Interfaces:**
+- Consumes: derived folders `derived_id(source, way)` (Task 10); `misses.miss_group` (Task 4); `metrics.paired_difference`.
+- Produces: `Paired(mean, low, high, n, fixes, breaks)` (frozen dataclass); `paired(a: Mapping[str, bool], b: Mapping[str, bool], ids: Sequence[str] | None = None) -> Paired`; `choose(results: Mapping[str, Mapping[str, tuple[Paired, Paired | None]]]) -> str` (returns a way or `"no check"`); `push(checked: Sequence[CaseResult], none: Mapping[str, bool]) -> tuple[int, int, int, int]` (first codes changed; of those, toward a more common option; their fixes; their breaks — decision 0101 item 4); `main(argv)` with `--answers RUN_A RUN_B`, `--out`.
+
+**The rule, as code will apply it** (decision 0096 item 5). For each answer set and each way: *vs none* is the way's paired top-1 difference against the source run; *vs rule* is a model way's difference against the rule's derived run. A way **works** if *vs none*'s lower bound is above zero on both answer sets. A model way is **chosen** if *vs rule*'s lower bound is above zero on both sets; if both model ways qualify, the one with the larger mean gain over the rule, averaged over the two sets. Otherwise the rule is chosen if it works; otherwise no check is kept. A way whose derived folders are missing (for example Jev without access) is printed "not run" and cannot be chosen.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_round1_report.py`)
+
+```python
+"""scripts/round1_report.py: Round 1's reading rule (decision 0096 item 5)."""
+
+from scripts import round1_report as r1
+
+
+def _p(low: float, mean: float = 0.05) -> r1.Paired:
+    return r1.Paired(mean=mean, low=low, high=mean + 0.05, n=399, fixes=30, breaks=10)
+
+
+def test_paired_counts_fixes_and_breaks() -> None:
+    a = {"C1": True, "C2": False, "C3": True}
+    b = {"C1": False, "C2": True, "C3": True, "C4": True}
+    result = r1.paired(a, b)
+    assert (result.n, result.fixes, result.breaks) == (3, 1, 1)
+
+
+def test_the_rule_wins_when_no_model_beats_it() -> None:
+    results = {
+        "A": {"rule": (_p(0.01), None), "luna": (_p(0.02), _p(-0.01)), "jev": (_p(-0.01), _p(-0.03))},
+        "B": {"rule": (_p(0.02), None), "luna": (_p(0.03), _p(0.00)), "jev": (_p(-0.02), _p(-0.04))},
+    }
+    assert r1.choose(results) == "rule"
+
+
+def test_a_model_is_chosen_only_when_it_beats_the_rule_on_both_sets() -> None:
+    results = {
+        "A": {"rule": (_p(0.01), None), "luna": (_p(0.05, 0.10), _p(0.01, 0.04))},
+        "B": {"rule": (_p(0.02), None), "luna": (_p(0.06, 0.11), _p(0.02, 0.05))},
+    }
+    assert r1.choose(results) == "luna"
+
+
+def test_nothing_is_kept_when_nothing_works_on_both_sets() -> None:
+    results = {"A": {"rule": (_p(0.01), None)}, "B": {"rule": (_p(-0.01), None)}}
+    assert r1.choose(results) == "no check"
+
+
+def test_push_counts_changes_toward_a_more_common_option() -> None:
+    from dataclasses import replace
+
+    from tests.test_occurrence_misses import _SCORES, _case
+
+    base = _case("C1", ("452240",), ("452241",))
+    last = base.steps[-1]
+    moved = last.model_copy(
+        update={
+            "step": 1,
+            "tool": "ordering_check",
+            "arguments": {"ranking": ["452240"], "toward_more_common": True},
+            "hypothesis": last.hypothesis.model_copy(
+                update={"occurrence": (last.hypothesis.occurrence[0].model_copy(update={"event": "240"}),)}
+            ),
+        }
+    )
+    checked = base.model_copy(update={"steps": (last, moved), "scores": replace(_SCORES, occurrence_top1=True)})
+    assert r1.push([checked], {"C1": False}) == (1, 1, 1, 0)  # changed, toward, fixes, breaks
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_round1_report.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 3: Write `scripts/round1_report.py`**
+
+```python
+"""Round 1's results: the four ways on two answer sets, and decision 0096's reading rule.
+
+Status
+    Live for S2.7 (spec §5.4), free: reads the source runs and their derived check folders
+    (``ntsb-eval check``); counts only. Writes docs/results/s27-round1-dev.txt.
+
+Why
+    The rule was fixed before any check ran: a way works if it beats "no check" on both answer
+    sets; a model must also beat the free rule on both, or the rule is kept.
+
+Usage
+    uv run python -m scripts.round1_report --answers RUN_A RUN_B [--out PATH]
+"""
+
+import argparse
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from ntsb_probable_cause.scoring.checkpass import WAYS, derived_id
+from ntsb_probable_cause.scoring.metrics import paired_difference
+from ntsb_probable_cause.scoring.misses import MISS_GROUPS, miss_group
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.settings import Settings
+
+MODEL_WAYS = ("luna", "jev")
+
+
+@dataclass(frozen=True)
+class Paired:
+    """A paired top-1 difference (a - b) with its interval, and fixes and breaks."""
+
+    mean: float
+    low: float
+    high: float
+    n: int
+    fixes: int
+    breaks: int
+
+
+def paired(a: Mapping[str, bool], b: Mapping[str, bool], ids: Sequence[str] | None = None) -> Paired:
+    """Paired over the shared ids (or ``ids``); fixes = right in a only, breaks = right in b only."""
+    shared = sorted(set(a) & set(b)) if ids is None else [i for i in ids if i in a and i in b]
+    if not shared:
+        return Paired(0.0, 0.0, 0.0, 0, 0, 0)
+    mean, low, high = paired_difference([a[i] for i in shared], [b[i] for i in shared])
+    fixes = sum(a[i] and not b[i] for i in shared)
+    breaks = sum(b[i] and not a[i] for i in shared)
+    return Paired(mean, low, high, len(shared), fixes, breaks)
+
+
+def choose(results: Mapping[str, Mapping[str, tuple[Paired, Paired | None]]]) -> str:
+    """Decision 0096 item 5, over every answer set in ``results``."""
+    sets = list(results.values())
+
+    def everywhere(way: str, index: int) -> bool:
+        return all(way in s and (p := s[way][index]) is not None and p.low > 0 for s in sets)
+
+    winners = [w for w in MODEL_WAYS if everywhere(w, 1)]
+    if winners:
+        return max(winners, key=lambda w: sum(s[w][1].mean for s in sets if s[w][1] is not None))
+    return "rule" if everywhere("rule", 0) else "no check"
+
+
+def _top1(cases: Sequence[CaseResult]) -> dict[str, bool]:
+    return {c.case_id: c.scores.occurrence_top1 for c in cases if c.scores is not None and c.steps}
+
+
+def push(checked: Sequence[CaseResult], none: Mapping[str, bool]) -> tuple[int, int, int, int]:
+    """Decision 0101 item 4: (first codes changed, of which toward a more common option,
+    fixes among those, breaks among those)."""
+    changed = toward = fixes = breaks = 0
+    for case in checked:
+        if len(case.steps) < 2 or case.steps[-1].tool != "ordering_check" or case.scores is None:
+            continue
+        before = case.steps[0].hypothesis.occurrence[0]
+        after = case.steps[-1].hypothesis.occurrence[0]
+        if (before.phase, before.event) == (after.phase, after.event):
+            continue
+        changed += 1
+        if case.steps[-1].arguments.get("toward_more_common") is True:
+            toward += 1
+            fixes += case.scores.occurrence_top1 and not none.get(case.case_id, False)
+            breaks += none.get(case.case_id, False) and not case.scores.occurrence_top1
+    return changed, toward, fixes, breaks
+
+
+def _line(label: str, p: Paired) -> str:
+    return f"  {label}: {p.mean:+.1%} [{p.low:+.1%}, {p.high:+.1%}] on n={p.n}; fixes {p.fixes}, breaks {p.breaks}"
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print every way on both answer sets, then the rule's outcome."""
+    parser = argparse.ArgumentParser(prog="round1_report")
+    parser.add_argument("--answers", nargs=2, required=True, metavar="RUN_ID")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    runs = Settings().runs_dir
+    lines = ["Round 1: the ordering check (scripts/round1_report.py; counts only, decision 0096)"]
+    results: dict[str, dict[str, tuple[Paired, Paired | None]]] = {}
+    for source in args.answers:
+        if "heldout" in source:
+            raise SystemExit(f"round1_report: {source} is a held-out run; development runs only")
+        base = read_jsonl(runs / source / "cases.jsonl", CaseResult)
+        none = _top1(base)
+        groups = {
+            c.case_id: miss_group(
+                tuple(g.phase + g.event for g in c.steps[-1].hypothesis.occurrence),
+                c.verdict_occurrence,
+                abstain=c.steps[-1].hypothesis.abstain,
+            )
+            for c in base
+            if c.scores is not None and c.steps
+        }
+        fatal = {c.case_id for c in base if c.fatal}
+        lines += ["", f"## answer set {source}"]
+        loaded: dict[str, dict[str, bool]] = {}
+        pushes: dict[str, tuple[int, int, int, int]] = {}
+        for way in WAYS:
+            folder = runs / derived_id(source, way)
+            if not (folder / "cases.jsonl").exists():
+                lines.append(f"- {way}: not run")
+                continue
+            derived = read_jsonl(folder / "cases.jsonl", CaseResult)
+            loaded[way] = _top1(derived)
+            pushes[way] = push(derived, none)
+        results[source] = {}
+        for way, top1 in loaded.items():
+            vs_none = paired(top1, none)
+            vs_rule = paired(top1, loaded["rule"]) if way != "rule" and "rule" in loaded else None
+            results[source][way] = (vs_none, vs_rule)
+            lines.append(f"- {way}")
+            lines.append(_line("against no check", vs_none))
+            if vs_rule is not None:
+                lines.append(_line("against the plain rule", vs_rule))
+            changed, toward, t_fixes, t_breaks = pushes[way]
+            lines.append(
+                f"  first codes changed: {changed}; toward a more common option (decision 0101): "
+                f"{toward}, fixes {t_fixes}, breaks {t_breaks}"
+            )
+            lines.append(_line("fatal, against no check", paired(top1, none, sorted(fatal))))
+            lines.append(_line("non-fatal, against no check", paired(top1, none, sorted(set(none) - fatal))))
+            for group in ("exact", *MISS_GROUPS):
+                members = sorted(i for i, g in groups.items() if g == group)
+                p = paired(top1, none, members)
+                lines.append(f"    {group}: fixes {p.fixes}, breaks {p.breaks} of {p.n}")
+    outcome = choose(results)
+    lines += ["", f"outcome (decision 0096 item 5): {outcome}"]
+    text = "\n".join(lines)
+    print(text)
+    if args.out is not None:
+        Path(args.out).write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+- [x] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_round1_report.py -v`
+Expected: PASS
+
+- [x] **Step 5: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add scripts/round1_report.py tests/test_round1_report.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 11: Round 1's reading rule"
+```
+
+---
+
+### Task 12: Round 1's runs and results (spec §5)
+
+**Files:**
+- Modify: `Makefile`
+- Create (by running): `docs/results/s27-round1-dev.txt`
+
+**Interfaces:**
+- Consumes: Tasks 10–11; the two answer sets: B-v1 `20260926T082427-d19aafa-dev-400-B` and Round 0's `REPEAT` (Task 7).
+- Produces: the outcome line (a way, or "no check"), which every later round reads as `CHECK` (empty for "no check").
+
+- [x] **Step 1: Add the targets and commit them**
+
+```make
+s27-check:
+	$(if $(RUN),,$(error RUN is required: the answer run id))
+	$(if $(WAY),,$(error WAY is required: rule, luna or jev))
+	uv run python -m scripts.stage_spend --estimate $(if $(filter luna,$(WAY)),0.90,0.05)
+	uv run ntsb-eval check $(RUN) --way $(WAY)
+# S2.7 spec §5, post-pass. rule: free. luna: about $0.36 per 400 cases at the standard price
+# (plan W3). jev: a fraction of a cent (self-reported price); needs TYPESAFE_API_KEY.
+
+s27-round1-results:
+	$(if $(REPEAT),,$(error REPEAT is required: the noise-floor run id))
+	uv run python -m scripts.round1_report --answers 20260926T082427-d19aafa-dev-400-B $(REPEAT) --out docs/results/s27-round1-dev.txt
+```
+
+- [x] **Step 2: The plain rule on both answer sets** (free)
+
+Run:
+```bash
+make s27-check RUN=20260926T082427-d19aafa-dev-400-B WAY=rule
+make s27-check RUN=<REPEAT> WAY=rule
+```
+Expected: two derived folders; each prints `$0.0000`.
+
+- [x] **Step 3: STOP — GPT-6 Luna on both answer sets (paid, about $0.72)**
+
+Hand Andy: "`make s27-check RUN=20260926T082427-d19aafa-dev-400-B WAY=luna`, then `RUN=<REPEAT>`; about $0.36 each, some minutes each, synchronous at the standard price (walkthrough W3)."
+
+- [x] **Step 4: STOP — Jev on both answer sets (paid, a fraction of a cent)**
+
+Hand Andy: "With `TYPESAFE_API_KEY` exported from `pass`: `make s27-check RUN=… WAY=jev` for both answer sets." If Jev is unavailable, record it in Deviations; the report prints "not run" and Round 1 runs three ways (spec §17).
+
+- [x] **Step 5: The results** (free)
+
+Run: `make s27-round1-results REPEAT=<REPEAT>`
+Expected: `docs/results/s27-round1-dev.txt` ends with `outcome (decision 0096 item 5): <way or no check>`.
+
+- [x] **Step 6: Commit and report Round 1 to Andy**
+
+```bash
+git add docs/results/s27-round1-dev.txt Makefile docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 12: Round 1's results"
+```
+
+Report in plain English: each way's gain over no check on both answer sets, fixes against breaks, whether a model beat the free rule, and the outcome — which becomes `CHECK` for every later round.
+
+---
+
+### Task 12a: The registered second Jev check, `jev2` (decision 0103)
+
+Added 2026-09-27 after Round 1, on Andy's decision (see Deviations). The design is fixed in `docs/rounds/s27-round1-jev2.md`, committed before this task's code; this task builds exactly that and nothing else. Where this task and the registration differ, the registration wins.
+
+**Files:**
+- Modify: `src/ntsb_probable_cause/scoring/ordering.py` (the `jev2` state, words for counts, the structured question, the ranking with ties by the model's order)
+- Modify: `src/ntsb_probable_cause/model/typesafe.py` (`ask_state` accepts an object state; `JEV_PINNED = "jev-1.13.0"`)
+- Modify: `src/ntsb_probable_cause/scoring/checkpass.py` (`Way` gains `"jev2"`; `jev2_checker`; `CheckOutcome` gains a free-form `details: Mapping[str, object]` written into the step's `arguments`)
+- Modify: `apps/eval/__main__.py` (`check --way jev2`, same budget path as `jev`)
+- Create: `scripts/round1_jev2_report.py`
+- Modify: `Makefile` (`s27-round1-jev2-results`)
+- Test: `tests/test_ordering.py`, `tests/test_typesafe_client.py`, `tests/test_checkpass.py`, `tests/test_eval_app.py`, `tests/test_round1_jev2_report.py` (create)
+
+**Interfaces:**
+- `ordering.habit_words(share_k: int, base_n: int) -> str` (the five phrases of the registration, in its order; thresholds are `CLEAR_HABIT_SHARE`, `CLEAR_HABIT_MIN_CASES`, `LINK_MIN_SHARE`, `LINK_MIN_CASES`, never new numbers); `ordering.jev2_state(guesses, options, group, narrative, stats, tables) -> dict[str, object]`; `ordering.NONE_OF_THESE = "none_of_these"`; `ordering.jev2_question(options, tables) -> dict[str, object]`; `ordering.jev2_ranking(probabilities, guesses, options) -> tuple[str, ...]` (empty tuple means "leave the answer unchanged").
+- `checkpass.jev2_checker(client, stats, tables) -> Checker`; `EXPECTED_COST_PER_CASE_USD["jev2"]` equal to `"jev"`'s.
+- No new field on `RunRecord`, `StepRecord` or `CaseResult` (a new record field broke track 2's budget checks once, `42e67a7`); everything new goes in the step's `arguments`.
+- Round 1's `scripts/round1_report.py` and `docs/results/s27-round1-dev.txt` are not changed.
+
+- [x] **Step 1: Failing tests for the pure parts** (`tests/test_ordering.py`): `habit_words` gives each of the five phrases at its boundary (19 cases: too few; 12 of 20: clear habit; 11 of 20: often; 5 of 20: often; 4 of 20: seldom; 0 of 20: never); `jev2_state` has exactly the four named fields, the candidates carry the three words fields (the first guess has no `past_cases_with_the_first_guess`), and no digit appears in any value except the codes and the narrative; `jev2_question` has `instructions` with `question` and `focus` exactly as registered, a criteria entry per option plus `none_of_these`, `not_for` built only from other candidates sharing a phase or an event (and absent otherwise); `jev2_ranking` breaks a 0.01 tie by the model's order, returns `()` when `none_of_these` is first, and never returns `none_of_these`.
+- [x] **Step 2: Implement them in `ordering.py`**; tests pass.
+- [x] **Step 3: Failing client test, then implement:** `ask_state` sends an object state as a JSON object (respx asserts the body), and `JEV_PINNED` is the model the `jev2` checker sends.
+- [x] **Step 4: Failing checker tests, then implement `jev2_checker`:** with a respx-mocked `TypeSafeClient`, it sends the registered state and question with `model="jev-1.13.0"`; records `ranking`, `toward_more_common`, `choice`, `confidence` and every option's probability in the step's `arguments`; leaves the answer unchanged when `none_of_these` ranks first; costs input tokens at `sources.JEV`'s input price.
+- [x] **Step 5: `ntsb-eval check --way jev2`**, with a test that it goes through the same refusals and budget reservation as `jev` (the ablation, unfinished-source and repeat refusals; no client built when refused).
+- [x] **Step 6: `scripts/round1_jev2_report.py`** (Status paragraph; refuses a non-development run by `run.jsonl`'s sample before reading cases, as the other S2.7 scripts do), with tests: per answer set, `jev2` against no check, the rule, Luna and Round 1's Jev (fixes and breaks); first codes changed and toward a more common option; how often `none_of_these` ranked first; median confidence of fixed, broken and unchanged cases; the outcome by the registration's win rule (all three lower bounds above zero on both sets, else `luna stays`); the heading says "second, registered comparison (decision 0103)". Makefile target `s27-round1-jev2-results` writes `docs/results/s27-round1-jev2-dev.txt`.
+- [x] **Step 7: `make check`, commit, push.**
+- [x] **Step 8: STOP — Andy runs the two `jev2` checks** with his TypeSafe key, from a clean checkout: `make s27-check RUN=<answer set> WAY=jev2`, for both answer sets (a fraction of a cent).
+- [x] **Step 9: The results** (free): `make s27-round1-jev2-results`; commit; report to Andy in plain English, with the outcome by the fixed rule.
+
+---
+
+## Part D — the guidance rounds (spec §6, decision 0098)
+
+### Task 13: Guidance files, the prompt version, and the registration refusal (spec §6.1–§6.3; W5, W6)
+
+**Files:**
+- Create: `src/ntsb_probable_cause/scoring/guidance/__init__.py` (docstring only), `docs/rounds/README.md`
+- Modify: `src/ntsb_probable_cause/scoring/prompt.py`, `scoring/runner.py` (`RunSpec`, `spec_json`, `_system_text`, `build_record`), `scoring/records.py` (`RunRecord`), `scoring/report.py` (`provenance`), `apps/eval/__main__.py` (`run --guidance`, `resolve_latest`)
+- Create: `scripts/check_guidance.py`
+- Modify: `Makefile`
+- Test: `tests/test_prompt.py`, `tests/test_runner.py`, `tests/test_eval_app.py`, `tests/test_check_guidance.py` (create), `tests/test_guidance_files.py` (create)
+
+**Interfaces:**
+- Produces: `prompt.GUIDANCE_DIR: Traversable` (the `scoring/guidance` folder); `prompt.guidance_round(name: str) -> int` (names are `r<N>-<slug>`, lower case; `ConfigurationError` otherwise); `prompt.guidance_text(names: Sequence[str]) -> str`; `prompt.guidance_sha256(names) -> str | None`; `prompt.prompt_version(names) -> str` (`"s1-v5"`, or `"s1-v5+g"` plus the first 12 characters of `guidance_sha256(names)`; plan W5); `prompt.FINGERPRINT_CHARS = 12`; `prompt.registration_path(name) -> Path` (`docs/rounds/s27-round-<N>.md`); `RunSpec.guidance: tuple[str, ...] = ()`; `RunRecord.guidance: tuple[str, ...] = ()`, `RunRecord.guidance_sha256: str | None = None`; CLI `ntsb-eval run --guidance NAME` (repeatable, in stacking order). `scripts/check_guidance.py NAME...` exits 1 on any guidance sentence found in a development narrative or probable cause.
+- Tasks 14, 15, 17, 18 consume these.
+
+**Where guidance sits.** After the code tables, under its own heading: `SYSTEM_ANSWER`, the tables, then `## Coding guidance (how the NTSB codes)` and each file's text in stacking order. The evidence payload is untouched, so S0's provenance check and every boundary test read it unchanged (decision 0098 item 1).
+
+- [x] **Step 1: Write the failing prompt tests** (append to `tests/test_prompt.py`)
+
+```python
+from pathlib import Path
+
+import pytest
+
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import prompt
+
+
+@pytest.fixture
+def guidance_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    (tmp_path / "r2-loc-stall.md").write_text("When a stall and a loss of control both occur...\n")
+    (tmp_path / "r3-phase.md").write_text("Low-altitude maneuvering uses phase 452.\n")
+    monkeypatch.setattr(prompt, "GUIDANCE_DIR", tmp_path)
+    return tmp_path
+
+
+def test_prompt_version_carries_a_short_fingerprint_of_the_stack(guidance_dir: Path) -> None:
+    assert prompt.prompt_version(()) == prompt.PROMPT_VERSION
+    stack = ("r2-loc-stall", "r3-phase")
+    fingerprint = prompt.guidance_sha256(stack)
+    assert fingerprint is not None
+    assert prompt.prompt_version(stack) == f"{prompt.PROMPT_VERSION}+g{fingerprint[:12]}"
+    assert prompt.prompt_version(stack) != prompt.prompt_version(tuple(reversed(stack)))
+    (guidance_dir / "r3-phase.md").write_text("Edited text.\n")
+    assert prompt.prompt_version(stack) != f"{prompt.PROMPT_VERSION}+g{fingerprint[:12]}"
+
+
+def test_guidance_text_and_hash(guidance_dir: Path) -> None:
+    text = prompt.guidance_text(("r2-loc-stall", "r3-phase"))
+    assert text.index("stall") < text.index("452")
+    assert prompt.guidance_sha256(()) is None
+    assert prompt.guidance_sha256(("r2-loc-stall",)) != prompt.guidance_sha256(("r3-phase",))
+
+
+def test_a_badly_named_or_missing_file_is_refused(guidance_dir: Path) -> None:
+    with pytest.raises(ConfigurationError, match="r<N>-"):
+        prompt.guidance_round("loc-stall")
+    with pytest.raises(ConfigurationError, match="no guidance file"):
+        prompt.guidance_text(("r9-missing",))
+
+
+def test_registration_path() -> None:
+    assert prompt.registration_path("r2-loc-stall") == Path("docs/rounds/s27-round-2.md")
+```
+
+- [x] **Step 2: Run them to verify they fail, then implement in `prompt.py`**
+
+Run: `uv run pytest tests/test_prompt.py -v` (Expected: FAIL, attributes missing)
+
+Add to `prompt.py` (imports `hashlib`, `re`, `from importlib import resources`, `from importlib.resources.abc import Traversable`, `from pathlib import Path`, `from collections.abc import Sequence`, `from ntsb_probable_cause.errors import ConfigurationError`), and extend the module docstring: "From S2.7 (decision 0098) a run may add coding guidance files; `prompt_version` then names them."
+
+```python
+GUIDANCE_DIR: Traversable = resources.files("ntsb_probable_cause.scoring").joinpath("guidance")
+_GUIDANCE_NAME = re.compile(r"^r(?P<round>[1-9][0-9]*)-[a-z0-9]+(?:-[a-z0-9]+)*$")
+GUIDANCE_HEADING = "## Coding guidance (how the NTSB codes)"
+
+
+def guidance_round(name: str) -> int:
+    """The round a guidance file belongs to, from its name ``r<N>-<slug>``."""
+    match = _GUIDANCE_NAME.match(name)
+    if match is None:
+        raise ConfigurationError(f"guidance {name!r}: names are r<N>-<slug>, lower case (decision 0098)")
+    return int(match["round"])
+
+
+def guidance_text(names: Sequence[str]) -> str:
+    """The guidance files' text, in stacking order."""
+    parts: list[str] = []
+    for name in names:
+        guidance_round(name)
+        path = GUIDANCE_DIR.joinpath(f"{name}.md")
+        if not path.is_file():
+            raise ConfigurationError(f"no guidance file {name}.md in scoring/guidance")
+        parts.append(path.read_text().strip())
+    return "\n\n".join(parts)
+
+
+def guidance_sha256(names: Sequence[str]) -> str | None:
+    """The SHA-256 of the names and their text, or None with no guidance."""
+    if not names:
+        return None
+    return hashlib.sha256(f"{list(names)}\n{guidance_text(names)}".encode()).hexdigest()
+
+
+# Plan W5 (Andy): the version carries a short fingerprint of the guidance, not the names; the
+# names are stored beside it on every run record. Twelve characters, as the transcription
+# marker's stamp (docket/transcribe.py:ReadingLookup.done_file).
+FINGERPRINT_CHARS = 12
+
+
+def prompt_version(names: Sequence[str]) -> str:
+    """What elicits the answer: the base version, plus a short fingerprint of the guidance."""
+    fingerprint = guidance_sha256(names)
+    return PROMPT_VERSION if fingerprint is None else f"{PROMPT_VERSION}+g{fingerprint[:FINGERPRINT_CHARS]}"
+
+
+def registration_path(name: str) -> Path:
+    """The round registration a guidance file needs committed before any run (0098 item 3)."""
+    return Path("docs/rounds") / f"s27-round-{guidance_round(name)}.md"
+
+
+def guidance_block(names: Sequence[str]) -> str:
+    """The text appended to the system prompt after the tables; empty with no guidance."""
+    return "" if not names else f"\n\n{GUIDANCE_HEADING}\n{guidance_text(names)}"
+```
+
+Create `src/ntsb_probable_cause/scoring/guidance/__init__.py` with only a docstring: `"""S2.7's coding guidance files (decision 0098): one r<N>-<slug>.md per round, read by scoring.prompt."""`.
+
+Run: `uv run pytest tests/test_prompt.py -v` (Expected: PASS)
+
+- [x] **Step 3: Write the failing runner tests** (append to `tests/test_runner.py`, using its `runner`, `GOOD`, `REFINE` helpers and the `guidance_dir` idea)
+
+```python
+def test_guidance_reaches_the_system_text_and_the_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures) -> None:
+    guidance = tmp_path / "guidance"
+    guidance.mkdir()
+    (guidance / "r2-loc-stall.md").write_text("GUIDANCE-MARKER sentence.\n")
+    monkeypatch.setattr(prompt, "GUIDANCE_DIR", guidance)
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, price_variant="standard", guidance=("r2-loc-stall",))
+    record = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    assert "GUIDANCE-MARKER" in client.systems[0]
+    assert "GUIDANCE-MARKER" not in client.payloads[0].text
+    assert record.guidance == ("r2-loc-stall",)
+    assert record.prompt_version == f"{prompt.PROMPT_VERSION}+g{record.guidance_sha256[:12]}"
+    assert record.guidance_sha256 is not None
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert written["guidance"] == ["r2-loc-stall"]
+
+
+def test_a_run_without_guidance_writes_the_old_spec_keys(tmp_path: Path, record_fixtures) -> None:
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(sample="dev-400", arm="ceiling", sync=True, price_variant="standard")
+    record = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert "guidance" not in written
+    assert written["prompt_version"] == prompt.PROMPT_VERSION
+```
+
+(Use the arguments `tests/test_runner.py`'s other sync ceiling tests pass; the ceiling needs no docket.)
+
+- [x] **Step 4: Run them to verify they fail, then implement in the runner, records and report**
+
+Run: `uv run pytest tests/test_runner.py -v -k guidance` (Expected: FAIL, `RunSpec` has no `guidance`)
+
+- `RunSpec`: add `guidance: tuple[str, ...] = ()` after `expected_cost_per_case_usd`.
+- `spec_json`: replace `"prompt_version": prompt.PROMPT_VERSION,` with `"prompt_version": prompt.prompt_version(spec.guidance),`; build the dict into a variable and, before returning, `if spec.guidance: recorded |= {"guidance": list(spec.guidance), "guidance_sha256": prompt.guidance_sha256(spec.guidance)}` inserted before `commit_sha` (keep `case_ids` last). A run without guidance writes exactly the old keys, so an older folder still resumes (W5).
+- `_system_text`: return `f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables, case_number=case_number)}{prompt.guidance_block(spec.guidance)}"`.
+- `build_record`: `prompt_version=prompt.prompt_version(spec.guidance)`, `guidance=spec.guidance`, `guidance_sha256=prompt.guidance_sha256(spec.guidance)`.
+- `records.RunRecord`: add `guidance: tuple[str, ...] = ()` and `guidance_sha256: str | None = None` (defaults, so every older row still reads).
+- `report.provenance`: after the `exclusions=` line, when `record.guidance`: `f"guidance={'+'.join(record.guidance)} sha256={(record.guidance_sha256 or '')[:12]}"`.
+
+Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_records.py -v` (Expected: PASS)
+
+- [x] **Step 5: The CLI and the registration refusal**
+
+In `_build_parser`'s `run_p`: `run_p.add_argument("--guidance", action="append", default=[], metavar="NAME", help="a guidance file r<N>-<slug>, in stacking order (decision 0098)")`. In `_cmd_run`, after the sealed refusal:
+
+```python
+    for name in args.guidance:
+        registration = prompt.registration_path(name)
+        if not gitinfo.is_committed(registration):
+            raise ConfigurationError(
+                f"guidance {name}: its registration {registration} is not committed; a round is "
+                "registered before it runs (decision 0098 item 3)"
+            )
+    prompt.guidance_text(args.guidance)  # a missing file is refused before any money moves
+```
+
+and pass `guidance=tuple(args.guidance)` to `RunSpec`. In `resolve_latest`, skip a candidate whose record has `guidance`, beside the ablation skip, with the comment "a guided run (S2.7) is not the plain arm".
+
+Append to `tests/test_eval_app.py`:
+
+```python
+def test_run_refuses_guidance_whose_registration_is_not_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], record_fixtures
+) -> None:
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path, repo=Path(): path.name != "s27-round-2.md")
+    assert main(["run", "--arm", "ceiling", "--sample", "dev-400", "--guidance", "r2-loc-stall"],
+                client_factory=lambda s: (RecordingFakeClient([]), None)) == 1
+    assert "registration" in capsys.readouterr().err
+```
+
+Run: `uv run pytest tests/test_eval_app.py -v -k "guidance or resolve"` (Expected: PASS)
+
+- [x] **Step 6: The CI check on committed guidance, and the local sentence check (W6)**
+
+`tests/test_guidance_files.py`:
+
+```python
+"""Every committed guidance file is named r<N>-<slug>, has a registration, and names no case."""
+
+import re
+from pathlib import Path
+
+from ntsb_probable_cause.scoring import prompt
+
+_CASE_NUMBER = re.compile(r"\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z]?\b")
+GUIDANCE = Path("src/ntsb_probable_cause/scoring/guidance")
+
+
+def test_guidance_files_are_well_named_registered_and_name_no_case() -> None:
+    for path in sorted(GUIDANCE.glob("*.md")):
+        prompt.guidance_round(path.stem)
+        assert prompt.registration_path(path.stem).is_file(), path
+        assert not _CASE_NUMBER.search(path.read_text()), path
+```
+
+`scripts/check_guidance.py`:
+
+```python
+"""Check guidance files share no sentence with any development case's withheld text.
+
+Status
+    Live for S2.7 (spec §12, plan W6), free and local: streams every development case in the
+    processed file and compares each guidance sentence of 30 or more characters, normalised,
+    against the factual narrative, analysis narrative and probable cause. Prints counts and
+    the offending guidance sentence only; exits 1 on any match. CI cannot run it (no data).
+
+Usage
+    NTSB_DATA_DIR=... uv run python -m scripts.check_guidance r2-loc-stall [r3-...]
+"""
+
+import argparse
+import json
+import re
+from collections.abc import Sequence
+
+import pyarrow.parquet as pq
+
+from ntsb_probable_cause import fields
+from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.settings import Settings
+
+MIN_CHARS = 30
+
+
+def normalise(text: str) -> str:
+    """Lower case, whitespace collapsed."""
+    return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+def sentences(text: str) -> list[str]:
+    """The guidance's sentences of at least ``MIN_CHARS`` characters, normalised."""
+    return [s for s in (normalise(p) for p in re.split(r"(?<=[.!?])\s+", text)) if len(s) >= MIN_CHARS]
+
+
+def matches(needles: Sequence[str], haystacks: Sequence[str]) -> list[str]:
+    """The needles found in any haystack."""
+    return [n for n in needles if any(n in h for h in haystacks)]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Exit 1 if any guidance sentence appears in a development case's withheld text."""
+    parser = argparse.ArgumentParser(prog="check_guidance")
+    parser.add_argument("names", nargs="+")
+    args = parser.parse_args(argv)
+    needles = sentences(prompt.guidance_text(args.names))
+    found: set[str] = set()
+    cases = 0
+    columns = ["split", "raw_json"]
+    path = Settings().data_dir / "processed" / "cases.parquet"
+    with pq.ParquetFile(path) as parquet:
+        for batch in parquet.iter_batches(batch_size=512, columns=columns):
+            for split, raw_json in zip(*(batch.column(c).to_pylist() for c in columns), strict=True):
+                if split != "dev":
+                    continue
+                raw = json.loads(raw_json)
+                texts = [
+                    normalise(t)
+                    for t in (fields.factual_narrative(raw), fields.analysis_narrative(raw), fields.probable_cause(raw))
+                    if isinstance(t, str)
+                ]
+                cases += 1
+                found.update(matches(needles, texts))
+    print(f"{len(needles)} guidance sentences checked against {cases} development cases; {len(found)} found")
+    for sentence in sorted(found):
+        print(f"- found: {sentence}")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+`tests/test_check_guidance.py`:
+
+```python
+from scripts import check_guidance as cg
+
+
+def test_sentences_and_matches() -> None:
+    text = "Short one. When a loss of control and a stall both occur, code the first. Another."
+    needles = cg.sentences(text)
+    assert needles == ["when a loss of control and a stall both occur, code the first."]
+    assert cg.matches(needles, ["... when a loss of control and a stall both occur, code the first. ..."]) == needles
+    assert cg.matches(needles, ["nothing here"]) == []
+```
+
+(`fields.factual_narrative`, `analysis_narrative`, `probable_cause` exist on `main`; if a name differs, use the one in `fields.py`. Scripts are outside the import-linter contracts, as `analysis_handcheck.py` already is.)
+
+- [x] **Step 7: The rounds folder and its template** (`docs/rounds/README.md`)
+
+```markdown
+# S2.7 rounds
+
+One file per guidance round, `s27-round-<N>.md` (decision 0098 item 3), committed **before** the
+round's run; the runner refuses guidance whose registration is not committed. The result is
+appended below the registration after the run, by `scripts/round_result.py`, and nothing above
+it is edited. `s27-sealed.md` registers the final setup before the sealed sample is opened
+(decision 0095).
+
+## Template
+
+    # S2.7 round <N>: <one-line change>
+
+    - **Change:** adds `src/ntsb_probable_cause/scoring/guidance/r<N>-<slug>.md` (text quoted below).
+    - **Stack:** the kept guidance before it, in order: <names or "none">.
+    - **Source (decision 0098 item 2):** <the counts in docs/results/s27-coding-stats.txt it quotes,
+      or the official definition it cites>.
+    - **The miss group it should shrink:** <group>, from docs/results/s27-round0-dev.txt.
+    - **Reading rule:** decision 0098 item 4, applied by scripts/round_result.py; with-check scores
+      decide if Round 1 kept a check (<way or "no check">).
+    - **Reference run:** <run id>; **noise pair:** <B-v1 run id> and <repeat run id>.
+    - **Cost estimate:** <$, from the last run's cost per case>.
+    - **Prediction:** <one line>.
+    - **Local sentence check:** `scripts/check_guidance.py` passed on <date>.
+
+    ## The guidance text
+
+    <the file's text, verbatim>
+```
+
+- [x] **Step 8: Makefile targets**
+
+```make
+s27-round:
+	$(if $(PER_CASE),,$(error PER_CASE is required: the last run's cost per case rounded up))
+	uv run python -m scripts.stage_spend --estimate $(or $(EST),1.40)
+	uv run ntsb-eval run --arm B --sample dev-400 --evidence-version $(or $(EVIDENCE),v1) --expected-cost-per-case-usd $(PER_CASE) $(foreach g,$(GUIDANCE),--guidance $(g))
+# S2.7 spec §6, paid (about $1.18 at v1): one guidance round's arm B run on dev-400. GUIDANCE
+# lists every kept file and the new one, in stacking order; each needs its registration committed.
+
+s27-check-guidance:
+	$(if $(GUIDANCE),,$(error GUIDANCE is required))
+	uv run python -m scripts.check_guidance $(GUIDANCE)
+# S2.7 plan W6, free and local: no guidance sentence may appear in a development case's withheld text.
+```
+
+- [x] **Step 9: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add src/ntsb_probable_cause/scoring/prompt.py src/ntsb_probable_cause/scoring/guidance src/ntsb_probable_cause/scoring/runner.py src/ntsb_probable_cause/scoring/records.py src/ntsb_probable_cause/scoring/report.py apps/eval/__main__.py scripts/check_guidance.py docs/rounds/README.md Makefile tests/test_prompt.py tests/test_runner.py tests/test_eval_app.py tests/test_check_guidance.py tests/test_guidance_files.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 13: guidance files, the prompt version, and the registration refusal"
+```
+
+---
+
+### Task 14: A round's reading rule (spec §6.4, decision 0098 item 4)
+
+**Files:**
+- Create: `scripts/round_result.py`
+- Modify: `Makefile`
+- Test: `tests/test_round_result.py` (create)
+
+**Interfaces:**
+- Consumes: `metrics.bootstrap_mean`; run folders.
+- Produces: `Diff(mean, low, high, n)`; `diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff`; `Reading(primary, noise, secondary, kept, reason)`; `read(run, reference, noise_a, noise_b, *, finding_round: bool) -> Reading` over case lists; `push_line(run, reference, groups: Mapping[str, str | None], stats: CodingStats) -> str` (decision 0101 item 4); `main(argv)` with `--run`, `--reference`, `--noise A B`, `--finding-round`, `--append PATH`.
+
+**The rule, as code applies it.** An occurrence round's **primary** score is top-1 and its **secondary** finding recall@10; a finding round swaps them. The **noise** is the absolute mean of the primary score's paired difference between the two identical Round 0 runs (or their derived check folders when a check is kept). The round is **kept** if the primary difference's lower bound is above zero, its mean is larger than the noise, and the secondary difference's upper bound is not below zero (do no harm). Example: top-1 +3.5% [+0.8%, +6.1%], noise 1.5%, finding recall@10 −0.4% [−1.9%, +1.1%] → kept. Top-1 +1.2% [+0.1%, +2.4%] with noise 1.5% → dropped: inside the noise.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_round_result.py`)
+
+```python
+"""scripts/round_result.py: decision 0098 item 4."""
+
+from dataclasses import replace
+
+from scripts import round_result as rr
+
+from tests.test_occurrence_misses import _SCORES, _case
+
+
+def _cases(top1: list[bool], recall: list[float]):
+    return [
+        _case(f"C{i}", ("452240",), ("452240",)).model_copy(
+            update={"scores": replace(_SCORES, occurrence_top1=t, finding_recall_10=r)}
+        )
+        for i, (t, r) in enumerate(zip(top1, recall, strict=True))
+    ]
+
+
+def test_a_round_is_kept_above_the_noise_with_no_harm() -> None:
+    n = 200
+    reference = _cases([False] * n, [0.1] * n)
+    run = _cases([i < 40 for i in range(n)], [0.1] * n)  # +20 points, no finding change
+    noise_a = _cases([False] * n, [0.1] * n)
+    noise_b = _cases([i < 2 for i in range(n)], [0.1] * n)  # 1 point of noise
+    reading = rr.read(run, reference, noise_a, noise_b, finding_round=False)
+    assert reading.kept
+    assert abs(reading.noise - 0.01) < 1e-9
+
+
+def test_a_round_inside_the_noise_is_dropped() -> None:
+    n = 200
+    reference = _cases([False] * n, [0.1] * n)
+    run = _cases([i < 4 for i in range(n)], [0.1] * n)  # +2 points
+    noise_b = _cases([i < 10 for i in range(n)], [0.1] * n)  # 5 points of noise
+    reading = rr.read(run, reference, reference, noise_b, finding_round=False)
+    assert not reading.kept
+
+
+def test_a_gain_that_harms_the_other_score_is_dropped() -> None:
+    n = 200
+    reference = _cases([False] * n, [0.5] * n)
+    run = _cases([i < 40 for i in range(n)], [0.0] * n)  # top-1 up, finding recall down everywhere
+    reading = rr.read(run, reference, reference, reference, finding_round=False)
+    assert not reading.kept
+    assert "harm" in reading.reason
+
+
+def test_push_line_counts_first_codes_moved_toward_a_more_common_option() -> None:
+    from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+
+    stats = build(
+        [PoolCase(2012, "Maneuvering", ("452240",))] * 30 + [PoolCase(2013, "Maneuvering", ("452241",))] * 5,
+        built_from="test",
+    )
+    reference = [_case("C1", ("452240",), ("452241",)), _case("C2", ("452240",), ("452240",))]
+    run = [
+        _case("C1", ("452240",), ("452240",)).model_copy(update={"scores": replace(_SCORES, occurrence_top1=True)}),
+        _case("C2", ("452240",), ("452241",)),
+    ]
+    reference[1] = reference[1].model_copy(update={"scores": replace(_SCORES, occurrence_top1=True)})
+    text = rr.push_line(run, reference, {"C1": "Maneuvering", "C2": "Maneuvering"}, stats)
+    assert "first codes changed: 2; toward a more common option: 1, fixes 1, breaks 0" in text
+```
+
+- [x] **Step 2: Run them to verify they fail**
+
+Run: `uv run pytest tests/test_round_result.py -v`
+Expected: FAIL with `ImportError`
+
+- [x] **Step 3: Write `scripts/round_result.py`**
+
+```python
+"""A guidance round's result, by decision 0098 item 4's rule; appended to its registration.
+
+Status
+    Live for S2.7 (spec §6.4), free: reads run folders; counts only.
+
+Why
+    The rule was fixed before the first round: kept only if the gain is real, larger than the
+    difference between two identical runs, and costs the other score nothing clear.
+
+Usage
+    uv run python -m scripts.round_result --run RUN --reference REF --noise A B [--finding-round] [--append PATH]
+"""
+
+import argparse
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from ntsb_probable_cause import fields
+from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
+from ntsb_probable_cause.scoring.metrics import bootstrap_mean
+from ntsb_probable_cause.scoring.ordering import toward_more_common
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.settings import Settings
+
+
+@dataclass(frozen=True)
+class Diff:
+    """A paired mean difference (a - b) with its interval."""
+
+    mean: float
+    low: float
+    high: float
+    n: int
+
+
+@dataclass(frozen=True)
+class Reading:
+    """A round's reading."""
+
+    primary: Diff
+    noise: float
+    secondary: Diff
+    kept: bool
+    reason: str
+
+
+def _top1(cases: Sequence[CaseResult]) -> dict[str, float]:
+    return {c.case_id: float(c.scores.occurrence_top1) for c in cases if c.scores is not None and c.steps}
+
+
+def _recall(cases: Sequence[CaseResult]) -> dict[str, float]:
+    return {
+        c.case_id: c.scores.finding_recall_10
+        for c in cases
+        if c.scores is not None and c.steps and c.scores.finding_recall_10 is not None
+    }
+
+
+def diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff:
+    """Paired over the shared case ids."""
+    shared = sorted(set(a) & set(b))
+    if not shared:
+        return Diff(0.0, 0.0, 0.0, 0)
+    mean, low, high = bootstrap_mean([a[i] - b[i] for i in shared])
+    return Diff(mean, low, high, len(shared))
+
+
+def read(
+    run: Sequence[CaseResult],
+    reference: Sequence[CaseResult],
+    noise_a: Sequence[CaseResult],
+    noise_b: Sequence[CaseResult],
+    *,
+    finding_round: bool,
+) -> Reading:
+    """Decision 0098 item 4."""
+    first, second = (_recall, _top1) if finding_round else (_top1, _recall)
+    primary = diff(first(run), first(reference))
+    noise = abs(diff(first(noise_a), first(noise_b)).mean)
+    secondary = diff(second(run), second(reference))
+    if secondary.high < 0:
+        return Reading(primary, noise, secondary, False, "dropped: harm to the other score (interval wholly below zero)")
+    if primary.low <= 0:
+        return Reading(primary, noise, secondary, False, "dropped: the gain's interval includes zero")
+    if primary.mean <= noise:
+        return Reading(primary, noise, secondary, False, "dropped: the gain is inside the noise floor")
+    return Reading(primary, noise, secondary, True, "kept")
+
+
+def _first(case: CaseResult) -> str:
+    guess = case.steps[-1].hypothesis.occurrence[0]
+    return guess.phase + guess.event
+
+
+def push_line(
+    run: Sequence[CaseResult],
+    reference: Sequence[CaseResult],
+    groups: Mapping[str, str | None],
+    stats: CodingStats,
+) -> str:
+    """Decision 0101 item 4: first codes changed against the reference, and how many moved
+    toward a more common option in the case's phase group, with their fixes and breaks."""
+    before = {c.case_id: c for c in reference if c.scores is not None and c.steps}
+    changed = toward = fixes = breaks = 0
+    for case in run:
+        old = before.get(case.case_id)
+        if case.scores is None or not case.steps or old is None or old.scores is None:
+            continue
+        if _first(case) == _first(old):
+            continue
+        changed += 1
+        if toward_more_common(_first(old), _first(case), groups.get(case.case_id), stats):
+            toward += 1
+            fixes += case.scores.occurrence_top1 and not old.scores.occurrence_top1
+            breaks += old.scores.occurrence_top1 and not case.scores.occurrence_top1
+    return (
+        f"- first codes changed: {changed}; toward a more common option: {toward}, "
+        f"fixes {fixes}, breaks {breaks} (decision 0101 item 4)"
+    )
+
+
+_GROUP_FIELD = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+
+def _groups(cases: Sequence[CaseResult]) -> dict[str, str | None]:
+    """Each case's phase group, the evidence value (read from the processed file, locally)."""
+    ids = [c.case_id for c in cases]
+    raws = samples.load_cases(Settings().data_dir / "processed", ids)
+    return {
+        i: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
+        for i, raw in zip(ids, raws, strict=True)
+    }
+
+
+def _load(run_id: str) -> list[CaseResult]:
+    if "heldout" in run_id:
+        raise SystemExit(f"round_result: {run_id} is a held-out run; development runs only")
+    return read_jsonl(Settings().runs_dir / run_id / "cases.jsonl", CaseResult)
+
+
+def _fmt(d: Diff) -> str:
+    return f"{d.mean:+.1%} [{d.low:+.1%}, {d.high:+.1%}] on n={d.n}"
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print the reading; with ``--append``, add it under the registration."""
+    parser = argparse.ArgumentParser(prog="round_result")
+    parser.add_argument("--run", required=True)
+    parser.add_argument("--reference", required=True)
+    parser.add_argument("--noise", nargs=2, required=True, metavar="RUN_ID")
+    parser.add_argument("--finding-round", action="store_true")
+    parser.add_argument("--append", default=None, type=Path)
+    args = parser.parse_args(argv)
+    run, reference = _load(args.run), _load(args.reference)
+    reading = read(
+        run, reference, _load(args.noise[0]), _load(args.noise[1]),
+        finding_round=args.finding_round,
+    )
+    push = push_line(run, reference, _groups(run), load_stats())
+    primary, secondary = ("finding recall@10", "occurrence top-1") if args.finding_round else ("occurrence top-1", "finding recall@10")
+    text = "\n".join(
+        [
+            "## Result (scripts/round_result.py, decision 0098 item 4)",
+            "",
+            f"- run: {args.run}; reference: {args.reference}; noise pair: {args.noise[0]}, {args.noise[1]}",
+            f"- {primary}: {_fmt(reading.primary)}",
+            f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",
+            f"- {secondary} (do no harm): {_fmt(reading.secondary)}",
+            push,
+            f"- outcome: {reading.reason}",
+        ]
+    )
+    print(text)
+    if args.append is not None:
+        with args.append.open("a") as handle:
+            handle.write("\n" + text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+- [x] **Step 4: Run the tests to verify they pass; add the target; commit**
+
+Run: `uv run pytest tests/test_round_result.py -v` (Expected: PASS)
+
+```make
+s27-round-result:
+	$(if $(N),,$(error N is required: the round number))
+	$(if $(RUN),,$(error RUN is required))
+	$(if $(REFERENCE),,$(error REFERENCE is required))
+	$(if $(NOISE),,$(error NOISE is required: the two identical runs, space-separated, in quotes))
+	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) $(if $(FINDING),--finding-round,) --append docs/rounds/s27-round-$(N).md
+# S2.7 spec §6.4, free: decision 0098 item 4's reading, appended to the round's registration.
+```
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add scripts/round_result.py tests/test_round_result.py Makefile docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 14: a guidance round's reading rule"
+```
+
+---
+
+### Task 15: One guidance round (repeat until the stop rule) (spec §6, decision 0098)
+
+This task is a procedure, repeated once per round. Rounds are numbered from 2 (Rounds 0 and 1 are the diagnosis and the check). Occurrence rounds come first; when two in a row are dropped, one or two finding rounds follow (`FINDING=1`); the $25 line ends everything (decision 0098 items 5–6).
+
+**Variables for each round:** `N` (the round number), `SLUG`, `KEPT` (the kept guidance names before it, in order), `CHECK` (Round 1's outcome, empty for "no check"), `REFERENCE` (the last kept round's run, or its derived check folder when `CHECK` is set; for round 2, `REPEAT` or its derived folder), `NOISE` (`"20260926T082427-d19aafa-dev-400-B REPEAT"`, or their derived check folders when `CHECK` is set).
+
+- [x] **Step 1: Choose the change**
+
+From `docs/results/s27-round0-dev.txt`: the largest miss group Andy's hand-read marked mostly "coding convention" or "wrong phase", not yet addressed. Write it down in the registration draft. One change per round (decision 0098 Why 1).
+
+- [x] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
+
+Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). **A habit is stated as the usual choice only when it is a clear habit** — at least 60% of at least 20 pool cases (decision 0101 item 3). Below that line, the guidance lists the options with their counts and says the evidence decides, for example: "for a stall on approach the NTSB has used the final leg (40 of 131 past cases), the go-around (37) and the base leg (24); code the leg the evidence places the stall on." An example of a clear habit, in the form it takes (the numbers come from the committed counts, never from this plan):
+
+> When a loss of control in flight and an aerodynamic stall or spin both appear in an accident, the NTSB flagged the loss of control in flight as the defining event in N of M past cases. Put the stall or spin first only when the evidence shows the stall itself, not a loss of control, began the accident sequence; otherwise put loss of control in flight first and keep the stall among your guesses.
+
+- [x] **Step 3: The local sentence check** (free)
+
+Run: `make s27-check-guidance GUIDANCE="<KEPT> r<N>-<SLUG>"`
+Expected: `0 found`. If a sentence is found, reword it and re-run.
+
+- [x] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
+
+```bash
+git add src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md docs/rounds/s27-round-<N>.md
+git commit -m "S2.7 round <N>: registration and guidance (<one line>)"
+```
+
+The tree is clean now; the run records this commit.
+
+- [x] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
+
+Hand Andy: "Round <N>: `make s27-round GUIDANCE="<KEPT> r<N>-<SLUG>" PER_CASE=<last cost per case rounded up>`; about $1.18, 30–60 minutes on batch; start between 01:00 and 12:00 UTC." Record the run id.
+
+- [x] **Step 6: The check, if Round 1 kept one**
+
+If `CHECK` is set: `make s27-check RUN=<run id> WAY=<CHECK>` (free for `rule`; about $0.36 for `luna`). The derived id is `<run id>-check-<CHECK>`.
+
+- [x] **Step 7: Read the round** (free)
+
+Run: `make s27-round-result N=<N> RUN=<run id, or its derived folder> REFERENCE=<REFERENCE> NOISE="<noise pair>" $(FINDING)`
+The reading is appended to the registration. Commit it: `git commit -am "S2.7 round <N>: result (<kept|dropped>)"`.
+
+- [x] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
+
+`make s27-judge RUN=<the run that goes forward: the derived folder if CHECK is set>`; then
+`uv run python -m scripts.judge_outcomes --runs <previous kept run> <this run> --label-status <validated|unvalidated> >> docs/rounds/s27-round-<N>.md` and commit. Read the misread share: if it moved beyond Round 0's label churn, say so in the registration (spec §6.4, last point).
+
+- [x] **Step 9: The stop rule**
+
+`make stage-spend`. Two dropped rounds in a row ends the occurrence rounds (move to finding rounds with `FINDING=1`, one or two of them); the $25 line ends every round. Report the round to Andy in plain English (the change, the reading, kept or dropped, the spend) before starting the next.
+
+---
+
+## Part E — the meeting point, the sealed sample and the close (spec §7.5, §8, §9)
+
+### Task 16: Merge both tracks into the parent, and record the transcriber and page rule on v2 runs (spec §7.5; decision 0102)
+
+**Files:**
+- Modify: `scoring/runner.py` (`RunSpec`, `spec_json`, `Runner.run` refusals, `build_record`), `scoring/records.py` (`RunRecord`), `scoring/report.py` (`refuse_cross_version`, `provenance`), `apps/eval/__main__.py` (`run --transcriber --page-rule`, `_readings_for_run`)
+- Test: `tests/test_runner.py`, `tests/test_report.py`, `tests/test_eval_app.py`
+
+**Interfaces:**
+- Consumes (from track 2, after the merge): `docket.transcribe.TRANSCRIBER: str`, `PAGE_RULE: PageRule`, `PAGE_RULES: tuple[PageRule, ...]`, `ReadingLookup(cache, *, model=TRANSCRIBER, instruction=TRANSCRIBE, dpi=RESOLUTION, page_rule=PAGE_RULE)` with `.model` and `.page_rule`.
+- Produces: `RunSpec.transcriber: str | None = None`, `RunSpec.page_rule: str | None = None`; `RunRecord.transcriber`, `RunRecord.page_rule` (defaults None); `report.S26_V2_READING = ("qwen/qwen3.5-122b-a10b", "all")` (what a v2 record without the fields means: S2.6's transcriber and rule); CLI `run --transcriber MODEL --page-rule RULE` (defaults `TRANSCRIBER`, `PAGE_RULE`; used only at v2).
+
+- [x] **Step 1: STOP — both tracks merge into the parent**
+
+On Andy's go-ahead, each track merges into `s27-coding-guidance` with a merge commit (never squashed or rebased, decision 0033): track 1 (`s27-guidance`) once Task 15's stop rule has ended the rounds, and track 2 (`s27-transcriber`) in its own Task 12. From the parent's worktree:
+
+```bash
+git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-guidance -m "Merge track 1 (s27-guidance) into the S2.7 parent"
+git -C .claude/worktrees/s27-coding-guidance merge --no-ff s27-transcriber -m "Merge track 2 (s27-transcriber) into the S2.7 parent"
+```
+
+(Track 2's plan does its own merge in its Task 12; whichever comes second resolves any conflict.) When both have landed: `git log --oneline --graph -8` shows the two merges; run `make check` (Expected: PASS). If `sources.py`, the `Makefile`, `apps/eval/__main__.py` or the decisions index conflicted, the resolution is in the merge commit; log it in Deviations. From here to Task 19, work on the parent in `.claude/worktrees/s27-coding-guidance`.
+
+- [x] **Step 2: Write the failing tests**
+
+`tests/test_runner.py`:
+
+```python
+def test_a_v2_run_records_its_transcriber_and_page_rule(tmp_path: Path, record_fixtures) -> None:
+    reader = FakeDocketReader(_transcribed_docket(), version="v2")
+    spec = replace(_arm_b("v2"), transcriber="qwen/qwen3.5-122b-a10b", page_rule="image-only")
+    record = runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=reader).run(spec, record_fixtures[:1])
+    assert (record.transcriber, record.page_rule) == ("qwen/qwen3.5-122b-a10b", "image-only")
+    written = json.loads((tmp_path / "runs" / record.run_id / "spec.json").read_text())
+    assert written["page_rule"] == "image-only"
+
+
+def test_a_v2_run_without_its_reading_is_refused_and_a_v1_run_with_one_is_refused(tmp_path: Path, record_fixtures) -> None:
+    reader = FakeDocketReader(_transcribed_docket(), version="v2")
+    with pytest.raises(ConfigurationError, match="transcriber"):
+        runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=reader).run(_arm_b("v2"), record_fixtures[:1])
+    with pytest.raises(ConfigurationError, match="v1"):
+        runner(tmp_path, RecordingFakeClient([GOOD, REFINE]), docket=FakeDocketReader(_transcribed_docket())).run(
+            replace(_arm_b("v1"), transcriber="x", page_rule="all"), record_fixtures[:1]
+        )
+```
+
+`tests/test_report.py`:
+
+```python
+def test_two_v2_runs_with_different_readings_are_refused_unless_labelled(run_record) -> None:
+    a = run_record.model_copy(update={"evidence_version": "v2", "transcriber": "m1", "page_rule": "all"})
+    b = run_record.model_copy(update={"evidence_version": "v2", "transcriber": "m2", "page_rule": "all"})
+    with pytest.raises(ConfigurationError, match="transcriber"):
+        refuse_cross_version(a, b, versions_compared=False)
+    refuse_cross_version(a, b, versions_compared=True)
+    s26 = run_record.model_copy(update={"evidence_version": "v2"})  # S2.6's record: no fields
+    same_as_s26 = run_record.model_copy(update={"evidence_version": "v2", "transcriber": "qwen/qwen3.5-122b-a10b", "page_rule": "all"})
+    refuse_cross_version(s26, same_as_s26, versions_compared=False)
+```
+
+(`_arm_b(version, *, sync=True)` and `_transcribed_docket()` are `tests/test_runner.py`'s own helpers; `replace` is `dataclasses.replace`, since `RunSpec` is a frozen dataclass. Match `refuse_cross_version`'s real exception type.)
+
+Run: `uv run pytest tests/test_runner.py tests/test_report.py -v -k "reading or transcriber"` (Expected: FAIL)
+
+- [x] **Step 3: Implement**
+
+- `RunSpec`: `transcriber: str | None = None`, `page_rule: str | None = None`.
+- `Runner.run`, beside the v2/v3 refusals: a v2 arm B run with either field None raises `ConfigurationError("a v2 run records its transcriber and page rule (S2.7 spec §7.5)")`; a v1 run with either set raises `ConfigurationError("a v1 run reads no transcription; transcriber and page rule are for v2 runs")`.
+- `spec_json`: when `spec.evidence_version == "v2"`, add `"transcriber"` and `"page_rule"` before `commit_sha` (v1 folders keep their keys).
+- `RunRecord`: `transcriber: str | None = None`, `page_rule: str | None = None`; `build_record` sets both.
+- `report.py`: `S26_V2_READING = ("qwen/qwen3.5-122b-a10b", "all")  # a v2 record from before S2.7 read S2.6's transcriber with every page (0087)`; in `refuse_cross_version`, when both records are v2 and `(t or S26[0], r or S26[1])` differ, raise unless `versions_compared`, naming both readings; `provenance` prints `transcriber=... page_rule=...` on a v2 record.
+- `apps/eval`: `run --transcriber` (default `transcribe.TRANSCRIBER`) and `--page-rule` (choices `transcribe.PAGE_RULES`, default `transcribe.PAGE_RULE`); `_readings_for_run` builds `ReadingLookup(TranscriptionCache(settings.transcription_dir), model=args.transcriber, page_rule=args.page_rule)` (its `is_done` then checks the marker for that model and rule); `RunSpec` gets `transcriber`/`page_rule` only when `--evidence-version v2`.
+
+Run: `uv run pytest tests/test_runner.py tests/test_report.py tests/test_eval_app.py -v` (Expected: PASS)
+
+- [x] **Step 4: Run the full check and commit**
+
+Run: `make check` (Expected: PASS)
+
+```bash
+git add src/ntsb_probable_cause/scoring/runner.py src/ntsb_probable_cause/scoring/records.py src/ntsb_probable_cause/scoring/report.py apps/eval/__main__.py tests/test_runner.py tests/test_report.py tests/test_eval_app.py docs/plans/2026-09-26-s27-track1-coding-guidance.md
+git commit -m "S2.7 Task 16: v2 runs record their transcriber and page rule (spec §7.5)"
+```
+
+---
+
+### Task 17: The meeting point (spec §8)
+
+**Files:**
+- Modify: `Makefile`
+- Create (by running): `docs/results/s27-meeting-dev.txt`
+- Create: one decision record for Andy's v2 and v3 decisions (the next free number above 0100)
+
+- [x] **Step 1 (skipped, Andy 2026-09-29; see Deviations): Apply track 2's outcome to `dev-400`**
+
+If track 2's decision kept Qwen with the rule `all`, nothing is paid: S2.6's readings stand, and track 2 already re-created `dev-400`'s marker under the rule-naming stamp (its Task 3 Step 6, track 2 walkthrough W4); check it with `ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd 0.0017 --page-rule all --dry-run` (`0 not yet read`). Otherwise run track 2's transcription targets for `dev-400` with the chosen `--model` and `--page-rule`: the dry run first (free; prints pages and projected cost), then — **STOP** for Andy — the paid run (estimate $1–7, spec §8).
+
+- [x] **Step 2 (skipped, Andy 2026-09-29): STOP — the v2 run under the final guidance (paid, about $1.33 plus the judge's $0.50)**
+
+Hand Andy: `make s27-round GUIDANCE="<every kept name>" EVIDENCE=v2 PER_CASE=0.0042 EST=1.60` (the v2 run needs the transcriber and rule flags only if they differ from the defaults Task 16 set). Then, if `CHECK` is set, `make s27-check RUN=<v2 run> WAY=<CHECK>`; then `make s27-judge RUN=<the v2 run that goes forward>`.
+
+- [x] **Step 3 (skipped, Andy 2026-09-29): The comparison** (free)
+
+```make
+s27-meeting-results:
+	$(if $(V1),,$(error V1 is required: the last kept v1 run (its derived folder if a check is kept)))
+	$(if $(V2),,$(error V2 is required: the v2 run (its derived folder if a check is kept)))
+	{ uv run ntsb-eval report $(V2) --against $(V1) --versions-compared; \
+	  echo; uv run python -m scripts.judge_outcomes --runs $(V1) $(V2) --label-status $(or $(LABELS),unvalidated); } > docs/results/s27-meeting-dev.txt
+```
+
+Run it, commit the Makefile and the results file.
+
+- [x] **Step 4 (skipped, Andy 2026-09-29): STOP — Andy's decisions**
+
+Report in plain English, one decision per message: (1) does v2 go forward (top-1, top-3, finding recall@10 and the outcomes, v2 against v1 under the final guidance)? (2) does the picture probe (v3) run in S2.7? Write one decision record holding both answers, with Andy's words, in the project's format; add it to `docs/decisions/README.md`; commit.
+
+---
+
+### Task 18: The sealed sample, and the prediction scored (spec §9, decisions 0095, 0098 item 7)
+
+**Files:**
+- Create: `docs/rounds/s27-sealed.md`, `scripts/sealed_report.py`
+- Modify: `Makefile`
+- Test: `tests/test_sealed_report.py` (create)
+- Create (by running): `docs/results/s27-sealed-dev.txt`
+
+**Interfaces:**
+- Produces: `sealed_report.prediction_lines(dev_top1: float, sealed_top1: float, misread_moved: bool | None) -> list[str]`; `main(argv)` with `--dev RUN`, `--sealed RUN`, `--misread-moved {yes,no,unvalidated}`, `--out`.
+
+- [x] **Step 1: Write the failing tests** (`tests/test_sealed_report.py`)
+
+```python
+"""scripts/sealed_report.py: the prediction of decision 0098 item 7, scored."""
+
+from scripts import sealed_report as sr
+
+
+def test_prediction_lines_score_each_part() -> None:
+    lines = sr.prediction_lines(dev_top1=0.33, sealed_top1=0.30, misread_moved=False)
+    assert "top-1 on dev-400 between 30% and 36%: 33.0% -- met" in lines
+    assert "sealed below dev-400 by less than 5 points: 3.0 points -- met" in lines
+    assert "misread share did not move beyond label churn: met" in lines
+
+
+def test_prediction_lines_report_a_miss_plainly() -> None:
+    lines = sr.prediction_lines(dev_top1=0.25, sealed_top1=0.26, misread_moved=None)
+    assert "top-1 on dev-400 between 30% and 36%: 25.0% -- not met" in lines
+    assert "sealed below dev-400 by less than 5 points: -1.0 points -- not met" in lines
+    assert "misread share: not scored (the narrative label was not validated)" in lines
+```
+
+- [x] **Step 2: Run them to verify they fail, then write `scripts/sealed_report.py`**
+
+```python
+"""The sealed sample's result beside dev-400's, and the prediction of decision 0098 item 7.
+
+Status
+    Once, at S2.7's end (spec §9), free: reads two run folders (or their derived check
+    folders); counts only. Writes docs/results/s27-sealed-dev.txt.
+
+Why
+    The sealed sample is the one clean check that guidance written from dev-400 generalises
+    (decision 0095). The prediction was written before Round 1 and is published either way.
+
+Usage
+    uv run python -m scripts.sealed_report --dev RUN --sealed RUN --misread-moved {yes,no,unvalidated} [--out PATH]
+"""
+
+import argparse
+from collections.abc import Sequence
+from pathlib import Path
+
+from ntsb_probable_cause.scoring.metrics import wilson
+from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
+from ntsb_probable_cause.settings import Settings
+
+PREDICTED_LOW, PREDICTED_HIGH = 0.30, 0.36
+MAX_DROP_POINTS = 5.0
+
+
+def prediction_lines(dev_top1: float, sealed_top1: float, misread_moved: bool | None) -> list[str]:
+    """Each part of the prediction, scored plainly."""
+    met = PREDICTED_LOW <= dev_top1 <= PREDICTED_HIGH
+    drop = (dev_top1 - sealed_top1) * 100
+    lines = [
+        f"top-1 on dev-400 between 30% and 36%: {dev_top1:.1%} -- {'met' if met else 'not met'}",
+        f"sealed below dev-400 by less than 5 points: {drop:.1f} points -- "
+        f"{'met' if 0 < drop < MAX_DROP_POINTS else 'not met'}",
+    ]
+    if misread_moved is None:
+        lines.append("misread share: not scored (the narrative label was not validated)")
+    else:
+        lines.append(f"misread share did not move beyond label churn: {'not met' if misread_moved else 'met'}")
+    return lines
+
+
+def _top1(run_id: str) -> tuple[float, int, int]:
+    if "heldout" in run_id:
+        raise SystemExit(f"sealed_report: {run_id} is a held-out run")
+    cases = [c for c in read_jsonl(Settings().runs_dir / run_id / "cases.jsonl", CaseResult) if c.scores is not None and c.steps]
+    hits = sum(c.scores.occurrence_top1 for c in cases if c.scores is not None)
+    return (hits / len(cases) if cases else 0.0), hits, len(cases)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print both results and the prediction."""
+    parser = argparse.ArgumentParser(prog="sealed_report")
+    parser.add_argument("--dev", required=True)
+    parser.add_argument("--sealed", required=True)
+    parser.add_argument("--misread-moved", choices=("yes", "no", "unvalidated"), required=True)
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    dev, dev_hits, dev_n = _top1(args.dev)
+    sealed, sealed_hits, sealed_n = _top1(args.sealed)
+    moved = None if args.misread_moved == "unvalidated" else args.misread_moved == "yes"
+    low_d, high_d = wilson(dev_hits, dev_n)
+    low_s, high_s = wilson(sealed_hits, sealed_n)
+    text = "\n".join(
+        [
+            "the sealed sample (scripts/sealed_report.py; counts only, decisions 0095, 0098)",
+            f"dev-400 ({args.dev}): top-1 {dev:.1%} [{low_d:.1%}, {high_d:.1%}], {dev_hits} of {dev_n}",
+            f"dev-seal-400 ({args.sealed}): top-1 {sealed:.1%} [{low_s:.1%}, {high_s:.1%}], {sealed_hits} of {sealed_n}",
+            "",
+            "the prediction (decision 0098 item 7):",
+            *prediction_lines(dev, sealed, moved),
+        ]
+    )
+    print(text)
+    if args.out is not None:
+        Path(args.out).write_text(text + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Run: `uv run pytest tests/test_sealed_report.py -v` (Expected: PASS); commit (`S2.7 Task 18: the sealed report`).
+
+- [x] **Step 3: Register the final setup** (`docs/rounds/s27-sealed.md`)
+
+Name exactly: every kept guidance file in order and the `guidance_sha256` of the last kept run; the check way (or none); the evidence version and, at v2, the transcriber and page rule; model `openai/gpt-6-luna` at `medium`, batch, reply budget 8,000; the `dev-400` run it is compared with. Commit it alone: `git commit -m "S2.7: the sealed sample's registration (decision 0095)"`. From this commit, `dev-seal-400` opens.
+
+- [x] **Step 4: Verify the sealed list** (free)
+
+Run: `uv run python -m scripts.draw_sealed --verify` (Expected: `identical: True`)
+
+- [x] **Step 5 (not needed at v1; see Deviations): STOP — fetch and, at v2, transcribe the sealed sample**
+
+At v2, hand Andy track 2's transcription dry run for `dev-seal-400` (free; its live docket client fetches the dockets, about 3,500 documents at 2 seconds per request, a few hours), then the paid transcription (estimate $1–14, spec §9.1). At v1, the run of Step 6 fetches the dockets itself.
+
+- [x] **Step 6: STOP — the sealed run, once (paid, about $1.20–1.35 plus the judge)**
+
+```make
+s27-sealed-run:
+	$(if $(PER_CASE),,$(error PER_CASE is required))
+	uv run python -m scripts.stage_spend --estimate $(or $(EST),1.80)
+	uv run ntsb-eval run --arm B --sample dev-seal-400 --evidence-version $(or $(EVIDENCE),v1) --expected-cost-per-case-usd $(PER_CASE) $(foreach g,$(GUIDANCE),--guidance $(g))
+```
+
+Hand Andy: `make s27-sealed-run GUIDANCE="<kept names>" EVIDENCE=<v1|v2> PER_CASE=<…>`; then the check (if kept) and `make s27-judge` on the run that goes forward. `ntsb-eval judge` refuses a sample other than `dev-400` without `--validated`: pass `--validated` only if Task 6's outcome was `validated`; otherwise skip the judge on the sealed run and record that.
+
+- [x] **Step 7: The results and the prediction** (free)
+
+Run: `uv run python -m scripts.sealed_report --dev <final dev-400 run> --sealed <sealed run> --misread-moved <yes|no|unvalidated> --out docs/results/s27-sealed-dev.txt`
+Commit. Report to Andy in plain English, with the prediction scored whichever way it came out; then **STOP** for his held-out decision (spec §9.3).
+
+---
+
+### Task 19: Close-out (decision 0017)
+
+- [x] **Step 1:** Update `CLAUDE.md` (this repository): S2.7's line in "What this repo is", the `make` targets added by both tracks in **Commands**, `ntsb-eval check` and `run --guidance/--transcriber/--page-rule` in the `ntsb-eval` paragraph, `TYPESAFE_API_KEY` in the settings paragraph, and the eval-bars section's pointer to S2.7's results. Commit.
+- [ ] **Step 2:** Run the `close-stage` skill: the As-built record on the specification (every Deviations entry of both plans, grouped and rewritten plainly), specification status Implemented, the roadmap's S2.7 entry marked done, both plans deleted, `version` set in `pyproject.toml`.
+- [ ] **Step 3:** `uv run python -m scripts.check_docs` and `make check`. Expected: both clean.
+- [ ] **Step 4:** Push and open the pull request `S2.7: coding guidance` (merge commit, never squashed; decision 0033). Andy creates the release after the merge.
+
+## Deviations
+
+*Log every departure from the specification here, dated, with the reason. Moved into the As-built record at close-out (decision 0017).*
+
+- 2026-09-27, walkthrough W1, Andy's decision ("A with a 'clear habit' safeguard."): the phase group's phase codes are learned from the pool (spec §5.2 item 4, §5.3 item 2). An ad-hoc probe (development cases outside `dev-400`, 2026-09-27; re-derived by Task 3) found all 43 phase codes used for a defining event fall under exactly one of 12 phase groups, and on B-v1 the first guess's phase was the NTSB's on 210 of 394 answered cases, with 35 first guesses using a phase the NTSB never used under the given group. On Andy's concern that the counts would push every case toward the most common combination, decision 0101 amends 0096 item 4 and 0098 item 2: the plain rule changes the model's event or phase only on a clear habit (at least 60% of at least 20 pool cases; `ordering.clear_habit`, replacing `RULE_MIN_CASES`), guidance names a habit only when it is clear, and every check step (`arguments["toward_more_common"]`), Round 1's report (`round1_report.push`) and every round's result (`round_result.push_line`) count first codes moved toward a more common option, with their fixes and breaks. Tasks 8, 10, 11, 14 and 15 were edited before any code.
+- 2026-09-27, walkthrough W2, Andy's decision (A): the ordering check runs as a post-pass over a finished run (`ntsb-eval check`, Task 10), writing a derived folder `<run id>-check-<way>`, not inside the runner "before the finding refinement turn" as spec §5.5 wrote. The check changes only the occurrence codes and the refinement turn only the finding items, so the order between them changes no score; the post-pass leaves the runner untouched, works the same for batch and sync runs, and lets Round 1 re-use the recorded B-v1 answers and their repeat.
+- 2026-09-27, Task 13 Step 2: `src/ntsb_probable_cause/scoring/guidance/__init__.py`'s docstring is split onto two lines with a summary line and a description line (pydocstyle D205, one blank line between them) rather than the brief's one-line form, which is 105 characters and over the project's 100-character line length; the wording is otherwise unchanged.
+- 2026-09-27, Task 13 Step 4: added `test_system_text_without_guidance_is_byte_for_byte_unchanged` to `tests/test_runner.py` and `test_provenance_shows_guidance_when_present` to `tests/test_report.py`, beyond the brief's own test text, to give the "no-guidance system text is unchanged" and the `report.provenance` guidance line direct test coverage (the brief's runner tests exercise both indirectly but not exactly).
+- 2026-09-27, Task 13 review fix round 1: three findings from review. (1) `make s27-round` ran a paid, unguided arm B run silently if `GUIDANCE` was left unset, skipping the registration refusal entirely -- a real risk since Task 17's v2 run legitimately reuses `s27-round` with no guidance if every round is dropped. Fixed: the target now also requires `NO_GUIDANCE=1` when `GUIDANCE` is empty, refusing otherwise (`$(if $(or $(GUIDANCE),$(NO_GUIDANCE)),,$(error ...))`), verified with `make -n s27-round` under all three cases (GUIDANCE set, NO_GUIDANCE=1, neither -- the last erroring) without ever running the target for real. (2) `_record_judge_cost` in `apps/eval/__main__.py` built the judge pass's `RunRecord` without `guidance`/`guidance_sha256`, so a judged guided run's cost row silently lost which guidance ran; fixed by carrying both fields from the judged run's own record, covered by a new `test_judge_records_the_judged_run_s_guidance` (RED confirmed by reverting the two lines and re-running: `assert () == ('r2-loc-stall', 'r3-phase')` failed as expected). (3) `report.provenance` hardcoded the fingerprint's 12-character cut instead of using `prompt.FINGERPRINT_CHARS`; import-linter's "Only the splitter constructs synthesis and verdict" contract does not forbid `scoring.report` from importing `scoring.prompt` (`scoring.prompt` is one of that contract's *source* modules, not a forbidden target), so `report.py` now imports `prompt` and uses the constant -- `make check`'s import-linter step still reports "Contracts: 3 kept, 0 broken."
+- 2026-09-27, walkthrough W3, Andy's decision ("A is fine"): the GPT-6 Luna check runs synchronously at the standard price, not on batch as spec §5.3 and §10 priced it. Estimate (arithmetic, replaced by the recorded cost): about $0.36 per 400-case answer set, $0.72 for Round 1, against the spec's $0.12 per set.
+- 2026-09-27, walkthrough W4, Andy's decision (A): the judge runs on S2.6's B-v1 and B-v2 folders in place (Task 7 Step 2 checks first that neither holds a `judge.jsonl`, copying any aside under `data/s27/`). The folders gain `judge.jsonl` and a `<run id>-judge` cost row carrying S2.7's commit; their answers and records are untouched.
+- 2026-09-27, walkthrough W5, Andy's decision ("Could we use version and short fingerprint?"): spec §6.1's example (`s27-g1`, a hand-bumped version) is replaced by `s1-v5+g<first 12 characters of the guidance fingerprint>`; the guidance names and the full fingerprint are recorded beside it (`RunRecord.guidance`, `RunRecord.guidance_sha256`). Task 13's `prompt_version` and its tests carry it.
+- 2026-09-27, walkthrough W6, Andy's decision ("I guess A"): spec §12's "no sentence shared with a development narrative" and "the draw is reproducible" each split into a data-free CI test (guidance names, registrations and case-number patterns; the sealed list's size, years and disjointness) and a full local check at fixed steps (`scripts/check_guidance.py` before each round's registration, recorded in it; `scripts/draw_sealed.py --verify` at the draw and before the sealed run). CI holds no case data (rule 4).
+- 2026-09-27, walkthrough W7, Andy's decision (A): a miss group with fewer than 8 cases gives all its cases to the hand-read, with no top-up; the results file prints each group's card count (`round0_handread.draw_cards`, Task 6).
+- 2026-09-27, walkthrough W8, Andy's decision (his layout; names "A is fine"): S2.7 is a parent branch, `s27-coding-guidance`, with track 1 on `s27-guidance` and track 2 on `s27-transcriber` stacked on it (decision 0102, amending 0093 item 3 and spec §11, which put track 1 on the stage branch). Task 1 is done on the parent; Task 1 Step 16 cuts both tracks; Tasks 2–15 are done on `s27-guidance`; Task 16 merges both tracks into the parent; Tasks 16–19 are done on the parent. `scripts/stage_spend.py` traces spend on every local branch whose history holds S2.7's first commit `94f5d42`, `main` excepted, and prints them (`gitinfo.branches_containing` replaces `branch_exists` and the fixed branch list).
+- 2026-09-27, Task 1 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` wrapped `branches_containing`'s argv list onto multiple lines and reflowed two lambdas in `tests/test_stage_spend.py`. (2) `tests/test_gitinfo.py`'s `_git` helper needed `# noqa: S603`/`S607` (fixed argv, git on PATH), matching the existing idiom in `tests/test_recorder_bridge_script.py` and `gitinfo.py` itself; the brief's Step 1 text omitted them. (3) `mypy --strict` rejected `test_stage_spend.py`'s `asked.append(...) or ("c1",)` fake (`list.append` returns `None`, used as a value) in `test_stage_commits_counts_head_and_every_stage_branch`; replaced the lambda with a small typed function `_fake_commits_between` that appends then returns `("c1",)`, same observable behaviour.
+- 2026-09-27, Task 2 implementation, plain adaptations of the brief's text to this file's real helpers (no behaviour change, as the brief itself invited): (1) `tests/test_samples.py`'s real `_raw(*, fatal, occurrence_codes=())` takes no case id or class keyword, and `_write_cases` wants 5-tuples, so `test_draw_excludes_the_given_cases_and_is_unchanged_without_them` builds 40 explicit 5-tuples (case id, event date, split, class "F" throughout as the brief's snippet used, `_raw(fatal=...)` for the raw JSON) instead of calling `_raw` with the brief's invented keywords. (2) `test_refuse_sealed_opens_only_on_a_committed_registration`'s `is_committed=lambda path: seen.append(path) or True` fails the same `mypy --strict` "`list.append` returns `None`, used as a value" check as Task 1's fix above; replaced with a small typed `_record_and_confirm` function, same observable behaviour. (3) `ruff format` wrapped `scripts/draw_sealed.py`'s final `print(...)` call and one `assert main([...]) == 1` call in `tests/test_eval_app.py` onto multiple lines. (4) Adding `dev_seal_400_ids.csv` (a development-split list) to `tests/fixtures/eval/` made `test_evaluation_cases_are_held_out_by_event_date` fail, since it asserted every eval id list except `dev_400_ids` is held-out; the brief did not mention this test, but it iterates every `*_ids.csv` fixture the `eval_ids` fixture picks up, so the new file could not avoid it. Added `dev_seal_400_ids` next to `dev_400_ids` in that test's exclusion set; its own purity is checked by the brief's `test_the_sealed_sample_is_development_and_shares_no_case` instead.
+- 2026-09-27, Task 3 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected the brief's `_sorted(tree: object) -> object` helper's `dict` comprehension (an untyped `dict` literal built from an `object`-typed value); replaced with `_sorted_dict(tree: Mapping[str, object]) -> dict[str, object]`, called only on the already-`dict`-shaped tree `build()` constructs, same sorted-keys output. (2) `scripts/coding_stats.py`'s `from ... import build` was not resolvable as `cs.build` under `--strict`'s implicit-reexport check (the test module imports the script as `scripts.coding_stats` and calls `cs.build`); added an explicit `__all__` naming `build` and the other names the tests and `main` use, behaviour unchanged. (3) `tests/test_coding_stats_script.py`'s `_row` helper needed a return type annotation (`Row = tuple[str, str, str, str, dict[str, object]]`) and `# noqa: PLR0913, PLR0917` (six positional arguments, one per fixture-row column; no ignore for either rule exists in `tests/**`'s per-file-ignores). (4) `tests/test_coding_stats.py`'s Step 12 addition imported `load_stats` inside the test function (ruff's `PLC0415`, "import at top level"); moved it into the file's top-level import alongside `NO_GROUP`, `CodingStats`, `PoolCase`, `build`, combining Steps 1 and 12 into one file since both are `tests/test_coding_stats.py` creates, not incremental edits to a committed file. Step 11's build (`make s27-coding-stats` against the main checkout's `data/processed/cases.parquet`) produced 12,491 pool cases (7,177 in 2009-2014, 5,314 in 2015-2019; brief said "about 12,490", ad hoc) and a 958 KiB `coding_stats.json` (well under the 2 MB concern threshold); `grep -E` for the case-number pattern found none in either output file. (5) The commit hook `check-added-large-files` (`.pre-commit-config.yaml`, `--maxkb=500`) refused the 958 KiB `coding_stats.json`, not mentioned in the brief's file list. Rather than shrink a table the brief specifies in full (13,226 pairwise code co-occurrence entries across both halves account for most of its size; the brief's own stop-and-report threshold for this file is 2 MB, not 500 KB), the exclude on both `check-added-large-files` hooks was widened from `^tests/fixtures/words\.txt$` to `^(tests/fixtures/words\.txt|src/ntsb_probable_cause/scoring/tables/coding_stats\.json)$` -- the same treatment the repo already gives `tests/fixtures/words.txt` (2.4 MB), a legitimately large committed file that is not raw data (rule 4).
+- 2026-09-27, Task 4 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) the brief's module docstring instruction ("Add to the module docstring's Status: ...") was read as appending to `scripts/occurrence_misses.py`'s existing top-of-file `Status` section, not adding a second one; the sentence "Extended in S2.7 (spec §4.1): the six groups, finding depth, confidence by group, the model's own words, and churn against a second run." was appended to that section instead. (2) `ruff format` reflowed the brief's single-line `misses` import in `occurrence_misses.py`, the single-line `finding_depth` call inside `detail`, and the single-line `FindingDepth` constructor calls in `tests/test_misses.py`, onto multiple lines; no behaviour change. (3) `ruff check`'s `PLR0911` (too many return statements, 8 > 6) rejected `miss_group`'s brief text as written (one early return per group, tested in `GROUPS`' order, is the point of the function); added `# noqa: PLR0911` with a comment, matching the existing idiom at `src/ntsb_probable_cause/recorder/dockets.py:342`, and split the `def` line across two lines for the 100-column limit with the comment attached. Every test in `tests/test_misses.py` and the added tests in `tests/test_occurrence_misses.py` pass unchanged from the brief's text; `summarise`'s body and output are untouched.
+- 2026-09-27, Task 5 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `mypy --strict` rejected `read_labels`'s brief text `labels[row.pop("case_id")] = ...` because `json.loads`'s return is untyped and `row.pop("case_id")` is then `Any` used as a `dict[str, JudgeLabels]` key; annotated `row: dict[str, object]`, popped `case_id` into its own variable and added a runtime `isinstance` check (raising `TypeError` on a malformed row) before using it as the key, same observable behaviour on well-formed rows. (2) `ruff check`'s `E501` (line too long, 103 > 100) rejected the module docstring's one-line `Usage` example; wrapped it onto two lines. (3) `ruff check`'s `PLR2004` (magic value `3` in `main`'s `if len(per_run) == 3`) was fixed with a named module constant `_TRIPLE = 3`, not an inline `noqa` (no existing `PLR2004` idiom in the repo to match), same behaviour. (4) `ruff check --fix` reordered the test file's imports (`scripts` and `tests` grouped as first-party, ahead of the third-party `ntsb_probable_cause` import) to match the project's isort settings; this reorders two import lines only. (5) `mypy --strict` also rejected `test_movement_counts_cases_whose_outcome_changed`'s two bare dict literals (inferred `dict[str, str]`, not assignable to `Mapping[str, Outcome]`); annotated both as `dict[str, jo.Outcome]`, no behaviour change. No `main`/`_load` test was added: `pyproject.toml`'s coverage gate is `--cov=ntsb_probable_cause` only, so `scripts/judge_outcomes.py` is outside the 90% gate, matching the brief's own test file, which does not test `main` either.
+- 2026-09-27, Task 5 review fix round 1 (code review finding): `_load`'s development-only refusal path was untested, and its "run whose id doesn't say heldout but whose recorded sample does" case could not actually be refused before `cases.jsonl` was read, since the brief's `_load` never read `run.jsonl` at all -- only `read_labels`' malformed-row branch was flagged in Task 5's own deviation note. Fixed by having `_load` read `run.jsonl`'s `RunRecord` first and refuse unless `record.sample.startswith("dev")`, before `cases.jsonl` is read, mirroring `scripts/occurrence_misses.py:_refuse_unless_development_arm_b`'s ordering; the run-id and per-case split checks are unchanged. Added four tests to `tests/test_judge_outcomes.py`, modelled on `tests/test_occurrence_misses.py`'s refusal tests and reusing its `_write_run` helper: a `heldout` run id refused before anything is read, a run recorded on a held-out sample (id silent about it) refused before its cases are read, a run holding a case outside the dev split refused, and a happy-path `main` call with three run folders (judge.jsonl plus cases.jsonl each) checking the movement lines print. Also removed the no-op `# pragma: no cover` on `read_labels`'s malformed-row branch (`scripts/` is outside the `--cov=ntsb_probable_cause` gate, so the pragma did nothing), replacing it with a plain comment.
+- 2026-09-27, Task 6 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff check`'s `I001` (unsorted import block) reordered `scripts/round0_handread.py`'s and `tests/test_round0_handread.py`'s imports (first-party `scripts`/`tests` grouped ahead of the third-party `ntsb_probable_cause` imports), fixed with `ruff check --fix`; no behaviour change. (2) `ruff check`'s `E501` (line too long, 100-column limit) rejected three of the brief's single lines: the module docstring's `Usage` example (wrapped with a line continuation), the `_card` f-string building the NTSB probable-cause heading and paragraph (split into two adjacent f-strings), and the `score` function's `agreement:` line (split into two adjacent strings); all three keep the same rendered text. (3) `mypy --strict` rejected the test file's `_cases() -> list:` (missing type argument) and `test_cards_refuses_a_held_out_run(tmp_path, monkeypatch)` (missing parameter annotations); annotated as `_cases() -> list[CaseResult]` (importing `CaseResult` from `ntsb_probable_cause.scoring.records`) and `(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None`, same observable behaviour. The brief's fixture in `_cases()` (`_case(case_id, truth, guesses)`, truth before guesses, per Task 4's `_case`) was checked by hand against `miss_group` and produces exactly the groups its comments say (12 X-cases exact, 9 W-cases right event/wrong phase, 3 S-cases in sequence not defining), so `draw_cards` needed no fix and none of the five tests in the brief's Step 1 needed editing beyond the two typing fixes above. Every test in `tests/test_round0_handread.py` passes unchanged in substance from the brief's text; `draw_cards`, `score`, `cmd_cards` and `main` are otherwise verbatim.
+- 2026-09-27, Task 6 review fix round 1 (code review findings): (1) `_run` had the same ordering gap Task 5's `_load` was fixed for: it read `cases.jsonl` on `run_id`'s string shape alone, so a run whose id said `-dev-` but whose `run.jsonl` recorded a held-out sample would either read the wrong case list or crash on a missing file rather than refuse cleanly. Fixed by having `_run` read `run.jsonl`'s `RunRecord` first and refuse unless `record.sample.startswith("dev")`, before `cases.jsonl` is read, mirroring `judge_outcomes._load`'s ordering (itself fixed in Task 5's own review round); the run-id and per-case split checks are unchanged. Added two tests to `tests/test_round0_handread.py`, modelled on `tests/test_judge_outcomes.py`'s equivalents and reusing `tests/test_occurrence_misses.py`'s `_write_run`/`write_jsonl`: a run recorded on a held-out sample (id silent about it, no `cases.jsonl` written, so the test would fail with a missing-file error rather than a clean `SystemExit` if the check were absent or misordered) and a run holding a case outside the dev split. (2) `score` had two more silent-failure paths the brief did not cover: a sheet drawn from one run scored under a different `--run` (no check existed at all) and a sheet case absent from the judge's labels (a bare `KeyError`, not a clean refusal). Fixed by (a) `cmd_cards` writing a `run_id` column into `sheet.csv` (every row carries the run id it was drawn from) and a new `_refuse_mismatched_run(sheet, run_id)` helper, called from `main`'s `score` path right after the sheet is read and before labels are loaded, comparing every row's recorded `run_id` against `--run` and raising `SystemExit` naming the mismatched run id if they differ; (b) `score` replacing `labels[row["case_id"]]` with `labels.get(...)` and raising `SystemExit(f"round0_handread: row {row['row']} has no judge label")` on a miss, naming only the row number, never the case id (rule 6, clinical tone; case ids are never printed by this tool's counts-only output). Added two tests: `test_score_refuses_a_case_missing_from_the_judge_labels` (direct, pure-function call to `score`) and `test_score_refuses_a_sheet_drawn_from_a_different_run` (through `main`, writing a `sheet.csv` by hand with a `run_id` that differs from `--run`). All nine tests in `tests/test_round0_handread.py` pass; `make check` passes (1563 tests, 97.75% coverage).
+- 2026-09-27, Task 8: the brief's Jev ranking test expected (LOC, CFIT, STALL); ties go by code, so the tie between 452241 and 452470 puts 452241 first; the assertion is (LOC, STALL, CFIT).
+- 2026-09-27, Task 8 implementation, mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): (1) `ruff format` reflowed four lines in `ordering.py` (the `candidates` linked-code comprehension, `toward_more_common`'s return, `check_text`'s guesses line) and five in `tests/test_ordering.py` (a `build()` call's concatenated list, a `check_text` call, and three multi-element asserts) onto multiple lines; no behaviour change. (2) `ruff check`'s `PLR0913`/`PLR0917` (too many arguments, 6 > 5) rejected `check_text`'s brief signature as written (one parameter per fact the check-text prompt shows, the point of the function); added `# noqa: PLR0913, PLR0917` with a comment, matching the existing idiom at `tests/test_boundary.py:870` and `tests/test_coding_stats_script.py:11`. (3) `ruff check`'s `E501` (line too long, 100-column limit) rejected two of the brief's single lines inside `check_text` (the per-candidate summary line and the paired-count line); each was split across two adjacent f-strings, same rendered text. (4) `ruff check`'s `PLR2004` (magic value `3` in `parse_ranking`'s length check) was fixed with a named module constant `_MAX_RANKING = 3`, matching Task 5's `_TRIPLE` idiom (no existing PLR2004-noqa idiom to match instead), same behaviour. (5) `ruff check`'s `I001` (unsorted import block) reordered the test file's `from ntsb_probable_cause.scoring import ordering` ahead of `.codes`/`.coding_stats`/`.hypothesis`, fixed by hand to match the project's isort settings; this reorders one import line. (6) `ruff check`'s `PT018` (assertion should be broken down) rejected `test_check_text_holds_codes_counts_group_and_narrative_only`'s combined `assert STALL in text and LOC in text`; split into two separate `assert` statements, same coverage. (7) `mypy --strict` rejected the test file's `_stats()` (missing return type; used in a typed context) and `test_jev_question_and_ranking`'s `set(question["criteria"])` (`jev_question` returns `dict[str, object]`, so `question["criteria"]` types as `object`, not `Iterable`); annotated `_stats() -> CodingStats` and wrapped the criteria access in `cast("dict[str, str]", ...)`, matching the repo's existing cast idiom (e.g. `tests/test_openrouter.py:35`, `tests/test_records.py:73`), same observable behaviour. Every test in `tests/test_ordering.py` passes with the values verbatim from the brief's text apart from the Jev ranking assertion above; `candidates`, `clear_habit`, `plain_rule`, `toward_more_common`, `check_text`, `parse_ranking`, `jev_question`, `ranking_from_probabilities` and `reorder` are otherwise verbatim from the brief. `make check` passes (1575 tests, 97.76% coverage); `uv run lint-imports` keeps all three contracts with the new `ntsb_probable_cause.scoring.ordering` source-list entry.
+- 2026-09-27, Task 9 implementation, one mechanical fix to satisfy `make check` (behaviour unchanged from the brief's text): Step 3's failing-test snippet, appended literally, put `from ntsb_probable_cause.model.client import PageImage` after the test functions rather than at the top of the file, which `ruff check`'s `E402`/`I001` (module-level import not at top of file / unsorted import block) rejected once Step 4 made the module importable. Folded `PageImage` into the file's existing `from ntsb_probable_cause.model.client import Payload` line instead of adding a second import statement, and removed the now-empty stray import line before the test function; same test, same assertions, same place in the file otherwise. `git show 0c5d24c:src/ntsb_probable_cause/model/typesafe.py`, its four fixtures and `tests/test_typesafe_client.py` were otherwise copied and renumbered (0060 to 0097) verbatim -- `grep -rn "0060\|0036"` over all four copied files returns nothing. No other file needed a mechanical fix: `settings.py`'s two additions, `sources.py`'s `JEV` price and three `TYPESAFE_*` constants, `model/typesafe.py`'s image refusal, `.env.example`'s new line and `pyproject.toml`'s `ANC` typos entry and fixtures exclude are verbatim from the brief. `make check` passes (1587 tests, 97.72% coverage); `uv run vulture` (`min_confidence = 80`) reported nothing on `ScoreAnswer`, `NoulAnswer` or `TYPESAFE_MODELS`, so no name needed keeping against a vulture finding. The `pre-commit` `typos` hook (not part of `make check`; it carries its own `exclude` regex separate from `pyproject.toml`'s `[tool.typos.files]`) failed on one of `tests/fixtures/typesafe/choices.json`'s verbatim NTSB labels (an occurrence-code description carrying the same source-data misspelling `pyproject.toml`'s existing comment already names, of "necessary", for the scoring-tables CSVs; not spelled out here for the same reason that comment gives -- this plan is itself spell-checked) because the brief's pyproject.toml edit alone does not reach the pre-commit hook's own exclude list. The brief did not list `.pre-commit-config.yaml` among Task 9's files; added `tests/fixtures/typesafe/.*\.json$` to that hook's existing `exclude` alternation, the same treatment already given `tests/fixtures/docket/`, so the commit runs the real `typos` hook rather than skipping it.
+- 2026-09-27, Task 10 implementation, adaptations of the brief's text to the real code and to `make check` (behaviour unchanged except where the brief itself flagged the possibility): (1) as the brief's own parenthetical warned, `Payload.from_evidence(Evidence(case_id="check", docket_url=None))` renders `"{}"` (an empty JSON object), not `""` -- confirmed against `scoring/judge.py`'s identical "empty" payload, which is the same placeholder, never plain text. `test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking`'s assertion is `client.payloads[0].text == "{}"`. (2) `checked_case`'s `assert case.scores is not None` (the brief's own text) is replaced with `if case.scores is None: raise ValueError(...)`, per the brief's own fallback note: `S101` (assert used) is selected project-wide and ignored only under `tests/**`, so `src/` code cannot use `assert`. (3) `tests/test_metrics.py`: the brief's Step 1 snippet's imports (`from dataclasses import replace`, `rescore_occurrence`, `score_case`, `OccurrenceGuess`) are merged into the file's existing top-of-file import block rather than inserted mid-file, avoiding `ruff check`'s `E402`; the test body and values are otherwise verbatim (renamed the local `_hyp` helper to `_hyp_for_rescore` since the file already has an unrelated `hyp` helper). (4) `tests/test_checkpass.py`: `ruff check` rejected three lint rules in the brief's literal text -- `RUF015` (`[...][0]` on `step.hypothesis.occurrence`, replaced with `next(...)`), `PT018` (the combined `cases["C1"].scores is not None and ...occurrence_top1` assertion, split in two) and `C408` (`kwargs = dict(...)`, replaced with a dict literal). `mypy --strict` then rejected splatting that literal (`**dict[str, object]`) into `check_run`'s differently-typed keyword parameters in `test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused`; replaced the shared `kwargs` dict with a small local `run(folder)` closure that calls `check_run` with the same five keyword arguments spelled out, called three times, same observable behaviour and same three assertions. (5) `apps/eval/__main__.py`: added `from ntsb_probable_cause.fields import EVIDENCE_FIELDS` (folded into the existing `EvidenceRole` import line, brief's "add if missing"), `checkpass`, `load_stats`, `TypeSafeClient` and `budget_lock`/`refuse_over_budget` imports as the brief listed; `ruff format` wrapped `_cmd_check`'s signature and the budget-import line onto multiple lines. `resolve_latest`'s `if "-check-" in folder.name: continue` guard was added exactly as the brief asked, though it is currently unreachable: `runs_dir.glob(f"*-{sample}-{arm}")`'s pattern already excludes a derived id (`<run id>-check-<way>` does not end in `-{arm}`), confirmed with `fnmatch.fnmatch`. Left in as the brief's explicit, documented safeguard rather than omitted as dead code. (6) `tests/test_eval_app.py`: the brief's `_write_run(..., finished=True, ...)` does not match the real `_write_run(*, finished: datetime | None, ...)` signature (a `bool` where a `datetime` is required); `test_resolve_latest_skips_derived_check_runs` passes a real `datetime(2026, 9, 26, tzinfo=UTC)` instead. The brief's single `def boom(_settings: object) -> object` (passed as both `client_factory` and `jev_factory`) fails `mypy --strict` (`Callable[[object], object]` is not assignable to either factory's real, differently-shaped `Callable` type); split into `boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]` and `boom_jev(_settings: Settings) -> TypeSafeClient`, each raising the same `AssertionError`, and added the missing `from ntsb_probable_cause.model.typesafe import TypeSafeClient` import; same refusal, same message asserted. (7) `tests/test_boundary.py`: `ruff check`'s `PLC0415` (import not at top level) rejected the brief's five function-local imports in `test_the_ordering_check_sends_no_withheld_text`; two (`split_record`, `load_tables`) and `RecordingFakeClient` were already imported at module level, so only `checkpass`, `coding_stats.PoolCase`/`build` and `tests.test_occurrence_misses._case` were added to the file's existing top-of-file import block, alphabetised among the file's existing `ntsb_probable_cause.scoring`/`tests.*` imports; the test's body, assertions and docstring are verbatim from the brief. The parameter `record_fixtures` was given the file's own convention type annotation `list[dict[str, object]]` (the brief's snippet left it bare). Mutation check (brief's own instruction, Step 10): temporarily changed `hypothesis = _case(...).steps[-1].hypothesis` to append `verdict.probable_cause` to its `evidence_narrative` before calling the checker; `uv run pytest tests/test_boundary.py -k ordering_check` then failed with `assert "The pilot's misidentification..." not in '...'`, confirming the boundary test catches a leaked probable cause; the mutation was then reverted (`tests/test_boundary.py` is byte-identical to before the mutation, checked with the pre-mutation copy). `make check` passes (1595 tests, 97.55% coverage).
+- 2026-09-27, Task 7 Step 3: Andy authorised Claude to run the noise-floor run itself ("you can perform the run now its the weekend"), rather than handing him the command; it was started at 11:12 UTC, outside the plan's 01:00-12:00 UTC batch window's comfort margin but inside the window, from a clean tree at `fbab38a`. **REPEAT = `20260927T111202-fbab38a-dev-400-B`**: 401 cases, $1.1593 (`run.jsonl`), GPT-6 Luna at `medium`, batch, 8,000-token reply budget, prompt `s1-v5` -- B-v1's settings. Tasks 10-15 read it as `REPEAT`.
+- 2026-09-27, Task 10 review fix round 1 (code review findings): **Important 1, the missing budget reservation.** `_cmd_check`'s `luna`/`jev` ways only checked the budget under `budget_lock` (`refuse_over_budget`, no reservation), so a ~400-call synchronous pass was invisible to a concurrent paid job's own budget check for its whole life, until its own `finally` wrote real spend. Fixed with the project's existing `reserve_within_budget` (the same call `scoring/preparation.py`'s jobs use), called under the check's own derived id (`checkpass.derived_id(record.run_id, way)`) before `client_factory`/`jev_factory` is ever built, so an over-budget call never reaches either factory; `check_run` settles that reservation in its own `finally`, right after writing `cases.jsonl`/`run.jsonl` (`settle` is a no-op for the `rule` way, which never reserves). This collided with `check_run`'s own atomic folder claim (`mkdir(exist_ok=False)`): `reserve()` creates the derived folder as a side effect, so a `luna`/`jev` pass now finds it already there. Resolved as the review's second suggested option: `check_run` now does `mkdir(parents=True, exist_ok=True)` and refuses only once `cases.jsonl` or `run.jsonl` already exists in that folder, not on the folder's mere presence -- the atomicity of the *claim* is traded for keeping the reservation-then-run handover simple, matching the review's own framing of the trade-off. `_cmd_check` and `budget_lock`/`refuse_over_budget` are otherwise removed as imports (both now unused there; `open_reservations`/`month_spent` stay, used elsewhere). Two tests added to `tests/test_eval_app.py`: `test_check_way_luna_is_refused_over_budget_without_building_any_client` (an over-budget call with `client_factory`/`jev_factory` that raise `AssertionError` if called, confirmed to raise -- an actual `FileNotFoundError`/`AssertionError` under the reverted code, not a graceful refusal, checked by temporarily reverting `_cmd_check`'s ablation and budget blocks and confirming both new tests fail there) and `test_check_way_luna_settles_its_reservation_after_a_successful_pass`, which goes further than "settled after" by using a small `_ReservationSpyClient` (a `ModelClient` that records whether `open_reservations` sees an entry *at the moment it is called*, mid-pass) to prove the reservation is genuinely visible for the paid call's duration, not merely absent before and after; confirmed this fails (`saw_a_reservation` is `False`) against the reverted, pre-fix `_cmd_check`. **Important 2, the ablation leak.** `_cmd_check` rebuilt each case's phase-of-flight group by reading the raw processed record directly (`samples.load_cases` + `_GROUP_FIELD.extract`), which reads straight past any exclusion the source run recorded -- an ablation run that withheld `phase_of_flight` from the model would have it handed back to the check. Fixed with a refusal placed immediately after the existing held-out/arm check and before `cases.jsonl` is read at all: `if record.exclusions or record.includes: raise ConfigurationError(...)`, the same shape of run `resolve_latest` already treats as unfit to stand for its arm (`ntsb-eval report --latest` skips it; here it is refused outright, since a real run id was named). Added `test_check_refuses_an_ablation_source_before_cases_are_read_or_any_client_built`, which writes only `run.jsonl` (with `exclusions=("phase_of_flight",)`) and deliberately no `cases.jsonl`, so a refusal placed after the cases read would surface as an unhandled `FileNotFoundError` rather than exit code 1 -- confirmed this is exactly what happens when the new check is temporarily removed (`grep`-verified RED, then restored). **Important 3, the untested paid paths.** Added `test_the_jev_checker_ranks_reports_the_model_and_prices_input_tokens` to `tests/test_checkpass.py`, a `respx`-mocked `TypeSafeClient` (no socket, matching `tests/test_typesafe_client.py`'s own pattern) returning a hand-built reply in `SystemOneReply`'s shape with one `"defining"` Choice answer (Task 9's saved fixtures have no answer of that name, only `phase`/`event`/`modifier`/`evidence_detail`, so a minimal reply was built instead, as the brief allowed); asserts the ranking, `outcome.model == "jev-1.13.0"` and `outcome.cost_usd == pytest.approx(1000 * sources.JEV.input_usd_per_mtok / 1_000_000)`. Added `test_check_way_rule_writes_a_derived_run_and_prints_the_summary` to `tests/test_eval_app.py`: a happy-path `ntsb-eval check RUN --way rule` through `main`, with `samples.load_cases`/`samples.seen_pairs` monkeypatched (no processed parquet fixture needed, since the `rule` way's group value does not affect what is being tested) and `client_factory`/`jev_factory` that raise if called; asserts the derived folder's two files exist and the printed summary line names the derived run id. **Minor 4.** `checkpass._refuse_unless_development` now also refuses a source whose `finished` is `None` (`"{run_id} has not finished: the check needs a complete answer for every case"`) and a source whose own id already contains `-check-` (`"{run_id} is itself a derived check run: no stacked checks"`), each with its own test in `tests/test_checkpass.py` (`test_check_run_refuses_a_source_that_has_not_finished`, `test_check_run_refuses_a_source_that_is_itself_a_derived_check_run`), both confirmed RED against the code with the two new checks temporarily removed, then GREEN restored. `TypeSafeClient.ask_state`'s docstring (`model/typesafe.py`) now names `scoring/checkpass.py`'s `jev_checker` alongside the conditioned two-call mode as the two callers that use it in place of `ask`. `make check` passes (1602 tests, 97.71% coverage); `uv run pytest tests/test_checkpass.py tests/test_eval_app.py tests/test_typesafe_client.py -v` passes all 71 tests (coverage gate not met on that narrower selection alone, as expected -- the full suite is what `make check` runs).
+- 2026-09-27, Task 10 review fix round 2 (code review finding, "nothing refusable after the reservation"): round 1's fix reserved the budget before building a client, but three refusals still fired *after* that reservation, each leaking it: (a) a repeated `check --way luna`/`jev` of an already-finished derived run -- `checkpass.check_run`'s own "already exists" refusal ran only after `_cmd_check` had reserved under the same derived id; (b) the item-4 refusals inside `_refuse_unless_development` (an unfinished source, a source whose own id already contained `-check-`, a non-dev case) -- all read and checked only once `check_run` itself started, likewise after the reservation, and for the `-check-` case `reserve_within_budget`'s own `reserve()` had already created the empty `<id>-check-<way>` folder as a side effect, which then stayed behind; (c) anything raised between the reservation and the start of `check_run`'s own pass -- `client_factory`/`jev_factory` raising (a missing key), or (not reached in the CLI path, but true of the exposed function) `samples.seen_pairs`/`ledger.commit_state` raising. Fixed the way `scoring/preparation.py:154-165` already does it (client built, budget reserved, nothing refusable in between): added `checkpass.Preflight` (`record`, `cases`, `run_id`) and `checkpass.preflight(source, way, runs_dir)`, which does everything `_refuse_unless_development` and the "already exists" check did, read-only -- no folder is created and no reservation is touched, so refusing a `-check-` source here leaves nothing behind. `check_run` now calls `preflight` itself as its first line (defence in depth: it will not fire in the normal CLI path, since `_cmd_check` already called it) instead of duplicating the same reads and checks inline; `_cmd_check` calls it explicitly before computing `run_id` or reserving anything, and also moved `samples.seen_pairs(processed)` and `ledger.commit_state()` up to before the reservation, for the same reason. The window that remains between a successful reservation and `check_run` settling it (`client_factory`/`jev_factory` construction, and `check_run` itself, in case a genuine race re-triggers one of `preflight`'s own checks) is now wrapped in `try: ... except BaseException: release(settings.runs_dir, run_id); raise` -- `release` is a no-op on the normal path, where `check_run` has already settled the same reservation via `settle` in its own `finally`. Three tests added to `tests/test_eval_app.py`: `test_check_way_luna_run_twice_is_refused_the_second_time_with_nothing_leaked` (the second call's `client_factory`/`jev_factory` raise `AssertionError` if reached; asserts refusal, an empty `open_reservations`, and the first run's `run.jsonl` byte-identical to before the second call), `test_check_way_luna_releases_its_reservation_when_the_client_factory_raises` (a `client_factory` raising `ConfigurationError("OPENROUTER_API_KEY is not set")`; asserts `open_reservations(runs) == {}` afterward) and `test_check_refuses_a_check_run_as_its_own_source_leaving_no_new_folder` (a source run whose own id already contains `-check-luna`; asserts the set of folder names under `runs_dir` is unchanged and `open_reservations(runs) == {}`). Per the review's instruction, RED was confirmed without `git stash`: `apps/eval/__main__.py` and `checkpass.py` were copied aside, overwritten in place with `git show 22d7832:<path>` (the pre-round-2 commit, read-only to git, no stash involved), the three new tests run against that old code -- all three failed (`test_check_way_luna_run_twice...` with `AssertionError: a repeated check must not reach the client factory`, since the old code called the boom client on the second attempt; `test_check_way_luna_releases_its_reservation...` with `open_reservations(runs)` showing the leaked `$0.002` entry; `test_check_refuses_a_check_run_as_its_own_source...` with an uncaught `FileNotFoundError` from `samples.load_cases`, since the old code read cases and built groups before ever checking the source id for `-check-`) -- then both files were restored from the saved copies and `git diff --stat` confirmed the restored diff matched the fix exactly. `make check` passes (1605 tests, 97.72% coverage); `uv run pytest tests/test_checkpass.py tests/test_eval_app.py -v` passes all 62 tests (coverage gate not evaluated on that narrower selection, as expected).
+- 2026-09-27, Task 11 implementation: (1) one addition beyond the brief, matching the ordering fix already made to `judge_outcomes._load` (Task 5 review round 1) and `round0_handread._run` (Task 6 review round 1): `round1_report.py`'s per-source loop read `cases.jsonl` on the run id's string shape alone (only refusing a source whose id itself contained "heldout"), so a `--answers` source whose id said nothing about it but whose `run.jsonl` recorded a held-out sample would either read the wrong case list or crash on a missing file rather than refuse cleanly. Added a `_load(runs, source)` helper, modelled on the two siblings above, that reads `run.jsonl`'s `RunRecord` and refuses unless `record.sample.startswith("dev")` before `cases.jsonl` is read at all; the run-id substring check and the per-case split check are unchanged and both still run. Added `test_a_source_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read` (writes only `run.jsonl`, deliberately no `cases.jsonl`, so a check placed after the read would surface as an unhandled `FileNotFoundError` rather than a clean `SystemExit`) and a happy-path `test_main_prints_the_outcome_line` (two development sources, each with a `-check-rule` derived folder only, `luna`/`jev` absent) asserting the outcome line and both "not run" lines print. (2) mechanical fixes to satisfy `make check` (behaviour unchanged from the brief's text): `ruff format` wrapped the first `choose` test's two dict literals onto multiple lines. `ruff check`'s `E501` (100-column limit) rejected three of the brief's single lines -- `paired`'s docstring, `_line`'s return, and `push`'s "at least two steps" comparison's neighbour -- fixed by wrapping `paired`'s docstring onto two lines (also fixing `D205`/`D209`, which flagged its now-two-sentence form joined on one line) and splitting `_line`'s f-string across two adjacent strings; `push`'s own docstring got the same `D205`/`D209` two-line treatment first, then `ruff check`'s `PLR2004` (magic value `2` in the steps-length comparison) was fixed with a named module constant `_CHECKED_STEPS = 2`, matching Task 5's `_TRIPLE`/Task 8's `_MAX_RANKING` idiom, same behaviour. `mypy --strict` rejected `choose`'s brief text `max(winners, key=lambda w: sum(s[w][1].mean for s in sets if s[w][1] is not None))`: the generator's `if` clause narrows `s[w][1]` to non-`None` for the condition but not for the separately re-evaluated `s[w][1].mean` in the same comprehension, so it typed the sum as `float | Any` against `bool`. Replaced with a small nested `gain(s, way)` helper that binds `s[way][1]` once and returns `0.0` when `None`, called as `sum(gain(s, w) for s in sets)`; the winners list already guarantees non-`None` here (`everywhere(w, 1)`), so this is a typing fix, not a behaviour change. `mypy --strict` also rejected reusing the name `way` across `main`'s two separate `for` loops over `WAYS` (a `Literal["rule", "luna", "jev"]` loop variable) and `loaded.items()` (a `str` loop variable) as an "Incompatible types in assignment"; renamed the first loop's variable to `check_way` (and its three uses: `derived_id(source, check_way)`, `loaded[check_way]`, `pushes[check_way]`), leaving the second loop's `way` and its body untouched. Finally, `mypy --strict`'s implicit-reexport check rejected the test file's `r1.derived_id(...)` (imported into `round1_report.py` from `checkpass` but not re-exported), the same issue Task 3's deviation note describes for `cs.build`; added `__all__ = ["Paired", "choose", "derived_id", "main", "paired", "push"]` to `round1_report.py`, naming every attribute the tests and `main` use, same behaviour. Every test in `tests/test_round1_report.py` passes with the values verbatim from the brief's text (including the hand-checked `push` assertion); `Paired`, `paired`, `choose` and `push`'s bodies are otherwise verbatim from the brief. `make check` passes (1612 tests, 97.72% coverage).
+- 2026-09-27, Task 14 implementation: one addition beyond the brief, matching the ordering fix already made to `judge_outcomes._load` (Task 5), `round0_handread._run` (Task 6) and `round1_report._load` (Task 11): `round_result.py`'s `_load` is called on every run this script reads (the run, the reference, and both noise runs), so it needed the same fix those three siblings already carry -- read `run.jsonl`'s `RunRecord` and refuse unless `record.sample.startswith("dev")` before `cases.jsonl` is read at all, on top of the run-id substring check, so a run whose id does not say "heldout" but whose recorded sample is held-out is refused before any per-case data is touched. The brief's own `_load` (verbatim in its Step 3 snippet) only had the run-id substring check. Added `test_a_run_recorded_on_a_held_out_sample_is_refused_before_its_cases_are_read` (writes only `run.jsonl`, deliberately no `cases.jsonl`, so a check placed after the read would surface as an unhandled `FileNotFoundError` rather than a clean `SystemExit`; confirmed RED by temporarily reverting `_load` to the brief's plain form and re-running -- the test failed with `FileNotFoundError` instead of the expected `SystemExit`, then the fix was restored) and a happy-path `test_main_prints_the_outcome_and_append_writes_it_to_a_file` (four development run folders under a `tmp_path` runs dir, `_groups` monkeypatched to avoid touching `Settings().data_dir`'s processed parquet, the real committed `load_stats()` used unmonkeypatched since it only reads a packaged resource) asserting the outcome line prints and `--append` appends it to an existing file. The brief's four given tests (`test_a_round_is_kept_above_the_noise_with_no_harm`, `test_a_round_inside_the_noise_is_dropped`, `test_a_gain_that_harms_the_other_score_is_dropped`, `test_push_line_counts_first_codes_moved_toward_a_more_common_option`) and the rest of `scripts/round_result.py` (`Diff`, `Reading`, `diff`, `read`, `push_line`, `_first`, `_groups`, `_fmt`, `main`) are verbatim from the brief's Step 3 text -- no logic fix was needed beyond `_load` and its import of `RunRecord`. Mechanical fixes to satisfy `make check` (behaviour unchanged): (1) `ruff format` wrapped the module docstring's `Usage` line, `read`'s three early-return `Reading(...)` calls, and one test's `model_copy` call onto multiple lines. (2) `ruff check`'s `E501` (100-column limit) rejected two more of the brief's single lines -- `push_line`'s docstring (which also then needed `D205`/`D209`'s two-line, separate-closing-quote form once split into two sentences) and `main`'s "run: ...; reference: ...; noise pair: ..." status line -- both split across two adjacent lines/f-strings, same rendered text. (3) `ruff check --fix`'s `I001` reordered the test file's `scripts`/`tests` first-party imports ahead of the third-party `ntsb_probable_cause` ones. (4) `mypy --strict` rejected the test file's `_cases()` (missing return type; used in a typed context) and an unnecessary `# type: ignore[arg-type]` on `_run_record`'s `arm=arm` (a plain `arm: str` parameter passed to `RunRecord`'s `arm: Literal[...]` field raises no mypy error here, matching `tests/test_occurrence_misses.py:_write_run`'s identical, unignored pattern); annotated `_cases() -> list[CaseResult]` (importing `CaseResult`) and removed the stray ignore comment, same observable behaviour. `make check` passes (1631 tests, 97.74% coverage).
+- 2026-09-27, Task 7 Steps 4-5: Andy authorised Claude to run the judge ("Yes do it now"). It ran from a clean, detached checkout of `s27-guidance` at `228281b` (the track worktree held a task's uncommitted edits, which would have recorded a dirty tree), on B-v1, `REPEAT` and B-v2: $0.8084, $0.8081 and $0.8110, 399 labels each, **$2.43 in all against the plan's $1.50** (the judge's $0.00125-a-case estimate was about 60% low). The cards were built free: 50 (10 hits, 8 from each of the five miss groups; none was under 8, so W7's rule did not bite); the page names no case and shows no judge label.
+- 2026-09-27, Task 12 Steps 2-5: the plain rule ran free on both answer sets (Claude). Andy authorised the GPT-6 Luna check ("you have a yes on the luna spend"); it ran from a clean detached checkout at `b0cdcc2`: $0.1210 and $0.1196, **$0.24 against the plan's $0.72** (W3's estimate was about three times high); every reply parsed (0 of 394 and 0 of 395 fell back to the unchanged answer). Andy chose to include Jev (walkthrough answer "A"); Claude's attempt to run it was refused by the session's permission check on reading the TypeSafe key, so Andy ran both Jev checks himself from the same checkout: $0.0195 and $0.0196. `docs/results/s27-round1-dev.txt` ends `outcome (decision 0096 item 5): luna`, so `CHECK=luna` for every later round.
+- 2026-09-27, after Task 12, Andy's decision ("Yes that sounds good"; earlier "Otherwise yes option B after but more research"): a second, registered Jev check, `jev2`, is added as Task 12a (decision 0103). It is designed from TypeSafe's documentation (docs.typesafe.ai: object state, structured option descriptions with `what`/`not_for`, a `none_of_these` option; `jev-1.13` is weak at counting) and three independent projects that measured Jev (0.01 probability steps, so ties are broken by the model's own order; cut-offs do not transfer, so none is used), with every threshold taken from 0096 or 0101. The design and its win rule (beat no check, the plain rule and Luna on both answer sets, or Luna stays) are fixed in `docs/rounds/s27-round1-jev2.md`, committed before any code. Round 1's outcome and results file are unchanged.
+- 2026-09-27, Task 12a implementation (decision 0103). The registration's design is built as written; these are gap-fillings and plumbing, none changes what is sent to Jev or how the answer is decided. (1) `checkpass.WAYS` stays Round 1's three ways, and a new `checkpass.CHECK_WAYS` (`WAYS` plus `jev2`) is what `ntsb-eval check --way` accepts: `scripts/round1_report.py` iterates `WAYS`, so adding `jev2` there would have added `jev2` lines to `docs/results/s27-round1-dev.txt` the next time it was regenerated, which the brief rules out. `Way` itself gains `"jev2"` as the brief says. (2) Ties with `none_of_these`: the registration's tie order names only codes (guesses, then the other candidates), so `none_of_these`, being neither, comes after every code on a tie; it therefore "ranks first" only when its probability is strictly the highest. (3) `ordering.jev2_order` (the full ranked order, `none_of_these` included) is added beside the brief's `jev2_ranking`, which uses it; both refuse, with `SchemaError`, probabilities whose labels are not exactly the options asked. (4) Every option's probability is recorded in that ranked order, so the report recovers "none_of_these ranked first" from the step alone (a stable sort keeps the recorded tie order); when it ranks first the step's `ranking` is the model's own guesses (the answer applied, as for the other ways) and its `reason` says so. (5) `CheckOutcome.details` is the free-form mapping the brief names, spread into the step's `arguments` after `ranking` and `toward_more_common`; empty by default, so rule, luna and jev steps are unchanged (a test pins the rule step's keys). (6) `CodingStats.group_n(group)` is added (with a test) for the "in this phase group" base: the group's past cases over every defining code. (7) The report's "unchanged" group for the median confidence is the checked cases whose top-1 result is the same as no check (neither fixed nor broken), and it says so in the line. (8) The report reads the derived folders through the same refusals as the sources (the recorded sample in `run.jsonl` before `cases.jsonl`, then the split), one step stricter than `round1_report`, which read derived folders unchecked; a comparison folder that does not exist prints "not run", and a missing comparison fails the win rule, so Luna stays.
+- 2026-09-27, Task 12a, before any `jev2` call: the registration did not settle a tie at the top between `none_of_these` and a code (review finding). Andy chose option A: `none_of_these` wins such a tie, so the answer stays as the model gave it. The clarification is dated in `docs/rounds/s27-round1-jev2.md` and committed before the code change and before any call; the first build had made the code win ("a code wins every tie").
+- 2026-09-27, Task 12a review fix round 1. (1) Registration change (Important), following the registration's dated clarification committed before any call (`f078d9e`; Andy: option A): `none_of_these` ranks first whenever no code has a strictly higher probability, so a tie at the top between `none_of_these` and any code leaves the answer unchanged; `ordering.jev2_order` now puts `none_of_these` first in the tie order (it wins any tie it is part of) and the model-order tie rule applies among codes only. This replaces item (2) of the Task 12a implementation bullet above; the tests that pinned the old reading are rewritten and a test for exactly this tie is added. (2) Every `jev2` step now records Jev's full ranked option order after the tie rules, `none_of_these` included, as `arguments["jev_order"]`; `scripts/round1_jev2_report.py` reads "none_of_these ranked first" from it, not from the order the probabilities mapping was stored in (item (4) above no longer carries that job), with a round-trip test of a tie through `cases.jsonl` on disk. (3) `tests/test_boundary.py` gains the `jev2` counterpart of the ordering check's boundary test: the JSON body sent, both as escaped bytes and as its unescaped strings, holds no window (`withheld_windows`, codes left out because choosing among codes is the check's job) of the factual narrative, the analysis narrative or the probable cause of a real fixture; a temporary mutation (the hypothesis's account replaced by the fixture's analysis narrative) made it fail, and it was then restored. (4) `scripts/round1_jev2_report.py` refuses `dev-seal-400` through `samples.refuse_sealed(..., is_committed=gitinfo.is_committed)`, and checks both sources' records (held-out, sealed) before any run's cases are read; one existing refusal test now writes its second source, since that source's record is read first.
+- 2026-09-27, Task 12a Steps 8-9: Andy ran both `jev2` checks from the clean checkout at `8c40dbd` ($0.0313 and $0.0314). `docs/results/s27-round1-jev2-dev.txt` ends `luna stays (CHECK=luna)`: `jev2` was below GPT-6 Luna on both answer sets and did not clearly beat no check on the first. The documented changes did not improve on Round 1's Jev on these answer sets. Published as it came out (decision 0103).
+- 2026-09-28, Task 7 Step 7: `round0_handread score` gained one line per miss group of Andy's "why" answers, because Task 15 Step 1 chooses the first round by miss group and the score printed totals only; existing lines unchanged.
+- 2026-09-28, Task 7 Steps 6-8: Andy marked the 50 cards (a private copy of his marks is kept at `data/handcheck/s27-round0/marks.csv`). The narrative label was **not validated**: agreement 32 of 46 decidable cards (69.6% [55.2%, 80.9%], rule at least 75%), with 11 harsh and 3 generous judge errors; so `LABELS=unvalidated` and the four outcomes carry no claim (decision 0099 item 3). The noise floor between B-v1 and `REPEAT` is +4.0 points of top-1 [+0.5%, +7.5%] on 399 cases (`ntsb-eval report --against`), larger than the plan assumed; between their Luna-checked folders it is +1.0 [-3.0%, +5.0%]. `docs/results/s27-round0-dev.txt` written by `make s27-round0-results`.
+- 2026-09-28, Task 15 round 2: the first attempt was refused by the monthly budget guard before any call ($39.63 spent in September, $1.68 reserved). Andy raised September's budget to $50 (decision 0104), applied as `NTSB_MONTHLY_BUDGET_USD=50` in each paid command's environment until 30 September; the code default stays $40.
+- 2026-09-28, Task 15 round 3: four of the five loss-of-control/stall pairs the guidance quotes are not in `docs/results/s27-coding-stats.txt` (it prints only the 40 commonest pairs); they are cited from the committed counts it is built from, `scoring/tables/coding_stats.json`, through `coding_stats.load_stats().pair`, as the registration says.
+- 2026-09-28, Task 15 round 3: submitted at 14:44 UTC, inside OpenRouter's slow window, on Andy's instruction ("just go now"), against the plan's 01:00-12:00 UTC timing rule.
+- 2026-09-28, Task 15 round 4: `CodingStats.event_pair` (tested) was added so the guidance's counts, summed over every phase by event, come from code rather than an ad-hoc sum; it counts code pairs, as its docstring and the registration say.
+- 2026-09-28, Task 15 round 4: submitted at about 17:00 UTC, outside the 01:00-12:00 UTC timing rule, on Andy's go-ahead to register and start it now ("Sounds sensible").
+- 2026-09-28, Task 15 (between rounds 4 and 5): decision 0105 adds six codes the data dictionary lacks (phases 553 and 601; events 281, 282, 284 and 850) to the code tables through `scoring/tables/supplement.csv`, and moves the prompt version to `s1-v6`. Not in the plan or spec, which fixed the tables by 0025. It applies from Round 5 and is not subject to decision 0098 item 4; Round 5's registration says so.
+- 2026-09-28, Task 15: `scripts/round_result.py` gained `--supplement` (`make s27-round-result SUPPLEMENT=1`), which prints decision 0105 item 4's line: the cases whose NTSB sequence holds an added code, their top-1 hits in the reference and the run, and the paired top-1 difference on the other cases. For Round 5 only.
+- 2026-09-28, Task 15 round 3 Step 8: the judge ran on Round 3's checked folder ($0.8132); `judge_outcomes` compares it with the repeat's unchecked folder, because the repeat's checked folder (the reference) was never judged. The registration's appended note says so.
+- 2026-09-28, Task 15 round 5: submitted at about 18:30 UTC, outside the 01:00-12:00 UTC timing rule, on Andy's instruction ("Yes run it now"). Its run also carries decision 0105's table fix, which the reference does not; the registration says so and the result is read with `SUPPLEMENT=1`.
+- 2026-09-28, Task 15, lesson from round 4 (ad-hoc counts): its counts were conditioned on the NTSB coding both events ("when both appear"), which the model cannot know in advance. The model put a fuel event first in 40 cases (13-17 in earlier runs); of the 14 where it moved from a power loss to a fuel event and the NTSB kept the power loss, the NTSB coded no fuel event at all in 13. Later rounds' counts, the finding rounds' included, start from what the model can see (an evidence field, or a code the model itself chose), not from the NTSB's final codes.
+- 2026-09-29, Task 15, before the first finding round: the statistics pool gained flagged-finding counts by defining code (`PoolCase.findings`, `CodingStats.findings_by_defining`, `findings_given_event`; tested), rebuilt from the same pool by `scripts/coding_stats.py`, whose report gains a "flagged findings by defining event" section. Every earlier count in `coding_stats.json` is unchanged (checked key by key); four lines of `docs/results/s27-coding-stats.txt` now show the labels decision 0105 added (phases 553 and 601) where they showed `?`.
+- 2026-09-29, Task 15 round 6: the rule dropped it on harm to top-1 against Round 3 (-6.3% [-10.5%, -2.5%]) with finding recall +11.4% [+8.2%, +14.6%]; Andy kept it by override (decision 0106, "I think option B"). Round 6's checked run is the reference from now on; the sealed registration and the report state the override.
+- 2026-09-29, final review fix round (Important 1): `samples.refuse_sealed` was reachable but not called from `apps/eval/__main__.py:_cmd_baseline` or from the S2.6 scripts that take a free-form `--sample` (`page_kinds.py`, `analysis_handcheck.py`, `narrative_coverage.py`, `name_coverage.py`, `docket_leak_scan.py`), so `ntsb-eval baseline --sample dev-seal-400` and any of those five scripts could score or read the sealed sample today, free and with one flag, before its registration (`docs/rounds/s27-sealed.md`) is committed. Fixed by calling `refuse_sealed` at each of those call sites, before `sample_ids` is read. Tests added: `test_baseline_refuses_the_sealed_sample_before_anything_is_read`, `test_baseline_with_no_sample_is_unaffected_by_the_sealed_guard` (`--sample` is optional on `baseline`), `test_check_refuses_the_sealed_sample_before_any_client_is_built` (`ntsb-eval check` already called `refuse_sealed`, decision 0095, but had no test), and one sealed-refusal test each for `page_kinds.py` and `analysis_handcheck.py`.
+- 2026-09-29, final review fix round (Important 1 / deferred Task 5, one shared helper): `samples.refuse_unless_development(run_id, sample)` replaces the hand-copied held-out/sealed refusal `occurrence_misses.py`, `judge_outcomes.py`, `round0_handread.py`, `round1_report.py`, `round1_jev2_report.py` and `round_result.py` each carried, which accepted `dev-seal-400` as a plain development sample (`record.sample.startswith("dev")`) -- only `round1_jev2_report.py` also called `refuse_sealed`, and before registration no sealed run could exist, so this was defence in depth, not an open gap. Takes `sample: str | None`, not the whole `RunRecord`: `scoring.samples` is one of the "Only the splitter constructs synthesis and verdict" import-linter contract's source modules, and `scoring.records` reaches `records.verdict` through `scoring.metrics`, so importing `RunRecord` there would have broken that contract (checked: `uv run lint-imports` failed with exactly this path before the signature was changed). Each script's own refusal message wording is otherwise preserved (each substring the existing tests already matched -- "held-out run", "development runs only", "outside the dev split" -- still appears), and every existing refusal test in the six scripts' test files passes unchanged. `scripts/coding_stats.py` is untouched: it calls `samples.sample_ids` directly to build its excluded-ids set, never `refuse_unless_development`, so it can still read the sealed ids to leave them out of the pool.
+- 2026-09-29, final review fix round (Minor 1): `report.provenance`'s header line now prints `prompt=<prompt_version>` (from Round 5 on, a guided run's `s1-v6` prompt can differ from its reference's `s1-v5`, and neither `report --against` nor `round_result` flagged that); `round_result`'s `run:` line now prints both the run's and the reference's prompt versions. `test_provenance_shows_status_commit_and_totals` (`tests/test_report.py`) is updated to expect the new field, in the same order the line already carried the others; `test_provenance_names_the_prompt_version` is added beside `test_provenance_names_the_version`.
+- 2026-09-29, final review fix round (Minor 3): `round_result._load` (and the `_load`/`_refuse` helpers in `round1_report.py` and `round1_jev2_report.py`) now refuse a run whose `finished` is `None` -- a check pass that died mid-write leaves exactly that, and `preflight` then refuses a re-run, so the folder has to be deleted by hand -- before any per-case data is read; `round_result.main` and the two round-report scripts' `main` also refuse when the run, the reference/other answer set and (for `round_result`) the noise pair do not share sample, arm and evidence version, comparing `RunRecord` fields directly rather than only printing `n` and letting a mismatch pass silently. `checkpass.check_run`'s preflight "exists" error now says a dead pass's folder must be deleted by hand and try again, rather than only naming the rule.
+- 2026-09-29, final review fix round (Minor 4, deferred Task 10): `test_the_ordering_check_sends_no_withheld_text` (`tests/test_boundary.py`) now asserts every `withheld_windows` window (codes excluded, as choosing among codes is the check's job), matching the `jev2` boundary test beside it, instead of only the first 80 characters of each withheld field. Luna is the check carried forward to the sealed run, so its boundary test is worth the stronger assertion. Confirmed the assertion catches a real leak: a temporary mutation (the hypothesis's evidence narrative extended with the fixture's probable cause) made the test fail with the leaked text quoted in the assertion error, then the mutation was reverted; `git diff --stat tests/test_boundary.py` before and after the mutation-and-revert cycle showed the file unchanged apart from the intended fix.
+- 2026-09-29, final review fix round (Minor 5): `scripts/coding_stats.py:processed_rows` now parses `raw_json` only for development rows -- `pool_cases` skips every held-out and open row before it ever touches `raw`, so parsing their JSON bought nothing, though nothing leaked: the pool guard held regardless. `test_processed_rows_parses_raw_json_for_development_rows_only` (`tests/test_coding_stats_script.py`) pins this. Rebuilt `src/ntsb_probable_cause/scoring/tables/coding_stats.json` and `docs/results/s27-coding-stats.txt` against the main checkout's real processed file (`make s27-coding-stats`) and confirmed byte-identical output with `git diff --stat`; neither file is part of this commit.
+- 2026-09-29, final review fix round (Minor 6): `tests/fixtures/typesafe/choices.json` (ported from `typesafe-probe`) carries a real case's evidence state with no case id recorded beside it. Identified it by matching its evidence values against the processed file locally -- the registration `N418SP` is unique, and every other evidence value in `request.state` matches the same case's record exactly -- as `ANC09CA020`, event date 2009-02-16, development split. Recorded in `tests/fixtures/typesafe/README.md`; `test_typesafe_fixture_case_is_development_split` (`tests/test_contamination.py`) checks its split by event date, the same way the file's other fixture-purity tests do.
+- 2026-09-29, final review fix round (Important 2 / Minor 2): decision 0106's argument for overriding the do-no-harm rule, and Round 6's note, rested on numbers labelled "ad-hoc counts" -- produced by no committed script. `scripts/round_comparisons.py` (`make s27-round-comparisons`) reads the seven named checked (`-check-luna`) run folders and writes `docs/results/s27-round-comparisons-dev.txt`: each run's own checked top-1 and finding recall@10, Round 6 paired against Round 3, Round 4, Round 5 and the repeat, and the decision 0105 supplement line for Round 6 against Round 3. Run free and local against the main checkout's data; every figure it produced matches decision 0106's table and Round 6's note exactly (top-1 -2.3%/-2.8%/-1.5%, finding recall +12.3%/+12.7%/+10.5% against Round 4/Round 5/the repeat; the reference figures against Round 3; Round 6's own 25.1%/22.6%; the supplement's "reference 5, run 3" top-1 hits) -- no discrepancy found, so no new decision record was needed. One line was appended under Round 6's "Override" section and a "Source of the numbers" section was appended to decision 0106, both pointing to the results file; nothing above either append was edited.
+- 2026-09-29, final review fix round, extending the Task 15 round 3 deviation above to Rounds 4 and 5 (Minor 7): Round 4's guidance counts (for example the fuel/power-loss pair counts) are sums over every phase read through `coding_stats.load_stats().event_pair(<event>, <event>)`, as `docs/rounds/s27-round-4.md` itself already states and as the round-4 `CodingStats.event_pair` addition above documents; none of those summed figures is printed verbatim in `docs/results/s27-coding-stats.txt` either, which prints per-phase-group pair counts, not summed ones. Round 5's guidance counts (for example "1096 of 1403" Approach cases, "1501 of 1994" Enroute cases, "3107 of 4306" Landing cases, 92 of those under 553) are read the same way, through `coding_stats.load_stats().group_phases(<group>)` and `group_n(<group>)`, as `docs/rounds/s27-round-5.md` states; `docs/results/s27-coding-stats.txt` does not print per-group phase breakdowns at all. Both rounds' counts are reproducible from the committed `coding_stats.json` by the cited accessor, matching the standard the round-3 entry set; no code changed for this entry, which only completes the citation record the review found incomplete.
+- 2026-09-29, Task 15 closed: the procedure ran for rounds 2-6 (2 dropped, 3 kept, 4 and 5 dropped, 6 kept by override, decision 0106). The occurrence rounds ended on two drops in a row (4, 5); Andy ended the finding rounds after one ("option A"), leaving the second 0098 allows unused. The judge ran on each kept round (3 and 6).
+- 2026-09-29, Task 16 Step 1: track 2 merged into the parent first (its Task 12, 87f74f1) and the parent was merged into track 1 on 2026-09-28 (973eff1, conflicts in the `Makefile`, `apps/eval/__main__.py` and the decisions index resolved there as unions), so track 1's merge into the parent (c08ca2c, Andy: "yes go ahead and merge") had no conflicts. `make check` on the parent: 1,847 passed, 97.82% coverage.
+- 2026-09-29, Task 16 Steps 2-4: built as planned, with three details. The refusal is one helper, `runner.refuse_unnamed_reading`, called after the docket-version check, so arm A and the ceiling at v2 keep their earlier refusal message. `report.refuse_cross_version` compares the two v2 readings through `_v2_reading`, which reads a record with no fields as `S26_V2_READING`; `provenance` prints the reading on every v2 record, S2.6's included. The run command's "not fully transcribed" message now names the transcriber and page rule and the exact `transcribe` command. Tests: `tests/test_runner.py`'s `_arm_b` helper gives a v2 spec S2.6's reading, so the S2.6 v2 tests keep running unchanged; three new runner tests, two report tests, one app test, and the existing app v2 test now also checks the recorded reading.
+- 2026-09-29, Task 17 (the meeting point, spec §8) skipped, Andy's decision ("A, skip it and carry on here"): decision 0120 already settled v2's default for cost (transcription off by default, a tool the S3 loop may choose), so the v1-against-v2 comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether transcription helps once coding is improved (the question decision 0090 item 2 hoped S2.7 would free); it moves to S3, where reading a transcription is the agent's own choice. The sealed run (Task 18) is therefore at v1.
+- 2026-09-29, close-out, decision 0107 (amends 0102 item 3): `scripts/stage_spend.py` counted every branch holding S2.7's first commit, which by then included `s28-coding-lookup` (S2.8's draft design) and `s3-probe`, both cut from `s27-guidance`, and it counted HEAD. It now counts only branches named `s27-` and not HEAD. The stage total was unchanged by the fix ($13.81: neither later branch had spent), `uv run python -m scripts.stage_spend`, 2026-09-29.
+- 2026-09-29, Task 18 Steps 1-2: `scripts/sealed_report.py` as planned, plus finding recall@10 for both runs beside top-1 (Round 6, the kept finding round, moved it) and a held-out refusal; four tests. The `s27-sealed-run` target names the two guidance files itself, so the sealed run cannot be started with another stack; `s27-sealed-results` fixes the `dev-400` side to Round 6's checked run. The sealed run is at v1 (Task 17 skipped), so Step 5's transcription does not apply: the run fetches the sealed dockets itself.
+- 2026-09-29, Task 18 Steps 6-7, run by the controller on Andy's instruction ("Can you just get this started now for me"). The first attempt, 11:40 UTC, was refused by the monthly guard before any call ($1.68 projected plus $47.75 spent against the code's $40 default): the launch script had not set decision 0104's `NTSB_MONTHLY_BUDGET_USD=50` for September. It left one folder holding only `spec.json`, `20260929T114018-9cbe5c5-dev-seal-400-B`, kept under `data/runs` and unused. The second attempt, with 0104's setting, is the sealed run: `20260929T114049-9cbe5c5-dev-seal-400-B`, commit `9cbe5c5`, clean tree, prompt `s1-v6+ge17fecdc66ec`, 401 cases, $1.1802; 397 answered, 3 refused by the leakage guard, 1 reply-format failure. Its batch was submitted at 14:34 UTC, inside the slow window, and still finished at 15:06. The Luna check, `...-check-luna`, cost $0.1133. The judge was not run (decision 0099; the registration). Results: `docs/results/s27-sealed-dev.txt`: sealed top-1 27.5% [23.3%, 32.0%] (109 of 397) against `dev-400`'s 25.1% [21.1%, 29.5%] (100 of 399); finding recall@10 22.0% and 22.6%. Decision 0098 item 7: `dev-400` top-1 between 30% and 36% not met (25.1%); the sealed sample lower by less than 5 points not met, because it was 2.4 points higher; the misread part not scored.

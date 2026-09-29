@@ -4,7 +4,8 @@ Status
     Repeatable, free: reads one finished run folder, makes no model call. Counts and code
     labels only (decision 0024): no case number, no title, no prose. Written for the S2.6
     final review (I6), which found decision 0089 quoting these counts before any committed
-    script produced them.
+    script produced them. Extended in S2.7 (spec §4.1): the six groups, finding depth,
+    confidence by group, the model's own words, and churn against a second run.
 
 Why
     The NTSB codes every accident with an ordered sequence of occurrence codes; the first is
@@ -31,11 +32,21 @@ Usage
 """
 
 import argparse
+import statistics
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
+from ntsb_probable_cause.scoring.misses import (
+    GROUPS,
+    FindingDepth,
+    finding_depth,
+    miss_group,
+    names_event,
+)
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.scoring.report import provenance
 from ntsb_probable_cause.settings import Settings
@@ -50,14 +61,11 @@ def _share(count: int, total: int) -> str:
 
 
 def _refuse_unless_development_arm_b(run_id: str, record: RunRecord) -> None:
-    """Held-out runs never feed this script (CLAUDE.md rule 5); nor does any arm but B."""
-    if "heldout" in run_id or record.sample.startswith("heldout"):
-        raise SystemExit(
-            f"occurrence_misses: {run_id} is a held-out run ({record.sample}); this script "
-            "reads development runs only"
-        )
-    if not record.sample.startswith("dev"):
-        raise SystemExit(f"occurrence_misses: {record.sample} is not a development sample")
+    """Held-out and sealed runs never feed this script; nor does any arm but B."""
+    try:
+        samples.refuse_unless_development(run_id, record.sample)
+    except ConfigurationError as error:
+        raise SystemExit(f"occurrence_misses: {error}") from error
     if record.arm != "B":
         raise SystemExit(f"occurrence_misses: {run_id} is arm {record.arm}, not arm B")
 
@@ -119,30 +127,117 @@ def summarise(cases: Sequence[CaseResult], tables: CodeTables) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Print, and with ``--out`` also write, one run's counts."""
-    parser = argparse.ArgumentParser(prog="occurrence_misses")
-    parser.add_argument("--run", required=True, metavar="RUN_ID")
-    parser.add_argument("--out", default=None)
-    args = parser.parse_args(argv)
+def _guesses(case: CaseResult) -> tuple[str, ...]:
+    return tuple(g.phase + g.event for g in case.steps[-1].hypothesis.occurrence)
 
-    folder = Settings().runs_dir / args.run
-    if "heldout" in args.run:
-        raise SystemExit(
-            f"occurrence_misses: {args.run} is a held-out run; this script reads development "
-            "runs only"
+
+def _scored(cases: Sequence[CaseResult]) -> list[CaseResult]:
+    return [c for c in cases if c.scores is not None and c.steps]
+
+
+def detail(cases: Sequence[CaseResult], tables: CodeTables) -> str:
+    """S2.7 §4.1: the six groups, confidence, finding depth, and the model's own words."""
+    scored = _scored(cases)
+    by_group: dict[str, list[CaseResult]] = {g: [] for g in GROUPS}
+    depth = FindingDepth(0, 0, 0, 0, 0)
+    named = asked = 0
+    for case in scored:
+        hypothesis = case.steps[-1].hypothesis
+        group = miss_group(_guesses(case), case.verdict_occurrence, abstain=hypothesis.abstain)
+        by_group[group].append(case)
+        depth = depth + finding_depth(
+            hypothesis.finding_codes(tables), case.verdict_findings_in_cause
         )
+        if group not in ("exact", "abstained") and case.verdict_occurrence:
+            said = names_event(
+                f"{hypothesis.evidence_narrative} {hypothesis.probable_cause}",
+                case.verdict_occurrence[0][3:],
+            )
+            if said is not None:
+                asked += 1
+                named += said
+    total = len(scored)
+    lines = ["", "## the six groups (first guess)"]
+    for group in GROUPS:
+        members = by_group[group]
+        median = (
+            f"{statistics.median(c.steps[-1].hypothesis.confidence for c in members):.2f}"
+            if members
+            else "-"
+        )
+        lines.append(f"- {group}: {_share(len(members), total)}; median confidence {median}")
+    lines += [
+        "",
+        "## finding depth (the NTSB's flagged findings, each at its deepest match)",
+        f"flagged {depth.flagged}: found {depth.found}; item right, modifier wrong "
+        f"{depth.item_right_modifier_wrong}; category right, item wrong "
+        f"{depth.category_right_item_wrong}; category wrong {depth.category_wrong}",
+        "",
+        "## the model's own words (misses whose NTSB event has a phrase list, "
+        "scoring/misses.py:EVENT_PHRASES)",
+        f"the model's narrative or cause names the NTSB's defining event: {_share(named, asked)}",
+    ]
+    return "\n".join(lines)
+
+
+def churn(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """Two runs on the same cases: how many first guesses changed, and top-1 gained and lost."""
+    right = {c.case_id: c for c in _scored(b)}
+    pairs = [(c, right[c.case_id]) for c in _scored(a) if c.case_id in right]
+    same = sum(_guesses(x)[:1] == _guesses(y)[:1] for x, y in pairs)
+    gained = sum(
+        bool(x.scores and x.scores.occurrence_top1) and not (y.scores and y.scores.occurrence_top1)
+        for x, y in pairs
+    )
+    lost = sum(
+        bool(y.scores and y.scores.occurrence_top1) and not (x.scores and x.scores.occurrence_top1)
+        for x, y in pairs
+    )
+    return "\n".join(
+        [
+            "",
+            "## churn against the second run (cases scored in both)",
+            f"same first guess: {same} of {len(pairs)}",
+            f"top-1 gained {gained}, lost {lost} (this run against the second)",
+        ]
+    )
+
+
+def _read_run(run_id: str) -> tuple[RunRecord, list[CaseResult]]:
+    """One development arm B run's record and cases, after every refusal."""
+    folder = Settings().runs_dir / run_id
+    try:
+        samples.refuse_unless_development(run_id, None)
+    except ConfigurationError as error:
+        raise SystemExit(f"occurrence_misses: {error}") from error
     record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    _refuse_unless_development_arm_b(args.run, record)
+    _refuse_unless_development_arm_b(run_id, record)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     if any(case.split != "dev" for case in cases):
-        raise SystemExit(f"occurrence_misses: {args.run} holds a case outside the dev split")
+        raise SystemExit(f"occurrence_misses: {run_id} holds a case outside the dev split")
+    return record, cases
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print, and with ``--out`` also write, one run's counts (and churn against a second)."""
+    parser = argparse.ArgumentParser(prog="occurrence_misses")
+    parser.add_argument("--run", required=True, metavar="RUN_ID")
+    parser.add_argument("--against", default=None, metavar="RUN_ID")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args(argv)
+    record, cases = _read_run(args.run)
+    tables = load_tables()
     text = (
         "occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)\n"
         + provenance(record).rstrip("\n")
         + "\n\n"
-        + summarise(cases, load_tables())
+        + summarise(cases, tables)
+        + "\n"
+        + detail(cases, tables)
     )
+    if args.against is not None:
+        _other_record, other = _read_run(args.against)
+        text += "\n" + churn(cases, other) + f"\nsecond run: {args.against}"
     print(text)
     if args.out is not None:
         out = Path(args.out)

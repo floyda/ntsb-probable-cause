@@ -17,7 +17,7 @@ import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.scoring import baseline
+from ntsb_probable_cause.scoring import baseline, prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.metrics import (
     CaseScores,
@@ -244,15 +244,24 @@ def provenance(record: RunRecord) -> str:
     """
     status = "complete" if record.finished is not None else "ABORTED (partial results)"
     finished = record.finished.isoformat() if record.finished is not None else "-"
+    guidance_line = ""
+    if record.guidance:
+        fingerprint = (record.guidance_sha256 or "")[: prompt.FINGERPRINT_CHARS]
+        guidance_line = f"guidance={'+'.join(record.guidance)} sha256={fingerprint}\n"
+    if record.evidence_version == "v2":
+        transcriber, page_rule = _v2_reading(record)
+        guidance_line += f"transcriber={transcriber} page_rule={page_rule}\n"
     return (
         f"run {record.run_id} [{status}]\n"
         f"sample={record.sample} arm={record.arm} evidence={record.evidence_version} "
+        f"prompt={record.prompt_version} "
         f"model={record.model} "
         f"reasoning={record.reasoning_effort or 'provider default'} "
         f"max_output_tokens={record.max_output_tokens} "
         f"price_variant={record.price_variant}\n"
         f"exclusions={','.join(record.exclusions) or '-'} "
         f"includes={','.join(record.includes) or '-'}\n"
+        f"{guidance_line}"
         f"commit={record.commit_sha}{'*' if record.dirty else ''} "
         f"started={record.started.isoformat()} finished={finished}\n"
         f"cases={record.cases} total_cost_usd={record.cost_usd:.4f}\n"
@@ -403,13 +412,37 @@ def preparation_summary(results: Sequence[CaseResult]) -> str:
     )
 
 
+# A v2 run recorded before S2.7 names no reading: it read S2.6's transcriber (decision 0087)
+# with every image-bearing page, the rule S2.7 named "all" (S2.7 spec §7.5).
+S26_V2_READING = ("qwen/qwen3.5-122b-a10b", "all")
+
+
+def _v2_reading(record: RunRecord) -> tuple[str, str]:
+    return (
+        record.transcriber or S26_V2_READING[0],
+        record.page_rule or S26_V2_READING[1],
+    )
+
+
 def refuse_cross_version(this: RunRecord, other: RunRecord, *, versions_compared: bool) -> None:
     """Two runs on different evidence versions are not an arm comparison (decision 0076).
 
     Refused unless the caller asked for an evidence-version comparison by name, which is then
     printed under its own heading, so the output cannot be mistaken for "choosing helps".
     """
-    if this.evidence_version == other.evidence_version or versions_compared:
+    if versions_compared:
+        return
+    if this.evidence_version == other.evidence_version == "v2":
+        mine, theirs = _v2_reading(this), _v2_reading(other)
+        if mine != theirs:
+            raise ConfigurationError(
+                f"{this.run_id} read its transcriptions with transcriber {mine[0]}, page rule "
+                f"{mine[1]}, and {other.run_id} with transcriber {theirs[0]}, page rule "
+                f"{theirs[1]}: other evidence, not an arm comparison (S2.7 spec §7.5). Pass "
+                "--versions-compared to print it under its own heading."
+            )
+        return
+    if this.evidence_version == other.evidence_version:
         return
     raise ConfigurationError(
         f"{this.run_id} reads the docket at evidence version {this.evidence_version} and "

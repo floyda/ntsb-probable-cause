@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from scripts import analysis_handcheck
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.attach import prepare_attachment
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
@@ -210,6 +211,15 @@ def test_main_sheet_refuses_a_non_development_sample(
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     with pytest.raises(SystemExit, match="development cases only"):
         analysis_handcheck.main(["sheet", "--sample", "heldout-400"])
+
+
+def test_main_sheet_refuses_the_sealed_sample_until_committed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    with pytest.raises(SystemExit, match="sealed"):
+        analysis_handcheck.main(["sheet", "--sample", "dev-seal-400"])
 
 
 def test_main_sheet_skips_a_case_with_no_mkey_and_still_writes_the_sheet(

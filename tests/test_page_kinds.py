@@ -10,6 +10,7 @@ import pytest
 from scripts import page_kinds
 from tests.pdf_builder import PageSpec, build_pdf
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.pages import PageFacts, document_facts
 
@@ -52,6 +53,14 @@ def test_report_holds_counts_and_no_case_number() -> None:
 def test_held_out_samples_are_refused() -> None:
     with pytest.raises(SystemExit, match="development"):
         page_kinds.main(["--sample", "heldout-400"])
+
+
+def test_the_sealed_sample_is_refused_until_committed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Final review, Important 1: the sealed sample's own registration -- not the merely
+    ``dev``-prefixed sample name -- is what must gate it (decision 0095)."""
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    with pytest.raises(SystemExit, match="sealed"):
+        page_kinds.main(["--sample", "dev-seal-400"])
 
 
 def test_frame_rows_carry_the_page_and_its_kind(tmp_path: Path) -> None:

@@ -7,7 +7,7 @@ guard errs towards refusing; ``release`` clears one by hand.
 
 import fcntl
 import json
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +66,37 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
             if spend.started.year == now.year and spend.started.month == now.month:
                 total += spend.cost_usd
     return total
+
+
+# Recorded commit SHAs are short (``git rev-parse --short``); a stage's commits are full. A
+# recorded SHA matches by prefix, and one shorter than this is refused as ambiguous.
+MIN_SHA_PREFIX = 4
+
+
+def in_stage(sha: str, stage_commits: Collection[str]) -> bool:
+    """Whether a recorded (short) commit SHA is one of a stage's (full) commits."""
+    return len(sha) >= MIN_SHA_PREFIX and any(full.startswith(sha) for full in stage_commits)
+
+
+def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]:
+    """A stage's spend by commit: (evaluation run records, preparation spend rows).
+
+    Counted by commit, not by date, because S2.6 found a date filter caught another stage's
+    runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
+    """
+    runs = sum(
+        record.cost_usd
+        for path in sorted(runs_dir.glob("*/run.jsonl"))
+        for record in read_jsonl(path, RunRecord)
+        if in_stage(record.commit_sha, stage_commits)
+    )
+    spend = sum(
+        row.cost_usd
+        for path in sorted(runs_dir.glob(f"*/{SPEND_FILE}"))
+        for row in read_jsonl(path, SpendRecord)
+        if in_stage(row.commit_sha, stage_commits)
+    )
+    return runs, spend
 
 
 @contextmanager

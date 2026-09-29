@@ -48,3 +48,11 @@ read images, part of any win would come from reading rather than from choosing.
 ## Status
 
 Accepted, 2026-09-23 (Andy).
+
+## Default amended, 2026-09-28 (appended; nothing above is edited)
+
+Reading the words in page images stays in the build, but it is no longer done by default:
+[0120](0120-qwen-stays-and-transcription-is-off-by-default.md) turns transcription off by
+default, for cost. Runs and new batches of cases read text layers only (evidence version v1),
+and in S3 transcribing a document becomes a tool the loop may choose. Items 1 to 3 are
+otherwise unchanged.

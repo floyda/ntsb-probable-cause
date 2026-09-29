@@ -584,6 +584,19 @@ B-v2 on `heldout-400`, once each at one commit, in the ledger; B-v2 is the bar S
 beat, and the v3 probe decides whether the loop gets an image tool. It depends on a model-switch
 stage, S2.4, specified separately.
 
+### S2.7. Coding guidance
+
+*Added 2026-09-26 (0093–0100).* Arm B's misses are mostly coding convention — which code the
+NTSB flags as the defining event, and which phase — rather than reading. S2.7 measures the
+misses (Round 0), tests an ordering check after the answer (Round 1, 0096, 0097), and adds
+coding guidance in small registered rounds with a stop rule and a $25 line (0098). The judge's
+narrative label separates "understood, miscoded" from "misread" once validated (0099). A
+transcription track runs alongside on its own branch (0093, 0100). Rounds use `dev-400` and v1;
+statistics come from a pool outside the samples (0094); a sealed sample checks the final setup
+once (0095). Specification: `docs/specs/2026-09-26-s27-coding-guidance-design.md`.
+
+*Done means:* the specification's §15. The bar S3's loop faces is set after this stage (0089).
+
 ### S3. The agent loop
 
 Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.

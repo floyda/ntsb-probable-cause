@@ -30,6 +30,7 @@ from tests.boundary import (
 )
 from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as _small_docket
+from tests.test_occurrence_misses import _case
 from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
 
 from ntsb_probable_cause import fields, sources
@@ -63,6 +64,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
 )
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
@@ -71,8 +73,10 @@ from ntsb_probable_cause.records.guard import Screen, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring import checkpass
 from ntsb_probable_cause.scoring import runner as runner_module
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.runner import Runner, RunSpec
 from ntsb_probable_cause.store import Store
 
@@ -1287,3 +1291,95 @@ def test_a_transcription_naming_the_owner_reaches_the_payload_with_the_name_repl
     assert "Statement written by Owner or operator: the engine lost power" in prepared.payload.text
     assert "Jordan Vale" not in prepared.payload.text
     assert_boundary_holds(attach_docket(raw, docket, documents=list(docket.texts)).context)
+
+
+def test_the_ordering_check_sends_no_withheld_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Layer 5 (0016) for the check: the body sent holds the check text and nothing withheld.
+
+    Final review, Minor 4: asserts the same ``withheld_windows`` (codes excluded, as choosing
+    among codes is the check's job) the ``jev2`` boundary test beside it already uses, not only
+    the first 80 characters of each withheld field -- Luna is the check carried forward to the
+    sealed run.
+    """
+    raw = record_fixtures[0]
+    _evidence, _synthesis, verdict = split_record(raw)
+    stats = build(
+        [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
+    )
+    client = RecordingFakeClient(['{"ranking": ["552300"]}'])
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
+    checkpass.luna_checker(client, stats, load_tables())(hypothesis, "Landing")
+    sent = client.systems[0] + client.payloads[0].text
+    for window in windows:
+        assert window not in sent
+
+
+def _jev2_sent_texts(body: bytes) -> list[str]:
+    """The body as sent (JSON-escaped bytes, decoded) and every string it holds, unescaped."""
+    leaves: list[str] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                leaves.append(str(key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, str):
+            leaves.append(value)
+
+    walk(json.loads(body))
+    return [body.decode(), "\n".join(leaves)]
+
+
+@respx.mock
+def test_the_jev2_check_sends_no_withheld_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Layer 5 (0016) for the registered second Jev check (decision 0103): the JSON body sent
+    holds the state and question, and no window of the factual narrative, the analysis
+    narrative or the probable cause. Codes are left out of the windows: choosing among codes
+    is the check's job, and its candidates come from the pool, as the Luna test's do."""
+    raw = record_fixtures[0]
+    _evidence, _synthesis, verdict = split_record(raw)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        labels = list(json.loads(request.content)["questions"]["defining"]["criteria"])
+        probabilities = dict.fromkeys(labels, 0.0)
+        probabilities[labels[0]] = 1.0
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": labels[0],
+                        "confidence": 0.5,
+                        "probabilities": probabilities,
+                    }
+                },
+            },
+        )
+
+    route = respx.post("https://api.typesafe.ai/v1/systemone").mock(side_effect=answer)
+    stats = build(
+        [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
+    )
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
+    with TypeSafeClient("k", base_url="https://api.typesafe.ai") as client:
+        checkpass.jev2_checker(client, stats, load_tables())(hypothesis, "Landing")
+    assert route.call_count == 1
+    for sent in _jev2_sent_texts(route.calls[0].request.content):
+        for window in windows:
+            assert window not in sent

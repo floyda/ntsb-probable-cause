@@ -29,6 +29,7 @@ from pathlib import Path
 
 import httpx
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.pages import (
@@ -37,8 +38,8 @@ from ntsb_probable_cause.docket.pages import (
     PageKind,
     document_facts,
 )
-from ntsb_probable_cause.errors import DocketError
-from ntsb_probable_cause.scoring.samples import load_cases, sample_ids
+from ntsb_probable_cause.errors import ConfigurationError, DocketError
+from ntsb_probable_cause.scoring.samples import load_cases, refuse_sealed, sample_ids
 from ntsb_probable_cause.settings import Settings
 
 KINDS: tuple[PageKind, ...] = ("text only", "image only", "text and image", "blank")
@@ -259,6 +260,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.sample.startswith("dev"):
         raise SystemExit(f"{args.sample}: page kinds are counted on development samples only")
+    try:
+        refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    except ConfigurationError as error:
+        raise SystemExit(f"page_kinds: {error}") from error
     settings = Settings()
     client = DocketClient(settings.docket_dir, transport=_offline())
     polite = (

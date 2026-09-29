@@ -91,6 +91,12 @@ GLM_53_FLASH_BATCH = ModelPrice(
     "z-ai/glm-5.3-flash:batch", 0.07, 0.25, "OpenRouter models API, 2026-09-16"
 )
 
+# TypeSafe AI's launch post (typesafe.ai/blog/introducing-system-one-models-and-jev), read
+# 2026-09-16: $0.042 per million input tokens, output unmetered. Self-reported and, in the
+# vendor's words, not shown to be unsubsidised (decisions 0030, 0097). ``jev-latest`` is the
+# SDK's default model name; every reply records the version it resolved to.
+JEV = ModelPrice("jev-latest", 0.042, 0.0, "TypeSafe launch post, 2026-09-16, self-reported")
+
 # https://openrouter.ai/api/v1/models, read 2026-09-24: the transcriber candidates of S2.6
 # spec §7.2 that S1 had not priced. Standard prices only: an image cannot go through the batch
 # service (https://openrouter.ai/docs/batch-quickstart, read 2026-09-24), and Qwen has no
@@ -99,6 +105,54 @@ GEMINI_36_FLASH = ModelPrice(
     "google/gemini-3.6-flash", 0.75, 3.75, "OpenRouter models API, 2026-09-24"
 )
 QWEN_35_122B = ModelPrice("qwen/qwen3.5-122b-a10b", 0.26, 2.08, "OpenRouter models API, 2026-09-24")
+
+# https://openrouter.ai/api/v1/models, read 2026-09-27 and saved as
+# <data_dir>/s27/openrouter-models-2026-09-27.json (S2.7 track 2, Task 5): the transcriber
+# shortlist of decision 0100 item 1, prices as listed per million tokens.
+S27_LING_30_FLASH_VL = ModelPrice(
+    "inclusionai/ling-3.0-flash-vl", 0.021, 0.0616, "OpenRouter models API, 2026-09-27"
+)
+S27_QWEN_37_FLASH = ModelPrice(
+    "qwen/qwen3.7-flash", 0.03, 0.13, "OpenRouter models API, 2026-09-27"
+)
+S27_DEEPSEEK_V41_FLASH = ModelPrice(
+    "deepseek/deepseek-v4.1-flash", 0.035, 0.29, "OpenRouter models API, 2026-09-27"
+)
+# z-ai/glm-5.3-flash is already priced above as GLM_53_FLASH, read 2026-09-16 at
+# $0.09/$0.30. The 2026-09-27 listing prices it lower, at $0.045/$0.14; this entry is the
+# current price and is listed after GLM_53_FLASH in _PRICES below so ``price_of`` returns it
+# (last entry wins on a shared key) -- flagged in the Task 6 report for Andy, not decided here.
+S27_GLM_53_FLASH = ModelPrice(
+    "z-ai/glm-5.3-flash", 0.045, 0.14, "OpenRouter models API, 2026-09-27"
+)
+S27_TERNARY_BONSAI_2_27B = ModelPrice(
+    "prism-ml/ternary-bonsai-2-27b", 0.075, 0.5, "OpenRouter models API, 2026-09-27"
+)
+S27_MUSE_SPARK_12_CONTRIBUTOR = ModelPrice(
+    "meta/muse-spark-1.2-contributor", 0.1, 0.2, "OpenRouter models API, 2026-09-27"
+)
+S27_MUSE_SPARK_13_CONTRIBUTOR = ModelPrice(
+    "meta/muse-spark-1.3-contributor", 0.1, 0.2, "OpenRouter models API, 2026-09-27"
+)
+S27_LUNA_6_PRO = ModelPrice("openai/gpt-6-luna-pro", 0.1, 0.5, "OpenRouter models API, 2026-09-27")
+S27_MIMO_V26_FLASH = ModelPrice(
+    "xiaomi/mimo-v2.6-flash", 0.14, 0.28, "OpenRouter models API, 2026-09-27"
+)
+S27_QWEN_38_FLASH = ModelPrice(
+    "qwen/qwen3.8-flash", 0.15, 0.47, "OpenRouter models API, 2026-09-27"
+)
+S27_QWEN_38_OMNI_FLASH = ModelPrice(
+    "qwen/qwen3.8-omni-flash", 0.15, 0.47, "OpenRouter models API, 2026-09-27"
+)
+# openai/gpt-5.6-luna is already priced above as LUNA, read 2026-09-15 at the same
+# $0.2/$1.2 the 2026-09-27 listing gives -- no new entry needed; ``price_of`` already
+# returns a matching price.
+S27_LUNA_56_PRO = ModelPrice(
+    "openai/gpt-5.6-luna-pro", 0.2, 1.2, "OpenRouter models API, 2026-09-27"
+)
+S27_DEEPSEEK_V4_FLASH_VISION_EXP = ModelPrice(
+    "deepseek/deepseek-v4-flash-vision-exp", 0.2156, 0.6468, "OpenRouter models API, 2026-09-27"
+)
 
 _PRICES = {
     p.model_id: p
@@ -115,8 +169,22 @@ _PRICES = {
         GEMINI_31_FLASH_LITE_BATCH,
         GLM_53_FLASH,
         GLM_53_FLASH_BATCH,
+        JEV,
         GEMINI_36_FLASH,
         QWEN_35_122B,
+        S27_LING_30_FLASH_VL,
+        S27_QWEN_37_FLASH,
+        S27_DEEPSEEK_V41_FLASH,
+        S27_GLM_53_FLASH,
+        S27_TERNARY_BONSAI_2_27B,
+        S27_MUSE_SPARK_12_CONTRIBUTOR,
+        S27_MUSE_SPARK_13_CONTRIBUTOR,
+        S27_LUNA_6_PRO,
+        S27_MIMO_V26_FLASH,
+        S27_QWEN_38_FLASH,
+        S27_QWEN_38_OMNI_FLASH,
+        S27_LUNA_56_PRO,
+        S27_DEEPSEEK_V4_FLASH_VISION_EXP,
     )
 }
 
@@ -140,6 +208,22 @@ LOWEST_REASONING: dict[str, ReasoningEffort] = {
     "google/gemini-3.6-flash": "minimal",
     "openai/gpt-6-luna": "none",
     "qwen/qwen3.5-122b-a10b": "none",
+    # docs/results/s27-transcriber-shortlist.txt, read 2026-09-27 (S2.7 track 2, Task 5/6):
+    # each shortlisted model's lowest reasoning level, walkthrough W1's rule.
+    "inclusionai/ling-3.0-flash-vl": "none",
+    "qwen/qwen3.7-flash": "none",
+    "deepseek/deepseek-v4.1-flash": "low",
+    "z-ai/glm-5.3-flash": "low",
+    "prism-ml/ternary-bonsai-2-27b": "medium",
+    "meta/muse-spark-1.2-contributor": "minimal",
+    "meta/muse-spark-1.3-contributor": "minimal",
+    "openai/gpt-6-luna-pro": "none",
+    "xiaomi/mimo-v2.6-flash": "none",
+    "qwen/qwen3.8-flash": "none",
+    "qwen/qwen3.8-omni-flash": "none",
+    "openai/gpt-5.6-luna": "none",
+    "openai/gpt-5.6-luna-pro": "none",
+    "deepseek/deepseek-v4-flash-vision-exp": "low",
 }
 
 # The agent's default model and reasoning level, each named once (decision 0073). The level is
@@ -154,3 +238,10 @@ DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"
 OPENROUTER_BASE_URL = "https://openrouter.ai"
 CHAT_COMPLETIONS = "/api/v1/chat/completions"
 BATCHES = "/api/beta/batches"
+
+# https://api.typesafe.ai/openapi.json, as generated into ``typesafe-sdk`` 0.6.0 on PyPI (read
+# 2026-09-17). The saved responses under tests/fixtures/typesafe/ confirm the shape (0097).
+TYPESAFE_SYSTEM_ONE = "/v1/systemone"
+TYPESAFE_MODELS = "/v1/models"
+# The vendor's documented ceiling on labels in one Choice question.
+TYPESAFE_MAX_CHOICE_LABELS = 255

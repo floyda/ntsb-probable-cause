@@ -141,9 +141,17 @@ def test_fmt_n_includes_the_count() -> None:
 def test_provenance_shows_status_commit_and_totals(run_record: RunRecord) -> None:
     text = report.provenance(run_record)
     assert text.startswith(f"run {run_record.run_id} [complete]")
-    assert "sample=heldout-40 arm=ceiling evidence=v1 model=openai/gpt-5.6-luna" in text
+    assert "sample=heldout-40 arm=ceiling evidence=v1 prompt=v1 model=openai/gpt-5.6-luna" in text
     assert f"commit={run_record.commit_sha} " in text
     assert "cases=40 total_cost_usd=1.2300" in text
+
+
+def test_provenance_shows_guidance_when_present(run_record: RunRecord) -> None:
+    guided = run_record.model_copy(
+        update={"guidance": ("r2-loc-stall", "r3-phase"), "guidance_sha256": "a" * 64}
+    )
+    assert "guidance=r2-loc-stall+r3-phase sha256=aaaaaaaaaaaa\n" in report.provenance(guided)
+    assert "guidance=" not in report.provenance(run_record)
 
 
 def test_provenance_marks_an_aborted_run_and_a_dirty_commit(run_record: RunRecord) -> None:
@@ -591,6 +599,14 @@ def test_provenance_names_the_version(run_record: RunRecord) -> None:
     assert "evidence=v1" in report.provenance(run_record)
 
 
+def test_provenance_names_the_prompt_version(run_record: RunRecord) -> None:
+    """Final review, Minor 1: from Round 5 on, a guided run's prompt version (``s1-v6``) can
+    differ from its reference's (``s1-v5``); ``provenance`` must show which ran."""
+    assert "prompt=v1" in report.provenance(run_record)
+    bumped = run_record.model_copy(update={"prompt_version": "s1-v6"})
+    assert "prompt=s1-v6" in report.provenance(bumped)
+
+
 def test_unmarked_drops_every_marked_case(case_result: CaseResult) -> None:
     marked = case_result.model_copy(
         update={"case_id": "M", "marks": (CaseMark(kind="analysis_sentence", count=2),)}
@@ -630,3 +646,39 @@ def test_preparation_summary_with_nothing_transcribed(case_result: CaseResult) -
         "evidence preparation (transcription; paid once, apart from the per-case cap, "
         "decision 0081): $0.0000 per case, $0.00 in all, 0 of 1 cases with transcribed pages"
     )
+
+
+def test_two_v2_runs_with_different_readings_are_refused_unless_labelled(
+    run_record: RunRecord,
+) -> None:
+    """S2.7 Task 16 (spec §7.5): a v2 docket read by another transcriber or page rule is other
+    evidence; a v2 record from before S2.7 read S2.6's Qwen with every page."""
+    a = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m1", "page_rule": "all"}
+    )
+    b = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m2", "page_rule": "all"}
+    )
+    with pytest.raises(ConfigurationError, match="transcriber"):
+        report.refuse_cross_version(a, b, versions_compared=False)
+    report.refuse_cross_version(a, b, versions_compared=True)
+    s26 = run_record.model_copy(update={"evidence_version": "v2"})
+    same_as_s26 = run_record.model_copy(
+        update={
+            "evidence_version": "v2",
+            "transcriber": "qwen/qwen3.5-122b-a10b",
+            "page_rule": "all",
+        }
+    )
+    report.refuse_cross_version(s26, same_as_s26, versions_compared=False)
+    narrower = same_as_s26.model_copy(update={"page_rule": "image-only"})
+    with pytest.raises(ConfigurationError, match="page rule"):
+        report.refuse_cross_version(s26, narrower, versions_compared=False)
+
+
+def test_provenance_names_a_v2_runs_reading(run_record: RunRecord) -> None:
+    v2 = run_record.model_copy(
+        update={"evidence_version": "v2", "transcriber": "m1", "page_rule": "image-only"}
+    )
+    assert "transcriber=m1 page_rule=image-only" in report.provenance(v2)
+    assert "transcriber=" not in report.provenance(run_record)
