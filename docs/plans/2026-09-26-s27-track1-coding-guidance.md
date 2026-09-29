@@ -4635,7 +4635,7 @@ Report in plain English, one decision per message: (1) does v2 go forward (top-1
 **Interfaces:**
 - Produces: `sealed_report.prediction_lines(dev_top1: float, sealed_top1: float, misread_moved: bool | None) -> list[str]`; `main(argv)` with `--dev RUN`, `--sealed RUN`, `--misread-moved {yes,no,unvalidated}`, `--out`.
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_sealed_report.py`)
+- [x] **Step 1: Write the failing tests** (`tests/test_sealed_report.py`)
 
 ```python
 """scripts/sealed_report.py: the prediction of decision 0098 item 7, scored."""
@@ -4657,7 +4657,7 @@ def test_prediction_lines_report_a_miss_plainly() -> None:
     assert "misread share: not scored (the narrative label was not validated)" in lines
 ```
 
-- [ ] **Step 2: Run them to verify they fail, then write `scripts/sealed_report.py`**
+- [x] **Step 2: Run them to verify they fail, then write `scripts/sealed_report.py`**
 
 ```python
 """The sealed sample's result beside dev-400's, and the prediction of decision 0098 item 7.
@@ -4849,3 +4849,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-29, Task 16 Steps 2-4: built as planned, with three details. The refusal is one helper, `runner.refuse_unnamed_reading`, called after the docket-version check, so arm A and the ceiling at v2 keep their earlier refusal message. `report.refuse_cross_version` compares the two v2 readings through `_v2_reading`, which reads a record with no fields as `S26_V2_READING`; `provenance` prints the reading on every v2 record, S2.6's included. The run command's "not fully transcribed" message now names the transcriber and page rule and the exact `transcribe` command. Tests: `tests/test_runner.py`'s `_arm_b` helper gives a v2 spec S2.6's reading, so the S2.6 v2 tests keep running unchanged; three new runner tests, two report tests, one app test, and the existing app v2 test now also checks the recorded reading.
 - 2026-09-29, Task 17 (the meeting point, spec §8) skipped, Andy's decision ("A, skip it and carry on here"): decision 0120 already settled v2's default for cost (transcription off by default, a tool the S3 loop may choose), so the v1-against-v2 comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether transcription helps once coding is improved (the question decision 0090 item 2 hoped S2.7 would free); it moves to S3, where reading a transcription is the agent's own choice. The sealed run (Task 18) is therefore at v1.
 - 2026-09-29, close-out, decision 0107 (amends 0102 item 3): `scripts/stage_spend.py` counted every branch holding S2.7's first commit, which by then included `s28-coding-lookup` (S2.8's draft design) and `s3-probe`, both cut from `s27-guidance`, and it counted HEAD. It now counts only branches named `s27-` and not HEAD. The stage total was unchanged by the fix ($13.81: neither later branch had spent), `uv run python -m scripts.stage_spend`, 2026-09-29.
+- 2026-09-29, Task 18 Steps 1-2: `scripts/sealed_report.py` as planned, plus finding recall@10 for both runs beside top-1 (Round 6, the kept finding round, moved it) and a held-out refusal; four tests. The `s27-sealed-run` target names the two guidance files itself, so the sealed run cannot be started with another stack; `s27-sealed-results` fixes the `dev-400` side to Round 6's checked run. The sealed run is at v1 (Task 17 skipped), so Step 5's transcription does not apply: the run fetches the sealed dockets itself.
