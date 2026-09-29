@@ -79,3 +79,6 @@ Kept by override of the do-no-harm rule, 2026-09-29 (Andy: "I think option B, it
 something to pursue at a later stage"). The outcome above is left as the rule gave it. Round 6's
 guidance stacks after `r3-loc-stall`, and its checked run,
 `20260929T053953-674c92e-dev-400-B-check-luna`, is the reference for any later round.
+
+The numbers above ("Note", this section) are reproduced from committed code, free and local, by
+`make s27-round-comparisons` (`scripts/round_comparisons.py`); `docs/results/s27-round-comparisons-dev.txt` holds the run, no figure differs (final review, I2/M2).

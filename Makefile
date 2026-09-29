@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable
 
 check: lint type test
 
@@ -295,6 +295,12 @@ s27-round-result:
 	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) $(if $(FINDING),--finding-round,) $(if $(SUPPLEMENT),--supplement,) --append docs/rounds/s27-round-$(N).md
 # S2.7 spec §6.4, free: decision 0098 item 4's reading, appended to the round's registration.
 # SUPPLEMENT=1 adds decision 0105 item 4's line (Round 5: its run has the added codes, its reference not).
+
+s27-round-comparisons:
+	uv run python -m scripts.round_comparisons --out docs/results/s27-round-comparisons-dev.txt
+# Final review (I2, M2), free: every number decision 0106 and Round 6's note cite (B-v1, the
+# repeat, Rounds 2-6's own checked scores; Round 6 paired against Round 3/4/5/the repeat; the
+# decision 0105 supplement line for Round 6 against Round 3), from committed code.
 
 s27-page-value:
 	uv run python -m scripts.page_value --sample dev-400 --out docs/results/s27-page-value.txt

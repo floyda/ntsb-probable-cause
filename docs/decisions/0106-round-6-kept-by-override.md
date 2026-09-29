@@ -69,3 +69,11 @@ others).
 
 Accepted, 2026-09-29 (Andy: "I think option B, its clearly something to pursue at a later
 stage").
+
+## Source of the numbers (final review, I2)
+
+The table above and Round 6's note were "ad-hoc counts" when this record was written. They are
+now reproduced from committed code, free and local: `make s27-round-comparisons`
+(`scripts/round_comparisons.py`) reads the seven checked run folders named above and writes
+`docs/results/s27-round-comparisons-dev.txt`. No figure in that file differs from this record's
+table or from Round 6's note.
