@@ -125,7 +125,7 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** modify `README.md` (scripts table), this plan.
 
-- [ ] Add a row to `README.md`'s scripts table: `| s3_probe | one-shot | s3-probe-dev.txt — the S3 learning probe; not a result |`.
+- [x] Add a row to `README.md`'s scripts table: `| s3_probe | one-shot | s3-probe-dev.txt — the S3 learning probe; not a result |`.
 - [ ] Controller-only (not a subagent): run `python -m scripts.s3_probe select`, then `run --dry-run`, then — only after the final review — the paid `run`, then `report --out docs/results/s3-probe-dev.txt` and `trails`. Record the job ID, spend and any surprises in Deviations.
 - [ ] `make check` green; commit.
 
