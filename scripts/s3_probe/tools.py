@@ -58,12 +58,26 @@ class ToolResult:
 
 
 def _limit_codes(tool: str, codes: Sequence[str]) -> tuple[tuple[str, ...], int]:
-    """Keep at most the tool's code limit; zero codes is one error, excess codes are errors."""
+    """Deduplicate (first-seen order), then keep at most the tool's code limit.
+
+    Zero codes is one error. Each duplicate dropped by deduplication, and each code beyond
+    the tool's limit, is counted as one argument error.
+    """
     if not codes:
         return (), 1
+    deduped: list[str] = []
+    seen: set[str] = set()
+    duplicate_errors = 0
+    for code in codes:
+        if code in seen:
+            duplicate_errors += 1
+            continue
+        seen.add(code)
+        deduped.append(code)
     high = _MAX_CODES[tool]
-    kept = tuple(codes[:high])
-    return kept, max(0, len(codes) - high)
+    kept = tuple(deduped[:high])
+    excess_errors = max(0, len(deduped) - high)
+    return kept, duplicate_errors + excess_errors
 
 
 def _valid_occurrence(tables: CodeTables, code: str) -> bool:
@@ -86,10 +100,15 @@ def _phase_counts_for_event(stats: CodingStats, event: str) -> list[tuple[str, i
     return sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[:_TOP_PHASES]
 
 
+def _occurrence_label(tables: CodeTables, code: str) -> str:
+    """The one-line ``"{code}: {phase label} / {event label}"`` an occurrence code renders as."""
+    return f"{code}: {tables.phases[code[:3]]} / {tables.events[code[3:]]}"
+
+
 def _describe_occurrence(tables: CodeTables, code: str) -> tuple[int, str]:
     if not _valid_occurrence(tables, code):
         return 1, f"unknown occurrence code: {code}"
-    return 0, f"{code}: {tables.phases[code[:3]]} / {tables.events[code[3:]]}"
+    return 0, _occurrence_label(tables, code)
 
 
 def _describe_finding_category(tables: CodeTables, code: str) -> tuple[int, str]:
@@ -149,7 +168,7 @@ def _occurrence_line(tables: CodeTables, stats: CodingStats, code: str) -> str:
         or "none"
     )
     return (
-        f"{code}: {tables.phases[code[:3]]} / {tables.events[event]}\n"
+        f"{_occurrence_label(tables, code)}\n"
         f"  present: {present}; defining: {defining} ({share})\n"
         f"  top phases for event {event}: {phases_text}"
     )

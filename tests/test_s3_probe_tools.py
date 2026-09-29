@@ -98,6 +98,12 @@ class TestDescribeCodes:
         assert result.text.count("\n") == 5  # 6 lines kept
         assert result.argument_errors == 1
 
+    def test_duplicate_code_is_deduplicated_and_counted(self) -> None:
+        result = describe_codes(TABLES, "occurrence", [LOC, LOC])
+        one_code = describe_codes(TABLES, "occurrence", [LOC])
+        assert result.text == one_code.text
+        assert result.argument_errors == one_code.argument_errors + 1
+
 
 class TestOccurrenceUsage:
     def test_single_code(self) -> None:
@@ -171,6 +177,16 @@ class TestOccurrenceUsage:
         result = occurrence_usage(TABLES, stats, "occurrence", [LOC, STALL, CFIT, "552300"])
         assert result.argument_errors == 1
         assert "552300" not in result.text
+
+    def test_duplicate_code_is_deduplicated_no_self_pair_and_counted(self) -> None:
+        stats = _stats()
+        result = occurrence_usage(TABLES, stats, "occurrence", [LOC, LOC])
+        one_code = occurrence_usage(TABLES, stats, "occurrence", [LOC])
+        assert result.text == one_code.text
+        assert result.argument_errors == one_code.argument_errors + 1
+        # One block only, no self-pair line.
+        assert result.text.count(LOC) == 1
+        assert "&" not in result.text
 
 
 class TestPastFindings:
