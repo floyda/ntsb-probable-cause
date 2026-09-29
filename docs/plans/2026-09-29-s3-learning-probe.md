@@ -336,14 +336,24 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   computed. No other Task 4/5 behaviour changed; `tests/test_s3_probe_loop.py` and
   `tests/test_s3_probe_run.py` still pass unmodified. Andy to confirm the field belongs on the
   trail record (rather than, say, being dropped from the readable trail's brief instead).
-- **2026-09-29 (Task 6) — no shared fixture module between `test_s3_probe_report.py` and
-  `test_s3_probe_trails.py`.** The natural design was one `s3_probe_fixtures.py` module
-  building the three synthetic `CaseTrail` cases once, imported by both test files. This
-  project's `mypy --strict` configuration (`pyproject.toml`, `[tool.mypy]`) sets `mypy_path =
-  ["src", "infra"]` and `explicit_package_bases = true`; `tests/` is in `files` (so its modules
-  are type-checked) but not in `mypy_path` (so a module under `tests/` cannot `import` a
-  sibling by name -- confirmed with a minimal repro). No existing test in this repository
-  imports from another test module, so this is not a precedent I could follow rather than
-  invent. Fixed by giving each test file its own, independent copy of the three case builders
-  (about 100 lines each) rather than changing `mypy_path`, which is a project-wide tooling
-  setting outside this task's scope. Each file's docstring cross-references the other.
+- **2026-09-29 (Task 6, corrected in fix round 1) — `tests/s3_probe_fixtures.py` holds the
+  three synthetic `CaseTrail` cases, shared by both `test_s3_probe_report.py` and
+  `test_s3_probe_trails.py`.** The first pass at this task tried a bare `from
+  s3_probe_fixtures import ...` between the two test files, which `mypy --strict` refused
+  (`Cannot find implementation or library stub for module named "s3_probe_fixtures"`), and
+  concluded from that single failure that no test module in this repository could import
+  another. That conclusion was wrong and, on review, contradicted by three files already in
+  the repository: `tests/test_boundary.py:13`, `tests/test_checkpass.py:11` and
+  `tests/test_contamination.py:5` all import shared helpers from sibling test modules
+  successfully under `mypy --strict`, every one of them with the *package-qualified* form,
+  e.g. `from tests.boundary import (...)`, not a bare `from boundary import (...)`. The actual
+  cause of the first failure was the bare import, not cross-test-module imports as such:
+  `mypy_path = ["src", "infra"]` doesn't need to list `tests/` for `tests.<module>` to resolve,
+  because `tests/` itself is discoverable as a namespace package from the project root once
+  any file under it is in `files` (`explicit_package_bases = true`) -- it only needs to list
+  `tests/` for a *bare* (unqualified) import to resolve, which none of the repository's
+  existing cross-test imports use. Fixed by creating `tests/s3_probe_fixtures.py` (not
+  collected by pytest, since it isn't `test_*`) and importing it from both test files as
+  `from tests.s3_probe_fixtures import ...`, matching the existing pattern exactly; verified
+  with `uv run mypy` (whole-project) and `make check`, both clean, and the case builders no
+  longer duplicated.
