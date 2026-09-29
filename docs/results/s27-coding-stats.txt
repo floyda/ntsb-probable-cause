@@ -211,10 +211,10 @@ built from: development split, classes C/F/L, excluding dev-400 and dev-seal-400
     509240 Approach-VFR Go-Around / Loss of control in flight 110
     508240 Approach-VFR Pattern Final / Loss of control in flight 106
     508341 Approach-VFR Pattern Final / Loss of engine power (total) 67
-- EmergencyDescent: phases 601 ? 87, 600 Emergency Descent 58
-    601092 ? / Hard landing 43
+- EmergencyDescent: phases 601 Autorotation 87, 600 Emergency Descent 58
+    601092 Autorotation / Hard landing 43
     600341 Emergency Descent / Loss of engine power (total) 13
-    601240 ? / Loss of control in flight 13
+    601240 Autorotation / Loss of control in flight 13
 - Enroute: phases 402 Enroute-Cruise 1105, 400 Enroute 493, 401 Enroute-Climb to cruise 202, 404 Enroute-Descent 178, 403 Enroute-Change of cruise level 15, 405 Enroute-Holding (IFR) 1
     402341 Enroute-Cruise / Loss of engine power (total) 334
     402342 Enroute-Cruise / Loss of engine power (partial) 129
@@ -223,7 +223,7 @@ built from: development split, classes C/F/L, excluding dev-400 and dev-seal-400
     350240 Initial Climb / Loss of control in flight 269
     350341 Initial Climb / Loss of engine power (total) 261
     350342 Initial Climb / Loss of engine power (partial) 206
-- Landing: phases 552 Landing-Landing Roll 1663, 551 Landing-Flare/Touchdown 1352, 550 Landing 1199, 553 ? 92
+- Landing: phases 552 Landing-Landing Roll 1663, 551 Landing-Flare/Touchdown 1352, 550 Landing 1199, 553 Landing-aborted after touchdown 92
     552230 Landing-Landing Roll / Loss of control on ground 985
     551092 Landing-Flare/Touchdown / Hard landing 432
     550230 Landing / Loss of control on ground 318
@@ -254,3 +254,110 @@ built from: development split, classes C/F/L, excluding dev-400 and dev-seal-400
     990000 Unknown / Unknown or undetermined 28
     990240 Unknown / Loss of control in flight 8
     990990 Unknown / Missing aircraft 5
+
+## flagged findings by defining event (the 15 commonest defining events, every phase; the 6 commonest findings each; n = cases flagging it)
+- 230 Loss of control on ground: 2055 cases
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 1498
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 1420
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 207
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 128
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 76
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 72
+- 240 Loss of control in flight: 1784 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 1094
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 358
+    0106201020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed / Not attained/maintained 301
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 227
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 208
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 156
+- 341 Loss of engine power (total): 1263 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 449
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 109
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 98
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 82
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 75
+    0105852001 Aircraft — Aircraft power plant — Engine (reciprocating) — Recip engine power section / Failure 67
+- 342 Loss of engine power (partial): 663 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 249
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 50
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 39
+    0303103081 Environmental issues — Conditions/weather/phenomena — Temp/humidity/pressure — Conducive to carburetor icing / Effect on equipment 39
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 30
+    0105853001 Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng cyl section / Failure 26
+- 092 Hard landing: 639 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 288
+    0106204120 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Not attained/maintained 191
+    0106204111 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Incorrect use/operation 148
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 109
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 75
+    0204102540 Personnel issues — Action/decision — Action — Delayed action / Instructor/check pilot 48
+- 241 Aerodynamic stall/spin: 472 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 335
+    0106201020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed / Not attained/maintained 286
+    0106204208 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack / Capability exceeded 107
+    0106204220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack / Not attained/maintained 84
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 48
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 46
+- 090 Abnormal runway contact: 396 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 223
+    0106204120 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Not attained/maintained 134
+    0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot 70
+    0106204111 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Incorrect use/operation 51
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 45
+    0106202220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Pitch control / Not attained/maintained 38
+- 192 Fuel exhaustion: 334 cases
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 244
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 206
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 92
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 51
+    0206151044 Personnel issues — Task performance — Inspection — Preflight inspection / Pilot 43
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 21
+- 120 Control flight into terr/obj: 320 cases
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 133
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 96
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 46
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 31
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 25
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 24
+- 490 Collision during takeoff/land: 313 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 95
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 64
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 44
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 37
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 29
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 21
+- 900 Miscellaneous/other: 301 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 56
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 43
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 25
+    0202154544 Personnel issues — Psychological — Attention/monitoring — Monitoring environment / Pilot 22
+    0106201220 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude / Not attained/maintained 20
+    0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained 16
+- 300 Runway excursion: 296 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 121
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 78
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 77
+    0106204020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Descent/approach/glide path / Not attained/maintained 42
+    0204102544 Personnel issues — Action/decision — Action — Delayed action / Pilot 30
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 23
+- 191 Fuel starvation: 251 cases
+    0107101025 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid management 134
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 79
+    0107101024 Aircraft — Fluids/misc hardware — Fluids — Fuel / Fluid level 53
+    0102282311 Aircraft — Aircraft systems — Fuel system — Fuel selector/shutoff valve / Incorrect use/operation 41
+    0206103044 Personnel issues — Task performance — Planning/preparation — Fuel planning / Pilot 41
+    0206151044 Personnel issues — Task performance — Inspection — Preflight inspection / Pilot 22
+- 096 Nose over/nose down: 248 cases
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 87
+    0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot 50
+    0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot 42
+    0102324211 Aircraft — Aircraft systems — Landing gear system — Brake / Incorrect use/operation 31
+    0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained 22
+    0106204511 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Surface speed/braking / Incorrect use/operation 21
+- 094 Landing gear collapse: 242 cases
+    0500000000 Not determined — Not determined — (general) — (general) / Unknown/Not determined 43
+    0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot 26
+    0102321001 Aircraft — Aircraft systems — Landing gear system — Main landing gear / Failure 20
+    0102323001 Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys / Failure 16
+    0102322001 Aircraft — Aircraft systems — Landing gear system — Nose/tail landing gear / Failure 14
+    0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot 14

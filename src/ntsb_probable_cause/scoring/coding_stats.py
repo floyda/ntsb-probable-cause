@@ -1,4 +1,4 @@
-"""Counts of how the NTSB codes occurrences, from the statistics pool (decision 0094).
+"""Counts of how the NTSB codes occurrences and flagged findings, from the statistics pool (0094).
 
 The pool is every development case in classes C, F and L outside ``dev-400`` and
 ``dev-seal-400``; ``scripts/coding_stats.py`` builds it and commits the counts beside the code
@@ -27,6 +27,7 @@ class PoolCase:
     year: int
     group: str | None
     sequence: tuple[str, ...]
+    findings: tuple[str, ...] = ()  # the findings the NTSB flagged in the probable cause
 
 
 def _half(year: int) -> str:
@@ -50,6 +51,7 @@ class CodingStats(BaseModel):
     defining_given_present: dict[str, dict[str, dict[str, int]]]
     pairs: dict[str, dict[str, dict[str, int]]]
     group_defining: dict[str, dict[str, dict[str, int]]]
+    findings_by_defining: dict[str, dict[str, dict[str, int]]] = {}
 
     def present_n(self, code: str) -> int:
         """Pool cases whose sequence contains ``code``."""
@@ -85,6 +87,26 @@ class CodingStats(BaseModel):
                 for code, n in counts.items():
                     total[code if code == "both" else code[3:]] += n
         return dict(total)
+
+    def findings_given_event(self, event: str) -> tuple[int, dict[str, int]]:
+        """Cases whose defining code has event suffix ``event``, and their flagged findings.
+
+        Each finding counts the cases that flag it; a finding flagged twice in one case counts
+        once.
+        """
+        cases = sum(
+            n
+            for half in self.group_defining.values()
+            for codes in half.values()
+            for code, n in codes.items()
+            if code[3:] == event
+        )
+        total: Counter[str] = Counter()
+        for half in self.findings_by_defining.values():
+            for code, counts in half.items():
+                if code[3:] == event:
+                    total.update(counts)
+        return cases, dict(total)
 
     def group_defining_n(self, group: str, code: str) -> int:
         """Pool cases with phase group ``group`` whose defining code is ``code``."""
@@ -141,6 +163,9 @@ def build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats:
     groups: defaultdict[str, defaultdict[str, Counter[str]]] = defaultdict(
         lambda: defaultdict(Counter)
     )
+    findings: defaultdict[str, defaultdict[str, Counter[str]]] = defaultdict(
+        lambda: defaultdict(Counter)
+    )
     for case in cases:
         if not case.sequence:
             continue
@@ -158,6 +183,7 @@ def build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats:
                 if defining in (a, b):
                     pairs[half][key][defining] += 1
         groups[half][case.group or NO_GROUP][defining] += 1
+        findings[half][defining].update(set(case.findings))
     return CodingStats.model_validate(
         _sorted_dict(
             {
@@ -170,6 +196,9 @@ def build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats:
                 "pairs": {h: {k: dict(v) for k, v in by.items()} for h, by in pairs.items()},
                 "group_defining": {
                     h: {g: dict(d) for g, d in by.items()} for h, by in groups.items()
+                },
+                "findings_by_defining": {
+                    h: {c: dict(d) for c, d in by.items() if d} for h, by in findings.items()
                 },
             }
         )

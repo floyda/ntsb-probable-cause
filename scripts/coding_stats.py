@@ -44,6 +44,8 @@ BUILT_FROM = (
     "(scripts/coding_stats.py, decision 0094)"
 )
 TOP = 40
+FINDING_EVENTS = 15
+FINDINGS_EACH = 6
 _GROUP = next(f for f in fields.EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
 
 Row = tuple[str, str, str, str, Mapping[str, object]]
@@ -77,6 +79,7 @@ def pool_cases(
                 year=int(date[:4]),
                 group=group if isinstance(group, str) else None,
                 sequence=fields.occurrence_codes(raw),
+                findings=fields.finding_codes_in_cause(raw),
             )
         )
         ids.append(case)
@@ -151,7 +154,27 @@ def report(stats: CodingStats, tables: CodeTables | None = None) -> str:
             f"    {_label(c, tables)} {stats.group_defining_n(group, c)}"
             for c in stats.group_top(group, 3)
         )
+    lines += [
+        "",
+        f"## flagged findings by defining event (the {FINDING_EVENTS} commonest defining events, "
+        f"every phase; the {FINDINGS_EACH} commonest findings each; n = cases flagging it)",
+    ]
+    events = sorted(
+        {c[3:] for half in stats.group_defining.values() for g in half.values() for c in g},
+        key=lambda e: (-stats.findings_given_event(e)[0], e),
+    )[:FINDING_EVENTS]
+    for event in events:
+        n, counts = stats.findings_given_event(event)
+        lines.append(f"- {event} {tables.events.get(event, '?')}: {n} cases")
+        lines.extend(
+            f"    {code} {_finding_label(code, tables)} {k}"
+            for code, k in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:FINDINGS_EACH]
+        )
     return "\n".join(lines)
+
+
+def _finding_label(code: str, tables: CodeTables) -> str:
+    return f"{tables.items.get(code[:8], '?')} / {tables.modifiers.get(code[8:], '?')}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -60,6 +60,22 @@ def test_event_pairs_sum_every_phase_by_event_suffix() -> None:
     assert stats.event_pair("192", "999") == {"both": 0}
 
 
+def test_findings_given_event_count_flagged_findings_by_defining_event() -> None:
+    aircraft_control, airspeed = "0206304044", "0106201020"
+    stats = build(
+        [
+            PoolCase(2010, "Maneuvering", (LOC, STALL), (aircraft_control, airspeed)),
+            PoolCase(2011, "Takeoff", ("300240",), (aircraft_control, aircraft_control)),
+            PoolCase(2016, "Maneuvering", (LOC,), ()),
+            PoolCase(2017, "Maneuvering", (STALL, LOC), (airspeed,)),
+        ],
+        built_from="test",
+    )
+    assert stats.findings_given_event("240") == (3, {aircraft_control: 2, airspeed: 1})
+    assert stats.findings_given_event("241") == (1, {airspeed: 1})
+    assert stats.findings_given_event("999") == (0, {})
+
+
 def test_groups_give_defining_codes_and_phase_prefixes() -> None:
     stats = _stats()
     assert stats.group_defining_n("Maneuvering", LOC) == 2
