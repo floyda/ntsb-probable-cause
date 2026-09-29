@@ -317,6 +317,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `transcriber_test` | one-shot | `s26-transcriber-test.txt` and `s26-transcriber-test-pass2.txt` (0080, 0086, 0087); `estimate` prints the stage's spend |
 | `reply_budget` | one-shot | `s26-reply-budget-dev.txt` — the evidence for 0084 |
 | `occurrence_misses` | live tool | `s26-occurrence-misses-dev.txt` — counts only, development arm B runs only |
+| `s3_probe` | one-shot | `s3-probe-dev.txt` — the S3 learning probe (`select`, `run`, `report`, `trails`); not a result, sets no bar |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
