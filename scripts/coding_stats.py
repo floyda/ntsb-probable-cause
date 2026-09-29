@@ -52,12 +52,17 @@ Row = tuple[str, str, str, str, Mapping[str, object]]
 
 
 def processed_rows(processed: Path) -> Iterator[Row]:
-    """Stream (case, event date, split, class, raw) from the processed file."""
+    """Stream (case, event date, split, class, raw) from the processed file.
+
+    Final review, Minor 5: ``raw_json`` is parsed only for development rows. ``pool_cases``
+    skips every held-out and open row (``split != "dev"``) before it ever touches ``raw``, so
+    parsing their JSON bought nothing; a row outside the development split gets ``{}`` instead.
+    """
     columns = ["ntsb_number", "event_date", "split", "investigation_class", "raw_json"]
     with pq.ParquetFile(processed / "cases.parquet") as parquet:
         for batch in parquet.iter_batches(batch_size=512, columns=columns):
             yield from (
-                (str(n), str(d), str(s), str(c), json.loads(r))
+                (str(n), str(d), str(s), str(c), json.loads(r) if s == "dev" else {})
                 for n, d, s, c, r in zip(
                     *(batch.column(col).to_pylist() for col in columns), strict=True
                 )
