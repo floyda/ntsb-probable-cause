@@ -4456,22 +4456,22 @@ This task is a procedure, repeated once per round. Rounds are numbered from 2 (R
 
 **Variables for each round:** `N` (the round number), `SLUG`, `KEPT` (the kept guidance names before it, in order), `CHECK` (Round 1's outcome, empty for "no check"), `REFERENCE` (the last kept round's run, or its derived check folder when `CHECK` is set; for round 2, `REPEAT` or its derived folder), `NOISE` (`"20260926T082427-d19aafa-dev-400-B REPEAT"`, or their derived check folders when `CHECK` is set).
 
-- [ ] **Step 1: Choose the change**
+- [x] **Step 1: Choose the change**
 
 From `docs/results/s27-round0-dev.txt`: the largest miss group Andy's hand-read marked mostly "coding convention" or "wrong phase", not yet addressed. Write it down in the registration draft. One change per round (decision 0098 Why 1).
 
-- [ ] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
+- [x] **Step 2: Write the guidance file** `src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md`
 
 Rules: plain sentences for the model; every number quoted from `docs/results/s27-coding-stats.txt` (name the counts, e.g. "in 412 of 530 past cases"); an official definition quoted only with its source named in the registration; no case, no example taken from a `dev-400` case's text, no worked example from any real case (spec §6.2). **A habit is stated as the usual choice only when it is a clear habit** — at least 60% of at least 20 pool cases (decision 0101 item 3). Below that line, the guidance lists the options with their counts and says the evidence decides, for example: "for a stall on approach the NTSB has used the final leg (40 of 131 past cases), the go-around (37) and the base leg (24); code the leg the evidence places the stall on." An example of a clear habit, in the form it takes (the numbers come from the committed counts, never from this plan):
 
 > When a loss of control in flight and an aerodynamic stall or spin both appear in an accident, the NTSB flagged the loss of control in flight as the defining event in N of M past cases. Put the stall or spin first only when the evidence shows the stall itself, not a loss of control, began the accident sequence; otherwise put loss of control in flight first and keep the stall among your guesses.
 
-- [ ] **Step 3: The local sentence check** (free)
+- [x] **Step 3: The local sentence check** (free)
 
 Run: `make s27-check-guidance GUIDANCE="<KEPT> r<N>-<SLUG>"`
 Expected: `0 found`. If a sentence is found, reword it and re-run.
 
-- [ ] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
+- [x] **Step 4: Write and commit the registration** (`docs/rounds/s27-round-<N>.md`, from the template in `docs/rounds/README.md`)
 
 ```bash
 git add src/ntsb_probable_cause/scoring/guidance/r<N>-<SLUG>.md docs/rounds/s27-round-<N>.md
@@ -4480,25 +4480,25 @@ git commit -m "S2.7 round <N>: registration and guidance (<one line>)"
 
 The tree is clean now; the run records this commit.
 
-- [ ] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
+- [x] **Step 5: STOP — the round's run (paid, about $1.18 at v1)**
 
 Hand Andy: "Round <N>: `make s27-round GUIDANCE="<KEPT> r<N>-<SLUG>" PER_CASE=<last cost per case rounded up>`; about $1.18, 30–60 minutes on batch; start between 01:00 and 12:00 UTC." Record the run id.
 
-- [ ] **Step 6: The check, if Round 1 kept one**
+- [x] **Step 6: The check, if Round 1 kept one**
 
 If `CHECK` is set: `make s27-check RUN=<run id> WAY=<CHECK>` (free for `rule`; about $0.36 for `luna`). The derived id is `<run id>-check-<CHECK>`.
 
-- [ ] **Step 7: Read the round** (free)
+- [x] **Step 7: Read the round** (free)
 
 Run: `make s27-round-result N=<N> RUN=<run id, or its derived folder> REFERENCE=<REFERENCE> NOISE="<noise pair>" $(FINDING)`
 The reading is appended to the registration. Commit it: `git commit -am "S2.7 round <N>: result (<kept|dropped>)"`.
 
-- [ ] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
+- [x] **Step 8: If kept — the judge (paid, about $0.50) and the outcomes**
 
 `make s27-judge RUN=<the run that goes forward: the derived folder if CHECK is set>`; then
 `uv run python -m scripts.judge_outcomes --runs <previous kept run> <this run> --label-status <validated|unvalidated> >> docs/rounds/s27-round-<N>.md` and commit. Read the misread share: if it moved beyond Round 0's label churn, say so in the registration (spec §6.4, last point).
 
-- [ ] **Step 9: The stop rule**
+- [x] **Step 9: The stop rule**
 
 `make stage-spend`. Two dropped rounds in a row ends the occurrence rounds (move to finding rounds with `FINDING=1`, one or two of them); the $25 line ends every round. Report the round to Andy in plain English (the change, the reading, kept or dropped, the spend) before starting the next.
 
@@ -4844,3 +4844,4 @@ Commit. Report to Andy in plain English, with the prediction scored whichever wa
 - 2026-09-29, final review fix round (Minor 6): `tests/fixtures/typesafe/choices.json` (ported from `typesafe-probe`) carries a real case's evidence state with no case id recorded beside it. Identified it by matching its evidence values against the processed file locally -- the registration `N418SP` is unique, and every other evidence value in `request.state` matches the same case's record exactly -- as `ANC09CA020`, event date 2009-02-16, development split. Recorded in `tests/fixtures/typesafe/README.md`; `test_typesafe_fixture_case_is_development_split` (`tests/test_contamination.py`) checks its split by event date, the same way the file's other fixture-purity tests do.
 - 2026-09-29, final review fix round (Important 2 / Minor 2): decision 0106's argument for overriding the do-no-harm rule, and Round 6's note, rested on numbers labelled "ad-hoc counts" -- produced by no committed script. `scripts/round_comparisons.py` (`make s27-round-comparisons`) reads the seven named checked (`-check-luna`) run folders and writes `docs/results/s27-round-comparisons-dev.txt`: each run's own checked top-1 and finding recall@10, Round 6 paired against Round 3, Round 4, Round 5 and the repeat, and the decision 0105 supplement line for Round 6 against Round 3. Run free and local against the main checkout's data; every figure it produced matches decision 0106's table and Round 6's note exactly (top-1 -2.3%/-2.8%/-1.5%, finding recall +12.3%/+12.7%/+10.5% against Round 4/Round 5/the repeat; the reference figures against Round 3; Round 6's own 25.1%/22.6%; the supplement's "reference 5, run 3" top-1 hits) -- no discrepancy found, so no new decision record was needed. One line was appended under Round 6's "Override" section and a "Source of the numbers" section was appended to decision 0106, both pointing to the results file; nothing above either append was edited.
 - 2026-09-29, final review fix round, extending the Task 15 round 3 deviation above to Rounds 4 and 5 (Minor 7): Round 4's guidance counts (for example the fuel/power-loss pair counts) are sums over every phase read through `coding_stats.load_stats().event_pair(<event>, <event>)`, as `docs/rounds/s27-round-4.md` itself already states and as the round-4 `CodingStats.event_pair` addition above documents; none of those summed figures is printed verbatim in `docs/results/s27-coding-stats.txt` either, which prints per-phase-group pair counts, not summed ones. Round 5's guidance counts (for example "1096 of 1403" Approach cases, "1501 of 1994" Enroute cases, "3107 of 4306" Landing cases, 92 of those under 553) are read the same way, through `coding_stats.load_stats().group_phases(<group>)` and `group_n(<group>)`, as `docs/rounds/s27-round-5.md` states; `docs/results/s27-coding-stats.txt` does not print per-group phase breakdowns at all. Both rounds' counts are reproducible from the committed `coding_stats.json` by the cited accessor, matching the standard the round-3 entry set; no code changed for this entry, which only completes the citation record the review found incomplete.
+- 2026-09-29, Task 15 closed: the procedure ran for rounds 2-6 (2 dropped, 3 kept, 4 and 5 dropped, 6 kept by override, decision 0106). The occurrence rounds ended on two drops in a row (4, 5); Andy ended the finding rounds after one ("option A"), leaving the second 0098 allows unused. The judge ran on each kept round (3 and 6).
