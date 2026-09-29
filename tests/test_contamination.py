@@ -87,6 +87,14 @@ def test_the_sealed_sample_is_development_and_shares_no_case(
     assert not set(sealed) & set(eval_ids["decidability_ids"])
 
 
+def test_typesafe_fixture_case_is_development_split() -> None:
+    """Final review, Minor 6: ``tests/fixtures/typesafe/choices.json`` carries a real case's
+    evidence state with no case id recorded beside it. Identified by matching its evidence
+    values (the registration ``N418SP`` is unique) against the processed file -- see
+    ``tests/fixtures/typesafe/README.md`` -- as ``ANC09CA020``, event date 2009-02-16."""
+    assert _split("2009-02-16") is Split.DEV
+
+
 def test_docket_fixtures_are_dev_400_cases_by_event_date(
     eval_ids: dict[str, dict[str, str]],
 ) -> None:
