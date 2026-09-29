@@ -142,6 +142,13 @@ class CaseTrail(_Frozen):
     follows_pool: bool | None
     true_primary: str | None
     true_in_arguments: bool | None
+    # The verdict's flagged finding codes (``Verdict.finding_codes_in_cause``, ten digits each):
+    # what the readable trail shows beside the agent's own findings. Empty when the verdict was
+    # never reached (a leak at the very first split). Added for Task 6's readable trails, which
+    # show the true primary occurrence *and* flagged findings with labels -- the plan's own
+    # "Per-case trail record" section named only the primary occurrence, so this is a deviation,
+    # logged in the plan's Deviations.
+    true_findings: tuple[str, ...]
     # The guard's message whenever it refused a payload (role, kind and source -- never withheld
     # text): with ``stop_reason="failed: leak"`` it ended the case; with ``h_all.note ==
     # "failed: leak"`` it refused only the side comparison.

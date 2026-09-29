@@ -481,6 +481,7 @@ class _Case:
             pool_top = min(codes, key=lambda code: (-self.stats.defining_n(code), code))
             follows = codes[0] == pool_top
         truth = primary_occurrence(st.verdict) if st.verdict is not None else None
+        true_findings = st.verdict.finding_codes_in_cause if st.verdict is not None else ()
         true_in_arguments = (
             None
             if truth is None or not st.coding_reached
@@ -509,6 +510,7 @@ class _Case:
             follows_pool=follows,
             true_primary=truth,
             true_in_arguments=true_in_arguments,
+            true_findings=true_findings,
             leak=st.leak,
             failure=st.failure,
             coding_stop=st.coding_stop,

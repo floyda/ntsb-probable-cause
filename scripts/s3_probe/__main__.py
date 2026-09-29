@@ -1,4 +1,4 @@
-"""``python -m scripts.s3_probe select|run``: the probe's sample draw and its case loop.
+"""``python -m scripts.s3_probe select|run|report|trails``: the probe's four commands.
 
 Status
     One-shot learning probe for S3 (2026-09-29). Output is not a result; it sets no bar and
@@ -12,6 +12,12 @@ number of ``dev-400`` cases available and the number chosen.
 
 ``run`` reads that file and runs the loop over the selected cases; see
 :mod:`scripts.s3_probe.run`.
+
+``report JOB_ID [--out PATH]`` reads a run's job folder and prints (and, with ``--out``, also
+writes) the counts-only report meant for commit; see :mod:`scripts.s3_probe.report`.
+
+``trails JOB_ID`` writes one readable Markdown file per case under the job folder, never
+committed; see :mod:`scripts.s3_probe.trails_md`.
 """
 
 import argparse
@@ -33,7 +39,9 @@ from scripts.s3_probe.cases import (
     has_scan,
     select,
 )
-from scripts.s3_probe.run import cmd_run
+from scripts.s3_probe.report import cmd_report
+from scripts.s3_probe.run import PROBE_ROOT, cmd_run
+from scripts.s3_probe.trails_md import write_trails
 
 OUT_RELATIVE = Path("probes/s3-probe/cases.json")
 
@@ -115,12 +123,28 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument(
         "--dry-run", action="store_true", help="schema-valid canned replies; spends nothing"
     )
+    report_p = subparsers.add_parser("report", help="counts-only report for one run")
+    report_p.add_argument("job_id")
+    report_p.add_argument("--out", type=Path, default=None, help="also write the report here")
+    trails_p = subparsers.add_parser(
+        "trails", help="one readable Markdown trail per case (never committed)"
+    )
+    trails_p.add_argument("job_id")
     args = parser.parse_args(argv)
     settings = Settings()
     if args.command == "select":
         return _cmd_select(settings)
     if args.command == "run":
         return cmd_run(settings, limit=args.limit, workers=args.workers, dry_run=args.dry_run)
+    if args.command == "report":
+        cmd_report(settings.data_dir / PROBE_ROOT / args.job_id, out=args.out)
+        return 0
+    if args.command == "trails":
+        n = write_trails(settings.data_dir / PROBE_ROOT / args.job_id)
+        print(
+            f"wrote {n} trail file(s) to {settings.data_dir / PROBE_ROOT / args.job_id / 'trails'}"
+        )
+        return 0
     raise SystemExit(f"unknown command: {args.command}")  # pragma: no cover -- argparse only
 
 

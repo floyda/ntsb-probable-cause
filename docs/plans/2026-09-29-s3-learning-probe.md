@@ -110,16 +110,16 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
 
 **Files:** create `scripts/s3_probe/report.py`; modify `__main__.py` (add `report`); create `tests/test_s3_probe_report.py`.
 
-- [ ] `python -m scripts.s3_probe report JOB_ID [--out docs/results/s3-probe-dev.txt]` reads `trails.jsonl` and `probe.json` and prints (and writes with `--out`) a counts-only report. First line: `"Learning probe, not a result: n=<cases>; every figure below is a signal, not a finding."` Then the job's settings from `probe.json`; then:
+- [x] `python -m scripts.s3_probe report JOB_ID [--out docs/results/s3-probe-dev.txt]` reads `trails.jsonl` and `probe.json` and prints (and writes with `--out`) a counts-only report. First line: `"Learning probe, not a result: n=<cases>; every figure below is a signal, not a finding."` Then the job's settings from `probe.json`; then:
   - **Documents:** offered, chosen at choice 1, chosen at choice 2, by kind (born-digital / scan / partial) and by size band (`< 2,000`, `2,000–10,000`, `> 10,000` estimated tokens), with the choice rate for each; how often a choice-2 read happened at all.
   - **Skip regret:** cases where H_all ran; of those, cases where H_all's top-1 differs from H2's; and where one is right and the other wrong (both directions, counted separately).
   - **Hypotheses:** occurrence top-1 and top-3 counts at H0, H1, H2, H_all, final and refined; finding recall@10 mean at refined.
   - **Coding checks:** tool calls per case (min / median / max) and by tool; stop reasons; argument errors; distinct codes passed; cases where the true primary occurrence was among the codes passed; cases where the final top-1 differs from H2's top-1, split into (right→wrong, wrong→right, wrong→wrong); follow-or-override of the pool's top choice, with how often each was right.
   - **Cost and reliability:** calls per case; cost per case (mean, max) and total; prompt tokens per call by phase (mean, max) and the growth from H0 to the last coding call; seconds per call (mean, max); parse retries and failures by phase; finish reasons.
   - Every count is shown with its denominator. Nothing names a case.
-- [ ] `python -m scripts.s3_probe trails JOB_ID` writes one Markdown file per case under the job folder (`trails/<n>.md`, numbered in run order, the case ID inside the file only): for each phase the hypothesis top-3 with probabilities, the read choices with expected effects, each coding step's reason, arguments, expected effect, top3 and the tool result, the final and refined answers, the true codes, and costs. These files are for Andy to read and are never committed.
-- [ ] Tests: the report from a two-case synthetic `trails.jsonl` (built from `CaseTrail` objects) has the first line, correct denominators, no case ID; the trails files contain the case ID and are written only under the job folder.
-- [ ] `make check` green; commit.
+- [x] `python -m scripts.s3_probe trails JOB_ID` writes one Markdown file per case under the job folder (`trails/<n>.md`, numbered in run order, the case ID inside the file only): for each phase the hypothesis top-3 with probabilities, the read choices with expected effects, each coding step's reason, arguments, expected effect, top3 and the tool result, the final and refined answers, the true codes, and costs. These files are for Andy to read and are never committed.
+- [x] Tests: the report from a two-case synthetic `trails.jsonl` (built from `CaseTrail` objects) has the first line, correct denominators, no case ID; the trails files contain the case ID and are written only under the job folder.
+- [x] `make check` green; commit.
 
 ## Task 7: Wiring and documentation
 
@@ -322,3 +322,28 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   it can slightly undercount against the exactly-reconciled `cost_usd` on the rare run where a
   case fails after a paid call. This is a cosmetic gap in one integer field, not a money gap,
   and is left as-is.
+- **2026-09-29 (Task 6) — `CaseTrail` gained a field: `true_findings`.** The "Per-case trail
+  record" section above (what Task 4 built, reviewed and merged) names only the true primary
+  occurrence code for scoring `true_in_arguments`; it does not carry the verdict's flagged
+  finding codes anywhere. The top-level brief for Task 6's readable trails asks each file to
+  show "the true primary occurrence and flagged findings with labels", which needs the truth
+  to be in the trail record -- `report.py`/`trails_md.py` never touch a `Verdict` or
+  `split_record` themselves (only `loop.py` does, inside the guarded flow). Rather than have
+  Task 6 re-derive truth outside the leakage guard's own call site, `trail.py` gained one
+  additive field, `true_findings: tuple[str, ...]` (the verdict's `finding_codes_in_cause`,
+  composed ten-digit codes, empty when the verdict was never split), and `loop.py`'s
+  `_Case.trail()` now sets it alongside `true_primary` in the one place both are already
+  computed. No other Task 4/5 behaviour changed; `tests/test_s3_probe_loop.py` and
+  `tests/test_s3_probe_run.py` still pass unmodified. Andy to confirm the field belongs on the
+  trail record (rather than, say, being dropped from the readable trail's brief instead).
+- **2026-09-29 (Task 6) — no shared fixture module between `test_s3_probe_report.py` and
+  `test_s3_probe_trails.py`.** The natural design was one `s3_probe_fixtures.py` module
+  building the three synthetic `CaseTrail` cases once, imported by both test files. This
+  project's `mypy --strict` configuration (`pyproject.toml`, `[tool.mypy]`) sets `mypy_path =
+  ["src", "infra"]` and `explicit_package_bases = true`; `tests/` is in `files` (so its modules
+  are type-checked) but not in `mypy_path` (so a module under `tests/` cannot `import` a
+  sibling by name -- confirmed with a minimal repro). No existing test in this repository
+  imports from another test module, so this is not a precedent I could follow rather than
+  invent. Fixed by giving each test file its own, independent copy of the three case builders
+  (about 100 lines each) rather than changing `mypy_path`, which is a project-wide tooling
+  setting outside this task's scope. Each file's docstring cross-references the other.
