@@ -77,11 +77,14 @@ class StageScores(_Frozen):
 class Stage(_Frozen):
     """One hypothesis stage: the hypothesis (or ``None``), why it is absent or copied, scores.
 
-    ``note`` is ``None`` when the stage's own call produced the hypothesis. Otherwise it says
-    why not: ``"skipped: nothing chosen"`` (a copy of the stage before, no call),
-    ``"not needed"``, ``"not run: cap"``, ``"not run: abstained"``, ``"failed: parse"`` or
-    ``"failed: leak"`` (H_all alone: a side comparison that does not end the case), or
-    ``"not reached"`` when the case stopped first.
+    ``note`` is ``None`` when the stage's own call produced the hypothesis and nothing more
+    needs saying. Otherwise it says why, or what kind of call this was: ``"skipped: nothing
+    chosen"`` (a copy of the stage before, no call), ``"control: all read"`` (H_all alone: the
+    agent had already read every attachable document, so this call is a noise-only comparison
+    against H2 -- same payload, no history -- not a read-everything answer the agent skipped
+    reading for; the hypothesis is still its own call, F7), ``"not run: cap"``, ``"not run:
+    abstained"``, ``"failed: parse"`` or ``"failed: leak"`` (H_all alone: a side comparison that
+    does not end the case), or ``"not reached"`` when the case stopped first.
     """
 
     hypothesis: Hypothesis | None
@@ -137,7 +140,11 @@ class CaseTrail(_Frozen):
     refined: Stage
     coding_steps: tuple[CodingStep, ...]
     # The pool's top choice among the final top-3 (highest ``defining_n``, ties to the lowest
-    # code), and whether the final top-1 follows it. ``None`` when there is no final answer.
+    # code), and whether the final top-1 follows it. ``pool_top`` is ``None`` when there is no
+    # final answer; ``follows_pool`` is also ``None`` when the final top-3 has fewer than two
+    # distinct codes -- a single-code top-3 has no override to measure, since the agent's top-1
+    # and the pool's top choice among its own top-3 then coincide by construction, not by a
+    # follow/override decision (final review, F2).
     pool_top: str | None
     follows_pool: bool | None
     true_primary: str | None

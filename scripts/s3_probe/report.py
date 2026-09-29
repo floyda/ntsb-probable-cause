@@ -120,12 +120,41 @@ def _settings_lines(probe: Mapping[str, Any]) -> list[str]:
 
 
 # --------------------------------------------------------------------------------------------
+# Case outcomes
+# --------------------------------------------------------------------------------------------
+
+
+def _outcomes_section(trails: Sequence[CaseTrail], probe: Mapping[str, Any]) -> list[str]:
+    """Every case's ``stop_reason``, and how many selected cases produced no trail at all (F3).
+
+    A case whose own thread raised an exception ``run_case`` could not recover from (a
+    transport error, say) is caught by ``run.py``'s ``_run_cases`` and never reaches
+    ``trails.jsonl`` -- so it is invisible to every count above that reads ``trails``, not
+    ``probe.json``. ``cases_run - n`` names that gap.
+    """
+    lines = ["## Case outcomes", ""]
+    reasons = Counter(t.stop_reason for t in trails)
+    lines.append(f"case stop reasons: {_counter_line(reasons)}")
+    cases_run = probe.get("cases_run")
+    if isinstance(cases_run, int):
+        missing = cases_run - len(trails)
+        lines.append(f"cases with no trail (exception): {missing} of {cases_run}")
+    return lines
+
+
+# --------------------------------------------------------------------------------------------
 # Documents
 # --------------------------------------------------------------------------------------------
 
 
 def _document_events(trails: Sequence[CaseTrail]) -> list[dict[str, object]]:
-    """One entry per attachable document, across every case, with its choice-1/2 outcome."""
+    """One entry per attachable document, across every case, with its choice-1/2 outcome.
+
+    ``kind`` is the document's kind *after* transcription (a transcribed handwritten page can
+    become "born-digital" or "partial"), so it does not by itself say whether the document
+    needed transcription; ``transcribed`` (``transcribed_pages > 0``) carries that fact
+    separately (final review, F5).
+    """
     events: list[dict[str, object]] = []
     for trail in trails:
         offered1 = set(trail.choice1.offered) if trail.choice1 is not None else set()
@@ -139,6 +168,7 @@ def _document_events(trails: Sequence[CaseTrail]) -> list[dict[str, object]]:
                 {
                     "kind": document.kind or "unknown",
                     "band": _band(document.estimated_tokens),
+                    "transcribed": document.transcribed_pages > 0,
                     "offered1": document.index in offered1,
                     "chosen1": document.index in chosen1,
                     "offered2": document.index in offered2,
@@ -159,6 +189,38 @@ def _breakdown(offered: Sequence[Mapping[str, object]], key: str, group_by: str)
     return lines
 
 
+def _transcription_breakdown(
+    events: Sequence[Mapping[str, object]], predicate: Callable[[Mapping[str, object]], bool]
+) -> list[str]:
+    """Read rates split by whether a document has any transcribed page (F5).
+
+    ``predicate`` picks the read outcome to measure (chosen at choice 1, at choice 2, or at
+    either); a "text layer only" document had nothing transcribed for it to read.
+    """
+    lines = []
+    for has_transcribed, label in ((True, "has transcribed pages"), (False, "text layer only")):
+        group = [e for e in events if e["transcribed"] is has_transcribed]
+        read = sum(1 for e in group if predicate(e))
+        lines.append(f"  {label}: {_frac(read, len(group))}")
+    return lines
+
+
+def _read_either(event: Mapping[str, object]) -> bool:
+    """Whether an offered document was read at choice 1 or choice 2 (F6)."""
+    return bool(event["chosen1"]) or bool(event["chosen2"])
+
+
+def _size_band_breakdown(
+    events: Sequence[Mapping[str, object]], predicate: Callable[[Mapping[str, object]], bool]
+) -> list[str]:
+    lines = []
+    for band in SIZE_BANDS:
+        group = [e for e in events if e["band"] == band]
+        read = sum(1 for e in group if predicate(e))
+        lines.append(f"  {band}: {_frac(read, len(group))}")
+    return lines
+
+
 def _documents_section(trails: Sequence[CaseTrail]) -> list[str]:
     events = _document_events(trails)
     offered1 = [e for e in events if e["offered1"]]
@@ -171,21 +233,28 @@ def _documents_section(trails: Sequence[CaseTrail]) -> list[str]:
     lines.append(f"documents offered at choice 2: {len(offered2)}")
     lines.append(f"documents chosen at choice 2: {_frac(chosen2, len(offered2))}")
     lines.append("")
-    lines.append("choice 1, by kind:")
+    lines.append("choice 1, by kind (after transcription):")
     lines += _breakdown(offered1, "chosen1", "kind")
     lines.append("choice 1, by size band:")
-    for band in SIZE_BANDS:
-        group = [e for e in offered1 if e["band"] == band]
-        chosen = sum(1 for e in group if e["chosen1"])
-        lines.append(f"  {band}: {_frac(chosen, len(group))}")
+    lines += _size_band_breakdown(offered1, lambda e: bool(e["chosen1"]))
+    lines.append("choice 1, by transcription:")
+    lines += _transcription_breakdown(offered1, lambda e: bool(e["chosen1"]))
     lines.append("")
-    lines.append("choice 2, by kind:")
+    lines.append("choice 2, by kind (after transcription):")
     lines += _breakdown(offered2, "chosen2", "kind") or ["  (nothing offered at choice 2)"]
     lines.append("choice 2, by size band:")
-    for band in SIZE_BANDS:
-        group = [e for e in offered2 if e["band"] == band]
-        chosen = sum(1 for e in group if e["chosen2"])
-        lines.append(f"  {band}: {_frac(chosen, len(group))}")
+    lines += _size_band_breakdown(offered2, lambda e: bool(e["chosen2"]))
+    lines.append("choice 2, by transcription:")
+    lines += _transcription_breakdown(offered2, lambda e: bool(e["chosen2"]))
+    lines.append("")
+    # F6: whether an offered document was ever read, at choice 1 or choice 2 -- every attachable
+    # document is offered at choice 1 when the case reaches it, so `offered1` is the population.
+    read_either = sum(1 for e in offered1 if _read_either(e))
+    lines.append(f"read at either choice: {_frac(read_either, len(offered1))}")
+    lines.append("  by transcription:")
+    lines += [f"  {line}" for line in _transcription_breakdown(offered1, _read_either)]
+    lines.append("  by size band:")
+    lines += [f"  {line}" for line in _size_band_breakdown(offered1, _read_either)]
     lines.append("")
     # Whether the read-choice-2 step happened at all, distinguishing "no documents were left"
     # from "the case never got this far".
@@ -256,7 +325,34 @@ def _hypotheses_section(trails: Sequence[CaseTrail]) -> list[str]:
 # --------------------------------------------------------------------------------------------
 
 
+_CONTROL_NOTE = "control: all read"
+
+
+def _regret_group_lines(title: str, group: Sequence[CaseTrail], tables: CodeTables) -> list[str]:
+    paired = [t for t in group if t.h2.scores is not None]
+    differs = [
+        t
+        for t in paired
+        if _occurrence_code(tables, t.h_all.hypothesis) != _occurrence_code(tables, t.h2.hypothesis)
+    ]
+    lines = [f"{title}:", f"  H_all top-1 differs from H2: {_frac(len(differs), len(paired))}"]
+    if differs:
+        h_all_right = sum(1 for t in differs if _top1_correct(t.h_all) and not _top1_correct(t.h2))
+        h2_right = sum(1 for t in differs if _top1_correct(t.h2) and not _top1_correct(t.h_all))
+        lines.append(f"    H_all right, H2 wrong: {h_all_right} of {len(differs)}")
+        lines.append(f"    H2 right, H_all wrong: {h2_right} of {len(differs)}")
+    return lines
+
+
 def _skip_regret_section(trails: Sequence[CaseTrail], tables: CodeTables) -> list[str]:
+    """H_all vs H2, split into cases that actually skipped a document and the noise control.
+
+    From F7, H_all runs even when the agent read every attachable document, noted
+    ``"control: all read"``: there, a difference from H2 comes only from history/anchoring and
+    run-to-run noise, not from evidence the agent chose not to read. Mixing the two groups
+    would overstate skip regret by whatever share of "differs" is really just that noise, so
+    they are reported separately, next to each other.
+    """
     lines = ["## Skip regret", ""]
     ran = [t for t in trails if t.h_all.scores is not None]
     not_run: Counter[str] = Counter(
@@ -265,18 +361,19 @@ def _skip_regret_section(trails: Sequence[CaseTrail], tables: CodeTables) -> lis
     lines.append(f"H_all ran: {_frac(len(ran), len(trails))}")
     if not_run:
         lines.append(f"  not run: {_counter_line(not_run)}")
-    paired = [t for t in ran if t.h2.scores is not None]
-    differs = [
-        t
-        for t in paired
-        if _occurrence_code(tables, t.h_all.hypothesis) != _occurrence_code(tables, t.h2.hypothesis)
-    ]
-    lines.append(f"H_all top-1 differs from H2: {_frac(len(differs), len(paired))}")
-    if differs:
-        h_all_right = sum(1 for t in differs if _top1_correct(t.h_all) and not _top1_correct(t.h2))
-        h2_right = sum(1 for t in differs if _top1_correct(t.h2) and not _top1_correct(t.h_all))
-        lines.append(f"  H_all right, H2 wrong: {h_all_right} of {len(differs)}")
-        lines.append(f"  H2 right, H_all wrong: {h2_right} of {len(differs)}")
+    lines.append("")
+    control = [t for t in ran if t.h_all.note == _CONTROL_NOTE]
+    skipped = [t for t in ran if t.h_all.note != _CONTROL_NOTE]
+    lines += _regret_group_lines(
+        "skip-regret cases (a document was actually skipped)", skipped, tables
+    )
+    lines.append("")
+    lines += _regret_group_lines(
+        "control cases (agent read everything -- the difference rate expected from "
+        "history and noise alone)",
+        control,
+        tables,
+    )
     return lines
 
 
@@ -327,14 +424,20 @@ def _coding_section(trails: Sequence[CaseTrail], tables: CodeTables) -> list[str
     return lines
 
 
-def _transition_lines(trails: Sequence[CaseTrail], tables: CodeTables) -> list[str]:
-    paired = [t for t in trails if t.h2.scores is not None and t.final.scores is not None]
+def _made_a_coding_call(trail: CaseTrail) -> bool:
+    """Whether the case's coding checks called a tool at least once (F4)."""
+    return any(step.tool is not None for step in trail.coding_steps)
+
+
+def _transition_group_lines(
+    title: str, group: Sequence[CaseTrail], tables: CodeTables
+) -> list[str]:
     differs = [
         t
-        for t in paired
+        for t in group
         if _occurrence_code(tables, t.h2.hypothesis) != _occurrence_code(tables, t.final.hypothesis)
     ]
-    lines = [f"final top-1 differs from H2: {_frac(len(differs), len(paired))}"]
+    lines = [f"{title}:", f"  final top-1 differs from H2: {_frac(len(differs), len(group))}"]
     if differs:
         right_to_wrong = sum(
             1 for t in differs if _top1_correct(t.h2) and not _top1_correct(t.final)
@@ -345,22 +448,55 @@ def _transition_lines(trails: Sequence[CaseTrail], tables: CodeTables) -> list[s
         wrong_to_wrong = sum(
             1 for t in differs if not _top1_correct(t.h2) and not _top1_correct(t.final)
         )
-        lines.append(f"  right to wrong: {right_to_wrong} of {len(differs)}")
-        lines.append(f"  wrong to right: {wrong_to_right} of {len(differs)}")
-        lines.append(f"  wrong to wrong: {wrong_to_wrong} of {len(differs)}")
+        lines.append(f"    right to wrong: {right_to_wrong} of {len(differs)}")
+        lines.append(f"    wrong to right: {wrong_to_right} of {len(differs)}")
+        lines.append(f"    wrong to wrong: {wrong_to_wrong} of {len(differs)}")
+    return lines
+
+
+def _transition_lines(trails: Sequence[CaseTrail], tables: CodeTables) -> list[str]:
+    """Final-vs-H2 transitions, split by whether the case made a coding tool call (F4).
+
+    Cases with zero tool calls answered ``done`` at the coding checks' first reply without
+    checking anything: any final-vs-H2 change there comes only from re-asking (the coding
+    system text and the final instruction), not from a tool result -- the control group the
+    "with calls" cases are read against.
+    """
+    paired = [t for t in trails if t.h2.scores is not None and t.final.scores is not None]
+    with_calls = [t for t in paired if _made_a_coding_call(t)]
+    without_calls = [t for t in paired if not _made_a_coding_call(t)]
+    lines = _transition_group_lines("cases with at least one coding tool call", with_calls, tables)
+    lines.append("")
+    lines += _transition_group_lines(
+        "cases with no coding tool call (re-asking control)", without_calls, tables
+    )
     return lines
 
 
 def _follow_pool_lines(trails: Sequence[CaseTrail]) -> list[str]:
-    scored = [t for t in trails if t.follows_pool is not None and t.final.scores is not None]
+    """Follow/override rates, restricted to a final top-3 with at least two distinct codes.
+
+    A single-code top-3 makes ``follows_pool`` ``None`` (``loop.py``'s ``trail()``): the pool's
+    top choice among one code is that code, so every such case would otherwise be counted as
+    "followed" without a real override to measure. Those cases are reported on their own line
+    instead (final review, F2).
+    """
+    with_final = [t for t in trails if t.final.scores is not None]
+    scored = [t for t in with_final if t.follows_pool is not None]
+    single_code = [t for t in with_final if t.follows_pool is None]
     follows = [t for t in scored if t.follows_pool]
     overrides = [t for t in scored if not t.follows_pool]
     follows_right = sum(1 for t in follows if _top1_correct(t.final))
     overrides_right = sum(1 for t in overrides if _top1_correct(t.final))
+    single_right = sum(1 for t in single_code if _top1_correct(t.final))
     return [
-        f"followed the pool's top choice: {_frac(len(follows), len(scored))}",
+        "followed the pool's top choice (final top-3 with 2+ distinct codes): "
+        f"{_frac(len(follows), len(scored))}",
         f"  right when following: {_frac(follows_right, len(follows))}",
         f"  right when overriding: {_frac(overrides_right, len(overrides))}",
+        f"single-code final top-3 (follow/override not applicable): "
+        f"{_frac(len(single_code), len(with_final))}",
+        f"  right: {_frac(single_right, len(single_code))}",
     ]
 
 
@@ -478,6 +614,8 @@ def build_report(job_dir: Path) -> str:
     tables = load_tables()
     lines = [HEADLINE.format(n=len(trails)), ""]
     lines += _settings_lines(probe)
+    lines.append("")
+    lines += _outcomes_section(trails, probe)
     lines.append("")
     lines += _documents_section(trails)
     lines.append("")

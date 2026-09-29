@@ -178,8 +178,12 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   is the listing payload (structured evidence plus listing), not the H0 payload, because the
   coding history then holds read-choice replies made against the listing. (3) *With no
   attachable document* both read choices are skipped (`"skipped: nothing to offer"` /
-  `"skipped: nothing left to offer"`) and H_all is `"not needed"`. (4) *A skipped stage* (H1 or
-  H2 with nothing chosen) carries the previous hypothesis and is scored again, with its note;
+  `"skipped: nothing left to offer"`); H_all still runs, on the empty listing payload with no
+  history, exactly as it would with documents present -- **superseded by the final review's F7
+  fix (2026-09-29), below: H_all no longer stops as `"not needed"` in any case where the agent
+  read everything (attachable or not), and instead runs as the noted control `"control: all
+  read"`.** (4) *A skipped stage* (H1 or H2 with nothing chosen) carries the previous hypothesis
+  and is scored again, with its note;
   the history then holds only the replies actually made. (5) *The refined stage*, when stage 2
   does not run (abstained, or no findings), carries the final hypothesis with a
   `"not run: …"` note, as the runner returns the stage-1 hypothesis. (6) *The run budget*
@@ -357,3 +361,30 @@ A frozen pydantic `CaseTrail` per case, one JSON line in `trails.jsonl`: case ID
   `from tests.s3_probe_fixtures import ...`, matching the existing pattern exactly; verified
   with `uv run mypy` (whole-project) and `make check`, both clean, and the case builders no
   longer duplicated.
+- **2026-09-29 (final review fix wave) — measurement caveats this probe's numbers carry, none
+  of them fixed by code because they are what a one-shot probe on 20 cases can and cannot show
+  (F8).** In plain words, for anyone reading `docs/results/s3-probe-dev.txt` later: (a) *skip
+  regret is not purely about the skipped documents.* Comparing H_all (read everything) against
+  H2 (what the agent actually read) mixes two things: the extra evidence H_all saw, and plain
+  history/anchoring and run-to-run noise between two separate calls on the same prompt. F7's
+  control cases (H_all run again even when the agent already read everything, noted
+  `"control: all read"`) measure the second effect alone, so the report shows both groups next
+  to each other rather than one merged "skip regret" number that would overstate what reading
+  more would actually buy. (b) *Read rates are shaped by the instructions and the menu, not by
+  the documents alone.* `READ_CHOICE_INSTRUCTIONS` tells the agent that reading costs money and
+  to read only what its hypothesis needs, and the menu (`prompts.menu`) shows page counts and
+  estimated token sizes; a different instruction or a menu that hid sizes could move every read
+  rate in this report without the documents changing at all. (c) *H0-to-H1 read-rate changes
+  mix two different things.* Read choice 1's payload adds the docket listing (so the model
+  first sees document titles) in the same step it offers documents to read; a change between H0
+  and H1 cannot be split into "seeing the titles" and "reading a document" from this probe's
+  numbers alone. (d) *"Kind" is measured after transcription* (F5): a scanned, handwritten
+  document that was transcribed can show up in the report as "born-digital" or "partial", the
+  same as a document that never needed transcription, so the kind breakdown alone does not say
+  which documents needed it -- the report's separate transcription breakdown is what answers
+  that. (e) *A transport exception is billed as free.* `loop.py`'s `_call` settles a failed
+  call's estimate at an actual cost of `$0`; a request that timed out after OpenRouter had
+  already started billing it would still show as `$0` here. This under-counts cost by at most
+  one call's worth per failure, which is small next to `RUN_CAP_USD`, and is not fixed because
+  the transport gives no way to learn what, if anything, was actually billed for a call that
+  never returned.

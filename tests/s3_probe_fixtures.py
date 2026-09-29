@@ -8,11 +8,12 @@ as ``from tests.s3_probe_fixtures import ...`` -- the package-qualified form, no
 ``files``; ``tests/test_boundary.py``, ``tests/test_checkpass.py`` and
 ``tests/test_contamination.py`` already import their own shared helpers the same qualified way.
 Three cases, built by hand rather than run through the loop, so every count in the report can
-be checked against a value worked out on paper: ``case_a`` reaches every stage (H_all runs);
-``case_b`` fails at H0, before any stage or read choice is reached; ``case_c`` reads everything
-offered at choice 1, so H_all is "not needed". Every text field that must never reach the
-report (the case ID, a document-choice reason, a tool result, a hypothesis's own prose) carries
-a distinctive marker.
+be checked against a value worked out on paper: ``case_a`` reaches every stage, with H_all a
+genuine skip-regret comparison (it read only 2 of 3 attachable documents); ``case_b`` fails at
+H0, before any stage or read choice is reached; ``case_c`` reads everything offered at choice
+1, so H_all runs as the noise-only control (F7), with the note ``"control: all read"``. Every
+text field that must never reach the report (the case ID, a document-choice reason, a tool
+result, a hypothesis's own prose) carries a distinctive marker.
 """
 
 from scripts.s3_probe.prompts import DocumentChoice
@@ -214,16 +215,23 @@ def case_b() -> CaseTrail:
 
 
 def case_c() -> CaseTrail:
-    """Reads the only attachable document at choice 1; H_all is "not needed"."""
+    """Reads the only attachable document at choice 1; H_all runs as the "all read" control."""
     h0 = _hyp(top=TRUTH)
     h1 = _hyp(top=TRUTH)
+    h_all = _hyp(top=OTHER)
     final = _hyp(top=OTHER, abstain=True, findings=False)
     return CaseTrail(
         case_id=CASE_C_ID,
         fatal=False,
         has_scan=False,
         documents=(_doc(4, "born-digital", 800),),
-        calls=(_call("h0", 120), _call("choice1", 130), _call("h1", 140), _call("final", 160)),
+        calls=(
+            _call("h0", 120),
+            _call("choice1", 130),
+            _call("h1", 140),
+            _call("h_all", 145),
+            _call("final", 160),
+        ),
         choice1=_choice((4,), (4,)),
         choice1_note=None,
         choice2=None,
@@ -231,7 +239,7 @@ def case_c() -> CaseTrail:
         h0=_stage(h0, None, _scores(top1=True, top3=True)),
         h1=_stage(h1, None, _scores(top1=True, top3=True)),
         h2=_stage(h1, "skipped: nothing more chosen", _scores(top1=True, top3=True)),
-        h_all=_stage(None, "not needed", None),
+        h_all=_stage(h_all, "control: all read", _scores(top1=False, top3=False)),
         final=_stage(final, None, _scores(top1=False, top3=False)),
         refined=_stage(None, "not run: abstained", None),
         coding_steps=(_step(None, ()),),  # the checks ran; the first call was already "done"

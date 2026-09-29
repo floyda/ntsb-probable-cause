@@ -263,6 +263,41 @@ def test_happy_path_records_every_phase_in_order() -> None:
     assert trail.failure is None
 
 
+def _hyp_single_code(top: str = TRUTH) -> str:
+    """A hypothesis reply whose ``occurrence`` is one guess, not the usual two."""
+    return json.dumps(
+        {
+            "evidence_narrative": "The airplane touched down in a gust.",
+            "occurrence": [_guess(top, 0.9)],
+            "findings": [],
+            "probable_cause": "Loss of directional control on landing.",
+            "lay_explanation": "The pilot lost control on landing.",
+            "confidence": 0.5,
+            "abstain": False,
+            "evidence_used": [],
+        }
+    )
+
+
+def test_follows_pool_is_none_with_fewer_than_two_distinct_final_codes() -> None:
+    # A single-code final top-3 has no override to measure: the pool's top choice among a
+    # one-element top-3 always equals the agent's own top-1 by construction (final review, F2).
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
+        DONE,
+        _hyp_single_code(),
+    ]
+    trail, _ = _run(replies)
+    assert trail.final.hypothesis is not None
+    assert len(trail.final.hypothesis.occurrence) == 1
+    assert trail.pool_top is not None
+    assert trail.follows_pool is None
+    assert trail.refined.note == "not run: no findings"
+
+
 def test_documents_are_recorded_by_their_facts() -> None:
     trail, _ = _run(HAPPY)
     by_index = {d.index: d for d in trail.documents}
@@ -412,28 +447,39 @@ def test_choosing_nothing_skips_h1_and_h2() -> None:
     assert trail.stop_reason == "done"
 
 
-def test_reading_everything_skips_h_all_as_not_needed() -> None:
+def test_reading_everything_runs_h_all_as_a_noise_control() -> None:
     # H1 (and so H2) without findings: the answer reserve then prices the refinement's
-    # system text without a findings block.
+    # system text without a findings block. H_all still runs (same payload as H2, no history)
+    # even though the agent read everything: it is a noise/history-only comparison, not a
+    # read-everything answer the agent skipped reading for (final review, F7).
     h1 = _hyp(findings=False)
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), h1, DONE, _hyp(), REFINE]
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        h1,
+        _hyp(top=OTHER),  # h_all
+        DONE,
+        _hyp(),
+        REFINE,
+    ]
     trail, client = _run(replies)
-    assert _phases(trail) == ["h0", "choice1", "h1", "coding", "final", "refine"]
+    assert _phases(trail) == ["h0", "choice1", "h1", "h_all", "coding", "final", "refine"]
     assert trail.choice2 is None
     assert trail.choice2_note == "skipped: nothing left to offer"
-    assert trail.h_all.hypothesis is None
-    assert trail.h_all.note == "not needed"
+    assert trail.h_all.hypothesis is not None
+    assert trail.h_all.note == "control: all read"
     assert trail.h2.note == "skipped: nothing more chosen"
-    assert client.payloads[3] == _ctx((1, 2, 4))
+    assert client.payloads[3] == _ctx((1, 2, 4))  # h_all's own payload, equal to H2's
 
 
-def test_no_attachable_document_skips_both_choices() -> None:
+def test_no_attachable_document_still_runs_h_all_as_a_control() -> None:
     docket = _docket(readable=())
-    trail, _ = _run([_hyp(), DONE, _hyp(), REFINE], docket=docket)
-    assert _phases(trail) == ["h0", "coding", "final", "refine"]
+    trail, _ = _run([_hyp(), _hyp(top=OTHER), DONE, _hyp(), REFINE], docket=docket)
+    assert _phases(trail) == ["h0", "h_all", "coding", "final", "refine"]
     assert trail.choice1_note == "skipped: nothing to offer"
     assert trail.choice2_note == "skipped: nothing left to offer"
-    assert trail.h_all.note == "not needed"
+    assert trail.h_all.hypothesis is not None
+    assert trail.h_all.note == "control: all read"
     assert trail.has_scan is False
 
 
@@ -442,6 +488,7 @@ def test_a_coding_loop_that_never_sets_done_stops_at_six_tool_calls() -> None:
         _hyp(),
         _choice({1: True, 2: True, 4: True}),
         _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
         *[_coding()] * MAX_CODING_CALLS,
         _hyp(),
         REFINE,
@@ -463,6 +510,7 @@ def test_an_unknown_code_is_an_argument_error_and_not_retried() -> None:
         _hyp(),
         _choice({1: True, 2: True, 4: True}),
         _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
         _coding(codes=("999999",)),
         DONE,
         _hyp(),
@@ -482,6 +530,7 @@ def test_duplicate_top3_guesses_are_recorded_as_given() -> None:
         _hyp(),
         _choice({1: True, 2: True, 4: True}),
         _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
         _coding(top3=top3),
         _coding(done=True, top3=top3),
         _hyp(),
@@ -494,7 +543,14 @@ def test_duplicate_top3_guesses_are_recorded_as_given() -> None:
 
 
 def test_refinement_is_skipped_when_the_final_answer_abstains() -> None:
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), DONE, _hyp(abstain=True)]
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
+        DONE,
+        _hyp(abstain=True),
+    ]
     trail, _ = _run(replies)
     assert "refine" not in _phases(trail)
     assert trail.refined.note == "not run: abstained"
@@ -503,7 +559,14 @@ def test_refinement_is_skipped_when_the_final_answer_abstains() -> None:
 
 
 def test_refinement_is_skipped_when_the_final_answer_has_no_findings() -> None:
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), DONE, _hyp(findings=False)]
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
+        DONE,
+        _hyp(findings=False),
+    ]
     trail, _ = _run(replies)
     assert "refine" not in _phases(trail)
     assert trail.refined.note == "not run: no findings"
@@ -754,10 +817,18 @@ def test_a_coding_retry_that_would_eat_the_answer_reserve_stops_the_checks() -> 
     # The first coding reply is malformed and costs $0.14; its retry plus the final call and
     # the refinement (about $0.013) would pass the $0.15 cap, so the checks stop and the case
     # answers.
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), "not json", _hyp(), REFINE]
-    usage = (FREE, FREE, FREE, _costing(0.14), FREE)
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
+        "not json",
+        _hyp(),
+        REFINE,
+    ]
+    usage = (FREE, FREE, FREE, FREE, _costing(0.14), FREE)
     trail, _ = _run(replies, usage=usage)
-    assert _phases(trail) == ["h0", "choice1", "h1", "coding", "final", "refine"]
+    assert _phases(trail) == ["h0", "choice1", "h1", "h_all", "coding", "final", "refine"]
     assert trail.coding_steps == ()
     assert trail.coding_stop == "cap"
     assert trail.stop_reason == "coding_cap"
@@ -775,12 +846,20 @@ def test_the_run_cap_during_h_all_ends_the_case() -> None:
 
 
 def test_the_run_cap_during_the_coding_checks_ends_the_case() -> None:
-    replies = [_hyp(), _choice({1: True, 2: True, 4: True}), _hyp(), DONE]
-    usage = (FREE, FREE, _costing(0.006), FREE)
+    replies = [
+        _hyp(),
+        _choice({1: True, 2: True, 4: True}),
+        _hyp(),
+        _hyp(top=OTHER),  # h_all (a control: everything was read at choice 1)
+        DONE,
+    ]
+    usage = (FREE, FREE, FREE, _costing(0.006), FREE)
     trail, _ = _run(replies, usage=usage, budget=RunBudget(run_cap_usd=0.01))
     assert trail.stop_reason == "run_cap"
     assert trail.coding_stop is None
     assert trail.final == NOT_REACHED
+    assert trail.h_all.hypothesis is not None
+    assert trail.h_all.note == "control: all read"
     assert trail.true_in_arguments is False  # step 7 was reached; no code was passed
 
 
@@ -804,13 +883,17 @@ def test_the_run_cap_stops_a_second_case() -> None:
     small = Usage(prompt_tokens=1, completion_tokens=1, reported_cost_usd=0.001)
     large = Usage(prompt_tokens=1, completion_tokens=1, reported_cost_usd=0.2)
     budget = RunBudget(run_cap_usd=0.205)
+    # No attachable document, so choice1/choice2 are skipped but H_all still runs as a control
+    # (read == attachable, both empty) between H0 and the coding checks.
     first, _ = _run(
-        [_hyp(), DONE, _hyp(), REFINE],
+        [_hyp(), _hyp(top=OTHER), DONE, _hyp(), REFINE],
         docket=docket,
         budget=budget,
-        usage=(small, small, small, large),
+        usage=(small, FREE, small, small, large),
     )
     assert first.stop_reason == "done"
+    assert first.h_all.hypothesis is not None
+    assert first.h_all.note == "control: all read"
     assert budget.spent == pytest.approx(0.203)
     second, client = _run([_hyp(), DONE, _hyp(), REFINE], docket=docket, budget=budget)
     assert second.stop_reason == "run_cap"

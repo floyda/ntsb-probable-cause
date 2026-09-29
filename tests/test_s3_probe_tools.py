@@ -132,6 +132,15 @@ class TestOccurrenceUsage:
         # Same phase (452) on both codes: no event-pair line.
         assert "across phases" not in result.text
 
+    def test_pair_section_omits_event_pair_when_only_the_event_is_shared(self) -> None:
+        # Same event (240), different phase: the per-code blocks above already give event 240's
+        # usage, so the "across phases" line -- which would otherwise read as if 240 and 240
+        # were two different events -- must not appear (final review, F1).
+        stats = _stats()
+        same_event_other_phase = "500240"
+        result = occurrence_usage(TABLES, stats, "occurrence", [LOC, same_event_other_phase])
+        assert "across phases" not in result.text
+
     def test_pair_section_uses_event_pair_when_phases_differ(self) -> None:
         stats = build(
             [

@@ -366,12 +366,14 @@ class _Case:
     def _h_all(
         self, attachment: Attachment, attachable: tuple[int, ...], read: tuple[int, ...]
     ) -> None:
-        if set(read) == set(attachable):
-            self._stage("h_all", None, "not needed")
-            return
-        # A side comparison: its leak or parse failure is recorded and the case goes on. A
-        # leak here comes from a document the agent did not choose; one it chose has already
-        # ended the case at H1, choice 2 or H2.
+        # H_all always runs, even when the agent already read every attachable document: it is
+        # then a noise-only control (same payload as H2, no history), recorded with the
+        # distinct note "control: all read" -- a difference from H2 there is anchoring/history
+        # noise, not information the agent skipped (final review, F7). A leak or parse failure
+        # is a side comparison's own failure and the case goes on; a leak here comes from a
+        # document the agent did not choose, since one it chose has already ended the case at
+        # H1, choice 2 or H2.
+        control = set(read) == set(attachable)
         try:
             payload = _payload(attachment.context_for(attachable).context)
         except LeakageError as error:
@@ -389,7 +391,7 @@ class _Case:
         except _Failed as failed:
             self._stage("h_all", None, "failed: parse", failed.detail)
             return
-        self._stage("h_all", h_all)
+        self._stage("h_all", h_all, "control: all read" if control else None)
 
     def _coding_and_final(self, payload: Payload, turns: list[Turn]) -> str:
         base = f"{self.system}\n\n{CODING_INSTRUCTIONS}\n\n{TOOL_DESCRIPTIONS}"
@@ -479,7 +481,11 @@ class _Case:
         if final is not None:
             codes = final.occurrence_codes(self.tables)
             pool_top = min(codes, key=lambda code: (-self.stats.defining_n(code), code))
-            follows = codes[0] == pool_top
+            # A one-code (or one-distinct-code) top-3 has no override to measure: the agent's
+            # top-1 and the pool's top choice among its own top-3 are then the same value by
+            # construction, which is not a follow/override decision (final review, F2).
+            if len(set(codes)) >= 2:  # noqa: PLR2004 -- "at least two distinct codes"
+                follows = codes[0] == pool_top
         truth = primary_occurrence(st.verdict) if st.verdict is not None else None
         true_findings = st.verdict.finding_codes_in_cause if st.verdict is not None else ()
         true_in_arguments = (

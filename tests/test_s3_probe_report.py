@@ -1,11 +1,12 @@
 """Tests for ``scripts/s3_probe/report.py``, offline, from synthetic ``CaseTrail`` objects.
 
 The fixtures (``tests/s3_probe_fixtures.py``) build three cases by hand rather than running the
-loop, so every count checked here can be worked out on paper: ``case_a`` reaches every stage
-(H_all runs); ``case_b`` fails at H0, before any stage or read choice is reached; ``case_c``
-reads everything offered at choice 1, so H_all is "not needed". Every text field that must
-never reach the report (the case ID, a document-choice reason, a tool result, a hypothesis's
-own prose) carries the fixtures' ``MARKER``, which every test here asserts is absent.
+loop, so every count checked here can be worked out on paper: ``case_a`` reaches every stage,
+with H_all a genuine skip-regret comparison; ``case_b`` fails at H0, before any stage or read
+choice is reached; ``case_c`` reads everything offered at choice 1, so H_all runs as the
+noise-only control (``"control: all read"``, F7). Every text field that must never reach the
+report (the case ID, a document-choice reason, a tool result, a hypothesis's own prose) carries
+the fixtures' ``MARKER``, which every test here asserts is absent.
 """
 
 import json
@@ -88,16 +89,21 @@ def test_hypotheses_section_denominators(tmp_path: Path) -> None:
     # H0 is scored in cases A and C (case B never reaches it): both correct.
     assert "H0 occurrence top-1: 2 of 2 (100.0%)" in text
     assert "H0 occurrence top-3: 2 of 2 (100.0%)" in text
-    # H_all is scored only in case A (not needed in C, never reached in B).
-    assert "H_all occurrence top-1: 0 of 1 (0.0%)" in text
+    # H_all is scored in cases A (skip-regret) and C (the "all read" control), never reached
+    # in B: both are wrong.
+    assert "H_all occurrence top-1: 0 of 2 (0.0%)" in text
     assert "finding recall@10 mean at refined: 50.0% (n=1)" in text
 
 
 def test_skip_regret_section(tmp_path: Path) -> None:
     text = build_report(_write_job(tmp_path))
-    assert "H_all ran: 1 of 3 (33.3%)" in text
-    assert "H_all top-1 differs from H2: 1 of 1 (100.0%)" in text
-    assert "H2 right, H_all wrong: 1 of 1" in text
+    # H_all ran in case A (skip-regret) and case C (the "all read" control); never in B.
+    assert "H_all ran: 2 of 3 (66.7%)" in text
+    assert "skip-regret cases (a document was actually skipped):" in text
+    assert "control cases (agent read everything" in text
+    # Both groups have exactly one paired case, and it differs from H2 in both.
+    assert text.count("H_all top-1 differs from H2: 1 of 1 (100.0%)") == 2
+    assert text.count("H2 right, H_all wrong: 1 of 1") == 2
 
 
 def test_coding_section(tmp_path: Path) -> None:
@@ -106,6 +112,59 @@ def test_coding_section(tmp_path: Path) -> None:
     assert "tool calls by tool: describe_codes: 1, occurrence_usage: 1" in text
     assert "argument errors: 1 of 2 (50.0%) of tool calls" in text
     assert "distinct codes passed to coding tools: 2" in text
+
+
+def test_case_outcomes_section(tmp_path: Path) -> None:
+    text = build_report(_write_job(tmp_path))
+    assert "## Case outcomes" in text
+    # case_a "done", case_b "failed: h0", case_c "done".
+    assert "case stop reasons: done: 2, failed: h0: 1" in text
+    assert "cases with no trail (exception): 0 of 3" in text
+
+
+def test_case_outcomes_section_counts_missing_trails(tmp_path: Path) -> None:
+    job_dir = _write_job(tmp_path)
+    probe = json.loads((job_dir / "probe.json").read_text())
+    probe["cases_run"] = 5  # two selected cases raised and produced no trail
+    (job_dir / "probe.json").write_text(json.dumps(probe))
+    text = build_report(job_dir)
+    assert "cases with no trail (exception): 2 of 5" in text
+
+
+def test_transitions_are_split_by_whether_a_coding_tool_was_called(tmp_path: Path) -> None:
+    text = build_report(_write_job(tmp_path))
+    # Case A made a coding tool call and its final top-1 stayed right (0 of 1 differs). Case C
+    # never called a tool (its one coding step was already "done") and its final top-1 flipped
+    # right-to-wrong (1 of 1 differs).
+    assert "cases with at least one coding tool call:" in text
+    assert "cases with no coding tool call (re-asking control):" in text
+    idx_with = text.index("cases with at least one coding tool call:")
+    idx_without = text.index("cases with no coding tool call (re-asking control):")
+    with_block = text[idx_with:idx_without]
+    without_block = text[idx_without : idx_without + 200]
+    assert "final top-1 differs from H2: 0 of 1 (0.0%)" in with_block
+    assert "final top-1 differs from H2: 1 of 1 (100.0%)" in without_block
+    assert "right to wrong: 1 of 1" in without_block
+
+
+def test_follow_pool_excludes_single_code_final_top3(tmp_path: Path) -> None:
+    text = build_report(_write_job(tmp_path))
+    # Only case A's final top-3 has two distinct codes; case C's is a single (duplicated) code.
+    assert (
+        "followed the pool's top choice (final top-3 with 2+ distinct codes): 0 of 1 (0.0%)" in text
+    )
+    assert "single-code final top-3 (follow/override not applicable): 1 of 2 (50.0%)" in text
+
+
+def test_documents_section_transcription_and_either_choice_breakdowns(tmp_path: Path) -> None:
+    text = build_report(_write_job(tmp_path))
+    assert "choice 1, by kind (after transcription):" in text
+    assert "choice 1, by transcription:" in text
+    assert "choice 2, by transcription:" in text
+    # None of the fixture documents carry a transcribed page.
+    assert "  has transcribed pages: 0 of 0 (—)" in text
+    assert "  text layer only: 2 of 4 (50.0%)" in text
+    assert "read at either choice: 3 of 4 (75.0%)" in text
 
 
 def test_cost_section(tmp_path: Path) -> None:

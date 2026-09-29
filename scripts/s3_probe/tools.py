@@ -175,12 +175,19 @@ def _occurrence_line(tables: CodeTables, stats: CodingStats, code: str) -> str:
 
 
 def _pair_lines(stats: CodingStats, a: str, b: str) -> str:
+    """One code pair's usage line, plus an event-pair line only when phase and event both differ.
+
+    Two codes sharing an event under different phases (``a[3:] == b[3:]``) already have that
+    event's usage in each code's own block above; a same-event pair line would repeat it under
+    a label ("across phases") that implies two different events, so it is added only when the
+    codes' phases *and* events both differ (final review, F1).
+    """
     counts = stats.pair(a, b)
     lines = [
         f"{a} & {b}: both in {counts.get('both', 0)}; "
         f"{a} defining in {counts.get(a, 0)}; {b} defining in {counts.get(b, 0)}"
     ]
-    if a[:3] != b[:3]:
+    if a[:3] != b[:3] and a[3:] != b[3:]:
         event_counts = stats.event_pair(a[3:], b[3:])
         lines.append(
             f"  events {a[3:]} & {b[3:]} across phases: both in {event_counts.get('both', 0)}; "

@@ -39,10 +39,10 @@ def test_render_trail_on_a_case_that_failed_at_h0() -> None:
     assert "(none)" in text  # the coding checks were never reached either
 
 
-def test_render_trail_on_a_case_where_h_all_was_not_needed() -> None:
+def test_render_trail_on_a_case_where_h_all_is_the_all_read_control() -> None:
     text = render_trail(TABLES, case_c())
     assert f"# {CASE_C_ID}" in text
-    assert "(absent: not needed)" in text
+    assert "note: control: all read" in text
     assert "true flagged findings: none" in text
 
 
