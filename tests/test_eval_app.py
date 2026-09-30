@@ -1963,6 +1963,7 @@ def _write_checkable_run(
     *,
     exclusions: tuple[str, ...] = (),
     includes: tuple[str, ...] = (),
+    sample: str = "dev-400",
 ) -> Path:
     """A dev-400 arm B run with one scored, stepped case: enough for `ntsb-eval check`."""
     folder = runs / run_id
@@ -1972,7 +1973,7 @@ def _write_checkable_run(
         [
             RunRecord(
                 run_id=run_id,
-                sample="dev-400",
+                sample=sample,
                 arm="B",
                 exclusions=exclusions,
                 includes=includes,
@@ -2253,6 +2254,72 @@ def test_check_reads_the_statistics_file_its_stats_flag_names(
     monkeypatch.setattr("apps.eval.__main__.load_stats", spy)
     assert main(["check", run_id, "--way", "rule", *flags]) == 0
     assert asked == [expected]
+
+
+_S3_SEALED_RUN = "20260926T000000-abc1234-dev-seal-s3-400-B"
+
+
+@pytest.mark.parametrize("way", ["rule", "luna"])
+def test_check_refuses_s27_statistics_for_the_s3_sealed_sample_before_anything_is_done(
+    way: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Decision 0129 item 5: S2.7's pool still holds ``dev-seal-s3-400``'s cases, so the
+    default ``--stats s27`` would feed the sample's own verdict counts into the check once S3.2's
+    registration opens it. Refused before any client, reservation or derived folder."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)  # S3.2's file
+    _write_checkable_run(runs, _S3_SEALED_RUN, sample="dev-seal-s3-400")
+    for flags in ([], ["--stats", "s27"]):
+        assert (
+            main(
+                ["check", _S3_SEALED_RUN, "--way", way, *flags],
+                client_factory=_boom_client,
+                jev_factory=_boom_jev,
+            )
+            == 1
+        )
+        err = capsys.readouterr().err
+        assert "decision 0129" in err
+        assert "--stats s3" in err
+    assert not (runs / f"{_S3_SEALED_RUN}-check-{way}").exists()
+    assert open_reservations(runs) == {}
+
+
+def test_check_reads_s3_statistics_for_the_s3_sealed_sample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
+    _write_checkable_run(runs, _S3_SEALED_RUN, sample="dev-seal-s3-400")
+    exit_code = main(
+        ["check", _S3_SEALED_RUN, "--way", "rule", "--stats", "s3"],
+        client_factory=_boom_client,
+        jev_factory=_boom_jev,
+    )
+    assert exit_code == 0
+    assert f"check {_S3_SEALED_RUN}-check-rule:" in capsys.readouterr().out
+    assert (runs / f"{_S3_SEALED_RUN}-check-rule" / "run.jsonl").exists()
+
+
+@pytest.mark.parametrize("flags", [[], ["--stats", "s27"], ["--stats", "s3"]])
+def test_check_on_dev_400_is_unchanged_by_the_statistics_rule(
+    flags: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    exit_code = main(
+        ["check", run_id, "--way", "rule", *flags],
+        client_factory=_boom_client,
+        jev_factory=_boom_jev,
+    )
+    assert exit_code == 0
+    assert (runs / f"{run_id}-check-rule" / "run.jsonl").exists()
 
 
 def test_check_refuses_an_unknown_statistics_name(capsys: pytest.CaptureFixture[str]) -> None:

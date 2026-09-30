@@ -37,6 +37,7 @@ from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.coding_stats import (
     HALVES,
+    POOL_EXCLUDED,
     STATS_NAMES,
     CodingStats,
     PoolCase,
@@ -65,7 +66,7 @@ class Stage:
 
 STAGES: dict[StatsName, Stage] = {
     "s27": Stage(
-        excluded=("dev-400", "dev-seal-400"),
+        excluded=POOL_EXCLUDED["s27"],
         json_out=TABLES_DIR / "coding_stats.json",
         built_from=(
             "development split, classes C/F/L, excluding dev-400 and dev-seal-400 "
@@ -73,7 +74,7 @@ STAGES: dict[StatsName, Stage] = {
         ),
     ),
     "s3": Stage(
-        excluded=("dev-400", "dev-seal-400", "dev-seal-s3-400"),
+        excluded=POOL_EXCLUDED["s3"],
         json_out=TABLES_DIR / "coding_stats_s3.json",
         built_from=(
             "development split, classes C/F/L, excluding dev-400, dev-seal-400 and "

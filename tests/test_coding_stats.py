@@ -4,14 +4,20 @@ import hashlib
 import re
 from pathlib import Path
 
+import pytest
+
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.coding_stats import (
     NO_GROUP,
+    POOL_EXCLUDED,
     STATS_NAMES,
     CodingStats,
     PoolCase,
+    StatsName,
     build,
     load_stats,
+    refuse_pool_holding,
 )
 
 LOC, STALL, CFIT = "452240", "452241", "452120"
@@ -160,6 +166,38 @@ def test_the_committed_s3_counts_load_and_name_no_case() -> None:
         Path("docs/results/s3-coding-stats.txt"),
     ):
         assert not _CASE_NUMBER.search(path.read_text()), path
+
+
+def test_each_stats_file_leaves_out_the_samples_its_provenance_names() -> None:
+    assert POOL_EXCLUDED["s27"] == ("dev-400", "dev-seal-400")
+    assert POOL_EXCLUDED["s3"] == ("dev-400", "dev-seal-400", "dev-seal-s3-400")
+    for name in STATS_NAMES:
+        built_from = load_stats(name).built_from
+        assert all(sample in built_from for sample in POOL_EXCLUDED[name]), name
+
+
+@pytest.mark.parametrize("name", ["s27", "s3"])
+@pytest.mark.parametrize("sample", ["dev-400", "dev-seal-400", "heldout-400"])
+def test_a_sample_both_pools_leave_out_may_be_checked_with_either(
+    sample: str, name: StatsName
+) -> None:
+    """``dev-400`` and ``dev-seal-400`` are outside both pools; a held-out sample is not a
+    development sample, and the check's own rule refuses it elsewhere."""
+    refuse_pool_holding(name, sample)
+
+
+def test_the_s3_sample_may_not_be_checked_with_counts_that_hold_its_own_verdicts() -> None:
+    """S2.7's pool still holds ``dev-seal-s3-400``'s cases (decision 0129 item 5)."""
+    refuse_pool_holding("s3", "dev-seal-s3-400")
+    with pytest.raises(ConfigurationError, match=r"--stats s3 \(decision 0129\)"):
+        refuse_pool_holding("s27", "dev-seal-s3-400")
+
+
+def test_a_development_sample_no_pool_leaves_out_is_refused_with_either_file() -> None:
+    """Fail closed: a later sample is refused until a file that excludes it is built."""
+    for name in STATS_NAMES:
+        with pytest.raises(ConfigurationError, match="no statistics file leaves it out"):
+            refuse_pool_holding(name, "dev-seal-s4-400")
 
 
 def test_the_stats_names_are_the_two_stages() -> None:

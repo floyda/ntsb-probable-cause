@@ -44,7 +44,11 @@ from ntsb_probable_cause.scoring.budget import (
     reserve_within_budget,
 )
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.coding_stats import STATS_NAMES, load_stats
+from ntsb_probable_cause.scoring.coding_stats import (
+    STATS_NAMES,
+    load_stats,
+    refuse_pool_holding,
+)
 from ntsb_probable_cause.scoring.judge import (
     JUDGE_MODEL,
     JudgeItem,
@@ -791,6 +795,10 @@ def _cmd_check(
             f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
             f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
         )
+    # Before anything is read, reserved or written: the counts must not hold the answers they
+    # check (decision 0129). S2.7's pool still holds `dev-seal-s3-400`; the default `--stats s27`
+    # stays, so every existing check is unchanged, and this refuses it for that sample.
+    refuse_pool_holding(args.stats, record.sample)
     # Before any case is read (fix round 1, Important 2): an ablation run withheld a field --
     # possibly phase_of_flight -- from the model, and reading it back from the raw record
     # below to rebuild `groups` would hand the check evidence the source run never had.
