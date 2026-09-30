@@ -584,7 +584,10 @@ B-v2 on `heldout-400`, once each at one commit, in the ledger; B-v2 is the bar S
 beat, and the v3 probe decides whether the loop gets an image tool. It depends on a model-switch
 stage, S2.4, specified separately.
 
-### S2.7. Coding guidance
+### S2.7. Coding guidance — done
+
+As built: see the stage specification's
+[As-built section](2026-09-26-s27-coding-guidance-design.md#as-built).
 
 *Added 2026-09-26 (0093–0100).* Arm B's misses are mostly coding convention — which code the
 NTSB flags as the defining event, and which phase — rather than reading. S2.7 measures the
