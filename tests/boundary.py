@@ -576,10 +576,19 @@ class RecordingBatchRunner:
         return status
 
 
+# The keys a reasoning_details entry keeps its readable text under: "summary" on a
+# reasoning.summary entry, "text" on a reasoning.text entry. A reasoning.encrypted entry keeps
+# only opaque "data", which no tripwire can read.
+_REASONING_TEXT_KEYS = ("summary", "text")
+
+
 def _request_texts(request: BatchRequest) -> list[tuple[str, str]]:
     """Every string a batch request would send: system, payload, each turn and its tool calls.
 
-    A tool turn's payload text and its tool text are separate entries (S3.1 Task 3).
+    A tool turn's payload text and its tool text are separate entries (S3.1 Task 3). An
+    assistant turn's readable reasoning (``reasoning.summary``'s ``summary``, ``reasoning.text``'s
+    ``text``) is screened whether or not ``pass_reasoning`` would send it (S3.1 Task 4, call 2b
+    is the first request that does); an encrypted entry's ``data`` is opaque and cannot be.
     """
     texts = [("system", request.system), ("payload", request.payload.text)]
     for turn in request.history:
@@ -591,6 +600,12 @@ def _request_texts(request: BatchRequest) -> list[tuple[str, str]]:
             texts.append((f"{turn.role} turn tool text", turn.tool_text.text))
         for call in turn.tool_calls:
             texts.append((f"{turn.role} turn tool call", call.arguments))
+        for detail in turn.reasoning_details:
+            for key in _REASONING_TEXT_KEYS:
+                text = detail.get(key)
+                if isinstance(text, str):
+                    kind = str(detail.get("type", "reasoning")).removeprefix("reasoning.")
+                    texts.append((f"{turn.role} turn reasoning {kind}", text))
     return texts
 
 

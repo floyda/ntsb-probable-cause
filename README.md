@@ -318,6 +318,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `reply_budget` | one-shot | `s26-reply-budget-dev.txt` — the evidence for 0084 |
 | `occurrence_misses` | live tool | `s26-occurrence-misses-dev.txt` — counts only, development arm B runs only |
 | `s3_probe` | one-shot | `s3-probe-dev.txt` — the S3 learning probe (`select`, `run`, `report`, `trails`); not a result, sets no bar |
+| `s3_shape_probe` | one-shot | `s3-shape-probe.txt` and the `tests/fixtures/openrouter/s3/` pairs — the native-tool shape probe on an invented case (spec S3.1 §5.5); paid (cents), run on or after 1 October 2026 |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run

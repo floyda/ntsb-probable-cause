@@ -15,6 +15,7 @@ from tests.boundary import (
     RecordingBatchRunner,
     Splitter,
     _code_pattern,
+    _request_texts,
     _window_spans,
     _windows,
     as_ongoing,
@@ -284,7 +285,16 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
 @pytest.mark.parametrize(
     "where",
-    ["system", "payload", "history", "tool_payload", "tool_text", "tool_call_arguments"],
+    [
+        "system",
+        "payload",
+        "history",
+        "tool_payload",
+        "tool_text",
+        "tool_call_arguments",
+        "reasoning_summary",
+        "reasoning_text",
+    ],
 )
 def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
@@ -311,6 +321,22 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
                 tool_calls=(ToolCall(call_id="c1", name="list_docket", arguments=needle),),
             ),
         )
+    elif where in {"reasoning_summary", "reasoning_text"}:
+        # An assistant turn's passed-back reasoning (S3.1 Task 4, call 2b): the readable
+        # entries are screened; the encrypted ones cannot be.
+        key = "summary" if where == "reasoning_summary" else "text"
+        kind = "reasoning.summary" if where == "reasoning_summary" else "reasoning.text"
+        history = (
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(
+                    {"type": "reasoning.encrypted", "data": "opaque"},
+                    {"type": kind, key: needle, "index": 1},
+                ),
+            ),
+        )
     request = BatchRequest(
         custom_id="case-1",
         payload=(
@@ -324,6 +350,30 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     )
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_requests_clean([request], [("factual narrative", needle)])
+
+
+def test_assert_requests_clean_reads_reasoning_summaries_and_skips_encrypted_data() -> None:
+    """A clean summary passes; an encrypted entry is not text and is left alone (Task 4)."""
+    needle = "the pilot did not extend the landing gear"
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="",
+        history=(
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(
+                    {"type": "reasoning.summary", "summary": "A clean summary.", "index": 0},
+                    {"type": "reasoning.encrypted", "data": f"opaque {needle}"},
+                ),
+            ),
+        ),
+    )
+    assert_requests_clean([request], [("factual narrative", needle)])
+    assert ("assistant turn reasoning summary", "A clean summary.") in _request_texts(request)
 
 
 def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
