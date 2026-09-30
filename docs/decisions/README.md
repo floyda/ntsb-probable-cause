@@ -61,9 +61,9 @@ under `docs/specs/` and the record links to it.
 | [0018](0018-squash-merges-and-tag-only-releases.md) | Squash merges, and tag-only releases at stage close | Accepted |
 | [0019](0019-tripwire-skips-sentence-check-on-weather-report.md) | In the weather report field, the tripwire skips sentences from the factual narrative | Accepted |
 | [0020](0020-amateur-built-make-and-model-replaced-in-evidence.md) | The make and model of amateur-built aircraft are replaced in evidence | Accepted |
-| [0021](0021-agency-measured-as-hypothesis-trail.md) | Agency is measured as a scored hypothesis trail | Accepted |
-| [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted |
-| [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted |
+| [0021](0021-agency-measured-as-hypothesis-trail.md) | Agency is measured as a scored hypothesis trail | Accepted; items 1 and 4 superseded by 0121 |
+| [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted; items 4 and 5 superseded by 0121 (item 4 reworded; P1-P6 withdrawn) |
+| [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted; items 1, 2 and 4 superseded by 0121 |
 | [0024](0024-open-split-enters-measurements-only-as-numbers.md) | Open-split cases enter a measurement only as numbers | Accepted |
 | [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022; item 1 amended by 0105 |
 | [0026](0026-slices-fixed-samples-and-heldout-ledger.md) | Slices by fatality first; fixed samples; a held-out ledger | Accepted |
@@ -146,6 +146,18 @@ under `docs/specs/` and the record links to it.
 | [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
 | [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
 | [0105](0105-codes-missing-from-the-dictionary-join-the-tables.md) | Two phases and four events the NTSB uses, missing from its data dictionary, join the code tables from a separate supplement file, labelled from its own records; prompt version s1-v6 | Accepted; amends 0025 item 1 |
-| [0106](0106-round-6-kept-by-override.md) | S2.7's Round 6 (Aircraft control / Pilot, finding round 1) is kept by override of the do-no-harm rule: recall +11.4 points, top-1 -6.3 against a reference known to be high, no clear harm against three other runs | Accepted; overrides 0098 item 4's outcome for Round 6 only |
+| [0106](0106-round-6-kept-by-override.md) | S2.7's Round 6 (Aircraft control / Pilot, finding round 1) is kept by override of the do-no-harm rule: recall +11.4 points, top-1 -6.3 against a reference known to be high, no clear harm against three other runs | Accepted; overrides 0098 item 4's outcome for Round 6 only; item 5's S2.8 route closed by 0132 |
 | [0107](0107-s27-spend-counts-its-own-branches-only.md) | S2.7's spend counts only its own branches (named `s27-`), not a later stage cut from one, and not HEAD | Accepted; amends 0102 item 3 |
 | [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |
+| [0121](0121-agency-moves-to-reading-and-coding.md) | Agency moves to the read choice and the coding step; P1-P6 are withdrawn and 0022's four results reworded, before any measurement of the loop | Accepted; supersedes 0021 items 1 and 4, 0022 items 4 and 5, 0023 items 1, 2 and 4 |
+| [0122](0122-h0-and-later-triggers.md) | The first hypothesis uses all non-docket evidence present; later triggers re-send read documents in full and re-offer skipped ones | Accepted |
+| [0123](0123-the-staged-replay-is-paused.md) | The staged replay and the masked condition are paused: no docket seen before closure; re-checked at 14 nights | Accepted |
+| [0124](0124-native-tool-calling-and-a-cacheable-conversation.md) | Native tool calling, with a stable tool set, `tool_choice` per step and an append-only conversation; tools in-process | Accepted |
+| [0125](0125-the-suggestion-tool.md) | The suggestion tool: the pool's five commonest defining events for a phase group, called by the agent's choice | Accepted |
+| [0126](0126-confidence-is-calibrated-in-code.md) | Confidence is calibrated in code; abstain is a threshold on the fitted value | Accepted |
+| [0127](0127-arms-ablations-and-the-ordering-check-in-arm-b.md) | S3's arms and ablations; arm B calls every coding tool in a fixed order; the ordering check runs in arm B only | Accepted |
+| [0128](0128-s3-in-three-sub-stages-with-one-spend-line.md) | S3 in three sub-stages (the loop, the claims, live shadow), with one $50 spend line | Accepted |
+| [0129](0129-s3s-sealed-sample-and-statistics.md) | S3's sealed sample `dev-seal-s3-400` and statistics file; the guidance files stay unchanged, the overlap disclosed | Accepted |
+| [0130](0130-the-loops-noise-floor-and-format-gate.md) | The loop's noise floor (two identical `dev-400` runs, a third if they differ by more than 4.0 points) and a 2% format gate | Accepted |
+| [0131](0131-the-probe-spend-kind.md) | The `probe` spend kind; the learning probe's rows relabelled, with the originals kept beside them | Accepted |
+| [0132](0132-s28-is-cancelled.md) | S2.8 is cancelled; its branch stays unmerged and uncited | Accepted; closes 0106 item 5's S2.8 route |

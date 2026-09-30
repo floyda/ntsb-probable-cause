@@ -82,3 +82,15 @@ The cap is re-measured in S1 and S3.
 
 Accepted on Andy's squash merge of the pull request that carries the agency design revision,
 2026-09-14.
+
+## Superseded in part, 2026-09-30 (appended; nothing above is edited)
+
+- **Items 1 and 4 are superseded by
+  [0121](0121-agency-moves-to-reading-and-coding.md).** The hypothesis is recorded at
+  checkpoints (before reading, after each read choice that read something, and in the answer),
+  not after every tool call, and the expected effect is stated for each document in the read
+  choice. The loop does not stop at a confidence threshold: it stops at the end of its steps,
+  at the cost cap, or when a call fails after one retry. Abstain is a threshold on a confidence
+  fitted in code, still chosen on the development split only
+  ([0126](0126-confidence-is-calibrated-in-code.md)).
+- Items 2, 3, 5, 6 and 7 stand.
