@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s27-coding-statss27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -217,6 +217,12 @@ stage-spend:
 	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
 # S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
 # S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
+
+s3-spend:
+	uv run python -m scripts.stage_spend --stage s3 --estimate $(or $(EST),0)
+# S3 (spec §14, decision 0128 item 2): the stage's spend by commit on its own s3- branches, free.
+# Every paid S3 target runs this first with its estimate and stops if the $50 line would be
+# passed. The learning probe's $1.1954 (s3-probe, decision 0131) is outside the line.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt

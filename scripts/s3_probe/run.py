@@ -11,8 +11,9 @@ Reads ``<data_dir>/probes/s3-probe/cases.json`` (Task 1's ``select``) and runs e
 ``scoring/preparation.py``'s ``run_preparation``). Every finished case's trail is appended to
 ``trails.jsonl`` as it completes, so a crash keeps whatever finished; a ``SpendRecord`` is
 written every five finished cases and once more for the remainder
-(``scoring/budget.py``, kind ``"inventory"`` -- the closest existing kind, decision-logged in
-the plan's Deviations). The run reserves ``RUN_CAP_USD`` against the monthly budget (decision
+(``scoring/budget.py``, kind ``"probe"`` since decision 0131; the 2026-09-29 jobs were written
+as ``"inventory"``, the closest kind then allowed, and ``scripts/relabel_probe_spend.py``
+relabels them). The run reserves ``RUN_CAP_USD`` against the monthly budget (decision
 0083, $40) before it starts and settles that reservation in a ``finally``, exactly as
 ``run_preparation`` does for its own jobs.
 
@@ -80,7 +81,7 @@ from scripts.s3_probe.trail import CaseTrail
 
 CASES_RELATIVE = Path("probes/s3-probe/cases.json")
 PROBE_ROOT = Path("probes/s3-probe")
-SPEND_KIND = "inventory"  # the closest existing SpendRecord.kind (Deviations); a known mislabel.
+SPEND_KIND = "probe"  # decision 0131; the three 2026-09-29 jobs wrote "inventory" (relabelled).
 CHUNK = 5
 _RECONCILE_EPSILON_USD = 1e-9  # a float rounding sliver, never a real dollar
 

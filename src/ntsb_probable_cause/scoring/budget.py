@@ -21,19 +21,23 @@ from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl, write_jso
 RESERVATION_FILE = "reservation.json"
 LOCK_FILE = ".budget.lock"
 SPEND_FILE = "spend.jsonl"
+# The original rows of a job whose rows were relabelled (decision 0131 item 3). The budget code
+# reads ``*/spend.jsonl`` only, so this copy is kept beside the new rows and is never counted.
+RELABEL_FILE = "spend-before-relabel.jsonl"
 
 
 class SpendRecord(BaseModel):
     """Paid work that is not an evaluation run: evidence preparation (decision 0081).
 
     A job appends one row per chunk of calls, so a job that dies mid-way has still recorded
-    what it spent up to its last chunk.
+    what it spent up to its last chunk. ``probe`` (decision 0131) is paid work that tests a
+    shape or a flow and is neither an evaluation run nor evidence preparation.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: str
-    kind: Literal["inventory", "transcriber-test", "transcription"]
+    kind: Literal["inventory", "transcriber-test", "transcription", "probe"]
     model: str
     started: datetime
     calls: int

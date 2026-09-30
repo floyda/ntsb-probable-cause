@@ -7,6 +7,7 @@ import pytest
 
 from ntsb_probable_cause.errors import BudgetError
 from ntsb_probable_cause.scoring.budget import (
+    RELABEL_FILE,
     RESERVATION_FILE,
     SpendRecord,
     budget_lock,
@@ -148,3 +149,23 @@ def test_stage_spent_counts_runs_and_spend_rows_of_the_stage_only(tmp_path: Path
         ),
     )
     assert stage_spent(runs, _STAGE) == (1.25, 0.5)
+
+
+def test_a_probe_spend_row_validates_and_month_spent_counts_it(tmp_path: Path) -> None:
+    """Decision 0131: ``probe`` is paid work that tests a shape or a flow."""
+    now = datetime(2026, 10, 3, tzinfo=UTC)
+    row = _spend("s3-probe-job", 0.25, now).model_copy(update={"kind": "probe"})
+    assert SpendRecord.model_validate_json(row.model_dump_json()).kind == "probe"
+    write_spend(tmp_path, row)
+    assert month_spent(tmp_path, now=now) == pytest.approx(0.25)
+
+
+def test_a_relabel_copy_beside_spend_jsonl_is_never_counted(tmp_path: Path) -> None:
+    """Decision 0131 item 3: the kept original rows are not read by the budget code."""
+    now = datetime(2026, 10, 3, tzinfo=UTC)
+    probe = _spend("job", 0.25, now).model_copy(update={"kind": "probe"})
+    write_spend(tmp_path, probe)
+    write_jsonl(tmp_path / "job" / RELABEL_FILE, [probe.model_copy(update={"kind": "inventory"})])
+    assert RELABEL_FILE == "spend-before-relabel.jsonl"
+    assert month_spent(tmp_path, now=now) == pytest.approx(0.25)
+    assert stage_spent(tmp_path, frozenset({"abc1234" + "0" * 33})) == (0.0, 0.25)

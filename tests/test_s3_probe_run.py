@@ -263,7 +263,7 @@ def test_a_failing_case_settles_the_reservation_and_does_not_abort_the_run(
 # ------------------------------------------------------------------------------------------
 
 
-def test_spend_rows_carry_kind_inventory_and_the_job_id(
+def test_spend_rows_carry_kind_probe_and_the_job_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings = _settings(tmp_path)
@@ -281,7 +281,7 @@ def test_spend_rows_carry_kind_inventory_and_the_job_id(
     rows = [json.loads(line) for line in spend_files[0].read_text().splitlines()]
     # One case, fewer than a chunk of 5: exactly one remainder row.
     assert len(rows) == 1
-    assert rows[0]["kind"] == "inventory"
+    assert rows[0]["kind"] == "probe"
     assert rows[0]["job_id"] == job_id
     assert rows[0]["cost_usd"] > 0
     assert rows[0]["calls"] > 0
