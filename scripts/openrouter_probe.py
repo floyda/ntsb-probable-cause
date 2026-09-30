@@ -31,8 +31,20 @@ from ntsb_probable_cause.settings import Settings
 
 OUT = Path("tests/fixtures/openrouter")
 FIXTURE = Path("tests/fixtures/records/ANC09CA020.json")
+# Ids and key material by key name. ``user_id``, ``organization_id`` and ``account_id`` were
+# added for the S3.1 shape probe (they name whoever holds the key; no saved fixture has one).
 _REDACT_KEYS = frozenset(
-    {"id", "authorization", "x-api-key", "api_key", "request_id", "tool_call_id"}
+    {
+        "id",
+        "authorization",
+        "x-api-key",
+        "api_key",
+        "request_id",
+        "tool_call_id",
+        "user_id",
+        "organization_id",
+        "account_id",
+    }
 )
 SYSTEM = (
     "You are an aviation accident analyst. From the evidence, name the phase of flight and the "

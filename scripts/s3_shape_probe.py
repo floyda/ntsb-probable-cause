@@ -77,7 +77,11 @@ from scripts.openrouter_probe import redact
 
 Variant = Literal["standard", "batch"]
 Step = Literal["1", "2", "3", "2b"]
-State = Literal["answered", "refused", "unfinished", "not run"]
+# answered: a reply came back. refused: the provider answered the request with a deterministic
+# 4xx (not 408 or 429), or a batch failed. error: no usable answer for a reason that says nothing
+# about the request (a 5xx, 408 or 429 after the client's retries, a transport error, a batch
+# that expired or was cancelled). unfinished: accepted, but no reply was read. not run: skipped.
+State = Literal["answered", "refused", "error", "unfinished", "not run"]
 
 VARIANTS: tuple[Variant, ...] = ("standard", "batch")
 # The guidance the loop's system text carries (the two S2.7 files kept, decisions 0106, 0117).
@@ -96,7 +100,13 @@ PROBE_RESULT = "The tool ran in a shape probe and returned no counts. Submit you
 
 _TOOL_NAMES = frozenset(get_args(schemas.ToolName))
 _TOKEN = re.compile(r"[a-z_]{1,24}")
-_STATUS = re.compile(r"(?:returned|status) (\d{3})\b")
+_STATUS = re.compile(r"(?:returned|status|failed with) (\d{3})\b")
+# A refusal is the provider's deterministic answer to this request: a 4xx other than these two,
+# which say "try again" (408 request timeout, 429 rate limit).
+_CLIENT_ERRORS = range(400, 500)
+_TRY_AGAIN = frozenset({408, 429})
+ERROR_NOTE = "provider or transport error, not an answer to the request"
+ERROR_TEXT_NOT_SAVED = "provider error text not saved"
 
 
 # ------------------------------------------------------------------------------------------
@@ -215,6 +225,19 @@ def _status_of(text: str) -> int | None:
     return int(found.group(1)) if found else None
 
 
+def _classify(text: str) -> tuple[Literal["refused", "error"], int | None]:
+    """Whether a failed call's error text is a refusal or only an error, and its HTTP status.
+
+    Only a deterministic 4xx (not 408 or 429) is a refusal. A 5xx, 408 or 429 after the
+    client's retries, or a transport error (no status in the text), says nothing about whether
+    the provider would accept the request, so no check may read it as an answer.
+    """
+    status = _status_of(text)
+    if status in _CLIENT_ERRORS and status not in _TRY_AGAIN:
+        return "refused", status
+    return "error", status
+
+
 def _number(value: object) -> str:
     return "n/a" if value is None else str(value)
 
@@ -249,7 +272,10 @@ class CallRecord:
 
     @property
     def accepted(self) -> bool:
-        """Whether the provider took the request (a batch that never finished was accepted)."""
+        """Whether the provider took the request (a batch that never finished was accepted).
+
+        An ``error`` is neither: nothing says whether the provider took the request.
+        """
         return self.state in {"answered", "unfinished"}
 
     @property
@@ -261,10 +287,11 @@ class CallRecord:
         """One line of ``key=value`` flags and numbers."""
         if self.state == "not run":
             return f"{self.name}: choice={self.choice} not run ({self.note})"
-        parts = [f"choice={self.choice}", f"accepted={'yes' if self.accepted else 'no'}"]
+        accepted = "unknown" if self.state == "error" else "yes" if self.accepted else "no"
+        parts = [f"choice={self.choice}", f"accepted={accepted}"]
         if self.http_status is not None:
             parts.append(f"http={self.http_status}")
-        if self.state in {"refused", "unfinished"}:
+        if self.state in {"refused", "error", "unfinished"}:
             parts.append(f"({self.note})")
             return f"{self.name}: {' '.join(parts)}"
         cost = "n/a" if self.cost_usd is None else f"${self.cost_usd:.6f}"
@@ -462,9 +489,8 @@ class Probe:
             if made and made[-1].response is not None:  # HTTP was fine; the body was not a reply
                 note = "reply is not a chat completion"
                 return _Answer(replace(blank, state="unfinished", note=note, seconds=seconds), None)
-            note = "the provider refused the request"
-            status = _status_of(str(error))
-            return _Answer(replace(blank, note=note, http_status=status, seconds=seconds), None)
+            refusal = "the provider refused the request"
+            return _Answer(_failure(blank, str(error), refusal=refusal, seconds=seconds), None)
         seconds = self._clock() - started
         self._save(name, mark)
         dollars, source = cost_usd(reply, request.settings)
@@ -480,10 +506,9 @@ class Probe:
             batch_id = self._batch.submit([request])
         except ModelError as error:
             self._save(name, mark)
-            note = "the provider refused the batch"
-            status = _status_of(str(error))
+            refusal = "the provider refused the batch"
             seconds = self._clock() - started
-            return _Answer(replace(blank, note=note, http_status=status, seconds=seconds), None)
+            return _Answer(_failure(blank, str(error), refusal=refusal, seconds=seconds), None)
         try:
             polled = self._batch.wait(
                 batch_id, every_seconds=POLL_SECONDS, sleep=self._patience(started)
@@ -509,12 +534,15 @@ class Probe:
             )
             return _Answer(record, result.reply)
         if result is not None:
-            note = "the request failed inside the batch"
-            status = _status_of(result.error or "")
-            return _Answer(replace(blank, note=note, http_status=status, seconds=seconds), None)
+            refusal = "the request failed inside the batch"
+            failed = _failure(blank, result.error or "", refusal=refusal, seconds=seconds)
+            return _Answer(failed, None)
         if polled.status != "completed":
+            # A batch that failed was refused as a whole; one that expired or was cancelled
+            # was never answered either way.
+            state: State = "refused" if polled.status == "failed" else "error"
             note = f"batch {_token(polled.status)}"
-            return _Answer(replace(blank, note=note, seconds=seconds), None)
+            return _Answer(replace(blank, state=state, note=note, seconds=seconds), None)
         note = "the batch completed with no result"
         return _Answer(replace(blank, state="unfinished", note=note, seconds=seconds), None)
 
@@ -564,8 +592,10 @@ class Probe:
         """Save the exchanges since ``mark`` as one redacted request/response pair.
 
         The request is the first exchange's body (for a batch, the submitted batch); the
-        response is the last exchange's (for a batch, its final poll). A call the provider
-        refused is saved with its status and the provider's message, in place of a response.
+        response is the last exchange's (for a batch, its final poll), with every ``error`` in
+        it replaced by a fixed token and every id blanked by ``redact``. A call that failed
+        is saved with its status and a fixed kind, never the provider's text, which
+        ``redact`` (it reads key names) cannot clean.
         """
         if self._fixtures_dir is None:
             return
@@ -574,14 +604,40 @@ class Probe:
             return
         last = made[-1]
         if last.response is not None:
-            response: dict[str, object] = last.response
+            response: object = redact(_without_error_text(last.response))
         else:
-            response = {
-                "error": {"status": _status_of(last.error or ""), "message": last.error},
-            }
+            state, status = _classify(last.error or "")
+            response = {"error": {"status": status, "kind": state}}
         self._fixtures_dir.mkdir(parents=True, exist_ok=True)
-        pair = {"request": redact(made[0].body), "response": redact(response)}
+        pair = {"request": redact(made[0].body), "response": response}
         (self._fixtures_dir / f"{name}.json").write_text(json.dumps(pair, indent=1) + "\n")
+
+
+def _failure(blank: CallRecord, text: str, *, refusal: str, seconds: float) -> CallRecord:
+    """``blank`` marked ``refused`` (with ``refusal`` as its note) or ``error``, from the text."""
+    state, status = _classify(text)
+    note = refusal if state == "refused" else ERROR_NOTE
+    return replace(blank, state=state, note=note, http_status=status, seconds=seconds)
+
+
+def _without_error_text(value: object) -> object:
+    """``value`` with whatever a provider put under an ``error`` key replaced by a fixed token.
+
+    A failed batch's poll and a failed request's result carry the provider's message there;
+    ``redact`` blanks ids by key name and cannot tell what a free-text message holds.
+    """
+    if isinstance(value, dict):
+        return {
+            key: (
+                ERROR_TEXT_NOT_SAVED
+                if key == "error" and child is not None
+                else _without_error_text(child)
+            )
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [_without_error_text(child) for child in value]
+    return value
 
 
 def _skipped(variant: Variant, step: Step, label: str, reason: str) -> _Answer:
@@ -619,7 +675,8 @@ def _accepts(by: dict[str, CallRecord]) -> str:
             parts.append(f"{variant} refused{_status(record)}")
             flags.append(False)
         else:
-            parts.append(f"{variant} not measured")
+            why = "" if record is None else f" (call 1 {record.state}{_status(record)})"
+            parts.append(f"{variant} not measured{why}")
             flags.append(None)
     return f"check 1: {_verdict(flags)} ({'; '.join(parts)})"
 
@@ -669,7 +726,7 @@ def _multi_turn(by: dict[str, CallRecord]) -> str:
             phrases.append(f"batch-{step} refused{_status(record)}")
             flags.append(False)
         else:
-            state = "not measured" if record is None else record.state
+            state = "not measured" if record is None else f"{record.state}{_status(record)}"
             phrases.append(f"batch-{step} {state}")
             flags.append(None)
     return f"check 3: {_verdict(flags)} ({'; '.join(phrases)})"
@@ -679,7 +736,10 @@ def _reasoning_of(variant: str, by: dict[str, CallRecord]) -> tuple[str, str]:  
     """One variant's answer to check 4: ``required``, ``not required`` or ``not measured``."""
     one, two, back = by.get(f"{variant}-1"), by.get(f"{variant}-2"), by.get(f"{variant}-2b")
     if two is None or two.state not in {"answered", "refused"}:
-        return "not measured", f"call 2 {'not measured' if two is None else two.state}"
+        return (
+            "not measured",
+            f"call 2 {'not measured' if two is None else two.state + _status(two)}",
+        )
     if one is not None and not one.reasoning_details:
         if two.state == "answered":
             return "not required", (
@@ -704,7 +764,8 @@ def _reasoning_of(variant: str, by: dict[str, CallRecord]) -> tuple[str, str]:  
                 "call 2 answered without reasoning_details; "
                 f"passing them back was refused{_status(back)}"
             )
-        return "not required", "call 2 answered without reasoning_details; call 2b did not run"
+        state = "did not run" if back is None else f"{back.state}{_status(back)}"
+        return "not required", f"call 2 answered without reasoning_details; call 2b {state}"
     if back is not None and back.state == "answered":
         return "required", (
             f"call 2 refused{_status(two)} without reasoning_details, call 2b answered with them"
@@ -858,7 +919,9 @@ def _write_readme(fixtures_dir: Path, job_id: str, started: datetime) -> None:
         "completion; `batch-N` is a one-request batch (the submitted batch, and its final "
         "poll). Calls 1, 2 and 3 force `record_hypothesis`, require any tool and force "
         "`submit_answer`; `2b` is call 2 with call 1's `reasoning_details` passed back. A call "
-        "the provider refused holds its status and message where the response would be. The "
+        "that failed holds its HTTP status and a fixed kind (`refused` or `error`) where the "
+        "response would be; any error text in a saved poll is replaced by a fixed token, because "
+        "provider text cannot be redacted by key. The "
         "answers are in `docs/results/s3-shape-probe.txt` (spec §5.5).\n"
     )
 
@@ -904,6 +967,11 @@ def main(
         started = now()
         sha, dirty = gitinfo.commit_state()
         job_id = f"s3-shape-probe-{started:%Y%m%dT%H%M%S}-{sha}"
+        # Everything that can fail for a reason that has nothing to do with money is built
+        # before the reservation, so nothing between it and the ``try`` below can leave it open.
+        tables = load_tables()
+        system = system_text()
+        payload = invented_payload()
         reserve_within_budget(
             settings.runs_dir, job_id, RESERVE_USD, settings.monthly_budget_usd, now=started
         )
@@ -911,14 +979,12 @@ def main(
         print(f"refused: {error}", file=sys.stderr)
         return 1
 
-    system = system_text()
-    payload = invented_payload()
     subject: Probe | None = None
     try:
         with RecordingClient(key, base_url=settings.openrouter_base_url, sleep=sleep) as http:
             subject = Probe(
                 http,
-                tables=load_tables(),
+                tables=tables,
                 system=system,
                 payload=payload,
                 fixtures_dir=args.fixtures_dir,
@@ -928,29 +994,32 @@ def main(
                 on_record=lambda record: print(record.render(), file=sys.stderr),
             )
             records = subject.run()
+        # The results are paid for: they are printed and written before the bookkeeping below,
+        # so a failure in it cannot lose them.
+        text = report(records, header=_header(job_id, sha, dirty, system, payload))
+        print(text)
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n")
     finally:
-        if subject is not None and subject.calls_made:
-            write_spend(
-                settings.runs_dir,
-                SpendRecord(
-                    job_id=job_id,
-                    kind=SPEND_KIND,
-                    model=sources.DEFAULT_MODEL,
-                    started=started,
-                    calls=subject.calls_made,
-                    cost_usd=subject.spent,
-                    commit_sha=sha,
-                    dirty=dirty,
-                ),
-            )
-            _write_readme(args.fixtures_dir, job_id, started)
-        settle(settings.runs_dir, job_id)
-
-    text = report(records, header=_header(job_id, sha, dirty, system, payload))
-    print(text)
-    if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text + "\n")
+        try:
+            if subject is not None and subject.calls_made:
+                write_spend(
+                    settings.runs_dir,
+                    SpendRecord(
+                        job_id=job_id,
+                        kind=SPEND_KIND,
+                        model=sources.DEFAULT_MODEL,
+                        started=started,
+                        calls=subject.calls_made,
+                        cost_usd=subject.spent,
+                        commit_sha=sha,
+                        dirty=dirty,
+                    ),
+                )
+                _write_readme(args.fixtures_dir, job_id, started)
+        finally:
+            settle(settings.runs_dir, job_id)
     return 0
 
 

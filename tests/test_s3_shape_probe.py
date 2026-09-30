@@ -161,6 +161,9 @@ def batches_ok() -> list[dict[str, object]]:
     return [batch_status(body) for body in chat_ok(cost=None)]
 
 
+Reply = dict[str, object] | httpx.Response | Exception
+
+
 @dataclass
 class Wired:
     """The two routes the probe posts to."""
@@ -171,8 +174,8 @@ class Wired:
 
 def wire(
     router: respx.MockRouter,
-    chat: Sequence[dict[str, object] | httpx.Response | Exception],
-    batches: Sequence[dict[str, object] | httpx.Response],
+    chat: Sequence[Reply],
+    batches: Sequence[Reply],
 ) -> Wired:
     """Answer the probe's calls in order; a ``dict`` is an accepted reply, a ``Response`` is raw."""
     chat_effects: list[httpx.Response | Exception] = [
@@ -508,7 +511,7 @@ def test_a_provider_that_refuses_tools_on_batch_is_recorded_and_stops_the_batch_
     assert [records[f"batch-{s}"].state for s in ("2", "3", "2b")] == ["not run"] * 3
     assert len(wired.submit.calls) == 1  # a refused submit is never retried, and nothing follows
     lines = probe.checks(subject.records)
-    assert lines[0].startswith("check 1: no")
+    assert lines[0].startswith("check 1: no (")
     assert "batch refused HTTP 400" in lines[0]
     assert lines[2].startswith("check 3: not measured")
     assert subject.spent == pytest.approx(4 * 0.001)  # a refusal costs nothing
@@ -526,7 +529,7 @@ def test_a_forced_call_that_is_not_honoured_is_recorded(router: respx.MockRouter
     assert [records[f"standard-{s}"].state for s in ("2", "3", "2b")] == ["not run"] * 3
     assert "returned no tool call" in records["standard-2"].note
     lines = probe.checks(subject.records)
-    assert lines[1].startswith("check 2: no")
+    assert lines[1].startswith("check 2: no (")
     assert "forced record_hypothesis not honoured (no tool called)" in lines[1]
     assert any("standard-1" in note for note in probe.notes(subject.records))
 
@@ -534,7 +537,7 @@ def test_a_forced_call_that_is_not_honoured_is_recorded(router: respx.MockRouter
 def test_a_forced_call_to_the_wrong_tool_is_not_honoured() -> None:
     records = replace(all_good(), "batch-3", tool_names=("describe_codes",))
     line = probe.checks(records)[1]
-    assert line.startswith("check 2: no")
+    assert line.startswith("check 2: no (")
     assert "batch: " in line
     assert "forced submit_answer not honoured (called describe_codes)" in line
 
@@ -542,7 +545,7 @@ def test_a_forced_call_to_the_wrong_tool_is_not_honoured() -> None:
 def test_a_required_call_that_calls_nothing_is_not_honoured() -> None:
     records = replace(all_good(), "standard-2", tool_names=(), finish_reason="stop")
     line = probe.checks(records)[1]
-    assert line.startswith("check 2: no")
+    assert line.startswith("check 2: no (")
     assert "required not honoured (no tool called)" in line
 
 
@@ -660,7 +663,7 @@ def test_a_request_that_fails_inside_a_completed_batch_is_refused(
     assert records["batch-1"].state == "refused"
     assert records["batch-1"].http_status == 400
     assert "inside the batch" in records["batch-1"].note
-    assert probe.checks(subject.records)[0].startswith("check 1: no")
+    assert probe.checks(subject.records)[0].startswith("check 1: no (")
 
 
 def test_a_batch_that_fails_before_running_is_refused(router: respx.MockRouter) -> None:
@@ -675,6 +678,149 @@ def test_a_batch_that_fails_before_running_is_refused(router: respx.MockRouter) 
     assert "batch failed" in records["batch-1"].note
 
 
+MARKER = "MARKER-PROVIDER-TEXT-user_id-7f3a"
+
+
+def overloaded() -> list[httpx.Response]:
+    """A 503 for each of the five attempts the client makes before it gives up."""
+    return [httpx.Response(503, json={"error": {"message": MARKER}})] * 5
+
+
+def timed_out() -> list[Exception]:
+    """A read timeout for each of the five attempts."""
+    return [httpx.ReadTimeout("timed out")] * 5
+
+
+@pytest.mark.parametrize(
+    ("text", "state", "status"),
+    [
+        ("/api/v1/chat/completions returned 400: {}", "refused", 400),
+        ("/api/v1/chat/completions returned 401: {}", "refused", 401),
+        ("/api/v1/chat/completions returned 404: {}", "refused", 404),
+        ("/api/v1/chat/completions returned 422: {}", "refused", 422),
+        ("/api/v1/chat/completions returned 408: {}", "error", 408),
+        ("/api/v1/chat/completions returned 501: {}", "error", 501),
+        ("/api/v1/chat/completions returned 301: {}", "error", 301),
+        ("/api/v1/chat/completions failed after 5 attempts; last status 503", "error", 503),
+        ("/api/v1/chat/completions failed after 5 attempts; last status 429", "error", 429),
+        (
+            "/api/v1/chat/completions failed after 5 attempts; last status ReadTimeout",
+            "error",
+            None,
+        ),
+        (
+            "/api/beta/batches failed with 429 and was not retried, because a duplicate",
+            "error",
+            429,
+        ),
+        ("/api/beta/batches failed with ConnectError and was not retried", "error", None),
+        ("status 400: {}", "refused", 400),
+        ("status 500: {}", "error", 500),
+        ("", "error", None),
+    ],
+)
+def test_only_a_deterministic_4xx_is_a_refusal(text: str, state: str, status: int | None) -> None:
+    assert probe._classify(text) == (state, status)
+
+
+def test_a_503_after_the_clients_retries_is_an_error_not_a_refusal(
+    router: respx.MockRouter,
+) -> None:
+    chat: list[Reply] = [
+        completion("record_hypothesis"),
+        *overloaded(),
+        completion("describe_codes", args=DESCRIBE),
+    ]
+    subject, records, wired = run_probe(router, chat=chat)
+    second = records["standard-2"]
+    assert (second.state, second.http_status) == ("error", 503)
+    assert second.accepted is False
+    assert "not an answer" in second.note
+    assert "accepted=unknown http=503" in second.render()
+    assert records["standard-3"].state == "not run"
+    assert records["standard-2b"].state == "answered"  # 2b answered after the outage
+    assert len(wired.chat.calls) == 1 + 5 + 1
+    lines = probe.checks(subject.records)
+    assert lines[0].startswith("check 1: yes")  # call 1 answered on both variants
+    assert lines[1].startswith("check 2: not measured")
+    assert "required not measured" in lines[1]
+    assert lines[3].startswith("check 4: not measured")  # never "required": 2 was an outage
+    assert "standard: call 2 error HTTP 503" in lines[3]
+
+
+def test_a_transport_timeout_is_an_error_not_a_refusal(router: respx.MockRouter) -> None:
+    subject, records, _ = run_probe(router, chat=timed_out())
+    first = records["standard-1"]
+    assert (first.state, first.http_status) == ("error", None)
+    assert [records[f"standard-{s}"].state for s in ("2", "3", "2b")] == ["not run"] * 3
+    lines = probe.checks(subject.records)
+    assert lines[0].startswith("check 1: not measured")
+    assert "standard not measured (call 1 error)" in lines[0]
+    assert lines[1].startswith("check 2: not measured")
+    assert lines[3].startswith("check 4: not measured")
+
+
+def test_a_call_2_that_times_out_does_not_make_reasoning_required(
+    router: respx.MockRouter,
+) -> None:
+    chat: list[Reply] = [
+        completion("record_hypothesis"),
+        *timed_out(),
+        completion("describe_codes", args=DESCRIBE),
+    ]
+    subject, records, _ = run_probe(router, chat=chat)
+    assert records["standard-2"].state == "error"
+    assert records["standard-2b"].state == "answered"
+    assert probe.checks(subject.records)[3].startswith("check 4: not measured")
+
+
+def test_a_408_is_an_error_and_a_429_on_batch_submit_is_an_error(router: respx.MockRouter) -> None:
+    slow = httpx.Response(408, json={"error": {"message": MARKER}})
+    limited = httpx.Response(429, json={"error": {"message": MARKER}})
+    subject, records, wired = run_probe(router, chat=[slow], batches=[limited])
+    assert (records["standard-1"].state, records["standard-1"].http_status) == ("error", 408)
+    assert (records["batch-1"].state, records["batch-1"].http_status) == ("error", 429)
+    assert len(wired.submit.calls) == 1  # a batch submit is never retried
+    lines = probe.checks(subject.records)
+    assert lines[0].startswith("check 1: not measured")
+    assert lines[2].startswith("check 3: not measured")
+
+
+@pytest.mark.parametrize("ended", ["expired", "cancelled"])
+def test_a_batch_that_expired_or_was_cancelled_is_an_error_not_a_refusal(
+    router: respx.MockRouter, ended: str
+) -> None:
+    gone: dict[str, object] = {"id": "b-abc", "status": ended, "results": []}
+    subject, records, _ = run_probe(router, batches=[gone])
+    assert records["batch-1"].state == "error"
+    assert records["batch-1"].note == f"batch {ended}"
+    assert [records[f"batch-{s}"].state for s in ("2", "3", "2b")] == ["not run"] * 3
+    lines = probe.checks(subject.records)
+    assert lines[0].startswith("check 1: not measured")
+    assert lines[1].startswith("check 2: not measured")
+    assert lines[2].startswith("check 3: not measured")
+    assert lines[3].startswith("check 4: not measured")
+
+
+def test_a_request_failing_in_a_batch_with_a_server_status_is_an_error(
+    router: respx.MockRouter,
+) -> None:
+    broken = batch_status({"error": {"message": MARKER}}, result_status=503)
+    subject, records, _ = run_probe(router, batches=[broken])
+    assert (records["batch-1"].state, records["batch-1"].http_status) == ("error", 503)
+    assert probe.checks(subject.records)[0].startswith("check 1: not measured")
+
+
+def test_an_error_on_any_call_never_turns_a_check_into_no_or_required() -> None:
+    for name in ("standard-1", "standard-2", "batch-1", "batch-2", "batch-3", "batch-2b"):
+        records = replace(all_good(), name, state="error", http_status=503, tool_names=())
+        lines = probe.checks(records)
+        assert not any(
+            line.startswith(("check 1: no (", "check 2: no (", "check 3: no (")) for line in lines
+        )
+        assert not lines[3].startswith("check 4: required")
+
+
 def test_multi_turn_on_batch_fails_when_batch_call_2_is_refused(router: respx.MockRouter) -> None:
     ok = batches_ok()
     refusal = httpx.Response(400, json={"error": {"message": "tool turns are not supported"}})
@@ -682,7 +828,7 @@ def test_multi_turn_on_batch_fails_when_batch_call_2_is_refused(router: respx.Mo
     assert records["batch-2"].state == "refused"
     assert records["batch-3"].state == "not run"
     assert records["batch-2b"].state == "answered"
-    assert probe.checks(subject.records)[2].startswith("check 3: no")
+    assert probe.checks(subject.records)[2].startswith("check 3: no (")
 
 
 def test_a_reply_with_two_tool_calls_answers_each_call_and_is_noted(
@@ -781,9 +927,74 @@ def test_a_refused_call_is_saved_with_its_status(router: respx.MockRouter, tmp_p
     assert pair["request"]["requests"][0]["body"]["tool_choice"] == schemas.force(
         "record_hypothesis"
     )
-    assert pair["response"]["error"]["status"] == 400
-    assert "tools are not supported" in pair["response"]["error"]["message"]
+    assert pair["response"] == {"error": {"status": 400, "kind": "refused"}}
+    assert "tools are not supported" not in (fixtures / "batch-1.json").read_text()
     assert not (fixtures / "batch-2.json").exists()  # a call that did not run saves nothing
+
+
+def test_a_call_that_failed_with_an_error_is_saved_with_its_status_and_kind(
+    router: respx.MockRouter, tmp_path: Path
+) -> None:
+    fixtures = tmp_path / "s3"
+    run_probe(router, chat=overloaded(), fixtures_dir=fixtures)
+    pair = json.loads((fixtures / "standard-1.json").read_text())
+    assert pair["response"] == {"error": {"status": 503, "kind": "error"}}
+
+
+def test_provider_text_never_reaches_a_saved_fixture_or_any_stream(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Free text cannot be redacted by key, so none is saved: not in a refusal, not in a poll."""
+    fixtures = tmp_path / "s3"
+    refusal = httpx.Response(400, json={"error": {"message": MARKER}, "user_id": MARKER})
+    failed_poll: dict[str, object] = {
+        "id": "b-abc",
+        "status": "failed",
+        "results": [],
+        "error": {"message": MARKER, "user_id": MARKER},
+    }
+    in_batch = batch_status({"error": {"message": MARKER}}, result_status=400)
+    ok_poll = batch_status(chat_ok(cost=None)[0])
+    ok_poll["user_id"] = MARKER  # metadata a provider might add to a poll
+    # One run per kind of failure, each with its own fixtures folder.
+    runs: list[tuple[Sequence[Reply], Sequence[Reply]]] = [
+        ([refusal], [refusal]),
+        (overloaded(), [failed_poll]),
+        (chat_ok(), [in_batch]),
+        (chat_ok(), [ok_poll, *batches_ok()[1:]]),
+    ]
+    for index, (chat, batches) in enumerate(runs):
+        with respx.mock(assert_all_called=False) as inner:
+            wire(inner, chat, batches)
+            subject = make_probe(fixtures_dir=fixtures / str(index))
+            subject.run()
+            assert MARKER not in probe.report(subject.records, header=[])
+    saved = [path.read_text() for path in fixtures.rglob("*.json")]
+    assert saved, "the runs saved nothing, so the check below would be vacuous"
+    assert not [text for text in saved if MARKER in text]
+    assert probe.ERROR_TEXT_NOT_SAVED in "".join(saved)  # the failed poll's error was replaced
+    assert MARKER not in capsys.readouterr().err
+
+
+def test_an_error_key_holding_null_is_kept_and_a_user_id_in_a_poll_is_redacted(
+    router: respx.MockRouter, tmp_path: Path
+) -> None:
+    ok = batch_status(chat_ok(cost=None)[0])
+    ok["user_id"] = "user-abc"
+    ok["error"] = None
+    run_probe(router, batches=[ok, *batches_ok()[1:]], fixtures_dir=tmp_path / "s3")
+    saved = json.loads((tmp_path / "s3" / "batch-1.json").read_text())["response"]
+    assert saved["user_id"] == "redacted"
+    assert saved["error"] is None
+    assert saved["results"][0]["response"]["body"]["choices"][0]["message"]["tool_calls"]
+
+
+def test_the_shared_redaction_blanks_user_organization_and_account_ids() -> None:
+    body = {"user_id": "u", "a": {"organization_id": "o", "b": [{"account_id": "x", "keep": 1}]}}
+    assert redact(body) == {
+        "user_id": "redacted",
+        "a": {"organization_id": "redacted", "b": [{"account_id": "redacted", "keep": 1}]},
+    }
 
 
 # ------------------------------------------------------------------------------------------
@@ -923,6 +1134,81 @@ def test_a_crash_mid_run_still_settles_the_reservation_and_records_what_was_spen
     assert (tmp_path / "s3" / "standard-1.json").is_file()  # earlier calls' fixtures are kept
 
 
+@pytest.mark.parametrize("name", ["invented_payload", "system_text", "load_tables"])
+def test_a_failure_building_the_payload_leaves_no_reservation_and_sends_nothing(
+    router: respx.MockRouter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """These are built before the reservation, so there is nothing to settle."""
+
+    def boom() -> object:
+        raise RuntimeError("cannot build")
+
+    monkeypatch.setattr(probe, name, boom)
+    wired = wire(router, [], [])
+    settings = _settings(tmp_path)
+
+    with pytest.raises(RuntimeError, match="cannot build"):
+        _main(tmp_path, settings)
+
+    assert wired.chat.calls.call_count == 0
+    assert not list(settings.runs_dir.glob("*/reservation.json"))  # none was ever made
+    assert not list(settings.runs_dir.glob("*/spend.jsonl"))
+
+
+def test_a_failing_spend_row_still_settles_and_the_results_are_not_lost(
+    router: respx.MockRouter,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def disk_full(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(probe, "write_spend", disk_full)
+    wire(router, chat_ok(), batches_ok())
+    settings = _settings(tmp_path)
+
+    with pytest.raises(OSError, match="disk full"):
+        _main(tmp_path, settings)
+
+    assert not list(settings.runs_dir.glob("*/reservation.json"))
+    assert "check 1: yes" in capsys.readouterr().out  # the paid results were already printed
+    assert "check 1: yes" in (tmp_path / "out" / "probe.txt").read_text()
+
+
+def test_a_failing_readme_write_still_settles_after_the_spend_row(
+    router: respx.MockRouter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def cannot_write(*_args: object, **_kwargs: object) -> None:
+        raise OSError("read-only")
+
+    monkeypatch.setattr(probe, "_write_readme", cannot_write)
+    wire(router, chat_ok(), batches_ok())
+    settings = _settings(tmp_path)
+
+    with pytest.raises(OSError, match="read-only"):
+        _main(tmp_path, settings)
+
+    assert not list(settings.runs_dir.glob("*/reservation.json"))
+    assert len(list(settings.runs_dir.glob("*/spend.jsonl"))) == 1
+
+
+def test_a_failing_results_file_still_writes_the_spend_row_and_settles(
+    router: respx.MockRouter, tmp_path: Path
+) -> None:
+    wire(router, chat_ok(), batches_ok())
+    settings = _settings(tmp_path)
+    blocked = tmp_path / "out"
+    blocked.write_text("a file where the folder should be")
+
+    with pytest.raises(OSError):  # noqa: PT011 -- the error is the operating system's own
+        _main(tmp_path, settings)
+
+    assert not list(settings.runs_dir.glob("*/reservation.json"))
+    rows = list(settings.runs_dir.glob("*/spend.jsonl"))
+    assert len(rows) == 1
+
+
 def test_a_run_that_makes_no_call_writes_no_spend_row(
     router: respx.MockRouter, tmp_path: Path
 ) -> None:
@@ -940,7 +1226,7 @@ def test_a_refusal_is_a_result_not_a_failure(router: respx.MockRouter, tmp_path:
     wire(router, chat_ok(), [refusal])
     assert _main(tmp_path, _settings(tmp_path)) == 0
     text = (tmp_path / "out" / "probe.txt").read_text()
-    assert "check 1: no" in text
+    assert "check 1: no (" in text
 
 
 def test_the_main_entry_point_is_a_module_script() -> None:
