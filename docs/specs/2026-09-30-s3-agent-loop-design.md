@@ -697,7 +697,7 @@ Written in S3.1's first task, numbered from 121 on in this order:
 | 6 | Confidence calibrated in code; abstain as a threshold. | calibration choice B |
 | 7 | The arms and ablations; the ordering check in arm B only. | ordering choice B; §7 |
 | 8 | S3 in three sub-stages, with one $50 spend line. | sub-stages choice A; spend choice B |
-| 9 | S3's sealed sample and the rebuilt statistics file. | sealed choice A |
+| 9 | S3's sealed sample (`dev-seal-s3-400`, seed 20260930) and the rebuilt statistics file; the guidance files stay unchanged and the overlap is disclosed (§20). | sealed choice A; guidance-files choice A |
 | 10 | The loop's noise floor and the format gate. | noise floor choice A; §10.4 |
 | 11 | The `probe` spend kind and the relabel. | spend kind choice B |
 | 12 | S2.8 is cancelled. | Andy, 2026-09-30 |
@@ -738,13 +738,14 @@ earlier amendments were.
   fixed order. §13's first result catches that, and it is published.
 - **Dockets may start arriving before closure** as the recorder watches longer. The 14-night
   re-check (§9) reopens the replay if so.
-- **Open question for Andy — the guidance files and the new sealed sample.** The two kept
-  guidance files cite counts from S2.7's pool, which includes the cases the new sealed sample
-  will be drawn from. The text was fixed before the sample exists, so the sample cannot have
-  been chosen to fit it, and 400 of about 12,490 cases carry little weight in a count.
-  **Proposal:** keep the files as they are and disclose this in S3.2's registration.
-  The alternative, rewriting the counts from the smaller pool, changes arm B's text away from
-  S2.7's final setup.
+- **Resolved (Andy, 2026-09-30: "Go with A and keep them unchanged") — the guidance files and
+  the new sealed sample.** The two kept guidance files cite counts from S2.7's pool, which
+  includes the cases the new sealed sample will be drawn from. The text was fixed before the
+  sample exists, so the sample cannot have been chosen to fit it, and 400 of about 12,490
+  cases carry little weight in a count. **The files stay unchanged**, so arm B stays S2.7's
+  measured setup, and S3.2's registration discloses the overlap. Rewriting the counts from the
+  smaller pool was rejected: it would change arm B's text away from S2.7's final setup and need
+  its bar re-measured. Record 9 (§17) states this.
 - **Open question for S3.3 — the preliminary narrative.** The recorder stores it for the live
   board only; evaluation never has it (0023 item 5). Whether the live loop reads it would make
   live runs differ from evaluation. S3.3's specification decides.
