@@ -743,8 +743,7 @@ Written with this specification:
 ## As built
 
 *Closed 2026-09-30. The stage's pull request, #17, was merged on 2026-09-29 before this record
-was committed; the record, the status changes and the plans' removal came in a follow-up pull
-request (below).*
+was committed; the record, the status changes and the plans' removal came in pull request #19.*
 
 S2.7 closed on its development results. It measured where arm B's `dev-400` misses come from
 (Round 0), kept GPT-6 Luna as an ordering check after the answer (Round 1), ran five guidance
@@ -1540,8 +1539,9 @@ build.
 
 - Pull request: #17 (https://github.com/floyda/ntsb-probable-cause/pull/17), merged 2026-09-29 as
   `1d2a12d` with a merge commit (decision 0033)
-- Close-out: a follow-up pull request from `1d2a12d`, holding only this record, the status
-  changes, the plans' removal and the version (decision 0017)
+- Close-out: pull request #19 (https://github.com/floyda/ntsb-probable-cause/pull/19), from
+  `1d2a12d`, holding only this record, the status changes, the plans' removal and the
+  version (decision 0017)
 - Plans, at their last commits: https://github.com/floyda/ntsb-probable-cause/blob/bb6a0451d6113197775d17cb3767b37a01f3c9a5/docs/plans/2026-09-26-s27-track1-coding-guidance.md and https://github.com/floyda/ntsb-probable-cause/blob/87f74f188cf50ca683b68a2d72553a94441a5838/docs/plans/2026-09-26-s27-track2-transcriber.md
 - Commits: from `94f5d42` to `bb6a045`, both included (121 commits before the close-out commit)
 - Spend: $15.10 on S2.7's own branches ($13.34 evaluation runs, $1.76 preparation spend rows),
