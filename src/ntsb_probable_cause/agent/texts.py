@@ -39,6 +39,8 @@ CHOOSE: Final = "Choose read or skip for every document listed above."
 CHOOSE_AGAIN: Final = "You may read more. Choose read or skip for every document listed."
 RECORD_NOW: Final = "Record your hypothesis now."
 CODE_NOW: Final = "Check your coding with the coding tools, then submit your answer."
+# The coding ablation's CODE_NOW (spec §7.2): the run sends no coding tools, so it names none.
+ANSWER_NOW: Final = "Submit your answer now."
 NO_DOCUMENTS: Final = "No docket documents are available for this case."
 ONE_CALL: Final = "Only one tool call is run per turn; this call was not run."
 

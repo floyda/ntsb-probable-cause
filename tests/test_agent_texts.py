@@ -14,6 +14,7 @@ import pytest
 from ntsb_probable_cause.agent.facts import DocumentFacts
 from ntsb_probable_cause.agent.texts import (
     AGENT_PROMPT_VERSION,
+    ANSWER_NOW,
     CHOOSE,
     CHOOSE_AGAIN,
     CODE_NOW,
@@ -232,6 +233,11 @@ class TestFixedStrings:
         assert NO_DOCUMENTS == "No docket documents are available for this case."
         assert ONE_CALL == "Only one tool call is run per turn; this call was not run."
 
+    def test_the_coding_ablation_names_no_coding_tool(self) -> None:
+        """Task 8: the ``without={"coding"}`` run sends no coding tools, so its text names none."""
+        assert ANSWER_NOW == "Submit your answer now."
+        assert "coding" not in ANSWER_NOW
+
     def test_not_accepted_names_the_error(self) -> None:
         assert (
             not_accepted("document 9 is not on offer")
@@ -245,6 +251,7 @@ class TestFixedStrings:
             CHOOSE_AGAIN,
             RECORD_NOW,
             CODE_NOW,
+            ANSWER_NOW,
             NO_DOCUMENTS,
             ONE_CALL,
             system_text(TABLES, GUIDANCE),
