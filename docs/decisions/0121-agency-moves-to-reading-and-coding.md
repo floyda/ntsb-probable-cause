@@ -28,11 +28,23 @@ which evidence arrives late. Three measurements since then show where choices ca
 
 **The learning probe, disclosed.** Before this record was written, a learning probe (pull
 request #18) ran a flow like the loop on 20 `dev-400` cases, twice with identical settings
-(`docs/results/s3-probe-dev.txt`, `docs/results/s3-probe-dev-run2.txt`). It saw development
-accuracy, and its accuracy moved between the two runs: occurrence top-1 after reading (H2) was
-5 of 20, then 9 of 20. It shaped this design (spec §2) and carries no claim. Its two reports
-score none of P1 to P6: they give no steps by fatality, no comparison with arm B, no masked
-condition, no probability on the true codes, and no stated effect against an observed one.
+(`docs/results/s3-probe-dev.txt`, `docs/results/s3-probe-dev-run2.txt`). It shaped this design
+(spec §2) and carries no claim. It saw development accuracy at every checkpoint. The table
+gives occurrence top-1 and top-3 as cases right out of 20; run 1's answer is out of 17,
+because 3 cases failed.
+
+| checkpoint | run 1 top-1 | run 1 top-3 | run 2 top-1 | run 2 top-3 |
+|---|---|---|---|---|
+| before reading (H0) | 5 | 8 | 5 | 9 |
+| after the first read choice (H1) | 5 | 8 | 9 | 10 |
+| after the second look (H2) | 5 | 9 | 9 | 10 |
+| the answer | 6 of 17 | 8 of 17 | 9 | 11 |
+
+These figures moved between identical runs: at n=20 they are noise. Accuracy by checkpoint
+bears on P5, though it is not the probability on the true codes that P5 names, which the
+reports do not give. The reports score none of the other five predictions: they give no steps
+by fatality, no comparison with arm B, no masked condition, and no stated effect against an
+observed one.
 
 ## Decision
 
@@ -90,7 +102,7 @@ condition, no probability on the true codes, and no stated effect against an obs
    | P2 | In the full condition, arm C matches arm B's accuracy at lower cost on non-fatal cases. | Both arms it compares have changed. Arm B now also calls every coding tool and runs the ordering check (0127). The loop no longer fetches one document per call, and it has no early stop (item 3). Cost against arm B is now result 2 of item 5, on all cases. |
    | P3 | Any accuracy advantage of C over B is concentrated in fatal cases. | It rested on fatal dockets being larger, so that choosing what to read would matter most there. Reading more has since barely helped, and coding has moved the score (Context). The loop's main choice is now how to code, which has no measured link to fatality. |
    | P4 | In the masked condition, C abstains more often than in the full condition, and asks for the missing evidence. | The masked condition is paused (0123). The loop has no tool that asks for evidence, and code, not the model, sets the abstain flag (0126). |
-   | P5 | On average, the probability on the true codes rises with each step. | It was written for a hypothesis after every tool call; the loop records one at up to three checkpoints and in the answer. In the probe, stated confidence rose from about 0.25 to about 0.7 with reading, while answers at 0.6 or above were right on 5 of 16 and 8 of 18 cases (exploratory, spec §2). Part of any rise would come from reading alone. |
+   | P5 | On average, the probability on the true codes rises with each step. | It was written for a hypothesis after every tool call. The loop records one at up to three checkpoints and in the answer, so "each step" no longer names the same thing. The probe's accuracy by checkpoint was noise at n=20: top-1 stayed at 5 of 20 from H0 to H2 in run 1, and went from 5 to 9 in run 2 (Context). How accuracy moves across checkpoints is for S3.2's predictions, after the noise floor (item 7). |
    | P6 | Stated and actual effects agree more often than chance. | It is now result 4 of item 5, stated for documents read. As a result that counts against the loop, it is published whichever way it comes out. Keeping it as a prediction too would count one test twice. |
 
 7. **Nothing about the loop is predicted in S3.1.** New predictions are registered at the start
@@ -108,22 +120,39 @@ condition, no probability on the true codes, and no stated effect against an obs
    so the number of steps does not measure effort. In the probe, stated confidence tracked how
    much was read, not how often the answer was right (spec §2, lesson 2). A stop at a stated
    threshold would stop on reading, not on being right.
-4. **The predictions are withdrawn in the open, before they can be tested.** They were fixed so
+4. **The predictions are withdrawn in the open, before the loop has run.** They were fixed so
    that no one could change them after seeing a result. Withdrawing them now, with a reason for
-   each, keeps that purpose: the probe scored none of them, and the loop has not run.
+   each, keeps that purpose as far as it can. The probe, a different flow on 20 cases, gave
+   accuracy by checkpoint, which bears on P5; those figures are disclosed above, so a reader
+   can judge the withdrawal against them. It scored none of the others. Andy (2026-09-29,
+   capitals corrected): "Should we be making predictions before we start to build? I think
+   definitely withdraw the others if they no longer make sense".
 5. **Effect sizes need the noise floor first.** S2.7's prediction (top-1 on `dev-400` between
    30% and 36%) was fixed before S2.7 measured its own noise floor, and was not met: 25.1%
    (`docs/results/s27-sealed-dev.txt`).
 
 ## What this rules out
 
+The session offered Andy three options for this record; C, this record, was chosen. The other
+two:
+
+- **A. One record now, with new predictions in it.** Everything would be fixed and published at
+  the start. Rejected: the effect sizes would be set before the loop's noise floor exists, so
+  any size would be a guess (Why 5), and the probe's look at development accuracy has already
+  happened.
+- **B. Three records, one per superseded decision.** Each record would state exactly what it
+  rules out, which suits the append-only style. Rejected: three pieces of paperwork for one
+  design move, and the predictions would still need a home.
+
+Also considered in writing this record:
+
 - **Keeping the design of 0021 to 0023.** On 2026-09-14 it was the best-argued place for
-  agency. Rejected: reading more barely helps, coding moves the score, and with no docket seen
-  before closure its masked condition has no measured docket mask, which 0023 requires.
+  agency. Rejected: reading more barely helps, coding moves the score, and with no docket yet
+  seen to arrive before closure its masked condition has no measured docket mask, which 0023
+  requires.
 - **Keeping P1 to P6 and measuring them on the new loop.** It keeps the letter of 0022.
   Rejected: each was written for a mechanism that is gone (the table above), so a result either
   way would mislead.
-- **Writing new predictions now.** Rejected by Why 5.
 - **Superseding later, in S3.2's registration.** Less to write now. Rejected: S3.1 would build
   and tune a loop while 0021 to 0023 still described another design, and P1 to P6 still stood
   as if they applied to it.

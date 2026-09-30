@@ -650,7 +650,7 @@ how to code, by drafting codes and then checking them with tools that take codes
 every document read before (0122). Native tool calling, with in-process tools (0124); a
 suggestion tool (0125); confidence calibrated in code (0126). Arm B calls every coding tool in a
 fixed order and keeps S2.7's ordering check, which the loop does not get (0127). The staged
-replay and the masked condition are paused until the recorder shows a docket before closure
+replay and the masked condition are paused until the recorder sees a docket arrive before closure
 (0123). The predictions P1 to P6 are withdrawn and the four results that count against the loop
 are reworded (0121); new predictions are registered at the start of S3.2. S3 runs as three
 sub-stages under one $50 spend line (0128): **S3.1**, the loop, built on `dev-400` with its

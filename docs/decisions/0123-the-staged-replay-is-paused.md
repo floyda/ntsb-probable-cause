@@ -1,4 +1,4 @@
-# 0123 — The staged replay is paused: no docket has been seen before closure; re-checked at 14 nights
+# 0123 — The staged replay is paused: no docket has been seen to arrive before closure; re-checked at 14 nights
 
 With [0121](0121-agency-moves-to-reading-and-coding.md), it takes 0023 item 4's masked condition
 off the headline. From the S3 design session (2026-09-29 to 2026-09-30): replay paused. Detail:
@@ -24,10 +24,18 @@ distinct nights, 23 to 29 September 2026):
   pilot certificates appeared only in the same run as closure (6 or 7 cases each). These are
   small counts.
 
-The earlier ongoing-docket probe agrees: 98 of 100 sampled ongoing cases had no released docket
-(`docs/results/s25-ongoing-dockets.txt`).
+Two observations show docket documents that were already present when first seen, with no
+arrival time:
 
-If this holds, a live case's docket goes from none to all at closure, together with the verdict.
+- The earlier ongoing-docket probe (`docs/results/s25-ongoing-dockets.txt`; 100 sampled cases,
+  ongoing as of 2026-09-15) found no released docket on 98. The other 2 had one, both 91 to 180
+  days after the event, holding 2 and 8 documents. Each was seen once, already released, so
+  when its documents appeared is unknown.
+- The recorder found 5 "first-sight dockets": documents already present at its first poll of the
+  case. It excludes them from the arrival counts above, for the same reason.
+
+If the recorder's pattern holds, most live cases' dockets go from none to all at closure,
+together with the verdict.
 
 ## Decision
 
@@ -44,7 +52,9 @@ If this holds, a live case's docket goes from none to all at closure, together w
 ## Why
 
 1. **The mask must be measured, not chosen** (0023, Why 4). With no docket measured arriving
-   before closure, any schedule for documents would be invented.
+   before closure, any schedule for documents would be invented. The 2 released dockets show
+   that some documents exist before closure. They, and the 5 first-sight dockets, carry no
+   arrival time, so they cannot build a mask either.
 2. **Andy's requirement for the live board** (2026-09-29, spelling corrected): the live agent
    "will need to be able to deal with the case where no files exist, some files, and all files
    on closure ... if we find that they don't turn up until closure then that's just how it will

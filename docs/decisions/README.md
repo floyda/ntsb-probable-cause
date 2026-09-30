@@ -151,7 +151,7 @@ under `docs/specs/` and the record links to it.
 | [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |
 | [0121](0121-agency-moves-to-reading-and-coding.md) | Agency moves to the read choice and the coding step; P1-P6 are withdrawn and 0022's four results reworded, before any measurement of the loop | Accepted; supersedes 0021 items 1 and 4, 0022 items 4 and 5, 0023 items 1, 2 and 4 |
 | [0122](0122-h0-and-later-triggers.md) | The first hypothesis uses all non-docket evidence present; later triggers re-send read documents in full and re-offer skipped ones | Accepted |
-| [0123](0123-the-staged-replay-is-paused.md) | The staged replay and the masked condition are paused: no docket seen before closure; re-checked at 14 nights | Accepted |
+| [0123](0123-the-staged-replay-is-paused.md) | The staged replay and the masked condition are paused: no docket seen to arrive before closure; re-checked at 14 nights | Accepted |
 | [0124](0124-native-tool-calling-and-a-cacheable-conversation.md) | Native tool calling, with a stable tool set, `tool_choice` per step and an append-only conversation; tools in-process | Accepted |
 | [0125](0125-the-suggestion-tool.md) | The suggestion tool: the pool's five commonest defining events for a phase group, called by the agent's choice | Accepted |
 | [0126](0126-confidence-is-calibrated-in-code.md) | Confidence is calibrated in code; abstain is a threshold on the fitted value | Accepted |
