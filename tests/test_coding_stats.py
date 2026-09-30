@@ -1,10 +1,12 @@
 """scoring/coding_stats.py: counts of how the NTSB codes occurrences (decision 0094)."""
 
+import hashlib
 import re
 from pathlib import Path
 
 from ntsb_probable_cause.scoring.coding_stats import (
     NO_GROUP,
+    STATS_NAMES,
     CodingStats,
     PoolCase,
     build,
@@ -107,6 +109,32 @@ def test_the_committed_counts_load_and_name_no_case() -> None:
         Path("docs/results/s27-coding-stats.txt"),
     ):
         assert not _CASE_NUMBER.search(path.read_text()), path
+
+
+# SHA-256 of S2.7's two committed files at the base of S3.1. Decision 0129 item 5: S2.7's
+# statistics file stays as it is, so S2.7's numbers stay citable. A change to either file is a
+# decision, not a rebuild: change a pin only with a decision record that says why.
+_S27_JSON_SHA256 = "b3096de4d7556050e97b0cd89eaff3d5f20125ae9f3599aabf383648ed453cbd"
+_S27_TEXT_SHA256 = "d3f3a1c08af8ffce70a69db7105a9189dacea351eff08b3a7c38e9eaf99811ec"
+
+
+def test_the_s27_counts_and_their_readable_file_are_byte_identical_to_their_commit() -> None:
+    files = {
+        Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json"): _S27_JSON_SHA256,
+        Path("docs/results/s27-coding-stats.txt"): _S27_TEXT_SHA256,
+    }
+    for path, pinned in files.items():
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == pinned, path
+
+
+def test_load_stats_defaults_to_s27_and_keeps_one_object_per_name() -> None:
+    assert load_stats() is load_stats("s27")
+    assert "excluding dev-400 and dev-seal-400" in load_stats("s27").built_from
+    assert "dev-seal-s3-400" not in load_stats("s27").built_from
+
+
+def test_the_stats_names_are_the_two_stages() -> None:
+    assert STATS_NAMES == ("s27", "s3")
 
 
 def test_group_n_counts_every_past_case_in_a_group() -> None:

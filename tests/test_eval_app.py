@@ -52,6 +52,7 @@ from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.budget import open_reservations, reserve
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.preparation import PreparationStoppedError
@@ -1915,28 +1916,33 @@ def test_report_against_prints_each_paired_block_by_fatal_and_non_fatal(
     assert "\nnon-fatal: paired difference (a - b) on 1 shared" in unmarked
 
 
+@pytest.mark.parametrize("sealed", ["dev-seal-400", "dev-seal-s3-400"])
 def test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    sealed: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
-    assert main(["run", "--arm", "B", "--sample", "dev-seal-400"]) == 1
+    assert main(["run", "--arm", "B", "--sample", sealed]) == 1
     assert "sealed" in capsys.readouterr().err
-    assert (
-        main(["transcribe", "--sample", "dev-seal-400", "--expected-cost-per-page-usd", "0.001"])
-        == 1
-    )
+    assert main(["transcribe", "--sample", sealed, "--expected-cost-per-page-usd", "0.001"]) == 1
     assert "sealed" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("sealed", ["dev-seal-400", "dev-seal-s3-400"])
 def test_baseline_refuses_the_sealed_sample_before_anything_is_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    sealed: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Final review, Important 1: ``ntsb-eval baseline --sample dev-seal-400`` scored the
-    sealed sample today, free and with one flag."""
+    sealed sample today, free and with one flag. S3's sample is refused the same way (0129)."""
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
-    assert main(["baseline", "--sample", "dev-seal-400"]) == 1
+    assert main(["baseline", "--sample", sealed]) == 1
     assert "sealed" in capsys.readouterr().err
 
 
@@ -2017,8 +2023,12 @@ def test_check_refuses_a_held_out_run_before_any_client_is_built(
     assert "development" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("sealed", ["dev-seal-400", "dev-seal-s3-400"])
 def test_check_refuses_the_sealed_sample_before_any_client_is_built(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    sealed: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Final review, Important 1: ``ntsb-eval check`` already calls ``refuse_sealed``
     (``__main__.py``), but no test confirmed it before this one."""
@@ -2026,8 +2036,8 @@ def test_check_refuses_the_sealed_sample_before_any_client_is_built(
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
     monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
-    run_id = "20260926T000000-abc1234-dev-seal-400-B"
-    _write_judgeable_run(runs, run_id, "c1", sample="dev-seal-400", arm="B")
+    run_id = f"20260926T000000-abc1234-{sealed}-B"
+    _write_judgeable_run(runs, run_id, "c1", sample=sealed, arm="B")
 
     def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
         raise AssertionError("no client may be built for a sealed run")
@@ -2215,6 +2225,41 @@ def test_check_way_rule_writes_a_derived_run_and_prints_the_summary(
     assert f"check {derived_id}:" in out
     assert (runs / derived_id / "cases.jsonl").exists()
     assert (runs / derived_id / "run.jsonl").exists()
+
+
+@pytest.mark.parametrize(("flags", "expected"), [([], "s27"), (["--stats", "s3"], "s3")])
+def test_check_reads_the_statistics_file_its_stats_flag_names(
+    flags: list[str],
+    expected: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S3's ordering check reads S3's file (0129 item 4); S2.7's is the default, so every
+    existing ``check`` command is unchanged. The real ``load_stats`` is wrapped, not replaced,
+    so the name it gets is the one the command line chose."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setattr(samples, "load_cases", lambda _processed, ids: [{} for _ in ids])
+    monkeypatch.setattr(samples, "seen_pairs", lambda _processed: frozenset())
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    asked: list[str] = []
+
+    def spy(name: str = "s27") -> CodingStats:
+        asked.append(name)
+        return load_stats("s27")  # S3's file is not needed to see which one was asked for
+
+    monkeypatch.setattr("apps.eval.__main__.load_stats", spy)
+    assert main(["check", run_id, "--way", "rule", *flags]) == 0
+    assert asked == [expected]
+
+
+def test_check_refuses_an_unknown_statistics_name(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        main(["check", "some-run", "--way", "rule", "--stats", "s4"])
+    assert stopped.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_check_way_luna_run_twice_is_refused_the_second_time_with_nothing_leaked(

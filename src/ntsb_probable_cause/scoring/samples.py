@@ -3,7 +3,7 @@
 import csv
 import json
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Literal
@@ -15,19 +15,24 @@ from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.splits import Split
 
-SAMPLES = ("heldout-40", "heldout-400", "dev-400", "dev-seal-400")
+SAMPLES = ("heldout-40", "heldout-400", "dev-400", "dev-seal-400", "dev-seal-s3-400")
 _FILES = {
     "heldout-40": "decidability_ids.csv",
     "heldout-400": "heldout_400_ids.csv",
     "dev-400": "dev_400_ids.csv",
     "dev-seal-400": "dev_seal_400_ids.csv",
+    "dev-seal-s3-400": "dev_seal_s3_400_ids.csv",
 }
 EVAL_DIR = Path("tests/fixtures/eval")
-# Decision 0095: the sealed development sample opens once, when the registration naming the
-# final setup is committed. Every command that would score, read, fetch or transcribe it calls
-# :func:`refuse_sealed` first.
-SEALED = frozenset({"dev-seal-400"})
-SEALED_REGISTRATION = Path("docs/rounds/s27-sealed.md")
+# Decisions 0095 and 0129: a sealed development sample opens once, when its own registration,
+# naming the setup it will be used on, is committed. Every command that would score, read,
+# fetch or transcribe one calls :func:`refuse_sealed` first. S2.7's registration does not open
+# S3's sample, and S3's does not open S2.7's.
+SEALED_REGISTRATIONS: Mapping[str, Path] = {
+    "dev-seal-400": Path("docs/rounds/s27-sealed.md"),
+    "dev-seal-s3-400": Path("docs/rounds/s3-registration.md"),
+}
+SEALED = frozenset(SEALED_REGISTRATIONS)
 START_FACTS = frozenset(
     {
         EvidenceRole.PHASE_OF_FLIGHT,
@@ -75,15 +80,18 @@ def masked_exclusions(day: int) -> frozenset[EvidenceRole]:
 
 
 def refuse_sealed(sample: str, *, is_committed: Callable[[Path], bool]) -> None:
-    """Refuse a sealed sample until its registration is committed (decision 0095).
+    """Refuse a sealed sample until its own registration is committed (decisions 0095, 0129).
 
     Raises:
-        ConfigurationError: ``sample`` is sealed and the registration is not committed.
+        ConfigurationError: ``sample`` is sealed and its registration is not committed.
     """
-    if sample in SEALED and not is_committed(SEALED_REGISTRATION):
+    if sample not in SEALED:
+        return
+    registration = SEALED_REGISTRATIONS[sample]
+    if not is_committed(registration):
         raise ConfigurationError(
-            f"{sample} is sealed: commit {SEALED_REGISTRATION}, naming the final setup, "
-            "before anything reads it (decision 0095)"
+            f"{sample} is sealed: commit {registration}, naming the final setup, "
+            "before anything reads it (decisions 0095, 0129)"
         )
 
 
@@ -102,9 +110,9 @@ def refuse_unless_development(run_id: str, sample: str | None) -> None:
     and verdict" contract's source modules -- never has to import ``scoring.records``, which
     reaches ``records.verdict`` through ``scoring.metrics``.
 
-    The sealed sample (``dev-seal-400``) passes the "development" checks -- its own
-    registration is what gates it (decision 0095) -- so it is refused last, through
-    :func:`refuse_sealed`.
+    The sealed samples (``dev-seal-400``, ``dev-seal-s3-400``) pass the "development" checks --
+    each one's own registration is what gates it (decisions 0095, 0129) -- so they are refused
+    last, through :func:`refuse_sealed`.
 
     Raises:
         ConfigurationError: ``run_id`` or ``sample`` names a held-out sample, or the sample is
@@ -121,9 +129,14 @@ def refuse_unless_development(run_id: str, sample: str | None) -> None:
     refuse_sealed(sample, is_committed=gitinfo.is_committed)
 
 
+def sample_path(name: str) -> Path:
+    """The committed list of a named sample's case IDs (under :data:`EVAL_DIR`)."""
+    return EVAL_DIR / _FILES[name]
+
+
 def sample_ids(name: str) -> tuple[str, ...]:
     """Case IDs of a named sample, in file order."""
-    with (EVAL_DIR / _FILES[name]).open(newline="") as handle:
+    with sample_path(name).open(newline="") as handle:
         return tuple(row["case_id"] for row in csv.DictReader(handle))
 
 
@@ -189,7 +202,8 @@ def draw(
     Classes I, M and T are excluded (decision 0026 point 1); ``scripts/draw_samples.py``
     prints how many cases of those classes were excluded per split and fatal slice.
 
-    ``exclude``: case ids never drawn (``dev-seal-400`` excludes ``dev-400``, decision 0095).
+    ``exclude``: case ids never drawn (``dev-seal-400`` excludes ``dev-400``, decision 0095;
+    ``dev-seal-s3-400`` excludes both, decision 0129).
     """
     columns = ["ntsb_number", "event_date", "split", "investigation_class", "raw_json"]
     table = pq.read_table(processed / "cases.parquet", columns=columns)

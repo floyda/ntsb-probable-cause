@@ -308,6 +308,48 @@ def test_refuse_sealed_opens_only_on_a_committed_registration() -> None:
     assert seen == [Path("docs/rounds/s27-sealed.md")]
 
 
+def test_the_s3_sealed_sample_is_a_sample_with_its_own_registration() -> None:
+    """Decision 0129 item 1: ``dev-seal-s3-400`` is listed, sealed, and named by its own file."""
+    assert "dev-seal-s3-400" in samples.SAMPLES
+    registrations = dict(samples.SEALED_REGISTRATIONS)
+    assert registrations == {
+        "dev-seal-400": Path("docs/rounds/s27-sealed.md"),
+        "dev-seal-s3-400": Path("docs/rounds/s3-registration.md"),
+    }
+    sealed = set(samples.SEALED)
+    assert sealed == set(registrations)
+    assert samples.sample_path("dev-seal-s3-400") == Path(
+        "tests/fixtures/eval/dev_seal_s3_400_ids.csv"
+    )
+
+
+def test_refuse_sealed_names_the_s3_registration_for_the_s3_sample() -> None:
+    with pytest.raises(ConfigurationError, match=r"docs/rounds/s3-registration\.md"):
+        samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda _path: False)
+
+
+def test_the_s27_registration_does_not_open_the_s3_sample_nor_the_reverse() -> None:
+    """Each sealed sample is opened by its own registration and by no other."""
+    s27 = Path("docs/rounds/s27-sealed.md")
+    s3 = Path("docs/rounds/s3-registration.md")
+    with pytest.raises(ConfigurationError, match=r"s3-registration\.md"):
+        samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda path: path == s27)
+    with pytest.raises(ConfigurationError, match=r"s27-sealed\.md"):
+        samples.refuse_sealed("dev-seal-400", is_committed=lambda path: path == s3)
+    samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda path: path == s3)
+    samples.refuse_sealed("dev-seal-400", is_committed=lambda path: path == s27)
+
+
+def test_refuse_unless_development_refuses_the_s3_sealed_sample_until_committed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+    with pytest.raises(ConfigurationError, match=r"s3-registration\.md"):
+        samples.refuse_unless_development("dev-run", "dev-seal-s3-400")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
+    samples.refuse_unless_development("dev-run", "dev-seal-s3-400")
+
+
 def test_refuse_unless_development_checks_the_run_id_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s27-coding-statss27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -223,6 +223,19 @@ s3-spend:
 # S3 (spec §14, decision 0128 item 2): the stage's spend by commit on its own s3- branches, free.
 # Every paid S3 target runs this first with its estimate and stops if the $50 line would be
 # passed. The learning probe's $1.1954 (s3-probe, decision 0131) is outside the line.
+
+s3-draw-sealed:
+	uv run python -m scripts.draw_sealed --sample dev-seal-s3-400
+# S3 spec §12 (decision 0129 item 1), free, ONCE: draws dev-seal-s3-400 (seed 20260930,
+# excluding dev-400 and dev-seal-400) into tests/fixtures/eval/dev_seal_s3_400_ids.csv and
+# refuses to overwrite it. Check it with: uv run python -m scripts.draw_sealed --sample
+# dev-seal-s3-400 --verify. Refused by every command until S3.2's registration is committed.
+
+s3-coding-stats:
+	uv run python -m scripts.coding_stats --stage s3 --out docs/results/s3-coding-stats.txt
+# S3 spec §12 (decision 0129 item 4), free: S3's statistics from the pool without
+# dev-seal-s3-400. Writes scoring/tables/coding_stats_s3.json and the readable results file;
+# run it after s3-draw-sealed. S2.7's file and s27-coding-stats are not touched.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt

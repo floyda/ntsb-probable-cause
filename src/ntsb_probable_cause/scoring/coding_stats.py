@@ -2,7 +2,9 @@
 
 The pool is every development case in classes C, F and L outside ``dev-400`` and
 ``dev-seal-400``; ``scripts/coding_stats.py`` builds it and commits the counts beside the code
-tables. This module holds the counts and reads them; it never reads a case, and nothing here
+tables. S3 has its own file, from a pool that also leaves out ``dev-seal-s3-400`` (decision
+0129); S2.7's file is never rebuilt, so :func:`load_stats` reads one by name and defaults to
+S2.7's. This module holds the counts and reads them; it never reads a case, and nothing here
 names one. Every count is kept per half of the decade so a habit that changed is visible.
 """
 
@@ -11,13 +13,19 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict
 
 HALVES: tuple[tuple[str, int, int], ...] = (("2009-2014", 2009, 2014), ("2015-2019", 2015, 2019))
 # A case whose phase-of-flight evidence is blank is counted under this group name.
 NO_GROUP = "(none)"
-_RESOURCE = "tables/coding_stats.json"
+StatsName = Literal["s27", "s3"]
+STATS_NAMES: tuple[StatsName, ...] = get_args(StatsName)
+_RESOURCES: Mapping[StatsName, str] = {
+    "s27": "tables/coding_stats.json",
+    "s3": "tables/coding_stats_s3.json",
+}
 
 
 @dataclass(frozen=True)
@@ -206,7 +214,17 @@ def build(cases: Iterable[PoolCase], *, built_from: str) -> CodingStats:
 
 
 @cache
-def load_stats() -> CodingStats:
-    """The committed counts (``scoring/tables/coding_stats.json``)."""
-    text = resources.files("ntsb_probable_cause.scoring").joinpath(_RESOURCE).read_text()
+def _load(name: StatsName) -> CodingStats:
+    text = resources.files("ntsb_probable_cause.scoring").joinpath(_RESOURCES[name]).read_text()
     return CodingStats.model_validate_json(text)
+
+
+def load_stats(name: StatsName = "s27") -> CodingStats:
+    """The committed counts of a stage, one object per name.
+
+    Args:
+        name: ``"s27"`` for ``scoring/tables/coding_stats.json`` (the default, so every
+            existing caller is unchanged) or ``"s3"`` for ``coding_stats_s3.json``, from the
+            pool without ``dev-seal-s3-400`` (decision 0129).
+    """
+    return _load(name)

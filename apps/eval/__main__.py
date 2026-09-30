@@ -44,7 +44,7 @@ from ntsb_probable_cause.scoring.budget import (
     reserve_within_budget,
 )
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.coding_stats import load_stats
+from ntsb_probable_cause.scoring.coding_stats import STATS_NAMES, load_stats
 from ntsb_probable_cause.scoring.judge import (
     JUDGE_MODEL,
     JudgeItem,
@@ -300,6 +300,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     check_p.add_argument("run_id")
     check_p.add_argument("--way", choices=checkpass.CHECK_WAYS, required=True)
+    check_p.add_argument(
+        "--stats",
+        choices=STATS_NAMES,
+        default="s27",
+        help="which statistics file the check reads: S2.7's (default) or S3's (decision 0129)",
+    )
     check_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
@@ -812,7 +818,7 @@ def _cmd_check(
         case_id: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
         for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
     }
-    stats, tables = load_stats(), load_tables()
+    stats, tables = load_stats(args.stats), load_tables()
     # Computed before any reservation too (fix round 2): a failure in either call must not
     # leave a reservation with nothing left to settle it.
     seen_pairs = samples.seen_pairs(processed)
