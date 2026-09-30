@@ -31,10 +31,10 @@ def test_both_evaluation_lists_are_present(eval_ids: dict[str, dict[str, str]]) 
 
 
 def test_evaluation_cases_are_held_out_by_event_date(eval_ids: dict[str, dict[str, str]]) -> None:
-    # dev_400_ids and dev_seal_400_ids are the development-split lists among the eval id
-    # lists (spec §5.3, decision 0095); each gets its own purity test below rather than being
-    # asserted held-out here.
-    development = {"dev_400_ids", "dev_seal_400_ids"}
+    # dev_400_ids, dev_seal_400_ids and dev_seal_s3_400_ids are the development-split lists
+    # among the eval id lists (spec §5.3, decisions 0095 and 0129); each gets its own purity
+    # test below rather than being asserted held-out here.
+    development = {"dev_400_ids", "dev_seal_400_ids", "dev_seal_s3_400_ids"}
     offenders = [
         case
         for name, cases in eval_ids.items()
@@ -85,6 +85,18 @@ def test_the_sealed_sample_is_development_and_shares_no_case(
     assert not set(sealed) & set(eval_ids["dev_400_ids"])
     assert not set(sealed) & set(eval_ids["heldout_400_ids"])
     assert not set(sealed) & set(eval_ids["decidability_ids"])
+
+
+def test_the_s3_sealed_sample_is_development_and_shares_no_case_with_an_earlier_sample(
+    eval_ids: dict[str, dict[str, str]],
+) -> None:
+    """Decision 0129 item 1: drawn from the development split, excluding dev-400 and dev-seal-400
+    (and so held-out, which is another split), sized as the other 400-case samples are."""
+    sealed = eval_ids["dev_seal_s3_400_ids"]
+    assert 395 <= len(sealed) <= 405
+    assert all(split_of(date.fromisoformat(day)) is Split.DEV for day in sealed.values())
+    for other in ("dev_400_ids", "dev_seal_400_ids", "heldout_400_ids", "decidability_ids"):
+        assert not set(sealed) & set(eval_ids[other]), other
 
 
 def test_typesafe_fixture_case_is_development_split() -> None:

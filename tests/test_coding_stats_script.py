@@ -157,6 +157,22 @@ def test_the_s3_pool_leaves_out_the_new_sample_and_the_guard_refuses_one_that_is
         cs.check_pool(leaky, excluded=excluded, splits=dict.fromkeys(leaky, "dev"))
 
 
+def test_every_case_of_the_committed_new_sample_is_outside_the_s3_pool_and_the_guard_trips() -> (
+    None
+):
+    """The committed list of ``dev-seal-s3-400`` is what the s3 stage excludes (decision 0129)."""
+    listed = samples.sample_ids("dev-seal-s3-400")
+    excluded = frozenset(
+        case for name in cs.STAGES["s3"].excluded for case in samples.sample_ids(name)
+    )
+    assert len(set(listed)) == len(listed) > 0
+    assert set(listed) <= excluded
+    assert not set(listed) & frozenset(samples.sample_ids("dev-400"))
+    assert not set(listed) & frozenset(samples.sample_ids("dev-seal-400"))
+    with pytest.raises(LeakageError, match=listed[0]):
+        cs.check_pool(listed[:1], excluded=excluded, splits={listed[0]: "dev"})
+
+
 def _stage_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     """A processed file and the three sample lists in ``tmp_path``; throwaway output paths.
 

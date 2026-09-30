@@ -4,6 +4,7 @@ import hashlib
 import re
 from pathlib import Path
 
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.coding_stats import (
     NO_GROUP,
     STATS_NAMES,
@@ -131,6 +132,34 @@ def test_load_stats_defaults_to_s27_and_keeps_one_object_per_name() -> None:
     assert load_stats() is load_stats("s27")
     assert "excluding dev-400 and dev-seal-400" in load_stats("s27").built_from
     assert "dev-seal-s3-400" not in load_stats("s27").built_from
+
+
+def test_the_s3_counts_name_all_three_samples_and_the_decision() -> None:
+    s3, s27 = load_stats("s3"), load_stats("s27")
+    assert s3.built_from == (
+        "development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 "
+        "(scripts/coding_stats.py, decisions 0094, 129)"
+    )
+    assert load_stats("s3") is load_stats("s3")
+    assert s3 is not s27
+
+
+def test_the_s3_pool_is_the_s27_pool_less_the_new_sample() -> None:
+    """Decision 0129 item 5: the pool shrinks by the new sample's cases, and by no more."""
+    s3, s27 = load_stats("s3"), load_stats("s27")
+    assert set(s3.cases) == set(s27.cases)
+    for half, n in s3.cases.items():
+        assert n < s27.cases[half], half
+    removed = sum(s27.cases.values()) - sum(s3.cases.values())
+    assert 0 < removed <= len(samples.sample_ids("dev-seal-s3-400"))
+
+
+def test_the_committed_s3_counts_load_and_name_no_case() -> None:
+    for path in (
+        Path("src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json"),
+        Path("docs/results/s3-coding-stats.txt"),
+    ):
+        assert not _CASE_NUMBER.search(path.read_text()), path
 
 
 def test_the_stats_names_are_the_two_stages() -> None:
