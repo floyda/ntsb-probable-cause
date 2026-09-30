@@ -14,6 +14,7 @@ from ntsb_probable_cause.model.client import (
     PageImage,
     Payload,
     ToolCall,
+    ToolText,
     Turn,
     cost_usd,
     parse_chat_completion,
@@ -264,3 +265,193 @@ def test_an_image_page_with_no_text_layer_sends_the_image_alone() -> None:
     messages = body["messages"]
     assert isinstance(messages, list)
     assert messages[1]["content"] == [{"type": "image_url", "image_url": {"url": image.data_url()}}]
+
+
+# --- S3.1 Task 3: the seam for native tools -----------------------------------------------------
+
+
+def test_parse_reads_cached_tokens_from_prompt_tokens_details() -> None:
+    reply = parse_chat_completion(saved_response("tool_call"))
+    assert reply.usage.cached_tokens == 0
+
+
+def test_parse_cached_tokens_is_none_without_prompt_tokens_details() -> None:
+    body = dict(saved_response("tool_call"))
+    usage = dict(cast("Mapping[str, object]", body["usage"]))
+    del usage["prompt_tokens_details"]
+    body["usage"] = usage
+    assert parse_chat_completion(body).usage.cached_tokens is None
+
+
+def test_parse_cached_tokens_is_none_when_the_details_omit_it() -> None:
+    body = dict(saved_response("tool_call"))
+    usage = dict(cast("Mapping[str, object]", body["usage"]))
+    usage["prompt_tokens_details"] = {"audio_tokens": 0}
+    body["usage"] = usage
+    assert parse_chat_completion(body).usage.cached_tokens is None
+
+
+def test_parse_reads_reasoning_details_from_the_saved_response() -> None:
+    reply = parse_chat_completion(saved_response("structured"))
+    assert reply.reasoning_details
+    assert all(isinstance(detail, dict) for detail in reply.reasoning_details)
+    assert reply.reasoning_details[0]["type"] == "reasoning.summary"
+
+
+def test_parse_reasoning_details_is_empty_when_absent_or_null() -> None:
+    absent = parse_chat_completion(saved_response("tool_call"))
+    assert absent.reasoning_details == ()
+    body = json.loads(json.dumps(saved_response("structured")))
+    body["choices"][0]["message"]["reasoning_details"] = None
+    assert parse_chat_completion(body).reasoning_details == ()
+
+
+def test_parse_refuses_reasoning_details_that_are_not_objects() -> None:
+    body = json.loads(json.dumps(saved_response("structured")))
+    body["choices"][0]["message"]["reasoning_details"] = ["not an object"]
+    with pytest.raises(ModelError, match="chat completion"):
+        parse_chat_completion(body)
+
+
+def test_request_body_sends_no_tool_keys_unless_set(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """A run that sets neither new field sends exactly the keys it sent before S3.1."""
+    evidence, _, _ = split_record(record_fixtures[0])
+    body = request_body(Payload.from_evidence(evidence), ModelSettings(), system="s", history=())
+    assert set(body) == {"model", "messages", "temperature", "max_tokens", "usage"}
+
+
+def test_request_body_states_tool_choice_and_parallel_tool_calls_when_set(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    evidence, _, _ = split_record(record_fixtures[0])
+    payload = Payload.from_evidence(evidence)
+    forced = {"type": "function", "function": {"name": "submit_answer"}}
+    body = request_body(
+        payload,
+        ModelSettings(tool_choice=forced, parallel_tool_calls=False),
+        system="s",
+        history=(),
+    )
+    assert body["tool_choice"] == forced
+    assert body["parallel_tool_calls"] is False
+    body = request_body(
+        payload,
+        ModelSettings(tool_choice="required", parallel_tool_calls=True),
+        system="s",
+        history=(),
+    )
+    assert body["tool_choice"] == "required"
+    assert body["parallel_tool_calls"] is True
+
+
+def _tool_history(tool_turn: Turn) -> tuple[Turn, ...]:
+    return (
+        Turn(
+            role="assistant",
+            content=None,
+            tool_calls=(ToolCall(call_id="c1", name="look_up", arguments="{}"),),
+        ),
+        tool_turn,
+    )
+
+
+def test_a_tool_turn_with_a_payload_and_tool_text_renders_both_in_order() -> None:
+    payload = Payload.from_evidence(EVIDENCE)
+    turn = Turn(
+        role="tool", tool_call_id="c1", payload=payload, tool_text=ToolText.of("2 codes listed")
+    )
+    body = request_body(payload, ModelSettings(), system="s", history=_tool_history(turn))
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[-1] == {
+        "role": "tool",
+        "tool_call_id": "c1",
+        "content": payload.text + "\n\n" + "2 codes listed",
+    }
+
+
+def test_a_tool_turn_with_only_tool_text_renders_it() -> None:
+    turn = Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of("2 codes listed"))
+    body = request_body(
+        Payload.from_evidence(EVIDENCE), ModelSettings(), system="s", history=_tool_history(turn)
+    )
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[-1] == {"role": "tool", "tool_call_id": "c1", "content": "2 codes listed"}
+
+
+def test_reasoning_details_are_sent_back_only_with_pass_reasoning() -> None:
+    details = ({"type": "reasoning.summary", "summary": "the gear was down"},)
+    history = (
+        Turn(
+            role="assistant",
+            content=None,
+            tool_calls=(ToolCall(call_id="c1", name="look_up", arguments="{}"),),
+            reasoning_details=details,
+        ),
+        Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of("ok")),
+    )
+    payload = Payload.from_evidence(EVIDENCE)
+    off = request_body(payload, ModelSettings(), system="s", history=history)
+    on = request_body(payload, ModelSettings(pass_reasoning=True), system="s", history=history)
+    off_messages = off["messages"]
+    on_messages = on["messages"]
+    assert isinstance(off_messages, list)
+    assert isinstance(on_messages, list)
+    assert "reasoning_details" not in off_messages[2]
+    assert on_messages[2]["reasoning_details"] == list(details)
+
+
+def test_pass_reasoning_adds_nothing_to_a_turn_without_reasoning_details() -> None:
+    history = (Turn(role="assistant", content="earlier answer"),)
+    body = request_body(
+        Payload.from_evidence(EVIDENCE),
+        ModelSettings(pass_reasoning=True),
+        system="",
+        history=history,
+    )
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[-1] == {"role": "assistant", "content": "earlier answer"}
+
+
+def test_batch_submit_carries_the_tool_keys_and_tool_turns(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """``BatchClient.submit`` reuses ``request_body``, so the new keys ride in every request."""
+    route = respx_mock.post("https://openrouter.ai/api/beta/batches").mock(
+        return_value=httpx.Response(202, json={"id": "b-tools", "status": "validating"})
+    )
+    forced = {"type": "function", "function": {"name": "submit_answer"}}
+    details = ({"type": "reasoning.summary", "summary": "s"},)
+    history = (
+        Turn(
+            role="assistant",
+            content=None,
+            tool_calls=(ToolCall(call_id="c1", name="look_up", arguments="{}"),),
+            reasoning_details=details,
+        ),
+        Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of("ok")),
+    )
+    BatchClient(OpenRouterClient("k", sleep=lambda _s: None)).submit(
+        [
+            BatchRequest(
+                custom_id="case-1",
+                payload=Payload.from_evidence(EVIDENCE),
+                settings=ModelSettings(
+                    tool_choice=forced,
+                    parallel_tool_calls=False,
+                    pass_reasoning=True,
+                    tools=({"type": "function", "function": {"name": "submit_answer"}},),
+                ),
+                history=history,
+            )
+        ]
+    )
+    sent = json.loads(route.calls[0].request.content)["requests"][0]["body"]
+    assert sent["tool_choice"] == forced
+    assert sent["parallel_tool_calls"] is False
+    assert sent["messages"][-1] == {"role": "tool", "tool_call_id": "c1", "content": "ok"}
+    assert sent["messages"][-2]["reasoning_details"] == list(details)

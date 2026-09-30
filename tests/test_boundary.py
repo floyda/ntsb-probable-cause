@@ -61,6 +61,7 @@ from ntsb_probable_cause.model.client import (
     Payload,
     RecordingFakeClient,
     ToolCall,
+    ToolText,
     Turn,
 )
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
@@ -283,7 +284,7 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
 @pytest.mark.parametrize(
     "where",
-    ["system", "payload", "history", "tool_payload", "tool_call_arguments"],
+    ["system", "payload", "history", "tool_payload", "tool_text", "tool_call_arguments"],
 )
 def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
@@ -300,6 +301,8 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
                 payload=Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN),
             ),
         )
+    elif where == "tool_text":
+        history = (Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of(needle)),)
     elif where == "tool_call_arguments":
         history = (
             Turn(

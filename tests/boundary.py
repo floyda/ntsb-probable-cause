@@ -577,13 +577,18 @@ class RecordingBatchRunner:
 
 
 def _request_texts(request: BatchRequest) -> list[tuple[str, str]]:
-    """Every string a batch request would send: system, payload, each turn and its tool calls."""
+    """Every string a batch request would send: system, payload, each turn and its tool calls.
+
+    A tool turn's payload text and its tool text are separate entries (S3.1 Task 3).
+    """
     texts = [("system", request.system), ("payload", request.payload.text)]
     for turn in request.history:
         if turn.content is not None:
             texts.append((f"{turn.role} turn", turn.content))
         if turn.payload is not None:
             texts.append((f"{turn.role} turn payload", turn.payload.text))
+        if turn.tool_text is not None:
+            texts.append((f"{turn.role} turn tool text", turn.tool_text.text))
         for call in turn.tool_calls:
             texts.append((f"{turn.role} turn tool call", call.arguments))
     return texts
