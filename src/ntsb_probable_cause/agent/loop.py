@@ -181,7 +181,6 @@ class CaseLoop:
         self._config = config
         self._case_id = str(raw.get("ntsbNumber", ""))
         self._trigger = trigger
-        self._given = view  # arm B's refinement payload holds its listing, even with nothing read
         self._docket = view if view is not None and view.offered else None
         self._system = system_text(config.tables, config.guidance)
         self._tools = definitions(config.without)
@@ -419,11 +418,15 @@ class CaseLoop:
         return self._submitted
 
     def _answer_evidence(self) -> Payload:
-        """The refinement's payload: arm B's shape with a docket, the evidence alone without."""
-        if self._given is None:
+        """The refinement's payload: arm B's shape when documents were offered, else the evidence.
+
+        It never shows what the agent did not see: the listing only when it was offered at h0,
+        and only the documents read.
+        """
+        if self._docket is None:
             return self._payload()
         read = tuple(i for i in self._offered() if i in self._read)  # arm B's order
-        return answer_payload(self._given, read, self._config.exclusions)
+        return answer_payload(self._docket, read, self._config.exclusions)
 
     # --- taking replies ---
 

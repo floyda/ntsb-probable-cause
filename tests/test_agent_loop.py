@@ -35,7 +35,7 @@ from ntsb_probable_cause.agent.texts import (
     system_text,
 )
 from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord
-from ntsb_probable_cause.errors import SchemaError
+from ntsb_probable_cause.errors import LeakageError, SchemaError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.client import (
     ModelReply,
@@ -816,28 +816,32 @@ class TestLeaks:
         assert outcome.read == (), "nothing was sent"
         assert outcome.skipped == (1,), "the document chosen to read was not skipped"
 
-    def test_a_leak_in_the_refinement_payload_keeps_the_answer_on_its_row(self) -> None:
-        """Nothing readable: the agent never sees the listing, but arm B's refinement would."""
-        raw = _withheld(_raw())
-        docket = small_docket({})
-        entry = docket.listing.entries[0].model_copy(update={"title": f"Letter. {CAUSE}"})
-        listing = docket.listing.model_copy(
-            update={"entries": (entry, *docket.listing.entries[1:])}
-        )
-        view = docket_view(raw, docket.model_copy(update={"listing": listing}))
-        loop = CaseLoop(raw, view, _config())
+    def test_a_leak_in_the_refinement_payload_keeps_the_answer_on_its_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every part was guarded when sent; the one split for the refinement is guarded too."""
+
+        def leak(*_args: object, **_kwargs: object) -> None:
+            raise LeakageError("ANC09CA024: docket_documents holds text from probable_cause")
+
+        monkeypatch.setattr(loop_module, "answer_payload", leak)
+        loop = CaseLoop(_raw(), _view(), _config())
         replies: list[str | ModelReply] = [
             tool_reply("record_hypothesis", _hyp()),
+            tool_reply("choose_documents", _choose({1: True, 2: False})),
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("choose_documents", _choose({2: False})),
             tool_reply("submit_answer", _hyp()),
             REFINED,
         ]
         client, _ = _drive(loop, replies)
-        assert len(client.payloads) == 2
+        assert len(client.payloads) == 5
         assert loop.outcome.stop_reason == "failed: leak"
-        row = loop.outcome.calls[1]
+        row = loop.outcome.calls[4]
+        assert (row.tool, row.result_chars) == ("submit_answer", 0)
         assert row.hypothesis == Hypothesis.model_validate_json(_hyp())
         assert row.arguments == row.hypothesis.model_dump(mode="json")
-        assert [kind for kind, _ in loop.outcome.checkpoints] == ["h0", "answer"]
+        assert [kind for kind, _ in loop.outcome.checkpoints] == ["h0", "h1", "answer"]
         assert loop.outcome.answer is None
 
     def test_a_leak_in_the_evidence_stops_before_any_call(self) -> None:
@@ -911,9 +915,8 @@ class TestRefinementPayload:
         assert calls[-1].step == "refine"
         assert calls[-1].payload == calls[0].payload
 
-    @pytest.mark.parametrize("readable", [True, False], ids=["nothing read", "nothing readable"])
-    def test_with_nothing_read_it_holds_the_listing_only(self, readable: bool) -> None:
-        view = _marked_view() if readable else _view({})
+    def test_with_nothing_read_it_holds_the_listing_only(self) -> None:
+        view = _marked_view()
         replies: list[str | ModelReply] = [
             tool_reply("record_hypothesis", _hyp()),
             tool_reply("choose_documents", _choose({1: False, 2: False})),
@@ -921,13 +924,30 @@ class TestRefinementPayload:
             tool_reply("submit_answer", _hyp()),
             REFINED,
         ]
-        if not readable:
-            replies = [replies[0], replies[3], REFINED]
         _, calls = _drive(CaseLoop(_raw(), view, _config()), replies)
         fields = calls[-1].payload.fields()
         assert "docket_listing" in fields
         assert "docket_documents" not in fields
         assert calls[-1].payload == answer_payload(view, (), frozenset())
+
+    def test_with_nothing_offered_it_shows_no_listing_the_agent_never_saw(self) -> None:
+        """The controller's narrowed ruling: a docket with nothing readable is never listed."""
+        docket = small_docket({})
+        entries = tuple(
+            e.model_copy(update={"title": MARK_TITLES[e.index]}) for e in docket.listing.entries
+        )
+        listing = docket.listing.model_copy(update={"entries": entries})
+        view = docket_view(_raw(), docket.model_copy(update={"listing": listing}))
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("submit_answer", _hyp()),
+            REFINED,
+        ]
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), replies)
+        assert [c.step for c in calls] == ["h0", "coding", "refine"]
+        assert calls[-1].payload == calls[0].payload
+        assert not any(title in calls[-1].payload.text for title in MARK_TITLES.values())
+        assert not DOCKET_ROLES & set(calls[-1].payload.fields())
 
 
 # --------------------------------------------------------------------------------------------
