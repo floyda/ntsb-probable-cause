@@ -36,7 +36,7 @@ from tests.test_occurrence_misses import _case
 from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import gitinfo
-from ntsb_probable_cause.agent import armb
+from ntsb_probable_cause.agent import armb, texts
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent.armb import (
     EXPECTED_COST_PER_CASE_USD,
@@ -646,6 +646,37 @@ class TestTheDerivedRun:
         assert (record.batch_ids, record.reported_batch_cost_usd) == ((), None)
         assert record.cost_usd == pytest.approx(POST_COST)  # its own cost, not the source's
         assert original.cost_usd == pytest.approx(3.5)
+
+    def test_the_label_is_fixed_at_the_start_not_when_the_records_are_written(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A covered file edited while the post-pass is in flight does not change its label
+        (decision 0133): the label names the text the post-pass sent."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        mark = text_mark()
+        label = f"{_record(source).prompt_version}+tools-s3{mark}"
+
+        class EditingClient(RecordingFakeClient):
+            def complete(
+                self,
+                payload: Payload,
+                settings: ModelSettings,
+                *,
+                system: str = "",
+                history: Sequence[Turn] = (),
+            ) -> ModelReply:
+                if not self.payloads:
+                    original = texts.source_text
+                    monkeypatch.setattr(
+                        texts, "source_text", lambda p, n: f"{original(p, n)}# an edit\n"
+                    )
+                return super().complete(payload, settings, system=system, history=history)
+
+        record = _post(runs, source, client=EditingClient(POST))
+        assert text_mark() != mark, "the edit is in force at the end"
+        assert record.prompt_version == label
+        assert _record(runs / record.run_id).prompt_version == label
 
     def test_unscored_and_abstaining_source_cases_are_copied_through_unchanged(
         self, tmp_path: Path

@@ -729,6 +729,10 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
         model=pre.spec.model,
         reasoning_effort=pre.spec.reasoning_effort,
     )
+    # The derived run's label is fixed here, before any model call, and written as this one value:
+    # an edit to a covered file while a batch is in flight must not make ``run.jsonl`` name text
+    # the post-pass never sent (decision 0133).
+    label = f"{pre.record.prompt_version}+tools-{stats_name}{text_mark()}"
     cases = [_prepare(case, raws, pre.spec, docket, config) for case in pre.cases]
     loops = [case.loop for case in cases if case.loop is not None]
     folder = runs_dir / pre.run_id
@@ -747,7 +751,7 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
             finished=finished,
             seen_pairs=seen_pairs,
             budget_usd=budget_usd,
-            stats_name=stats_name,
+            prompt_version=label,
         )
 
     try:
@@ -854,16 +858,17 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     finished: datetime | None,
     seen_pairs: frozenset[str],
     budget_usd: float,
-    stats_name: StatsName,
+    prompt_version: str,
 ) -> RunRecord:
     """Write the derived run's cases, trail and record; return the record.
 
     Its cost is the post-pass's own: every reply it took, and any round no reply came from. The
     source's answers were paid for, and counted, in the source run. Its prompt version is the
-    source's with ``+tools-<stats_name>`` (the statistics the tool results counted in) and then
-    ``+p`` and the agent's text fingerprint (``texts.text_mark``; decision 0133): the post-pass
-    sends the agent's tool definitions, tool results and refusals, so its label follows their
-    text as arm C's does.
+    label ``tools_run`` fixed at its start: the source's with ``+tools-<stats_name>`` (the
+    statistics the tool results counted in) and then ``+p`` and the agent's text fingerprint
+    (``texts.text_mark``; decision 0133). The post-pass sends the agent's tool definitions, tool
+    results and refusals, so its label follows their text as arm C's does; it is passed in, never
+    recomputed, so an edit made while the post-pass ran cannot reach the record.
     """
     results = [_result(case, config, seen_pairs) for case in cases]
     write_jsonl(folder / _CASES_FILE, results)
@@ -873,7 +878,7 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     record = pre.record.model_copy(
         update={
             "run_id": pre.run_id,
-            "prompt_version": f"{pre.record.prompt_version}+tools-{stats_name}{text_mark()}",
+            "prompt_version": prompt_version,
             "price_variant": config.price_variant,
             "budget_usd": budget_usd,
             "commit_sha": config.commit[0],

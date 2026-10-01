@@ -7,6 +7,7 @@ import pytest
 from scripts import check_guidance as cg
 
 from ntsb_probable_cause.agent import schemas, steps, texts
+from ntsb_probable_cause.scoring.codes import load_tables
 
 
 def test_sentences_and_matches() -> None:
@@ -51,6 +52,30 @@ def test_agent_texts_hold_the_protocol_the_tool_definitions_and_every_fixed_stri
     assert cg.normalise(
         "Check the occurrence (which event defines the accident, and its phase)"
     ) in (" ".join(needles))
+
+
+def test_agent_texts_hold_the_coding_tools_fixed_result_sentences() -> None:
+    """Decision 0133 names the tools' result wording as text a round may change, so the check
+    covers it: each tool is run on a small placeholder pool, so its fixed words come out and
+    no code label or count of the real tables or statistics does."""
+    parts = cg.agent_texts()
+    needles = [s for part in parts for s in cg.sentences(part)]
+    for sentence in (
+        "Fewer than 20 past cases with this defining event; the counts are unreliable.",
+        "no findings recorded for this event.",
+        "These are counts, not evidence about this accident.",
+        "No past Takeoff accidents in the pool.",
+        "describe_codes: no codes given.",
+        "occurrence_usage: no codes given.",
+    ):
+        assert cg.normalise(sentence) in needles, sentence
+    joined = "\n".join(parts)
+    assert "no pool cases present" in joined
+    assert "... and 1 more" in joined  # a finding category's item list is cut at 20
+    tables = load_tables()
+    for label in (*tables.phases.values(), *tables.events.values(), *tables.items.values()):
+        if len(label) >= 15:
+            assert label not in joined, f"a real code label reached the check: {label}"
 
 
 def _processed(data_dir: Path, rows: list[tuple[str, dict[str, object]]]) -> None:

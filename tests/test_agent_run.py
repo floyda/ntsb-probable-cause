@@ -10,7 +10,7 @@ import copy
 import dataclasses
 import inspect
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -55,7 +55,7 @@ from ntsb_probable_cause.errors import (
     LeakageError,
 )
 from ntsb_probable_cause.fields import EvidenceRole, occurrence_codes
-from ntsb_probable_cause.model.batch import BatchRequest
+from ntsb_probable_cause.model.batch import BatchRequest, BatchStatus
 from ntsb_probable_cause.model.client import (
     ModelClient,
     ModelReply,
@@ -305,6 +305,92 @@ class TestSyncRun:
         assert "round" not in recorded
         assert list(recorded)[-3:] == ["commit_sha", "dirty", "case_ids"]
         assert recorded["case_ids"] == [A, B]
+
+
+def _edit_covered_source(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
+    """What an edit to a covered file looks like to a reader once it is made: a callback that
+    makes ``texts.source_text`` return every file with a comment line added."""
+    original = texts.source_text
+
+    def edit() -> None:
+        monkeypatch.setattr(
+            texts, "source_text", lambda package, name: f"{original(package, name)}# an edit\n"
+        )
+
+    return edit
+
+
+class _EditingClient(ScriptedClient):
+    """A scripted client that has a covered file edited at its first call, as an editor would
+    while the run is in flight."""
+
+    def __init__(self, replies: Sequence[ModelReply | None], edit: Callable[[], None]) -> None:
+        super().__init__(replies)
+        self._edit = edit
+
+    def complete(
+        self,
+        payload: Payload,
+        settings: ModelSettings,
+        *,
+        system: str = "",
+        history: Sequence[Turn] = (),
+    ) -> ModelReply:
+        if self.calls == 0:
+            self._edit()
+        return super().complete(payload, settings, system=system, history=history)
+
+
+class TestPromptVersionIsFixedAtTheStart:
+    """Decision 0133: ``run.jsonl`` names the text the run sent, never an edit made meanwhile."""
+
+    def test_a_covered_file_edited_after_the_run_starts_is_not_recorded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        version = texts.prompt_version(GUIDANCE)
+        client = _EditingClient(_sync_replies(_scripts()), _edit_covered_source(monkeypatch))
+        record = _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS)
+        assert texts.prompt_version(GUIDANCE) != version, "the edit is in force at the end"
+        folder = tmp_path / "runs" / record.run_id
+        assert record.prompt_version == version
+        assert _record(folder).prompt_version == version
+        assert _spec_file(folder)["agent_prompt_version"] == version
+
+    def test_spec_json_and_run_jsonl_carry_the_same_version(self, tmp_path: Path) -> None:
+        record, folder = _sync_run(tmp_path / "runs")
+        assert _spec_file(folder)["agent_prompt_version"] == _record(folder).prompt_version
+        assert record.prompt_version == _record(folder).prompt_version
+
+    def test_a_run_that_dies_records_the_version_it_started_with(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The records written on the way out of a dead run are the start's too."""
+        version = texts.prompt_version(GUIDANCE)
+        edit = _edit_covered_source(monkeypatch)
+
+        def edit_then_die(_batch_id: str, _requests: Sequence[BatchRequest]) -> BatchStatus:
+            edit()
+            raise _KilledError
+
+        runs = tmp_path / "runs"
+        with pytest.raises(_KilledError):
+            _runner(runs, batch=FakeBatchClient(handlers=[edit_then_die])).run(_spec(), RAWS)
+        (folder,) = [p for p in runs.iterdir() if p.is_dir()]
+        assert texts.prompt_version(GUIDANCE) != version
+        assert _record(folder).prompt_version == version
+        assert _spec_file(folder)["agent_prompt_version"] == version
+
+    def test_a_resume_compares_the_recorded_version_with_the_current_code(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Computing the version once must not weaken the resume check."""
+        runs = tmp_path / "runs"
+        with pytest.raises(_KilledError):
+            _runner(runs, batch=FakeBatchClient(handlers=[_die])).run(_spec(), RAWS)
+        (folder,) = [p for p in runs.iterdir() if p.is_dir()]
+        _edit_covered_source(monkeypatch)()
+        with pytest.raises(ConfigurationError, match="agent_prompt_version"):
+            _runner(runs, batch=FakeBatchClient(handlers=[])).run(_spec(), RAWS, resume=folder.name)
 
 
 class TestSteps:

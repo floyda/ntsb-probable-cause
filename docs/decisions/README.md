@@ -62,7 +62,7 @@ under `docs/specs/` and the record links to it.
 | [0019](0019-tripwire-skips-sentence-check-on-weather-report.md) | In the weather report field, the tripwire skips sentences from the factual narrative | Accepted |
 | [0020](0020-amateur-built-make-and-model-replaced-in-evidence.md) | The make and model of amateur-built aircraft are replaced in evidence | Accepted |
 | [0021](0021-agency-measured-as-hypothesis-trail.md) | Agency is measured as a scored hypothesis trail | Accepted; items 1 and 4 superseded by 0121 |
-| [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted; items 4 and 5 superseded by 0121 (item 4 reworded; P1-P6 withdrawn) |
+| [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted; items 4 and 5 superseded by 0121 (item 4 reworded and its conclusion dropped, 0121 item 5; P1-P6 withdrawn) |
 | [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted; items 1, 2 and 4 superseded by 0121 |
 | [0024](0024-open-split-enters-measurements-only-as-numbers.md) | Open-split cases enter a measurement only as numbers | Accepted |
 | [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022; item 1 amended by 0105 |
@@ -160,5 +160,5 @@ under `docs/specs/` and the record links to it.
 | [0129](0129-s3s-sealed-sample-and-statistics.md) | S3's sealed sample `dev-seal-s3-400` and statistics file; the guidance files stay unchanged, the overlap disclosed | Accepted |
 | [0130](0130-the-loops-noise-floor-and-format-gate.md) | The loop's noise floor (two identical `dev-400` runs, a third if they differ by more than 4.0 points) and a 2% format gate | Accepted |
 | [0131](0131-the-probe-spend-kind.md) | The `probe` spend kind; the learning probe's rows relabelled, with the originals kept beside them | Accepted |
-| [0132](0132-s28-is-cancelled.md) | S2.8 is cancelled; its branch stays unmerged and uncited | Accepted; closes 0106 item 5's S2.8 route |
+| [0132](0132-s28-is-cancelled.md) | S2.8 is cancelled; its branch stays unmerged and no content from it is cited | Accepted; closes 0106 item 5's S2.8 route |
 | [0133](0133-unreadable-dockets-are-listed-and-the-text-is-fingerprinted.md) | Arm C sees the listing of a docket with nothing readable; the agent's prompt version fingerprints the source of its model-facing modules (`+p`) | Accepted |

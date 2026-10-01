@@ -84,9 +84,10 @@ noise floor is for a single answer, not for the loop (decision 0130, Why 1).
       date>. The rule is S2.7's: no sentence of 30 characters or more may appear in any
       development case's factual narrative, analysis narrative or probable cause. A guidance file
       is checked by `make s27-check-guidance GUIDANCE=<names>`; the agent's own texts (the
-      protocol and the fixed strings of `agent/texts.py` and `agent/steps.py`, and the tool
-      definitions of `agent/schemas.py`) by `uv run python -m scripts.check_guidance
-      --agent-texts`. Say how any other new text was checked.
+      protocol and the fixed strings of `agent/texts.py` and `agent/steps.py`, the coding
+      tools' fixed result sentences in `agent/tools.py`, and the tool definitions of
+      `agent/schemas.py`) by `uv run python -m scripts.check_guidance --agent-texts`. Say how
+      any other new text was checked.
     - **Stop rule:** <the rounds dropped in a row before this one; S3.1's spend so far, from
       `make s3-spend`>. Two dropped rounds in a row end the rounds, and so does S3.1's share of
       S3's spend line being spent ($20 of $50; spec §14, plan Task 15).

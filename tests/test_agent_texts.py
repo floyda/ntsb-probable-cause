@@ -286,6 +286,23 @@ class TestAgentTextFingerprint:
         edited.write_text(f"{edited.read_text(encoding='utf-8')}# an edit\n", encoding="utf-8")
         assert agent_text_sha256(read) != before
 
+    def test_a_file_is_read_once_per_process_so_a_later_edit_is_not_seen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A covered file edited while a run is in flight must not change what any other caller
+        in the process reads (decision 0133): the first reading is the text that was imported."""
+        package = tmp_path / "read_once_probe"
+        package.mkdir()
+        module = package / "a.py"
+        module.write_text("one\n", encoding="utf-8")
+        monkeypatch.setattr("importlib.resources.files", lambda name: tmp_path / str(name))
+        assert source_text("read_once_probe", "a.py") == "one\n"
+        module.write_text("two\n", encoding="utf-8")
+        assert source_text("read_once_probe", "a.py") == "one\n"
+        source_text.cache_clear()  # what a fresh interpreter starts with
+        assert source_text("read_once_probe", "a.py") == "two\n"
+        source_text.cache_clear()
+
     def test_the_tool_definitions_as_sent_are_in_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
         before = agent_text_sha256()
         changed = copy.deepcopy(TOOL_DEFINITIONS)

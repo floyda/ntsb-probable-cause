@@ -10,7 +10,9 @@ indices, its read and skip decisions with its reasons and expected effects, and 
 which the plan's constraints allow in a ``ToolText``.
 
 The prompt version fingerprints the source of every module that holds or composes the text the
-agent sends (:data:`TEXT_SOURCES`, :func:`agent_text_sha256`; decision 0133).
+agent sends (:data:`TEXT_SOURCES`, :func:`agent_text_sha256`; decision 0133). A run computes it
+once, at its start, and records that one value everywhere (``agent/run.py``, ``agent/armb.py``);
+each file is read once per process (:func:`source_text`).
 
 This module imports no ``records``, ``docket`` or ``data`` module, directly or indirectly (Task
 10's import contract counts chains): a document's facts come in as ``agent.facts.DocumentFacts``,
@@ -20,6 +22,7 @@ files, never a case record. The fingerprint reads the other modules' source as p
 imports none of them.
 """
 
+import functools
 import hashlib
 import json
 import re
@@ -181,8 +184,13 @@ def is_plain(version: str, guidance: Sequence[str]) -> bool:
     return re.fullmatch(f"{re.escape(stem)}{_TEXT_PART.pattern}", version) is not None
 
 
+@functools.cache
 def source_text(package: str, name: str) -> str:
     """One module's source, read as a file of its package (never from a live object).
+
+    Read once per process and kept: a file edited while a run is in flight must not change the
+    text any later caller in that process fingerprints, so the first reading is the text that
+    was imported (decision 0133). A fresh interpreter reads the files again.
 
     Args:
         package: the package, e.g. ``ntsb_probable_cause.agent``.

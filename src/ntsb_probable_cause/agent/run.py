@@ -204,9 +204,13 @@ class AgentRunner:
         """
         self._refuse(spec)
         refuse_sync_resume(spec, resume)
+        # The version is fixed here, before any model call, and every record of the run carries
+        # this one value: an edit to a covered file while the run is in flight (a batch takes
+        # hours) must not make ``run.jsonl`` name text the run never sent (decision 0133).
+        version = texts.prompt_version(spec.guidance, self._round)
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
-        extra = self._recorded(spec)
+        extra = self._recorded(version)
         if resume is None:
             run_id = f"{started:%Y%m%dT%H%M%S}-{self._sha}-{spec.sample}-{_ARM}"
             folder = self._runs_dir / run_id
@@ -260,6 +264,7 @@ class AgentRunner:
                     cases=cases,
                     finished=None,
                     resumed=resume is not None,
+                    prompt_version=version,
                 )
                 if isinstance(error, BatchCancelledError):
                     raise BatchCancelledError(
@@ -275,6 +280,7 @@ class AgentRunner:
                 cases=cases,
                 finished=self._now(),
                 resumed=resume is not None,
+                prompt_version=version,
             )
         finally:
             settle(self._runs_dir, run_id)
@@ -328,10 +334,14 @@ class AgentRunner:
                 f"{spec.sample}: a held-out run is listed in the held-out ledger; pass its path"
             )
 
-    def _recorded(self, spec: RunSpec) -> dict[str, object]:
-        """The loop's settings ``spec.json`` records beside the spec (a resume compares them)."""
+    def _recorded(self, prompt_version: str) -> dict[str, object]:
+        """The loop's settings ``spec.json`` records beside the spec (a resume compares them).
+
+        ``prompt_version`` is the run's, fixed at its start; a resume compares it with the
+        current code's, so a changed text refuses the resume.
+        """
         recorded: dict[str, object] = {
-            "agent_prompt_version": texts.prompt_version(spec.guidance, self._round),
+            "agent_prompt_version": prompt_version,
             "stats": STATS,
             "max_rounds": self._max_rounds,
             "max_coding_calls": MAX_CODING_CALLS,
@@ -537,11 +547,13 @@ class AgentRunner:
         cases: Sequence[_Case],
         finished: datetime | None,
         resumed: bool,
+        prompt_version: str,
     ) -> RunRecord:
         """Write the cases, steps, trail and run record; a resume sets the dead run's aside first.
 
         The set-aside happens a moment before the new files are written, as ``Runner`` does,
         and what the superseded ``run.jsonl`` reported is a floor under this record's cost.
+        ``prompt_version`` is the one ``run`` fixed at its start, the same ``spec.json`` holds.
         """
         floor = _set_aside(folder) if resumed else 0.0
         results = [self._result(case, spec) for case in cases]
@@ -559,7 +571,7 @@ class AgentRunner:
             evidence_version=spec.evidence_version,
             exclusions=tuple(sorted(e.value for e in spec.exclusions)),
             includes=(),
-            prompt_version=texts.prompt_version(spec.guidance, self._round),
+            prompt_version=prompt_version,
             guidance=spec.guidance,
             guidance_sha256=prompt.guidance_sha256(spec.guidance),
             model=spec.model,

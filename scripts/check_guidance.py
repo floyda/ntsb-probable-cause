@@ -8,7 +8,9 @@ Status
     From S3.1 (final review), ``--agent-texts`` checks the agent's own fixed texts the same way
     (``agent_texts``): the protocol and every fixed string of ``agent/texts.py`` and
     ``agent/steps.py`` (their templates rendered with listing numbers and placeholder words),
-    and every string of the tool definitions (``agent/schemas.py``). The rule is S2.7's.
+    the coding tools' fixed result sentences (``agent/tools.py``, each tool run on a small
+    placeholder pool: ``tool_texts``), and every string of the tool definitions
+    (``agent/schemas.py``). The rule is S2.7's.
 
 Usage
     NTSB_DATA_DIR=... uv run python -m scripts.check_guidance r2-loc-stall [r3-...]
@@ -19,14 +21,18 @@ import argparse
 import json
 import re
 from collections.abc import Sequence
+from typing import cast
 
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
-from ntsb_probable_cause.agent import schemas, steps, texts
+from ntsb_probable_cause.agent import schemas, steps, texts, tools
 from ntsb_probable_cause.agent.facts import DocumentFacts
+from ntsb_probable_cause.agent.schemas import DescribeKind
 from ntsb_probable_cause.agent.trail import Prior
 from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.scoring.codes import CodeTables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.settings import Settings
 
@@ -73,16 +79,63 @@ def _strings(value: object) -> list[str]:
     return []
 
 
+def tool_texts() -> list[str]:
+    """The coding tools' fixed result words, one line each, for ``sentences`` to split.
+
+    Decision 0133 names a tool's result wording as text a tuning round may change, so each of the
+    four tools (``agent/tools.py``) is run, every branch of its wording once, over placeholder
+    code tables and a three-case placeholder pool. What comes out is the tools' own fixed
+    sentences and layout around placeholder labels ("phase label", "event label") and small
+    counts: no label of the real code tables and no count of the real statistics. A sentence a
+    tool adds later is checked without a change here.
+
+    Returns:
+        The lines of every result, in the order the tools were run.
+    """
+    tables = CodeTables(
+        phases={"100": "phase label", "200": "other phase label"},
+        events={"010": "event label", "020": "other event label", "030": "third event label"},
+        categories={"010101": "category label"},
+        items={f"010101{n:02d}": "item label" for n in range(1, 22)},  # 21: the list is cut at 20
+        modifiers={"10": "modifier label"},
+    )
+    pool = build(
+        [
+            PoolCase(2010, "Landing", ("100010", "200020"), findings=("0101010110",)),
+            PoolCase(2011, "Landing", ("200020",)),
+            PoolCase(2016, "Landing", ("100010",), findings=("0101010210",)),
+        ],
+        built_from="check_guidance",
+    )
+    results = [
+        tools.describe_codes(tables, "occurrence", ["100010", "999999"]),
+        tools.describe_codes(tables, "finding_category", ["010101", "999999"]),
+        tools.describe_codes(tables, "item", ["01010101", "99999999"]),
+        tools.describe_codes(tables, cast(DescribeKind, "other"), ["100010"]),
+        tools.describe_codes(tables, "occurrence", []),
+        tools.occurrence_usage(tables, pool, []),
+        tools.occurrence_usage(tables, pool, ["100010", "200020", "999999"]),
+        tools.occurrence_usage(tables, pool, ["100030"]),  # valid, in no pool case
+        tools.past_findings(tables, pool, "999999"),
+        tools.past_findings(tables, pool, "100010"),  # findings, and fewer than 20 cases
+        tools.past_findings(tables, pool, "200020"),  # cases, no findings
+        tools.suggest_codes(tables, pool, "Landing"),
+        tools.suggest_codes(tables, pool, "Takeoff"),  # a group the pool holds no case of
+    ]
+    return [line for result in results for line in result.text.splitlines()]
+
+
 def agent_texts() -> list[str]:
     """The agent's fixed model-facing texts, one part each, for ``sentences`` to split.
 
     Every module-level string of ``agent/texts.py`` and ``agent/steps.py`` (the protocol, the
     step texts, the summary's fixed lines; strings inside a table too), every string of the
-    tool definitions (names, descriptions, enum values), and the templates those modules build,
-    rendered with listing numbers and placeholder words so their fixed words are checked.
+    tool definitions (names, descriptions, enum values), the templates those modules build,
+    rendered with listing numbers and placeholder words so their fixed words are checked, and
+    the coding tools' fixed result sentences (:func:`tool_texts`).
     """
     parts: list[str] = []
-    for module in (texts, steps):
+    for module in (texts, steps, tools):
         for name, value in vars(module).items():
             if not name.startswith("__"):
                 parts.extend(_strings(value))
@@ -98,6 +151,7 @@ def agent_texts() -> list[str]:
         steps.wrong_tool(("describe_codes", "submit_answer"), "another"),
         steps.wrong_tool(("submit_answer",), "describe_codes"),
     ]
+    parts += tool_texts()
     return parts
 
 

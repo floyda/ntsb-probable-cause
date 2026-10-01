@@ -95,7 +95,11 @@ Accepted on Andy's squash merge of the pull request that carries the agency desi
 
 - **Item 4 is reworded by [0121](0121-agency-moves-to-reading-and-coding.md)** for the loop of
   S3: the four results that count against the loop now name the read choice and the coding
-  tools, the code-fitted confidence, and the stated effect of a document read.
+  tools, the code-fitted confidence, and the stated effect of a document read. **Its
+  conclusion is also dropped** (0121 item 5, decided by Andy on 2026-10-01): "the published
+  result is that retrieval was warranted and the loop was not" does not carry over. Each of the
+  four results is published as it stands, with no blanket conclusion; S3.2's registration file
+  states how the four are read together.
 - **Item 5 is withdrawn by 0121: P1 to P6.** They were withdrawn before any measurement of the
   loop, and stay above as written. 0121 gives the reason for each. New predictions are
   registered at the start of S3.2.
