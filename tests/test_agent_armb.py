@@ -61,6 +61,7 @@ from ntsb_probable_cause.agent.tools import (
     suggest_codes,
 )
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.docket.listing import Listing
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
@@ -450,9 +451,23 @@ class TestTheForcedAnswer:
         assert (loop.outcome.coding_calls, loop.outcome.argument_errors) == (4, 0)
         assert (loop.outcome.reads, loop.outcome.read, loop.outcome.skipped) == ((), (), ())
 
-    def test_the_docket_state_is_none_when_arm_b_attached_no_document(self) -> None:
+    def test_the_docket_state_is_all_when_arm_b_attached_no_document_but_listed_some(self) -> None:
+        """Arrival, not readability (spec §9; Andy, 2026-10-01), as arm C records it."""
         spec = RunSpec(sample="dev-400", arm="B", guidance=GUIDANCE)
         bare = prepare_case(_raw(), spec, TABLES, small_docket({}))
+        assert "docket_listing" in bare.payload.fields()
+        assert "docket_documents" not in bare.payload.fields()
+        loop = _loop(prepared=bare)
+        _drive(loop, [_submit(_hyp(findings=[]))])
+        assert {c.docket_state for c in loop.outcome.calls} == {"all"}
+
+    def test_the_docket_state_is_none_when_the_docket_lists_nothing(self) -> None:
+        spec = RunSpec(sample="dev-400", arm="B", guidance=GUIDANCE)
+        empty = Docket(
+            mkey=1, listing=Listing(mkey=1, declared_items=0, entries=()), documents=(), texts={}
+        )
+        bare = prepare_case(_raw(), spec, TABLES, empty)
+        assert "docket_listing" not in bare.payload.fields()
         loop = _loop(prepared=bare)
         _drive(loop, [_submit(_hyp(findings=[]))])
         assert {c.docket_state for c in loop.outcome.calls} == {"none"}
@@ -705,7 +720,9 @@ class TestTheDerivedRun:
         ]
         assert {c.run_id for c in trail} == {record.run_id}
         assert {(c.commit_sha, c.dirty, c.batch_id) for c in trail} == {("def5678", True, None)}
-        assert [c.docket_state for c in trail] == ["all", "all", "none", "none"]
+        # B's docket lists three unreadable documents: arm B attached none, but the listing
+        # arrived, so its state is "all" (arrival, not readability; Andy, 2026-10-01).
+        assert [c.docket_state for c in trail] == ["all", "all", "all", "all"]
 
     def test_the_payload_and_system_are_the_ones_the_runner_sent(self, tmp_path: Path) -> None:
         runs = tmp_path / "runs"

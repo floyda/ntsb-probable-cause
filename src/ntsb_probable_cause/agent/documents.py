@@ -58,6 +58,17 @@ class DocketView:
     offered: tuple[DocumentFacts, ...]
     not_readable: tuple[DocumentFacts, ...]
 
+    @property
+    def listed(self) -> bool:
+        """Whether the docket lists any document, readable or not.
+
+        Andy, 2026-10-01 (decision 0074, equal evidence): a docket that lists documents is shown
+        to the agent, its listing with its titles, even when none of them can be read, as arm
+        B's payload holds the listing whatever it could attach. Only a docket that lists nothing
+        counts as no docket.
+        """
+        return bool(self.offered or self.not_readable)
+
 
 def _facts(record: DocumentRecord) -> DocumentFacts:
     return DocumentFacts(

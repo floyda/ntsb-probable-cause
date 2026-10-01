@@ -30,6 +30,7 @@ def test_agent_texts_hold_the_protocol_the_tool_definitions_and_every_fixed_stri
         texts.CODE_NOW,
         texts.ANSWER_NOW,
         texts.NO_DOCUMENTS,
+        texts.NONE_READABLE,
         texts.ALL_READ,
         texts.ONE_CALL,
         texts.PRIOR_HEADING,

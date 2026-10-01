@@ -47,6 +47,11 @@ CODE_NOW: Final = "Check your coding with the coding tools, then submit your ans
 # The coding ablation's CODE_NOW (spec §7.2): the run sends no coding tools, so it names none.
 ANSWER_NOW: Final = "Submit your answer now."
 NO_DOCUMENTS: Final = "No docket documents are available for this case."
+# H0's result when the docket lists documents but none can be read (Andy, 2026-10-01; decision
+# 0074, equal evidence): it follows the listing and the menu's not-readable lines, as arm B's
+# payload holds the listing whatever it could attach. NO_DOCUMENTS stays for a case with no
+# docket, or a docket that lists nothing.
+NONE_READABLE: Final = "None of the documents listed can be read."
 # A later trigger's move to coding when every document on offer was read on an earlier one.
 ALL_READ: Final = "Every docket document on offer has been read; none is left to choose."
 ONE_CALL: Final = "Only one tool call is run per turn; this call was not run."

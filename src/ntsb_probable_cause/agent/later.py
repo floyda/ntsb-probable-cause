@@ -10,7 +10,9 @@ replies mislead, and it grows without limit (0122, Why 3).
 When new structured evidence arrived, H0 follows that call as on a first trigger. When it did
 not, that call stands for H0 (the last hypothesis already used everything the case held): its
 result also carries what H0's would, the listing and the menu of every unread document, or the
-move to coding when nothing is left to choose.
+move to coding when nothing is left to choose. When the docket lists documents none of which can
+be read, H0's result is the listing, the menu's not-readable lines and ``NONE_READABLE`` before
+the move to coding (Andy, 2026-10-01), and so is this call's.
 
 ``CaseLoop`` calls :func:`check_prior` before it builds anything and :func:`opening` once its own
 state is set. Nothing here keeps state or calls a model.
@@ -87,7 +89,7 @@ def opening(  # noqa: PLR0913 -- the prior, the docket, its shelf, the run: all 
 
     Args:
         prior: the earlier triggers' work, checked by :func:`check_prior`.
-        view: the docket on offer, or None when it offers nothing.
+        view: the docket, or None when there is none or it lists nothing.
         shelf: the documents now, those read before counted as read.
         exclusions: the run's excluded evidence roles.
         coding: whether the run has a coding step.
@@ -95,18 +97,20 @@ def opening(  # noqa: PLR0913 -- the prior, the docket, its shelf, the run: all 
 
     Returns:
         The two turns and the step that follows them. The tool turn's payload holds the
-        documents read before (with the listing when a read choice follows), or is None when
-        there is neither: the summary then goes alone, never beside an empty payload.
+        documents read before (with the listing when a read choice follows, or when every
+        listed document is unreadable and no H0 is formed), or is None when there is neither:
+        the summary then goes alone, never beside an empty payload.
 
     Raises:
         LeakageError: the guard found withheld text in a document read before or the listing.
     """
     text = prior_summary(prior)
     step: StepKind = "h0"
+    listed = False
     if not new_structured:
         step, after = steps.after_hypothesis("h0", shelf, coding)
         text = f"{text}\n\n{after}"
-    listed = step == "choice1"
+        listed = steps.lists("h0", shelf)  # what H0's result would carry (Andy, 2026-10-01)
     payload: Payload | None = None
     if listed or prior.read:
         if view is None:  # check_prior refuses a prior whose documents are not on offer

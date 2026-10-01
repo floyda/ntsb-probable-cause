@@ -252,8 +252,10 @@ class FixedToolsLoop:
         self._payload = payload
         self._system = system
         self._first = (first_answer, first_answer_json)
-        documents = EvidenceRole.DOCKET_DOCUMENTS.value in payload.fields()
-        self._docket_state: DocketState = "all" if documents else "none"
+        # The docket state is about arrival, not readability (spec §9; Andy, 2026-10-01): arm B's
+        # payload holds the listing whenever the docket lists anything, attached or not.
+        listed = EvidenceRole.DOCKET_LISTING.value in payload.fields()
+        self._docket_state: DocketState = "all" if listed else "none"
         self._tools = definitions()
         self._base = ModelSettings(
             model=config.model,

@@ -26,6 +26,8 @@ from ntsb_probable_cause.agent.documents import (
 )
 from ntsb_probable_cause.agent.facts import DocumentFacts
 from ntsb_probable_cause.agent.texts import menu
+from ntsb_probable_cause.docket.listing import Listing
+from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import DocketError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.client import Payload
@@ -123,6 +125,18 @@ class TestDocketView:
         view = docket_view(_raw(), small_docket({}))
         assert view.offered == ()
         assert [f.index for f in view.not_readable] == [1, 2, 3]
+
+    def test_a_docket_is_listed_when_it_lists_any_document_readable_or_not(self) -> None:
+        """Andy, 2026-10-01: only a docket that lists nothing counts as no docket."""
+        assert _view().listed
+        assert docket_view(_raw(), small_docket({})).listed
+        assert docket_view(_raw(), small_docket({1: ONE})).listed
+        empty = Docket(
+            mkey=1, listing=Listing(mkey=1, declared_items=0, entries=()), documents=(), texts={}
+        )
+        unlisted = docket_view(_raw(), empty)
+        assert not unlisted.listed
+        assert listing_payload(unlisted, NO_EXCLUSIONS).fields() == {}
 
     def test_is_a_frozen_record(self) -> None:
         view = _view()

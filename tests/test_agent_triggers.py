@@ -48,6 +48,7 @@ from ntsb_probable_cause.agent.texts import (
     CHOOSE,
     CODE_NOW,
     NO_DOCUMENTS,
+    NONE_READABLE,
     menu,
     prior_summary,
 )
@@ -361,6 +362,52 @@ class TestNothingNew:
         assert result.tool_text is not None
         assert result.tool_text.text == f"{prior_summary(prior)}\n\n{NO_DOCUMENTS}\n\n{CODE_NOW}"
         assert loop.outcome.stop_reason == "done"
+
+    def test_with_nothing_readable_and_no_new_structured_evidence_it_sends_the_listing(
+        self,
+    ) -> None:
+        """H0's result for a docket listing only unreadable documents (Andy, 2026-10-01): the
+        opening call stands for H0, so its result carries the listing, the not-readable lines
+        and ``NONE_READABLE`` before the move to coding."""
+        prior = _prior_reading(())
+        view = docket_view(_raw(), small_docket({}))
+        replies: list[str | ModelReply] = [tool_reply("submit_answer", _hyp()), REFINED]
+        loop, _, calls = _later(replies, new_structured=False, prior=prior, view=view)
+        assert [c.step for c in calls] == ["coding", "refine"]
+        _, result = _opening(calls[0])
+        assert result.payload == docket_payload(view, (), NONE)
+        assert result.payload == listing_payload(view, NONE)
+        assert all(title in result.payload.text for title in TITLES)
+        assert result.tool_text is not None
+        assert result.tool_text.text == (
+            f"{prior_summary(prior)}\n\n{menu((), view.not_readable)}\n\n{NONE_READABLE}"
+            f"\n\n{CODE_NOW}"
+        )
+        assert calls[1].payload == answer_payload(view, (), NONE)
+        assert {row.docket_state for row in loop.outcome.calls} == {"all"}
+
+    def test_with_nothing_readable_and_new_structured_evidence_h0_sends_the_listing(
+        self,
+    ) -> None:
+        prior = _prior_reading(())
+        view = docket_view(_raw(), small_docket({}))
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("submit_answer", _hyp(findings=[])),
+        ]
+        loop, _, calls = _later(
+            replies, new_structured=True, prior=prior, view=view, docket_final=False
+        )
+        assert [c.step for c in calls] == ["h0", "coding"]
+        _, opening = _opening(calls[0])
+        assert opening.payload is None, "nothing was read before, and H0 follows"
+        after_h0 = _tool_turns(calls[1].history)[-1]
+        assert after_h0.payload == listing_payload(view, NONE)
+        assert after_h0.tool_text is not None
+        assert after_h0.tool_text.text == (
+            f"{menu((), view.not_readable)}\n\n{NONE_READABLE}\n\n{CODE_NOW}"
+        )
+        assert {row.docket_state for row in loop.outcome.calls} == {"some"}
 
     def test_without_coding_tools_it_goes_straight_to_the_answer(self) -> None:
         prior = _prior_reading((1, 2))

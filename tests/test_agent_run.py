@@ -369,8 +369,16 @@ class TestSteps:
             assert step.documents_attached == (f"1: exam_site, {len(ONE) // 4} tokens",)
         assert {s.payload_fingerprint for s in a.steps} == {fingerprint(evidence)}
         assert {s.not_available for s in a.steps} == {("3: unreadable: scan",)}
-        assert {s.returned_roles for s in b.steps} == {
-            tuple(sorted(evidence_payload(RAWS[1], frozenset()).fields()))
+        # Case B's docket lists three documents, none readable: the listing went back with H0's
+        # result all the same (Andy, 2026-10-01), so every step after H0 has seen it.
+        b_roles = tuple(sorted(evidence_payload(RAWS[1], frozenset()).fields()))
+        assert b.steps[0].returned_roles == b_roles
+        assert {s.returned_roles for s in b.steps[1:]} == {
+            tuple(sorted({*b_roles, "docket_listing"}))
+        }
+        assert {s.documents_attached for s in b.steps} == {()}
+        assert {s.not_available for s in b.steps} == {
+            ("1: unreadable: scan", "2: unreadable: scan", "3: unreadable: scan")
         }
         assert {(s.model, s.price_variant) for s in a.steps} == {("openai/gpt-6-luna", "standard")}
 

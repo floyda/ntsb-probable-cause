@@ -44,6 +44,7 @@ from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import fields, sources
 from ntsb_probable_cause.agent import steps as steps_module
+from ntsb_probable_cause.agent.texts import NONE_READABLE
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.attach import attach_docket
@@ -1571,6 +1572,15 @@ def test_an_arm_c_batch_run_sends_no_withheld_text_in_any_request(tmp_path: Path
     assert any(turn.payload is not None for turn in turns), "a document was read"
     assert any(turn.reasoning_details for turn in turns), "reasoning was passed back"
     assert all(request.settings.pass_reasoning for request in requests)
+    # The second case's docket lists three documents, none readable: its listing is checked too
+    # (Andy, 2026-10-01: arm C sees the listing arm B's payload holds).
+    assert any(
+        turn.payload is not None
+        and set(turn.payload.fields()) == {"docket_listing"}
+        and turn.tool_text is not None
+        and NONE_READABLE in turn.tool_text.text
+        for turn in turns
+    ), "an unreadable docket's listing was sent"
     assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
 
 

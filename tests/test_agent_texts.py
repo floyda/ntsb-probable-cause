@@ -19,6 +19,7 @@ from ntsb_probable_cause.agent.texts import (
     CHOOSE_AGAIN,
     CODE_NOW,
     NO_DOCUMENTS,
+    NONE_READABLE,
     ONE_CALL,
     PROTOCOL,
     RECORD_NOW,
@@ -250,6 +251,12 @@ class TestFixedStrings:
         assert NO_DOCUMENTS == "No docket documents are available for this case."
         assert ONE_CALL == "Only one tool call is run per turn; this call was not run."
 
+    def test_none_readable_is_andys_text_and_names_no_cause(self) -> None:
+        """Andy, 2026-10-01: the text that follows an unreadable docket's listing."""
+        assert NONE_READABLE == "None of the documents listed can be read."
+        assert "scan" not in NONE_READABLE
+        assert "text layer" not in NONE_READABLE
+
     def test_the_coding_ablation_names_no_coding_tool(self) -> None:
         """Task 8: the ``without={"coding"}`` run sends no coding tools, so its text names none."""
         assert ANSWER_NOW == "Submit your answer now."
@@ -270,6 +277,7 @@ class TestFixedStrings:
             CODE_NOW,
             ANSWER_NOW,
             NO_DOCUMENTS,
+            NONE_READABLE,
             ONE_CALL,
             system_text(TABLES, GUIDANCE),
             menu([_facts(1)], []),

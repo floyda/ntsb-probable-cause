@@ -19,23 +19,31 @@ from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import loop as loop_module
-from ntsb_probable_cause.agent.documents import DocketView, answer_payload, docket_view
+from ntsb_probable_cause.agent.documents import (
+    DocketView,
+    answer_payload,
+    docket_view,
+    listing_payload,
+)
 from ntsb_probable_cause.agent.loop import CaseLoop, LoopConfig, PendingCall
 from ntsb_probable_cause.agent.schemas import REQUIRED, TOOL_DEFINITIONS, definitions, force
-from ntsb_probable_cause.agent.steps import sanitised, tool_choice, wrong_tool
+from ntsb_probable_cause.agent.steps import Shelf, lists, sanitised, tool_choice, wrong_tool
 from ntsb_probable_cause.agent.texts import (
     ANSWER_NOW,
     CHOOSE,
     CHOOSE_AGAIN,
     CODE_NOW,
     NO_DOCUMENTS,
+    NONE_READABLE,
     ONE_CALL,
     RECORD_NOW,
     menu,
     read_summary,
     system_text,
 )
-from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord
+from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord, StepKind
+from ntsb_probable_cause.docket.listing import Listing
+from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import LeakageError, SchemaError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.client import (
@@ -51,6 +59,7 @@ from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA, Hypothesis
+from ntsb_probable_cause.scoring.runner import RunSpec, prepare_case
 
 TABLES = load_tables()
 STATS = build(
@@ -364,17 +373,38 @@ class TestWhereTextAppears:
 # --------------------------------------------------------------------------------------------
 
 
+def _unlisted_view() -> DocketView:
+    """A docket that lists nothing: its listing page holds no document."""
+    empty = Docket(
+        mkey=1, listing=Listing(mkey=1, declared_items=0, entries=()), documents=(), texts={}
+    )
+    return docket_view(_raw(), empty)
+
+
+def _unreadable_view() -> DocketView:
+    """A docket that lists three documents with marker titles, none of which can be read."""
+    docket = small_docket({})
+    entries = tuple(
+        e.model_copy(update={"title": MARK_TITLES[e.index]}) for e in docket.listing.entries
+    )
+    listing = docket.listing.model_copy(update={"entries": entries})
+    return docket_view(_raw(), docket.model_copy(update={"listing": listing}))
+
+
+ANSWERED: list[str | ModelReply] = [
+    tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+    tool_reply("submit_answer", _hyp(), call_id="c2"),
+    REFINED,
+]
+
+
 class TestNothingOffered:
-    @pytest.mark.parametrize("view", [None, "empty"])
-    def test_goes_from_h0_straight_to_coding(self, view: str | None) -> None:
-        docket = None if view is None else _view({})
-        loop = CaseLoop(_raw(), docket, _config())
-        replies: list[str | ModelReply] = [
-            tool_reply("record_hypothesis", _hyp(), call_id="c1"),
-            tool_reply("submit_answer", _hyp(), call_id="c2"),
-            REFINED,
-        ]
-        _, calls = _drive(loop, replies)
+    @pytest.mark.parametrize("listed", [False, True])
+    def test_no_docket_or_an_empty_listing_goes_from_h0_straight_to_coding(
+        self, listed: bool
+    ) -> None:
+        loop = CaseLoop(_raw(), _unlisted_view() if listed else None, _config())
+        _, calls = _drive(loop, ANSWERED)
         assert [c.step for c in calls] == ["h0", "coding", "refine"]
         (result,) = _tool_turns(calls[1].history)
         assert result.payload is None
@@ -382,6 +412,99 @@ class TestNothingOffered:
         assert result.tool_text.text == f"{NO_DOCUMENTS}\n\n{CODE_NOW}"
         assert {row.docket_state for row in loop.outcome.calls} == {"none"}
         assert loop.outcome.reads == ()
+        assert calls[-1].payload == calls[0].payload, "the refinement shows no listing"
+
+
+class TestNoneReadable:
+    """Andy, 2026-10-01: a docket that lists documents none of which can be read is still shown.
+
+    Arm B's payload always holds the listing with its titles; arm C sees the same listing at h0
+    (decision 0074, equal evidence), then the menu's not-readable lines, ``NONE_READABLE`` and
+    the move to coding.
+    """
+
+    def test_h0_sends_the_listing_the_unreadable_lines_and_then_coding(self) -> None:
+        view = _unreadable_view()
+        loop = CaseLoop(_raw(), view, _config())
+        _, calls = _drive(loop, ANSWERED)
+        assert [c.step for c in calls] == ["h0", "coding", "refine"]
+        assert calls[1].settings.tool_choice == REQUIRED
+        (result,) = _tool_turns(calls[1].history)
+        assert result.payload == listing_payload(view, frozenset())
+        assert set(result.payload.fields()) == {"docket_listing"}
+        assert all(title in result.payload.text for title in MARK_TITLES.values())
+        assert result.tool_text is not None
+        assert result.tool_text.text == (
+            "Not readable: [1] 3 pages\nNot readable: [2] 3 pages\nNot readable: [3] 3 pages"
+            f"\n\n{NONE_READABLE}\n\n{CODE_NOW}"
+        )
+        menu_lines = menu((), view.not_readable)
+        assert result.tool_text.text == f"{menu_lines}\n\n{NONE_READABLE}\n\n{CODE_NOW}"
+        assert not any(title in result.tool_text.text for title in MARK_TITLES.values())
+        assert NO_DOCUMENTS not in result.tool_text.text
+        assert loop.outcome.reads == ()
+        assert (loop.outcome.read, loop.outcome.skipped) == ((), ())
+
+    def test_the_first_user_message_still_holds_no_docket_role(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _unreadable_view(), _config()), ANSWERED)
+        for pending in calls[:-1]:
+            assert not DOCKET_ROLES & set(pending.payload.fields())
+            assert not any(title in pending.payload.text for title in MARK_TITLES.values())
+
+    def test_the_refinement_shows_the_listing_the_agent_saw_and_no_document(self) -> None:
+        view = _unreadable_view()
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), ANSWERED)
+        refine = calls[-1]
+        assert refine.step == "refine"
+        assert refine.payload == answer_payload(view, (), frozenset())
+        assert "docket_listing" in refine.payload.fields()
+        assert "docket_documents" not in refine.payload.fields()
+        assert all(title in refine.payload.text for title in MARK_TITLES.values())
+
+    @pytest.mark.parametrize("final", [True, False])
+    def test_the_docket_state_is_about_arrival_not_readability(self, final: bool) -> None:
+        loop = CaseLoop(_raw(), _unreadable_view(), _config(), docket_final=final)
+        _drive(loop, ANSWERED)
+        assert {row.docket_state for row in loop.outcome.calls} == {"all" if final else "some"}
+
+    def test_without_coding_the_answer_follows(self) -> None:
+        view = _unreadable_view()
+        loop = CaseLoop(_raw(), view, _config(without=frozenset({"coding"})))
+        _, calls = _drive(loop, ANSWERED)
+        assert [c.step for c in calls] == ["h0", "answer", "refine"]
+        (result,) = _tool_turns(calls[1].history)
+        assert result.payload == listing_payload(view, frozenset())
+        assert result.tool_text is not None
+        assert result.tool_text.text == (
+            f"{menu((), view.not_readable)}\n\n{NONE_READABLE}\n\n{ANSWER_NOW}"
+        )
+
+    def test_the_listing_arm_c_sends_is_arm_bs_listing(self) -> None:
+        """Parity (decision 0074): the listing text and the refinement equal arm B's payload."""
+        view = _unreadable_view()
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), ANSWERED)
+        (result,) = _tool_turns(calls[1].history)
+        assert result.payload is not None
+        arm_b = prepare_case(
+            _raw(), RunSpec(sample="dev-400", arm="B"), TABLES, view.attachment.docket
+        )
+        assert arm_b.documents_attached == ()
+        arm_c_listing = json.loads(result.payload.text)["docket_listing"]
+        assert arm_c_listing == json.loads(arm_b.payload.text)["docket_listing"]
+        assert calls[-1].payload == arm_b.payload
+
+    def test_a_leak_in_the_listing_ends_the_case_after_h0(self) -> None:
+        raw = _withheld(_raw())
+        docket = small_docket({})
+        first, *rest = docket.listing.entries
+        leaky = first.model_copy(update={"title": f"Letter. {CAUSE}"})
+        listing = docket.listing.model_copy(update={"entries": (leaky, *rest)})
+        view = docket_view(raw, docket.model_copy(update={"listing": listing}))
+        loop = CaseLoop(raw, view, _config())
+        _, calls = _drive(loop, [tool_reply("record_hypothesis", _hyp())])
+        assert [c.step for c in calls] == ["h0"]
+        assert loop.outcome.stop_reason == "failed: leak"
+        assert loop.next_call() is None
 
 
 # --------------------------------------------------------------------------------------------
@@ -961,24 +1084,21 @@ class TestRefinementPayload:
         assert "docket_documents" not in fields
         assert calls[-1].payload == answer_payload(view, (), frozenset())
 
-    def test_with_nothing_offered_it_shows_no_listing_the_agent_never_saw(self) -> None:
-        """The controller's narrowed ruling: a docket with nothing readable is never listed."""
-        docket = small_docket({})
-        entries = tuple(
-            e.model_copy(update={"title": MARK_TITLES[e.index]}) for e in docket.listing.entries
-        )
-        listing = docket.listing.model_copy(update={"entries": entries})
-        view = docket_view(_raw(), docket.model_copy(update={"listing": listing}))
-        replies: list[str | ModelReply] = [
-            tool_reply("record_hypothesis", _hyp()),
-            tool_reply("submit_answer", _hyp()),
-            REFINED,
-        ]
-        _, calls = _drive(CaseLoop(_raw(), view, _config()), replies)
+    def test_with_nothing_readable_it_holds_the_listing_the_agent_saw(self) -> None:
+        """Andy, 2026-10-01: a docket listing only unreadable documents is listed at h0, so the
+        refinement shows that listing, as arm B's payload does (it replaces the controller's
+        narrowed ruling that such a docket is never listed)."""
+        view = _unreadable_view()
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), ANSWERED)
         assert [c.step for c in calls] == ["h0", "coding", "refine"]
+        assert calls[-1].payload == answer_payload(view, (), frozenset())
+        assert all(title in calls[-1].payload.text for title in MARK_TITLES.values())
+        assert set(calls[-1].payload.fields()) & DOCKET_ROLES == {"docket_listing"}
+
+    def test_with_an_empty_listing_it_is_the_evidence(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _unlisted_view(), _config()), ANSWERED)
+        assert calls[-1].step == "refine"
         assert calls[-1].payload == calls[0].payload
-        assert not any(title in calls[-1].payload.text for title in MARK_TITLES.values())
-        assert not DOCKET_ROLES & set(calls[-1].payload.fields())
 
 
 # --------------------------------------------------------------------------------------------
@@ -1250,6 +1370,20 @@ class TestStepTable:
         assert wrong_tool(("describe_codes", "past_findings", "submit_answer"), "hack") == (
             "this step takes describe_codes, past_findings or submit_answer, not an unknown tool"
         )
+
+    def test_the_listing_goes_back_at_h0_whenever_the_docket_lists_something_unread(self) -> None:
+        """Andy, 2026-10-01: with a read choice to follow, or with nothing readable at all."""
+        readable, scan = _view().offered[0], _view().not_readable[0]
+        assert lists("h0", Shelf(rest=(readable,), not_readable=(scan,)))
+        assert lists("h0", Shelf(not_readable=(scan,)))
+        assert Shelf(not_readable=(scan,)).none_readable
+        assert not lists("h0", Shelf())
+        assert not lists("h0", Shelf(not_readable=(scan,), read=(1,))), "all read before"
+        assert not Shelf(not_readable=(scan,), read=(1,)).none_readable
+        assert not Shelf(rest=(readable,)).none_readable
+        later_steps: tuple[StepKind, ...] = ("h1", "h2", "choice1", "coding")
+        for step in later_steps:
+            assert not lists(step, Shelf(rest=(readable,), not_readable=(scan,)))
 
     def test_sanitised_keeps_a_cause_free_message_and_hides_json(self) -> None:
         assert sanitised(SchemaError("unknown modifier '99'")) == "unknown modifier '99'"

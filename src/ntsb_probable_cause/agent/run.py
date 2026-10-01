@@ -468,7 +468,7 @@ class AgentRunner:
         not_available = (
             () if view is None else tuple(f"{f.index}: {f.status}" for f in view.not_readable)
         )
-        offered = view is not None and bool(view.offered)
+        listed = view is not None and view.listed
         last = len(outcome.checkpoints) - 1
         steps: list[StepRecord] = []
         since: list[AgentCall] = []
@@ -516,8 +516,10 @@ class AgentRunner:
                     )
                 )
                 since = []
-            if call.step == "h0" and call.hypothesis is not None and offered:
-                listing = True  # the listing went back as the first hypothesis's result
+            if call.step == "h0" and call.hypothesis is not None and listed:
+                # The listing went back as the first hypothesis's result, readable documents or
+                # not (Andy, 2026-10-01).
+                listing = True
             if call.tool == "choose_documents" and call.protocol_error is None:
                 choice = ChooseDocuments.model_validate(call.arguments)
                 chosen |= {d.document for d in choice.decisions if d.read}

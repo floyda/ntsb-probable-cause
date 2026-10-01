@@ -178,14 +178,18 @@ class CaseLoop:
 
     Args:
         raw: the case record; a ``docket`` key, if it has one, is not sent.
-        view: the case's prepared docket, or None when it has none or the run excludes it.
+        view: the case's prepared docket, or None when it has none or the run excludes it. A
+            view that lists nothing is taken as no docket; one that lists documents none of
+            which can be read is kept, and its listing is sent (Andy, 2026-10-01).
         config: the run's settings.
         trigger: which trigger of the case this is (1 in evaluation, spec §4.1).
         prior: the earlier triggers' work (``prior_of``); None on a first trigger.
         new_structured: whether new structured evidence arrived since the prior; H0 is formed
             again only then (spec §4.3). A first trigger always forms H0.
         docket_final: whether the docket is complete (``"all"``) or more documents may come
-            (``"some"``); a docket that offers nothing is ``"none"`` either way (spec §9).
+            (``"some"``); a docket that lists nothing is ``"none"`` either way. The state is
+            about arrival, not readability (spec §9): a docket whose listed documents cannot be
+            read has arrived all the same.
 
     Raises:
         ValueError: a docket role is excluded but a view was passed (pass ``view=None``); a
@@ -213,7 +217,9 @@ class CaseLoop:
         self._trigger = trigger
         self._prior = prior
         self._earlier: tuple[int, ...] = () if prior is None else prior.read
-        self._docket = view if view is not None and view.offered else None
+        # A docket that lists anything is kept, readable or not (Andy, 2026-10-01; decision
+        # 0074): its listing goes back with H0's result, as arm B's payload always holds it.
+        self._docket = view if view is not None and view.listed else None
         self._docket_state: DocketState = (
             "none" if self._docket is None else "all" if docket_final else "some"
         )
@@ -478,11 +484,12 @@ class CaseLoop:
         return self._submitted
 
     def _answer_evidence(self) -> Payload:
-        """The refinement's payload: arm B's shape when documents were offered, else the evidence.
+        """The refinement's payload: arm B's shape, or the evidence alone when nothing is listed.
 
-        It never shows what the agent did not see: the listing only when it was offered at h0
-        (on a later trigger, on this trigger or an earlier one), and only the documents read, on
-        any trigger.
+        It never shows what the agent did not see: the listing only when it was sent at h0 (on a
+        later trigger, on this trigger or an earlier one), which it is whenever the docket lists
+        a document, readable or not (Andy, 2026-10-01), and only the documents read, on any
+        trigger.
         """
         if self._docket is None:
             return self._payload()
@@ -574,9 +581,10 @@ class CaseLoop:
                 self._step = "refine"
             return None, None
         self._checkpoints.append((step, hypothesis))
-        self._step, text = steps.after_hypothesis(step, self._shelf(), bool(self._coding))
+        shelf = self._shelf()
+        self._step, text = steps.after_hypothesis(step, shelf, bool(self._coding))
         listing = None
-        if self._step == "choice1":
+        if steps.lists(step, shelf):
             listing = listing_payload(self._view(), self._config.exclusions)
         return text, listing
 
@@ -649,8 +657,8 @@ class CaseLoop:
         return steps.Shelf(rest, self._docket.not_readable, read)
 
     def _view(self) -> DocketView:
-        if self._docket is None:  # a payload is built only when documents are on offer
-            raise RuntimeError("a docket payload with no documents on offer")
+        if self._docket is None:  # a payload is built only when the docket lists documents
+            raise RuntimeError("a docket payload with no document listed")
         return self._docket
 
 

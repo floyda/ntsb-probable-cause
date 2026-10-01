@@ -25,6 +25,7 @@ from ntsb_probable_cause.agent.texts import (
     CHOOSE_AGAIN,
     CODE_NOW,
     NO_DOCUMENTS,
+    NONE_READABLE,
     RECORD_NOW,
     menu,
     read_summary,
@@ -113,13 +114,18 @@ class Shelf:
 
     Attributes:
         rest: the offered documents not read yet, in offer order.
-        not_readable: the documents with no text layer.
+        not_readable: the documents that cannot be read.
         read: the listing indices read so far, in the order they were read.
     """
 
     rest: tuple[DocumentFacts, ...] = ()
     not_readable: tuple[DocumentFacts, ...] = ()
     read: tuple[int, ...] = ()
+
+    @property
+    def none_readable(self) -> bool:
+        """Whether the docket lists documents and none of them can be read, or was read before."""
+        return not self.rest and not self.read and bool(self.not_readable)
 
     def menu(self) -> str:
         """The menu of what is left, with what was read and what cannot be."""
@@ -145,8 +151,11 @@ def after_hypothesis(step: StepKind, shelf: Shelf, coding: bool) -> tuple[StepKi
     """The step after a hypothesis at ``h0``, ``h1`` or ``h2``, and its tool text.
 
     ``h0`` offers every readable document (``choice1``); ``h1`` offers what is left (``choice2``);
-    otherwise coding follows. With nothing on offer at ``h0``, the text says there is no docket,
-    or, on a later trigger that read every document on offer before, that all were read.
+    otherwise coding follows. With nothing on offer at ``h0``, the text says, on a later trigger
+    that read every document on offer before, that all were read; when the docket lists
+    documents none of which can be read, which they are (the menu's not-readable lines) and
+    ``NONE_READABLE`` (Andy, 2026-10-01); and when there is no docket, or it lists nothing,
+    ``NO_DOCUMENTS``.
 
     Args:
         step: the checkpoint just recorded.
@@ -161,8 +170,30 @@ def after_hypothesis(step: StepKind, shelf: Shelf, coding: bool) -> tuple[StepKi
             return "choice1", f"{shelf.menu()}\n\n{CHOOSE}"
         return "choice2", f"{shelf.menu()}\n\n{CHOOSE_AGAIN}"
     if step == "h0":
-        return to_coding(coding, ALL_READ if shelf.read else NO_DOCUMENTS)
+        if shelf.read:
+            return to_coding(coding, ALL_READ)
+        if shelf.none_readable:
+            return to_coding(coding, shelf.menu(), NONE_READABLE)
+        return to_coding(coding, NO_DOCUMENTS)
     return to_coding(coding)
+
+
+def lists(step: StepKind, shelf: Shelf) -> bool:
+    """Whether the docket listing goes back with the result of a hypothesis at ``step``.
+
+    At ``h0`` only, and only when the docket lists something not read before: a read choice
+    follows, or every listed document is unreadable (Andy, 2026-10-01: the agent sees the
+    listing arm B's payload holds; decision 0074). The listing itself is the loop's payload,
+    through the split and the guard; this table only says when it is sent.
+
+    Args:
+        step: the checkpoint just recorded.
+        shelf: the documents at that checkpoint, before its result.
+
+    Returns:
+        True when the result carries the listing.
+    """
+    return step == "h0" and (bool(shelf.rest) or shelf.none_readable)
 
 
 def after_choice(
