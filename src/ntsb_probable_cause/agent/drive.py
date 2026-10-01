@@ -1,11 +1,12 @@
 """The drivers: how a run puts its cases through their loops, and how it resumes (S3.1 Task 9).
 
 A ``CaseLoop`` (``agent/loop.py``) never calls a model; it hands out its next call and takes the
-reply. Two drivers make the calls. ``drive_sync`` sends one call at a time, for the shape probe
-and smoke runs. ``drive_batch`` is the evaluation driver: each round sends the next call of every
-case that has not stopped as one batch, waits, and hands every reply back, so cases at different
-steps share a round (spec §8.1). A run is 10 to 15 rounds of about half an hour each, which is
-why a resume has to be exact.
+reply. Arm B's ``FixedToolsLoop`` (``agent/armb.py``, Task 12) does the same; the drivers ask of a
+loop only what ``DrivenLoop`` names. Two drivers make the calls. ``drive_sync`` sends one call at
+a time, for the shape probe and smoke runs. ``drive_batch`` is the evaluation driver: each round
+sends the next call of every case that has not stopped as one batch, waits, and hands every reply
+back, so cases at different steps share a round (spec §8.1). A run is 10 to 15 rounds of about
+half an hour each, which is why a resume has to be exact.
 
 Two files in the run folder make it exact:
 
@@ -40,11 +41,11 @@ a payload or provider text.
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ntsb_probable_cause.agent.loop import CaseLoop, PendingCall
+from ntsb_probable_cause.agent.loop import PendingCall
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
     BatchNotFoundError,
@@ -64,6 +65,44 @@ _LOST: Final = "lost"
 _CANCELLED: Final = "cancelled"
 
 
+class DrivenLoop(Protocol):
+    """What a driver asks of one case's loop: ``CaseLoop`` and arm B's ``FixedToolsLoop`` alike.
+
+    A loop never calls a model. It hands out its next call until it stops, takes each reply (or
+    the failure) to the call it handed out, and can be stopped by the driver.
+    """
+
+    @property
+    def case_id(self) -> str:
+        """The case's NTSB number: what the driver names this case's calls by."""
+        ...
+
+    @property
+    def call_index(self) -> int:
+        """The place of the next call in the case: the replies accepted so far."""
+        ...
+
+    def next_call(self) -> PendingCall | None:
+        """The next call to make, or None once the case has stopped; the same until accepted."""
+        ...
+
+    def accept(
+        self,
+        reply: ModelReply | None,
+        *,
+        error: str | None = None,
+        sent_at: datetime,
+        returned_at: datetime,
+        batch_id: str | None = None,
+    ) -> None:
+        """Take the reply to the pending call, or its failure (``reply`` None, with ``error``)."""
+        ...
+
+    def stop(self, reason: str) -> None:
+        """End the case now with ``reason``, dropping a pending call; a first reason is kept."""
+        ...
+
+
 class _Row(BaseModel):
     """Base of the two row types: no extra fields, no change once built."""
 
@@ -75,7 +114,7 @@ class ReplyRow(_Row):
 
     Attributes:
         case_id: the case.
-        call_index: the call's place in the case (``CaseLoop.call_index`` when it was pending).
+        call_index: the call's place in the case (the loop's ``call_index`` when it was pending).
         reply: the model's reply, or None when the call failed.
         error: why it failed, when ``reply`` is None.
         sent_at: when the call was sent (a batch call: when its round was submitted).
@@ -126,7 +165,7 @@ class _Call(NamedTuple):
     """A call waiting for its reply: its batch custom id, its loop, and the call itself."""
 
     custom_id: str
-    loop: CaseLoop
+    loop: DrivenLoop
     call: PendingCall
 
 
@@ -136,7 +175,7 @@ def custom_id(case_id: str, call_index: int) -> str:
 
 
 def drive_sync(
-    loops: Sequence[CaseLoop],
+    loops: Sequence[DrivenLoop],
     client: ModelClient,
     *,
     folder: Path,
@@ -188,7 +227,7 @@ def drive_sync(
 
 
 def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the clock and two settings.
-    loops: Sequence[CaseLoop],
+    loops: Sequence[DrivenLoop],
     batch: BatchRunner,
     *,
     folder: Path,
@@ -283,7 +322,7 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
     return tuple(r.reported_cost_usd for r in _rounds(folder).values())
 
 
-def _tell(on_round: RoundListener | None, row: RoundRow, loops: Sequence[CaseLoop]) -> None:
+def _tell(on_round: RoundListener | None, row: RoundRow, loops: Sequence[DrivenLoop]) -> None:
     """Tell the listener about a round, with the cases still running; nothing if there is none.
 
     ``next_call`` is idempotent until a reply is accepted, so asking it here changes nothing the
@@ -293,7 +332,7 @@ def _tell(on_round: RoundListener | None, row: RoundRow, loops: Sequence[CaseLoo
         on_round(row, sum(1 for loop in loops if loop.next_call() is not None))
 
 
-def replay(loops: Sequence[CaseLoop], folder: Path) -> RoundRow | None:
+def replay(loops: Sequence[DrivenLoop], folder: Path) -> RoundRow | None:
     """Feed the saved replies to fresh loops, in order. No model is called.
 
     The drivers call this themselves; it is public for the tools that read a run folder back.
@@ -331,7 +370,7 @@ def replay(loops: Sequence[CaseLoop], folder: Path) -> RoundRow | None:
     return last if last is not None and last.finished_at is None else None
 
 
-def _accept(loop: CaseLoop, row: ReplyRow) -> None:
+def _accept(loop: DrivenLoop, row: ReplyRow) -> None:
     """Give a loop the reply a row holds; the one route for live and replayed replies alike."""
     loop.accept(
         row.reply,
@@ -342,9 +381,9 @@ def _accept(loop: CaseLoop, row: ReplyRow) -> None:
     )
 
 
-def _by_case(loops: Sequence[CaseLoop]) -> dict[str, CaseLoop]:
+def _by_case(loops: Sequence[DrivenLoop]) -> dict[str, DrivenLoop]:
     """The loops by case id; an id a custom id cannot be split on, or a repeat, is refused."""
-    cases: dict[str, CaseLoop] = {}
+    cases: dict[str, DrivenLoop] = {}
     for loop in loops:
         if _SEPARATOR in loop.case_id:
             raise ConfigurationError(
@@ -378,7 +417,7 @@ def _rounds(folder: Path) -> dict[int, RoundRow]:
     return latest
 
 
-def _pending(loops: Sequence[CaseLoop]) -> list[_Call]:
+def _pending(loops: Sequence[DrivenLoop]) -> list[_Call]:
     """The next call of every loop that has not stopped, in loop order."""
     return [
         _Call(custom_id(loop.case_id, loop.call_index), loop, call)
@@ -416,7 +455,7 @@ def _submit(
     return row
 
 
-def _remaining(row: RoundRow, cases: Mapping[str, CaseLoop]) -> list[_Call]:
+def _remaining(row: RoundRow, cases: Mapping[str, DrivenLoop]) -> list[_Call]:
     """The calls of an unfinished round that still need their reply, checked against the loops.
 
     A call is answered already when its loop has moved past it (a kill after some replies were

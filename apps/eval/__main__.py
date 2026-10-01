@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from ntsb_probable_cause import gitinfo, sources
+from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import AgentRunner
 from ntsb_probable_cause.agent.texts import prompt_version as agent_prompt_version
@@ -164,9 +165,14 @@ def resolve_latest(
     Arm C (S3.1 Task 10) is resolved the same way: a tool ablation (``--without``), a tuning
     round, or other guidance is skipped (``_ablated``, ``_plain_prompt``), as is a derived
     ``-tools`` post-pass.
+
+    **A derived run is skipped by its name** (S3.1 Task 12). Its record says arm B and the
+    source's sample, and a derived run of a plain source has a plain prompt, so only the id
+    tells it apart. The glob takes ids that go on past the arm (``-check-<way>``, ``-tools``),
+    so that this rule, not the glob's shape, is what leaves them out.
     """
     candidates: list[tuple[str, str]] = []
-    for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
+    for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}*")):
         # A derived ordering-check run (S2.7, plan W2) or tool post-pass (S3.1 Task 12) is not a
         # new answering run.
         if "-check-" in folder.name or folder.name.endswith("-tools"):
@@ -260,6 +266,27 @@ def _add_transcribe(commands: argparse._SubParsersAction[argparse.ArgumentParser
         choices=PAGE_RULES,
         default=PAGE_RULE,
         help="which pages are sent (decision 0100 item 4); the rule in force by default",
+    )
+
+
+def _add_tools(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The ``tools`` subcommand: arm B's fixed tool post-pass (S3.1 Task 12, spec §7.1).
+
+    Kept apart from ``_build_parser`` for ruff's statement limit, as ``_add_transcribe`` is.
+    """
+    tools_p = commands.add_parser(
+        "tools",
+        help="arm B's fixed coding-tool post-pass over a finished arm B run (spec §7.1); then "
+        "check <run id>-tools --way luna --stats s3",
+    )
+    tools_p.add_argument("run_id")
+    tools_p.add_argument(
+        "--sync",
+        action="store_true",
+        help="standard-price calls one at a time, not batch rounds (smoke tests)",
+    )
+    tools_p.add_argument(
+        "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
 
 
@@ -375,6 +402,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     _add_transcribe(commands)
+    _add_tools(commands)
 
     return parser
 
@@ -1016,6 +1044,42 @@ def _cmd_check(
     print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
 
 
+def _cmd_tools(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
+    """Arm B's fixed tool post-pass over a finished arm B run (S3.1 Task 12, spec §7.1).
+
+    Every refusal (``armb.preflight``, then the sealed sample) comes before any case is read or
+    any client is built. The budget is reserved and settled inside ``armb.tools_run``.
+    """
+    folder = settings.runs_dir / args.run_id
+    pre = armb.preflight(folder, settings.runs_dir)
+    samples.refuse_sealed(pre.record.sample, is_committed=gitinfo.is_committed)
+    processed = settings.data_dir / "processed"
+    ids = [case.case_id for case in pre.cases if armb.in_post_pass(case)]
+    raws = dict(zip(ids, samples.load_cases(processed, ids), strict=True))
+    seen = samples.seen_pairs(processed)
+    commit = ledger.commit_state()
+    budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
+    client, batch = client_factory(settings)
+    with DocketClient(
+        settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
+    ) as docket_client:
+        derived = armb.tools_run(
+            folder,
+            raws,
+            client=client,
+            batch=batch,
+            docket=CachedDocketReader(docket_client),
+            tables=load_tables(),
+            stats=load_stats(agent_run.STATS),
+            seen_pairs=seen,
+            runs_dir=settings.runs_dir,
+            budget_usd=budget,
+            commit=commit,
+            sync=args.sync,
+        )
+    print(f"tools {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
+
+
 def _judge_items(
     cases: Sequence[CaseResult],
     raws: Mapping[str, Mapping[str, object]],
@@ -1192,6 +1256,8 @@ def main(
             _cmd_check(args, settings, client_factory, jev_factory)
         elif args.command == "transcribe":
             return _cmd_transcribe(args, settings)
+        elif args.command == "tools":
+            _cmd_tools(args, settings, client_factory)
     except (BudgetError, ConfigurationError, BatchCancelledError) as error:
         # A cancelled batch (arm C's batch rounds) stops the run with its records written; the
         # message names the run id to pass to --resume (S3.1 Task 10).

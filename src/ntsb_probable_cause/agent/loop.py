@@ -436,20 +436,8 @@ class CaseLoop:
             system=system,
             history=history,
             step=step,
-            estimated_usd=self._estimate(settings, system, history, len(payload.text)),
+            estimated_usd=estimate_usd(settings, system, history, len(payload.text)),
         )
-
-    def _estimate(
-        self, settings: ModelSettings, system: str, history: tuple[Turn, ...], payload_chars: int
-    ) -> float:
-        """All the prompt's text at four characters a token, plus a full reply (the brief's)."""
-        chars = len(system) + payload_chars + len(json.dumps(list(settings.tools)))
-        chars += sum(_turn_chars(turn, with_reasoning=settings.pass_reasoning) for turn in history)
-        price = sources.price_of(settings.model_id())
-        return (
-            chars / _CHARS_PER_TOKEN * price.input_usd_per_mtok
-            + settings.max_output_tokens * price.output_usd_per_mtok
-        ) / 1e6
 
     def _refinement_estimate(self) -> float:
         """What refining the latest hypothesis would cost; 0 when it would not be refined.
@@ -464,7 +452,7 @@ class CaseLoop:
         sent = sum(len(turn.payload.text) for turn in self._history if turn.payload is not None)
         payload_chars = len(self._payload().text) + sent
         system = self._refine_system(draft)
-        return self._estimate(self._refine_settings(), system, history, payload_chars)
+        return estimate_usd(self._refine_settings(), system, history, payload_chars)
 
     def _refine_settings(self) -> ModelSettings:
         return self._base.model_copy(
@@ -534,27 +522,9 @@ class CaseLoop:
 
         Every call id gets a result. Returns the results' size in characters.
         """
-        first, *extra = reply.tool_calls
-        results = (
-            Turn(
-                role="tool",
-                tool_call_id=first.call_id,
-                payload=payload,
-                tool_text=ToolText.of(text),
-            ),
-            *(
-                Turn(role="tool", tool_call_id=c.call_id, tool_text=ToolText.of(ONE_CALL))
-                for c in extra
-            ),
-        )
-        assistant = Turn(
-            role="assistant",
-            content=reply.content,
-            tool_calls=reply.tool_calls,
-            reasoning_details=reply.reasoning_details,
-        )
-        self._history = (*self._history, assistant, *results)
-        return sum(_result_chars(turn) for turn in results)
+        turns, chars = answer_turns(reply, text, payload)
+        self._history = (*self._history, *turns)
+        return chars
 
     def _run(self, step: StepKind, call: ToolCall) -> _Result:
         """Check and run one call; ``_NotAcceptedError`` is raised before any state changes.
@@ -678,6 +648,52 @@ class CaseLoop:
         if self._docket is None:  # a payload is built only when documents are on offer
             raise RuntimeError("a docket payload with no documents on offer")
         return self._docket
+
+
+def estimate_usd(
+    settings: ModelSettings, system: str, history: tuple[Turn, ...], payload_chars: int
+) -> float:
+    """A call's estimated cost: all its prompt text at four characters a token, plus a full reply.
+
+    The prompt is the system text, the payload, the tool definitions and every earlier turn (its
+    reasoning too, when it is passed back); the reply is ``max_output_tokens`` at the output price.
+    ``CaseLoop`` and arm B's ``FixedToolsLoop`` check the per-case cap on this (spec §8.2).
+    """
+    chars = len(system) + payload_chars + len(json.dumps(list(settings.tools)))
+    chars += sum(_turn_chars(turn, with_reasoning=settings.pass_reasoning) for turn in history)
+    price = sources.price_of(settings.model_id())
+    return (
+        chars / _CHARS_PER_TOKEN * price.input_usd_per_mtok
+        + settings.max_output_tokens * price.output_usd_per_mtok
+    ) / 1e6
+
+
+def answer_turns(
+    reply: ModelReply, text: str, payload: Payload | None = None
+) -> tuple[tuple[Turn, ...], int]:
+    """A reply that called tools, as turns: the assistant turn, then a result for every call.
+
+    The first call's result is ``text`` (with ``payload``, when there is one); any other call's is
+    ``ONE_CALL``, so every call id is answered. The reply must hold at least one tool call.
+
+    Returns:
+        The turns, and the size of their results in characters.
+    """
+    first, *extra = reply.tool_calls
+    results = (
+        Turn(role="tool", tool_call_id=first.call_id, payload=payload, tool_text=ToolText.of(text)),
+        *(
+            Turn(role="tool", tool_call_id=c.call_id, tool_text=ToolText.of(ONE_CALL))
+            for c in extra
+        ),
+    )
+    assistant = Turn(
+        role="assistant",
+        content=reply.content,
+        tool_calls=reply.tool_calls,
+        reasoning_details=reply.reasoning_details,
+    )
+    return (assistant, *results), sum(_result_chars(turn) for turn in results)
 
 
 def _result_chars(turn: Turn) -> int:

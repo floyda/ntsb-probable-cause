@@ -536,22 +536,7 @@ class AgentRunner:
             folder / TRAIL_FILE,
             (call for case in cases if case.loop is not None for call in case.loop.outcome.calls),
         )
-        rounds = _rounds(folder)
-        replied = _replied_batches(folder)
-        # A finished round no reply came from (dead, cancelled or lost): no case prices it, so
-        # the run's cost carries what it reported, as ``Runner``'s ``dead_cost`` does.
-        dead = sum(
-            r.reported_cost_usd
-            for r in rounds
-            if r.finished_at is not None
-            and r.batch_id not in replied
-            and r.reported_cost_usd is not None
-        )
-        reported = (
-            None
-            if not rounds or any(r.reported_cost_usd is None for r in rounds)
-            else sum(r.reported_cost_usd or 0.0 for r in rounds)
-        )
+        costs = round_costs(folder)
         record = RunRecord(
             run_id=run_id,
             sample=spec.sample,
@@ -572,10 +557,10 @@ class AgentRunner:
             dirty=self._dirty,
             started=started,
             finished=finished,
-            batch_ids=tuple(r.batch_id for r in rounds),
+            batch_ids=costs.batch_ids,
             cases=len(results),
-            cost_usd=max(sum(r.cost_usd for r in results) + dead, floor),
-            reported_batch_cost_usd=reported,
+            cost_usd=max(sum(r.cost_usd for r in results) + costs.dead_usd, floor),
+            reported_batch_cost_usd=costs.reported_usd,
         )
         write_jsonl(folder / RUN_FILE, [record])
         return record
@@ -584,27 +569,77 @@ class AgentRunner:
 
     def _log(self, body: Callable[[], str]) -> None:
         """One line to stderr, the wall clock first; a logging failure never kills a run."""
-        with contextlib.suppress(Exception):
-            sys.stderr.write(f"{self._now():%H:%M:%S}Z {body()}\n")
+        log_line(self._now, body)
 
     def _log_round(self, row: RoundRow, running: int) -> None:
         """A round as it goes out (or is waited on again) and as it ends: counts and ids only."""
+        self._log(lambda: round_line(row, running))
 
-        def body() -> str:
-            if row.status is None:
-                return (
-                    f"round {row.round} sent {row.batch_id}: {len(row.custom_ids)} calls; "
-                    f"{running} cases running"
-                )
-            cost = (
-                "not reported" if row.reported_cost_usd is None else f"${row.reported_cost_usd:.4f}"
-            )
-            return (
-                f"round {row.round} {row.status} {row.batch_id}: cost {cost}; "
-                f"{running} cases running"
-            )
 
-        self._log(body)
+def log_line(now: Callable[[], datetime], body: Callable[[], str]) -> None:
+    """One line to stderr, the wall clock first; a logging failure never kills a run.
+
+    ``body`` is called inside the guard, so a line that cannot even be built is dropped too. Arm
+    C's runner and arm B's tool post-pass (``agent/armb.py``) log through here.
+    """
+    with contextlib.suppress(Exception):
+        sys.stderr.write(f"{now():%H:%M:%S}Z {body()}\n")
+
+
+def round_line(row: RoundRow, running: int) -> str:
+    """A batch round as it goes out (or is waited on again) and as it ends: counts and ids only.
+
+    E.g. ``round 3 sent b3: 12 calls; 12 cases running`` and
+    ``round 3 completed b3: cost $0.1250; 9 cases running``.
+    """
+    if row.status is None:
+        return (
+            f"round {row.round} sent {row.batch_id}: {len(row.custom_ids)} calls; "
+            f"{running} cases running"
+        )
+    cost = "not reported" if row.reported_cost_usd is None else f"${row.reported_cost_usd:.4f}"
+    return f"round {row.round} {row.status} {row.batch_id}: cost {cost}; {running} cases running"
+
+
+@dataclass(frozen=True)
+class RoundCosts:
+    """What a run folder's batch rounds say about its cost.
+
+    Attributes:
+        batch_ids: every round's batch id, in round order.
+        dead_usd: what the finished rounds no reply came from (dead, cancelled or lost) reported.
+            No case prices those replies, so a run's cost carries it, as ``Runner``'s
+            ``dead_cost`` does.
+        reported_usd: the rounds' reported costs summed; None when there were no rounds or any
+            round reported none.
+    """
+
+    batch_ids: tuple[str, ...]
+    dead_usd: float
+    reported_usd: float | None
+
+
+def round_costs(folder: Path) -> RoundCosts:
+    """The batch ids and round costs a run folder's ``rounds.jsonl`` and ``replies.jsonl`` hold.
+
+    A damaged line is passed over (``_rounds``): read on an abort path too, what is readable
+    still counts. A folder with no rounds (a sync run) has no batch ids and no dead cost.
+    """
+    rounds = _rounds(folder)
+    replied = _replied_batches(folder)
+    dead = sum(
+        r.reported_cost_usd
+        for r in rounds
+        if r.finished_at is not None
+        and r.batch_id not in replied
+        and r.reported_cost_usd is not None
+    )
+    reported = (
+        None
+        if not rounds or any(r.reported_cost_usd is None for r in rounds)
+        else sum(r.reported_cost_usd or 0.0 for r in rounds)
+    )
+    return RoundCosts(tuple(r.batch_id for r in rounds), dead, reported)
 
 
 def _leaked(raw: Mapping[str, object], outcome: LoopOutcome, error: LeakageError) -> CaseResult:
