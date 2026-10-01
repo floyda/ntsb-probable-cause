@@ -5,9 +5,14 @@ Status
     processed file and compares each guidance sentence of 30 or more characters, normalised,
     against the factual narrative, analysis narrative and probable cause. Prints counts and
     the offending guidance sentence only; exits 1 on any match. CI cannot run it (no data).
+    From S3.1 (final review), ``--agent-texts`` checks the agent's own fixed texts the same way
+    (``agent_texts``): the protocol and every fixed string of ``agent/texts.py`` and
+    ``agent/steps.py`` (their templates rendered with listing numbers and placeholder words),
+    and every string of the tool definitions (``agent/schemas.py``). The rule is S2.7's.
 
 Usage
     NTSB_DATA_DIR=... uv run python -m scripts.check_guidance r2-loc-stall [r3-...]
+    NTSB_DATA_DIR=... uv run python -m scripts.check_guidance --agent-texts
 """
 
 import argparse
@@ -18,10 +23,27 @@ from collections.abc import Sequence
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.agent import schemas, steps, texts
+from ntsb_probable_cause.agent.facts import DocumentFacts
+from ntsb_probable_cause.agent.trail import Prior
 from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.settings import Settings
 
 MIN_CHARS = 30
+# A hypothesis for rendering the prior summary's fixed lines; its own words are not checked.
+_PLACEHOLDER = Hypothesis.model_validate(
+    {
+        "evidence_narrative": "n",
+        "occurrence": [{"phase": "551", "event": "092", "probability": 0.5}],
+        "findings": [],
+        "probable_cause": "p",
+        "lay_explanation": "l",
+        "confidence": 0.5,
+        "abstain": False,
+        "evidence_used": [],
+    }
+)
 
 
 def normalise(text: str) -> str:
@@ -40,12 +62,61 @@ def matches(needles: Sequence[str], haystacks: Sequence[str]) -> list[str]:
     return [n for n in needles if any(n in h for h in haystacks)]
 
 
+def _strings(value: object) -> list[str]:
+    """Every string in a value: itself, or those inside a mapping's values or a collection."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for child in value.values() for s in _strings(child)]
+    if isinstance(value, list | tuple | set | frozenset):
+        return [s for child in value for s in _strings(child)]
+    return []
+
+
+def agent_texts() -> list[str]:
+    """The agent's fixed model-facing texts, one part each, for ``sentences`` to split.
+
+    Every module-level string of ``agent/texts.py`` and ``agent/steps.py`` (the protocol, the
+    step texts, the summary's fixed lines; strings inside a table too), every string of the
+    tool definitions (names, descriptions, enum values), and the templates those modules build,
+    rendered with listing numbers and placeholder words so their fixed words are checked.
+    """
+    parts: list[str] = []
+    for module in (texts, steps):
+        for name, value in vars(module).items():
+            if not name.startswith("__"):
+                parts.extend(_strings(value))
+    parts.extend(_strings(json.loads(json.dumps(list(schemas.TOOL_DEFINITIONS)))))
+    one = DocumentFacts(1, 1, 1, 10, "born-digital", "read")
+    two = DocumentFacts(2, 2, 0, 0, None, "fetch failed")
+    prior = Prior(trigger=1, last_hypothesis=_PLACEHOLDER, reads=(), read=())
+    parts += [
+        texts.menu([one, two], [two], already_read=[3]),
+        texts.read_summary([1], [2]),
+        texts.not_accepted("an error"),
+        texts.prior_summary(prior),
+        steps.wrong_tool(("describe_codes", "submit_answer"), "another"),
+        steps.wrong_tool(("submit_answer",), "describe_codes"),
+    ]
+    return parts
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Exit 1 if any guidance sentence appears in a development case's withheld text."""
     parser = argparse.ArgumentParser(prog="check_guidance")
-    parser.add_argument("names", nargs="+")
+    parser.add_argument("names", nargs="*", help="guidance files r<N>-<slug>")
+    parser.add_argument(
+        "--agent-texts",
+        action="store_true",
+        help="check the agent's fixed texts and tool definitions as well (S3.1)",
+    )
     args = parser.parse_args(argv)
-    needles = sentences(prompt.guidance_text(args.names))
+    if not args.names and not args.agent_texts:
+        parser.error("name a guidance file, or pass --agent-texts")
+    needles = sentences(prompt.guidance_text(args.names)) if args.names else []
+    if args.agent_texts:
+        needles += [s for part in agent_texts() for s in sentences(part)]
+    needles = list(dict.fromkeys(needles))
     found: set[str] = set()
     cases = 0
     columns = ["split", "raw_json"]
@@ -68,10 +139,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ]
                 cases += 1
                 found.update(matches(needles, texts))
-    print(
-        f"{len(needles)} guidance sentences checked against {cases} development cases; "
-        f"{len(found)} found"
-    )
+    what = "guidance sentences"  # S2.7's line, unchanged for a guidance-only check
+    if args.agent_texts:
+        what = "guidance and agent text sentences" if args.names else "agent text sentences"
+    print(f"{len(needles)} {what} checked against {cases} development cases; {len(found)} found")
     for sentence in sorted(found):
         print(f"- found: {sentence}")
     return 1 if found else 0
