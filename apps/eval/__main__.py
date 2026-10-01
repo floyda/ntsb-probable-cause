@@ -138,6 +138,15 @@ def _plain_prompt(record: RunRecord) -> bool:
     )
 
 
+def _derived(record: RunRecord) -> bool:
+    """Whether a run is a post-pass over another (the ordering check, or arm B's tool pass).
+
+    Read from the prompt version, which each post-pass extends: ``+check-<way>``
+    (``checkpass.check_run``) or ``+tools-<stats>`` (``agent/armb.py``).
+    """
+    return "+check-" in record.prompt_version or "+tools-" in record.prompt_version
+
+
 def resolve_latest(
     runs_dir: Path, arm: str, sample: str, *, model: str | None = None, version: str = "v1"
 ) -> str:
@@ -163,23 +172,24 @@ def resolve_latest(
     the ``dev-400-ceiling`` shape with the default-model ceiling.
 
     Arm C (S3.1 Task 10) is resolved the same way: a tool ablation (``--without``), a tuning
-    round, or other guidance is skipped (``_ablated``, ``_plain_prompt``), as is a derived
-    ``-tools`` post-pass.
+    round, or other guidance is skipped (``_ablated``, ``_plain_prompt``).
 
-    **A derived run is skipped by its name** (S3.1 Task 12). Its record says arm B and the
-    source's sample, and a derived run of a plain source has a plain prompt, so only the id
-    tells it apart. The glob takes ids that go on past the arm (``-check-<way>``, ``-tools``),
-    so that this rule, not the glob's shape, is what leaves them out.
+    **A renamed folder or a derived run is skipped by its record** (S3.1 Task 12, fix round 1).
+    The glob ``*-<sample>-<arm>`` leaves out an id that goes on past the arm (a derived
+    ``-check-<way>`` or ``-tools`` run, or a folder renamed with a suffix, such as decision
+    0084's ``-confirm2000`` and ``-size16000``). The record is checked as well, so that the
+    name's shape is not the only rule: a folder whose record names another run id has been
+    copied or renamed, and a record whose prompt version carries ``+check-`` (S2.7, plan W2) or
+    ``+tools-`` (the tool post-pass, ``<source>+tools-s3``) is a derived run, not a new
+    answering run.
     """
     candidates: list[tuple[str, str]] = []
-    for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}*")):
-        # A derived ordering-check run (S2.7, plan W2) or tool post-pass (S3.1 Task 12) is not a
-        # new answering run.
-        if "-check-" in folder.name or folder.name.endswith("-tools"):
-            continue
+    for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
         record = answering_run_record(folder)
+        if record.run_id != folder.name or _derived(record):
+            continue
         if record.finished is None:
             continue
         if record.sample != sample or record.arm != arm:

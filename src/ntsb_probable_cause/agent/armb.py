@@ -129,6 +129,9 @@ _FORCED: Final = "submit_answer"
 _PRICES: Final = ("batch", "standard")
 _NO_USAGE: Final = Usage(prompt_tokens=0, completion_tokens=0)
 _SHOWN: Final = 5  # case ids a refusal names before it counts the rest
+# S2.7's sealed sample, used once on 2026-09-29 (decision 0095). Its registration is committed,
+# so ``refuse_sealed`` lets it through, and S3's pool leaves it out; this refusal keeps it unread.
+_USED_ONCE: Final = "dev-seal-400"
 
 
 def tools_id(run_id: str) -> str:
@@ -549,7 +552,8 @@ def preflight(source: Path, runs_dir: Path) -> Preflight:
 
     Refused: a folder with no run record; anything the ordering check refuses (not a finished
     development arm B run, a derived check run, a case outside the development split; reused
-    from ``checkpass``); a tools post-pass itself; an ablation (exclusions or includes: arm B's
+    from ``checkpass``); a run on ``dev-seal-400``, used once (decision 0095); a tools post-pass
+    itself; an ablation (exclusions or includes: arm B's
     pipeline starts from its plain answer); evidence past v1; a sample S3's statistics pool holds
     (decision 0129); a record whose price variant or reasoning level is not one a run can have;
     and a derived folder that already exists.
@@ -562,6 +566,11 @@ def preflight(source: Path, runs_dir: Path) -> Preflight:
     record = read_jsonl(source / RUN_FILE, RunRecord)[0]
     cases = tuple(read_jsonl(source / _CASES_FILE, CaseResult))
     _refuse_unless_development(record, cases)
+    if record.sample == _USED_ONCE:
+        raise ConfigurationError(
+            f"{record.run_id} is on {_USED_ONCE}, the sealed development sample S2.7 used once "
+            "(decision 0095): it is never read again, so no post-pass runs on it"
+        )
     if record.run_id.endswith(_SUFFIX):
         raise ConfigurationError(f"{record.run_id} is itself a tools post-pass: no stacked passes")
     if record.exclusions or record.includes:

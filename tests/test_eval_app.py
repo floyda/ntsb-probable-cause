@@ -2837,6 +2837,49 @@ def test_resolve_latest_skips_a_tools_post_pass(tmp_path: Path) -> None:
     assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
 
 
+def test_resolve_latest_leaves_out_a_renamed_folder_by_its_name_and_its_record(
+    tmp_path: Path,
+) -> None:
+    """Decision 0084 split one folder into ``-confirm2000`` and ``-size16000``: both finished,
+    plain dev-400 arm B runs. The glob's shape leaves out such a suffix, and a renamed folder
+    whose name the glob does take is left out by its record, which names another run id."""
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 25, tzinfo=UTC)
+    plain = "20260925T000000-abc1234-dev-400-B"
+    _write_run(runs, plain, finished=when, arm="B")
+    for suffix in ("confirm2000", "size16000"):
+        record = RunRecord(
+            **(dict(_RUN_KWARGS) | {"arm": "B"}),
+            run_id="20260925T100148-40c6ec6-dev-400-B",
+            started=when,
+            finished=when,
+        )
+        write_jsonl(runs / f"20260925T100148-40c6ec6-dev-400-B-{suffix}" / "run.jsonl", [record])
+    assert resolve_latest(runs, "B", "dev-400") == plain
+    copied = RunRecord(
+        **(dict(_RUN_KWARGS) | {"arm": "B"}),
+        run_id="20260925T100148-40c6ec6-dev-400-B",
+        started=when,
+        finished=when,
+    )
+    write_jsonl(runs / "20260926T000000-40c6ec6-dev-400-B" / "run.jsonl", [copied])
+    assert resolve_latest(runs, "B", "dev-400") == plain
+
+
+@pytest.mark.parametrize("suffix", ["+tools-s3", "+check-luna", "+tools-s3+check-luna"])
+def test_resolve_latest_leaves_out_a_derived_run_by_its_record(tmp_path: Path, suffix: str) -> None:
+    """A derived run whose folder the glob takes (moved, say) is still not an answering run."""
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    plain = "20260926T000000-abc1234-dev-400-B"
+    _write_run(runs, plain, finished=when, arm="B")
+    newer = "20260927T000000-abc1234-dev-400-B"
+    kwargs = dict(_RUN_KWARGS) | {"arm": "B", "prompt_version": f"v{suffix}"}
+    derived = RunRecord(**kwargs, run_id=newer, started=when, finished=when)
+    write_jsonl(runs / newer / "run.jsonl", [derived])
+    assert resolve_latest(runs, "B", "dev-400") == plain
+
+
 def _trail_call(cached: int | None) -> AgentCall:
     when = datetime(2026, 10, 1, tzinfo=UTC)
     return AgentCall(

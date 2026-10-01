@@ -915,6 +915,18 @@ class TestRefusals:
         variant = _variant(source, f"20261001T000000-abc1234-{suffix}", **changes)
         _assert_refused(runs, variant, match)
 
+    def test_the_sample_s27_used_once_is_refused_before_any_docket_is_read(
+        self, tmp_path: Path
+    ) -> None:
+        """dev-seal-400 was used once (decision 0095); its registration being committed, and S3's
+        pool leaving it out, do not open it again."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        variant = _variant(source, "20261001T000000-abc1234-dev-seal-400-B", sample="dev-seal-400")
+        dockets = _dockets()
+        _assert_refused(runs, variant, "dev-seal-400.*decision 0095", docket=dockets)
+        assert dockets.reads == []
+
     def test_a_derived_folder_that_exists_is_refused(self, tmp_path: Path) -> None:
         runs = tmp_path / "runs"
         source, _ = _source(runs)
@@ -1296,10 +1308,11 @@ class TestCommand:
         assert match in capsys.readouterr().err
 
 
-def test_resolve_latest_skips_a_real_tools_post_pass(tmp_path: Path) -> None:
-    """A derived run records arm B, the sample and the source's guidance: only its id tells.
+def test_resolve_latest_skips_a_real_tools_post_pass_by_its_record(tmp_path: Path) -> None:
+    """A derived run of an unguided source records arm B, the sample and a plain prompt.
 
-    Its folder name matches ``*-<sample>-<arm>*``, so the ``-tools`` skip is what keeps it out.
+    Moved under a newer name the glob ``*-<sample>-<arm>`` takes, with its record's id made to
+    match, only the ``+tools-`` in its prompt version tells it apart, and it is still skipped.
     """
     runs = tmp_path / "runs"
     raws = (RAWS[1],)
@@ -1310,6 +1323,13 @@ def test_resolve_latest_skips_a_real_tools_post_pass(tmp_path: Path) -> None:
     derived = _post(runs, source, client=client, raws=raws, docket=_dockets(raws))
     assert derived.finished is not None
     assert resolve_latest(runs, "B", "dev-400") == source.name
+    moved = runs / "20261001T090001-abc1234-dev-400-B"  # newer, and the glob's shape
+    (runs / derived.run_id).rename(moved)
+    assert resolve_latest(runs, "B", "dev-400") == source.name  # its record names another id
+    (moved / "run.jsonl").write_text(
+        derived.model_copy(update={"run_id": moved.name}).model_dump_json() + "\n"
+    )
+    assert resolve_latest(runs, "B", "dev-400") == source.name  # its prompt says +tools-s3
 
 
 def test_the_makefile_target_checks_the_stage_line_then_runs_the_post_pass() -> None:
