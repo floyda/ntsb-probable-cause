@@ -14,7 +14,9 @@ Two files in the run folder make it exact:
   so a reply that was paid for is on disk before anything can go wrong with it.
 - ``rounds.jsonl``: one ``RoundRow`` before a round's wait, so a batch that has been submitted
   is never lost, and a second row with the same ``round`` once its replies are used. A reader
-  takes the last row of each round.
+  takes the last row of each round. A batch that ends ``expired``, ``cancelled`` or ``failed``
+  with no results is the provider's failure, not any case's: its round is finished with that
+  status, no reply is taken from it, and the same calls go out as the next round.
 
 ``replay`` feeds the saved rows to fresh loops, in order, through the same ``accept`` the live run
 used, so no model is called and the loops come out equal to the live ones (same trail, same
@@ -38,7 +40,7 @@ from ntsb_probable_cause.errors import ConfigurationError, ModelError
 from ntsb_probable_cause.model.batch import BatchRequest, BatchStatus
 from ntsb_probable_cause.model.client import ModelClient, ModelReply
 from ntsb_probable_cause.scoring.records import read_jsonl, write_jsonl
-from ntsb_probable_cause.scoring.runner import BatchRunner
+from ntsb_probable_cause.scoring.runner import ENDED_UNUSABLE, BatchRunner
 
 REPLIES_FILE: Final = "replies.jsonl"
 ROUNDS_FILE: Final = "rounds.jsonl"
@@ -172,10 +174,13 @@ def drive_batch(
     """Run every loop to its end in batch rounds, and resume a run that was cut short.
 
     A round collects the next call of every loop that has not stopped, submits them as one
-    batch, waits, and gives each loop its reply. A call with no result in the batch, or whose
-    result is an error, is given to its loop as a failed call: the loop re-issues it in the next
-    round once, then stops the case. At ``max_rounds`` the cases still running are stopped
-    ``failed: rounds``.
+    batch, waits, and gives each loop its reply. A call with no result in a batch that returned
+    some, or whose result is an error, is given to its loop as a failed call: the loop re-issues
+    it in the next round once, then stops the case. A batch that ended ``expired``, ``cancelled``
+    or ``failed`` with no results at all is not a case's failure: no loop is told, its round is
+    recorded with that status, and the same calls are submitted again as the next round. Every
+    round counts toward ``max_rounds``, dead ones too; at the limit the cases still running are
+    stopped ``failed: rounds``.
 
     Resume is the same call: the replies the folder holds are replayed (no model call), and a
     round that was submitted and never finished is waited on instead of submitted again. Time is
@@ -215,6 +220,9 @@ def drive_batch(
             row = _submit(calls, batch, rounds, folder, now)
         status = batch.wait(row.batch_id)
         _refuse_foreign_results(row, status)
+        if _is_dead(status):
+            _finish_round(row, status, now(), folder)  # nothing was accepted: resubmit next
+            continue
         _take(calls, row, status, now(), folder)
     return tuple(r.reported_cost_usd for r in _rounds(folder).values())
 
@@ -393,6 +401,23 @@ def _refuse_foreign_results(row: RoundRow, status: BatchStatus) -> None:
         )
 
 
+def _is_dead(status: BatchStatus) -> bool:
+    """A batch that ended unusably and returned no per-request result: the provider's failure."""
+    return status.status in ENDED_UNUSABLE and not status.results
+
+
+def _finish_round(row: RoundRow, status: BatchStatus, returned_at: datetime, folder: Path) -> None:
+    """Append the row that completes a round: when it ended, how, and what it cost."""
+    finished = row.model_copy(
+        update={
+            "finished_at": returned_at,
+            "status": status.status,
+            "reported_cost_usd": status.reported_cost_usd,
+        }
+    )
+    write_jsonl(folder / ROUNDS_FILE, [finished])
+
+
 def _take(
     calls: Sequence[_Call],
     row: RoundRow,
@@ -430,11 +455,4 @@ def _take(
     write_jsonl(folder / REPLIES_FILE, rows)
     for c, reply_row in zip(calls, rows, strict=True):
         _accept(c.loop, reply_row)
-    finished = row.model_copy(
-        update={
-            "finished_at": returned_at,
-            "status": status.status,
-            "reported_cost_usd": status.reported_cost_usd,
-        }
-    )
-    write_jsonl(folder / ROUNDS_FILE, [finished])
+    _finish_round(row, status, returned_at, folder)
