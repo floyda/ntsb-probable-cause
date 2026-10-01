@@ -16,7 +16,7 @@ from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import AgentRunner
-from ntsb_probable_cause.agent.texts import prompt_version as agent_prompt_version
+from ntsb_probable_cause.agent.texts import is_plain as is_plain_agent_prompt
 from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
@@ -130,12 +130,14 @@ def _plain_prompt(record: RunRecord) -> bool:
 
     Arms A, B and the ceiling: no guidance (a guided run, S2.7, is not the plain arm). Arm C
     always reads S3's guidance (spec §20), so its plain prompt is that guidance and no tuning
-    round: the agent's prompt version with nothing after the guidance fingerprint.
+    round (``+r``). The text fingerprint (``+p``, Andy 2026-10-01) is not compared, as arms A
+    and B's prompt versions are not: a run made before a kept round changed the agent's text is
+    still the plain arm of its day (``texts.is_plain``).
     """
     if record.arm != "C":
         return not record.guidance
-    return record.guidance == agent_run.GUIDANCE and record.prompt_version == (
-        agent_prompt_version(agent_run.GUIDANCE)
+    return record.guidance == agent_run.GUIDANCE and is_plain_agent_prompt(
+        record.prompt_version, agent_run.GUIDANCE
     )
 
 

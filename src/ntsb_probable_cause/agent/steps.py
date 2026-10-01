@@ -7,7 +7,10 @@ about a reply it does not accept, in field names and error types, never the mode
 
 Everything here is a pure function of numbers, step names and document facts. Like
 ``agent/texts.py``, this module imports no ``records``, ``docket`` or ``data`` module: the
-payloads (the listing, the documents read) are the loop's, built through ``split_record``.
+payloads (the listing, the documents read) are the loop's, built through ``split_record``. The
+texts it sends are fixed texts of ``agent/texts.py``, the refusals' words included, so the prompt
+version's text fingerprint covers them (Andy, 2026-10-01); only the joins of a list (``", "``,
+``" or "``, ``"; "``) and of a step's parts (a blank line) are written here.
 """
 
 from collections.abc import Sequence
@@ -26,7 +29,11 @@ from ntsb_probable_cause.agent.texts import (
     CODE_NOW,
     NO_DOCUMENTS,
     NONE_READABLE,
+    NOT_JSON,
     RECORD_NOW,
+    UNKNOWN_TOOL,
+    WHOLE_ARGUMENTS,
+    WRONG_TOOL,
     menu,
     read_summary,
 )
@@ -74,9 +81,9 @@ def allowed(step: StepKind, coding: Sequence[str]) -> tuple[str, ...]:
 
 def wrong_tool(options: Sequence[str], name: str) -> str:
     """Why a call to ``name`` is not accepted. A name that is no tool of ours is not repeated."""
-    shown = name if name in _TOOL_NAMES else "an unknown tool"
+    shown = name if name in _TOOL_NAMES else UNKNOWN_TOOL
     wanted = options[0] if len(options) == 1 else f"{', '.join(options[:-1])} or {options[-1]}"
-    return f"this step takes {wanted}, not {shown}"
+    return WRONG_TOOL.format(wanted=wanted, called=shown)
 
 
 def sanitised(error: SchemaError) -> str:
@@ -100,11 +107,11 @@ def sanitised(error: SchemaError) -> str:
         problems = []
         for problem in cause.errors(include_url=False, include_context=False, include_input=False):
             where = problem["loc"][:-1] if problem["type"] == "extra_forbidden" else problem["loc"]
-            path = ".".join(str(part) for part in where) or "arguments"
+            path = ".".join(str(part) for part in where) or WHOLE_ARGUMENTS
             problems.append(f"{path}: {problem['type']}")
         return "; ".join(problems)
     if isinstance(cause, ValueError):
-        return "not valid JSON"
+        return NOT_JSON
     return str(error)
 
 

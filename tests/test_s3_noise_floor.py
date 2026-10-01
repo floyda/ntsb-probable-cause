@@ -645,6 +645,18 @@ def test_differently_configured_runs_are_refused_naming_the_setting(runs: Path) 
     _refused([_RUN_A, _RUN_B], r"differs at 'cap_usd' \(.*0\.15.*0\.2")
 
 
+def test_runs_on_two_agent_texts_are_refused(runs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Andy, 2026-10-01: the prompt version's ``+p`` part differs when the agent's text does."""
+    _write(runs, _RUN_A, _plain())
+    with monkeypatch.context() as patched:
+        patched.setattr(texts, "PROTOCOL", f"{texts.PROTOCOL} (changed)")
+        other = texts.prompt_version(GUIDANCE)
+    assert other != texts.prompt_version(GUIDANCE)
+    assert other.partition("+p")[0] == texts.prompt_version(GUIDANCE).partition("+p")[0]
+    _write(runs, _RUN_B, _plain(), spec=_spec_json(_IDS, agent_prompt_version=other))
+    _refused([_RUN_A, _RUN_B], "'agent_prompt_version'")
+
+
 def test_runs_on_two_commits_are_refused(runs: Path) -> None:
     _write(runs, _RUN_A, _plain())
     _write(runs, _RUN_B, _plain(), spec=_spec_json(_IDS, commit_sha="def5678"))

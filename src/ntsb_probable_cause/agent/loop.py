@@ -48,7 +48,7 @@ from ntsb_probable_cause.agent.schemas import (
     definitions,
     parse_call,
 )
-from ntsb_probable_cause.agent.texts import ONE_CALL, not_accepted, system_text
+from ntsb_probable_cause.agent.texts import ONE_CALL, TOOL_FAULT, not_accepted, system_text
 from ntsb_probable_cause.agent.tools import ToolResult, run_coding_tool
 from ntsb_probable_cause.agent.trail import (
     AgentCall,
@@ -621,7 +621,7 @@ class CaseLoop:
         except Exception as error:
             # A coding tool's fault must not end the run (Task 6 review): the call is not
             # accepted, and a second fault fails the step as any other break does.
-            raise _NotAcceptedError(f"the tool could not run ({type(error).__name__})") from None
+            raise _NotAcceptedError(TOOL_FAULT.format(error=type(error).__name__)) from None
         self._coding_calls += 1
         self._argument_errors += result.argument_errors
         if self._coding_calls >= self._config.max_coding_calls:

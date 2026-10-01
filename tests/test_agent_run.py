@@ -547,6 +547,22 @@ class TestResume:
             with pytest.raises(ConfigurationError, match=f"cannot resume {folder.name}: {field}"):
                 runner.run(_spec(), RAWS, resume=folder.name)
 
+    def test_a_resume_after_the_agents_text_changed_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Andy, 2026-10-01: the prompt version fingerprints the text, and spec.json holds it."""
+        runs = tmp_path / "runs"
+        dead = FakeBatchClient(handlers=[_die])
+        with pytest.raises(_KilledError):
+            _runner(runs, batch=dead).run(_spec(), RAWS)
+        (folder,) = [p for p in runs.iterdir() if p.is_dir()]
+        monkeypatch.setattr(texts, "CODE_NOW", f"{texts.CODE_NOW} Use them sparingly.")
+        runner = _runner(runs, batch=FakeBatchClient(handlers=[]))
+        with pytest.raises(
+            ConfigurationError, match=f"cannot resume {folder.name}: agent_prompt_version"
+        ):
+            runner.run(_spec(), RAWS, resume=folder.name)
+
     def test_a_finished_run_is_not_resumed(self, tmp_path: Path) -> None:
         record, _ = _batch_run(tmp_path / "runs")
         with pytest.raises(ConfigurationError, match="already finished"):

@@ -36,6 +36,17 @@ itself is committed on the branch before the run too, so the commit the run reco
 After the run, `make s3-round-result` appends the result below the registration, and nothing
 above it is edited.
 
+Nothing is bumped by hand for a change of text. The agent's prompt version is
+`s3-v1+g<guidance>+p<text>`, then `+r<N>` for a round (Andy, 2026-10-01). `+p` is the first
+twelve characters of `texts.agent_text_sha256()`, a fingerprint of every fixed text the agent
+sends: arm B's answer and refinement prompts, the protocol, the step and result texts, the
+templates and the tool definitions (`texts.model_texts` lists them, and what is not covered). A
+round that changes any of them changes `+p`. A plain run made after a kept round therefore never
+shares a version with the noise-floor runs. `scripts/s3_noise_floor.py` refuses two runs whose
+versions differ, and a resume across a change of text is refused. `resolve_latest` still takes
+any run with S3's guidance and no `+r` as plain arm C, whatever its `+p`. A change to the step
+limits is not text: it shows in `spec.json`, not in `+p`.
+
 A round is read against the loop's own noise floor: the two (or three) identical arm C runs on
 `dev-400` that `make s3-noise-report` reads into `docs/results/s3-noise-floor-dev.txt`. S2.7's
 noise floor is for a single answer, not for the loop (decision 0130, Why 1).
