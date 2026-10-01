@@ -5,6 +5,7 @@ The loop is driven as the synchronous driver will drive it: ask for the next cal
 is called. The numbered classes are the brief's fifteen cases, in its order.
 """
 
+import copy
 import dataclasses
 import json
 from collections.abc import Sequence
@@ -854,6 +855,36 @@ class TestLeaks:
         assert loop.outcome.stop_reason == "failed: leak"
         assert loop.outcome.calls == ()
         assert loop.outcome.case_id == "ANC09CA024"
+
+    def test_the_guards_message_is_kept_on_the_outcome(self) -> None:
+        """S3.1 Task 10: arm C records a leak as arm B does, ``leak: <the guard's message>``.
+
+        The message names the role, kind and source, never the withheld text (decision 0016).
+        """
+        raw = _withheld(_raw())
+        evidence_leak = copy.deepcopy(raw)
+        narratives = evidence_leak["narratives"]
+        assert isinstance(narratives, list)
+        narratives[0]["prelimNarrative"] = f"Report. {CAUSE}"
+        at_start = CaseLoop(evidence_leak, None, _config())
+        assert at_start.next_call() is None
+        view = docket_view(raw, small_docket({1: ONE, 2: f"[page 1 of 3]\nLetter.\n{CAUSE}\n"}))
+        in_a_document = CaseLoop(raw, view, _config())
+        _drive(
+            in_a_document,
+            [
+                tool_reply("record_hypothesis", _hyp()),
+                tool_reply("choose_documents", _choose({1: False, 2: True})),
+            ],
+        )
+        for loop in (at_start, in_a_document):
+            leak = loop.outcome.leak
+            assert leak is not None
+            assert "probable_cause" in leak
+            assert CAUSE not in leak
+        done = CaseLoop(_raw(), _view(), _config())
+        _drive(done, HAPPY)
+        assert done.outcome.leak is None
 
     def test_a_leak_in_the_listing_ends_the_case_after_h0(self) -> None:
         raw = _withheld(_raw())

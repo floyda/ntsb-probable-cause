@@ -214,10 +214,11 @@ class CaseLoop:
         self._rejected: str | None = None
         self._final: Hypothesis | None = None
         self._evidence: Payload | None = None
+        self._leak: str | None = None
         try:
             self._evidence = evidence_payload(raw, config.exclusions)
-        except LeakageError:
-            self._stop = "failed: leak"
+        except LeakageError as error:
+            self._stop, self._leak = "failed: leak", str(error)
 
     # --- the driver's side ---
 
@@ -343,6 +344,7 @@ class CaseLoop:
             argument_errors=self._argument_errors,
             cost_usd=self._spent,
             calls=tuple(self._rows),
+            leak=self._leak,
         )
 
     # --- building calls ---
@@ -534,8 +536,8 @@ class CaseLoop:
                 if isinstance(parsed, Hypothesis)
                 else self._choose(step, parsed)
             )
-        except LeakageError:
-            self._stop = "failed: leak"
+        except LeakageError as error:
+            self._stop, self._leak = "failed: leak", str(error)
             return _Result(arguments, hypothesis=hypothesis)
         return _Result(arguments, text, payload, hypothesis)
 

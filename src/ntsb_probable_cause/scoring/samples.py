@@ -57,8 +57,8 @@ _LATE_BEFORE_DAY_14 = frozenset(
 )
 
 
-def arm_exclusions(arm: Literal["A", "B", "ceiling"]) -> frozenset[EvidenceRole]:
-    """Arm A keeps only the start facts; B and the ceiling exclude nothing (0022, 0023)."""
+def arm_exclusions(arm: Literal["A", "B", "ceiling", "C"]) -> frozenset[EvidenceRole]:
+    """Arm A keeps only the start facts; B, C and the ceiling exclude nothing (0022, 0023)."""
     return frozenset(set(EvidenceRole) - START_FACTS) if arm == "A" else frozenset()
 
 

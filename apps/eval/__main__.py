@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import cast
 
 from ntsb_probable_cause import gitinfo, sources
+from ntsb_probable_cause.agent import run as agent_run
+from ntsb_probable_cause.agent.run import AgentRunner
+from ntsb_probable_cause.agent.texts import prompt_version as agent_prompt_version
+from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -29,7 +33,12 @@ from ntsb_probable_cause.docket.transcribe import (
     key_instruction,
     pages_to_read,
 )
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError, DocketError
+from ntsb_probable_cause.errors import (
+    BatchCancelledError,
+    BudgetError,
+    ConfigurationError,
+    DocketError,
+)
 from ntsb_probable_cause.fields import EVIDENCE_FIELDS, EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
@@ -96,6 +105,38 @@ def answering_run_record(folder: Path) -> RunRecord:
     return records[0]
 
 
+def _recorded_spec(folder: Path) -> dict[str, object]:
+    """A run folder's ``spec.json``, or ``{}`` where it has none or it cannot be read."""
+    path = folder / "spec.json"
+    try:
+        recorded = json.loads(path.read_text()) if path.is_file() else {}
+    except json.JSONDecodeError:
+        return {}
+    return recorded if isinstance(recorded, dict) else {}
+
+
+def _ablated(folder: Path) -> bool:
+    """Whether an arm C run dropped tools (``--without``, spec §7.2): an ablation, not the arm.
+
+    Recorded in ``spec.json`` only (``RunRecord`` has no field for it), so it is read there.
+    """
+    return bool(_recorded_spec(folder).get("without"))
+
+
+def _plain_prompt(record: RunRecord) -> bool:
+    """Whether a run's prompt is its arm's plain one.
+
+    Arms A, B and the ceiling: no guidance (a guided run, S2.7, is not the plain arm). Arm C
+    always reads S3's guidance (spec §20), so its plain prompt is that guidance and no tuning
+    round: the agent's prompt version with nothing after the guidance fingerprint.
+    """
+    if record.arm != "C":
+        return not record.guidance
+    return record.guidance == agent_run.GUIDANCE and record.prompt_version == (
+        agent_prompt_version(agent_run.GUIDANCE)
+    )
+
+
 def resolve_latest(
     runs_dir: Path, arm: str, sample: str, *, model: str | None = None, version: str = "v1"
 ) -> str:
@@ -119,11 +160,16 @@ def resolve_latest(
     affected. The fix reads each candidate's own record rather than trusting its name,
     which is also why the model filter is available: the cross-model comparison runs share
     the ``dev-400-ceiling`` shape with the default-model ceiling.
+
+    Arm C (S3.1 Task 10) is resolved the same way: a tool ablation (``--without``), a tuning
+    round, or other guidance is skipped (``_ablated``, ``_plain_prompt``), as is a derived
+    ``-tools`` post-pass.
     """
     candidates: list[tuple[str, str]] = []
     for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
-        # A derived ordering-check run (S2.7, plan W2) is not a new answering run.
-        if "-check-" in folder.name:
+        # A derived ordering-check run (S2.7, plan W2) or tool post-pass (S3.1 Task 12) is not a
+        # new answering run.
+        if "-check-" in folder.name or folder.name.endswith("-tools"):
             continue
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
@@ -132,9 +178,9 @@ def resolve_latest(
             continue
         if record.sample != sample or record.arm != arm:
             continue
-        if record.exclusions or record.includes:
+        if record.exclusions or record.includes or _ablated(folder):
             continue
-        if record.guidance:  # a guided run (S2.7) is not the plain arm
+        if not _plain_prompt(record):  # a guided run (S2.7), or arm C off its own setup
             continue
         if model is not None and record.model != model:
             continue
@@ -226,7 +272,9 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common(baseline_p)
 
     run_p = commands.add_parser("run", help="run one evaluation arm over a sample")
-    run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)
+    run_p.add_argument(
+        "--arm", choices=("A", "B", "ceiling", "C"), required=True, help="C is the agent loop"
+    )
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
     run_p.add_argument("--evidence-version", choices=("v1", "v2", "v3"), default="v1")
     run_p.add_argument(
@@ -247,7 +295,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--price-variant", choices=("batch", "standard"), default=RunSpec.price_variant
     )
     run_p.add_argument("--max-output-tokens", type=int, default=RunSpec.max_output_tokens)
-    run_p.add_argument("--cap-usd", type=float, default=RunSpec.cap_usd)
+    run_p.add_argument(
+        "--cap-usd",
+        type=float,
+        default=None,
+        help=f"the per-case cap; default {RunSpec.cap_usd}, or {agent_run.CAP_USD} for arm C",
+    )
+    run_p.add_argument(
+        "--without",
+        action="append",
+        default=[],
+        choices=("suggest_codes", "coding"),
+        help="arm C only: a tool ablation (spec §7.2); repeatable",
+    )
     run_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
@@ -360,16 +420,61 @@ def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLo
     return readings
 
 
-def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
-    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
-    for name in args.guidance:
+def _run_guidance(args: argparse.Namespace) -> tuple[str, ...]:
+    """The run's guidance, refused unless every file's round registration is committed.
+
+    Arm C reads S3's guidance when none is named (spec §20); ``AgentRunner`` refuses any other
+    guidance outside a registered tuning round.
+    """
+    guidance = tuple(args.guidance) or (agent_run.GUIDANCE if args.arm == "C" else ())
+    for name in guidance:
         registration = prompt.registration_path(name)
         if not gitinfo.is_committed(registration):
             raise ConfigurationError(
                 f"guidance {name}: its registration {registration} is not committed; a round "
                 "is registered before it runs (decision 0098 item 3)"
             )
-    prompt.guidance_text(args.guidance)  # a missing file is refused before any money moves
+    prompt.guidance_text(guidance)  # a missing file is refused before any money moves
+    return guidance
+
+
+def _run_spec(args: argparse.Namespace, settings: Settings, guidance: tuple[str, ...]) -> RunSpec:
+    """The ``RunSpec`` the flags name; ``--cap-usd`` defaults by arm (arm C: spec §8.2)."""
+    default_cap = agent_run.CAP_USD if args.arm == "C" else RunSpec.cap_usd
+    return RunSpec(
+        sample=args.sample,
+        arm=args.arm,
+        evidence_version=args.evidence_version,
+        exclusions=frozenset(args.exclude),
+        include_case_number="case_number" in args.include,
+        model=args.model,
+        price_variant=args.price_variant,
+        max_output_tokens=args.max_output_tokens,
+        cap_usd=args.cap_usd if args.cap_usd is not None else default_cap,
+        budget_usd=args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd,
+        sync=args.sync,
+        expected_cost_per_case_usd=args.expected_cost_per_case_usd
+        if args.expected_cost_per_case_usd is not None
+        else settings.expected_cost_per_case_usd,
+        guidance=guidance,
+        # S2.7 Task 16: a v2 run names its reading; a v1 run names none (runner refuses both
+        # the other way round).
+        transcriber=args.transcriber if args.evidence_version == "v2" else None,
+        page_rule=args.page_rule if args.evidence_version == "v2" else None,
+    )
+
+
+def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    if args.without and args.arm != "C":
+        raise ConfigurationError(
+            f"--without drops the agent loop's tools (spec §7.2); arm {args.arm} has none"
+        )
+    if args.arm == "C":
+        # The loop's tools count in S3's statistics, whose pool must not hold this sample's own
+        # verdicts (decision 0129).
+        refuse_pool_holding(agent_run.STATS, args.sample)
+    guidance = _run_guidance(args)
     readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
@@ -380,49 +485,47 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
     commit = ledger.commit_state()
     spent = month_spent(settings.runs_dir, now=datetime.now(UTC))
     client, batch = client_factory(settings)
-    spec = RunSpec(
-        sample=args.sample,
-        arm=args.arm,
-        evidence_version=args.evidence_version,
-        exclusions=frozenset(args.exclude),
-        include_case_number="case_number" in args.include,
-        model=args.model,
-        price_variant=args.price_variant,
-        max_output_tokens=args.max_output_tokens,
-        cap_usd=args.cap_usd,
-        budget_usd=args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd,
-        sync=args.sync,
-        expected_cost_per_case_usd=args.expected_cost_per_case_usd
-        if args.expected_cost_per_case_usd is not None
-        else settings.expected_cost_per_case_usd,
-        guidance=tuple(args.guidance),
-        # S2.7 Task 16: a v2 run names its reading; a v1 run names none (runner refuses both
-        # the other way round).
-        transcriber=args.transcriber if args.evidence_version == "v2" else None,
-        page_rule=args.page_rule if args.evidence_version == "v2" else None,
-    )
+    spec = _run_spec(args, settings, guidance)
     docket_cm = (
         DocketClient(settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request)
-        if args.arm == "B"
+        if args.arm in {"B", "C"}
         else contextlib.nullcontext()
     )
     with docket_cm as docket_client:
+        # Arm C reads v1 evidence only: ``_readings_for_run`` gives it no readings.
         docket = (
             CachedDocketReader(docket_client, readings=readings)
             if docket_client is not None
             else None
         )
-        runner = Runner(
-            client,
-            batch=batch,
-            tables=load_tables(),
-            seen_pairs=seen,
-            runs_dir=settings.runs_dir,
-            ledger_path=settings.heldout_ledger_path,
-            month_spent_usd=spent,
-            commit=commit,
-            docket=docket,
-        )
+        runner: Runner | AgentRunner
+        if args.arm == "C":
+            runner = AgentRunner(
+                client,
+                batch=batch,
+                tables=load_tables(),
+                stats=load_stats(agent_run.STATS),
+                seen_pairs=seen,
+                runs_dir=settings.runs_dir,
+                month_spent_usd=spent,
+                commit=commit,
+                docket=docket,
+                pass_reasoning=False,  # until the shape probe (Task 4) decides otherwise
+                without=frozenset(args.without),
+                ledger_path=settings.heldout_ledger_path,
+            )
+        else:
+            runner = Runner(
+                client,
+                batch=batch,
+                tables=load_tables(),
+                seen_pairs=seen,
+                runs_dir=settings.runs_dir,
+                ledger_path=settings.heldout_ledger_path,
+                month_spent_usd=spent,
+                commit=commit,
+                docket=docket,
+            )
         # The operator re-supplies the original flags; the equality check inside `run` against
         # the folder's own `spec.json` is what proves they supplied the right ones (0032 point 4).
         record = runner.run(spec, raws, resume=args.resume)
@@ -448,13 +551,37 @@ def _floor_for_report(settings: Settings, sample: str) -> tuple[dict[str, float]
         return None, f"\n(baseline floor unavailable: {error})"
 
 
+def _ablation_line(folder: Path) -> str:
+    """``without=<tools>`` for an arm C tool ablation (read from ``spec.json``), else nothing."""
+    without = _recorded_spec(folder).get("without")
+    if not without or not isinstance(without, list):
+        return ""
+    return f"without={','.join(str(name) for name in without)}\n"
+
+
+def _cached_share(folder: Path) -> str:
+    """The provider's cached share of the prompt tokens, from ``trail.jsonl`` when there is one.
+
+    Counts only (spec §10.2's noise-floor report reads the same); a call that reported no
+    cached tokens counts as none cached.
+    """
+    path = folder / agent_run.TRAIL_FILE
+    if not path.is_file():
+        return ""
+    calls = read_jsonl(path, AgentCall)
+    cached = sum(c.cached_tokens or 0 for c in calls)
+    prompt_tokens = sum(c.prompt_tokens for c in calls)
+    return f"\ncached share of prompt tokens: {cached}/{prompt_tokens}"
+
+
 def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_id = _resolve_run_id(settings.runs_dir, args.run_id, args.latest)
     folder = settings.runs_dir / run_id
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     run_record = answering_run_record(folder)
     floor, floor_note = _floor_for_report(settings, run_record.sample)
-    text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
+    text = report.provenance(run_record) + _ablation_line(folder)
+    text += "\n" + report.summarise(cases, floor=floor) + floor_note
     text += "\n\n" + report.failure_summary(cases)
     if any(r.marks for r in cases):
         text += (
@@ -467,6 +594,11 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         text += "\n" + report.share_bands(cases)
     if run_record.arm == "B":
         text += "\n\n" + report.cap_summary(cases)
+    if run_record.arm == "C":
+        # Arm C leaves a document unread by choice (or by stopping first), not at a cap: the
+        # same count, worded for what it is.
+        text += "\n\n" + report.cap_summary(cases, heading="unread", what="left documents unread")
+        text += _cached_share(folder)
     if run_record.evidence_version != "v1":
         text += "\n" + report.preparation_summary(cases)
     if run_record.sample == "heldout-400":
@@ -1060,7 +1192,9 @@ def main(
             _cmd_check(args, settings, client_factory, jev_factory)
         elif args.command == "transcribe":
             return _cmd_transcribe(args, settings)
-    except (BudgetError, ConfigurationError) as error:
+    except (BudgetError, ConfigurationError, BatchCancelledError) as error:
+        # A cancelled batch (arm C's batch rounds) stops the run with its records written; the
+        # message names the run id to pass to --resume (S3.1 Task 10).
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1
     return 0

@@ -115,6 +115,13 @@ class RoundRow(_Row):
     reported_cost_usd: float | None = None
 
 
+# Told about each round twice: once it is submitted (or, on a resume, waited on again), with
+# ``status`` None, and once it is finished, with its status and cost. ``running`` is the number of
+# cases that have not stopped at that moment. It must not raise (S3.1 Task 10: the runner's
+# progress lines, which are the only thing an overnight run prints).
+RoundListener = Callable[[RoundRow, int], None]
+
+
 class _Call(NamedTuple):
     """A call waiting for its reply: its batch custom id, its loop, and the call itself."""
 
@@ -180,13 +187,14 @@ def drive_sync(
             _accept(loop, row)
 
 
-def drive_batch(
+def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the clock and two settings.
     loops: Sequence[CaseLoop],
     batch: BatchRunner,
     *,
     folder: Path,
     now: Callable[[], datetime],
     max_rounds: int = 40,
+    on_round: RoundListener | None = None,
 ) -> tuple[float | None, ...]:
     """Run every loop to its end in batch rounds, and resume a run that was cut short.
 
@@ -215,6 +223,9 @@ def drive_batch(
         folder: the run folder; ``replies.jsonl`` and ``rounds.jsonl`` are appended to.
         now: the clock; the only source of times.
         max_rounds: the most rounds a run may take.
+        on_round: told each round's row and the cases still running, when the round goes out
+            (or a resume waits on it again) and when it ends, whatever its ending (see
+            ``RoundListener``). None tells no one, and asks the loops nothing extra.
 
     Returns:
         Each round's reported cost, in order, the rounds of an earlier attempt included; None for
@@ -249,22 +260,37 @@ def drive_batch(
                 break
             rounds += 1
             row = _submit(calls, batch, rounds, folder, now)
+        _tell(on_round, row, loops)
         status = _wait(batch, row, resumed=resumed)
         if status is None:  # an earlier attempt's batch, lost: nothing came back
-            _finish_round(row, folder, now(), status=_LOST)
+            _tell(on_round, _finish_round(row, folder, now(), status=_LOST), loops)
             continue
         _refuse_foreign_results(row, status)
+        cost = status.reported_cost_usd
         if status.status == _CANCELLED:
-            _finish_round(row, folder, now(), status=_CANCELLED, cost=status.reported_cost_usd)
+            finished = _finish_round(row, folder, now(), status=_CANCELLED, cost=cost)
+            _tell(on_round, finished, loops)
             raise BatchCancelledError(
                 f"batch {row.batch_id} (round {row.round}) was cancelled, so the run stops here. "
                 "The run can be resumed: a resume sends its calls again."
             )
         if _is_dead(status):  # nothing was accepted: the same calls go out in the next round
-            _finish_round(row, folder, now(), status=status.status, cost=status.reported_cost_usd)
+            _tell(
+                on_round, _finish_round(row, folder, now(), status=status.status, cost=cost), loops
+            )
             continue
-        _take(calls, row, status, now(), folder)
+        _tell(on_round, _take(calls, row, status, now(), folder), loops)
     return tuple(r.reported_cost_usd for r in _rounds(folder).values())
+
+
+def _tell(on_round: RoundListener | None, row: RoundRow, loops: Sequence[CaseLoop]) -> None:
+    """Tell the listener about a round, with the cases still running; nothing if there is none.
+
+    ``next_call`` is idempotent until a reply is accepted, so asking it here changes nothing the
+    next round would not have found the same way.
+    """
+    if on_round is not None:
+        on_round(row, sum(1 for loop in loops if loop.next_call() is not None))
 
 
 def replay(loops: Sequence[CaseLoop], folder: Path) -> RoundRow | None:
@@ -470,12 +496,13 @@ def _is_dead(status: BatchStatus) -> bool:
 
 def _finish_round(
     row: RoundRow, folder: Path, returned_at: datetime, *, status: str, cost: float | None = None
-) -> None:
-    """Append the row that completes a round: when it ended, how, and what it cost."""
+) -> RoundRow:
+    """Append the row that completes a round: when it ended, how, and what it cost; return it."""
     finished = row.model_copy(
         update={"finished_at": returned_at, "status": status, "reported_cost_usd": cost}
     )
     write_jsonl(folder / ROUNDS_FILE, [finished])
+    return finished
 
 
 def _take(
@@ -484,8 +511,8 @@ def _take(
     status: BatchStatus,
     returned_at: datetime,
     folder: Path,
-) -> None:
-    """Write a round's replies, give them to the loops, and mark the round finished.
+) -> RoundRow:
+    """Write a round's replies, give them to the loops, mark the round finished, and return it.
 
     The replies go to disk first, all in one write, in the round's order (so the file does not
     depend on the order the provider listed its results in); a loop is given its reply only
@@ -515,4 +542,6 @@ def _take(
     write_jsonl(folder / REPLIES_FILE, rows)
     for c, reply_row in zip(calls, rows, strict=True):
         _accept(c.loop, reply_row)
-    _finish_round(row, folder, returned_at, status=status.status, cost=status.reported_cost_usd)
+    return _finish_round(
+        row, folder, returned_at, status=status.status, cost=status.reported_cost_usd
+    )

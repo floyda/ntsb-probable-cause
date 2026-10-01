@@ -312,13 +312,23 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
     return "\n".join(lines)
 
 
-def cap_summary(results: Sequence[CaseResult]) -> str:
+def cap_summary(
+    results: Sequence[CaseResult], *, heading: str = "cap", what: str = "hit the cap"
+) -> str:
     """How much of the docket the result was measured on (decision 0043 item 3).
 
     Reads each case's own ``documents_not_read`` rather than summing over ``steps``: a case
     whose base prompt (with whatever documents made it in) is still over the cap fails
     before a step is ever recorded (``steps=()``), and that is exactly the case that dropped
     the most of the docket -- it must not be invisible in this count (fix round 1, Finding 4).
+
+    Args:
+        results: the run's cases.
+        heading: the line's first word; ``cap`` for arm B, whose documents are left out at the
+            cap.
+        what: what a case with documents left out did. Arm C's agent leaves documents unread
+            by choice, or by stopping before it chose (S3.1 Task 10), so its line reads
+            ``unread: N of M cases left documents unread; ...``.
     """
 
     def counts(rows: Sequence[CaseResult]) -> tuple[int, int]:
@@ -330,7 +340,7 @@ def cap_summary(results: Sequence[CaseResult]) -> str:
     fatal_hit, fatal_docs = counts([r for r in results if r.fatal])
     non_hit, non_docs = counts([r for r in results if not r.fatal])
     return (
-        f"cap: {cases_hit} of {len(results)} cases hit the cap; {docs} documents not read "
+        f"{heading}: {cases_hit} of {len(results)} cases {what}; {docs} documents not read "
         f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
     )
 

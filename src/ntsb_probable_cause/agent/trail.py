@@ -116,6 +116,9 @@ class LoopOutcome(_Record):
         argument_errors: the argument errors the coding tools counted, in all.
         cost_usd: the case's cost, summed over every reply.
         calls: one row per model call.
+        leak: the guard's message when the case stopped ``failed: leak``, else None. It names
+            the role, kind and source of the withheld text, never the text itself (decision
+            0016); arm C's case result records it as arm B's does (S3.1 Task 10).
     """
 
     case_id: str
@@ -129,3 +132,4 @@ class LoopOutcome(_Record):
     argument_errors: int
     cost_usd: float
     calls: tuple[AgentCall, ...]
+    leak: str | None = None

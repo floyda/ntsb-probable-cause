@@ -3,7 +3,7 @@ import gzip
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -30,11 +30,20 @@ from tests.boundary import (
     withheld_windows,
 )
 from tests.pdf_builder import PageSpec, build_pdf
+from tests.test_agent_documents import _raw as _agent_raw
+from tests.test_agent_documents import _withheld as _withheld_record
+from tests.test_agent_drive import _answers, _scripts, _sync_replies
+from tests.test_agent_drive import _other as _other_record
+from tests.test_agent_run import _runner as _agent_runner
+from tests.test_agent_run import _spec as _agent_spec
+from tests.test_agent_run import _sync_spec as _agent_sync_spec
 from tests.test_attach import _docket as _small_docket
 from tests.test_occurrence_misses import _case
 from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
+from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import fields, sources
+from ntsb_probable_cause.agent import steps as steps_module
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.attach import attach_docket
@@ -57,6 +66,7 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
 from ntsb_probable_cause.model.client import (
+    ModelReply,
     ModelSettings,
     PageImage,
     Payload,
@@ -1436,3 +1446,126 @@ def test_the_jev2_check_sends_no_withheld_text(
     for sent in _jev2_sent_texts(route.calls[0].request.content):
         for window in windows:
             assert window not in sent
+
+
+# --------------------------------------------------------------------------------------------
+# Arm C, the agent loop (S3.1 Task 10): every request an arm C run sends, on both paths
+# --------------------------------------------------------------------------------------------
+#
+# Two cases, driven with scripted tool replies: ANC09CA024 with its narratives and probable
+# cause set to text the guard can match (``tests/test_agent_documents.py``'s ``_withheld``) and
+# a two-document docket it reads one of, and a second real fixture record. Every request goes
+# through ``assert_requests_clean``: system text, the first user payload, each earlier turn's
+# content and tool calls, every tool result's payload and ``ToolText``, and the assistant turns'
+# reasoning, which the run passes back. The two mutation tests put the probable cause in a
+# ``ToolText`` and in passed-back reasoning, and the check must fail on each (decision 0016).
+
+_CLEAN_REASONING = "The evidence describes a departure from the runway on landing."
+
+
+def _arm_c_raws() -> tuple[dict[str, object], dict[str, object]]:
+    return _withheld_record(_agent_raw()), _other_record()
+
+
+def _arm_c_withheld(raws: Sequence[Mapping[str, object]]) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for raw in raws:
+        for kind, text in (
+            ("factual narrative", fields.factual_narrative(raw)),
+            ("analysis narrative", fields.analysis_narrative(raw)),
+            ("probable cause", fields.probable_cause(raw)),
+        ):
+            if text:
+                found.append((kind, text))
+    assert len(found) >= 4, "the cases carry withheld text: the check is not vacuous"
+    return found
+
+
+def _reasoned(
+    scripts: Mapping[str, Sequence[ModelReply | None]], summary: str
+) -> dict[str, list[ModelReply | None]]:
+    """Each reply with a readable reasoning summary, which the run passes back to the model."""
+    detail = {"type": "reasoning.summary", "summary": summary, "index": 0}
+    return {
+        case_id: [
+            None if r is None else r.model_copy(update={"reasoning_details": (detail,)})
+            for r in replies
+        ]
+        for case_id, replies in scripts.items()
+    }
+
+
+def _arm_c_batch_requests(tmp_path: Path, summary: str = _CLEAN_REASONING) -> list[BatchRequest]:
+    fake = FakeBatchClient(handlers=[_answers(_reasoned(_scripts(), summary))] * 8)
+    _agent_runner(tmp_path / "runs", batch=fake, pass_reasoning=True).run(
+        _agent_spec(), _arm_c_raws()
+    )
+    return [request for batch in fake.submitted for request in batch]
+
+
+def _sync_requests(client: RecordingFakeClient) -> list[BatchRequest]:
+    """What a synchronous client was sent, as batch requests, so one check reads both paths."""
+    return [
+        BatchRequest(
+            custom_id=f"sync-{n}",
+            payload=payload,
+            settings=settings,
+            system=system,
+            history=history,
+        )
+        for n, (payload, settings, system, history) in enumerate(
+            zip(client.payloads, client.settings, client.systems, client.histories, strict=True)
+        )
+    ]
+
+
+def test_an_arm_c_batch_run_sends_no_withheld_text_in_any_request(tmp_path: Path) -> None:
+    requests = _arm_c_batch_requests(tmp_path)
+    assert len(requests) == 10  # eight calls for the first case, two for the second
+    turns = [turn for request in requests for turn in request.history]
+    assert any(turn.tool_text is not None for turn in turns), "ToolText reached the model"
+    assert any(turn.payload is not None for turn in turns), "a document was read"
+    assert any(turn.reasoning_details for turn in turns), "reasoning was passed back"
+    assert all(request.settings.pass_reasoning for request in requests)
+    assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_an_arm_c_sync_run_sends_no_withheld_text_in_any_request(tmp_path: Path) -> None:
+    scripts = _reasoned(_scripts(), _CLEAN_REASONING)
+    client = RecordingFakeClient([r for r in _sync_replies(scripts) if r is not None])
+    _agent_runner(tmp_path / "runs", client=client, pass_reasoning=True).run(
+        _agent_sync_spec(), _arm_c_raws()
+    )
+    requests = _sync_requests(client)
+    assert len(requests) == 10
+    turns = [turn for request in requests for turn in request.history]
+    assert any(turn.tool_text is not None for turn in turns)
+    assert any(turn.reasoning_details for turn in turns)
+    assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_the_arm_c_check_fails_on_withheld_text_in_a_tool_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation test: the agent's own words carrying the probable cause must be caught."""
+    cause = fields.probable_cause(_arm_c_raws()[0])
+    assert cause
+
+    def leaky(read: Sequence[int], skipped: Sequence[int]) -> str:
+        return f"You read: {list(read)}. {cause}"
+
+    monkeypatch.setattr(steps_module, "read_summary", leaky)
+    requests = _arm_c_batch_requests(tmp_path)
+    with pytest.raises(AssertionError, match=r"^tripwire: probable cause .* tool text"):
+        assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_the_arm_c_check_fails_on_withheld_text_in_passed_back_reasoning(
+    tmp_path: Path,
+) -> None:
+    """Mutation test: reasoning that quotes the probable cause must be caught when passed back."""
+    cause = fields.probable_cause(_arm_c_raws()[0])
+    assert cause
+    requests = _arm_c_batch_requests(tmp_path, summary=f"Perhaps: {cause}")
+    with pytest.raises(AssertionError, match=r"^tripwire: probable cause .* reasoning summary"):
+        assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))

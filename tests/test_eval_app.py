@@ -19,10 +19,15 @@ from apps.eval.__main__ import (
     resolve_latest,
 )
 from tests.pdf_builder import PageSpec, build_pdf
+from tests.test_agent_loop import _choose, _hyp
 from tests.test_attach import _docket as small_docket
 from tests.test_occurrence_misses import _case
+from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.agent.run import TRAIL_FILE
+from ntsb_probable_cause.agent.texts import prompt_version
+from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -46,6 +51,7 @@ from ntsb_probable_cause.model.client import (
     RecordingFakeClient,
     Turn,
     Usage,
+    tool_reply,
 )
 from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.marks import CaseMark
@@ -2597,3 +2603,284 @@ def test_check_way_jev2_is_refused_over_budget_without_building_any_client(
     assert exit_code == 1
     assert "budget" in capsys.readouterr().err
     assert open_reservations(runs) == {}
+
+
+# --------------------------------------------------------------------------------------------
+# Arm C, the agent loop (S3.1 Task 10)
+# --------------------------------------------------------------------------------------------
+
+_ARM_C_USAGE = Usage(prompt_tokens=1000, completion_tokens=10, cached_tokens=600)
+_S3_GUIDANCE = ("r3-loc-stall", "r6-aircraft-control")
+
+
+def _arm_c_replies() -> list[str | ModelReply]:
+    """One case: its one readable document skipped twice, then an answer with no findings."""
+    return [
+        tool_reply("record_hypothesis", _hyp(), usage=_ARM_C_USAGE),
+        tool_reply("choose_documents", _choose({1: False}), usage=_ARM_C_USAGE),
+        tool_reply("choose_documents", _choose({1: False}), usage=_ARM_C_USAGE),
+        tool_reply("submit_answer", _hyp(findings=[]), usage=_ARM_C_USAGE),
+    ]
+
+
+class _StubDocketReader:
+    """Stands in for ``CachedDocketReader``: the same constructor, a fixed docket, no HTTP."""
+
+    def __init__(self, client: object, *, readings: object = None) -> None:
+        self.client = client
+        self.version = "v1" if readings is None else "v2"
+
+    def read(self, mkey: int) -> Docket:
+        return small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+
+
+def _arm_c_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> tuple[str, Path]:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
+    monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", _StubDocketReader)
+    return _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+
+
+def _factory(
+    client: ModelClient, batch: BatchRunner | None = None
+) -> Callable[[Settings], tuple[ModelClient, BatchRunner | None]]:
+    def factory(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        return client, batch
+
+    return factory
+
+
+_ARM_C_SYNC = ["--sync", "--price-variant", "standard", "--expected-cost-per-case-usd", "0.01"]
+
+
+def test_run_arm_c_then_report_and_report_against_arm_b(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Arm C writes the records arm B writes, so ``report --against`` compares them unchanged."""
+    case_id, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    agent = RecordingFakeClient(_arm_c_replies())
+    argv = ["run", "--arm", "C", "--sample", "dev-400", *_ARM_C_SYNC]
+    assert main(argv, client_factory=_factory(agent)) == 0
+    (c_folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    record = answering_run_record(c_folder)
+    assert (record.arm, record.finished is not None) == ("C", True)
+    assert record.guidance == _S3_GUIDANCE
+    assert record.cap_usd == pytest.approx(0.15)  # arm C's own default cap
+    assert len(agent.payloads) == 4
+    assert all("crankshaft" not in p.text for p in agent.payloads)  # never in the first message
+
+    b_client = RecordingFakeClient([GOOD, REFINE])
+    b_argv = ["run", "--arm", "B", "--sample", "dev-400", "--sync", "--price-variant", "standard"]
+    assert main(b_argv, client_factory=_factory(b_client)) == 0
+    (b_folder,) = [p for p in runs_dir.iterdir() if p.is_dir() and p != c_folder]
+
+    capsys.readouterr()
+    assert main(["report", c_folder.name]) == 0
+    out = capsys.readouterr().out
+    assert "sample=dev-400 arm=C" in out
+    assert "| all |" in out
+    assert "unread: 1 of 1 cases left documents unread; 1 documents not read" in out
+    assert "cap: " not in out  # arm C chose not to read it; no cap was hit
+    assert "cached share of prompt tokens: 2400/4000" in out
+    assert "failures by reason: none" in out
+
+    assert main(["report", c_folder.name, "--against", b_folder.name]) == 0
+    compared = capsys.readouterr().out
+    assert "paired difference (a - b) on 1 shared" in compared
+    assert case_id not in compared
+
+
+def test_run_arm_c_flags_reach_the_agent_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    captured: dict[str, object] = {}
+
+    class SpyAgentRunner:
+        def __init__(self, _client: object, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(
+            self, spec: RunSpec, raws: Sequence[object], *, resume: str | None = None
+        ) -> RunRecord:
+            captured["spec"] = spec
+            captured["resume"] = resume
+            return _arm_c_record("spied", guidance=spec.guidance)
+
+    monkeypatch.setattr("apps.eval.__main__.AgentRunner", SpyAgentRunner)
+    argv = ["run", "--arm", "C", "--sample", "dev-400", "--without", "coding"]
+    argv += ["--without", "suggest_codes", "--cap-usd", "0.2"]
+    assert main(argv, client_factory=_factory(RecordingFakeClient([]))) == 0
+    spec = captured["spec"]
+    assert isinstance(spec, RunSpec)
+    assert (spec.arm, spec.guidance, spec.cap_usd) == ("C", _S3_GUIDANCE, 0.2)
+    assert captured["without"] == frozenset({"coding", "suggest_codes"})
+    assert captured["stats"] == load_stats("s3")
+    docket = captured["docket"]
+    assert isinstance(docket, _StubDocketReader)
+    assert docket.version == "v1"
+    assert captured["ledger_path"] == Settings().heldout_ledger_path
+    assert captured["pass_reasoning"] is False
+    assert captured["resume"] is None
+
+
+def test_without_is_refused_on_an_arm_with_no_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    built: list[Settings] = []
+
+    def factory(settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        built.append(settings)
+        return RecordingFakeClient([]), None
+
+    argv = ["run", "--arm", "B", "--sample", "dev-400", "--without", "coding"]
+    assert main(argv, client_factory=factory) == 1
+    assert "--without" in capsys.readouterr().err
+    assert built == []
+
+
+def test_arm_c_refuses_v2_before_any_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    agent = RecordingFakeClient([])
+    argv = ["run", "--arm", "C", "--sample", "dev-400", "--evidence-version", "v2", *_ARM_C_SYNC]
+    assert main(argv, client_factory=_factory(agent)) == 1
+    assert "v1 only" in capsys.readouterr().err
+    assert agent.payloads == []
+    assert not runs_dir.exists()
+
+
+def test_arm_c_refuses_its_sealed_sample_before_anything_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
+
+    def boom(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for a sealed sample")
+
+    assert main(["run", "--arm", "C", "--sample", "dev-seal-s3-400"], client_factory=boom) == 1
+    assert "sealed" in capsys.readouterr().err
+
+
+def test_a_cancelled_batch_exits_one_and_says_how_to_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+
+    def cancelled(batch_id: str, _requests: Sequence[BatchRequest]) -> BatchStatus:
+        return BatchStatus(
+            batch_id=batch_id, status="cancelled", results=(), reported_cost_usd=None
+        )
+
+    batch = FakeBatchClient(handlers=[cancelled])
+    argv = ["run", "--arm", "C", "--sample", "dev-400", "--expected-cost-per-case-usd", "0.01"]
+    assert main(argv, client_factory=_factory(RecordingFakeClient([]), batch)) == 1
+    (folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    err = capsys.readouterr().err
+    assert "was cancelled" in err
+    assert f"--resume {folder.name}" in err
+    assert open_reservations(runs_dir) == {}
+
+
+def _arm_c_record(
+    run_id: str, *, guidance: tuple[str, ...], round_number: int | None = None
+) -> RunRecord:
+    when = datetime(2026, 10, 1, tzinfo=UTC)
+    kwargs = _RUN_KWARGS | {"arm": "C", "prompt_version": prompt_version(guidance, round_number)}
+    return RunRecord(**kwargs, run_id=run_id, started=when, finished=when, guidance=guidance)
+
+
+def test_resolve_latest_finds_the_plain_arm_c_run_and_skips_its_variants(tmp_path: Path) -> None:
+    """Arm C always reads its guidance, so "plain" means S3's guidance, no round, no ablation."""
+    runs = tmp_path / "runs"
+    plain = "20261001T000000-abc1234-dev-400-C"
+    write_jsonl(runs / plain / "run.jsonl", [_arm_c_record(plain, guidance=_S3_GUIDANCE)])
+    variants = {
+        "20261001T000001-abc1234-dev-400-C": _arm_c_record(
+            "x", guidance=_S3_GUIDANCE, round_number=1
+        ),
+        "20261001T000002-abc1234-dev-400-C": _arm_c_record("x", guidance=("r3-loc-stall",)),
+        "20261001T000003-abc1234-dev-400-C": _arm_c_record("x", guidance=_S3_GUIDANCE),
+    }
+    for run_id, record in variants.items():
+        write_jsonl(runs / run_id / "run.jsonl", [record.model_copy(update={"run_id": run_id})])
+    (runs / "20261001T000003-abc1234-dev-400-C" / "spec.json").write_text(
+        json.dumps({"arm": "C", "without": ["coding"]})
+    )
+    assert resolve_latest(runs, "C", "dev-400") == plain
+    (runs / plain / "spec.json").write_text(json.dumps({"arm": "C", "without": []}))
+    assert resolve_latest(runs, "C", "dev-400") == plain  # an empty ablation is no ablation
+
+
+def test_resolve_latest_skips_a_tools_post_pass(tmp_path: Path) -> None:
+    """Task 12's derived ``<run id>-tools`` run records arm B; it is not a new answering run."""
+    runs = tmp_path / "runs"
+    when = datetime(2026, 9, 26, tzinfo=UTC)
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B", finished=when, arm="B")
+    _write_run(runs, "20260926T000000-abc1234-dev-400-B-tools", finished=when, arm="B")
+    assert resolve_latest(runs, "B", "dev-400") == "20260926T000000-abc1234-dev-400-B"
+
+
+def _trail_call(cached: int | None) -> AgentCall:
+    when = datetime(2026, 10, 1, tzinfo=UTC)
+    return AgentCall(
+        run_id="r",
+        case_id="c1",
+        trigger=1,
+        docket_state="none",
+        call_index=0,
+        step="h0",
+        retry=False,
+        tool="record_hypothesis",
+        arguments={},
+        protocol_error=None,
+        result_chars=0,
+        argument_errors=0,
+        hypothesis=None,
+        prompt_tokens=500,
+        cached_tokens=cached,
+        completion_tokens=10,
+        reasoning_tokens=None,
+        finish_reason="tool_calls",
+        cost_usd=0.0,
+        estimated_usd=0.0,
+        sent_at=when,
+        returned_at=when,
+        batch_id=None,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+
+
+def test_report_names_an_ablation_and_reads_the_cached_share_from_the_trail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    run_id = "20261001T000000-abc1234-dev-400-C"
+    folder = runs / run_id
+    write_jsonl(folder / "run.jsonl", [_arm_c_record(run_id, guidance=_S3_GUIDANCE)])
+    write_jsonl(folder / "cases.jsonl", [_scored_case("c1")])
+    (folder / "spec.json").write_text(json.dumps({"arm": "C", "without": ["coding"]}))
+    write_jsonl(folder / TRAIL_FILE, [_trail_call(None), _trail_call(300)])
+    assert main(["report", run_id]) == 0
+    out = capsys.readouterr().out
+    assert "without=coding" in out
+    assert "cached share of prompt tokens: 300/1000" in out

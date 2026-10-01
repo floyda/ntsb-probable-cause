@@ -529,6 +529,78 @@ class TestRounds:
 
 
 # --------------------------------------------------------------------------------------------
+# Progress (S3.1 Task 10): one report when a round goes out or is waited on, one when it ends
+# --------------------------------------------------------------------------------------------
+
+Event = tuple[int, str, str | None, float | None, int]
+
+
+class Progress:
+    """An ``on_round`` listener that keeps what it was told: round, batch, status, cost, running."""
+
+    def __init__(self) -> None:
+        self.events: list[Event] = []
+
+    def __call__(self, row: RoundRow, running: int) -> None:
+        self.events.append((row.round, row.batch_id, row.status, row.reported_cost_usd, running))
+
+
+class TestProgress:
+    def test_every_round_is_reported_when_it_goes_out_and_when_it_ends(
+        self, tmp_path: Path
+    ) -> None:
+        progress = Progress()
+        fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+        drive_batch(_loops(), fake, folder=tmp_path / "run", now=Clock(), on_round=progress)
+        out = [
+            (n, batch, running) for n, batch, status, _, running in progress.events if not status
+        ]
+        ended = [e for e in progress.events if e[2] is not None]
+        assert out == [(1, "b1", 2), (2, "b2", 2), *[(n, f"b{n}", 1) for n in range(3, 9)]]
+        assert ended == [
+            (1, "b1", "completed", 0.5, 2),
+            (2, "b2", "completed", 0.5, 1),  # B has answered
+            *[(n, f"b{n}", "completed", 0.25, 1) for n in range(3, 8)],
+            (8, "b8", "completed", 0.25, 0),
+        ]
+        assert [e[0] for e in progress.events] == [n for n in range(1, 9) for _ in range(2)]
+
+    def test_a_dead_round_is_reported_with_its_status_and_cost(self, tmp_path: Path) -> None:
+        progress = Progress()
+        fake = FakeBatchClient(
+            handlers=[_ended("expired", cost=0.125), *[_answers(_scripts())] * 8]
+        )
+        drive_batch(_loops(), fake, folder=tmp_path / "run", now=Clock(), on_round=progress)
+        assert progress.events[:3] == [
+            (1, "b1", None, None, 2),
+            (1, "b1", "expired", 0.125, 2),
+            (2, "b2", None, None, 2),
+        ]
+
+    def test_a_cancelled_round_is_reported_before_the_run_stops(self, tmp_path: Path) -> None:
+        progress = Progress()
+        fake = FakeBatchClient(handlers=[_ended("cancelled", cost=0.0625)])
+        with pytest.raises(BatchCancelledError):
+            drive_batch(_loops(), fake, folder=tmp_path / "run", now=Clock(), on_round=progress)
+        assert progress.events == [(1, "b1", None, None, 2), (1, "b1", "cancelled", 0.0625, 2)]
+
+    def test_a_resumed_round_is_reported_as_waited_on_and_a_lost_one_as_lost(
+        self, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "cut"
+        dead = _interrupt_after_round_two_is_submitted(folder)
+        progress = Progress()
+        resumed = _resumer(dead, "b2", [_gone, *[_answers(_scripts())] * 8])
+        drive_batch(_loops(), resumed, folder=folder, now=Clock(ticks=4), on_round=progress)
+        assert progress.events[:3] == [
+            (2, "b2", None, None, 2),  # waited on, not submitted
+            (2, "b2", "lost", None, 2),
+            (3, "b3", None, None, 2),  # the lost round's calls, sent again
+        ]
+        assert progress.events[-1][2:] == ("completed", 0.25, 0)
+
+
+# --------------------------------------------------------------------------------------------
 # Resume
 # --------------------------------------------------------------------------------------------
 

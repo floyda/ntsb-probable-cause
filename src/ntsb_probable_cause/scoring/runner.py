@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.data.build import investigation_class
@@ -77,7 +77,9 @@ class RunSpec:
     """Everything that varies between runs (spec §2)."""
 
     sample: str
-    arm: Literal["A", "B", "ceiling"]
+    # Arm C (S3.1 Task 10) is the agent loop: ``agent.run.AgentRunner`` runs it, never this
+    # module's ``Runner``, which refuses it.
+    arm: Literal["A", "B", "ceiling", "C"]
     # Decision 0076: the evidence version this run reads the docket at. v1 and v2 are built
     # (v2 reads the finished transcriptions, Task 14); v3 is not (deferred by 0090) and is
     # refused. Only arm B reads the docket, so a version past v1 on arm A or the ceiling is
@@ -116,7 +118,12 @@ ENDED_UNUSABLE = frozenset({"failed", "expired", "cancelled"})
 
 
 def spec_json(
-    spec: RunSpec, *, commit_sha: str, dirty: bool, case_ids: Sequence[str]
+    spec: RunSpec,
+    *,
+    commit_sha: str,
+    dirty: bool,
+    case_ids: Sequence[str],
+    extra: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Everything a run folder must record about the spec that produced it (0032 point 1).
 
@@ -134,6 +141,9 @@ def spec_json(
         commit_sha: the runner's commit sha — a resume on different code is refused.
         dirty: whether the working tree carried uncommitted changes (0018).
         case_ids: the run's case ids, in order; what makes ``--limit`` safe to resume.
+        extra: settings a run depends on that ``RunSpec`` does not hold (arm C's loop
+            settings, S3.1 Task 10), recorded after the spec's own keys and before the commit,
+            so a resume compares them too. None (every arm A, B and ceiling run) adds nothing.
 
     Returns:
         A JSON-serialisable object, one key per recorded field. A run without guidance
@@ -163,6 +173,8 @@ def spec_json(
     if spec.evidence_version == "v2":
         # S2.7 spec §7.5: written for v2 runs only, so a v1 folder keeps exactly its old keys.
         recorded |= {"transcriber": spec.transcriber, "page_rule": spec.page_rule}
+    if extra:
+        recorded |= dict(extra)
     recorded |= {
         "commit_sha": commit_sha,
         "dirty": dirty,
@@ -171,8 +183,14 @@ def spec_json(
     return recorded
 
 
-def write_spec_json(
-    folder: Path, spec: RunSpec, *, commit_sha: str, dirty: bool, case_ids: Sequence[str]
+def write_spec_json(  # noqa: PLR0913 -- the spec, its provenance, and arm C's extra settings.
+    folder: Path,
+    spec: RunSpec,
+    *,
+    commit_sha: str,
+    dirty: bool,
+    case_ids: Sequence[str],
+    extra: Mapping[str, object] | None = None,
 ) -> None:
     """Write ``spec.json`` into a run folder, creating the folder if it does not exist.
 
@@ -186,9 +204,10 @@ def write_spec_json(
         commit_sha: the runner's commit sha.
         dirty: whether the working tree carried uncommitted changes.
         case_ids: the run's case ids, in order.
+        extra: arm C's loop settings (see ``spec_json``); None for every other arm.
     """
     folder.mkdir(parents=True, exist_ok=True)
-    recorded = spec_json(spec, commit_sha=commit_sha, dirty=dirty, case_ids=case_ids)
+    recorded = spec_json(spec, commit_sha=commit_sha, dirty=dirty, case_ids=case_ids, extra=extra)
     (folder / SPEC_FILE).write_text(json.dumps(recorded, indent=2) + "\n")
 
 
@@ -636,6 +655,41 @@ def refuse_over_budget(
         )
 
 
+def reserve_run_budget(  # noqa: PLR0913 -- the runs folder, the run, and what it may spend.
+    runs_dir: Path,
+    spec: RunSpec,
+    run_id: str,
+    cases: int,
+    started: datetime,
+    *,
+    spent: float,
+) -> None:
+    """Refuse the run if its projected cost would bust the budget, then reserve it (0045).
+
+    Held under the runs directory's lock: the caller's ``spent`` figure is only a floor, so
+    ``month_spent`` is re-read here in case a run finished a moment ago, and every other run's
+    open reservation is added to what this run must fit under. ``Runner`` and arm C's
+    ``AgentRunner`` both reserve through here (S3.1 Task 10).
+
+    Args:
+        runs_dir: the runs directory.
+        spec: the run's spec; ``project_cost`` and ``budget_usd`` are read from it.
+        run_id: the run, whose own reservation (a resume's) is not counted against it.
+        cases: the cases the run answers.
+        started: when the run started; the month counted is this one's.
+        spent: the month's spend the caller measured before the run.
+
+    Raises:
+        BudgetError: the projection does not fit the budget.
+    """
+    projected = project_cost(spec, cases)
+    with budget_lock(runs_dir):
+        month = max(spent, month_spent(runs_dir, now=started))
+        reserved = sum(v for k, v in open_reservations(runs_dir).items() if k != run_id)
+        refuse_over_budget(projected, month, spec.budget_usd, reserved=reserved)
+        reserve(runs_dir, run_id, projected, now=started)
+
+
 def refuse_unnamed_reading(spec: RunSpec) -> None:
     """A v2 run names its transcriber and page rule; a v1 run names neither (S2.7 spec §7.5).
 
@@ -957,6 +1011,93 @@ class _BatchRun:
     dead_costs: list[float | None] = field(default_factory=list)
 
 
+class CaseIdentity(TypedDict):
+    """The ``CaseResult`` fields ``case_identity`` fills: a ``dict`` with its value types."""
+
+    split: str
+    fatal: bool
+    investigation_class: str | None
+    report_flavour: str | None
+    verdict_occurrence: tuple[str, ...]
+    verdict_findings: tuple[str, ...]
+    verdict_findings_in_cause: tuple[str, ...]
+
+
+def case_identity(raw: Mapping[str, object], verdict: Verdict, case_id: str) -> CaseIdentity:
+    """The fields of a ``CaseResult`` that describe the case, not the answer to it.
+
+    The split, fatal flag, investigation class and report flavour, read from the raw record,
+    and the verdict's codes, which are only ever scored against, never sent. ``Runner`` and arm
+    C's ``AgentRunner`` both fill a result from here (S3.1 Task 10), so the two arms' cases
+    read the same way in ``report --against``.
+
+    Args:
+        raw: the case's raw record.
+        verdict: the case's verdict, from ``split_record``.
+        case_id: the case's NTSB number (the investigation class is read from it).
+
+    Returns:
+        ``split``, ``fatal``, ``investigation_class``, ``report_flavour``,
+        ``verdict_occurrence``, ``verdict_findings`` and ``verdict_findings_in_cause``, as a
+        ``dict`` (typed, so ``CaseResult(case_id=..., **case_identity(...), ...)`` checks).
+    """
+    event = date.fromisoformat(str(raw["eventDate"])[:10])
+    flavour = raw.get("factualFinalReportFlavor")
+    return {
+        "split": split_of(event).value,
+        "fatal": raw.get("highestInjuryLevel") == "Fatal",
+        "investigation_class": investigation_class(case_id),
+        "report_flavour": str(flavour) if flavour is not None else None,
+        "verdict_occurrence": verdict.occurrence_codes,
+        "verdict_findings": verdict.finding_codes,
+        "verdict_findings_in_cause": verdict.finding_codes_in_cause,
+    }
+
+
+def leaked_case(raw: Mapping[str, object], error: LeakageError) -> CaseResult:
+    """A case whose payload tripped the leakage guard: it fails alone, closed (fix 4).
+
+    ``split_record`` raised instead of returning, so there is no ``Evidence`` or ``Verdict``
+    to read the report's fields from. This rebuilds only the verdict fields the report needs,
+    calling the same pure extraction functions ``split_record`` already called before it
+    decided to raise -- never re-run through the guard, since nothing here is at risk of
+    reaching a model. ``error.args[0]`` (``LeakageError``'s own message) names role, kind and
+    source only, never the withheld text (decision 0016), so it is safe to record in
+    ``failure`` and, from there, in a committed run folder.
+
+    Args:
+        raw: the case's raw record.
+        error: the ``LeakageError`` the guard raised.
+
+    Returns:
+        A ``CaseResult`` with no steps and no scores, ``cost_usd=0.0``, and ``failure``
+        prefixed ``"leak:"`` so it reads distinctly from ``"cap"``, ``"schema:"`` and
+        ``"model:"`` in a run's failure list. ``documents_not_read`` is left empty: what the
+        attach step had or had not attached at the moment of the trip is not available to
+        read, so there is nothing truthful to put in it. Arm C (``agent/run.py``) keeps this
+        record and sets ``cost_usd`` and the reply tuples to what its calls before the trip
+        cost, since its leak can come after calls were made.
+    """
+    case_id = str(raw["ntsbNumber"])
+    event = date.fromisoformat(str(raw["eventDate"])[:10])
+    flavour = raw.get("factualFinalReportFlavor")
+    return CaseResult(
+        case_id=case_id,
+        split=split_of(event).value,
+        fatal=raw.get("highestInjuryLevel") == "Fatal",
+        investigation_class=investigation_class(case_id),
+        report_flavour=str(flavour) if flavour is not None else None,
+        verdict_occurrence=occurrence_codes(raw),
+        verdict_findings=finding_codes(raw),
+        verdict_findings_in_cause=finding_codes_in_cause(raw),
+        steps=(),
+        scores=None,
+        cost_usd=0.0,
+        failure=f"leak: {error}",
+        documents_not_read=(),
+    )
+
+
 class Runner:
     """Runs one RunSpec over raw records and writes the records (spec §6.4)."""
 
@@ -1024,6 +1165,10 @@ class Runner:
                 folder that does not exist, records no spec, or records a different spec
                 than the one passed in.
         """
+        if spec.arm == "C":
+            raise ConfigurationError(
+                "arm C is the agent loop: it is run by agent.run.AgentRunner, not by Runner"
+            )
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         refuse_sync_resume(spec, resume)
@@ -1186,16 +1331,9 @@ class Runner:
     def _reserve_budget(self, spec: RunSpec, run_id: str, cases: int, started: datetime) -> None:
         """Refuse the run if its projected cost would bust the budget, then reserve it (0045).
 
-        Held under the runs directory's lock: the caller's ``self._spent`` figure is only a
-        floor, so ``month_spent`` is re-read here in case a run finished a moment ago, and
-        every other run's open reservation is added to what this run must fit under.
+        ``reserve_run_budget`` holds the rule, so arm C reserves exactly as this does.
         """
-        projected = project_cost(spec, cases)
-        with budget_lock(self._runs_dir):
-            spent = max(self._spent, month_spent(self._runs_dir, now=started))
-            reserved = sum(v for k, v in open_reservations(self._runs_dir).items() if k != run_id)
-            refuse_over_budget(projected, spent, spec.budget_usd, reserved=reserved)
-            reserve(self._runs_dir, run_id, projected, now=started)
+        reserve_run_budget(self._runs_dir, spec, run_id, cases, started, spent=self._spent)
 
     def _prepare(self, raw: Mapping[str, object], spec: RunSpec) -> Prepared:
         docket: Docket | None = None
@@ -1274,17 +1412,9 @@ class Runner:
         cost: float,
         failure: str | None,
     ) -> CaseResult:
-        event = date.fromisoformat(str(ctx.raw["eventDate"])[:10])
-        flavour = ctx.raw.get("factualFinalReportFlavor")
         return CaseResult(
             case_id=ctx.evidence.case_id,
-            split=split_of(event).value,
-            fatal=ctx.raw.get("highestInjuryLevel") == "Fatal",
-            investigation_class=investigation_class(ctx.evidence.case_id),
-            report_flavour=str(flavour) if flavour is not None else None,
-            verdict_occurrence=ctx.verdict.occurrence_codes,
-            verdict_findings=ctx.verdict.finding_codes,
-            verdict_findings_in_cause=ctx.verdict.finding_codes_in_cause,
+            **case_identity(ctx.raw, ctx.verdict, ctx.evidence.case_id),
             steps=steps,
             scores=scores,
             cost_usd=cost,
@@ -1334,47 +1464,21 @@ class Runner:
         evidence fields themselves, not per-case variance in document text, and stays a
         loud, run-aborting bug rather than a silent per-case failure.
 
-        Because ``split_record`` raised instead of returning, there is no ``Evidence`` or
-        ``Verdict`` object to read the report's fields from. This rebuilds only the verdict
-        fields the report needs, calling the same pure extraction functions
-        ``split_record`` already called before it decided to raise -- never re-run through
-        the guard, since nothing here is at risk of reaching a model. ``error.args[0]``
-        (``LeakageError``'s own message) names role, kind and source only, never the
-        withheld text (decision 0016), so it is safe to record in ``failure`` and, from
-        there, in a committed run folder.
+        The record is ``leaked_case``'s (moved to a module function in S3.1 Task 10, so arm C
+        records a leak the same way): no steps, no scores, ``cost_usd=0.0`` (no model call was
+        made), ``failure`` prefixed ``"leak:"``, and ``documents_not_read`` deliberately left
+        empty -- ``self._prepare`` raised instead of returning a ``Prepared``, so whatever the
+        cap loop had or had not attached or dropped at the moment of the trip is not available
+        to read (re-review round 2, minor).
 
         Args:
             raw: the case's raw record.
             error: the ``LeakageError`` ``self._prepare`` raised.
 
         Returns:
-            A ``CaseResult`` with no steps and no scores, ``cost_usd=0.0`` (no model call was
-            made), and ``failure`` prefixed ``"leak:"`` so it reads distinctly from ``"cap"``,
-            ``"schema:"`` and ``"model:"`` in a run's failure list. Unlike a "cap" failure
-            (fix round 1, Finding 4), ``documents_not_read`` is deliberately left empty here:
-            ``self._prepare`` raised instead of returning a ``Prepared``, so whatever the cap
-            loop had or had not attached or dropped at the moment of the trip is not
-            available to read -- there is nothing truthful, rather than merely nothing, to
-            put in the field (re-review round 2, minor).
+            ``leaked_case(raw, error)``.
         """
-        case_id = str(raw["ntsbNumber"])
-        event = date.fromisoformat(str(raw["eventDate"])[:10])
-        flavour = raw.get("factualFinalReportFlavor")
-        return CaseResult(
-            case_id=case_id,
-            split=split_of(event).value,
-            fatal=raw.get("highestInjuryLevel") == "Fatal",
-            investigation_class=investigation_class(case_id),
-            report_flavour=str(flavour) if flavour is not None else None,
-            verdict_occurrence=occurrence_codes(raw),
-            verdict_findings=finding_codes(raw),
-            verdict_findings_in_cause=finding_codes_in_cause(raw),
-            steps=(),
-            scores=None,
-            cost_usd=0.0,
-            failure=f"leak: {error}",
-            documents_not_read=(),
-        )
+        return leaked_case(raw, error)
 
     # --- the sync path ---
 
