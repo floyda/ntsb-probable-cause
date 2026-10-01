@@ -1,3 +1,4 @@
+import ast
 import inspect
 import json
 
@@ -7,6 +8,7 @@ from pydantic import ValidationError
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model import client as model_client
+from ntsb_probable_cause.model import tool_text as tool_text_module
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
@@ -189,9 +191,32 @@ def test_tool_text_cannot_be_made_from_a_payload_or_evidence() -> None:
 def test_the_two_construction_tokens_are_not_interchangeable() -> None:
     """A Payload cannot be made with ToolText's token, nor ToolText with Payload's."""
     with pytest.raises(TypeError, match="from_evidence"):
-        Payload("text", _token=model_client._TOOL_TEXT_TOKEN)
+        Payload("text", _token=tool_text_module._TOOL_TEXT_TOKEN)
     with pytest.raises(TypeError, match=r"ToolText\.of"):
         ToolText("text", _token=model_client._CONSTRUCTION_TOKEN)
+
+
+def test_tool_text_lives_apart_from_the_records_and_is_re_exported() -> None:
+    """S3.1 Task 10: one class, defined in ``model.tool_text``, importable from both modules.
+
+    ``model.tool_text`` imports nothing from the library, so the agent's tools reach no case
+    record through it; ``model.client`` re-exports the same class for every earlier import.
+    """
+    assert model_client.ToolText is tool_text_module.ToolText
+    assert ToolText.__module__ == "ntsb_probable_cause.model.tool_text"
+    tree = ast.parse(inspect.getsource(tool_text_module))
+    imported = [
+        name
+        for node in ast.walk(tree)
+        for name in (
+            [alias.name for alias in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+            if isinstance(node, ast.ImportFrom)
+            else []
+        )
+    ]
+    assert imported == ["typing"]
 
 
 def test_a_payload_cannot_be_made_from_tool_text() -> None:

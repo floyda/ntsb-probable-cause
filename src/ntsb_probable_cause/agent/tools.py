@@ -5,7 +5,9 @@ unchanged), with ``suggest_codes`` added (decision 0125). Each tool describes a 
 the NTSB has coded past accidents, or lists the events most often defining one phase-of-flight
 group. Every line returned is a code label, a count, a share or a fixed sentence: no case is
 ever read or named here, and a tool's text goes to the model as a
-:class:`~ntsb_probable_cause.model.client.ToolText`, the type that carries no evidence.
+:class:`~ntsb_probable_cause.model.tool_text.ToolText`, the type that carries no evidence. It is
+imported from ``model.tool_text``, not ``model.client``, so this module reaches no case record by
+any import chain (S3.1 Task 10's contract).
 
 The counts describe what is usual across past cases; they are not evidence about the accident
 under analysis, and the text of ``suggest_codes`` says so.
@@ -27,7 +29,7 @@ from ntsb_probable_cause.agent.schemas import (
     PastFindings,
     SuggestCodes,
 )
-from ntsb_probable_cause.model.client import ToolText
+from ntsb_probable_cause.model.tool_text import ToolText
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats
 

@@ -51,11 +51,11 @@ from ntsb_probable_cause.model.client import (
     ModelSettings,
     Payload,
     ToolCall,
-    ToolText,
     Turn,
     Usage,
     cost_usd,
 )
+from ntsb_probable_cause.model.tool_text import ToolText
 from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats

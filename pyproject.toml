@@ -154,6 +154,47 @@ forbidden_modules = [
     "ntsb_probable_cause.scoring",
 ]
 
+# S3.1 Task 10 (spec §8.5): the agent imports the library, never the reverse; only apps/eval
+# imports it. Every top-level library module is named (tests/test_import_boundaries.py holds the
+# list to the package's children, so a module added later fails the test until it is named).
+[[tool.importlinter.contracts]]
+name = "Nothing in the library imports the agent"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.data",
+    "ntsb_probable_cause.docket",
+    "ntsb_probable_cause.errors",
+    "ntsb_probable_cause.fields",
+    "ntsb_probable_cause.gitinfo",
+    "ntsb_probable_cause.model",
+    "ntsb_probable_cause.paths",
+    "ntsb_probable_cause.recorder",
+    "ntsb_probable_cause.records",
+    "ntsb_probable_cause.scoring",
+    "ntsb_probable_cause.settings",
+    "ntsb_probable_cause.sources",
+    "ntsb_probable_cause.splits",
+    "ntsb_probable_cause.store",
+]
+forbidden_modules = ["ntsb_probable_cause.agent"]
+
+# S3.1 Task 10: the modules that build ToolText (the agent's own words, numbers and codes) reach
+# no case record by any chain, direct or indirect. ToolText lives in model/tool_text.py, which
+# imports nothing from the library, so no exemption is needed.
+[[tool.importlinter.contracts]]
+name = "The agent's tools and texts see no case record"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.agent.tools",
+    "ntsb_probable_cause.agent.schemas",
+    "ntsb_probable_cause.agent.texts",
+]
+forbidden_modules = [
+    "ntsb_probable_cause.records",
+    "ntsb_probable_cause.docket",
+    "ntsb_probable_cause.data",
+]
+
 [tool.deptry]
 # `recorder_stack` (infra/app.py's plain, unqualified `from recorder_stack import ...`) is this
 # project's own CDK stack module, not a third-party package -- CDK's own convention is a flat

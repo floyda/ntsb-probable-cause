@@ -11,11 +11,28 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import LeakageError, ModelError
 from ntsb_probable_cause.fields import WITHHELD_ROLE_NAMES, EvidenceRole
+from ntsb_probable_cause.model.tool_text import ToolText
 from ntsb_probable_cause.records.evidence import Evidence
 
+# ``ToolText`` lives in ``model/tool_text.py`` (S3.1 Task 10), which imports nothing from
+# ``records``; it is re-exported here so every existing import of it keeps working.
+__all__ = [
+    "ModelClient",
+    "ModelReply",
+    "ModelSettings",
+    "PageImage",
+    "Payload",
+    "RecordingFakeClient",
+    "ToolCall",
+    "ToolText",
+    "Turn",
+    "Usage",
+    "cost_usd",
+    "parse_chat_completion",
+    "tool_reply",
+]
+
 _CONSTRUCTION_TOKEN = object()
-# A second token, never shared with Payload: code that holds one cannot make the other.
-_TOOL_TEXT_TOKEN = object()
 _EVIDENCE_NAMES = frozenset(role.value for role in EvidenceRole)
 
 
@@ -120,52 +137,6 @@ class Payload:
 
     def __hash__(self) -> int:
         return hash((self._text, tuple(i.sha256 for i in self._images)))
-
-
-@final
-class ToolText:
-    """Non-evidence text for a tool result: numbers, codes, labels, counts, fixed strings.
-
-    Built only by ``ToolText.of``, from a plain ``str``. It is not a ``Payload``, and neither
-    can be made from the other: it takes no evidence and no record, and ``Payload`` does not
-    accept it. The code that builds it is kept off the case records by an import-linter
-    contract, and the boundary test reads every tool text in every request (S3.1 Task 10), so
-    what it carries is the loop's own vocabulary and nothing from a case. Immutable, as
-    ``Payload`` is: ``__setattr__``/``__delattr__`` refuse any change after construction, and
-    ``@final`` closes off subclassing, which would otherwise bypass the construction token.
-    """
-
-    __slots__ = ("_text",)
-    _text: str
-
-    def __init__(self, text: str, *, _token: object) -> None:
-        if _token is not _TOOL_TEXT_TOKEN:
-            raise TypeError("ToolText is built only by ToolText.of")
-        object.__setattr__(self, "_text", text)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError(f"ToolText is immutable: cannot set {name!r}")
-
-    def __delattr__(self, name: str) -> None:
-        raise AttributeError(f"ToolText is immutable: cannot delete {name!r}")
-
-    @classmethod
-    def of(cls, text: str) -> ToolText:
-        """Wrap a fixed string for a tool result. Anything that is not a ``str`` is refused."""
-        if not isinstance(text, str):
-            raise TypeError(f"ToolText.of takes a str, not {type(text).__name__}")
-        return cls(text, _token=_TOOL_TEXT_TOKEN)
-
-    @property
-    def text(self) -> str:
-        """The wrapped text."""
-        return self._text
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, ToolText) and other._text == self._text
-
-    def __hash__(self) -> int:
-        return hash(self._text)
 
 
 class Usage(BaseModel):
