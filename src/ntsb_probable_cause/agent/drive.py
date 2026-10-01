@@ -156,9 +156,11 @@ class RoundRow(_Row):
 
 # Told about each round twice: once it is submitted (or, on a resume, waited on again), with
 # ``status`` None, and once it is finished, with its status and cost. ``running`` is the number of
-# cases that have not stopped at that moment. It must not raise (S3.1 Task 10: the runner's
-# progress lines, which are the only thing an overnight run prints).
-RoundListener = Callable[[RoundRow, int], None]
+# cases that have not stopped at that moment. The third argument, ``waited``, is True for both
+# reports of a round an earlier attempt submitted, which this call only waits on (a resume): it
+# was not sent again (S3.1 Task 14). It must not raise (S3.1 Task 10: the runner's progress
+# lines, which are the only thing an overnight run prints).
+RoundListener = Callable[[RoundRow, int, bool], None]
 
 
 class _Call(NamedTuple):
@@ -299,37 +301,43 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
                 break
             rounds += 1
             row = _submit(calls, batch, rounds, folder, now)
-        _tell(on_round, row, loops)
+        _tell(on_round, row, loops, waited=resumed)
         status = _wait(batch, row, resumed=resumed)
         if status is None:  # an earlier attempt's batch, lost: nothing came back
-            _tell(on_round, _finish_round(row, folder, now(), status=_LOST), loops)
+            _tell(on_round, _finish_round(row, folder, now(), status=_LOST), loops, waited=resumed)
             continue
         _refuse_foreign_results(row, status)
         cost = status.reported_cost_usd
         if status.status == _CANCELLED:
             finished = _finish_round(row, folder, now(), status=_CANCELLED, cost=cost)
-            _tell(on_round, finished, loops)
+            _tell(on_round, finished, loops, waited=resumed)
             raise BatchCancelledError(
                 f"batch {row.batch_id} (round {row.round}) was cancelled, so the run stops here. "
                 "The run can be resumed: a resume sends its calls again."
             )
         if _is_dead(status):  # nothing was accepted: the same calls go out in the next round
-            _tell(
-                on_round, _finish_round(row, folder, now(), status=status.status, cost=cost), loops
-            )
+            dead = _finish_round(row, folder, now(), status=status.status, cost=cost)
+            _tell(on_round, dead, loops, waited=resumed)
             continue
-        _tell(on_round, _take(calls, row, status, now(), folder), loops)
+        _tell(on_round, _take(calls, row, status, now(), folder), loops, waited=resumed)
     return tuple(r.reported_cost_usd for r in _rounds(folder).values())
 
 
-def _tell(on_round: RoundListener | None, row: RoundRow, loops: Sequence[DrivenLoop]) -> None:
+def _tell(
+    on_round: RoundListener | None,
+    row: RoundRow,
+    loops: Sequence[DrivenLoop],
+    *,
+    waited: bool,
+) -> None:
     """Tell the listener about a round, with the cases still running; nothing if there is none.
 
+    ``waited`` says the round was submitted by an earlier attempt and is only waited on here.
     ``next_call`` is idempotent until a reply is accepted, so asking it here changes nothing the
     next round would not have found the same way.
     """
     if on_round is not None:
-        on_round(row, sum(1 for loop in loops if loop.next_call() is not None))
+        on_round(row, sum(1 for loop in loops if loop.next_call() is not None), waited)
 
 
 def replay(loops: Sequence[DrivenLoop], folder: Path) -> RoundRow | None:

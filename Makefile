@@ -272,10 +272,13 @@ s3-smoke-batch:
 
 s3-noise-floor:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 5.00
-	uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.012
-# S3.1 spec §10.2 (decision 0130), paid (about $3.50 a run): arm C on the whole of dev-400, in
-# batch rounds, from a clean tree on the frozen commit. Run it twice, then s3-noise-report; a
-# third time only if that report prints "third run: needed".
+	uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.008
+# S3.1 spec §10.2 (decision 0130), paid: arm C on the whole of dev-400, in batch rounds, from a
+# clean tree on the frozen commit. Run it twice, then s3-noise-report; a third time only if that
+# report prints "third run: needed". The estimate is the batch smoke run's computed cost per case
+# ($0.1458 for 20 cases, $0.0073), rounded up (plan Task 14): about $2.92 a run computed. The
+# provider billed that run about a third of it ($0.0484), and the spend line counts what was
+# billed (decision 0135): about $0.97 a run.
 
 s3-noise-report:
 	$(if $(RUNS),,$(error RUNS is required: two or three arm C run ids))

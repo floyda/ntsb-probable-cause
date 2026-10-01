@@ -305,7 +305,7 @@ def test_the_report_prints_every_figure_with_its_denominator(
     assert "coding-call agreement: 16 of 17 cases scored in both runs" in out
     assert "15 of those 16 made no coding call in either run" in out
     # cost and the cached share, from run.jsonl and trail.jsonl
-    assert "cost, run a: $0.5000 for 20 cases, $0.0250 per case" in out
+    assert "cost, run a: computed $0.5000 for 20 cases, $0.0250 per case; billed: no total" in out
     assert "cached share of prompt tokens, run a: 600 of 2600 (23.1%) over 8 model calls" in out
     assert "7 calls reported no cached count" in out
     assert "cached share of prompt tokens, run b: 1500 of 2400 (62.5%) over 5 model calls" in out
@@ -632,14 +632,29 @@ def test_confidence_with_no_scored_case_says_so() -> None:
     assert lines[0] == "confidence at the answer, run a: no scored case, of 1"
 
 
-def test_the_cost_line_gives_the_batch_rounds_own_total_when_every_round_reported_one() -> None:
-    record = _record(_RUN_A, 401, cost_usd=3.208, reported_batch_cost_usd=3.1)
+def test_the_cost_line_gives_both_figures_and_says_the_billed_one_is_counted() -> None:
+    """Decision 0135: when every round reported its cost, the spend line counts the bill."""
+    record = _record(_RUN_A, 401, cost_usd=3.208, reported_batch_cost_usd=0.9624)
     assert nf.cost_line("a", record) == (
-        "cost, run a: $3.2080 for 401 cases, $0.0080 per case "
-        "(the batch rounds' own reports: $3.1000)"
+        "cost, run a: computed $3.2080 for 401 cases, $0.0080 per case; billed $0.9624, "
+        "$0.0024 per case (the batch rounds' own reports); the spend line and the monthly "
+        "guard count the billed figure (decision 0135)"
     )
-    assert nf.cost_line("b", _record(_RUN_B, 401)).endswith(
-        "(the batch rounds' own reports: no total)"
+
+
+def test_the_cost_line_says_the_computed_figure_is_counted_when_a_round_reported_none() -> None:
+    assert nf.cost_line("b", _record(_RUN_B, 401, cost_usd=3.208)) == (
+        "cost, run b: computed $3.2080 for 401 cases, $0.0080 per case; billed: no total (a "
+        "batch round reported none); the spend line and the monthly guard count the computed "
+        "figure (decision 0135)"
+    )
+
+
+def test_the_cost_line_of_a_run_with_no_case() -> None:
+    assert nf.cost_line("a", _record(_RUN_A, 0, cost_usd=0.0, reported_batch_cost_usd=0.0)) == (
+        "cost, run a: computed $0.0000 for 0 cases, $0.0000 per case; billed $0.0000, "
+        "$0.0000 per case (the batch rounds' own reports); the spend line and the monthly "
+        "guard count the billed figure (decision 0135)"
     )
 
 
@@ -870,9 +885,10 @@ def test_the_paid_targets_check_the_stage_line_first() -> None:
         "uv run ntsb-eval run --arm C --sample dev-400 --limit 20 "
         "--expected-cost-per-case-usd 0.02",
     ]
+    # Plan Task 14: the batch smoke run's computed $0.1458 for 20 cases ($0.0073), rounded up.
     assert _recipe("s3-noise-floor") == [
         "uv run python -m scripts.stage_spend --stage s3 --estimate 5.00",
-        "uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.012",
+        "uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.008",
     ]
     round_recipe = _recipe("s3-round")
     assert round_recipe[0].startswith("$(if $(N),,$(error N is required")

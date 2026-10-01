@@ -844,7 +844,9 @@ def _drive(  # noqa: PLR0913 -- the loops, both clients, the folder, the clock a
         folder=folder,
         now=now,
         max_rounds=MAX_ROUNDS,
-        on_round=lambda row, running: log_line(now, lambda: round_line(row, running)),
+        on_round=lambda row, running, waited: log_line(
+            now, lambda: round_line(row, running, waited=waited)
+        ),
     )
 
 

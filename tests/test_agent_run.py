@@ -67,7 +67,7 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.model.client import tool_reply as reply_calling
 from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import prompt
-from ntsb_probable_cause.scoring.budget import open_reservations
+from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.records import (
     CaseResult,
     RunRecord,
@@ -530,6 +530,22 @@ class TestBatchRun:
         record = _runner(tmp_path / "runs", batch=fake).run(_spec(), RAWS)
         assert record.reported_batch_cost_usd is None
         assert record.cost_usd == pytest.approx(sum(A_COSTS) + sum(B_COSTS))
+        # Decision 0135: with no billed total, the monthly guard counts the computed price.
+        assert month_spent(tmp_path / "runs", now=record.started) == pytest.approx(record.cost_usd)
+
+    def test_the_monthly_guard_counts_a_batch_run_billed_and_a_sync_run_computed(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0135: what the provider billed, when every round reported it."""
+        batch, _ = _batch_run(tmp_path / "batch")
+        billed = 2 * 0.5 + 6 * 0.25
+        assert batch.reported_batch_cost_usd == pytest.approx(billed)
+        assert batch.cost_usd == pytest.approx(sum(A_COSTS) + sum(B_COSTS))  # both kept
+        assert month_spent(tmp_path / "batch", now=batch.started) == pytest.approx(billed)
+        sync, _ = _sync_run(tmp_path / "sync")
+        assert month_spent(tmp_path / "sync", now=sync.started) == pytest.approx(
+            sum(A_COSTS) + sum(B_COSTS)
+        )
 
     def test_progress_goes_to_stderr_one_line_when_a_round_goes_out_and_one_when_it_ends(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -590,6 +606,48 @@ class TestResume:
         assert record.cost_usd == pytest.approx(_record(whole).cost_usd)
         for name in ("cases", "steps", "run", "trail"):
             assert (folder / f"{name}.aborted-1.jsonl").is_file(), name
+
+    def test_a_resume_says_it_waits_on_the_round_sent_before_it_and_does_not_send_it_again(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """S3.1 Task 14: the progress line said "round 2 sent b2" for a batch only waited on."""
+        runs = tmp_path / "cut"
+        dead = FakeBatchClient(handlers=[_answers(_scripts()), _die])
+        with pytest.raises(_KilledError):
+            _runner(runs, batch=dead).run(_spec(), RAWS)
+        (folder,) = [p for p in runs.iterdir() if p.is_dir()]
+        capsys.readouterr()
+        resumer = _resumer(dead, "b2", [_answers(_scripts())] * 7)
+        _runner(runs, batch=resumer, clock=Clock(ticks=100)).run(_spec(), RAWS, resume=folder.name)
+        lines = capsys.readouterr().err.splitlines()
+        assert f"run {folder.name} RESUMED" in lines[0]
+        assert lines[1].endswith(
+            "round 2 waiting on b2 (sent before the resume): 2 calls; 2 cases running"
+        )
+        assert lines[2].endswith("round 2 completed b2: cost $0.5000; 1 cases running")
+        assert lines[3].endswith("round 3 sent b3: 1 calls; 1 cases running")
+        assert not any("sent b2" in line for line in lines)
+
+    def test_the_monthly_guard_counts_a_cut_run_computed_and_its_resume_billed(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0135. Cut with round 2 sent and not back, the run has no billed total, so the
+        guard counts what round 1's replies cost; the resume's record, once every round reported,
+        counts what all eight billed, the earlier attempt's rounds included."""
+        runs = tmp_path / "cut"
+        dead = FakeBatchClient(handlers=[_answers(_scripts()), _die])
+        with pytest.raises(_KilledError):
+            _runner(runs, batch=dead).run(_spec(), RAWS)
+        (folder,) = [p for p in runs.iterdir() if p.is_dir()]
+        aborted = _record(folder)
+        assert aborted.reported_batch_cost_usd is None
+        assert month_spent(runs, now=aborted.started) == pytest.approx(A_COSTS[0] + B_COSTS[0])
+        resumer = _resumer(dead, "b2", [_answers(_scripts())] * 7)
+        record = _runner(runs, batch=resumer, clock=Clock(ticks=100)).run(
+            _spec(), RAWS, resume=folder.name
+        )
+        assert record.reported_batch_cost_usd == pytest.approx(2 * 0.5 + 6 * 0.25)
+        assert month_spent(runs, now=record.started) == pytest.approx(2 * 0.5 + 6 * 0.25)
 
     def test_a_resume_cut_short_in_its_turn_resumes_again_to_the_same_cases(
         self, tmp_path: Path

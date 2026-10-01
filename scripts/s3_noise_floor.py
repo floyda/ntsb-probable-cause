@@ -14,7 +14,9 @@ Why
 
 What it prints
     For each run: its provenance; failures by reason (``report.failure_summary``); the format
-    gate; the round limit; cost for the run and per case; the cached share of prompt tokens
+    gate; the round limit; cost for the run and per case, both computed (``cost_usd``) and
+    billed (the batch rounds' reported total), and which of the two the spend line and the
+    monthly guard count (decision 0135); the cached share of prompt tokens
     (``trail.jsonl``); and the raw stated confidence at the answer (mean, and right or wrong on
     occurrence top-1 in the bands below 0.4, 0.4 to below 0.6, 0.6 to below 0.8, and 0.8 or
     more), kept for S3.2's calibration fit (decision 0126); nothing is fitted here.
@@ -96,7 +98,7 @@ from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments
 from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.scoring import report, samples
+from ntsb_probable_cause.scoring import budget, report, samples
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 from scripts.occurrence_misses import churn
@@ -370,17 +372,34 @@ def gate_lines(label: str, gate: Gate) -> list[str]:
     ]
 
 
+def _per_case(cost: float, cases: int) -> float:
+    return cost / cases if cases else 0.0
+
+
 def cost_line(label: str, record: RunRecord) -> str:
-    """The run's cost from its record, and per case."""
-    per_case = record.cost_usd / record.cases if record.cases else 0.0
-    reported = (
-        "no total"
-        if record.reported_batch_cost_usd is None
-        else f"${record.reported_batch_cost_usd:.4f}"
+    """The run's computed and billed cost, each for the run and per case, and which is counted.
+
+    Computed: ``cost_usd``, every prompt token priced at the full input rate. Billed: the batch
+    rounds' own reported total, cached prompt tokens at their lower rate. The spend line and
+    the monthly guard count the billed figure when there is one (``budget.counts_billed``,
+    decision 0135).
+    """
+    cases = record.cases
+    billed = record.reported_batch_cost_usd
+    computed = (
+        f"computed ${record.cost_usd:.4f} for {cases} cases, "
+        f"${_per_case(record.cost_usd, cases):.4f} per case"
     )
+    reported = (
+        "billed: no total (a batch round reported none)"
+        if billed is None
+        else f"billed ${billed:.4f}, ${_per_case(billed, cases):.4f} per case (the batch rounds' "
+        "own reports)"
+    )
+    counted = "billed" if budget.counts_billed(record) else "computed"
     return (
-        f"cost, run {label}: ${record.cost_usd:.4f} for {record.cases} cases, ${per_case:.4f} per "
-        f"case (the batch rounds' own reports: {reported})"
+        f"cost, run {label}: {computed}; {reported}; the spend line and the monthly guard count "
+        f"the {counted} figure (decision 0135)"
     )
 
 

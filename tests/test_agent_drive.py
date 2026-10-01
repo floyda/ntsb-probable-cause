@@ -536,13 +536,16 @@ Event = tuple[int, str, str | None, float | None, int]
 
 
 class Progress:
-    """An ``on_round`` listener that keeps what it was told: round, batch, status, cost, running."""
+    """An ``on_round`` listener that keeps what it was told: round, batch, status, cost, running;
+    and, apart, whether each report was of a round sent before this call (a resume's wait)."""
 
     def __init__(self) -> None:
         self.events: list[Event] = []
+        self.waited: list[bool] = []
 
-    def __call__(self, row: RoundRow, running: int) -> None:
+    def __call__(self, row: RoundRow, running: int, waited: bool) -> None:
         self.events.append((row.round, row.batch_id, row.status, row.reported_cost_usd, running))
+        self.waited.append(waited)
 
 
 class TestProgress:
@@ -564,6 +567,7 @@ class TestProgress:
             (8, "b8", "completed", 0.25, 0),
         ]
         assert [e[0] for e in progress.events] == [n for n in range(1, 9) for _ in range(2)]
+        assert not any(progress.waited)  # every round went out in this call
 
     def test_a_dead_round_is_reported_with_its_status_and_cost(self, tmp_path: Path) -> None:
         progress = Progress()
@@ -598,6 +602,24 @@ class TestProgress:
             (3, "b3", None, None, 2),  # the lost round's calls, sent again
         ]
         assert progress.events[-1][2:] == ("completed", 0.25, 0)
+        # Round 2 was sent before the resume, so both its reports say so; every later round was
+        # sent by this call.
+        assert progress.waited[:2] == [True, True]
+        assert not any(progress.waited[2:])
+
+    def test_a_resumed_round_that_completes_is_reported_as_waited_on(self, tmp_path: Path) -> None:
+        folder = tmp_path / "cut"
+        dead = _interrupt_after_round_two_is_submitted(folder)
+        progress = Progress()
+        resumed = _resumer(dead, "b2", [_answers(_scripts())] * 7)
+        drive_batch(_loops(), resumed, folder=folder, now=Clock(ticks=4), on_round=progress)
+        assert progress.events[:3] == [
+            (2, "b2", None, None, 2),
+            (2, "b2", "completed", 0.5, 1),
+            (3, "b3", None, None, 1),
+        ]
+        assert progress.waited[:3] == [True, True, False]
+        assert not any(progress.waited[2:])
 
 
 # --------------------------------------------------------------------------------------------

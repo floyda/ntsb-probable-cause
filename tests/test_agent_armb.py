@@ -81,7 +81,7 @@ from ntsb_probable_cause.model.client import (
 )
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import prompt
-from ntsb_probable_cause.scoring.budget import open_reservations
+from ntsb_probable_cause.scoring.budget import open_reservations, spent_usd
 from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, StatsName
 from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA, Hypothesis, parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import score_case
@@ -1184,6 +1184,11 @@ class TestBatch:
         assert record.batch_ids == ("b1", "b2")
         assert record.reported_batch_cost_usd == pytest.approx(1.0)
         assert record.cost_usd == pytest.approx(2 * (0.0011 + 0.0022))
+        # Decision 0135: the post-pass counts what its batches billed; its sync source arm B
+        # run, which reported no batch total, counts its computed price.
+        assert (record.arm, "+tools-s3" in record.prompt_version) == ("B", True)
+        assert spent_usd(record) == pytest.approx(1.0)
+        assert spent_usd(_record(source)) == _record(source).cost_usd
         assert record.price_variant == "batch"
         assert [len(batch) for batch in fake.submitted] == [2, 2]
         assert {r.settings.price_variant for batch in fake.submitted for r in batch} == {"batch"}

@@ -598,9 +598,12 @@ class AgentRunner:
         """One line to stderr, the wall clock first; a logging failure never kills a run."""
         log_line(self._now, body)
 
-    def _log_round(self, row: RoundRow, running: int) -> None:
-        """A round as it goes out (or is waited on again) and as it ends: counts and ids only."""
-        self._log(lambda: round_line(row, running))
+    def _log_round(self, row: RoundRow, running: int, waited: bool) -> None:
+        """A round as it goes out (or is waited on again) and as it ends: counts and ids only.
+
+        ``waited``: the round was sent before a resume, and this run only waits on it.
+        """
+        self._log(lambda: round_line(row, running, waited=waited))
 
 
 def log_line(now: Callable[[], datetime], body: Callable[[], str]) -> None:
@@ -613,17 +616,21 @@ def log_line(now: Callable[[], datetime], body: Callable[[], str]) -> None:
         sys.stderr.write(f"{now():%H:%M:%S}Z {body()}\n")
 
 
-def round_line(row: RoundRow, running: int) -> str:
+def round_line(row: RoundRow, running: int, *, waited: bool = False) -> str:
     """A batch round as it goes out (or is waited on again) and as it ends: counts and ids only.
 
     E.g. ``round 3 sent b3: 12 calls; 12 cases running`` and
-    ``round 3 completed b3: cost $0.1250; 9 cases running``.
+    ``round 3 completed b3: cost $0.1250; 9 cases running``. A round an earlier attempt sent,
+    which a resume only waits on (``waited``), is not said to be sent: ``round 2 waiting on b2
+    (sent before the resume): 12 calls; 12 cases running`` (S3.1 Task 14).
     """
     if row.status is None:
-        return (
-            f"round {row.round} sent {row.batch_id}: {len(row.custom_ids)} calls; "
-            f"{running} cases running"
+        action = (
+            f"waiting on {row.batch_id} (sent before the resume)"
+            if waited
+            else f"sent {row.batch_id}"
         )
+        return f"round {row.round} {action}: {len(row.custom_ids)} calls; {running} cases running"
     cost = "not reported" if row.reported_cost_usd is None else f"${row.reported_cost_usd:.4f}"
     return f"round {row.round} {row.status} {row.batch_id}: cost {cost}; {running} cases running"
 
