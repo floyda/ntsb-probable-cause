@@ -311,18 +311,18 @@ def _sort_decisions(
         raise SchemaError(
             f"choose_documents must decide every offered document exactly once: {'; '.join(faults)}"
         )
+    # One entry per document: a number named again keeps the place it was first named at.
     extras: dict[int, ExtraKind] = {}
     for decision in choice.decisions:
         number = decision.document
-        if number in offered or number in extras:
-            continue
-        extras[number] = (
-            "already_read"
-            if number in already_read
-            else "not_readable"
-            if number in not_readable
-            else "unknown"
-        )
+        if number not in offered:
+            extras[number] = (
+                "already_read"
+                if number in already_read
+                else "not_readable"
+                if number in not_readable
+                else "unknown"
+            )
     return DocumentChoice(
         arguments=choice,
         decisions=tuple(d for d in choice.decisions if d.document in offered),
