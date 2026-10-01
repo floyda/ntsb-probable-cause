@@ -1,7 +1,8 @@
 """A guidance round's result, by decision 0098 item 4's rule; appended to its registration.
 
 Status
-    Live for S2.7 (spec §6.4), free: reads run folders; counts only.
+    Live for S2.7 (spec §6.4) and S3.1's tuning rounds (S3 spec §10.3), free: reads run
+    folders; counts only.
 
 Why
     The rule was fixed before the first round: kept only if the gain is real, larger than the
@@ -13,9 +14,15 @@ Usage
 
     ``--supplement`` (decision 0105 item 4) adds a line for the cases a code added to the tables
     touches, for the first round whose run has the added codes and whose reference does not.
+
+    S3's rounds (S3.1 Task 13) read arm C runs the same way. Their tools count in S3's
+    statistics file (decision 0129 item 4), which the run's ``spec.json`` names (``stats``), so
+    the push line counts in that file too and says so; a run whose ``spec.json`` names none (every
+    S2.7 run) reads S2.7's, as before.
 """
 
 import argparse
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +31,12 @@ from ntsb_probable_cause import fields
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.scoring import codes, samples
-from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
+from ntsb_probable_cause.scoring.coding_stats import (
+    STATS_NAMES,
+    CodingStats,
+    StatsName,
+    load_stats,
+)
 from ntsb_probable_cause.scoring.metrics import bootstrap_mean
 from ntsb_probable_cause.scoring.ordering import toward_more_common
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
@@ -226,6 +238,24 @@ def _refuse_mismatched(
             )
 
 
+def _stats_name(run_id: str) -> StatsName:
+    """The statistics file the run's own tools counted in: its ``spec.json``'s ``stats``.
+
+    S3.1 Task 13: arm C records ``"stats": "s3"`` (decision 0129 item 4). A run that records none
+    (S2.7's arm B runs, which have no such key) counted in S2.7's file.
+    """
+    path = Settings().runs_dir / run_id / "spec.json"
+    recorded = json.loads(path.read_text()) if path.is_file() else {}
+    named = recorded.get("stats", "s27") if isinstance(recorded, dict) else "s27"
+    for name in STATS_NAMES:
+        if name == named:
+            return name
+    raise SystemExit(
+        f"round_result: {run_id}'s spec.json names the statistics file {named!r}, which is "
+        f"none of {', '.join(STATS_NAMES)}"
+    )
+
+
 def _load(run_id: str) -> list[CaseResult]:
     """A development run's cases, after every refusal (held-out, sealed, finished, split)."""
     _record(run_id)
@@ -257,6 +287,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _refuse_mismatched(args.run, run_record, args.reference, reference_record)
     _refuse_mismatched(args.run, run_record, args.noise[0], noise_a_record)
     _refuse_mismatched(args.run, run_record, args.noise[1], noise_b_record)
+    stats = _stats_name(args.run)
     run, reference = _load(args.run), _load(args.reference)
     reading = read(
         run,
@@ -265,7 +296,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         _load(args.noise[1]),
         finding_round=args.finding_round,
     )
-    push = push_line(run, reference, _groups(run), load_stats())
+    push = push_line(run, reference, _groups(run), load_stats(stats))
+    if stats != "s27":  # S2.7's results read exactly as they always have
+        push += (
+            f"\n- statistics file for the line above: {stats} (the run's spec.json; decision "
+            "0129 item 4)"
+        )
     primary, secondary = (
         ("finding recall@10", "occurrence top-1")
         if args.finding_round

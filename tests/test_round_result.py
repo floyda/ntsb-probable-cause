@@ -1,5 +1,6 @@
 """scripts/round_result.py: decision 0098 item 4."""
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,7 +10,13 @@ from scripts import round_result as rr
 from tests.test_occurrence_misses import _SCORES, _case
 
 from ntsb_probable_cause import gitinfo
-from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+from ntsb_probable_cause.scoring.coding_stats import (
+    CodingStats,
+    PoolCase,
+    StatsName,
+    build,
+    load_stats,
+)
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
 
 
@@ -221,3 +228,58 @@ def test_main_prints_the_outcome_and_append_writes_it_to_a_file(
     assert "run-id (prompt s1-v5)" in printed
     assert "ref-id (prompt s1-v5)" in printed
     assert out.read_text() == "# a round\n" + "\n" + printed
+
+
+# S3.1 Task 13: an S3 round's run is arm C, whose tools count in S3's statistics file (decision
+# 0129 item 4); its spec.json names the file, and the push line reads the same one.
+@pytest.mark.parametrize(
+    ("spec", "stats", "line"),
+    [
+        (None, "s27", False),  # an S2.7 arm B run writes no stats key: S2.7's file, as before
+        ({"arm": "B"}, "s27", False),
+        ({"arm": "C", "stats": "s3"}, "s3", True),
+    ],
+)
+def test_the_push_line_reads_the_statistics_file_the_runs_spec_names(  # noqa: PLR0913, PLR0917
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    spec: dict[str, object] | None,
+    stats: str,
+    line: bool,
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    n = 10
+    for run_id in ("run-id", "ref-id", "noise-a", "noise-b"):
+        folder = runs_dir / run_id
+        write_jsonl(folder / "run.jsonl", [_run_record(run_id, arm="C")])
+        write_jsonl(folder / "cases.jsonl", _cases([False] * n, [0.1] * n))
+    if spec is not None:
+        (runs_dir / "run-id" / "spec.json").write_text(json.dumps(spec))
+    monkeypatch.setattr(rr, "_groups", lambda cases: {c.case_id: None for c in cases})
+    names: list[str] = []
+
+    def spy(name: StatsName = "s27") -> CodingStats:
+        names.append(name)
+        return load_stats(name)
+
+    monkeypatch.setattr(rr, "load_stats", spy)
+    argv = ["--run", "run-id", "--reference", "ref-id", "--noise", "noise-a", "noise-b"]
+    assert rr.main(argv) == 0
+    assert names == [stats]
+    printed = capsys.readouterr().out
+    assert ("statistics file for the line above: s3" in printed) is line
+
+
+def test_a_spec_naming_an_unknown_statistics_file_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+    for run_id in ("run-id", "ref-id"):
+        write_jsonl(runs_dir / run_id / "run.jsonl", [_run_record(run_id, arm="C")])
+        write_jsonl(runs_dir / run_id / "cases.jsonl", _cases([False], [0.1]))
+    (runs_dir / "run-id" / "spec.json").write_text(json.dumps({"stats": "s9"}))
+    with pytest.raises(SystemExit, match="s9"):
+        rr.main(["--run", "run-id", "--reference", "ref-id", "--noise", "ref-id", "ref-id"])

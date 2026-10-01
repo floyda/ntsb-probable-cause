@@ -279,6 +279,63 @@ def _add_transcribe(commands: argparse._SubParsersAction[argparse.ArgumentParser
     )
 
 
+def _round_number(text: str) -> int:
+    """A tuning round's number: a whole number from 1 (S3.1 Task 13)."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"a round is numbered from 1, not {text}")
+    return value
+
+
+def _add_arm_c(run_p: argparse.ArgumentParser) -> None:
+    """The ``run`` flags that only arm C takes: a tool ablation and a tuning round.
+
+    Kept apart from ``_build_parser`` for ruff's statement limit, as ``_add_transcribe`` is.
+    """
+    run_p.add_argument(
+        "--without",
+        action="append",
+        default=[],
+        choices=("suggest_codes", "coding"),
+        help="arm C only: a tool ablation (spec §7.2); repeatable",
+    )
+    run_p.add_argument(
+        "--round",
+        type=_round_number,
+        default=None,
+        metavar="N",
+        help="arm C only: a registered tuning round; docs/rounds/s3-round-N.md must be "
+        "committed first (spec §10.3)",
+    )
+
+
+def _round_registration(number: int) -> Path:
+    """The registration an S3 tuning round needs committed before its run (spec §10.3)."""
+    return Path("docs/rounds") / f"s3-round-{number}.md"
+
+
+def _refuse_unregistered_round(args: argparse.Namespace) -> None:
+    """``--round`` is arm C's, and its registration must be committed (decision 0130 item 4).
+
+    Checked before any case is read, any client is built or anything is reserved.
+    """
+    if args.round is None:
+        return
+    if args.arm != "C":
+        raise ConfigurationError(
+            f"--round names a tuning round of the agent loop (spec §10.3); arm {args.arm} has none"
+        )
+    registration = _round_registration(args.round)
+    if not gitinfo.is_committed(registration):
+        raise ConfigurationError(
+            f"round {args.round}: its registration {registration} is not committed; a round is "
+            "registered before it runs (spec §10.3, decision 0130 item 4)"
+        )
+
+
 def _add_tools(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """The ``tools`` subcommand: arm B's fixed tool post-pass (S3.1 Task 12, spec §7.1).
 
@@ -338,13 +395,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"the per-case cap; default {RunSpec.cap_usd}, or {agent_run.CAP_USD} for arm C",
     )
-    run_p.add_argument(
-        "--without",
-        action="append",
-        default=[],
-        choices=("suggest_codes", "coding"),
-        help="arm C only: a tool ablation (spec §7.2); repeatable",
-    )
+    _add_arm_c(run_p)
     run_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
@@ -508,6 +559,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         raise ConfigurationError(
             f"--without drops the agent loop's tools (spec §7.2); arm {args.arm} has none"
         )
+    _refuse_unregistered_round(args)
     if args.arm == "C":
         # The loop's tools count in S3's statistics, whose pool must not hold this sample's own
         # verdicts (decision 0129).
@@ -551,6 +603,7 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
                 pass_reasoning=False,  # until the shape probe (Task 4) decides otherwise
                 without=frozenset(args.without),
                 ledger_path=settings.heldout_ledger_path,
+                round_number=args.round,  # recorded in spec.json and the prompt version
             )
         else:
             runner = Runner(

@@ -2726,6 +2726,78 @@ def test_run_arm_c_flags_reach_the_agent_runner(
     assert captured["ledger_path"] == Settings().heldout_ledger_path
     assert captured["pass_reasoning"] is False
     assert captured["resume"] is None
+    assert captured["round_number"] is None  # no --round: the plain arm C
+
+
+def test_round_is_refused_before_anything_unless_its_registration_is_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """S3.1 Task 13: a tuning round is registered in docs/rounds/ before it runs (spec §10.3)."""
+    _, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    asked: list[Path] = []
+
+    def committed(path: Path, repo: Path = Path()) -> bool:
+        asked.append(path)
+        return path.name != "s3-round-2.md"
+
+    monkeypatch.setattr(gitinfo, "is_committed", committed)
+
+    def boom(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        raise AssertionError("no client may be built for an unregistered round")
+
+    argv = ["run", "--arm", "C", "--sample", "dev-400", "--round", "2"]
+    assert main(argv, client_factory=boom) == 1
+    err = capsys.readouterr().err
+    assert "docs/rounds/s3-round-2.md" in err
+    assert "not committed" in err
+    assert Path("docs/rounds/s3-round-2.md") in asked
+    assert not runs_dir.exists()  # no folder, so no reservation either
+
+
+def test_round_is_refused_on_any_arm_but_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    built: list[Settings] = []
+
+    def factory(settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
+        built.append(settings)
+        return RecordingFakeClient([]), None
+
+    argv = ["run", "--arm", "B", "--sample", "dev-400", "--round", "1"]
+    assert main(argv, client_factory=factory) == 1
+    assert "--round" in capsys.readouterr().err
+    assert built == []
+
+
+@pytest.mark.parametrize("number", ["0", "-1", "one"])
+def test_a_round_number_is_a_whole_number_from_one(number: str) -> None:
+    with pytest.raises(SystemExit) as raised:
+        main(["run", "--arm", "C", "--sample", "dev-400", "--round", number])
+    assert raised.value.code == 2  # argparse's usage error, before anything is read
+
+
+def test_a_registered_round_is_recorded_in_the_spec_and_the_prompt_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    _, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    agent = RecordingFakeClient(_arm_c_replies())
+    argv = ["run", "--arm", "C", "--sample", "dev-400", "--round", "3", *_ARM_C_SYNC]
+    assert main(argv, client_factory=_factory(agent)) == 0
+    (folder,) = [p for p in runs_dir.iterdir() if p.is_dir()]
+    record = answering_run_record(folder)
+    assert record.prompt_version == prompt_version(_S3_GUIDANCE, 3)
+    assert record.prompt_version.endswith("+r3")
+    recorded = json.loads((folder / "spec.json").read_text())
+    assert recorded["round"] == 3
+    assert recorded["agent_prompt_version"] == record.prompt_version
+    assert record.guidance == _S3_GUIDANCE  # a round changes no guidance unless it names some
 
 
 def test_without_is_refused_on_an_arm_with_no_tools(

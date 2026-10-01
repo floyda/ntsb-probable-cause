@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -255,6 +255,47 @@ s3-armb-tools:
 # command reserves $0.004 a case): arm B's parts 2 and 3 as a post-pass over a finished arm B
 # run, in batch rounds. Writes the derived run <RUN>-tools; part 4 is then
 # uv run ntsb-eval check <RUN>-tools --way luna --stats s3.
+
+s3-smoke-sync:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.05
+	uv run ntsb-eval run --arm C --sample dev-400 --limit 1 --sync --price-variant standard --expected-cost-per-case-usd 0.05
+# S3.1 spec §10.1 step 6 (plan Task 14), paid (cents): arm C on dev-400's first case, at the
+# standard price, synchronously. Read its trail by eye: calls in order, tool choice honoured,
+# costs recorded, no protocol breaks.
+
+s3-smoke-batch:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.40
+	uv run ntsb-eval run --arm C --sample dev-400 --limit 20 --expected-cost-per-case-usd 0.02
+# S3.1 spec §10.1 step 6 (plan Task 14), paid (about $0.20): arm C on dev-400's first 20 cases,
+# in batch rounds. Its cost per case re-estimates s3-noise-floor's --expected-cost-per-case-usd.
+
+s3-noise-floor:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 5.00
+	uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.012
+# S3.1 spec §10.2 (decision 0130), paid (about $3.50 a run): arm C on the whole of dev-400, in
+# batch rounds, from a clean tree on the frozen commit. Run it twice, then s3-noise-report; a
+# third time only if that report prints "third run: needed".
+
+s3-noise-report:
+	$(if $(RUNS),,$(error RUNS is required: two or three arm C run ids))
+	uv run python -m scripts.s3_noise_floor $(RUNS) --out docs/results/s3-noise-floor-dev.txt
+# S3.1 spec §10.2 to §10.4 (decision 0130), free: the noise floor, the format gate and the
+# third-run rule from the noise-floor runs, counts only. RUNS="<a> <b>" or "<a> <b> <c>".
+
+s3-round:
+	$(if $(N),,$(error N is required: the round number))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 5.00
+	uv run ntsb-eval run --arm C --sample dev-400 --round $(N) --expected-cost-per-case-usd 0.012
+# S3.1 spec §10.3, paid (about $3.50): one registered tuning round's arm C run on dev-400. Refused
+# unless docs/rounds/s3-round-<N>.md is committed; the round is recorded in spec.json and the
+# prompt version (+r<N>).
+
+s3-round-result:
+	$(if $(N),,$(error N is required: the round number))
+	$(if $(RUN),,$(error RUN is required))$(if $(REFERENCE),,$(error REFERENCE is required))$(if $(NOISE),,$(error NOISE is required: two noise-floor run ids))
+	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) --append docs/rounds/s3-round-$(N).md
+# S3.1 spec §10.3, free: decision 0098 item 4's reading against the loop's own noise floor,
+# appended to the round's registration. NOISE="<a> <b>", two of the noise-floor runs, in quotes.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt
