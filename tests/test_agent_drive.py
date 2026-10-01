@@ -31,7 +31,12 @@ from ntsb_probable_cause.agent.drive import (
 )
 from ntsb_probable_cause.agent.loop import CaseLoop
 from ntsb_probable_cause.agent.trail import LoopOutcome
-from ntsb_probable_cause.errors import ConfigurationError, ModelError
+from ntsb_probable_cause.errors import (
+    BatchCancelledError,
+    BatchNotFoundError,
+    ConfigurationError,
+    ModelError,
+)
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import ModelReply, Payload, Turn, Usage, tool_reply
 from ntsb_probable_cause.model.client import ModelSettings as Settings
@@ -133,6 +138,11 @@ def _answers(
 
 def _die(_batch_id: str, _requests: Sequence[BatchRequest]) -> BatchStatus:
     raise _KilledError
+
+
+def _gone(batch_id: str, _requests: Sequence[BatchRequest]) -> BatchStatus:
+    """A batch the provider no longer serves: ``BatchClient.wait`` raises this after its grace."""
+    raise BatchNotFoundError(f"batch {batch_id}: still not found after 120s: gone")
 
 
 def _ended(status: str, cost: float | None = None) -> Handler:
@@ -310,7 +320,7 @@ class TestRounds:
         assert loops[1].outcome.stop_reason == "failed: h0"
         assert loops[0].outcome.stop_reason == "done"  # the other case is not held back
 
-    @pytest.mark.parametrize("ended", ["expired", "cancelled", "failed"])
+    @pytest.mark.parametrize("ended", ["expired", "failed", "completed"])
     def test_a_batch_that_ended_with_no_results_is_resubmitted_whole(
         self, tmp_path: Path, ended: str
     ) -> None:
@@ -351,37 +361,95 @@ class TestRounds:
         assert not (folder / REPLIES_FILE).exists()  # nothing was ever answered
         assert [r.status for r in _rounds(folder) if r.finished_at is not None] == ["expired"] * 3
 
-    def test_a_completed_batch_with_no_results_is_not_a_dead_batch(self, tmp_path: Path) -> None:
-        """Only an ended-unusable status is the provider's failure; a completed one is a case's."""
-        scripts = _scripts([None, *B_REPLIES], [None, *HAPPY])
-        fake = FakeBatchClient(handlers=[_ended("completed"), *[_answers(scripts)] * 9])
-        loops = _loops()
-        drive_batch(loops, fake, folder=tmp_path / "run", now=Clock())
-        for outcome in _outcomes(loops):
-            lost, again, *_ = outcome.calls
-            assert (lost.protocol_error, lost.retry) == ("no result in the completed batch", False)
-            assert (again.protocol_error, again.retry, again.step) == (None, True, "h0")
-        assert [o.stop_reason for o in _outcomes(loops)] == ["done", "done"]
-
-    def test_a_failed_batch_that_returned_some_results_is_taken_request_by_request(
-        self, tmp_path: Path
+    @pytest.mark.parametrize("ended", ["failed", "completed"])
+    def test_a_batch_that_returned_some_results_is_taken_request_by_request(
+        self, tmp_path: Path, ended: str
     ) -> None:
-        """Only a batch with no results at all is the provider's failure."""
+        """Only a batch that returned nothing at all is the provider's failure."""
 
         def partial(batch_id: str, requests: Sequence[BatchRequest]) -> BatchStatus:
             only_a = [r for r in requests if r.custom_id.startswith(f"{A}#")]
             status = _answers(_scripts())(batch_id, only_a)
-            return status.model_copy(update={"status": "failed"})
+            return status.model_copy(update={"status": ended})
 
         scripts = _scripts([None, *B_REPLIES])
         fake = FakeBatchClient(handlers=[partial, *[_answers(scripts)] * 9])
         loops = _loops()
         drive_batch(loops, fake, folder=tmp_path / "run", now=Clock())
         lost, again, *_ = loops[1].outcome.calls
-        assert (lost.protocol_error, lost.retry) == ("no result in the failed batch", False)
+        assert (lost.protocol_error, lost.retry) == (f"no result in the {ended} batch", False)
         assert (again.protocol_error, again.retry) == (None, True)
         assert loops[0].outcome.calls[0].protocol_error is None  # A's result was taken
         assert len(fake.submitted[1]) == 2  # B re-issued beside A's next call
+
+    def test_a_cancelled_batch_stops_the_run_with_its_round_finished(self, tmp_path: Path) -> None:
+        folder = tmp_path / "run"
+        fake = FakeBatchClient(handlers=[_ended("cancelled", cost=0.0625)])
+        loops = _loops()
+        with pytest.raises(
+            BatchCancelledError, match=r"batch b1 \(round 1\) was cancelled"
+        ) as caught:
+            drive_batch(loops, fake, folder=folder, now=Clock())
+        assert "resume" in str(caught.value)
+        assert isinstance(caught.value, ModelError)
+        assert A not in str(caught.value)  # no case text
+        assert B not in str(caught.value)
+        assert len(fake.submitted) == 1  # it was not resubmitted
+        finished = _rounds(folder)[-1]
+        assert (finished.round, finished.status, finished.reported_cost_usd) == (
+            1,
+            "cancelled",
+            0.0625,
+        )
+        assert finished.finished_at is not None
+        assert not (folder / REPLIES_FILE).exists()
+        assert [loop.call_index for loop in loops] == [0, 0]  # no case was touched
+
+    def test_a_cancelled_batch_is_not_used_even_if_it_returned_results(
+        self, tmp_path: Path
+    ) -> None:
+        """As the runner does: a batch that ended unusably has no replies to use."""
+        folder = tmp_path / "run"
+
+        def cancelled(batch_id: str, requests: Sequence[BatchRequest]) -> BatchStatus:
+            status = _answers(_scripts())(batch_id, requests)
+            return status.model_copy(update={"status": "cancelled"})
+
+        fake = FakeBatchClient(handlers=[cancelled])
+        with pytest.raises(BatchCancelledError):
+            drive_batch(_loops(), fake, folder=folder, now=Clock())
+        assert not (folder / REPLIES_FILE).exists()
+        assert _rounds(folder)[-1].status == "cancelled"
+
+    def test_a_resume_after_a_cancelled_batch_resubmits_its_calls(self, tmp_path: Path) -> None:
+        whole, cut = tmp_path / "whole", tmp_path / "cut"
+        _dead_then_good(whole)
+        first = FakeBatchClient(handlers=[_ended("cancelled")])
+        with pytest.raises(BatchCancelledError):
+            drive_batch(_loops(), first, folder=cut, now=Clock())
+
+        resumed = FakeBatchClient(handlers=[_answers(_scripts())] * 8, submitted=[[]])
+        loops = _loops()
+        drive_batch(loops, resumed, folder=cut, now=Clock(ticks=2))
+        assert resumed.submitted[1] == first.submitted[0]  # the cancelled round's calls again
+        plain = _uninterrupted(tmp_path / "plain")
+        assert [_core(o) for o in _outcomes(loops)] == [_core(o) for o in _outcomes(plain)]
+        assert (cut / REPLIES_FILE).read_text() == (whole / REPLIES_FILE).read_text()
+        statuses = [r.status for r in _rounds(cut) if r.finished_at is not None]
+        assert statuses[:2] == ["cancelled", "completed"]
+
+    def test_an_open_round_found_cancelled_on_resume_stops_the_run_again(
+        self, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "cut"
+        dead = FakeBatchClient(handlers=[_die])
+        with pytest.raises(_KilledError):
+            drive_batch(_loops(), dead, folder=folder, now=Clock())
+        resumed = _resumer(dead, "b1", [_ended("cancelled")])
+        with pytest.raises(BatchCancelledError, match="batch b1"):
+            drive_batch(_loops(), resumed, folder=folder, now=Clock(ticks=1))
+        assert len(resumed.submitted) == 1  # the seeded entry only: nothing was submitted
+        assert _rounds(folder)[-1].status == "cancelled"
 
     def test_max_rounds_stops_the_cases_still_running(self, tmp_path: Path) -> None:
         fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
@@ -688,6 +756,58 @@ class TestResume:
         assert _outcomes(loops) == _outcomes(reference)
         assert (cut / REPLIES_FILE).read_text() == (whole / REPLIES_FILE).read_text()
         assert (cut / ROUNDS_FILE).read_text() == (whole / ROUNDS_FILE).read_text()
+
+    def test_a_batch_the_provider_has_lost_is_resubmitted_on_resume(self, tmp_path: Path) -> None:
+        whole, cut = tmp_path / "whole", tmp_path / "cut"
+        reference = _uninterrupted(whole)
+        dead = _interrupt_after_round_two_is_submitted(cut)
+        resumed = _resumer(dead, "b2", [_gone, *[_answers(_scripts())] * 7])
+        loops = _loops()
+        costs = drive_batch(loops, resumed, folder=cut, now=Clock(ticks=3))
+
+        assert resumed.waited[:2] == ["b2", "b3"]
+        assert [r.custom_id for r in resumed.submitted[2]] == [custom_id(A, 1), custom_id(B, 1)]
+        assert resumed.submitted[2] == dead.submitted[1]  # exactly the calls round 2 held
+        lost = next(r for r in _rounds(cut) if r.round == 2 and r.finished_at is not None)
+        assert (lost.batch_id, lost.status, lost.reported_cost_usd) == ("b2", "lost", None)
+        assert all(row.batch_id != "b2" for row in _replies(cut))
+        assert [_core(o) for o in _outcomes(loops)] == [_core(o) for o in _outcomes(reference)]
+        assert costs[:3] == (0.5, None, 0.5)
+
+    def test_a_lost_batch_after_some_of_its_replies_were_written(self, tmp_path: Path) -> None:
+        """Only the calls still unanswered go again; the answered case goes on to its next call."""
+        whole, cut = tmp_path / "whole", tmp_path / "cut"
+        reference = _uninterrupted(whole)
+        first_batch = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+        drive_batch(_loops(), first_batch, folder=cut, now=Clock())
+        rounds = (cut / ROUNDS_FILE).read_text().splitlines(keepends=True)
+        replies = (cut / REPLIES_FILE).read_text().splitlines(keepends=True)
+        (cut / ROUNDS_FILE).write_text("".join(rounds[:3]))  # round 2 open
+        (cut / REPLIES_FILE).write_text("".join(replies[:3]))  # round 1, and A's reply of round 2
+
+        resumed = _resumer(first_batch, "b2", [_gone, *[_answers(_scripts())] * 7])
+        loops = _loops()
+        drive_batch(loops, resumed, folder=cut, now=Clock(ticks=3))
+        assert {r.custom_id for r in resumed.submitted[2]} == {custom_id(A, 2), custom_id(B, 1)}
+        assert [_core(o) for o in _outcomes(loops)] == [_core(o) for o in _outcomes(reference)]
+
+    def test_a_batch_that_is_lost_when_fresh_is_not_resubmitted(self, tmp_path: Path) -> None:
+        """So one call can never be paid for twice: the error propagates, as the runner's does."""
+        folder = tmp_path / "run"
+        fake = FakeBatchClient(handlers=[_gone])
+        with pytest.raises(BatchNotFoundError):
+            drive_batch(_loops(), fake, folder=folder, now=Clock())
+        assert len(fake.submitted) == 1
+        assert [r.finished_at for r in _rounds(folder)] == [None]  # the round stays open
+
+    def test_a_resubmission_that_is_lost_in_its_turn_propagates(self, tmp_path: Path) -> None:
+        folder = tmp_path / "cut"
+        dead = _interrupt_after_round_two_is_submitted(folder)
+        resumed = _resumer(dead, "b2", [_gone, _gone])
+        with pytest.raises(BatchNotFoundError):
+            drive_batch(_loops(), resumed, folder=folder, now=Clock(ticks=3))
+        assert len(resumed.submitted) == 3  # the two seeded entries, and one resubmission only
+        assert [r.status for r in _rounds(folder)][-2:] == ["lost", None]
 
     def test_a_loop_that_would_not_make_the_recorded_call_is_refused(self, tmp_path: Path) -> None:
         """A cap lowered between the attempts stops a case before the call the round holds."""
