@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from ntsb_probable_cause.agent.facts import DocumentFacts
 from ntsb_probable_cause.agent.schemas import REQUIRED, ToolName, force
 from ntsb_probable_cause.agent.texts import (
+    ALL_READ,
     ANSWER_NOW,
     CHOOSE,
     CHOOSE_AGAIN,
@@ -144,7 +145,8 @@ def after_hypothesis(step: StepKind, shelf: Shelf, coding: bool) -> tuple[StepKi
     """The step after a hypothesis at ``h0``, ``h1`` or ``h2``, and its tool text.
 
     ``h0`` offers every readable document (``choice1``); ``h1`` offers what is left (``choice2``);
-    otherwise coding follows. With nothing on offer at ``h0``, the text says there is no docket.
+    otherwise coding follows. With nothing on offer at ``h0``, the text says there is no docket,
+    or, on a later trigger that read every document on offer before, that all were read.
 
     Args:
         step: the checkpoint just recorded.
@@ -158,7 +160,9 @@ def after_hypothesis(step: StepKind, shelf: Shelf, coding: bool) -> tuple[StepKi
         if step == "h0":
             return "choice1", f"{shelf.menu()}\n\n{CHOOSE}"
         return "choice2", f"{shelf.menu()}\n\n{CHOOSE_AGAIN}"
-    return to_coding(coding, NO_DOCUMENTS) if step == "h0" else to_coding(coding)
+    if step == "h0":
+        return to_coding(coding, ALL_READ if shelf.read else NO_DOCUMENTS)
+    return to_coding(coding)
 
 
 def after_choice(

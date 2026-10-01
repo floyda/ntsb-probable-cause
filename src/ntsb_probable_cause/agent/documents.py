@@ -10,6 +10,9 @@ layered guard on its own text:
 * the documents the agent chose to read, as the tool result of the choice
   (:func:`documents_payload`).
 
+A later trigger (Task 11) re-sends the documents read on earlier triggers the same way, or, when
+it forms no H0, with the listing in the same split (:func:`docket_payload`).
+
 The refinement, a separate request that is exactly the runner's stage 2, re-sends arm B's payload
 shape instead: the evidence, the listing and the documents read, in one split
 (:func:`answer_payload`).
@@ -145,6 +148,33 @@ def documents_payload(
     evidence, _, _ = split_record(
         context, exclude=(_ALL_ROLES - {EvidenceRole.DOCKET_DOCUMENTS}) | exclusions
     )
+    return Payload.from_evidence(evidence)
+
+
+def docket_payload(
+    view: DocketView, indices: Sequence[int], exclusions: frozenset[EvidenceRole]
+) -> Payload:
+    """The listing and the documents named, in one split: a later trigger's start (Task 11).
+
+    When no new structured evidence arrived, a later trigger forms no H0: the tool result that
+    re-sends the documents read before also carries what H0's would, the listing for the read
+    choice. Same route as :func:`documents_payload`, with the listing role kept as well.
+
+    Args:
+        view: the case's prepared docket.
+        indices: listing indices to attach, in the order to render them; with none, the payload
+            holds the listing alone.
+        exclusions: the run's excluded evidence roles.
+
+    Returns:
+        A payload holding only the ``docket_listing`` and ``docket_documents`` roles.
+
+    Raises:
+        DocketError: an index the docket has never heard of.
+        LeakageError: the guard found withheld text in the listing or a document.
+    """
+    context = view.attachment.context_for(indices).context
+    evidence, _, _ = split_record(context, exclude=(_ALL_ROLES - _DOCKET_ROLES) | exclusions)
     return Payload.from_evidence(evidence)
 
 

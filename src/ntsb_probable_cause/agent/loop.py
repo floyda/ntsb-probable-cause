@@ -15,6 +15,13 @@ definitions, the evidence as the first user message, and each earlier turn uncha
 result is a ``Turn`` holding a ``Payload`` (the listing, or the documents chosen, each through
 ``split_record`` and the guard) and a ``ToolText`` (the loop's own words, numbers and codes). A
 leak in any payload ends the case ``failed: leak`` before its text is sent.
+
+A later trigger (Task 11; spec §4.3) opens with the earlier triggers' work as one answered call
+(``agent/later.py``): the last hypothesis as a ``record_hypothesis`` call, whose result re-sends
+every document read before, in full, with a summary of the read and skip decisions. H0 follows
+only when new structured evidence arrived; otherwise that call stands for H0, and the read
+choice over every unread document comes first. The documents read before are never offered
+again, and count as read in every menu and in the refinement's payload.
 """
 
 import json
@@ -26,7 +33,7 @@ from typing import Final, Literal, cast, get_args
 from pydantic import BaseModel
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.agent import steps
+from ntsb_probable_cause.agent import later, steps
 from ntsb_probable_cause.agent.documents import (
     DocketView,
     answer_payload,
@@ -43,7 +50,14 @@ from ntsb_probable_cause.agent.schemas import (
 )
 from ntsb_probable_cause.agent.texts import ONE_CALL, not_accepted, system_text
 from ntsb_probable_cause.agent.tools import ToolResult, run_coding_tool
-from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord, StepKind
+from ntsb_probable_cause.agent.trail import (
+    AgentCall,
+    DocketState,
+    LoopOutcome,
+    Prior,
+    ReadRecord,
+    StepKind,
+)
 from ntsb_probable_cause.errors import LeakageError, SchemaError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.client import (
@@ -163,25 +177,42 @@ class CaseLoop:
         view: the case's prepared docket, or None when it has none or the run excludes it.
         config: the run's settings.
         trigger: which trigger of the case this is (1 in evaluation, spec §4.1).
+        prior: the earlier triggers' work (``prior_of``); None on a first trigger.
+        new_structured: whether new structured evidence arrived since the prior; H0 is formed
+            again only then (spec §4.3). A first trigger always forms H0.
+        docket_final: whether the docket is complete (``"all"``) or more documents may come
+            (``"some"``); a docket that offers nothing is ``"none"`` either way (spec §9).
 
     Raises:
-        ValueError: a docket role is excluded but a view was passed; pass ``view=None``.
+        ValueError: a docket role is excluded but a view was passed (pass ``view=None``); a
+            prior whose trigger is not before this one; ``new_structured=False`` with no prior;
+            or a view that does not offer every document the prior read.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- the plan's interface (Tasks 8, 11) and the docket state.
         self,
         raw: Mapping[str, object],
         view: DocketView | None,
         config: LoopConfig,
         *,
         trigger: int = 1,
+        prior: Prior | None = None,
+        new_structured: bool = True,
+        docket_final: bool = True,
     ) -> None:
         if view is not None and config.exclusions & _DOCKET_ROLES:
             raise ValueError("a run that excludes a docket role passes view=None")
+        offered = () if view is None else tuple(f.index for f in view.offered)
+        later.check_prior(offered, trigger, prior, new_structured=new_structured)
         self._config = config
         self._case_id = str(raw.get("ntsbNumber", ""))
         self._trigger = trigger
+        self._prior = prior
+        self._earlier: tuple[int, ...] = () if prior is None else prior.read
         self._docket = view if view is not None and view.offered else None
+        self._docket_state: DocketState = (
+            "none" if self._docket is None else "all" if docket_final else "some"
+        )
         self._system = system_text(config.tables, config.guidance)
         self._tools = definitions(config.without)
         self._coding: tuple[str, ...] = (
@@ -217,6 +248,17 @@ class CaseLoop:
         self._leak: str | None = None
         try:
             self._evidence = evidence_payload(raw, config.exclusions)
+            if prior is not None:  # the earlier work, as one answered call (agent/later.py)
+                start = later.opening(
+                    prior,
+                    self._docket,
+                    self._shelf(),
+                    config.exclusions,
+                    coding=bool(self._coding),
+                    new_structured=new_structured,
+                )
+                self._history, self._step = start.history, start.step
+                self._draft = prior.last_hypothesis  # until this trigger records its own
         except LeakageError as error:
             self._stop, self._leak = "failed: leak", str(error)
 
@@ -297,7 +339,7 @@ class CaseLoop:
                 run_id=self._config.run_id,
                 case_id=self._case_id,
                 trigger=self._trigger,
-                docket_state="none" if self._docket is None else "all",
+                docket_state=self._docket_state,
                 call_index=len(self._rows),
                 step=call.step,
                 retry=retry,
@@ -345,6 +387,7 @@ class CaseLoop:
             cost_usd=self._spent,
             calls=tuple(self._rows),
             leak=self._leak,
+            prior=self._prior,
         )
 
     # --- building calls ---
@@ -445,12 +488,14 @@ class CaseLoop:
     def _answer_evidence(self) -> Payload:
         """The refinement's payload: arm B's shape when documents were offered, else the evidence.
 
-        It never shows what the agent did not see: the listing only when it was offered at h0,
-        and only the documents read.
+        It never shows what the agent did not see: the listing only when it was offered at h0
+        (on a later trigger, on this trigger or an earlier one), and only the documents read, on
+        any trigger.
         """
         if self._docket is None:
             return self._payload()
-        read = tuple(i for i in self._offered() if i in self._read)  # arm B's order
+        seen = self._shelf().read
+        read = tuple(i for i in self._offered() if i in seen)  # arm B's order
         return answer_payload(self._docket, read, self._config.exclusions)
 
     # --- taking replies ---
@@ -573,6 +618,7 @@ class CaseLoop:
                 offered=offered,
                 decisions=choice.decisions,
                 reason=choice.reason,
+                trigger=self._trigger,
             )
         )
         payload = documents_payload(self._view(), read, self._config.exclusions) if read else None
@@ -618,11 +664,15 @@ class CaseLoop:
         return () if self._docket is None else tuple(f.index for f in self._docket.offered)
 
     def _shelf(self) -> steps.Shelf:
-        """The documents now: the offered ones not read yet, the unreadable ones, those read."""
+        """The documents now: the offered ones not read yet, the unreadable ones, those read.
+
+        Those read include the ones read on earlier triggers, first: they are never offered again.
+        """
         if self._docket is None:
             return steps.Shelf()
-        rest = tuple(f for f in self._docket.offered if f.index not in self._read)
-        return steps.Shelf(rest, self._docket.not_readable, tuple(self._read))
+        read = (*self._earlier, *self._read)
+        rest = tuple(f for f in self._docket.offered if f.index not in read)
+        return steps.Shelf(rest, self._docket.not_readable, read)
 
     def _view(self) -> DocketView:
         if self._docket is None:  # a payload is built only when documents are on offer

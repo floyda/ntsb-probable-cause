@@ -4,17 +4,22 @@ Everything here is a plain ``str``. The loop wraps the ones it sends as tool res
 ``ToolText.of``; nothing here is evidence, and nothing here receives a record, a document title
 or document text. The menu holds numbers keyed by listing index (pages, pages with a text layer,
 estimated tokens), never a title: titles reach the model only in the listing payload, which went
-through the split and the guard (``agent/documents.py``; decision 0016).
+through the split and the guard (``agent/documents.py``; decision 0016). The one text built from
+the agent's own words is a later trigger's summary (:func:`prior_summary`, Task 11): listing
+indices, its read and skip decisions with its reasons and expected effects, and trigger numbers,
+which the plan's constraints allow in a ``ToolText``.
 
 This module imports no ``records``, ``docket`` or ``data`` module, directly or indirectly (Task
 10's import contract counts chains): a document's facts come in as ``agent.facts.DocumentFacts``,
-and the prompt pieces from ``scoring.prompt``, which reads only the code tables.
+a later trigger's start as ``agent.trail.Prior``, and the prompt pieces from ``scoring.prompt``,
+which reads only the code tables.
 """
 
 from collections.abc import Sequence
 from typing import Final
 
 from ntsb_probable_cause.agent.facts import DocumentFacts
+from ntsb_probable_cause.agent.trail import Prior
 from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
 
@@ -42,7 +47,17 @@ CODE_NOW: Final = "Check your coding with the coding tools, then submit your ans
 # The coding ablation's CODE_NOW (spec §7.2): the run sends no coding tools, so it names none.
 ANSWER_NOW: Final = "Submit your answer now."
 NO_DOCUMENTS: Final = "No docket documents are available for this case."
+# A later trigger's move to coding when every document on offer was read on an earlier one.
+ALL_READ: Final = "Every docket document on offer has been read; none is left to choose."
 ONE_CALL: Final = "Only one tool call is run per turn; this call was not run."
+
+# A later trigger's summary of the earlier ones (Task 11): its fixed lines, then the read choices.
+PRIOR_HEADING: Final = (
+    "You have worked on this case before. Each time new evidence arrived was a trigger; "
+    "this is a later one."
+)
+PRIOR_HYPOTHESIS: Final = "The record_hypothesis call above is the last hypothesis you recorded."
+_CHOICE_NAMES: Final = {"choice1": "first read choice", "choice2": "second look"}
 
 
 def system_text(tables: CodeTables, guidance: Sequence[str]) -> str:
@@ -129,6 +144,45 @@ def read_summary(read: Sequence[int], skipped: Sequence[int]) -> str:
 def not_accepted(error: str) -> str:
     """The text that answers a call the loop did not accept, naming why."""
     return f"That call was not accepted: {error}"
+
+
+def prior_summary(prior: Prior) -> str:
+    """A later trigger's summary of the earlier ones (spec §4.3; decision 0122 item 5).
+
+    Listing indices, the agent's own read and skip decisions with its reasons and expected
+    effects, and the trigger each choice was made on; never a title or document text. The last
+    hypothesis is not repeated here: it is the ``record_hypothesis`` call this text answers. E.g.::
+
+        You have worked on this case before. Each time new evidence arrived was a trigger; ...
+        The record_hypothesis call above is the last hypothesis you recorded.
+        Documents you read, attached above in full: [1].
+        Trigger 1, first read choice. Your reason: the examination decides
+        [1] read. You expected: the engine's condition
+        [2] skipped. You expected: the weather at the field
+
+    Args:
+        prior: the earlier triggers' work.
+
+    Returns:
+        The summary, one line per fact; ``Documents you read: none.`` and ``Read choices:
+        none.`` when there is nothing to list.
+    """
+    lines = [PRIOR_HEADING, PRIOR_HYPOTHESIS]
+    if prior.read:
+        lines.append(f"Documents you read, attached above in full: {_indices(prior.read)}.")
+    else:
+        lines.append("Documents you read: none.")
+    if not prior.reads:
+        lines.append("Read choices: none.")
+    for record in prior.reads:
+        lines.append(
+            f"Trigger {record.trigger}, {_CHOICE_NAMES[record.step]}. Your reason: {record.reason}"
+        )
+        lines.extend(
+            f"[{d.document}] {'read' if d.read else 'skipped'}. You expected: {d.expected_effect}"
+            for d in record.decisions
+        )
+    return "\n".join(lines)
 
 
 def _indices(indices: Sequence[int]) -> str:
