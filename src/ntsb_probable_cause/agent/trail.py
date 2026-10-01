@@ -110,8 +110,8 @@ class LoopOutcome(_Record):
             ``answer``, ``refine``).
         answer: the final answer, refined when refinement ran; None unless the case is done.
         reads: the read choices, in order.
-        read: the listing indices read, in the order they were read.
-        skipped: the offered documents the agent decided on and never read, in offer order.
+        read: the listing indices read (sent to the model), in the order they were read.
+        skipped: the offered documents the agent chose to skip and never read, in offer order.
         coding_calls: the coding tools run.
         argument_errors: the argument errors the coding tools counted, in all.
         cost_usd: the case's cost, summed over every reply.

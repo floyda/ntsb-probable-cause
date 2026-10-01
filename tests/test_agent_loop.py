@@ -18,7 +18,7 @@ from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import loop as loop_module
-from ntsb_probable_cause.agent.documents import DocketView, docket_view
+from ntsb_probable_cause.agent.documents import DocketView, answer_payload, docket_view
 from ntsb_probable_cause.agent.loop import CaseLoop, LoopConfig, PendingCall
 from ntsb_probable_cause.agent.schemas import REQUIRED, TOOL_DEFINITIONS, definitions, force
 from ntsb_probable_cause.agent.steps import sanitised, tool_choice, wrong_tool
@@ -264,7 +264,7 @@ class TestHappyPath:
         assert refine.settings.schema_name == "refinement"
         assert refine.settings.tools == ()
         assert refine.settings.tool_choice is None
-        assert refine.payload == calls[0].payload
+        assert refine.payload == answer_payload(_view(), (1,), frozenset())
 
     def test_settings_carry_the_run_model_and_reply_budget(self) -> None:
         loop = CaseLoop(_raw(), _view(), _config(max_output_tokens=4000))
@@ -328,10 +328,13 @@ def _marked_view() -> DocketView:
 
 class TestWhereTextAppears:
     def test_titles_only_in_the_listing_and_text_only_in_documents(self) -> None:
-        client, calls = _drive(CaseLoop(_raw(), _marked_view(), _config()), HAPPY)
-        for payload, system in zip(client.payloads, client.systems, strict=True):
-            assert not DOCKET_ROLES & set(payload.fields())
-            assert not any(marker in payload.text or marker in system for marker in MARKERS)
+        _, calls = _drive(CaseLoop(_raw(), _marked_view(), _config()), HAPPY)
+        for pending in calls:
+            assert not any(marker in pending.system for marker in MARKERS)
+            if pending.step == "refine":  # a request of its own, in arm B's shape (fix round 1)
+                continue
+            assert not DOCKET_ROLES & set(pending.payload.fields())
+            assert not any(marker in pending.payload.text for marker in MARKERS)
         listing_seen = documents_seen = False
         for turn in calls[6].history:
             for call in turn.tool_calls:
@@ -737,6 +740,32 @@ class TestCap:
         _drive(loop, script[:2])
         assert loop.outcome.stop_reason == "cap"
 
+    def test_the_refinement_held_back_counts_the_documents_read(self) -> None:
+        """Arm B's refinement payload re-sends what was read; its reserve must count it."""
+        big = "[page 1 of 3]\n" + "The wing spar was intact. " * 4000
+
+        def script(cost: float) -> list[str | ModelReply]:
+            costly = Usage(prompt_tokens=0, completion_tokens=0, reported_cost_usd=cost)
+            return [
+                tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+                tool_reply("choose_documents", _choose({1: True, 2: False}), call_id="c2"),
+                tool_reply("record_hypothesis", _hyp(), call_id="c3"),
+                tool_reply("choose_documents", _choose({2: False}), call_id="c4", usage=costly),
+                tool_reply("submit_answer", _hyp(), call_id="c5"),
+                REFINED,
+            ]
+
+        _, probe = _drive(CaseLoop(_raw(), _view({1: big, 2: ONE}), _config()), script(0.0))
+        assert [c.step for c in probe[4:]] == ["coding", "refine"]
+        answer, refinement = probe[4].estimated_usd, probe[5].estimated_usd
+        price = sources.price_of("openai/gpt-6-luna:batch")
+        margin = len(big) / 4 * price.input_usd_per_mtok / 1e6
+        spent = 1.0 - answer - refinement + margin / 2
+        loop = CaseLoop(_raw(), _view({1: big, 2: ONE}), _config())
+        _, calls = _drive(loop, script(spent)[:4])
+        assert len(calls) == 4
+        assert loop.outcome.stop_reason == "cap"
+
     def test_a_refinement_the_case_cannot_afford_stops_at_the_cap(self) -> None:
         costly = Usage(prompt_tokens=0, completion_tokens=0, reported_cost_usd=0.9995)
         replies: list[str | ModelReply] = [
@@ -774,9 +803,42 @@ class TestLeaks:
         client, _ = _drive(loop, replies)
         assert len(client.payloads) == 2
         assert loop.next_call() is None
+        outcome = loop.outcome
+        assert outcome.stop_reason == "failed: leak"
+        assert len(outcome.calls) == 2
+        row = outcome.calls[1]
+        assert row.tool == "choose_documents"
+        assert row.arguments == json.loads(_choose({1: False, 2: True}))
+        assert (row.result_chars, row.protocol_error) == (0, None)
+        (record,) = outcome.reads
+        assert record.step == "choice1"
+        assert [(d.document, d.read) for d in record.decisions] == [(1, False), (2, True)]
+        assert outcome.read == (), "nothing was sent"
+        assert outcome.skipped == (1,), "the document chosen to read was not skipped"
+
+    def test_a_leak_in_the_refinement_payload_keeps_the_answer_on_its_row(self) -> None:
+        """Nothing readable: the agent never sees the listing, but arm B's refinement would."""
+        raw = _withheld(_raw())
+        docket = small_docket({})
+        entry = docket.listing.entries[0].model_copy(update={"title": f"Letter. {CAUSE}"})
+        listing = docket.listing.model_copy(
+            update={"entries": (entry, *docket.listing.entries[1:])}
+        )
+        view = docket_view(raw, docket.model_copy(update={"listing": listing}))
+        loop = CaseLoop(raw, view, _config())
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("submit_answer", _hyp()),
+            REFINED,
+        ]
+        client, _ = _drive(loop, replies)
+        assert len(client.payloads) == 2
         assert loop.outcome.stop_reason == "failed: leak"
-        assert loop.outcome.read == ()
-        assert len(loop.outcome.calls) == 2
+        row = loop.outcome.calls[1]
+        assert row.hypothesis == Hypothesis.model_validate_json(_hyp())
+        assert row.arguments == row.hypothesis.model_dump(mode="json")
+        assert [kind for kind, _ in loop.outcome.checkpoints] == ["h0", "answer"]
+        assert loop.outcome.answer is None
 
     def test_a_leak_in_the_evidence_stops_before_any_call(self) -> None:
         raw = _withheld(_raw())
@@ -801,6 +863,71 @@ class TestLeaks:
         client, _ = _drive(loop, [tool_reply("record_hypothesis", _hyp())])
         assert len(client.payloads) == 1
         assert loop.outcome.stop_reason == "failed: leak"
+        (row,) = loop.outcome.calls
+        assert row.hypothesis == Hypothesis.model_validate_json(_hyp())
+        assert row.arguments == row.hypothesis.model_dump(mode="json")
+        assert row.result_chars == 0
+
+
+# --------------------------------------------------------------------------------------------
+# The refinement's payload: arm B's shape (fix round 1)
+# --------------------------------------------------------------------------------------------
+
+
+class TestRefinementPayload:
+    def test_holds_the_evidence_the_listing_and_the_documents_read(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _marked_view(), _config()), HAPPY)
+        refine = calls[-1]
+        assert refine.step == "refine"
+        fields = refine.payload.fields()
+        assert {"docket_listing", "docket_documents", "aircraft_make"} <= set(fields)
+        assert "zorbling" in refine.payload.text
+        assert "plinkett" not in refine.payload.text
+        assert all(title in refine.payload.text for title in MARK_TITLES.values())
+        assert refine.payload == answer_payload(_marked_view(), (1,), frozenset())
+
+    def test_documents_come_in_arm_bs_order(self) -> None:
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("choose_documents", _choose({1: False, 2: True})),
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("choose_documents", _choose({1: True})),
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("submit_answer", _hyp()),
+            REFINED,
+        ]
+        loop = CaseLoop(_raw(), _view(), _config())
+        _, calls = _drive(loop, replies)
+        assert loop.outcome.read == (2, 1)
+        assert calls[-1].payload == answer_payload(_view(), (1, 2), frozenset())
+
+    def test_with_no_docket_it_is_the_evidence(self) -> None:
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("submit_answer", _hyp()),
+            REFINED,
+        ]
+        _, calls = _drive(CaseLoop(_raw(), None, _config()), replies)
+        assert calls[-1].step == "refine"
+        assert calls[-1].payload == calls[0].payload
+
+    @pytest.mark.parametrize("readable", [True, False], ids=["nothing read", "nothing readable"])
+    def test_with_nothing_read_it_holds_the_listing_only(self, readable: bool) -> None:
+        view = _marked_view() if readable else _view({})
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp()),
+            tool_reply("choose_documents", _choose({1: False, 2: False})),
+            tool_reply("choose_documents", _choose({1: False, 2: False})),
+            tool_reply("submit_answer", _hyp()),
+            REFINED,
+        ]
+        if not readable:
+            replies = [replies[0], replies[3], REFINED]
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), replies)
+        fields = calls[-1].payload.fields()
+        assert "docket_listing" in fields
+        assert "docket_documents" not in fields
+        assert calls[-1].payload == answer_payload(view, (), frozenset())
 
 
 # --------------------------------------------------------------------------------------------

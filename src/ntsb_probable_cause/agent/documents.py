@@ -10,8 +10,13 @@ layered guard on its own text:
 * the documents the agent chose to read, as the tool result of the choice
   (:func:`documents_payload`).
 
-Titles come only from the listing payload. A ``LeakageError`` from any function here propagates:
-the loop turns it into ``failed: leak`` and never sends the text.
+The refinement, a separate request that is exactly the runner's stage 2, re-sends arm B's payload
+shape instead: the evidence, the listing and the documents read, in one split
+(:func:`answer_payload`).
+
+Within the agent's conversation, titles come only from the listing payload. A ``LeakageError``
+from any function here propagates: the loop turns it into ``failed: leak`` and never sends the
+text.
 
 An exclusion set is the run's (an ablation, or a masked availability condition). A docket role in
 it empties the matching payload to ``{}``; the loop refuses that configuration up front, as arm
@@ -140,6 +145,31 @@ def documents_payload(
     evidence, _, _ = split_record(
         context, exclude=(_ALL_ROLES - {EvidenceRole.DOCKET_DOCUMENTS}) | exclusions
     )
+    return Payload.from_evidence(evidence)
+
+
+def answer_payload(
+    view: DocketView, read: Sequence[int], exclusions: frozenset[EvidenceRole]
+) -> Payload:
+    """Arm B's payload shape for the refinement: the evidence, the listing, the documents read.
+
+    The runner's stage 2 re-sends the payload stage 1 answered from, which for arm B holds every
+    attached document (``scoring/runner.py``, ``prepare``). The same route: the attachment's
+    context for ``read``, split once, rendered.
+
+    Args:
+        view: the case's prepared docket.
+        read: the listing indices the agent read, in the order to render them; with none, the
+            payload holds the evidence and the listing.
+        exclusions: the run's excluded evidence roles.
+
+    Returns:
+        The payload.
+
+    Raises:
+        LeakageError: the guard found withheld text in the evidence, the listing or a document.
+    """
+    evidence, _, _ = split_record(view.attachment.context_for(read).context, exclude=exclusions)
     return Payload.from_evidence(evidence)
 
 

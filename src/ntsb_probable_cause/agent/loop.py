@@ -29,6 +29,7 @@ from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import steps
 from ntsb_probable_cause.agent.documents import (
     DocketView,
+    answer_payload,
     documents_payload,
     evidence_payload,
     listing_payload,
@@ -41,7 +42,7 @@ from ntsb_probable_cause.agent.schemas import (
     parse_call,
 )
 from ntsb_probable_cause.agent.texts import ONE_CALL, not_accepted, system_text
-from ntsb_probable_cause.agent.tools import run_coding_tool
+from ntsb_probable_cause.agent.tools import ToolResult, run_coding_tool
 from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord, StepKind
 from ntsb_probable_cause.errors import LeakageError, SchemaError
 from ntsb_probable_cause.fields import EvidenceRole
@@ -180,6 +181,7 @@ class CaseLoop:
         self._config = config
         self._case_id = str(raw.get("ntsbNumber", ""))
         self._trigger = trigger
+        self._given = view  # arm B's refinement payload holds its listing, even with nothing read
         self._docket = view if view is not None and view.offered else None
         self._system = system_text(config.tables, config.guidance)
         self._tools = definitions(config.without)
@@ -208,7 +210,8 @@ class CaseLoop:
         self._coding_calls = 0
         self._argument_errors = 0
         self._draft: Hypothesis | None = None
-        self._submitted: tuple[Hypothesis, str] | None = None
+        # The answer to refine: the hypothesis, its JSON as the model wrote it, and the payload.
+        self._submitted: tuple[Hypothesis, str, Payload] | None = None
         self._rejected: str | None = None
         self._final: Hypothesis | None = None
         self._evidence: Payload | None = None
@@ -305,7 +308,7 @@ class CaseLoop:
         """
         if self._stop is None:
             raise RuntimeError("the case has not stopped")
-        decided = {decision.document for read in self._reads for decision in read.decisions}
+        decided = {d.document for read in self._reads for d in read.decisions if not d.read}
         return LoopOutcome(
             case_id=self._case_id,
             stop_reason=self._stop,
@@ -346,7 +349,7 @@ class CaseLoop:
 
     def _build(self, step: StepKind) -> PendingCall:
         if step == "refine":
-            answer, arguments = self._answer()
+            answer, arguments, payload = self._answer()
             settings = self._refine_settings()
             system = self._refine_system(answer)
             if self._rejected is not None:
@@ -359,19 +362,21 @@ class CaseLoop:
                 "parallel_tool_calls": False,
             }
             settings = self._base.model_copy(update=update)
-            system, history = self._system, self._history
+            payload, system, history = self._payload(), self._system, self._history
         return PendingCall(
-            payload=self._payload(),
+            payload=payload,
             settings=settings,
             system=system,
             history=history,
             step=step,
-            estimated_usd=self._estimate(settings, system, history),
+            estimated_usd=self._estimate(settings, system, history, len(payload.text)),
         )
 
-    def _estimate(self, settings: ModelSettings, system: str, history: tuple[Turn, ...]) -> float:
+    def _estimate(
+        self, settings: ModelSettings, system: str, history: tuple[Turn, ...], payload_chars: int
+    ) -> float:
         """All the prompt's text at four characters a token, plus a full reply (the brief's)."""
-        chars = len(system) + len(self._payload().text) + len(json.dumps(list(settings.tools)))
+        chars = len(system) + payload_chars + len(json.dumps(list(settings.tools)))
         chars += sum(_turn_chars(turn, with_reasoning=settings.pass_reasoning) for turn in history)
         price = sources.price_of(settings.model_id())
         return (
@@ -380,12 +385,19 @@ class CaseLoop:
         ) / 1e6
 
     def _refinement_estimate(self) -> float:
-        """What refining the latest hypothesis would cost; 0 when it would not be refined."""
+        """What refining the latest hypothesis would cost; 0 when it would not be refined.
+
+        Its payload is taken as the evidence plus every payload sent so far (the listing and the
+        documents read), which is what arm B's payload shape holds.
+        """
         draft = self._draft
         if draft is None or draft.abstain or not draft.findings:
             return 0.0
         history = (Turn(role="assistant", content=draft.model_dump_json()),)
-        return self._estimate(self._refine_settings(), self._refine_system(draft), history)
+        sent = sum(len(turn.payload.text) for turn in self._history if turn.payload is not None)
+        payload_chars = len(self._payload().text) + sent
+        system = self._refine_system(draft)
+        return self._estimate(self._refine_settings(), system, history, payload_chars)
 
     def _refine_settings(self) -> ModelSettings:
         return self._base.model_copy(
@@ -401,10 +413,17 @@ class CaseLoop:
             raise RuntimeError("the case has no evidence payload")
         return self._evidence
 
-    def _answer(self) -> tuple[Hypothesis, str]:
+    def _answer(self) -> tuple[Hypothesis, str, Payload]:
         if self._submitted is None:  # refinement follows an answer, always
             raise RuntimeError("refinement with no answer")
         return self._submitted
+
+    def _answer_evidence(self) -> Payload:
+        """The refinement's payload: arm B's shape with a docket, the evidence alone without."""
+        if self._given is None:
+            return self._payload()
+        read = tuple(i for i in self._offered() if i in self._read)  # arm B's order
+        return answer_payload(self._given, read, self._config.exclusions)
 
     # --- taking replies ---
 
@@ -427,9 +446,6 @@ class CaseLoop:
             chars = self._answer_calls(reply, not_accepted(str(refused)), None)
             self._break()
             return _Seen(tool=first.name, protocol_error=str(refused), result_chars=chars)
-        except LeakageError:
-            self._stop = "failed: leak"
-            return _Seen(tool=first.name)
         self._retry = False
         chars = 0 if result.text is None else self._answer_calls(reply, result.text, result.payload)
         return _Seen(
@@ -468,7 +484,11 @@ class CaseLoop:
         return sum(_result_chars(turn) for turn in results)
 
     def _run(self, step: StepKind, call: ToolCall) -> _Result:
-        """Check and run one call; ``_NotAcceptedError`` is raised before any state changes."""
+        """Check and run one call; ``_NotAcceptedError`` is raised before any state changes.
+
+        A leak in a payload the call's result would carry stops the case ``failed: leak``: the
+        result then keeps the parsed arguments and hypothesis for the trail, and has no text.
+        """
         options = steps.allowed(step, self._coding)
         if call.name not in options:
             raise _NotAcceptedError(steps.wrong_tool(options, call.name))
@@ -477,36 +497,48 @@ class CaseLoop:
             parsed = parse_call(call.name, call.arguments, self._config.tables, offered)
         except SchemaError as error:
             raise _NotAcceptedError(steps.sanitised(error)) from None
-        if isinstance(parsed, Hypothesis):
-            return self._hypothesis(step, call, parsed)
-        if isinstance(parsed, ChooseDocuments):
-            return self._choose(step, parsed)
-        return self._code(call.name, parsed)
+        arguments = parsed.model_dump(mode="json")
+        if not isinstance(parsed, Hypothesis | ChooseDocuments):
+            tool = self._code(call.name, parsed)
+            return _Result(arguments, tool.text, argument_errors=tool.argument_errors)
+        hypothesis = parsed if isinstance(parsed, Hypothesis) else None
+        try:
+            text, payload = (
+                self._hypothesis(step, call, parsed)
+                if isinstance(parsed, Hypothesis)
+                else self._choose(step, parsed)
+            )
+        except LeakageError:
+            self._stop = "failed: leak"
+            return _Result(arguments, hypothesis=hypothesis)
+        return _Result(arguments, text, payload, hypothesis)
 
-    def _hypothesis(self, step: StepKind, call: ToolCall, hypothesis: Hypothesis) -> _Result:
+    def _hypothesis(
+        self, step: StepKind, call: ToolCall, hypothesis: Hypothesis
+    ) -> tuple[str | None, Payload | None]:
+        """Record a hypothesis; the tool text and payload that follow (none after the answer)."""
         self._draft = hypothesis
-        arguments = hypothesis.model_dump(mode="json")
         if call.name == "submit_answer":
             self._checkpoints.append(("answer", hypothesis))
-            self._submitted = (hypothesis, call.arguments)
             if hypothesis.abstain or not hypothesis.findings:
                 self._final, self._stop = hypothesis, "done"
             else:
+                self._submitted = (hypothesis, call.arguments, self._answer_evidence())
                 self._step = "refine"
-            return _Result(arguments, hypothesis=hypothesis)
+            return None, None
         self._checkpoints.append((step, hypothesis))
         self._step, text = steps.after_hypothesis(step, self._shelf(), bool(self._coding))
         listing = None
         if self._step == "choice1":
             listing = listing_payload(self._view(), self._config.exclusions)
-        return _Result(arguments, text, listing, hypothesis)
+        return text, listing
 
-    def _choose(self, step: StepKind, choice: ChooseDocuments) -> _Result:
+    def _choose(self, step: StepKind, choice: ChooseDocuments) -> tuple[str, Payload | None]:
+        """Record a read choice; the tool text, and the documents read (none if none were)."""
         offered = tuple(f.index for f in self._shelf().rest)
         wanted = {decision.document for decision in choice.decisions if decision.read}
         read = tuple(i for i in offered if i in wanted)
         skipped = tuple(i for i in offered if i not in wanted)
-        payload = documents_payload(self._view(), read, self._config.exclusions) if read else None
         self._reads.append(
             ReadRecord(
                 step="choice1" if step == "choice1" else "choice2",
@@ -515,13 +547,14 @@ class CaseLoop:
                 reason=choice.reason,
             )
         )
-        self._read.extend(read)
+        payload = documents_payload(self._view(), read, self._config.exclusions) if read else None
+        self._read.extend(read)  # only once the documents passed the guard
         self._step, text = steps.after_choice(
             step, read, skipped, self._shelf(), bool(self._coding)
         )
-        return _Result(choice.model_dump(mode="json"), text, payload)
+        return text, payload
 
-    def _code(self, name: str, arguments: BaseModel) -> _Result:
+    def _code(self, name: str, arguments: BaseModel) -> ToolResult:
         try:
             result = run_coding_tool(
                 cast("CodingToolName", name),
@@ -537,12 +570,10 @@ class CaseLoop:
         self._argument_errors += result.argument_errors
         if self._coding_calls >= self._config.max_coding_calls:
             self._step = "answer"
-        return _Result(
-            arguments.model_dump(mode="json"), result.text, argument_errors=result.argument_errors
-        )
+        return result
 
     def _accept_refinement(self, reply: ModelReply) -> _Seen:
-        answer, _ = self._answer()
+        answer, _, _ = self._answer()
         try:
             refined = parse_refinement(reply.content or "", self._config.tables, answer)
         except SchemaError as error:

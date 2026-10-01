@@ -17,6 +17,7 @@ from tests.test_attach import _docket as small_docket
 
 from ntsb_probable_cause.agent.documents import (
     DocketView,
+    answer_payload,
     case_marks,
     docket_view,
     documents_payload,
@@ -278,6 +279,41 @@ class TestDocumentsPayload:
         assert "no mechanical anomalies" in documents_payload(view, (1,), NO_EXCLUSIONS).text
 
 
+class TestAnswerPayload:
+    """Arm B's payload shape, for the refinement (Task 8, fix round 1)."""
+
+    def test_holds_the_evidence_the_listing_and_the_documents_read(self) -> None:
+        payload = answer_payload(_view(), (1,), NO_EXCLUSIONS)
+        fields = payload.fields()
+        assert fields["aircraft_make"] == "CESSNA"
+        assert all(title in payload.text for title in TITLES)
+        assert fields["docket_documents"] == [f"Docket item 1, 3 pages.\n{ONE}"]
+        assert "We submit" not in payload.text
+
+    def test_is_arm_bs_split_of_the_attachments_context(self) -> None:
+        view = _view()
+        context = view.attachment.context_for((1, 2)).context
+        expected = Payload.from_evidence(split_record(context, exclude=NO_EXCLUSIONS)[0])
+        assert answer_payload(view, (1, 2), NO_EXCLUSIONS) == expected
+
+    def test_with_nothing_read_holds_the_listing_and_no_documents(self) -> None:
+        fields = answer_payload(_view(), (), NO_EXCLUSIONS).fields()
+        assert "docket_listing" in fields
+        assert "docket_documents" not in fields
+        assert fields["aircraft_make"] == "CESSNA"
+
+    def test_an_exclusion_removes_its_role(self) -> None:
+        excluded = frozenset({EvidenceRole.WEATHER_CONDITION})
+        assert "weather_condition" not in answer_payload(_view(), (1,), excluded).fields()
+
+    def test_a_leak_in_a_document_raises(self) -> None:
+        raw = _withheld(_raw())
+        view = docket_view(raw, small_docket({1: ONE, 2: f"[page 1 of 3]\nLetter.\n{CAUSE}\n"}))
+        assert isinstance(answer_payload(view, (1,), NO_EXCLUSIONS), Payload)
+        with pytest.raises(LeakageError):
+            answer_payload(view, (2,), NO_EXCLUSIONS)
+
+
 class TestOnePayloadRoute:
     def test_every_payload_comes_from_split_record_with_its_roles_excluded(
         self, monkeypatch: pytest.MonkeyPatch
@@ -296,12 +332,14 @@ class TestOnePayloadRoute:
         evidence_payload(_raw(), NO_EXCLUSIONS)
         listing_payload(view, NO_EXCLUSIONS)
         documents_payload(view, (1,), NO_EXCLUSIONS)
+        answer_payload(view, (1,), NO_EXCLUSIONS)
         docket_roles = {EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS}
         everything = set(EvidenceRole)
         assert calls == [
             frozenset(docket_roles),
             frozenset(everything - {EvidenceRole.DOCKET_LISTING}),
             frozenset(everything - {EvidenceRole.DOCKET_DOCUMENTS}),
+            NO_EXCLUSIONS,
         ]
 
 
