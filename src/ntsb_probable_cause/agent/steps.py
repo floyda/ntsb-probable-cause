@@ -20,7 +20,7 @@ from typing import Final, get_args
 from pydantic import ValidationError
 
 from ntsb_probable_cause.agent.facts import DocumentFacts
-from ntsb_probable_cause.agent.schemas import REQUIRED, ToolName, force
+from ntsb_probable_cause.agent.schemas import REQUIRED, ExtraDecision, ToolName, force
 from ntsb_probable_cause.agent.texts import (
     ALL_READ,
     ANSWER_NOW,
@@ -34,6 +34,7 @@ from ntsb_probable_cause.agent.texts import (
     UNKNOWN_TOOL,
     WHOLE_ARGUMENTS,
     WRONG_TOOL,
+    extras_lines,
     menu,
     read_summary,
 )
@@ -203,13 +204,21 @@ def lists(step: StepKind, shelf: Shelf) -> bool:
     return step == "h0" and (bool(shelf.rest) or shelf.none_readable)
 
 
-def after_choice(
-    step: StepKind, read: Sequence[int], skipped: Sequence[int], shelf: Shelf, coding: bool
+def after_choice(  # noqa: PLR0913 -- the choice, the documents after it, the run, the extras.
+    step: StepKind,
+    read: Sequence[int],
+    skipped: Sequence[int],
+    shelf: Shelf,
+    coding: bool,
+    *,
+    extras: Sequence[ExtraDecision] = (),
 ) -> tuple[StepKind, str]:
     """The step after a read choice, and the tool text that goes with the documents read.
 
     Anything read: a hypothesis (``h1`` or ``h2``). Nothing read at the first choice: the second
-    look, over everything still unread. Nothing read at the second: coding.
+    look, over everything still unread. Nothing read at the second: coding. The text opens with
+    the read summary; then, when the choice decided on documents not on offer, a line for each
+    (``extras_lines``, decision 0134); then what comes next.
 
     Args:
         step: ``choice1`` or ``choice2``.
@@ -217,13 +226,16 @@ def after_choice(
         skipped: the listing indices chosen to skip, in offer order.
         shelf: the documents after this choice.
         coding: whether the run has a coding step.
+        extras: the choice's decisions on documents not on offer, each once.
 
     Returns:
         The next step and its tool text.
     """
-    summary = read_summary(read, skipped)
+    said = [read_summary(read, skipped)]
+    if extras:
+        said.append(extras_lines(extras))
     if read:
-        return ("h1" if step == "choice1" else "h2"), f"{summary}\n\n{RECORD_NOW}"
+        return ("h1" if step == "choice1" else "h2"), "\n\n".join((*said, RECORD_NOW))
     if step == "choice1":
-        return "choice2", f"{summary}\n\n{shelf.menu()}\n\n{CHOOSE_AGAIN}"
-    return to_coding(coding, summary)
+        return "choice2", "\n\n".join((*said, shelf.menu(), CHOOSE_AGAIN))
+    return to_coding(coding, *said)

@@ -26,9 +26,13 @@ What it prints
     ``scripts.occurrence_misses.churn``; read-or-skip agreement; coding-call agreement.
 
     - **Read or skip.** From ``trail.jsonl``: each accepted ``choose_documents`` call's parsed
-      arguments (``ReadRecord`` is not written to disk). A document's decision in a run is
-      ``read`` if any read choice of its case read it, else ``skip``. Compared per document
-      offered in both runs (same case, same listing index).
+      arguments (``ReadRecord`` is not written to disk), kept only for the documents its row's
+      ``offered`` names. The arguments are as the model sent them, so they may hold decisions
+      on documents not on offer (decision 0134); those never enter the count. A row with no
+      ``offered`` predates 0134, when such a decision refused the call, and all its decisions
+      count. A document's decision in a run is ``read`` if any read choice of its case read it,
+      else ``skip``. Compared per document offered in both runs (same case, same listing
+      index).
     - **Coding calls.** From ``trail.jsonl``: per case scored in both runs, the multiset of
       ``(tool, arguments)`` over its accepted coding-tool calls (``agent.schemas.CODING_TOOLS``,
       ``protocol_error`` None), the arguments without ``reason`` and ``expected_effect`` and
@@ -283,12 +287,20 @@ def first_code_changes(
 
 
 def _decisions(calls: Sequence[AgentCall]) -> dict[tuple[str, int], bool]:
-    """Each document a read choice offered, by case and listing index: whether it was read."""
+    """Each document a read choice offered, by case and listing index: whether it was read.
+
+    A decision on a document the row does not name as offered is left out (decision 0134: the
+    arguments keep the model's decisions on documents not on offer). A row with no offer is
+    from a trail written before 0134, when such a decision refused the call, so every decision
+    of an accepted row of that kind was on offer, and all of them count.
+    """
     read: dict[tuple[str, int], bool] = {}
     for call in calls:
         if call.tool != "choose_documents" or call.protocol_error is not None:
             continue
         for decision in ChooseDocuments.model_validate(call.arguments).decisions:
+            if call.offered and decision.document not in call.offered:
+                continue
             key = (call.case_id, decision.document)
             read[key] = read.get(key, False) or decision.read
     return read

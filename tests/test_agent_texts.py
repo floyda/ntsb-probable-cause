@@ -21,13 +21,16 @@ import pytest
 
 from ntsb_probable_cause.agent import schemas, texts
 from ntsb_probable_cause.agent.facts import DocumentFacts
-from ntsb_probable_cause.agent.schemas import TOOL_DEFINITIONS
+from ntsb_probable_cause.agent.schemas import TOOL_DEFINITIONS, ExtraDecision
 from ntsb_probable_cause.agent.texts import (
     AGENT_PROMPT_VERSION,
     ANSWER_NOW,
     CHOOSE,
     CHOOSE_AGAIN,
     CODE_NOW,
+    EXTRA_ALREADY_READ,
+    EXTRA_NOT_READABLE,
+    EXTRA_UNKNOWN,
     NO_DOCUMENTS,
     NONE_READABLE,
     ONE_CALL,
@@ -35,6 +38,7 @@ from ntsb_probable_cause.agent.texts import (
     RECORD_NOW,
     TEXT_SOURCES,
     agent_text_sha256,
+    extras_lines,
     is_plain,
     menu,
     not_accepted,
@@ -416,6 +420,39 @@ class TestReadSummary:
         assert read_summary([], []) == "You read: none. You skipped: none."
 
 
+class TestExtrasLines:
+    """Decision 0134: a decision on a document not on offer is answered, one line per document."""
+
+    def test_the_three_lines_are_andys(self) -> None:
+        assert EXTRA_NOT_READABLE.format(index=5) == "Document [5] cannot be read; skipped."
+        assert EXTRA_ALREADY_READ.format(index=2) == "Document [2] was already read; skipped."
+        assert EXTRA_UNKNOWN.format(index=14) == "There is no document [14]; skipped."
+
+    def test_one_line_per_extra_in_the_order_given(self) -> None:
+        extras = (
+            ExtraDecision(document=5, kind="not_readable"),
+            ExtraDecision(document=2, kind="already_read"),
+            ExtraDecision(document=14, kind="unknown"),
+            ExtraDecision(document=1, kind="not_readable"),
+        )
+        assert extras_lines(extras) == (
+            "Document [5] cannot be read; skipped.\n"
+            "Document [2] was already read; skipped.\n"
+            "There is no document [14]; skipped.\n"
+            "Document [1] cannot be read; skipped."
+        )
+
+    def test_no_extra_is_no_text(self) -> None:
+        assert extras_lines(()) == ""
+
+    def test_name_listing_indices_only(self) -> None:
+        for line in (EXTRA_NOT_READABLE, EXTRA_ALREADY_READ, EXTRA_UNKNOWN):
+            assert line.count("{index}") == 1
+            assert line.replace("{index}", "") == line.format(index="")
+            for word in ("scan", "text layer", "title", "Report"):
+                assert word not in line
+
+
 class TestFixedStrings:
     def test_are_as_the_plan_gives_them(self) -> None:
         assert CHOOSE == "Choose read or skip for every document listed above."
@@ -453,9 +490,13 @@ class TestFixedStrings:
             NO_DOCUMENTS,
             NONE_READABLE,
             ONE_CALL,
+            EXTRA_NOT_READABLE,
+            EXTRA_ALREADY_READ,
+            EXTRA_UNKNOWN,
             system_text(TABLES, GUIDANCE),
             menu([_facts(1)], []),
             read_summary([1], []),
+            extras_lines((ExtraDecision(document=3, kind="unknown"),)),
             not_accepted("x"),
             prompt_version(GUIDANCE),
         ):

@@ -7,7 +7,8 @@ Status
     the offending guidance sentence only; exits 1 on any match. CI cannot run it (no data).
     From S3.1 (final review), ``--agent-texts`` checks the agent's own fixed texts the same way
     (``agent_texts``): the protocol and every fixed string of ``agent/texts.py`` and
-    ``agent/steps.py`` (their templates rendered with listing numbers and placeholder words),
+    ``agent/steps.py`` (their templates rendered with listing numbers and placeholder words,
+    decision 0134's lines for a decision on a document not on offer among them),
     the coding tools' fixed result sentences (``agent/tools.py``, each tool run on a small
     placeholder pool: ``tool_texts``), and every string of the tool definitions
     (``agent/schemas.py``). The rule is S2.7's.
@@ -146,6 +147,13 @@ def agent_texts() -> list[str]:
     parts += [
         texts.menu([one, two], [two], already_read=[3]),
         texts.read_summary([1], [2]),
+        texts.extras_lines(  # decision 0134's three lines, one of each kind
+            [
+                schemas.ExtraDecision(document=1, kind="not_readable"),
+                schemas.ExtraDecision(document=2, kind="already_read"),
+                schemas.ExtraDecision(document=3, kind="unknown"),
+            ]
+        ),
         texts.not_accepted("an error"),
         texts.prior_summary(prior),
         steps.wrong_tool(("describe_codes", "submit_answer"), "another"),

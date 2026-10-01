@@ -47,6 +47,14 @@ def test_agent_texts_hold_the_protocol_the_tool_definitions_and_every_fixed_stri
     assert "[1] 1 page, 1 with a text layer, about 10 tokens" in joined
     assert "That call was not accepted: an error" in joined
     assert "Documents you read: none." in joined
+    # Decision 0134's three lines for a decision on a document not on offer, rendered.
+    rendered = [s for part in parts for s in cg.sentences(part)]
+    for line in (
+        "Document [1] cannot be read; skipped.",
+        "Document [2] was already read; skipped.",
+        "There is no document [3]; skipped.",
+    ):
+        assert cg.normalise(line) in rendered, line
     assert steps.wrong_tool(("describe_codes", "submit_answer"), "another") in parts
     needles = [s for part in parts for s in cg.sentences(part)]
     assert cg.normalise(

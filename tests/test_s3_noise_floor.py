@@ -14,6 +14,8 @@ import pytest
 from scripts import occurrence_misses as om
 from scripts import s3_noise_floor as nf
 from tests.test_agent_drive import Clock, _answers, _scripts
+from tests.test_agent_loop import HAPPY
+from tests.test_agent_loop import _choose as _choose_args
 from tests.test_agent_run import RAWS, _runner, _spec
 from tests.test_occurrence_misses import _SCORES, _case
 from tests.test_runner import FakeBatchClient
@@ -21,8 +23,9 @@ from tests.test_runner import FakeBatchClient
 from ntsb_probable_cause.agent import texts
 from ntsb_probable_cause.agent.run import GUIDANCE, TRAIL_FILE
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.model.client import tool_reply
 from ntsb_probable_cause.scoring import samples
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import RunSpec, spec_json
 
 _WHEN = datetime(2026, 10, 2, tzinfo=UTC)
@@ -150,7 +153,14 @@ def _call(  # noqa: PLR0913 -- a test-only builder, one keyword per varied field
     )
 
 
-def _choose(case_id: str, decisions: dict[int, bool], *, index: int = 1) -> AgentCall:
+def _choose(
+    case_id: str,
+    decisions: dict[int, bool],
+    *,
+    index: int = 1,
+    offered: tuple[int, ...] = (),
+) -> AgentCall:
+    """A read choice's row; ``offered=()`` is a row written before decision 0134."""
     arguments: dict[str, object] = {
         "decisions": [
             {"document": n, "read": read, "expected_effect": "what it shows"}
@@ -158,7 +168,9 @@ def _choose(case_id: str, decisions: dict[int, bool], *, index: int = 1) -> Agen
         ],
         "reason": "why",
     }
-    return _call(case_id, "choose_documents", arguments, index=index)
+    row = _call(case_id, "choose_documents", arguments, index=index)
+    extras = len(set(decisions) - set(offered)) if offered else 0
+    return row.model_copy(update={"offered": offered, "argument_errors": extras})
 
 
 def _describe(
@@ -527,6 +539,39 @@ def test_read_agreement_takes_a_documents_final_decision_and_skips_refused_calls
     assert (agreement.cases, agreement.one_run_only) == (2, 2)
 
 
+def test_read_agreement_counts_only_the_documents_on_offer_never_an_extra() -> None:
+    """Decision 0134: a read choice's arguments keep the decisions on documents not on offer
+    (as the model sent them); the agreement reads only those the row says were offered."""
+    first = [
+        # c1: [1] and [2] on offer; [5] cannot be read and [9] is not listed, both "read"
+        _choose("c1", {1: True, 2: False, 5: True, 9: False}, offered=(1, 2)),
+        # the second look: [2] on offer; [1], read before, decided on again as a skip
+        _choose("c1", {2: False, 1: False}, index=3, offered=(2,)),
+        _choose("c2", {3: True, 7: True}, offered=(3,)),
+    ]
+    second = [
+        _choose("c1", {1: True, 2: True}, offered=(1, 2)),
+        _choose("c2", {3: False}, offered=(3,)),
+        _choose("c2", {3: False, 7: False}, index=3, offered=(3,)),
+    ]
+    agreement = nf.read_agreement(first, second)
+    # c1: [1] read in both (the later skip of an already-read document changes nothing), [2]
+    # read in the second only; c2: [3] read in the first only. No extra is a document here.
+    assert (agreement.both_read, agreement.both_skipped) == (1, 0)
+    assert (agreement.first_only, agreement.second_only) == (1, 1)
+    assert (agreement.same, agreement.offered) == (1, 3)
+    assert (agreement.cases, agreement.one_run_only) == (2, 0)
+
+
+def test_a_read_choice_row_written_before_0134_keeps_every_decision() -> None:
+    """Before decision 0134 a decision off the offer refused the call, so an accepted row's
+    decisions were all on offer; such a row records no offer, and all of them count."""
+    old = [_choose("c1", {1: True, 2: False})]
+    new = [_choose("c1", {1: True, 2: False, 4: True}, offered=(1, 2))]
+    agreement = nf.read_agreement(old, new)
+    assert (agreement.same, agreement.offered, agreement.one_run_only) == (2, 2, 0)
+
+
 def test_coding_agreement_compares_multisets_without_reason_and_expected_effect() -> None:
     cases = [_scored(i) for i in ("c1", "c2", "c3", "c4", "c5")]
     first = [
@@ -768,6 +813,31 @@ def test_the_report_reads_what_the_agent_runner_writes(
     assert "coding-call agreement: 2 of 2 cases scored in both runs" in out
     assert "third run: not needed -- " in out
     assert all(case_id not in out for case_id in ids)
+
+
+def test_extras_in_a_runner_written_trail_never_enter_the_agreement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 0134 on folders a real ``AgentRunner`` wrote: run a's first case also decides
+    on [3], which cannot be read, and its second look on [1], already read; run b's does not.
+    The two runs read and skip the same offered documents, so they agree on both."""
+    runs = tmp_path / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    ids = tuple(str(raw["ntsbNumber"]) for raw in RAWS)
+    monkeypatch.setattr(samples, "sample_ids", lambda _name: ids)
+    extras = list(HAPPY)
+    extras[1] = tool_reply("choose_documents", _choose_args({1: True, 2: False, 3: True}))
+    extras[3] = tool_reply("choose_documents", _choose_args({2: False, 1: False}))
+    made = []
+    for start, script in ((0, _scripts(a=extras)), (1000, _scripts())):
+        batch = FakeBatchClient(handlers=[_answers(script)] * 8)
+        runner = _runner(runs, batch=batch, clock=Clock(ticks=start))
+        made.append(runner.run(_spec(), RAWS).run_id)
+    trail = read_jsonl(runs / made[0] / TRAIL_FILE, AgentCall)
+    assert [c.argument_errors for c in trail if c.tool == "choose_documents"] == [1, 1]
+    out = _report(runs, capsys, *made)
+    assert "read-or-skip agreement: 2 of 2 documents offered in both runs" in out
+    assert "over 1 cases; 0 documents offered in one run only" in out
 
 
 def test_first_code_changes_agree_with_churn() -> None:

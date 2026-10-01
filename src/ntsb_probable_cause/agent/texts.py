@@ -3,11 +3,12 @@
 Everything here is a plain ``str``. The loop wraps the ones it sends as tool results with
 ``ToolText.of``; nothing here is evidence, and nothing here receives a record, a document title
 or document text. The menu holds numbers keyed by listing index (pages, pages with a text layer,
-estimated tokens), never a title: titles reach the model only in the listing payload, which went
-through the split and the guard (``agent/documents.py``; decision 0016). The one text built from
-the agent's own words is a later trigger's summary (:func:`prior_summary`, Task 11): listing
-indices, its read and skip decisions with its reasons and expected effects, and trigger numbers,
-which the plan's constraints allow in a ``ToolText``.
+estimated tokens), never a title, and so do the lines that answer a decision on a document not
+on offer (:func:`extras_lines`, decision 0134): titles reach the model only in the listing
+payload, which went through the split and the guard (``agent/documents.py``; decision 0016). The
+one text built from the agent's own words is a later trigger's summary (:func:`prior_summary`,
+Task 11): listing indices, its read and skip decisions with its reasons and expected effects, and
+trigger numbers, which the plan's constraints allow in a ``ToolText``.
 
 The prompt version fingerprints the source of every module that holds or composes the text the
 agent sends (:data:`TEXT_SOURCES`, :func:`agent_text_sha256`; decision 0133). A run computes it
@@ -69,6 +70,18 @@ NONE_READABLE: Final = "None of the documents listed can be read."
 # A later trigger's move to coding when every document on offer was read on an earlier one.
 ALL_READ: Final = "Every docket document on offer has been read; none is left to choose."
 ONE_CALL: Final = "Only one tool call is run per turn; this call was not run."
+
+# A read choice's decision on a document that was not on offer (decision 0134; Andy, 2026-10-01,
+# after the S3.1 smoke run): tolerated, never acted on, and answered with one of these lines,
+# by listing index only. ``extras_lines`` writes them, one per document, after the read summary.
+EXTRA_NOT_READABLE: Final = "Document [{index}] cannot be read; skipped."
+EXTRA_ALREADY_READ: Final = "Document [{index}] was already read; skipped."
+EXTRA_UNKNOWN: Final = "There is no document [{index}]; skipped."
+_EXTRA_LINES: Final[dict[schemas.ExtraKind, str]] = {
+    "not_readable": EXTRA_NOT_READABLE,
+    "already_read": EXTRA_ALREADY_READ,
+    "unknown": EXTRA_UNKNOWN,
+}
 
 # A later trigger's summary of the earlier ones (Task 11): its fixed lines, then the read choices.
 PRIOR_HEADING: Final = (
@@ -289,6 +302,27 @@ def read_summary(read: Sequence[int], skipped: Sequence[int]) -> str:
     E.g. ``You read: [1], [3]. You skipped: [2].``; an empty side reads ``none``.
     """
     return f"You read: {_indices(read)}. You skipped: {_indices(skipped)}."
+
+
+def extras_lines(extras: Sequence[schemas.ExtraDecision]) -> str:
+    """Say, for each decision on a document that was not on offer, why it was skipped.
+
+    Decision 0134. One line per document, in the order given, whether the model asked to read
+    it or to skip it: one rule, so the model learns which numbers were not on offer and why
+    whatever it asked. Grouping the skips would save a few words and add a second form. By
+    listing index only, never a title. E.g.::
+
+        Document [5] cannot be read; skipped.
+        Document [2] was already read; skipped.
+        There is no document [14]; skipped.
+
+    Args:
+        extras: the extras, each once (``schemas.parse_call`` reports a document once).
+
+    Returns:
+        The lines; empty when there is no extra.
+    """
+    return "\n".join(_EXTRA_LINES[extra.kind].format(index=extra.document) for extra in extras)
 
 
 def not_accepted(error: str) -> str:

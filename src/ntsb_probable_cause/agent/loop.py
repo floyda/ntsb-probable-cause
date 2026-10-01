@@ -22,6 +22,11 @@ every document read before, in full, with a summary of the read and skip decisio
 only when new structured evidence arrived; otherwise that call stands for H0, and the read
 choice over every unread document comes first. The documents read before are never offered
 again, and count as read in every menu and in the refinement's payload.
+
+A read choice must decide every offered document exactly once. A decision on any other document
+(one that cannot be read, one read before on any trigger, or a number the listing does not hold)
+is tolerated (decision 0134; Andy, 2026-10-01): never acted on, answered with one line after the
+read summary, counted as an argument error, and left out of the read record.
 """
 
 import json
@@ -42,8 +47,8 @@ from ntsb_probable_cause.agent.documents import (
     listing_payload,
 )
 from ntsb_probable_cause.agent.schemas import (
-    ChooseDocuments,
     CodingToolName,
+    DocumentChoice,
     Without,
     definitions,
     parse_call,
@@ -80,6 +85,7 @@ _DOCKET_ROLES: Final = frozenset({EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCK
 _BEFORE_ANSWER: Final[frozenset[StepKind]] = frozenset(
     {"h0", "choice1", "h1", "choice2", "h2", "coding"}
 )
+_CHOICES: Final[frozenset[StepKind]] = frozenset({"choice1", "choice2"})
 _NO_USAGE: Final = Usage(prompt_tokens=0, completion_tokens=0)
 # Whether assistant turns' ``reasoning_details`` go back to the model: the shape probe's check 4
 # decides (spec §5.5). The one setting arm C (``run --arm C``) and arm B's tool post-pass
@@ -334,6 +340,8 @@ class CaseLoop:
             raise RuntimeError("accept() called with no call pending")
         self._pending = None
         retry = self._retry
+        # What a read choice had on offer, before its reply changes what is read (decision 0134).
+        offered = self._on_offer() if call.step in _CHOICES else ()
         if reply is None:
             seen = _Seen(protocol_error=error or "no reply")
             self._break()
@@ -355,6 +363,7 @@ class CaseLoop:
                 retry=retry,
                 tool=seen.tool,
                 arguments=seen.arguments,
+                offered=offered,
                 protocol_error=seen.protocol_error,
                 result_chars=seen.result_chars,
                 argument_errors=seen.argument_errors,
@@ -540,19 +549,34 @@ class CaseLoop:
     def _run(self, step: StepKind, call: ToolCall) -> _Result:
         """Check and run one call; ``_NotAcceptedError`` is raised before any state changes.
 
+        A read choice's decisions on documents not on offer do not refuse it (decision 0134):
+        they are answered after the read summary and counted as argument errors, and the trail
+        keeps the arguments as the model sent them.
+
         A leak in a payload the call's result would carry stops the case ``failed: leak``: the
-        result then keeps the parsed arguments and hypothesis for the trail, and has no text.
+        result then keeps the parsed arguments, hypothesis and argument errors for the trail, and
+        has no text.
         """
         options = steps.allowed(step, self._coding)
         if call.name not in options:
             raise _NotAcceptedError(steps.wrong_tool(options, call.name))
-        offered = tuple(f.index for f in self._shelf().rest)
+        shelf = self._shelf()
         try:
-            parsed = parse_call(call.name, call.arguments, self._config.tables, offered)
+            parsed = parse_call(
+                call.name,
+                call.arguments,
+                self._config.tables,
+                tuple(f.index for f in shelf.rest),
+                already_read=shelf.read,
+                not_readable=tuple(f.index for f in shelf.not_readable),
+            )
         except SchemaError as error:
             raise _NotAcceptedError(steps.sanitised(error)) from None
-        arguments = parsed.model_dump(mode="json")
-        if not isinstance(parsed, Hypothesis | ChooseDocuments):
+        if isinstance(parsed, DocumentChoice):
+            arguments, errors = parsed.arguments.model_dump(mode="json"), len(parsed.extras)
+        else:
+            arguments, errors = parsed.model_dump(mode="json"), 0
+        if not isinstance(parsed, Hypothesis | DocumentChoice):
             tool = self._code(call.name, parsed)
             return _Result(arguments, tool.text, argument_errors=tool.argument_errors)
         hypothesis = parsed if isinstance(parsed, Hypothesis) else None
@@ -564,8 +588,8 @@ class CaseLoop:
             )
         except LeakageError as error:
             self._stop, self._leak = "failed: leak", str(error)
-            return _Result(arguments, hypothesis=hypothesis)
-        return _Result(arguments, text, payload, hypothesis)
+            return _Result(arguments, hypothesis=hypothesis, argument_errors=errors)
+        return _Result(arguments, text, payload, hypothesis, errors)
 
     def _hypothesis(
         self, step: StepKind, call: ToolCall, hypothesis: Hypothesis
@@ -588,9 +612,13 @@ class CaseLoop:
             listing = listing_payload(self._view(), self._config.exclusions)
         return text, listing
 
-    def _choose(self, step: StepKind, choice: ChooseDocuments) -> tuple[str, Payload | None]:
-        """Record a read choice; the tool text, and the documents read (none if none were)."""
-        offered = tuple(f.index for f in self._shelf().rest)
+    def _choose(self, step: StepKind, choice: DocumentChoice) -> tuple[str, Payload | None]:
+        """Record a read choice; the tool text, and the documents read (none if none were).
+
+        Only the offered documents' decisions are acted on and kept in the read record; each
+        decision on another document is counted, and answered in the text (decision 0134).
+        """
+        offered = self._on_offer()
         wanted = {decision.document for decision in choice.decisions if decision.read}
         read = tuple(i for i in offered if i in wanted)
         skipped = tuple(i for i in offered if i not in wanted)
@@ -599,14 +627,15 @@ class CaseLoop:
                 step="choice1" if step == "choice1" else "choice2",
                 offered=offered,
                 decisions=choice.decisions,
-                reason=choice.reason,
+                reason=choice.arguments.reason,
                 trigger=self._trigger,
             )
         )
+        self._argument_errors += len(choice.extras)
         payload = documents_payload(self._view(), read, self._config.exclusions) if read else None
         self._read.extend(read)  # only once the documents passed the guard
         self._step, text = steps.after_choice(
-            step, read, skipped, self._shelf(), bool(self._coding)
+            step, read, skipped, self._shelf(), bool(self._coding), extras=choice.extras
         )
         return text, payload
 
@@ -644,6 +673,10 @@ class CaseLoop:
 
     def _offered(self) -> tuple[int, ...]:
         return () if self._docket is None else tuple(f.index for f in self._docket.offered)
+
+    def _on_offer(self) -> tuple[int, ...]:
+        """The listing indices a read choice made now has on offer: those not read yet."""
+        return tuple(f.index for f in self._shelf().rest)
 
     def _shelf(self) -> steps.Shelf:
         """The documents now: the offered ones not read yet, the unreadable ones, those read.

@@ -284,13 +284,39 @@ class TestOfferedAgain:
         assert loop.outcome.skipped == (2,)
 
     def test_a_document_read_before_is_not_offered_again(self) -> None:
-        bad = tool_reply("choose_documents", _choose({1: True, 3: True, 2: False}), call_id="x")
-        loop, _, calls = _later([bad, *LATER], new_structured=False)
-        error = loop.outcome.calls[0].protocol_error
-        assert error is not None
-        assert "not offered [1]" in error
-        assert calls[1].step == "choice1"
-        assert loop.outcome.calls[1].retry
+        """Decision 0134: a decision on it is tolerated, answered as already read, never acted
+        on; the document skipped before is on offer, so a decision on it is no extra."""
+        extra = tool_reply("choose_documents", _choose({1: True, 3: True, 2: False}), call_id="x")
+        loop, _, calls = _later([extra, *LATER[1:]], new_structured=False)
+        assert [c.step for c in calls] == ["choice1", "h1", "choice2", "coding", "refine"]
+        row = loop.outcome.calls[0]
+        assert (row.protocol_error, row.argument_errors, row.offered) == (None, 1, (3, 2))
+        assert not loop.outcome.calls[1].retry
+        result = _tool_turns(calls[1].history)[-1]
+        assert result.tool_text is not None
+        assert "Document [1] was already read; skipped." in result.tool_text.text
+        assert _documents(result.payload)[0].endswith(THREE), "only document 3 is sent"
+        assert len(_documents(result.payload)) == 1
+        first, _ = loop.outcome.reads
+        assert [(d.document, d.read) for d in first.decisions] == [(3, True), (2, False)]
+        assert loop.outcome.read == (3,)
+
+    def test_a_prior_is_made_from_a_trigger_whose_choice_had_extras(self) -> None:
+        """An extra marked read never reaches the prior: its summary and its read documents hold
+        the offered decisions only (``Prior`` checks the two agree)."""
+        replies: list[str | ModelReply] = [
+            FIRST[0],
+            tool_reply("choose_documents", _choose({1: True, 2: False, 3: True, 9: True})),
+            *FIRST[2:],
+        ]
+        loop = CaseLoop(_raw(), _first_view(), _config())
+        _drive(loop, replies)
+        assert loop.outcome.stop_reason == "done"
+        prior = prior_of(loop.outcome, 1)
+        assert prior.read == (1,)
+        assert [d.document for d in prior.reads[0].decisions] == [1, 2]
+        assert "[3]" not in prior_summary(prior)
+        assert "[9]" not in prior_summary(prior)
 
     def test_without_new_structured_evidence_no_h0_call_is_made(self) -> None:
         loop, _, calls = _later(LATER, new_structured=False)

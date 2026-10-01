@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 from tests.test_agent_documents import CAUSE, ONE, TWO, _raw, _withheld
 from tests.test_attach import _docket as small_docket
+from tests.test_attach import _entry
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import loop as loop_module
@@ -33,6 +34,9 @@ from ntsb_probable_cause.agent.texts import (
     CHOOSE,
     CHOOSE_AGAIN,
     CODE_NOW,
+    EXTRA_ALREADY_READ,
+    EXTRA_NOT_READABLE,
+    EXTRA_UNKNOWN,
     NO_DOCUMENTS,
     NONE_READABLE,
     ONE_CALL,
@@ -43,7 +47,7 @@ from ntsb_probable_cause.agent.texts import (
 )
 from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome, ReadRecord, StepKind
 from ntsb_probable_cause.docket.listing import Listing
-from ntsb_probable_cause.docket.manifest import Docket
+from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
 from ntsb_probable_cause.errors import LeakageError, SchemaError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.model.client import (
@@ -100,6 +104,19 @@ def _choose(decisions: dict[int, bool]) -> str:
             "decisions": [
                 {"document": n, "read": read, "expected_effect": "the engine's condition"}
                 for n, read in decisions.items()
+            ],
+            "reason": "the examination decides between the two",
+        }
+    )
+
+
+def _decide(pairs: Sequence[tuple[int, bool]]) -> str:
+    """``choose_documents`` arguments as a list, so a document can be decided on twice."""
+    return json.dumps(
+        {
+            "decisions": [
+                {"document": n, "read": read, "expected_effect": "the engine's condition"}
+                for n, read in pairs
             ],
             "reason": "the examination decides between the two",
         }
@@ -574,6 +591,186 @@ class TestChoiceBranches:
 
 
 # --------------------------------------------------------------------------------------------
+# 5a. Decisions on documents not on offer (decision 0134)
+# --------------------------------------------------------------------------------------------
+
+# The smoke run's docket (run 20261001T115444): eleven documents listed, four readable.
+SMOKE_READABLE = (2, 3, 4, 11)
+SMOKE_TITLES = {n: f"Quillfeather Exhibit {n:02d}" for n in range(1, 12)}
+
+
+def _smoke_view() -> DocketView:
+    """Eleven documents listed; [2], [3], [4] and [11] can be read, alike in size."""
+    records = tuple(
+        DocumentRecord(
+            entry=_entry(n, SMOKE_TITLES[n]),
+            category="exam_site",
+            status="read" if n in SMOKE_READABLE else "unreadable: scan",
+            pages=3,
+            readable_pages=3 if n in SMOKE_READABLE else 0,
+            estimated_tokens=100 if n in SMOKE_READABLE else 0,
+            kind="born-digital" if n in SMOKE_READABLE else "scan",
+        )
+        for n in range(1, 12)
+    )
+    listing = Listing(mkey=1, declared_items=11, entries=tuple(r.entry for r in records))
+    texts = {n: f"[page 1 of 3]\nThe zorbling notes, part {n:02d}.\n" for n in SMOKE_READABLE}
+    return docket_view(_raw(), Docket(mkey=1, listing=listing, documents=records, texts=texts))
+
+
+# Choice 1 decides on all eleven listed (reading [1], which cannot be read, too); choice 2 decides
+# again on the three documents read at choice 1, and on [11].
+SMOKE: list[str | ModelReply] = [
+    tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+    tool_reply(
+        "choose_documents", _choose({n: n in (1, 2, 3, 4) for n in range(1, 12)}), call_id="c2"
+    ),
+    tool_reply("record_hypothesis", _hyp(), call_id="c3"),
+    tool_reply("choose_documents", _choose({2: True, 3: False, 4: True, 11: False}), call_id="c4"),
+    tool_reply("submit_answer", _hyp(findings=[]), call_id="c5"),
+]
+
+
+def _lines(template: str, indices: Sequence[int]) -> str:
+    return "\n".join(template.format(index=n) for n in indices)
+
+
+class TestExtras:
+    """Andy, 2026-10-01, after the smoke run: tolerate the extras and say what happened."""
+
+    def test_the_smoke_runs_two_choices_are_accepted_with_no_retry(self) -> None:
+        loop = CaseLoop(_raw(), _smoke_view(), _config())
+        _, calls = _drive(loop, SMOKE)
+        assert [c.step for c in calls] == ["h0", "choice1", "h1", "choice2", "coding"]
+        rows = loop.outcome.calls
+        assert [row.protocol_error for row in rows] == [None] * 5
+        assert not any(row.retry for row in rows)
+        assert loop.outcome.stop_reason == "done"
+        assert loop.outcome.read == (2, 3, 4)
+        assert loop.outcome.skipped == (11,)
+
+    def test_each_extra_is_answered_after_the_summary(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _smoke_view(), _config()), SMOKE)
+        first = _tool_turns(calls[2].history)[-1]
+        assert first.tool_text is not None
+        assert first.tool_text.text == (
+            f"{read_summary((2, 3, 4), (11,))}\n\n"
+            f"{_lines(EXTRA_NOT_READABLE, (1, 5, 6, 7, 8, 9, 10))}\n\n{RECORD_NOW}"
+        )
+        second = _tool_turns(calls[4].history)[-1]
+        assert second.tool_text is not None
+        assert second.tool_text.text == (
+            f"{read_summary((), (11,))}\n\n{_lines(EXTRA_ALREADY_READ, (2, 3, 4))}\n\n{CODE_NOW}"
+        )
+        assert second.payload is None, "nothing is read again"
+
+    def test_only_the_offered_documents_chosen_are_sent(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _smoke_view(), _config()), SMOKE)
+        sent = _tool_turns(calls[2].history)[-1].payload
+        assert sent is not None
+        rendered = sent.fields()["docket_documents"]
+        assert isinstance(rendered, list)
+        assert [item.split(",")[0] for item in rendered] == [
+            "Docket item 2",
+            "Docket item 3",
+            "Docket item 4",
+        ]
+
+    def test_the_results_hold_no_title(self) -> None:
+        _, calls = _drive(CaseLoop(_raw(), _smoke_view(), _config()), SMOKE)
+        for turn in _tool_turns(calls[-1].history):
+            assert turn.tool_text is not None
+            assert not any(title in turn.tool_text.text for title in SMOKE_TITLES.values())
+
+    def test_the_trail_counts_the_extras_and_keeps_the_arguments_as_sent(self) -> None:
+        loop = CaseLoop(_raw(), _smoke_view(), _config())
+        _drive(loop, SMOKE)
+        rows = loop.outcome.calls
+        assert [row.argument_errors for row in rows] == [0, 7, 0, 3, 0]
+        assert loop.outcome.argument_errors == 10
+        assert rows[1].arguments == json.loads(_choose({n: n < 5 for n in range(1, 12)}))
+        assert rows[3].arguments == json.loads(_choose({2: True, 3: False, 4: True, 11: False}))
+        assert [row.offered for row in rows] == [(), (2, 3, 4, 11), (), (11,), ()]
+
+    def test_the_read_records_hold_only_the_offered_decisions(self) -> None:
+        loop = CaseLoop(_raw(), _smoke_view(), _config())
+        _drive(loop, SMOKE)
+        first, second = loop.outcome.reads
+        assert first.offered == (2, 3, 4, 11)
+        assert [(d.document, d.read) for d in first.decisions] == [
+            (2, True),
+            (3, True),
+            (4, True),
+            (11, False),
+        ]
+        assert (second.offered, [(d.document, d.read) for d in second.decisions]) == (
+            (11,),
+            [(11, False)],
+        )
+
+    def test_a_number_not_in_the_listing_is_answered_and_the_case_goes_on(self) -> None:
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+            tool_reply("choose_documents", _choose({1: True, 2: True, 14: True}), call_id="c2"),
+            tool_reply("record_hypothesis", _hyp(), call_id="c3"),
+            tool_reply("submit_answer", _hyp(findings=[]), call_id="c4"),
+        ]
+        loop = CaseLoop(_raw(), _view(), _config())
+        _, calls = _drive(loop, replies)
+        text = _tool_turns(calls[2].history)[-1].tool_text
+        assert text is not None
+        assert text.text == (
+            f"{read_summary((1, 2), ())}\n\n{EXTRA_UNKNOWN.format(index=14)}\n\n{RECORD_NOW}"
+        )
+        assert loop.outcome.calls[1].argument_errors == 1
+        assert loop.outcome.read == (1, 2)
+
+    def test_reading_nothing_at_choice_one_answers_the_extras_before_the_second_look(
+        self,
+    ) -> None:
+        view = _view()
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+            tool_reply("choose_documents", _choose({1: False, 2: False, 3: True}), call_id="c2"),
+            tool_reply("choose_documents", _choose({1: False, 2: False}), call_id="c3"),
+            tool_reply("submit_answer", _hyp(findings=[]), call_id="c4"),
+        ]
+        _, calls = _drive(CaseLoop(_raw(), view, _config()), replies)
+        text = _tool_turns(calls[2].history)[-1].tool_text
+        assert text is not None
+        assert text.text == (
+            f"{read_summary((), (1, 2))}\n\n{EXTRA_NOT_READABLE.format(index=3)}\n\n"
+            f"{menu(view.offered, view.not_readable)}\n\n{CHOOSE_AGAIN}"
+        )
+
+    def test_a_refused_choice_records_what_was_on_offer(self) -> None:
+        bad = tool_reply("choose_documents", _choose({1: True}), call_id="x")
+        loop = CaseLoop(_raw(), _view(), _config())
+        _drive(loop, [GOOD_START[0], bad, *GOOD_START[1:]])
+        rows = loop.outcome.calls
+        assert rows[1].protocol_error is not None
+        assert "missing [2]" in rows[1].protocol_error
+        assert (rows[1].offered, rows[2].offered, rows[2].retry) == ((1, 2), (1, 2), True)
+        assert rows[1].argument_errors == 0
+
+    def test_a_leak_after_a_choice_with_extras_keeps_its_count(self) -> None:
+        raw = _withheld(_raw())
+        view = docket_view(raw, small_docket({1: ONE, 2: f"[page 1 of 3]\nLetter.\n{CAUSE}\n"}))
+        loop = CaseLoop(raw, view, _config())
+        replies: list[str | ModelReply] = [
+            tool_reply("record_hypothesis", _hyp(), call_id="c1"),
+            tool_reply("choose_documents", _choose({1: False, 2: True, 3: True}), call_id="c2"),
+        ]
+        _drive(loop, replies)
+        assert loop.outcome.stop_reason == "failed: leak"
+        row = loop.outcome.calls[1]
+        assert (row.protocol_error, row.argument_errors, row.offered) == (None, 1, (1, 2))
+        assert loop.outcome.argument_errors == 1
+        (record,) = loop.outcome.reads
+        assert [d.document for d in record.decisions] == [1, 2]
+
+
+# --------------------------------------------------------------------------------------------
 # 6. Replies that break the protocol
 # --------------------------------------------------------------------------------------------
 
@@ -582,6 +779,18 @@ BREAKS: dict[str, tuple[int, ModelReply]] = {
     "bad arguments": (0, tool_reply("record_hypothesis", '{"evidence_narrative": 3}', call_id="x")),
     "not json": (0, tool_reply("record_hypothesis", "{not json", call_id="x")),
     "missing decision": (1, tool_reply("choose_documents", _choose({1: True}), call_id="x")),
+    # Decision 0134: a decision on a document not on offer ([3] cannot be read; [9] is not
+    # listed) is tolerated, but never stands in for a missing or repeated offered one.
+    "missing decision, with extras": (
+        1,
+        tool_reply("choose_documents", _choose({1: True, 3: True, 9: False}), call_id="x"),
+    ),
+    "repeated decision, with an extra": (
+        1,
+        tool_reply(
+            "choose_documents", _decide([(1, True), (2, True), (1, False), (3, True)]), call_id="x"
+        ),
+    ),
     "unknown tool": (0, tool_reply("read_everything", "{}", call_id="x")),
 }
 GOOD_START: list[str | ModelReply] = [

@@ -9,13 +9,15 @@ model's class docstring is stripped from its schema, so editing a docstring cann
 bytes the provider sees.
 
 What the model may not get wrong is caught in code, not by the schema: a document number is only
-a plain integer here, and :func:`parse_call` checks it against the documents on offer (spec
-§5.3, "what is given up"). This module imports nothing from ``records``, ``docket``, ``data`` or
+a plain integer here, and :func:`parse_call` sorts each decision against the documents on offer
+(spec §5.3, "what is given up"). Every offered document must be decided exactly once; a decision
+on any other document is set aside as an extra, with its kind, and answered, never acted on
+(decision 0134). This module imports nothing from ``records``, ``docket``, ``data`` or
 ``scoring.runner``; it holds names, descriptions and argument shapes, never case text.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from copy import deepcopy
 from typing import Final, Literal, get_args
 
@@ -33,6 +35,9 @@ from ntsb_probable_cause.scoring.hypothesis import (
 CodingToolName = Literal["describe_codes", "occurrence_usage", "past_findings", "suggest_codes"]
 ToolName = Literal["record_hypothesis", "choose_documents", "submit_answer", CodingToolName]
 DescribeKind = Literal["occurrence", "finding_category", "item"]
+# Why a document decided on was not on offer (decision 0134): listed but it cannot be read; read
+# at an earlier choice or trigger; or no document of the listing has that number.
+ExtraKind = Literal["not_readable", "already_read", "unknown"]
 # The two tool ablations (spec §7.2): one tool dropped, or all four coding tools dropped.
 Without = Literal["suggest_codes", "coding"]
 
@@ -82,10 +87,49 @@ class DocumentDecision(_Arguments):
 
 
 class ChooseDocuments(_Arguments):
-    """The arguments of ``choose_documents``: one decision for every document on offer."""
+    """The arguments of ``choose_documents``, as the model sent them.
+
+    One decision is wanted for every document on offer; decisions on other documents may be
+    among them too (decision 0134), and :func:`parse_call` sets those apart.
+    """
 
     decisions: tuple[DocumentDecision, ...]
     reason: str
+
+
+class ExtraDecision(BaseModel):
+    """A decision on a document that was not on offer: answered, counted, never acted on.
+
+    Attributes:
+        document: the listing index the decision named.
+        kind: ``not_readable`` (listed, but it cannot be read), ``already_read`` (read at an
+            earlier choice, or on an earlier trigger), or ``unknown`` (no listed document has
+            that number).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    document: int
+    kind: ExtraKind
+
+
+class DocumentChoice(BaseModel):
+    """A ``choose_documents`` call sorted against the offer (decision 0134).
+
+    Attributes:
+        arguments: the arguments as the model sent them, every decision kept: what the trail
+            records.
+        decisions: the decision on each offered document, exactly one each, in the order the
+            model gave them: what the loop acts on and the read record keeps.
+        extras: each document decided on that was not on offer, once, in the order the model
+            first named it, whatever it asked for it (read or skip).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    arguments: ChooseDocuments
+    decisions: tuple[DocumentDecision, ...]
+    extras: tuple[ExtraDecision, ...]
 
 
 class DescribeCodes(_Why):
@@ -239,30 +283,61 @@ def _problems(error: ValidationError) -> str:
     )
 
 
-def _check_decisions(choice: ChooseDocuments, offered: Sequence[int]) -> None:
-    """Every offered document has exactly one decision, and no other document has one."""
-    counts = Counter(decision.document for decision in choice.decisions)
-    offered_set = set(offered)
-    missing = sorted(offered_set - counts.keys())
-    repeated = sorted(n for n, count in counts.items() if count > 1 and n in offered_set)
-    unknown = sorted(counts.keys() - offered_set)
+def _sort_decisions(
+    choice: ChooseDocuments,
+    offered: Collection[int],
+    already_read: Collection[int],
+    not_readable: Collection[int],
+) -> DocumentChoice:
+    """Check the offered documents' decisions, and set every other decision apart.
+
+    Every offered document must have exactly one decision: that choice is what the read step
+    measures. A decision on any other document is an extra (decision 0134), reported once per
+    document, of kind ``already_read``, else ``not_readable``, else ``unknown``.
+
+    Raises:
+        SchemaError: an offered document has no decision, or more than one. The message names
+            the offered documents at fault, never an extra.
+    """
+    counts = Counter(d.document for d in choice.decisions if d.document in offered)
+    missing = sorted(set(offered) - counts.keys())
+    repeated = sorted(n for n, count in counts.items() if count > 1)
     faults = [
         f"{label} {numbers}"
-        for label, numbers in (
-            ("missing", missing),
-            ("repeated", repeated),
-            ("not offered", unknown),
-        )
+        for label, numbers in (("missing", missing), ("repeated", repeated))
         if numbers
     ]
     if faults:
         raise SchemaError(
             f"choose_documents must decide every offered document exactly once: {'; '.join(faults)}"
         )
+    extras: dict[int, ExtraKind] = {}
+    for decision in choice.decisions:
+        number = decision.document
+        if number in offered or number in extras:
+            continue
+        extras[number] = (
+            "already_read"
+            if number in already_read
+            else "not_readable"
+            if number in not_readable
+            else "unknown"
+        )
+    return DocumentChoice(
+        arguments=choice,
+        decisions=tuple(d for d in choice.decisions if d.document in offered),
+        extras=tuple(ExtraDecision(document=n, kind=kind) for n, kind in extras.items()),
+    )
 
 
-def parse_call(
-    name: str, arguments: str, tables: CodeTables, offered: Sequence[int] = ()
+def parse_call(  # noqa: PLR0913 -- the call, then the three facts of the documents at the step.
+    name: str,
+    arguments: str,
+    tables: CodeTables,
+    offered: Sequence[int] = (),
+    *,
+    already_read: Collection[int] = (),
+    not_readable: Collection[int] = (),
 ) -> BaseModel | Hypothesis:
     """Parse and check one tool call's arguments.
 
@@ -271,15 +346,20 @@ def parse_call(
         arguments: the call's arguments, as the JSON text the provider returned.
         tables: the code tables, for the two tools that take a hypothesis.
         offered: the document numbers on offer at this step; only ``choose_documents`` reads it.
+        already_read: the document numbers read before this step, on any trigger; only
+            ``choose_documents`` reads it, to name an extra's kind.
+        not_readable: the listed document numbers that cannot be read; likewise.
 
     Returns:
         A :class:`~ntsb_probable_cause.scoring.hypothesis.Hypothesis` for ``record_hypothesis``
-        and ``submit_answer``, otherwise the tool's argument model.
+        and ``submit_answer``; a :class:`DocumentChoice` for ``choose_documents``, its
+        arguments sorted into the offered decisions and the extras (decision 0134); otherwise
+        the tool's argument model.
 
     Raises:
         SchemaError: the tool is unknown, the arguments are not valid JSON for it, or a
-            ``choose_documents`` decision set misses, repeats or invents a document. The message
-            names the faults and never repeats the model's own values.
+            ``choose_documents`` decision set misses or repeats an offered document. The
+            message names the faults and never repeats the model's own values.
     """
     if name in ("record_hypothesis", "submit_answer"):
         return parse_hypothesis(arguments, tables)
@@ -291,5 +371,5 @@ def parse_call(
     except ValidationError as error:
         raise SchemaError(f"arguments of {name} are not valid: {_problems(error)}") from error
     if isinstance(parsed, ChooseDocuments):
-        _check_decisions(parsed, offered)
+        return _sort_decisions(parsed, frozenset(offered), already_read, not_readable)
     return parsed

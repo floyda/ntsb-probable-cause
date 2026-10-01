@@ -468,6 +468,32 @@ class TestSteps:
         }
         assert {(s.model, s.price_variant) for s in a.steps} == {("openai/gpt-6-luna", "standard")}
 
+    def test_decisions_on_documents_not_on_offer_change_no_record_but_the_trails_count(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0134: [3] cannot be read and [1] was already read; both decisions are
+        tolerated and counted, and the steps and the documents not read stay as without them."""
+        replies = list(HAPPY)
+        replies[1] = reply_calling("choose_documents", _choose({1: True, 2: False, 3: True}))
+        replies[3] = reply_calling("choose_documents", _choose({2: False, 1: True}))
+        client = ScriptedClient(_sync_replies(_scripts(a=replies)))
+        record = _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS)
+        folder = tmp_path / "runs" / record.run_id
+        a, _ = _cases(folder)
+        _, plain = _sync_run(tmp_path / "plain")
+        a_plain, _ = _cases(plain)
+        assert (a.failure, a.documents_not_read) == (None, ("2: skipped",))
+        assert [s.documents_attached for s in a.steps] == [
+            s.documents_attached for s in a_plain.steps
+        ]
+        trail = [c for c in read_jsonl(folder / TRAIL_FILE, AgentCall) if c.case_id == A]
+        chosen = [c for c in trail if c.tool == "choose_documents"]
+        assert [(c.offered, c.argument_errors, c.retry) for c in chosen] == [
+            ((1, 2), 1, False),
+            ((2,), 1, False),
+        ]
+        assert chosen[0].arguments == json.loads(_choose({1: True, 2: False, 3: True}))
+
 
 class TestBatchRun:
     def test_a_batch_run_writes_the_same_records_and_its_batch_ids(self, tmp_path: Path) -> None:
