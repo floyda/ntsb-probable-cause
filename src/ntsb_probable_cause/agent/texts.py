@@ -9,30 +9,29 @@ the agent's own words is a later trigger's summary (:func:`prior_summary`, Task 
 indices, its read and skip decisions with its reasons and expected effects, and trigger numbers,
 which the plan's constraints allow in a ``ToolText``.
 
-Every fixed text the agent sends is here, the words of its refusals too (``agent/steps.py`` and
-``agent/loop.py`` build those from these), so the prompt version can fingerprint them all
-(:func:`model_texts`, :func:`agent_text_sha256`; Andy, 2026-10-01).
+The prompt version fingerprints the source of every module that holds or composes the text the
+agent sends (:data:`TEXT_SOURCES`, :func:`agent_text_sha256`; decision 0133).
 
 This module imports no ``records``, ``docket`` or ``data`` module, directly or indirectly (Task
 10's import contract counts chains): a document's facts come in as ``agent.facts.DocumentFacts``,
 a later trigger's start as ``agent.trail.Prior``, the tool definitions from ``agent.schemas``, and
 the prompt pieces from ``scoring.prompt``, which reads the code tables and the coding guidance
-files, never a case record.
+files, never a case record. The fingerprint reads the other modules' source as package files; it
+imports none of them.
 """
 
 import hashlib
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from importlib import resources
 from typing import Final
 
 from ntsb_probable_cause.agent import schemas
 from ntsb_probable_cause.agent.facts import DocumentFacts
-from ntsb_probable_cause.agent.schemas import DocumentDecision
-from ntsb_probable_cause.agent.trail import Prior, ReadRecord
-from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.agent.trail import Prior
+from ntsb_probable_cause.scoring import hypothesis, prompt
 from ntsb_probable_cause.scoring.codes import CodeTables
-from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 
 # What elicits the answer, for the loop: the base version, then ``+g`` and a short fingerprint
 # of the coding guidance, then ``+p`` and a short fingerprint of the agent's model-facing text
@@ -77,15 +76,31 @@ PRIOR_HYPOTHESIS: Final = "The record_hypothesis call above is the last hypothes
 _CHOICE_NAMES: Final = {"choice1": "first read choice", "choice2": "second look"}
 
 # The words of a refusal (``not_accepted``), which ``agent/steps.py`` and ``agent/loop.py``
-# build. They are kept here so the text fingerprint covers them. ``WRONG_TOOL`` takes the
-# step's tools and the tool called; a name that is no tool of ours is ``UNKNOWN_TOOL``;
-# arguments that are not JSON are ``NOT_JSON``; a problem with the arguments as a whole is placed
-# at ``WHOLE_ARGUMENTS``; a coding tool that raised is ``TOOL_FAULT``, with the error's type name.
+# build: every fixed text of the agent in one module. ``WRONG_TOOL`` takes the step's tools and
+# the tool called; a name that is no tool of ours is ``UNKNOWN_TOOL``; arguments that are not
+# JSON are ``NOT_JSON``; a problem with the arguments as a whole is placed at
+# ``WHOLE_ARGUMENTS``; a coding tool that raised is ``TOOL_FAULT``, with the error's type name.
 WRONG_TOOL: Final = "this step takes {wanted}, not {called}"
 UNKNOWN_TOOL: Final = "an unknown tool"
 NOT_JSON: Final = "not valid JSON"
 WHOLE_ARGUMENTS: Final = "arguments"
 TOOL_FAULT: Final = "the tool could not run ({error})"
+
+# The modules whose source holds or composes the text the agent (arm C) and arm B's tool
+# post-pass send a model, as (package, file), in the order the fingerprint reads them
+# (decision 0133). See :func:`agent_text_sha256` for what is in them and what is not.
+TEXT_SOURCES: Final[tuple[tuple[str, str], ...]] = (
+    ("ntsb_probable_cause.scoring", "prompt.py"),
+    ("ntsb_probable_cause.scoring", "hypothesis.py"),
+    ("ntsb_probable_cause.scoring", "codes.py"),
+    ("ntsb_probable_cause.agent", "texts.py"),
+    ("ntsb_probable_cause.agent", "steps.py"),
+    ("ntsb_probable_cause.agent", "tools.py"),
+    ("ntsb_probable_cause.agent", "schemas.py"),
+    ("ntsb_probable_cause.agent", "later.py"),
+    ("ntsb_probable_cause.agent", "loop.py"),
+    ("ntsb_probable_cause.agent", "armb.py"),
+)
 
 # The text fingerprint's place in a prompt version: ``+p`` and twelve hex characters.
 _TEXT_PART: Final = re.compile(rf"\+p[0-9a-f]{{{prompt.FINGERPRINT_CHARS}}}")
@@ -114,10 +129,10 @@ def system_text(tables: CodeTables, guidance: Sequence[str]) -> str:
 def prompt_version(guidance: Sequence[str], round_number: int | None = None) -> str:
     """What elicits the agent's answer, as recorded on a run.
 
-    The text fingerprint (``+p``) is cut from :func:`agent_text_sha256` (Andy, 2026-10-01): a
-    kept tuning round that changes the protocol, a step text or a tool description changes it,
-    so later plain runs never share a version with runs made on the old text. Nothing is bumped
-    by hand.
+    The text fingerprint (``+p``, :func:`text_mark`) is cut from :func:`agent_text_sha256`
+    (decision 0133): a kept tuning round that changes the protocol, a step text, a tool's result
+    wording or a tool description changes it, so later plain runs never share a version with
+    runs made on the old text. Nothing is bumped by hand.
 
     Args:
         guidance: the coding guidance names; a short fingerprint of them is appended.
@@ -129,15 +144,23 @@ def prompt_version(guidance: Sequence[str], round_number: int | None = None) -> 
         text fingerprint, then ``+r<N>`` when there is a round. E.g.
         ``s3-v1+g0123456789ab+pba9876543210+r2``.
     """
-    chars = prompt.FINGERPRINT_CHARS
     version = AGENT_PROMPT_VERSION
     fingerprint = prompt.guidance_sha256(guidance)
     if fingerprint is not None:
-        version += f"+g{fingerprint[:chars]}"
-    version += f"+p{agent_text_sha256()[:chars]}"
+        version += f"+g{fingerprint[: prompt.FINGERPRINT_CHARS]}"
+    version += text_mark()
     if round_number is not None:
         version += f"+r{round_number}"
     return version
+
+
+def text_mark() -> str:
+    """``+p`` and the first twelve characters of :func:`agent_text_sha256`.
+
+    Arm C's prompt version carries it after the guidance, and arm B's tool post-pass label after
+    ``+tools-<stats>`` (``agent/armb.py``): the post-pass sends the same tools and texts.
+    """
+    return f"+p{agent_text_sha256()[: prompt.FINGERPRINT_CHARS]}"
 
 
 def is_plain(version: str, guidance: Sequence[str]) -> bool:
@@ -158,102 +181,57 @@ def is_plain(version: str, guidance: Sequence[str]) -> bool:
     return re.fullmatch(f"{re.escape(stem)}{_TEXT_PART.pattern}", version) is not None
 
 
-def model_texts() -> tuple[str, ...]:
-    """Every fixed text the agent sends a model, in a fixed order: what the fingerprint hashes.
+def source_text(package: str, name: str) -> str:
+    """One module's source, read as a file of its package (never from a live object).
 
-    In this order:
-
-    1. ``prompt.SYSTEM_ANSWER`` (the start of the agent's system text) and
-       ``prompt.SYSTEM_REFINE`` (the refinement's);
-    2. ``PROTOCOL``;
-    3. this module's fixed strings that reach the model: the step texts (``CHOOSE``,
-       ``CHOOSE_AGAIN``, ``RECORD_NOW``, ``CODE_NOW``, ``ANSWER_NOW``, ``NO_DOCUMENTS``,
-       ``NONE_READABLE``, ``ALL_READ``, ``ONE_CALL``), a later trigger's summary lines
-       (``PRIOR_HEADING``, ``PRIOR_HYPOTHESIS``, the two read choices' names) and the words of
-       a refusal (``WRONG_TOOL``, ``UNKNOWN_TOOL``, ``NOT_JSON``, ``WHOLE_ARGUMENTS``,
-       ``TOOL_FAULT``). ``agent/steps.py`` holds no fixed text of its own: it sends these;
-    4. this module's templates, rendered with listing numbers and placeholder words, so that a
-       change to their wording counts too: ``menu``, ``read_summary``, ``not_accepted`` and
-       ``prior_summary`` (with no read choice, and with two);
-    5. ``json.dumps(schemas.TOOL_DEFINITIONS, sort_keys=True)``: every tool's name, description
-       and argument schema.
-
-    Not covered: the code tables (data, which the commit SHA names) and the coding guidance (its
-    own fingerprint, ``+g``); the words ``scoring.prompt`` puts around them (the tables' headings,
-    ``GUIDANCE_HEADING``, ``refine_message``) and the runner's retry line ("Your previous reply
-    was rejected: ..."), which arm B sends too; the coding tools' result texts
-    (``agent/tools.py``); and which tool each step forces, which is the step table, not text.
+    Args:
+        package: the package, e.g. ``ntsb_probable_cause.agent``.
+        name: the file, e.g. ``texts.py``.
 
     Returns:
-        The texts, each read from its module when called.
+        The file's text, decoded as UTF-8.
     """
-    return (
-        prompt.SYSTEM_ANSWER,
-        prompt.SYSTEM_REFINE,
-        PROTOCOL,
-        CHOOSE,
-        CHOOSE_AGAIN,
-        RECORD_NOW,
-        CODE_NOW,
-        ANSWER_NOW,
-        NO_DOCUMENTS,
-        NONE_READABLE,
-        ALL_READ,
-        ONE_CALL,
-        PRIOR_HEADING,
-        PRIOR_HYPOTHESIS,
-        _CHOICE_NAMES["choice1"],
-        _CHOICE_NAMES["choice2"],
-        WRONG_TOOL,
-        UNKNOWN_TOOL,
-        NOT_JSON,
-        WHOLE_ARGUMENTS,
-        TOOL_FAULT,
-        *_rendered(),
-        json.dumps(schemas.TOOL_DEFINITIONS, sort_keys=True),
-    )
+    return resources.files(package).joinpath(name).read_text(encoding="utf-8")
 
 
-def agent_text_sha256() -> str:
-    """The SHA-256 of :func:`model_texts`, as a JSON list of strings, in hexadecimal.
+def agent_text_sha256(read: Callable[[str, str], str] | None = None) -> str:
+    """The fingerprint of the text the agent sends a model: a SHA-256, in hexadecimal.
 
-    The prompt version carries its first twelve characters (``+p``). The JSON list keeps the
-    parts apart, so no two lists of texts give the same bytes. Every part is a fixed string or a
-    rendering of fixed inputs, and the tool definitions are dumped with sorted keys, so the
-    value is the same in every interpreter.
+    Decision 0133 (Andy, 2026-10-01): the version follows the text automatically, so no run can
+    be mislabelled. It hashes, as one JSON list, in this order:
+
+    1. the source of every module in :data:`TEXT_SOURCES`, read as package files:
+       ``scoring/prompt.py`` (the answer and refinement prompts, the tables' headings, the
+       guidance heading, the refinement message, the retry line ``prompt.REJECTED``),
+       ``scoring/hypothesis.py`` (the answer and refinement schemas, and the parse errors a
+       refusal repeats), ``scoring/codes.py`` (how a table line is written, and its parse
+       errors), and ``agent/`` ``texts.py``, ``steps.py``, ``tools.py`` (the coding tools'
+       result wording), ``schemas.py`` (the tool definitions), ``later.py``, ``loop.py`` and
+       ``armb.py`` (how the turns and the system texts are put together);
+    2. ``json.dumps(schemas.TOOL_DEFINITIONS, sort_keys=True)`` and
+       ``json.dumps(hypothesis.REFINEMENT_SCHEMA, sort_keys=True)``: the schemas as sent, which
+       can change with the pydantic version even when no file above does.
+
+    **Any edit to those files changes the version, a comment or a docstring included.** A false
+    change only separates runs that were in fact alike; it never merges two different prompts.
+
+    Not covered: the code tables and the statistics (data files, which the commit SHA and
+    ``spec.json``'s ``stats`` name), the coding guidance (its own fingerprint, ``+g``), and the
+    evidence with its rendering and the transport (``records``, ``docket``, ``model``), which
+    are the same for every arm and named by the commit SHA and the evidence version.
+
+    Args:
+        read: how a module's source is read; :func:`source_text` (looked up when called), or a
+            stand-in in tests.
+
+    Returns:
+        The SHA-256 of the JSON list, in hexadecimal; the same in every interpreter.
     """
-    return hashlib.sha256(json.dumps(list(model_texts())).encode()).hexdigest()
-
-
-def _rendered() -> tuple[str, ...]:
-    """This module's templates with listing numbers and placeholder words: their fixed words."""
-    one = DocumentFacts(1, 1, 1, 10, "born-digital", "read")
-    two = DocumentFacts(2, 2, 0, 0, None, "fetch failed")
-    hypothesis = Hypothesis.model_validate(
-        {
-            "evidence_narrative": "{narrative}",
-            "occurrence": [{"phase": "551", "event": "092", "probability": 0.5}],
-            "findings": [],
-            "probable_cause": "{cause}",
-            "lay_explanation": "{explanation}",
-            "confidence": 0.5,
-            "abstain": False,
-            "evidence_used": [],
-        }
-    )
-    read = DocumentDecision(document=1, read=True, expected_effect="{expected}")
-    skip = DocumentDecision(document=2, read=False, expected_effect="{expected}")
-    first = ReadRecord(step="choice1", offered=(1, 2), decisions=(read, skip), reason="{reason}")
-    second = ReadRecord(step="choice2", offered=(2,), decisions=(skip,), reason="{reason}")
-    return (
-        menu((one, two), (two,), already_read=(3,)),
-        read_summary((1,), ()),
-        not_accepted("{error}"),
-        prior_summary(Prior(trigger=1, last_hypothesis=hypothesis, reads=(), read=())),
-        prior_summary(
-            Prior(trigger=1, last_hypothesis=hypothesis, reads=(first, second), read=(1,))
-        ),
-    )
+    reader = source_text if read is None else read
+    parts = [[f"{package}/{name}", reader(package, name)] for package, name in TEXT_SOURCES]
+    parts.append(["TOOL_DEFINITIONS", json.dumps(schemas.TOOL_DEFINITIONS, sort_keys=True)])
+    parts.append(["REFINEMENT_SCHEMA", json.dumps(hypothesis.REFINEMENT_SCHEMA, sort_keys=True)])
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
 
 
 def menu(

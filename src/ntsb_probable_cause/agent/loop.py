@@ -430,7 +430,7 @@ class CaseLoop:
             settings = self._refine_settings()
             system = self._refine_system(answer)
             if self._rejected is not None:
-                system += f"\n\nYour previous reply was rejected: {self._rejected}"
+                system += f"\n\n{prompt.REJECTED}{self._rejected}"
             history: tuple[Turn, ...] = (Turn(role="assistant", content=arguments),)
         else:
             update = {

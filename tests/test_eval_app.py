@@ -2970,8 +2970,9 @@ def test_resolve_latest_finds_a_plain_arm_c_run_made_on_an_earlier_agent_text(
     """Andy, 2026-10-01: plain arm C is S3's guidance and no round; ``+p`` is not compared."""
     runs = tmp_path / "runs"
     current = _arm_c_record("x", guidance=_S3_GUIDANCE).prompt_version
+    original = agent_texts.source_text
     with monkeypatch.context() as patched:
-        patched.setattr(agent_texts, "PROTOCOL", f"{agent_texts.PROTOCOL} (an earlier text)")
+        patched.setattr(agent_texts, "source_text", lambda p, n: f"{original(p, n)}# earlier\n")
         earlier = _arm_c_record("x", guidance=_S3_GUIDANCE)
         later_round = _arm_c_record("x", guidance=_S3_GUIDANCE, round_number=1)
     assert earlier.prompt_version != current
@@ -3025,7 +3026,14 @@ def test_resolve_latest_leaves_out_a_renamed_folder_by_its_name_and_its_record(
 
 @pytest.mark.parametrize(
     "suffix",
-    ["+tools-s3", "+check-luna", "+check-luna-s3", "+tools-s3+check-luna-s3"],
+    [
+        "+tools-s3",
+        "+check-luna",
+        "+check-luna-s3",
+        "+tools-s3+check-luna-s3",
+        "+tools-s3+p0123456789ab",  # the post-pass label from decision 0133
+        "+tools-s3+p0123456789ab+check-luna-s3",
+    ],
 )
 def test_resolve_latest_leaves_out_a_derived_run_by_its_record(tmp_path: Path, suffix: str) -> None:
     """A derived run whose folder the glob takes (moved, say) is still not an answering run."""

@@ -37,15 +37,18 @@ After the run, `make s3-round-result` appends the result below the registration,
 above it is edited.
 
 Nothing is bumped by hand for a change of text. The agent's prompt version is
-`s3-v1+g<guidance>+p<text>`, then `+r<N>` for a round (Andy, 2026-10-01). `+p` is the first
-twelve characters of `texts.agent_text_sha256()`, a fingerprint of every fixed text the agent
-sends: arm B's answer and refinement prompts, the protocol, the step and result texts, the
-templates and the tool definitions (`texts.model_texts` lists them, and what is not covered). A
-round that changes any of them changes `+p`. A plain run made after a kept round therefore never
-shares a version with the noise-floor runs. `scripts/s3_noise_floor.py` refuses two runs whose
-versions differ, and a resume across a change of text is refused. `resolve_latest` still takes
-any run with S3's guidance and no `+r` as plain arm C, whatever its `+p`. A change to the step
-limits is not text: it shows in `spec.json`, not in `+p`.
+`s3-v1+g<guidance>+p<text>`, then `+r<N>` for a round (decision 0133). `+p` is the first twelve
+characters of `texts.agent_text_sha256()`, a fingerprint of the source of every module that
+holds or composes the text the agent sends (`texts.TEXT_SOURCES`): `scoring/prompt.py`,
+`scoring/hypothesis.py`, `scoring/codes.py`, and `agent/texts.py`, `steps.py`, `tools.py`,
+`schemas.py`, `later.py`, `loop.py` and `armb.py`, with the tool definitions and the refinement
+schema as sent. A round that changes the protocol, a step text, a tool's wording or a tool
+description changes `+p`; so does any other edit to those files, a comment included (a false
+change only separates runs). A plain run made after a kept round therefore never shares a version
+with the noise-floor runs. `scripts/s3_noise_floor.py` refuses two runs whose versions differ,
+and a resume across a change of text is refused. `resolve_latest` still takes any run with S3's
+guidance and no `+r` as plain arm C, whatever its `+p`. Arm B's tool post-pass label carries the
+same `+p` after `+tools-s3`. A change to the step limits shows in `spec.json`.
 
 A round is read against the loop's own noise floor: the two (or three) identical arm C runs on
 `dev-400` that `make s3-noise-report` reads into `docs/results/s3-noise-floor-dev.txt`. S2.7's

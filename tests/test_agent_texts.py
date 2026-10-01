@@ -7,17 +7,19 @@ numbers keyed by listing index, never a title.
 
 import copy
 import hashlib
+import importlib
 import json
 import os
 import subprocess
 import sys
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from typing import Any
 
 import grimp
 import pytest
 
-from ntsb_probable_cause.agent import schemas, steps, texts
+from ntsb_probable_cause.agent import schemas, texts
 from ntsb_probable_cause.agent.facts import DocumentFacts
 from ntsb_probable_cause.agent.schemas import TOOL_DEFINITIONS
 from ntsb_probable_cause.agent.texts import (
@@ -31,19 +33,22 @@ from ntsb_probable_cause.agent.texts import (
     ONE_CALL,
     PROTOCOL,
     RECORD_NOW,
+    TEXT_SOURCES,
     agent_text_sha256,
     is_plain,
     menu,
-    model_texts,
     not_accepted,
     prompt_version,
     read_summary,
+    source_text,
     system_text,
+    text_mark,
 )
 from ntsb_probable_cause.agent.tools import describe_codes, occurrence_usage
-from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.scoring import hypothesis, prompt
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
+from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA
 
 TABLES = load_tables()
 GUIDANCE = ("r3-loc-stall", "r6-aircraft-control")
@@ -181,12 +186,14 @@ class TestPromptVersion:
         assert mine != other
         assert mine.partition("+p")[2] == other.partition("+p")[2], "guidance is not in +p"
 
-    def test_a_changed_protocol_changes_the_text_part_only(
-        self, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize("name", ["texts.py", "tools.py", "prompt.py"])
+    def test_an_edited_text_module_changes_the_text_part_only(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
     ) -> None:
-        """A kept tuning round that edits the protocol shows in later plain runs' version."""
+        """A kept tuning round that edits the protocol or a tool's wording shows in later plain
+        runs' version (decision 0133)."""
         before = prompt_version(GUIDANCE)
-        monkeypatch.setattr(texts, "PROTOCOL", f"{PROTOCOL} Read the weather documents.")
+        _edit_source(monkeypatch, name)
         after = prompt_version(GUIDANCE)
         assert after != before
         assert after.partition("+p")[0] == before.partition("+p")[0]
@@ -196,7 +203,7 @@ class TestPromptVersion:
     ) -> None:
         current = prompt_version(GUIDANCE)
         with monkeypatch.context() as patched:
-            patched.setattr(texts, "CHOOSE", f"{CHOOSE} (changed)")
+            _edit_source(patched, "texts.py")
             earlier = prompt_version(GUIDANCE)
         assert earlier != current
         assert prompt_version(GUIDANCE) == current
@@ -209,87 +216,77 @@ class TestPromptVersion:
         assert is_plain(prompt_version(()), ())
 
 
-# Every fixed text the fingerprint covers, as (module, name); each is changed in turn below.
-_COVERED: list[tuple[object, str]] = [
-    (prompt, "SYSTEM_ANSWER"),
-    (prompt, "SYSTEM_REFINE"),
-    *(
-        (texts, name)
-        for name in (
-            "PROTOCOL",
-            "CHOOSE",
-            "CHOOSE_AGAIN",
-            "RECORD_NOW",
-            "CODE_NOW",
-            "ANSWER_NOW",
-            "NO_DOCUMENTS",
-            "NONE_READABLE",
-            "ALL_READ",
-            "ONE_CALL",
-            "PRIOR_HEADING",
-            "PRIOR_HYPOTHESIS",
-            "WRONG_TOOL",
-            "UNKNOWN_TOOL",
-            "NOT_JSON",
-            "WHOLE_ARGUMENTS",
-            "TOOL_FAULT",
-        )
-    ),
-]
+def _edit_source(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    """Make the fingerprint read one covered file with a comment line added to it."""
+    original = texts.source_text
+
+    def edited(package: str, file: str) -> str:
+        return original(package, file) + ("# an edit\n" if file == name else "")
+
+    monkeypatch.setattr(texts, "source_text", edited)
+
+
+_EXPECTED_SOURCES = (
+    ("ntsb_probable_cause.scoring", "prompt.py"),
+    ("ntsb_probable_cause.scoring", "hypothesis.py"),
+    ("ntsb_probable_cause.scoring", "codes.py"),
+    ("ntsb_probable_cause.agent", "texts.py"),
+    ("ntsb_probable_cause.agent", "steps.py"),
+    ("ntsb_probable_cause.agent", "tools.py"),
+    ("ntsb_probable_cause.agent", "schemas.py"),
+    ("ntsb_probable_cause.agent", "later.py"),
+    ("ntsb_probable_cause.agent", "loop.py"),
+    ("ntsb_probable_cause.agent", "armb.py"),
+)
 
 
 class TestAgentTextFingerprint:
-    """``agent_text_sha256``: what the prompt version's ``+p`` part is cut from."""
+    """``agent_text_sha256``: the source of the modules that hold or compose the agent's text.
 
-    def test_is_a_sha256_hex_digest_of_the_model_texts_in_order(self) -> None:
+    Decision 0133: any edit to a covered file changes the version, a comment included; a false
+    change only separates runs, it never merges two different prompts.
+    """
+
+    def test_covers_the_modules_that_hold_or_compose_the_text_in_a_fixed_order(self) -> None:
+        assert TEXT_SOURCES == _EXPECTED_SOURCES
+
+    def test_reads_each_module_as_its_file(self) -> None:
+        for package, name in TEXT_SOURCES:
+            module = importlib.import_module(f"{package}.{name.removesuffix('.py')}")
+            assert module.__file__ is not None
+            assert source_text(package, name) == Path(module.__file__).read_text(encoding="utf-8")
+
+    def test_is_the_sha256_of_the_sources_and_the_schemas_as_sent(self) -> None:
+        parts = [[f"{p}/{n}", source_text(p, n)] for p, n in TEXT_SOURCES]
+        parts.append(["TOOL_DEFINITIONS", json.dumps(TOOL_DEFINITIONS, sort_keys=True)])
+        parts.append(["REFINEMENT_SCHEMA", json.dumps(REFINEMENT_SCHEMA, sort_keys=True)])
         digest = agent_text_sha256()
+        assert digest == hashlib.sha256(json.dumps(parts).encode()).hexdigest()
         assert len(digest) == 64
-        assert set(digest) <= set("0123456789abcdef")
-        parts = model_texts()
-        assert digest == hashlib.sha256(json.dumps(list(parts)).encode()).hexdigest()
+        assert text_mark() == f"+p{digest[:12]}"
 
-    def test_holds_the_prompts_the_protocol_every_constant_and_the_tool_definitions(
-        self,
+    @pytest.mark.parametrize(
+        ("package", "name"), _EXPECTED_SOURCES, ids=[n for _, n in _EXPECTED_SOURCES]
+    )
+    def test_an_edit_to_any_covered_file_changes_it_even_a_comment(
+        self, tmp_path: Path, package: str, name: str
     ) -> None:
-        parts = model_texts()
-        assert parts[:3] == (prompt.SYSTEM_ANSWER, prompt.SYSTEM_REFINE, PROTOCOL)
-        for module, name in _COVERED:
-            assert getattr(module, name) in parts, name
-        assert parts[-1] == json.dumps(TOOL_DEFINITIONS, sort_keys=True)
-        assert "first read choice" in parts
-        assert "second look" in parts
+        """Hashed over a copy of the files, with one of them edited by a comment line."""
+        for p, n in TEXT_SOURCES:
+            copy_of = tmp_path / p / n
+            copy_of.parent.mkdir(parents=True, exist_ok=True)
+            copy_of.write_text(source_text(p, n), encoding="utf-8")
 
-    def test_holds_the_templates_rendered_with_placeholders(self) -> None:
-        joined = "\n".join(model_texts())
-        assert "[1] 1 page, 1 with a text layer, about 10 tokens" in joined
-        assert "Already read: [3]" in joined
-        assert "Not readable: [2] 2 pages" in joined
-        assert "You read: [1]. You skipped: none." in joined
-        assert not_accepted("{error}") in joined
-        assert "Documents you read: none." in joined
-        assert "Read choices: none." in joined
-        assert "Documents you read, attached above in full: [1]." in joined
-        assert "Trigger 1, first read choice. Your reason: {reason}" in joined
-        assert "[2] skipped. You expected: {expected}" in joined
+        def read(p: str, n: str) -> str:
+            return (tmp_path / p / n).read_text(encoding="utf-8")
 
-    def test_every_upper_case_text_of_texts_and_steps_is_covered(self) -> None:
-        """A fixed text added later must join the fingerprint, or this test fails."""
-        parts = set(model_texts())
-        not_text = {"AGENT_PROMPT_VERSION", "REQUIRED"}  # a label; a tool_choice value
-        for module in (texts, steps):
-            for name, value in vars(module).items():
-                if name.isupper() and isinstance(value, str) and name not in not_text:
-                    assert value in parts, f"{module.__name__}.{name} is not fingerprinted"
+        before = agent_text_sha256(read)
+        assert before == agent_text_sha256(), "the copy hashes as the package does"
+        edited = tmp_path / package / name
+        edited.write_text(f"{edited.read_text(encoding='utf-8')}# an edit\n", encoding="utf-8")
+        assert agent_text_sha256(read) != before
 
-    @pytest.mark.parametrize(("module", "name"), _COVERED, ids=[n for _, n in _COVERED])
-    def test_changing_any_covered_text_changes_it(
-        self, monkeypatch: pytest.MonkeyPatch, module: object, name: str
-    ) -> None:
-        before = agent_text_sha256()
-        monkeypatch.setattr(module, name, f"{getattr(module, name)} (changed)")
-        assert agent_text_sha256() != before
-
-    def test_changing_a_tool_description_changes_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_the_tool_definitions_as_sent_are_in_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
         before = agent_text_sha256()
         changed = copy.deepcopy(TOOL_DEFINITIONS)
         function = changed[0]["function"]
@@ -298,19 +295,17 @@ class TestAgentTextFingerprint:
         monkeypatch.setattr(schemas, "TOOL_DEFINITIONS", changed)
         assert agent_text_sha256() != before
 
-    @pytest.mark.parametrize("template", ["menu", "read_summary", "not_accepted", "prior_summary"])
-    def test_changing_a_templates_wording_changes_it(
-        self, monkeypatch: pytest.MonkeyPatch, template: str
-    ) -> None:
+    def test_the_refinement_schema_as_sent_is_in_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
         before = agent_text_sha256()
-        original = getattr(texts, template)
-        monkeypatch.setattr(texts, template, lambda *a, **k: f"{original(*a, **k)} (changed)")
+        monkeypatch.setattr(hypothesis, "REFINEMENT_SCHEMA", {"changed": True})
         assert agent_text_sha256() != before
 
-    def test_the_code_tables_and_guidance_are_not_in_it(self) -> None:
-        joined = "\n".join(model_texts())
-        assert prompt.tables_block(TABLES) not in joined
-        assert prompt.guidance_text(GUIDANCE) not in joined
+    def test_no_data_or_guidance_file_is_in_it(self) -> None:
+        """Tables and statistics are data (the commit SHA); guidance has its own ``+g``."""
+        assert all(name.endswith(".py") for _, name in TEXT_SOURCES)
+        assert prompt.guidance_text(GUIDANCE) not in json.dumps(
+            [source_text(*s) for s in TEXT_SOURCES]
+        )
 
     def test_is_stable_across_two_fresh_interpreters(self) -> None:
         code = (

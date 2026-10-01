@@ -62,6 +62,11 @@ with the modifier appended -- it is one specific line from the list, copied exac
 only that eight-digit item code, never its label text. Reply only with JSON matching the
 schema: one entry per finding index."""
 
+# The start of the line a retry adds to the system text after a rejected reply; the reason
+# follows it. One constant for every caller (the runner, the ordering check, the agent loop and
+# arm B's tool post-pass), so the agent's text fingerprint covers it (decision 0133). The bytes
+# are the ones every caller wrote out before.
+REJECTED = "Your previous reply was rejected: "
 
 GUIDANCE_DIR: Traversable = resources.files("ntsb_probable_cause.scoring").joinpath("guidance")
 _GUIDANCE_NAME = re.compile(r"^r(?P<round>[1-9][0-9]*)-[a-z0-9]+(?:-[a-z0-9]+)*$")

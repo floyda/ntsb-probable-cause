@@ -556,7 +556,10 @@ class TestResume:
         with pytest.raises(_KilledError):
             _runner(runs, batch=dead).run(_spec(), RAWS)
         (folder,) = [p for p in runs.iterdir() if p.is_dir()]
-        monkeypatch.setattr(texts, "CODE_NOW", f"{texts.CODE_NOW} Use them sparingly.")
+        original = texts.source_text
+        monkeypatch.setattr(
+            texts, "source_text", lambda package, name: f"{original(package, name)}# an edit\n"
+        )
         runner = _runner(runs, batch=FakeBatchClient(handlers=[]))
         with pytest.raises(
             ConfigurationError, match=f"cannot resume {folder.name}: agent_prompt_version"

@@ -197,11 +197,11 @@ def test_the_derived_prompt_version_records_the_statistics_read(
 
 
 def _tools_source(runs: Path) -> Path:
-    """A finished arm B tool post-pass (``agent/armb.py`` writes ``+tools-s3``)."""
+    """A finished arm B tool post-pass (``agent/armb.py`` writes ``+tools-s3+p<12>``)."""
     run_id = "20260926T000000-abc1234-dev-400-B-tools"
     folder = _source(runs, run_id)
     (record,) = read_jsonl(folder / "run.jsonl", RunRecord)
-    tools = record.model_copy(update={"prompt_version": "s1-v6+gabc+tools-s3"})
+    tools = record.model_copy(update={"prompt_version": "s1-v6+gabc+tools-s3+p0123456789ab"})
     (folder / "run.jsonl").write_text(tools.model_dump_json() + "\n")  # replaced, not appended
     return folder
 
@@ -232,7 +232,8 @@ def test_a_tool_post_pass_is_checked_with_s3s_statistics_only(tmp_path: Path) ->
         now=lambda: NOW,
         stats="s3",
     )
-    assert record.prompt_version == "s1-v6+gabc+tools-s3+check-rule-s3"
+    # The check's suffix goes after the post-pass's text fingerprint (decision 0133).
+    assert record.prompt_version == "s1-v6+gabc+tools-s3+p0123456789ab+check-rule-s3"
 
 
 JEV_BASE = "https://api.typesafe.ai"

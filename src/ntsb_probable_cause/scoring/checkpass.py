@@ -29,6 +29,7 @@ from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, StatsName
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import rescore_occurrence
+from ntsb_probable_cause.scoring.prompt import REJECTED
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 
 Way = Literal["rule", "luna", "jev", "jev2"]
@@ -133,9 +134,7 @@ def luna_checker(
         prompt = completion = 0
         error: SchemaError | None = None
         for attempt in range(2):
-            this_system = (
-                system if attempt == 0 else f"{system}\n\nYour previous reply was rejected: {error}"
-            )
+            this_system = system if attempt == 0 else f"{system}\n\n{REJECTED}{error}"
             reply = client.complete(empty, settings, system=this_system)
             spent += cost_usd(reply, settings)[0]
             prompt += reply.usage.prompt_tokens

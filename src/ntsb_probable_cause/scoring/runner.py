@@ -1539,7 +1539,7 @@ class Runner:
             retry = self._client.complete(
                 payload,
                 _settings(spec, HYPOTHESIS_SCHEMA, "hypothesis"),
-                system=f"{system}\n\nYour previous reply was rejected: {error}",
+                system=f"{system}\n\n{prompt.REJECTED}{error}",
             )
             ctx.replies.append(retry)
             hypothesis = parse_hypothesis(retry.content or "", self._tables)
@@ -1562,7 +1562,7 @@ class Runner:
             retry = self._client.complete(
                 payload,
                 _settings(spec, REFINEMENT_SCHEMA, "refinement"),
-                system=f"{refine_system}\n\nYour previous reply was rejected: {error}",
+                system=f"{refine_system}\n\n{prompt.REJECTED}{error}",
                 history=history,
             )
             ctx.replies.append(retry)
@@ -2189,10 +2189,10 @@ class Runner:
     def _retry_system(system: str, error: str | None) -> str:
         if error is None:
             return system
-        return f"{system}\n\nYour previous reply was rejected: {error}"
+        return f"{system}\n\n{prompt.REJECTED}{error}"
 
     def _stage2_system(self, hypothesis: Hypothesis, error: str | None) -> str:
         base = f"{prompt.SYSTEM_REFINE}\n\n"
         if error is not None:
-            base += f"Your previous reply was rejected: {error}\n\n"
+            base += f"{prompt.REJECTED}{error}\n\n"
         return base + prompt.refine_message(hypothesis, self._tables)

@@ -51,7 +51,7 @@ from ntsb_probable_cause.agent.armb import (
 from ntsb_probable_cause.agent.later import as_recorded
 from ntsb_probable_cause.agent.run import GUIDANCE, TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import definitions, force, parse_call
-from ntsb_probable_cause.agent.texts import not_accepted
+from ntsb_probable_cause.agent.texts import agent_text_sha256, not_accepted, text_mark
 from ntsb_probable_cause.agent.tools import (
     ToolResult,
     describe_codes,
@@ -629,7 +629,10 @@ class TestTheDerivedRun:
         assert _record(folder) == record
         original = _record(source)
         assert (record.arm, record.sample, record.evidence_version) == ("B", "dev-400", "v1")
-        assert record.prompt_version == f"{original.prompt_version}+tools-s3"
+        # Decision 0133: the post-pass sends the agent's texts, so its label carries their
+        # fingerprint after +tools-s3, as arm C's version does.
+        assert record.prompt_version == f"{original.prompt_version}+tools-s3{text_mark()}"
+        assert text_mark() == f"+p{agent_text_sha256()[:12]}"
         assert (record.guidance, record.guidance_sha256) == (
             original.guidance,
             original.guidance_sha256,
@@ -1289,7 +1292,7 @@ class TestCommand:
         (case,) = _cases(checked).values()
         assert [s.tool for s in case.steps][-2:] == [TOOL, "ordering_check"]
         # Both post-passes name the statistics they counted in.
-        assert _record(checked).prompt_version.endswith("+tools-s3+check-rule-s3")
+        assert _record(checked).prompt_version.endswith(f"+tools-s3{text_mark()}+check-rule-s3")
 
         assert main(["check", f"{derived}-check-rule", "--way", "rule", "--stats", "s3"]) == 1
         assert "stacked" in capsys.readouterr().err

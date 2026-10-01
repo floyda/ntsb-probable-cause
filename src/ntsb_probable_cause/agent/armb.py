@@ -29,8 +29,9 @@ The derived run ``<run id>-tools`` holds ``cases.jsonl`` (each answered case's s
 source's plus one ``fixed_tools`` step; every other case is copied through unchanged),
 ``trail.jsonl`` (one ``AgentCall`` per model call; the pipeline's own calls are in the step's
 arguments, with their result sizes), the drivers' files, and ``run.jsonl``: arm B, the source's
-prompt version with ``+tools-s3`` (the S3 statistics file the tools counted in, decision 0129), and
-the post-pass's own cost. A post-pass is run once per source run and is not resumed.
+prompt version with ``+tools-s3`` (the S3 statistics file the tools counted in, decision 0129) and
+``+p`` with the agent's text fingerprint (decision 0133), and the post-pass's own cost. A post-pass
+is run once per source run and is not resumed.
 """
 
 import json
@@ -63,7 +64,7 @@ from ntsb_probable_cause.agent.schemas import (
     parse_call,
 )
 from ntsb_probable_cause.agent.steps import sanitised, wrong_tool
-from ntsb_probable_cause.agent.texts import not_accepted
+from ntsb_probable_cause.agent.texts import not_accepted, text_mark
 from ntsb_probable_cause.agent.tools import run_coding_tool
 from ntsb_probable_cause.agent.trail import AgentCall, DocketState, LoopOutcome, StepKind
 from ntsb_probable_cause.errors import (
@@ -436,7 +437,7 @@ class FixedToolsLoop:
             settings = self._refine_settings()
             system = self._refine_system(answer)
             if self._rejected is not None:
-                system += f"\n\nYour previous reply was rejected: {self._rejected}"
+                system += f"\n\n{prompt.REJECTED}{self._rejected}"
             history: tuple[Turn, ...] = (Turn(role="assistant", content=arguments),)
         else:
             update = {
@@ -859,7 +860,10 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
 
     Its cost is the post-pass's own: every reply it took, and any round no reply came from. The
     source's answers were paid for, and counted, in the source run. Its prompt version is the
-    source's with ``+tools-<stats_name>``: the statistics the tool results counted in.
+    source's with ``+tools-<stats_name>`` (the statistics the tool results counted in) and then
+    ``+p`` and the agent's text fingerprint (``texts.text_mark``; decision 0133): the post-pass
+    sends the agent's tool definitions, tool results and refusals, so its label follows their
+    text as arm C's does.
     """
     results = [_result(case, config, seen_pairs) for case in cases]
     write_jsonl(folder / _CASES_FILE, results)
@@ -869,7 +873,7 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     record = pre.record.model_copy(
         update={
             "run_id": pre.run_id,
-            "prompt_version": f"{pre.record.prompt_version}+tools-{stats_name}",
+            "prompt_version": f"{pre.record.prompt_version}+tools-{stats_name}{text_mark()}",
             "price_variant": config.price_variant,
             "budget_usd": budget_usd,
             "commit_sha": config.commit[0],

@@ -648,8 +648,9 @@ def test_differently_configured_runs_are_refused_naming_the_setting(runs: Path) 
 def test_runs_on_two_agent_texts_are_refused(runs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Andy, 2026-10-01: the prompt version's ``+p`` part differs when the agent's text does."""
     _write(runs, _RUN_A, _plain())
+    original = texts.source_text
     with monkeypatch.context() as patched:
-        patched.setattr(texts, "PROTOCOL", f"{texts.PROTOCOL} (changed)")
+        patched.setattr(texts, "source_text", lambda p, n: f"{original(p, n)}# an edit\n")
         other = texts.prompt_version(GUIDANCE)
     assert other != texts.prompt_version(GUIDANCE)
     assert other.partition("+p")[0] == texts.prompt_version(GUIDANCE).partition("+p")[0]
