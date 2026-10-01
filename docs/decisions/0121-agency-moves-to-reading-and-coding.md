@@ -95,10 +95,12 @@ observed one.
    As in 0022, if any one holds, it is published whichever way the others go. S3.2's
    registration file defines equal cost (spec §11).
 
-   **Open for Andy (S3.1 final review, 2026-10-01).** 0022 item 4 also says what the published
-   result is when one of its results holds: "retrieval was warranted and the loop was not".
-   Spec §13 carries over only the publication rule above and says nothing of that consequence,
-   so this record does not say whether it carries over to the four results here. Andy decides.
+   **Decided by Andy (S3.1 final review, 2026-10-01).** 0022 item 4's conclusion ("the
+   published result is that retrieval was warranted and the loop was not") does **not** carry
+   over. Each of the four results is published as it stands, with no blanket conclusion. S3.2's
+   registration file states, before its first run, how the four are read together. Why, in
+   Andy's words (spelling corrected): "because this is a demo I want to be able to reason about
+   my decisions … as long as I am honest about what I found."
 6. **0022 item 5 is withdrawn: P1 to P6.** The withdrawal comes before any measurement of the
    loop. The six stay published in 0022 as written. The reason for each:
 
@@ -166,10 +168,15 @@ Also considered in writing this record:
   tokens. Rejected: the documents the probe's agent skipped were mostly short ones. It read 77
   and 84 of 108 documents under 2,000 tokens, against 23 of 23 between 2,000 and 10,000 tokens
   (scripted, the two probe reports). The rule would remove most of the choices the agent makes.
+- **Carrying 0022 item 4's conclusion over** (item 5; Andy, 2026-10-01): if any one of the four
+  results holds, the published result is that retrieval was warranted and the loop was not. It
+  keeps the public bar that was set before any measurement, so a mixed result cannot be argued
+  round afterwards. Rejected: one failed result would override an accuracy win.
 
 ## Status
 
-Accepted, 2026-09-30 (Andy, S3 design session; specification approved 2026-09-30).
+Accepted, 2026-09-30 (Andy, S3 design session; specification approved 2026-09-30). Item 5's
+last paragraph decided 2026-10-01 (Andy, S3.1 final review).
 
 ## Glossary
 

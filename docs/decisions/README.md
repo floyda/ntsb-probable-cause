@@ -161,3 +161,4 @@ under `docs/specs/` and the record links to it.
 | [0130](0130-the-loops-noise-floor-and-format-gate.md) | The loop's noise floor (two identical `dev-400` runs, a third if they differ by more than 4.0 points) and a 2% format gate | Accepted |
 | [0131](0131-the-probe-spend-kind.md) | The `probe` spend kind; the learning probe's rows relabelled, with the originals kept beside them | Accepted |
 | [0132](0132-s28-is-cancelled.md) | S2.8 is cancelled; its branch stays unmerged and uncited | Accepted; closes 0106 item 5's S2.8 route |
+| [0133](0133-unreadable-dockets-are-listed-and-the-text-is-fingerprinted.md) | Arm C sees the listing of a docket with nothing readable; the agent's prompt version fingerprints the source of its model-facing modules (`+p`) | Accepted |
