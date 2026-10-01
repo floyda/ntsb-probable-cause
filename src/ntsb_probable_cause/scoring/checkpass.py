@@ -4,7 +4,9 @@ A finished arm B run is read; each answered case gets a second step whose hypoth
 re-ordered occurrence codes; occurrence scores are recomputed and finding scores kept. The result
 is a derived run folder ``<run id>-check-<way>`` that the report compares like any run. Its run
 record's cost is the check's alone: the answers were paid for, and counted, in the source run.
-Development runs only; the Jev ways exist for this purpose alone (decisions 0097, 0103).
+Its prompt version is the source's with ``+check-<way>``, or ``+check-<way>-<stats>`` when the
+check counts in a statistics file other than S2.7's (decision 0129). Development runs only; the
+Jev ways exist for this purpose alone (decisions 0097, 0103).
 """
 
 import hashlib
@@ -24,7 +26,7 @@ from ntsb_probable_cause.records.evidence import Evidence
 from ntsb_probable_cause.scoring import ordering
 from ntsb_probable_cause.scoring.budget import settle
 from ntsb_probable_cause.scoring.codes import CodeTables
-from ntsb_probable_cause.scoring.coding_stats import CodingStats
+from ntsb_probable_cause.scoring.coding_stats import CodingStats, StatsName
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import rescore_occurrence
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
@@ -305,6 +307,22 @@ def derived_id(run_id: str, way: Way) -> str:
     return f"{run_id}-check-{way}"
 
 
+# S2.7's statistics: every check made before S3 read them, and its suffix names no file.
+STATS_DEFAULT: StatsName = "s27"
+# The statistics arm B's tool post-pass counts in (``agent/armb.py``, ``+tools-s3``; decision
+# 0129 item 4): the check over its derived run must read the same file.
+TOOLS_STATS: StatsName = "s3"
+
+
+def suffix(way: Way, stats: StatsName = STATS_DEFAULT) -> str:
+    """What a check adds to its source's prompt version.
+
+    ``+check-<way>`` for S2.7's statistics, so every check made before S3 keeps its label, and
+    ``+check-<way>-<stats>`` for any other file, so the label says which counts the check read.
+    """
+    return f"+check-{way}" if stats == STATS_DEFAULT else f"+check-{way}-{stats}"
+
+
 def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -> None:
     if not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm != "B":
         raise ConfigurationError(
@@ -338,18 +356,28 @@ class Preflight:
     run_id: str
 
 
-def preflight(source: Path, way: Way, runs_dir: Path) -> Preflight:
+def preflight(
+    source: Path, way: Way, runs_dir: Path, *, stats: StatsName = STATS_DEFAULT
+) -> Preflight:
     """Read and refuse a source run exactly as `check_run` would, before any side effect.
 
     Refuses a source that isn't a finished development arm B run, that is itself a derived
     check run, or that holds a case outside the development split (`_refuse_unless_development`);
-    and refuses a derived id whose folder already holds a finished check's output. Read-only:
-    no folder is created and no reservation is touched, so a refusal here -- including of a
-    source whose own id already contains ``-check-`` -- leaves nothing behind to clean up.
+    a tool post-pass (its prompt version holds ``+tools-``) checked with statistics other than
+    ``TOOLS_STATS``, the file its tools counted in (decision 0129 item 4); and a derived id whose
+    folder already holds a finished check's output. Read-only: no folder is created and no
+    reservation is touched, so a refusal here -- including of a source whose own id already
+    contains ``-check-`` -- leaves nothing behind to clean up.
     """
     record = read_jsonl(source / "run.jsonl", RunRecord)[0]
     cases = read_jsonl(source / "cases.jsonl", CaseResult)
     _refuse_unless_development(record, cases)
+    if "+tools-" in record.prompt_version and stats != TOOLS_STATS:
+        raise ConfigurationError(
+            f"{record.run_id} is arm B's tool post-pass, whose tools counted in the "
+            f"{TOOLS_STATS} statistics: its ordering check reads the same file, so pass "
+            f"--stats {TOOLS_STATS}, not {stats} (decision 0129 item 4)"
+        )
     run_id = derived_id(record.run_id, way)
     folder = runs_dir / run_id
     if (folder / "cases.jsonl").exists() or (folder / "run.jsonl").exists():
@@ -371,14 +399,17 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
     seen_pairs: AbstractSet[str],
     commit: tuple[str, bool],
     now: Callable[[], datetime],
+    stats: StatsName = STATS_DEFAULT,
 ) -> RunRecord:
     """Run the check over a finished run; write and return the derived run's record.
 
     Calls :func:`preflight` itself (fix round 2): a caller that already reserved a budget
     against this pass has necessarily called it first and found nothing to refuse, so this is
-    defence in depth, not the first line -- it will not fire in the normal CLI path.
+    defence in depth, not the first line -- it will not fire in the normal CLI path. ``stats``
+    names the statistics ``checker`` counts in; the derived prompt version records it
+    (:func:`suffix`), and a tool post-pass's check must name ``TOOLS_STATS``.
     """
-    pre = preflight(source, way, runs_dir)
+    pre = preflight(source, way, runs_dir, stats=stats)
     cases = pre.cases
     run_id = pre.run_id
     folder = runs_dir / run_id
@@ -405,7 +436,7 @@ def check_run(  # noqa: PLR0913 -- each argument is a separate input the tests v
         derived = pre.record.model_copy(
             update={
                 "run_id": run_id,
-                "prompt_version": f"{pre.record.prompt_version}+check-{way}",
+                "prompt_version": f"{pre.record.prompt_version}{suffix(way, stats)}",
                 "commit_sha": commit[0],
                 "dirty": commit[1],
                 "started": started,

@@ -12,7 +12,7 @@ which the plan's constraints allow in a ``ToolText``.
 This module imports no ``records``, ``docket`` or ``data`` module, directly or indirectly (Task
 10's import contract counts chains): a document's facts come in as ``agent.facts.DocumentFacts``,
 a later trigger's start as ``agent.trail.Prior``, and the prompt pieces from ``scoring.prompt``,
-which reads only the code tables.
+which reads the code tables and the coding guidance files, never a case record.
 """
 
 from collections.abc import Sequence
@@ -108,11 +108,14 @@ def menu(
     """The menu of documents: numbers keyed by listing index, never a title.
 
     One line per offered document, in the order given, then an ``Already read`` line when there
-    is one, then one line per document that has no text layer to read. E.g.::
+    is one, then one line per document that cannot be read. That line names no cause: a scan
+    has no text layer, but a fetch that failed or a file that is not a PDF is not read either,
+    and the cause is not measured for every status. A one-page document reads ``1 page``, as
+    ``docket/attach.py``'s document header does. E.g.::
 
         [3] 6 pages, 6 with a text layer, about 2100 tokens
         Already read: [1]
-        Not readable (no text layer): [5] 14 pages
+        Not readable: [5] 14 pages
 
     Args:
         offered: the documents the agent may read, in offer order.
@@ -123,14 +126,19 @@ def menu(
         The menu text; empty when there is nothing to list.
     """
     lines = [
-        f"[{f.index}] {f.pages} pages, {f.readable_pages} with a text layer, "
+        f"[{f.index}] {_pages(f.pages)}, {f.readable_pages} with a text layer, "
         f"about {f.estimated_tokens} tokens"
         for f in offered
     ]
     if already_read:
         lines.append(f"Already read: {_indices(already_read)}")
-    lines.extend(f"Not readable (no text layer): [{f.index}] {f.pages} pages" for f in not_readable)
+    lines.extend(f"Not readable: [{f.index}] {_pages(f.pages)}" for f in not_readable)
     return "\n".join(lines)
+
+
+def _pages(count: int) -> str:
+    """``1 page`` or ``N pages``, as ``docket/attach.py``'s document header words a count."""
+    return f"{count} {'page' if count == 1 else 'pages'}"
 
 
 def read_summary(read: Sequence[int], skipped: Sequence[int]) -> str:

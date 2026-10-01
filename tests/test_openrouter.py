@@ -306,11 +306,19 @@ def test_parse_reasoning_details_is_empty_when_absent_or_null() -> None:
     assert parse_chat_completion(body).reasoning_details == ()
 
 
-def test_parse_refuses_reasoning_details_that_are_not_objects() -> None:
+def test_parse_skips_reasoning_details_entries_that_are_not_objects_and_keeps_the_rest() -> None:
+    """One odd entry must not turn a paid reply into an unpriced failed call (in batch, a reply
+    that fails to parse is a failed call): it is skipped, and the objects are kept in order."""
     body = json.loads(json.dumps(saved_response("structured")))
+    summary = {"type": "reasoning.summary", "summary": "s", "index": 0}
+    encrypted = {"type": "reasoning.encrypted", "data": "opaque", "index": 1}
+    odd: list[object] = ["not an object", summary, 7, None, ["nested"], encrypted]
+    body["choices"][0]["message"]["reasoning_details"] = odd
+    reply = parse_chat_completion(body)
+    assert reply.reasoning_details == (summary, encrypted)
+    assert reply.usage.prompt_tokens > 0  # the reply, and so its cost, is kept
     body["choices"][0]["message"]["reasoning_details"] = ["not an object"]
-    with pytest.raises(ModelError, match="chat completion"):
-        parse_chat_completion(body)
+    assert parse_chat_completion(body).reasoning_details == ()
 
 
 def test_request_body_sends_no_tool_keys_unless_set(

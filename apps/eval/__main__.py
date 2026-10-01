@@ -13,6 +13,7 @@ from typing import cast
 
 from ntsb_probable_cause import gitinfo, sources
 from ntsb_probable_cause.agent import armb
+from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import AgentRunner
 from ntsb_probable_cause.agent.texts import prompt_version as agent_prompt_version
@@ -456,7 +457,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--stats",
         choices=STATS_NAMES,
         default="s27",
-        help="which statistics file the check reads: S2.7's (default) or S3's (decision 0129)",
+        help="which statistics file the check reads: S2.7's (default) or S3's (decision 0129); "
+        "a tool post-pass's run (<run id>-tools) is checked with s3 only",
     )
     check_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
@@ -600,7 +602,8 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
                 month_spent_usd=spent,
                 commit=commit,
                 docket=docket,
-                pass_reasoning=False,  # until the shape probe (Task 4) decides otherwise
+                # The one setting arm C and arm B's post-pass read (the shape probe decides it).
+                pass_reasoning=agent_loop.PASS_REASONING,
                 without=frozenset(args.without),
                 ledger_path=settings.heldout_ledger_path,
                 round_number=args.round,  # recorded in spec.json and the prompt version
@@ -1041,7 +1044,10 @@ def _cmd_check(
     # open reservation, and for the "itself a derived check run" case an empty derived folder
     # too, since `reserve_within_budget` creates it as a side effect. `preflight` is read-only:
     # nothing here can leave anything behind.
-    pre = checkpass.preflight(folder, way, settings.runs_dir)
+    # A tool post-pass's check must count in the file its tools did (decision 0129 item 4):
+    # `preflight` refuses any other `--stats` there, and the derived prompt version names the
+    # file whenever it is not S2.7's (`checkpass.suffix`).
+    pre = checkpass.preflight(folder, way, settings.runs_dir, stats=args.stats)
     cases = pre.cases
     processed = settings.data_dir / "processed"
     ids = [c.case_id for c in cases]
@@ -1066,6 +1072,7 @@ def _cmd_check(
             seen_pairs=seen_pairs,
             commit=commit,
             now=lambda: datetime.now(UTC),
+            stats=args.stats,
         )
     else:
         # Reserved, not just checked, before any client is built (fix round 1, Important 1):
@@ -1100,6 +1107,7 @@ def _cmd_check(
                 seen_pairs=seen_pairs,
                 commit=commit,
                 now=lambda: datetime.now(UTC),
+                stats=args.stats,
             )
         except BaseException:
             release(settings.runs_dir, run_id)
@@ -1134,6 +1142,7 @@ def _cmd_tools(args: argparse.Namespace, settings: Settings, client_factory: Cli
             docket=CachedDocketReader(docket_client),
             tables=load_tables(),
             stats=load_stats(agent_run.STATS),
+            stats_name=agent_run.STATS,
             seen_pairs=seen,
             runs_dir=settings.runs_dir,
             budget_usd=budget,

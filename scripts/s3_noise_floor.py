@@ -21,7 +21,8 @@ What it prints
 
     For each pair of runs: occurrence top-1 and top-3 paired differences and finding recall@10's
     mean difference, with intervals, overall and by fatal and non-fatal
-    (``report.compare_by_fatal``); the cases whose first occurrence code changed, with
+    (``report.compare_by_fatal``, which labels them ``(a - b)``; a line before them names the two
+    runs a and b stand for in that block); the cases whose first occurrence code changed, with
     ``scripts.occurrence_misses.churn``; read-or-skip agreement; coding-call agreement.
 
     - **Read or skip.** From ``trail.jsonl``: each accepted ``choose_documents`` call's parsed
@@ -31,8 +32,9 @@ What it prints
     - **Coding calls.** From ``trail.jsonl``: per case scored in both runs, the multiset of
       ``(tool, arguments)`` over its accepted coding-tool calls (``agent.schemas.CODING_TOOLS``,
       ``protocol_error`` None), the arguments without ``reason`` and ``expected_effect`` and
-      written with their keys sorted. A case that made no coding call in either run agrees, and
-      is counted apart as well.
+      written with their keys sorted; the order inside a list argument is kept, so the same codes
+      in another order are another call. A case that made no coding call in either run agrees,
+      and is counted apart as well.
 
 The format gate (spec §10.4, decision 0130 item 5)
     Counts the cases whose ``failure`` starts ``failed: ``, except ``failed: leak`` and
@@ -47,7 +49,11 @@ The format gate (spec §10.4, decision 0130 item 5)
     fact about the batch service rather than the loop's format or tools, which is all spec §10.4
     names: it is printed on its own line beside the gate, so a run that hits it is still seen);
     and ``aborted: <error>`` (only in an unfinished run, which is refused). The gate passes at
-    most 8 such cases of dev-400's 401 (2%).
+    most 8 such cases of dev-400's 401 (2%). A batch item that failed twice with no reply (a
+    provider error) ends ``failed: <step>`` and stays counted, so the gate fails closed; beside
+    the count, ``of which K had no reply on the failing call`` says how many of the counted cases
+    that was, read from each case's last call in ``trail.jsonl`` (a call with no reply has no
+    tool, no hypothesis, no finish reason and zero tokens).
 
 The third-run rule (spec §10.2, decision 0130 item 2)
     ``third run: needed`` if the absolute paired occurrence top-1 difference between the first
@@ -132,11 +138,15 @@ class Gate:
         failed: each counted failure reason, with its cases.
         rounds: the cases stopped ``failed: rounds`` (listed apart, not counted).
         cases: every case of the run, the denominator.
+        no_reply: of the counted cases, those whose failing call (the case's last call in
+            ``trail.jsonl``) came back with no reply: a provider error, or no result in a batch.
+            They stay counted, so the gate fails closed; the number says how many they are.
     """
 
     failed: Counter[str]
     rounds: int
     cases: int
+    no_reply: int = 0
 
     @property
     def count(self) -> int:
@@ -202,14 +212,42 @@ def _refuse(message: str) -> NoReturn:
 # --- the measures ---
 
 
-def format_gate(cases: Sequence[CaseResult]) -> Gate:
-    """The format gate's count over a run's cases (see the module docstring for the strings)."""
-    failed = Counter(
-        c.failure
-        for c in cases
-        if c.failure is not None and c.failure.startswith(_FAILED) and c.failure not in _NOT_FORMAT
+def _counted(case: CaseResult) -> bool:
+    """Whether the format gate counts the case (see the module docstring for the strings)."""
+    failure = case.failure
+    return failure is not None and failure.startswith(_FAILED) and failure not in _NOT_FORMAT
+
+
+def _no_reply(call: AgentCall) -> bool:
+    """Whether a trail row is a call that came back with no reply at all.
+
+    The loop writes such a call (``accept(None, ...)``) with no tool, no hypothesis, no finish
+    reason and zero prompt and completion tokens; a reply always reports its prompt tokens.
+    """
+    return (
+        call.tool is None
+        and call.hypothesis is None
+        and call.finish_reason is None
+        and call.prompt_tokens == 0
+        and call.completion_tokens == 0
     )
-    return Gate(failed, sum(c.failure == _ROUNDS for c in cases), len(cases))
+
+
+def format_gate(cases: Sequence[CaseResult], calls: Sequence[AgentCall] = ()) -> Gate:
+    """The format gate's count over a run's cases (see the module docstring for the strings).
+
+    ``calls`` is the run's ``trail.jsonl``; from it, ``no_reply`` counts the counted cases whose
+    last call (the failing one) had no reply. With no trail it is 0.
+    """
+    counted = [c for c in cases if _counted(c)]
+    last: dict[str, AgentCall] = {}
+    for call in calls:
+        held = last.get(call.case_id)
+        if held is None or (call.trigger, call.call_index) >= (held.trigger, held.call_index):
+            last[call.case_id] = call
+    no_reply = sum(1 for c in counted if c.case_id in last and _no_reply(last[c.case_id]))
+    failed = Counter(c.failure for c in counted if c.failure is not None)
+    return Gate(failed, sum(c.failure == _ROUNDS for c in cases), len(cases), no_reply)
 
 
 def third_run_needed(net: int, cases: int) -> bool:
@@ -312,7 +350,8 @@ def gate_lines(label: str, gate: Gate) -> list[str]:
     verdict = "PASS" if gate.passed else "FAIL"
     return [
         f"format gate, run {label}: {verdict} -- {gate.count} of {gate.cases} cases failed for "
-        f"format or tool reasons ({reasons}); at most {GATE_MAX} pass (2% of dev-400's 401 "
+        f"format or tool reasons ({reasons}); of which {gate.no_reply} had no reply on the "
+        f"failing call; at most {GATE_MAX} pass (2% of dev-400's 401 "
         "cases, spec §10.4, decision 0130 item 5)",
         f"round limit (failed: rounds), run {label}: {gate.rounds} of {gate.cases} cases (the "
         "batch rounds ran out; not a format or tool failure, so not in the gate)",
@@ -388,7 +427,7 @@ def third_run_line(first: Run, second: Run) -> str:
 
 def run_block(run: Run) -> str:
     """One run's own figures."""
-    gate = format_gate(run.cases)
+    gate = format_gate(run.cases, run.calls)
     lines = [
         f"## run {run.label}",
         "",
@@ -405,8 +444,10 @@ def run_block(run: Run) -> str:
 def pair_block(first: Run, second: Run) -> str:
     """Two runs against each other: scores, read choices, coding calls, then first codes.
 
-    ``churn``'s block comes last because it opens with its own heading; the line of first codes
-    changed goes under it.
+    ``report.compare_by_fatal`` labels every difference ``(a - b)``, which in a three-run report
+    is not always run a minus run b; a line before it names what a and b are in this block, so
+    its output, shared with other callers, is unchanged. ``churn``'s block comes last because it
+    opens with its own heading; the line of first codes changed goes under it.
     """
     changed, both = first_code_changes(first.cases, second.cases)
     reads = read_agreement(first.calls, second.calls)
@@ -414,6 +455,7 @@ def pair_block(first: Run, second: Run) -> str:
     lines = [
         f"## run {first.label} against run {second.label}",
         "",
+        f"(a - b) here is run {first.label} minus run {second.label}",
         report.compare_by_fatal(first.cases, second.cases),
         "",
         f"read-or-skip agreement: {reads.same} of {reads.offered} documents offered in both runs "
@@ -422,8 +464,9 @@ def pair_block(first: Run, second: Run) -> str:
         f"{second.label} only {reads.second_only}), over {reads.cases} cases; "
         f"{reads.one_run_only} documents offered in one run only",
         f"coding-call agreement: {coding.same} of {coding.cases} cases scored in both runs made "
-        "the same coding calls (tool and arguments, reason and expected_effect left out, as a "
-        f"multiset); {coding.none} of those {coding.same} made no coding call in either run",
+        "the same coding calls (tool and arguments, list order inside the arguments kept, "
+        "reason and expected_effect left out, as a multiset); "
+        f"{coding.none} of those {coding.same} made no coding call in either run",
         churn(first.cases, second.cases).rstrip("\n"),
         f"first occurrence code changed: {changed} of {both} cases scored in both runs",
     ]
@@ -467,7 +510,11 @@ def noise_report(runs: Sequence[Run]) -> str:
         "",
         "## the decisions",
         "",
-        *(line for run in runs for line in gate_lines(run.label, format_gate(run.cases))),
+        *(
+            line
+            for run in runs
+            for line in gate_lines(run.label, format_gate(run.cases, run.calls))
+        ),
         third_run_line(first, second),
     ]
     if len(runs) > 2:  # noqa: PLR2004 -- the third run of decision 0130 item 2

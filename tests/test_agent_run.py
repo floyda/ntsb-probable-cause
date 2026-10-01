@@ -8,6 +8,7 @@ client scripted in the order ``drive_sync`` asks. Offline; no model is called.
 
 import copy
 import dataclasses
+import inspect
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -36,10 +37,12 @@ from tests.test_attach import _docket as small_docket
 from tests.test_marks import FACTUAL, S1, S2
 from tests.test_runner import FakeBatchClient
 
+from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as run_module
 from ntsb_probable_cause.agent import texts
 from ntsb_probable_cause.agent.documents import case_marks, docket_view, evidence_payload
 from ntsb_probable_cause.agent.drive import REPLIES_FILE, ROUNDS_FILE
+from ntsb_probable_cause.agent.loop import LoopConfig
 from ntsb_probable_cause.agent.run import GUIDANCE, TRAIL_FILE, AgentRunner
 from ntsb_probable_cause.agent.schemas import CODING_TOOLS, Without
 from ntsb_probable_cause.agent.trail import AgentCall
@@ -80,13 +83,24 @@ A_COSTS = tuple(0.0011 * (n + 1) for n in range(8))
 B_COSTS = tuple(0.0011 * (n + 1) for n in range(2))
 
 
+def keyed(docket: Docket, mkey: int) -> Docket:
+    """``docket`` as the docket of ``mkey``: its own key and its listing's (``small_docket`` is
+    built with key 1 for every case, and the runner's pairing guard reads the key)."""
+    listing = docket.listing.model_copy(update={"mkey": mkey})
+    return docket.model_copy(update={"mkey": mkey, "listing": listing})
+
+
 class Dockets:
-    """A ``DocketReader`` over fixed dockets, by ``mKey``; it records what it was asked for."""
+    """A ``DocketReader`` over fixed dockets, by ``mKey``; it records what it was asked for.
+
+    Each docket is given the key it is stored under, as a real reader returns a case's own.
+    """
 
     def __init__(
         self, by_mkey: Mapping[int, Docket] | None = None, version: Literal["v1", "v2"] = "v1"
     ) -> None:
-        self.by_mkey = dict(by_mkey) if by_mkey is not None else _default_dockets()
+        given = dict(by_mkey) if by_mkey is not None else _default_dockets()
+        self.by_mkey = {mkey: keyed(docket, mkey) for mkey, docket in given.items()}
         self.version: Literal["v1", "v2"] = version
         self.reads: list[int] = []
 
@@ -756,22 +770,30 @@ class TestCapAndDocket:
         assert (a.failure, b.failure) == (None, None)
         assert a.documents_not_read == ()
 
-    def test_a_docket_view_built_from_another_record_is_refused(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The loop does not check that a view and its record are one case; the runner does."""
-        real = docket_view
-
-        def misplaced(_raw_record: Mapping[str, object], docket: Docket) -> object:
-            return real(RAWS[1], docket)
-
-        monkeypatch.setattr(run_module, "docket_view", misplaced)
+    def test_a_docket_whose_key_is_not_the_records_is_refused(self, tmp_path: Path) -> None:
+        """The loop does not check that a docket and its record are one case; the runner does,
+        by the docket's own key. A reader that answers for another key fails it."""
+        docket = Dockets()
+        other = _mkey(RAWS[1])
+        docket.by_mkey[_mkey(RAWS[0])] = keyed(small_docket({1: ONE, 2: TWO}), other)
         client = ScriptedClient([])
-        with pytest.raises(ConfigurationError, match=f"{A} was built from {B}") as caught:
-            _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS)
+        match = f"the docket read for {A} is docket {other}, not its own {_mkey(RAWS[0])}"
+        with pytest.raises(ConfigurationError, match=match) as caught:
+            _runner(tmp_path / "runs", client=client, docket=docket).run(_sync_spec(), RAWS)
         assert ONE.strip() not in str(caught.value)
         assert client.calls == 0
         assert open_reservations(tmp_path / "runs") == {}
+
+    def test_every_case_is_given_a_docket_with_its_own_key(self, tmp_path: Path) -> None:
+        """The stub keys each docket as a real reader would, so the guard passes a real run."""
+        docket = Dockets()
+        assert {key: d.mkey for key, d in docket.by_mkey.items()} == {
+            _mkey(RAWS[0]): _mkey(RAWS[0]),
+            _mkey(RAWS[1]): _mkey(RAWS[1]),
+        }
+        assert small_docket({}).mkey == 1  # the shared builder's key, which the stub replaces
+        record, _ = _sync_run(tmp_path / "runs")
+        assert record.finished is not None
 
     def test_a_record_with_no_mkey_is_refused(self, tmp_path: Path) -> None:
         raw = copy.deepcopy(_raw())
@@ -804,6 +826,18 @@ class TestSettings:
         assert (recorded["without"], recorded["pass_reasoning"]) == (["coding"], True)
         assert recorded["max_rounds"] == 1
         assert {c.failure for c in _cases(tmp_path / "runs" / record.run_id)} == {"failed: rounds"}
+
+    def test_pass_reasoning_defaults_to_the_one_setting(self) -> None:
+        """``loop.PASS_REASONING`` is the default of the loop's settings and of the runner.
+
+        The command and the post-pass pass it explicitly (``tests/test_eval_app.py`` and
+        ``tests/test_agent_armb.py`` each flip it and see it reach the calls).
+        """
+        assert agent_loop.PASS_REASONING is False  # until the shape probe's check 4 says
+        default = LoopConfig.__dataclass_fields__["pass_reasoning"].default
+        assert default is agent_loop.PASS_REASONING
+        parameter = inspect.signature(AgentRunner).parameters["pass_reasoning"]
+        assert parameter.default is agent_loop.PASS_REASONING
 
     def test_a_round_may_change_the_guidance_and_is_recorded(self, tmp_path: Path) -> None:
         client = ScriptedClient(_sync_replies(_scripts()))
@@ -876,6 +910,21 @@ class TestRefusals:
 
     def test_a_batch_run_with_no_batch_client_is_refused(self, tmp_path: Path) -> None:
         _refused(tmp_path, _spec(), "batch client")
+
+    @pytest.mark.parametrize("sync", [True, False])
+    def test_the_sample_s27_used_once_is_refused_before_any_docket_is_read(
+        self, tmp_path: Path, sync: bool
+    ) -> None:
+        """dev-seal-400 was used once (decision 0095). Its registration is committed and S3's
+        pool leaves it out, so neither ``refuse_sealed`` nor ``refuse_pool_holding`` stops it:
+        the runner does, before any docket read, folder, reservation or call."""
+        docket = Dockets()
+        spec = _sync_spec(sample="dev-seal-400") if sync else _spec(sample="dev-seal-400")
+        batch = None if sync else FakeBatchClient(handlers=[])
+        _refused(tmp_path, spec, "dev-seal-400.*decision 0095", docket=docket, batch=batch)
+        assert docket.reads == []
+        if batch is not None:
+            assert batch.submitted == []
 
     def test_a_sync_resume_is_refused(self, tmp_path: Path) -> None:
         client = ScriptedClient([])

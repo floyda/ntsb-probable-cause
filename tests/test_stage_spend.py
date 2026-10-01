@@ -16,10 +16,50 @@ def test_the_stage_table_holds_s27_as_it_was_and_s3_as_decision_0128_fixes_it() 
     assert ss.STAGES["s27"] == ss.Stage(
         "S2.7", base="971ee40", first="94f5d42", line_usd=25.0, prefix="s27-"
     )
+    assert (ss.STAGES["s27"].line_rule, ss.STAGES["s27"].count_rule) == (
+        "decision 0098 item 6",
+        "decision 0107",
+    )
     assert ss.STAGES["s3"] == ss.Stage(
-        "S3", base="4178ca1", first="777c2a5", line_usd=50.0, prefix="s3-"
+        "S3",
+        base="4178ca1",
+        first="777c2a5",
+        line_usd=50.0,
+        prefix="s3-",
+        line_rule="decision 0128 item 2",
+        count_rule="decision 0128 item 2",
     )
     assert frozenset({"main"}) == ss.EXCLUDED_BRANCHES
+
+
+def test_s27s_lines_are_byte_identical_to_before_s3() -> None:
+    """S2.7's output is unchanged by the per-stage citations (its rules are 0098 and 0107)."""
+    text, over = ss.report(S27, runs=10.0, spend=5.0, estimate=10.01)
+    assert over
+    assert text == (
+        "S2.7 spend so far: $15.00 ($10.00 evaluation runs, $5.00 preparation spend rows; "
+        "counted by commit from 971ee40 on S2.7's own branches, decision 0107)\n"
+        "this step's estimate: $10.01; the stage line: $25.00\n"
+        "refused: $25.01 would pass the line (decision 0098 item 6)"
+    )
+    text, over = ss.report(S27, runs=10.0, spend=5.0, estimate=9.0)
+    assert not over
+    assert text.splitlines()[-1] == "within the line: $1.00 left after this step"
+
+
+def test_s3s_lines_cite_s3s_own_decision() -> None:
+    """S3's line is decision 0128's (item 2), counted by its rule; S2.7's citations are not
+    S3's, so neither appears on S3's lines."""
+    text, over = ss.report(S3, runs=30.0, spend=10.0, estimate=10.01)
+    assert over
+    assert text == (
+        "S3 spend so far: $40.00 ($30.00 evaluation runs, $10.00 preparation spend rows; "
+        "counted by commit from 4178ca1 on S3's own branches, decision 0128 item 2)\n"
+        "this step's estimate: $10.01; the stage line: $50.00\n"
+        "refused: $50.01 would pass the line (decision 0128 item 2)"
+    )
+    assert "0098" not in text
+    assert "0107" not in text
 
 
 def test_report_passes_under_the_line_and_refuses_over_it() -> None:

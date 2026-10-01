@@ -78,7 +78,12 @@ def _chains(module: str, package: str) -> set[tuple[str, ...]]:
     )
 
 
-@pytest.mark.parametrize("module", ["tools", "schemas", "texts"])
+# The modules that build model-facing tool text: the coding tools, the tool definitions, the
+# fixed texts, the step table (menus, refusals, step texts) and the document facts they read.
+_TOOL_TEXT_MODULES = ("tools", "schemas", "texts", "steps", "facts")
+
+
+@pytest.mark.parametrize("module", _TOOL_TEXT_MODULES)
 @pytest.mark.parametrize("package", ["records", "docket", "data"])
 def test_the_agents_tools_schemas_and_texts_reach_no_case_record(module: str, package: str) -> None:
     """The contract "The agent's tools and texts see no case record", chain by chain."""
@@ -95,9 +100,7 @@ def test_the_agent_contract_names_the_tool_text_modules() -> None:
     contract = _contract("The agent's tools and texts see no case record")
     assert contract["type"] == "forbidden"
     assert set(contract["source_modules"]) == {  # type: ignore[call-overload]
-        f"{_ROOT}.agent.tools",
-        f"{_ROOT}.agent.schemas",
-        f"{_ROOT}.agent.texts",
+        f"{_ROOT}.agent.{module}" for module in _TOOL_TEXT_MODULES
     }
     assert set(contract["forbidden_modules"]) == {  # type: ignore[call-overload]
         f"{_ROOT}.records",

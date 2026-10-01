@@ -180,7 +180,8 @@ forbidden_modules = ["ntsb_probable_cause.agent"]
 
 # S3.1 Task 10: the modules that build ToolText (the agent's own words, numbers and codes) reach
 # no case record by any chain, direct or indirect. ToolText lives in model/tool_text.py, which
-# imports nothing from the library, so no exemption is needed.
+# imports nothing from the library, so no exemption is needed. The step table (menus, refusals,
+# step texts) and the document facts it reads are named too (S3.1 final review).
 [[tool.importlinter.contracts]]
 name = "The agent's tools and texts see no case record"
 type = "forbidden"
@@ -188,6 +189,8 @@ source_modules = [
     "ntsb_probable_cause.agent.tools",
     "ntsb_probable_cause.agent.schemas",
     "ntsb_probable_cause.agent.texts",
+    "ntsb_probable_cause.agent.steps",
+    "ntsb_probable_cause.agent.facts",
 ]
 forbidden_modules = [
     "ntsb_probable_cause.records",

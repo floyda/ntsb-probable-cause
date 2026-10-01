@@ -135,7 +135,7 @@ class TestDocketView:
         for title in TITLES:
             assert title not in text
         assert "[1] 3 pages, 3 with a text layer, about" in text
-        assert "Not readable (no text layer): [3] 3 pages" in text
+        assert "Not readable: [3] 3 pages" in text
 
 
 class TestEvidencePayload:

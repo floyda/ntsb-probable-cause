@@ -386,6 +386,50 @@ def test_assert_requests_clean_reads_reasoning_summaries_and_skips_encrypted_dat
     assert ("assistant turn reasoning summary", "A clean summary.") in _request_texts(request)
 
 
+def _reasoning_request(detail: dict[str, object]) -> BatchRequest:
+    """A request whose one assistant turn passes back ``detail`` as its reasoning."""
+    return BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="",
+        history=(
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(detail,),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize("key", ["summary", "text"])
+def test_a_reasoning_summary_or_text_that_is_a_list_is_screened_item_by_item(key: str) -> None:
+    """A provider may split a summary into parts: each part is screened, so a list that holds
+    withheld text trips, and a clean list passes."""
+    needle = "the pilot did not extend the landing gear"
+    withheld = [("factual narrative", needle)]
+    leaky = _reasoning_request({"type": f"reasoning.{key}", key: ["A clean part.", needle]})
+    with pytest.raises(AssertionError, match=r"^tripwire: factual narrative .* reasoning"):
+        assert_requests_clean([leaky], withheld)
+    clean = _reasoning_request({"type": f"reasoning.{key}", key: ["One part.", "Another."]})
+    assert_requests_clean([clean], withheld)
+    assert (f"assistant turn reasoning {key}", "Another.") in _request_texts(clean)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [{"part": "text"}, 7, 0.5, True, ["a part", {"nested": "text"}], ["a part", None]],
+)
+def test_a_reasoning_shape_that_cannot_be_screened_fails_the_check_closed(value: object) -> None:
+    """Anything but a string or a list of strings is not read past: the helper fails, even
+    when the request holds no withheld text, rather than pass an unknown shape unread."""
+    request = _reasoning_request({"type": "reasoning.summary", "summary": value})
+    with pytest.raises(AssertionError, match=r"^tripwire: .* cannot be screened"):
+        assert_requests_clean([request], [("factual narrative", "the gear was not extended")])
+
+
 def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
     """The negative case: a request with none of the withheld text passes."""
     request = BatchRequest(

@@ -320,6 +320,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `s3_probe` | one-shot | `s3-probe-dev.txt` — the S3 learning probe (`select`, `run`, `report`, `trails`); not a result, sets no bar |
 | `s3_shape_probe` | one-shot | `s3-shape-probe.txt` and the `tests/fixtures/openrouter/s3/` pairs — the native-tool shape probe on an invented case (spec S3.1 §5.5); paid (cents), run on or after 1 October 2026 |
 | `s3_noise_floor` | live measurement | `s3-noise-floor-dev.txt` — the agent loop's noise floor, format gate and third-run rule from two or three identical arm C runs on `dev-400` (spec S3 §10.2 to §10.4, 0130); counts only, free |
+
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
 ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/recorder-bridge.md`.

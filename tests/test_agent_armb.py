@@ -37,6 +37,7 @@ from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.agent import armb
+from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent.armb import (
     EXPECTED_COST_PER_CASE_USD,
     FIXED,
@@ -80,7 +81,7 @@ from ntsb_probable_cause.model.client import (
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import open_reservations
-from ntsb_probable_cause.scoring.coding_stats import NO_GROUP
+from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, StatsName
 from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA, Hypothesis, parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import score_case
 from ntsb_probable_cause.scoring.records import (
@@ -219,6 +220,7 @@ def _post(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     docket: Dockets | None = None,
     raws: Sequence[dict[str, object]] = RAWS,
     budget: float = 40.0,
+    stats_name: StatsName = "s3",
 ) -> RunRecord:
     return tools_run(
         source,
@@ -228,6 +230,7 @@ def _post(  # noqa: PLR0913 -- every parameter is a seam a test needs.
         docket=docket if docket is not None else _dockets(raws),
         tables=TABLES,
         stats=STATS,
+        stats_name=stats_name,
         seen_pairs=SEEN,
         runs_dir=runs,
         budget_usd=budget,
@@ -760,6 +763,20 @@ class TestTheDerivedRun:
         after = _cases(runs / record.run_id)
         assert (after[A].failure, after[B].failure) == (None, None)  # both payloads unchanged
 
+    @pytest.mark.parametrize("passed", [False, True])
+    def test_run_arm_c_reads_the_one_pass_reasoning_setting(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, passed: bool
+    ) -> None:
+        """The post-pass's half of ``tests/test_eval_app.py``'s test of the same name: arm B's
+        calls pass reasoning back exactly when ``loop.PASS_REASONING`` (arm C's setting) says."""
+        assert agent_loop.PASS_REASONING is False  # until the shape probe's check 4 says
+        monkeypatch.setattr(agent_loop, "PASS_REASONING", passed)
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        client = RecordingFakeClient(POST)
+        _post(runs, source, client=client)
+        assert {s.pass_reasoning for s in client.settings} == {passed}
+
     def test_a_forced_answer_that_abstains_is_scored_as_an_abstention(self, tmp_path: Path) -> None:
         runs = tmp_path / "runs"
         source, _ = _source(runs)
@@ -977,6 +994,7 @@ class TestRefusals:
                 docket=_dockets(),
                 tables=TABLES,
                 stats=STATS,
+                stats_name="s3",
                 seen_pairs=SEEN,
                 runs_dir=runs,
                 budget_usd=40.0,
@@ -984,6 +1002,38 @@ class TestRefusals:
                 sync=True,
             )
         assert client.calls == 0
+
+    def test_statistics_other_than_s3s_are_refused_before_any_docket_is_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0129 item 4: the post-pass's tools count in S3's file, and the derived run's
+        ``+tools-<name>`` names the file passed in; another name is refused, not relabelled."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        dockets = _dockets()
+        _assert_refused(runs, source, "S3's statistics", stats_name="s27", docket=dockets)
+        assert dockets.reads == []
+
+    @pytest.mark.parametrize(
+        "guidance",
+        [(), ("r3-loc-stall",), ("r6-aircraft-control", "r3-loc-stall")],
+    )
+    def test_a_source_with_other_guidance_than_s3s_is_refused(
+        self, tmp_path: Path, guidance: tuple[str, ...]
+    ) -> None:
+        """Spec §7.1 part 1: arm B's pipeline starts from S2.7's answer with the two kept
+        guidance files, in their order; any other source is refused before any docket is read."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        variant = _variant(
+            source,
+            "20261001T000000-abc1234-dev-400-B",
+            guidance=guidance,
+            guidance_sha256=prompt.guidance_sha256(guidance),
+        )
+        dockets = _dockets()
+        _assert_refused(runs, variant, "S3's guidance", docket=dockets)
+        assert dockets.reads == []
 
 
 # --------------------------------------------------------------------------------------------
@@ -1183,8 +1233,10 @@ def _tools_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
 ) -> tuple[str, Path]:
     monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", _StubDocketReader)
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
     _, runs_dir = _eval_env(tmp_path, monkeypatch, record_fixtures[0])
     argv = ["run", "--arm", "B", "--sample", "dev-400", "--sync", "--price-variant", "standard"]
+    argv += [flag for name in GUIDANCE for flag in ("--guidance", name)]  # S3's (spec §7.1)
     assert main(argv, client_factory=_factory(RecordingFakeClient([GOOD, REFINE]))) == 0
     (source,) = [p.name for p in runs_dir.iterdir() if p.is_dir()]
     return source, runs_dir
@@ -1209,11 +1261,18 @@ class TestCommand:
         (case,) = _cases(runs / derived).values()
         assert case.steps[-1].tool == TOOL
 
+        # The tools counted in S3's statistics, so the check must too (decision 0129 item 4):
+        # S2.7's default is refused before anything is written, named or not.
+        for flags in ([], ["--stats", "s27"]):
+            assert main(["check", derived, "--way", "rule", *flags]) == 1
+            assert "--stats s3, not s27" in capsys.readouterr().err
+            assert not (runs / f"{derived}-check-rule").exists()
         assert main(["check", derived, "--way", "rule", "--stats", "s3"]) == 0
         checked = runs / f"{derived}-check-rule"
         (case,) = _cases(checked).values()
         assert [s.tool for s in case.steps][-2:] == [TOOL, "ordering_check"]
-        assert _record(checked).prompt_version.endswith("+tools-s3+check-rule")
+        # Both post-passes name the statistics they counted in.
+        assert _record(checked).prompt_version.endswith("+tools-s3+check-rule-s3")
 
         assert main(["check", f"{derived}-check-rule", "--way", "rule", "--stats", "s3"]) == 1
         assert "stacked" in capsys.readouterr().err
@@ -1228,7 +1287,10 @@ class TestCommand:
         ]:
             assert main(["tools", run_id, "--sync"], client_factory=boom) == 1
             assert words in capsys.readouterr().err
-        assert resolve_latest(runs, "B", "dev-400") == source
+        # The source reads S3's guidance, so --latest takes none of the folders: not the source
+        # (a guided run is not arm B's plain run), and no derived run stands in for it.
+        with pytest.raises(SystemExit, match="no completed run found"):
+            resolve_latest(runs, "B", "dev-400")
 
     def test_tools_runs_in_batch_by_default(
         self,
@@ -1288,6 +1350,7 @@ class TestCommand:
             exclusions=(),
             includes=(),
             prompt_version="s1-v6",
+            guidance=GUIDANCE,  # S3's, so the refusal tested is the sample's own
             model="openai/gpt-6-luna",
             price_variant="batch",
             cap_usd=0.05,
@@ -1309,25 +1372,29 @@ class TestCommand:
 
 
 def test_resolve_latest_skips_a_real_tools_post_pass_by_its_record(tmp_path: Path) -> None:
-    """A derived run of an unguided source records arm B, the sample and a plain prompt.
+    """A derived run records arm B, the sample and its source's prompt, with ``+tools-s3``.
 
-    Moved under a newer name the glob ``*-<sample>-<arm>`` takes, with its record's id made to
-    match, only the ``+tools-`` in its prompt version tells it apart, and it is still skipped.
+    The post-pass runs on S3's guidance only (spec §7.1), so the guidance rule alone would skip
+    its derived run. Here both records are made unguided after the pass, so no guidance rule can
+    tell them apart. Moved under a newer name the glob ``*-<sample>-<arm>`` takes, with its
+    record's id made to match, only the ``+tools-`` in its prompt version tells the derived run
+    apart, and it is still skipped.
     """
     runs = tmp_path / "runs"
     raws = (RAWS[1],)
     source, _ = _source(runs, raws=raws, replies=[_hyp(), REFINED])
-    plain = _record(source).model_copy(update={"guidance": (), "guidance_sha256": None})
-    (source / "run.jsonl").write_text(plain.model_dump_json() + "\n")  # an unguided arm B run
     client = RecordingFakeClient([_submit(_hyp()), REFINED])
     derived = _post(runs, source, client=client, raws=raws, docket=_dockets(raws))
     assert derived.finished is not None
+    unguided: dict[str, object] = {"guidance": (), "guidance_sha256": None}
+    plain = _record(source).model_copy(update=unguided)
+    (source / "run.jsonl").write_text(plain.model_dump_json() + "\n")  # an unguided arm B run
     assert resolve_latest(runs, "B", "dev-400") == source.name
     moved = runs / "20261001T090001-abc1234-dev-400-B"  # newer, and the glob's shape
     (runs / derived.run_id).rename(moved)
     assert resolve_latest(runs, "B", "dev-400") == source.name  # its record names another id
     (moved / "run.jsonl").write_text(
-        derived.model_copy(update={"run_id": moved.name}).model_dump_json() + "\n"
+        derived.model_copy(update={"run_id": moved.name, **unguided}).model_dump_json() + "\n"
     )
     assert resolve_latest(runs, "B", "dev-400") == source.name  # its prompt says +tools-s3
 

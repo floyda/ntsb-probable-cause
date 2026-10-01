@@ -165,6 +165,76 @@ def test_check_run_refuses_a_source_that_is_itself_a_derived_check_run(tmp_path:
         _run(source, runs)
 
 
+def test_the_suffix_names_the_statistics_unless_they_are_s27s() -> None:
+    """Every S2.7 check keeps ``+check-<way>``; another file is named after the way."""
+    assert checkpass.STATS_DEFAULT == "s27"
+    assert checkpass.TOOLS_STATS == "s3"
+    for way in checkpass.CHECK_WAYS:
+        assert checkpass.suffix(way) == f"+check-{way}"
+        assert checkpass.suffix(way, "s27") == f"+check-{way}"
+        assert checkpass.suffix(way, "s3") == f"+check-{way}-s3"
+
+
+@pytest.mark.parametrize(("stats", "suffix"), [("s27", "+check-rule"), ("s3", "+check-rule-s3")])
+def test_the_derived_prompt_version_records_the_statistics_read(
+    tmp_path: Path, stats: str, suffix: str
+) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    record = checkpass.check_run(
+        source,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={},
+        seen_pairs=frozenset(),
+        commit=("d", False),
+        now=lambda: NOW,
+        stats=stats,  # type: ignore[arg-type]
+    )
+    assert record.prompt_version == f"s1-v5{suffix}"
+    assert record.run_id == "20260926T000000-abc1234-dev-400-B-check-rule"  # the id is the way's
+
+
+def _tools_source(runs: Path) -> Path:
+    """A finished arm B tool post-pass (``agent/armb.py`` writes ``+tools-s3``)."""
+    run_id = "20260926T000000-abc1234-dev-400-B-tools"
+    folder = _source(runs, run_id)
+    (record,) = read_jsonl(folder / "run.jsonl", RunRecord)
+    tools = record.model_copy(update={"prompt_version": "s1-v6+gabc+tools-s3"})
+    (folder / "run.jsonl").write_text(tools.model_dump_json() + "\n")  # replaced, not appended
+    return folder
+
+
+def test_a_tool_post_pass_is_checked_with_s3s_statistics_only(tmp_path: Path) -> None:
+    """Decision 0129 item 4: the tools counted in S3's file, so the check over their answer must
+    too. S2.7's default is refused before anything is written; ``s3`` runs and says so."""
+    runs = tmp_path / "runs"
+    source = _tools_source(runs)
+    before = {p.name for p in runs.iterdir()}
+    for refused in (
+        lambda: checkpass.preflight(source, "luna", runs),
+        lambda: checkpass.preflight(source, "rule", runs, stats="s27"),
+        lambda: _run(source, runs),
+    ):
+        with pytest.raises(ConfigurationError, match="--stats s3, not s27") as caught:
+            refused()
+        assert "decision 0129 item 4" in str(caught.value)
+    assert {p.name for p in runs.iterdir()} == before  # no derived folder
+    record = checkpass.check_run(
+        source,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={},
+        seen_pairs=frozenset(),
+        commit=("d", False),
+        now=lambda: NOW,
+        stats="s3",
+    )
+    assert record.prompt_version == "s1-v6+gabc+tools-s3+check-rule-s3"
+
+
 JEV_BASE = "https://api.typesafe.ai"
 JEV_URL = f"{JEV_BASE}/v1/systemone"
 

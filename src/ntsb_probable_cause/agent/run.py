@@ -40,7 +40,7 @@ from ntsb_probable_cause.agent.drive import (
     drive_batch,
     drive_sync,
 )
-from ntsb_probable_cause.agent.loop import CaseLoop, LoopConfig
+from ntsb_probable_cause.agent.loop import PASS_REASONING, CaseLoop, LoopConfig
 from ntsb_probable_cause.agent.schemas import ChooseDocuments, Without
 from ntsb_probable_cause.agent.trail import AgentCall, LoopOutcome
 from ntsb_probable_cause.docket.attach import DOCKET_KEY
@@ -89,6 +89,10 @@ MAX_ROUNDS: Final = 40
 MAX_CODING_CALLS: Final = 6
 # The statistics file every S3 run's tools count in (decision 0129); ``run --arm C`` loads it.
 STATS: Final[StatsName] = "s3"
+# S2.7's sealed sample, used once on 2026-09-29 (decision 0095). Its registration is committed, so
+# ``refuse_sealed`` lets it through, and S3's pool leaves it out, so ``refuse_pool_holding`` does
+# too: arm C and arm B's tool post-pass refuse it themselves, so it is never read again.
+USED_ONCE: Final = "dev-seal-400"
 _DOCKET_ROLES: Final = frozenset({EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS})
 _ARM: Final = "C"
 
@@ -124,8 +128,9 @@ class AgentRunner:
         now: the clock; the only source of times.
         round_number: a registered tuning round (Task 13); it may change the guidance, and it is
             recorded in the prompt version and ``spec.json``.
-        pass_reasoning: whether assistant turns' reasoning goes back to the model (off until the
-            shape probe decides, spec §5.5 check 4).
+        pass_reasoning: whether assistant turns' reasoning goes back to the model
+            (``loop.PASS_REASONING`` by default, which the shape probe's check 4 decides, spec
+            §5.5; ``run --arm C`` passes that constant).
         without: the tool ablation (spec §7.2).
         max_rounds: the most batch rounds the run may take.
         ledger_path: the held-out ledger; a held-out run needs it, as ``Runner``'s does.
@@ -145,7 +150,7 @@ class AgentRunner:
         docket: DocketReader | None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         round_number: int | None = None,
-        pass_reasoning: bool = False,
+        pass_reasoning: bool = PASS_REASONING,
         without: frozenset[Without] = frozenset(),
         max_rounds: int = MAX_ROUNDS,
         ledger_path: Path | None = None,
@@ -193,7 +198,7 @@ class AgentRunner:
 
         Raises:
             ConfigurationError: a refusal (see ``_refuse``), a folder that cannot be resumed, a
-                record with no ``mKey``, or a docket view built from another record.
+                record with no ``mKey``, or a docket whose own key is not the record's.
             BudgetError: the projected cost does not fit the month's budget.
             BatchCancelledError: a batch was cancelled; the message names the run to resume.
         """
@@ -285,6 +290,11 @@ class AgentRunner:
             raise ConfigurationError(
                 f"AgentRunner runs arm C only; arm {spec.arm} is run by scoring.runner.Runner"
             )
+        if spec.sample == USED_ONCE:
+            raise ConfigurationError(
+                f"{USED_ONCE} is the sealed development sample S2.7 used once (decision 0095): "
+                "it is never read again, so arm C does not run on it"
+            )
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         if spec.evidence_version != "v1":
@@ -364,16 +374,19 @@ class AgentRunner:
             mkey = raw.get("mKey")
             if not isinstance(mkey, int):
                 raise ConfigurationError(f"{case_id}: no mKey, so no docket")
+            docket = self._docket.read(mkey)
+            # The pairing guard: the docket's own key must be the record's. The view below is
+            # built from this same record, so its case number could never differ; the docket
+            # the reader returned can (a cache or reader that answers for another key).
+            if docket.mkey != mkey:
+                raise ConfigurationError(
+                    f"the docket read for {case_id} is docket {docket.mkey}, not its own "
+                    f"{mkey}: a case's loop is given its own docket only"
+                )
             try:
-                view = docket_view(raw, self._docket.read(mkey))
+                view = docket_view(raw, docket)
             except LeakageError as error:
                 return _Case(raw, None, None, error)
-            built_from = view.attachment.template.get("ntsbNumber")
-            if built_from != raw.get("ntsbNumber"):
-                raise ConfigurationError(
-                    f"the docket view of {case_id} was built from {built_from}: a case's loop is "
-                    "given its own docket only"
-                )
         return _Case(raw, view, CaseLoop(raw, view, config))
 
     def _drive(self, spec: RunSpec, loops: Sequence[CaseLoop], folder: Path) -> None:

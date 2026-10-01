@@ -332,6 +332,13 @@ def test_a_third_run_adds_every_pair_and_the_rule_still_reads_the_first_two(
     assert f"run c = {_RUN_C}" in out
     for pair in ("run a against run b", "run a against run c", "run b against run c"):
         assert f"## {pair}" in out
+    # compare_by_fatal says "(a - b)" in every block; each block names what a and b are there.
+    blocks = out.split("\n## run ")
+    for first, second in (("a", "b"), ("a", "c"), ("b", "c")):
+        (block,) = [b for b in blocks if b.startswith(f"{first} against run {second}\n")]
+        assert f"\n(a - b) here is run {first} minus run {second}\n" in block
+        assert block.index("(a - b) here is") < block.index("paired difference (a - b)")
+    assert "list order inside the arguments kept" in out
     assert "format gate, run c: PASS -- 0 of 20 cases" in out
     assert "third run: not needed -- " in out  # a and b are identical
     assert "+0.00 points (net +0 of 20 cases scored in both)" in out
@@ -364,6 +371,54 @@ def test_the_gate_passes_eight_format_failures_and_fails_nine(
     assert expected in out
     assert "at most 8 pass (2% of dev-400's 401 cases" in out
     assert "round limit (failed: rounds), run a: 1 of 20 cases" in out
+
+
+def _no_reply(case_id: str, index: int) -> AgentCall:
+    """A call that came back with no reply (a provider error, or no result in a batch)."""
+    return _call(case_id, None, index=index, error="no result in the completed batch").model_copy(
+        update={
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "finish_reason": None,
+            "cost_usd": 0.0,
+        }
+    )
+
+
+def test_the_gate_says_how_many_counted_failures_had_no_reply_on_the_failing_call(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A batch item that fails twice with no reply ends ``failed: <step>`` and is counted (the
+    gate fails closed); the line says how many of the counted failures were that, read from
+    the case's last call in ``trail.jsonl``."""
+    cases = [
+        _failed(_IDS[0], "failed: coding"),  # its failing call had no reply
+        _failed(_IDS[1], "failed: h0"),  # its failing call was a reply that broke the protocol
+        _failed(_IDS[2], "failed: refine"),  # a reply, then no reply: the last call decides
+        _failed(_IDS[3], "failed: rounds"),  # not counted, whatever its calls
+        *_plain(_IDS[4:]),
+    ]
+    calls = [
+        _call(_IDS[0], "describe_codes", index=0),
+        _no_reply(_IDS[0], 1),
+        _no_reply(_IDS[0], 2),
+        _call(_IDS[1], None, index=0, error="no tool call"),
+        _call(_IDS[1], None, index=1, error="no tool call"),
+        _call(_IDS[2], None, index=0, error="items: list_type"),
+        _no_reply(_IDS[2], 1),
+        _no_reply(_IDS[3], 0),
+    ]
+    gate = nf.format_gate(cases, calls)
+    assert (gate.count, gate.no_reply, gate.passed) == (3, 2, True)
+    assert nf.format_gate(cases).no_reply == 0  # no trail given, nothing read from it
+    _write(runs, _RUN_A, cases, calls)
+    _write(runs, _RUN_B, _plain())
+    out = _report(runs, capsys, _RUN_A, _RUN_B)
+    line = next(x for x in out.splitlines() if x.startswith("format gate, run a: "))
+    assert line.startswith("format gate, run a: PASS -- 3 of 20 cases failed for format or tool")
+    assert "; of which 2 had no reply on the failing call;" in line
+    assert "format gate, run b: PASS -- 0 of 20 cases" in out
+    assert "; of which 0 had no reply on the failing call;" in out
 
 
 def test_the_gate_counts_every_failed_step_and_fails_closed_on_an_unknown_one() -> None:

@@ -180,15 +180,32 @@ class TestMenu:
     def test_lists_not_readable_documents_by_index_and_pages(self) -> None:
         scan = _facts(5, pages=14, readable_pages=0, kind="scan", status="unreadable: scan")
         text = menu([_facts(1)], [scan])
-        assert text.splitlines()[-1] == "Not readable (no text layer): [5] 14 pages"
+        assert text.splitlines()[-1] == "Not readable: [5] 14 pages"
 
     def test_each_not_readable_document_has_its_own_line_in_the_fixed_format(self) -> None:
         first = _facts(2, pages=1, readable_pages=0, kind="scan", status="unreadable: scan")
         second = _facts(6, pages=9, readable_pages=0, kind=None, status="skipped: photo-only")
         assert menu([], [first, second]).splitlines() == [
-            "Not readable (no text layer): [2] 1 pages",
-            "Not readable (no text layer): [6] 9 pages",
+            "Not readable: [2] 1 page",
+            "Not readable: [6] 9 pages",
         ]
+
+    @pytest.mark.parametrize(
+        "status",
+        ["unreadable: scan", "fetch failed", "unreadable: not a pdf", "skipped: photo-only"],
+    )
+    def test_the_not_readable_line_names_no_cause_for_any_status(self, status: str) -> None:
+        """The cause is not measured for every status (a fetch that failed, a file that is not a
+        PDF), so the line says only that the document cannot be read."""
+        document = _facts(4, pages=2, readable_pages=0, kind=None, status=status)
+        assert menu([], [document]) == "Not readable: [4] 2 pages"
+
+    def test_one_page_is_one_page_as_the_attached_documents_header_says(self) -> None:
+        """``docket/attach.py`` writes ``1 page`` for a one-page document; so does the menu."""
+        one = _facts(3, pages=1, readable_pages=1, estimated_tokens=40)
+        assert menu([one], []) == "[3] 1 page, 1 with a text layer, about 40 tokens"
+        two = _facts(3, pages=2, readable_pages=1, estimated_tokens=40)
+        assert menu([two], []) == "[3] 2 pages, 1 with a text layer, about 40 tokens"
 
     def test_names_what_was_already_read_by_index(self) -> None:
         text = menu([_facts(3)], [], already_read=[1, 2])

@@ -385,6 +385,8 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
         raw_reasoning = message.get("reasoning_details")
         if not isinstance(raw_reasoning, Sequence) or isinstance(raw_reasoning, str | bytes):
             raw_reasoning = ()
+        # An entry that is not an object is skipped, the objects kept in order: one odd entry
+        # must not turn a paid reply (in batch, one item) into an unpriced failed call.
         return ModelReply(
             content=content if content is None else str(content),
             tool_calls=calls,
@@ -398,7 +400,9 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
             ),
             model=str(body.get("model", "")),
             response_id=str(body.get("id", "")),
-            reasoning_details=tuple(dict(_as_mapping(detail)) for detail in raw_reasoning),
+            reasoning_details=tuple(
+                dict(detail) for detail in raw_reasoning if isinstance(detail, Mapping)
+            ),
         )
     except (KeyError, IndexError, TypeError, ValueError) as error:
         raise ModelError(f"reply is not a chat completion: {error!r}") from error

@@ -41,15 +41,27 @@ class Stage:
     first: str  # the stage's first commit; a branch counts only if it holds it
     line_usd: float
     prefix: str  # branch-name prefix a counted branch must have (decision 0107)
+    # The decisions the printed lines cite: the one that sets the stage's line (the refused
+    # line) and the one that says how its spend is counted. S2.7's are the defaults.
+    line_rule: str = "decision 0098 item 6"
+    count_rule: str = "decision 0107"
 
 
 # S2.7's first commit is the specification's first draft, on the parent s27-coding-guidance;
 # every branch whose history holds it grew from the parent (decision 0102). S3's first commit
 # is the draft specification, on s3-agent-loop (decision 0128 item 2); s3-probe, the learning
-# probe's branch, was cut before it.
+# probe's branch, was cut before it. S3's line, and how it is counted, are 0128 item 2's.
 STAGES: Mapping[str, Stage] = {
     "s27": Stage("S2.7", base="971ee40", first="94f5d42", line_usd=25.0, prefix="s27-"),
-    "s3": Stage("S3", base="4178ca1", first="777c2a5", line_usd=50.0, prefix="s3-"),
+    "s3": Stage(
+        "S3",
+        base="4178ca1",
+        first="777c2a5",
+        line_usd=50.0,
+        prefix="s3-",
+        line_rule="decision 0128 item 2",
+        count_rule="decision 0128 item 2",
+    ),
 }
 # main holds every stage once merged, and later stages' commits too; it is never counted.
 EXCLUDED_BRANCHES = frozenset({"main"})
@@ -91,10 +103,10 @@ def report(stage: Stage, *, runs: float, spend: float, estimate: float) -> tuple
     lines = [
         f"{stage.name} spend so far: ${spent:.2f} (${runs:.2f} evaluation runs, ${spend:.2f} "
         f"preparation spend rows; counted by commit from {stage.base} on {stage.name}'s own "
-        "branches, decision 0107)",
+        f"branches, {stage.count_rule})",
         f"this step's estimate: ${estimate:.2f}; the stage line: ${stage.line_usd:.2f}",
         (
-            f"refused: ${spent + estimate:.2f} would pass the line (decision 0098 item 6)"
+            f"refused: ${spent + estimate:.2f} would pass the line ({stage.line_rule})"
             if over
             else f"within the line: ${stage.line_usd - spent - estimate:.2f} left after this step"
         ),

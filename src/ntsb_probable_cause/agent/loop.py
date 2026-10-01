@@ -81,6 +81,10 @@ _BEFORE_ANSWER: Final[frozenset[StepKind]] = frozenset(
     {"h0", "choice1", "h1", "choice2", "h2", "coding"}
 )
 _NO_USAGE: Final = Usage(prompt_tokens=0, completion_tokens=0)
+# Whether assistant turns' ``reasoning_details`` go back to the model: the shape probe's check 4
+# decides (spec §5.5). The one setting arm C (``run --arm C``) and arm B's tool post-pass
+# (``agent/armb.py``) both read, so applying the probe's outcome is a change to this line alone.
+PASS_REASONING: Final = False
 
 
 @dataclass(frozen=True)
@@ -118,7 +122,7 @@ class LoopConfig:
         max_output_tokens: the reply budget of every call (decision 0084).
         max_coding_calls: the coding calls before the answer is forced (spec §8.2).
         pass_reasoning: whether assistant turns' ``reasoning_details`` go back to the model
-            (the shape probe's check 4 decides; off until it does).
+            (the shape probe's check 4 decides; ``PASS_REASONING`` by default).
         without: the tool ablations (spec §7.2); the run sends ``definitions(without)``.
         run_id: the run, for the trail.
         commit: the commit SHA and whether the tree was dirty (decisions 0018, 0033).
@@ -134,7 +138,7 @@ class LoopConfig:
     price_variant: Literal["batch", "standard"]
     max_output_tokens: int = 8000
     max_coding_calls: int = 6
-    pass_reasoning: bool = False
+    pass_reasoning: bool = PASS_REASONING
     without: frozenset[Without] = frozenset()
     run_id: str = ""
     commit: tuple[str, bool] = ("", False)

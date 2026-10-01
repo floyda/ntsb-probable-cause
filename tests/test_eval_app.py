@@ -2312,10 +2312,18 @@ def test_check_reads_s3_statistics_for_the_s3_sealed_sample(
     assert (runs / f"{_S3_SEALED_RUN}-check-rule" / "run.jsonl").exists()
 
 
-@pytest.mark.parametrize("flags", [[], ["--stats", "s27"], ["--stats", "s3"]])
+@pytest.mark.parametrize(
+    ("flags", "suffix"),
+    [
+        ([], "+check-rule"),
+        (["--stats", "s27"], "+check-rule"),
+        (["--stats", "s3"], "+check-rule-s3"),
+    ],
+)
 def test_check_on_dev_400_is_unchanged_by_the_statistics_rule(
-    flags: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    flags: list[str], suffix: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Every S2.7 check keeps its ``+check-<way>``; a check on S3's counts says so."""
     runs = _checkable_env(tmp_path, monkeypatch)
     run_id = "20260926T000000-abc1234-dev-400-B"
     _write_checkable_run(runs, run_id)
@@ -2325,7 +2333,8 @@ def test_check_on_dev_400_is_unchanged_by_the_statistics_rule(
         jev_factory=_boom_jev,
     )
     assert exit_code == 0
-    assert (runs / f"{run_id}-check-rule" / "run.jsonl").exists()
+    derived = answering_run_record(runs / f"{run_id}-check-rule")
+    assert derived.prompt_version == f"s1-v5{suffix}"
 
 
 def test_check_refuses_an_unknown_statistics_name(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2631,7 +2640,10 @@ class _StubDocketReader:
         self.version = "v1" if readings is None else "v2"
 
     def read(self, mkey: int) -> Docket:
-        return small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+        """The fixed docket, under the key asked for, as a real reader returns a case's own."""
+        docket = small_docket({1: "[page 1 of 3]\nThe crankshaft was intact.\n"})
+        listing = docket.listing.model_copy(update={"mkey": mkey})
+        return docket.model_copy(update={"mkey": mkey, "listing": listing})
 
 
 def _arm_c_env(
@@ -2727,6 +2739,31 @@ def test_run_arm_c_flags_reach_the_agent_runner(
     assert captured["pass_reasoning"] is False
     assert captured["resume"] is None
     assert captured["round_number"] is None  # no --round: the plain arm C
+
+
+def test_run_arm_c_reads_the_one_pass_reasoning_setting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_fixtures: list[dict[str, object]]
+) -> None:
+    """``loop.PASS_REASONING`` is the one setting arm C and arm B's post-pass read (the shape
+    probe's check 4 decides it); flipping it reaches the runner. The post-pass's half of this
+    is ``tests/test_agent_armb.py``'s test of the same name."""
+    _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    captured: dict[str, object] = {}
+
+    class SpyAgentRunner:
+        def __init__(self, _client: object, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def run(
+            self, spec: RunSpec, raws: Sequence[object], *, resume: str | None = None
+        ) -> RunRecord:
+            return _arm_c_record("spied", guidance=spec.guidance)
+
+    monkeypatch.setattr("apps.eval.__main__.AgentRunner", SpyAgentRunner)
+    monkeypatch.setattr("ntsb_probable_cause.agent.loop.PASS_REASONING", True)
+    argv = ["run", "--arm", "C", "--sample", "dev-400"]
+    assert main(argv, client_factory=_factory(RecordingFakeClient([]))) == 0
+    assert captured["pass_reasoning"] is True
 
 
 def test_round_is_refused_before_anything_unless_its_registration_is_committed(
@@ -2847,6 +2884,32 @@ def test_arm_c_refuses_its_sealed_sample_before_anything_is_read(
     assert "sealed" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("sync", [True, False])
+def test_arm_c_refuses_the_sample_s27_used_once_before_any_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    record_fixtures: list[dict[str, object]],
+    sync: bool,
+) -> None:
+    """dev-seal-400 was used once (decision 0095). Its registration is committed, so
+    ``refuse_sealed`` passes, and S3's pool leaves it out, so ``refuse_pool_holding`` passes:
+    the runner refuses it, before any folder, reservation or model call."""
+    _, runs_dir = _arm_c_env(tmp_path, monkeypatch, record_fixtures)
+    monkeypatch.setitem(samples._FILES, "dev-seal-400", "dev_ids.csv")  # the one fixture case
+    agent = RecordingFakeClient([])
+    batch = FakeBatchClient(handlers=[])
+    argv = ["run", "--arm", "C", "--sample", "dev-seal-400"]
+    argv += _ARM_C_SYNC if sync else ["--expected-cost-per-case-usd", "0.01"]
+    assert main(argv, client_factory=_factory(agent, batch)) == 1
+    err = capsys.readouterr().err
+    assert "dev-seal-400" in err
+    assert "decision 0095" in err
+    assert agent.payloads == []
+    assert batch.submitted == []
+    assert not runs_dir.exists()
+
+
 def test_a_cancelled_batch_exits_one_and_says_how_to_resume(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2938,7 +3001,10 @@ def test_resolve_latest_leaves_out_a_renamed_folder_by_its_name_and_its_record(
     assert resolve_latest(runs, "B", "dev-400") == plain
 
 
-@pytest.mark.parametrize("suffix", ["+tools-s3", "+check-luna", "+tools-s3+check-luna"])
+@pytest.mark.parametrize(
+    "suffix",
+    ["+tools-s3", "+check-luna", "+check-luna-s3", "+tools-s3+check-luna-s3"],
+)
 def test_resolve_latest_leaves_out_a_derived_run_by_its_record(tmp_path: Path, suffix: str) -> None:
     """A derived run whose folder the glob takes (moved, say) is still not an answering run."""
     runs = tmp_path / "runs"

@@ -41,13 +41,16 @@ from pathlib import Path
 from typing import Final, Literal, cast, get_args
 
 from ntsb_probable_cause import sources
+from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent.drive import drive_batch, drive_sync
 from ntsb_probable_cause.agent.later import as_recorded
 from ntsb_probable_cause.agent.loop import LoopConfig, PendingCall, answer_turns, estimate_usd
 from ntsb_probable_cause.agent.run import (
+    GUIDANCE,
     MAX_ROUNDS,
     STATS,
     TRAIL_FILE,
+    USED_ONCE,
     log_line,
     round_costs,
     round_line,
@@ -85,7 +88,12 @@ from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import reserve_within_budget, settle
 from ntsb_probable_cause.scoring.checkpass import _refuse_unless_development
 from ntsb_probable_cause.scoring.codes import CodeTables
-from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, CodingStats, refuse_pool_holding
+from ntsb_probable_cause.scoring.coding_stats import (
+    NO_GROUP,
+    CodingStats,
+    StatsName,
+    refuse_pool_holding,
+)
 from ntsb_probable_cause.scoring.hypothesis import (
     REFINEMENT_SCHEMA,
     Hypothesis,
@@ -129,9 +137,6 @@ _FORCED: Final = "submit_answer"
 _PRICES: Final = ("batch", "standard")
 _NO_USAGE: Final = Usage(prompt_tokens=0, completion_tokens=0)
 _SHOWN: Final = 5  # case ids a refusal names before it counts the rest
-# S2.7's sealed sample, used once on 2026-09-29 (decision 0095). Its registration is committed,
-# so ``refuse_sealed`` lets it through, and S3's pool leaves it out; this refusal keeps it unread.
-_USED_ONCE: Final = "dev-seal-400"
 
 
 def tools_id(run_id: str) -> str:
@@ -553,10 +558,11 @@ def preflight(source: Path, runs_dir: Path) -> Preflight:
     Refused: a folder with no run record; anything the ordering check refuses (not a finished
     development arm B run, a derived check run, a case outside the development split; reused
     from ``checkpass``); a run on ``dev-seal-400``, used once (decision 0095); a tools post-pass
-    itself; an ablation (exclusions or includes: arm B's
-    pipeline starts from its plain answer); evidence past v1; a sample S3's statistics pool holds
-    (decision 0129); a record whose price variant or reasoning level is not one a run can have;
-    and a derived folder that already exists.
+    itself; an ablation (exclusions or includes: arm B's pipeline starts from its plain answer);
+    evidence past v1; guidance other than S3's (``run.GUIDANCE``: part 1 is S2.7's answer with
+    the two kept guidance files, spec §7.1); a sample S3's statistics pool holds (decision
+    0129); a record whose price variant or reasoning level is not one a run can have; and a
+    derived folder that already exists.
 
     Raises:
         ConfigurationError: any refusal above.
@@ -566,9 +572,9 @@ def preflight(source: Path, runs_dir: Path) -> Preflight:
     record = read_jsonl(source / RUN_FILE, RunRecord)[0]
     cases = tuple(read_jsonl(source / _CASES_FILE, CaseResult))
     _refuse_unless_development(record, cases)
-    if record.sample == _USED_ONCE:
+    if record.sample == USED_ONCE:
         raise ConfigurationError(
-            f"{record.run_id} is on {_USED_ONCE}, the sealed development sample S2.7 used once "
+            f"{record.run_id} is on {USED_ONCE}, the sealed development sample S2.7 used once "
             "(decision 0095): it is never read again, so no post-pass runs on it"
         )
     if record.run_id.endswith(_SUFFIX):
@@ -583,6 +589,12 @@ def preflight(source: Path, runs_dir: Path) -> Preflight:
         raise ConfigurationError(
             f"{record.run_id} read evidence version {record.evidence_version}: arm B's pipeline "
             "reads v1 (spec §7.1)"
+        )
+    if record.guidance != GUIDANCE:
+        raise ConfigurationError(
+            f"{record.run_id} read the guidance {', '.join(record.guidance) or 'none'}: arm B's "
+            f"pipeline starts from S2.7's answer with S3's guidance {', '.join(GUIDANCE)} "
+            "(spec §7.1 part 1)"
         )
     refuse_pool_holding(STATS, record.sample)
     run_id = tools_id(record.run_id)
@@ -639,6 +651,7 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
     docket: DocketReader,
     tables: CodeTables,
     stats: CodingStats,
+    stats_name: StatsName,
     seen_pairs: frozenset[str],
     runs_dir: Path,
     budget_usd: float,
@@ -664,7 +677,9 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
         batch: the batch client, for every other post-pass.
         docket: where each case's docket is read from; v1 only.
         tables: the code tables.
-        stats: the statistics the tools count in: ``load_stats("s3")`` (``STATS``).
+        stats: the statistics the tools count in: ``load_stats(stats_name)``.
+        stats_name: the name ``stats`` was loaded by; it must be S3's (``STATS``, decision 0129),
+            and it is the one the derived run's prompt version records (``+tools-<name>``).
         seen_pairs: the development split's primary occurrence codes (``pair_unseen``).
         runs_dir: the runs directory; the derived run is written beside the source.
         budget_usd: the month's budget.
@@ -676,12 +691,17 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
         The derived run's record, also written to its ``run.jsonl``.
 
     Raises:
-        ConfigurationError: a refusal (``preflight``; a docket reader past v1; no batch client
-            for a batch post-pass; a missing or mismatched record).
+        ConfigurationError: a refusal (``preflight``; statistics other than S3's; a docket reader
+            past v1; no batch client for a batch post-pass; a missing or mismatched record).
         BudgetError: the projection does not fit the month's budget.
         BatchCancelledError: a batch was cancelled; the records are written.
     """
     pre = preflight(source, runs_dir)
+    if stats_name != STATS:
+        raise ConfigurationError(
+            f"arm B's tool post-pass counts in S3's statistics ({STATS}, decision 0129); "
+            f"statistics {stats_name} were given"
+        )
     if docket.version != "v1":
         raise ConfigurationError(
             f"the post-pass reads v1 evidence; this docket reader reads {docket.version} (0076)"
@@ -700,6 +720,7 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
         cap_usd=pre.spec.cap_usd,
         price_variant="standard" if sync else "batch",
         max_output_tokens=pre.spec.max_output_tokens,
+        pass_reasoning=agent_loop.PASS_REASONING,  # arm C's setting (``run --arm C`` reads it)
         run_id=pre.run_id,
         commit=commit,
         model=pre.spec.model,
@@ -723,6 +744,7 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
             finished=finished,
             seen_pairs=seen_pairs,
             budget_usd=budget_usd,
+            stats_name=stats_name,
         )
 
     try:
@@ -731,7 +753,7 @@ def tools_run(  # noqa: PLR0913 -- the plan's interface (Task 12).
             lambda: (
                 f"tools {pre.run_id} source={pre.record.run_id} cases={len(cases)} "
                 f"answered={len(loops)} model={config.model} price={config.price_variant} "
-                f"cap=${config.cap_usd:.2f} stats={STATS}"
+                f"cap=${config.cap_usd:.2f} stats={stats_name}"
             ),
         )
         try:
@@ -829,11 +851,13 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     finished: datetime | None,
     seen_pairs: frozenset[str],
     budget_usd: float,
+    stats_name: StatsName,
 ) -> RunRecord:
     """Write the derived run's cases, trail and record; return the record.
 
     Its cost is the post-pass's own: every reply it took, and any round no reply came from. The
-    source's answers were paid for, and counted, in the source run.
+    source's answers were paid for, and counted, in the source run. Its prompt version is the
+    source's with ``+tools-<stats_name>``: the statistics the tool results counted in.
     """
     results = [_result(case, config, seen_pairs) for case in cases]
     write_jsonl(folder / _CASES_FILE, results)
@@ -843,7 +867,7 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     record = pre.record.model_copy(
         update={
             "run_id": pre.run_id,
-            "prompt_version": f"{pre.record.prompt_version}+tools-{STATS}",
+            "prompt_version": f"{pre.record.prompt_version}+tools-{stats_name}",
             "price_variant": config.price_variant,
             "budget_usd": budget_usd,
             "commit_sha": config.commit[0],
