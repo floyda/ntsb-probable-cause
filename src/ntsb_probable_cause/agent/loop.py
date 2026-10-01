@@ -221,6 +221,29 @@ class CaseLoop:
 
     # --- the driver's side ---
 
+    @property
+    def case_id(self) -> str:
+        """The case's NTSB number: what a driver names this case's calls by."""
+        return self._case_id
+
+    @property
+    def call_index(self) -> int:
+        """The place of the next call in the case: the replies accepted so far, failures included.
+
+        It is the ``call_index`` the trail row of the pending call will carry.
+        """
+        return len(self._rows)
+
+    def stop(self, reason: str) -> None:
+        """End the case now with ``reason``: the driver's way to stop a case the run has spent.
+
+        A call pending is dropped, never sent. The trail so far is kept, and a case that has
+        already stopped keeps the reason it stopped with.
+        """
+        if self._stop is None:
+            self._stop = reason
+        self._pending = None
+
     def next_call(self) -> PendingCall | None:
         """The next call to make, or None once the case has stopped.
 

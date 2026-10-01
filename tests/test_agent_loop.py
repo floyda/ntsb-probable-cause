@@ -1246,6 +1246,56 @@ class TestDriving:
             _ = loop.outcome
 
 
+class TestDriverSeams:
+    """What the drivers (Task 9) need from a loop: its case id, its place, and a way to stop it."""
+
+    def test_the_case_id_is_the_ntsb_number(self) -> None:
+        assert CaseLoop(_raw(), None, _config()).case_id == "ANC09CA024"
+
+    def test_call_index_counts_every_accepted_reply_failed_ones_included(self) -> None:
+        loop = CaseLoop(_raw(), None, _config())
+        assert loop.call_index == 0
+        assert loop.next_call() is not None
+        assert loop.call_index == 0  # asking for the call does not move it
+        loop.accept(None, error="boom", sent_at=T0, returned_at=T0)
+        assert loop.call_index == 1
+        assert loop.next_call() is not None  # the same step, re-issued
+        loop.accept(tool_reply("record_hypothesis", _hyp()), sent_at=T0, returned_at=T0)
+        assert loop.call_index == 2
+
+    def test_stop_ends_a_case_with_a_call_pending_and_keeps_its_trail(self) -> None:
+        loop = CaseLoop(_raw(), _view(), _config())
+        assert loop.next_call() is not None
+        loop.accept(tool_reply("record_hypothesis", _hyp()), sent_at=T0, returned_at=T0)
+        assert loop.next_call() is not None  # choice1 is now pending
+        loop.stop("failed: rounds")
+        assert loop.next_call() is None
+        outcome = loop.outcome
+        assert outcome.stop_reason == "failed: rounds"
+        assert outcome.answer is None
+        assert [kind for kind, _ in outcome.checkpoints] == ["h0"]
+        assert len(outcome.calls) == 1
+
+    def test_stop_does_not_change_the_reason_of_a_case_that_has_stopped(self) -> None:
+        loop = CaseLoop(_raw(), None, _config())
+        _drive(
+            loop,
+            [
+                tool_reply("record_hypothesis", _hyp()),
+                tool_reply("submit_answer", _hyp(findings=[])),
+            ],
+        )
+        loop.stop("failed: rounds")
+        assert loop.outcome.stop_reason == "done"
+        assert loop.next_call() is None
+
+    def test_stop_before_the_first_call(self) -> None:
+        loop = CaseLoop(_raw(), None, _config())
+        loop.stop("failed: rounds")
+        assert loop.next_call() is None
+        assert loop.outcome.calls == ()
+
+
 class TestReasoning:
     @pytest.mark.parametrize("passed", [False, True])
     def test_assistant_turns_keep_reasoning_and_settings_say_whether_it_goes_back(
