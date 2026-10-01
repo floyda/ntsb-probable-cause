@@ -17,7 +17,8 @@ not yet published.
 (`month_spent`, 2026-09-29, in the probe plan's Deviations; spec §14; 0104). From October the
 monthly guard is $40 again (0083). The estimates are arithmetic from the probe at the batch
 price (spec §14): S3.1 about $15 to $20; S3.2 about $20 to $25; S3.3 about $7.50 for a first
-pass over the watched cases.
+pass over the watched cases. Their upper ends add to $52.50 ($20 + $25 + $7.50), more than the
+$50 line of item 2.
 
 ## Decision
 
@@ -40,8 +41,11 @@ pass over the watched cases.
    the prefix but not S3's first commit, so it is not counted.
 4. **No paid S3 work starts before 1 October 2026.** The line spans October and November, under
    the monthly guard.
-5. **If a re-estimate passes the line, work stops and Andy decides** (0083 item 2). S3.1's
-   tuning rounds stop when S3.1's share is spent (spec §10.3).
+5. **If a re-estimate passes the line, work stops and Andy decides** (0083 item 2). The upper
+   ends of spec §14's estimates already pass it ($52.50 against $50, Context), so this may
+   happen before S3 ends. S3.1's share of the line is $20, the upper end of spec §14's S3.1
+   estimate: S3.1's tuning rounds stop when S3.1's spend reaches it (spec §10.3; the S3.1 plan's
+   Task 15 stop), and S3.2 and S3.3 keep the rest.
 
 ## Why
 

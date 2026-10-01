@@ -20,9 +20,11 @@ choice A. Detail: [the S3 specification](../specs/2026-09-30-s3-agent-loop-desig
 ## Decision
 
 1. **A new sealed sample, `dev-seal-s3-400`.** It is drawn by `samples.draw` exactly as
-   `dev-seal-400` was (200 fatal and 200 non-fatal, each split by class C, F and L in
+   `dev-seal-400` was (200 fatal and 200 non-fatal asked for, each split by class C, F and L in
    proportion; 0026), with seed 20260930, excluding every `dev-400` and `dev-seal-400` case.
-   Its list is committed as a test fixture.
+   Each class's share is rounded on its own, so the draw gave 401 cases: 200 fatal and 201
+   non-fatal (the committed list, `tests/fixtures/eval/dev_seal_s3_400_ids.csv`, and the S3.1
+   plan's Task 5 Deviations). Its list is committed as a test fixture.
 2. **It is refused until registered.** Nothing about it is scored, read, fetched or transcribed
    until S3.2's registration file (`docs/rounds/s3-registration.md`) is committed. The runner,
    the docket fetch and every other command refuse it before then, and tests prove they refuse.
@@ -46,8 +48,10 @@ choice A. Detail: [the S3 specification](../specs/2026-09-30-s3-agent-loop-desig
    applied to the new sample.
 3. **The guidance text cannot have been fitted to the new sample.** It was fixed before the
    sample existed, and 400 of about 12,490 cases carry little weight in a count. Keeping the
-   files keeps arm B as S2.7's measured setup. Andy (2026-09-30): "Go with A and keep them
-   unchanged".
+   files keeps arm B's guidance text as S2.7's measured setup had it. It does not keep arm B as
+   S2.7 measured it: decision 4 makes arm B's tool post-pass and its ordering check read S3's
+   statistics, and S3.2 runs arm B again in any case (spec §11). Andy (2026-09-30): "Go with A
+   and keep them unchanged".
 
 ## What this rules out
 
@@ -57,8 +61,10 @@ choice A. Detail: [the S3 specification](../specs/2026-09-30-s3-agent-loop-desig
   the loop is tuned, and on held-out alone.
 - **Keeping S2.7's statistics for S3.** No rebuild. Rejected by Why 2.
 - **Rewriting the guidance files' counts from the smaller pool.** The counts would then agree
-  with S3's file. Rejected: it would change arm B's text away from S2.7's final setup, and arm
-  B's bar would need re-measuring.
+  with S3's file. Rejected: it would change arm B's guidance text away from S2.7's final setup
+  (Andy's choice, Why 3). It would not have spared a new measurement of arm B: decision 4
+  already changes the statistics arm B's post-pass and ordering check read, and S3.2 runs arm B
+  again anyway (spec §11).
 
 ## Status
 

@@ -40,8 +40,9 @@ of spec §10.4. Detail: [the S3 specification](../specs/2026-09-30-s3-agent-loop
    single answer; the loop has more chance in it.
 2. **A third run only improves the estimate of the spread.** It is worth its cost only when the
    first gap is wide.
-3. **The gate scales with the calls.** Each of about ten calls per case is a chance to break
-   format, so 0073's 1% for one call is too tight for the loop. 2% still stops a loop that
+3. **The gate allows for the calls, on judgement.** Each of about ten calls per case is a
+   chance to break format, so 0073's 1% for one call is too tight for the loop. 2% is not
+   scaled from the number of calls; it is set on judgement, and it still stops a loop that
    breaks often.
 4. **A gate protects the score.** Failed cases leave `n`, so a loop that fails often could
    flatter its own accuracy.

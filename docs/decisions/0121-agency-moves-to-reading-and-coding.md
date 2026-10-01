@@ -22,8 +22,9 @@ which evidence arrives late. Three measurements since then show where choices ca
   +10.3%] and +9.8% [+6.0%, +13.8%] on two answer sets (`docs/results/s27-round1-dev.txt`).
   Andy's hand-read of 40 misses put 34 down to coding (19 convention, 15 wrong phase) and 4 to
   a misread or missing fact (`docs/results/s27-round0-dev.txt`).
-- **Dockets arrive at closure.** The recorder has seen 7 dockets appear, all in the same nightly
-  run as their case's closure, none before (`docs/results/s3-recorder-report-2026-09-29.txt`;
+- **No docket has been seen to arrive before closure.** The recorder has seen 7 dockets appear,
+  all in the same nightly run as their case's closure, none before
+  (`docs/results/s3-recorder-report-2026-09-29.txt`;
   [0123](0123-the-staged-replay-is-paused.md)).
 
 **The learning probe, disclosed.** Before this record was written, a learning probe (pull
@@ -40,7 +41,7 @@ because 3 cases failed.
 | after the second look (H2) | 5 | 9 | 9 | 10 |
 | the answer | 6 of 17 | 8 of 17 | 9 | 11 |
 
-These figures moved between identical runs: at n=20 they are noise. Accuracy by checkpoint
+These figures moved between runs with identical settings: at n=20 they are noise. Accuracy by checkpoint
 bears on P5, though it is not the probability on the true codes that P5 names, which the
 reports do not give. The reports score none of the other five predictions: they give no steps
 by fatality, no comparison with arm B, no masked condition, and no stated effect against an
@@ -93,6 +94,11 @@ observed one.
 
    As in 0022, if any one holds, it is published whichever way the others go. S3.2's
    registration file defines equal cost (spec §11).
+
+   **Open for Andy (S3.1 final review, 2026-10-01).** 0022 item 4 also says what the published
+   result is when one of its results holds: "retrieval was warranted and the loop was not".
+   Spec §13 carries over only the publication rule above and says nothing of that consequence,
+   so this record does not say whether it carries over to the four results here. Andy decides.
 6. **0022 item 5 is withdrawn: P1 to P6.** The withdrawal comes before any measurement of the
    loop. The six stay published in 0022 as written. The reason for each:
 

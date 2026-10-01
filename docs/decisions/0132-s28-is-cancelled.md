@@ -20,7 +20,7 @@ to the spend reader ([0131](0131-the-probe-spend-kind.md); spec §10.1 item 2).
 
 1. **S2.8 is cancelled.** Andy (2026-09-30): "I think S2.8 is a dead end and I've decided to can
    it".
-2. **The branch `s28-coding-lookup` is left in place, unmerged.** Nothing from it is cited by
+2. **The branch `s28-coding-lookup` is left in place, unmerged.** No content from it is cited by
    any record, specification or result. Its draft decision records, numbered 130 to 134 on that
    branch, were never accepted. On `main` those numbers belong to other records, from S3's own
    0130 onwards.
@@ -38,13 +38,13 @@ to the spend reader ([0131](0131-the-probe-spend-kind.md); spec §10.1 item 2).
 
 ## What this rules out
 
-- **Keeping S2.8 open for later.** It keeps the option. Rejected: an open branch that shares the
-  runs folder holds back changes to shared code, as it held back the spend kind.
+- **Keeping S2.8 open for later.** It keeps the option. Rejected, on judgement: an open branch
+  that shares the runs folder holds back changes to shared code, as it held back the spend kind.
 - **Merging the draft into `main` for reference.** It would keep the design beside the rest.
   Rejected: it would put an unaccepted design, and decision numbers that clash with S3's, into
   `main`.
-- **Deleting the branch.** A cleaner branch list. Rejected: the branch is left in place as
-  history.
+- **Deleting the branch.** A cleaner branch list. Rejected, on judgement: the branch is left in
+  place as history.
 
 ## Status
 

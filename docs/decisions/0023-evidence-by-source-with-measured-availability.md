@@ -81,6 +81,6 @@ Accepted on Andy's squash merge of the pull request that carries the agency desi
   masked condition is paused with the staged replay
   ([0123](0123-the-staged-replay-is-paused.md)).
 - The Context's "docket documents arrive over months" is not what the recorder has seen so far:
-  in 7 nights, no docket was seen to arrive before closure. A probe of 100 ongoing cases found 2
-  dockets already released before closure, with no arrival time (0123).
+  in 7 nights, no docket was seen to arrive before closure. A probe of 100 cases ongoing as of
+  2026-09-15 found 2 dockets already released before closure, with no arrival time (0123).
 - Items 3, 5 and 6 stand.

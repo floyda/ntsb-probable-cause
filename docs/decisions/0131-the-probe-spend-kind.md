@@ -23,9 +23,12 @@ The three jobs and their costs (the probe plan's Deviations, and the two probe r
 | `s3-probe-20260929T123038-64b8cee` | run 1, 20 cases | $0.5542 |
 | `s3-probe-20260929T130538-551c884` | run 2, 20 cases | $0.5721 |
 
-In all $1.1954, counted in September's total (probe plan Deviations). S2.8's branch was the
-other work that constrained adding a kind (spec §10.1 item 2); S2.8 is now cancelled
-([0132](0132-s28-is-cancelled.md)).
+In all $1.1954, counted in September's total (probe plan Deviations). That total is the sum of
+the rows unrounded; each job's cost above is rounded to four places, as the relabel printed it
+(the S3.1 plan's Task 2 Deviations), so the three as printed add to $1.1955.
+
+S2.8's branch was the other work that constrained adding a kind (spec §10.1 item 2); S2.8 is now
+cancelled ([0132](0132-s28-is-cancelled.md)).
 
 ## Decision
 

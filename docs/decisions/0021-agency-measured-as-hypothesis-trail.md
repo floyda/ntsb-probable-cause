@@ -93,4 +93,6 @@ Accepted on Andy's squash merge of the pull request that carries the agency desi
   at the cost cap, or when a call fails after one retry. Abstain is a threshold on a confidence
   fitted in code, still chosen on the development split only
   ([0126](0126-confidence-is-calibrated-in-code.md)).
-- Items 2, 3, 5, 6 and 7 stand.
+- Items 2, 3, 5, 6 and 7 stand. As 0121 item 2 re-scopes them, the trail they score and publish
+  is the checkpoints and tool calls of the S3 specification's §4.2 and §8.3, not a hypothesis
+  after every tool call.

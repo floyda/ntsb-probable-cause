@@ -52,9 +52,9 @@ together with the verdict.
 ## Why
 
 1. **The mask must be measured, not chosen** (0023, Why 4). With no docket measured arriving
-   before closure, any schedule for documents would be invented. The 2 released dockets show
-   that some documents exist before closure. They, and the 5 first-sight dockets, carry no
-   arrival time, so they cannot build a mask either.
+   before closure, any schedule for documents would be invented. The 2 released dockets, among
+   cases ongoing as of 2026-09-15, show that some documents exist before closure. They, and the
+   5 first-sight dockets, carry no arrival time, so they cannot build a mask either.
 2. **Andy's requirement for the live board** (2026-09-29, spelling corrected): the live agent
    "will need to be able to deal with the case where no files exist, some files, and all files
    on closure ... if we find that they don't turn up until closure then that's just how it will
