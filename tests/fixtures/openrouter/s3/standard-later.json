@@ -1,0 +1,535 @@
+{
+ "request": {
+  "model": "openai/gpt-6-luna",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are an aviation accident analyst working from the evidence investigators\nrecorded. First write an evidence narrative: what the evidence shows, in plain clinical prose,\nwithout naming any person. Then decide the probable cause.\n\nChoose codes only from the tables in the message. For the occurrence, give up to three guesses,\neach a phase prefix and an event suffix with a probability; the probabilities may sum to less\nthan 1. For the findings in the probable cause, give one or more six-digit categories, each with\na modifier (who or what) and a probability. Write the probable cause in one or two sentences in\nthe NTSB's style, and a lay explanation a reader with no aviation knowledge can follow. State\nyour confidence that your first occurrence guess is right.\n\nName the most probable cause the evidence supports, even when the evidence is thin. Thin\nevidence is expressed through low probabilities and a low confidence value, not through\ndeclining to answer: a partial or ambiguous record still favors some causes over others, and\nthat is what the analyst is asked to report. Set abstain to true only when the evidence supports\nno cause at all -- for example, no occurrence or finding information was recorded -- and say why\nin the narrative.\n\nThe official record names a specific occurrence and specific findings. The codes that mean\n\"unknown\", \"undetermined\" or \"not determined\" -- event suffix 000, finding category 050000 and\nitem 05000000, modifier 00 -- are a last resort, not a safe default: they are marked wrong\nwhenever the official record names something specific, which is most of the time. Choose the\nmost specific event suffix that names what actually happened and the most specific finding\ncategory that names a real factor, and put your doubt into the probabilities and the confidence\nvalue instead of retreating to an undetermined code. Use an undetermined code only when the\nofficial record itself would have nothing more specific to say. Reply only with JSON matching\nthe schema.\n\n## Phase prefixes (first three digits of the occurrence code)\n100  Prior to Flight\n150  Standing\n151  Standing-Engine(s) Not Oper\n152  Standing-Engine(s) Start-up\n153  Standing-Engine(s) Operating\n154  Standing-Engine(s) Shutdown\n200  Pushback/Towing\n201  Pushback/Tow-Engine Not Oper\n202  Pushback/Tow-Engine Start-up\n203  Pushback/Tow-Engine Oper\n204  Pushback/Tow-Engine Shutdown\n250  Taxi\n251  Taxi-to Runway\n252  Taxi-into Takeoff Position\n253  Taxi-from Runway\n300  Takeoff\n301  Takeoff-Rejected Takeoff\n350  Initial Climb\n400  Enroute\n401  Enroute-Climb to cruise\n402  Enroute-Cruise\n403  Enroute-Change of cruise level\n404  Enroute-Descent\n405  Enroute-Holding (IFR)\n450  Maneuvering\n451  Maneuvering-Aerobatics\n452  Maneuvering-Low-alt flying\n453  Maneuvering-Hover\n500  Approach\n501  Approach-IFR Initial Approach\n502  Approach-IFR Final Approach\n503  Approach-Circling (IFR)\n504  Approach-IFR Missed Approach\n505  Approach-VFR Pattern Crosswind\n506  Approach-VFR Pattern Downwind\n507  Approach-VFR Pattern Base\n508  Approach-VFR Pattern Final\n509  Approach-VFR Go-Around\n550  Landing\n551  Landing-Flare/Touchdown\n552  Landing-Landing Roll\n553  Landing-aborted after touchdown\n600  Emergency Descent\n601  Autorotation\n650  Uncontrolled Descent\n700  Post-Impact\n750  After Landing\n800  Other\n990  Unknown\n\n## Event suffixes (last three digits of the occurrence code)\n000  Unknown or undetermined\n010  Aircraft loading event\n020  Aircraft servicing event\n030  Preflight or dispatch event\n040  Aircraft maintenance event\n050  Aircraft inspection event\n060  Attempted remediation/recovery\n070  Airport occurrence\n080  Ground handling event\n081  AC/prop/rotor contact w person\n082  Prop/jet/rotor blast/suction\n090  Abnormal runway contact\n091  Tailstrike\n092  Hard landing\n093  Dragged wing/rotor/float/other\n094  Landing gear collapse\n095  Landing gear not configured\n096  Nose over/nose down\n097  Roll over\n100  Air traffic event\n110  Cabin safety event\n120  Control flight into terr/obj\n130  Emergency descent initiated\n140  Engine shutdown\n150  Fire/smoke (non-impact)\n160  Explosion (non-impact)\n170  Fire/smoke (post-impact)\n180  Explosion (post-impact)\n190  Fuel related\n191  Fuel starvation\n192  Fuel exhaustion\n193  Fuel contamination\n194  Wrong fuel\n200  Ground collision\n210  Icing encounter\n220  Low altitude operations\n230  Loss of control on ground\n231  Dynamic Rollover\n232  Ground resonance\n240  Loss of control in flight\n241  Aerodynamic stall/spin\n242  Loss of tail rotor effectiveness\n243  Retreating blade stall\n244  Settling with power/vortex ring state\n245  Mast bumping\n250  Midair collision\n260  Near midair collision\n270  Abrupt maneuver\n271  Inflight upset\n280  Course deviation\n281  Course deviation\n282  Altitude deviation\n284  Wrong surface or wrong airport\n290  Altitude deviation\n300  Runway excursion\n310  Runway incursion animal\n320  Runway incursion veh/AC/person\n330  Sys/Comp malf/fail (non-power)\n331  Pressure/environ sys malf/fail\n332  Electrical system malf/failure\n333  Flight control sys malf/fail\n334  Flight instrument malf/fail\n335  Nav system malfunction/failure\n336  Comm system malf/failure\n337  Aircraft structural failure\n338  Part(s) separation from AC\n340  Powerplant sys/comp malf/fail\n341  Loss of engine power (total)\n342  Loss of engine power (partial)\n343  Uncontained engine failure\n350  Security/criminal event\n360  Turbulence encounter\n361  Aircraft wake turb encounter\n362  Clear air turbulence encounter\n370  Landing area undershoot\n380  Landing area overshoot\n390  Windshear or thunderstorm\n400  Other weather encounter\n401  VFR encounter with IMC\n402  Loss of visual reference\n410  Terrain avoidance alert\n420  Collision avoidance alert\n430  Stall warn/stick-shaker/pusher\n440  Off-field or emergency landing\n441  Ditching\n450  Hazardous material leak/spill\n460  Evacuation\n470  Collision with terr/obj (non-CFIT)\n480  External load event (Rotorcraft)\n490  Collision during takeoff/land\n500  Loss of lift\n510  Glider tow event\n600  Simulated/training event\n850  Medical event\n900  Miscellaneous/other\n901  Birdstrike\n990  Missing aircraft\n\n## Finding categories (first six digits of a finding code)\n010100  Aircraft \u2014 Aircraft handling/service \u2014 (general)\n010105  Aircraft \u2014 Aircraft handling/service \u2014 Maintenance/inspections\n010109  Aircraft \u2014 Aircraft handling/service \u2014 Towing and taxiing\n010110  Aircraft \u2014 Aircraft handling/service \u2014 Parking/securing\n010115  Aircraft \u2014 Aircraft handling/service \u2014 Loading\n010200  Aircraft \u2014 Aircraft systems \u2014 (general)\n010221  Aircraft \u2014 Aircraft systems \u2014 Air conditioning system\n010222  Aircraft \u2014 Aircraft systems \u2014 Auto flight system\n010223  Aircraft \u2014 Aircraft systems \u2014 Communications system\n010224  Aircraft \u2014 Aircraft systems \u2014 Electrical power system\n010225  Aircraft \u2014 Aircraft systems \u2014 Equipment/furnishings\n010226  Aircraft \u2014 Aircraft systems \u2014 Fire protection system\n010227  Aircraft \u2014 Aircraft systems \u2014 Flight control system\n010228  Aircraft \u2014 Aircraft systems \u2014 Fuel system\n010229  Aircraft \u2014 Aircraft systems \u2014 Hydraulic power system\n010230  Aircraft \u2014 Aircraft systems \u2014 Ice/rain protection system\n010231  Aircraft \u2014 Aircraft systems \u2014 Indicating/recording systems\n010232  Aircraft \u2014 Aircraft systems \u2014 Landing gear system\n010233  Aircraft \u2014 Aircraft systems \u2014 Lighting system\n010234  Aircraft \u2014 Aircraft systems \u2014 Navigation system\n010235  Aircraft \u2014 Aircraft systems \u2014 Oxygen system\n010236  Aircraft \u2014 Aircraft systems \u2014 Pneumatic system\n010237  Aircraft \u2014 Aircraft systems \u2014 Vacuum system\n010238  Aircraft \u2014 Aircraft systems \u2014 Water and waste system\n010245  Aircraft \u2014 Aircraft systems \u2014 Central maintenance computer\n010249  Aircraft \u2014 Aircraft systems \u2014 Airborne APU system\n010300  Aircraft \u2014 Aircraft structures \u2014 (general)\n010351  Aircraft \u2014 Aircraft structures \u2014 Balloon/dirigible structures\n010352  Aircraft \u2014 Aircraft structures \u2014 Doors\n010353  Aircraft \u2014 Aircraft structures \u2014 Fuselage\n010354  Aircraft \u2014 Aircraft structures \u2014 Nacelles/pylons structure\n010355  Aircraft \u2014 Aircraft structures \u2014 Empennage structure\n010356  Aircraft \u2014 Aircraft structures \u2014 Windows-windshield system\n010357  Aircraft \u2014 Aircraft structures \u2014 Wing structure\n010400  Aircraft \u2014 Aircraft propeller/rotor \u2014 (general)\n010461  Aircraft \u2014 Aircraft propeller/rotor \u2014 Propeller system\n010462  Aircraft \u2014 Aircraft propeller/rotor \u2014 Main rotor system\n010463  Aircraft \u2014 Aircraft propeller/rotor \u2014 Main rotor drive\n010464  Aircraft \u2014 Aircraft propeller/rotor \u2014 Tail rotor\n010465  Aircraft \u2014 Aircraft propeller/rotor \u2014 Tail rotor drive system\n010467  Aircraft \u2014 Aircraft propeller/rotor \u2014 Rotorcraft flight control\n010500  Aircraft \u2014 Aircraft power plant \u2014 (general)\n010571  Aircraft \u2014 Aircraft power plant \u2014 Power plant\n010572  Aircraft \u2014 Aircraft power plant \u2014 Engine (turbine/turboprop)\n010573  Aircraft \u2014 Aircraft power plant \u2014 Engine fuel and control\n010574  Aircraft \u2014 Aircraft power plant \u2014 Ignition system\n010575  Aircraft \u2014 Aircraft power plant \u2014 Engine bleed air system\n010576  Aircraft \u2014 Aircraft power plant \u2014 Engine controls\n010577  Aircraft \u2014 Aircraft power plant \u2014 Engine indicating system\n010578  Aircraft \u2014 Aircraft power plant \u2014 Engine exhaust\n010579  Aircraft \u2014 Aircraft power plant \u2014 Eng oil sys (airframe furnish)\n010580  Aircraft \u2014 Aircraft power plant \u2014 Engine starting\n010581  Aircraft \u2014 Aircraft power plant \u2014 Turbocharging (recip only)\n010582  Aircraft \u2014 Aircraft power plant \u2014 Water injection\n010583  Aircraft \u2014 Aircraft power plant \u2014 Accessory gear-boxes\n010585  Aircraft \u2014 Aircraft power plant \u2014 Engine (reciprocating)\n010600  Aircraft \u2014 Aircraft oper/perf/capability \u2014 (general)\n010610  Aircraft \u2014 Aircraft oper/perf/capability \u2014 Aircraft capability\n010620  Aircraft \u2014 Aircraft oper/perf/capability \u2014 Performance/control parameters\n010700  Aircraft \u2014 Fluids/misc hardware \u2014 (general)\n010710  Aircraft \u2014 Fluids/misc hardware \u2014 Fluids\n010714  Aircraft \u2014 Fluids/misc hardware \u2014 Misc hardware\n020100  Personnel issues \u2014 Physical \u2014 (general)\n020110  Personnel issues \u2014 Physical \u2014 Physical characteristic\n020115  Personnel issues \u2014 Physical \u2014 Sensory ability/limitation\n020120  Personnel issues \u2014 Physical \u2014 Impairment/incapacitation\n020130  Personnel issues \u2014 Physical \u2014 Health/Fitness\n020135  Personnel issues \u2014 Physical \u2014 Alertness/Fatigue\n020200  Personnel issues \u2014 Psychological \u2014 (general)\n020210  Personnel issues \u2014 Psychological \u2014 Personality/attitude\n020215  Personnel issues \u2014 Psychological \u2014 Attention/monitoring\n020220  Personnel issues \u2014 Psychological \u2014 Perception/orientation/illusion\n020225  Personnel issues \u2014 Psychological \u2014 Mental/emotional state\n020230  Personnel issues \u2014 Psychological \u2014 Cognitive limitation\n020300  Personnel issues \u2014 Experience/knowledge \u2014 (general)\n020310  Personnel issues \u2014 Experience/knowledge \u2014 Experience/qualifications\n020315  Personnel issues \u2014 Experience/knowledge \u2014 Training\n020320  Personnel issues \u2014 Experience/knowledge \u2014 Knowledge\n020400  Personnel issues \u2014 Action/decision \u2014 (general)\n020410  Personnel issues \u2014 Action/decision \u2014 Action\n020415  Personnel issues \u2014 Action/decision \u2014 Info processing/decision\n020500  Personnel issues \u2014 Miscellaneous \u2014 (general)\n020510  Personnel issues \u2014 Miscellaneous \u2014 Intentional act\n020600  Personnel issues \u2014 Task performance \u2014 (general)\n020610  Personnel issues \u2014 Task performance \u2014 Planning/preparation\n020615  Personnel issues \u2014 Task performance \u2014 Inspection\n020620  Personnel issues \u2014 Task performance \u2014 Maintenance\n020625  Personnel issues \u2014 Task performance \u2014 Record-keeping\n020630  Personnel issues \u2014 Task performance \u2014 Use of equip/info\n020635  Personnel issues \u2014 Task performance \u2014 Communication (personnel)\n020640  Personnel issues \u2014 Task performance \u2014 Workload management\n030100  Environmental issues \u2014 Operating environment \u2014 (general)\n030110  Environmental issues \u2014 Operating environment \u2014 En route navaid coverage/avail\n030120  Environmental issues \u2014 Operating environment \u2014 Approach aid coverage/avail\n030130  Environmental issues \u2014 Operating environment \u2014 Meteorological services\n030140  Environmental issues \u2014 Operating environment \u2014 Air traffic/operating proc\n030150  Environmental issues \u2014 Operating environment \u2014 Radar services/coverage\n030160  Environmental issues \u2014 Operating environment \u2014 Communication system\n030170  Environmental issues \u2014 Operating environment \u2014 Airport facilities/design\n030200  Environmental issues \u2014 Physical environment \u2014 (general)\n030210  Environmental issues \u2014 Physical environment \u2014 Terrain\n030220  Environmental issues \u2014 Physical environment \u2014 Object/animal/substance\n030230  Environmental issues \u2014 Physical environment \u2014 Runway/land/takeoff/taxi surface\n030300  Environmental issues \u2014 Conditions/weather/phenomena \u2014 (general)\n030310  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Temp/humidity/pressure\n030320  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Turbulence\n030330  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Convective weather\n030340  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Wind\n030350  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Ceiling/visibility/precip\n030360  Environmental issues \u2014 Conditions/weather/phenomena \u2014 Light condition\n030400  Environmental issues \u2014 Task environment \u2014 (general)\n030410  Environmental issues \u2014 Task environment \u2014 Physical workspace\n030420  Environmental issues \u2014 Task environment \u2014 Pressures/demands\n040100  Organizational issues \u2014 Development \u2014 (general)\n040110  Organizational issues \u2014 Development \u2014 Design\n040120  Organizational issues \u2014 Development \u2014 Selection/certification/testing\n040130  Organizational issues \u2014 Development \u2014 Manufacture/production\n040200  Organizational issues \u2014 Management \u2014 (general)\n040210  Organizational issues \u2014 Management \u2014 Policy/procedure\n040220  Organizational issues \u2014 Management \u2014 Resources\n040230  Organizational issues \u2014 Management \u2014 Scheduling\n040240  Organizational issues \u2014 Management \u2014 Culture\n040250  Organizational issues \u2014 Management \u2014 Communication (organizational)\n040300  Organizational issues \u2014 Support/oversight/monitoring \u2014 (general)\n040310  Organizational issues \u2014 Support/oversight/monitoring \u2014 Training\n040320  Organizational issues \u2014 Support/oversight/monitoring \u2014 Oversight\n040330  Organizational issues \u2014 Support/oversight/monitoring \u2014 Documentation/record keeping\n040340  Organizational issues \u2014 Support/oversight/monitoring \u2014 Enforcement\n040350  Organizational issues \u2014 Support/oversight/monitoring \u2014 Safety programs\n050000  Not determined \u2014 Not determined \u2014 (general)\n\n## Modifiers (last two digits of a finding code: who or what)\n00  Unknown/Not determined\n01  Failure\n02  Malfunction\n03  Simulated malf/failure\n05  Damaged/degraded\n06  Fatigue/wear/corrosion\n07  Design\n08  Capability exceeded\n09  Unneccessary use/operation\n10  Not used/operated\n11  Incorrect use/operation\n12  Unintentional use/operation\n13  Incorrect service/maintenance\n14  Not serviced/maintained\n15  Inadequate inspection\n16  Not inspected\n17  Related operating info\n18  Related maintenance info\n19  Related records\n20  Not attained/maintained\n21  Attain/maintain not possible\n22  Fluid type\n23  Fluid condition\n24  Fluid level\n25  Fluid management\n26  Inoperative\n31  ATC personnel\n32  Cabin crew\n33  Copilot\n34  FAA or designated personnel\n35  Designated examiner\n36  Flight crew\n37  Flight service personnel\n38  Flt operations/dispatcher\n39  Ground crew\n40  Instructor/check pilot\n41  Maintenance personnel\n42  Other/unknown\n43  Passenger\n44  Pilot\n45  Pilot of other aircraft\n46  Student pilot\n47  Emergency services personnel\n48  Airport personnel\n49  Owner/builder\n61  Airport\n62  ATC\n63  Emergency services\n64  Flight service\n65  Maintenance provider\n66  Manufacturer\n67  Equipment supplier\n68  Meteorological service\n69  Operator\n70  FAA/Regulator\n71  Training organization\n72  Other government\n73  Other institution/organization\n81  Effect on equipment\n82  Effect on operation\n83  Effect on personnel\n84  Decision related to condition\n85  Response/compensation\n86  Ability to respond/compensate\n87  Awareness of condition\n88  Availability of related info\n89  Accuracy of related info\n90  Timing of related info\n91  Contributed to outcome\n92  Compliance w/ procedure\n93  Use of related info\n94  Other authority investigated\n99  Not specified\n\n\n## Coding guidance (how the NTSB codes)\nWhen a loss of control in flight and an aerodynamic stall or spin both appear in the same phase of flight, the NTSB flags one of them as the defining event.\n\nIn the general Maneuvering phase, the NTSB flagged the loss of control in flight as the defining event in 23 of 36 past cases where both appeared, and the stall or spin in 8. In the Takeoff phase, it flagged the loss of control in 33 of 49 such cases and the stall or spin in 13. On the VFR pattern final approach, it flagged the loss of control in 16 of 24 such cases and the stall or spin in 6. In these three phases, put Loss of control in flight first unless the evidence shows that the stall itself, not a loss of control, began the accident sequence, and keep the stall or spin among your guesses.\n\nIn the other phases the choice was closer. In Initial Climb the loss of control was defining in 45 of 84 such cases and the stall or spin in 29; in Maneuvering-Low-alt flying, in 19 of 32 and in 11. There, code first whichever the evidence shows began the accident sequence.\n\nWhen the defining event is a loss of control or a stall, the NTSB usually flags the pilot's control of the aircraft as a finding in the probable cause, together with the flight parameter that was not held.\n\nWhere the defining event was Loss of control on ground, the NTSB flagged item 02063040 Aircraft control (category 020630) with modifier 44 Pilot in 1420 of 2055 past cases, and item 01062020 Directional control (category 010620) with modifier 20 Not attained/maintained in 1498. Where it was Aerodynamic stall/spin, it flagged Aircraft control with modifier Pilot in 335 of 472 such cases, and item 01062010 Airspeed with modifier Not attained/maintained in 286. Where it was Loss of control in flight, it flagged Aircraft control with modifier Pilot in 1094 of 1784 such cases; the parameter varied, with modifier Not attained/maintained: item 01062000, the general performance/control parameters item, in 358, Airspeed in 301 and Directional control in 208. In the same three groups it flagged item 02041015 Incorrect action performance with modifier Pilot in only 76, 48 and 95 cases.\n\nWhen your defining event is one of these three and the evidence shows the aircraft was not kept under control, include Aircraft control with modifier Pilot among your findings (modifier 46 Student pilot when a student pilot was flying), and the parameter the evidence shows was not held, with modifier Not attained/maintained.\n\n## How you work through a case\n\nYou work through one case in steps, using tools. First record your hypothesis from the evidence\ngiven. Then, when docket documents are offered, decide for each whether to read it and what you\nexpect it to show; reading costs time and money, so read what your hypothesis needs. Record your\nhypothesis again after reading. Then check your coding with the coding tools: give for each call\nwhy you make it and what you expect. The counts the tools return describe past accidents; they\nare not evidence about this one. Keep a less usual code when this case's evidence supports it.\nCheck the occurrence (which event defines the accident, and its phase) before the findings.\nGive codes to the coding tools as they appear in the code tables above: describe_codes takes up\nto six codes in one call, and occurrence_usage takes up to three. Submit your answer when your\ncoding is settled. Make one tool call at a time."
+   },
+   {
+    "role": "user",
+    "content": "{\n \"aircraft_make\": \"EXAMPLE AIRCRAFT\",\n \"aircraft_model\": \"EX-100\",\n \"engine_type\": \"Reciprocating\",\n \"injury_level\": \"None\",\n \"phase_of_flight\": \"Landing\",\n \"pilot_certificates\": [\n  \"Private\"\n ],\n \"pilot_hours_in_type\": 40.0,\n \"pilot_total_hours\": 350.0,\n \"prelim_narrative\": \"The single-engine airplane touched down on a dry paved runway, bounced, and landed hard on the second touchdown. The nose landing gear collapsed and the airplane slid to a stop on the runway. The pilot reported no injuries.\",\n \"registration\": \"N01234\",\n \"weather_condition\": \"Visual (VMC)\"\n}"
+   },
+   {
+    "role": "assistant",
+    "content": null,
+    "tool_calls": [
+     {
+      "id": "redacted",
+      "type": "function",
+      "function": {
+       "name": "record_hypothesis",
+       "arguments": "{\"evidence_narrative\":\"Invented for the shape probe: a bounce, a hard second touchdown, and the nose gear's collapse.\",\"occurrence\":[{\"phase\":\"551\",\"event\":\"092\",\"probability\":0.6},{\"phase\":\"551\",\"event\":\"094\",\"probability\":0.2}],\"findings\":[{\"category6\":\"020630\",\"modifier\":\"44\",\"probability\":0.6}],\"probable_cause\":\"Invented for the shape probe: a hard landing after a bounced touchdown.\",\"lay_explanation\":\"Invented for the shape probe: the plane came down too hard.\",\"confidence\":0.6,\"abstain\":false,\"evidence_used\":[\"prelim_narrative\",\"phase_of_flight\"]}"
+      }
+     }
+    ]
+   },
+   {
+    "role": "tool",
+    "tool_call_id": "redacted",
+    "content": "{\n \"docket_documents\": [\n  \"Docket item 1, 1 page.\\n[page 1 of 1]\\nInvented for the shape probe: the nose landing gear was bent after the second touchdown.\"\n ]\n}\n\nYou have worked on this case before. Each time new evidence arrived was a trigger; this is a later one.\nThe record_hypothesis call above is the last hypothesis you recorded.\nDocuments you read: none.\nRead choices: none."
+   }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 8000,
+  "usage": {
+   "include": true
+  },
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "record_hypothesis",
+     "description": "Record your current hypothesis: up to three occurrence codes with probabilities, findings, a working cause, and your confidence.",
+     "parameters": {
+      "$defs": {
+       "FindingGuess": {
+        "additionalProperties": false,
+        "description": "One finding guess at stage 1 (category + modifier) and, after stage 2, its item.",
+        "properties": {
+         "category6": {
+          "pattern": "^[0-9]{6}$",
+          "type": "string"
+         },
+         "modifier": {
+          "pattern": "^[0-9]{2}$",
+          "type": "string"
+         },
+         "probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "category6",
+         "modifier",
+         "probability"
+        ],
+        "type": "object"
+       },
+       "OccurrenceGuess": {
+        "additionalProperties": false,
+        "description": "One ranked occurrence guess.",
+        "properties": {
+         "phase": {
+          "pattern": "^[0-9]{3}$",
+          "type": "string"
+         },
+         "event": {
+          "pattern": "^[0-9]{3}$",
+          "type": "string"
+         },
+         "probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "phase",
+         "event",
+         "probability"
+        ],
+        "type": "object"
+       }
+      },
+      "additionalProperties": false,
+      "description": "The structured answer (decisions 0006, 0013, 0021).",
+      "properties": {
+       "evidence_narrative": {
+        "type": "string"
+       },
+       "occurrence": {
+        "items": {
+         "$ref": "#/$defs/OccurrenceGuess"
+        },
+        "maxItems": 3,
+        "minItems": 1,
+        "type": "array"
+       },
+       "findings": {
+        "items": {
+         "$ref": "#/$defs/FindingGuess"
+        },
+        "type": "array"
+       },
+       "probable_cause": {
+        "type": "string"
+       },
+       "lay_explanation": {
+        "type": "string"
+       },
+       "confidence": {
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+       },
+       "abstain": {
+        "type": "boolean"
+       },
+       "evidence_used": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "evidence_narrative",
+       "occurrence",
+       "findings",
+       "probable_cause",
+       "lay_explanation",
+       "confidence",
+       "abstain",
+       "evidence_used"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "choose_documents",
+     "description": "Decide, for every document offered, whether to read it, and what you expect it to show.",
+     "parameters": {
+      "$defs": {
+       "DocumentDecision": {
+        "additionalProperties": false,
+        "properties": {
+         "document": {
+          "type": "integer"
+         },
+         "read": {
+          "type": "boolean"
+         },
+         "expected_effect": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "document",
+         "read",
+         "expected_effect"
+        ],
+        "type": "object"
+       }
+      },
+      "additionalProperties": false,
+      "properties": {
+       "decisions": {
+        "items": {
+         "$ref": "#/$defs/DocumentDecision"
+        },
+        "type": "array"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "decisions",
+       "reason"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "describe_codes",
+     "description": "Look up the labels of occurrence codes, finding categories or finding items.",
+     "parameters": {
+      "additionalProperties": false,
+      "properties": {
+       "reason": {
+        "type": "string"
+       },
+       "expected_effect": {
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "occurrence",
+         "finding_category",
+         "item"
+        ],
+        "type": "string"
+       },
+       "codes": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "reason",
+       "expected_effect",
+       "kind",
+       "codes"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "occurrence_usage",
+     "description": "Count how often past accidents recorded each occurrence code, and each pair of them, and how often each was the defining event.",
+     "parameters": {
+      "additionalProperties": false,
+      "properties": {
+       "reason": {
+        "type": "string"
+       },
+       "expected_effect": {
+        "type": "string"
+       },
+       "codes": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "reason",
+       "expected_effect",
+       "codes"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "past_findings",
+     "description": "List the findings most often recorded in past accidents whose defining event matches this occurrence code's event.",
+     "parameters": {
+      "additionalProperties": false,
+      "properties": {
+       "reason": {
+        "type": "string"
+       },
+       "expected_effect": {
+        "type": "string"
+       },
+       "occurrence": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "reason",
+       "expected_effect",
+       "occurrence"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "suggest_codes",
+     "description": "List the five commonest defining events in past accidents of one phase-of-flight group.",
+     "parameters": {
+      "additionalProperties": false,
+      "properties": {
+       "reason": {
+        "type": "string"
+       },
+       "expected_effect": {
+        "type": "string"
+       },
+       "phase_group": {
+        "enum": [
+         "Approach",
+         "EmergencyDescent",
+         "Enroute",
+         "InitialClimb",
+         "Landing",
+         "Maneuvering",
+         "Post-Impact",
+         "Standing",
+         "Takeoff",
+         "Taxi",
+         "UncontrolledDescent",
+         "Unknown"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "reason",
+       "expected_effect",
+       "phase_group"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   },
+   {
+    "type": "function",
+    "function": {
+     "name": "submit_answer",
+     "description": "Submit your final answer. This ends your work on the case.",
+     "parameters": {
+      "$defs": {
+       "FindingGuess": {
+        "additionalProperties": false,
+        "description": "One finding guess at stage 1 (category + modifier) and, after stage 2, its item.",
+        "properties": {
+         "category6": {
+          "pattern": "^[0-9]{6}$",
+          "type": "string"
+         },
+         "modifier": {
+          "pattern": "^[0-9]{2}$",
+          "type": "string"
+         },
+         "probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "category6",
+         "modifier",
+         "probability"
+        ],
+        "type": "object"
+       },
+       "OccurrenceGuess": {
+        "additionalProperties": false,
+        "description": "One ranked occurrence guess.",
+        "properties": {
+         "phase": {
+          "pattern": "^[0-9]{3}$",
+          "type": "string"
+         },
+         "event": {
+          "pattern": "^[0-9]{3}$",
+          "type": "string"
+         },
+         "probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+         }
+        },
+        "required": [
+         "phase",
+         "event",
+         "probability"
+        ],
+        "type": "object"
+       }
+      },
+      "additionalProperties": false,
+      "description": "The structured answer (decisions 0006, 0013, 0021).",
+      "properties": {
+       "evidence_narrative": {
+        "type": "string"
+       },
+       "occurrence": {
+        "items": {
+         "$ref": "#/$defs/OccurrenceGuess"
+        },
+        "maxItems": 3,
+        "minItems": 1,
+        "type": "array"
+       },
+       "findings": {
+        "items": {
+         "$ref": "#/$defs/FindingGuess"
+        },
+        "type": "array"
+       },
+       "probable_cause": {
+        "type": "string"
+       },
+       "lay_explanation": {
+        "type": "string"
+       },
+       "confidence": {
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+       },
+       "abstain": {
+        "type": "boolean"
+       },
+       "evidence_used": {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "evidence_narrative",
+       "occurrence",
+       "findings",
+       "probable_cause",
+       "lay_explanation",
+       "confidence",
+       "abstain",
+       "evidence_used"
+      ],
+      "type": "object"
+     },
+     "strict": true
+    }
+   }
+  ],
+  "tool_choice": {
+   "type": "function",
+   "function": {
+    "name": "record_hypothesis"
+   }
+  },
+  "parallel_tool_calls": false,
+  "reasoning": {
+   "effort": "medium"
+  }
+ },
+ "response": {
+  "id": "redacted",
+  "object": "chat.completion",
+  "created": 1790843603,
+  "model": "openai/gpt-6-luna",
+  "provider": "OpenAI",
+  "system_fingerprint": null,
+  "service_tier": "default",
+  "choices": [
+   {
+    "index": 0,
+    "logprobs": null,
+    "finish_reason": "tool_calls",
+    "native_finish_reason": "completed",
+    "message": {
+     "role": "assistant",
+     "content": null,
+     "refusal": null,
+     "reasoning": null,
+     "tool_calls": [
+      {
+       "type": "function",
+       "index": 0,
+       "id": "redacted",
+       "function": {
+        "name": "record_hypothesis",
+        "arguments": "{\"evidence_narrative\":\"A single-engine airplane touched down on a dry paved runway, bounced, and landed hard on the second touchdown. The nose landing gear collapsed and the airplane slid to a stop; the pilot was uninjured. The offered docket excerpt says the nose landing gear was bent after the second touchdown, consistent with damage from the hard landing, but does not identify the pilot's control inputs or a mechanical defect preceding touchdown.\",\"occurrence\":[{\"phase\":\"551\",\"event\":\"092\",\"probability\":0.75},{\"phase\":\"551\",\"event\":\"094\",\"probability\":0.2}],\"findings\":[{\"category6\":\"020630\",\"modifier\":\"44\",\"probability\":0.55},{\"category6\":\"010620\",\"modifier\":\"20\",\"probability\":0.3}],\"probable_cause\":\"The pilot's hard landing following a bounced touchdown, resulting in collapse of the nose landing gear.\",\"lay_explanation\":\"The airplane bounced on landing and came down hard on the next touchdown, damaging the nose gear until it collapsed.\",\"confidence\":0.62,\"abstain\":false,\"evidence_used\":[\"prelim_narrative\",\"phase_of_flight\",\"docket item 1 excerpt\"]}"
+       }
+      }
+     ],
+     "reasoning_details": [
+      {
+       "type": "reasoning.encrypted",
+       "data": "gAAAAABqvhrWDdLmElbS6kGlSLEjBI3VVUUrDJeTcm_qre8yC3xWpb-mL0O-x7pDjmfqWFi0WV6FQLSUDgWAtc40unOEVeCR9hWfMZxrALZSx1I7gbMbRttslSFBAShOMfOg7chycC6vOCTUxnJty-ZHr7cOTOmArrVRV5tQi9C6FTiRJEXE12CimEWQLxZCVidMPvy0sQ2eGrkX25E3RUIFM23Vov1zWeHPytt61FYijgd7buC0Pm9xFw7deZKZXWXGId4q9Ms2zoTRfc7HpD5wMNCLSK0fkTap_n8tWHliH3hMG3_d1GsbO_8vgcwWELVE00GBskwIi0_KnlZGwHpBYv9u5N0vUalYECr187P6RQk47mzFDySDcBKjo0udTgsuuTLnLvWuQSBiD888i-5rc6_7vJ8QP5GY8o6WY02qlfAmFD5kEkMqmSnR7wihSb1FbfC7kUUqnnAAiblkFBOlYY80W7wJkUUE9Opnwq47H3g45wENU8InQUTBPb4o2zPe2xG2VfUbtoc8fok3QORR3K50C0Jn53klrePFRL-8gK6cAROp13kFOjx26rf3QCE3t_Jq54UOmS1ycczrzLjInFLW6hTrprQnEMu4rtRp2TZHdg0BfrNBqOZO5V4EpCRXo5apPNyMiM-dI3-UXnWKbQZh50F1vmiRitWQ_qyz_QJ4cSdSZbA3UI-J9qJ8jiVaOoGugLIkCxE7GAp0U2nNutl3okOhDibhBNSH1GMheDWOCIjR9LbLVV0JOltVszRst1LulMFYz3stkijDwb9xhfady2Ian4qnN6bc2DC-CGmiExWeX-8qX8T1A_0yH2IYzCGMWYF1II_RIf__Vj2MqQzjdIvJqgzyKeHQceV4wMPC-sPxUnl_kgeHHS0pxX0guYQ4KjJhFVNTumo_LKkiYAXBtDG21K1jBl3203UOSN5NB0st5l3nENrI4iW5YmJHKPpFNYjtxfMYSy0TrhoejPNE4e2ksRO6DA_myXaE5IZfHpJAMKIBIN6MNyJ-UAaz7sdu5POFtvIoh3dfr3b9Ak1p1oeBmAPmJXbOQWU2a2kyckIQ5QFCPLT8K7L3PyaPdPggOg2eCVuoSz9744P_BYE68pVqyaVDDyBugnbiYvltlJ9oAh56EwFgsbEoBsCRKRg4LJem6xl03df_u5DtB5XNOdjRjPXFxkkM3OleGeebQ5MG1FLHj_aylexhzF7zuvnfEXYEkEEvGlA0bgvzCL5WxYcGCrRKdZnea_Vicu_nGmeWYteMivwsWd8dNEVxQ-JjjBZ2bOpr8pC3r2oc-u5V7W4OLifSHMR_6Wqd6h1idr3Npsa-o5r3-cSOo4okVwlEiIeisBctjJpZCG74Ule5J-6B5e4rwMPVPRFJ5WQONQPIapCsQPZ0u6Tp8c0-IZ1NfYwyMGirEuOgIIEqltbM7rp3nCR1ogYYD8Dqs32VderNFM8WHN1uCaDlFe3fbuoMBe-jWJ299uECxEBhgcD4O25dwtjcb6emU4wlRtymQgY7J0wFrqiBemdC86wJHQB5N8RuXkq80Kuo2jRyvxO3ekH-gUk7-EXa5ebhoUPwpHK1bHLfmJCnMXtPEjja4kne_YjG1l4b1fHS2T2wg7S16k5dhme0deqcDMJHyoOs9xUaxbkX7AuMWsleDlGZ3YQAaYmCuLUKXtdVTJ7LEnVWsqijxLNa_p02F6CtRwtNNvDA4IaM2yr4E5c6VpoSftV0e6bEEumA33auPBDCjdFxdUCXZP7QarEXp35lMlFLIFsHUibR9uNfRoLd-x5wyZmmP1hskGj7aG8ZBDS2UrLWpnh9Cyvi7X-u5l7uDXXs-p2iRGXTT6J-LCCiAzB_XCG-Ea_GXG6UPPq78Y5CDxyYwiMr10Bes7sq5lzGDPaDDAqU2GZZY3LMq4lriqfMu927nncxaq73DKoNxVKyL0v2drzsh21OrN4ZH8Zvr_89mw_3lRGmGj0OIVevsdCyRj-9_k5lmuo_VXInixpthLw4xiqFCWwLwRA9C9XKVs3mLLX1ypc8nNSZngvr_ogaPVsszpYl_sT-SFnXxp_OccdXmO4B5OrmPTG2PFJjkJ8xw4V-dh8Q0G5lEBe-wfEDnpoSZkC22ngSftkE6eOU8ypX8BRaMn-GbcOEFgw2iUeceRgYIGODo4FBjlmhfp02jOG_fzmIgKmUYnErALm1fzSaKGEqXo7i199YnoYB4vrRNk875L9hA-pCKvXauMYeW2gK6MFauSHyvQebXDYSW7wM2jxlkyh0xtdU482_Szka3CS3HXOvnQa4xzyICvQqGSnqAW90835Ghp8-FGLzZJgk9T7I1CVeDDQ5rhHrvJI3YVgl9O_UpgxcfkJvegFWh3zECG6MT9iZifxyZX8qtxxRNTFvcMdLDJIUvGEnxGkXuhof7fvuKkMEZkJxK-kcux3fr4N1.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC02LWx1bmEtMjAyNjA5MjJ8b3BlbmFpIn0",
+       "format": "openai-responses-v1",
+       "id": "redacted",
+       "index": 0
+      }
+     ]
+    }
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 5894,
+   "completion_tokens": 410,
+   "total_tokens": 6304,
+   "cost": 0.000307855,
+   "is_byok": false,
+   "prompt_tokens_details": {
+    "cached_tokens": 5483,
+    "cache_write_tokens": 277,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "cost_details": {
+    "upstream_inference_cost": 0.000307855,
+    "upstream_inference_prompt_cost": 0.000102855,
+    "upstream_inference_completions_cost": 0.000205
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 145,
+    "image_tokens": 0,
+    "audio_tokens": 0
+   }
+  }
+ }
+}

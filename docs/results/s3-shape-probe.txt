@@ -1,0 +1,36 @@
+S3 native-tool shape probe (spec section 5.5)
+job s3-shape-probe-20261001T083255-8ff06e9
+commit 8ff06e9 (clean tree)
+model openai/gpt-6-luna, reasoning medium, max output tokens 8000
+invented case, no docket: payload 571 characters, system text 19706 characters, 7 strict tools
+calls armb and later: arm B's fixed turn and a later trigger's opening, built by the agent's own code on the invented case (checks 7 and 8)
+reserve and cap $0.08
+
+calls
+standard-1: choice=force record_hypothesis accepted=yes finish=tool_calls tools=record_hypothesis called=yes args_parse=yes content=no prompt=5617 cached=0 completion=459 reasoning=202 cost=$0.000928 (reported) reasoning_details=yes seconds=5.1
+standard-2: choice=required accepted=yes finish=tool_calls tools=occurrence_usage called=yes args_parse=yes content=no prompt=5898 cached=5491 completion=136 reasoning=47 cost=$0.000171 (reported) reasoning_details=yes seconds=3.6
+standard-3: choice=force submit_answer accepted=yes finish=tool_calls tools=submit_answer called=yes args_parse=yes content=no prompt=6015 cached=5766 completion=535 reasoning=272 cost=$0.000353 (reported) reasoning_details=yes seconds=6.4
+standard-2b: choice=required accepted=yes finish=tool_calls tools=occurrence_usage called=yes args_parse=yes content=no prompt=6102 cached=5491 completion=156 reasoning=72 cost=$0.000206 (reported) reasoning_details=yes seconds=4.2
+standard-armb: choice=force submit_answer accepted=yes finish=tool_calls tools=submit_answer called=yes args_parse=yes content=no prompt=6463 cached=0 completion=539 reasoning=282 cost=$0.001074 (reported) reasoning_details=yes seconds=7.3
+standard-later: choice=force record_hypothesis accepted=yes finish=tool_calls tools=record_hypothesis called=yes args_parse=yes content=no prompt=5894 cached=5483 completion=410 reasoning=145 cost=$0.000308 (reported) reasoning_details=yes seconds=5.1
+batch-1: choice=force record_hypothesis accepted=yes finish=tool_calls tools=record_hypothesis called=yes args_parse=yes content=no prompt=5617 cached=0 completion=454 reasoning=196 cost=$0.000394 (batch) reasoning_details=yes seconds=1623.5
+batch-2: choice=required accepted=yes finish=tool_calls tools=occurrence_usage called=yes args_parse=yes content=no prompt=5899 cached=0 completion=141 reasoning=35 cost=$0.000330 (batch) reasoning_details=yes seconds=3567.8
+batch-3: choice=force submit_answer accepted=yes finish=tool_calls tools=submit_answer called=yes args_parse=yes content=no prompt=6033 cached=5767 completion=545 reasoning=283 cost=$0.000178 (batch) reasoning_details=yes seconds=368.4
+batch-2b: choice=required accepted=yes finish=tool_calls tools=choose_documents called=yes args_parse=yes content=no prompt=5899 cached=0 completion=48 reasoning=0 cost=$0.000307 (batch) reasoning_details=no seconds=3238.5
+batch-armb: choice=force submit_answer accepted=yes finish=tool_calls tools=submit_answer called=yes args_parse=yes content=no prompt=6463 cached=0 completion=609 reasoning=340 cost=$0.000475 (batch) reasoning_details=yes seconds=88.8
+batch-later: choice=force record_hypothesis accepted=yes finish=tool_calls tools=record_hypothesis called=yes args_parse=yes content=no prompt=5894 cached=5326 completion=367 reasoning=87 cost=$0.000147 (batch) reasoning_details=yes seconds=927.7
+
+check 1: yes (standard accepted; batch accepted)
+check 2: yes (standard: forced record_hypothesis honoured, required honoured, forced submit_answer honoured; batch: forced record_hypothesis honoured, required honoured, forced submit_answer honoured)
+check 3: yes (batch-2 answered; batch-3 answered)
+check 4: not required (standard: call 2 answered without reasoning_details; passed back, call 2b answered (prompt +204 tokens); batch: call 2 answered without reasoning_details; passed back, call 2b answered (prompt +0 tokens))
+check 5: cost reported on 12 of 12 answered calls (a batch call's cost is its batch's usage.cost), cached_tokens reported on 12 of 12, total $0.0049 (per-call figures above)
+check 6: broken (standard: call 2 cached 5491 of 5898 prompt tokens after forced to required; call 3 cached 5766 of 6015 after required to forced; batch: broken at call 2 (call 2 cached 0 of 5899 prompt tokens after forced to required; call 3 cached 5767 of 6033 after required to forced))
+check 7: arm B's fixed turn accepted: yes (standard accepted, called submit_answer, args parse yes; batch accepted, called submit_answer, args parse yes)
+check 8: a later trigger's prior turn accepted: yes (standard accepted, called record_hypothesis, args parse yes; batch accepted, called record_hypothesis, args parse yes)
+
+note: parallel_tool_calls=false held on every answered call
+note: every answered call called a tool
+note: every tool call's arguments parsed with the loop's parsers
+
+total cost $0.0049 over 12 calls
