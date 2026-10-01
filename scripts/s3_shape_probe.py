@@ -9,7 +9,9 @@ Status
     response pairs ``tests/fixtures/openrouter/s3/*.json``, the agent loop's rule-2 record of
     the response shapes it relies on (the plan's Deviations gives the run's commit and date).
     Rerun only if the provider changes how it answers native tool calls. The result sets no
-    bar and tunes nothing. Nothing has changed since it was written.
+    bar and tunes nothing. On 2026-10-01, before the paid run, the S3.1 final review added the
+    ``armb`` and ``later`` calls and checks 7 and 8, and raised the reservation from $0.05 to
+    $0.08.
 
 What it asks
     The loop (Task 8) sends native tool calls, forces a named tool on some steps and requires
@@ -24,9 +26,23 @@ What it asks
     4. call 2b is call 2 again with call 1's ``reasoning_details`` passed back, run only when
        call 1 returned some.
 
+    Two more calls on each variant send the two request shapes no call above sends, each built
+    by the agent's own code on the invented case and independent of the replies above:
+
+    5. call ``armb`` is arm B's tool post-pass (``agent/armb.py``'s ``FixedToolsLoop``): an
+       assistant turn the pipeline writes, holding a first answer as its content and four tool
+       calls with ids ``fixed-1`` to ``fixed-4``, each answered by its tool's result, then a
+       forced ``submit_answer`` (arm B's own system text, S3's statistics);
+    6. call ``later`` is a later trigger's opening (``agent/later.py``'s ``opening``): an
+       assistant turn with no content calling ``record_hypothesis`` with call id ``"prior"``,
+       answered by a tool turn that holds a payload and a tool text, then a forced call. The
+       invented case has no docket, so an invented document stands in for the payload of the
+       documents read before; the turns are otherwise ``opening``'s own.
+
     It prints, and with ``--out`` writes, one line per call (flags and numbers only: no reply
-    text, no reasoning text) and the six checks of spec §5.5 as ``check <n>: <answer>`` lines.
-    What the controller does with the answers is in the plan (Task 4's last step).
+    text, no reasoning text), the six checks of spec §5.5, and two more (check 7: arm B's fixed
+    turn accepted; check 8: a later trigger's prior turn accepted) as ``check <n>: <answer>``
+    lines. What the controller does with the answers is in the plan (Task 4's last step).
 
 Budget
     It reserves ``RESERVE_USD`` against the monthly guard before any call (decision 0083),
@@ -45,14 +61,17 @@ import json
 import re
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, get_args
 
 from ntsb_probable_cause import gitinfo, sources
-from ntsb_probable_cause.agent import schemas, texts
+from ntsb_probable_cause.agent import later, schemas, steps, texts
+from ntsb_probable_cause.agent.armb import FixedToolsLoop
+from ntsb_probable_cause.agent.loop import LoopConfig
+from ntsb_probable_cause.agent.trail import Prior
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, ModelError, SchemaError
 from ntsb_probable_cause.model.batch import BatchClient, BatchRequest
 from ntsb_probable_cause.model.client import (
@@ -65,6 +84,7 @@ from ntsb_probable_cause.model.client import (
 )
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import (
     SpendRecord,
     reserve_within_budget,
@@ -72,11 +92,16 @@ from ntsb_probable_cause.scoring.budget import (
     write_spend,
 )
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
+from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, parse_hypothesis
 from ntsb_probable_cause.settings import Settings
 from scripts.openrouter_probe import redact
 
 Variant = Literal["standard", "batch"]
-Step = Literal["1", "2", "3", "2b"]
+# The four calls of the chain, then the two request shapes (spec §5.5's checks 7 and 8).
+Step = Literal["1", "2", "3", "2b", "armb", "later"]
+Shape = Literal["armb", "later"]
+SHAPES: tuple[Shape, ...] = ("armb", "later")
 # answered: a reply came back. refused: the provider answered the request with a deterministic
 # 4xx (not 408 or 429), or a batch failed. error: no usable answer for a reason that says nothing
 # about the request (a 5xx, 408 or 429 after the client's retries, a transport error, a batch
@@ -86,8 +111,11 @@ State = Literal["answered", "refused", "error", "unfinished", "not run"]
 VARIANTS: tuple[Variant, ...] = ("standard", "batch")
 # The guidance the loop's system text carries (the two S2.7 files kept, decisions 0106, 0117).
 GUIDANCE: tuple[str, ...] = ("r3-loc-stall", "r6-aircraft-control")
-# What the probe may spend: reserved against the monthly guard, and a stop inside the run.
-RESERVE_USD = 0.05
+# What the probe may spend: reserved against the monthly guard, and a stop inside the run. Twelve
+# calls (six a variant). Arithmetic from sources.py's prices, not a measurement: a call of at most
+# 15,000 prompt tokens and a full 8,000-token reply costs at most $0.0055 at the standard price
+# and $0.00275 at the batch price, so twelve cost at most about $0.05; $0.08 leaves room.
+RESERVE_USD = 0.08
 # The reply budget every run has had since S2.6 (decision 0084); the loop's own is Task 8's.
 MAX_OUTPUT_TOKENS = 8000
 # A one-request batch took about three minutes in S1; give up on one after an hour.
@@ -149,6 +177,164 @@ def invented_payload() -> Payload:
 def system_text() -> str:
     """The loop's system text: long enough (about 20,000 characters) for the cache to engage."""
     return texts.system_text(load_tables(), GUIDANCE)
+
+
+# The invented case's answer, in record_hypothesis's shape: a hard landing at touchdown, then the
+# nose gear's collapse, with a pilot finding. Codes from the code tables; every sentence says it
+# is invented, so none can be an investigator's (or the NTSB's) wording.
+_INVENTED_ANSWER = {
+    "evidence_narrative": "Invented for the shape probe: a bounce, a hard second touchdown, and "
+    "the nose gear's collapse.",
+    "occurrence": [
+        {"phase": "551", "event": "092", "probability": 0.6},
+        {"phase": "551", "event": "094", "probability": 0.2},
+    ],
+    "findings": [{"category6": "020630", "modifier": "44", "probability": 0.6}],
+    "probable_cause": "Invented for the shape probe: a hard landing after a bounced touchdown.",
+    "lay_explanation": "Invented for the shape probe: the plane came down too hard.",
+    "confidence": 0.6,
+    "abstain": False,
+    "evidence_used": ["prelim_narrative", "phase_of_flight"],
+}
+# The document a later trigger re-sends, invented: the case has no docket (the payload's shape is
+# the one under test, not its words).
+INVENTED_DOCUMENT = (
+    "Docket item 1, 1 page.\n[page 1 of 1]\nInvented for the shape probe: the nose landing gear "
+    "was bent after the second touchdown."
+)
+
+
+def invented_answer(tables: CodeTables) -> Hypothesis:
+    """The invented case's first answer, parsed as the loop parses one (``parse_hypothesis``)."""
+    return parse_hypothesis(json.dumps(_INVENTED_ANSWER), tables)
+
+
+def arm_b_system_text(tables: CodeTables) -> str:
+    """Arm B's system text, as ``scoring/runner.py`` composes it with S3's guidance.
+
+    The answer prompt, the code tables (no case number) and the guidance: what arm B's
+    post-pass sends.
+    """
+    return (
+        f"{prompt.SYSTEM_ANSWER}\n\n{prompt.tables_block(tables)}{prompt.guidance_block(GUIDANCE)}"
+    )
+
+
+def invented_document_payload() -> Payload:
+    """An invented document, as a later trigger's opening re-sends one.
+
+    A ``docket_documents`` payload, through the splitter's evidence renderer, like every payload.
+    """
+    return Payload.from_evidence(
+        Evidence(
+            case_id=invented_evidence().case_id,
+            docket_url=None,
+            docket_documents=(INVENTED_DOCUMENT,),
+        )
+    )
+
+
+def arm_b_request(
+    variant: Variant, *, tables: CodeTables, stats: CodingStats, payload: Payload
+) -> BatchRequest:
+    """Arm B's forced answer after its fixed turn, built by ``FixedToolsLoop`` (call ``armb``).
+
+    The turn holds the invented answer as its content and four tool calls (``fixed-1`` to
+    ``fixed-4``, the case's group being ``Landing``), each answered by its tool's own text from
+    ``stats``; the call forces ``submit_answer``. The loop's cap is the probe's.
+
+    Raises:
+        ConfigurationError: the loop built no call (its estimate passed the cap).
+    """
+    answer = invented_answer(tables)
+    config = LoopConfig(
+        tables=tables,
+        stats=stats,
+        guidance=GUIDANCE,
+        exclusions=frozenset(),
+        cap_usd=RESERVE_USD,
+        price_variant=variant,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+    )
+    raw = {"ntsbNumber": invented_evidence().case_id}
+    loop = FixedToolsLoop(
+        raw,
+        payload,
+        arm_b_system_text(tables),
+        answer,
+        later.as_recorded(answer),
+        "Landing",
+        config,
+    )
+    call = loop.next_call()
+    if call is None:
+        raise ConfigurationError("the arm B loop built no call within the probe's cap")
+    return BatchRequest(
+        custom_id=f"s3-shape-{variant}-armb",
+        payload=call.payload,
+        settings=call.settings,
+        system=call.system,
+        history=call.history,
+    )
+
+
+def later_request(variant: Variant, *, tables: CodeTables, payload: Payload) -> BatchRequest:
+    """A later trigger's first call after its opening, built by ``later.opening`` (call ``later``).
+
+    The opening is the invented answer as a ``record_hypothesis`` call (id ``"prior"``, no
+    content) and the tool turn that answers it: the prior summary as its tool text and, standing
+    in for the documents read before, the invented document as its payload. New structured
+    evidence is taken to have arrived, so the call forces ``record_hypothesis`` (H0), with the
+    loop's system text and tools.
+    """
+    prior = Prior(trigger=1, last_hypothesis=invented_answer(tables), reads=(), read=())
+    opening = later.opening(
+        prior, None, steps.Shelf(), frozenset(), coding=True, new_structured=True
+    )
+    assistant, result = opening.history
+    answered = Turn(
+        role="tool",
+        tool_call_id=result.tool_call_id,
+        payload=invented_document_payload(),
+        tool_text=result.tool_text,
+    )
+    settings = ModelSettings(
+        model=sources.DEFAULT_MODEL,
+        price_variant=variant,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        tools=schemas.TOOL_DEFINITIONS,
+        reasoning_effort=sources.DEFAULT_REASONING_EFFORT,
+        tool_choice=steps.tool_choice(opening.step),
+        parallel_tool_calls=False,
+    )
+    return BatchRequest(
+        custom_id=f"s3-shape-{variant}-later",
+        payload=payload,
+        settings=settings,
+        system=texts.system_text(tables, GUIDANCE),
+        history=(assistant, answered),
+    )
+
+
+def shape_requests(
+    *, tables: CodeTables, stats: CodingStats, payload: Payload
+) -> dict[str, BatchRequest]:
+    """The two shape calls' requests on each variant, by call name (``standard-armb`` ...).
+
+    Built once, before any money moves: nothing in them depends on a reply.
+    """
+    requests: dict[str, BatchRequest] = {}
+    for variant in VARIANTS:
+        requests[f"{variant}-armb"] = arm_b_request(
+            variant, tables=tables, stats=stats, payload=payload
+        )
+        requests[f"{variant}-later"] = later_request(variant, tables=tables, payload=payload)
+    return requests
+
+
+def shape_stats() -> CodingStats:
+    """S3's statistics, which arm B's post-pass counts in (decision 0129)."""
+    return load_stats("s3")
 
 
 # ------------------------------------------------------------------------------------------
@@ -328,8 +514,10 @@ class _Answer:
     reply: ModelReply | None
 
 
-def _choice_label(choice: str | dict[str, object]) -> str:
-    """``required``, or ``force <tool>`` for a ``tool_choice`` that names one."""
+def _choice_label(choice: str | dict[str, object] | None) -> str:
+    """``required``, or ``force <tool>`` for a ``tool_choice`` that names one (``none`` unset)."""
+    if choice is None:
+        return "none"
     if isinstance(choice, str):
         return choice
     function = choice["function"]
@@ -366,7 +554,11 @@ def _follow(answer: _Answer, what: str, text: str) -> tuple[Turn, ...] | str:
 
 
 class Probe:
-    """Runs the conversation at both price variants and keeps what it saw."""
+    """Runs the conversation at both price variants and keeps what it saw.
+
+    ``shapes`` holds the two shape calls' requests by call name (``shape_requests``): each
+    variant's chain is followed by its ``armb`` and ``later`` calls, which depend on no reply.
+    """
 
     def __init__(  # noqa: PLR0913 -- one seam per thing a test replaces (clock, sleep, output).
         self,
@@ -375,6 +567,7 @@ class Probe:
         tables: CodeTables,
         system: str,
         payload: Payload,
+        shapes: Mapping[str, BatchRequest],
         fixtures_dir: Path | None = None,
         cap_usd: float = RESERVE_USD,
         clock: Callable[[], float] = time.monotonic,
@@ -386,6 +579,7 @@ class Probe:
         self._tables = tables
         self._system = system
         self._payload = payload
+        self._shapes = dict(shapes)
         self._fixtures_dir = fixtures_dir
         self._cap_usd = cap_usd
         self._clock = clock
@@ -401,10 +595,17 @@ class Probe:
         return sum(1 for record in self.records if record.state != "not run")
 
     def run(self) -> tuple[CallRecord, ...]:
-        """Run calls 1, 2, 3 and 2b at the standard price, then the same at the batch price."""
+        """Run calls 1, 2, 3, 2b, armb and later at the standard price, then at the batch price."""
         for variant in VARIANTS:
             self._chain(variant)
+            for shape in SHAPES:
+                self._shape(variant, shape)
         return tuple(self.records)
+
+    def _shape(self, variant: Variant, shape: Shape) -> _Answer:
+        """One shape call: its request was built before the run, so no reply decides it."""
+        request = self._shapes[f"{variant}-{shape}"]
+        return self._send(variant, shape, request, _choice_label(request.settings.tool_choice))
 
     def _chain(self, variant: Variant) -> None:
         first = self._step(variant, "1", (), schemas.force("record_hypothesis"))
@@ -438,9 +639,6 @@ class Probe:
         label = _choice_label(choice)
         if isinstance(history, str):
             return self._finish(_skipped(variant, step, label, history))
-        if self.spent >= self._cap_usd:
-            reason = f"cost cap reached (${self.spent:.4f} of ${self._cap_usd:.2f})"
-            return self._finish(_skipped(variant, step, label, reason))
         settings = ModelSettings(
             model=sources.DEFAULT_MODEL,
             price_variant=variant,
@@ -458,6 +656,13 @@ class Probe:
             system=self._system,
             history=history,
         )
+        return self._send(variant, step, request, label)
+
+    def _send(self, variant: Variant, step: Step, request: BatchRequest, label: str) -> _Answer:
+        """Send one request at its variant's price, unless the probe's cap is reached."""
+        if self.spent >= self._cap_usd:
+            reason = f"cost cap reached (${self.spent:.4f} of ${self._cap_usd:.2f})"
+            return self._finish(_skipped(variant, step, label, reason))
         self.requests[f"{variant}-{step}"] = request
         if variant == "standard":
             answer = self._send_standard(request, step, label)
@@ -844,8 +1049,43 @@ def _cache(by: dict[str, CallRecord]) -> str:
     return f"check 6: {overall} ({'; '.join(f'{v}: {phrase}' for v, _, phrase in answers)})"
 
 
+def _shape_accepted(by: dict[str, CallRecord], shape: Shape, number: int, what: str) -> str:
+    """Checks 7 and 8: whether a shape call's request was accepted, read from each variant.
+
+    ``yes`` when every variant answered, ``no`` when any refused, else ``not measured`` (an
+    error, a batch that did not finish, a call that did not run). Each variant's phrase adds the
+    tool its reply called and whether the arguments parsed: flags only.
+    """
+    parts: list[str] = []
+    flags: list[bool | None] = []
+    for variant in VARIANTS:
+        record = by.get(f"{variant}-{shape}")
+        if record is not None and record.state == "answered":
+            called = ", ".join(dict.fromkeys(record.tool_names)) or "no tool"
+            parses = "n/a" if record.arguments_parse is None else _yes(record.arguments_parse)
+            parts.append(f"{variant} accepted, called {called}, args parse {parses}")
+            flags.append(True)
+        elif record is not None and record.state == "refused":
+            parts.append(f"{variant} refused{_status(record)}")
+            flags.append(False)
+        else:
+            why = "not run" if record is None else f"{record.state}{_status(record)}"
+            parts.append(f"{variant} not measured ({why})")
+            flags.append(None)
+    return f"check {number}: {what} accepted: {_verdict(flags)} ({'; '.join(parts)})"
+
+
+def _yes(flag: bool) -> str:
+    return "yes" if flag else "no"
+
+
 def checks(records: Sequence[CallRecord]) -> list[str]:
-    """The six checks of spec §5.5 as ``check <n>: <answer>`` lines, derived from the records."""
+    """The checks as ``check <n>: <answer>`` lines, derived from the records.
+
+    Checks 1 to 6 are spec §5.5's. Check 7 reads the ``armb`` calls (arm B's fixed turn) and
+    check 8 the ``later`` calls (a later trigger's opening): the two request shapes the loop's
+    other calls do not send.
+    """
     by = {record.name: record for record in records}
     return [
         _accepts(by),
@@ -854,6 +1094,8 @@ def checks(records: Sequence[CallRecord]) -> list[str]:
         _reasoning(by),
         _reported(records),
         _cache(by),
+        _shape_accepted(by, "armb", 7, "arm B's fixed turn"),
+        _shape_accepted(by, "later", 8, "a later trigger's prior turn"),
     ]
 
 
@@ -885,7 +1127,7 @@ def notes(records: Sequence[CallRecord]) -> list[str]:
 
 
 def report(records: Sequence[CallRecord], *, header: Sequence[str]) -> str:
-    """The results file: a header, one line per call, the six checks, the notes, the total."""
+    """The results file: a header, one line per call, the eight checks, the notes, the total."""
     total = sum(record.cost_usd or 0.0 for record in records)
     made = sum(1 for record in records if record.state != "not run")
     lines = [
@@ -918,7 +1160,11 @@ def _write_readme(fixtures_dir: Path, job_id: str, started: datetime) -> None:
         "with no docket. Ids and key material are redacted. `standard-N` is one chat "
         "completion; `batch-N` is a one-request batch (the submitted batch, and its final "
         "poll). Calls 1, 2 and 3 force `record_hypothesis`, require any tool and force "
-        "`submit_answer`; `2b` is call 2 with call 1's `reasoning_details` passed back. A call "
+        "`submit_answer`; `2b` is call 2 with call 1's `reasoning_details` passed back. `armb` "
+        "is arm B's forced answer after its fixed turn (a first answer and four tool calls "
+        "`fixed-1` to `fixed-4`, each answered); `later` is a later trigger's forced call after "
+        "its opening (a `record_hypothesis` call with id `prior`, answered by a payload and a "
+        "tool text). A call "
         "that failed holds its HTTP status and a fixed kind (`refused` or `error`) where the "
         "response would be; any error text in a saved poll is replaced by a fixed token, because "
         "provider text cannot be redacted by key. The "
@@ -935,6 +1181,8 @@ def _header(job_id: str, sha: str, dirty: bool, system: str, payload: Payload) -
         f"max output tokens {MAX_OUTPUT_TOKENS}",
         f"invented case, no docket: payload {len(payload.text)} characters, system text "
         f"{len(system)} characters, {len(schemas.TOOL_DEFINITIONS)} strict tools",
+        "calls armb and later: arm B's fixed turn and a later trigger's opening, built by the "
+        "agent's own code on the invented case (checks 7 and 8)",
         f"reserve and cap ${RESERVE_USD:.2f}",
     ]
 
@@ -972,6 +1220,7 @@ def main(
         tables = load_tables()
         system = system_text()
         payload = invented_payload()
+        shapes = shape_requests(tables=tables, stats=shape_stats(), payload=payload)
         reserve_within_budget(
             settings.runs_dir, job_id, RESERVE_USD, settings.monthly_budget_usd, now=started
         )
@@ -987,6 +1236,7 @@ def main(
                 tables=tables,
                 system=system,
                 payload=payload,
+                shapes=shapes,
                 fixtures_dir=args.fixtures_dir,
                 cap_usd=RESERVE_USD,
                 clock=clock,

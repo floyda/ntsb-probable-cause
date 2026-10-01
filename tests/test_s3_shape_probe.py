@@ -25,7 +25,10 @@ from tests.boundary import assert_requests_clean
 
 from ntsb_probable_cause import fields, gitinfo
 from ntsb_probable_cause.agent import schemas, texts
+from ntsb_probable_cause.agent.later import PRIOR_CALL_ID, as_recorded
+from ntsb_probable_cause.agent.schemas import definitions
 from ntsb_probable_cause.data.redaction import find_redacted_fields
+from ntsb_probable_cause.model.batch import BatchRequest
 from ntsb_probable_cause.model.client import Payload
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import budget as budget_mod
@@ -162,22 +165,65 @@ def batches_ok() -> list[dict[str, object]]:
 
 
 Reply = dict[str, object] | httpx.Response | Exception
+# What tells each shape call's request apart from the chain's: arm B's fixed call ids, and the
+# prior summary's first line (``texts.PRIOR_HEADING``); a batch request names its custom id.
+SHAPE_MARKS = {"armb": b"fixed-1", "later": b"this is a later one"}
+
+
+def shape_replies(*, content: str | None = None) -> dict[str, Reply | list[httpx.Response]]:
+    """Good replies for the four shape calls, by call name: the forced tool each one asks for."""
+    replies: dict[str, Reply | list[httpx.Response]] = {}
+    for variant in ("standard", "batch"):
+        for shape, tool in (("armb", "submit_answer"), ("later", "record_hypothesis")):
+            body = completion(tool, cost=0.001 if variant == "standard" else None, content=content)
+            replies[f"{variant}-{shape}"] = body if variant == "standard" else batch_status(body)
+    return replies
 
 
 @dataclass
 class Wired:
-    """The two routes the probe posts to."""
+    """The routes the probe posts to: the chain's two, and each shape call's own."""
 
     chat: respx.Route
     submit: respx.Route
+    shapes: dict[str, respx.Route]
 
 
 def wire(
     router: respx.MockRouter,
     chat: Sequence[Reply],
     batches: Sequence[Reply],
+    *,
+    shapes: dict[str, Reply | list[httpx.Response]] | None = None,
 ) -> Wired:
-    """Answer the probe's calls in order; a ``dict`` is an accepted reply, a ``Response`` is raw."""
+    """Answer the probe's calls in order; a ``dict`` is an accepted reply, a ``Response`` is raw.
+
+    The shape calls (``armb``, ``later``) do not depend on the chain's replies, so each has its
+    own route, added first so it is matched first (by ``SHAPE_MARKS`` in the body, or the batch
+    request's custom id), and answered by ``shapes`` (good replies by default). The chain's
+    routes, and every count a test reads from them, are as they were.
+    """
+    given = shape_replies() | (shapes or {})
+    routes: dict[str, respx.Route] = {}
+    for name, item in given.items():
+        variant, shape = name.split("-", 1)
+        if variant == "standard":
+            # A list is every attempt the client makes (a 503 is retried five times).
+            items = item if isinstance(item, list) else [item]
+            effects: list[httpx.Response | Exception] = [
+                httpx.Response(200, json=one) if isinstance(one, dict) else one for one in items
+            ]
+            route = router.post(CHAT, content__contains=SHAPE_MARKS[shape])
+            routes[name] = route.mock(side_effect=effects)
+            continue
+        mark = f"s3-shape-{name}".encode()
+        if isinstance(item, dict):
+            accepted = httpx.Response(202, json={"id": f"b-{shape}", "status": "validating"})
+            routes[name] = router.post(BATCHES, content__contains=mark).mock(side_effect=[accepted])
+            router.get(f"{BATCHES}/b-{shape}").mock(return_value=httpx.Response(200, json=item))
+        else:  # a raw response to the submit (a refusal); a batch call has no retries
+            raw = cast("httpx.Response", item)
+            routes[name] = router.post(BATCHES, content__contains=mark).mock(side_effect=[raw])
     chat_effects: list[httpx.Response | Exception] = [
         httpx.Response(200, json=item) if isinstance(item, dict) else item for item in chat
     ]
@@ -191,6 +237,7 @@ def wire(
     return Wired(
         chat=router.post(CHAT).mock(side_effect=chat_effects),
         submit=router.post(BATCHES).mock(side_effect=submits),
+        shapes=routes,
     )
 
 
@@ -220,11 +267,14 @@ def make_probe(
     on_record: Callable[[probe.CallRecord], None] = lambda _r: None,
 ) -> probe.Probe:
     """A probe over a recording client that never sleeps."""
+    tables = load_tables()
+    payload = probe.invented_payload()
     return probe.Probe(
         probe.RecordingClient("k", sleep=lambda _s: None),
-        tables=load_tables(),
+        tables=tables,
         system=probe.system_text(),
-        payload=probe.invented_payload(),
+        payload=payload,
+        shapes=probe.shape_requests(tables=tables, stats=probe.shape_stats(), payload=payload),
         fixtures_dir=fixtures_dir,
         cap_usd=cap,
         clock=clock or StepClock(),
@@ -238,23 +288,35 @@ def run_probe(
     *,
     chat: Sequence[dict[str, object] | httpx.Response | Exception] | None = None,
     batches: Sequence[dict[str, object] | httpx.Response] | None = None,
+    shapes: dict[str, Reply | list[httpx.Response]] | None = None,
     **kwargs: object,
 ) -> tuple[probe.Probe, dict[str, probe.CallRecord], Wired]:
     """Wire the canned replies, run the probe, and index its records by call name."""
-    wired = wire(router, chat if chat is not None else chat_ok(), batches or batches_ok())
+    chain = chat if chat is not None else chat_ok()
+    wired = wire(router, chain, batches or batches_ok(), shapes=shapes)
     subject = make_probe(**kwargs)  # type: ignore[arg-type]
     records = {record.name: record for record in subject.run()}
     return subject, records, wired
 
 
 def sent_bodies(wired: Wired) -> dict[str, dict[str, object]]:
-    """The body of every request the probe sent, by call name, as it was sent."""
+    """The body of every chain request the probe sent, by call name, as it was sent."""
     order = ("1", "2", "3", "2b")
     bodies: dict[str, dict[str, object]] = {}
     for step, call in zip(order, wired.chat.calls, strict=False):
         bodies[f"standard-{step}"] = json.loads(call.request.content)
     for step, call in zip(order, wired.submit.calls, strict=False):
         bodies[f"batch-{step}"] = json.loads(call.request.content)["requests"][0]["body"]
+    return bodies
+
+
+def shape_bodies(wired: Wired) -> dict[str, dict[str, object]]:
+    """The body of every shape request the probe sent, by call name, as it was sent."""
+    bodies: dict[str, dict[str, object]] = {}
+    for name, route in wired.shapes.items():
+        for call in route.calls:
+            body = json.loads(call.request.content)
+            bodies[name] = body if name.startswith("standard") else body["requests"][0]["body"]
     return bodies
 
 
@@ -402,8 +464,10 @@ def test_request_text_is_the_invented_evidence_and_fixed_strings_only(
         if text
     ]
     assert withheld
-    # Every request the probe built, call 2b (the first to send reasoning back) included.
-    assert set(subject.requests) == set(sent_bodies(wired))
+    # Every request the probe built, call 2b (the first to send reasoning back) and the two
+    # shape calls (arm B's tool results, a later trigger's payload and summary) included.
+    assert set(subject.requests) == set(sent_bodies(wired)) | set(shape_bodies(wired))
+    assert len(subject.requests) == 12
     assert_requests_clean(list(subject.requests.values()), withheld)
 
 
@@ -444,12 +508,188 @@ def test_reasoning_goes_back_on_call_2b_only(router: respx.MockRouter) -> None:
 def test_each_batch_call_is_its_own_one_request_batch(router: respx.MockRouter) -> None:
     _, records, wired = run_probe(router)
     assert len(wired.submit.calls) == 4
-    for call in wired.submit.calls:
+    shape_submits = [c for n, r in wired.shapes.items() if n.startswith("batch") for c in r.calls]
+    assert len(shape_submits) == 2
+    for call in [*wired.submit.calls, *shape_submits]:
         submitted = json.loads(call.request.content)
         assert submitted["model"] == "openai/gpt-6-luna:batch"
         assert submitted["endpoint"] == "/v1/chat/completions"
         assert len(submitted["requests"]) == 1
-    assert [r.state for r in records.values()] == ["answered"] * 8
+    assert [r.state for r in records.values()] == ["answered"] * 12
+    assert list(records) == [
+        f"{v}-{s}" for v in ("standard", "batch") for s in ("1", "2", "3", "2b", "armb", "later")
+    ]
+
+
+# ------------------------------------------------------------------------------------------
+# The two request shapes: arm B's fixed turn and a later trigger's opening (checks 7 and 8)
+# ------------------------------------------------------------------------------------------
+
+TOOLS_FIXED = ["describe_codes", "occurrence_usage", "past_findings", "suggest_codes"]
+
+
+def _shapes() -> dict[str, BatchRequest]:
+    tables = load_tables()
+    payload = probe.invented_payload()
+    return probe.shape_requests(tables=tables, stats=probe.shape_stats(), payload=payload)
+
+
+def test_the_invented_answer_parses_and_holds_no_investigators_words() -> None:
+    answer = probe.invented_answer(load_tables())
+    assert [g.phase + g.event for g in answer.occurrence] == ["551092", "551094"]
+    for text in (answer.evidence_narrative, answer.probable_cause, answer.lay_explanation):
+        assert text.startswith("Invented for the shape probe")
+    assert "Invented for the shape probe" in probe.INVENTED_DOCUMENT
+
+
+def test_arm_bs_fixed_turn_is_built_by_the_post_pass_loop_itself() -> None:
+    """A first answer as content, four calls fixed-1 to fixed-4 each answered by its tool's
+    text from S3's statistics, then submit_answer forced, on arm B's system text."""
+    tables = load_tables()
+    answer = probe.invented_answer(tables)
+    for variant in ("standard", "batch"):
+        request = _shapes()[f"{variant}-armb"]
+        assistant, *results = request.history
+        assert assistant.role == "assistant"
+        assert assistant.content == as_recorded(answer)
+        assert [c.call_id for c in assistant.tool_calls] == [f"fixed-{n}" for n in range(1, 5)]
+        assert [c.name for c in assistant.tool_calls] == TOOLS_FIXED
+        assert [(t.role, t.tool_call_id) for t in results] == [
+            ("tool", f"fixed-{n}") for n in range(1, 5)
+        ]
+        assert all(t.tool_text is not None and t.payload is None for t in results)
+        settings = request.settings
+        assert settings.tool_choice == schemas.force("submit_answer")
+        assert settings.parallel_tool_calls is False
+        assert settings.pass_reasoning is False
+        assert list(settings.tools) == list(definitions())
+        assert settings.price_variant == variant
+        assert (settings.model, settings.reasoning_effort) == ("openai/gpt-6-luna", "medium")
+        assert settings.max_output_tokens == probe.MAX_OUTPUT_TOKENS
+        assert request.system == probe.arm_b_system_text(tables)
+        assert texts.PROTOCOL not in request.system  # arm B's, not the loop's
+        assert request.payload == probe.invented_payload()
+
+
+def test_a_later_triggers_opening_is_built_by_later_opening() -> None:
+    """A record_hypothesis call with id "prior" and no content, answered by a tool turn that
+    holds a payload and the prior summary, then the forced call H0 makes."""
+    tables = load_tables()
+    answer = probe.invented_answer(tables)
+    for variant in ("standard", "batch"):
+        request = _shapes()[f"{variant}-later"]
+        assistant, answered = request.history
+        assert (assistant.role, assistant.content) == ("assistant", None)
+        (call,) = assistant.tool_calls
+        assert (call.call_id, call.name) == (PRIOR_CALL_ID, "record_hypothesis")
+        assert call.arguments == as_recorded(answer)
+        assert (answered.role, answered.tool_call_id) == ("tool", PRIOR_CALL_ID)
+        assert answered.payload == probe.invented_document_payload()
+        assert answered.tool_text is not None
+        assert answered.tool_text.text.startswith(texts.PRIOR_HEADING)
+        assert request.settings.tool_choice == schemas.force("record_hypothesis")
+        assert request.settings.parallel_tool_calls is False
+        assert request.settings.price_variant == variant
+        assert request.system == probe.system_text()
+        assert request.payload == probe.invented_payload()
+
+
+def test_the_shape_calls_send_those_turns(router: respx.MockRouter) -> None:
+    _, records, wired = run_probe(router)
+    bodies = shape_bodies(wired)
+    assert set(bodies) == {f"{v}-{s}" for v in ("standard", "batch") for s in ("armb", "later")}
+    for variant in ("standard", "batch"):
+        armb = messages_of(bodies[f"{variant}-armb"])
+        assert [m["role"] for m in armb] == ["system", "user", "assistant", *["tool"] * 4]
+        assert armb[2]["content"]  # the first answer, as the turn's content
+        calls = cast("list[dict[str, object]]", armb[2]["tool_calls"])
+        assert [c["id"] for c in calls] == [f"fixed-{n}" for n in range(1, 5)]
+        assert [m["tool_call_id"] for m in armb[3:]] == [f"fixed-{n}" for n in range(1, 5)]
+        assert bodies[f"{variant}-armb"]["tool_choice"] == schemas.force("submit_answer")
+        later_messages = messages_of(bodies[f"{variant}-later"])
+        assert [m["role"] for m in later_messages] == ["system", "user", "assistant", "tool"]
+        assert later_messages[2]["content"] is None
+        (prior,) = cast("list[dict[str, object]]", later_messages[2]["tool_calls"])
+        assert prior["id"] == PRIOR_CALL_ID
+        assert later_messages[3]["tool_call_id"] == PRIOR_CALL_ID
+        tool_content = str(later_messages[3]["content"])
+        assert "the nose landing gear was bent" in tool_content  # the payload
+        assert texts.PRIOR_HEADING in tool_content  # and the tool text
+        for body in (bodies[f"{variant}-armb"], bodies[f"{variant}-later"]):
+            assert body["parallel_tool_calls"] is False
+            assert body["model"] == (
+                "openai/gpt-6-luna:batch" if variant == "batch" else "openai/gpt-6-luna"
+            )
+    record = records["standard-armb"]
+    assert (record.choice, record.tool_names, record.arguments_parse) == (
+        "force submit_answer",
+        ("submit_answer",),
+        True,
+    )
+    assert (record.finish_reason, record.prompt_tokens, record.completion_tokens) == (
+        "tool_calls",
+        7000,
+        120,
+    )
+    assert records["batch-later"].choice == "force record_hypothesis"
+
+
+@pytest.mark.parametrize("shape", ["armb", "later"])
+def test_a_refused_shape_call_is_a_no_and_an_error_is_not_measured(
+    router: respx.MockRouter, shape: str
+) -> None:
+    number = {"armb": 7, "later": 8}[shape]
+    refusal = httpx.Response(400, json={"error": {"message": "tool turns are not supported"}})
+    subject, records, _ = run_probe(router, shapes={f"batch-{shape}": refusal})
+    assert (records[f"batch-{shape}"].state, records[f"batch-{shape}"].http_status) == (
+        "refused",
+        400,
+    )
+    line = probe.checks(subject.records)[number - 1]
+    assert line.startswith(f"check {number}: ")
+    assert " accepted: no (standard accepted, called " in line
+    assert line.endswith("batch refused HTTP 400)")
+    assert probe.checks(subject.records)[0].startswith("check 1: yes")  # the chain is unmoved
+
+
+def test_a_shape_call_that_failed_or_did_not_run_is_not_measured(
+    router: respx.MockRouter,
+) -> None:
+    subject, records, _ = run_probe(router, shapes={"standard-armb": overloaded()})
+    assert (records["standard-armb"].state, records["standard-armb"].http_status) == (
+        "error",
+        503,
+    )
+    line = probe.checks(subject.records)[6]
+    assert line.startswith("check 7: arm B's fixed turn accepted: not measured (")
+    assert "standard not measured (error HTTP 503)" in line
+    absent = probe.checks(all_good())  # no shape call recorded at all
+    assert absent[6].startswith("check 7: arm B's fixed turn accepted: not measured (")
+    assert "standard not measured (not run)" in absent[7]
+
+
+def test_a_choice_with_no_tool_choice_is_labelled_none() -> None:
+    assert probe._choice_label(None) == "none"
+    assert probe._choice_label("required") == "required"
+    assert probe._choice_label(schemas.force("submit_answer")) == "force submit_answer"
+
+
+def test_a_shape_reply_that_called_no_tool_is_accepted_and_says_so() -> None:
+    """Check 7 asks whether the request was accepted; what the reply called is shown beside."""
+    silent = probe.CallRecord(
+        variant="standard",
+        step="armb",
+        choice="force submit_answer",
+        state="answered",
+        tool_names=(),
+        arguments_parse=None,
+    )
+    line = probe.checks([*all_good(), silent])[6]
+    assert "standard accepted, called no tool, args parse n/a" in line
+    assert "batch not measured (not run)" in line
+    assert line.startswith("check 7: arm B's fixed turn accepted: not measured")
+    bad = dataclasses.replace(silent, tool_names=("submit_answer",), arguments_parse=False)
+    assert "called submit_answer, args parse no" in probe.checks([bad])[6]
 
 
 def test_redaction_leaves_the_tool_definitions_intact() -> None:
@@ -486,18 +726,27 @@ def test_a_clean_run_records_every_flag_and_number(router: respx.MockRouter) -> 
     assert (records["batch-1"].cost_usd, records["batch-1"].cost_source) == (0.0004, "batch")
 
 
-def test_the_six_checks_on_a_clean_run(router: respx.MockRouter) -> None:
+def test_the_eight_checks_on_a_clean_run(router: respx.MockRouter) -> None:
     subject, _, _ = run_probe(router)
     lines = probe.checks(subject.records)
-    assert [line.split(":")[0] for line in lines] == [f"check {n}" for n in range(1, 7)]
+    assert [line.split(":")[0] for line in lines] == [f"check {n}" for n in range(1, 9)]
     assert lines[0].startswith("check 1: yes")
     assert lines[1].startswith("check 2: yes")
     assert lines[2].startswith("check 3: yes")
     assert lines[3].startswith("check 4: not required")
-    assert lines[4].startswith("check 5: cost reported on 8 of 8")
-    assert "cached_tokens reported on 8 of 8" in lines[4]
+    assert lines[4].startswith("check 5: cost reported on 12 of 12")
+    assert "cached_tokens reported on 12 of 12" in lines[4]
     assert lines[5].startswith("check 6: kept")
-    assert subject.spent == pytest.approx(4 * 0.001 + 4 * 0.0004)
+    assert lines[6] == (
+        "check 7: arm B's fixed turn accepted: yes (standard accepted, called submit_answer, "
+        "args parse yes; batch accepted, called submit_answer, args parse yes)"
+    )
+    assert lines[7] == (
+        "check 8: a later trigger's prior turn accepted: yes (standard accepted, called "
+        "record_hypothesis, args parse yes; batch accepted, called record_hypothesis, args "
+        "parse yes)"
+    )
+    assert subject.spent == pytest.approx(6 * 0.001 + 6 * 0.0004)
 
 
 def test_a_provider_that_refuses_tools_on_batch_is_recorded_and_stops_the_batch_chain(
@@ -514,7 +763,9 @@ def test_a_provider_that_refuses_tools_on_batch_is_recorded_and_stops_the_batch_
     assert lines[0].startswith("check 1: no (")
     assert "batch refused HTTP 400" in lines[0]
     assert lines[2].startswith("check 3: not measured")
-    assert subject.spent == pytest.approx(4 * 0.001)  # a refusal costs nothing
+    # A refusal costs nothing; the shape calls depend on no reply, so they still run.
+    assert subject.spent == pytest.approx(6 * 0.001 + 2 * 0.0004)
+    assert (records["batch-armb"].state, records["batch-later"].state) == ("answered",) * 2
 
 
 def test_a_forced_call_that_is_not_honoured_is_recorded(router: respx.MockRouter) -> None:
@@ -633,10 +884,13 @@ def test_a_probe_that_stops_at_its_cap_skips_the_rest_and_says_so(
     router: respx.MockRouter,
 ) -> None:
     subject, records, wired = run_probe(router, cap=0.0015)
-    assert [r.state for r in records.values()] == ["answered", "answered"] + ["not run"] * 6
+    assert [r.state for r in records.values()] == ["answered", "answered"] + ["not run"] * 10
     assert "cost cap" in records["standard-3"].note
+    assert "cost cap" in records["standard-armb"].note
+    assert "cost cap" in records["batch-later"].note
     assert len(wired.chat.calls) == 2
     assert len(wired.submit.calls) == 0
+    assert all(not route.calls for route in wired.shapes.values())
     assert subject.calls_made == 2
 
 
@@ -896,7 +1150,8 @@ def test_each_request_response_pair_is_saved_with_ids_redacted(
 ) -> None:
     fixtures = tmp_path / "s3"
     run_probe(router, fixtures_dir=fixtures)
-    names = {f"{v}-{s}" for v in ("standard", "batch") for s in ("1", "2", "3", "2b")}
+    steps = ("1", "2", "3", "2b", "armb", "later")
+    names = {f"{v}-{s}" for v in ("standard", "batch") for s in steps}
     assert {p.stem for p in fixtures.glob("*.json")} == names
     for path in fixtures.glob("*.json"):
         text = path.read_text()
@@ -1041,6 +1296,7 @@ def test_a_run_prints_the_checks_writes_the_results_and_fixtures_and_records_its
         router,
         chat_ok(content=SENTINEL),
         [batch_status(body) for body in chat_ok(cost=None, content=SENTINEL)],
+        shapes=shape_replies(content=SENTINEL),
     )
     settings = _settings(tmp_path)
 
@@ -1050,8 +1306,10 @@ def test_a_run_prints_the_checks_writes_the_results_and_fixtures_and_records_its
     written = (tmp_path / "out" / "probe.txt").read_text()
     for text in (captured.out, written):
         assert [line.split(":")[0] for line in text.splitlines() if line.startswith("check ")] == [
-            f"check {n}" for n in range(1, 7)
+            f"check {n}" for n in range(1, 9)
         ]
+        assert "standard-armb: choice=force submit_answer accepted=yes" in text
+        assert "batch-later: choice=force record_hypothesis accepted=yes" in text
         assert "s3-shape-probe-20261001T120000-abc1234" in text
         assert "standard-1: choice=force record_hypothesis" in text
     assert captured.out.strip() == written.strip()
@@ -1065,8 +1323,10 @@ def test_a_run_prints_the_checks_writes_the_results_and_fixtures_and_records_its
     assert len(rows) == 1
     assert rows[0].kind == "probe"
     assert rows[0].job_id == job_id
-    assert rows[0].calls == 8
-    assert rows[0].cost_usd == pytest.approx(4 * 0.001 + 4 * 0.0004)
+    assert rows[0].calls == 12
+    assert rows[0].cost_usd == pytest.approx(6 * 0.001 + 6 * 0.0004)
+    assert (tmp_path / "s3" / "batch-armb.json").is_file()
+    assert "`armb`" in (tmp_path / "s3" / "README.md").read_text()
     assert (rows[0].commit_sha, rows[0].dirty) == ("abc1234", False)
     assert rows[0].started == STARTED
     assert not (settings.runs_dir / job_id / budget_mod.RESERVATION_FILE).exists()
@@ -1113,8 +1373,8 @@ def test_the_probe_reserves_exactly_its_cap_against_the_monthly_guard(
 
     monkeypatch.setattr(probe, "reserve_within_budget", spy)
     assert _main(tmp_path, _settings(tmp_path)) == 0
-    assert seen == [("s3-shape-probe-20261001T120000-abc1234", 0.05, 40.0)]
-    assert probe.RESERVE_USD == 0.05
+    assert seen == [("s3-shape-probe-20261001T120000-abc1234", 0.08, 40.0)]
+    assert probe.RESERVE_USD == 0.08  # at most $0.10 (S3.1 final review)
 
 
 def test_a_crash_mid_run_still_settles_the_reservation_and_records_what_was_spent(
@@ -1134,13 +1394,15 @@ def test_a_crash_mid_run_still_settles_the_reservation_and_records_what_was_spen
     assert (tmp_path / "s3" / "standard-1.json").is_file()  # earlier calls' fixtures are kept
 
 
-@pytest.mark.parametrize("name", ["invented_payload", "system_text", "load_tables"])
+@pytest.mark.parametrize(
+    "name", ["invented_payload", "system_text", "load_tables", "shape_stats", "shape_requests"]
+)
 def test_a_failure_building_the_payload_leaves_no_reservation_and_sends_nothing(
     router: respx.MockRouter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
     """These are built before the reservation, so there is nothing to settle."""
 
-    def boom() -> object:
+    def boom(*_args: object, **_kwargs: object) -> object:
         raise RuntimeError("cannot build")
 
     monkeypatch.setattr(probe, name, boom)
@@ -1249,9 +1511,10 @@ def test_the_make_target_checks_the_stage_line_then_runs_the_probe() -> None:
     assert match is not None
     recipe = match.group(1).splitlines()
     assert recipe == [
-        "\tuv run python -m scripts.stage_spend --stage s3 --estimate 0.05",
+        f"\tuv run python -m scripts.stage_spend --stage s3 --estimate {probe.RESERVE_USD:.2f}",
         "\tuv run python -m scripts.s3_shape_probe --out docs/results/s3-shape-probe.txt",
     ]
+    assert probe.RESERVE_USD <= 0.10  # the final review's ceiling
     assert (
         " s3-shape-probe "
         in next(line for line in text.splitlines() if line.startswith(".PHONY:")) + " "

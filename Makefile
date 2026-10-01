@@ -238,13 +238,14 @@ s3-coding-stats:
 # run it after s3-draw-sealed. S2.7's file and s27-coding-stats are not touched.
 
 s3-shape-probe:
-	uv run python -m scripts.stage_spend --stage s3 --estimate 0.05
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.08
 	uv run python -m scripts.s3_shape_probe --out docs/results/s3-shape-probe.txt
 # S3.1 spec §5.5 (plan Task 4), paid (cents), ONCE, on or after 1 October 2026: the native-tool
 # shape probe. Sends the loop's own tool definitions and system text on an invented case to
-# GPT-6 Luna, standard then batch, and prints the six checks. Needs OPENROUTER_API_KEY in the
-# environment (from pass, never printed); the stage line is checked first and the probe reserves
-# $0.05 against the monthly guard. Writes docs/results/s3-shape-probe.txt and the saved pairs
+# GPT-6 Luna, standard then batch, with arm B's fixed turn and a later trigger's opening, and
+# prints the six checks and checks 7 and 8. Needs OPENROUTER_API_KEY in the environment (from
+# pass, never printed); the stage line is checked first and the probe reserves
+# $0.08 against the monthly guard. Writes docs/results/s3-shape-probe.txt and the saved pairs
 # under tests/fixtures/openrouter/s3/; commit both, then apply the plan's Task 4 outcome.
 
 s3-armb-tools:
