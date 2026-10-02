@@ -36,13 +36,16 @@ What it measures
     ``scoring.metrics._precision_recall`` counts them (a precision of None, an empty predicted
     set, is left out of the precision mean and counted); a 95% interval for each mean from the
     project's ``mean_cell``; the share whose own set equals the predicted set whole (Wilson); and,
-    beside the occurrence probe, the share whose own set holds the commonest single flagged
-    finding among the other members' (each other member counts each code once, ties to the
-    smallest code), compared on the first 10, 8 and 6 digits.
+    beside the occurrence probe, which takes its commonest value at each level, the share whose
+    own set holds a code that starts with the commonest flagged value among the other members',
+    found at each of 10, 8 and 6 digits separately (the codes cut to that many digits, each other
+    member counting each distinct value once, ties to the smallest value as a string at that
+    level), so the commonest 8-digit item need not be the item of the commonest 10-digit code.
 
     The control (no twins): the same measures over the same scored cases, with the predicted set
     the commonest non-empty flagged-finding set of the era's whole pool less the case itself, and
-    the single finding the commonest of the era's pool less the case itself.
+    the commonest value at each level taken from the era's pool less the case itself, each pool
+    case counting each distinct value once.
 
     The expectation is printed verbatim with the headline (exact twins, all years, mean recall
     at 10 digits), whether it was met, and the occurrence probe's figure read from its results
@@ -184,22 +187,36 @@ def twin_sets(sets: Sequence[Codes]) -> dict[Codes, Codes]:
     return out
 
 
-def twin_singles(sets: Sequence[Codes]) -> dict[Codes, str | None]:
-    """For each distinct set in one group, the commonest single finding among the others.
+type Singles = Mapping[int, str | None]  # by digits: the commonest value at that level
+
+
+def _cut(codes: Codes, digits: int) -> set[str]:
+    """The distinct values of a flagged set at one level: its codes cut to ``digits`` digits."""
+    return {code[:digits] for code in codes}
+
+
+def twin_singles(sets: Sequence[Codes]) -> dict[Codes, dict[int, str | None]]:
+    """For each distinct set in one group, the commonest flagged value among the others, by level.
+
+    At each of 10, 8 and 6 digits separately, as the occurrence probe takes its commonest value
+    at each level: the codes cut to that many digits, each other member counting each distinct
+    value once. The commonest 8-digit item need not be the item of the commonest 10-digit code.
 
     Args:
         sets: each member's flagged set.
 
     Returns:
-        Each distinct own set to the code held by most of the other members, each member
-        counting each code once, ties to the smallest code; None if no other member holds one.
+        Each distinct own set to, for each of ``DIGITS``, the value held by most of the other
+        members (ties to the smallest value as a string at that level); None where no other
+        member holds one.
     """
-    held = Counter(code for own in sets for code in own)
-    out: dict[Codes, str | None] = {}
-    for own in set(sets):
-        others = Counter(held)
-        others.subtract(own)  # the case itself holds each of its own codes once
-        out[own] = cc.commonest(_positive(others))
+    out: dict[Codes, dict[int, str | None]] = {own: {} for own in set(sets)}
+    for digits in DIGITS:
+        held = Counter(value for own in sets for value in _cut(own, digits))
+        for own, found in out.items():
+            others = Counter(held)
+            others.subtract(_cut(own, digits))  # the case itself holds each of its values once
+            found[digits] = cc.commonest(_positive(others))
     return out
 
 
@@ -207,18 +224,21 @@ class Control:
     """The era's pool as a predictor that ignores twins, less the case itself each time."""
 
     def __init__(self, cases: Sequence[PoolText]) -> None:
-        """Count the era's non-empty flagged sets and codes.
+        """Count the era's non-empty flagged sets, and its values at each level.
 
         Args:
             cases: the era's pool cases.
         """
         sets = [own for case in cases if (own := flagged(case))]
         self._sets = Counter(sets)
-        self._codes = Counter(code for own in sets for code in own)
+        self._values = {
+            digits: Counter(value for own in sets for value in _cut(own, digits))
+            for digits in DIGITS
+        }
         self._best_set = commonest_set(self._sets)
-        self._best_code = cc.commonest(self._codes)
+        self._best_value = {digits: cc.commonest(self._values[digits]) for digits in DIGITS}
         self._without_best_set: Codes | None = None
-        self._single_without: dict[Codes, str | None] = {}
+        self._single_without: dict[tuple[Codes, int], str | None] = {}
 
     def predicted(self, own: Codes) -> Codes:
         """The commonest non-empty set of the pool less this case; empty if there is none."""
@@ -230,15 +250,24 @@ class Control:
             self._without_best_set = commonest_set(_positive(others)) or ()
         return self._without_best_set
 
-    def single(self, own: Codes) -> str | None:
-        """The code held by most of the pool's cases less this one, ties to the smallest."""
-        if self._best_code not in own:  # only its own codes lose a case
-            return self._best_code
-        if own not in self._single_without:
-            others = Counter(self._codes)
-            others.subtract(own)
-            self._single_without[own] = cc.commonest(_positive(others))
-        return self._single_without[own]
+    def single(self, own: Codes) -> Singles:
+        """The commonest flagged value of the pool less this case, at each level.
+
+        Each pool case counts each distinct value once; ties to the smallest value as a string
+        at that level; None where the pool holds no value.
+        """
+        return {digits: self._single(own, digits) for digits in DIGITS}
+
+    def _single(self, own: Codes, digits: int) -> str | None:
+        best = self._best_value[digits]
+        mine = _cut(own, digits)
+        if best not in mine:  # only a case's own values lose a count
+            return best
+        if (own, digits) not in self._single_without:
+            others = Counter(self._values[digits])
+            others.subtract(mine)
+            self._single_without[(own, digits)] = cc.commonest(_positive(others))
+        return self._single_without[(own, digits)]
 
 
 # --- the measures ---
@@ -251,20 +280,21 @@ class Outcome:
     precision: Mapping[int, float | None]  # by digits; None when the predicted set is empty
     recall: Mapping[int, float]
     whole: bool
-    single: Mapping[int, bool]  # the commonest single finding is held, compared on d digits
+    single: Mapping[int, bool]  # own set holds a code starting with the level's commonest value
 
 
-def outcome(predicted: Codes, own: Codes, single: str | None) -> Outcome:
-    """Score a predicted set and a single finding against one case's own flagged set.
+def outcome(predicted: Codes, own: Codes, single: Singles) -> Outcome:
+    """Score a predicted set and the commonest flagged values against one case's own flagged set.
 
     Args:
         predicted: the predicted set (empty: no prediction).
         own: the case's own flagged set; not empty, since only scored cases are scored.
-        single: the predicted single finding, or None.
+        single: for each of ``DIGITS``, the commonest flagged value at that level (None: none).
 
     Returns:
         The case's precision and recall at each of ``DIGITS`` (``_precision_recall``), whether
-        the sets are equal whole, and whether the single finding is held at each digit count.
+        the sets are equal whole, and whether the own set holds a code whose first 10, 8 or 6
+        digits equal that level's commonest value.
 
     Raises:
         ValueError: ``own`` is empty.
@@ -276,10 +306,7 @@ def outcome(predicted: Codes, own: Codes, single: str | None) -> Outcome:
         if r is None:
             raise ValueError("a scored case holds at least one flagged finding")
         precision[digits], recall[digits] = p, r
-    held = {
-        digits: single is not None and any(code[:digits] == single[:digits] for code in own)
-        for digits in DIGITS
-    }
+    held = {digits: single[digits] in _cut(own, digits) for digits in DIGITS}
     return Outcome(precision, recall, predicted == own, held)
 
 
@@ -489,8 +516,8 @@ def measure_lines(heading: str, found: Measures) -> list[str]:
     )
     lines.append(f"- own flagged set equals the predicted set whole: {with_interval(found.whole, n)}")
     lines.append(
-        "- like-for-like with the occurrence probe: own flagged set holds the commonest single "
-        "flagged finding"
+        "- like-for-like with the occurrence probe: own flagged set holds a code that starts with "
+        "the commonest flagged value among the others, found at each digit count"
     )
     lines += [
         f"  - at {digits} digits: {with_interval(found.single[digits], n)}" for digits in DIGITS
@@ -609,11 +636,13 @@ def method_lines(cases: Sequence[PoolText], pool: Mapping[str, int]) -> list[str
         "number behind it.",
         "Equal whole: the predicted set equals the case's own flagged set, ten digits, nothing "
         "more and nothing less.",
-        "Like-for-like with the occurrence probe: the commonest single flagged finding among "
-        "the other members (each other member counts each code once; for the control, each "
-        "other pool case once; ties to the smallest code), then whether the case's own flagged "
-        "set holds a code with the same first 10, 8 or 6 digits. One finding is named first and "
-        "compared at each digit count; the commonest 8-digit item is not looked for separately.",
+        "Like-for-like with the occurrence probe, which takes its commonest value at each level: "
+        "at each of 10, 8 and 6 digits separately, the commonest value among the other members "
+        "(the flagged codes cut to that many digits, each other member counting each distinct "
+        "value once; for the control, each other pool case once; ties to the smallest value as "
+        "a string at that level), then whether the case's own flagged set holds a code whose "
+        "first 10, 8 or 6 digits equal that level's commonest value. The commonest 8-digit item "
+        "need not be the item of the commonest 10-digit code.",
         "Intervals: the means have the project's bootstrap interval (``mean_cell``: 2,000 "
         "resamples over cases, a fixed seed); the shares have a 95% Wilson interval. Both treat "
         "cases as independent, although cases of one group share a sentence and each case's "

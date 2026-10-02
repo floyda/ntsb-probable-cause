@@ -381,7 +381,7 @@ s3-finding-consistency:
 # far the NTSB's own probable-cause sentence settles the findings it flagged as cause: for the
 # coding-consistency probe's exact and loose twin groups (all years, 2009-2014, 2015-2019), the
 # commonest flagged-finding set among the other members, scored against the case's own at 10, 8
-# and 6 digits (mean precision and recall, equal-whole, and the commonest single finding), beside
+# and 6 digits (mean precision and recall, equal-whole, and the commonest flagged value found at each digit count), beside
 # a control that ignores twins; prints the expectation committed before the script existed, and
 # the occurrence probe's figure read from docs/results/s3-coding-consistency-dev.txt (refused if
 # that file or its headline line is missing). Counts, means and code labels only; writes the

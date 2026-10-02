@@ -32,7 +32,11 @@ _FB = "0101051000"  # the same item, Unknown/Not determined: same first 8 digits
 _FC = "0101052001"  # another item of the same category: same first 6 digits as _FA only
 _FD = "0102271001"  # Aileron control system / Failure
 _FE = "0201101001"  # Size / Failure
-# Sorted: _FB < _FA < _FC < _FD < _FE.
+_FX = "0101051002"  # the same item as _FA and _FB again, another modifier (Malfunction)
+# Sorted: _FB < _FA < _FX < _FC < _FD < _FE. The item (8 digits) of _FA, _FB and _FX is one,
+# 01010510; _FC's is 01010520; the category (6 digits) of those four is 010105.
+_ITEM_A = "01010510"
+_CAT_A = "010105"
 
 _CITED = "12 of 40 (30.0%) [17.5%, 46.1%]"
 _SEALED = "ZQS001"
@@ -54,6 +58,14 @@ _WORDS = (
 
 def _day(text: str) -> date:
     return date.fromisoformat(text)
+
+
+def _at(code: str) -> dict[int, str | None]:
+    """The commonest value at each level when it is one code's own digits."""
+    return {10: code, 8: code[:8], 6: code[:6]}
+
+
+_NONE: dict[int, str | None] = {10: None, 8: None, 6: None}
 
 
 def _case(case_id: str, day: str, *flagged: str, codes: str = "552230") -> pp.PoolText:
@@ -272,6 +284,9 @@ class TestCommonestSet:
 
     def test_a_case_flagged_set_is_sorted_and_without_repeats(self) -> None:
         assert fc.flagged(_case("ZQ1", "2010-01-01", _FD, _FA, _FD)) == (_FA, _FD)
+        # Five codes, so that a set's own iteration order is unlikely to be the sorted one.
+        shuffled = _case("ZQ3", "2010-01-01", _FE, _FD, _FC, _FA, _FB, _FD)
+        assert fc.flagged(shuffled) == (_FB, _FA, _FC, _FD, _FE)
         assert fc.flagged(_case("ZQ2", "2010-01-01")) == ()
 
 
@@ -300,21 +315,41 @@ class TestTwinSets:
 
 
 class TestTwinSingles:
-    def test_the_commonest_code_among_the_others_each_member_counting_it_once(self) -> None:
+    def test_the_commonest_value_among_the_others_at_each_level(self) -> None:
         singles = fc.twin_singles([(_FA, _FD), (_FA, _FD), (_FA,), (_FA,), (_FA,), ()])
-        assert singles[(_FA, _FD)] == _FA  # others hold FA four times and FD once
-        assert singles[(_FA,)] == _FA  # FA four times (two {FA, FD}, two {FA}) and FD twice
-        assert singles[()] == _FA
+        assert singles[(_FA, _FD)] == _at(_FA)  # others hold FA four times and FD once
+        assert singles[(_FA,)] == _at(_FA)  # FA four times (two {FA, FD}, two {FA}), FD twice
+        assert singles[()] == _at(_FA)
 
-    def test_ties_go_to_the_smallest_code(self) -> None:
-        assert fc.twin_singles([(_FE,), (_FD,), (_FB, _FA)])[(_FE,)] == _FB  # FD, FB, FA once each
-        assert fc.twin_singles([(_FD,), (_FE,), ()])[()] == _FD
+    def test_the_commonest_item_need_not_be_the_item_of_the_commonest_code(self) -> None:
+        """FD twice is the commonest code; the item of FA, FB and FX, held by four, is not FD's."""
+        sets = [(_FD,), (_FD,), (_FA,), (_FB,), (_FX,), (_FE,), (_FA,)]
+        singles = fc.twin_singles(sets)
+        # The others of {FE}: FD twice, FA twice, FB and FX once: FA and FD tie at ten digits and
+        # FA is smaller; the item 01010510 is held by four members, FD's by two.
+        assert singles[(_FE,)] == {10: _FA, 8: _ITEM_A, 6: _CAT_A}
+        # The others of {FA}: FD twice leads at ten digits, but the item is still 01010510
+        # (three members) against FD's two: the levels are found separately.
+        assert singles[(_FA,)] == {10: _FD, 8: _ITEM_A, 6: _CAT_A}
+        assert singles[(_FD,)] == {10: _FA, 8: _ITEM_A, 6: _CAT_A}
+
+    def test_each_member_counts_each_distinct_value_once_at_a_level(self) -> None:
+        # One member holds FA and FB, the same item: that item counts once, not twice, so FD's
+        # item (two members) leads it (one) instead of tying with it.
+        singles = fc.twin_singles([(_FE,), (_FA, _FB), (_FD,), (_FD,)])
+        assert singles[(_FE,)] == {10: _FD, 8: "01022710", 6: "010227"}
+
+    def test_ties_go_to_the_smallest_value_as_a_string_at_that_level(self) -> None:
+        # The others of {FE}: FD, FB and FA once each (the item 01010510 once: one member).
+        tied = fc.twin_singles([(_FE,), (_FD,), (_FB, _FA)])[(_FE,)]
+        assert tied == {10: _FB, 8: _ITEM_A, 6: _CAT_A}
+        assert fc.twin_singles([(_FD,), (_FE,), ()])[()] == _at(_FD)
 
     def test_the_case_itself_does_not_count_and_none_is_none(self) -> None:
-        assert fc.twin_singles([(_FA,), (_FA,), (_FD,)])[(_FD,)] == _FA
-        assert fc.twin_singles([(_FA,), (_FA,), (_FD,)])[(_FA,)] == _FA  # the other {FA}, {FD}: tie
-        assert fc.twin_singles([(_FA,), (), ()])[(_FA,)] is None  # nobody else holds a finding
-        assert fc.twin_singles([(_FA,), (), ()])[()] == _FA
+        assert fc.twin_singles([(_FA,), (_FA,), (_FD,)])[(_FD,)] == _at(_FA)
+        assert fc.twin_singles([(_FA,), (_FA,), (_FD,)])[(_FA,)] == _at(_FA)  # {FA}, {FD}: a tie
+        assert fc.twin_singles([(_FA,), (), ()])[(_FA,)] == _NONE  # nobody else holds a finding
+        assert fc.twin_singles([(_FA,), (), ()])[()] == _at(_FA)
 
 
 def _brute_set(pool: Sequence[tuple[str, ...]], index: int) -> tuple[str, ...]:
@@ -322,9 +357,11 @@ def _brute_set(pool: Sequence[tuple[str, ...]], index: int) -> tuple[str, ...]:
     return min(others, key=lambda s: (-others[s], s)) if others else ()
 
 
-def _brute_code(pool: Sequence[tuple[str, ...]], index: int) -> str | None:
-    others = Counter(code for i, s in enumerate(pool) if i != index for code in s)
-    return min(others, key=lambda c: (-others[c], c)) if others else None
+def _brute_value(pool: Sequence[tuple[str, ...]], index: int, digits: int) -> str | None:
+    others = Counter(
+        value for i, s in enumerate(pool) if i != index for value in {c[:digits] for c in s}
+    )
+    return min(others, key=lambda v: (-others[v], v)) if others else None
 
 
 class TestControl:
@@ -337,8 +374,8 @@ class TestControl:
         # With itself, {FA} and {FD} tie at two and {FA} wins; without, {FD} leads {FA} 2 to 1.
         assert control.predicted((_FA,)) == (_FD,)
         assert control.predicted((_FD,)) == (_FA,)
-        assert control.single((_FA,)) == _FD
-        assert control.single((_FD,)) == _FA
+        assert control.single((_FA,)) == _at(_FD)
+        assert control.single((_FD,)) == _at(_FA)
 
     def test_empty_sets_are_never_the_predicted_set(self) -> None:
         pool = [
@@ -346,7 +383,7 @@ class TestControl:
         ]
         control = fc.Control(pool)
         assert control.predicted((_FA,)) == ()  # only empty sets are left: no prediction
-        assert control.single((_FA,)) is None
+        assert control.single((_FA,)) == _NONE
         assert fc.Control(pool).predicted((_FD,)) == (_FA,)  # a case outside the pool
 
     def test_ties_go_to_the_smallest_set_and_code(self) -> None:
@@ -356,7 +393,7 @@ class TestControl:
         ]
         control = fc.Control(pool)
         assert control.predicted((_FE,)) == (_FB,)  # the others: {FD} and {FB}
-        assert control.single((_FE,)) == _FB
+        assert control.single((_FE,)) == {10: _FB, 8: _ITEM_A, 6: _CAT_A}
         assert control.predicted((_FB,)) == (_FD,)
 
     def test_it_agrees_with_a_brute_force_loop_on_a_random_pool(self) -> None:
@@ -371,12 +408,27 @@ class TestControl:
         for index, own in enumerate(sets):
             if own:
                 assert control.predicted(own) == _brute_set(sets, index), index
-                assert control.single(own) == _brute_code(sets, index), index
+                assert control.single(own) == {
+                    digits: _brute_value(sets, index, digits) for digits in fc.DIGITS
+                }, index
         # The winner itself, when it is the case: the next best takes over.
         winners = Counter(s for s in sets if s)
         best = min(winners, key=lambda s: (-winners[s], s))
         assert best == (_FA,)
         assert control.predicted(best) == _brute_set(sets, sets.index(best))
+
+    def test_the_levels_are_found_separately_and_the_case_itself_is_taken_away(self) -> None:
+        """The pool's FD twice leads at ten digits, the item of FA, FB and FX leads at eight."""
+        sets = [(_FD,), (_FD,), (_FA,), (_FB,), (_FX,), (_FE,), (_FA,)]
+        control = fc.Control([_case(f"ZQ{n}", "2010-01-01", *s) for n, s in enumerate(sets)])
+        assert control.single((_FE,)) == {10: _FA, 8: _ITEM_A, 6: _CAT_A}
+        assert control.single((_FA,)) == {10: _FD, 8: _ITEM_A, 6: _CAT_A}
+        assert control.single((_FD,)) == {10: _FA, 8: _ITEM_A, 6: _CAT_A}
+        # A member holding two codes of one item takes the item's count down once, not twice.
+        pool = [(_FA, _FB), (_FA,), (_FD,), (_FD,)]
+        control = fc.Control([_case(f"ZQ{n}", "2010-01-01", *s) for n, s in enumerate(pool)])
+        assert control.single((_FD,)) == {10: _FA, 8: _ITEM_A, 6: _CAT_A}  # FA 2, item 2, FD 1
+        assert control.single((_FA, _FB)) == {10: _FD, 8: "01022710", 6: "010227"}
 
 
 # --------------------------------------------------------------------------------------------
@@ -426,38 +478,68 @@ class TestAnalyse:
         assert fc.measure_lines("twins", block.twins) == ["twins", "- no scored case"]
 
 
+class TestSinglesByLevel:
+    def test_the_share_holding_the_commonest_value_is_found_at_each_level(self) -> None:
+        """Seven exact twins: no case holds its commonest ten-digit code, four hold the item.
+
+        {FD}, {FD}, {FA}, {FB}, {FX}, {FE}, {FA}. At ten digits the others of every case lead with
+        FA or FD, which the case does not hold. At eight and six digits the item 01010510 and the
+        category 010105, held by three or four of the others, lead for the cases holding FA, FB
+        and FX, who hold it themselves.
+        """
+        sets = [(_FD,), (_FD,), (_FA,), (_FB,), (_FX,), (_FE,), (_FA,)]
+        pool = [
+            pp.PoolText(f"ZQ{n}", _day("2010-01-01"), "same words", ("552230",), s)
+            for n, s in enumerate(sets)
+        ]
+        block = fc.analyse(pool)[("exact", "all years")].block
+        assert (block.groups, block.cases, block.scored) == (1, 7, 7)
+        assert block.twins.single == {10: 0, 8: 4, 6: 4}
+        # The pool is the group, so the control's pool less the case is the group's others.
+        assert block.control.single == {10: 0, 8: 4, 6: 4}
+
+
 class TestOutcome:
     def test_precision_and_recall_at_each_digit_count(self) -> None:
         # Predicted {FA, FD}, own {FA}: both at ten, eight and six digits.
-        got = fc.outcome((_FA, _FD), (_FA,), _FA)
+        got = fc.outcome((_FA, _FD), (_FA,), _at(_FA))
         assert got.precision == {10: 0.5, 8: 0.5, 6: 0.5}
         assert got.recall == {10: 1.0, 8: 1.0, 6: 1.0}
         assert got.whole is False
         assert got.single == {10: True, 8: True, 6: True}
 
     def test_a_match_on_fewer_digits_only(self) -> None:
-        item = fc.outcome((_FB,), (_FA,), _FB)  # same item, another modifier
+        item = fc.outcome((_FB,), (_FA,), _at(_FB))  # same item, another modifier
         assert item.precision == {10: 0.0, 8: 1.0, 6: 1.0}
         assert item.recall == {10: 0.0, 8: 1.0, 6: 1.0}
         assert item.single == {10: False, 8: True, 6: True}
-        category = fc.outcome((_FC,), (_FA,), _FC)  # same category, another item
+        category = fc.outcome((_FC,), (_FA,), _at(_FC))  # same category, another item
         assert category.precision == {10: 0.0, 8: 0.0, 6: 1.0}
         assert category.recall == {10: 0.0, 8: 0.0, 6: 1.0}
         assert category.single == {10: False, 8: False, 6: True}
-        other = fc.outcome((_FD,), (_FA,), _FD)
+        other = fc.outcome((_FD,), (_FA,), _at(_FD))
         assert other.single == {10: False, 8: False, 6: False}
 
+    def test_each_level_is_compared_with_its_own_commonest_value(self) -> None:
+        # The commonest code is FD, but the commonest item is 01010510 and the category 010105.
+        single: dict[int, str | None] = {10: _FD, 8: _ITEM_A, 6: _CAT_A}
+        assert fc.outcome((), (_FA,), single).single == {10: False, 8: True, 6: True}
+        assert fc.outcome((), (_FD,), single).single == {10: True, 8: False, 6: False}
+        assert fc.outcome((), (_FD, _FB), single).single == {10: True, 8: True, 6: True}
+        partial: dict[int, str | None] = {10: None, 8: _ITEM_A, 6: None}
+        assert fc.outcome((), (_FA,), partial).single == {10: False, 8: True, 6: False}
+
     def test_an_empty_predicted_set_has_no_precision_and_a_recall_of_zero(self) -> None:
-        got = fc.outcome((), (_FA, _FD), None)
+        got = fc.outcome((), (_FA, _FD), _NONE)
         assert got.precision == {10: None, 8: None, 6: None}
         assert got.recall == {10: 0.0, 8: 0.0, 6: 0.0}
         assert got.single == {10: False, 8: False, 6: False}
         assert got.whole is False
 
     def test_the_whole_set_is_equal_or_not(self) -> None:
-        assert fc.outcome((_FA, _FD), (_FA, _FD), None).whole is True
-        assert fc.outcome((_FA,), (_FA, _FD), None).whole is False
-        assert fc.outcome((_FA, _FD), (_FA,), None).whole is False
+        assert fc.outcome((_FA, _FD), (_FA, _FD), _NONE).whole is True
+        assert fc.outcome((_FA,), (_FA, _FD), _NONE).whole is False
+        assert fc.outcome((_FA, _FD), (_FA,), _NONE).whole is False
 
     def test_it_is_scoring_metrics_own_count_not_a_copy(
         self, monkeypatch: pytest.MonkeyPatch
@@ -471,22 +553,22 @@ class TestOutcome:
             return 0.123, 0.456
 
         monkeypatch.setattr(fc, "_precision_recall", spy)
-        got = fc.outcome((_FD,), (_FA,), None)
+        got = fc.outcome((_FD,), (_FA,), _NONE)
         assert seen == [((_FD,), (_FA,), 10), ((_FD,), (_FA,), 8), ((_FD,), (_FA,), 6)]
         assert got.precision == {10: 0.123, 8: 0.123, 6: 0.123}
         assert got.recall == {10: 0.456, 8: 0.456, 6: 0.456}
 
     def test_a_case_with_no_flagged_finding_is_not_scored(self) -> None:
         with pytest.raises(ValueError, match="at least one flagged finding"):
-            fc.outcome((_FA,), (), _FA)
+            fc.outcome((_FA,), (), _at(_FA))
 
 
 class TestSummarise:
     def test_no_prediction_is_counted_and_left_out_of_the_precision_lists(self) -> None:
         outcomes = [
-            fc.outcome((_FA, _FD), (_FA,), _FA),
-            fc.outcome((), (_FD,), None),
-            fc.outcome((_FD,), (_FD,), _FD),
+            fc.outcome((_FA, _FD), (_FA,), _at(_FA)),
+            fc.outcome((), (_FD,), _NONE),
+            fc.outcome((_FD,), (_FD,), _at(_FD)),
         ]
         got = fc.summarise(outcomes)
         assert got.scored == 3
