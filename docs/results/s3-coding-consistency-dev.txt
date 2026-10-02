@@ -1,0 +1,111 @@
+S3.1 coding-consistency probe on the development pool (scripts/exploratory/s3_coding_consistency.py; S3.1 Task 15)
+Exploratory (decision 0059): free and offline, no model call; it decides nothing. How far the NTSB's own probable-cause sentence settles its first occurrence code: cases whose sentences match word for word (exact twins), or in their words less common function words (loose twins), compared on the first code the NTSB gave each.
+Counts and code labels only: no case number and no text from any record. Every count is printed with its denominator; agreement with a 95% Wilson interval.
+
+## The expectation (committed in 700afda, before this script existed)
+
+Expectation (decides nothing). Leave-one-out agreement on the six-digit first code among exact twins, all years: below 80%, that is, at least one in five identical cause sentences coded differently from the majority of its twins.
+Headline: exact twins, all years, leave-one-out agreement on the six-digit first code: 619 of 1650 (37.5%) [35.2%, 39.9%]
+expectation met
+
+## Method
+
+Pool: the S3 statistics pool, development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129): 12090 cases; kept, each with an NTSB probable-cause text and at least one occurrence code: 12090 (event years 2009-2019); left out: 0 with no probable-cause text, 0 more with no occurrence code.
+Exact twins: the same tokens in the same order, a token being a run of [a-z0-9] in the lower-cased text, no word removed; so case, punctuation and curly or straight apostrophes make no difference. Loose twins: the same set of those tokens less the precedent probe's 134 stop words, in any order. A group is two or more cases with the same non-empty key.
+Eras: all years; 2009–2014 and 2015–2019, where the groups are formed again among the cases with an event year in the era (a group needs two members inside it), and the share is of the era's pool cases.
+First code: the case's first occurrence code, the NTSB's defining event; its event is the last three digits and its phase the first three.
+Leave-one-out agreement (the headline): a case agrees when the commonest value among the other members of its group, ties to the smallest value as a string, is its own. Denominator: the cases in groups. Pairwise agreement: every unordered pair within a group, the two values equal. Denominator: the pairs; a large group adds many pairs, so this figure leans toward the largest groups, and leave-one-out counts every case once.
+Intervals: 95% Wilson, treating cases (or pairs) as independent. Cases in one group share a sentence and pairs share cases, so the intervals are narrower than the data warrant.
+What it does not say: that the NTSB was inconsistent. The same sentence can follow accidents whose sequences of events differ; it bounds what a coder reading only the sentence could score.
+
+## exact twins
+
+### exact twins, all years
+groups: 374; cases in groups: 1650 of 12090 (13.6%) of the era's pool cases
+group sizes, groups (cases in them): 2: 214 (428 cases); 3-5: 105 (374 cases); 6-10: 29 (215 cases); 11+: 26 (633 cases)
+leave-one-out agreement (denominator: the 1650 cases in groups):
+- six-digit first code: 619 of 1650 (37.5%) [35.2%, 39.9%]
+- event (last three digits): 1186 of 1650 (71.9%) [69.7%, 74.0%]
+- phase (first three digits): 811 of 1650 (49.2%) [46.7%, 51.6%]
+pairwise agreement (denominator: the 14438 pairs within groups):
+- six-digit first code: 5925 of 14438 (41.0%) [40.2%, 41.8%]
+- event (last three digits): 10851 of 14438 (75.2%) [74.4%, 75.9%]
+- phase (first three digits): 7362 of 14438 (51.0%) [50.2%, 51.8%]
+
+### exact twins, 2009–2014 (groups formed among cases with event years 2009 to 2014 only)
+groups: 227; cases in groups: 952 of 6956 (13.7%) of the era's pool cases
+group sizes, groups (cases in them): 2: 134 (268 cases); 3-5: 59 (210 cases); 6-10: 19 (136 cases); 11+: 15 (338 cases)
+leave-one-out agreement (denominator: the 952 cases in groups):
+- six-digit first code: 401 of 952 (42.1%) [39.0%, 45.3%]
+- event (last three digits): 626 of 952 (65.8%) [62.7%, 68.7%]
+- phase (first three digits): 530 of 952 (55.7%) [52.5%, 58.8%]
+pairwise agreement (denominator: the 5648 pairs within groups):
+- six-digit first code: 2457 of 5648 (43.5%) [42.2%, 44.8%]
+- event (last three digits): 3816 of 5648 (67.6%) [66.3%, 68.8%]
+- phase (first three digits): 3147 of 5648 (55.7%) [54.4%, 57.0%]
+
+### exact twins, 2015–2019 (groups formed among cases with event years 2015 to 2019 only)
+groups: 142; cases in groups: 573 of 5134 (11.2%) of the era's pool cases
+group sizes, groups (cases in them): 2: 82 (164 cases); 3-5: 41 (150 cases); 6-10: 11 (89 cases); 11+: 8 (170 cases)
+leave-one-out agreement (denominator: the 573 cases in groups):
+- six-digit first code: 210 of 573 (36.6%) [32.8%, 40.7%]
+- event (last three digits): 447 of 573 (78.0%) [74.4%, 81.2%]
+- phase (first three digits): 261 of 573 (45.5%) [41.5%, 49.6%]
+pairwise agreement (denominator: the 2942 pairs within groups):
+- six-digit first code: 1106 of 2942 (37.6%) [35.9%, 39.4%]
+- event (last three digits): 2349 of 2942 (79.8%) [78.4%, 81.3%]
+- phase (first three digits): 1343 of 2942 (45.6%) [43.9%, 47.5%]
+
+## loose twins
+
+### loose twins, all years
+groups: 425; cases in groups: 2002 of 12090 (16.6%) of the era's pool cases
+group sizes, groups (cases in them): 2: 239 (478 cases); 3-5: 120 (439 cases); 6-10: 34 (261 cases); 11+: 32 (824 cases)
+leave-one-out agreement (denominator: the 2002 cases in groups):
+- six-digit first code: 757 of 2002 (37.8%) [35.7%, 40.0%]
+- event (last three digits): 1396 of 2002 (69.7%) [67.7%, 71.7%]
+- phase (first three digits): 1020 of 2002 (50.9%) [48.8%, 53.1%]
+pairwise agreement (denominator: the 19833 pairs within groups):
+- six-digit first code: 7437 of 19833 (37.5%) [36.8%, 38.2%]
+- event (last three digits): 14426 of 19833 (72.7%) [72.1%, 73.4%]
+- phase (first three digits): 9405 of 19833 (47.4%) [46.7%, 48.1%]
+
+### loose twins, 2009–2014 (groups formed among cases with event years 2009 to 2014 only)
+groups: 255; cases in groups: 1161 of 6956 (16.7%) of the era's pool cases
+group sizes, groups (cases in them): 2: 140 (280 cases); 3-5: 77 (275 cases); 6-10: 20 (156 cases); 11+: 18 (450 cases)
+leave-one-out agreement (denominator: the 1161 cases in groups):
+- six-digit first code: 482 of 1161 (41.5%) [38.7%, 44.4%]
+- event (last three digits): 757 of 1161 (65.2%) [62.4%, 67.9%]
+- phase (first three digits): 660 of 1161 (56.8%) [54.0%, 59.7%]
+pairwise agreement (denominator: the 8721 pairs within groups):
+- six-digit first code: 3436 of 8721 (39.4%) [38.4%, 40.4%]
+- event (last three digits): 5747 of 8721 (65.9%) [64.9%, 66.9%]
+- phase (first three digits): 4452 of 8721 (51.0%) [50.0%, 52.1%]
+
+### loose twins, 2015–2019 (groups formed among cases with event years 2015 to 2019 only)
+groups: 162; cases in groups: 684 of 5134 (13.3%) of the era's pool cases
+group sizes, groups (cases in them): 2: 93 (186 cases); 3-5: 42 (156 cases); 6-10: 17 (135 cases); 11+: 10 (207 cases)
+leave-one-out agreement (denominator: the 684 cases in groups):
+- six-digit first code: 248 of 684 (36.3%) [32.7%, 39.9%]
+- event (last three digits): 533 of 684 (77.9%) [74.7%, 80.9%]
+- phase (first three digits): 309 of 684 (45.2%) [41.5%, 48.9%]
+pairwise agreement (denominator: the 3538 pairs within groups):
+- six-digit first code: 1230 of 3538 (34.8%) [33.2%, 36.4%]
+- event (last three digits): 2797 of 3538 (79.1%) [77.7%, 80.4%]
+- phase (first three digits): 1506 of 3538 (42.6%) [40.9%, 44.2%]
+
+## exact twins, all years: the 10 first-code pairs that most often disagree
+
+Each line is a pair of six-digit first codes and how many pairs of twins within a group carry one each (8513 disagreeing pairs in all, of 14438 pairs within groups).
+1. 550230 Landing / Loss of control on ground vs 552230 Landing-Landing Roll / Loss of control on ground: 2187 pairs
+2. 551230 Landing-Flare/Touchdown / Loss of control on ground vs 552230 Landing-Landing Roll / Loss of control on ground: 501 pairs
+3. 552230 Landing-Landing Roll / Loss of control on ground vs 552300 Landing-Landing Roll / Runway excursion: 469 pairs
+4. 550092 Landing / Hard landing vs 551092 Landing-Flare/Touchdown / Hard landing: 226 pairs
+5. 550230 Landing / Loss of control on ground vs 551230 Landing-Flare/Touchdown / Loss of control on ground: 199 pairs
+6. 551090 Landing-Flare/Touchdown / Abnormal runway contact vs 551092 Landing-Flare/Touchdown / Hard landing: 195 pairs
+7. 350341 Initial Climb / Loss of engine power (total) vs 402341 Enroute-Cruise / Loss of engine power (total): 126 pairs
+8. 550090 Landing / Abnormal runway contact vs 551092 Landing-Flare/Touchdown / Hard landing: 122 pairs
+9. 551240 Landing-Flare/Touchdown / Loss of control in flight vs 552230 Landing-Landing Roll / Loss of control on ground: 120 pairs
+10. 550240 Landing / Loss of control in flight vs 552230 Landing-Landing Roll / Loss of control on ground: 104 pairs
+
+The 25 largest exact-twin groups, with their texts and first-code counts, are written to largest-groups.md in a private folder under the runs folder, never committed.
