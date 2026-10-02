@@ -6,6 +6,7 @@ earlier cases, predicted sets and scores are worked out by hand in the comments.
 network, no model.
 """
 
+import random
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import date
@@ -23,6 +24,7 @@ from tests.test_s3_precedent_probe import _processed, _write_run
 
 from ntsb_probable_cause import fields, gitinfo
 from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.scoring import report as scoring_report
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.metrics import CaseScores, bootstrap_mean, paired_difference
 from ntsb_probable_cause.scoring.records import CaseResult
@@ -407,6 +409,74 @@ class TestCompare:
         assert fp.own_lines(fp.loop_own([])) == ["- no judged case"]
 
 
+def _spread_world(n: int = 15) -> tuple[list[fp.Judged], dict[str, fp.Scored]]:
+    """``n`` judged cases with varied recall and precision (some precisions None), by case id."""
+    rng = random.Random(7)  # noqa: S311 -- a fixed test draw, not security
+    levels = (0.0, 0.25, 1 / 3, 0.5, 2 / 3, 1.0)
+    cases: list[fp.Judged] = []
+    scored: dict[str, fp.Scored] = {}
+    for number in range(n):
+        case_id = f"ZQX{number:03d}"
+        loop_precision = [rng.choice((*levels, None)) for _ in fp.DIGITS]
+        mine_precision = [rng.choice((*levels, None)) for _ in fp.DIGITS]
+        cases.append(
+            _judged(
+                case_id,
+                [rng.choice(levels) for _ in fp.DIGITS],
+                loop_precision,
+                fatal=number % 2 == 0,
+            )
+        )
+        scored[case_id] = _scored([rng.choice(levels) for _ in fp.DIGITS], mine_precision)
+    return cases, scored
+
+
+class TestOrderOfTheCases:
+    """A bootstrap resamples by position: the intervals are taken in case-id order."""
+
+    def test_the_premise_a_bootstrap_depends_on_the_order_of_its_values(self) -> None:
+        values = [0.0, 1.0, 0.25, 0.5, 1 / 3, 1.0, 0.0, 0.5, 2 / 3, 0.25, 1.0, 0.0]
+        assert bootstrap_mean(values) != bootstrap_mean(values[::-1])
+
+    def test_shuffling_the_cases_changes_no_interval(self) -> None:
+        cases, scored = _spread_world()
+        want = fp.compare(cases, scored)
+        want_own = fp.loop_own(cases)
+        rng = random.Random(11)  # noqa: S311 -- a fixed test draw, not security
+        for _ in range(5):
+            shuffled = list(cases)
+            rng.shuffle(shuffled)
+            assert shuffled != cases
+            assert fp.compare(shuffled, scored) == want
+            assert fp.loop_own(shuffled) == want_own
+        assert fp.compare(cases[::-1], scored) == want
+
+    def test_the_fatal_and_non_fatal_sets_are_ordered_the_same_way(self) -> None:
+        cases, scored = _spread_world()
+        fatal = [j for j in cases if j.case.fatal]
+        assert fp.compare(fatal[::-1], scored) == fp.compare(fatal, scored)
+
+    def test_the_recall_difference_is_the_one_the_report_prints_for_the_same_pairs(self) -> None:
+        cases, scored = _spread_world()
+        mine = [_one(j.case_id, loop=_loop(r10=scored[j.case_id].recall[10])) for j in cases]
+        loop = [_one(j.case_id, loop=_loop(r10=j.recall[10])) for j in cases]
+        # The report is given the cases in another order and still orders its pairs by id.
+        text = scoring_report.compare(mine[::-1], loop)
+        found = fp.compare(cases[::-1], scored).recall_diff[10]
+        assert (
+            f"- finding recall@10: {found.value:+.1%} [{found.low:+.1%}, {found.high:+.1%}] "
+            f"on n={found.n} cases"
+        ) in text
+
+    def test_the_report_is_the_same_whatever_order_a_run_holds_its_cases_in(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        plain = _report(_argv(), capsys)
+        _write_run(runs, _RUN_A, _run_a()[::-1])
+        _write_run(runs, _RUN_B, _run_b()[::-1])
+        assert _report(_argv(), capsys) == plain
+
+
 class TestOutcome:
     @pytest.mark.parametrize(
         ("recall_low", "precision_high", "word"),
@@ -452,6 +522,101 @@ def _result(
         split,
         {(query, name): scored for query in pp.QUERIES for name, _predict in fp.PREDICTORS},
     )
+
+
+def _paired_result(
+    run_id: str,
+    recall: Sequence[tuple[float, float]],
+    precision: Sequence[tuple[float, float]],
+) -> fp.RunResult:
+    """A run whose judged cases hold (predictor, loop) pairs of recall and of precision.
+
+    Each pair is the same at 10, 8 and 6 digits. The differences between the pairs spread, so the
+    bootstrap interval of their mean has a low end below its high end.
+    """
+    ids = [f"ZQX{n:03d}" for n in range(len(recall))]
+    cases = []
+    scored = {}
+    for case_id, (mine_r, loop_r), (mine_p, loop_p) in zip(ids, recall, precision, strict=True):
+        cases.append(_judged(case_id, [loop_r] * 3, [loop_p] * 3))
+        scored[case_id] = _scored([mine_r] * 3, [mine_p] * 3)
+    split = fp.CaseSplit(len(ids), 0, 0, 0, tuple(cases))
+    return fp.RunResult(
+        run_id,
+        split,
+        {(query, name): scored for query in pp.QUERIES for name, _predict in fp.PREDICTORS},
+    )
+
+
+def _around(base: float, differences: Sequence[float]) -> list[tuple[float, float]]:
+    """(predictor, loop) pairs whose loop score is ``base`` and whose differences are given."""
+    return [(base + difference, base) for difference in differences]
+
+
+# Differences of recall at 10 digits, predictor less loop, and of precision, for the rule's words.
+_RECALL_SPREAD_ZERO = [0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, 0, 0, 0, 0, 0]  # mean above zero
+_RECALL_ABOVE = [0.5, 0.25, 0.75, 0.5, 0.25, 0.5, 0.75, 0.5, 0.25, 0.5]
+_PRECISION_ACROSS = [0.5, -0.5, 0.25, -0.25, 0, 0.5, -0.5, 0.25, -0.25, -0.25]  # mean below zero
+_PRECISION_BELOW = [-0.25, -0.5, -0.75, -0.5, -0.25, -0.5, -0.75, -0.5, -0.25, -0.5]
+
+
+class TestRuleLinesWithSpread:
+    """Intervals with a low end below the high end: the rule reads the right end of each."""
+
+    @staticmethod
+    def _headline(result: fp.RunResult) -> fp.Comparison:
+        return fp.compare(
+            result.split.judged, result.scored[(fp.HEADLINE_QUERY, fp.HEADLINE_PREDICTOR)]
+        )
+
+    @staticmethod
+    def _lines(a: fp.RunResult) -> str:
+        return "\n".join(fp.rule_lines([a, _result(_RUN_B, [0.0], [1.0], 0.0, 1.0)]))
+
+    def test_a_recall_interval_across_zero_is_not_promising(self) -> None:
+        # The mean difference is above zero and the high end is, but the low end is not: the
+        # interval is not above zero. (Reading the high end would give "promising".)
+        result = _paired_result(_RUN_A, _around(0.5, _RECALL_SPREAD_ZERO), _around(0.5, [0.0] * 12))
+        recall = self._headline(result).recall_diff[10]
+        assert recall.value > 0
+        assert recall.low <= 0 < recall.high
+        text = self._lines(result)
+        assert "Outcome: not promising" in text
+        assert "The expectation was not met." in text
+
+    def test_a_precision_interval_across_zero_is_not_below_zero(self) -> None:
+        # Recall is entirely above zero. Precision has a low end below zero and a high end at
+        # or above it: not entirely below zero, so promising and not mixed. (Reading the low end
+        # of the precision interval would give "mixed".)
+        result = _paired_result(
+            _RUN_A, _around(0.25, _RECALL_ABOVE), _around(0.5, _PRECISION_ACROSS)
+        )
+        found = self._headline(result)
+        assert found.recall_diff[10].low > 0
+        precision = found.precision_diff[10]
+        assert precision.value < 0
+        assert precision.low < 0 <= precision.high
+        text = self._lines(result)
+        assert "Outcome: promising" in text
+        assert "The expectation was met." in text
+
+    def test_a_precision_interval_entirely_below_zero_is_mixed(self) -> None:
+        result = _paired_result(
+            _RUN_A, _around(0.25, _RECALL_ABOVE), _around(1.0, _PRECISION_BELOW)
+        )
+        found = self._headline(result)
+        assert found.recall_diff[10].low > 0
+        assert found.precision_diff[10].low < found.precision_diff[10].high < 0
+        assert "Outcome: mixed" in self._lines(result)
+
+    def test_the_rule_reads_the_unrounded_ends_of_the_intervals_it_prints(self) -> None:
+        result = _paired_result(
+            _RUN_A, _around(0.25, _RECALL_ABOVE), _around(0.5, _PRECISION_ACROSS)
+        )
+        found = self._headline(result)
+        text = self._lines(result)
+        assert f"{found.recall_diff[10].low:+.1%}" in text
+        assert f"{found.precision_diff[10].high:+.1%}" in text
 
 
 class TestRuleLines:

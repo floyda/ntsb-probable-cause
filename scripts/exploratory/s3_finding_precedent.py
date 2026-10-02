@@ -370,15 +370,19 @@ def compare(cases: Sequence[Judged], scored: Mapping[str, Scored]) -> Comparison
     The paired difference is the mean of (predictor - loop) per case with its bootstrap interval:
     ``scoring.metrics.paired_difference``, which is typed for booleans, so as the project's own
     ``report.compare`` does for recall, ``mean_cell`` (``bootstrap_mean`` and the count) over the
-    per-case differences. A precision is left out where it is None, on either side.
+    per-case differences. A precision is left out where it is None, on either side. The cases
+    are taken in case-id order, as ``report.compare`` orders its pairs, so that every interval
+    (the means and the differences) is what the report would print for the same pairs, whatever
+    order the run holds its cases in: a bootstrap resamples by position.
 
     Args:
-        cases: the judged cases of one set (all, fatal or non-fatal).
+        cases: the judged cases of one set (all, fatal or non-fatal), in any order.
         scored: the predictor's scores, by case id.
 
     Returns:
         The means, the differences and the counts.
     """
+    cases = sorted(cases, key=lambda judged: judged.case_id)
     mine = [scored[judged.case_id] for judged in cases]
     recall = {d: [s.recall[d] for s in mine] for d in DIGITS}
     loop_recall = {d: [j.recall[d] for j in cases] for d in DIGITS}
@@ -408,7 +412,11 @@ class Own:
 
 
 def loop_own(cases: Sequence[Judged]) -> Own:
-    """The loop's mean recall and precision at 10, 8 and 6 digits over ``cases``."""
+    """The loop's mean recall and precision at 10, 8 and 6 digits over ``cases``.
+
+    The cases are taken in case-id order, as :func:`compare` takes them.
+    """
+    cases = sorted(cases, key=lambda judged: judged.case_id)
     return Own(
         n=len(cases),
         recall={d: mean_cell([j.recall[d] for j in cases]) for d in DIGITS},
