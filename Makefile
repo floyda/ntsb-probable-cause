@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -363,6 +363,17 @@ s3-precedent-pages:
 # nearest earlier cases with their scores, texts (shared words in bold) and marked codes, and the
 # phase-aware control. Reads the processed file and the S3 statistics pool. Writes one HTML page
 # and cases.json to <NTSB_RUNS_DIR>/s3-precedent-pages/<UTC time>/, never committed.
+
+s3-coding-consistency:
+	uv run python -m scripts.exploratory.s3_coding_consistency --out docs/results/s3-coding-consistency-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it decides nothing. No model call. How
+# far the NTSB's own probable-cause sentence settles its first occurrence code: cases of the S3
+# statistics pool whose sentences match word for word (exact twins) or in their words less stop
+# words (loose twins), compared on their first code, over all years and within 2009-2014 and
+# 2015-2019; leave-one-out and pairwise agreement with Wilson intervals, the expectation committed
+# before the script existed, and the ten first-code pairs that most often disagree. Counts and
+# code labels only; writes the results file. The 25 largest exact-twin groups, with their texts,
+# go to <NTSB_RUNS_DIR>/s3-coding-consistency/<UTC time>/largest-groups.md, never committed.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt

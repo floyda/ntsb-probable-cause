@@ -326,6 +326,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `exploratory/s3_miss_kinds` | exploratory | `s3-miss-kinds-dev.txt` — `make s3-miss-kinds`: per arm C run, over one case group of `s3_case_groups` (default "always wrong"), each kind and pattern of `miss_kinds`, split fatal and non-fatal, and the NTSB's first events behind the generic-consequence pattern; counts only, free; sets no bar and tunes nothing (S3.1 Task 15) |
 | `exploratory/s3_precedent_probe` | exploratory | `s3-precedent-probe-dev.txt` — `make s3-precedent-probe`: whether earlier closed cases of the S3 statistics pool, found by BM25 from the loop's own words (its final probable cause, and separately its evidence narrative), hold the NTSB's first occurrence code (found@5, nearest@1, majority@5, event-only@5), against the pool's commonest first codes, over the arm C groups of `s3_case_groups` and every case of two arm C runs; the earlier-cases pool is the headline, the whole pool beside it; applies the rule committed before it existed and prints the outcome first; counts only, free, no model call; sets no bar and tunes nothing (S3.1 Task 15) |
 | `exploratory/s3_precedent_pages` | exploratory | nothing committed: `make s3-precedent-pages`, a private page (HTML and `cases.json` naming the cases shown) under `NTSB_RUNS_DIR/s3-precedent-pages/`, the sample the probe's "in between" rule asks to read: arm C cases where the five nearest earlier cases hold the NTSB's first code, where they do not, and right answers the nearest case points away from, each beside the NTSB's verdict, the loop's first three codes and its probable cause (the query), the five nearest with their scores, texts (shared words in bold) and marked codes, and the phase-aware control; built from the probe's own search; free, no model call; no number on it is cited (S3.1 Task 15) |
+| `exploratory/s3_coding_consistency` | exploratory | `s3-coding-consistency-dev.txt` — `make s3-coding-consistency`: how far the NTSB's own probable-cause sentence settles its first occurrence code; cases of the S3 statistics pool whose sentences are identical word for word (exact twins) or in their words less stop words (loose twins), over all years and within 2009–2014 and 2015–2019, compared on their first code, its event and its phase (leave-one-out and pairwise agreement with Wilson intervals, group sizes, the ten first-code pairs that most often disagree); prints the expectation committed before it existed; counts and code labels only, free, no model call; the 25 largest groups, with their texts, go to a private folder under `NTSB_RUNS_DIR`, never committed; decides nothing (S3.1 Task 15) |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
@@ -334,7 +335,9 @@ ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/record
 `scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result:
 `s3_miss_kinds` writes `docs/results/s3-miss-kinds-dev.txt`, design material for a tuning
 round, which sets no bar; `s3_precedent_probe` writes `docs/results/s3-precedent-probe-dev.txt`,
-whether a precedent tool is worth designing, which sets no bar either.
+whether a precedent tool is worth designing, which sets no bar either;
+`s3_coding_consistency` writes `docs/results/s3-coding-consistency-dev.txt`, how far the NTSB's
+own cause sentence settles its first code, which decides nothing.
 
 One committed result has no script: `docs/results/s2-filter-compare.txt` was produced by
 `scripts/filter_compare.py`, added at commit `74c22b9` and removed at `3856a04` when decision
