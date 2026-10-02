@@ -738,12 +738,19 @@ def read_groups(path: Path, runs: Sequence[Run]) -> dict[Group, Sequence[str]]:
 
 @dataclass(frozen=True)
 class PoolText:
-    """One kept pool case as read: its id, event date, probable-cause text and occurrence codes."""
+    """One kept pool case as read: its id, event date, probable-cause text and occurrence codes.
+
+    ``findings`` are the finding codes the NTSB flagged as in the probable cause, by finding
+    number (``fields.finding_codes_in_cause``; empty when none is flagged), read in the same
+    pass as the text, after ``check_pool``. The precedent probe never uses them; the
+    finding-consistency probe does.
+    """
 
     case_id: str
     event_date: date
     text: str
     sequence: tuple[str, ...]
+    findings: tuple[str, ...] = ()
 
 
 def read_pool_texts(processed: Path) -> tuple[list[PoolText], dict[str, str], dict[str, int]]:
@@ -751,8 +758,8 @@ def read_pool_texts(processed: Path) -> tuple[list[PoolText], dict[str, str], di
 
     Two streaming passes over the processed file. The first is ``coding_stats``' own pool
     (``pool_cases``, guarded by ``check_pool`` before any text is read); the second reads the
-    NTSB probable-cause text of the pool's cases only. Kept: a case with a probable-cause text
-    and at least one occurrence code.
+    NTSB probable-cause text and the flagged-as-cause finding codes of the pool's cases only.
+    Kept: a case with a probable-cause text and at least one occurrence code.
 
     Args:
         processed: the processed folder.
@@ -780,13 +787,14 @@ def read_pool_texts(processed: Path) -> tuple[list[PoolText], dict[str, str], di
     cases, ids = pool_cases(tapped(), excluded=excluded)
     check_pool(ids, excluded=excluded, splits=splits)
     sequences = {case_id: case.sequence for case_id, case in zip(ids, cases, strict=True)}
-    texts = {
-        case_id: fields.probable_cause(raw)
-        for case_id, _date, _split, _class, raw in processed_rows(processed)
-        if case_id in sequences
-    }
+    texts: dict[str, str | None] = {}
+    flagged: dict[str, tuple[str, ...]] = {}
+    for case_id, _date, _split, _class, raw in processed_rows(processed):
+        if case_id in sequences:
+            texts[case_id] = fields.probable_cause(raw)
+            flagged[case_id] = fields.finding_codes_in_cause(raw)
     kept = [
-        PoolText(i, date.fromisoformat(dates[i]), text, sequences[i])
+        PoolText(i, date.fromisoformat(dates[i]), text, sequences[i], flagged[i])
         for i in ids
         if (text := texts.get(i)) and sequences[i]
     ]
