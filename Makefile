@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -311,6 +311,16 @@ s3-case-groups:
 # counts as wrong (decision 0136 item 1). Prints counts only, and writes them to the results
 # file; the case lists go to <NTSB_RUNS_DIR>/s3-case-groups/<UTC time>/groups.json, never
 # committed. RUNS="<ids>", in quotes. Trails for a round's design are read from a stated group.
+
+s3-trail-pages:
+	$(if $(RUN),,$(error RUN is required: a finished dev-400 arm C run id))
+	$(if $(GROUPS),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
+	uv run python -m scripts.s3_trail_pages --run $(RUN) $(if $(COMPARE),--compare $(COMPARE)) --groups $(GROUPS) --group $(or $(GROUP),always_wrong) --arm C --fatal $(or $(N),5) --nonfatal $(or $(N),5) --seed $(or $(SEED),20261002)
+# S3.1 plan Task 15, free: a private reading aid. N fatal and N non-fatal cases (default 5 each)
+# drawn with SEED (default 20261002) from one arm C group of GROUPS (GROUP, default always_wrong);
+# each case's trail in call order, with the coding tools' text rebuilt, beside the NTSB's verdict
+# and, with COMPARE, the other run's final answer. Reads the docket cache only. Writes one HTML
+# page and a Markdown copy to <NTSB_RUNS_DIR>/s3-trail-pages/<UTC time>/, never committed.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt

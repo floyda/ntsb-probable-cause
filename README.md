@@ -321,6 +321,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `s3_shape_probe` | one-shot | `s3-shape-probe.txt` and the `tests/fixtures/openrouter/s3/` pairs — the native-tool shape probe on an invented case (spec S3.1 §5.5), with checks 7 and 8 for arm B's fixed turn and a later trigger's opening; paid (cents, reserves $0.08), run on or after 1 October 2026 |
 | `s3_noise_floor` | live measurement | `s3-noise-floor-dev.txt` — the agent loop's noise floor, format gate and third-run rule from two or three identical arm C runs on `dev-400` (spec S3 §10.2 to §10.4, 0130); counts only, free |
 | `s3_case_groups` | live tool | `s3-case-groups-dev.txt` — `dev-400` sorted into always right, always wrong and flipping on occurrence top-1 across finished arm C and arm B runs, a failed case counted wrong (0136), by arm and by fatal and non-fatal, with a cross-count; counts only, free. The case lists go under `NTSB_RUNS_DIR`, never committed (S3.1 Task 15) |
+| `s3_trail_pages` | live tool | nothing committed: a private page (HTML and a Markdown copy) under `NTSB_RUNS_DIR/s3-trail-pages/`, a few arm C trails drawn with a seed from one case group of `s3_case_groups`, each call in order with the coding tools' text rebuilt, beside the NTSB's verdict; free, reads the docket cache only (S3.1 Task 15) |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
