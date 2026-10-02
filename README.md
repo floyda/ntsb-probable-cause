@@ -324,6 +324,7 @@ no longer exists, and the script is usually the evidence that removed it).
 | `s3_trail_pages` | live tool | nothing committed: a private page (HTML, a Markdown copy, and `cases.json` naming the cases shown and how they were chosen) under `NTSB_RUNS_DIR/s3-trail-pages/`, a few arm C trails from one case group of `s3_case_groups` (drawn with a seed, or spread over the NTSB's first events; optionally only the cases of one `miss_kinds` pattern, and leaving out the cases of earlier pages), each case opening with its differences at a glance (the defining event, how close the loop came at each checkpoint, the NTSB's sequence and flagged findings against the answer), then each call in order with the coding tools' text rebuilt, beside the NTSB's verdict; every occurrence code and finding compared is marked match, wrong place or partial, or no match, in colour and in words; free, reads the docket cache only (S3.1 Task 15) |
 | `miss_kinds` | live helper | nothing; the pure classifier behind `exploratory/s3_miss_kinds` and the trail pages' differences at a glance: one kind per case for how the answer's first code misses the NTSB's defining event, and patterns (stall/spin against loss of control, a generic consequence, the NTSB's cause undetermined, abstained) (S3.1 Task 15) |
 | `exploratory/s3_miss_kinds` | exploratory | `s3-miss-kinds-dev.txt` — `make s3-miss-kinds`: per arm C run, over one case group of `s3_case_groups` (default "always wrong"), each kind and pattern of `miss_kinds`, split fatal and non-fatal, and the NTSB's first events behind the generic-consequence pattern; counts only, free; sets no bar and tunes nothing (S3.1 Task 15) |
+| `exploratory/s3_precedent_probe` | exploratory | `s3-precedent-probe-dev.txt` — `make s3-precedent-probe`: whether earlier closed cases of the S3 statistics pool, found by BM25 from the loop's own words (its final probable cause, and separately its evidence narrative), hold the NTSB's first occurrence code (found@5, nearest@1, majority@5, event-only@5), against the pool's commonest first codes, over the arm C groups of `s3_case_groups` and every case of two arm C runs; the earlier-cases pool is the headline, the whole pool beside it; applies the rule committed before it existed and prints the outcome first; counts only, free, no model call; sets no bar and tunes nothing (S3.1 Task 15) |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
@@ -331,7 +332,8 @@ ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/record
 
 `scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result:
 `s3_miss_kinds` writes `docs/results/s3-miss-kinds-dev.txt`, design material for a tuning
-round, which sets no bar.
+round, which sets no bar; `s3_precedent_probe` writes `docs/results/s3-precedent-probe-dev.txt`,
+whether a precedent tool is worth designing, which sets no bar either.
 
 One committed result has no script: `docs/results/s2-filter-compare.txt` was produced by
 `scripts/filter_compare.py`, added at commit `74c22b9` and removed at `3856a04` when decision
