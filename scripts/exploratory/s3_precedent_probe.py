@@ -807,6 +807,11 @@ def read_pool_texts(processed: Path) -> tuple[list[PoolText], dict[str, str], di
     return kept, dates, counts
 
 
+def precedents(texts: Iterable[PoolText]) -> list[Precedent]:
+    """The kept pool cases as the search sees them: each text cut into the search's words."""
+    return [Precedent(c.case_id, c.event_date, c.sequence[0], tokens(c.text)) for c in texts]
+
+
 def read_pool(
     processed: Path, judged: Iterable[str]
 ) -> tuple[list[Precedent], dict[str, date], dict[str, int]]:
@@ -826,7 +831,7 @@ def read_pool(
     """
     wanted = frozenset(judged)
     texts, dates, counts = read_pool_texts(processed)
-    kept = [Precedent(c.case_id, c.event_date, c.sequence[0], tokens(c.text)) for c in texts]
+    kept = precedents(texts)
     absent = sorted(i for i in wanted if i not in dates)
     if absent:
         _refuse(f"{len(absent)} judged case(s) have no event date in the processed file")
