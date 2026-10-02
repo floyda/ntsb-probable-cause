@@ -728,6 +728,9 @@ def legend_blocks() -> list[Block]:
                 ),
                 "(cause) after a finding's mark: an NTSB finding it matches at that level is "
                 "flagged as in the probable cause",
+                "Scoring reads only the NTSB's first code: a green mark below rank 1 means the "
+                "same code at the same rank, not that the case was scored right; each case's "
+                '"This run" line gives its score',
             ),
             "Marks: green, amber and red, each with words that read without colour",
         )

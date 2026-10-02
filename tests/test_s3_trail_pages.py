@@ -1372,6 +1372,7 @@ class TestLegendAndTheme:
         assert _chip("near", "↕ wrong place / ≈ partial") in top
         assert _chip("miss", "✗ no match") in top
         assert "(cause) after a finding's mark" in top
+        assert "a green mark below rank 1 means the same code at the same rank" in top
         markdown = _markdown(runs)
         top_md = markdown[: markdown.index("\n## ")]
         for words in ("[✓ match] ", "[↕ wrong place / ≈ partial] ", "[✗ no match] "):
