@@ -7,6 +7,7 @@ cache, which must refuse rather than fetch.
 """
 
 import copy
+import dataclasses
 import html
 import json
 import shutil
@@ -26,7 +27,7 @@ from ntsb_probable_cause.agent.trail import AgentCall, StepKind
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord, Status
 from ntsb_probable_cause.records.split import split_record
-from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.hypothesis import FindingGuess, Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -339,14 +340,14 @@ _SCORES = CaseScores(
 )
 
 
-def _step(case_id: str, hypothesis: Hypothesis) -> StepRecord:
+def _step(case_id: str, hypothesis: Hypothesis, kind: str = "refine") -> StepRecord:
     return StepRecord(
         case_id=case_id,
         step=0,
         arm="C",
         condition="full",
         day=None,
-        tool="checkpoint:refine",
+        tool=f"checkpoint:{kind}",
         arguments={},
         reason="",
         expected_effect="",
@@ -367,6 +368,12 @@ def _step(case_id: str, hypothesis: Hypothesis) -> StepRecord:
     )
 
 
+def _checkpoints(case_id: str, final: Hypothesis) -> tuple[StepRecord, ...]:
+    """The full trail's checkpoints, as the loop records them: H0, H1, H2, answer, refinement."""
+    kinds = (("h0", _H0), ("h1", _H1), ("h2", _H2), ("answer", final), ("refine", final))
+    return tuple(_step(case_id, hypothesis, kind) for kind, hypothesis in kinds)
+
+
 def _result(case_id: str, *, final: Hypothesis | None, failure: str | None) -> CaseResult:
     _, _, verdict = split_record(_RAWS[case_id])
     return CaseResult(
@@ -378,7 +385,7 @@ def _result(case_id: str, *, final: Hypothesis | None, failure: str | None) -> C
         verdict_occurrence=verdict.occurrence_codes,
         verdict_findings=verdict.finding_codes,
         verdict_findings_in_cause=verdict.finding_codes_in_cause,
-        steps=() if final is None else (_step(case_id, final),),
+        steps=() if final is None else _checkpoints(case_id, final),
         scores=None if final is None or failure is not None else _SCORES,
         cost_usd=0.0123,
         failure=failure,
@@ -723,6 +730,418 @@ class TestThePage:
         assert f"**Run b ({_RUN_B}), final answer:** 552241" in markdown
 
 
+# --------------------------------------------------------------------------------------------
+# Differences at a glance
+# --------------------------------------------------------------------------------------------
+
+
+def _guesses(
+    *codes: tuple[str, float], findings: Sequence[FindingGuess] = (), abstain: bool = False
+) -> Hypothesis:
+    return Hypothesis(
+        evidence_narrative="n",
+        occurrence=tuple(
+            OccurrenceGuess(phase=code[:3], event=code[3:], probability=p) for code, p in codes
+        ),
+        findings=tuple(findings),
+        probable_cause="p",
+        lay_explanation="l",
+        confidence=0.5,
+        abstain=abstain,
+        evidence_used=(),
+    )
+
+
+_GLANCE = "ZQX001"
+
+
+def _glance_case(
+    ntsb: tuple[str, ...],
+    checkpoints: Mapping[str, Hypothesis],
+    *,
+    failure: str | None = None,
+    flagged: tuple[str, ...] = (),
+    others: tuple[str, ...] = (),
+) -> CaseResult:
+    """A case with the checkpoints given (``h0`` .. ``answer``, ``refine``), in that order."""
+    steps = tuple(_step(_GLANCE, hypothesis, kind) for kind, hypothesis in checkpoints.items())
+    scored = failure is None and bool(steps)
+    return CaseResult(
+        case_id=_GLANCE,
+        split="dev",
+        fatal=False,
+        investigation_class="C",
+        report_flavour=None,
+        verdict_occurrence=ntsb,
+        verdict_findings=(*flagged, *others),
+        verdict_findings_in_cause=flagged,
+        steps=steps,
+        scores=_SCORES if scored else None,
+        cost_usd=0.0,
+        failure=failure,
+    )
+
+
+def _answered(
+    ntsb: tuple[str, ...],
+    answer: Hypothesis,
+    *,
+    flagged: tuple[str, ...] = (),
+    others: tuple[str, ...] = (),
+) -> CaseResult:
+    """A case that answered: the answer is its H0, its answer and its refinement."""
+    checkpoints = {"h0": answer, "answer": answer, "refine": answer}
+    return _glance_case(ntsb, checkpoints, flagged=flagged, others=others)
+
+
+def _glance(
+    result: CaseResult,
+    calls: Sequence[AgentCall] = (),
+    *,
+    tables: CodeTables = _TABLES,
+    other: tp.Run | None = None,
+) -> str:
+    """The block as HTML, unescaped back to text so lines can be compared as written."""
+    blocks = tp.glance_blocks(result, calls, tables=tables, stats=_STATS, other=other)
+    return html.unescape(tp.render_html("glance", blocks))
+
+
+def _label(code: str) -> str:
+    return tp.occurrence_label(_TABLES, code)
+
+
+def _coding(index: int, tool: str, *, error: str | None = None, **arguments: object) -> AgentCall:
+    return _call(_GLANCE, index, "coding", tool, arguments=_why(tool, **arguments), error=error)
+
+
+class TestGlanceDefiningEvent:
+    @pytest.mark.parametrize(
+        ("answer", "kind"),
+        [
+            (("552240", "552241"), "first code right"),
+            (("552241", "552240"), "order"),
+            (("552241",), "same phase, different event"),
+            (("500240",), "same event, different phase"),
+            (("500120",), "different phase and event"),
+        ],
+    )
+    def test_each_kind_with_both_first_codes(self, answer: tuple[str, ...], kind: str) -> None:
+        hypothesis = _guesses(*((code, 0.4) for code in answer))
+        text = _glance(_answered(("552240",), hypothesis))
+        assert "<h3>Differences at a glance</h3>" in text
+        assert f"The NTSB's first code: 552240: {_label('552240')}" in text
+        assert f"The loop's first code: {answer[0]}: {_label(answer[0])} (p 0.40)" in text
+        assert f"Kind: {kind}<" in text
+
+    def test_the_patterns_or_none(self) -> None:
+        text = _glance(_answered(("552241",), _guesses(("500240", 0.6))))
+        assert (
+            "Patterns: NTSB stall/spin first, loop loss of control first; generic consequence"
+            in text
+        )
+        assert "Patterns: none" in _glance(_answered(("552241",), _guesses(("500120", 0.6))))
+
+    def test_an_abstained_answer_with_the_right_first_code(self) -> None:
+        text = _glance(_answered(("552240",), _guesses(("552240", 0.6), abstain=True)))
+        assert "Kind: first code right" in text
+        assert "Patterns: abstained" in text
+
+    def test_a_failed_case(self) -> None:
+        result = _glance_case(("552240",), {"h0": _guesses(("500120", 0.5))}, failure="failed: h2")
+        text = _glance(result)
+        assert "The loop's first code: none; the case did not answer (failed: h2)" in text
+        assert "Kind: failed or not scored" in text
+        assert "Patterns: none" in text
+
+
+class TestGlanceHowClose:
+    _CODE = "552240"
+
+    def _rows(self, text: str) -> str:
+        start = text.index("How close the loop came")
+        return text[start : text.index("The NTSB's occurrence codes", start)]
+
+    def test_never_in_any_hypothesis(self) -> None:
+        result = _glance_case(
+            (self._CODE,),
+            {
+                "h0": _guesses(("500120", 0.5)),
+                "h1": _guesses(("500241", 0.5)),
+                "answer": _guesses(("500241", 0.5)),
+                "refine": _guesses(("500241", 0.5)),
+            },
+        )
+        rows = self._rows(_glance(result))
+        assert f"How close the loop came to the NTSB's first code, {self._CODE}:" in rows
+        assert "<li>H0: not among its codes</li>" in rows
+        assert "<li>H1: not among its codes</li>" in rows
+        assert "<li>H2: no such checkpoint in this case</li>" in rows
+        assert "<li>Answer: not among its codes</li>" in rows
+        assert "In short:</b> never in any hypothesis" in rows
+
+    def test_held_then_dropped(self) -> None:
+        held = _guesses(("500120", 0.5), (self._CODE, 0.3))
+        result = _glance_case(
+            (self._CODE,),
+            {
+                "h0": held,
+                "h1": _guesses((self._CODE, 0.6)),
+                "h2": _guesses(("500120", 0.7)),
+                "answer": _guesses(("500120", 0.7)),
+                "refine": _guesses(("500120", 0.7)),
+            },
+        )
+        rows = self._rows(_glance(result))
+        assert "<li>H0: rank 2 (p 0.30)</li>" in rows
+        assert "<li>H1: rank 1 (p 0.60)</li>" in rows
+        assert "<li>H2: not among its codes</li>" in rows
+        assert "In short:</b> held at H0 and H1, then dropped" in rows
+
+    def test_in_the_answer_at_its_rank(self) -> None:
+        answer = _guesses(("500120", 0.5), ("500241", 0.2), (self._CODE, 0.1))
+        rows = self._rows(_glance(_answered((self._CODE,), answer)))
+        assert "<li>Answer: rank 3 (p 0.10)</li>" in rows
+        assert "In short:</b> in the answer at rank 3" in rows
+
+    def test_held_at_three_checkpoints_and_in_the_answer(self) -> None:
+        answer = _guesses((self._CODE, 0.5))
+        result = _glance_case(
+            (self._CODE,),
+            {"h0": answer, "h1": _guesses(("500120", 0.5)), "h2": answer, "answer": answer},
+        )
+        assert "In short:</b> in the answer at rank 1" in self._rows(_glance(result))
+
+    def test_three_held_checkpoints_are_named_in_a_list(self) -> None:
+        held = _guesses((self._CODE, 0.5))
+        result = _glance_case(
+            (self._CODE,),
+            {"h0": held, "h1": held, "h2": held, "answer": _guesses(("500120", 0.5))},
+        )
+        assert "In short:</b> held at H0, H1 and H2, then dropped" in self._rows(_glance(result))
+
+    def test_a_case_that_failed_after_holding_it(self) -> None:
+        result = _glance_case(
+            (self._CODE,), {"h0": _guesses((self._CODE, 0.5))}, failure="failed: h1"
+        )
+        rows = self._rows(_glance(result))
+        assert "<li>Answer: no such checkpoint in this case</li>" in rows
+        assert (
+            "In short:</b> held at H0; the case reached no later checkpoint; the case failed, "
+            "so nothing was scored"
+        ) in rows
+
+    def test_a_case_that_failed_after_its_answer(self) -> None:
+        answer = _guesses((self._CODE, 0.5))
+        result = _glance_case(
+            (self._CODE,), {"h0": answer, "answer": answer}, failure="failed: coding"
+        )
+        assert (
+            "In short:</b> in the answer at rank 1; the case failed, so nothing was scored"
+        ) in self._rows(_glance(result))
+
+    def test_a_case_with_no_checkpoint(self) -> None:
+        result = _glance_case((self._CODE,), {}, failure="leak: docket_documents sentence")
+        rows = self._rows(_glance(result))
+        assert "In short:</b> no checkpoint: the case made no hypothesis" in rows
+
+    def test_the_coding_calls_naming_it_and_the_tool_results_listing_it(self) -> None:
+        # 509240 (Approach-VFR Go-Around / Loss of control in flight) is the first code
+        # suggest_codes lists for the Approach phase group.
+        code = "509240"
+        calls = [
+            _coding(7, "describe_codes", kind="occurrence", codes=[code]),
+            _coding(8, "describe_codes", kind="finding_category", codes=["010100"]),
+            _coding(9, "past_findings", occurrence=code),
+            _coding(10, "suggest_codes", phase_group="Approach"),
+            # Not accepted: the loop answered it with an error, so it is not counted.
+            _coding(11, "occurrence_usage", error="not accepted", codes=[code]),
+        ]
+        text = _glance(_answered((code,), _guesses(("500120", 0.5))), calls)
+        assert (
+            "Coding calls naming it:</b> describe_codes (call 8); past_findings (call 10)" in text
+        )
+        assert (
+            "Coding tool results listing it (rebuilt):</b> describe_codes (call 8); "
+            "suggest_codes (call 11)"
+        ) in text
+
+    def test_no_coding_call_naming_it(self) -> None:
+        text = _glance(_answered(("552240",), _guesses(("500120", 0.5))))
+        assert "Coding calls naming it:</b> none" in text
+        assert "Coding tool results listing it (rebuilt):</b> none" in text
+
+
+class TestGlanceSequenceAndFindings:
+    def test_the_ntsbs_sequence_marked_against_the_answer(self) -> None:
+        answer = _guesses(("552241", 0.5), ("552240", 0.3))
+        text = _glance(_answered(("552240", "552241", "500120"), answer))
+        assert "The NTSB's occurrence codes, in its order, against the loop's answer:" in text
+        assert f"<li>552240: {_label('552240')}: in the answer at rank 2</li>" in text
+        assert f"<li>552241: {_label('552241')}: in the answer at rank 1</li>" in text
+        assert f"<li>500120: {_label('500120')}: not in the answer</li>" in text
+
+    def test_the_sequence_of_a_case_with_no_answer(self) -> None:
+        text = _glance(_glance_case(("552240",), {}, failure="failed: h0"))
+        assert f"<li>552240: {_label('552240')}: no answer to compare</li>" in text
+
+    def test_each_flagged_finding_at_its_level_and_the_loops_unmatched_findings(self) -> None:
+        exact, item, category, missed = "0106201220", "0206304044", "0204152044", "0202202544"
+        findings = (
+            FindingGuess(category6="010620", modifier="20", probability=0.5, item8="01062012"),
+            FindingGuess(category6="020630", modifier="45", probability=0.4, item8="02063040"),
+            FindingGuess(category6="020415", modifier="44", probability=0.3, item8="02041510"),
+            FindingGuess(category6="010100", modifier="01", probability=0.2, item8="01010000"),
+            # Matches only a finding the NTSB lists without flagging it: not unmatched.
+            FindingGuess(category6="030340", modifier="91", probability=0.1),
+        )
+        result = _answered(
+            ("552240",),
+            _guesses(("500120", 0.5), findings=findings),
+            flagged=(exact, item, category, missed),
+            others=("0303404091",),
+        )
+        text = _glance(result)
+        verdict = {
+            c: f"{c}: {_TABLES.items[c[:8]]} [{_TABLES.modifiers[c[8:]]}]"
+            for c in (exact, item, category, missed)
+        }
+        assert f"{verdict[exact]}: exact (item and modifier)" in text
+        assert (
+            f"{verdict[item]}: item only; the loop's modifier 45 [Pilot of other aircraft]" in text
+        )
+        item_label = _TABLES.items["02041510"]
+        assert f"{verdict[category]}: category only; the loop's item 02041510 {item_label}" in text
+        assert f"{verdict[missed]}: missed" in text
+        unmatched = text[text.index("The loop's findings that match no NTSB finding") :]
+        assert "010100/01" in unmatched
+        assert "030340" not in unmatched
+        assert "010620" not in unmatched
+
+    def test_a_category_match_with_no_item(self) -> None:
+        findings = (FindingGuess(category6="020415", modifier="44", probability=0.3),)
+        result = _answered(
+            ("552240",), _guesses(("500120", 0.5), findings=findings), flagged=("0204152044",)
+        )
+        assert "category only; the loop named no item" in _glance(result)
+
+    def test_no_flagged_finding_and_no_unmatched_finding(self) -> None:
+        text = _glance(_answered(("552240",), _guesses(("500120", 0.5))))
+        flagged = text[text.index("Findings flagged as cause") :]
+        assert "<li>none flagged</li>" in flagged
+        unmatched = text[text.index("The loop's findings that match no NTSB finding") :]
+        assert "<li>none</li>" in unmatched
+
+    def test_the_findings_of_a_case_with_no_answer(self) -> None:
+        result = _glance_case(("552240",), {}, failure="failed: h0", flagged=("0204152044",))
+        text = _glance(result)
+        assert "<li>not compared: the case did not answer</li>" in text
+
+
+class TestGlanceRunB:
+    def _other(self, result: CaseResult | None) -> tp.Run:
+        return tp.Run(_RUN_B, {} if result is None else {_GLANCE: result}, {})
+
+    def test_its_first_code_and_kind(self) -> None:
+        other = self._other(_answered(("552240",), _guesses(("552241", 0.55))))
+        text = _glance(_answered(("552240",), _guesses(("500120", 0.5))), other=other)
+        assert (
+            f"Run b ({_RUN_B}), defining event:</b> first code 552241: {_label('552241')} "
+            "(p 0.55); kind: same phase, different event"
+        ) in text
+
+    def test_a_failed_case_in_run_b(self) -> None:
+        other = self._other(_glance_case(("552240",), {}, failure="failed: coding"))
+        text = _glance(_answered(("552240",), _guesses(("500120", 0.5))), other=other)
+        assert "defining event:</b> no answer (failed: coding); kind: failed or not scored" in text
+
+    def test_run_b_without_the_case(self) -> None:
+        text = _glance(_answered(("552240",), _guesses(("500120", 0.5))), other=self._other(None))
+        assert "defining event:</b> the run holds no such case" in text
+
+    def test_no_run_b_line_without_compare(self) -> None:
+        assert "Run b" not in _glance(_answered(("552240",), _guesses(("500120", 0.5))))
+
+
+class TestGlanceEscaping:
+    def test_every_label_is_escaped(self) -> None:
+        events = {**_TABLES.events, "240": "Loss <of> control & more"}
+        tables = dataclasses.replace(_TABLES, events=events)
+        blocks = tp.glance_blocks(
+            _answered(("552240",), _guesses(("500240", 0.5))),
+            (),
+            tables=tables,
+            stats=_STATS,
+            other=None,
+        )
+        page = tp.render_html("glance", blocks)
+        assert "Loss &lt;of&gt; control &amp; more" in page
+        assert "<of>" not in page
+        assert "Loss <of> control & more" in tp.render_markdown(blocks)
+
+
+class TestSummary:
+    def test_counts_each_kind_and_pattern_among_the_cases_shown(self) -> None:
+        results = [
+            _answered(("552240",), _guesses(("552241", 0.5))),
+            _answered(("552241",), _guesses(("552240", 0.5))),
+            _answered(("552240",), _guesses(("552240", 0.5), abstain=True)),
+            _glance_case(("552240",), {}, failure="failed: h0"),
+        ]
+        blocks = tp.summary_blocks(results)
+        text = html.unescape(tp.render_html("summary", blocks))
+        assert "Kinds among the 4 cases shown, run a (counts only):" in text
+        assert "<li>same phase, different event: 2</li>" in text
+        assert "<li>first code right: 1</li>" in text
+        assert "<li>failed or not scored: 1</li>" in text
+        assert "<li>order: 0</li>" in text
+        assert "<li>NTSB stall/spin first, loop loss of control first: 1</li>" in text
+        assert "<li>NTSB loss of control first, loop stall/spin first: 1</li>" in text
+        assert "<li>generic consequence: 1</li>" in text
+        assert "<li>abstained: 1</li>" in text
+        assert "<li>NTSB cause undetermined: 0</li>" in text
+
+
+class TestGlanceOnThePage:
+    def test_the_block_opens_each_case_after_its_header_and_before_its_trail(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        page = html.unescape(_page(runs, _write_groups(tmp_path / "groups.json")))
+        section = _case_section(page, "ANC10LA044")
+        header = section.index("<b>This run:</b>")
+        glance = section.index("<h3>Differences at a glance</h3>")
+        trail = section.index("<h3>Trail, in call order</h3>")
+        assert header < glance < trail
+        block = section[glance:trail]
+        assert f"The NTSB's first code: 551230: {_label('551230')}" in block
+        assert f"The loop's first code: 500240: {_label('500240')} (p 0.55)" in block
+        assert "Kind: different phase and event" in block
+        assert "Patterns: generic consequence" in block
+        assert "In short:</b> never in any hypothesis" in block
+        # The trail's describe_codes call names 500240, not the NTSB's code.
+        assert "Coding calls naming it:</b> none" in block
+        assert (
+            f"Run b ({_RUN_B}), defining event:</b> first code 552241: {_label('552241')} "
+            "(p 0.55); kind: different phase and event"
+        ) in block
+
+    def test_the_page_opens_with_the_counts_of_the_cases_shown(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        page = html.unescape(_page(runs, _write_groups(tmp_path / "groups.json")))
+        top = page[: page.index("<h2")]
+        assert "Kinds among the 9 cases shown, run a (counts only):" in top
+        assert "<li>different phase and event: 7</li>" in top
+        assert "<li>failed or not scored: 2</li>" in top
+        assert "<li>generic consequence: 7</li>" in top
+        assert "<li>NTSB cause undetermined: 2</li>" in top
+
+    def test_the_markdown_copy_holds_the_block(self, runs: Path, tmp_path: Path) -> None:
+        _page(runs, _write_groups(tmp_path / "groups.json"))
+        markdown = _markdown(runs)
+        assert "### Differences at a glance" in markdown
+        assert "**In short:** never in any hypothesis" in markdown
+
+
 class TestRebuiltToolText:
     @pytest.mark.parametrize(("tool", "arguments", "errors"), _CODING)
     def test_equals_what_the_tool_returns_for_the_recorded_arguments(
@@ -876,6 +1295,14 @@ class TestRefusals:
         with pytest.raises(SystemExit) as raised:
             _main(_argv(groups, fatal=0, nonfatal=0))
         assert raised.value.code == 2
+
+    def test_a_drawn_case_with_no_ntsb_occurrence_code_is_refused(
+        self, runs: Path, groups: Path
+    ) -> None:
+        cases = [_result(i, final=_REFINED, failure=None) for i in _IDS]
+        cases[0] = cases[0].model_copy(update={"verdict_occurrence": ()})
+        _write_run(runs, _RUN_A, cases=cases)
+        self._refused(_argv(groups, fatal=3, nonfatal=6), "no NTSB occurrence code")
 
     def test_a_second_page_in_the_same_second_is_refused(self, groups: Path) -> None:
         assert _main(_argv(groups)) == 0

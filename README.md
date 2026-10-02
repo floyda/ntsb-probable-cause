@@ -321,13 +321,17 @@ no longer exists, and the script is usually the evidence that removed it).
 | `s3_shape_probe` | one-shot | `s3-shape-probe.txt` and the `tests/fixtures/openrouter/s3/` pairs — the native-tool shape probe on an invented case (spec S3.1 §5.5), with checks 7 and 8 for arm B's fixed turn and a later trigger's opening; paid (cents, reserves $0.08), run on or after 1 October 2026 |
 | `s3_noise_floor` | live measurement | `s3-noise-floor-dev.txt` — the agent loop's noise floor, format gate and third-run rule from two or three identical arm C runs on `dev-400` (spec S3 §10.2 to §10.4, 0130); counts only, free |
 | `s3_case_groups` | live tool | `s3-case-groups-dev.txt` — `dev-400` sorted into always right, always wrong and flipping on occurrence top-1 across finished arm C and arm B runs, a failed case counted wrong (0136), by arm and by fatal and non-fatal, with a cross-count; counts only, free. The case lists go under `NTSB_RUNS_DIR`, never committed (S3.1 Task 15) |
-| `s3_trail_pages` | live tool | nothing committed: a private page (HTML and a Markdown copy) under `NTSB_RUNS_DIR/s3-trail-pages/`, a few arm C trails drawn with a seed from one case group of `s3_case_groups`, each call in order with the coding tools' text rebuilt, beside the NTSB's verdict; free, reads the docket cache only (S3.1 Task 15) |
+| `s3_trail_pages` | live tool | nothing committed: a private page (HTML and a Markdown copy) under `NTSB_RUNS_DIR/s3-trail-pages/`, a few arm C trails drawn with a seed from one case group of `s3_case_groups`, each case opening with its differences at a glance (the defining event, how close the loop came at each checkpoint, the NTSB's sequence and flagged findings against the answer), then each call in order with the coding tools' text rebuilt, beside the NTSB's verdict; free, reads the docket cache only (S3.1 Task 15) |
+| `miss_kinds` | live helper | nothing; the pure classifier behind `exploratory/s3_miss_kinds` and the trail pages' differences at a glance: one kind per case for how the answer's first code misses the NTSB's defining event, and patterns (stall/spin against loss of control, a generic consequence, the NTSB's cause undetermined, abstained) (S3.1 Task 15) |
+| `exploratory/s3_miss_kinds` | exploratory | `s3-miss-kinds-dev.txt` — `make s3-miss-kinds`: per arm C run, over one case group of `s3_case_groups` (default "always wrong"), each kind and pattern of `miss_kinds`, split fatal and non-fatal, and the NTSB's first events behind the generic-consequence pattern; counts only, free; sets no bar and tunes nothing (S3.1 Task 15) |
 
 `scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
 -m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
 ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/recorder-bridge.md`.
 
-`scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result.
+`scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result:
+`s3_miss_kinds` writes `docs/results/s3-miss-kinds-dev.txt`, design material for a tuning
+round, which sets no bar.
 
 One committed result has no script: `docs/results/s2-filter-compare.txt` was produced by
 `scripts/filter_compare.py`, added at commit `74c22b9` and removed at `3856a04` when decision

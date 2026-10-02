@@ -23,17 +23,34 @@ The draw
     slice smaller than asked is shown whole. The same arguments always draw the same cases and
     write the same page.
 
+What the page shows, at its top
+    The runs, the group and the draw; then the kinds and the patterns among the cases shown
+    (run a), counted, as ``scripts/miss_kinds.py`` classifies them.
+
 What the page shows, per case
     A header (the case number, which is fine here: the page is private and never committed; the
     event date; fatal or not; the docket's documents listed, offered and read; how the case
-    ended in the run). Then every model call in order: each checkpoint's hypothesis (occurrence
-    codes with labels and probabilities, findings with labels, confidence, abstain, the agent's
-    own evidence narrative and working cause); each read choice (per document on offer, in offer
-    order: its listing index, title, pages, read or skip, and the agent's expected effect; the
-    choice's reason; each decision on a document not on offer with the line the loop answered it
-    with, ``texts.extras_lines``); each coding call (the tool, its arguments with labels, the
-    agent's reason and expected effect, and the tool's text); each call the loop did not accept,
-    with its sanitised error, and the retry after it. Then the final answer as scored (after
+    ended in the run). Then the differences at a glance, so a reader sees first whether the loop
+    went wrong somewhere or never came close: the NTSB's first occurrence code (its defining
+    event) against the loop's first code and its probability, with the kind and the patterns
+    ``scripts/miss_kinds.py`` gives them; at each checkpoint (H0, H1, H2, the answer) whether
+    the NTSB's first code was among the loop's codes, at which rank and probability, and one
+    line: never in any hypothesis, held at a checkpoint then dropped, or in the answer at its
+    rank; which accepted coding calls named that code in their arguments, and whose rebuilt
+    text listed it; the NTSB's whole occurrence sequence, each code marked with its rank in the
+    loop's answer or its absence; each finding flagged as cause, matched exactly (item and
+    modifier), at item level only, at category level only, or missed (``finding_depth``'s
+    levels), and the loop's findings whose category matches no NTSB finding, flagged or not;
+    with ``--compare``, run b's first code and kind in one line.
+
+    Then every model call in order: each checkpoint's hypothesis (occurrence codes with labels
+    and probabilities, findings with labels, confidence, abstain, the agent's own evidence
+    narrative and working cause); each read choice (per document on offer, in offer order: its
+    listing index, title, pages, read or skip, and the agent's expected effect; the choice's
+    reason; each decision on a document not on offer with the line the loop answered it with,
+    ``texts.extras_lines``); each coding call (the tool, its arguments with labels, the agent's
+    reason and expected effect, and the tool's text); each call the loop did not accept, with
+    its sanitised error, and the retry after it. Then the final answer as scored (after
     refinement), the NTSB's verdict for comparison (occurrence codes in the NTSB's order with
     labels, finding codes with labels and which are flagged as in the probable cause, the
     probable-cause text, all from ``split_record``) and, with ``--compare``, the other run's
@@ -65,7 +82,8 @@ Refusals, before any case is read where they can be
     ``trail.jsonl``, or whose trail holds another run's call; a case outside the development
     split; ``--compare`` naming the run itself, or a run refused for any reason above; a groups
     file that is missing, not on ``dev-400``, not drawn over ``--run``, or without the split
-    asked for; a group case the run does not hold. Then, per case: a record outside the
+    asked for; a group case the run does not hold; a drawn case whose verdict holds no
+    occurrence code (no defining event to compare). Then, per case: a record outside the
     development split or for another case; a docket not wholly in the cache (nothing is
     fetched); a docket whose key is not the record's; a read choice whose offer the cached
     docket could not have made. A second page in the same second is refused rather than written
@@ -85,6 +103,8 @@ import html
 import json
 import logging
 import random
+import re
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -122,6 +142,7 @@ from ntsb_probable_cause.scoring.hypothesis import FindingGuess, Hypothesis, Occ
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import Split, split_of
+from scripts.miss_kinds import KINDS, PATTERNS, answer_codes, case_difference, scored_answer
 
 SAMPLE: Final = "dev-400"
 ARM: Final = "C"
@@ -585,8 +606,262 @@ def _final(result: CaseResult) -> Hypothesis | None:
     return result.steps[-1].hypothesis
 
 
+# --- differences at a glance ---
+
+# The checkpoints the glance reads, in order, with the names it shows them by.
+_CHECKPOINTS: Final[tuple[tuple[str, str], ...]] = (
+    ("h0", "H0"),
+    ("h1", "H1"),
+    ("h2", "H2"),
+    ("answer", "Answer"),
+)
+_CHECKPOINT: Final = "checkpoint:"
+
+
+def _checkpoint_hypotheses(result: CaseResult) -> dict[str, Hypothesis]:
+    """A case's checkpoints by kind (``h0`` .. ``refine``); a kind recorded twice keeps its last."""
+    return {
+        step.tool.removeprefix(_CHECKPOINT): step.hypothesis
+        for step in result.steps
+        if step.tool.startswith(_CHECKPOINT)
+    }
+
+
+def _rank(hypothesis: Hypothesis, code: str) -> tuple[int, float] | None:
+    """Where ``code`` is among a hypothesis's occurrence codes: its rank and its probability."""
+    return next(
+        (
+            (rank, guess.probability)
+            for rank, guess in enumerate(hypothesis.occurrence, start=1)
+            if guess.phase + guess.event == code
+        ),
+        None,
+    )
+
+
+def _and(names: Sequence[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _closeness(result: CaseResult, code: str) -> tuple[tuple[str, ...], str]:
+    """Per checkpoint, where the loop held ``code``; then how close it came, in one line."""
+    found = _checkpoint_hypotheses(result)
+    rows: list[str] = []
+    present: list[tuple[str, tuple[int, float] | None]] = []
+    for kind, name in _CHECKPOINTS:
+        hypothesis = found.get(kind)
+        if hypothesis is None:
+            rows.append(f"{name}: no such checkpoint in this case")
+            continue
+        place = _rank(hypothesis, code)
+        present.append((name, place))
+        rows.append(
+            f"{name}: not among its codes"
+            if place is None
+            else f"{name}: rank {place[0]} (p {place[1]:.2f})"
+        )
+    if not present:
+        return tuple(rows), "no checkpoint: the case made no hypothesis"
+    held = [name for name, place in present if place is not None]
+    last, place = present[-1]
+    if place is not None and last == "Answer":
+        summary = f"in the answer at rank {place[0]}"
+    elif place is not None:
+        summary = f"held at {_and(held)}; the case reached no later checkpoint"
+    elif held:
+        summary = f"held at {_and(held)}, then dropped"
+    else:
+        summary = "never in any hypothesis"
+    if scored_answer(result) is None:
+        summary += "; the case failed, so nothing was scored"
+    return tuple(rows), summary
+
+
+def _occurrences_named(arguments: BaseModel) -> tuple[str, ...]:
+    """The occurrence codes a coding call's arguments name (``suggest_codes`` names none)."""
+    if isinstance(arguments, DescribeCodes):
+        return arguments.codes if arguments.kind == "occurrence" else ()
+    if isinstance(arguments, OccurrenceUsage):
+        return arguments.codes
+    if isinstance(arguments, PastFindings):
+        return (arguments.occurrence,)
+    return ()
+
+
+def _mentions(
+    calls: Sequence[AgentCall], code: str, tables: CodeTables, stats: CodingStats
+) -> tuple[str, str]:
+    """The accepted coding calls whose arguments name ``code``; those whose text lists it."""
+    named: list[str] = []
+    listed: list[str] = []
+    line = re.compile(rf"^{re.escape(code)}:", re.MULTILINE)
+    for call in calls:
+        if call.protocol_error is not None or call.tool not in CODING_TOOLS:
+            continue
+        where = f"{call.tool} (call {call.call_index + 1})"
+        if code in _occurrences_named(_parsed(call, tables)):
+            named.append(where)
+        if line.search(rebuilt_tool_text(call, tables, stats)):
+            listed.append(where)
+    return "; ".join(named) or "none", "; ".join(listed) or "none"
+
+
+def _finding_match(tables: CodeTables, code: str, guesses: Sequence[FindingGuess]) -> str:
+    """How deep the loop's findings reach a flagged finding, as ``finding_depth`` counts it."""
+    if any(g.item8 is not None and g.item8 + g.modifier == code for g in guesses):
+        return "exact (item and modifier)"
+    item = next((g for g in guesses if g.item8 == code[:8]), None)
+    if item is not None:
+        modifier = tables.modifiers.get(item.modifier, _UNKNOWN)
+        return f"item only; the loop's modifier {item.modifier} [{modifier}]"
+    category = next((g for g in guesses if g.category6 == code[:6]), None)
+    if category is None:
+        return "missed"
+    if category.item8 is None:
+        return "category only; the loop named no item"
+    return (
+        f"category only; the loop's item {category.item8} "
+        f"{tables.items.get(category.item8, _UNKNOWN)}"
+    )
+
+
+def _finding_blocks(
+    tables: CodeTables, result: CaseResult, answer: Hypothesis | None
+) -> list[Block]:
+    """The flagged findings at their level of match, and the loop's findings that match none."""
+    flagged_label = "Findings flagged as cause, against the loop's final findings"
+    unmatched_label = (
+        "The loop's findings that match no NTSB finding (no category in common, flagged or not)"
+    )
+    if answer is None:
+        none = ("not compared: the case did not answer",)
+        return [Items(none, flagged_label), Items(none, unmatched_label)]
+    flagged = tuple(
+        f"{_verdict_finding(tables, code, cause=False)}: "
+        f"{_finding_match(tables, code, answer.findings)}"
+        for code in result.verdict_findings_in_cause
+    )
+    categories = {code[:6] for code in result.verdict_findings}
+    unmatched = tuple(_finding(tables, g) for g in answer.findings if g.category6 not in categories)
+    return [
+        Items(flagged or ("none flagged",), flagged_label),
+        Items(unmatched or ("none",), unmatched_label),
+    ]
+
+
+def _run_b_line(other: Run, case_id: str, tables: CodeTables) -> Para:
+    """The other run's first code for the case and its kind, in one line."""
+    label = f"Run b ({other.run_id}), defining event"
+    result = other.cases.get(case_id)
+    if result is None:
+        return Para("the run holds no such case", label)
+    kind = case_difference(result).kind
+    answer = scored_answer(result)
+    if answer is None:
+        return Para(f"no answer ({result.failure or 'no score'}); kind: {kind}", label)
+    return Para(f"first code {_guess(tables, answer.occurrence[0])}; kind: {kind}", label)
+
+
+def glance_blocks(
+    result: CaseResult,
+    calls: Sequence[AgentCall],
+    *,
+    tables: CodeTables,
+    stats: CodingStats,
+    other: Run | None,
+) -> list[Block]:
+    """A case's differences at a glance, read before its trail.
+
+    The defining event (the NTSB's first code against the loop's, with the kind and patterns
+    ``scripts/miss_kinds.py`` gives them); how close the loop came to the NTSB's first code at
+    each checkpoint, and which coding calls named it or listed it; the NTSB's occurrence codes
+    marked against the loop's answer; the flagged findings at their level of match, and the
+    loop's findings that match none; with ``other``, run b's first code and kind.
+
+    Args:
+        result: the case in this run; its verdict holds at least one occurrence code.
+        calls: the case's calls in this run, in call order.
+        tables: the code tables.
+        stats: the statistics pool the run's tools counted in, to rebuild the tools' text.
+        other: run b, or None.
+
+    Returns:
+        The block.
+    """
+    first = result.verdict_occurrence[0]
+    difference = case_difference(result)
+    answer = scored_answer(result)
+    loop = "The loop's first code: " + (
+        _guess(tables, answer.occurrence[0])
+        if answer is not None
+        else f"none; the case did not answer ({result.failure or 'no score'})"
+    )
+    rows, summary = _closeness(result, first)
+    named, listed = _mentions(calls, first, tables, stats)
+    codes = None if answer is None else answer_codes(answer)
+
+    def mark(code: str) -> str:
+        if codes is None:
+            return "no answer to compare"
+        return (
+            f"in the answer at rank {codes.index(code) + 1}"
+            if code in codes
+            else "not in the answer"
+        )
+
+    blocks: list[Block] = [
+        Heading(3, "Differences at a glance"),
+        Items(
+            (
+                f"The NTSB's first code: {first}: {occurrence_label(tables, first)}",
+                loop,
+                f"Kind: {difference.kind}",
+                f"Patterns: {'; '.join(difference.patterns) or 'none'}",
+            ),
+            "Defining event",
+        ),
+        Items(rows, f"How close the loop came to the NTSB's first code, {first}"),
+        Para(summary, "In short"),
+        Para(named, "Coding calls naming it"),
+        Para(listed, "Coding tool results listing it (rebuilt)"),
+        Items(
+            tuple(
+                f"{code}: {occurrence_label(tables, code)}: {mark(code)}"
+                for code in result.verdict_occurrence
+            ),
+            "The NTSB's occurrence codes, in its order, against the loop's answer",
+            ordered=True,
+        ),
+        *_finding_blocks(tables, result, answer),
+    ]
+    if other is not None:
+        blocks.append(_run_b_line(other, result.case_id, tables))
+    return blocks
+
+
+def summary_blocks(results: Sequence[CaseResult]) -> list[Block]:
+    """The kinds and the patterns among the cases shown, counted: no case named.
+
+    Args:
+        results: the cases shown, in this run.
+
+    Returns:
+        Two lists: every kind with its count, then every pattern with its count.
+    """
+    differences = [case_difference(r) for r in results]
+    kinds = Counter(d.kind for d in differences)
+    patterns = Counter(p for d in differences for p in d.patterns)
+    return [
+        Items(
+            tuple(f"{kind}: {kinds[kind]}" for kind in KINDS),
+            f"Kinds among the {len(results)} cases shown, run a (counts only)",
+        ),
+        Items(tuple(f"{p}: {patterns[p]}" for p in PATTERNS), "Patterns among them"),
+    ]
+
+
 def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list[Block]:
-    """One case's section: the header, the trail, the final answer, the verdict, run b."""
+    """One case's section: the header, the glance, the trail, the answer, the verdict, run b."""
     tables, raw, result = reading.tables, case.raw, case.result
     trail, read = _trail_blocks(case, reading)
     docket, view = case.docket, case.view
@@ -616,6 +891,7 @@ def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list
             f"{_outcome(result)}; {len(case.calls)} model calls; ${result.cost_usd:.4f}",
             "This run",
         ),
+        *glance_blocks(result, case.calls, tables=tables, stats=reading.stats, other=reading.other),
         Heading(3, "Trail, in call order"),
     ]
     blocks += trail or [Para("No model call was made for this case in this run.")]
@@ -793,8 +1069,14 @@ def _intro(request: _Request, reading: _Reading) -> list[Block]:
             f"{request.seed} from the sorted ids.",
             "Group",
         ),
+        *summary_blocks([run.cases[i] for i in (*request.fatal, *request.nonfatal)]),
         Para(
-            "Each case shows its calls in order, then the final answer it was scored on, then the "
+            "Each case opens with its differences at a glance: the NTSB's defining event against "
+            "the loop's first code, with the kind and patterns scripts/miss_kinds.py gives them "
+            "(as scripts/exploratory/s3_miss_kinds.py counts them over a whole group); how close "
+            "the loop came to that code at each checkpoint; the NTSB's occurrence codes and its "
+            "flagged findings against the loop's answer. Then its calls in order, then the final "
+            "answer it was scored on, then the "
             "NTSB's verdict. The trail does not keep the text of a tool's result: each coding "
             "call's text below is rebuilt by re-running the tool on the recorded arguments, and "
             "says so. Document titles are shown for reading; the agent saw them only in the "
@@ -958,6 +1240,12 @@ def main(
         per_nonfatal=args.nonfatal,
         seed=args.seed,
     )
+    uncoded = [i for i in (*fatal, *nonfatal) if not run.cases[i].verdict_occurrence]
+    if uncoded:
+        _refuse(
+            f"{len(uncoded)} drawn case(s) hold no NTSB occurrence code: no defining event to "
+            "compare"
+        )
     request = _Request(run, args.groups, split, group, pool, fatal, nonfatal, args.seed)
     reading = _Reading(load_tables(), load_stats("s3"), other)
     if load_raws is None:
