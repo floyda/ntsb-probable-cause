@@ -131,9 +131,14 @@ def _refuse(message: str) -> NoReturn:
 # --- the search ---
 
 
+def words(text: str) -> tuple[str, ...]:
+    """Lower-cased word tokens (``[a-z0-9]+``) of ``text``, in order, stop words kept."""
+    return tuple(_WORD.findall(text.lower()))
+
+
 def tokens(text: str) -> tuple[str, ...]:
     """Lower-cased word tokens of ``text``, less the stop words, in order."""
-    return tuple(word for word in _WORD.findall(text.lower()) if word not in STOP_WORDS)
+    return tuple(word for word in words(text) if word not in STOP_WORDS)
 
 
 @dataclass(frozen=True)
@@ -412,22 +417,22 @@ def compute(index: Index, runs: Sequence[Run], days: Mapping[str, date]) -> Resu
 # --- the lines ---
 
 
-def _share(part: int, whole: int) -> str:
+def share(part: int, whole: int) -> str:
     return f"{part} of {whole} ({part / whole:.1%})" if whole else f"{part} of {whole}"
 
 
-def _interval(part: int, whole: int) -> str:
+def with_interval(part: int, whole: int) -> str:
     if not whole:
-        return _share(part, whole)
+        return share(part, whole)
     low, high = wilson(part, whole)
-    return f"{_share(part, whole)} [{low:.1%}, {high:.1%}]"
+    return f"{share(part, whole)} [{low:.1%}, {high:.1%}]"
 
 
 def _split(
     ids: Sequence[str], fatal: Mapping[str, bool], flags: Mapping[str, bool], *, interval: bool
 ) -> str:
     """How many of ``ids`` are flagged: all, then fatal, then non-fatal, each of its whole."""
-    show = _interval if interval else _share
+    show = with_interval if interval else share
     parts = [
         show(sum(flags[i] for i in chosen), len(chosen))
         for chosen in (ids, [i for i in ids if fatal[i]], [i for i in ids if not fatal[i]])
@@ -477,14 +482,14 @@ def rule_lines(results: Results, ids: Sequence[str], run_ids: Sequence[str]) -> 
         )
     lines += [
         f'Run a ({run_ids[0]}), "{HEADLINE}", date-limited pool (earlier cases only):',
-        f"- found@5, probable-cause query: {_interval(pc, n)}",
-        f"- found@5, evidence-narrative query: {_interval(en, n)}",
-        f"- control (the pool's five commonest first codes, no search): {_interval(controlled, n)}",
+        f"- found@5, probable-cause query: {with_interval(pc, n)}",
+        f"- found@5, evidence-narrative query: {with_interval(en, n)}",
+        f"- control (the pool's five commonest first codes, no search): {with_interval(controlled, n)}",
         f"- the better query (a tie goes to the probable cause): {better}, found in "
         f"{chosen} of {n}, against the control's {controlled}",
         f"Run b ({run_ids[1]}), beside it, decides nothing: found@5 probable-cause query "
-        f"{_share(found[(2, 'probable cause')], n)}, evidence-narrative query "
-        f"{_share(found[(2, 'evidence narrative')], n)}; control {_share(controlled, n)}",
+        f"{share(found[(2, 'probable cause')], n)}, evidence-narrative query "
+        f"{share(found[(2, 'evidence narrative')], n)}; control {share(controlled, n)}",
         f"Outcome: {outcome(chosen, controlled)}",
     ]
     return lines
@@ -599,7 +604,7 @@ def set_lines(  # noqa: PLR0913 -- one keyword per piece of the set's report.
     lines = [
         f"## {title}: {_whole(ids, fatal)}",
         "",
-        f"Cases whose date-limited pool holds fewer than {TOP} cases: {_share(thin, len(ids))}",
+        f"Cases whose date-limited pool holds fewer than {TOP} cases: {share(thin, len(ids))}",
     ]
     for pool in POOLS:
         controls = results.controls[pool]
@@ -612,7 +617,7 @@ def set_lines(  # noqa: PLR0913 -- one keyword per piece of the set's report.
             missing = sum(i in results.no_query[number] for i in ids)
             lines.append(
                 f"run {'ab'[number - 1]} ({run_id}); no query (failed or not scored): "
-                f"{_share(missing, len(ids))}"
+                f"{share(missing, len(ids))}"
             )
             for query in QUERIES:
                 key = (number, query, pool)
@@ -731,28 +736,37 @@ def read_groups(path: Path, runs: Sequence[Run]) -> dict[Group, Sequence[str]]:
     return groups
 
 
-def read_pool(
-    processed: Path, judged: Iterable[str]
-) -> tuple[list[Precedent], dict[str, date], dict[str, int]]:
-    """The S3 statistics pool as precedents, the judged cases' event dates, and the pool's counts.
+@dataclass(frozen=True)
+class PoolText:
+    """One kept pool case as read: its id, event date, probable-cause text and occurrence codes."""
+
+    case_id: str
+    event_date: date
+    text: str
+    sequence: tuple[str, ...]
+
+
+def read_pool_texts(processed: Path) -> tuple[list[PoolText], dict[str, str], dict[str, int]]:
+    """The S3 statistics pool with its texts, every development case's event date, and counts.
 
     Two streaming passes over the processed file. The first is ``coding_stats``' own pool
     (``pool_cases``, guarded by ``check_pool`` before any text is read); the second reads the
-    NTSB probable-cause text of the pool's cases only.
+    NTSB probable-cause text of the pool's cases only. Kept: a case with a probable-cause text
+    and at least one occurrence code.
 
     Args:
         processed: the processed folder.
-        judged: the judged cases' ids.
 
     Returns:
-        The kept pool cases, the judged cases' dates, and the counts.
+        The kept pool cases, in the pool's order; each development case's ISO event date by id
+        (a judged case is not in the pool, so its date is found here); and the counts
+        (``statistics pool``, ``no text``, ``no code``).
 
     Raises:
         LeakageError: the pool holds a sample case or a non-development case.
     """
     names = STAGES[STAGE].excluded
     excluded = frozenset(i for name in names for i in samples.sample_ids(name))
-    wanted = frozenset(judged)
     splits: dict[str, str] = {}
     dates: dict[str, str] = {}
 
@@ -772,7 +786,7 @@ def read_pool(
         if case_id in sequences
     }
     kept = [
-        Precedent(i, date.fromisoformat(dates[i]), sequences[i][0], tokens(text))
+        PoolText(i, date.fromisoformat(dates[i]), text, sequences[i])
         for i in ids
         if (text := texts.get(i)) and sequences[i]
     ]
@@ -782,6 +796,29 @@ def read_pool(
         "no text": no_text,
         "no code": len(ids) - no_text - len(kept),
     }
+    return kept, dates, counts
+
+
+def read_pool(
+    processed: Path, judged: Iterable[str]
+) -> tuple[list[Precedent], dict[str, date], dict[str, int]]:
+    """The S3 statistics pool as precedents, the judged cases' event dates, and the pool's counts.
+
+    ``read_pool_texts``, with each kept case's text cut into the search's words.
+
+    Args:
+        processed: the processed folder.
+        judged: the judged cases' ids.
+
+    Returns:
+        The kept pool cases, the judged cases' dates, and the counts.
+
+    Raises:
+        LeakageError: the pool holds a sample case or a non-development case.
+    """
+    wanted = frozenset(judged)
+    texts, dates, counts = read_pool_texts(processed)
+    kept = [Precedent(c.case_id, c.event_date, c.sequence[0], tokens(c.text)) for c in texts]
     absent = sorted(i for i in wanted if i not in dates)
     if absent:
         _refuse(f"{len(absent)} judged case(s) have no event date in the processed file")
