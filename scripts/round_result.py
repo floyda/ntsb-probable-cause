@@ -39,6 +39,9 @@ An S3 round (decision 0136)
     the round is dropped); the runs; how many cases failed in each of the four runs; the run's
     failures by reason; the reading's differences, each with its ``n``; occurrence top-3 beside
     the rule; the push line; the outcome. ``--supplement`` is S2.7's and is refused here.
+
+    The ordering check's diagnostic over an arm C run (``<run id>-check-luna``, decision 0137)
+    is refused as the run, the reference or either noise run: it is never part of a round.
 """
 
 import argparse
@@ -331,6 +334,21 @@ def _refuse_mismatched(
             )
 
 
+def _refuse_check_diagnostic(*runs: tuple[str, RunRecord]) -> None:
+    """Refuse the ordering check's diagnostic over arm C in any of a round's four places.
+
+    Decision 0137 item 3: the derived run ``<run id>-check-luna`` over an arm C run is a
+    diagnostic, never a round's run, reference or noise run. Its prompt version holds
+    ``+check-``. S2.7's rounds (arm B) read checked runs and never reach this.
+    """
+    for run_id, record in runs:
+        if "+check-" in record.prompt_version:
+            raise SystemExit(
+                f"round_result: {run_id} is the ordering check's diagnostic over an arm C run: "
+                "never a round's run, reference or noise run (decision 0137 item 3)"
+            )
+
+
 def _stats_name(run_id: str) -> StatsName:
     """The statistics file the run's own tools counted in: its ``spec.json``'s ``stats``.
 
@@ -502,6 +520,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     _refuse_mismatched(args.run, run_record, args.noise[0], noise_a_record)
     _refuse_mismatched(args.run, run_record, args.noise[1], noise_b_record)
     s3 = run_record.arm == "C"  # decision 0136: an S3 round; the four runs share the arm
+    if s3:
+        _refuse_check_diagnostic(
+            (args.run, run_record),
+            (args.reference, reference_record),
+            (args.noise[0], noise_a_record),
+            (args.noise[1], noise_b_record),
+        )
     if s3 and args.supplement:
         raise SystemExit(
             "round_result: --supplement is S2.7's (decision 0105 item 4): an S3 round's run and "

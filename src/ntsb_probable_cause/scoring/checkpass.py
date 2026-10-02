@@ -7,6 +7,11 @@ record's cost is the check's alone: the answers were paid for, and counted, in t
 Its prompt version is the source's with ``+check-<way>``, or ``+check-<way>-<stats>`` when the
 check counts in a statistics file other than S2.7's (decision 0129). Development runs only; the
 Jev ways exist for this purpose alone (decisions 0097, 0103).
+
+A finished development arm C run is accepted too, as a diagnostic only (decision 0137): way
+``luna``, the S3 statistics its own tools read (``TOOLS_STATS``), never a sealed sample. The
+answer re-ordered is the case's last step, as for arm B: arm C writes one step per checkpoint
+(``agent/run.py``), and a scored case's last is the answer as scored, refined when refinement ran.
 """
 
 import hashlib
@@ -31,6 +36,7 @@ from ntsb_probable_cause.scoring.hypothesis import Hypothesis
 from ntsb_probable_cause.scoring.metrics import rescore_occurrence
 from ntsb_probable_cause.scoring.prompt import REJECTED
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
+from ntsb_probable_cause.scoring.samples import SEALED
 
 Way = Literal["rule", "luna", "jev", "jev2"]
 # Round 1's ways, exactly as ``scripts/round1_report.py`` reads them; that report and its
@@ -322,11 +328,23 @@ def suffix(way: Way, stats: StatsName = STATS_DEFAULT) -> str:
     return f"+check-{way}" if stats == STATS_DEFAULT else f"+check-{way}-{stats}"
 
 
+# The arms whose runs the check reads: arm B (decision 0096), and arm C as a diagnostic only
+# (decision 0137), with the one way and the statistics ``_refuse_for_arm_c`` names.
+CHECKED_ARMS = frozenset({"B", "C"})
+# Decision 0137 item 1: arm C is checked by GPT-6 Luna only, the way S2.7 kept (0096 item 5).
+ARM_C_WAY: Way = "luna"
+
+
 def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -> None:
-    if not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm != "B":
+    if (
+        not record.sample.startswith("dev")
+        or "heldout" in record.run_id
+        or record.arm not in CHECKED_ARMS
+    ):
         raise ConfigurationError(
-            f"the ordering check runs on development arm B runs only; {record.run_id} is "
-            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+            f"the ordering check runs on development arm B runs, and on development arm C runs "
+            f"as a diagnostic, only; {record.run_id} is {record.sample}, arm {record.arm} "
+            "(decisions 0096, 0097, 0137)"
         )
     if "-check-" in record.run_id:
         raise ConfigurationError(
@@ -338,6 +356,33 @@ def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -
         )
     if any(c.split != "dev" for c in cases):
         raise ConfigurationError(f"{record.run_id} holds a case outside the development split")
+
+
+def _refuse_for_arm_c(record: RunRecord, way: Way, stats: StatsName) -> None:
+    """Decision 0137's limits on an arm C source: one way, never a sealed sample, S3's counts.
+
+    The check over arm C is a diagnostic of decision 0127 item 4's premise, not part of any arm.
+    Its counts are the ones the loop's own ``occurrence_usage`` tool showed (``TOOLS_STATS``,
+    decision 0129 item 4); like a tool post-pass, it must name that file, and any other is
+    refused. A sealed sample is refused whether or not its registration is committed: the
+    diagnostic is read on a ``dev-400`` run, never on a sample kept for a claim.
+    """
+    if way != ARM_C_WAY:
+        raise ConfigurationError(
+            f"{record.run_id} is an arm C run: the ordering check reads arm C as a diagnostic "
+            f"with way {ARM_C_WAY} only, not {way} (decision 0137 item 1)"
+        )
+    if record.sample in SEALED:
+        raise ConfigurationError(
+            f"{record.run_id} is an arm C run on the sealed sample {record.sample}: the "
+            "ordering check's diagnostic never reads a sealed sample (decision 0137 item 5)"
+        )
+    if stats != TOOLS_STATS:
+        raise ConfigurationError(
+            f"{record.run_id} is an arm C run, whose tools counted in the {TOOLS_STATS} "
+            f"statistics: its ordering check reads the same file, so pass --stats "
+            f"{TOOLS_STATS}, not {stats} (decision 0137 item 2)"
+        )
 
 
 @dataclass(frozen=True)
@@ -360,8 +405,10 @@ def preflight(
 ) -> Preflight:
     """Read and refuse a source run exactly as `check_run` would, before any side effect.
 
-    Refuses a source that isn't a finished development arm B run, that is itself a derived
-    check run, or that holds a case outside the development split (`_refuse_unless_development`);
+    Refuses a source that isn't a finished development arm B or arm C run, that is itself a
+    derived check run, or that holds a case outside the development split
+    (`_refuse_unless_development`); an arm C source checked any way but ``luna``, on a sealed
+    sample, or with statistics other than ``TOOLS_STATS`` (`_refuse_for_arm_c`, decision 0137);
     a tool post-pass (its prompt version holds ``+tools-``) checked with statistics other than
     ``TOOLS_STATS``, the file its tools counted in (decision 0129 item 4); and a derived id whose
     folder already holds a finished check's output. Read-only: no folder is created and no
@@ -371,6 +418,8 @@ def preflight(
     record = read_jsonl(source / "run.jsonl", RunRecord)[0]
     cases = read_jsonl(source / "cases.jsonl", CaseResult)
     _refuse_unless_development(record, cases)
+    if record.arm == "C":
+        _refuse_for_arm_c(record, way, stats)
     if "+tools-" in record.prompt_version and stats != TOOLS_STATS:
         raise ConfigurationError(
             f"{record.run_id} is arm B's tool post-pass, whose tools counted in the "

@@ -2,12 +2,15 @@
 
 import json
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from tests.test_occurrence_misses import _SCORES
+from tests.test_occurrence_misses import _case as _guessed
 
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.records.marks import CaseMark
@@ -291,6 +294,36 @@ def test_compare_ignores_failed_cases_without_scores() -> None:
     b = [_case("x", top1=True)]
     text = report.compare(a, b)
     assert "on 1 shared, scored cases" in text
+
+
+def test_first_code_changes_counts_changes_fixes_and_breaks_on_shared_scored_cases() -> None:
+    """Decision 0137: printed beside the diagnostic's paired top-1. Codes 240 loss of control,
+    241 stall/spin, 230 loss of control on ground; phase 552."""
+    loc, stall, ground = "552240", "552241", "552230"
+
+    def scored(case_id: str, guesses: tuple[str, ...], *, top1: bool) -> CaseResult:
+        case = _guessed(case_id, (loc,), guesses)
+        return case.model_copy(update={"scores": replace(_SCORES, occurrence_top1=top1)})
+
+    checked = [
+        scored("fix", (loc, stall), top1=True),
+        scored("break", (ground,), top1=False),
+        scored("moved", (stall,), top1=False),  # changed, wrong both times: neither
+        scored("same", (loc,), top1=True),
+        scored("only-here", (stall,), top1=False),  # not in the other run: not shared
+        _guessed("failed", (loc,), (loc,), scored=False),
+    ]
+    source = [
+        scored("fix", (stall, loc), top1=False),
+        scored("break", (loc,), top1=True),
+        scored("moved", (ground,), top1=False),
+        scored("same", (loc, stall), top1=True),  # later codes differ: not a change
+        _guessed("failed", (loc,), (loc,), scored=False),
+    ]
+    assert report.first_code_changes(checked, source) == (
+        "first codes changed (a against b): 3 of 4 shared, scored cases; fixes 1, breaks 1 "
+        "(decision 0137)"
+    )
 
 
 def test_summarise_prints_a_markdown_table_with_floor() -> None:

@@ -2615,6 +2615,150 @@ def test_check_way_jev2_is_refused_over_budget_without_building_any_client(
     assert open_reservations(runs) == {}
 
 
+# --- `check` over an arm C run: the ordering check as a diagnostic (decision 0137) ---
+
+_ARM_C_CHECKED = "20261001T201506-fd6053f-dev-400-C"
+
+
+def _write_checkable_arm_c_run(
+    runs: Path,
+    run_id: str = _ARM_C_CHECKED,
+    *,
+    sample: str = "dev-400",
+    without: Sequence[str] = (),
+) -> Path:
+    """A finished arm C run with one scored case: stall first, then LOC; the NTSB's first is LOC.
+
+    Both codes are the loop's own, so both are on the check's candidate list whatever the counts.
+    """
+    folder = _write_checkable_run(runs, run_id, sample=sample)
+    record = answering_run_record(folder)
+    arm_c = record.model_copy(
+        update={"arm": "C", "prompt_version": "s3-v1+ge17fecdc66ec+p947fac1c86a4"}
+    )
+    (folder / "run.jsonl").write_text(arm_c.model_dump_json() + "\n")  # replaced, not appended
+    (folder / "cases.jsonl").unlink()
+    write_jsonl(folder / "cases.jsonl", [_case("c1", ("552240", "552241"), ("552241", "552240"))])
+    (folder / "spec.json").write_text(json.dumps({"stats": "s3", "without": list(without)}))
+    return folder
+
+
+def test_check_reads_an_arm_c_run_with_luna_in_s3s_statistics_and_report_prints_the_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 0137 items 1-4: the diagnostic runs as any check does, then is read with
+    ``report <derived> --against <run>``, which prints the first codes changed beside it."""
+    runs = _checkable_env(tmp_path, monkeypatch)
+    _write_checkable_arm_c_run(runs)
+    asked: list[str] = []
+
+    def spy(name: str = "s27") -> CodingStats:
+        asked.append(name)
+        return load_stats(name)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("apps.eval.__main__.load_stats", spy)
+    spy_client = _ReservationSpyClient(json.dumps({"ranking": ["552240"]}), runs)
+    argv = ["check", _ARM_C_CHECKED, "--way", "luna", "--stats", "s3"]
+    assert main(argv, client_factory=lambda _s: (spy_client, None), jev_factory=_boom_jev) == 0
+    assert asked == ["s3"]
+    assert spy_client.saw_a_reservation is True
+    assert open_reservations(runs) == {}
+    derived_id = f"{_ARM_C_CHECKED}-check-luna"
+    derived = answering_run_record(runs / derived_id)
+    assert derived.prompt_version == "s3-v1+ge17fecdc66ec+p947fac1c86a4+check-luna-s3"
+    assert derived.arm == "C"
+    capsys.readouterr()
+    assert main(["report", derived_id, "--against", _ARM_C_CHECKED]) == 0
+    out = capsys.readouterr().out
+    assert "- occurrence top-1: +100.0%" in out
+    assert (
+        "first codes changed (a against b): 1 of 1 shared, scored cases; fixes 1, breaks 0 "
+        "(decision 0137)"
+    ) in out
+
+
+def test_report_against_prints_no_first_code_line_for_an_arm_b_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Arm B's checked runs report exactly as before decision 0137."""
+    runs = _checkable_env(tmp_path, monkeypatch)
+    run_id = "20260926T000000-abc1234-dev-400-B"
+    _write_checkable_run(runs, run_id)
+    assert main(["check", run_id, "--way", "rule"], client_factory=_boom_client) == 0
+    capsys.readouterr()
+    assert main(["report", f"{run_id}-check-rule", "--against", run_id]) == 0
+    out = capsys.readouterr().out
+    assert "paired difference (a - b) on 1 shared" in out
+    assert "first codes changed" not in out
+
+
+@pytest.mark.parametrize("way", ["rule", "jev", "jev2"])
+def test_check_refuses_an_arm_c_run_every_way_but_luna_before_any_reservation_or_client(
+    way: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    _write_checkable_arm_c_run(runs)
+    before = {p.name for p in runs.iterdir()}
+    argv = ["check", _ARM_C_CHECKED, "--way", way, "--stats", "s3"]
+    assert main(argv, client_factory=_boom_client, jev_factory=_boom_jev) == 1
+    err = capsys.readouterr().err
+    assert "decision 0137 item 1" in err
+    assert f"not {way}" in err
+    assert {p.name for p in runs.iterdir()} == before
+    assert open_reservations(runs) == {}
+
+
+def test_check_refuses_an_arm_c_run_in_s27s_statistics_before_any_reservation_or_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The ``--stats`` default is S2.7's, so the arm C run must name S3's, as a tool post-pass
+    must (decision 0137 item 2)."""
+    runs = _checkable_env(tmp_path, monkeypatch)
+    _write_checkable_arm_c_run(runs)
+    for flags in ([], ["--stats", "s27"]):
+        argv = ["check", _ARM_C_CHECKED, "--way", "luna", *flags]
+        assert main(argv, client_factory=_boom_client, jev_factory=_boom_jev) == 1
+        err = capsys.readouterr().err
+        assert "--stats s3, not s27" in err
+        assert "decision 0137 item 2" in err
+    assert not (runs / f"{_ARM_C_CHECKED}-check-luna").exists()
+    assert open_reservations(runs) == {}
+
+
+def test_check_refuses_an_arm_c_tool_ablation_before_any_reservation_or_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = _checkable_env(tmp_path, monkeypatch)
+    _write_checkable_arm_c_run(runs, without=("coding",))
+    argv = ["check", _ARM_C_CHECKED, "--way", "luna", "--stats", "s3"]
+    assert main(argv, client_factory=_boom_client, jev_factory=_boom_jev) == 1
+    err = capsys.readouterr().err
+    assert "tool ablation (without=coding)" in err
+    assert "decision 0137 item 1" in err
+    assert open_reservations(runs) == {}
+
+
+@pytest.mark.parametrize("sample", ["heldout-400", "dev-seal-s3-400"])
+def test_check_refuses_a_held_out_or_sealed_arm_c_run_before_any_reservation_or_client(
+    sample: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The sealed sample is refused even with S3.2's registration committed (decision 0137
+    item 5): ``refuse_sealed`` lets it through then, and ``checkpass`` does not."""
+    runs = _checkable_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
+    run_id = f"20261001T201506-fd6053f-{sample}-C"
+    _write_checkable_arm_c_run(runs, run_id, sample=sample)
+    argv = ["check", run_id, "--way", "luna", "--stats", "s3"]
+    assert main(argv, client_factory=_boom_client, jev_factory=_boom_jev) == 1
+    err = capsys.readouterr().err
+    assert ("development" if sample.startswith("heldout") else "decision 0137 item 5") in err
+    assert not (runs / f"{run_id}-check-luna").exists()
+    assert open_reservations(runs) == {}
+
+
 # --------------------------------------------------------------------------------------------
 # Arm C, the agent loop (S3.1 Task 10)
 # --------------------------------------------------------------------------------------------

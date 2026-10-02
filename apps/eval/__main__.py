@@ -460,7 +460,8 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=STATS_NAMES,
         default="s27",
         help="which statistics file the check reads: S2.7's (default) or S3's (decision 0129); "
-        "a tool post-pass's run (<run id>-tools) is checked with s3 only",
+        "a tool post-pass's run (<run id>-tools) and an arm C run (decision 0137) are checked "
+        "with s3 only",
     )
     check_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
@@ -709,6 +710,10 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         )
         heading = report.comparison_heading(run_record, other_record)
         text += f"\n\n{heading}\n{report.compare_by_fatal(cases, other_cases)}"
+        if run_record.arm == "C" and "+check-" in run_record.prompt_version:
+            # Decision 0137's reading rule: the ordering check's diagnostic over arm C prints
+            # its first codes changed, with their fixes and breaks, beside the paired top-1.
+            text += "\n" + report.first_code_changes(cases, other_cases)
         if run_record.evidence_version != other_record.evidence_version:
             # Spec §9.1: the comparison also "for the cases that hold image pages" -- those
             # this run paid to transcribe pages for.
@@ -1018,10 +1023,24 @@ def _cmd_check(
     folder = settings.runs_dir / args.run_id
     record = answering_run_record(folder)
     samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
-    if not record.sample.startswith("dev") or "heldout" in args.run_id or record.arm != "B":
+    if (
+        not record.sample.startswith("dev")
+        or "heldout" in args.run_id
+        or record.arm not in checkpass.CHECKED_ARMS
+    ):
         raise ConfigurationError(
-            f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
-            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+            f"check: the ordering check runs on development arm B runs, and on development arm "
+            f"C runs as a diagnostic, only; {args.run_id} is {record.sample}, arm {record.arm} "
+            "(decisions 0096, 0097, 0137)"
+        )
+    # Decision 0137: the diagnostic reads the arm, whose `occurrence_usage` tool is the premise
+    # it tests. A tool ablation (`--without`, recorded in `spec.json` only) dropped that tool or
+    # the suggestion tool, so it is refused here, before anything is read or reserved.
+    if record.arm == "C" and _ablated(folder):
+        raise ConfigurationError(
+            f"check: {args.run_id} is an arm C tool ablation "
+            f"({_ablation_line(folder).strip()}): the ordering check's diagnostic reads the "
+            "arm itself (decision 0137 item 1)"
         )
     # Before anything is read, reserved or written: the counts must not hold the answers they
     # check (decision 0129). S2.7's pool still holds `dev-seal-s3-400`; the default `--stats s27`

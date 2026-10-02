@@ -624,6 +624,19 @@ class TestAnS3RoundsResult:
         with pytest.raises(SystemExit, match="other cases than run-c"):
             rr.main(_S3_ARGV)
 
+    @pytest.mark.parametrize("place", ["run-c", "ref-c", "noise-c1", "noise-c2"])
+    def test_the_ordering_checks_diagnostic_is_refused_in_every_place(
+        self, s3_runs: Path, place: str
+    ) -> None:
+        """Decision 0137 item 3: ``<arm C run>-check-luna`` is never part of a round."""
+        self._write(s3_runs, _outcomes((60, True), (140, False), recall=0.0))
+        checked = _run_record(place, arm="C").model_copy(
+            update={"prompt_version": "s3-v1+ge17fecdc66ec+p947fac1c86a4+check-luna-s3"}
+        )
+        (s3_runs / place / "run.jsonl").write_text(checked.model_dump_json() + "\n")
+        with pytest.raises(SystemExit, match=f"{place} is the ordering check's diagnostic"):
+            rr.main(_S3_ARGV)
+
     def test_the_supplement_line_is_refused_for_an_s3_round(self, s3_runs: Path) -> None:
         self._write(s3_runs, _outcomes((60, True), (140, False), recall=0.0))
         with pytest.raises(SystemExit, match="--supplement"):

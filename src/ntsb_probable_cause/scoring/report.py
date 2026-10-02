@@ -166,6 +166,37 @@ def compare_by_fatal(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
     return "\n".join(blocks)
 
 
+def _first_code(case: CaseResult) -> str:
+    guess = case.steps[-1].hypothesis.occurrence[0]
+    return guess.phase + guess.event
+
+
+def first_code_changes(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """How many first occurrence codes differ between two runs, with the fixes and breaks.
+
+    Over the shared, scored cases, as :func:`compare` pairs them. A fix is a case whose first
+    code is right in ``a`` and wrong in ``b``; a break, the reverse. Printed beside the paired
+    difference when ``a`` is the ordering check's diagnostic over arm C (decision 0137): only a
+    changed first code can fix or break a case on occurrence top-1.
+    """
+    by_b = {r.case_id: r for r in b if r.scores is not None and r.steps}
+    shared = changed = fixes = breaks = 0
+    for case in a:
+        other = by_b.get(case.case_id)
+        if case.scores is None or not case.steps or other is None or other.scores is None:
+            continue
+        shared += 1
+        if _first_code(case) == _first_code(other):
+            continue
+        changed += 1
+        fixes += case.scores.occurrence_top1 and not other.scores.occurrence_top1
+        breaks += other.scores.occurrence_top1 and not case.scores.occurrence_top1
+    return (
+        f"first codes changed (a against b): {changed} of {shared} shared, scored cases; "
+        f"fixes {fixes}, breaks {breaks} (decision 0137)"
+    )
+
+
 _THRESHOLDS = tuple(i / 20 for i in range(1, 20))
 
 
