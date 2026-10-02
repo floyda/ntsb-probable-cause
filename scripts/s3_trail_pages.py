@@ -200,6 +200,7 @@ from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import ConfigurationError, SchemaError
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
@@ -680,7 +681,7 @@ def finding_mark(guess: FindingGuess, findings: Sequence[str], in_cause: Collect
     return Mark("near", f"≈ partial: {_DEPTHS[best]}{cause}")
 
 
-def _occurrences(
+def occurrence_lines(
     tables: CodeTables, guesses: Sequence[OccurrenceGuess], ntsb: Sequence[str]
 ) -> tuple[Marked, ...]:
     """A hypothesis's occurrence codes with labels, each marked against the NTSB's sequence."""
@@ -785,7 +786,7 @@ class _Reading:
     other: Run | None
 
 
-def _clean(text: str, raw: Mapping[str, object]) -> str:
+def clean(text: str, raw: Mapping[str, object]) -> str:
     """The attach step's replacements: an amateur-built make and model, owner/operator names."""
     text, _ = amateur_built_replace(text, raw)
     text, _ = redact_known_names(text, raw)
@@ -796,7 +797,7 @@ def _hypothesis_blocks(tables: CodeTables, hypothesis: Hypothesis, case: _Case) 
     raw, result = case.raw, case.result
     return [
         Items(
-            _occurrences(tables, hypothesis.occurrence, result.verdict_occurrence),
+            occurrence_lines(tables, hypothesis.occurrence, result.verdict_occurrence),
             label="Occurrence codes",
             ordered=True,
         ),
@@ -805,8 +806,8 @@ def _hypothesis_blocks(tables: CodeTables, hypothesis: Hypothesis, case: _Case) 
             f"{hypothesis.confidence:.2f}; abstain: {'yes' if hypothesis.abstain else 'no'}",
             "Confidence",
         ),
-        Para(_clean(hypothesis.evidence_narrative, raw), "Evidence narrative (the agent's own)"),
-        Para(_clean(hypothesis.probable_cause, raw), "Working cause"),
+        Para(clean(hypothesis.evidence_narrative, raw), "Evidence narrative (the agent's own)"),
+        Para(clean(hypothesis.probable_cause, raw), "Working cause"),
     ]
 
 
@@ -819,12 +820,12 @@ def _choice_blocks(case: _Case, choice: DocumentChoice, offered: Sequence[int]) 
     for index in offered:
         decision = decided[index]
         lines.append(
-            f"[{index}] {_clean(titles[index], raw)} ({_pages(docket.record(index).pages)}): "
+            f"[{index}] {clean(titles[index], raw)} ({_pages(docket.record(index).pages)}): "
             f"{'read' if decision.read else 'skip'}. Expected: "
-            f"{_clean(decision.expected_effect, raw)}"
+            f"{clean(decision.expected_effect, raw)}"
         )
     blocks: list[Block] = [
-        Para(_clean(choice.arguments.reason, raw), "Reason for the choice"),
+        Para(clean(choice.arguments.reason, raw), "Reason for the choice"),
         Items(tuple(lines), "Documents on offer, in offer order"),
     ]
     if choice.extras:
@@ -834,7 +835,7 @@ def _choice_blocks(case: _Case, choice: DocumentChoice, offered: Sequence[int]) 
             asked = next(d for d in choice.arguments.decisions if d.document == extra.document)
             extras.append(
                 f"[{extra.document}] asked to {'read' if asked.read else 'skip'}; expected: "
-                f"{_clean(asked.expected_effect, raw)}. Answered: {answer}"
+                f"{clean(asked.expected_effect, raw)}. Answered: {answer}"
             )
         blocks.append(Items(tuple(extras), "Decisions on documents not on offer (never acted on)"))
     return blocks
@@ -845,8 +846,8 @@ def _coding_blocks(case: _Case, call: AgentCall, reading: _Reading) -> list[Bloc
     text = rebuilt_tool_text(call, tables, reading.stats)
     blocks: list[Block] = [
         Items(_argument_lines(tables, _parsed(call, tables)), "Arguments"),
-        Para(_clean(str(call.arguments.get("reason", "")), raw), "Reason"),
-        Para(_clean(str(call.arguments.get("expected_effect", "")), raw), "Expected effect"),
+        Para(clean(str(call.arguments.get("reason", "")), raw), "Reason"),
+        Para(clean(str(call.arguments.get("expected_effect", "")), raw), "Expected effect"),
     ]
     if call.argument_errors:
         blocks.append(Para(str(call.argument_errors), "Argument errors the tool counted"))
@@ -1204,6 +1205,12 @@ def summary_blocks(results: Sequence[CaseResult]) -> list[Block]:
     ]
 
 
+def ntsb_verdict(raw: Mapping[str, object]) -> Verdict:
+    """The NTSB's verdict for a case, from ``split_record`` over its record less any docket."""
+    _, _, verdict = split_record({k: v for k, v in raw.items() if k != DOCKET_KEY})
+    return verdict
+
+
 def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list[Block]:
     """One case's section: the header, the glance, the trail, the answer, the verdict, run b."""
     tables, raw, result = reading.tables, case.raw, case.result
@@ -1224,7 +1231,7 @@ def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list
         blocks.append(
             Items(
                 tuple(
-                    f"[{f.index}] {_clean(titles[f.index], raw)} ({f.status})"
+                    f"[{f.index}] {clean(titles[f.index], raw)} ({f.status})"
                     for f in view.not_readable
                 ),
                 "Listed, not readable",
@@ -1246,7 +1253,7 @@ def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list
     else:
         blocks += [
             Items(
-                _occurrences(tables, final.occurrence, result.verdict_occurrence),
+                occurrence_lines(tables, final.occurrence, result.verdict_occurrence),
                 "Occurrence codes",
                 ordered=True,
             ),
@@ -1255,9 +1262,9 @@ def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list
                 f"{final.confidence:.2f}; abstain: {'yes' if final.abstain else 'no'}",
                 "Confidence",
             ),
-            Para(_clean(final.probable_cause, raw), "Working cause"),
+            Para(clean(final.probable_cause, raw), "Working cause"),
         ]
-    _, _, verdict = split_record({k: v for k, v in raw.items() if k != DOCKET_KEY})
+    verdict = ntsb_verdict(raw)
     in_cause = set(verdict.finding_codes_in_cause)
     blocks += [
         Heading(3, "The NTSB's verdict, for comparison"),
@@ -1272,7 +1279,7 @@ def case_blocks(number: int, total: int, case: _Case, reading: _Reading) -> list
             or ("none",),
             "Finding codes",
         ),
-        Para(_clean(verdict.probable_cause or "(none)", raw), "Probable cause"),
+        Para(clean(verdict.probable_cause or "(none)", raw), "Probable cause"),
     ]
     if reading.other is not None:
         blocks.append(_compare(reading.other, case.case_id, tables))
@@ -1369,7 +1376,7 @@ $body
 )
 
 
-def _chip(mark: Mark | None) -> str:
+def chip_html(mark: Mark | None) -> str:
     """A mark as a coloured chip with its words, followed by a space; nothing for no mark."""
     if mark is None:
         return ""
@@ -1378,11 +1385,12 @@ def _chip(mark: Mark | None) -> str:
 
 def _line_html(line: Line) -> str:
     if isinstance(line, Marked):
-        return _chip(line.mark) + html.escape(line.text)
+        return chip_html(line.mark) + html.escape(line.text)
     return html.escape(line)
 
 
-def _html(block: Block) -> str:
+def block_html(block: Block) -> str:
+    """One block as HTML, every piece of its text escaped."""
     esc = html.escape
     match block:
         case Heading(level, text, anchor):
@@ -1391,7 +1399,7 @@ def _html(block: Block) -> str:
         case Para(text, label, warn, mark):
             css = ' class="warn"' if warn else ""
             lead = f"<b>{esc(label)}:</b> " if label else ""
-            return f"<p{css}>{lead}{_chip(mark)}{esc(text)}</p>"
+            return f"<p{css}>{lead}{chip_html(mark)}{esc(text)}</p>"
         case Items(items, label, ordered):
             tag = "ol" if ordered else "ul"
             lead = f'<p class="label">{esc(label)}:</p>' if label else ""
@@ -1405,14 +1413,22 @@ def _html(block: Block) -> str:
             return f"<ol>{links}</ol>"
 
 
+def page_html(title: str, body: str) -> str:
+    """The self-contained page around ``body``: no script, no external file, light or dark.
+
+    Args:
+        title: the page's title, escaped here.
+        body: the page's body, already HTML, every piece of text in it already escaped.
+
+    Returns:
+        The page.
+    """
+    return _PAGE.substitute(title=html.escape(title), theme=_THEME, chips=_CHIPS, body=body)
+
+
 def render_html(title: str, blocks: Sequence[Block]) -> str:
     """The self-contained page: no script, no external file, readable light or dark."""
-    return _PAGE.substitute(
-        title=html.escape(title),
-        theme=_THEME,
-        chips=_CHIPS,
-        body="\n".join(_html(b) for b in blocks),
-    )
+    return page_html(title, "\n".join(block_html(b) for b in blocks))
 
 
 def _fence(text: str) -> str:
@@ -1623,6 +1639,14 @@ def _docket(case_id: str, raw: Mapping[str, object], reader: Callable[[int], Doc
     return docket
 
 
+def check_record(case_id: str, raw: Mapping[str, object]) -> None:
+    """Refuse a record read for ``case_id`` that is another case's, or outside development."""
+    if raw.get("ntsbNumber") != case_id:
+        _refuse(f"{case_id}: the record read for it is {raw.get('ntsbNumber')}'s, not its own")
+    if split_of(date.fromisoformat(str(raw.get("eventDate"))[:10])) is not Split.DEV:
+        _refuse(f"{case_id}: its record is outside the development split")
+
+
 def _cases(
     request: _Request,
     raws: Sequence[Mapping[str, object]],
@@ -1632,10 +1656,7 @@ def _cases(
     run = request.run
     cases = []
     for case_id, raw in zip([*request.fatal, *request.nonfatal], raws, strict=True):
-        if raw.get("ntsbNumber") != case_id:
-            _refuse(f"{case_id}: the record read for it is {raw.get('ntsbNumber')}'s, not its own")
-        if split_of(date.fromisoformat(str(raw.get("eventDate"))[:10])) is not Split.DEV:
-            _refuse(f"{case_id}: its record is outside the development split")
+        check_record(case_id, raw)
         docket = _docket(case_id, raw, reader)
         cases.append(
             _Case(
@@ -1774,7 +1795,8 @@ def page_manifest(request: _Request, other: Run | None) -> dict[str, object]:
     }
 
 
-def _folder(base: Path, when: datetime) -> Path:
+def new_folder(base: Path, when: datetime) -> Path:
+    """A new folder ``base/<UTC time>``; one that already exists is refused, never written over."""
     folder = base / when.astimezone(UTC).strftime(_STAMP)
     try:
         folder.mkdir(parents=True, exist_ok=False)
@@ -1897,7 +1919,7 @@ def main(
     else:
         cases = _cases(request, raws, read_docket)
     blocks = page_blocks(request, reading, cases)
-    folder = _folder(base, now())
+    folder = new_folder(base, now())
     title = f"S3.1 trails: {split}, {group}"
     (folder / HTML_FILE).write_text(render_html(title, blocks), encoding="utf-8")
     (folder / MARKDOWN_FILE).write_text(render_markdown(blocks), encoding="utf-8")

@@ -337,13 +337,21 @@ def control(index: Index, case: CaseResult, day: date, pool: Pool) -> bool:
     return case.verdict_occurrence[0] in index.commonest(day, pool)
 
 
-def phase_control(index: Index, case: CaseResult, day: date, pool: Pool) -> bool:
-    """The control within the loop's own answer's phase; a case with no answer is not found."""
+def phase_codes(index: Index, case: CaseResult, day: date, pool: Pool) -> tuple[str, ...]:
+    """The phase-aware control's codes; none for a case with no answer.
+
+    The five commonest first codes of the pool among the cases whose first code has the phase of
+    the loop's own answer's first code, ties by code.
+    """
     answer = scored_answer(case)
     if answer is None:
-        return False
-    phase = answer_codes(answer)[0][:3]
-    return case.verdict_occurrence[0] in index.commonest(day, pool, phase)
+        return ()
+    return index.commonest(day, pool, answer_codes(answer)[0][:3])
+
+
+def phase_control(index: Index, case: CaseResult, day: date, pool: Pool) -> bool:
+    """The control within the loop's own answer's phase; a case with no answer is not found."""
+    return case.verdict_occurrence[0] in phase_codes(index, case, day, pool)
 
 
 def outcome(found: int, control_count: int) -> str:
@@ -688,12 +696,39 @@ def report(  # noqa: PLR0913 -- one keyword per piece of the report.
 # --- reading ---
 
 
-def _load(run_id: str) -> Run:
+def load_run(run_id: str) -> Run:
     """One finished ``dev-400`` arm C run, through ``s3_case_groups``' own refusals."""
     run = s3_case_groups.load(run_id)
     if run.arm != ARM:
         _refuse(f"{run_id} is arm {run.arm}; the precedent probe reads arm C runs only")
     return run
+
+
+def read_groups(path: Path, runs: Sequence[Run]) -> dict[Group, Sequence[str]]:
+    """The arm C groups of a ``groups.json`` drawn over every run, after their refusals.
+
+    Through ``read_group``: a missing groups file, one not on ``dev-400``, one not drawn over
+    every run, one without arm C groups. Then a group case the runs do not hold, and any case of
+    the runs whose verdict holds no occurrence code.
+
+    Args:
+        path: the groups file ``scripts/s3_case_groups.py`` wrote.
+        runs: the runs read, run a first; the groups' case ids are read as drawn over run a.
+
+    Returns:
+        Each arm C group's case ids, sorted.
+    """
+    groups: dict[Group, Sequence[str]] = {}
+    for name in GROUPS:
+        listed = [read_group(path, split=SPLIT, group=name, run_id=run.run_id) for run in runs]
+        groups[name] = listed[0]
+    held = {c.case_id for c in runs[0].cases}
+    absent = sorted({i for ids in groups.values() for i in ids} - held)
+    if absent:
+        _refuse(f"the runs do not hold {len(absent)} case(s) of the groups")
+    if any(not c.verdict_occurrence for run in runs for c in run.cases):
+        _refuse("a judged case holds no NTSB occurrence code, so no first code to look for")
+    return groups
 
 
 def read_pool(
@@ -784,19 +819,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _arguments(argv)
     if args.runs[0] == args.runs[1]:
         _refuse("a run is named twice; run a and run b are two different runs")
-    runs = [_load(run_id) for run_id in args.runs]
-    groups: dict[Group, Sequence[str]] = {}
-    for name in GROUPS:
-        listed = [
-            read_group(args.groups, split=SPLIT, group=name, run_id=run.run_id) for run in runs
-        ]
-        groups[name] = listed[0]
+    runs = [load_run(run_id) for run_id in args.runs]
+    groups = read_groups(args.groups, runs)
     held = {c.case_id for c in runs[0].cases}
-    absent = sorted({i for ids in groups.values() for i in ids} - held)
-    if absent:
-        _refuse(f"the runs do not hold {len(absent)} case(s) of the groups")
-    if any(not c.verdict_occurrence for run in runs for c in run.cases):
-        _refuse("a judged case holds no NTSB occurrence code, so no first code to look for")
     kept, days, pool = read_pool(Settings().data_dir / "processed", held)
     index = Index(kept)
     text = report(
