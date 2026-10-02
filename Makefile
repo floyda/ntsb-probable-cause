@@ -315,13 +315,18 @@ s3-case-groups:
 s3-trail-pages:
 	$(if $(RUN),,$(error RUN is required: a finished dev-400 arm C run id))
 	$(if $(GROUPS),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
-	uv run python -m scripts.s3_trail_pages --run $(RUN) $(if $(COMPARE),--compare $(COMPARE)) --groups $(GROUPS) --group $(or $(GROUP),always_wrong) --arm C --fatal $(or $(N),5) --nonfatal $(or $(N),5) --seed $(or $(SEED),20261002)
+	uv run python -m scripts.s3_trail_pages --run $(RUN) $(if $(COMPARE),--compare $(COMPARE)) --groups $(GROUPS) --group $(or $(GROUP),always_wrong) --arm C --fatal $(or $(N),5) --nonfatal $(or $(N),5) --seed $(or $(SEED),20261002)$(if $(PATTERN), --pattern $(PATTERN))$(if $(SPREAD), --spread-by $(SPREAD))$(foreach path,$(EXCLUDE), --exclude-from $(path))
 # S3.1 plan Task 15, free: a private reading aid. N fatal and N non-fatal cases (default 5 each)
 # drawn with SEED (default 20261002) from one arm C group of GROUPS (GROUP, default always_wrong);
 # each case's trail in call order, with the coding tools' text rebuilt, beside the NTSB's verdict
 # and, with COMPARE, the other run's final answer. Each case opens with its differences at a
-# glance (scripts/miss_kinds.py). Reads the docket cache only. Writes one HTML page and a
-# Markdown copy to <NTSB_RUNS_DIR>/s3-trail-pages/<UTC time>/, never committed.
+# glance (scripts/miss_kinds.py); codes and findings are marked match, wrong place or partial, or
+# no match, in colour and in words. Optional: PATTERN (a miss_kinds pattern, e.g.
+# generic_consequence: only the cases RUN shows it in), SPREAD=ntsb_first_event (spread the cases
+# over the NTSB's first events in place of the draw), EXCLUDE="<page folders or cases.json>"
+# (leave out the cases earlier pages showed). Reads the docket cache only. Writes one HTML page,
+# a Markdown copy and cases.json (the cases shown and how they were chosen) to
+# <NTSB_RUNS_DIR>/s3-trail-pages/<UTC time>/, never committed.
 
 s3-miss-kinds:
 	$(if $(RUNS),,$(error RUNS is required: finished dev-400 arm C run ids))

@@ -10,6 +10,8 @@ import copy
 import dataclasses
 import html
 import json
+import random
+import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -18,6 +20,7 @@ from typing import cast
 
 import pytest
 from scripts import s3_trail_pages as tp
+from scripts.miss_kinds import PATTERNS
 from tests.conftest import FIXTURES
 
 from ntsb_probable_cause import gitinfo
@@ -518,6 +521,33 @@ def _case_section(page: str, case_id: str) -> str:
     return page[start : end if end != -1 else len(page)]
 
 
+def _chip(state: str, text: str) -> str:
+    """A mark as the HTML page writes it (unescaped), before the text it marks."""
+    return f'<span class="mk mk-{state}">{text}</span> '
+
+
+_MATCH = _chip("match", "✓ match")
+_NOT_NTSB = _chip("miss", "✗ not in the NTSB's")
+_NOT_LOOP = _chip("miss", "✗ not in the loop's")
+
+
+def _near(whose: str, rank: int) -> str:
+    return _chip("near", f"↕ wrong place: the {whose}'s rank {rank}")
+
+
+def _manifest(runs: Path, stamp: str = _STAMP) -> dict[str, object]:
+    data = json.loads((runs / "s3-trail-pages" / stamp / "cases.json").read_text())
+    assert isinstance(data, dict)
+    return data
+
+
+def _shown(page: str) -> list[str]:
+    """The case ids the page shows, in page order."""
+    return [
+        i for _, i in sorted((page.index(f": {i}</h2>"), i) for i in _IDS if f": {i}</h2>" in page)
+    ]
+
+
 # --------------------------------------------------------------------------------------------
 # The draw
 # --------------------------------------------------------------------------------------------
@@ -559,7 +589,8 @@ class TestThePage:
         assert capsys.readouterr().out == f"s3-trail-pages/{_STAMP}\n"
         written = {p for p in tmp_path.rglob("*") if p.is_file()} - before
         folder = runs / "s3-trail-pages" / _STAMP
-        assert written == {folder / "trails.html", folder / "trails.md"}
+        assert written == {folder / "trails.html", folder / "trails.md", folder / "cases.json"}
+        assert not folder.resolve().is_relative_to(tp.REPOSITORY)
 
     def test_nothing_is_written_inside_the_repository(
         self, runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -580,7 +611,7 @@ class TestThePage:
             runs / "s3-trail-pages" / _STAMP,
             runs / "s3-trail-pages" / "20261002T130000",
         )
-        for name in ("trails.html", "trails.md"):
+        for name in ("trails.html", "trails.md", "cases.json"):
             assert (first / name).read_text() == (second / name).read_text()
 
     def test_the_page_is_self_contained_and_readable_light_or_dark(
@@ -726,7 +757,10 @@ class TestThePage:
         assert "## Case 1 of 9: " in markdown
         assert "**Reason for the choice:** REASON-CHOICE-1" in markdown
         assert "**Not accepted:** occurrence probabilities sum to more than 1" in markdown
-        assert "1. 500240: Approach / Loss of control in flight (p 0.55)" in markdown
+        assert (
+            "1. [✗ not in the NTSB's] 500240: Approach / Loss of control in flight (p 0.55)"
+            in markdown
+        )
         assert f"**Run b ({_RUN_B}), final answer:** 552241" in markdown
 
 
@@ -873,10 +907,10 @@ class TestGlanceHowClose:
         )
         rows = self._rows(_glance(result))
         assert f"How close the loop came to the NTSB's first code, {self._CODE}:" in rows
-        assert "<li>H0: not among its codes</li>" in rows
-        assert "<li>H1: not among its codes</li>" in rows
-        assert "<li>H2: no such checkpoint in this case</li>" in rows
-        assert "<li>Answer: not among its codes</li>" in rows
+        assert f"<li>{_NOT_LOOP}H0: not among its codes</li>" in rows
+        assert f"<li>{_NOT_LOOP}H1: not among its codes</li>" in rows
+        assert "<li>H2: no such checkpoint in this case</li>" in rows  # no mark: nothing to mark
+        assert f"<li>{_NOT_LOOP}Answer: not among its codes</li>" in rows
         assert "In short:</b> never in any hypothesis" in rows
 
     def test_held_then_dropped(self) -> None:
@@ -892,15 +926,16 @@ class TestGlanceHowClose:
             },
         )
         rows = self._rows(_glance(result))
-        assert "<li>H0: rank 2 (p 0.30)</li>" in rows
-        assert "<li>H1: rank 1 (p 0.60)</li>" in rows
-        assert "<li>H2: not among its codes</li>" in rows
+        # The NTSB's first code appears at rank 2, moves to rank 1, then disappears.
+        assert f"<li>{_near('loop', 2)}H0: rank 2 (p 0.30)</li>" in rows
+        assert f"<li>{_MATCH}H1: rank 1 (p 0.60)</li>" in rows
+        assert f"<li>{_NOT_LOOP}H2: not among its codes</li>" in rows
         assert "In short:</b> held at H0 and H1, then dropped" in rows
 
     def test_in_the_answer_at_its_rank(self) -> None:
         answer = _guesses(("500120", 0.5), ("500241", 0.2), (self._CODE, 0.1))
         rows = self._rows(_glance(_answered((self._CODE,), answer)))
-        assert "<li>Answer: rank 3 (p 0.10)</li>" in rows
+        assert f"<li>{_near('loop', 3)}Answer: rank 3 (p 0.10)</li>" in rows
         assert "In short:</b> in the answer at rank 3" in rows
 
     def test_held_at_three_checkpoints_and_in_the_answer(self) -> None:
@@ -976,9 +1011,22 @@ class TestGlanceSequenceAndFindings:
         answer = _guesses(("552241", 0.5), ("552240", 0.3))
         text = _glance(_answered(("552240", "552241", "500120"), answer))
         assert "The NTSB's occurrence codes, in its order, against the loop's answer:" in text
-        assert f"<li>552240: {_label('552240')}: in the answer at rank 2</li>" in text
-        assert f"<li>552241: {_label('552241')}: in the answer at rank 1</li>" in text
-        assert f"<li>500120: {_label('500120')}: not in the answer</li>" in text
+        assert (
+            f"<li>{_near('loop', 2)}552240: {_label('552240')}: in the answer at rank 2</li>"
+            in text
+        )
+        assert (
+            f"<li>{_near('loop', 1)}552241: {_label('552241')}: in the answer at rank 1</li>"
+            in text
+        )
+        assert f"<li>{_NOT_LOOP}500120: {_label('500120')}: not in the answer</li>" in text
+
+    def test_an_ntsb_code_at_the_answers_same_rank_is_a_match(self) -> None:
+        answer = _guesses(("552240", 0.5), ("500120", 0.3))
+        text = _glance(_answered(("552240", "552241"), answer))
+        assert f"<li>{_MATCH}552240: {_label('552240')}: in the answer at rank 1</li>" in text
+        assert f"<li>{_NOT_LOOP}552241: {_label('552241')}: not in the answer</li>" in text
+        assert f"<li>{_MATCH}The loop's first code: 552240: {_label('552240')} (p 0.50)" in text
 
     def test_the_sequence_of_a_case_with_no_answer(self) -> None:
         text = _glance(_glance_case(("552240",), {}, failure="failed: h0"))
@@ -1005,15 +1053,19 @@ class TestGlanceSequenceAndFindings:
             c: f"{c}: {_TABLES.items[c[:8]]} [{_TABLES.modifiers[c[8:]]}]"
             for c in (exact, item, category, missed)
         }
-        assert f"{verdict[exact]}: exact (item and modifier)" in text
+        assert f"<li>{_chip('match', '✓ exact')}{verdict[exact]}: exact (item and modifier)" in text
         assert (
-            f"{verdict[item]}: item only; the loop's modifier 45 [Pilot of other aircraft]" in text
-        )
+            f"<li>{_chip('near', '≈ partial: item only')}{verdict[item]}: item only; the loop's "
+            "modifier 45 [Pilot of other aircraft]"
+        ) in text
         item_label = _TABLES.items["02041510"]
-        assert f"{verdict[category]}: category only; the loop's item 02041510 {item_label}" in text
-        assert f"{verdict[missed]}: missed" in text
+        assert (
+            f"<li>{_chip('near', '≈ partial: category only')}{verdict[category]}: category only; "
+            f"the loop's item 02041510 {item_label}"
+        ) in text
+        assert f"<li>{_chip('miss', '✗ missed')}{verdict[missed]}: missed</li>" in text
         unmatched = text[text.index("The loop's findings that match no NTSB finding") :]
-        assert "010100/01" in unmatched
+        assert f"<li>{_chip('miss', '✗ matches no NTSB finding')}010100/01" in unmatched
         assert "030340" not in unmatched
         assert "010620" not in unmatched
 
@@ -1045,9 +1097,16 @@ class TestGlanceRunB:
         other = self._other(_answered(("552240",), _guesses(("552241", 0.55))))
         text = _glance(_answered(("552240",), _guesses(("500120", 0.5))), other=other)
         assert (
-            f"Run b ({_RUN_B}), defining event:</b> first code 552241: {_label('552241')} "
-            "(p 0.55); kind: same phase, different event"
+            f"Run b ({_RUN_B}), defining event:</b> {_NOT_NTSB}first code 552241: "
+            f"{_label('552241')} (p 0.55); kind: same phase, different event"
         ) in text
+
+    def test_its_first_code_is_marked_against_run_as_ntsb_sequence(self) -> None:
+        other = self._other(_answered(("552240", "552241"), _guesses(("552241", 0.55))))
+        result = _answered(("552240", "552241"), _guesses(("500120", 0.5)))
+        assert f"defining event:</b> {_near('NTSB', 2)}first code 552241" in _glance(
+            result, other=other
+        )
 
     def test_a_failed_case_in_run_b(self) -> None:
         other = self._other(_glance_case(("552240",), {}, failure="failed: coding"))
@@ -1120,8 +1179,8 @@ class TestGlanceOnThePage:
         # The trail's describe_codes call names 500240, not the NTSB's code.
         assert "Coding calls naming it:</b> none" in block
         assert (
-            f"Run b ({_RUN_B}), defining event:</b> first code 552241: {_label('552241')} "
-            "(p 0.55); kind: different phase and event"
+            f"Run b ({_RUN_B}), defining event:</b> {_NOT_NTSB}first code 552241: "
+            f"{_label('552241')} (p 0.55); kind: different phase and event"
         ) in block
 
     def test_the_page_opens_with_the_counts_of_the_cases_shown(
@@ -1140,6 +1199,476 @@ class TestGlanceOnThePage:
         markdown = _markdown(runs)
         assert "### Differences at a glance" in markdown
         assert "**In short:** never in any hypothesis" in markdown
+
+
+# --------------------------------------------------------------------------------------------
+# Marks: a colour and words for each code's match state
+# --------------------------------------------------------------------------------------------
+
+
+class TestOccurrenceMark:
+    _NTSB = ("552240", "552241", "500120")
+
+    @pytest.mark.parametrize(
+        ("code", "rank", "state", "text"),
+        [
+            ("552240", 1, "match", "✓ match"),
+            ("552241", 2, "match", "✓ match"),
+            ("500120", 3, "match", "✓ match"),
+            ("552241", 1, "near", "↕ wrong place: the NTSB's rank 2"),
+            ("552240", 3, "near", "↕ wrong place: the NTSB's rank 1"),
+            ("500120", 5, "near", "↕ wrong place: the NTSB's rank 3"),  # beyond the NTSB's list
+            ("500240", 1, "miss", "✗ not in the NTSB's"),
+            ("500240", 4, "miss", "✗ not in the NTSB's"),
+        ],
+    )
+    def test_the_state_at_each_rank(self, code: str, rank: int, state: str, text: str) -> None:
+        assert tp.occurrence_mark(code, rank, self._NTSB, whose="the NTSB's") == tp.Mark(
+            cast(tp.State, state), text
+        )
+
+    def test_the_other_way_round_names_the_loops_rank(self) -> None:
+        mark = tp.occurrence_mark("552240", 1, ("500120", "552240"), whose="the loop's")
+        assert mark == tp.Mark("near", "↕ wrong place: the loop's rank 2")
+        assert tp.occurrence_mark("552241", 2, ("500120",), whose="the loop's") == tp.Mark(
+            "miss", "✗ not in the loop's"
+        )
+
+
+class TestFindingMark:
+    _FLAGGED = "0106201220"
+    _LISTED = ("0106201220", "0206304044", "0206301099")
+    _IN_CAUSE = frozenset({"0106201220", "0206301099"})
+
+    @pytest.mark.parametrize(
+        ("guess", "state", "text"),
+        [
+            (("010620", "20", "01062012"), "match", "✓ exact (cause)"),
+            (("020630", "44", "02063040"), "match", "✓ exact"),
+            (("010620", "45", "01062012"), "near", "≈ partial: item only (cause)"),
+            (("010620", "20", None), "near", "≈ partial: category only (cause)"),
+            # The deepest level wins: item only (not flagged) over category only (flagged).
+            (("020630", "01", "02063040"), "near", "≈ partial: item only"),
+            (("030340", "91", "03034040"), "miss", "✗ matches no NTSB finding"),
+        ],
+    )
+    def test_the_deepest_level_against_any_ntsb_finding(
+        self, guess: tuple[str, str, str | None], state: str, text: str
+    ) -> None:
+        category, modifier, item = guess
+        finding = FindingGuess(category6=category, modifier=modifier, probability=0.3, item8=item)
+        assert tp.finding_mark(finding, self._LISTED, self._IN_CAUSE) == tp.Mark(
+            cast(tp.State, state), text
+        )
+
+
+def _marked_case() -> list[CaseResult]:
+    """Run a's cases; ANC10LA044's NTSB sequence holds the loop's 500240 at rank 1 and its
+    552241 at rank 3, and its one finding, flagged, is the refined answer's exactly."""
+    cases = [_result(i, final=_REFINED, failure=None) for i in _IDS]
+    at = _IDS.index("ANC10LA044")
+    cases[at] = cases[at].model_copy(
+        update={
+            "verdict_occurrence": ("500240", "500120", "552241"),
+            "verdict_findings": ("0101000001",),
+            "verdict_findings_in_cause": ("0101000001",),
+        }
+    )
+    return cases
+
+
+class TestMarksOnThePage:
+    @pytest.fixture
+    def section(self, runs: Path, tmp_path: Path) -> str:
+        _write_run(runs, _RUN_A, cases=_marked_case())
+        page = html.unescape(_page(runs, _write_groups(tmp_path / "groups.json")))
+        return _case_section(page, "ANC10LA044")
+
+    @staticmethod
+    def _between(section: str, start: str, end: str) -> str:
+        at = section.index(start)
+        return section[at : section.index(end, at)]
+
+    _CODES = (
+        f"{_MATCH}500240: Approach / Loss of control in flight (p 0.55)",
+        f"{_near('NTSB', 3)}552241: Landing-Landing Roll / Aerodynamic stall/spin (p 0.25)",
+    )
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            ("Call 1: first hypothesis (H0)", "Call 2:"),
+            ("Call 4: hypothesis after the first read (H1), retry", "Call 5:"),
+            ("Call 6: hypothesis after the second look (H2)", "Call 7:"),
+            ("Call 14: coding step, retry — submit_answer", "Call 15:"),
+            ("Final answer</h3>", "The NTSB's verdict"),
+        ],
+    )
+    def test_every_checkpoint_marks_each_occurrence_code(
+        self, section: str, start: str, end: str
+    ) -> None:
+        part = self._between(section, start, end)
+        for line in self._CODES:
+            assert line in part
+
+    def test_the_loops_findings_are_marked_at_each_checkpoint(self, section: str) -> None:
+        answer = self._between(section, "Call 14:", "Call 15:")
+        assert f"{_chip('near', '≈ partial: category only (cause)')}010100/01: " in answer
+        refine = self._between(section, "Call 15:", "Final answer</h3>")
+        assert f"{_chip('match', '✓ exact (cause)')}010100/01: " in refine
+        final = self._between(section, "Final answer</h3>", "The NTSB's verdict")
+        assert f"{_chip('match', '✓ exact (cause)')}010100/01: " in final
+
+    def test_the_glance_marks_the_loops_code_at_every_checkpoint(self, section: str) -> None:
+        glance = self._between(section, "Differences at a glance", "Trail, in call order")
+        assert f"<li>{_MATCH}The loop's first code: 500240" in glance
+        for name in ("H0", "H1", "H2", "Answer"):
+            assert f"<li>{_MATCH}{name}: rank 1 (p 0.55)</li>" in glance
+        assert f"<li>{_MATCH}500240: {_label('500240')}: in the answer at rank 1</li>" in glance
+        assert f"<li>{_NOT_LOOP}500120: {_label('500120')}: not in the answer</li>" in glance
+        assert (
+            f"<li>{_near('loop', 2)}552241: {_label('552241')}: in the answer at rank 2</li>"
+            in glance
+        )
+        assert f"<li>{_chip('match', '✓ exact')}0101000001: " in glance
+        # Run b's first code, 552241, against run a's NTSB sequence.
+        assert f"defining event:</b> {_near('NTSB', 3)}first code 552241" in glance
+
+    def test_the_ntsbs_verdict_and_the_coding_arguments_carry_no_mark(self, section: str) -> None:
+        verdict = section[section.index("The NTSB's verdict") :]
+        assert 'class="mk' not in verdict.split("Run b (")[0]
+        arguments = self._between(section, "Call 10:", "Call 11:")  # occurrence_usage
+        assert 'class="mk' not in arguments
+
+    def test_the_markdown_copy_carries_the_words_only(self, runs: Path, tmp_path: Path) -> None:
+        _write_run(runs, _RUN_A, cases=_marked_case())
+        _page(runs, _write_groups(tmp_path / "groups.json"))
+        markdown = _markdown(runs)
+        assert "1. [✓ match] 500240: Approach / Loss of control in flight (p 0.55)" in markdown
+        assert "2. [↕ wrong place: the NTSB's rank 3] 552241: " in markdown
+        assert "- [✓ exact (cause)] 010100/01: " in markdown
+        assert "<span" not in markdown
+        assert "mk-" not in markdown
+
+
+def _style(page: str) -> str:
+    return page[page.index("<style>") + len("<style>") : page.index("</style>")]
+
+
+def _tokens(block: str) -> dict[str, str]:
+    return dict(re.findall(r"--([a-z-]+):([^;}]+)", block))
+
+
+class TestLegendAndTheme:
+    _CHIPS = ("match", "near", "miss")
+
+    def test_a_legend_at_the_top_names_each_state_in_words(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        page = html.unescape(_page(runs, _write_groups(tmp_path / "groups.json")))
+        top = page[: page.index("<h2")]
+        assert "Marks: green, amber and red, each with words that read without colour:" in top
+        assert _chip("match", "✓ match") in top
+        assert _chip("near", "↕ wrong place / ≈ partial") in top
+        assert _chip("miss", "✗ no match") in top
+        assert "(cause) after a finding's mark" in top
+        markdown = _markdown(runs)
+        top_md = markdown[: markdown.index("\n## ")]
+        for words in ("[✓ match] ", "[↕ wrong place / ≈ partial] ", "[✗ no match] "):
+            assert words in top_md
+
+    def test_every_colour_is_a_token_on_bare_root_and_redefined_for_dark_twice(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        style = _style(_page(runs, _write_groups(tmp_path / "groups.json")))
+        bare = re.search(r"(?m)^:root\{([^}]*)\}", style)
+        media = re.search(
+            r'@media \(prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)'
+            r"\{([^}]*)\}\}",
+            style,
+        )
+        theme = re.search(r':root\[data-theme="dark"\]\{([^}]*)\}', style)
+        assert bare is not None
+        assert media is not None
+        assert theme is not None
+        light, dark, dark_again = (_tokens(m.group(1)) for m in (bare, media, theme))
+        assert dark == dark_again
+        assert set(dark) == set(light)  # every token on bare :root, every one redefined for dark
+        for state in self._CHIPS:
+            assert {f"{state}-bg", f"{state}-fg"} <= set(light)
+            assert light[f"{state}-bg"] != dark[f"{state}-bg"]
+            assert f".mk-{state}{{background:var(--{state}-bg);color:var(--{state}-fg)}}" in style
+        assert set(re.findall(r"var\(--([a-z-]+)\)", style)) <= set(light)
+        # No token is defined anywhere but in those three blocks.
+        assert len(re.findall(r"--[a-z-]+:", style)) == 3 * len(light)
+        # Every rule outside them takes its colours from the tokens: no colour written in place.
+        rest = style
+        for block in (bare, media, theme):
+            rest = rest.replace(block.group(0), "")
+        assert re.search(r"#[0-9a-fA-F]{3,8}\b", rest) is None
+
+
+# --------------------------------------------------------------------------------------------
+# The selection: a pattern, a spread, exclusions, and the manifest
+# --------------------------------------------------------------------------------------------
+
+
+class TestSpread:
+    # Event 100 is the largest group (two fatal, one not), then 200 (two non-fatal), then the
+    # single cases of 300 (fatal) and 400 (non-fatal).
+    _EVENTS: Mapping[str, str] = {
+        "F1": "100",
+        "F2": "100",
+        "N1": "100",
+        "N2": "200",
+        "N3": "200",
+        "F3": "300",
+        "N4": "400",
+    }
+    _FATALITY: Mapping[str, bool] = {i: i.startswith("F") for i in _EVENTS}
+
+    def _spread(
+        self, ids: Sequence[str], fatal: int, nonfatal: int, seed: int = 7
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return tp.spread(
+            ids, self._FATALITY, self._EVENTS, per_fatal=fatal, per_nonfatal=nonfatal, seed=seed
+        )
+
+    def test_one_case_per_event_largest_first_fatal_and_non_fatal_in_turn(self) -> None:
+        fatal, nonfatal = self._spread(tuple(self._EVENTS), 2, 2)
+        # 100 gives a fatal case, 200 a non-fatal one, 300 its fatal one, 400 its non-fatal one;
+        # each group's first case is the front of its list as the group's own generator shuffled
+        # it ("<seed>:<event>"), fatal list first.
+        first = random.Random("7:100")  # noqa: S311 -- the documented sampling, not security
+        queue = ["F1", "F2"]
+        first.shuffle(queue)
+        second = random.Random("7:200")  # noqa: S311 -- likewise
+        empty: list[str] = []
+        second.shuffle(empty)  # 200 holds no fatal case: its generator shuffles an empty list
+        other = ["N2", "N3"]
+        second.shuffle(other)
+        assert fatal == tuple(sorted((queue[0], "F3")))
+        assert nonfatal == tuple(sorted((other[0], "N4")))
+        assert len({self._EVENTS[i] for i in (*fatal, *nonfatal)}) == 4
+
+    def test_the_same_seed_gives_the_same_cases_whatever_the_order_given(self) -> None:
+        ids = tuple(self._EVENTS)
+        assert self._spread(ids, 2, 3) == self._spread(tuple(reversed(ids)), 2, 3)
+        picks = {self._spread(ids, 1, 1, seed=s) for s in range(40)}
+        assert len(picks) > 1  # the seed decides within a group
+
+    def test_the_turn_passes_between_fatal_and_non_fatal(self) -> None:
+        # Three events of one fatal and one non-fatal case each. In turn: 100 fatal, 200
+        # non-fatal, 300 fatal; then a second round, 100 non-fatal. Always fatal first would
+        # take the fatal cases of 100 and 200 instead.
+        events = {"FA": "100", "NA": "100", "FB": "200", "NB": "200", "FC": "300", "NC": "300"}
+        fatality = {i: i.startswith("F") for i in events}
+        assert tp.spread(tuple(events), fatality, events, per_fatal=2, per_nonfatal=2, seed=7) == (
+            ("FA", "FC"),
+            ("NA", "NB"),
+        )
+
+    def test_the_largest_group_first_then_by_event_code(self) -> None:
+        events = {"N1": "900", "N2": "900", "N3": "900", "N4": "300", "N5": "200"}
+        fatality = dict.fromkeys(events, False)
+        _, one = tp.spread(tuple(events), fatality, events, per_fatal=0, per_nonfatal=1, seed=7)
+        assert set(one) <= {"N1", "N2", "N3"}  # 900 holds the most, though its code is last
+        _, three = tp.spread(tuple(events), fatality, events, per_fatal=0, per_nonfatal=2, seed=7)
+        assert "N5" in three  # 200 before 300: equal groups go by event code
+        assert "N4" not in three
+
+    def test_a_group_without_the_kind_wanted_gives_the_other(self) -> None:
+        # 200 is the largest group here and holds no fatal case: it gives a non-fatal one, and
+        # the fatal turn passes to 100.
+        fatal, nonfatal = self._spread(("N2", "N3", "F1"), 1, 1)
+        assert fatal == ("F1",)
+        assert len(nonfatal) == 1
+        assert set(nonfatal) <= {"N2", "N3"}
+
+    def test_a_second_round_when_the_events_run_out(self) -> None:
+        fatal, nonfatal = self._spread(("F1", "F2", "N1", "F3"), 3, 1)
+        assert fatal == ("F1", "F2", "F3")
+        assert nonfatal == ("N1",)
+
+    def test_a_kind_not_asked_for_is_never_taken(self) -> None:
+        fatal, nonfatal = self._spread(tuple(self._EVENTS), 0, 2)
+        assert fatal == ()
+        assert {self._EVENTS[i] for i in nonfatal} == {"100", "200"}
+
+    def test_a_pool_smaller_than_asked_is_taken_whole(self) -> None:
+        fatal, nonfatal = self._spread(tuple(self._EVENTS), 10, 10)
+        assert fatal == ("F1", "F2", "F3")
+        assert nonfatal == ("N1", "N2", "N3", "N4")
+
+
+class TestSelection:
+    def test_every_pattern_of_the_classifier_has_its_option(self) -> None:
+        assert sorted(tp.PATTERN_OPTIONS.values()) == sorted(PATTERNS)
+        assert tp.PATTERN_OPTIONS["generic_consequence"] == "generic consequence"
+        assert tp.PATTERN_OPTIONS["ntsb_cause_undetermined"] == "NTSB cause undetermined"
+
+    def test_the_default_selection_is_stated(self, runs: Path, tmp_path: Path) -> None:
+        page = html.unescape(_page(runs, _write_groups(tmp_path / "groups.json")))
+        top = page[: page.index("<h2")]
+        assert "arm C, always wrong, from groups.json: 9 cases (3 fatal, 6 non-fatal)." in top
+        assert "<li>Excluded: none</li>" in top
+        assert "<li>Pattern: none asked</li>" in top
+        assert "<li>Eligible: 9 cases (3 fatal, 6 non-fatal)</li>" in top
+        assert (
+            "<li>Shown: 3 fatal and 6 non-fatal, drawn with seed 20261002 from the sorted "
+            "eligible ids</li>"
+        ) in top
+
+    def test_a_pattern_keeps_only_the_cases_run_a_shows_it_in(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        groups = _write_groups(tmp_path / "groups.json")
+        page = html.unescape(_page(runs, groups, "--pattern", "ntsb_cause_undetermined"))
+        # 0500000000 is flagged as cause in these two records, and the loop did not abstain.
+        assert _shown(page) == ["ANC10MA068", "ANC13FA004"]
+        top = page[: page.index("<h2")]
+        assert (
+            "<li>Pattern: NTSB cause undetermined (--pattern ntsb_cause_undetermined), in run a: "
+            "0500000000 is flagged as cause"
+        ) in top
+        assert "<li>Eligible: 2 cases (2 fatal, 0 non-fatal)</li>" in top
+        assert _manifest(runs)["pattern"] == "ntsb_cause_undetermined"
+
+    def test_a_spread_by_the_ntsbs_first_event(self, runs: Path, tmp_path: Path) -> None:
+        groups = _write_groups(tmp_path / "groups.json")
+        extra = ("--pattern", "generic_consequence", "--spread-by", "ntsb_first_event")
+        page = html.unescape(_page(runs, groups, *extra, fatal=2, nonfatal=2))
+        # Seven cases show the pattern; their first events: 230 twice (both non-fatal), then 000
+        # and 120 (fatal), 200, 402 and 490 (non-fatal) once each. Visited largest first:
+        # 230 gives a non-fatal case, 000 a fatal one, 120 the other fatal one, 200 a non-fatal.
+        shown = _shown(page)
+        assert shown[:2] == ["ANC10MA068", "ANC13FA004"]
+        assert "CEN11CA664" in shown[2:]
+        assert len(set(shown[2:]) & {"ANC09CA024", "ANC10LA044"}) == 1
+        assert len(shown) == 4
+        top = page[: page.index("<h2")]
+        assert "<li>Eligible: 7 cases (2 fatal, 5 non-fatal)</li>" in top
+        assert "<li>Shown: 2 fatal and 2 non-fatal, spread by the NTSB's first event" in top
+        events = top[top.index("The NTSB's first events among the eligible cases") :]
+        label = _TABLES.events["230"]
+        assert f"<li>230: {label}: 2 eligible (0 fatal, 2 non-fatal), 1 shown</li>" in events
+        assert events.index("230: ") < events.index("000: ") < events.index("120: ")
+        assert f"<li>402: {_TABLES.events['402']}: 1 eligible (0 fatal, 1 non-fatal), 0 shown" in (
+            events
+        )
+        data = _manifest(runs)
+        assert data["spread_by"] == "ntsb_first_event"
+        assert data["eligible"] == 7
+
+    def test_cases_shown_on_an_earlier_page_are_left_out(self, runs: Path, tmp_path: Path) -> None:
+        groups = _write_groups(tmp_path / "groups.json")
+        assert _main(_argv(groups, fatal=1, nonfatal=2)) == 0
+        first = runs / "s3-trail-pages" / _STAMP
+        earlier = set(cast(list[str], _manifest(runs)["cases"]))
+        later = datetime(2026, 10, 2, 13, 0, 0, tzinfo=UTC)
+        argv = _argv(groups, "--exclude-from", str(first), fatal=3, nonfatal=6)
+        assert _main(argv, when=later) == 0
+        page = html.unescape(
+            (runs / "s3-trail-pages" / "20261002T130000" / "trails.html").read_text()
+        )
+        shown = set(_shown(page))
+        assert len(earlier) == 3
+        assert not shown & earlier
+        assert shown == set(_IDS) - earlier
+        top = page[: page.index("<h2")]
+        assert (
+            f"<li>Excluded: 3 of the group's cases, shown on earlier pages ({_STAMP}/cases.json)"
+            "</li>"
+        ) in top
+        assert "<li>Eligible: 6 cases (2 fatal, 4 non-fatal)</li>" in top
+        data = _manifest(runs, "20261002T130000")
+        assert data["exclude_from"] == [str((first / "cases.json").resolve())]
+        assert data["excluded"] == 3
+
+    def test_exclusions_repeat_and_take_a_manifest_file(self, runs: Path, tmp_path: Path) -> None:
+        groups = _write_groups(tmp_path / "groups.json")
+        manifests = []
+        for n, ids in enumerate((("ANC10MA068",), ("ANC09CA020", "ZQX999"))):
+            path = tmp_path / f"m{n}.json"
+            path.write_text(json.dumps({"manifest": "s3_trail_pages", "cases": list(ids)}))
+            manifests += ["--exclude-from", str(path)]
+        page = html.unescape(_page(runs, groups, *manifests))
+        assert set(_shown(page)) == set(_IDS) - {"ANC10MA068", "ANC09CA020"}
+        assert "<li>Excluded: 2 of the group's cases" in page
+
+    def test_the_manifest_names_the_cases_and_how_they_were_chosen(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        groups = _write_groups(tmp_path / "groups.json")
+        page = html.unescape(_page(runs, groups))
+        assert _manifest(runs) == {
+            "manifest": "s3_trail_pages",
+            "sample": "dev-400",
+            "run": _RUN_A,
+            "compare": _RUN_B,
+            "groups": str(groups.resolve()),
+            "split": "arm C",
+            "group": "always wrong",
+            "seed": 20261002,
+            "fatal_asked": 3,
+            "nonfatal_asked": 6,
+            "exclude_from": [],
+            "excluded": 0,
+            "pattern": None,
+            "spread_by": None,
+            "group_cases": 9,
+            "eligible": 9,
+            "cases": _shown(page),
+        }
+
+
+class TestSelectionRefusals:
+    @pytest.fixture
+    def groups(self, runs: Path, tmp_path: Path) -> Path:
+        return _write_groups(tmp_path / "groups.json")
+
+    def test_an_unknown_pattern_or_spread_is_a_usage_error(self, groups: Path) -> None:
+        for extra in (("--pattern", "generic consequence"), ("--spread-by", "phase")):
+            with pytest.raises(SystemExit) as raised:
+                _main(_argv(groups, *extra))
+            assert raised.value.code == 2
+
+    def test_no_eligible_case_is_refused(self, groups: Path) -> None:
+        with pytest.raises(SystemExit, match="no case of the group is eligible"):
+            _main(_argv(groups, "--pattern", "abstained"))
+
+    def test_a_folder_with_no_manifest_is_refused(self, groups: Path, tmp_path: Path) -> None:
+        with pytest.raises(SystemExit, match="no page manifest"):
+            _main(_argv(groups, "--exclude-from", str(tmp_path)))
+
+    @pytest.mark.parametrize(
+        ("text", "match"),
+        [
+            ("{not json", "is not JSON"),
+            ('{"cases": ["ANC10MA068"]}', "not a trail page manifest"),
+            ('{"manifest": "s3_trail_pages", "cases": [1]}', "not a trail page manifest"),
+            ('["ANC10MA068"]', "not a trail page manifest"),
+        ],
+    )
+    def test_a_file_that_is_not_a_page_manifest_is_refused(
+        self, groups: Path, tmp_path: Path, text: str, match: str
+    ) -> None:
+        path = tmp_path / "other.json"
+        path.write_text(text)
+        with pytest.raises(SystemExit, match=match):
+            _main(_argv(groups, "--exclude-from", str(path)))
+
+    @pytest.mark.parametrize(
+        "extra", [("--pattern", "generic_consequence"), ("--spread-by", "ntsb_first_event")]
+    )
+    def test_a_case_with_no_ntsb_code_is_refused_when_selecting_by_it(
+        self, runs: Path, groups: Path, extra: tuple[str, str]
+    ) -> None:
+        cases = [_result(i, final=_REFINED, failure=None) for i in _IDS]
+        cases[0] = cases[0].model_copy(update={"verdict_occurrence": ()})
+        _write_run(runs, _RUN_A, cases=cases)
+        with pytest.raises(SystemExit, match="no pattern or first event to select by"):
+            _main(_argv(groups, *extra))
 
 
 class TestRebuiltToolText:
