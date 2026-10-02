@@ -329,18 +329,29 @@ def suffix(way: Way, stats: StatsName = STATS_DEFAULT) -> str:
 
 
 # The arms whose runs the check reads: arm B (decision 0096), and arm C as a diagnostic only
-# (decision 0137), with the one way and the statistics ``_refuse_for_arm_c`` names.
+# (decision 0137), with the one way and the statistics ``_refuse_for_arm_c`` names. Only the
+# check's own ``preflight`` passes this to ``_refuse_unless_development``; arm B's tool post-pass
+# (``agent/armb.py``) reuses that function with its default, arm B alone.
 CHECKED_ARMS = frozenset({"B", "C"})
+ARM_B_ONLY = frozenset({"B"})
 # Decision 0137 item 1: arm C is checked by GPT-6 Luna only, the way S2.7 kept (0096 item 5).
 ARM_C_WAY: Way = "luna"
 
 
-def _refuse_unless_development(record: RunRecord, cases: Sequence[CaseResult]) -> None:
-    if (
-        not record.sample.startswith("dev")
-        or "heldout" in record.run_id
-        or record.arm not in CHECKED_ARMS
-    ):
+def _refuse_unless_development(
+    record: RunRecord, cases: Sequence[CaseResult], arms: frozenset[str] = ARM_B_ONLY
+) -> None:
+    """Refuse a run that is not a finished development run of one of ``arms``, or is derived.
+
+    ``arms`` defaults to arm B alone, with the wording every refusal had before decision 0137,
+    so a caller other than the ordering check (arm B's tool post-pass) is unchanged by it.
+    """
+    if not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm not in arms:
+        if arms == ARM_B_ONLY:
+            raise ConfigurationError(
+                f"the ordering check runs on development arm B runs only; {record.run_id} is "
+                f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+            )
         raise ConfigurationError(
             f"the ordering check runs on development arm B runs, and on development arm C runs "
             f"as a diagnostic, only; {record.run_id} is {record.sample}, arm {record.arm} "
@@ -417,7 +428,7 @@ def preflight(
     """
     record = read_jsonl(source / "run.jsonl", RunRecord)[0]
     cases = read_jsonl(source / "cases.jsonl", CaseResult)
-    _refuse_unless_development(record, cases)
+    _refuse_unless_development(record, cases, arms=CHECKED_ARMS)
     if record.arm == "C":
         _refuse_for_arm_c(record, way, stats)
     if "+tools-" in record.prompt_version and stats != TOOLS_STATS:

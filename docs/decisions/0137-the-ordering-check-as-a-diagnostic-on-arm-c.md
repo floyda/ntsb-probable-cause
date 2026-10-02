@@ -17,8 +17,7 @@ measures 0127 item 4's premise once. It changes no arm, no round and no bar.
 3. **What the loop does with the counts.** The loop has them through `occurrence_usage`, but it
    chooses whether to call the tool, on which codes, and how to read what comes back. The check
    is given the counts for every case the loop answered without abstaining, and is asked one
-   fixed question about them. The
-   loop's own use of the counts is a choice; the check's is not.
+   fixed question about them. The loop's own use of the counts is a choice; the check's is not.
 4. **What the check can change.** It re-orders the answer's occurrence codes within a candidate
    list of at most eight (0096 item 3): the answer's own three, then codes the pool's counts
    suggest. So it can fix a case only when the NTSB's first code is in that list. In arm C's

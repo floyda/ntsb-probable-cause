@@ -964,6 +964,7 @@ class TestRefusals:
         [
             ("heldout-400-B", {"sample": "heldout-400"}, "development"),
             ("dev-400-A", {"arm": "A"}, "development"),
+            ("dev-400-C", {"arm": "C"}, "development"),  # decision 0137 opens the check only
             ("dev-400-B-unfinished", {"finished": None}, "finished"),
             ("dev-400-B-check-luna", {}, "stacked"),
             ("dev-400-B-tools", {}, "tools post-pass"),
@@ -982,6 +983,24 @@ class TestRefusals:
         source, _ = _source(runs)
         variant = _variant(source, f"20261001T000000-abc1234-{suffix}", **changes)
         _assert_refused(runs, variant, match)
+
+    def test_an_arm_c_run_is_refused_in_the_wording_it_had_before_decision_0137(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0137 lets the ordering check read an arm C run as a diagnostic; this
+        post-pass shares the check's refusal and must still refuse arm C, word for word as before
+        (fix round 1, Critical: the shared refusal had begun to let arm C through)."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        run_id = "20261001T000000-abc1234-dev-400-C"
+        variant = _variant(source, run_id, arm="C")
+        with pytest.raises(ConfigurationError) as refused:
+            armb.preflight(variant, runs)
+        assert str(refused.value) == (
+            f"the ordering check runs on development arm B runs only; {run_id} is dev-400, arm C "
+            "(decisions 0096, 0097)"
+        )
+        _assert_refused(runs, variant, "arm B runs only")
 
     def test_the_sample_s27_used_once_is_refused_before_any_docket_is_read(
         self, tmp_path: Path
