@@ -54,6 +54,12 @@ A round is read against the loop's own noise floor: the two (or three) identical
 `dev-400` that `make s3-noise-report` reads into `docs/results/s3-noise-floor-dev.txt`. S2.7's
 noise floor is for a single answer, not for the loop (decision 0130, Why 1).
 
+Two rules for failures hold for every S3 round (decision 0136, Andy, 2026-10-02). **A failed case
+counts as wrong**: the reading pairs every case of `dev-400`, and a case that failed in a run
+scores 0 there. **The format gate is a hard limit**: a round whose run fails more than 8 of 401
+cases for format or tool reasons is dropped whatever its accuracy. `scripts/round_result.py`
+applies both to arm C runs; S2.7's rounds (arm B) read exactly as before.
+
 ## Template (S3)
 
     # S3 round <N>: <one-line change>
@@ -64,18 +70,22 @@ noise floor is for a single answer, not for the loop (decision 0130, Why 1).
       per round, so that the score says which change moved it (decision 0098, Why 1).
     - **Why:** <the pattern in the trails it answers, as counts>.
     - **Cases read to design it:** <the group, and how many trails were read>. The cases are chosen
-      by script, never by hand: `scripts/s3_case_groups.py` sorts `dev-400` into always right,
-      always wrong and flipping, across the noise-floor runs and the existing arm B runs (plan
-      Task 15). Cases are never picked from arm B's misses.
+      by script, never by hand: `scripts/s3_case_groups.py` (`make s3-case-groups RUNS="<ids>"`)
+      sorts `dev-400` into always right, always wrong and flipping, across the noise-floor runs
+      and the existing arm B runs (plan Task 15). Cases are never picked from arm B's misses.
     - **Reading rule:** decision 0098 item 4, applied to arm C runs by `scripts/round_result.py`
-      (`make s3-round-result`). Kept only if the occurrence top-1 gain's interval lies above zero
-      and the gain is larger than the noise floor (the absolute top-1 difference between the two
-      noise-floor runs named below). Dropped if finding recall@10's paired difference lies wholly
-      below zero. **Failures count in "do no harm"** (spec §8.4, §10.3): a failed case leaves
-      `n`, so a round that fails more cases can look better than it is. The run's failures by
-      reason and its format-gate count (as `scripts/s3_noise_floor.py` defines them) are read
-      beside the reference run's. <State here, before the run, the rise in failed cases that
-      drops the round.>
+      (`make s3-round-result`), with decision 0136's two rules for failures (spec §8.4, §10.3).
+      **The format gate is a hard limit:** if the round's run fails more than 8 of 401 cases for
+      format or tool reasons (the count `scripts/s3_noise_floor.py` makes: `failed: <step>`, not
+      `failed: rounds`; guard refusals and cap stops not counted), the round is dropped whatever
+      its accuracy, and the result says so first. **Every failed case counts as wrong:** the
+      paired differences are over every case of `dev-400`, and a case that failed in a run (for
+      any reason) scores 0 there on occurrence top-1 and top-3, and on finding recall@10 where the
+      NTSB flagged findings; the same holds for the reference and the noise pair. Then the round
+      is kept only if the occurrence top-1 gain's interval lies above zero and the gain is larger
+      than the noise floor (the absolute top-1 difference between the two noise-floor runs named
+      below, failures counted wrong), and dropped if finding recall@10's paired difference lies
+      wholly below zero.
     - **Reference run:** <run id: the last kept round, or noise-floor run a>; **noise pair:**
       <noise-floor run a> and <noise-floor run b>.
     - **Cost estimate:** <$, from the last arm C run's cost per case>.

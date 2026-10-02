@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -300,6 +300,17 @@ s3-round-result:
 	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) --append docs/rounds/s3-round-$(N).md
 # S3.1 spec §10.3, free: decision 0098 item 4's reading against the loop's own noise floor,
 # appended to the round's registration. NOISE="<a> <b>", two of the noise-floor runs, in quotes.
+# For arm C runs it applies decision 0136: a failed case counts as wrong, and a run over the
+# format gate (more than 8 of 401) drops the round whatever its accuracy.
+
+s3-case-groups:
+	$(if $(RUNS),,$(error RUNS is required: two or more finished dev-400 run ids, arm C or arm B))
+	uv run python -m scripts.s3_case_groups $(RUNS) --out docs/results/s3-case-groups-dev.txt
+# S3.1 plan Task 15 (spec §10.3), free: dev-400 sorted into always right, always wrong and
+# flipping on occurrence top-1, across the noise-floor runs and S2.7's arm B runs; a failed case
+# counts as wrong (decision 0136 item 1). Prints counts only, and writes them to the results
+# file; the case lists go to <NTSB_RUNS_DIR>/s3-case-groups/<UTC time>/groups.json, never
+# committed. RUNS="<ids>", in quotes. Trails for a round's design are read from a stated group.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt
