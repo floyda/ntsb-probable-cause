@@ -1,6 +1,6 @@
 # S2.7 — Coding guidance: design
 
-*Drafted 2026-09-26 from a design session with Andy, after S2.6 closed (v0.6.0). Status: Approved (2026-09-26, Andy).
+*Drafted 2026-09-26 from a design session with Andy, after S2.6 closed (v0.6.0). Status: Implemented (2026-09-29, pull request #17).
 This is the specification for build stage S2.7, a stage added between S2.6 and S3 of
 `docs/specs/2026-09-12-architecture-and-roadmap.md` §11. It records what S2.7 builds and
 measures, why, the decisions it takes, and the condition for moving on. The implementation
@@ -737,6 +737,818 @@ Written with this specification:
   saved replies are the authority, and without it Round 1 runs three ways.
 - **Open:** whether the data dictionary holds event and phase definitions (checked in the
   first round that would use them).
+
+---
+
+## As built
+
+*Closed 2026-09-30. The stage's pull request, #17, was merged on 2026-09-29 before this record
+was committed; the record, the status changes and the plans' removal came in pull request #19.*
+
+S2.7 closed on its development results. It measured where arm B's `dev-400` misses come from
+(Round 0), kept GPT-6 Luna as an ordering check after the answer (Round 1), ran five guidance
+rounds (Round 3 kept; Round 6 kept by override, decision
+[0106](../decisions/0106-round-6-kept-by-override.md)), re-tested the transcriber (Qwen stays)
+and turned transcription off by default (decision
+[0120](../decisions/0120-qwen-stays-and-transcription-is-off-by-default.md)), and checked the
+final setup once on the sealed sample. The final setup is arm B at evidence version v1, with the
+guidance `r3-loc-stall` then `r6-aircraft-control` (prompt version `s1-v6+ge17fecdc66ec`) and
+the Luna check. No held-out case was read, scored or transcribed, so S2.4's held-out arm B
+(`docs/results/s24-bars.txt`) stays the bar.
+
+### Delivered
+
+- **S2.7's spend, counted by commit** (§10). `scripts/stage_spend.py` (`make stage-spend`)
+  sums the spend recorded against the commits from the S2.6 merge `971ee40` on every local
+  branch that holds S2.7's first commit `94f5d42` and is named `s27-` (`STAGE_BRANCH_PREFIX`),
+  `main` and HEAD excepted, and prints the branches it counted (decisions
+  [0102](../decisions/0102-a-parent-branch-with-a-branch-per-track.md),
+  [0107](../decisions/0107-s27-spend-counts-its-own-branches-only.md)). Given `--estimate`, it
+  exits non-zero if the spend plus the estimate would pass the $25 line (0098 item 6); every paid
+  `s27-` target calls it first. `gitinfo.py` gains `commits_between`, `is_committed` and
+  `branches_containing`.
+- **The sealed sample** (§3.1, §9, decision
+  [0095](../decisions/0095-a-sealed-development-sample.md)). `scripts/draw_sealed.py` drew
+  `dev-seal-400` with `samples.draw` (seed 20260926, every `dev-400` case excluded) into
+  `tests/fixtures/eval/dev_seal_400_ids.csv`; `--verify` re-draws it from the processed file.
+  `samples.refuse_sealed` refuses the sample until `docs/rounds/s27-sealed.md` is committed. It
+  is called by `ntsb-eval run` (which fetches the dockets), `check`, `transcribe` and
+  `baseline`, and by five S2.6 scripts that take a free-form sample. A shared
+  `samples.refuse_unless_development` replaces the per-script held-out checks.
+- **The statistics pool** (§3.2, decision
+  [0094](../decisions/0094-coding-statistics-from-a-pool-outside-the-samples.md)).
+  `scoring/coding_stats.py` (`PoolCase`, `CodingStats`, `build`, `load_stats`; the counts are
+  read through `defining_given`, `pair`, `event_pair`, `group_phases`, `group_n`, `group_top`
+  and `findings_given_event`). `scripts/coding_stats.py` (`make s27-coding-stats`) builds the
+  committed table `scoring/tables/coding_stats.json` and `docs/results/s27-coding-stats.txt`
+  from development cases in classes C, F and L outside both samples. The contamination test is
+  `tests/test_coding_stats_script.py::test_check_pool_refuses_a_sample_case_or_a_non_development_case`.
+- **Round 0's scripts** (§4). `scoring/misses.py` (`GROUPS`, `miss_group`, `finding_depth`,
+  `EVENT_PHRASES`, `names_event`). `scripts/occurrence_misses.py` is extended with the six
+  groups, finding depth, confidence by group, the model's own words and churn against a second
+  run. `scripts/judge_outcomes.py` prints the four outcomes and their movement between runs.
+  `scripts/round0_handread.py` (`cards`, `score`) builds Andy's marking page and scores the
+  validation rule. Make targets: `s27-noise-floor`, `s27-judge`, `s27-round0-cards`,
+  `s27-round0-results`.
+- **The ordering check** (§5, decisions [0096](../decisions/0096-the-ordering-check.md),
+  [0101](../decisions/0101-the-clear-habit-safeguard.md)). `scoring/ordering.py` holds the
+  candidate list (`candidates`, at most eight codes), the clear-habit test (`clear_habit`, at
+  least 60% of at least 20 pool cases), the plain rule (`plain_rule`), the push count
+  (`toward_more_common`), the Luna check's text and its parser, and the Jev questions for `jev`
+  and `jev2`. `scoring/checkpass.py` runs the check as a post-pass over a finished run:
+  `ntsb-eval check RUN_ID --way rule|luna|jev|jev2` (`make s27-check`) writes a derived folder
+  `<run id>-check-<way>` whose cases carry a second step, `tool="ordering_check"`, with its
+  input fingerprint, model and cost. It checks the source read-only (`checkpass.preflight`)
+  before it reserves the budget or builds a client, and refuses a held-out, unfinished, ablation
+  or already-derived source, and the sealed sample before its registration. `metrics.rescore_occurrence` re-scores the occurrence
+  codes; finding scores are carried over.
+- **The Jev client** (decision
+  [0097](../decisions/0097-jev-as-an-ordering-check-model-on-development-cases.md)).
+  `model/typesafe.py`, ported from the `typesafe-probe` branch with its saved replies under
+  `tests/fixtures/typesafe/`; `jev2` pins `jev-1.13.0` (`JEV_PINNED`). Only the ordering check
+  (`ntsb-eval check`) calls it. `sources.JEV` holds its price; `Settings` reads `TYPESAFE_API_KEY`.
+- **Round 1's reports.** `scripts/round1_report.py` (`make s27-round1-results`) applies 0096
+  item 5's rule; `scripts/round1_jev2_report.py` (`make s27-round1-jev2-results`) applies
+  decision [0103](../decisions/0103-a-registered-second-jev-check.md)'s.
+- **Guidance and its registration** (§6, decision
+  [0098](../decisions/0098-guidance-rounds-stop-rule-and-prediction.md)). Guidance files live in
+  `src/ntsb_probable_cause/scoring/guidance/` (`r2-phase-families`, `r3-loc-stall`,
+  `r4-fuel-power`, `r5-sub-phases`, `r6-aircraft-control`) and enter the answering turn's system
+  text under `prompt.GUIDANCE_HEADING`, never the payload. A guided run's prompt version is the
+  base version, `+g` and the first 12 characters of the guidance fingerprint
+  (`prompt.prompt_version`); `RunRecord.guidance` and `RunRecord.guidance_sha256` record the
+  names and the full fingerprint, and `report.provenance` prints them. `ntsb-eval run
+  --guidance NAME` (repeatable, in stacking order) refuses a round whose registration
+  (`docs/rounds/s27-round-<N>.md`, template in `docs/rounds/README.md`) is not committed.
+  `scripts/check_guidance.py` (`make s27-check-guidance`) checks every guidance sentence against
+  every development case's narratives and probable cause, locally. `make s27-round` refuses an
+  empty `GUIDANCE` unless `NO_GUIDANCE=1`.
+- **A round's reading.** `scripts/round_result.py` (`make s27-round-result`, `FINDING=1` for a
+  finding round, `SUPPLEMENT=1` for decision 0105's line) applies 0098 item 4 and appends the
+  result to the registration. `scripts/round_comparisons.py` (`make s27-round-comparisons`)
+  reproduces the figures behind decision 0106.
+- **Six codes join the code tables** (decision
+  [0105](../decisions/0105-codes-missing-from-the-dictionary-join-the-tables.md)).
+  `scoring/tables/supplement.csv`, merged by `codes.read_supplement` into the dictionary tables,
+  which are unchanged; the base prompt version is `s1-v6`.
+- **The v2 reading on run records** (§7.5). `RunSpec` and `RunRecord` gain `transcriber` and
+  `page_rule`, set by `ntsb-eval run --transcriber --page-rule` for v2 runs.
+  `runner.refuse_unnamed_reading` refuses a v2 run that does not name both, and a v1 run that
+  names either; `ntsb-eval run` refuses a v2 run whose sample is not fully transcribed with that
+  transcriber and rule; and `report.refuse_cross_version` refuses two v2 runs that differ in
+  either field without `--versions-compared` (a record with neither reads as S2.6's,
+  `S26_V2_READING`).
+- **The sealed report.** `scripts/sealed_report.py` (`make s27-sealed-results`) prints the
+  sealed run beside Round 6's checked `dev-400` run and scores the prediction; `make
+  s27-sealed-run` names the two guidance files itself.
+- **Named page rules** (track 2, §7.3, §7.5). `docket/transcribe.py` gains `PageRule`,
+  `PAGE_RULES` (`all`, `image-only`, `image-only+thin-layer`), `PAGE_RULE = "all"` and
+  `THIN_LAYER_MAX_CHARS = 200`; `pages_to_read`, `page_choice` and `ReadingLookup` take the
+  rule, and every finished-transcription marker names it. `ntsb-eval transcribe` gains
+  `--model` and `--page-rule`. `scripts/page_value.py` (`make s27-page-value`) measures what
+  each rule keeps.
+- **The transcriber shortlist and probe** (track 2, §7.2). `scripts/transcriber_shortlist.py`
+  (`fetch`, `shortlist`, `probe`, `batch-image`, `batch-poll`; `lowest_reasoning`,
+  `S27_CANDIDATES`; `make s27-models-fetch`, `s27-shortlist`, `s27-transcriber-probe`,
+  `s27-batch-image`). `sources.py` holds the shortlisted models' prices and lowest reasoning
+  levels; the eight passed candidates' probe replies are committed under
+  `tests/fixtures/openrouter/transcription/`.
+- **The transcriber re-test** (track 2, §7.4, decision
+  [0100](../decisions/0100-the-transcriber-retest-and-page-rule.md)).
+  `scripts/transcriber_retest.py` (`verify`, `run`, `automatic`, `pages`, `score`,
+  `readable-split`, `routing-pages`, `routing-tally`; the rule is `choose_against_qwen`). Make
+  targets `s27-retest-verify`, `-run`, `-pages`, `-automatic`, `-score`, `-readable`,
+  `s27-routing-pages`, `s27-routing-tally`. It reuses S2.6's keys and scoring from
+  `scripts/transcriber_test.py`, which gains a shared card loop and an optional expected cost
+  per page, with S2.6's outputs unchanged.
+
+#### What was measured
+
+- **The statistics pool** (`docs/results/s27-coding-stats.txt`): 7,177 development cases from
+  2009–2014 and 5,314 from 2015–2019, 12,491 in all, none in either sample.
+- **The six miss groups** (`docs/results/s27-round0-dev.txt`, `scripts/occurrence_misses.py`).
+  On B-v1 (399 scored cases), by first guess: exact 83, right event with the wrong phase 61, in
+  the sequence but not defining 45, a later guess in the sequence 44, the event under another
+  phase 74, nothing in common 87, abstained 5. Of 1,111 flagged findings, 114 were found, 48 had
+  the item right and the modifier wrong, 103 the category right and the item wrong, and 846 the
+  category wrong. The model's own words named the NTSB's defining event in 100 of 225 misses
+  with a phrase list (44.4%); 118 of 221 (53.4%) on B-v2.
+- **The noise floor** (same file). B-v1 against its repeat (`20260927T111202-fbab38a-dev-400-B`,
+  identical settings): occurrence top-1 +4.0% [+0.5%, +7.5%] on 399 cases, finding recall@10
+  -1.7% [-3.3%, -0.2%]; the same first guess on 246 of 399 cases, top-1 gained 35 and lost 19.
+  The repeat alone scores top-1 16.8%, against B-v1's 20.8%. Between the two runs' Luna-checked
+  folders, top-1 differs by +1.0% [-3.0%, +5.0%] (`docs/rounds/s27-round-2.md`).
+- **The four outcomes and label churn** (same file). The judge's outcome changes on 123 of 399
+  cases between two identical runs, and on 155 between v1 and v2. The judge cost $2.43 for the
+  three runs (Departures, Round 0).
+- **Andy's hand-read** (same file). 50 cards, 46 decidable. The judge agreed with Andy on 32 of
+  46 (69.6% [55.2%, 80.9%]) against the 75% rule, with 3 generous and 11 harsh errors: **the
+  narrative label is not validated**, so the four outcomes carry no claim (decision
+  [0099](../decisions/0099-the-judges-narrative-label-and-four-outcomes.md)). Andy's reasons for
+  the misses: coding convention 19, wrong phase 15, misread or missing fact 4, the NTSB's code
+  arguable 2.
+- **Round 1, the ordering check** (`docs/results/s27-round1-dev.txt`). Paired top-1 against no
+  check, on B-v1 and on the repeat: plain rule +2.0% [+0.5%, +3.8%] and +1.8% [+0.0%, +3.5%];
+  GPT-6 Luna +6.8% [+3.3%, +10.3%] and +9.8% [+6.0%, +13.8%]; Jev +5.3% [+2.0%, +8.5%] and +7.3%
+  [+3.8%, +11.0%]. Against the plain rule: Luna +4.8% [+1.0%, +8.5%] and +8.0% [+4.0%, +12.3%];
+  Jev +3.3% [-0.3%, +6.8%] and +5.5% [+1.8%, +9.3%]. Outcome: `luna`. Luna also breaks 16 of
+  B-v1's 83 exact first guesses (13 of the repeat's 67).
+- **The second Jev check** (`docs/results/s27-round1-jev2-dev.txt`). `jev2` against Luna: -4.0%
+  [-7.0%, -1.0%] and -4.5% [-7.8%, -1.3%]; against no check +2.8% [-0.8%, +6.5%] on B-v1. Outcome:
+  "luna stays".
+- **The guidance rounds** (`docs/rounds/`, each result by `scripts/round_result.py`; checked
+  scores decide, read against the checked noise pair's 1.0 points of top-1, or 1.7 points of
+  finding recall for a finding round):
+  - Round 2, phase families: top-1 +2.5% [-1.8%, +6.8%]; dropped
+    (`docs/rounds/s27-round-2.md`).
+  - Round 3, loss of control against stall/spin: top-1 +4.8% [+0.8%, +8.8%], finding recall@10
+    -0.9% [-2.5%, +0.8%]; kept (`docs/rounds/s27-round-3.md`).
+  - Round 4, fuel before loss of engine power: top-1 -4.0% [-7.8%, -0.3%]; dropped
+    (`docs/rounds/s27-round-4.md`).
+  - Round 5, sub-phase over the general phase code: top-1 -3.5% [-7.5%, +0.5%]; dropped, and
+    with two drops in a row the occurrence rounds ended (`docs/rounds/s27-round-5.md`).
+  - Round 6 (finding round 1), Aircraft control / Pilot: finding recall@10 +11.4% [+8.2%,
+    +14.6%], top-1 -6.3% [-10.5%, -2.5%]; dropped by the do-no-harm rule, kept by override
+    (decision 0106; `docs/rounds/s27-round-6.md`). Against Round 4, Round 5 and the repeat, its
+    top-1 difference includes zero (-2.3%, -2.8%, -1.5%) and its recall gain holds (+12.3%,
+    +12.7%, +10.5%) (`docs/results/s27-round-comparisons-dev.txt`).
+  - Checked top-1 of each run (same file): B-v1 27.6%, the repeat 26.6%, Round 2 29.1%, Round 3
+    31.3%, Round 4 27.3%, Round 5 27.8%, Round 6 25.1% [20.8%, 29.6%]; Round 6's finding
+    recall@10 22.6% [19.8%, 25.6%], against 12.1% for the repeat.
+  - The judge on the kept rounds: the misread count moved from 116 (the repeat) to 99 (Round 3),
+    and from 99 to 109 (Round 6), both inside the label churn of 123 cases.
+- **The sealed sample** (`docs/results/s27-sealed-dev.txt`, `scripts/sealed_report.py`). Run
+  `20260929T114049-9cbe5c5-dev-seal-400-B`, checked with Luna: top-1 27.5% [23.3%, 32.0%] (109
+  of 397), finding recall@10 22.0%. The `dev-400` run it is read beside (Round 6, checked): top-1
+  25.1% [21.1%, 29.5%] (100 of 399), finding recall@10 22.6%. The prediction (0098 item 7):
+  `dev-400` top-1 between 30% and 36%, **not met** (25.1%); the sealed sample lower by less than
+  5 points, **not met** (it was 2.4 points higher); the misread share, **not scored** (the label
+  is not validated).
+- **The transcriber shortlist** (`docs/results/s27-transcriber-shortlist.txt`). Of OpenRouter's
+  model list of 2026-09-27, 14 models were eligible. Eleven were tried in order and 8 passed the
+  probe; two failed on the account's 18+ setting and one returned a reply that did not parse.
+  The probe cost $0.0034 for 9 calls. The batch service accepted, then failed, the one image
+  request.
+- **The re-test** (`docs/results/s27-transcriber-retest.txt`). Qwen's second-pass figures were
+  reproduced exactly from the cache (1036 of 1548 handwriting lines right, 54 inventing lines,
+  measured $0.0015362713 a test page). All eight candidates are out on measures that need no
+  marks: seven invent on 65 to 181 lines of 1548; DeepSeek reads 100 of 1548 lines right and
+  costs $0.0033132 a test page. Outcome: "no candidate meets all seven: Qwen stays". The
+  post-hoc split by page readability (`docs/results/s27-transcriber-retest-readable.txt`) gives
+  the same verdict: on the 13 fully readable pages Qwen reads 620 of 779 lines right, and no
+  candidate more than 458.
+- **The page rule** (`docs/results/s27-page-value.txt`). `all`: 12,458 pages, $13.25;
+  `image-only`: 3,596 pages, 82.6% of the characters, $5.39; `image-only+thin-layer`: 5,398
+  pages, 84.2%, $6.92. Only `all` keeps 90% of the characters, so it is chosen.
+- **Routing, exploratory** (`docs/results/s27-routing-scans.txt`). On S2.6's 25 full-page scans,
+  invented added words: `z-ai/glm-5.3-flash` 0, `openai/gpt-6-luna-pro` 1, `qwen/qwen3.7-flash`
+  1. Outside 0100's rule; it changes nothing.
+- **Spend.** $15.10 on S2.7's own branches ($13.34 evaluation runs, $1.76 preparation spend
+  rows), `uv run python -m scripts.stage_spend`, 2026-09-29, against the $25 line; the
+  specification estimated $15–25.
+
+### Done means, with evidence
+
+1. `docs/results/s27-coding-stats.txt` exists, built from the pool, with the contamination test
+   green — met — `scripts/coding_stats.py` (`make s27-coding-stats`),
+   `docs/results/s27-coding-stats.txt` (12,491 pool cases); the contamination test
+   `tests/test_coding_stats_script.py::test_check_pool_refuses_a_sample_case_or_a_non_development_case`
+   passes.
+2. `docs/results/s27-round0-dev.txt` holds the six groups, the finding misses, the noise floor,
+   the four outcomes for three runs and the validation result — met —
+   `docs/results/s27-round0-dev.txt` (`make s27-round0-results`) holds the six groups, finding
+   depth and churn for B-v1, B-v2 and the repeat; the noise floor (B-v1 against the repeat,
+   top-1 +4.0% [+0.5%, +7.5%]); the four outcomes for the three runs with their movement; and
+   the validation result, "not validated".
+3. `docs/results/s27-round1-dev.txt` holds the four ways on both answer sets and the outcome of
+   §5.4's rule — met — `docs/results/s27-round1-dev.txt` (`scripts/round1_report.py`) holds the
+   plain rule, GPT-6 Luna and Jev, each against no check (and the models against the rule), on
+   both answer sets, and ends "outcome (decision 0096 item 5): luna". The second Jev check is
+   in `docs/results/s27-round1-jev2-dev.txt` ("luna stays").
+4. Every guidance round has its registration and appended result in `docs/rounds/`, and the
+   stop rule's outcome is stated — met — `docs/rounds/s27-round-2.md` to `s27-round-6.md`, each
+   committed before its run with its result appended by `scripts/round_result.py`. The
+   occurrence rounds ended on two drops in a row (Rounds 4 and 5; stated in Round 5's note);
+   Andy ended the finding rounds after one (Departures below). Round 6 is kept by override
+   (decision 0106), stated in its registration.
+5. Track 2's three results files and its decision record exist, and its branch is merged back —
+   met — `docs/results/s27-transcriber-shortlist.txt`, `docs/results/s27-page-value.txt`,
+   `docs/results/s27-transcriber-retest.txt`; decision 0120; `s27-transcriber` merged into the
+   parent at `87f74f1`.
+6. The meeting-point comparison is published, and Andy's decisions on v2 and v3 are recorded —
+   **not met as written** — the meeting point was skipped on Andy's decision of 2026-09-29 ("A,
+   skip it and carry on here"), because decision 0120 had already settled v2's default:
+   transcription is off by default, for cost. So no v1-against-v2 comparison under the final
+   guidance was run or published. The decision on v2 is 0120. v3 (the picture probe) was not
+   taken up in S2.7 and stays deferred (0090): a name only, which every run refuses.
+7. `docs/results/s27-sealed-dev.txt` exists, and the prediction of §9.2 is scored — met —
+   `docs/results/s27-sealed-dev.txt` (`scripts/sealed_report.py`), sealed run
+   `20260929T114049-9cbe5c5-dev-seal-400-B`; the prediction is scored: two parts not met, the
+   misread part not scored because the label is not validated.
+8. Tests and CI green; `scripts/check_docs.py` passes; the As-built record is appended and both
+   plans deleted — met — this pull request's close-out commit; `uv run python -m
+   scripts.check_docs` clean; `make check` green on the close-out tree (1,857 tests, 97.8%
+   coverage), and CI on pull request #17 runs the same checks.
+
+### Departures from this specification
+
+Every entry in both plans' Deviations sections is here, grouped by topic and rewritten plainly,
+with the walkthrough decisions each plan took before any code. Lint-only rewrites of the plans'
+code are listed together at the end.
+
+#### What S2.7 did not do
+
+- **The meeting point (§8, track 1 Task 17) was skipped** (Andy, 2026-09-29: "A, skip it and
+  carry on here"). Decision 0120 had already settled v2's default for cost, so a v1-against-v2
+  comparison under the final guidance could not change it. Not spent: about $1.85 (a v2 run at
+  about $1.33 and the judge at $0.50, estimates). Not measured, as a result: whether
+  transcription helps once coding is improved, the question 0090 item 2 hoped S2.7 would free;
+  it moves to S3, where reading a transcription is the agent's own choice. The sealed run is
+  therefore at v1.
+- **Transcription is off by default, for cost** (decision 0120, Andy: "Im swaying towards B
+  because in the grand schema of things the transcription didn't provide the big boost i was
+  hoping for"; "yes that shape i think makes sense" to "off by default, a tool the agent can
+  choose later"). Runs and new batches of cases read text layers only (v1); in S3, transcribing
+  a document becomes a tool the loop may call. §8 kept v2 open as S2.7's evidence: instead v2 is
+  not the default, and §8 step 1 re-reads nothing (Qwen stays with rule `all`, and `dev-400`'s
+  readings are cached). 0120 amends 0074's default; 0074 stays in place with an appended note.
+- **The picture probe (v3) was not taken up.** §8 item 4 left it to Andy at the meeting point,
+  which was skipped. It stays deferred (0090): v3 is a name only, and every run refuses it.
+
+#### Choices made before any code (track 1's walkthrough, 2026-09-27)
+
+- **W1, the phase codes of a phase group are learned from the pool** (Andy: "A with a 'clear
+  habit' safeguard."). An ad-hoc probe, re-derived by Task 3, found every phase code used for a
+  defining event under exactly one of 12 phase groups; on B-v1 the first guess's phase was the
+  NTSB's on 210 of 394 answered cases. On Andy's concern that counts would push every case toward
+  the most common combination, decision 0101 amends 0096 item 4 and 0098 item 2: the plain rule
+  moves only on a clear habit (at least 60% of at least 20 pool cases; `ordering.clear_habit`
+  replaces `RULE_MIN_CASES`), guidance names a habit only when it is clear, and every check
+  step, Round 1's report and every round's result count first codes moved toward a more common
+  option. Tasks 8, 10, 11, 14 and 15 were edited before any code.
+- **W2, the ordering check is a post-pass** (Andy: A). `ntsb-eval check` writes a derived folder
+  `<run id>-check-<way>` instead of running inside the runner before the refinement turn (§5.5).
+  The check changes only the occurrence codes and the refinement turn only the findings, so the
+  order between them changes no score; the runner is untouched, batch and synchronous runs are
+  treated alike, and Round 1 re-uses the recorded answers.
+- **W3, the Luna check runs synchronously at the standard price** (Andy: "A is fine"), not on
+  batch as §5.3 and §10 priced it. Estimated at about $0.36 an answer set, against the spec's
+  $0.12; it cost $0.24 for two (Round 1, below).
+- **W4, the judge writes into S2.6's B-v1 and B-v2 folders in place** (Andy: A), after checking
+  neither held a `judge.jsonl`. The folders gain `judge.jsonl` and a `<run id>-judge` cost row
+  carrying S2.7's commit; their answers are untouched.
+- **W5, the prompt version is the base version and a short fingerprint** (Andy: "Could we use
+  version and short fingerprint?"): `s1-v5+g` and the first 12 characters of the guidance
+  fingerprint, not a hand-bumped `s27-g1` (§6.1). The names and the full fingerprint are recorded
+  beside it.
+- **W6, two checks of §12 run locally, not in CI** (Andy: "I guess A"). "No sentence shared with
+  a development narrative" and "the draw is reproducible" each split into a data-free CI test
+  and a local check at fixed steps: `scripts/check_guidance.py` before each registration, and
+  `scripts/draw_sealed.py --verify` at the draw and before the sealed run. CI holds no case data
+  (rule 4).
+- **W7, a miss group with fewer than 8 cases gives all its cases** to the hand-read, with no
+  top-up (Andy: A). None was under 8.
+- **W8, a parent branch with a branch per track** (Andy set the layout; names "A is fine";
+  decision 0102, amending 0093 item 3 and §11, which put track 1 on the stage branch). The parent
+  is `s27-coding-guidance`; track 1 is `s27-guidance`, track 2 `s27-transcriber`. Task 1 was
+  done on the parent, Tasks 2–15 on `s27-guidance`, Tasks 16–19 on the parent. Spend is traced
+  on every branch grown from the parent (later narrowed by 0107, below).
+
+#### Choices made before any code (track 2's walkthrough, 2026-09-27)
+
+- **W1, each candidate's reasoning level comes from a fixed rule** over the saved model list
+  (`transcriber_shortlist.lowest_reasoning`: the lowest listed effort; else `minimal` if
+  reasoning is mandatory; else `none`), which reproduces S2.6's levels (Andy: A). §7.2 left the
+  level unstated. A candidate refusing its level would fail the probe and be replaced.
+- **W2, the one batch-with-image call is kept** (Andy: A), with the invented probe page, only for
+  a shortlisted candidate with a `:batch` variant.
+- **W3, Andy marks photograph and scan cards only for candidates still in the running** after
+  every measure that needs no marks (Andy: the alternative), since 0100 item 3 makes the others
+  unchoosable. `automatic` (`make s27-retest-automatic`) was added; `s27-retest-pages` takes
+  `MODELS`; `score` takes `marked`. The results file therefore does not give every candidate's
+  invention counts on the two marked keys. Task 9's card test was corrected at the same time to
+  state S2.6's rule (an `[illegible]` reading counts as holding a word).
+- **W4, every finished-transcription marker names its page rule**, `all` included (Andy: B).
+  S2.6's `dev-400` marker no longer matches; it stays on disk unused, and the marker was
+  re-created free from the cache before any v2 run.
+- **W5, fewer than eight candidates**: the re-test runs on those that pass, with no top-up from
+  outside the filter (Andy: A).
+- **W6, the filter requires structured output** (`response_format` in the listing's supported
+  parameters), because every transcription call uses a strict JSON schema (Andy: A). A
+  departure from §7.2's filter.
+- **W7, the recheck file pair is chosen by reproducing Qwen's published figures**, trying the
+  `pass2/` pair first, which Andy recalled as final (the re-marking after the stamped "Photo"
+  label, decision 0086 item 1). The track would stop if neither pair reproduced them.
+
+#### Foundation: spend, the sealed draw and the pool (track 1, Tasks 1–3)
+
+- Adding `dev_seal_400_ids.csv` to the evaluation fixtures made
+  `test_evaluation_cases_are_held_out_by_event_date` fail, since it expected every list but
+  `dev_400_ids` to be held-out. `dev_seal_400_ids` joins the exclusion; the sealed list's purity
+  is checked by its own test (Task 2).
+- **The pool build** (Task 3 Step 11) gave 12,491 pool cases (7,177 in 2009–2014, 5,314 in
+  2015–2019; the spec said about 12,490, ad-hoc) and a 958 KiB `coding_stats.json`; no
+  case-number pattern was found in either output. The commit hook's 500 KB limit refused the
+  JSON, so both large-file hooks exclude it, as they already exclude `tests/fixtures/words.txt`;
+  it is a committed table, not raw data (rule 4).
+
+#### Round 0 (track 1, Tasks 4–7)
+
+- **Development-only refusals read the run record first** (Task 5 and Task 6 review rounds).
+  `judge_outcomes._load` and `round0_handread._run` read `run.jsonl` and refuse a run recorded
+  on a held-out sample before `cases.jsonl` is read, not only a run whose id says so. Tests
+  added, including a happy-path `main` call with three run folders. The first Task 5 build had
+  no `main` test, because `scripts/` is outside the coverage gate.
+- **The hand-read's scoring refuses mismatches** (Task 6 review). `cards` writes a `run_id`
+  column and `score` refuses a sheet drawn from another run; a sheet case with no judge label
+  is refused naming only its row, never a case id.
+- **The noise-floor run was started by Claude** (Task 7 Step 3), on Andy's authorisation ("you
+  can perform the run now its the weekend"), at 11:12 UTC from a clean tree at `fbab38a`:
+  `20260927T111202-fbab38a-dev-400-B`, 401 cases, $1.1593, B-v1's settings.
+- **The judge ran on the three runs** (Task 7 Steps 4–5, Andy: "Yes do it now") from a clean,
+  detached checkout at `228281b`, because the track worktree held uncommitted edits: $0.8084,
+  $0.8081 and $0.8110, 399 labels each, **$2.43 against the plan's $1.50** (the judge's
+  $0.00125-a-case estimate was about 60% low). The 50 cards were built free (10 hits, 8 from
+  each miss group); the page names no case and shows no judge label.
+- **The hand-read's score prints Andy's reasons by miss group** (Task 7 Step 7), because Task 15
+  chooses the first round by miss group; the existing lines are unchanged.
+- **The results** (Task 7 Steps 6–8). Andy's marks are kept privately under `data/`. The label
+  was not validated (32 of 46), so `LABELS=unvalidated`. The noise floor, +4.0 points of top-1
+  between B-v1 and the repeat, was larger than the plan assumed; between their Luna-checked
+  folders it is +1.0. Because checked scores decide, every round was read against the checked
+  pair: 1.0 points of top-1, or 1.7 points of finding recall for a finding round (the round
+  registrations).
+
+#### Round 1 and the Jev checks (track 1, Tasks 8–12a)
+
+- **A tie in the Jev ranking test goes by code** (Task 8), so the expected order is (loss of
+  control, stall, CFIT), not the brief's (loss of control, CFIT, stall).
+- **The Jev client was ported from `typesafe-probe`** (Task 9) with its fixtures and tests,
+  renumbered to 0097. The spell-check hook's own exclude list gained the TypeSafe fixtures,
+  whose NTSB labels carry a source-data misspelling.
+- **The post-pass, as built** (Task 10). The Luna check's empty evidence payload renders as
+  `"{}"`, the same placeholder the judge sends. A runtime error replaces an `assert` in `src/`.
+  `resolve_latest` skips derived check folders, a guard kept though the folder pattern already
+  excludes them. The boundary test of the check's payload was shown to fail on a mutation that
+  leaked the probable cause, then restored.
+- **Task 10 review, round 1.** The `luna` and `jev` ways reserve the budget under the derived id
+  before any client is built, and the check settles it; the derived folder is refused only once
+  it holds results, not on its presence, since the reservation creates it. An ablation source
+  (exclusions or includes) is refused before its cases are read, because the check would read
+  the withheld phase group back from the processed record. An unfinished source and an
+  already-derived source are refused. Tests cover the Jev checker's ranking and price and the
+  rule way's happy path.
+- **Task 10 review, round 2: nothing refusable after the reservation.** `checkpass.preflight`
+  does every refusal read-only before the reservation; any failure between the reservation and
+  the pass releases it. Three tests, each shown to fail on the earlier code (checked without
+  `git stash`).
+- **`round1_report` reads the run record first** (Task 11), like the Round 0 scripts; tests
+  added.
+- **Round 1's runs** (Task 12 Steps 2–5). The plain rule ran free. Andy authorised the Luna
+  check ("you have a yes on the luna spend"); from a clean checkout at `b0cdcc2` it cost $0.1210
+  and $0.1196, **$0.24 against the plan's $0.72** (W3's estimate was about three times high),
+  and every reply parsed. Andy chose to include Jev; Claude's attempt was refused by the
+  session's permission check on reading the TypeSafe key, so Andy ran both Jev checks himself
+  ($0.0195, $0.0196). Outcome `luna`, so `CHECK=luna` for every later round.
+- **A second, registered Jev check, `jev2`** (Task 12a, decision 0103; Andy: "Yes that sounds
+  good"). Designed from TypeSafe's documentation and three independent projects that measured
+  Jev, with every threshold from 0096 or 0101. Its design and win rule (beat no check, the plain
+  rule and Luna on both answer sets, or Luna stays) are fixed in
+  `docs/rounds/s27-round1-jev2.md`, committed before any code. Round 1's outcome and results
+  file are unchanged.
+- **`jev2` as built** (Task 12a). `checkpass.CHECK_WAYS` (Round 1's ways plus `jev2`) is what
+  `check --way` accepts, so Round 1's report is unchanged; `CodingStats.group_n` was added for
+  the phase-group base; each step records every option's probability; the report reads the
+  derived folders through the same refusals as the sources, and a missing comparison fails the
+  win rule.
+- **A tie at the top between `none_of_these` and a code** was not settled by the registration.
+  Andy chose A: `none_of_these` wins, so the answer stays as the model gave it. The
+  clarification was dated in the registration and committed (`f078d9e`) before the code change
+  and before any call; the first build had let the code win.
+- **Task 12a review.** Every `jev2` step records Jev's full ranked order after the tie rules
+  (`arguments["jev_order"]`), and the report reads "none of these ranked first" from it. A
+  boundary test for `jev2`'s body was added and shown to fail on a mutation. The `jev2` report
+  refuses the sealed sample.
+- **`jev2`'s runs** (Task 12a Steps 8–9). Andy ran both from a clean checkout at `8c40dbd`
+  ($0.0313, $0.0314). Outcome: "luna stays": `jev2` was below Luna on both answer sets and did
+  not clearly beat no check on the first. Published as it came out.
+
+#### The guidance rounds (track 1, Tasks 13–15)
+
+- **Tests beyond the brief** (Task 13): the system text without guidance is byte-for-byte
+  unchanged, and `report.provenance` prints the guidance line.
+- **Task 13 review.** `make s27-round` refuses an empty `GUIDANCE` unless `NO_GUIDANCE=1`, so an
+  unguided paid run cannot skip the registration check by accident. The judge's cost row carries
+  the judged run's guidance. `report.provenance` uses `prompt.FINGERPRINT_CHARS`.
+- **`round_result` reads the run record first** (Task 14), for every run it reads; tests added.
+- **Some guidance counts are cited from the committed table, not the results file.** Four of
+  the five Round 3 pairs are not among the 40 commonest pairs `docs/results/s27-coding-stats.txt`
+  prints; they are cited from `scoring/tables/coding_stats.json` through `load_stats().pair`, as
+  the registration says. Round 4's summed pair counts (through `event_pair`) and Round 5's
+  per-group phase counts (through `group_phases` and `group_n`) are not printed in the results
+  file either; each registration names its accessor (completed at the final review, Minor 7).
+- **Three rounds were submitted outside the 01:00–12:00 UTC batch window** the plan set: Round 3
+  at 14:44 UTC ("just go now"), Round 4 at about 17:00 ("Sounds sensible") and Round 5 at about
+  18:30 ("Yes run it now"), each on Andy's instruction.
+- **`CodingStats.event_pair`** (Round 4) sums a code pair's counts over every phase, so the
+  guidance's counts come from code rather than an ad-hoc sum.
+- **Six codes the data dictionary lacks join the code tables** (between Rounds 4 and 5,
+  decision 0105): phases 553 and 601, events 281, 282, 284 and 850, through
+  `scoring/tables/supplement.csv`; the prompt version moves to `s1-v6`. Not in the plan or the
+  specification, which fixed the tables by 0025. It applies from Round 5 and is not read under
+  0098 item 4. `round_result --supplement` (`SUPPLEMENT=1`) prints the cases an added code
+  touches; Round 5's registration states that its run has the fix and its reference does not.
+- **Round 3's judge comparison** ($0.8132) is against the repeat's unchecked folder, because the
+  repeat's checked folder, the reference, was never judged. The registration says so.
+- **A lesson from Round 4** (ad-hoc counts): its counts were conditioned on the NTSB coding both
+  events, which the model cannot know. The model put a fuel event first in 40 cases (13 to 17 in
+  earlier runs); of the 14 where it moved from a power loss to a fuel event and the NTSB kept the
+  power loss, the NTSB coded no fuel event at all in 13. Later rounds' counts, the finding
+  round's included, start from what the model can see: an evidence field, or a code the model
+  chose.
+- **Finding counts joined the pool** (before the first finding round): flagged findings by
+  defining code (`PoolCase.findings`, `CodingStats.findings_given_event`), rebuilt from the same
+  pool. Every earlier count is unchanged, checked key by key; four lines of the results file now
+  show the labels 0105 added where they showed `?`.
+- **Round 6 was kept by override** (decision 0106, Andy: "I think option B"). The rule dropped it
+  on harm to top-1 against Round 3 (-6.3% [-10.5%, -2.5%]) with finding recall +11.4% [+8.2%,
+  +14.6%]. Round 6's checked run became the reference; the sealed registration and this record
+  state the override.
+- **The stop rule** (Task 15 closed). Rounds 2–6 ran: 2 dropped, 3 kept, 4 and 5 dropped, 6
+  kept by override. The occurrence rounds ended on two drops in a row (4, 5). Andy ended the
+  finding rounds after one ("option A"), leaving unused the second round 0098 allows. The judge
+  ran on each kept round (3 and 6).
+- **A dropped round's guidance file stays in `scoring/guidance/`**, where its registration and
+  run name it; it leaves the stack (§6.4's "removed").
+- **Round 4's result line gives the wrong reason** (found at close-out). It reads "dropped: the
+  gain's interval includes zero", but its interval, -4.0% [-7.8%, -0.3%], lies wholly below
+  zero: `round_result.read` gives that reason whenever the lower bound is not above zero. The
+  outcome, dropped, is right under 0098 item 4; the committed result is left as written, and the
+  wording is a known fault of the script.
+
+#### Branches, merges and the v2 reading (track 2 Tasks 1 and 9; track 1 Task 16)
+
+- **Track 2's branch was cut by track 1's session** (its Task 1 Step 16, decision 0102), from the
+  local parent at `21dca2b` rather than from the remote, and pushed. Track 2's Task 1 only
+  confirmed it and ran `make check` (1514 tests, 97.71% coverage); `stage_spend --estimate 0`
+  counted the three S2.7 branches at $0.00.
+- **The first re-test run stopped at the $25 check before any model call** (track 2 Task 9
+  Step 6, Andy: option A). Track 1's runs now wrote two new `RunRecord` fields (`guidance`,
+  `guidance_sha256`), which track 2's `RunRecord`, forbidding unknown fields, could not read, so
+  the spend checks failed. Track 1's identical four lines were landed on the parent (`42e67a7`)
+  and the parent merged into `s27-transcriber` (`5d2bc2d`); track 2 still never edited
+  `scoring/records.py` itself. Claude then ran the re-test on Andy's go-ahead ("can you run it
+  for me?"), not Andy as planned.
+- **The tracks merged into the parent** (track 1 Task 16 Step 1). Track 2 merged first
+  (`87f74f1`); the parent was merged into track 1 on 2026-09-28 (`973eff1`, conflicts in the
+  `Makefile`, `apps/eval/__main__.py` and the decisions index resolved there as unions); track 1
+  then merged into the parent without conflicts (`c08ca2c`; Andy: "yes go ahead and merge").
+  `make check` on the parent: 1,847 passed, 97.82% coverage.
+- **The v2 reading on run records** (Task 16 Steps 2–4, as planned, with three details). The
+  refusal is one helper, `runner.refuse_unnamed_reading`, called after the evidence-version
+  check, so arm A and the ceiling keep their earlier message at v2. `report.refuse_cross_version`
+  reads a record with no reading fields as S2.6's (`S26_V2_READING`), and `provenance` prints the
+  reading on every v2 record. The "not fully transcribed" message names the exact `transcribe`
+  command. The S2.6 v2 tests run unchanged.
+
+#### Budget and spend
+
+- **September's budget was raised to $50** (decision
+  [0104](../decisions/0104-september-2026-budget-raised-to-50.md)). Round 2's first attempt was
+  refused by the monthly guard before any call ($39.63 spent in September, $1.68 reserved). Andy
+  raised September's line to $50, applied as `NTSB_MONTHLY_BUDGET_USD=50` in each paid command's
+  environment until 30 September; the code's default stays $40.
+- **S2.7's spend counts only its own branches** (decision 0107, amending 0102 item 3).
+  `scripts/stage_spend.py` had counted every branch holding S2.7's first commit, which by then
+  included two later stages' branches cut from `s27-guidance`, and it counted HEAD. It now
+  counts only branches named `s27-`, and not HEAD. The total was unchanged by the fix ($13.81 at
+  that time).
+
+#### Track 2: page rules and markers (Tasks 2–4)
+
+- The comment on `ReadingLookup.done_file` points to Task 3 Step 6, which re-creates S2.6's
+  marker, not Task 2's Step 5, which only confirms it no longer matches.
+- Every existing test that depends on S2.6's rule states `page_rule="all"` explicitly, except the
+  two tests whose purpose is the default itself.
+- The dry-run test expects `"rule all,"` in the projection line; the unknown-rule test checks
+  argparse's own message.
+- The shared test stub serves only image-only pages, so a test on it could not show the rule
+  working. A stub subclass with one text-and-image page was added: under `image-only` the page is
+  never sent, and (review fix) under `all` it is.
+- Task 3 Step 6's "the projection line ends ..." is read as "contains": the real line ends with
+  the skipped-documents clause.
+- **`dev-400`'s marker was re-created free** (Task 3 Steps 6–7). The dry run projected 12,458
+  pages, 0 unread, $0.00 (8 documents could not be listed, fetched or parsed). The real command
+  read 0 pages, made no job, reservation or call, counted 59 of 12,458 failed (within the 2%
+  line) and wrote the new marker, `dev-400-60ddd78408f8.json`, naming the model, rule `all` and
+  150 dots per inch. S2.6's `dev-400-940436639bbd.json` stays on disk unused.
+- **T3 skips a case whose docket listing fails** (Task 4), counting it and printing the count
+  separately after the report, as the transcription job does; the results file's fields are
+  unchanged.
+
+#### Track 2: the shortlist and the probe (Tasks 5–7)
+
+- The fetch date is taken in UTC, to match the `Makefile` target's `date -u`.
+- Prices are printed exactly (at first at full float precision, then with `Decimal` arithmetic,
+  for example `$0.1` rather than `$0.09999999999999999`), so Task 6 copied exact prices.
+- **Free and unpriced listings are refused** (Andy's decision): a free or preview listing can be
+  withdrawn or rate-limited, and it would win the cost comparison by default. This refused 7
+  listings, dropping the eligible models from 16 to 14; two had reached the shortlist (ranks 1
+  and 2), so reserves 9 and 10 moved onto it. Andy allowed an exception for NVIDIA's free
+  listings if any qualified; none of the five did.
+- **Prices were checked against the saved list** (Task 6). `openai/gpt-5.6-luna`'s existing
+  entry already matched. `z-ai/glm-5.3-flash` is priced differently now ($0.045/$0.14 against
+  the old $0.09/$0.30): a new constant, `S27_GLM_53_FLASH`, placed after the old ones, holds the
+  current price; the old constants were left in place and flagged for Andy. The reasoning-level
+  test asserts entry by entry, since S2.7 adds ten entries.
+- `request_body` is called with `history=()`, which has no default on the real signature.
+- **The batch-with-image call reserves and records spend** (not in the brief's code): a spend
+  row at submission (cost 0.0) and, from `batch-poll`, one row with the real cost under its own
+  job id. Review fix: that row is written once, only at a terminal status, so a re-poll or a
+  partial cost is never counted twice.
+- **Probe replies are saved privately first** under `data/s27/probe-replies/`; only a passed
+  model's reply is copied into the committed fixtures. S2.6's reply-parsing test was narrowed to
+  its four fixtures by name, and S2.7's fixtures have their own test.
+- `cmd_probe` is its own function, mirroring S2.6's reserve, spend and settle order, because
+  S2.6's is fixed to its four candidates and its script was not in Task 7's files.
+- `S27_CANDIDATES` was defined empty until the probe ran.
+- The probe tests use invented model ids, added to the price and reasoning tables by
+  monkeypatching.
+- **The probe and the batch call were run by Claude** (Task 7 Steps 6–7), on Andy's go-ahead
+  ("You can run those now it's Sunday!") at about 13:10 UTC on `076ce08`, not by Andy as
+  planned.
+- **The probe's outcome** (Task 7 Step 7). The two Meta models failed with a 403 from
+  OpenRouter's 18+ age setting, not from reading the page, and were replaced in order by
+  reserves 9 and 11 (W5); reserve 10, `qwen/qwen3.8-flash`, returned a reply that did not parse.
+  The eight that passed are `S27_CANDIDATES`; their replies are committed, and the unparsable
+  reply stays under `data/` only.
+- **The batch service still refuses images** (W2). The call for `deepseek/deepseek-v4.1-flash`
+  was accepted, then failed: base64 images are rejected. Every re-test call stays synchronous at
+  the standard price.
+
+#### Track 2: the re-test (Tasks 8–10)
+
+- **The recheck pair is set once in the `Makefile`** (`HW_RECHECK`, `PHOTO_RECHECK`, defaulting
+  to the `pass2/` pair), and `s27-retest-verify`, `-automatic` and `-score` all use it, not the
+  brief's fallback to the top-level pair, which contradicted W7.
+- `absolute_notes` takes 0080's photograph and scan limits from S2.6's constants, turned into
+  exact fractions, so exactly 1 in 20 prints "within".
+- Every division in the rule and the notes goes through S2.6's exact `_fraction` helper, which
+  gives 0 for an empty denominator.
+- The script's Status paragraph names only what was built at each stage; tests beyond the brief
+  cover the boundary arithmetic, the cost tie-break, the 1-in-20 edge, the recheck and `main`.
+- **`verify` reproduced every one of Qwen's published second-pass counts** with the `pass2/`
+  pair, matching Andy's recollection (Task 8 Step 5). The top-level pair does not (1551 key
+  lines and 55 inventing lines against the published 1548 and 54).
+- `word_cards`' interface line gives its real signature, with the photograph card as default.
+- **The re-test reuses S2.6's code** (Task 9): S2.6's `cmd_run` gains an optional expected cost
+  per page ($0.003 for the re-test), and the card loop moved into a shared `_version_cards`.
+  S2.6's five marking outputs were rebuilt byte-identical before and after the change, and every
+  S2.6 test passes unedited.
+- The re-test's card shuffles use S2.6's seed with their own bases (300, 400); the candidates are
+  sorted first, so the same set gives the same cards in any order; `pages` refuses a candidate
+  with key pages the cache holds no reading of.
+- **`pages` refuses a rebuild that would move saved marks** (Task 9 review): marks are kept in
+  the browser by row, and the shuffle depends on the candidate set. A rebuild with the same set
+  rewrites every file byte for byte.
+- **DeepSeek's retry stopped at its reservation** (Task 9 Step 6, Andy: option A; $0.2861 against
+  $0.2820, 63 of 94 failed pages re-read, 31 unread), which ended the command before five
+  candidates were retried. `run` gained `--models`, and the one retry was finished for the other
+  five. DeepSeek's 31 pages were left unread: its first pass alone cost $0.0031 a test page, twice
+  Qwen's, so the cost condition rules it out. First pass $1.40 for all eight; $1.71 before the
+  finishing retry.
+- The plan's file table gains `s27-retest-automatic`.
+- **Qwen's cost bar stays S2.6's rounded $0.00154** (Task 8 review). `automatic` and `score`
+  compute Qwen's row from the cache and print its measured cost, $0.0015362713, beside the bar;
+  a candidate costing between the two would have been flagged for Andy. None was.
+- The results file states the retries, including DeepSeek's 31 unread pages, scored as failed.
+- **Safeguards beyond the brief** (Task 10): `automatic` and `score` re-verify Qwen's row first;
+  both refuse a candidate with a key page never read; `score` refuses a candidate still in the
+  running that is not marked, and a sheet holding another model's cards; the header names the
+  recheck pair and whether it is the one Andy recalled.
+- **`automatic` put all eight candidates out** (Task 10 Step 5, free): seven on inventing lines
+  (65 to 181 of 1548, against Qwen's 54) and handwriting accuracy, some also on line format or
+  typed errors; DeepSeek on handwriting accuracy, typed errors and cost. No candidate lay between
+  Qwen's measured cost and $0.00154. "To mark: none".
+- **Andy's marking was skipped** (Task 10 Step 6), as the step allows; the results file prints
+  "not marked (already out on an automatic measure, walkthrough W3)".
+- **`score` wrote `docs/results/s27-transcriber-retest.txt`** (Task 10 Step 7): "no candidate
+  meets all seven: Qwen stays".
+
+#### Track 2: routing, the readable split and the transcriber decision (Task 11)
+
+- **Routing pages** (Andy, "now"). While deciding the page rule, Andy asked whether different
+  models could read pages by how much text they hold. Three cheaper candidates made fewer typed
+  errors than Qwen, but under W3 nobody had marked whether they invent words on the full-page
+  scans. `routing-pages` builds the scan page for named candidates in its own folder, and
+  `routing-tally` writes `docs/results/s27-routing-scans.txt`. Both are free and exploratory
+  evidence for 0120's open routing idea; neither changes 0100's rule or the re-test's outcome.
+- **The routing cards gain a fourth choice** (Andy: A), "can't judge — I can't read this part
+  of the page", counted apart, not as invented; S2.6's pages keep their three choices. The sheet,
+  card numbers and saved marks were unchanged. `routing-tally` refuses a model the page was not
+  built for, a page with no model list, and an unknown choice.
+- **A post-hoc check on Andy's challenge**: do the handwriting key's `[illegible]` lines decide
+  the rejection, since any word written there counts as invented (0079)? `readable-split`
+  (`make s27-retest-readable`) scores readable and `[illegible]` pages apart with the committed
+  scorer and checks that the two parts add up to each model's totals. An ad-hoc count had given
+  Qwen 1041 lines right, not 1036, because it skipped 0086's format rule; calling the scorer
+  itself removes that gap. The verdict holds.
+- **The page rule was not brought to Andy as a separate decision.** T3's outcome under 0100
+  item 4 is `all`, and with transcription off by default it applies only if transcription is
+  used again; 0120 item 4 records `PAGE_RULE = "all"` and `TRANSCRIBER` for that case (Andy: "Ok
+  suppose we need to stick with qwen and the costs").
+- **Task 11 Step 3 was not needed**: neither `TRANSCRIBER` nor `PAGE_RULE` changes, so
+  `docket/transcribe.py` was untouched. The planned re-read of `dev-400` at the meeting point is
+  replaced by 0120 item 5.
+
+#### The sealed run (track 1, Task 18)
+
+- **`scripts/sealed_report.py` as planned, plus finding recall@10** for both runs (Round 6 moved
+  it) and a held-out refusal; four tests. `s27-sealed-run` names the two guidance files itself,
+  so the sealed run cannot start with another stack; `s27-sealed-results` fixes the `dev-400`
+  side to Round 6's checked run. At v1, the planned transcription step does not apply: the run
+  fetches the sealed dockets itself.
+- **The first attempt was refused** (Task 18 Steps 6–7, run by the controller on Andy's
+  instruction, "Can you just get this started now for me"): at 11:40 UTC the monthly guard
+  refused it before any call ($1.68 projected plus $47.75 spent, against the code's $40
+  default), because the launch script had not set 0104's `NTSB_MONTHLY_BUDGET_USD=50`. It left a
+  folder holding only `spec.json`, `20260929T114018-9cbe5c5-dev-seal-400-B`, kept under
+  `data/runs` and unused.
+- **The sealed run** is the second attempt, `20260929T114049-9cbe5c5-dev-seal-400-B`: commit
+  `9cbe5c5`, clean tree, prompt `s1-v6+ge17fecdc66ec`, 401 cases, $1.1802; 397 answered, 3
+  refused by the leakage guard, 1 reply-format failure. Its batch was submitted at 14:34 UTC,
+  inside the slow window, and finished at 15:06. The Luna check cost $0.1133.
+- **The judge was not run on the sealed sample**, though §9.1 item 3 said "with the judge": the
+  narrative label failed validation (0099), and `ntsb-eval judge` refuses a sample other than
+  `dev-400` without `--validated`. The misread part of the prediction is "not scored".
+
+#### Close-out fixes (the final whole-branch reviews)
+
+- **The sealed guard at every entry point** (Important 1). `ntsb-eval baseline` and five S2.6
+  scripts that take a free-form sample (`page_kinds.py`, `analysis_handcheck.py`,
+  `narrative_coverage.py`, `name_coverage.py`, `docket_leak_scan.py`) could read the sealed
+  sample before its registration; each now calls `refuse_sealed` first. Tests added, including
+  one for `ntsb-eval check`, which already refused it.
+- **One shared development-only refusal**: `samples.refuse_unless_development(run_id, sample)`
+  replaces the six scripts' hand-copied checks, which accepted `dev-seal-400` as a plain
+  development sample (defence in depth: no sealed run could exist before registration). It takes
+  the sample name, not the run record, to keep the import-linter contract. Each script's refusal
+  wording is kept. `scripts/coding_stats.py` still reads the sealed ids, to leave them out of the
+  pool.
+- **The prompt version is printed** (Minor 1): `report.provenance` prints `prompt=`, and
+  `round_result`'s `run:` line prints both runs' versions, since from Round 5 a guided run's
+  `s1-v6` can differ from its reference's `s1-v5`.
+- **Unfinished and mismatched runs are refused** (Minor 3): `round_result` and both Round 1
+  reports refuse a run whose `finished` is empty, and runs that do not share sample, arm and
+  evidence version. The check's "already exists" message says a dead pass's folder must be
+  deleted by hand.
+- **The Luna check's boundary test asserts every withheld window** (Minor 4), not the first 80
+  characters of each field, like `jev2`'s; a mutation showed it fails on a leak, then was
+  reverted.
+- **`coding_stats.processed_rows` parses the raw record only for development rows** (Minor 5);
+  nothing had leaked. The table and results file were rebuilt byte-identical.
+- **§12's Jev refusal is not in the client** (found at close-out). §12 said the Jev client
+  refuses any call that is not the ordering check on a development run. As built,
+  `model/typesafe.py` has no such refusal: only `ntsb-eval check` builds the client, and the
+  check refuses any source that is not a finished development arm B run before any client is
+  built (`checkpass.preflight`; `tests/test_eval_app.py`'s held-out check test). The same end,
+  enforced one layer up.
+- **The ported Jev fixture holds a real case's evidence** with no case id beside it (Minor 6).
+  It was identified locally as a 2009 development-split case, recorded in
+  `tests/fixtures/typesafe/README.md`, and `test_typesafe_fixture_case_is_development_split`
+  checks its split by event date.
+- **Decision 0106's numbers now come from a script** (Important 2, Minor 2). They were ad-hoc
+  counts. `scripts/round_comparisons.py` writes `docs/results/s27-round-comparisons-dev.txt`;
+  every figure matches 0106's table and Round 6's note. A line was appended under Round 6's
+  override and a "Source of the numbers" section to 0106; nothing above either was edited.
+- **Track 2's output filter was stricter than written** (Important #2): the shortlist refuses a
+  listing whose output is not text only, where §7.2 and 0100 item 1 say "returns text". It
+  refused 13 listings and changed nothing on the shortlist: the one image-and-text listing among
+  them would have ranked as reserve 15. 0120's Context now says "three conditions".
+- **Part of the shortlist results file was written by hand** (Minor #1): its probe and batch
+  sections come from the probe's printed output, the spend file and the batch service's reply,
+  not from the script; the two 403 lines are shortened. The numbers are left as they are.
+- **`page_value.py` prints the near-empty share only for text-and-image pages** (Minor #7), not
+  for each page kind as §7.3 describes. It does not affect the rule's choice; not regenerated.
+
+#### Lint-only rewrites of the plans' code
+
+In each case the formatter, the linter or `mypy --strict` required another form, and behaviour
+is unchanged. Track 1: a docstring split to fit 100 columns (Task 13); typed helper functions in
+place of `list.append(...) or ...` lambdas, `noqa` marks on fixed git calls and wrapped lines
+(Tasks 1, 2); a typed `_sorted_dict`, an explicit `__all__`, fixture-row annotations and an
+import moved to the top (Task 3); a Status sentence appended to the existing section, a `noqa`
+for `miss_group`'s early returns and wrapped lines (Task 4); a typed row read with a runtime
+check, a wrapped docstring, a named constant, import order and annotations (Task 5); import
+order, wrapped lines and annotations (Tasks 6, 14, with a stray `type: ignore` removed in 14);
+wrapped lines, a `noqa` for `check_text`'s signature, a named constant, import order, a split
+assertion, a typed helper and a `cast` (Task 8); an import folded into an existing line (Task
+9); lint fixes in the check's tests, typed test factories, a real `datetime` for `finished` and
+imports merged at the top of the boundary test (Task 10); wrapped docstrings, a named constant,
+a typed helper, a renamed loop variable and `__all__` (Task 11). Track 2: an annotated
+page-rule literal and imports kept unduplicated (Task 2), `collections.abc.Set` in place of a
+name that does not exist (Task 5), imports hoisted to the top (Task 7), `RESOLUTION` imported
+from its home module (Task 8), a typed integer read (Task 9) and an unused fixture removed
+(Task 10).
+
+### Decisions taken during the stage
+
+Records 0093 to 0100 were written with this specification; 0101 to 0107 and 0120 during the
+build.
+
+- [0093](../decisions/0093-s27-runs-as-two-tracks-guidance-on-v1.md) — S2.7 runs as two
+  tracks: coding guidance on v1, transcription alongside (item 3 amended by 0102).
+- [0094](../decisions/0094-coding-statistics-from-a-pool-outside-the-samples.md) — coding
+  statistics come from development verdicts outside the samples.
+- [0095](../decisions/0095-a-sealed-development-sample.md) — a sealed development sample,
+  `dev-seal-400`, opened once.
+- [0096](../decisions/0096-the-ordering-check.md) — the ordering check: what it sees, what it
+  may choose, and that a model must beat the plain rule (item 4 amended by 0101, item 5 by
+  0103).
+- [0097](../decisions/0097-jev-as-an-ordering-check-model-on-development-cases.md) — Jev is
+  admitted as an ordering-check model on development cases only.
+- [0098](../decisions/0098-guidance-rounds-stop-rule-and-prediction.md) — guidance rounds:
+  sources, registration, reading rule, stop rule, the $25 line and the prediction (item 2
+  amended by 0101; item 4's outcome for Round 6 overridden by 0106).
+- [0099](../decisions/0099-the-judges-narrative-label-and-four-outcomes.md) — the judge's
+  narrative label gives four outcomes, validated by Andy's hand-read before it is cited; it
+  was not validated.
+- [0100](../decisions/0100-the-transcriber-retest-and-page-rule.md) — the transcriber re-test
+  is judged against Qwen, and the page rule is measured before it is chosen.
+- [0101](../decisions/0101-the-clear-habit-safeguard.md) — counts act only on a clear habit,
+  at least 60% of at least 20 pool cases.
+- [0102](../decisions/0102-a-parent-branch-with-a-branch-per-track.md) — a parent branch with
+  a branch per track; spend traced on the branches grown from the parent (item 3 amended by
+  0107).
+- [0103](../decisions/0103-a-registered-second-jev-check.md) — a second Jev check, designed
+  from TypeSafe's documentation and registered before it runs; Luna stays.
+- [0104](../decisions/0104-september-2026-budget-raised-to-50.md) — the monthly budget is $50
+  for September 2026 only.
+- [0105](../decisions/0105-codes-missing-from-the-dictionary-join-the-tables.md) — six codes
+  the NTSB uses, missing from its data dictionary, join the code tables; prompt version
+  `s1-v6`.
+- [0106](../decisions/0106-round-6-kept-by-override.md) — Round 6 is kept by override of the
+  do-no-harm rule.
+- [0107](../decisions/0107-s27-spend-counts-its-own-branches-only.md) — S2.7's spend counts
+  only its own `s27-` branches, not a later stage's, and not HEAD.
+- [0120](../decisions/0120-qwen-stays-and-transcription-is-off-by-default.md) — Qwen3.5 122B
+  stays the transcriber and the page rule stays `all`; transcription is off by default, for
+  cost, and becomes a tool the S3 loop may choose (amends 0074's default).
+
+### Implementation record
+
+- Pull request: #17 (https://github.com/floyda/ntsb-probable-cause/pull/17), merged 2026-09-29 as
+  `1d2a12d` with a merge commit (decision 0033)
+- Close-out: pull request #19 (https://github.com/floyda/ntsb-probable-cause/pull/19), from
+  `1d2a12d`, holding only this record, the status changes, the plans' removal and the
+  version (decision 0017)
+- Plans, at their last commits: https://github.com/floyda/ntsb-probable-cause/blob/bb6a0451d6113197775d17cb3767b37a01f3c9a5/docs/plans/2026-09-26-s27-track1-coding-guidance.md and https://github.com/floyda/ntsb-probable-cause/blob/87f74f188cf50ca683b68a2d72553a94441a5838/docs/plans/2026-09-26-s27-track2-transcriber.md
+- Commits: from `94f5d42` to `bb6a045`, both included (121 commits before the close-out commit)
+- Spend: $15.10 on S2.7's own branches ($13.34 evaluation runs, $1.76 preparation spend rows),
+  `uv run python -m scripts.stage_spend`, 2026-09-29, against the $25 line.
+- Release: v0.7.0 (decision 0018). The tag was first created on `1d2a12d`, before the
+  close-out; Andy moved it on 2026-09-30 to the close-out's own commit, so the release holds
+  S2.7 and its close-out and nothing merged after them (the S3 probe, pull request #18)
 
 ---
 
