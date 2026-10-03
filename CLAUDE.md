@@ -18,21 +18,52 @@ SQLite store, running on AWS; S2.6 the transcription of words in page images (ev
 version v2), off by default since S2.7 for cost (decision 0120). **S2.7 (coding guidance) is
 built**: an ordering check after the answer (`ntsb-eval check`), coding guidance files named
 on every run (`run --guidance`), the statistics pool behind both, and a sealed development
-sample opened once. The agent loop is not built yet. Read build-brief §7 before writing any code, then
+sample opened once. S2.8 (a coding lookup) is cancelled (decision 0132). **S3.1 (the agent loop)
+is built**, the first of S3's three sub-stages under one spend line (0128): arm C, the loop in
+the `agent` package, on native tool calling, with a read-or-skip choice over the docket and four
+coding tools; S3's own statistics file and sealed sample; arm B's fixed tool post-pass; and the
+loop's noise floor and format gate on `dev-400`. Tuning closed without a registered round
+(0139): the loop frozen at `fd6053f` is S3.1's result and the loop S3.2 measures. The precedent
+tool the agent would question is built after S4, as a measured second version (0140). **S3.2
+(the claims) is next**: predictions registered first, arm C against arm B at equal cost, the
+ablations, the calibration fit, then S3's sealed sample and `heldout-400` once each; S3.3 is
+live shadow. Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
-takes a part of), and each stage's specification under `docs/specs/` (its As-built section
-records what was delivered), which amend the brief where they differ.
+takes a part of; its 2026-09-30 note says what 0121 to 0130 changed), and each stage's
+specification under `docs/specs/` (its As-built section records what was delivered), which
+amend the brief where they differ. S3's specification
+(`docs/specs/2026-09-30-s3-agent-loop-design.md`) holds the shared design and S3.1 in full, S3.2
+and S3.3 in outline; the precedent tool's design note
+(`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4.
 
 ## Required components (build-brief §7)
 
 - **Agent loop and tool interface**, with a step budget, an abstain path, and a log of every
-  step and its cost. Each step records the agent's hypothesis as codes with probabilities, and
-  the trail is scored per step (0021). Tools are grouped by source and measured arrival; day-1
-  fields are start facts, and every tool result goes through `split_record` with the other
-  roles excluded, never a second assembler (0023). Tool #1 is the docket; the record's weather
-  fields are a tool in S3; the Iowa Mesonet archive (params already verified in the spike's
-  `config.yaml`) comes later, with its own provenance rule.
+  step and its cost; every tool result goes through `split_record` with the other roles
+  excluded, never a second assembler (0023). **Built in S3.1** as `agent/`, on the design of
+  0121 to 0127: the agency is the read choice and the coding step; the hypothesis is recorded at
+  checkpoints (H0 before reading, H1 and H2 after a read choice that read something, the answer),
+  not after every call; structured evidence is not behind tools, so H0 uses all non-docket
+  evidence (0122); the masked condition is paused (0123). `loop.py`'s `CaseLoop` is one case's
+  state machine: it hands out its next call and takes the reply, and never calls a model;
+  `steps.py` is its step table (the forced `tool_choice` per step; at most 2 read choices and 6
+  coding calls; one retry per broken call); `drive.py` holds `drive_sync` and `drive_batch`
+  (each batch round sends every unfinished case's next call; `replies.jsonl` and `rounds.jsonl`
+  make a resume exact, waiting on a round already sent); `run.py`'s `AgentRunner` is arm C in
+  the harness (folder, budget, scoring, records, `trail.jsonl`); `armb.py` is arm B's fixed tool
+  post-pass (0127); `schemas.py` the seven strict tool definitions and argument parsing;
+  `tools.py` the four coding tools (`describe_codes`, `occurrence_usage`, `past_findings`,
+  `suggest_codes`, 0125), pure over the code tables and statistics; `texts.py` the fixed texts
+  and the prompt version; `documents.py` the only place a record or docket becomes model text
+  (the evidence, the listing and the documents read, each its own split); `trail.py` the
+  per-call `AgentCall` rows and `LoopOutcome`; `later.py` a later trigger's opening (0122; built
+  and tested, first used live in S3.3); `facts.py` a document's numbers. Non-evidence tool text
+  is `model/tool_text.py`'s `ToolText`; import-linter contracts keep the library from importing
+  `agent` and its tools and texts from any case record, and the boundary test reads every tool
+  text. Tool #1 is the docket at evidence v1: scan-only documents are listed as not readable,
+  with no transcription tool in S3.1 or S3.2. The Iowa Mesonet archive (params already verified
+  in the spike's `config.yaml`) comes later, with its own provenance rule.
 - **Docket client and PDF classifier/extractor** as an importable module with test fixtures
   (the spike's probe scripts hard-code temporary paths and are not reusable as-is). **Built in
   S2**: `docket/client.py` (caching, polite rate limit), `docket/listing.py` and
@@ -50,7 +81,15 @@ records what was delivered), which amend the brief where they differ.
 - **Eval harness**: one command, fixed case list, ablation flags, per-slice reporting
   (slices decided in S1; narrative presence no longer applies, 0013; fatal / non-fatal is
   proposed before investigation class, whose mix differs by era), confidence intervals,
-  cost per run, the three arms (0022) and the full and masked availability conditions (0023).
+  cost per run, the three arms (0022; in S3, 0127: arm A start facts, arm B the fixed pipeline
+  of S2.7's answer, every coding tool in a fixed order, one more answer and the ordering check,
+  arm C the loop) and the full availability condition (the masked condition is paused, 0123).
+  From S3.1 every S3 run (the loop's tools, arm B's post-pass and its check) counts in
+  `load_stats("s3")` (`scoring/coding_stats.py`; `scoring/tables/coding_stats_s3.json`,
+  `docs/results/s3-coding-stats.txt`: the development pool less `dev-400`, `dev-seal-400` and
+  `dev-seal-s3-400`, 12,090 cases), and S2.7's `load_stats("s27")` file is never rewritten;
+  `dev-seal-s3-400` is S3's sealed sample (401 cases, seed 20260930), refused until S3.2's
+  registration is committed and used once there (0129).
   The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness. From S2.6
   every run records its **evidence version** (0076): v1 is text layers, v2 adds
   transcriptions, v3 (pictures alongside text) is a name only and every run refuses it (0090);
@@ -67,7 +106,7 @@ records what was delivered), which amend the brief where they differ.
   are built in S2.5**: `store/` (`db.py`, `schema.py` with numbered migrations, `models.py`,
   `sync.py` for a local or `s3://` location) is the only code that touches SQLite, and holds
   what the recorder observes, never a synthesis or verdict field. The predictions tables come
-  in S3 and S4.
+  in S4 (S3 specification §11); S3.1's trails are JSONL in the run folder, never committed.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
   predictions (design notes suggest committing hashed rows to git for tamper-evidence). **The
   polling half is built in S2.5**: the recorder (`recorder/window.py`, `recorder/cases.py`,
@@ -245,8 +284,8 @@ Andy has proposed, before S3; decision 0089).
 
 **S2.7 measured coding guidance on `dev-400` and checked it once on a sealed development
 sample; it ran no held-out case, so S2.4's held-out arm B above stays the bar.** Two identical
-arm B runs differ by occurrence top-1 +4.0% [+0.5%, +7.5%] and change the first guess on 153
-of 399 cases (`docs/results/s27-round0-dev.txt`): a round must beat that noise. Andy's
+arm B runs differ by occurrence top-1 +4.0% [+0.5%, +7.5%] and keep the same first guess on
+only 246 of 399 cases (`docs/results/s27-round0-dev.txt`): a round must beat that noise. Andy's
 hand-read of 40 misses put 34 down to coding (19 convention, 15 wrong phase) and 4 to a misread
 or missing fact; the judge's narrative label failed its validation (32 of 46 agreements,
 69.6%, against 75%) and carries no claim. **The GPT-6 Luna ordering check** (a second call that
@@ -260,6 +299,48 @@ Andy's override of the do-no-harm rule (decision 0106), and rounds 2, 4 and 5 we
 (`docs/rounds/`). **The final setup on the sealed sample** (`docs/results/s27-sealed-dev.txt`):
 top-1 27.5% [23.3%, 32.0%] against `dev-400`'s 25.1% [21.1%, 29.5%]; finding recall@10 22.0%
 against 22.6%. The prediction that `dev-400` top-1 would end between 30% and 36% was not met.
+
+**S3.1 measured the loop's noise floor on `dev-400` and read the loop against arm B there; it
+ran no held-out case and makes no claim (0128), so S2.4's held-out arm B above stays the bar.
+What follows is a noise floor and development readings, not a bar.** Two identical arm C runs
+at `fd6053f` (prompt `s3-v1+ge17fecdc66ec+p947fac1c86a4`) score occurrence top-1 26.4% [22.3%,
+31.0%] (394 scored) and 28.1% [23.9%, 32.8%] (391), finding recall@10 (flagged) 27.7% and
+25.4% (each run's own table: `docs/results/s3-armc-a-vs-s3-armb-full-dev.txt`, `-b-`). Paired
+on 387 cases they differ by top-1 -2.1% [-5.9%, +1.6%], top-3 +1.3% [-2.6%, +5.2%], finding
+recall@10 +2.2% [-0.4%, +4.9%], and the first code changes on 162 of 387
+(`docs/results/s3-noise-floor-dev.txt`); no third run was needed (within 4.0 points, 0130).
+The runs agree on 2392 of 2608 read-or-skip decisions but make the same coding calls on only 3
+of 387 cases. The format gate passed on both, 5 and 8 of 401 cases failing for format or tool
+reasons against at most 8 (run b at the limit); an S3 round over the gate is dropped, and its
+failed cases count as wrong (0136). Cost: $4.5711 and $4.4476 computed, $1.8400 and $1.9738
+billed, with 71.6% and 66.7% of prompt tokens cached. **Against S3's full arm B** (0127), which
+scores top-1 27.6%, top-3 50.1%, finding recall@10 27.3% (the S3.1 plan's 2026-10-03
+Deviations entry), runs a and b differ by top-1 -1.0% [-5.3%, +3.3%] and +1.0% [-3.6%, +5.6%],
+top-3 -11.4% [-16.0%, -6.9%] and -12.8% [-17.9%, -8.2%], finding recall@10 +0.4% [-2.0%,
++2.9%] and -1.5% [-3.9%, +0.6%] (`docs/results/s3-armc-a-vs-s3-armb-full-dev.txt`, `-b-`):
+level on top-1 and findings, behind on top-3, at $4.57 and $4.45 computed ($1.84 and $1.97
+billed) against arm B's $2.43 computed (about $2.19 billed) for its three parts. S3.2's
+registration defines equal cost (0135 item 6). The loop's finding lead over S2.7's final arm B
+(+5.1% [+2.5%, +7.7%] and +2.9% [+0.5%, +5.1%], `docs/results/s3-armc-a-vs-s27-armb-dev.txt`,
+`-b-`) came from the coding tools, which arm B now calls in a fixed order: that step alone adds
+finding recall@10 +4.7% [+2.5%, +7.0%] and top-1 +6.8% [+4.0%, +9.8%] to S2.7's answer
+(`docs/results/s3-armb-tools-vs-s27-armb-answer-dev.txt`).
+
+**S3.1's tuning record is its probes, not a round (0139).** The ordering check, run once over
+run a as a diagnostic, does not raise the loop's top-1: +1.3% [-1.5%, +4.1%], 75 first codes
+changed, 18 fixes and 13 breaks (`docs/results/s3-check-diagnostic-dev.txt`, 0137); the loop's
+own `occurrence_usage` calls do that job. Cases whose NTSB probable-cause sentences match word
+for word share their first occurrence code in only 619 of 1650 (37.5%; the event 71.9%, the
+phase 49.2%; `docs/results/s3-coding-consistency-dev.txt`), but their flagged findings far more
+(recall@10 74.1% [72.2%, 75.9%]; `docs/results/s3-finding-consistency-dev.txt`). Precedent
+used mechanically does not help: the five nearest earlier cases to the loop's cause sentence
+hold the NTSB's first code in 48 of 266 "always wrong" cases, "in between" by its rule
+(`docs/results/s3-precedent-probe-dev.txt`), and their findings fall below the loop's own, and
+only come level under the whole pool (0138), "not promising" both ways
+(`docs/results/s3-finding-precedent-dev.txt`). Of run a's 1085 flagged findings, 499 (46.0%)
+are in a category the loop never named, 213 (19.6%) lose the item and 80 (7.4%) the modifier;
+the NTSB's item is the pool's commonest in only 46 of those 213, so item choice reads as
+case-specific (`docs/results/s3-finding-misses-dev.txt`).
 
 ## Model access
 
@@ -299,7 +380,22 @@ choose them as a tool. Every v2 run records its transcriber and page rule.
 answer, synchronous at the standard price (about $0.12 per 400 cases), run as a post-pass over
 a finished run. **Jev** (TypeSafe's System One model) is admitted on a second transport for
 the ordering check on development runs only (decision 0097), with `TYPESAFE_API_KEY`; it was
-not kept.
+not kept. In S3 it runs in arm B only (0127), and once over arm C as a diagnostic (0137).
+
+**Arm C** (S3.1) calls GPT-6 Luna at reasoning `medium` with native tool calling (0124): the
+seven strict tool definitions identical on every call, `tool_choice` forcing each step's tool
+(`"required"` during coding), parallel tool calls off, and an append-only conversation so the
+provider's prompt cache holds. Evaluation runs go in batch rounds at the `:batch` price; smoke
+runs use `--sync` at the standard price. The shape probe (`docs/results/s3-shape-probe.txt`)
+found strict tools and forced tool choice honoured at both prices, and no need to pass the
+reasoning back (`loop.PASS_REASONING` is `False`). Arm C's prompt version is
+`s3-v1+g<12>+p<12>` (`+r<N>` for a tuning round): `+g` fingerprints the guidance, `+p` the
+source of every module that composes model-facing text, so any edit to those files, a comment
+included, changes it (0133). Batch replies carry no cost of their own, so a run's computed cost
+prices every prompt token at the batch input rate, while the provider bills cached tokens
+lower: for arm C and arm B's tool post-pass, S3's spend line and the monthly guard count what
+was billed when every round reported it, else the computed price (0135). Both figures stay in
+every record.
 
 Two consequences to hold on to:
 - The spike's £0.034/case and 57% top-1 were measured on a different transport, with the
@@ -310,8 +406,10 @@ Two consequences to hold on to:
 
 A per-case cost cap is enforced in code, not just measured, because these calls are metered.
 The spike's line was £0.05/case; it is re-measured in S1 and S3, because every case now reads
-the docket (0013). GPT-5.6 Luna results elsewhere in this file are historical reference
-points, not bars.
+the docket (0013). Arm C's cap is $0.15 a case (`agent/run.py:CAP_USD`, the learning probe's;
+S3.2 fixes it before any comparison run); the noise-floor runs cost $0.0114 and $0.0111 a case
+computed, $0.0046 and $0.0049 billed (`docs/results/s3-noise-floor-dev.txt`). GPT-5.6 Luna
+results elsewhere in this file are historical reference points, not bars.
 
 ## Commands
 
@@ -401,6 +499,38 @@ make s27-routing-pages / s27-routing-tally  # exploratory: text-and-image page r
 make s27-retest-readable            # the post-hoc readable-lines check; free
 ```
 
+S3's targets (`s3-*`; each paid one first runs `scripts.stage_spend --stage s3 --estimate <usd>`,
+which refuses a step past S3's $50 line, counted by commit on `s3-` branches holding S3's first
+commit `777c2a5`; S3.1's share is $20, decision 0128; runs count what was billed, 0135):
+
+```bash
+make s3-spend EST=<usd>             # S3's spend so far; exit 1 past the $50 line; free
+make s3-draw-sealed                 # draws dev-seal-s3-400, ONCE (seed 20260930); free
+make s3-coding-stats                # S3's statistics file, the pool less dev-seal-s3-400; free
+make s3-shape-probe                 # the native-tool shape probe, ONCE (paid, cents)
+make s3-smoke-sync                  # arm C on dev-400's first case, standard price (cents)
+make s3-smoke-batch                 # arm C on dev-400's first 20 cases, batch rounds (paid)
+make s3-noise-floor                 # arm C on dev-400 from the frozen commit; run twice (paid)
+make s3-noise-report RUNS="<a> <b>" # noise floor, format gate, third-run rule; free
+make s3-armb-tools RUN=<id>         # arm B's tool post-pass over a finished arm B run (paid)
+make s3-check-diagnostic RUN=<id>   # the ordering check over arm C's run a, ONCE (paid, 0137)
+make s3-round N=<n>                 # a registered tuning round's arm C run (paid; none run, 0139)
+make s3-round-result N=<n> RUN=<id> REFERENCE=<id> NOISE="<a> <b>"  # its reading (0136); free
+make s3-case-groups RUNS="<ids>"    # always right / always wrong / flipping, counts only; free
+make s3-trail-pages RUN=<id> GROUPS=<json>  # private trail reading pages, never committed; free
+make s3-miss-kinds RUNS="<ids>" GROUPS=<json>  # how the loop's first code misses; free
+make s3-precedent-probe RUNS="<a> <b>" GROUPS=<json>  # precedent for first codes; free
+make s3-precedent-pages RUN=<id> GROUPS=<json>  # its private reading page; free
+make s3-coding-consistency          # do identical cause sentences share a first code; free
+make s3-finding-consistency         # the same for flagged findings; free
+make s3-finding-precedent RUNS="<a> <b>"  # precedent's findings against the loop's; free
+make s3-finding-misses RUNS="<a> <b>"     # where the loop's findings miss; free
+```
+
+The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):
+no model call, and they decide nothing. What any `s3-*` target commits is counts only; the
+reading pages and case lists go under `NTSB_RUNS_DIR`, never committed.
+
 The `s26-*` targets that take `MODEL`, `PER_PAGE` or `PER_CASE` stop with a `make` error when
 the variable is unset. S2.6 wrote no held-out target: its held-out runs are deferred (0090).
 
@@ -445,6 +575,28 @@ and guided runs); and `transcribe --model --page-rule` (every finished-transcrip
 its page rule). The sample `dev-seal-400` (the sealed development sample, 0095) is refused by
 every command until `docs/rounds/s27-sealed.md` is committed; it was used once, on 2026-09-29.
 
+S3.1 added: `run --arm C`, the loop (`agent/run.py:AgentRunner`): evidence v1 only; the
+guidance `r3-loc-stall` and `r6-aircraft-control` when none is named, any other refused outside
+a round; a $0.15 per-case cap by default; S3's statistics; batch rounds unless `--sync` (with
+`--price-variant standard`), and `--resume RUN_ID` waits on a round already sent rather than
+sending it again. Its folder adds `trail.jsonl` (one `AgentCall` per model call: tool, arguments,
+result size, tokens, cost, never a document's text), `replies.jsonl` and `rounds.jsonl` to arm
+B's files, so `report --against` compares it unchanged; for arm C, `report` prints an `unread`
+line and the cached share of prompt tokens. `run --without suggest_codes|coding` (arm C only,
+repeatable) is a tool ablation, and `run --round N` a tuning round, refused unless
+`docs/rounds/s3-round-<N>.md` is committed; `resolve_latest` skips both, and every derived run.
+`tools RUN_ID [--sync] [--budget-usd]` is arm B's fixed tool post-pass (0127), writing
+`<run id>-tools` (prompt `<source>+tools-s3+p<12>`); then `check <run id>-tools --way luna
+--stats s3` completes arm B. `check` gains `--stats s27|s3` (default `s27`); a `-tools` run or
+an arm C run is checked with `s3` only, and an arm C run with `--way luna` only, as a
+diagnostic (0137): `report <check id> --against <source>` prints the first codes changed, with
+fixes and breaks. Arm C and
+the post-pass refuse `dev-seal-400`; `dev-seal-s3-400` is refused by every command until
+`docs/rounds/s3-registration.md` is committed (0129). Spend rows gain the kind `probe` (paid
+work that tests a shape or a flow, 0131): the learning probe's three jobs were relabelled to
+it, their original rows kept beside them as `spend-before-relabel.jsonl`, which the budget code
+never reads; the probe's $1.1954 is outside S3's line (0128).
+
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
@@ -463,7 +615,7 @@ committed), `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
 production) and `NTSB_TRANSCRIPTION_DIR` (where per-page transcriptions are cached; defaults
 to `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly;
-never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057).
+never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057). S3.1 added no setting.
 
 The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
 store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`
