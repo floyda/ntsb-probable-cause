@@ -65,7 +65,8 @@ def test_no_command_prints_a_variable_that_holds_a_key() -> None:
             assert "pass show" not in line, line
     key_line = next(line for line in _lines() if "pass show" in line)
     assert key_line.startswith("OPENROUTER_API_KEY=")
-    assert "head -n 1" in key_line
+    assert "sed -n 1p" in key_line  # reads all of pass's output: no SIGPIPE under pipefail
+    assert "head" not in key_line
     assert "export OPENROUTER_API_KEY" in _lines()
 
 
@@ -97,3 +98,24 @@ def test_the_push_goes_to_the_branch_and_never_forces() -> None:
     assert "HEAD:$branch" in pushes[0]
     assert "--force" not in pushes[0]
     assert "-f " not in pushes[0]
+
+
+def test_unpushed_local_commits_are_refused_before_any_reset() -> None:
+    code = _lines()
+    count = _index('git rev-list --count "origin/$branch..$branch"')
+    assert _index("git fetch") < count < _index("git checkout --quiet -B")
+    assert count < _index('make "$target"')
+    guard = "\n".join(code[count : count + 4])
+    assert '"$unpushed" != "0"' in guard
+    assert "exit 1" in guard
+    assert "not on origin/$branch" in "\n".join(SCRIPT.read_text().splitlines())
+
+
+def test_a_failed_push_is_loud_and_the_script_exits_nonzero() -> None:
+    code = _lines()
+    push = _index("git push")
+    assert code[push].lstrip().startswith("if ! git push")
+    after = "\n".join(code[push + 1 : push + 4])
+    assert "NOT PUSHED" in after
+    assert ">&2" in after
+    assert "exit 1" in after

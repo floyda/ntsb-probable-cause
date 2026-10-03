@@ -21,6 +21,13 @@ if [[ ! -d "$checkout/.git" ]]; then
 fi
 cd "$checkout"
 git fetch --quiet origin
+if git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
+  unpushed="$(git rev-list --count "origin/$branch..$branch")"
+  if [[ "$unpushed" != "0" ]]; then
+    echo "refusing: local $branch holds $unpushed commit(s) not on origin/$branch (a ledger row committed but not pushed?). Push them from $checkout before the next run: the reset below would discard them." >&2
+    exit 1
+  fi
+fi
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "refusing: $checkout has uncommitted changes (a ledger row not pushed?). Commit or discard them first." >&2
   exit 1
@@ -29,12 +36,15 @@ git checkout --quiet -B "$branch" "origin/$branch"
 echo "checkout $checkout at $(git rev-parse --short HEAD) ($branch)"
 uv sync --quiet --frozen
 export NTSB_DATA_DIR="$data_dir"
-OPENROUTER_API_KEY="$(pass show "$pass_entry" | head -n 1)"
+OPENROUTER_API_KEY="$(pass show "$pass_entry" | sed -n 1p)"
 export OPENROUTER_API_KEY
 make "$target" "$@"
 if ! git diff --quiet -- docs/results/heldout-ledger.md; then
   git add docs/results/heldout-ledger.md
   git commit --quiet -m "Held-out ledger: $target"
-  git push --quiet origin "HEAD:$branch"
+  if ! git push --quiet origin "HEAD:$branch"; then
+    echo "LEDGER ROW COMMITTED LOCALLY BUT NOT PUSHED: run 'git -C $checkout push origin HEAD:$branch' before the next run. The next run refuses until it is pushed." >&2
+    exit 1
+  fi
   echo "ledger row committed and pushed: $(git rev-parse --short HEAD)"
 fi

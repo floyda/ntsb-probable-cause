@@ -178,3 +178,69 @@ def test_the_ablation_and_the_nodocket_run_name_the_flags_the_command_has() -> N
     assert "--exclude docket_listing --exclude docket_documents" in nodocket
     answer = recipe(text, "s32-heldout-b-answer")[1]
     assert "--guidance r3-loc-stall --guidance r6-aircraft-control" in answer
+
+
+def test_every_run_target_forwards_resume() -> None:
+    """A cancelled batch run continues with RESUME=<run id>; the post-passes have no hook."""
+    text = Path("Makefile").read_text()
+    run_targets = [n for n in _PAID_S32 if any("ntsb-eval run" in x for x in recipe(text, n))]
+    assert len(run_targets) == 5
+    for name in run_targets:
+        run_line = next(x for x in recipe(text, name) if "ntsb-eval run" in x)
+        assert "$(if $(RESUME),--resume $(RESUME))" in run_line, name
+        assert "RESUME=<run id>" in comment_after(text, name), name
+    for name in ("s32-heldout-b-tools", "s32-heldout-b-check"):
+        assert "RESUME" not in "\n".join(recipe(text, name)), name
+
+
+def _run_line(name: str) -> str:
+    text = Path("Makefile").read_text()
+    return next(line for line in recipe(text, name) if "ntsb-eval run" in line)
+
+
+def _flags(line: str, flag: str) -> list[str]:
+    words = line.split()
+    return [words[i + 1] for i, word in enumerate(words[:-1]) if word == flag]
+
+
+def test_each_registered_command_has_its_registered_identity() -> None:
+    """Spec §3: the sample, the arm and the flags of each of the six held-out commands."""
+    expected = {
+        "s32-heldout-a": "A",
+        "s32-heldout-b-answer": "B",
+        "s32-heldout-c": "C",
+        "s32-heldout-c-nodocket": "C",
+    }
+    for name, arm in expected.items():
+        line = _run_line(name)
+        assert _flags(line, "--arm") == [arm], name
+        assert _flags(line, "--sample") == ["heldout-400"], name
+        assert _flags(line, "--cap-usd") == ["0.30"], name
+    loop = _run_line("s32-heldout-c")
+    assert "--exclude" not in loop
+    assert "--without" not in loop
+    assert _flags(_run_line("s32-heldout-c-nodocket"), "--exclude") == [
+        "docket_listing",
+        "docket_documents",
+    ]
+    assert "--without" not in _run_line("s32-heldout-c-nodocket")
+    ablation = _run_line("s32-coding-ablation")
+    assert _flags(ablation, "--arm") == ["C"]
+    assert _flags(ablation, "--sample") == ["dev-400"]
+    assert _flags(ablation, "--without") == ["coding"]
+    assert "--exclude" not in ablation
+    assert _flags(_run_line("s32-heldout-b-answer"), "--guidance") == [
+        "r3-loc-stall",
+        "r6-aircraft-control",
+    ]
+    for name in ("s32-heldout-a", "s32-heldout-c", "s32-heldout-c-nodocket"):
+        assert "--guidance" not in _run_line(name), name
+
+
+def test_the_post_passes_name_the_registered_way_and_statistics() -> None:
+    text = Path("Makefile").read_text()
+    check = next(x for x in recipe(text, "s32-heldout-b-check") if "ntsb-eval check" in x)
+    assert _flags(check, "--way") == ["luna"]
+    assert _flags(check, "--stats") == ["s3"]
+    tools = next(x for x in recipe(text, "s32-heldout-b-tools") if "ntsb-eval tools" in x)
+    assert tools.endswith("ntsb-eval tools $(RUN)")

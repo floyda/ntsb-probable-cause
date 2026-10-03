@@ -318,19 +318,22 @@ s32-behaviour-dev:
 
 s32-coding-ablation:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 2.00
-	uv run ntsb-eval run --arm C --sample dev-400 --without coding --cap-usd 0.30 --expected-cost-per-case-usd 0.008
+	uv run ntsb-eval run --arm C --sample dev-400 --without coding --cap-usd 0.30 --expected-cost-per-case-usd 0.008 $(if $(RESUME),--resume $(RESUME))
 # S3.2 spec §3 run 1 (decision 0141), paid, about $1.20 billed (estimate): the loop without its
 # coding tools on dev-400, in batch rounds, about 3 hours. After the registration (Task 13).
+# A cancelled or interrupted run continues with RESUME=<run id> (it reuses the paid batches).
 
 s32-heldout-a:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 0.50
-	uv run ntsb-eval run --arm A --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.002
+	uv run ntsb-eval run --arm A --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.002 $(if $(RESUME),--resume $(RESUME))
 # S3.2 spec §3 run 2, ONCE, held-out: commit its ledger row before the next held-out target.
+# RESUME=<run id> continues an interrupted run.
 
 s32-heldout-b-answer:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 1.50
-	uv run ntsb-eval run --arm B --sample heldout-400 --guidance r3-loc-stall --guidance r6-aircraft-control --cap-usd 0.30 --expected-cost-per-case-usd 0.01
+	uv run ntsb-eval run --arm B --sample heldout-400 --guidance r3-loc-stall --guidance r6-aircraft-control --cap-usd 0.30 --expected-cost-per-case-usd 0.01 $(if $(RESUME),--resume $(RESUME))
 # S3.2 spec §3 run 3, part 1 (S2.7's answer), ONCE, held-out. Commit its ledger row next.
+# RESUME=<run id> continues an interrupted run.
 
 s32-heldout-b-tools:
 	$(if $(RUN),,$(error RUN is required: the held-out arm B answer run id))
@@ -346,13 +349,15 @@ s32-heldout-b-check:
 
 s32-heldout-c:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 2.50
-	uv run ntsb-eval run --arm C --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.012
+	uv run ntsb-eval run --arm C --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.012 $(if $(RESUME),--resume $(RESUME))
 # S3.2 spec §3 run 4, ONCE, held-out: the loop, about 3 hours. Commit its ledger row next.
+# RESUME=<run id> continues an interrupted run.
 
 s32-heldout-c-nodocket:
 	uv run python -m scripts.stage_spend --stage s3 --estimate 1.50
-	uv run ntsb-eval run --arm C --sample heldout-400 --exclude docket_listing --exclude docket_documents --cap-usd 0.30 --expected-cost-per-case-usd 0.012
+	uv run ntsb-eval run --arm C --sample heldout-400 --exclude docket_listing --exclude docket_documents --cap-usd 0.30 --expected-cost-per-case-usd 0.012 $(if $(RESUME),--resume $(RESUME))
 # S3.2 spec §3 run 5, ONCE, held-out: the loop without the docket. Commit its ledger row.
+# RESUME=<run id> continues an interrupted run.
 
 s3-round:
 	$(if $(N),,$(error N is required: the round number))
