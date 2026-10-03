@@ -38,6 +38,14 @@ _WALD_Z: Final = 1.96
 _SETTLED: Final = 1e-12  # a Newton step this small changes neither number
 
 
+def _logistic(z: float) -> float:
+    """``1 / (1 + exp(-z))`` without overflow, whatever the size of ``z``."""
+    if z >= 0.0:
+        return 1.0 / (1.0 + math.exp(-z))
+    e = math.exp(z)
+    return e / (1.0 + e)
+
+
 @dataclass(frozen=True)
 class Curve:
     """A logistic curve from stated confidence to the chance the first occurrence code is right."""
@@ -47,7 +55,7 @@ class Curve:
 
     def p(self, stated: float) -> float:
         """The fitted chance of being right when the model stated ``stated``."""
-        return 1.0 / (1.0 + math.exp(-(self.intercept + self.slope * stated)))
+        return _logistic(self.intercept + self.slope * stated)
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,22 @@ class GroupCheck:
     def inside(self) -> bool:
         """Whether the average fitted value lies inside the interval for the share right."""
         return self.low <= self.mean_fitted <= self.high
+
+
+def check_rising(curve: Curve) -> None:
+    """Refuse a curve that is not finite or does not rise (spec §8.2: "always rising").
+
+    A curve that does not rise would turn a higher stated confidence into a lower chance of being
+    right. The fitting script calls this before it writes a curve; :func:`load_curve` calls it
+    before it returns one.
+
+    Raises:
+        ValueError: A number is not finite, or the slope is zero or negative.
+    """
+    if not (math.isfinite(curve.intercept) and math.isfinite(curve.slope)):
+        raise ValueError("the curve's numbers must be finite")
+    if curve.slope <= 0.0:
+        raise ValueError(f"the curve must rise (spec §8.2), but its slope is {curve.slope}")
 
 
 def fit(stated: Sequence[float], right: Sequence[bool]) -> Curve:
@@ -92,7 +116,7 @@ def fit(stated: Sequence[float], right: Sequence[bool]) -> Curve:
     for _ in range(_MAX_STEPS):
         g0 = g1 = h00 = h01 = h11 = 0.0
         for x, y in zip(stated, right, strict=True):
-            p = 1.0 / (1.0 + math.exp(-(a + b * x)))
+            p = _logistic(a + b * x)
             w = p * (1.0 - p)
             g0 += float(y) - p
             g1 += (float(y) - p) * x
@@ -155,7 +179,13 @@ def three_groups(
 
 
 def calibrated(groups: Sequence[GroupCheck]) -> bool:
-    """Whether every group's average fitted value lies inside its interval (result 3)."""
+    """Whether every group's average fitted value lies inside its interval (result 3).
+
+    Raises:
+        ValueError: ``groups`` does not hold exactly three groups.
+    """
+    if len(groups) != GROUPS:
+        raise ValueError(f"calibrated needs {GROUPS} groups, got {len(groups)}")
     return all(group.inside for group in groups)
 
 
@@ -194,7 +224,8 @@ def load_curve(path: Path | None = None) -> Curve:
             its numbers (spec §8.2).
 
     Raises:
-        ConfigurationError: The file is missing, is not JSON, or lacks a number for either key.
+        ConfigurationError: The file is missing, is not JSON, lacks a number for either key, holds
+            a number that is not finite, or holds a curve that does not rise (spec §8.2).
     """
     if path is None:
         resource = resources.files("ntsb_probable_cause.scoring").joinpath("tables", CURVE_FILE)
@@ -218,4 +249,9 @@ def load_curve(path: Path | None = None) -> Curve:
             raise ConfigurationError(f"{name} has no {key!r}")
         if isinstance(data[key], bool) or not isinstance(data[key], int | float):
             raise ConfigurationError(f"{name}: {key!r} must be a number")
-    return Curve(float(data["intercept"]), float(data["slope"]))
+    curve = Curve(float(data["intercept"]), float(data["slope"]))
+    try:
+        check_rising(curve)
+    except ValueError as exc:
+        raise ConfigurationError(f"{name}: {exc}") from exc
+    return curve

@@ -18,6 +18,7 @@ from ntsb_probable_cause.scoring.calibration import (
     GroupCheck,
     abstains,
     calibrated,
+    check_rising,
     fit,
     load_curve,
     sorting,
@@ -162,3 +163,45 @@ def test_load_curve_names_the_missing_package_file(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(calibration, "CURVE_FILE", "no_such_curve.json")
     with pytest.raises(ConfigurationError, match=r"no_such_curve\.json"):
         load_curve()
+
+
+@pytest.mark.parametrize("slope", [0.0, -0.4])
+def test_load_curve_refuses_a_curve_that_does_not_rise(tmp_path: Path, slope: float) -> None:
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"intercept": -1.0, "slope": slope}))
+    with pytest.raises(ConfigurationError, match=r"c\.json.*must rise"):
+        load_curve(path)
+
+
+def test_check_rising_accepts_a_rising_curve_and_refuses_the_rest() -> None:
+    check_rising(Curve(-2.0, 0.1))
+    for bad in (Curve(-2.0, 0.0), Curve(-2.0, -1.0)):
+        with pytest.raises(ValueError, match="must rise"):
+            check_rising(bad)
+    with pytest.raises(ValueError, match="finite"):
+        check_rising(Curve(float("nan"), 1.0))
+
+
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+def test_load_curve_refuses_numbers_that_are_not_finite(tmp_path: Path, literal: str) -> None:
+    path = tmp_path / "c.json"
+    path.write_text(f'{{"intercept": {literal}, "slope": 1.0}}')
+    with pytest.raises(ConfigurationError, match="finite"):
+        load_curve(path)
+
+
+def test_fit_on_larger_separated_data_raises_value_error_not_overflow() -> None:
+    with pytest.raises(ValueError, match=r"singular|converge"):
+        fit([i / 100 for i in range(100)], [i >= 50 for i in range(100)])
+
+
+def test_curve_p_does_not_overflow_for_extreme_values() -> None:
+    assert Curve(intercept=-5000.0, slope=1.0).p(0.0) == 0.0
+    assert Curve(5000.0, 1.0).p(0.0) == 1.0
+
+
+def test_calibrated_needs_exactly_three_groups() -> None:
+    ok = _group(0.2, 20, 100, 0.1, 0.3)
+    for groups in ([], [ok], [ok, ok], [ok, ok, ok, ok]):
+        with pytest.raises(ValueError, match="needs 3 groups"):
+            calibrated(groups)
