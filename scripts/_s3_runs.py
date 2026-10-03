@@ -20,8 +20,9 @@ Refusals, before any case or trail is read
 Writing a result
     :func:`write_result` refuses to write under ``docs/results/`` from a tree with uncommitted
     changes, so a committed number always names the commit that printed it. A file under
-    ``docs/results/`` and the frozen curve file are the outputs of these scripts, so they do not
-    count as changes: four scripts can run one after the other.
+    ``docs/results/`` is the output of these scripts, so it does not count as a change: four
+    scripts can run one after the other. The frozen curve file is the calibration script's output
+    alone: for every other caller an uncommitted edit of it is a change and is refused.
 """
 
 import json
@@ -45,10 +46,9 @@ RESERVATION_ONLY: Final = ("budget_usd", "expected_cost_per_case_usd")
 MISSING: Final = "(not recorded)"
 RESULTS_DIR: Final = "docs/results"
 # Files a free reading writes: their presence does not make the tree "dirty" for the next one.
-_OUTPUT_PREFIXES: Final = (
-    "docs/results/",
-    "src/ntsb_probable_cause/scoring/tables/calibration_s3.json",
-)
+# The curve file is the calibration script's output alone (``write_result(..., own_curve=True)``).
+_RESULTS_PREFIX: Final = "docs/results/"
+CURVE_PATH: Final = "src/ntsb_probable_cause/scoring/tables/calibration_s3.json"
 
 
 @dataclass(frozen=True)
@@ -181,17 +181,27 @@ def changed_files() -> list[str]:
     return [line[3:].split(" -> ")[-1] for line in out.splitlines() if line.strip()]
 
 
-def write_result(prog: str, out: Path, text: str) -> None:
+def write_result(prog: str, out: Path, text: str, *, own_curve: bool = False) -> None:
     """Write ``text`` to ``out``; refuse a dirty tree when ``out`` is under ``docs/results/``.
 
     A file written under ``docs/results/`` is committed as the proof of a number, so the number
-    must come from a clean tree. The other free readings' own outputs are not counted as changes.
+    must come from a clean tree. A file under ``docs/results/`` (the free readings' own outputs)
+    is not counted as a change. The frozen curve file is not counted either, but only for the
+    calibration script (``own_curve=True``): for any other caller an uncommitted edit of the
+    curve is a change and is refused.
+
+    Args:
+        prog: the script's name, put first in a refusal.
+        out: where to write.
+        text: the text; a newline is added.
+        own_curve: True only for the script that writes the curve file.
 
     Raises:
         SystemExit: ``out`` is under ``docs/results/`` and some other file has changed.
     """
     if out.resolve().is_relative_to(Path(RESULTS_DIR).resolve()):
-        dirty = [path for path in changed_files() if not path.startswith(_OUTPUT_PREFIXES)]
+        allowed = (_RESULTS_PREFIX, CURVE_PATH) if own_curve else (_RESULTS_PREFIX,)
+        dirty = [path for path in changed_files() if not path.startswith(allowed)]
         if dirty:
             refuse(
                 prog,

@@ -109,7 +109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     text = "\n".join(report_lines(curve, answers, args.runs))
     print(text)
     if args.out is not None:
-        write_result(PROG, Path(args.out), text)
+        write_result(PROG, Path(args.out), text, own_curve=True)
     stored = {
         "intercept": curve.intercept,
         "slope": curve.slope,

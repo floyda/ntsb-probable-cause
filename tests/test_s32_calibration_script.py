@@ -115,3 +115,13 @@ def test_the_results_file_has_bands_and_the_abstain_count(runs: Path, tmp_path: 
     assert "≥0.8: " in text
     assert f"below {calibration.ABSTAIN_BELOW}" in text
     assert "ZQX" not in text
+
+
+def test_only_the_calibration_script_may_leave_the_curve_uncommitted(
+    runs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _both(runs, _rising(_IDS), _rising(_IDS))
+    seen: list[dict[str, object]] = []
+    monkeypatch.setattr(sc, "write_result", lambda *a, **k: seen.append(k))
+    sc.main([_RUN_A, _RUN_B, "--curve", str(tmp_path / "c.json"), "--out", str(tmp_path / "o.txt")])
+    assert seen == [{"own_curve": True}]

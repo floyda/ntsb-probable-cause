@@ -163,6 +163,56 @@ def test_effects_naming_an_event_label_or_code() -> None:
     assert sb.effects_naming_codes(calls, tables) == (2, 4)
 
 
+def _decide(*effects: str) -> list[AgentCall]:
+    """One accepted read choice per effect, each on a read document."""
+    calls = []
+    for effect in effects:
+        arguments = {
+            "decisions": [{"document": 1, "read": True, "expected_effect": effect}],
+            "reason": "r",
+        }
+        calls.append(_choice("c1", (1,), (1,)).model_copy(update={"arguments": arguments}))
+    return calls
+
+
+def test_the_category_leaf_is_what_is_searched_for() -> None:
+    tables = load_tables()
+    full = "Aircraft — Aircraft systems — Fuel system"
+    assert full in tables.categories.values()  # a real label, a three-part path
+    leaves = sb.category_leaves(tables)
+    assert "fuel system" in leaves
+    assert "aircraft" not in leaves  # a first or middle segment is not a leaf
+    assert "(general)" not in leaves
+    assert "wind" not in leaves  # shorter than 6 characters
+    assert all(len(leaf) >= 6 for leaf in leaves)
+    assert len(leaves) == len(set(leaves))
+
+
+def test_an_effect_naming_a_category_leaf_counts_and_a_middle_segment_does_not() -> None:
+    tables = load_tables()
+    calls = _decide(
+        "Maintenance records may show a fuel system fault",  # the leaf of a real label
+        "The aircraft records may show what happened",  # "aircraft" is a middle segment
+        "Will show the pilot's account of the flight",
+    )
+    routes = sb.effect_routes(calls, tables)
+    assert (routes.total, routes.naming) == (3, 1)
+    assert (routes.event_label, routes.category_leaf, routes.event_code) == (0, 1, 0)
+    assert sb.effects_naming_codes(calls, tables) == (1, 3)
+
+
+def test_routes_are_counted_apart_and_an_effect_is_named_once() -> None:
+    tables = load_tables()
+    calls = _decide(
+        "Shows loss of control in flight",  # event label only
+        "Shows a fuel system fault",  # category leaf only
+        "Event 240 is likely",  # event code only
+        "Loss of control in flight with a fuel system fault, code 240",  # all three
+    )
+    routes = sb.effect_routes(calls, tables)
+    assert routes == sb.Routes(total=4, naming=4, event_label=2, category_leaf=2, event_code=2)
+
+
 def test_main_prints_each_run_without_a_case_id(
     runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -181,6 +231,7 @@ def test_main_prints_each_run_without_a_case_id(
     assert "run b: 0 cases counted" in out
     assert "by documents offered" in out
     assert "result 4's measure: " in out
+    assert "by route (an effect can match more than one): event label 0, category leaf 0" in out
     assert out_path.read_text().strip() == out.strip()
     assert "ZQX" not in out
 
@@ -200,3 +251,25 @@ def test_one_run_is_enough(runs: Path, capsys: pytest.CaptureFixture[str]) -> No
     _write(runs, _RUN_A, [_scored(i) for i in _IDS], [])
     assert sb.main([_RUN_A]) == 0
     assert "run a:" in capsys.readouterr().out
+
+
+def _counts(
+    *, counted: int = 10, with_offer: int = 8, read_everything: int = 0, fixed_order: int = 0
+) -> sb.ReadCounts:
+    return sb.ReadCounts(counted, with_offer, read_everything, fixed_order)
+
+
+@pytest.mark.parametrize(
+    ("changes", "holds"),
+    [
+        ({"read_everything": 5}, True),  # 5 of 8 with documents on offer
+        ({"read_everything": 4}, False),  # exactly half of 8: not more than half
+        ({"read_everything": 5, "with_offer": 10}, False),  # exactly half of 10
+        ({"fixed_order": 6}, True),  # 6 of the 10 counted
+        ({"fixed_order": 5}, False),  # exactly half of 10
+        ({"read_everything": 4, "fixed_order": 4}, False),  # neither
+        ({"read_everything": 0, "with_offer": 0, "counted": 0}, False),  # nothing counted
+    ],
+)
+def test_result_one_holds_on_more_than_half_of_either(changes: dict[str, int], holds: bool) -> None:
+    assert sb.result1_holds(_counts(**changes)) is holds

@@ -27,12 +27,21 @@ def test_the_free_readings_own_outputs_do_not_make_the_tree_dirty(
     monkeypatch.setattr(
         sr,
         "changed_files",
-        lambda: [
-            "docs/results/s32-cap-check-dev.txt",
-            "src/ntsb_probable_cause/scoring/tables/calibration_s3.json",
-        ],
+        lambda: ["docs/results/s32-cap-check-dev.txt"],
     )
     sr.write_result("prog", Path("docs/results/a.txt"), "text")
+    assert Path("docs/results/a.txt").read_text() == "text\n"
+
+
+def test_an_uncommitted_curve_edit_is_refused_except_for_the_calibration_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sr, "changed_files", lambda: [sr.CURVE_PATH])
+    with pytest.raises(SystemExit, match="1 uncommitted change"):
+        sr.write_result("prog", Path("docs/results/a.txt"), "text")
+    assert not Path("docs/results/a.txt").exists()
+    sr.write_result("s32_calibration", Path("docs/results/a.txt"), "text", own_curve=True)
     assert Path("docs/results/a.txt").read_text() == "text\n"
 
 
