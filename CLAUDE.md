@@ -314,8 +314,8 @@ of 387 cases. The format gate passed on both, 5 and 8 of 401 cases failing for f
 reasons against at most 8 (run b at the limit); an S3 round over the gate is dropped, and its
 failed cases count as wrong (0136). Cost: $4.5711 and $4.4476 computed, $1.8400 and $1.9738
 billed, with 71.6% and 66.7% of prompt tokens cached. **Against S3's full arm B** (0127), which
-scores top-1 27.6%, top-3 50.1%, finding recall@10 27.3% (the S3.1 plan's 2026-10-03
-Deviations entry), runs a and b differ by top-1 -1.0% [-5.3%, +3.3%] and +1.0% [-3.6%, +5.6%],
+scores top-1 27.6%, top-3 50.1%, finding recall@10 27.3%
+(`docs/results/s3-armb-full-dev.txt`), runs a and b differ by top-1 -1.0% [-5.3%, +3.3%] and +1.0% [-3.6%, +5.6%],
 top-3 -11.4% [-16.0%, -6.9%] and -12.8% [-17.9%, -8.2%], finding recall@10 +0.4% [-2.0%,
 +2.9%] and -1.5% [-3.9%, +0.6%] (`docs/results/s3-armc-a-vs-s3-armb-full-dev.txt`, `-b-`):
 level on top-1 and findings, behind on top-3, at $4.57 and $4.45 computed ($1.84 and $1.97
