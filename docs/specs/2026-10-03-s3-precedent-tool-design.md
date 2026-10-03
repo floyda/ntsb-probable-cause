@@ -1,8 +1,10 @@
 # S3.1 — A precedent tool the agent questions: design note
 
-Status: Draft, 2026-10-03, for Andy's review. Nothing here is built. If accepted, it becomes a
-declared experiment in S3.1 Task 15 with its own decision record, plan entries and a registered
-round.
+Status: Draft, 2026-10-03. Nothing here is built. Decision
+[0140](../decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md) places the tool after
+S4, as the agent's second version (v2); this note is revised and approved as that stage's
+specification then. The S3.1-specific parts below (§5 and §6) are kept as first written, for the
+record.
 
 ## 1. Why
 
