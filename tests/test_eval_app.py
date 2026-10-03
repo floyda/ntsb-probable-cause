@@ -225,6 +225,45 @@ def test_ablated_raises_on_unreadable_spec_json(tmp_path: Path) -> None:
         _ablated(folder)
 
 
+def test_report_on_unreadable_spec_json_through_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """S3.2 Task 4: report through main on a run with unreadable spec.json is refused.
+
+    The ConfigurationError raised by _recorded_spec is caught and printed to
+    stderr, exiting with code 1. The error message names spec.json.
+    """
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    runs_dir = tmp_path / "data" / "runs"
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs_dir))
+
+    # Create a run with unreadable spec.json
+    run_id = "20261001T000000-abc1234-dev-400-C"
+    folder = runs_dir / run_id
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    kwargs = dict(_RUN_KWARGS) | {"arm": "C"}
+    write_jsonl(
+        folder / "run.jsonl",
+        [
+            RunRecord(
+                **kwargs,
+                run_id=run_id,
+                started=now,
+                finished=now,
+                cost_usd=1.0,
+            )
+        ],
+    )
+    write_jsonl(folder / "cases.jsonl", [_scored_case("c1")])
+    (folder / "spec.json").write_text("{not json")  # unreadable JSON
+
+    exit_code = main(["report", run_id])
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "spec.json" in err
+    assert "not readable JSON" in err
+
+
 def test_month_spent_includes_aborted_runs_in_the_current_month(tmp_path: Path) -> None:
     now = datetime(2026, 9, 15, tzinfo=UTC)
     _write_run(tmp_path, "r1", finished=now, cost_usd=1.0)
