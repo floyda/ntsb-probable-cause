@@ -181,20 +181,14 @@ def changed_files() -> list[str]:
     return [line[3:].split(" -> ")[-1] for line in out.splitlines() if line.strip()]
 
 
-def write_result(prog: str, out: Path, text: str, *, own_curve: bool = False) -> None:
-    """Write ``text`` to ``out``; refuse a dirty tree when ``out`` is under ``docs/results/``.
+def refuse_unclean_results(prog: str, out: Path, *, own_curve: bool = False) -> None:
+    """Refuse when ``out`` is under ``docs/results/`` and some other file has changed.
 
-    A file written under ``docs/results/`` is committed as the proof of a number, so the number
+    Split out of :func:`write_result` so that a script can refuse before it reads anything. The
+    rule is the same: a file under ``docs/results/`` is the proof of a number, so the number
     must come from a clean tree. A file under ``docs/results/`` (the free readings' own outputs)
     is not counted as a change. The frozen curve file is not counted either, but only for the
-    calibration script (``own_curve=True``): for any other caller an uncommitted edit of the
-    curve is a change and is refused.
-
-    Args:
-        prog: the script's name, put first in a refusal.
-        out: where to write.
-        text: the text; a newline is added.
-        own_curve: True only for the script that writes the curve file.
+    calibration script (``own_curve=True``).
 
     Raises:
         SystemExit: ``out`` is under ``docs/results/`` and some other file has changed.
@@ -208,5 +202,25 @@ def write_result(prog: str, out: Path, text: str, *, own_curve: bool = False) ->
                 f"the tree has {len(dirty)} uncommitted change(s) outside the results files; a "
                 f"file under {RESULTS_DIR}/ is written from a clean tree only",
             )
+
+
+def write_result(prog: str, out: Path, text: str, *, own_curve: bool = False) -> None:
+    """Write ``text`` to ``out``; refuse a dirty tree when ``out`` is under ``docs/results/``.
+
+    A file written under ``docs/results/`` is committed as the proof of a number, so the number
+    must come from a clean tree (:func:`refuse_unclean_results`). The frozen curve file is not
+    counted as a change for the calibration script alone (``own_curve=True``): for any other
+    caller an uncommitted edit of the curve is a change and is refused.
+
+    Args:
+        prog: the script's name, put first in a refusal.
+        out: where to write.
+        text: the text; a newline is added.
+        own_curve: True only for the script that writes the curve file.
+
+    Raises:
+        SystemExit: ``out`` is under ``docs/results/`` and some other file has changed.
+    """
+    refuse_unclean_results(prog, out, own_curve=own_curve)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text + "\n")

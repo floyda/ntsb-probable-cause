@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -310,6 +310,20 @@ s32-calibration:
 s32-behaviour-dev:
 	uv run python -m scripts.s32_behaviour $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-behaviour-dev.txt
 # Spec §9.1 and §9.4: results 1 and 4 counted from the noise-floor trails.
+
+s32-coding-ablation-report:
+	$(if $(RUN),,$(error RUN is required: the coding-ablation run id))
+	uv run python -m scripts.s32_coding_ablation $(RUN) $(S32_NOISE_RUNS) --out docs/results/s32-coding-ablation-dev.txt
+# S3.2 Task 11, free: the coding ablation against each noise-floor run, and prediction 6
+# (spec §11, §12). Reads dev-400 runs only. RUN is the finished --without coding run.
+
+s32-claims:
+	$(if $(and $(LOOP),$(NODOCKET),$(ARMA),$(BANSWER),$(ABLATION)),,$(error LOOP NODOCKET ARMA BANSWER ABLATION are required run ids))
+	uv run python -m scripts.s32_claims --loop $(LOOP) --nodocket $(NODOCKET) --arm-a $(ARMA) --armb-answer $(BANSWER) --armb-tools $(BANSWER)-tools --armb-check $(BANSWER)-tools-check-luna --ablation $(ABLATION) --noise $(S32_NOISE_RUNS) --out docs/results/s32-claims-heldout.txt
+# S3.2 Task 11, free: the held-out verdict, the four results, the ablations and the nine
+# predictions (spec §6 to §12). Reads the six held-out runs, only after the registration is
+# committed and each run has a ledger row. BANSWER is arm B's answer run; its -tools and
+# -tools-check-luna folders are derived from it.
 
 # S3.2 Task 10, paid: the five runs of spec §3. Every one passes --cap-usd 0.30 (spec §5) and
 # first runs the stage line. Run them through scripts/paid_run.sh from the clean checkout, not

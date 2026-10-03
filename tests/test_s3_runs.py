@@ -64,3 +64,13 @@ def test_changed_files_reads_git_status(tmp_path: Path, monkeypatch: pytest.Monk
 
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: Done())
     assert sr.changed_files() == ["a.py", "docs/results/b.txt", "new.py"]
+
+
+def test_the_early_refusal_is_the_same_rule_as_the_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sr, "changed_files", lambda: ["src/ntsb_probable_cause/x.py"])
+    with pytest.raises(SystemExit, match="1 uncommitted change"):
+        sr.refuse_unclean_results("prog", Path("docs/results/a.txt"))
+    sr.refuse_unclean_results("prog", tmp_path / "elsewhere" / "a.txt")  # not under results
