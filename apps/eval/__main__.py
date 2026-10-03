@@ -1025,18 +1025,14 @@ def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
 _GROUP_FIELD = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
 
 
-def _cmd_check(
-    args: argparse.Namespace,
-    settings: Settings,
-    client_factory: ClientFactory,
-    jev_factory: JevFactory,
-) -> None:
-    folder = settings.runs_dir / args.run_id
-    record = answering_run_record(folder)
-    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
-    # Decision 0142: arm B's last part reads a `heldout-400` run once the registration is
-    # committed, and only the tool post-pass's derived run (the check follows the post-pass).
-    # Every other held-out run is refused as it always was.
+def _admit_check_source(args: argparse.Namespace, record: RunRecord) -> bool:
+    """Refuse a source the ordering check may not read; say whether it is a held-out run.
+
+    Decision 0142: arm B's last part reads a ``heldout-400`` run once the registration is
+    committed, and only the tool post-pass's derived run (the check follows the post-pass), with
+    way ``luna`` (Jev is admitted for development runs only, 0097; one check per source).
+    Every other held-out run is refused as it always was. Nothing is read or built here.
+    """
     heldout = checkpass.heldout_open(record, is_committed=gitinfo.is_committed)
     if heldout:
         if not args.run_id.endswith("-tools"):
@@ -1044,6 +1040,7 @@ def _cmd_check(
                 f"check: {args.run_id} is a {record.sample} answer run; arm B's check comes after "
                 "its tool post-pass, so name the <run id>-tools run (decision 0142)"
             )
+        checkpass.refuse_heldout_way(args.run_id, args.way)
     elif (
         not record.sample.startswith("dev")
         or "heldout" in args.run_id
@@ -1054,6 +1051,19 @@ def _cmd_check(
             f"C runs as a diagnostic, only; {args.run_id} is {record.sample}, arm {record.arm} "
             "(decisions 0096, 0097, 0137)"
         )
+    return heldout
+
+
+def _cmd_check(
+    args: argparse.Namespace,
+    settings: Settings,
+    client_factory: ClientFactory,
+    jev_factory: JevFactory,
+) -> None:
+    folder = settings.runs_dir / args.run_id
+    record = answering_run_record(folder)
+    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    heldout = _admit_check_source(args, record)
     # A held-out run counts only from a clean tree (decision 0018): before any case is read.
     commit = ledger.commit_state()
     ledger.refuse_if_heldout_and_dirty(record.sample, commit[1])
@@ -1169,17 +1179,23 @@ def _cmd_check(
 def _cmd_tools(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
     """Arm B's fixed tool post-pass over a finished arm B run (S3.1 Task 12, spec §7.1).
 
-    Every refusal (``armb.preflight``, then the sealed sample, then a dirty tree for a held-out
-    run) comes before any case is read or any client is built. The budget is reserved and settled
+    Every refusal (a dirty tree for a held-out run, read from the source's run record alone, then
+    ``armb.preflight``, then the sealed sample) comes before any case is read or any client is
+    built. The budget is reserved and settled
     inside ``armb.tools_run``. A ``heldout-400`` source is admitted once the registration is
     committed (``checkpass.heldout_open``, reached through ``armb.preflight``, decision 0142), and
     the post-pass then adds one row to the held-out ledger.
     """
     folder = settings.runs_dir / args.run_id
+    commit = ledger.commit_state()
+    # An admitted held-out run counts only from a clean tree: refused on the run record alone,
+    # before `armb.preflight` reads a case. A folder with no record is left to preflight.
+    if (folder / "run.jsonl").is_file():
+        source = answering_run_record(folder)
+        if checkpass.heldout_open(source, is_committed=gitinfo.is_committed):
+            ledger.refuse_if_heldout_and_dirty(source.sample, commit[1])
     pre = armb.preflight(folder, settings.runs_dir)
     samples.refuse_sealed(pre.record.sample, is_committed=gitinfo.is_committed)
-    commit = ledger.commit_state()
-    ledger.refuse_if_heldout_and_dirty(pre.record.sample, commit[1])
     processed = settings.data_dir / "processed"
     ids = [case.case_id for case in pre.cases if armb.in_post_pass(case)]
     raws = dict(zip(ids, samples.load_cases(processed, ids), strict=True))

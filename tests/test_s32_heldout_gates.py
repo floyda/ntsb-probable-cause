@@ -158,6 +158,8 @@ class TestToolsOnHeldOut:
             raise AssertionError("no case may be read for a dirty tree")
 
         monkeypatch.setattr(samples, "load_cases", no_cases)
+        # The source's cases are not read either: an unreadable file would fail another way.
+        (runs / source / "cases.jsonl").write_text("not json\n")
         capsys.readouterr()
         assert main(["tools", source, "--sync"], client_factory=_no_client) == 1
         assert "uncommitted changes" in capsys.readouterr().err
@@ -376,6 +378,61 @@ class TestCheckOnHeldOut:
         pre = checkpass.preflight(tmp_path / tools, "luna", tmp_path, stats="s3")
         assert pre.run_id == f"{tools}-check-luna"
 
+    @pytest.mark.parametrize("way", ["rule", "jev", "jev2"])
+    def test_only_luna_may_check_a_heldout_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repo: Repo,
+        capsys: pytest.CaptureFixture[str],
+        way: str,
+    ) -> None:
+        """Decisions 0097, 0142: refused before a case is read or a client built."""
+        runs, ledger_path = _check_env(tmp_path, monkeypatch)
+        repo.registered = True
+        run_id = _tools_run_folder(runs)
+
+        def no_cases(_processed: Path, _ids: object) -> object:
+            raise AssertionError("no case may be read for a refused way")
+
+        def no_jev(_settings: Settings) -> object:
+            raise AssertionError("no jev client may be built for a held-out run")
+
+        monkeypatch.setattr(samples, "load_cases", no_cases)
+        argv = ["check", run_id, "--way", way, "--stats", "s3"]
+        assert main(argv, client_factory=_no_client, jev_factory=no_jev) == 1  # type: ignore[arg-type]
+        assert "way luna only" in capsys.readouterr().err
+        assert [p.name for p in runs.iterdir()] == [run_id]  # no derived folder
+        assert not ledger_path.exists()
+
+    def test_after_a_luna_check_another_way_is_refused(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repo: Repo,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        runs, ledger_path = _check_env(tmp_path, monkeypatch)
+        repo.registered = True
+        run_id = _tools_run_folder(runs)
+        luna = ["check", run_id, "--way", "luna", "--stats", "s3"]
+        assert main(luna, client_factory=_factory(_luna_client())) == 0
+        capsys.readouterr()
+        rule = ["check", run_id, "--way", "rule", "--stats", "s3"]
+        assert main(rule, client_factory=_no_client) == 1
+        assert "way luna only" in capsys.readouterr().err
+        assert not (runs / f"{run_id}-check-rule").exists()
+        assert len(_ledger_rows(ledger_path)) == 1
+
+    def test_the_library_preflight_refuses_any_other_way_on_heldout(
+        self, tmp_path: Path, repo: Repo
+    ) -> None:
+        repo.registered = True
+        tools = _tools_run_folder(tmp_path)
+        for way in ("rule", "jev", "jev2"):
+            with pytest.raises(ConfigurationError, match="way luna only"):
+                checkpass.preflight(tmp_path / tools, way, tmp_path, stats="s3")
+
     def test_the_stats_rule_still_holds_for_a_heldout_tools_run(
         self,
         tmp_path: Path,
@@ -510,3 +567,27 @@ def test_the_hint_for_a_refused_heldout_run_names_the_registration(
     record = _record(tmp_path, HELD, "B")
     with pytest.raises(ConfigurationError, match=r"s3-registration\.md"):
         checkpass._refuse_unless_development(record, [])
+
+
+def test_development_tools_and_check_leave_the_heldout_ledger_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    repo: Repo,
+) -> None:
+    """A development run is not a held-out run: no ledger file is made, registered or not."""
+    monkeypatch.setattr("apps.eval.__main__.CachedDocketReader", _StubDocketReader)
+    _eval_env(tmp_path, monkeypatch, record_fixtures[0])
+    ledger_path = tmp_path / "heldout-ledger.md"
+    monkeypatch.setenv("NTSB_HELDOUT_LEDGER_PATH", str(ledger_path))
+    repo.registered = True
+    argv = ["run", "--arm", "B", "--sample", "dev-400", "--sync", "--price-variant", "standard"]
+    argv += [flag for name in GUIDANCE for flag in ("--guidance", name)]
+    assert main(argv, client_factory=_factory(RecordingFakeClient([GOOD, REFINE]))) == 0
+    runs = tmp_path / "data" / "runs"
+    (source,) = [p.name for p in runs.iterdir() if p.is_dir()]
+    assert main(["tools", source, "--sync"], client_factory=_factory(_tools_client())) == 0
+    derived = armb.tools_id(source)
+    assert main(["check", derived, "--way", "rule", "--stats", "s3"]) == 0
+    assert (runs / f"{derived}-check-rule" / "run.jsonl").exists()
+    assert not ledger_path.exists()

@@ -343,6 +343,7 @@ ARM_C_WAY: Way = "luna"
 # held-out run, so the plan the runs follow is on record first.
 S32_REGISTRATION: Final = Path("docs/rounds/s3-registration.md")
 HELDOUT_SAMPLE: Final = "heldout-400"
+HELDOUT_WAY: Final = "luna"
 
 
 def _committed(path: Path) -> bool:
@@ -413,6 +414,23 @@ def _refuse_unless_development(
     if any(c.split != split for c in cases):
         name = "held-out" if opened else "development"
         raise ConfigurationError(f"{record.run_id} holds a case outside the {name} split")
+
+
+def refuse_heldout_way(run_id: str, way: Way) -> None:
+    """A held-out check is made one way, GPT-6 Luna's, once (decisions 0097, 0142).
+
+    The rule way and the Jev ways are development tools: Jev is admitted on a second transport
+    for development runs only (0097), and four ways on one source would be four checks and four
+    ledger rows. ``preflight`` and the command both call this, the command before it reads a case.
+
+    Raises:
+        ConfigurationError: ``way`` is not ``luna``.
+    """
+    if way != HELDOUT_WAY:
+        raise ConfigurationError(
+            f"{run_id} is on {HELDOUT_SAMPLE}: its ordering check is made with way {HELDOUT_WAY} "
+            f"only, not {way} (decisions 0097, 0142)"
+        )
 
 
 def _registration_hint(record: RunRecord) -> str:
@@ -489,6 +507,8 @@ def preflight(
             f"{record.run_id} is a {HELDOUT_SAMPLE} answer run: arm B's check comes after its "
             "tool post-pass, so it reads the <run id>-tools run only (decision 0142)"
         )
+    if record.sample == HELDOUT_SAMPLE:
+        refuse_heldout_way(record.run_id, way)
     if record.arm == "C":
         _refuse_for_arm_c(record, way, stats)
     if "+tools-" in record.prompt_version and stats != TOOLS_STATS:
