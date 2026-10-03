@@ -615,6 +615,15 @@ def own_lines(found: Own) -> list[str]:
     return lines
 
 
+def count_line(split: CaseSplit) -> str:
+    """A run's case counts, each case counted once, in the order :func:`sort_cases` counts them."""
+    return (
+        f"Cases in the run: {split.total}, each counted once, in this order: failed "
+        f"{split.failed}; abstained {split.abstained}; no flagged finding {split.no_flagged}; "
+        f"judged {len(split.judged)} {_fatal(split.judged)}."
+    )
+
+
 def run_lines(result: RunResult, *, letter: str) -> list[str]:
     """One run: its case counts, then each set of judged cases, query and predictor.
 
@@ -630,9 +639,7 @@ def run_lines(result: RunResult, *, letter: str) -> list[str]:
     lines = [
         f"## Run {letter} ({result.run_id}){note}",
         "",
-        f"Cases in the run: {split.total}, each counted once, in this order: failed "
-        f"{split.failed}; abstained {split.abstained}; no flagged finding {split.no_flagged}; "
-        f"judged {len(split.judged)} {_fatal(split.judged)}.",
+        count_line(split),
     ]
     for title, wanted in SUBSETS:
         cases = [j for j in split.judged if wanted(j)]

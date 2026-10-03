@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -401,6 +401,23 @@ s3-finding-precedent:
 # the script existed (S3.1 plan, "A findings-from-precedent probe, with its rule committed
 # first") and prints its word first. Reads the processed file and the S3 statistics pool; counts
 # and means only; writes the results file. RUNS="<run a> <run b>", in quotes.
+
+s3-finding-misses:
+	$(if $(RUNS),,$(error RUNS is required: two finished dev-400 arm C run ids, run a then run b))
+	uv run python -m scripts.exploratory.s3_finding_misses --runs $(RUNS) --out docs/results/s3-finding-misses-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it sets no bar and tunes nothing. No
+# model call. Where the loop's final findings lose the findings the NTSB flagged as cause: each
+# flagged finding of the judged cases classed by how far the loop's findings reach it (exact, item
+# right with the modifier wrong, category right with the item wrong, category missed), overall, by
+# section and for fatal and non-fatal cases, with Wilson intervals; the S3 statistics pool's
+# habits (each category's commonest item and each item's commonest modifier, and how strong they
+# are); for the item and modifier misses, whether the NTSB's choice and the loop's is the pool's
+# commonest, the ten commonest (NTSB, loop) pairs and the ten categories (items) with the most
+# misses; and the loop's findings that reach no flagged finding even at 6 digits, by section.
+# Applies the next-step rule committed before the script existed (S3.1 plan, "A 'where the
+# findings go wrong' probe, with its definitions and next-step rule committed first") on run a and
+# prints its line first. Reads the processed file and the S3 statistics pool; counts, shares and
+# code labels only; writes the results file. RUNS="<run a> <run b>", in quotes.
 
 s3-check-diagnostic:
 	$(if $(RUN),,$(error RUN is required: the finished dev-400 arm C run id, noise-floor run a))
