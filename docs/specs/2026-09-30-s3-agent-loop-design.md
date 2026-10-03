@@ -752,6 +752,658 @@ earlier amendments were.
 - **Loop runs are overnight.** A tuning round takes a night. The plan orders work so that no
   step waits idle on a run.
 
+## As built (S3.1, 2026-10-03)
+
+*S3.1 closed on 2026-10-03 in pull request #21. This specification stays Approved: it also holds
+the design S3.2 and S3.3 share, and each of them adds a dated part like this one when it closes
+(§3). This part records S3.1 only, against §18.*
+
+S3.1 built the agent loop (arm C), arm B's fixed tool post-pass, S3's sealed sample and
+statistics file, and S3's spend line, and it measured the loop's noise floor on `dev-400`. The
+format gate passed on both noise-floor runs. Tuning closed with no registered round (decision
+[0139](../decisions/0139-s31-tuning-closes-without-a-registered-round.md)), so the loop frozen
+at commit `fd6053f` (prompt version `s3-v1+ge17fecdc66ec+p947fac1c86a4`) is S3.1's result and
+the loop S3.2 starts from. No held-out case was run or scored, and `dev-seal-s3-400` is still
+sealed. S3.1 also read the loop against arm B on `dev-400`. Those are development readings, not
+claims (Departures, §10.5), so S2.4's held-out arm B (`docs/results/s24-bars.txt`) stays the bar.
+
+Two cost figures appear below. The **computed** cost prices every token at the list price. The
+**billed** cost is what the provider's batch reports charged; it is lower, because cached prompt
+tokens cost less. S3's spend line counts the billed cost of a batch arm C run or tool post-pass
+(decision [0135](../decisions/0135-s3-spend-counts-what-was-billed.md)).
+
+### Delivered
+
+- **The agent package**, `src/ntsb_probable_cause/agent/` (§4, §5, §8). Nothing in the library
+  imports it; `apps/eval` and some scripts do.
+  - `loop.py`: `CaseLoop`, one case's conversation on one trigger. It hands out its next model
+    call (`next_call`) and takes the reply (`accept`), and never calls a model itself, so the
+    same object runs one call at a time or in batch rounds. It holds the per-case cap, with room
+    kept for the answer and its refinement, and `PASS_REASONING` (off: shape probe check 4).
+  - `steps.py`: the step table. For each step: the `tool_choice` it sends, the tools a reply may
+    call, the next step and the tool text that says so; and the refusals of a reply that breaks
+    the protocol.
+  - `schemas.py`: the seven tool definitions (`TOOL_DEFINITIONS`), in one fixed order and
+    byte-identical on every call; the argument models; `parse_call`.
+  - `tools.py`: the four coding tools, `describe_codes`, `occurrence_usage`, `past_findings` and
+    `suggest_codes`. They are pure functions over the code tables and S3's statistics, and they
+    return codes, labels and counts only.
+  - `texts.py`: the system text (arm B's answer prompt and code tables, the two guidance files,
+    then the loop's `PROTOCOL`), the document menus, the fixed tool texts, and the prompt
+    version (`+g` for the guidance, `+p` for the text; decision
+    [0133](../decisions/0133-unreadable-dockets-are-listed-and-the-text-is-fingerprinted.md)).
+  - `documents.py`: every payload the agent sends, each built as
+    `Payload.from_evidence(split_record(...))` (decision
+    [0016](../decisions/0016-layered-leakage-guard-and-model-boundary.md)), and the case marks.
+    `facts.py` holds a document's measured facts as plain values, for the menus.
+  - `later.py`: a later trigger's opening (§4.3): every document read before, in full, and a
+    summary of the agent's earlier choices.
+  - `trail.py`: the trail. `AgentCall` is one row per model call: the tool, its parsed
+    arguments, the size (never the text) of the result, the hypothesis at checkpoints, tokens,
+    cost, times, batch id, commit and stop reason. Also `ReadRecord` and `LoopOutcome`.
+  - `drive.py`: `drive_sync` and `drive_batch`. A batch round sends every unfinished case's next
+    call as one batch. Every reply and round is written to the run folder before it is used, so
+    a stopped run resumes from the folder.
+  - `run.py`: `AgentRunner`, arm C in the harness. It writes the same `RunRecord` and
+    `CaseResult` files as arms A and B, plus `trail.jsonl`, so `ntsb-eval report --against`
+    compares arm C with any arm. Its `spec.json` also records the loop's own settings.
+  - `armb.py`: arm B's fixed tool post-pass (`FixedToolsLoop`, `preflight`, `tools_run`), §7.1
+    parts 2 and 3.
+- **Native tool calling in the model seam** (§5). `model/client.py` and `model/openrouter.py`
+  send `tools`, `tool_choice` and `parallel_tool_calls`, and read tool calls, cached-token
+  counts and reasoning details. `model/tool_text.py` holds `ToolText`, the only text that is not
+  evidence a tool result may carry. Two import-linter contracts hold the boundary: "Nothing in
+  the library imports the agent" and "The agent's tools and texts see no case record".
+- **Commands** (`apps/eval/__main__.py`).
+  - `ntsb-eval run --arm C`: the loop, by default with a $0.15 per-case cap, S3's two guidance
+    files and S3's statistics. `--without suggest_codes|coding` runs the ablations of §7.2.
+    `--round N` is refused until `docs/rounds/s3-round-N.md` is committed.
+  - `ntsb-eval tools RUN_ID`: arm B's post-pass over a finished arm B run, into a derived run
+    `<run id>-tools` labelled `<source prompt version>+tools-s3+p<12 characters>`.
+  - `ntsb-eval check --stats s3`: the ordering check counted in S3's statistics. On arm C it
+    takes the `luna` way only (decision
+    [0137](../decisions/0137-the-ordering-check-as-a-diagnostic-on-arm-c.md)).
+  - `ntsb-eval report`: for arm C, an "unread" line and the cached share of prompt tokens; with
+    `--against`, for an arm C check run, the count of first codes changed.
+  - Make targets: `s3-smoke-sync`, `s3-smoke-batch`, `s3-noise-floor`, `s3-armb-tools`,
+    `s3-check-diagnostic`.
+- **S3's sealed sample and statistics** (§12, decision
+  [0129](../decisions/0129-s3s-sealed-sample-and-statistics.md)). `scripts/draw_sealed.py
+  --sample dev-seal-s3-400` (`make s3-draw-sealed`; seed 20260930; `dev-400` and `dev-seal-400`
+  left out) wrote `tests/fixtures/eval/dev_seal_s3_400_ids.csv`. `samples.refuse_sealed`
+  refuses the sample in every command until `docs/rounds/s3-registration.md` is committed.
+  `scripts/coding_stats.py` (`make s3-coding-stats`) wrote
+  `scoring/tables/coding_stats_s3.json` and `docs/results/s3-coding-stats.txt` from a pool
+  without the three samples. `load_stats("s3")` reads it. `POOL_EXCLUDED` names the samples
+  each statistics file leaves out, and `refuse_pool_holding` refuses a sample whose cases a
+  file's pool holds. S2.7's file is unchanged.
+- **Spend** (§14; decisions
+  [0128](../decisions/0128-s3-in-three-sub-stages-with-one-spend-line.md),
+  [0131](../decisions/0131-the-probe-spend-kind.md), 0135). `scoring/budget.py` gains the
+  `probe` spend kind, and counts a batch arm C run or tool post-pass at its billed total
+  (`counts_billed`, `spent_usd`). `scripts/relabel_probe_spend.py` relabelled the learning
+  probe's three jobs from `inventory` to `probe`, and kept the original rows beside them, where
+  nothing reads them. `scripts/stage_spend.py --stage s3` (`make s3-spend`) counts S3's $50
+  line by commit on `s3-` branches.
+- **The shape probe** (§5.5). `scripts/s3_shape_probe.py` (`make s3-shape-probe`), with its
+  saved requests and replies under `tests/fixtures/openrouter/s3/`.
+- **The noise floor and tuning rounds** (§10.2 to §10.4). `scripts/s3_noise_floor.py` (`make
+  s3-noise-report`) prints every figure of §10.2, the format gate and the third-run rule.
+  `docs/rounds/README.md` gains the S3 round template. `scripts/round_result.py` reads an arm C
+  round with failed cases counted wrong and the format gate first (decision
+  [0136](../decisions/0136-s3-rounds-count-failed-cases-as-wrong.md)), in the statistics file
+  the run's `spec.json` names (`make s3-round`, `make s3-round-result`). No round was run (0139).
+- **Task 15's scripts**, all free and offline, with no model call.
+  - Live: `scripts/s3_case_groups.py` (`make s3-case-groups`) sorts `dev-400` into always right,
+    always wrong and flipping (`docs/results/s3-case-groups-dev.txt`).
+    `scripts/s3_trail_pages.py` (`make s3-trail-pages`) writes private trail reading pages under
+    the runs folder, never committed. `scripts/miss_kinds.py` classifies how a first code misses
+    the NTSB's.
+  - Exploratory (decision [0059](../decisions/0059-every-script-states-its-status.md):
+    they set no bar and tune nothing), under `scripts/exploratory/`, each with a `make` target
+    named after it (`make s3-miss-kinds` and so on): `s3_miss_kinds`, `s3_precedent_probe`, `s3_precedent_pages` (a private
+    page), `s3_coding_consistency`, `s3_finding_consistency`, `s3_finding_precedent` and
+    `s3_finding_misses`. Each but the page writes a results file under `docs/results/`. Also
+    `s3_probe_confidence`, the design session's reading of the learning probe, which §2 cites.
+  - `scripts/check_guidance.py --agent-texts` runs S2.7's sentence check over the agent's own
+    fixed texts and the coding tools' fixed result sentences.
+- **A design note**, `docs/specs/2026-10-03-s3-precedent-tool-design.md` (Draft): a precedent
+  tool the agent questions, placed after S4 by decision
+  [0140](../decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md).
+
+### Done means, with evidence
+
+1. The shape probe's six checks are answered and recorded, and any departure is decided by Andy
+   — met — `docs/results/s3-shape-probe.txt` (commit `5890033`; job
+   `s3-shape-probe-20261001T083255-8ff06e9`, 12 calls, $0.0049), from
+   `scripts/s3_shape_probe.py`; tests `tests/test_s3_shape_probe.py`. Checks 1 to 3: yes
+   (strict tools are accepted on both price variants; forced and required tool choice are
+   honoured on both; a conversation of several turns works on batch). Check 4: the reasoning
+   need not be passed back, so `loop.PASS_REASONING` stays off. Check 5: cost and cached tokens
+   are reported on 12 of 12 calls. Check 6 prints "broken" for one batch call, which cached 0 of
+   5899 prompt tokens after a switch from a forced tool to "required", while the standard call
+   kept 5491 of 5898 across the same switch. The plan's switch rule was not met (the next batch
+   call cached 5767 of 6033), so every step keeps its forced tool. Checks 7 and 8, added by
+   the final review: arm B's fixed turn and a later trigger's opening turn are accepted on both
+   price variants. No check called for a departure, so none was put to Andy. The reading is the
+   plan's Task 4 entry of 2026-10-01.
+2. The new sealed sample's list is committed and refused by every command; the S3 statistics
+   file is committed — met — `tests/fixtures/eval/dev_seal_s3_400_ids.csv` (401 cases, commit
+   `415c6dd`); its purity:
+   `tests/test_contamination.py::test_the_s3_sealed_sample_is_development_and_shares_no_case_with_an_earlier_sample`.
+   The refusals, each before anything is read:
+   `tests/test_eval_app.py::test_run_and_transcribe_refuse_the_sealed_sample_before_anything_is_read`,
+   `::test_baseline_refuses_the_sealed_sample_before_anything_is_read` and
+   `::test_check_refuses_the_sealed_sample_before_any_client_is_built` (each run for both sealed
+   samples), `::test_arm_c_refuses_its_sealed_sample_before_anything_is_read`,
+   `::test_check_refuses_a_held_out_or_sealed_arm_c_run_before_any_reservation_or_client`, and
+   `tests/test_agent_armb.py::TestCommand::test_tools_refuses_before_any_client_is_built`. The
+   statistics: `src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json` and
+   `docs/results/s3-coding-stats.txt` (6,956 pool cases from 2009–2014 and 5,134 from
+   2015–2019).
+3. `ntsb-eval run --arm C` runs `dev-400` on batch to completion, resumably — met — the two
+   noise-floor runs, `20261001T201506-fd6053f-dev-400-C` and
+   `20261001T201648-fd6053f-dev-400-C`, each completed on batch over 401 cases
+   (`docs/results/s3-noise-floor-dev.txt`). The 20-case batch smoke run
+   `20261001T140150-5a63002-dev-400-C` was stopped after its second round was sent, and
+   resumed. The resume waited on the batch already sent, and its 192 calls had 192 distinct
+   replies from the 12 batches sent, so nothing was paid for twice (the plan's Task 14 entries).
+   Tests: `tests/test_agent_drive.py::TestResume` and `tests/test_agent_run.py::TestResume`.
+4. Arm B's tool post-pass runs on a finished arm B run — met — `ntsb-eval tools` over S2.7's
+   final answer run `20260929T053953-674c92e-dev-400-B` wrote
+   `20260929T053953-674c92e-dev-400-B-tools` (401 cases, 3 rounds;
+   `docs/results/s3-armb-tools-vs-s27-armb-answer-dev.txt`), and the ordering check over it
+   completed S3's arm B (`docs/results/s3-armb-full-dev.txt`). Tests:
+   `tests/test_agent_armb.py::TestCommand::test_tools_then_check_gives_arm_bs_full_pipeline` and
+   `tests/test_agent_armb.py::TestBatch::test_a_batch_post_pass_writes_the_same_cases_as_a_sync_one`.
+5. The noise floor's results file is committed, from a script, with every figure of §10.2 —
+   met — `docs/results/s3-noise-floor-dev.txt` (commit `e694635`), from
+   `scripts/s3_noise_floor.py`. It holds the paired differences in occurrence top-1, top-3 and
+   finding recall@10 (top-1 -2.1% [-5.9%, +1.6%] on 387 cases), the cases whose first code
+   changed (162 of 387), read-or-skip agreement (2392 of 2608 documents), coding-call agreement
+   (3 of 387 cases), failures by reason, cost, the cached share of prompt tokens (71.6% and
+   66.7%) and the raw stated confidences. No third run was needed (-2.07 points, within 4.0).
+   Test: `tests/test_s3_noise_floor.py::test_the_report_prints_every_figure_with_its_denominator`.
+6. The format gate is met on the noise-floor runs — met — `docs/results/s3-noise-floor-dev.txt`:
+   run a passes with 5 of 401 cases failed for format or tool reasons, and run b with 8 of 401,
+   exactly at the limit of 8. Test:
+   `tests/test_s3_noise_floor.py::test_the_gate_passes_eight_format_failures_and_fails_nine`.
+7. Each tuning round is registered before it runs, and read by its rule — not applicable — no
+   round was registered or run (decision 0139). The measurements Task 15 made instead each had
+   their rule, prediction or definitions committed before their result: the precedent probe
+   (`a0c6cc6`), the coding-consistency probe (`700afda`), the finding-consistency probe
+   (`211c50e`), the findings-from-precedent probe (`1c44b9d`), the "where the findings go wrong"
+   probe (`ef25347`), the whole-pool second readings (`bb5155b`), and the ordering diagnostic,
+   whose reading rule is decision 0137 (`1ad41f0`). The case groups and the miss-kind count are
+   descriptive and carry no rule.
+8. `make check` passes, including the tests of §16 — met — `make check` at the merge commit
+   `35f6c01`: 3681 tests passed, coverage 98.37%; and pull request #21's CI on `35f6c01`
+   (lint, test, audit and image-build passed:
+   https://github.com/floyda/ntsb-probable-cause/pull/21/checks). The tests of §16:
+   - a reply that breaks the protocol (a wrong or unknown tool, arguments that do not parse, a
+     missing or repeated decision on an offered document) is answered with a message and the
+     step is issued once more:
+     `tests/test_agent_loop.py::TestProtocolBreaks::test_answered_not_accepted_and_reissued_once`;
+     an unknown code given to a coding tool is answered and counted:
+     `tests/test_agent_loop.py::TestArgumentErrors::test_an_unknown_code_counts_and_the_case_goes_on`;
+     a document number not on offer is answered and skipped (decision 0134):
+     `tests/test_agent_loop.py::TestExtras::test_a_number_not_in_the_listing_is_answered_and_the_case_goes_on`;
+   - no title and no document text in the trail:
+     `tests/test_agent_loop.py::TestTrail::test_holds_no_tool_result_text_only_its_size`;
+   - the guard: `tests/test_agent_loop.py::TestLeaks::test_a_leak_in_a_chosen_document_ends_the_case`,
+     `tests/test_agent_run.py::TestLeaks::test_a_leak_in_a_chosen_document_fails_that_case_only`,
+     `tests/test_boundary.py::test_an_arm_c_batch_run_sends_no_withheld_text_in_any_request` and
+     `tests/test_boundary.py::test_an_arm_c_sync_run_sends_no_withheld_text_in_any_request`;
+   - the new sealed sample: condition 2. The statistics script's refusals:
+     `tests/test_coding_stats_script.py::test_check_pool_refuses_a_sample_case_or_a_non_development_case`
+     and
+     `tests/test_coding_stats_script.py::test_the_s3_pool_leaves_out_the_new_sample_and_the_guard_refuses_one_that_is_present`;
+   - room for the answer and the refinement:
+     `tests/test_agent_loop.py::TestCap::test_the_refinement_is_held_back_before_the_answer` and
+     `tests/test_agent_loop.py::TestCap::test_coding_that_passes_the_cap_is_forced_to_answer`;
+   - the cache condition:
+     `tests/test_agent_loop.py::TestAppendOnly::test_system_and_tools_are_identical_on_every_call_and_across_cases`
+     and `tests/test_agent_schemas.py::test_tool_definitions_serialise_identically_across_imports`;
+   - later triggers:
+     `tests/test_agent_triggers.py::TestTheOpening::test_holds_every_document_read_before_in_full_and_the_summary`,
+     `tests/test_agent_triggers.py::TestOfferedAgain::test_a_document_skipped_before_is_offered_again`
+     and
+     `tests/test_agent_triggers.py::TestOfferedAgain::test_without_new_structured_evidence_no_h0_call_is_made`;
+   - the `probe` spend kind:
+     `tests/test_budget.py::test_a_probe_spend_row_validates_and_month_spent_counts_it` and
+     `tests/test_relabel_probe_spend.py::test_month_spent_is_unchanged_by_the_relabel_and_nothing_is_counted_twice`;
+   - the import contract: `lint-imports` in `make lint`, and
+     `tests/test_import_boundaries.py::test_nothing_in_the_library_imports_the_agent`.
+9. The As-built record is appended, the plan deleted, and the version set (0017) — met — this
+   pull request's close-out commit; `uv run python -m scripts.check_docs` clean. The
+   specification's status stays Approved, because S3.2 and S3.3 follow under it; the version is
+   0.8.0.
+
+### Departures from this specification
+
+Every entry of the S3.1 plan's Deviations section is here, rewritten plainly, with the five
+items the final review added. The first group changes what this specification says; the rest
+follow the plan's tasks. The plan, at its last commit, is linked in the Implementation record.
+
+#### What changes what this specification says
+
+- **§10.3, tuning rounds: none was run** (Task 15; decision 0139). No candidate's expected gain
+  cleared the noise between two identical runs (top-1 -2.1% [-5.9%, +1.6%]), and the probes,
+  the ordering diagnostic and the comparisons with arm B already showed where the limits are.
+  The loop frozen at `fd6053f` is S3.1's result. The candidates stay written in 0139 for a later
+  stage.
+- **§10.5, "does not compare arm C with arm B": S3.1 made six comparisons** (final review).
+  S3.1 committed six arm C against arm B comparisons on `dev-400` (`docs/results/s3-armc-*`):
+  each noise-floor run against S2.7's final arm B, against arm B with its tools step, and
+  against S3's full arm B. Each is cited as a development reading, not a claim, and decision
+  0139 relies on them. Against S3's full arm B, run a's paired differences are occurrence top-1
+  -1.0% [-5.3%, +3.3%], top-3 -11.4% [-16.0%, -6.9%] and finding recall@10 +0.4% [-2.0%, +2.9%]
+  (`docs/results/s3-armc-a-vs-s3-armb-full-dev.txt`). **S3.2's registration must state that
+  this `dev-400` result was seen before its predictions were written.**
+- **§19, similar-case search: probed, not built** (Task 15; decisions
+  [0138](../decisions/0138-precedent-pool-whole-for-development.md), 0140). §19 puts
+  similar-case search outside S3. Task 15 measured it only with free, offline probes, which
+  score nothing and feed no run. The five nearest earlier cases' first codes came out "in
+  between" by their rule (`docs/results/s3-precedent-probe-dev.txt`), and their findings "not
+  promising" (`docs/results/s3-finding-precedent-dev.txt`). Decision 0138 sets the whole pool,
+  less the judged case's own event date, for development precedent work. Decision 0140 places a
+  precedent tool after S4, as a measured second version of the agent; its design note is
+  `docs/specs/2026-10-03-s3-precedent-tool-design.md` (Draft).
+- **§7.1 and decision 0127 item 4, the ordering check in arm B only** (Task 15; decision 0137).
+  The check ran once over noise-floor run a, as a diagnostic, to test 0127's premise that the
+  loop's own tool calls do its job: top-1 +1.3% [-1.5%, +4.1%] on 394 paired cases
+  (`docs/results/s3-check-diagnostic-dev.txt`), so the premise is not shown to fail. The check
+  stays out of arm C.
+- **§4.2 and §9, a docket with nothing readable** (final review; decision 0133). The loop
+  dropped such a docket and told the model "No docket documents are available for this case.",
+  which was false, while arm B always sends the listing. Arm C now sends the listing, its
+  not-readable lines and "None of the documents listed can be read." (decision
+  [0074](../decisions/0074-words-in-images-are-read-in-the-build.md): equal evidence). The docket
+  state is "none" only when nothing is listed: it describes arrival, not readability.
+- **§10.3, how a round's change is labelled** (final review; decision 0133). The prompt version
+  carries `+p`, a fingerprint of the source of every module that builds model-facing text, so a
+  kept round's text change cannot share a label with the noise-floor runs. It is computed once,
+  at a run's start. A false change is accepted: a progress-line edit to `agent/armb.py` moved
+  `+p10738adc39f3` to `+p947fac1c86a4` with no text the model sees changed (Task 14).
+- **§5.1, §5.2, §8.3 and §16, document numbers not on offer** (Task 14; decision
+  [0134](../decisions/0134-read-choices-tolerate-documents-not-on-offer.md)). §5.2 says code
+  checks that each number is on offer. In the first smoke run both read choices were refused
+  once, because the instruction asks for a decision on every document listed, while only
+  readable documents are on offer. A decision on a document not on offer is now answered with a
+  fixed line, skipped and counted as an argument error, with no retry. A missing or repeated
+  decision on an offered document still refuses the call. §8.3's trail gains
+  `AgentCall.offered`, the documents on offer at each read choice.
+- **§14 and §8.2, what the spend line counts** (Task 14; decision 0135). Batch replies carry no
+  cost of their own, so a run's recorded cost prices every prompt token at the batch rate, but
+  cached tokens are billed lower: the 20-case batch smoke run recorded $0.1458 computed against
+  $0.0484 billed, with 82.7% of its prompt tokens cached. S3's spend line and the monthly guard
+  count the billed total of a batch arm C run or tool post-pass. Every record keeps both
+  figures, and the per-case cap still uses the computed estimate.
+- **§8.4 and §10.3, failures in the do-no-harm rule** (before Task 15; decision 0136). The
+  specification says failures count, but not how. In an S3 round a failed case counts as wrong,
+  and a round over the format gate is dropped whatever its accuracy.
+- **§5.5, the shape probe's checks** (final review). Checks 7 and 8 were added: whether arm B's
+  fixed four-call turn and a later trigger's opening turn are accepted, since no earlier call
+  had sent either shape. The probe's reserve and cap rose from $0.05 to $0.08.
+- **§12 and decision 0129, the sample and pool sizes** (Task 5). The draw gave 401 cases, 200
+  fatal and 201 non-fatal, not 400: `samples.draw` rounds each class's quota separately, as it
+  did for `dev-400`. The S3 pool holds 12,090 cases (6,956 from 2009–2014, 5,134 from
+  2015–2019), 401 fewer than S2.7's 12,491 (`docs/results/s3-coding-stats.txt`), against
+  "about 400" in §12.
+- **§1 and §9, the docket wording** (Task 1). The body says dockets arrive at closure and that
+  the ongoing-docket probe agrees. But `docs/results/s25-ongoing-dockets.txt` found 2 of 100
+  ongoing cases with a released docket, and the recorder report leaves out 5 dockets seen at a
+  case's first sight; none of these has an arrival time. The records and the roadmap note use
+  the narrower statement: no docket has been seen to arrive before closure.
+- **§10.2, "153 of 399"** (Task 1; final review). §10.2 cites it to
+  `docs/results/s27-round0-dev.txt`, which prints "same first guess: 246 of 399"; so 153 = 399
+  − 246 is the count whose first guess changed. Task 1 had found no file holding 153 (the
+  file's "123 of 399 cases change outcome" is a different measure). The body is unchanged
+  (decision [0017](../decisions/0017-spec-lifecycle-as-built-and-plan-deletion.md)); `CLAUDE.md`
+  cites 246 directly.
+- **Decision 0137 cites a deleted plan** (final review). Its cost figure, $0.1133 for S2.7's
+  Luna check over the 401-case sealed run, is from the S2.7 plan's 2026-09-29 entry. That plan
+  was deleted at S2.7's close-out (pull request #19); the figure is in its last version:
+  https://github.com/floyda/ntsb-probable-cause/blob/bb6a0451d6113197775d17cb3767b37a01f3c9a5/docs/plans/2026-09-26-s27-track1-coding-guidance.md
+- **The plan's Task 16, and the merge** (final review). The pull request was opened before the
+  close-out, because the close-stage skill needs it open. It is merged with a merge commit
+  (decision [0033](../decisions/0033-stage-pull-requests-keep-their-commits.md)), not the squash the
+  skill's text names. `main` was merged into the branch at `35f6c01` (S2.7's close-out and
+  dependency bumps).
+
+#### Task 1, the decision records
+
+- Dated "Superseded in part" notes were added to 0021, 0022 and 0023, as earlier supersessions
+  did; the plan named only their index rows. 0106's index row notes that 0132 closes its item
+  5's S2.8 route. 0132 records that the unmerged `s28-coding-lookup` branch's draft records,
+  numbered 130 to 134, were never accepted.
+- The agency design says it is marked Superseded once the S1 and S3 specifications are
+  Approved. Only a dated note was added: its status change is left for Andy, and it still reads
+  Approved.
+- The final review corrected the new records in place, before any merge: 0121's docket heading
+  is narrowed and "identical runs" became "runs with identical settings"; 0123 and the note on
+  0023 keep the qualifier on the 2 released dockets; 0128 names S3.1's share of the line as $20
+  and says the estimates' upper ends, $52.50, pass the $50 line; 0129 states 401 cases; 0130
+  says the 2% gate is set on judgement; 0131 says its $1.1954 total is the unrounded sum (the
+  three costs printed to four places add to $1.1955); 0132's wording is "no content from it is
+  cited".
+- Andy decided 0121 item 5's open question (2026-10-01): 0022 item 4's conclusion ("retrieval
+  was warranted and the loop was not") does not carry over. Each of the four results is
+  published as it stands, and S3.2's registration states how they are read together. 0022's
+  note and index row say so, and 0132's index row now matches its record.
+
+#### Task 2, the probe spend kind
+
+- The relabel writes the new rows to a side file, checks their count and total against the
+  original, and only then renames. It checks all three jobs before it changes any, so a failure
+  leaves every job folder as it was. It ran on the shared runs folder, dry run first, and
+  printed $0.0692, $0.5542 and $0.5721; September's `month_spent` was $50.2395 before and after.
+- `tests/test_s3_probe_run.py` follows the new kind, and the `s3-spend` target follows the
+  Makefile's layout.
+
+#### Task 3, the model seam
+
+- `ToolText` has its own construction token, apart from `Payload`'s, and refuses anything but a
+  string. A tool turn refuses reasoning details, which would otherwise be dropped unseen. The
+  boundary test gained the tool-text surface. A lint rule moved `tool_reply`'s default usage
+  into its body. No existing test needed a change for the tool-call-id rule.
+
+#### Task 4, the shape probe's code
+
+- Call 2b (reasoning passed back) runs on both price variants, the batch chain is its own
+  conversation, and `parallel_tool_calls=False` is sent on every call, as the loop sends it.
+  Each call records whether it called a tool at all. The probe goes through the real client's
+  code path and has its own cap; a batch that does not finish is recorded "unfinished".
+- A call has a fifth state, "error" (an outage, a timeout, an expired or cancelled batch). Its
+  checks read "not measured", never "no", so an outage cannot stop the work or switch reasoning
+  on. No provider text is saved. The reservation is settled on every path, and the results are
+  printed before the bookkeeping.
+- The boundary test now reads an assistant turn's readable reasoning. Encrypted reasoning
+  cannot be screened, and a test says so.
+
+#### Task 5, the sealed sample and statistics
+
+- `draw_sealed.py` prints the sample by fatal and class (fatal: C 0, F 156, L 44; non-fatal: C
+  113, F 3, L 85), and `--verify` re-draws it identically. `Stage` and `Draw` tables replace
+  single constants, and `samples.sample_path` is new.
+- `ntsb-eval check` refuses S2.7's statistics for `dev-seal-s3-400`, whose 401 cases S2.7's pool
+  still holds (`refuse_pool_holding`). Task 5 noted that a check did not name its statistics
+  file; the final review made a check on any file but S2.7's name it in its label
+  (`+check-<way>-<stats>`).
+- The tests that need the generated files were written first and committed with the files.
+  `tests/test_contamination.py` gained the new list's purity test; the sealed-sample refusals
+  run for both samples; `.pre-commit-config.yaml` admits `coding_stats_s3.json` (1,267 KB) past
+  the large-file limit; the refusal names decisions 0095 and 0129.
+
+#### Task 6, the tools and their definitions
+
+- The definitions follow one fixed order, the flow's. Class docstrings are stripped from the
+  argument schemas, so editing one cannot change the bytes the provider caches.
+  `definitions()` returns deep copies, and a test compares the bytes across two interpreters.
+  The twelve phase-group names are written out, because the type checker refuses the unpacked
+  form.
+- Argument errors name fields and error types only, never the model's values. Choices the brief
+  left open: the line `suggest_codes` returns for a group with no cases, `describe_codes`
+  keeping its check of `kind`, and a tool name that does not match its arguments raising
+  `TypeError`, as a programming error.
+- The package reached `records` indirectly through `model.client`. Task 10 resolved it by moving
+  `ToolText`.
+
+#### Task 7, texts and payloads
+
+- `PROTOCOL` gained a heading and one sentence on the tools' limits, in plain ASCII. The system
+  text is arm B's with its trailing whitespace trimmed, then the protocol.
+- Formats the brief left open were fixed: the menu's not-readable and already-read lines, and
+  the read summary. The final review changed "1 pages" to "1 page", and "Not readable (no text
+  layer):" to "Not readable:", because "no text layer" is not true of a failed fetch or a file
+  that is not a PDF.
+- An empty payload is `{}`. `case_marks` checks that the view belongs to the record. The import
+  check uses `find_shortest_chains(..., as_packages=True)`, with a positive control.
+  `prior_summary` came with Task 11.
+
+#### Task 8, the case loop
+
+- The step table is in `agent/steps.py`. `loop.py` is longer than the brief's "about 500" lines
+  (587 at Task 8, and 696 after Task 11).
+- Room for the answer and its refinement is held before every call up to the answer, not only
+  before coding calls (§8.2), because a large document read at a choice is the likeliest way to
+  lose the answer. The estimate counts the tools each call sends.
+- `LoopConfig` gains the model and the reasoning level. `texts.ANSWER_NOW` is new, for the
+  coding ablation. A reply with no tool call is sent again unchanged. A coding tool that raises
+  is a protocol break, not a crash. Every refusal is reduced to field names and error types.
+  `LoopOutcome.answer` is set only when the case is done.
+- The refinement's payload is arm B's shape, narrowed to what the agent saw: the listing and
+  the documents read (`documents.answer_payload`), not the non-docket evidence alone. A leak
+  keeps the call's arguments and hypothesis in the trail.
+
+#### Task 9, the drivers
+
+- `CaseLoop` gains `stop`, `case_id` and `call_index`. The drivers replay the folder
+  themselves. A reply is written before its loop is given it, so a fault after a batch returns
+  loses nothing paid for. A resume copes with an open round partly or wholly written, and
+  refuses a result for a call the round never asked about.
+- A dead batch (expired, failed, or completed with no result) is sent again whole and costs no
+  case an attempt. A batch the provider has lost is sent again once, on resume. A cancelled
+  batch stops the run, which can then be resumed. A dead round counts toward the round limit.
+  `drive_sync` takes a model error as a failed call and refuses a folder with an open batch
+  round. Refusals are `ConfigurationError`.
+
+#### Task 10, arm C in the harness
+
+- `ToolText` moved to `model/tool_text.py`, so the contract "The agent's tools and texts see no
+  case record" holds as written, with no exemption.
+- `spec.json` records every setting the loop depends on (`agent_prompt_version`, `stats`,
+  `max_rounds`, `max_coding_calls`, `without`, `pass_reasoning`, `round`), and a resume compares
+  them. `AgentRunner` also refuses `include_case_number`, a batch run with no batch client and a
+  held-out run with no ledger path; `Runner.run` refuses arm C. Three of the runner's private
+  pieces became shared functions.
+- A case whose refinement cannot run is unscored, as in arm B. A leaked case is arm B's record,
+  with the calls made before the leak in its cost. `documents_not_read` says `skipped` or
+  `undecided`. The report says "unread" where arm B says "cap", and prints the cached share. The
+  run record counts what a dead round cost.
+- Progress is printed per round. A cancelled batch writes the records first and says how to
+  resume. `--cap-usd` defaults by arm; arm C reads S3's guidance by default; `--without` is
+  refused on other arms; `resolve_latest` finds a plain arm C run. The boundary test runs on
+  both paths. The pairing guard now compares the docket's own key with the record's (final
+  review; before, it could not fail).
+
+#### Task 11, later triggers
+
+- The docket state "some" is a keyword on `CaseLoop` (`docket_final`), not a field of `Prior`:
+  whether more documents may come is a fact about now, which the caller knows. Nothing yet tells
+  the model that more may come.
+- Without new structured evidence, the opening carries what H0's result would: the listing and
+  the menu (`documents.docket_payload`). `texts.ALL_READ` is new. The opening is in
+  `agent/later.py`. `LoopOutcome` gains `prior`, and `ReadRecord` gains `trigger`. `prior_of`'s
+  rules, the opening call's `record_hypothesis` shape and three more refusals fill what the brief
+  left open. The summary adds no "prefer current evidence" instruction: that would be a prompt
+  change for a round.
+
+#### Task 12, arm B's tool post-pass
+
+- The drivers take a `DrivenLoop` protocol, so arm B's `FixedToolsLoop` uses them unchanged.
+  Five private pieces of `loop.py` and `run.py` became shared functions.
+- The fixed turn carries the first answer as its content, with four calls, `fixed-1` to
+  `fixed-4`. With no known phase group there is no `suggest_codes` call, since the agent itself
+  could not make one. The label records the statistics file (`+tools-s3`).
+- The payload is the source run's own, rebuilt and checked against its recorded fingerprint.
+  Preparation comes before the reservation. The cap is the source run's, on the post-pass's own
+  calls. A case the post-pass does not answer is unscored. A post-pass is not resumed: its
+  folder is moved aside and the pass run again.
+- More refusals than the brief named, among them a source with guidance other than S3's and
+  `dev-seal-400` (final review), and an arm C source (the review of decision 0137).
+  `resolve_latest` keeps its file pattern and skips derived and renamed runs by their record,
+  not their name.
+
+#### Task 13, the noise report and rounds
+
+- The format gate counts every `failed: ` reason except `failed: leak` and `failed: rounds`, and
+  fails closed on an unknown one. Running out of batch rounds is printed on its own line. A
+  leak reads `leak: ...` and is not counted. The final review added how many counted failures
+  had no reply.
+- `spec.json` is compared key for key, apart from two keys that only size the reservation. The
+  report also refuses a dirty tree, part of `dev-400`, a copied folder, a run named twice,
+  missing files and a case outside development. Agreement is counted from `trail.jsonl`. The
+  third-run rule is decided on whole counts. Each pair block names what (a - b) is.
+- `round_result.py` reads the statistics file the run's `spec.json` names. `--round` is checked
+  before anything is read. The template first left the failure rule to each registration;
+  decision 0136 then set it.
+
+#### Task 14, smoke runs and the noise floor
+
+- Two one-case smoke runs at the standard price, `20261001T115444-5890033-dev-400-C` ($0.0057)
+  and `20261001T131232-09ee533-dev-400-C` ($0.0058), both finished. In the first, from its
+  second call on, 85% to 97% of prompt tokens were cached. The first led to decision 0134.
+- The 20-case batch smoke run (condition 3) finished 20 of 20 cases and led to decision 0135.
+  The noise-floor target reserves $0.008 a case: the run's $0.0073, rounded up. Arm B with S3's
+  guidance on the same 20 cases (`20261001T160605-77b41fd-dev-400-B`, $0.0313) and its
+  post-pass (20 of 20; $0.0295 computed, $0.0250 billed) finished, and the loop was frozen.
+- A resume's progress line now says it waits on a round sent before it. That edit moved `+p`
+  (above).
+
+#### Task 15, tuning
+
+- No round was run (above). Instead, outside the plan: trail reading pages from arm C's "always
+  wrong" group, the miss classifier and its count, the precedent probe and its reading page, the
+  coding- and finding-consistency probes (the latter's like-for-like line redefined per level
+  before any figure was read), the findings-from-precedent probe (its intervals made
+  independent of case order before its result was read), the "where the findings go wrong"
+  probe, the whole-pool second readings, and the ordering diagnostic. Their committed results:
+  - case groups: across arm C's two runs, 79 of 401 cases always right, 266 always wrong and 56
+    flipping. S2.7's arm B runs carried no guidance, so the arms' groups differ partly by
+    guidance (`docs/results/s3-case-groups-dev.txt`);
+  - cases whose NTSB cause sentences are identical share the first occurrence code in 619 of
+    1650 (37.5%), but a mean 74.1% [72.2%, 75.9%] of their flagged findings
+    (`docs/results/s3-coding-consistency-dev.txt`,
+    `docs/results/s3-finding-consistency-dev.txt`);
+  - precedent: first codes "in between" (found in 48 of 266 "always wrong" cases, against a
+    control's 19); findings "not promising" (recall@10 -3.6% [-6.8%, -0.6%] against the loop's
+    own), and "not promising" again under the whole pool (-0.6% [-3.8%, +2.6%]);
+  - the loop's finding misses: item choice reads as case-specific, since the NTSB's item is the
+    pool's commonest in only 46 of 213 item misses (`docs/results/s3-finding-misses-dev.txt`);
+  - arm B's tools step adds occurrence top-1 +6.8% [+4.0%, +9.8%] and finding recall@10 +4.7%
+    [+2.5%, +7.0%] to S2.7's answer (`docs/results/s3-armb-tools-vs-s27-armb-answer-dev.txt`).
+- A review found that the change for decision 0137 let arm B's post-pass accept an arm C
+  source, through a shared function. No such run was made, and it is refused again.
+- Two earlier attempts at the full tool post-pass lost their first batch at the provider (a
+  404, no cost recorded). Their folders are kept, as `…-tools-lost-batch-1` and `-2`.
+
+#### Across tasks
+
+- Each task's tests were shown able to fail by one-line mutations of its code (Task 4: 14; Task
+  8: 36; Task 9: 49; Task 10: 65; Task 11: 36; Task 12: 126, one of them equivalent; Task 13:
+  56; decision 0134: 12; and each Task 15 script). The plan's entries record each set.
+- Files outside a brief's list were changed where a task needed them: test files, `README.md`'s
+  scripts table, `.pre-commit-config.yaml`. Each is named in its plan entry. The `.PHONY` line
+  lost a space three times through the editing tool; `tests/test_makefile.py` now checks every
+  word of it.
+- The final review also made one `pass_reasoning` setting (`loop.PASS_REASONING`); added
+  `agent.steps` and `agent.facts` to the tool-text contract; skipped a reasoning entry that is
+  not an object, and made the boundary test fail closed on an unknown shape; made
+  `stage_spend` cite S3's own decision (0128 item 2); and fixed two small texts.
+- S2.7's sentence check now also covers the agent's fixed texts (final review) and the coding
+  tools' fixed result sentences (before Task 14). None of them appears in any development
+  case's narratives or probable cause.
+
+### Known issues carried to S3.2
+
+From the final review. None changes a committed result.
+
+- A resumed round whose replies are all on disk, but whose batch the provider reports as
+  cancelled, stops the run. One more resume continues it.
+- In a resumed round that was partly answered, a call with no reply counts as a failed attempt
+  (one of its case's two) instead of being sent again. This matters before S3.2's once-only
+  held-out run.
+- At a read choice, the room held for the answer does not count the documents about to be
+  attached. The cap still holds, but a case may stop at the cap before it answers.
+- A case forced to answer at H0, before it saw the listing, still gets the listing in its
+  refinement. At a $0.15 cap this cannot happen.
+- The coding step catches every exception (`except Exception`), and no test pins the
+  temperature.
+- Arm C's `spec.json` holds arm B's `prompt_version` beside `agent_prompt_version`; only the
+  second is the loop's.
+- `scripts/reply_budget.py` misreads arm C's reply tuples.
+- Arm B's post-pass refuses an over-budget run only after it has read every docket. Its
+  `+tools-<name>` label comes from the name passed beside the statistics, and nothing checks
+  that the two match. Its refusal of a source that is not arm B's names "the ordering check".
+- No `month_spent` test covers a dead round that reported a cost.
+- S3's arm B answer runs count the computed price, while arm C counts what was billed. S3.2
+  must define "equal cost" before its run.
+- The noise pair read under decision 0136's own rule (all 401 cases, a failed case counted
+  wrong) was never committed; decision 0139 uses the 387-case figure in its place.
+- The precedent probes limit the pool by event date, not by the date an earlier verdict was
+  published. This can only favour the search.
+- `make s3-miss-kinds` with a group other than the default writes over the committed results
+  file.
+- `AgentCall.offered=()` cannot tell a row written before decision 0134 from a choice with
+  nothing on offer.
+- In `apps/eval/__main__.py`, an unreadable `spec.json` reads as "no ablation".
+
+### Decisions taken during the stage
+
+- [0121](../decisions/0121-agency-moves-to-reading-and-coding.md) — Agency moves to the read
+  choice and the coding step; parts of 0021 to 0023 are superseded.
+- [0122](../decisions/0122-h0-and-later-triggers.md) — The first hypothesis uses all non-docket
+  evidence present; later triggers re-send read documents in full.
+- [0123](../decisions/0123-the-staged-replay-is-paused.md) — The staged replay is paused: no
+  docket has been seen to arrive before closure; re-checked at 14 nights.
+- [0124](../decisions/0124-native-tool-calling-and-a-cacheable-conversation.md) — Native tool
+  calling, with a stable tool set, `tool_choice` per step and an append-only conversation.
+- [0125](../decisions/0125-the-suggestion-tool.md) — The suggestion tool: the pool's five
+  commonest defining events for a phase group, called by choice.
+- [0126](../decisions/0126-confidence-is-calibrated-in-code.md) — Confidence is calibrated in
+  code; abstain is a threshold on the fitted value.
+- [0127](../decisions/0127-arms-ablations-and-the-ordering-check-in-arm-b.md) — S3's arms and
+  ablations; arm B calls every coding tool; the ordering check runs in arm B only.
+- [0128](../decisions/0128-s3-in-three-sub-stages-with-one-spend-line.md) — S3 in three
+  sub-stages, with one $50 spend line.
+- [0129](../decisions/0129-s3s-sealed-sample-and-statistics.md) — S3's sealed sample and
+  statistics file; the guidance files stay unchanged.
+- [0130](../decisions/0130-the-loops-noise-floor-and-format-gate.md) — The loop's noise floor,
+  and a 2% format gate.
+- [0131](../decisions/0131-the-probe-spend-kind.md) — The `probe` spend kind, and the relabel of
+  the learning probe's rows.
+- [0132](../decisions/0132-s28-is-cancelled.md) — S2.8 is cancelled.
+- [0133](../decisions/0133-unreadable-dockets-are-listed-and-the-text-is-fingerprinted.md) —
+  Arm C sees the listing of an unreadable docket; its prompt version fingerprints the text.
+- [0134](../decisions/0134-read-choices-tolerate-documents-not-on-offer.md) — A read choice
+  tolerates decisions on documents not on offer, and skips them.
+- [0135](../decisions/0135-s3-spend-counts-what-was-billed.md) — S3's spend counts what the
+  provider billed for its batch runs.
+- [0136](../decisions/0136-s3-rounds-count-failed-cases-as-wrong.md) — In an S3 tuning round, a
+  failed case counts as wrong, and the format gate is a hard limit.
+- [0137](../decisions/0137-the-ordering-check-as-a-diagnostic-on-arm-c.md) — The ordering check
+  as a diagnostic on arm C, run once.
+- [0138](../decisions/0138-precedent-pool-whole-for-development.md) — In development work,
+  precedent search reads the whole pool, less the judged case's own date.
+- [0139](../decisions/0139-s31-tuning-closes-without-a-registered-round.md) — S3.1's tuning
+  closes without a registered round.
+- [0140](../decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md) — The precedent tool
+  is built after S4, as a measured second version of the agent.
+
+### Implementation record
+
+- Pull request: #21 (https://github.com/floyda/ntsb-probable-cause/pull/21), merged with a
+  merge commit (decision 0033).
+- Plan, at its last commit:
+  https://github.com/floyda/ntsb-probable-cause/blob/6d2dad099ff8fc422aab3ee2e37116651221683a/docs/plans/2026-09-30-s3-1-agent-loop.md
+- The learning probe's plan, deleted with it, at its last commit:
+  https://github.com/floyda/ntsb-probable-cause/blob/7ae57993ad9835ebbffb48990d42a1d74f4caadd/docs/plans/2026-09-29-s3-learning-probe.md
+  - Its Deviations, in short: H0 read the structured evidence, not the start facts alone; skip
+    regret was measured against the probe's own read-everything call, not an old arm B run;
+    spend was first recorded as `inventory` (relabelled `probe` by decision 0131) and kept in a
+    separate ledger until S2.7's sealed run had finished; a repeat run measured the probe's
+    noise; and its numbers carry stated caveats (skip regret mixes reading with run-to-run noise;
+    read rates follow the instructions and the menu; a call that failed in transport is counted
+    as free). §2 gives its results.
+- Commits: from `777c2a5` (this specification's first draft) to `35f6c01`, the merge of `main`
+  into the branch and the last commit before the close-out.
+- Spend: S3 has spent $5.11 of its $50 line, all on evaluation runs, counted by commit on S3's
+  branches (`scripts/stage_spend.py --stage s3`, 2026-10-03; decisions 0128, 0135).
+- The loop: frozen at `fd6053f`; noise-floor runs `20261001T201506-fd6053f-dev-400-C` and
+  `20261001T201648-fd6053f-dev-400-C`.
+- Release: v0.8.0 (tag created by Andy after the merge; a merge commit, decision 0033).
+
 ## Glossary
 
 - **Abstain**: the agent declines to answer because the evidence is thin. In S3, a threshold
