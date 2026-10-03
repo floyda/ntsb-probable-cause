@@ -1,7 +1,7 @@
 # S3.2 — The claims: design
 
 *Drafted 2026-10-03 from a design session with Andy, the same day S3.1 closed (pull request #21,
-release v0.8.0, merge commit `1c79dde`). Status: Draft, for Andy's review. This is the
+release v0.8.0, merge commit `1c79dde`). Status: Approved (2026-10-03, Andy: "all looks good"). This is the
 specification for sub-stage S3.2 of
 [the S3 specification](2026-09-30-s3-agent-loop-design.md) (§3, §11), which holds the design S3
 shares and S3.1 in full. The implementation plan is written from this document separately, in
