@@ -1,0 +1,13 @@
+{
+ "content": "{ \"page_kind\": \"typed text\", \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\nEngine sputtered at 800 ft.\\nSwitched to right tank, no change.\\nFuel selector BOTH, mixture RICH.\" }",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 2239,
+  "completion_tokens": 56,
+  "reported_cost_usd": 0.00032914,
+  "reasoning_tokens": 0
+ },
+ "model": "xiaomi/mimo-v2.6-flash",
+ "response_id": "gen-1790514639-j7UisuQqmFh1nzrASbX7"
+}

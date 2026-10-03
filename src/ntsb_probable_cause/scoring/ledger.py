@@ -11,11 +11,14 @@ from ntsb_probable_cause.scoring.records import RunRecord
 # see ``gitinfo.py`` for why the implementation moved).
 __all__ = ["append_row", "commit_state", "refuse_if_heldout_and_dirty", "results_ref"]
 
-_HEADER = (
-    "# Held-out ledger\n\n"
-    "Every run that touched a held-out sample (decision 0026).\n\n"
-    "| date | sample | arm | exclusions | includes | model | commit | cost USD | results |\n"
-    "|---|---|---|---|---|---|---|---|---|\n"
+_INTRO = "# Held-out ledger\n\nEvery run that touched a held-out sample (decision 0026).\n"
+_VERSIONED_TABLE = (
+    "| date | sample | arm | evidence | exclusions | includes | model | commit | cost USD "
+    "| results |\n|---|---|---|---|---|---|---|---|---|---|\n"
+)
+_VERSIONED_SECTION = (
+    "\n## From S2.6: with the evidence version (decision 0076)\n\n"
+    "Every row above this table read the docket at evidence version v1.\n\n" + _VERSIONED_TABLE
 )
 
 
@@ -43,13 +46,19 @@ def results_ref(results_file: str) -> str:
 
 
 def append_row(ledger: Path, run: RunRecord, results_file: str) -> None:
-    """Append one row, writing the header on first use."""
+    """Append one row, writing the header on first use.
+
+    Or the versioned table once, for an old ledger that has none yet (decision 0076).
+    """
     ledger.parent.mkdir(parents=True, exist_ok=True)
     if not ledger.exists():
-        ledger.write_text(_HEADER)
+        ledger.write_text(_INTRO + "\n" + _VERSIONED_TABLE)
+    elif "| evidence |" not in ledger.read_text():
+        with ledger.open("a") as handle:
+            handle.write(_VERSIONED_SECTION)
     with ledger.open("a") as handle:
         handle.write(
-            f"| {run.started.date()} | {run.sample} | {run.arm} | "
+            f"| {run.started.date()} | {run.sample} | {run.arm} | {run.evidence_version} | "
             f"{','.join(run.exclusions) or '-'} | {','.join(run.includes) or '-'} | "
             f"{run.model} | {run.commit_sha}{'*' if run.dirty else ''} | "
             f"{run.cost_usd:.2f} | {results_ref(results_file)} |\n"

@@ -1,0 +1,332 @@
+"""scoring/checkpass.py: the ordering check as a post-pass (decision 0096; plan W2)."""
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import cast
+
+import httpx
+import pytest
+import respx
+from tests.test_occurrence_misses import _case
+
+from ntsb_probable_cause import sources
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.model.client import RecordingFakeClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
+from ntsb_probable_cause.scoring import checkpass, ordering
+from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
+
+NOW = datetime(2026, 9, 28, tzinfo=UTC)
+LOC, STALL = "452240", "452241"
+STATS = build(
+    [PoolCase(2012, "Maneuvering", (LOC, STALL))] * 30
+    + [PoolCase(2016, "Maneuvering", (STALL, LOC))] * 5,
+    built_from="test",
+)
+
+
+def _source(
+    runs: Path,
+    run_id: str = "20260926T000000-abc1234-dev-400-B",
+    *,
+    finished: datetime | None = NOW,
+) -> Path:
+    folder = runs / run_id
+    folder.mkdir(parents=True)
+    record = RunRecord(
+        run_id=run_id,
+        sample="dev-400",
+        arm="B",
+        exclusions=(),
+        includes=(),
+        prompt_version="s1-v5",
+        model="openai/gpt-6-luna",
+        price_variant="batch",
+        cap_usd=0.05,
+        budget_usd=40.0,
+        commit_sha="abc1234",
+        dirty=False,
+        started=NOW,
+        finished=finished,
+        cases=2,
+        cost_usd=1.0,
+    )
+    write_jsonl(folder / "run.jsonl", [record])
+    write_jsonl(
+        folder / "cases.jsonl",
+        [
+            _case("C1", (LOC, STALL), (STALL,)),  # stall first; LOC is defining
+            _case("C2", (LOC, STALL), (LOC,), abstain=True),  # abstained: unchanged
+        ],
+    )
+    return folder
+
+
+def test_the_rule_pass_writes_a_derived_run_with_a_check_step(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    record = checkpass.check_run(
+        source,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={"C1": "Maneuvering", "C2": "Maneuvering"},
+        seen_pairs=frozenset({LOC}),
+        commit=("def5678", False),
+        now=lambda: NOW,
+    )
+    assert record.run_id == "20260926T000000-abc1234-dev-400-B-check-rule"
+    assert record.cost_usd == 0.0
+    assert record.prompt_version == "s1-v5+check-rule"
+    cases = {c.case_id: c for c in read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)}
+    step = cases["C1"].steps[-1]
+    assert step.tool == checkpass.CHECK_TOOL
+    assert next(g.phase + g.event for g in step.hypothesis.occurrence) == LOC
+    assert step.arguments["toward_more_common"] is True  # stall (5) -> loss of control (30), 0101
+    assert cases["C1"].scores is not None
+    assert cases["C1"].scores.occurrence_top1
+    assert len(cases["C2"].steps) == 1
+
+
+def test_a_derived_run_is_refused_twice_and_a_held_out_source_is_refused(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs)
+
+    def run(folder: Path) -> RunRecord:
+        return checkpass.check_run(
+            folder,
+            "rule",
+            checkpass.rule_checker(STATS),
+            runs_dir=runs,
+            groups={},
+            seen_pairs=frozenset(),
+            commit=("d", False),
+            now=lambda: NOW,
+        )
+
+    run(source)
+    with pytest.raises(ConfigurationError, match="exists"):
+        run(source)
+    held = _source(runs, "20260926T000000-abc1234-heldout-400-B")
+    with pytest.raises(ConfigurationError, match="development"):
+        run(held)
+
+
+def test_the_luna_checker_sends_only_the_check_text_and_retries_a_bad_ranking() -> None:
+    client = RecordingFakeClient(
+        [json.dumps({"ranking": ["111111"]}), json.dumps({"ranking": [LOC, STALL]})]
+    )
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (LOC, STALL)
+    assert len(client.systems) == 2
+    assert "rejected" in client.systems[1]
+    assert client.payloads[0].text == "{}"  # everything is in the system text; no evidence payload
+    assert client.settings[0].price_variant == "standard"
+
+
+def test_the_luna_checker_leaves_the_answer_unchanged_when_both_replies_fail() -> None:
+    client = RecordingFakeClient(["not json", "still not json"])
+    checker = checkpass.luna_checker(client, STATS, load_tables())
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (STALL,)
+    assert outcome.note.startswith("check failed")
+
+
+def _run(folder: Path, runs: Path) -> RunRecord:
+    return checkpass.check_run(
+        folder,
+        "rule",
+        checkpass.rule_checker(STATS),
+        runs_dir=runs,
+        groups={},
+        seen_pairs=frozenset(),
+        commit=("d", False),
+        now=lambda: NOW,
+    )
+
+
+def test_check_run_refuses_a_source_that_has_not_finished(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs, finished=None)
+    with pytest.raises(ConfigurationError, match="finished"):
+        _run(source, runs)
+
+
+def test_check_run_refuses_a_source_that_is_itself_a_derived_check_run(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    source = _source(runs, "20260926T000000-abc1234-dev-400-B-check-rule")
+    with pytest.raises(ConfigurationError, match="stacked"):
+        _run(source, runs)
+
+
+JEV_BASE = "https://api.typesafe.ai"
+JEV_URL = f"{JEV_BASE}/v1/systemone"
+
+
+@respx.mock
+def test_the_jev_checker_ranks_reports_the_model_and_prices_input_tokens() -> None:
+    respx.post(JEV_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 1000, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": LOC,
+                        "confidence": 0.9,
+                        "probabilities": {LOC: 0.7, STALL: 0.3},
+                    }
+                },
+            },
+        )
+    )
+    tables = load_tables()
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    with TypeSafeClient("k", base_url=JEV_BASE) as client:
+        checker = checkpass.jev_checker(client, STATS, tables)
+        outcome = checker(hypothesis, "Maneuvering")
+    assert outcome.ranking == (LOC, STALL)
+    assert outcome.model == "jev-1.13.0"
+    assert outcome.cost_usd == pytest.approx(1000 * sources.JEV.input_usd_per_mtok / 1_000_000)
+
+
+# --- jev2, the registered second Jev check (decision 0103) ---
+
+
+def _jev2_reply(probabilities: dict[str, float], choice: str, confidence: float) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "model": "jev-1.13.0",
+            "usage": {"input_tokens": 2000, "output_tokens": 0},
+            "answers": {
+                "defining": {
+                    "type": "choice",
+                    "choice": choice,
+                    "confidence": confidence,
+                    "probabilities": probabilities,
+                }
+            },
+        },
+    )
+
+
+def test_jev2_is_a_way_with_jevs_cost_estimate_and_round1s_ways_are_unchanged() -> None:
+    assert "jev2" in checkpass.CHECK_WAYS
+    assert checkpass.WAYS == ("rule", "luna", "jev")  # Round 1's report reads these
+    assert (
+        checkpass.EXPECTED_COST_PER_CASE_USD["jev2"] == checkpass.EXPECTED_COST_PER_CASE_USD["jev"]
+    )
+
+
+@respx.mock
+def test_the_jev2_checker_sends_the_registered_state_and_question_to_the_pinned_model() -> None:
+    route = respx.post(JEV_URL).mock(
+        return_value=_jev2_reply(
+            {STALL: 0.3, LOC: 0.6, ordering.NONE_OF_THESE: 0.1}, choice=LOC, confidence=0.8
+        )
+    )
+    tables = load_tables()
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    with TypeSafeClient("k", base_url=JEV_BASE) as client:
+        outcome = checkpass.jev2_checker(client, STATS, tables)(hypothesis, "Maneuvering")
+    options = ordering.candidates((STALL,), "Maneuvering", STATS)
+    body = json.loads(route.calls[0].request.content)
+    assert body == {
+        "state": ordering.jev2_state(
+            (STALL,), options, "Maneuvering", hypothesis.evidence_narrative, STATS, tables
+        ),
+        "model": "jev-1.13.0",
+        "questions": {"defining": ordering.jev2_question(options, tables)},
+    }
+    assert outcome.ranking == (LOC, STALL)
+    assert outcome.model == "jev-1.13.0"
+    assert outcome.toward_more_common is True  # stall (5) -> loss of control (30) in the group
+    assert outcome.cost_usd == pytest.approx(2000 * sources.JEV.input_usd_per_mtok / 1_000_000)
+    assert outcome.prompt_tokens == 2000
+    assert outcome.details == {
+        "choice": LOC,
+        "confidence": 0.8,
+        "jev_order": [LOC, STALL, ordering.NONE_OF_THESE],
+        # every option's probability, in the ranked order (ties broken by the model's order)
+        "probabilities": {LOC: 0.6, STALL: 0.3, ordering.NONE_OF_THESE: 0.1},
+    }
+    assert list(cast("dict[str, float]", outcome.details["probabilities"])) == [
+        LOC,
+        STALL,
+        ordering.NONE_OF_THESE,
+    ]
+
+
+@respx.mock
+def test_the_jev2_checker_leaves_the_answer_unchanged_when_none_of_these_ranks_first() -> None:
+    respx.post(JEV_URL).mock(
+        return_value=_jev2_reply(
+            {STALL: 0.2, LOC: 0.2, ordering.NONE_OF_THESE: 0.6},
+            choice=ordering.NONE_OF_THESE,
+            confidence=0.5,
+        )
+    )
+    hypothesis = _case("C1", (LOC,), (STALL,)).steps[-1].hypothesis
+    with TypeSafeClient("k", base_url=JEV_BASE) as client:
+        outcome = checkpass.jev2_checker(client, STATS, load_tables())(hypothesis, "Maneuvering")
+    assert outcome.ranking == (STALL,)  # the model's own guesses
+    assert outcome.toward_more_common is False
+    assert outcome.details["choice"] == ordering.NONE_OF_THESE
+    assert "none_of_these" in outcome.note
+
+
+@respx.mock
+def test_a_jev2_pass_records_choice_confidence_and_probabilities_in_the_steps_arguments(
+    tmp_path: Path,
+) -> None:
+    respx.post(JEV_URL).mock(
+        return_value=_jev2_reply(
+            {STALL: 0.2, LOC: 0.2, ordering.NONE_OF_THESE: 0.6},
+            choice=ordering.NONE_OF_THESE,
+            confidence=0.5,
+        )
+    )
+    runs = tmp_path / "runs"
+    source = _source(runs)
+    with TypeSafeClient("k", base_url=JEV_BASE) as client:
+        record = checkpass.check_run(
+            source,
+            "jev2",
+            checkpass.jev2_checker(client, STATS, load_tables()),
+            runs_dir=runs,
+            groups={"C1": "Maneuvering", "C2": "Maneuvering"},
+            seen_pairs=frozenset(),
+            commit=("def5678", False),
+            now=lambda: NOW,
+        )
+    assert record.run_id.endswith("-check-jev2")
+    cases = {c.case_id: c for c in read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)}
+    step = cases["C1"].steps[-1]
+    assert step.tool == checkpass.CHECK_TOOL  # the checked step is still written
+    assert step.model == "jev-1.13.0"
+    assert step.arguments == {
+        "ranking": [STALL],
+        "toward_more_common": False,
+        "choice": ordering.NONE_OF_THESE,
+        "confidence": 0.5,
+        "jev_order": [ordering.NONE_OF_THESE, STALL, LOC],
+        "probabilities": {ordering.NONE_OF_THESE: 0.6, STALL: 0.2, LOC: 0.2},
+    }
+    assert [g.phase + g.event for g in step.hypothesis.occurrence] == [STALL]
+
+
+def test_a_rule_steps_arguments_hold_only_the_ranking_and_the_push(tmp_path: Path) -> None:
+    """The free-form details default to empty: rule, luna and jev steps are as before."""
+    runs = tmp_path / "runs"
+    record = _run(_source(runs), runs)
+    cases = {c.case_id: c for c in read_jsonl(runs / record.run_id / "cases.jsonl", CaseResult)}
+    assert set(cases["C1"].steps[-1].arguments) == {"ranking", "toward_more_common"}

@@ -1,0 +1,147 @@
+Learning probe, not a result: n=20; every figure below is a signal, not a finding.
+
+job_id: s3-probe-20260929T130538-551c884
+commit: 551c884 (clean)
+model: openai/gpt-6-luna
+reasoning_effort: medium
+price_variant: standard
+prompt_version: s1-v6
+guidance: r3-loc-stall, r6-aircraft-control
+max_output_tokens: 8000
+case_cap_usd: 0.15
+run_cap_usd: 3.00
+selection_seed: 20260929
+cases_selected: 20
+cases_run: 20
+cells: fatal=False has_scan=False=5, fatal=False has_scan=True=5, fatal=True has_scan=False=5, fatal=True has_scan=True=5
+started: 2026-09-29T13:05:38.655764+00:00
+finished: 2026-09-29T13:18:16.027408+00:00
+
+## Case outcomes
+
+case stop reasons: done: 20
+cases with no trail (exception): 0 of 20
+
+## Documents
+
+documents offered at choice 1: 136
+documents chosen at choice 1: 101 of 136 (74.3%)
+documents offered at choice 2: 35
+documents chosen at choice 2: 10 of 35 (28.6%)
+
+choice 1, by kind (after transcription):
+  born-digital: 94 of 121 (77.7%)
+  partial: 7 of 15 (46.7%)
+choice 1, by size band:
+  < 2,000: 75 of 108 (69.4%)
+  2,000–10,000: 22 of 23 (95.7%)
+  > 10,000: 4 of 5 (80.0%)
+choice 1, by transcription:
+  has transcribed pages: 43 of 53 (81.1%)
+  text layer only: 58 of 83 (69.9%)
+
+choice 2, by kind (after transcription):
+  born-digital: 10 of 27 (37.0%)
+  partial: 0 of 8 (0.0%)
+choice 2, by size band:
+  < 2,000: 9 of 33 (27.3%)
+  2,000–10,000: 1 of 1 (100.0%)
+  > 10,000: 0 of 1 (0.0%)
+choice 2, by transcription:
+  has transcribed pages: 3 of 10 (30.0%)
+  text layer only: 7 of 25 (28.0%)
+
+read at either choice: 111 of 136 (81.6%)
+  by transcription:
+    has transcribed pages: 46 of 53 (86.8%)
+    text layer only: 65 of 83 (78.3%)
+  by size band:
+    < 2,000: 84 of 108 (77.8%)
+    2,000–10,000: 23 of 23 (100.0%)
+    > 10,000: 4 of 5 (80.0%)
+
+read choice 2 happened: 15 of 20 (75.0%) of cases with documents left
+  nothing left to offer: 5; not reached: 0
+
+## Hypotheses
+
+H0 occurrence top-1: 5 of 20 (25.0%)
+H0 occurrence top-3: 9 of 20 (45.0%)
+H1 occurrence top-1: 9 of 20 (45.0%)
+H1 occurrence top-3: 10 of 20 (50.0%)
+H2 occurrence top-1: 9 of 20 (45.0%)
+H2 occurrence top-3: 10 of 20 (50.0%)
+H_all occurrence top-1: 6 of 20 (30.0%)
+H_all occurrence top-3: 9 of 20 (45.0%)
+final occurrence top-1: 9 of 20 (45.0%)
+final occurrence top-3: 11 of 20 (55.0%)
+refined occurrence top-1: 9 of 20 (45.0%)
+refined occurrence top-3: 11 of 20 (55.0%)
+
+finding recall@10 mean at refined: 23.7% (n=20)
+
+## Skip regret
+
+H_all ran: 20 of 20 (100.0%)
+
+skip-regret cases (a document was actually skipped):
+  H_all top-1 differs from H2: 6 of 13 (46.2%)
+    H_all right, H2 wrong: 0 of 6
+    H2 right, H_all wrong: 3 of 6
+
+control cases (agent read everything -- the difference rate expected from history and noise alone):
+  H_all top-1 differs from H2: 1 of 7 (14.3%)
+    H_all right, H2 wrong: 0 of 1
+    H2 right, H_all wrong: 0 of 1
+
+## Coding checks
+
+cases that reached the coding checks: 20 of 20 (100.0%)
+tool calls per case: min 2, median 2.0, max 5
+tool calls by tool: describe_codes: 14, occurrence_usage: 21, past_findings: 21
+coding stop reasons: done: 20; not reached: 0
+argument errors: 2 of 56 (3.6%) of tool calls
+distinct codes passed to coding tools: 53
+cases where the true primary occurrence was among the codes passed: 11 of 20 (55.0%)
+
+cases with at least one coding tool call:
+  final top-1 differs from H2: 1 of 20 (5.0%)
+    right to wrong: 0 of 1
+    wrong to right: 0 of 1
+    wrong to wrong: 1 of 1
+
+cases with no coding tool call (re-asking control):
+  final top-1 differs from H2: 0 of 0 (—)
+
+followed the pool's top choice (final top-3 with 2+ distinct codes): 14 of 20 (70.0%)
+  right when following: 7 of 14 (50.0%)
+  right when overriding: 2 of 6 (33.3%)
+single-code final top-3 (follow/override not applicable): 0 of 20 (0.0%)
+  right: 0 of 0 (—)
+
+## Cost and reliability
+
+calls per case: min 9, median 11.0, max 15
+cost per case: mean $0.0286, max $0.1210
+total cost: $0.5721 (n=20 cases)
+
+prompt tokens per call by phase (mean, max):
+  choice1: mean 5502, max 6771 (n=24)
+  choice2: mean 22992, max 88548 (n=15)
+  coding: mean 21335, max 90965 (n=81)
+  final: mean 22567, max 91462 (n=23)
+  h0: mean 4689, max 4707 (n=20)
+  h1: mean 19854, max 87637 (n=23)
+  h2: mean 18809, max 36379 (n=8)
+  h_all: mean 24431, max 102959 (n=21)
+  refine: mean 16028, max 82698 (n=20)
+
+growth, H0 to last coding call, mean prompt tokens:
+  H0: mean 4689 (n=20)
+  last coding call: mean 22644 (n=20)
+  mean ratio (last coding / H0): 4.83 (n=20)
+
+seconds per call: mean 11.57, max 45.96 (n=235 calls)
+parse retries by phase: choice1: 4, coding: 5, final: 3, h1: 3, h2: 2, h_all: 1
+failures by phase: none
+finish reasons: stop: 235

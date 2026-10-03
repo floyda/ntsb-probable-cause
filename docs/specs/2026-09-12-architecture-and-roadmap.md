@@ -556,6 +556,50 @@ observations — days from the event to first appearance — and no text (0024).
 *Done means:* running on a schedule and accumulating first-seen timestamps for docket
 documents, structured-field snapshots and preliminary narratives.
 
+### S2.6. The widened docket — done
+
+As built: see the stage specification's
+[As-built section](2026-09-23-s26-widened-docket-design.md#as-built).
+Held-out runs and the v3 probe were deferred (decisions
+[0089](../decisions/0089-s26-closes-after-the-v3-probe-held-out-deferred.md),
+[0090](../decisions/0090-s26-closes-on-its-development-results.md)).
+
+
+*Added 2026-09-23 (0074–0083).* Reads the words in page images, which S2 left unread (0047),
+and lets arm B see photographs and diagrams in a development probe, so that "read everything"
+is measured on the widest evidence before the loop is judged against it (0022). Specification:
+`docs/specs/2026-09-23-s26-widened-docket-design.md`.
+
+Pages are drawn with `pypdfium2` (0075); an inventory measures what image-bearing pages show
+(0074); a transcriber is chosen on our own pages by a rule fixed in advance (0080); transcribed
+text carries its own marker and writes `[illegible]` rather than guessing (0079), and is cached
+once per page as evidence preparation (0081). The docket gains an evidence version — v1 text
+layers, v2 with transcriptions, v3 with pictures alongside — recorded by every run (0076).
+Analysis-narrative sentences in docket documents, and documents carrying most of the factual
+narrative, mark the case rather than refuse it (0077, 0078). The v3 probe runs on development
+cases only (0082). The monthly budget is $40 during development (0083).
+
+*Done means:* the conditions in the specification's §15, each produced by a script; B-v1 and
+B-v2 on `heldout-400`, once each at one commit, in the ledger; B-v2 is the bar S3's loop must
+beat, and the v3 probe decides whether the loop gets an image tool. It depends on a model-switch
+stage, S2.4, specified separately.
+
+### S2.7. Coding guidance — done
+
+As built: see the stage specification's
+[As-built section](2026-09-26-s27-coding-guidance-design.md#as-built).
+
+*Added 2026-09-26 (0093–0100).* Arm B's misses are mostly coding convention — which code the
+NTSB flags as the defining event, and which phase — rather than reading. S2.7 measures the
+misses (Round 0), tests an ordering check after the answer (Round 1, 0096, 0097), and adds
+coding guidance in small registered rounds with a stop rule and a $25 line (0098). The judge's
+narrative label separates "understood, miscoded" from "misread" once validated (0099). A
+transcription track runs alongside on its own branch (0093, 0100). Rounds use `dev-400` and v1;
+statistics come from a pool outside the samples (0094); a sealed sample checks the final setup
+once (0095). Specification: `docs/specs/2026-09-26-s27-coding-guidance-design.md`.
+
+*Done means:* the specification's §15. The bar S3's loop faces is set after this stage (0089).
+
 ### S3. The agent loop
 
 Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.

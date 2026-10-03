@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
-from typing import Literal
+from typing import Literal, cast
 
 from ntsb_probable_cause.errors import SchemaError
 
@@ -48,14 +48,34 @@ class CodeTables:
         return "\n".join(f"{code}  {label}" for code, label in sorted(table.items()))
 
 
+def _rows(resource: str) -> list[dict[str, str]]:
+    text = resources.files("ntsb_probable_cause.scoring").joinpath(f"tables/{resource}").read_text()
+    return list(csv.DictReader(text.splitlines()))
+
+
+def read_dictionary_table(name: TableName) -> dict[str, str]:
+    """One table as ``scripts/build_code_tables.py`` wrote it from the NTSB data dictionary."""
+    return {row["code"]: row["label"] for row in _rows(f"{name}.csv")}
+
+
+def read_supplement() -> dict[TableName, dict[str, str]]:
+    """Codes the NTSB uses that its data dictionary lacks, labelled from its own records (0105)."""
+    supplement: dict[TableName, dict[str, str]] = {}
+    for row in _rows("supplement.csv"):
+        table = row["table"]
+        if table not in ("phases", "events"):
+            raise SchemaError(f"supplement row for unsupported table {table!r}")
+        supplement.setdefault(cast(TableName, table), {})[row["code"]] = row["label"]
+    return supplement
+
+
 def _read(name: TableName) -> dict[str, str]:
-    text = resources.files("ntsb_probable_cause.scoring").joinpath(f"tables/{name}.csv").read_text()
-    return {row["code"]: row["label"] for row in csv.DictReader(text.splitlines())}
+    return read_dictionary_table(name) | read_supplement().get(name, {})
 
 
 @cache
 def load_tables() -> CodeTables:
-    """Load the committed tables once."""
+    """Load the committed tables once: the dictionary's, plus the supplement (decision 0105)."""
     return CodeTables(
         phases=_read("phases"),
         events=_read("events"),

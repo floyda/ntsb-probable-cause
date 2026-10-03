@@ -2,23 +2,49 @@
 
 import argparse
 import contextlib
+import hashlib
 import json
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from ntsb_probable_cause import gitinfo, sources
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError
-from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.docket.documents import CachedDocuments
+from ntsb_probable_cause.docket.render import RESOLUTION
+from ntsb_probable_cause.docket.transcribe import (
+    PAGE_RULE,
+    PAGE_RULES,
+    TRANSCRIBE,
+    TRANSCRIBER,
+    PageJob,
+    PageRule,
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+    TranscriptionKey,
+    key_instruction,
+    pages_to_read,
+)
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError, DocketError
+from ntsb_probable_cause.fields import EVIDENCE_FIELDS, EvidenceRole
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.records.split import split_record
-from ntsb_probable_cause.scoring import ledger, report, samples
-from ntsb_probable_cause.scoring.budget import month_spent, open_reservations, release
+from ntsb_probable_cause.scoring import checkpass, ledger, prompt, report, samples
+from ntsb_probable_cause.scoring.budget import (
+    month_spent,
+    open_reservations,
+    release,
+    reserve_within_budget,
+)
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.judge import (
     JUDGE_MODEL,
     JudgeItem,
@@ -26,6 +52,7 @@ from ntsb_probable_cause.scoring.judge import (
     judge_run,
     pick_disagreements,
 )
+from ntsb_probable_cause.scoring.preparation import PreparationStoppedError, run_preparation
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, Runner, RunSpec
 from ntsb_probable_cause.settings import Settings
@@ -45,6 +72,14 @@ def _default_client_factory(settings: Settings) -> tuple[ModelClient, BatchRunne
     return http, BatchClient(http)
 
 
+JevFactory = Callable[[Settings], TypeSafeClient]
+
+
+def _default_jev_factory(settings: Settings) -> TypeSafeClient:
+    """The real TypeSafe client, for the ordering check's ``jev`` and ``jev2`` ways (0097, 0103)."""
+    return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
+
+
 def answering_run_record(folder: Path) -> RunRecord:
     """The answering run's own ``RunRecord`` -- always the first row in ``run.jsonl``.
 
@@ -57,8 +92,13 @@ def answering_run_record(folder: Path) -> RunRecord:
     return records[0]
 
 
-def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None = None) -> str:
+def resolve_latest(
+    runs_dir: Path, arm: str, sample: str, *, model: str | None = None, version: str = "v1"
+) -> str:
     """The newest *completed, unmodified* run id for one arm and sample.
+
+    A run on another evidence version is skipped too (0076): "latest B" means the latest B
+    on v1 unless asked.
 
     An aborted run (``finished is None``) is skipped (fix round 1, item 9): ``make bars``
     resolving ``--latest`` to a partial run would silently report and publish it as if it
@@ -78,6 +118,9 @@ def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None =
     """
     candidates: list[tuple[str, str]] = []
     for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
+        # A derived ordering-check run (S2.7, plan W2) is not a new answering run.
+        if "-check-" in folder.name:
+            continue
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
         record = answering_run_record(folder)
@@ -87,7 +130,11 @@ def resolve_latest(runs_dir: Path, arm: str, sample: str, *, model: str | None =
             continue
         if record.exclusions or record.includes:
             continue
+        if record.guidance:  # a guided run (S2.7) is not the plain arm
+            continue
         if model is not None and record.model != model:
+            continue
+        if record.evidence_version != version:
             continue
         candidates.append((folder.name, record.model))
     if not candidates:
@@ -118,8 +165,52 @@ def _maybe_write(out: str | None, text: str) -> None:
         path.write_text(text if text.endswith("\n") else text + "\n")
 
 
+def _positive_usd(text: str) -> float:
+    """A dollar amount above zero (S2.6 final review, I1): zero would reserve nothing."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"must be above zero, not {text}")
+    return value
+
+
 def _add_common(sub: argparse.ArgumentParser) -> None:
     sub.add_argument("--out", help="also write the printed text to this file")
+
+
+def _add_transcribe(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The ``transcribe`` subcommand: S2.6's flags and S2.7 track 2's ``--model``/``--page-rule``.
+
+    Kept apart from ``_build_parser`` so that neither grows past ruff's statement limit once
+    both S2.7 tracks' flags are in (the merge of the parent into track 1).
+    """
+    transcribe_p = commands.add_parser(
+        "transcribe", help="read a sample's image pages once, into the cache (S2.6, 0081)"
+    )
+    transcribe_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
+    transcribe_p.add_argument(
+        "--expected-cost-per-page-usd",
+        type=_positive_usd,
+        required=True,
+        help="above zero: sets the job's reservation, and the job stops once it is spent",
+    )
+    transcribe_p.add_argument("--workers", type=int, default=8)
+    transcribe_p.add_argument("--retry-failed", action="store_true")
+    transcribe_p.add_argument("--dry-run", action="store_true", help="count and price only")
+    transcribe_p.add_argument(
+        "--model",
+        default=TRANSCRIBER,
+        help="the transcriber (S2.7 spec §8 step 1); needs a price and a reasoning level in "
+        "sources.py",
+    )
+    transcribe_p.add_argument(
+        "--page-rule",
+        choices=PAGE_RULES,
+        default=PAGE_RULE,
+        help="which pages are sent (decision 0100 item 4); the rule in force by default",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -133,17 +224,37 @@ def _build_parser() -> argparse.ArgumentParser:
     run_p = commands.add_parser("run", help="run one evaluation arm over a sample")
     run_p.add_argument("--arm", choices=("A", "B", "ceiling"), required=True)
     run_p.add_argument("--sample", choices=samples.SAMPLES, required=True)
+    run_p.add_argument("--evidence-version", choices=("v1", "v2", "v3"), default="v1")
+    run_p.add_argument(
+        "--transcriber",
+        default=TRANSCRIBER,
+        help="v2 only: the transcriber whose readings the run reads (S2.7 spec §7.5)",
+    )
+    run_p.add_argument(
+        "--page-rule",
+        choices=PAGE_RULES,
+        default=PAGE_RULE,
+        help="v2 only: the page rule the readings were chosen by (S2.7 spec §7.5)",
+    )
     run_p.add_argument("--exclude", action="append", default=[], type=EvidenceRole, metavar="ROLE")
     run_p.add_argument("--include", action="append", default=[], choices=("case_number",))
     run_p.add_argument("--model", default=RunSpec.model)
     run_p.add_argument(
         "--price-variant", choices=("batch", "standard"), default=RunSpec.price_variant
     )
+    run_p.add_argument("--max-output-tokens", type=int, default=RunSpec.max_output_tokens)
     run_p.add_argument("--cap-usd", type=float, default=RunSpec.cap_usd)
     run_p.add_argument(
         "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
     )
     run_p.add_argument("--expected-cost-per-case-usd", type=float, default=None)
+    run_p.add_argument(
+        "--guidance",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="a guidance file r<N>-<slug>, in stacking order (decision 0098)",
+    )
     run_p.add_argument("--sync", action="store_true")
     run_p.add_argument("--limit", type=int, default=None, help="only the first N sample cases")
     run_p.add_argument(
@@ -160,6 +271,11 @@ def _build_parser() -> argparse.ArgumentParser:
     report_p.add_argument("--latest", nargs=2, metavar=("ARM", "SAMPLE"))
     report_p.add_argument("--against")
     report_p.add_argument("--against-latest", nargs=2, metavar=("ARM", "SAMPLE"))
+    report_p.add_argument(
+        "--versions-compared",
+        action="store_true",
+        help="compare runs on different evidence versions, under a labelled heading (0076)",
+    )
     _add_common(report_p)
 
     judge_p = commands.add_parser("judge", help="grade one run's prose against the withheld text")
@@ -179,6 +295,17 @@ def _build_parser() -> argparse.ArgumentParser:
     release_p = commands.add_parser("release", help="clear a dead run's budget reservation")
     release_p.add_argument("run_id")
 
+    check_p = commands.add_parser(
+        "check", help="the ordering check, as a post-pass over a finished run"
+    )
+    check_p.add_argument("run_id")
+    check_p.add_argument("--way", choices=checkpass.CHECK_WAYS, required=True)
+    check_p.add_argument(
+        "--budget-usd", type=float, default=None, help="default: NTSB_MONTHLY_BUDGET_USD"
+    )
+
+    _add_transcribe(commands)
+
     return parser
 
 
@@ -191,13 +318,49 @@ def _resolve_run_id(runs_dir: Path, run_id: str | None, latest: Sequence[str] | 
 
 
 def _cmd_baseline(args: argparse.Namespace, settings: Settings) -> None:
+    if args.sample:
+        samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
     ids = samples.sample_ids(args.sample) if args.sample else None
     text = report.baseline_report(settings.data_dir / "processed", ids, load_tables())
     print(text)
     _maybe_write(args.out, text)
 
 
+def _readings_for_run(args: argparse.Namespace, settings: Settings) -> ReadingLookup | None:
+    """v2's readings for an arm B run, refused unless the sample is fully transcribed.
+
+    A v2 run must read v2 evidence, not v1 with some pages missing: ``ntsb-eval transcribe``
+    writes the done file only once every page it chose has a reading (spec §8.3).
+    """
+    if args.arm != "B" or args.evidence_version == "v1":
+        return None
+    # S2.7 Task 16 (spec §7.5): the marker checked is the one for this run's own transcriber
+    # and page rule, so a v2 run never reads pages chosen or read differently from its label.
+    readings = ReadingLookup(
+        TranscriptionCache(settings.transcription_dir),
+        model=args.transcriber,
+        page_rule=args.page_rule,
+    )
+    if not readings.is_done(args.sample):
+        raise ConfigurationError(
+            f"{args.sample} is not fully transcribed with transcriber {args.transcriber} and "
+            f"page rule {args.page_rule}: run ntsb-eval transcribe --sample {args.sample} "
+            f"--model {args.transcriber} --page-rule {args.page_rule} first"
+        )
+    return readings
+
+
 def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    for name in args.guidance:
+        registration = prompt.registration_path(name)
+        if not gitinfo.is_committed(registration):
+            raise ConfigurationError(
+                f"guidance {name}: its registration {registration} is not committed; a round "
+                "is registered before it runs (decision 0098 item 3)"
+            )
+    prompt.guidance_text(args.guidance)  # a missing file is refused before any money moves
+    readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
     ids = samples.sample_ids(args.sample)
     if args.limit is not None:
@@ -210,16 +373,23 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
     spec = RunSpec(
         sample=args.sample,
         arm=args.arm,
+        evidence_version=args.evidence_version,
         exclusions=frozenset(args.exclude),
         include_case_number="case_number" in args.include,
         model=args.model,
         price_variant=args.price_variant,
+        max_output_tokens=args.max_output_tokens,
         cap_usd=args.cap_usd,
         budget_usd=args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd,
         sync=args.sync,
         expected_cost_per_case_usd=args.expected_cost_per_case_usd
         if args.expected_cost_per_case_usd is not None
         else settings.expected_cost_per_case_usd,
+        guidance=tuple(args.guidance),
+        # S2.7 Task 16: a v2 run names its reading; a v1 run names none (runner refuses both
+        # the other way round).
+        transcriber=args.transcriber if args.evidence_version == "v2" else None,
+        page_rule=args.page_rule if args.evidence_version == "v2" else None,
     )
     docket_cm = (
         DocketClient(settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request)
@@ -227,7 +397,11 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         else contextlib.nullcontext()
     )
     with docket_cm as docket_client:
-        docket = CachedDocketReader(docket_client) if docket_client is not None else None
+        docket = (
+            CachedDocketReader(docket_client, readings=readings)
+            if docket_client is not None
+            else None
+        )
         runner = Runner(
             client,
             batch=batch,
@@ -272,8 +446,19 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + "\n" + report.summarise(cases, floor=floor) + floor_note
     text += "\n\n" + report.failure_summary(cases)
+    if any(r.marks for r in cases):
+        text += (
+            "\n\nunmarked cases only (S2.6 spec §4.4):\n"
+            + report.summarise(report.unmarked(cases), floor=floor)
+            + "\n\n"
+            + report.marks_summary(cases)
+        )
+    if any(r.narrative_share is not None for r in cases):
+        text += "\n" + report.share_bands(cases)
     if run_record.arm == "B":
         text += "\n\n" + report.cap_summary(cases)
+    if run_record.evidence_version != "v1":
+        text += "\n" + report.preparation_summary(cases)
     if run_record.sample == "heldout-400":
         cell = report.weighted_headline(cases)
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
@@ -281,8 +466,31 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
         other_record = answering_run_record(settings.runs_dir / other_id)
+        report.refuse_cross_version(
+            run_record, other_record, versions_compared=args.versions_compared
+        )
         heading = report.comparison_heading(run_record, other_record)
-        text += f"\n\n{heading}\n{report.compare(cases, other_cases)}"
+        text += f"\n\n{heading}\n{report.compare_by_fatal(cases, other_cases)}"
+        if run_record.evidence_version != other_record.evidence_version:
+            # Spec §9.1: the comparison also "for the cases that hold image pages" -- those
+            # this run paid to transcribe pages for.
+            transcribed_ids = {r.case_id for r in cases if r.preparation_cost_usd > 0}
+            text += (
+                f"\n\non the {len(transcribed_ids)} cases with transcribed pages:\n"
+                + report.compare_by_fatal(
+                    [r for r in cases if r.case_id in transcribed_ids],
+                    [r for r in other_cases if r.case_id in transcribed_ids],
+                )
+            )
+        marked_ids = {r.case_id for r in [*cases, *other_cases] if r.marks}
+        if marked_ids:
+            text += (
+                f"\n\non cases unmarked in both runs ({len(marked_ids)} marked cases left out):\n"
+                + report.compare_by_fatal(
+                    [r for r in cases if r.case_id not in marked_ids],
+                    [r for r in other_cases if r.case_id not in marked_ids],
+                )
+            )
     reservations = open_reservations(settings.runs_dir)
     if reservations:
         text += "\n\nopen budget reservations: " + ", ".join(
@@ -324,12 +532,342 @@ def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     _maybe_write(args.out, text)
 
 
+MAX_FAILED_SHARE = 0.02
+"""The finished-transcription marker's retry threshold (Task 14 review, findings M1/M2).
+
+The S2.6 plan's Task 15 Step 2 already said the retry rule out loud: failed pages over 2% of
+the total means run once more with ``--retry-failed`` before going on. Task 14 itself never
+enforced it -- on 2026-09-26 a run hit the OpenRouter account's budget limit, 5,191 of 12,458
+pages (42%) failed with $0 403 errors, and the marker was still written, so a v2 run could
+have started on readings that were 42% missing. This constant is that rule, enforced rather
+than just written down.
+"""
+
+
+def _failure_reason(error: str | None) -> str:
+    """An error's prefix up to its second colon (e.g. "model: ModelError"), never page text.
+
+    Every failure in ``transcribe.py`` is recorded as ``"{prefix}: {detail}"``, where
+    ``detail`` itself usually starts with ``"{type(error).__name__}: ..."`` (a model failure)
+    or a message that itself contains a colon (a schema failure, e.g.
+    ``"schema: reply is not JSON: ..."``). Cutting after the second colon keeps exactly the
+    prefix and its immediate cause, never the page-specific detail after it.
+    """
+    minimum_parts = 2
+    if error is None:
+        return "unknown"
+    parts = error.split(":", 2)
+    if len(parts) < minimum_parts:
+        return parts[0].strip()
+    return f"{parts[0].strip()}: {parts[1].strip()}"
+
+
+def _top_failure_reasons(readings: Sequence[Transcription | None], limit: int = 3) -> list[str]:
+    """The most common failure reasons among failed readings, most common first."""
+    reasons = [_failure_reason(r.error) for r in readings if r is not None and r.status == "failed"]
+    counts = Counter(reasons)
+    return [reason for reason, _count in counts.most_common(limit)]
+
+
+def _page_jobs(
+    raws: Sequence[Mapping[str, object]],
+    docs: CachedDocuments,
+    *,
+    model: str = TRANSCRIBER,
+    page_rule: PageRule = PAGE_RULE,
+) -> tuple[list[PageJob], int]:
+    """One job per page v2 reads, over every PDF in every case's docket.
+
+    Decision W2: v2 reads the photo-only documents too, so none is skipped here. A file that
+    is not a PDF is not a failure and is not counted. A case whose docket cannot be listed, a
+    document that cannot be fetched, and a document that cannot be parsed for its pages *are*
+    counted rather than silently dropped (Task 14 review, finding M2); the second return value
+    is that count. ``model`` and ``page_rule`` are S2.7 track 2 Task 3's re-test flags (spec
+    §8 step 1; decision 0100 item 5).
+    """
+    jobs: list[PageJob] = []
+    skipped = 0
+    for raw in raws:
+        mkey = raw.get("mKey")
+        if not isinstance(mkey, int):
+            continue
+        try:
+            entries = docs.listing(mkey).entries
+        except DocketError:
+            skipped += 1
+            continue
+        for entry in entries:
+            if not entry.is_pdf():
+                continue
+            try:
+                data = docs.document(mkey, entry.index)
+                chosen = pages_to_read(data, page_rule=page_rule)
+            except DocketError:
+                skipped += 1
+                continue
+            sha = hashlib.sha256(data).hexdigest()
+            for page, mixed in chosen:
+                # Fix round 3, R4: the job's key carries the instruction its own ``mixed``
+                # status implies (0085, amended by Task 13's I3), the key v2 looks up.
+                key = TranscriptionKey(
+                    document_sha256=sha,
+                    page=page,
+                    model=model,
+                    instruction=key_instruction(TRANSCRIBE, mixed=mixed),
+                    dpi=RESOLUTION,
+                )
+                jobs.append(PageJob(key, docs.loader(mkey, entry.index), mixed))
+    return jobs, skipped
+
+
+def _maybe_mark_done(  # noqa: PLR0913 -- model and page_rule (S2.7 T3) name the pair covered.
+    cache: TranscriptionCache,
+    sample: str,
+    jobs: Sequence[PageJob],
+    skipped: int,
+    *,
+    model: str = TRANSCRIBER,
+    page_rule: PageRule = PAGE_RULE,
+) -> int:
+    """Write the finished-transcription marker only within the retry threshold (M1).
+
+    Every chosen page must have a reading (transcribed or failed) before anything is decided.
+    Once that holds, the marker is written only when failed readings are at most
+    ``MAX_FAILED_SHARE`` of the pages chosen; otherwise nothing is written, the failure count,
+    share and the three most common failure reasons are printed (never page text), the
+    operator is told to re-run with ``--retry-failed``, and the exit code is non-zero so this
+    cannot pass unnoticed in a script. ``model`` and ``page_rule`` (S2.7 track 2 Task 3) name
+    the pair the marker covers, so each model/rule pair gets its own marker (spec §8 step 1).
+    """
+    readings = [cache.get(j.key) for j in jobs]
+    if not all(r is not None for r in readings):
+        return 0
+    total = len(jobs)
+    failed = sum(1 for r in readings if r is not None and r.status == "failed")
+    share = failed / total if total else 0.0
+    if total and share > MAX_FAILED_SHARE:
+        reasons = _top_failure_reasons(readings)
+        print(
+            f"{sample}: {failed} of {total} pages failed ({share:.1%}), above the "
+            f"{MAX_FAILED_SHARE:.0%} retry threshold; marker NOT written. Most common "
+            f"failure reasons: {', '.join(reasons)}. Run the same command again with "
+            "--retry-failed."
+        )
+        return 1
+    ReadingLookup(cache, model=model, page_rule=page_rule).mark_done(
+        sample,
+        {
+            "pages": total,
+            "failed": failed,
+            "failed_share": share,
+            "skipped_documents": skipped,
+            "model": model,
+            "page_rule": page_rule,
+            "dpi": RESOLUTION,
+        },
+    )
+    print(f"{sample}: every page has a reading; v2 runs may start")
+    return 0
+
+
+def _cmd_transcribe(args: argparse.Namespace, settings: Settings) -> int:
+    """Every page v2 needs, for one sample: counted, priced, then read once (0081).
+
+    Counts only are printed: pages are read by program and no person sees them. The done
+    file is written only when every chosen page has a reading (transcribed or failed) and
+    failures are within ``MAX_FAILED_SHARE`` (M1), which is what ``run --evidence-version v2``
+    checks for.
+
+    A held-out sample is refused before anything is fetched or paid for (S2.6 final review,
+    I3): decision 0090 defers every held-out step, and this command writes no held-out ledger
+    row. A later stage lifts the refusal deliberately, with the ledger row and the dirty-tree
+    check every other held-out entry point has.
+
+    A job that spends its reservation stops (``PreparationStoppedError``, final review I1): what it
+    read is reported, no marker is written, and the exit code is non-zero.
+    """
+    samples.refuse_sealed(args.sample, is_committed=gitinfo.is_committed)
+    if args.sample.startswith("heldout"):
+        raise ConfigurationError(
+            f"transcribing {args.sample} is refused: decision 0090 defers every held-out run, "
+            "and this command writes no held-out ledger row. A later stage lifts this "
+            "deliberately."
+        )
+    # S2.7 track 2, Task 3: a model the price table or the reasoning table does not know would
+    # fail inside the job (transcribe.settings_for); refuse it before anything is fetched.
+    try:
+        sources.price_of(args.model)
+    except KeyError:
+        raise ConfigurationError(
+            f"no price on file for {args.model}; add it to sources.py"
+        ) from None
+    if args.model not in sources.LOWEST_REASONING:
+        raise ConfigurationError(
+            f"no reasoning level on file for {args.model}; add it to sources.LOWEST_REASONING"
+        )
+    raws = samples.load_cases(settings.data_dir / "processed", samples.sample_ids(args.sample))
+    cache = TranscriptionCache(settings.transcription_dir)
+    with DocketClient(
+        settings.docket_dir, seconds_per_request=settings.docket_seconds_per_request
+    ) as client:
+        jobs, skipped = _page_jobs(
+            raws, CachedDocuments(client), model=args.model, page_rule=args.page_rule
+        )
+        pending = [
+            j
+            for j in jobs
+            if (hit := cache.get(j.key)) is None or (args.retry_failed and hit.status == "failed")
+        ]
+        projected = len(pending) * args.expected_cost_per_page_usd
+        print(
+            f"{args.sample}: {len(jobs)} pages to read with {args.model} at {RESOLUTION} dpi, "
+            f"rule {args.page_rule}, {len(pending)} not yet read; projected ${projected:.2f}; "
+            f"{skipped} document(s) could not be listed, fetched or parsed"
+        )
+        if args.dry_run:
+            return 0
+        # Nothing to pay for: no job, no reservation and no API key needed.
+        stopped: PreparationStoppedError | None = None
+        try:
+            done = (
+                run_preparation(
+                    kind="transcription",
+                    jobs=jobs,
+                    instruction=TRANSCRIBE,
+                    settings=settings,
+                    commit=ledger.commit_state(),
+                    expected_cost_per_page_usd=args.expected_cost_per_page_usd,
+                    workers=args.workers,
+                    retry_failed=args.retry_failed,
+                )
+                if pending
+                else []
+            )
+        except PreparationStoppedError as error:
+            stopped = error
+            done = list(error.read)
+    readings = [cache.get(j.key) for j in jobs]
+    failed = sum(1 for r in readings if r is not None and r.status == "failed")
+    print(
+        f"read {len(done)} pages now (${sum(r.cost_usd for r in done):.2f}); "
+        f"{failed} of {len(jobs)} failed in all"
+    )
+    if stopped is not None:
+        print(f"transcribe: {stopped} The marker is NOT written.", file=sys.stderr)
+        return 1
+    return _maybe_mark_done(
+        cache, args.sample, jobs, skipped, model=args.model, page_rule=args.page_rule
+    )
+
+
 def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
     if release(settings.runs_dir, args.run_id):
         print(f"released {args.run_id}")
         return 0
     print(f"release: no open reservation for {args.run_id}", file=sys.stderr)
     return 1
+
+
+_GROUP_FIELD = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
+
+
+def _cmd_check(
+    args: argparse.Namespace,
+    settings: Settings,
+    client_factory: ClientFactory,
+    jev_factory: JevFactory,
+) -> None:
+    folder = settings.runs_dir / args.run_id
+    record = answering_run_record(folder)
+    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    if not record.sample.startswith("dev") or "heldout" in args.run_id or record.arm != "B":
+        raise ConfigurationError(
+            f"check: the ordering check runs on development arm B runs only; {args.run_id} is "
+            f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+        )
+    # Before any case is read (fix round 1, Important 2): an ablation run withheld a field --
+    # possibly phase_of_flight -- from the model, and reading it back from the raw record
+    # below to rebuild `groups` would hand the check evidence the source run never had.
+    # `resolve_latest` treats the same shape of run (exclusions or includes set) as unfit to
+    # stand for its arm; the check refuses it outright rather than silently reading around it.
+    if record.exclusions or record.includes:
+        raise ConfigurationError(
+            f"check: {args.run_id} is an ablation (exclusions={record.exclusions}, "
+            f"includes={record.includes}): rebuilding its phase-of-flight group would read "
+            "back a field the source run withheld from the model"
+        )
+    way: checkpass.Way = args.way
+    # Every refusal `check_run` would make, run once here, before anything is reserved or
+    # written (fix round 2, Important): the old code called `checkpass.check_run` only after
+    # reserving the budget, so a refusal inside it (a repeat check of an already-finished
+    # derived run, an unfinished source, a source that was itself a derived check run) left an
+    # open reservation, and for the "itself a derived check run" case an empty derived folder
+    # too, since `reserve_within_budget` creates it as a side effect. `preflight` is read-only:
+    # nothing here can leave anything behind.
+    pre = checkpass.preflight(folder, way, settings.runs_dir)
+    cases = pre.cases
+    processed = settings.data_dir / "processed"
+    ids = [c.case_id for c in cases]
+    groups = {
+        case_id: (value if isinstance(value := _GROUP_FIELD.extract(raw), str) else None)
+        for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
+    }
+    stats, tables = load_stats(), load_tables()
+    # Computed before any reservation too (fix round 2): a failure in either call must not
+    # leave a reservation with nothing left to settle it.
+    seen_pairs = samples.seen_pairs(processed)
+    commit = ledger.commit_state()
+    run_id = pre.run_id
+    if way == "rule":
+        checker = checkpass.rule_checker(stats)
+        derived = checkpass.check_run(
+            folder,
+            way,
+            checker,
+            runs_dir=settings.runs_dir,
+            groups=groups,
+            seen_pairs=seen_pairs,
+            commit=commit,
+            now=lambda: datetime.now(UTC),
+        )
+    else:
+        # Reserved, not just checked, before any client is built (fix round 1, Important 1):
+        # a ~400-call synchronous pass would otherwise be invisible to a concurrent paid job
+        # for the whole run, since nothing recorded its projected spend until this pass's own
+        # `finally`. `reserve_within_budget` raises before touching the filesystem if the
+        # projection would bust the budget, so an over-budget call never reaches
+        # `client_factory`/`jev_factory` below.
+        budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
+        projected = len(cases) * checkpass.EXPECTED_COST_PER_CASE_USD[way]
+        reserve_within_budget(settings.runs_dir, run_id, projected, budget, now=datetime.now(UTC))
+        # From here to the end of `check_run`'s own pass, nothing may raise without releasing
+        # what was just reserved (fix round 2, Important): `check_run` settles it once the
+        # pass's real spend is on disk, but a factory that raises (a missing key) or a refusal
+        # `preflight` already cleared yet `check_run` re-finds (a genuine race) never reaches
+        # that `finally`, and would otherwise hold the reservation open until someone ran
+        # `ntsb-eval release` by hand.
+        try:
+            if way == "luna":
+                checker = checkpass.luna_checker(client_factory(settings)[0], stats, tables)
+            elif way == "jev2":
+                # The registered second Jev check (decision 0103): the same path as `jev`.
+                checker = checkpass.jev2_checker(jev_factory(settings), stats, tables)
+            else:
+                checker = checkpass.jev_checker(jev_factory(settings), stats, tables)
+            derived = checkpass.check_run(
+                folder,
+                way,
+                checker,
+                runs_dir=settings.runs_dir,
+                groups=groups,
+                seen_pairs=seen_pairs,
+                commit=commit,
+                now=lambda: datetime.now(UTC),
+            )
+        except BaseException:
+            release(settings.runs_dir, run_id)
+            raise
+    print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
 
 
 def _judge_items(
@@ -367,9 +905,14 @@ def _record_judge_cost(  # noqa: PLR0913, PLR0917 -- one field per RunRecord fac
         run_id=f"{run_record.run_id}-judge",
         sample=run_record.sample,
         arm=run_record.arm,
+        # The judged run's own version (S2.6 final review, I4): the held-out ledger this row
+        # may be appended to is append-only, so a defaulted "v1" could never be corrected.
+        evidence_version=run_record.evidence_version,
         exclusions=run_record.exclusions,
         includes=run_record.includes,
         prompt_version=run_record.prompt_version,
+        guidance=run_record.guidance,
+        guidance_sha256=run_record.guidance_sha256,
         model=JUDGE_MODEL,
         # The judge calls chat-completions directly, so it pays the standard price; recording
         # "batch" here would understate this pass's real spend by half.
@@ -476,6 +1019,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     client_factory: ClientFactory = _default_client_factory,
+    jev_factory: JevFactory = _default_jev_factory,
 ) -> int:
     """Parse arguments and run one eval command.
 
@@ -498,6 +1042,10 @@ def main(
             _cmd_threshold(args, settings)
         elif args.command == "release":
             return _cmd_release(args, settings)
+        elif args.command == "check":
+            _cmd_check(args, settings, client_factory, jev_factory)
+        elif args.command == "transcribe":
+            return _cmd_transcribe(args, settings)
     except (BudgetError, ConfigurationError) as error:
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1

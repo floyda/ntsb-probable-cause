@@ -1,5 +1,6 @@
 import copy
 import gzip
+import hashlib
 import json
 import sqlite3
 from collections.abc import Callable, Mapping
@@ -22,36 +23,60 @@ from tests.boundary import (
     assert_logical_text_clean,
     assert_raw_bytes_clean,
     assert_requests_clean,
+    assert_transcription_request_only,
     store_numeric_values,
     store_values,
     withheld_windows,
 )
+from tests.pdf_builder import PageSpec, build_pdf
 from tests.test_attach import _docket as _small_docket
+from tests.test_occurrence_misses import _case
 from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
 
 from ntsb_probable_cause import fields, sources
 from ntsb_probable_cause.data.api import NtsbClient
+from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.attach import attach_docket
 from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.listing import parse_listing
+from ntsb_probable_cause.docket.manifest import Docket, read_docket
+from ntsb_probable_cause.docket.pages import page_text
+from ntsb_probable_cause.docket.render import MEDIA_TYPE, render_pages
+from ntsb_probable_cause.docket.transcribe import (
+    TRANSCRIBE,
+    PageJob,
+    ReadingLookup,
+    Transcription,
+    TranscriptionCache,
+    TranscriptionKey,
+    key_instruction,
+    read_page,
+)
 from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
 from ntsb_probable_cause.model.client import (
     ModelSettings,
+    PageImage,
     Payload,
     RecordingFakeClient,
     ToolCall,
     Turn,
 )
+from ntsb_probable_cause.model.openrouter import OpenRouterClient
+from ntsb_probable_cause.model.typesafe import TypeSafeClient
 from ntsb_probable_cause.recorder.cases import observe_case
 from ntsb_probable_cause.recorder.run import NightInputs, run_night
 from ntsb_probable_cause.records import split as split_module
 from ntsb_probable_cause.records.evidence import Evidence
+from ntsb_probable_cause.records.guard import Screen, normalise_text
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.records.synthesis import Synthesis
 from ntsb_probable_cause.records.verdict import Verdict
+from ntsb_probable_cause.scoring import checkpass
 from ntsb_probable_cause.scoring import runner as runner_module
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.coding_stats import PoolCase, build
 from ntsb_probable_cause.scoring.runner import Runner, RunSpec
 from ntsb_probable_cause.store import Store
 
@@ -142,7 +167,7 @@ def test_boundary_fails_when_only_the_tripwire_can_catch_a_leak(
     assert isinstance(aircrafts, list)
     aircrafts[0]["aircraftMake"] = fields.probable_cause(raw)
 
-    monkeypatch.setattr(split_module, "find_leaks", lambda *_a, **_k: [])
+    monkeypatch.setattr(split_module, "screen", lambda *_a, **_k: Screen(leaks=(), marked=()))
 
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_boundary_holds(mutated)
@@ -1081,3 +1106,280 @@ def test_code_pattern_matches_a_whole_token_not_a_substring_of_a_longer_number()
     assert pattern.search("12552090345") is None  # embedded in a longer digit run
     assert pattern.search("a552090") is None  # a letter immediately before: no word boundary
     assert pattern.search("552090a") is None  # a letter immediately after: no word boundary
+
+
+_TRANSCRIBE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _page_reply(text: str = "", kind: str = "blank") -> dict[str, object]:
+    """A minimal chat-completion body carrying one page reply, for respx to return."""
+    return {
+        "id": "resp",
+        "model": "google/gemini-3.1-flash-lite",
+        "choices": [
+            {
+                "message": {"content": json.dumps({"text": text, "page_kind": kind})},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+
+
+def _transcription_key(page: int = 1, *, mixed: bool = False) -> TranscriptionKey:
+    return TranscriptionKey(
+        document_sha256="d" * 64,
+        page=page,
+        model="google/gemini-3.1-flash-lite",
+        instruction=key_instruction(TRANSCRIBE, mixed=mixed),
+        dpi=150,
+    )
+
+
+def test_a_transcription_request_holds_only_the_image_instruction_and_text_layer(
+    record_fixtures: list[dict[str, object]],
+    respx_mock: respx.MockRouter,
+) -> None:
+    """S2.6 spec §8.2 and §12: nothing but the page -- in particular no withheld text.
+
+    Captures the body `read_page` actually sends, through a real `OpenRouterClient` against a
+    mocked transport, rather than one this test assembles by hand from `request_for` and
+    `request_body` (fix round 1, M6): a change that made `read_page` send something else
+    would be caught here.
+    """
+    document = build_pdf(
+        [PageSpec(text="FUEL SELECTOR BOTH. MIXTURE RICH.", images=("/DCTDecode",))]
+    )
+    (rendered,) = render_pages(document)
+    layer = page_text(document, 1)
+    route = respx_mock.post(_TRANSCRIBE_URL).mock(
+        return_value=httpx.Response(200, json=_page_reply())
+    )
+    client = OpenRouterClient("or-key", sleep=lambda _s: None)
+    for raw in record_fixtures:
+        read_page(
+            PageJob(_transcription_key(mixed=True), lambda: document, mixed=True),
+            client,
+            TRANSCRIBE,
+            now=lambda: datetime(2026, 10, 1, tzinfo=UTC),
+        )
+        sent = json.loads(route.calls[-1].request.content)
+        assert_transcription_request_only(
+            sent,
+            system=TRANSCRIBE.mixed_system,
+            image=PageImage(media_type=MEDIA_TYPE, data=rendered.data),
+            text_layer=layer,
+        )
+        _, synthesis, verdict = split_record(raw)
+        rendered_sent = json.dumps(sent)
+        for text in (*synthesis.texts().values(), verdict.probable_cause):
+            assert not text or normalise_text(text)[:60] not in normalise_text(rendered_sent)
+
+
+def test_the_transcription_boundary_check_can_fail(
+    record_fixtures: list[dict[str, object]],
+    respx_mock: respx.MockRouter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mutation: a request that also carries the case's own narrative must be caught.
+
+    Patches production code (`docket.transcribe.page_text`, the mixed page's text-layer
+    source) to return the case's own narrative appended, the way this file's other mutation
+    tests patch a real function rather than hand-building a bad payload (fix round 1, M6).
+    """
+    document = build_pdf([PageSpec(text="FUEL SELECTOR BOTH.", images=("/DCTDecode",))])
+    (rendered,) = render_pages(document)
+    real_layer = page_text(document, 1)
+    evidence, _, _ = split_record(record_fixtures[0])
+    rogue_layer = f"{real_layer}\n{evidence.prelim_narrative or 'x'}"
+    monkeypatch.setattr(transcribe_module, "page_text", lambda _data, _page: rogue_layer)
+    route = respx_mock.post(_TRANSCRIBE_URL).mock(
+        return_value=httpx.Response(200, json=_page_reply())
+    )
+    client = OpenRouterClient("or-key", sleep=lambda _s: None)
+    read_page(
+        PageJob(_transcription_key(mixed=True), lambda: document, mixed=True),
+        client,
+        TRANSCRIBE,
+        now=lambda: datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    sent = json.loads(route.calls[-1].request.content)
+    with pytest.raises(AssertionError):
+        assert_transcription_request_only(
+            sent,
+            system=TRANSCRIBE.mixed_system,
+            image=PageImage(media_type=MEDIA_TYPE, data=rendered.data),
+            text_layer=real_layer,
+        )
+
+
+# --- Task 14: transcribed text is document text -- the replacements, split and tripwire apply
+# unchanged (spec §8.4) ---
+
+_V2_LISTING = Path("tests/fixtures/docket/ERA17LA217")
+_V2_IMAGE_PAGE = build_pdf([PageSpec(images=("/CCITTFaxDecode",))])
+_V2_BLANK = build_pdf([PageSpec()])
+
+
+def _v2_docket(tmp_path: Path, respx_mock: respx.MockRouter, transcription: str) -> Docket:
+    """A docket read through ``read_docket`` with a lookup: document 1's image page reads as
+    ``transcription``, from a transcription cache under ``tmp_path`` (no model call)."""
+    mkey = int(json.loads((_V2_LISTING / "manifest.json").read_text())["fixture"]["mkey"])
+    listing_html = (_V2_LISTING / "listing.html").read_text()
+    respx_mock.get(sources.docket_url(mkey)).mock(
+        return_value=httpx.Response(200, text=listing_html)
+    )
+    first = parse_listing(listing_html, mkey=mkey).entries[0]
+    # Registered first: respx answers with the first route that matches.
+    respx_mock.get(sources.docket_document_url(first.href)).mock(
+        return_value=httpx.Response(200, content=_V2_IMAGE_PAGE)
+    )
+    respx_mock.get(url__startswith=sources.DOCKET_BASE_URL + "/Docket/Document").mock(
+        return_value=httpx.Response(200, content=_V2_BLANK)
+    )
+    cache = TranscriptionCache(tmp_path / "transcriptions")
+    key = TranscriptionKey(
+        document_sha256=hashlib.sha256(_V2_IMAGE_PAGE).hexdigest(),
+        page=1,
+        model="m",
+        instruction=key_instruction(TRANSCRIBE, mixed=False),
+        dpi=150,
+    )
+    cache.put(
+        Transcription(
+            key=key,
+            status="transcribed",
+            text=transcription,
+            created=datetime(2026, 10, 1, tzinfo=UTC),
+        )
+    )
+    lookup = ReadingLookup(cache, model="m", instruction=TRANSCRIBE, dpi=150)
+    with DocketClient(tmp_path / "docket", sleep=lambda _s: None) as client:
+        docket = read_docket(client, mkey, readings=lookup)
+    assert docket.record(first.index).transcribed_pages == 1
+    return docket
+
+
+def test_a_transcription_holding_the_probable_cause_is_refused(
+    tmp_path: Path, respx_mock: respx.MockRouter, record_fixtures: list[dict[str, object]]
+) -> None:
+    raw = next(r for r in record_fixtures if fields.probable_cause(r))
+    cause = fields.probable_cause(raw) or ""
+    docket = _v2_docket(tmp_path, respx_mock, f"Handwritten note. {cause}")
+    spec = RunSpec(sample="dev-400", arm="B", evidence_version="v2")
+    with pytest.raises(LeakageError, match="probable_cause in docket_documents"):
+        runner_module.prepare_case(raw, spec, load_tables(), docket)
+    context = attach_docket(raw, docket, documents=list(docket.texts)).context
+    with pytest.raises(AssertionError, match=r"^tripwire"):
+        assert_boundary_holds(context, lambda r: split_record(r, min_sentence_chars=10**9))
+
+
+def test_a_transcription_naming_the_owner_reaches_the_payload_with_the_name_replaced(
+    tmp_path: Path, respx_mock: respx.MockRouter, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0046: the recorded owner's name is replaced in transcribed text as in any."""
+    raw = copy.deepcopy(record_fixtures[0])
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)
+    aircrafts[0]["ownerOperators"] = [{"registeredOwner": "Jordan Vale"}]  # invented
+    docket = _v2_docket(
+        tmp_path, respx_mock, "Statement written by Jordan Vale: the engine lost power at 800 ft."
+    )
+    spec = RunSpec(sample="dev-400", arm="B", evidence_version="v2")
+    prepared = runner_module.prepare_case(raw, spec, load_tables(), docket)
+    assert "transcribed from an image" in prepared.payload.text
+    assert "Statement written by Owner or operator: the engine lost power" in prepared.payload.text
+    assert "Jordan Vale" not in prepared.payload.text
+    assert_boundary_holds(attach_docket(raw, docket, documents=list(docket.texts)).context)
+
+
+def test_the_ordering_check_sends_no_withheld_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Layer 5 (0016) for the check: the body sent holds the check text and nothing withheld.
+
+    Final review, Minor 4: asserts the same ``withheld_windows`` (codes excluded, as choosing
+    among codes is the check's job) the ``jev2`` boundary test beside it already uses, not only
+    the first 80 characters of each withheld field -- Luna is the check carried forward to the
+    sealed run.
+    """
+    raw = record_fixtures[0]
+    _evidence, _synthesis, verdict = split_record(raw)
+    stats = build(
+        [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
+    )
+    client = RecordingFakeClient(['{"ranking": ["552300"]}'])
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
+    checkpass.luna_checker(client, stats, load_tables())(hypothesis, "Landing")
+    sent = client.systems[0] + client.payloads[0].text
+    for window in windows:
+        assert window not in sent
+
+
+def _jev2_sent_texts(body: bytes) -> list[str]:
+    """The body as sent (JSON-escaped bytes, decoded) and every string it holds, unescaped."""
+    leaves: list[str] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                leaves.append(str(key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, str):
+            leaves.append(value)
+
+    walk(json.loads(body))
+    return [body.decode(), "\n".join(leaves)]
+
+
+@respx.mock
+def test_the_jev2_check_sends_no_withheld_text(
+    record_fixtures: list[dict[str, object]],
+) -> None:
+    """Layer 5 (0016) for the registered second Jev check (decision 0103): the JSON body sent
+    holds the state and question, and no window of the factual narrative, the analysis
+    narrative or the probable cause. Codes are left out of the windows: choosing among codes
+    is the check's job, and its candidates come from the pool, as the Luna test's do."""
+    raw = record_fixtures[0]
+    _evidence, _synthesis, verdict = split_record(raw)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        labels = list(json.loads(request.content)["questions"]["defining"]["criteria"])
+        probabilities = dict.fromkeys(labels, 0.0)
+        probabilities[labels[0]] = 1.0
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+                "answers": {
+                    "defining": {
+                        "type": "choice",
+                        "choice": labels[0],
+                        "confidence": 0.5,
+                        "probabilities": probabilities,
+                    }
+                },
+            },
+        )
+
+    route = respx.post("https://api.typesafe.ai/v1/systemone").mock(side_effect=answer)
+    stats = build(
+        [PoolCase(2012, "Landing", verdict.occurrence_codes or ("552300",))], built_from="t"
+    )
+    hypothesis = _case("C1", ("552300",), ("552300",)).steps[-1].hypothesis
+    codes = set(fields.occurrence_codes(raw) + fields.finding_codes(raw))
+    windows = [w for w in withheld_windows(raw) if w not in codes]
+    assert windows  # the fixture carries withheld text to look for
+    with TypeSafeClient("k", base_url="https://api.typesafe.ai") as client:
+        checkpass.jev2_checker(client, stats, load_tables())(hypothesis, "Landing")
+    assert route.call_count == 1
+    for sent in _jev2_sent_texts(route.calls[0].request.content):
+        for window in windows:
+            assert window not in sent

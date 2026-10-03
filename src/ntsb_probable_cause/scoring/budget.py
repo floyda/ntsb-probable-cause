@@ -7,23 +7,52 @@ guard errs towards refusing; ``release`` clears one by hand.
 
 import fcntl
 import json
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
-from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl
+from pydantic import BaseModel, ConfigDict
+
+from ntsb_probable_cause.errors import BudgetError
+from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl, write_jsonl
 
 RESERVATION_FILE = "reservation.json"
 LOCK_FILE = ".budget.lock"
+SPEND_FILE = "spend.jsonl"
+
+
+class SpendRecord(BaseModel):
+    """Paid work that is not an evaluation run: evidence preparation (decision 0081).
+
+    A job appends one row per chunk of calls, so a job that dies mid-way has still recorded
+    what it spent up to its last chunk.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    job_id: str
+    kind: Literal["inventory", "transcriber-test", "transcription"]
+    model: str
+    started: datetime
+    calls: int
+    cost_usd: float
+    commit_sha: str
+    dirty: bool
+
+
+def write_spend(runs_dir: Path, record: SpendRecord) -> None:
+    """Append one spend row under the job's own folder in the runs directory."""
+    write_jsonl(runs_dir / record.job_id / SPEND_FILE, [record])
 
 
 def month_spent(runs_dir: Path, *, now: datetime) -> float:
     """Cost of every run started in ``now``'s month, aborted runs included.
 
     A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` (the answering run
-    and a judge pass), and every one of them counts. Reservations are not spend and are
-    not counted here.
+    and a judge pass), and every one of them counts. So does every preparation job's spend
+    rows (0081). Reservations are not spend and are not counted here.
     """
     if not runs_dir.exists():
         return 0.0
@@ -32,7 +61,42 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
         for record in read_jsonl(run_file, RunRecord):
             if record.started.year == now.year and record.started.month == now.month:
                 total += record.cost_usd
+    for spend_file in sorted(runs_dir.glob(f"*/{SPEND_FILE}")):
+        for spend in read_jsonl(spend_file, SpendRecord):
+            if spend.started.year == now.year and spend.started.month == now.month:
+                total += spend.cost_usd
     return total
+
+
+# Recorded commit SHAs are short (``git rev-parse --short``); a stage's commits are full. A
+# recorded SHA matches by prefix, and one shorter than this is refused as ambiguous.
+MIN_SHA_PREFIX = 4
+
+
+def in_stage(sha: str, stage_commits: Collection[str]) -> bool:
+    """Whether a recorded (short) commit SHA is one of a stage's (full) commits."""
+    return len(sha) >= MIN_SHA_PREFIX and any(full.startswith(sha) for full in stage_commits)
+
+
+def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, float]:
+    """A stage's spend by commit: (evaluation run records, preparation spend rows).
+
+    Counted by commit, not by date, because S2.6 found a date filter caught another stage's
+    runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
+    """
+    runs = sum(
+        record.cost_usd
+        for path in sorted(runs_dir.glob("*/run.jsonl"))
+        for record in read_jsonl(path, RunRecord)
+        if in_stage(record.commit_sha, stage_commits)
+    )
+    spend = sum(
+        row.cost_usd
+        for path in sorted(runs_dir.glob(f"*/{SPEND_FILE}"))
+        for row in read_jsonl(path, SpendRecord)
+        if in_stage(row.commit_sha, stage_commits)
+    )
+    return runs, spend
 
 
 @contextmanager
@@ -80,3 +144,22 @@ def open_reservations(runs_dir: Path) -> dict[str, float]:
         if isinstance(projected, int | float):
             found[path.parent.name] = float(projected)
     return found
+
+
+def reserve_within_budget(
+    runs_dir: Path, job_id: str, projected_usd: float, budget_usd: float, *, now: datetime
+) -> None:
+    """Refuse a preparation job that would take the month past its budget, then reserve it.
+
+    The same rule as an evaluation run's (``runner._reserve_budget``, 0045): spend so far,
+    plus every other open reservation, plus this job's projection, must fit the budget.
+    """
+    with budget_lock(runs_dir):
+        spent = month_spent(runs_dir, now=now)
+        reserved = sum(v for k, v in open_reservations(runs_dir).items() if k != job_id)
+        if spent + reserved + projected_usd > budget_usd:
+            raise BudgetError(
+                f"projected ${projected_usd:.2f} plus ${spent:.2f} spent and ${reserved:.2f} "
+                f"reserved by other runs exceeds the ${budget_usd:.2f} budget"
+            )
+        reserve(runs_dir, job_id, projected_usd, now=now)

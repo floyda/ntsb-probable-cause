@@ -3,23 +3,31 @@
 import csv
 import json
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Literal
 
 import pyarrow.parquet as pq
 
-from ntsb_probable_cause import fields
+from ntsb_probable_cause import fields, gitinfo
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.splits import Split
 
-SAMPLES = ("heldout-40", "heldout-400", "dev-400")
+SAMPLES = ("heldout-40", "heldout-400", "dev-400", "dev-seal-400")
 _FILES = {
     "heldout-40": "decidability_ids.csv",
     "heldout-400": "heldout_400_ids.csv",
     "dev-400": "dev_400_ids.csv",
+    "dev-seal-400": "dev_seal_400_ids.csv",
 }
 EVAL_DIR = Path("tests/fixtures/eval")
+# Decision 0095: the sealed development sample opens once, when the registration naming the
+# final setup is committed. Every command that would score, read, fetch or transcribe it calls
+# :func:`refuse_sealed` first.
+SEALED = frozenset({"dev-seal-400"})
+SEALED_REGISTRATION = Path("docs/rounds/s27-sealed.md")
 START_FACTS = frozenset(
     {
         EvidenceRole.PHASE_OF_FLIGHT,
@@ -64,6 +72,53 @@ def masked_exclusions(day: int) -> frozenset[EvidenceRole]:
             EvidenceRole.DOCKET_DOCUMENTS,
         }
     )
+
+
+def refuse_sealed(sample: str, *, is_committed: Callable[[Path], bool]) -> None:
+    """Refuse a sealed sample until its registration is committed (decision 0095).
+
+    Raises:
+        ConfigurationError: ``sample`` is sealed and the registration is not committed.
+    """
+    if sample in SEALED and not is_committed(SEALED_REGISTRATION):
+        raise ConfigurationError(
+            f"{sample} is sealed: commit {SEALED_REGISTRATION}, naming the final setup, "
+            "before anything reads it (decision 0095)"
+        )
+
+
+def refuse_unless_development(run_id: str, sample: str | None) -> None:
+    """Refuse a run the S2.7 report scripts must never read: held-out, or an unopened seal.
+
+    Every one of those scripts (``occurrence_misses``, ``judge_outcomes``,
+    ``round0_handread``, ``round1_report``, ``round1_jev2_report``, ``round_result``) checked
+    the same two things in a slightly different, hand-copied way (final review, Important 1 /
+    deferred Task 5): the run id, which is known before ``run.jsonl`` exists to read, and the
+    sample ``run.jsonl`` itself records (``record.sample``), which catches a renamed or
+    relabelled run whose id says nothing about it. Call once with ``sample=None`` before
+    ``run.jsonl`` is opened (a missing or renamed run folder is still refused by its id
+    alone), then again with the loaded record's ``sample``. Takes the sample name, not the
+    whole ``RunRecord``, so this module -- one of the "Only the splitter constructs synthesis
+    and verdict" contract's source modules -- never has to import ``scoring.records``, which
+    reaches ``records.verdict`` through ``scoring.metrics``.
+
+    The sealed sample (``dev-seal-400``) passes the "development" checks -- its own
+    registration is what gates it (decision 0095) -- so it is refused last, through
+    :func:`refuse_sealed`.
+
+    Raises:
+        ConfigurationError: ``run_id`` or ``sample`` names a held-out sample, or the sample is
+            sealed and its registration is not committed.
+    """
+    if "heldout" in run_id:
+        raise ConfigurationError(f"{run_id} is a held-out run; development runs only")
+    if sample is None:
+        return
+    if sample.startswith("heldout"):
+        raise ConfigurationError(f"{run_id} is a held-out run ({sample}); development runs only")
+    if not sample.startswith("dev"):
+        raise ConfigurationError(f"{sample} is not a development sample")
+    refuse_sealed(sample, is_committed=gitinfo.is_committed)
 
 
 def sample_ids(name: str) -> tuple[str, ...]:
@@ -122,12 +177,19 @@ def seen_pairs(processed: Path) -> frozenset[str]:
 
 
 def draw(
-    processed: Path, split: Split, *, per_slice: int = 200, seed: int = 20260914
+    processed: Path,
+    split: Split,
+    *,
+    per_slice: int = 200,
+    seed: int = 20260914,
+    exclude: AbstractSet[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """200 fatal and 200 non-fatal, each stratified by class C/F/L in proportion (0026).
 
     Classes I, M and T are excluded (decision 0026 point 1); ``scripts/draw_samples.py``
     prints how many cases of those classes were excluded per split and fatal slice.
+
+    ``exclude``: case ids never drawn (``dev-seal-400`` excludes ``dev-400``, decision 0095).
     """
     columns = ["ntsb_number", "event_date", "split", "investigation_class", "raw_json"]
     table = pq.read_table(processed / "cases.parquet", columns=columns)
@@ -135,7 +197,7 @@ def draw(
     rows = [
         (str(n), str(d), str(c), json.loads(r)["highestInjuryLevel"] == "Fatal")
         for n, d, s, c, r in zip(*(by_column[col] for col in columns), strict=True)
-        if s == split.value and c in {"C", "F", "L"}
+        if s == split.value and c in {"C", "F", "L"} and n not in exclude
     ]
     rng = random.Random(seed)  # noqa: S311 -- reproducible sampling, not security
     chosen: list[tuple[str, str]] = []

@@ -65,12 +65,12 @@ under `docs/specs/` and the record links to it.
 | [0022](0022-loop-must-beat-call-every-tool-arm.md) | The loop must beat a call-every-tool arm at equal cost | Accepted |
 | [0023](0023-evidence-by-source-with-measured-availability.md) | Evidence arrives by source, and availability is masked from measured arrival | Accepted |
 | [0024](0024-open-split-enters-measurements-only-as-numbers.md) | Open-split cases enter a measurement only as numbers | Accepted |
-| [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022 |
+| [0025](0025-scoring-targets-from-ntsb-code-tables.md) | Scoring targets come from the NTSB's code tables, in two stages | Accepted; amends 0006 and 0022; item 1 amended by 0105 |
 | [0026](0026-slices-fixed-samples-and-heldout-ledger.md) | Slices by fatality first; fixed samples; a held-out ledger | Accepted |
 | [0027](0027-registration-rule-and-case-number-probe.md) | The registration rule, and the case-number probe measure memorisation | Accepted |
 | [0028](0028-prose-graded-by-validated-judge-never-a-bar.md) | Prose outputs are graded by a validated judge, and are never a bar | Accepted |
 | [0029](0029-live-headline-is-the-finding-score.md) | The live board's headline is the finding score | Accepted |
-| [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted; its guard fixed by 0045 |
+| [0030](0030-cost-in-usd-cap-and-budget-in-code.md) | Cost in US dollars from the provider; the cap and the monthly budget are enforced in code | Accepted; its guard fixed by 0045; budget default raised by 0083 |
 | [0031](0031-default-model-gpt-luna-model-axis-after-s3.md) | The default model is GPT-5.6 Luna; the model axis is measured after S3 | Accepted; item 1 replaced by 0073 |
 | [0032](0032-a-batch-run-is-resumable-from-its-recorded-batches.md) | A batch run is resumable from the batches it already paid for | Accepted |
 | [0033](0033-stage-pull-requests-keep-their-commits.md) | Stage pull requests are merged, not squashed, so a recorded commit resolves | Accepted |
@@ -87,10 +87,10 @@ under `docs/specs/` and the record links to it.
 | [0044](0044-amateur-built-replacement-applies-to-document-text.md) | The amateur-built replacement applies to document text, in the attach step, counted as a floor | Accepted; extends 0020 |
 | [0045](0045-monthly-budget-is-a-reservation-under-a-lock.md) | The monthly budget is a reservation taken under a lock at run start and settled at the end | Accepted; fixes the 0030 guard |
 | [0046](0046-known-owner-and-operator-names-are-replaced-in-document-text.md) | The owner and operator names the record already holds are replaced in document text; full strings only | Accepted; extends 0020, 0044 |
-| [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted; corrected 2026-09-21 (the pin is `pypdf[crypto]`); page half adjusted by 0053 |
+| [0047](0047-pypdf-extracts-docket-text-no-ocr.md) | `pypdf` extracts docket text, a page that fails counts zero, and there is no OCR in S2 | Accepted; corrected 2026-09-21 (the pin is `pypdf[crypto]`); page half adjusted by 0053; item 3 replaced by 0074 |
 | [0048](0048-arm-b-ranks-by-each-documents-measured-size.md) | Arm B ranks by each document's own measured size; the category's other jobs are gone (0051, 0052, 0054) | Accepted; supersedes 0043 item 2; superseded in part by 0051, 0052, 0054 |
 | [0049](0049-the-name-line-is-the-public-surface-not-the-repository.md) | Names may stay in committed NTSB listing pages; the guard is this project's own public surfaces | Accepted; supersedes 0037 item 2's reason and its "a public repository is an output"; extends 0020, 0044, 0046 |
-| [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) | In docket documents the tripwire skips factual-narrative sentences; refusals fall from 38.9% to 4.2% of cases | Accepted; extends 0019 |
+| [0050](0050-tripwire-skips-factual-narrative-sentences-in-docket-documents.md) | In docket documents the tripwire skips factual-narrative sentences; refusals fall from 38.9% to 4.2% of cases | Accepted; extends 0019; extended by 0077 |
 | [0051](0051-the-document-header-drops-the-provenance-clause.md) | The document header drops the provenance clause and states how many pages held readable text | Accepted; supersedes 0038 item 2, narrows 0048 item 4 |
 | [0052](0052-arm-b-attaches-every-readable-document.md) | Arm B attaches every document extraction found text in; the photograph exclusion and `ARM_B_TYPES` go | Accepted; supersedes 0048 item 3, narrows 0039 item 3; item 4 corrected 2026-09-21 (0054, 0055, 0056); its open defect resolved by 0053 |
 | [0053](0053-a-page-of-fifty-characters-is-readable.md) | A page with 50 or more characters is readable; "attached" now implies "has a readable page" by arithmetic | Accepted; resolves the defect 0052 records, adjusts 0047 |
@@ -111,7 +111,41 @@ under `docs/specs/` and the record links to it.
 | [0068](0068-arrival-is-recorded-per-document-with-no-type-label.md) | Arrival is recorded per document with no type label; the mask's docket rule is presence and count | Accepted; amends the agency design §6.2 |
 | [0069](0069-the-ntsb-key-reaches-the-task-from-parameter-store.md) | The NTSB key reaches the scheduled task from AWS Parameter Store, encrypted | Accepted |
 | [0070](0070-the-word-list-is-vendored-into-the-repository.md) | The word list is vendored into the repository | Accepted; amends 0058 |
-| [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted |
+| [0071](0071-the-coverage-threshold-is-deferred-to-s3-as-a-mark-not-a-refusal.md) | The leakage guard's coverage threshold is deferred to the start of S3, reframed as a mark rather than a refusal | Accepted; taken up by 0078 in S2.6 |
 | [0072](0072-recorders-one-exempted-import-link.md) | The recorder's call to `split_record` is the one link exempted from the synthesis-and-verdict import rule | Accepted; narrows 0016 |
 | [0073](0073-the-default-model-is-gpt-6-luna-behind-a-gate.md) | The default model is GPT-6 Luna, behind a shape probe and a 1% format gate, at a reasoning level set to `medium` and recorded | Accepted; gate passed 2026-09-24; replaces 0031 item 1 |
+| [0074](0074-words-in-images-are-read-in-the-build.md) | Words in images are read in the build, not in "phase 2"; an inventory decides what is transcribed | Accepted; replaces 0047 item 3; default amended by 0120 |
+| [0075](0075-pages-are-rendered-with-pypdfium2.md) | Pages are rendered with `pypdfium2`, a ready-built package that passes 0047's reproducibility test | Accepted; extends 0047 |
+| [0076](0076-evidence-version-is-an-axis-not-an-arm.md) | Evidence version (v1, v2, v3) is an axis, not an arm; runs record it and cross-version comparisons are refused unless labelled | Accepted; extends 0022 |
+| [0077](0077-analysis-sentences-in-docket-documents-mark-the-case.md) | Analysis-narrative sentences in docket documents reach the agent and mark the case, after Andy's hand-check | Accepted; adopted after the hand-check 2026-09-24; extends 0050 |
+| [0078](0078-the-narrative-coverage-mark-at-fifty-percent.md) | The narrative-coverage mark, at 50% of one document, is set in S2.6 | Accepted; takes up 0071 |
+| [0079](0079-transcribed-text-is-marked-and-never-guessed.md) | Transcribed text carries its own page marker and writes `[illegible]` rather than guessing | Accepted |
+| [0080](0080-the-transcriber-test-and-its-choice-rule.md) | The transcriber is chosen by a test on our own pages, by a rule fixed in advance | Accepted |
+| [0081](0081-transcription-is-evidence-preparation.md) | Transcription is evidence preparation, costed apart from the agent's per-case cap | Accepted; extends 0030 |
+| [0082](0082-the-v3-probe-pictures-alongside-text.md) | The v3 probe: pictures alongside the text, on development cases only | Accepted |
+| [0083](0083-the-monthly-budget-is-forty-dollars-in-development.md) | The monthly budget is $40 during development, with a stage pause point | Accepted; amends 0030; item 1 raised to $50 for September 2026 by 0104 |
+| [0084](0084-the-reply-budget-is-8000-tokens.md) | The reply budget is 8,000 tokens, measured on dev-400 by a rule fixed before the runs | Accepted |
+| [0085](0085-the-transcription-cache-is-keyed-by-document-and-page.md) | The transcription cache is keyed by document and page, not by image | Accepted; amends 0081 item 1 |
+| [0086](0086-the-transcriber-test-second-pass.md) | The transcriber test gets a second pass, with three corrections fixed before re-marking | Accepted; amends the scoring of 0080 |
+| [0087](0087-the-transcriber-is-qwen-provisionally.md) | The transcriber is Qwen3.5 122B, provisionally: a post-hoc override of 0080's outcome | Accepted; overrides 0080's outcome for S2.6 |
+| [0088](0088-s26-pauses-after-the-dev-comparison.md) | S2.6 pauses after the dev-400 comparison; the held-out step is decided then | Accepted; applies 0083 item 2; corrects 0087 item 2 |
+| [0089](0089-s26-closes-after-the-v3-probe-held-out-deferred.md) | S2.6 closes after the v3 probe on dev-400; its held-out runs are deferred | Accepted; takes 0088's held-out step |
+| [0090](0090-s26-closes-on-its-development-results.md) | S2.6 closes on its development results; the v3 probe and held-out runs are deferred | Accepted; supersedes 0089 item 1 |
+| [0091](0091-evidence-version-refused-on-arms-without-a-docket.md) | A run's evidence version must be true: v2 and v3 are refused on arms that read no docket | Accepted; amends S2.6 spec §3.1 and 0076 |
 | [0092](0092-s25-closes-on-four-nights-report-and-cost-follow.md) | S2.5 closes on four recorded nights; the 14-night report and billed cost follow as a dated addendum | Accepted |
+| [0093](0093-s27-runs-as-two-tracks-guidance-on-v1.md) | S2.7 runs as two tracks: coding guidance on v1, transcription alongside | Accepted; item 3 amended by 0102 |
+| [0094](0094-coding-statistics-from-a-pool-outside-the-samples.md) | Coding statistics come from development verdicts outside the samples | Accepted |
+| [0095](0095-a-sealed-development-sample.md) | A sealed development sample, dev-seal-400, opened once | Accepted |
+| [0096](0096-the-ordering-check.md) | The ordering check: what it sees, what it may choose, and the bar for a model | Accepted; item 4 amended by 0101, item 5 by 0103 |
+| [0097](0097-jev-as-an-ordering-check-model-on-development-cases.md) | Jev is admitted as an ordering-check model, on development cases only | Accepted; amends 0009 for this role; item 1 amended by 0103 |
+| [0098](0098-guidance-rounds-stop-rule-and-prediction.md) | Guidance rounds: sources, registration, reading rule, stop rule, the $25 line and the prediction | Accepted; item 2 amended by 0101; item 4's outcome for Round 6 overridden by 0106 |
+| [0099](0099-the-judges-narrative-label-and-four-outcomes.md) | The judge's narrative label gives four outcomes, validated by Andy's hand-read before it is cited | Accepted |
+| [0100](0100-the-transcriber-retest-and-page-rule.md) | The transcriber re-test is judged against Qwen, and the page rule is measured before it is chosen | Accepted |
+| [0101](0101-the-clear-habit-safeguard.md) | Counts act only on a clear habit: the plain rule and guidance follow the NTSB's most common choice only above 60% of 20 cases | Accepted; amends 0096 item 4 and 0098 item 2 |
+| [0102](0102-a-parent-branch-with-a-branch-per-track.md) | S2.7 is a parent branch with a branch per track; its spend is traced on every branch grown from the parent | Accepted; amends 0093 item 3; item 3 amended by 0107 |
+| [0103](0103-a-registered-second-jev-check.md) | A second Jev check, designed from TypeSafe's documentation, is registered before it runs; it replaces Luna only if it beats Luna, the rule and no check on both answer sets | Accepted; amends 0096 item 5 and 0097 item 1 |
+| [0104](0104-september-2026-budget-raised-to-50.md) | The monthly budget is $50 for September 2026 only, set in the environment; $40 again from October | Accepted; amends 0083 item 1 for one month |
+| [0105](0105-codes-missing-from-the-dictionary-join-the-tables.md) | Two phases and four events the NTSB uses, missing from its data dictionary, join the code tables from a separate supplement file, labelled from its own records; prompt version s1-v6 | Accepted; amends 0025 item 1 |
+| [0106](0106-round-6-kept-by-override.md) | S2.7's Round 6 (Aircraft control / Pilot, finding round 1) is kept by override of the do-no-harm rule: recall +11.4 points, top-1 -6.3 against a reference known to be high, no clear harm against three other runs | Accepted; overrides 0098 item 4's outcome for Round 6 only |
+| [0107](0107-s27-spend-counts-its-own-branches-only.md) | S2.7's spend counts only its own branches (named `s27-`), not a later stage cut from one, and not HEAD | Accepted; amends 0102 item 3 |
+| [0120](0120-qwen-stays-and-transcription-is-off-by-default.md) | Qwen3.5 122B stays the transcriber and the page rule stays `all`; transcription is off by default, for cost, and becomes a tool the S3 loop may choose | Accepted; amends 0074's default |

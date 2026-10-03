@@ -1,0 +1,32 @@
+# the inventory: what image-bearing pages show (S2.6 spec §6) -- counts only
+sample: 330 pages from the dev-400 page frame, seed 20260924; labeller google/gemini-3.1-flash-lite at minimal reasoning, instruction i1; labelled 330; not drawable: 0; cost $0.1098
+
+## labels by stratum (Andy's label where he checked the page; its own word share and population weight beside the weighted estimate, M6)
+  image only/fatal (population 2598, 64.7% hold words, 20.9% of the weighted estimate): typed text 10, handwriting 3, filled form 29, photograph 16, diagram or chart 7, mixed 2, blank 1
+  image only/non-fatal (population 676, 91.0% hold words, 5.4% of the weighted estimate): typed text 3, handwriting 3, filled form 53, photograph 6, mixed 2
+  photo-only/fatal (population 670, 46.7% hold words, 5.4% of the weighted estimate): photograph 7, diagram or chart 1, mixed 7
+  photo-only/non-fatal (population 112, 53.3% hold words, 0.9% of the weighted estimate): photograph 7, mixed 8
+  text and image/fatal (population 6430, 64.7% hold words, 51.6% of the weighted estimate): typed text 17, filled form 26, photograph 3, diagram or chart 4, mixed 18
+  text and image/non-fatal (population 1972, 73.1% hold words, 15.8% of the weighted estimate): typed text 12, handwriting 2, filled form 34, photograph 2, diagram or chart 4, mixed 13
+  text only/fatal (population 4173 -- a control stratum, not counted in the weighted estimate): typed text 12, filled form 2, mixed 1
+  text only/non-fatal (population 832 -- a control stratum, not counted in the weighted estimate): typed text 8, filled form 7
+
+## Andy's check
+  53 of 60 labels right (88.3% [77.8%, 94.2%], Wilson 95%)
+  labelled diagram or chart, Andy says typed text: 1
+  labelled filled form, Andy says typed text: 1
+  labelled mixed, Andy says handwriting: 1
+  labelled mixed, Andy says typed text: 1
+  labelled photograph, Andy says diagram or chart: 1
+  labelled photograph, Andy says mixed: 2
+
+## the mixed-page cut-off (decision W3)
+  135 sampled text-and-image pages; at most 1 in 20 below a cut may hold words:
+    2%: 1 of 17 below the cut hold words (not admissible)
+    5%: 3 of 19 below the cut hold words (not admissible)
+    10%: 5 of 22 below the cut hold words (not admissible)
+    20%: 5 of 22 below the cut hold words (not admissible)
+  no cut: every text-and-image page is sent
+
+## the stop rule (spec §6.4, decision W6)
+  weighted over all image-bearing dev-400 pages: go on: 66.397% of image-bearing pages hold words in their images

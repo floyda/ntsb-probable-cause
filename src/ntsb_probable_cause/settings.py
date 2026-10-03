@@ -23,8 +23,11 @@ class Settings(BaseSettings):
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
     openrouter_base_url: str = "https://openrouter.ai"
+    typesafe_api_key: SecretStr | None = Field(default=None, validation_alias="TYPESAFE_API_KEY")
+    typesafe_base_url: str = "https://api.typesafe.ai"
     runs_dir: Path = Path("data/runs")
-    monthly_budget_usd: float = Field(default=25.0, gt=0)
+    # Decision 0083: $40 a month during the development stages, until the live board (S4).
+    monthly_budget_usd: float = Field(default=40.0, gt=0)
     expected_cost_per_case_usd: float | None = Field(
         default=None, validation_alias="NTSB_EXPECTED_COST_PER_CASE_USD"
     )
@@ -33,6 +36,8 @@ class Settings(BaseSettings):
         validation_alias="NTSB_HELDOUT_LEDGER_PATH",
     )
     docket_dir: Path = Path("data/docket")
+    # S2.6 (decision 0081): the per-page transcription cache; never committed.
+    transcription_dir: Path = Path("data/transcriptions")
     # `str`, not `Path`: the recorder's sync step (Task 10) accepts an `s3://bucket/key`
     # location in this setting, and `Path("s3://b/k")` collapses the double slash after the
     # scheme to `s3:/b/k`, silently corrupting it. A plain string round-trips any value
@@ -88,6 +93,8 @@ class Settings(BaseSettings):
             object.__setattr__(self, "runs_dir", self.data_dir / "runs")
         if "docket_dir" not in self.model_fields_set:
             object.__setattr__(self, "docket_dir", self.data_dir / "docket")
+        if "transcription_dir" not in self.model_fields_set:
+            object.__setattr__(self, "transcription_dir", self.data_dir / "transcriptions")
         if "store" not in self.model_fields_set:
             object.__setattr__(self, "store", str(self.data_dir / "recorder.sqlite"))
 
@@ -106,3 +113,11 @@ class Settings(BaseSettings):
                 "OPENROUTER_API_KEY is not set; export it or load it from the password store."
             )
         return self.openrouter_api_key.get_secret_value()
+
+    def require_typesafe_key(self) -> str:
+        """Return the TypeSafe key, or raise if it is not set (decision 0097)."""
+        if self.typesafe_api_key is None or not self.typesafe_api_key.get_secret_value():
+            raise ConfigurationError(
+                "TYPESAFE_API_KEY is not set; export it or load it from the password store."
+            )
+        return self.typesafe_api_key.get_secret_value()

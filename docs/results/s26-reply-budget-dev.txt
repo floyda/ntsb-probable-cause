@@ -1,0 +1,24 @@
+confirmation run: 20260925T100148-40c6ec6-dev-400-B (max_output_tokens=2000)
+cases: 401
+reply-format failures by finish_reason: length 24, stop 11
+  reply-format failures' reasoning tokens: n=35 min=977 median=1594 p90=2000 p99=2000 max=2000
+truncated-then-recovered replies (finished other than 'stop' inside an otherwise successful case): 22
+    their reasoning tokens: n=22 min=1409 median=1647 p90=2000 p99=2000 max=2000
+cause CONFIRMED against budget=2000 (46 of 57 format failures (failed cases + truncated-then-recovered replies) are length with reasoning >= 1000)
+
+sizing run: 20260925T100148-40c6ec6-dev-400-B (max_output_tokens=16000)
+cases: 401
+reply-format failures by finish_reason (a roomy budget should remove almost all of these): none
+  reply-format failures' reasoning tokens: no data
+truncated-then-recovered replies (finished other than 'stop' inside an otherwise successful case): 0
+    their reasoning tokens: no data
+successful replies' uncut per-reply tokens (every reply that finished 'stop', scored or failed case alike -- fix round 1, controller ruling on Minor 4):
+    total (completion_tokens): n=854 min=24 median=864 p90=1910 p99=2548 max=2936
+    reasoning tokens alone: n=854 min=0 median=484 p90=1368 p99=2039 max=2450
+replies cut off at this run's own budget (finish_reason=length): 0
+replies that did not finish normally (neither 'stop' nor 'length'): 0
+cases the per-case cap cut short (a larger reply-budget reserve leaves slightly less room for documents under the cap):
+  confirmation run: 0 of 401
+  sizing run: 0 of 401
+
+outcome: new max_output_tokens 8000

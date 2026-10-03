@@ -3,18 +3,25 @@
 from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause.fields import EvidenceRole, EvidenceValue
+from ntsb_probable_cause.records.marks import CaseMark
 
-BOOKKEEPING_FIELDS = frozenset({"case_id", "docket_url", "excluded"})
+BOOKKEEPING_FIELDS = frozenset({"case_id", "docket_url", "excluded", "marks", "narrative_share"})
 
 
 class Evidence(BaseModel):
-    """Allow-listed evidence for one case. Bookkeeping fields are never rendered into a payload."""
+    """Allow-listed evidence for one case.
+
+    Bookkeeping fields (identity, exclusions, marks) are never rendered into a payload.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     case_id: str
     docket_url: str | None
     excluded: frozenset[EvidenceRole] = frozenset()
+    # Set only by split_record (S2.6 spec §4.4); bookkeeping, so never rendered into a payload.
+    marks: tuple[CaseMark, ...] = ()
+    narrative_share: float | None = None
 
     prelim_narrative: str | None = None
     aircraft_make: str | None = None

@@ -19,6 +19,7 @@ def test_evidence_schema_is_exactly_the_evidence_roles_plus_bookkeeping() -> Non
     names = set(Evidence.model_fields)
     assert names == {r.value for r in EvidenceRole} | BOOKKEEPING_FIELDS
     assert not names & WITHHELD_ROLE_NAMES
+    assert {"marks", "narrative_share"} <= BOOKKEEPING_FIELDS
 
 
 def test_evidence_rejects_extra_attributes() -> None:

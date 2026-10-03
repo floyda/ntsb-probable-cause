@@ -8,13 +8,19 @@ import pytest
 from ntsb_probable_cause.errors import BudgetError
 from ntsb_probable_cause.scoring.budget import (
     RESERVATION_FILE,
+    SpendRecord,
     budget_lock,
+    in_stage,
     month_spent,
     open_reservations,
     release,
     reserve,
+    reserve_within_budget,
     settle,
+    stage_spent,
+    write_spend,
 )
+from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 from ntsb_probable_cause.scoring.runner import refuse_over_budget
 
 NOW = datetime(2026, 9, 18, tzinfo=UTC)
@@ -59,3 +65,86 @@ def test_budget_lock_is_reentrant_across_processes_by_file(tmp_path: Path) -> No
 def test_month_spent_ignores_reservations(tmp_path: Path) -> None:
     reserve(tmp_path, "run-1", 20.0, now=NOW)
     assert month_spent(tmp_path, now=NOW) == 0.0
+
+
+def _spend(job_id: str, cost: float, started: datetime) -> SpendRecord:
+    return SpendRecord(
+        job_id=job_id,
+        kind="transcription",
+        model="google/gemini-3.1-flash-lite",
+        started=started,
+        calls=50,
+        cost_usd=cost,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+
+
+def test_month_spent_counts_preparation_spend_rows(tmp_path: Path) -> None:
+    now = datetime(2026, 10, 3, tzinfo=UTC)
+    write_spend(tmp_path, _spend("t1", 0.40, now))
+    write_spend(tmp_path, _spend("t1", 0.35, now))
+    write_spend(tmp_path, _spend("t0", 9.99, datetime(2026, 9, 30, tzinfo=UTC)))
+    assert month_spent(tmp_path, now=now) == pytest.approx(0.75)
+
+
+def test_reserve_within_budget_refuses_past_the_month(tmp_path: Path) -> None:
+    now = datetime(2026, 10, 3, tzinfo=UTC)
+    write_spend(tmp_path, _spend("t1", 30.0, now))
+    with pytest.raises(BudgetError, match=r"exceeds the \$40.00 budget"):
+        reserve_within_budget(tmp_path, "t2", 11.0, 40.0, now=now)
+    reserve_within_budget(tmp_path, "t2", 9.0, 40.0, now=now)
+    assert open_reservations(tmp_path) == {"t2": 9.0}
+
+
+_STAGE = frozenset({"abcdef1234567890", "1234567abcdef000"})
+
+
+def _run(runs_dir: Path, run_id: str, sha: str, cost: float) -> None:
+    write_jsonl(
+        runs_dir / run_id / "run.jsonl",
+        [
+            RunRecord(
+                run_id=run_id,
+                sample="dev-400",
+                arm="B",
+                exclusions=(),
+                includes=(),
+                prompt_version="s1-v5",
+                model="openai/gpt-6-luna",
+                price_variant="batch",
+                cap_usd=0.05,
+                budget_usd=40.0,
+                commit_sha=sha,
+                dirty=False,
+                started=datetime(2026, 9, 27, tzinfo=UTC),
+                cost_usd=cost,
+            )
+        ],
+    )
+
+
+def test_in_stage_matches_a_short_sha_by_prefix_and_refuses_a_too_short_one() -> None:
+    assert in_stage("abcdef1", _STAGE)
+    assert not in_stage("abc", _STAGE)
+    assert not in_stage("fffffff", _STAGE)
+
+
+def test_stage_spent_counts_runs_and_spend_rows_of_the_stage_only(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    _run(runs, "in-stage", "abcdef1", 1.25)
+    _run(runs, "other-stage", "9999999", 7.0)
+    write_spend(
+        runs,
+        SpendRecord(
+            job_id="job",
+            kind="transcription",
+            model="m",
+            started=datetime(2026, 9, 27, tzinfo=UTC),
+            calls=3,
+            cost_usd=0.5,
+            commit_sha="1234567",
+            dirty=False,
+        ),
+    )
+    assert stage_spent(runs, _STAGE) == (1.25, 0.5)

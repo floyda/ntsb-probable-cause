@@ -20,6 +20,7 @@ from ntsb_probable_cause.model.batch import (
 from ntsb_probable_cause.model.client import (
     ModelReply,
     ModelSettings,
+    PageImage,
     Payload,
     RecordingFakeClient,
     Usage,
@@ -598,3 +599,21 @@ def assert_requests_clean(
                 assert needle not in text, (
                     f"tripwire: {kind} reached a batch request's {where} ({request.custom_id})"
                 )
+
+
+def assert_transcription_request_only(
+    body: Mapping[str, object], *, system: str, image: PageImage, text_layer: str | None
+) -> None:
+    """S2.6 spec §8.2: the fixed instruction, the page image and that page's own text layer.
+
+    Equality, not a search: anything else in the request -- a field, a message, another
+    image, one more character of text -- fails, so no withheld text can ride along unseen.
+    """
+    expected: list[dict[str, object]] = []
+    if text_layer:
+        expected.append({"type": "text", "text": text_layer})
+    expected.append({"type": "image_url", "image_url": {"url": image.data_url()}})
+    assert body["messages"] == [
+        {"role": "system", "content": system},
+        {"role": "user", "content": expected},
+    ]

@@ -1,0 +1,13 @@
+{
+ "content": "{\n  \"page_kind\": \"typed text\",\n  \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\n\\nEngine sputtered at 800 ft.\\n\\nSwitched to right tank, no change.\\n\\nFuel selector BOTH, mixture RICH.\"\n}",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 1359,
+  "completion_tokens": 64,
+  "reported_cost_usd": 0.00125925,
+  "reasoning_tokens": 0
+ },
+ "model": "google/gemini-3.6-flash",
+ "response_id": "gen-1790360657-6YDSerhITqPxYdV7vlyw"
+}

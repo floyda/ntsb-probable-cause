@@ -67,3 +67,11 @@ build, and this record was written at the close-out review that found it undocum
 2. **The page-level half of this record's extraction outcome was adjusted by
    [0053](0053-a-page-of-fifty-characters-is-readable.md)**, which settled the boundary case at
    exactly 50 characters a page, where `classify_pages` and `readable_pages` previously disagreed.
+
+## Superseded in part, 2026-09-23 (appended; nothing above is edited)
+
+Item 3's plan — no OCR until "phase 2" — is replaced by
+[0074](0074-words-in-images-are-read-in-the-build.md): words in page images are read in S2.6,
+before the agent loop. Pages are drawn with `pypdfium2`
+([0075](0075-pages-are-rendered-with-pypdfium2.md)), which passes this record's reproducibility
+test; the rule against system tools stands. Items 1, 2 and 4 are unchanged.

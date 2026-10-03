@@ -1,0 +1,13 @@
+{
+ "content": "{\n  \"page_kind\": \"typed text\",\n  \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\nEngine sputtered at 800 ft.\\nSwitched to right tank, no change.\\nFuel selector BOTH, mixture RICH.\"\n}",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 2356,
+  "completion_tokens": 61,
+  "reported_cost_usd": 0.0008532,
+  "reasoning_tokens": 0
+ },
+ "model": "qwen/qwen3.5-122b-a10b",
+ "response_id": "gen-1790360661-ddYf1v6SRXcyoeSgGQD7"
+}

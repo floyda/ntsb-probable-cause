@@ -1,13 +1,15 @@
 """Per-case and per-step metrics, and the intervals they carry (spec §4)."""
 
 import json
+from dataclasses import replace
 
 import pytest
 
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring import metrics
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.hypothesis import Hypothesis, parse_hypothesis
+from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess, parse_hypothesis
+from ntsb_probable_cause.scoring.metrics import rescore_occurrence, score_case
 
 T = load_tables()
 VERDICT = Verdict(
@@ -130,3 +132,38 @@ def test_stated_versus_actual() -> None:
 
 def test_stated_versus_actual_on_no_steps() -> None:
     assert metrics.stated_versus_actual([], []) == (0.0, 0.0)
+
+
+def _hyp_for_rescore(codes: tuple[str, ...]) -> Hypothesis:
+    return Hypothesis(
+        evidence_narrative="n",
+        occurrence=tuple(OccurrenceGuess(phase=c[:3], event=c[3:], probability=0.2) for c in codes),
+        findings=(),
+        probable_cause="p",
+        lay_explanation="l",
+        confidence=0.5,
+        abstain=False,
+        evidence_used=(),
+    )
+
+
+def test_rescore_occurrence_equals_score_case_on_the_reordered_codes() -> None:
+    tables = load_tables()
+    verdict = Verdict(
+        probable_cause=None,
+        occurrence_codes=("452240", "452241"),
+        finding_codes=(),
+        finding_codes_in_cause=(),
+    )
+    seen = frozenset({"452240"})
+    before = score_case(_hyp_for_rescore(("452241", "452240")), verdict, tables, seen_pairs=seen)
+    after = rescore_occurrence(
+        before, ("452240", "452241"), verdict.occurrence_codes, seen_pairs=seen
+    )
+    assert after == score_case(
+        _hyp_for_rescore(("452240", "452241")), verdict, tables, seen_pairs=seen
+    )
+    rescored_abstained = rescore_occurrence(
+        replace(before, abstained=True), ("452240",), ("452240",), seen_pairs=seen
+    )
+    assert rescored_abstained.occurrence_top1 is False

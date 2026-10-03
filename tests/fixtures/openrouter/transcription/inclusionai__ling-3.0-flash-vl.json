@@ -1,0 +1,13 @@
+{
+ "content": "{ \"page_kind\": \"typed text\", \"text\": \"PILOT STATEMENT - INVENTED TEST PAGE\\nEngine sputtered at 800 ft.\\nSwitched to right tank, no change.\\nFuel selector BOTH, mixture RICH.\" }",
+ "tool_calls": [],
+ "finish_reason": "stop",
+ "usage": {
+  "prompt_tokens": 2247,
+  "completion_tokens": 59,
+  "reported_cost_usd": 0.00014544,
+  "reasoning_tokens": 0
+ },
+ "model": "inclusionai/ling-3.0-flash-vl",
+ "response_id": "gen-1790514608-uZ8chh7wmQ6cCT8RrIbG"
+}

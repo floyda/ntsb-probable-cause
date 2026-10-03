@@ -34,3 +34,6 @@ and the marked group is scored against the rest to see whether the difference is
 ## Status
 
 Accepted, 2026-09-22. Defers the item S2's As-built raised.
+
+**Taken up by [0078](0078-the-narrative-coverage-mark-at-fifty-percent.md), 2026-09-23**, in S2.6
+rather than S3, so that the held-out bar S3 must beat already carries the mark.

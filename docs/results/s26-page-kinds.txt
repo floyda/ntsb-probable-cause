@@ -1,0 +1,38 @@
+# page kinds in the development dockets (S2.6 spec §1, §5.2) -- counts only
+sample dev-400: 401 cases (fatal 200, non-fatal 201); PDFs read from the cache: 3516
+no cached listing: 0; document fetch failed: 0; not a PDF: 8; pages that failed to parse (counted blank): 0
+a page with fewer than 50 characters of extractable text has no usable text layer
+(classify.SCAN_PAGE_MAX_CHARS); an image is any image the page's resources draw
+
+## pages by kind
+  kind                 all     fatal   non-fatal
+  text only           5005      4173         832
+  image only          3274      2598         676
+  text and image      8402      6430        1972
+  blank                109        49          60
+  total              16790     13250        3540
+image-bearing pages (image only + text and image): 11676 (mean per case: 29.1)
+
+## documents
+  PDFs mixing more than one kind of non-blank page: 688 of 3516
+
+## image-only pages: why pulling the image out would fail (spec §5.2)
+  rotated              527       419         108   (90, 180 or 270 degrees)
+  5+ images            201       162          39
+  by encoding (a page counts once for each encoding it holds): fax (CCITT) 883, JPEG 2000 60, JBIG2 42, JPEG 1763, Flate 711, other 0, none 9
+
+## photo-only listing entries (S2's read_docket skips them; fetched for S2.6, W2)
+  entries              146        95          51
+  declared pages       831       717         114
+  fetched and read: 146 PDFs; their pages by kind:
+  text only             48        46           2
+  image only           322       302          20
+  text and image       460       368          92
+  blank                  1         1           0
+
+## limits
+- an inline image (drawn in the content stream rather than as a resource) is not
+  counted, so a page built only from inline images reads as text only or blank;
+- text is pypdf's extract_text, as the docket tool reads it (decision 0047);
+- the counts above the photo-only section are S2's documents only, so they compare
+  with the design session's; photo-only pages are counted in their own section.

@@ -1,0 +1,7 @@
+table,code,label
+phases,553,Landing-aborted after touchdown
+phases,601,Autorotation
+events,281,Course deviation
+events,282,Altitude deviation
+events,284,Wrong surface or wrong airport
+events,850,Medical event

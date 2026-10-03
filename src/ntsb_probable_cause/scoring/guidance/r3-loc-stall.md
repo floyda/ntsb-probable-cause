@@ -1,0 +1,5 @@
+When a loss of control in flight and an aerodynamic stall or spin both appear in the same phase of flight, the NTSB flags one of them as the defining event.
+
+In the general Maneuvering phase, the NTSB flagged the loss of control in flight as the defining event in 23 of 36 past cases where both appeared, and the stall or spin in 8. In the Takeoff phase, it flagged the loss of control in 33 of 49 such cases and the stall or spin in 13. On the VFR pattern final approach, it flagged the loss of control in 16 of 24 such cases and the stall or spin in 6. In these three phases, put Loss of control in flight first unless the evidence shows that the stall itself, not a loss of control, began the accident sequence, and keep the stall or spin among your guesses.
+
+In the other phases the choice was closer. In Initial Climb the loss of control was defining in 45 of 84 such cases and the stall or spin in 29; in Maneuvering-Low-alt flying, in 19 of 32 and in 11. There, code first whichever the evidence shows began the accident sequence.

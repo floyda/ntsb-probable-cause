@@ -1,0 +1,21 @@
+# analysis-sentence hand-check (S2.6 spec §4.2, decision 0077 item 4) -- counts only
+sample dev-400: 52 matched sentences in 19 cases, each marked by Andy beside its document title
+the sentences themselves are withheld text and are not in this file
+
+  quotes evidence               51
+  conclusion in the docket       1
+
+by document category (quotes evidence / conclusion in the docket):
+  conversation_statement     8 /   0
+  exam_site                  9 /   0
+  medical_tox                1 /   0
+  other                     28 /   1
+  party_submission           1 /   0
+  photos                     1 /   0
+  pilot_form_6120            1 /   0
+  specialist_factual         2 /   0
+
+the rule's measured error: 1 of 52 sentences are conclusions (1.9% [0.3%, 10.1%], Wilson 95%)
+rule: adopt 0077 if 7 or fewer of 52 are conclusions
+rule rescaled 2026-09-24 from the original 5 of 36 (spec §4.2 / decision 0077 item 4): the 2026-09-24 reading of the dev-400 dockets finds 52 matched sentences, not 36 (S2's 36 was measured before pypdf read encrypted documents), and Andy's decision keeps the same ~1-in-7 rate against the wider count
+outcome: adopted -- decision 0077 takes effect
