@@ -1,5 +1,6 @@
 """scripts/coding_stats.py: the pool, and the contamination guard (decision 0094)."""
 
+import dataclasses
 import json
 from datetime import date
 from pathlib import Path
@@ -10,6 +11,8 @@ import pytest
 from scripts import coding_stats as cs
 
 from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring.coding_stats import CodingStats
 
 _SCHEMA = pa.schema(
     [
@@ -119,3 +122,132 @@ def test_report_prints_counts_and_both_halves_without_case_numbers() -> None:
     assert "## flagged findings by defining event" in text
     assert "- 240 Loss of control in flight: 1 cases" in text
     assert "0206304044" in text
+
+
+_S27_SAMPLES = ("dev-400", "dev-seal-400")
+_S3_SAMPLES = ("dev-400", "dev-seal-400", "dev-seal-s3-400")
+
+
+def test_the_two_stages_name_their_samples_their_file_and_their_provenance() -> None:
+    """Decision 0129 item 4: S3's pool also leaves out ``dev-seal-s3-400``; S2.7's is as before."""
+    s27, s3 = cs.STAGES["s27"], cs.STAGES["s3"]
+    assert s27.excluded == _S27_SAMPLES
+    assert s27.json_out == Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json")
+    assert s27.built_from == (
+        "development split, classes C/F/L, excluding dev-400 and dev-seal-400 "
+        "(scripts/coding_stats.py, decision 0094)"
+    )
+    assert s3.excluded == _S3_SAMPLES
+    assert s3.json_out == Path("src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json")
+    assert s3.built_from == (
+        "development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 "
+        "(scripts/coding_stats.py, decisions 0094, 129)"
+    )
+    assert s27.json_out != s3.json_out
+
+
+def test_the_s3_pool_leaves_out_the_new_sample_and_the_guard_refuses_one_that_is_present() -> None:
+    rows = [*ROWS, _row("S3SEAL", "2017-06-01", "dev", "L", ("552300",), "Landing")]
+    excluded = frozenset({"DEV400", "SEAL27", "S3SEAL"})
+    _cases, ids = cs.pool_cases(rows, excluded=excluded)
+    assert ids == ["POOL1", "POOL2"]
+    _cases, leaky = cs.pool_cases(rows, excluded=frozenset({"DEV400"}))
+    assert "S3SEAL" in leaky
+    with pytest.raises(LeakageError, match="S3SEAL"):
+        cs.check_pool(leaky, excluded=excluded, splits=dict.fromkeys(leaky, "dev"))
+
+
+def test_every_case_of_the_committed_new_sample_is_outside_the_s3_pool_and_the_guard_trips() -> (
+    None
+):
+    """The committed list of ``dev-seal-s3-400`` is what the s3 stage excludes (decision 0129)."""
+    listed = samples.sample_ids("dev-seal-s3-400")
+    excluded = frozenset(
+        case for name in cs.STAGES["s3"].excluded for case in samples.sample_ids(name)
+    )
+    assert len(set(listed)) == len(listed) > 0
+    assert set(listed) <= excluded
+    assert not set(listed) & frozenset(samples.sample_ids("dev-400"))
+    assert not set(listed) & frozenset(samples.sample_ids("dev-seal-400"))
+    with pytest.raises(LeakageError, match=listed[0]):
+        cs.check_pool(listed[:1], excluded=excluded, splits={listed[0]: "dev"})
+
+
+def _stage_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A processed file and the three sample lists in ``tmp_path``; throwaway output paths.
+
+    Returns the two JSON paths the stages are pointed at (S2.7's, then S3's), so a test can see
+    which one a stage wrote. Pool cases: POOL1 (2011), POOL2 (2016) and S3SEAL (2017); only S3's
+    stage leaves S3SEAL out.
+    """
+    rows = [
+        *ROWS,
+        _row("SEAL27", "2013-01-01", "dev", "C", ("552300",), "Landing"),
+        _row("S3SEAL", "2017-06-01", "dev", "L", ("552300",), "Landing"),
+    ]
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    table = pa.table(
+        {
+            "ntsb_number": pa.array([r[0] for r in rows], type=pa.string()),
+            "event_date": pa.array([date.fromisoformat(r[1]) for r in rows], type=pa.date32()),
+            "split": pa.array([r[2] for r in rows], type=pa.string()),
+            "investigation_class": pa.array([r[3] for r in rows], type=pa.string()),
+            "raw_json": pa.array([json.dumps(r[4]) for r in rows], type=pa.string()),
+        },
+        schema=_SCHEMA,
+    )
+    pq.write_table(table, processed / "cases.parquet")
+    lists = tmp_path / "lists"
+    lists.mkdir()
+    for name, case in (
+        ("dev_400_ids.csv", "DEV400"),
+        ("dev_seal_400_ids.csv", "SEAL27"),
+        ("dev_seal_s3_400_ids.csv", "S3SEAL"),
+    ):
+        (lists / name).write_text(f"case_id,event_date\n{case},2015-01-01\n")
+    monkeypatch.setattr(samples, "EVAL_DIR", lists)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    paths = {"s27": tmp_path / "s27.json", "s3": tmp_path / "s3.json"}
+    for stage_name in ("s27", "s3"):
+        stage = dataclasses.replace(cs.STAGES[stage_name], json_out=paths[stage_name])
+        monkeypatch.setitem(cs.STAGES, stage_name, stage)
+    return paths["s27"], paths["s3"]
+
+
+def test_the_s3_stage_writes_only_the_s3_file_from_a_pool_without_the_new_sample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    s27_json, s3_json = _stage_env(tmp_path, monkeypatch)
+    out = tmp_path / "s3.txt"
+    assert cs.main(["--stage", "s3", "--out", str(out)]) == 0
+    assert not s27_json.exists()
+    stats = CodingStats.model_validate_json(s3_json.read_text())
+    assert stats.cases == {"2009-2014": 1, "2015-2019": 1}
+    assert stats.built_from == cs.STAGES["s3"].built_from
+    assert "dev-seal-s3-400" in out.read_text()
+    assert "S3SEAL" not in out.read_text()
+    assert "built from: " in capsys.readouterr().out
+
+
+def test_the_default_stage_is_s27_and_writes_only_the_s27_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s27_json, s3_json = _stage_env(tmp_path, monkeypatch)
+    assert cs.main([]) == 0
+    assert not s3_json.exists()
+    stats = CodingStats.model_validate_json(s27_json.read_text())
+    assert stats.cases == {"2009-2014": 1, "2015-2019": 2}  # S2.7's pool still holds S3SEAL
+    assert stats.built_from == cs.STAGES["s27"].built_from
+
+
+def test_the_s3_stage_writes_nothing_when_the_new_sample_list_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S3's pool cannot be built before ``dev-seal-s3-400`` is drawn: it would hold its verdicts."""
+    s27_json, s3_json = _stage_env(tmp_path, monkeypatch)
+    (tmp_path / "lists" / "dev_seal_s3_400_ids.csv").unlink()
+    with pytest.raises(FileNotFoundError):
+        cs.main(["--stage", "s3"])
+    assert not s27_json.exists()
+    assert not s3_json.exists()

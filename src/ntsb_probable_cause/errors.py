@@ -57,6 +57,13 @@ class BatchNotFoundError(ModelError):
     """A batch id the provider no longer recognises, after the not-found grace."""
 
 
+class BatchCancelledError(ModelError):
+    """A batch ended ``cancelled``, usually an operator stopping spend; the run stops with it.
+
+    The message names the batch and round only, never a case.
+    """
+
+
 class SchemaError(NtsbError):
     """A model reply did not parse as the requested schema, or named a code not in the tables."""
 

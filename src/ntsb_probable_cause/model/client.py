@@ -11,7 +11,26 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import LeakageError, ModelError
 from ntsb_probable_cause.fields import WITHHELD_ROLE_NAMES, EvidenceRole
+from ntsb_probable_cause.model.tool_text import ToolText
 from ntsb_probable_cause.records.evidence import Evidence
+
+# ``ToolText`` lives in ``model/tool_text.py`` (S3.1 Task 10), which imports nothing from
+# ``records``; it is re-exported here so every existing import of it keeps working.
+__all__ = [
+    "ModelClient",
+    "ModelReply",
+    "ModelSettings",
+    "PageImage",
+    "Payload",
+    "RecordingFakeClient",
+    "ToolCall",
+    "ToolText",
+    "Turn",
+    "Usage",
+    "cost_usd",
+    "parse_chat_completion",
+    "tool_reply",
+]
 
 _CONSTRUCTION_TOKEN = object()
 _EVIDENCE_NAMES = frozenset(role.value for role in EvidenceRole)
@@ -130,6 +149,9 @@ class Usage(BaseModel):
     # None where the provider reports no completion_tokens_details, or no reasoning_tokens
     # within it (S2.6 Task 9A: GPT-6 Luna's reasoning tokens count against the reply budget).
     reasoning_tokens: int | None = None
+    # usage.prompt_tokens_details.cached_tokens; None where the provider reports no details.
+    # Recorded, not priced: cost_usd ignores it until a measured cached price exists (S3.1).
+    cached_tokens: int | None = None
 
 
 class ToolCall(BaseModel):
@@ -151,6 +173,9 @@ class ModelReply(BaseModel):
     usage: Usage
     model: str
     response_id: str
+    # choices[0].message.reasoning_details, as the provider sent them; passed back on the next
+    # call only when ``ModelSettings.pass_reasoning`` is set (S3.1 spec §5.5 check 4).
+    reasoning_details: tuple[dict[str, object], ...] = ()
 
 
 class ModelSettings(BaseModel):
@@ -165,6 +190,13 @@ class ModelSettings(BaseModel):
     schema_name: str = "hypothesis"
     tools: tuple[dict[str, object], ...] = ()
     reasoning_effort: sources.ReasoningEffort | None = None
+    # Native tool calling (S3.1): both are left out of the request unless set, so a run that
+    # sets neither sends the body it always sent.
+    tool_choice: str | dict[str, object] | None = None
+    parallel_tool_calls: bool | None = None
+    # Whether an assistant turn's reasoning_details ride back to the model. Off until the
+    # shape probe decides (spec §5.5 check 4).
+    pass_reasoning: bool = False
 
     def model_id(self) -> str:
         """The provider model id, with the batch suffix when the batch price applies."""
@@ -174,9 +206,11 @@ class ModelSettings(BaseModel):
 class Turn(BaseModel):
     """One earlier message in a multi-turn exchange (assistant or tool).
 
-    A tool turn carries its result as a ``Payload`` (spec §3.2): the only text that can go
-    back to the model is text that passed the split and the guard. An assistant turn is the
-    model's own words and carries plain content.
+    A tool turn carries its result as a ``Payload`` (spec §3.2), as a ``ToolText``, or as both:
+    the only text that can go back to the model is text that passed the split and the guard, or
+    the loop's own non-evidence text. A tool turn names the call it answers (``tool_call_id``).
+    An assistant turn is the model's own words and carries plain content, its tool calls and,
+    when the provider sent them, its ``reasoning_details``.
     """
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
@@ -185,13 +219,22 @@ class Turn(BaseModel):
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
     payload: Payload | None = None
+    tool_text: ToolText | None = None
+    reasoning_details: tuple[dict[str, object], ...] = ()
 
     @model_validator(mode="after")
-    def _tool_turns_carry_a_payload(self) -> Self:
-        if self.role == "tool" and (self.payload is None or self.content is not None):
-            raise ValueError("a tool turn carries its result as a Payload, never as text")
-        if self.role == "assistant" and self.payload is not None:
-            raise ValueError("an assistant turn carries content, not a Payload")
+    def _turn_rules(self) -> Self:
+        if self.role == "tool":
+            if self.tool_call_id is None:
+                raise ValueError("a tool turn names the call it answers with a tool_call_id")
+            if self.content is not None or (self.payload is None and self.tool_text is None):
+                raise ValueError(
+                    "a tool turn carries its result as a Payload or a ToolText, never as text"
+                )
+            if self.reasoning_details:
+                raise ValueError("a tool turn carries no reasoning_details")
+        elif self.payload is not None or self.tool_text is not None:
+            raise ValueError("an assistant turn carries content, not a Payload or a ToolText")
         return self
 
 
@@ -213,13 +256,18 @@ class ModelClient(Protocol):
 class RecordingFakeClient:
     """A ModelClient for tests: records what it was sent and replays scripted replies.
 
+    A ``ModelReply`` among the replies is returned as is, so a test can script ``tool_calls``
+    and ``finish_reason`` (see ``tool_reply``); a string is wrapped as before.
+
     ``usage`` is optional and defaults to zero-token usage on every call (unchanged
     behaviour for existing tests); pass a sequence to give each call its own token counts,
     e.g. for asserting real (non-zero) cost accounting. Indexed the same way as ``replies``:
     fewer usages than calls repeats the last one.
     """
 
-    def __init__(self, replies: Sequence[str] = ("",), usage: Sequence[Usage] = ()) -> None:
+    def __init__(
+        self, replies: Sequence[str | ModelReply] = ("",), usage: Sequence[Usage] = ()
+    ) -> None:
         self.payloads: list[Payload] = []
         self.histories: list[tuple[Turn, ...]] = []
         self.systems: list[str] = []
@@ -241,6 +289,8 @@ class RecordingFakeClient:
         self.systems.append(system)
         self.settings.append(settings)
         text = self._replies[min(len(self.payloads), len(self._replies)) - 1]
+        if isinstance(text, ModelReply):
+            return text
         if self._usage:
             usage = self._usage[min(len(self.payloads), len(self._usage)) - 1]
         else:
@@ -251,6 +301,28 @@ class RecordingFakeClient:
             model=settings.model_id(),
             response_id="fake",
         )
+
+
+def tool_reply(
+    name: str,
+    arguments: str,
+    *,
+    call_id: str = "c1",
+    usage: Usage | None = None,
+) -> ModelReply:
+    """A scripted reply that calls one tool, for ``RecordingFakeClient`` and the agent's tests.
+
+    ``usage`` defaults to zero tokens (built here, not in the signature: ruff's B008 refuses a
+    call in a default).
+    """
+    return ModelReply(
+        content=None,
+        tool_calls=(ToolCall(call_id=call_id, name=name, arguments=arguments),),
+        finish_reason="tool_calls",
+        usage=usage or Usage(prompt_tokens=0, completion_tokens=0),
+        model="fake",
+        response_id="fake",
+    )
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
@@ -306,6 +378,15 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
         reasoning_tokens = None
         if isinstance(details, Mapping) and details.get("reasoning_tokens") is not None:
             reasoning_tokens = _as_int(details["reasoning_tokens"])
+        prompt_details = usage.get("prompt_tokens_details")
+        cached_tokens = None
+        if isinstance(prompt_details, Mapping) and prompt_details.get("cached_tokens") is not None:
+            cached_tokens = _as_int(prompt_details["cached_tokens"])
+        raw_reasoning = message.get("reasoning_details")
+        if not isinstance(raw_reasoning, Sequence) or isinstance(raw_reasoning, str | bytes):
+            raw_reasoning = ()
+        # An entry that is not an object is skipped, the objects kept in order: one odd entry
+        # must not turn a paid reply (in batch, one item) into an unpriced failed call.
         return ModelReply(
             content=content if content is None else str(content),
             tool_calls=calls,
@@ -315,9 +396,13 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
                 completion_tokens=_as_int(usage["completion_tokens"]),
                 reported_cost_usd=_as_float(cost) if cost is not None else None,
                 reasoning_tokens=reasoning_tokens,
+                cached_tokens=cached_tokens,
             ),
             model=str(body.get("model", "")),
             response_id=str(body.get("id", "")),
+            reasoning_details=tuple(
+                dict(detail) for detail in raw_reasoning if isinstance(detail, Mapping)
+            ),
         )
     except (KeyError, IndexError, TypeError, ValueError) as error:
         raise ModelError(f"reply is not a chat completion: {error!r}") from error

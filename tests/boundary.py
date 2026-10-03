@@ -576,16 +576,55 @@ class RecordingBatchRunner:
         return status
 
 
+# The keys a reasoning_details entry keeps its readable text under: "summary" on a
+# reasoning.summary entry, "text" on a reasoning.text entry. A reasoning.encrypted entry keeps
+# only opaque "data", which no tripwire can read.
+_REASONING_TEXT_KEYS = ("summary", "text")
+
+
+def _reasoning_strings(where: str, value: object) -> list[str]:
+    """The strings a reasoning entry's readable key holds; an unknown shape fails closed.
+
+    A string is screened as it is, and a list or tuple is screened string by string (a provider
+    may split a summary into parts). Any other shape, a list item that is not a string
+    included, cannot be screened for sure, so the helper fails rather than let it pass unread.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list | tuple) and all(isinstance(part, str) for part in value):
+        return [str(part) for part in value]
+    raise AssertionError(
+        f"tripwire: {where} holds a shape that cannot be screened ({type(value).__name__})"
+    )
+
+
 def _request_texts(request: BatchRequest) -> list[tuple[str, str]]:
-    """Every string a batch request would send: system, payload, each turn and its tool calls."""
+    """Every string a batch request would send: system, payload, each turn and its tool calls.
+
+    A tool turn's payload text and its tool text are separate entries (S3.1 Task 3). An
+    assistant turn's readable reasoning (``reasoning.summary``'s ``summary``, ``reasoning.text``'s
+    ``text``) is screened whether or not ``pass_reasoning`` would send it (S3.1 Task 4, call 2b
+    is the first request that does); an encrypted entry's ``data`` is opaque and cannot be. A
+    ``summary`` or ``text`` that is a list is screened item by item; any other shape fails the
+    helper (``_reasoning_strings``), so an unknown shape is never passed unread.
+    """
     texts = [("system", request.system), ("payload", request.payload.text)]
     for turn in request.history:
         if turn.content is not None:
             texts.append((f"{turn.role} turn", turn.content))
         if turn.payload is not None:
             texts.append((f"{turn.role} turn payload", turn.payload.text))
+        if turn.tool_text is not None:
+            texts.append((f"{turn.role} turn tool text", turn.tool_text.text))
         for call in turn.tool_calls:
             texts.append((f"{turn.role} turn tool call", call.arguments))
+        for detail in turn.reasoning_details:
+            kind = str(detail.get("type", "reasoning")).removeprefix("reasoning.")
+            where = f"{turn.role} turn reasoning {kind}"
+            for key in _REASONING_TEXT_KEYS:
+                texts.extend((where, text) for text in _reasoning_strings(where, detail.get(key)))
     return texts
 
 

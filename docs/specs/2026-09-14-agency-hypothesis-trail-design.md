@@ -3,11 +3,24 @@
 *Drafted 2026-09-14 from a design discussion with Andy, and merged as a Draft in pull
 request #1. Revised the same day after S0 closed (pull request #2, release `v0.1.0`), and
 rewritten so that it is absorbed into the rest of the documentation.
-Status: Approved on the merge of the pull request that carries this revision.
+Status: Superseded (2026-10-03, Andy) by the S1 specification
+([2026-09-14-s1-scoring-and-evaluation-design.md](2026-09-14-s1-scoring-and-evaluation-design.md))
+and the S3 specification ([2026-09-30-s3-agent-loop-design.md](2026-09-30-s3-agent-loop-design.md)),
+as §1 provides; it was Approved on the merge of the pull request that carried its revision.
 What was decided is in decision records 0021 to 0024. When each part is built is in
 [the architecture and roadmap](2026-09-12-architecture-and-roadmap.md). This document keeps
 only what those point to: the detail that the S1 and S3 specifications will take over, and
 the record of how S0 changed the design. Section 1 maps every part to where it now lives.*
+
+*Amended 2026-09-30 (0121–0130).* The S3 specification
+([2026-09-30-s3-agent-loop-design.md](2026-09-30-s3-agent-loop-design.md)) now holds what §5.1
+to §5.3 describe, and changes it. The loop's choices move from gathering evidence to reading
+and coding (0121). Hypotheses are recorded at checkpoints, not after every tool call; structured
+evidence is not behind tools, and the first hypothesis uses all non-docket evidence present
+(0122); there is no stop at a confidence threshold, and confidence is calibrated in code (0126).
+The masked condition of §6.2 is paused with the staged replay (0123). The predictions P1 to P6
+that §6.4 cites are withdrawn, and the four results that count against the loop are reworded
+(0121). S3 runs as three sub-stages (0128). The text below stays as written.
 
 **How to read this.** Section 1 is the map. The rest is detail, each part citing the record
 that decides it. Terms in **bold** on first use are in the glossary at the end. Every number

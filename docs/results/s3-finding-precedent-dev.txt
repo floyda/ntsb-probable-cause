@@ -1,0 +1,834 @@
+S3.1 findings-from-precedent probe on dev-400 (scripts/exploratory/s3_finding_precedent.py; S3.1 Task 15)
+Exploratory (decision 0059): free and offline, no model call; it sets no bar and tunes nothing. Whether the flagged findings of the earlier NTSB cases whose cause sentences are nearest to the loop's own would beat the findings the loop chose.
+Counts and means only: no case number, no finding code and no text from any record. Means have a bootstrap 95% interval, each with its denominator.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C (printed beside run a; decides nothing)
+
+## The rule (committed in 1c44b9d, before this script existed)
+
+Rule (Andy, 2026-10-02). Read on run a, the probable-cause query, the headline predictor: promising if the paired difference in mean recall at 10 digits has its interval above zero and the paired difference in mean precision at 10 digits does not have its interval below zero; mixed if the recall difference's interval is above zero and the precision difference's interval is below zero; not promising otherwise. The script applies the rule and prints the word. Either result is published as it stands; a promising result starts a round's design (a findings tool the loop may call), not a tool.
+Run a (20261001T201506-fd6053f-dev-400-C), the probable-cause query, the commonest-set predictor, all judged cases (386 of 401 cases):
+- paired difference in mean recall at 10 digits, predictor less loop: -3.6% [-6.8%, -0.6%] (n = 386 cases)
+- paired difference in mean precision at 10 digits, predictor less loop: -1.5% [-5.1%, +2.1%] (n = 386 cases where both precisions are defined)
+- recall at 10 digits against the loop's, case by case: higher in 55, equal in 238, lower in 93 of 386 judged cases
+Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: recall difference -2.1% [-5.5%, +1.2%] (n = 383); precision difference +0.8% [-3.1%, +4.6%] (n = 383)
+Outcome: not promising
+Expectation (decides nothing). Promising.
+The expectation was not met.
+
+## Second reading under the whole pool (registered in bb5155b, after the first result was seen)
+
+The rule above (committed in 1c44b9d), applied again without change to the whole pool: every pool case except those on the judged case's own event date, earlier or later. The outcome above, read on the date-limited pool, stays the committed outcome; this is a second reading, chosen after that result was seen (the plan's entry 'The precedent probes re-read with the whole pool', bb5155b), and is published as it stands, whichever way it comes out. No expectation was committed for it.
+Run a (20261001T201506-fd6053f-dev-400-C), the probable-cause query, the commonest-set predictor, all judged cases (386 of 401 cases), whole pool:
+- paired difference in mean recall at 10 digits, predictor less loop: -0.6% [-3.8%, +2.6%] (n = 386 cases)
+- paired difference in mean precision at 10 digits, predictor less loop: +0.1% [-3.4%, +3.8%] (n = 386 cases where both precisions are defined)
+- recall at 10 digits against the loop's, case by case: higher in 63, equal in 243, lower in 80 of 386 judged cases
+Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: recall difference -1.8% [-4.9%, +1.4%] (n = 383); precision difference -0.5% [-4.1%, +3.2%] (n = 383)
+Second reading outcome: not promising
+
+## Method
+
+Pool: the S3 statistics pool, development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129): 12090 cases; kept, each with an NTSB probable-cause text and at least one occurrence code: 12090 (event years 2009-2019); left out: 0 with no probable-cause text, 0 more with no occurrence code. Of the kept cases 12062 have at least one finding flagged as cause. The judged cases are `dev-400`'s, which the pool leaves out, so a case is never its own precedent.
+Judged cases, for each run: scored (not failed: decision 0136 item 1), not abstained (the final answer's abstain flag is false), and with at least one finding the NTSB flagged as cause. Each of the run's cases is counted once, in that order: failed, abstained, no flagged finding, judged.
+Queries: the final answer's probable cause (the headline) and, beside it, its evidence narrative.
+Search: the precedent probe's headline search, unchanged: BM25 (k1 = 1.2, b = 0.75) over the lower-cased word tokens of the pool's NTSB probable-cause texts, less 134 English stop words, over the pool cases whose event date is strictly earlier than the judged case's (N, df and the average length over that set); ties by case id; the 5 highest-ranked. A pool case sharing no word with the query is not ranked, so a case may have fewer than five.
+Whole pool (a second reading, registered in bb5155b after the first result was seen; development work reads the whole pool, the date-limited figures staying beside as a sensitivity check): the same search, unchanged (the precedent probe's own whole-pool search, `Index.search` on its `whole` pool, not rewritten here), over every pool case except those on the judged case's own event date, earlier or later, with N, df and the average length over that set. The judged case, `dev-400` and both sealed samples are outside the pool, so a case is never its own precedent; a pool case on the judged date is left out because it may be the same accident under a second case number. In live use and in S3.2's held-out run every pool case is earlier than the judged case, so the date limit never binds there.
+Predictors, each turning the five cases' flagged-finding sets (ten-digit codes) into one set, or none:
+- commonest set: among the five, the commonest non-empty flagged set (a set compared whole); a tie goes to the set whose first holder is ranked highest; none if all five are empty
+- nearest: the flagged set of the highest-ranked of the five whose set is not empty; none if all five are empty
+- at least two: the codes flagged in two or more of the five (each case counts a code once); none if no code is
+Scores: ``scoring.metrics._precision_recall`` on the predicted set and the case's own flagged set, with each code cut to its first 10, 8 or 6 digits (the finding, its item, its category). Recall is the share of the case's own flagged findings the predicted set holds; precision is the share of the predicted set the case holds. A larger set raises recall and lowers precision, so both are printed. A predictor with none has a recall of 0, and its precision is left out of the precision mean and counted as 'no prediction'.
+The loop's own: the case's stored scores in the run (finding_recall_10, _8 and _6, and the matching precisions), as the harness scored its final answer. A precision of None (the loop named no finding) is left out of its precision mean.
+Paired difference: for each case, the predictor's score less the loop's; the mean of those with a 95% bootstrap interval (the project's: 2,000 resamples over cases, a fixed seed). Recall is paired on every judged case; precision only where both are defined.
+The rule is applied above on run a, the probable-cause query and the commonest-set predictor, over all judged cases. A low end of exactly zero is not above zero; a high end of exactly zero is not below it. Everything else is printed and decides nothing.
+The second reading, above, applies that rule again on the whole pool in the same way (the same run, query, predictor and cases, the same edges, no expectation); its word does not replace the committed outcome, and apart from the two rule blocks everything is printed and decides nothing.
+What the intervals do not say: they treat cases as independent, although cases that share a sentence share a prediction. The date limit uses the event date, not the date an earlier verdict was published, so a precedent may have been available to the search before it was to an investigator; that can only favour the search.
+Under the whole pool a precedent may also be later than the judged case, which the date-limited figures (the sensitivity check) do not allow.
+
+## Run a (20261001T201506-fd6053f-dev-400-C)
+
+Pool: the date-limited pool, as committed: only the pool cases whose event date is strictly earlier than the judged case's.
+Cases in the run: 401, each counted once, in this order: failed 7; abstained 6; no flagged finding 2; judged 386 (196 fatal, 190 non-fatal).
+
+### All judged cases: 386 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 28.2% [25.2%, 31.3%] (n = 386)
+- mean recall at 8 digits: 35.4% [32.2%, 38.8%] (n = 386)
+- mean recall at 6 digits: 52.3% [48.9%, 55.9%] (n = 386)
+- mean precision at 10 digits: 30.0% [27.0%, 33.2%] (n = 386 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 36.8% [33.5%, 40.0%] (n = 386 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 52.7% [49.2%, 56.3%] (n = 386 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 24.6% [21.4%, 27.8%] (n = 386); paired difference, predictor less loop: -3.6% [-6.8%, -0.6%] (n = 386)
+- mean recall at 8 digits: 30.5% [27.2%, 33.8%] (n = 386); paired difference, predictor less loop: -5.0% [-8.6%, -1.4%] (n = 386)
+- mean recall at 6 digits: 44.9% [41.1%, 48.5%] (n = 386); paired difference, predictor less loop: -7.5% [-11.4%, -3.6%] (n = 386)
+- mean precision at 10 digits: 28.5% [25.1%, 32.3%] (n = 386 cases with a prediction); paired difference, predictor less loop: -1.5% [-5.1%, +2.1%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 35.6% [31.8%, 39.5%] (n = 386 cases with a prediction); paired difference, predictor less loop: -1.1% [-5.0%, +2.9%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 50.2% [46.2%, 54.3%] (n = 386 cases with a prediction); paired difference, predictor less loop: -2.6% [-6.6%, +1.6%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 23.8% [20.6%, 27.2%] (n = 386); paired difference, predictor less loop: -4.4% [-7.5%, -1.3%] (n = 386)
+- mean recall at 8 digits: 29.7% [26.4%, 33.3%] (n = 386); paired difference, predictor less loop: -5.7% [-9.4%, -2.0%] (n = 386)
+- mean recall at 6 digits: 45.5% [41.8%, 49.0%] (n = 386); paired difference, predictor less loop: -6.8% [-10.7%, -2.9%] (n = 386)
+- mean precision at 10 digits: 26.0% [22.7%, 29.6%] (n = 386 cases with a prediction); paired difference, predictor less loop: -4.0% [-7.5%, -0.6%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 33.0% [29.2%, 36.7%] (n = 386 cases with a prediction); paired difference, predictor less loop: -3.8% [-7.6%, +0.3%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 48.8% [44.9%, 52.8%] (n = 386 cases with a prediction); paired difference, predictor less loop: -3.9% [-7.9%, +0.2%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 30.0% [26.7%, 33.5%] (n = 386); paired difference, predictor less loop: +1.8% [-1.4%, +5.3%] (n = 386)
+- mean recall at 8 digits: 33.9% [30.5%, 37.4%] (n = 386); paired difference, predictor less loop: -1.5% [-5.1%, +2.3%] (n = 386)
+- mean recall at 6 digits: 45.5% [41.8%, 49.3%] (n = 386); paired difference, predictor less loop: -6.8% [-10.6%, -3.0%] (n = 386)
+- mean precision at 10 digits: 36.0% [32.1%, 39.7%] (n = 357 cases with a prediction); paired difference, predictor less loop: +5.1% [+1.5%, +8.8%] (n = 357 cases where both are defined)
+- mean precision at 8 digits: 42.9% [38.7%, 46.8%] (n = 357 cases with a prediction); paired difference, predictor less loop: +5.8% [+1.9%, +9.6%] (n = 357 cases where both are defined)
+- mean precision at 6 digits: 56.7% [52.6%, 60.8%] (n = 357 cases with a prediction); paired difference, predictor less loop: +4.1% [+0.3%, +8.0%] (n = 357 cases where both are defined)
+- no prediction: 29 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 15.9% [13.2%, 18.9%] (n = 386); paired difference, predictor less loop: -12.2% [-15.7%, -8.8%] (n = 386)
+- mean recall at 8 digits: 20.9% [17.8%, 24.3%] (n = 386); paired difference, predictor less loop: -14.5% [-18.2%, -10.9%] (n = 386)
+- mean recall at 6 digits: 33.0% [29.4%, 36.7%] (n = 386); paired difference, predictor less loop: -19.3% [-23.8%, -15.0%] (n = 386)
+- mean precision at 10 digits: 16.9% [13.8%, 20.1%] (n = 386 cases with a prediction); paired difference, predictor less loop: -13.2% [-16.9%, -9.4%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 21.3% [18.1%, 24.9%] (n = 386 cases with a prediction); paired difference, predictor less loop: -15.4% [-19.4%, -11.4%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 34.0% [30.3%, 37.8%] (n = 386 cases with a prediction); paired difference, predictor less loop: -18.8% [-23.5%, -14.1%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 14.8% [12.2%, 17.5%] (n = 386); paired difference, predictor less loop: -13.4% [-16.8%, -10.0%] (n = 386)
+- mean recall at 8 digits: 20.0% [17.1%, 23.0%] (n = 386); paired difference, predictor less loop: -15.4% [-19.1%, -11.8%] (n = 386)
+- mean recall at 6 digits: 32.8% [29.2%, 36.2%] (n = 386); paired difference, predictor less loop: -19.5% [-23.7%, -15.3%] (n = 386)
+- mean precision at 10 digits: 15.3% [12.7%, 18.1%] (n = 386 cases with a prediction); paired difference, predictor less loop: -14.7% [-18.5%, -10.9%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 20.0% [17.0%, 23.2%] (n = 386 cases with a prediction); paired difference, predictor less loop: -16.7% [-20.6%, -12.6%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 33.5% [29.8%, 37.1%] (n = 386 cases with a prediction); paired difference, predictor less loop: -19.3% [-23.9%, -14.7%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 20.8% [17.6%, 24.0%] (n = 386); paired difference, predictor less loop: -7.4% [-10.8%, -4.1%] (n = 386)
+- mean recall at 8 digits: 24.4% [21.2%, 27.8%] (n = 386); paired difference, predictor less loop: -11.1% [-14.6%, -7.4%] (n = 386)
+- mean recall at 6 digits: 30.7% [27.1%, 34.2%] (n = 386); paired difference, predictor less loop: -21.6% [-25.6%, -17.6%] (n = 386)
+- mean precision at 10 digits: 30.5% [26.6%, 34.6%] (n = 335 cases with a prediction); paired difference, predictor less loop: -0.9% [-5.1%, +3.6%] (n = 335 cases where both are defined)
+- mean precision at 8 digits: 35.8% [31.9%, 40.3%] (n = 335 cases with a prediction); paired difference, predictor less loop: -1.8% [-6.3%, +2.9%] (n = 335 cases where both are defined)
+- mean precision at 6 digits: 43.8% [39.4%, 48.5%] (n = 335 cases with a prediction); paired difference, predictor less loop: -9.2% [-14.1%, -4.2%] (n = 335 cases where both are defined)
+- no prediction: 51 of 386 judged cases (recall counted 0, precision left out)
+
+### Fatal cases: 196 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 28.4% [24.5%, 32.2%] (n = 196)
+- mean recall at 8 digits: 33.8% [29.6%, 37.8%] (n = 196)
+- mean recall at 6 digits: 51.5% [47.0%, 56.0%] (n = 196)
+- mean precision at 10 digits: 33.3% [29.0%, 37.7%] (n = 196 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 39.1% [34.7%, 43.6%] (n = 196 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 57.1% [52.3%, 62.1%] (n = 196 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 24.3% [20.3%, 28.4%] (n = 196); paired difference, predictor less loop: -4.1% [-7.7%, -0.0%] (n = 196)
+- mean recall at 8 digits: 28.9% [25.1%, 33.1%] (n = 196); paired difference, predictor less loop: -4.9% [-8.8%, -0.6%] (n = 196)
+- mean recall at 6 digits: 42.0% [37.6%, 46.4%] (n = 196); paired difference, predictor less loop: -9.5% [-13.9%, -4.9%] (n = 196)
+- mean precision at 10 digits: 31.0% [26.1%, 35.8%] (n = 196 cases with a prediction); paired difference, predictor less loop: -2.3% [-7.1%, +2.7%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 36.9% [32.0%, 42.1%] (n = 196 cases with a prediction); paired difference, predictor less loop: -2.2% [-7.2%, +3.2%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 53.1% [47.6%, 58.5%] (n = 196 cases with a prediction); paired difference, predictor less loop: -4.0% [-9.3%, +1.2%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 23.8% [20.0%, 27.9%] (n = 196); paired difference, predictor less loop: -4.6% [-8.2%, -0.4%] (n = 196)
+- mean recall at 8 digits: 28.6% [24.8%, 32.8%] (n = 196); paired difference, predictor less loop: -5.2% [-9.4%, -0.7%] (n = 196)
+- mean recall at 6 digits: 42.1% [37.8%, 46.6%] (n = 196); paired difference, predictor less loop: -9.4% [-13.8%, -4.8%] (n = 196)
+- mean precision at 10 digits: 28.8% [24.2%, 33.6%] (n = 196 cases with a prediction); paired difference, predictor less loop: -4.5% [-9.3%, +0.6%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 34.7% [30.1%, 39.8%] (n = 196 cases with a prediction); paired difference, predictor less loop: -4.4% [-9.6%, +1.2%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 51.5% [46.2%, 56.6%] (n = 196 cases with a prediction); paired difference, predictor less loop: -5.6% [-10.8%, -0.5%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 28.0% [23.8%, 32.2%] (n = 196); paired difference, predictor less loop: -0.4% [-4.5%, +3.5%] (n = 196)
+- mean recall at 8 digits: 30.7% [26.5%, 34.8%] (n = 196); paired difference, predictor less loop: -3.1% [-7.4%, +1.3%] (n = 196)
+- mean recall at 6 digits: 42.3% [37.9%, 46.7%] (n = 196); paired difference, predictor less loop: -9.3% [-13.9%, -4.6%] (n = 196)
+- mean precision at 10 digits: 37.6% [32.5%, 42.9%] (n = 183 cases with a prediction); paired difference, predictor less loop: +3.7% [-1.3%, +9.0%] (n = 183 cases where both are defined)
+- mean precision at 8 digits: 42.6% [37.3%, 47.8%] (n = 183 cases with a prediction); paired difference, predictor less loop: +3.1% [-2.0%, +8.2%] (n = 183 cases where both are defined)
+- mean precision at 6 digits: 58.9% [53.9%, 64.0%] (n = 183 cases with a prediction); paired difference, predictor less loop: +2.3% [-2.2%, +7.1%] (n = 183 cases where both are defined)
+- no prediction: 13 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 16.1% [12.6%, 20.2%] (n = 196); paired difference, predictor less loop: -12.3% [-16.9%, -7.6%] (n = 196)
+- mean recall at 8 digits: 19.3% [15.5%, 23.5%] (n = 196); paired difference, predictor less loop: -14.5% [-19.4%, -9.7%] (n = 196)
+- mean recall at 6 digits: 32.5% [28.0%, 37.0%] (n = 196); paired difference, predictor less loop: -19.1% [-24.3%, -13.6%] (n = 196)
+- mean precision at 10 digits: 18.5% [14.3%, 23.2%] (n = 196 cases with a prediction); paired difference, predictor less loop: -14.8% [-20.3%, -9.0%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 21.7% [17.4%, 26.5%] (n = 196 cases with a prediction); paired difference, predictor less loop: -17.4% [-23.0%, -11.5%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 36.0% [31.2%, 41.1%] (n = 196 cases with a prediction); paired difference, predictor less loop: -21.1% [-27.4%, -14.6%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 16.2% [12.7%, 20.1%] (n = 196); paired difference, predictor less loop: -12.2% [-16.8%, -7.6%] (n = 196)
+- mean recall at 8 digits: 19.6% [15.9%, 23.7%] (n = 196); paired difference, predictor less loop: -14.2% [-19.1%, -9.3%] (n = 196)
+- mean recall at 6 digits: 32.8% [28.5%, 37.3%] (n = 196); paired difference, predictor less loop: -18.7% [-23.9%, -13.3%] (n = 196)
+- mean precision at 10 digits: 18.1% [14.3%, 22.4%] (n = 196 cases with a prediction); paired difference, predictor less loop: -15.2% [-20.4%, -9.5%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 21.5% [17.5%, 26.1%] (n = 196 cases with a prediction); paired difference, predictor less loop: -17.6% [-23.0%, -11.9%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 36.1% [31.5%, 41.0%] (n = 196 cases with a prediction); paired difference, predictor less loop: -21.0% [-27.3%, -14.6%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 21.5% [17.5%, 25.7%] (n = 196); paired difference, predictor less loop: -6.9% [-11.5%, -2.3%] (n = 196)
+- mean recall at 8 digits: 23.6% [19.7%, 28.0%] (n = 196); paired difference, predictor less loop: -10.2% [-14.8%, -5.3%] (n = 196)
+- mean recall at 6 digits: 31.1% [26.7%, 35.9%] (n = 196); paired difference, predictor less loop: -20.4% [-26.0%, -14.8%] (n = 196)
+- mean precision at 10 digits: 31.6% [26.2%, 37.2%] (n = 174 cases with a prediction); paired difference, predictor less loop: -2.8% [-8.9%, +3.3%] (n = 174 cases where both are defined)
+- mean precision at 8 digits: 35.6% [30.0%, 41.3%] (n = 174 cases with a prediction); paired difference, predictor less loop: -4.0% [-10.4%, +2.3%] (n = 174 cases where both are defined)
+- mean precision at 6 digits: 45.4% [39.4%, 51.3%] (n = 174 cases with a prediction); paired difference, predictor less loop: -11.0% [-17.7%, -4.5%] (n = 174 cases where both are defined)
+- no prediction: 22 of 196 judged cases (recall counted 0, precision left out)
+
+### Non-fatal cases: 190 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 27.9% [23.4%, 32.8%] (n = 190)
+- mean recall at 8 digits: 37.1% [31.9%, 42.6%] (n = 190)
+- mean recall at 6 digits: 53.1% [47.2%, 58.8%] (n = 190)
+- mean precision at 10 digits: 26.7% [22.3%, 31.2%] (n = 190 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 34.3% [29.5%, 39.7%] (n = 190 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 48.2% [42.8%, 53.7%] (n = 190 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 24.8% [20.0%, 30.0%] (n = 190); paired difference, predictor less loop: -3.1% [-8.0%, +2.0%] (n = 190)
+- mean recall at 8 digits: 32.1% [26.9%, 37.6%] (n = 190); paired difference, predictor less loop: -5.0% [-10.3%, +1.1%] (n = 190)
+- mean recall at 6 digits: 47.8% [41.9%, 53.5%] (n = 190); paired difference, predictor less loop: -5.3% [-11.4%, +1.3%] (n = 190)
+- mean precision at 10 digits: 25.9% [20.9%, 31.1%] (n = 190 cases with a prediction); paired difference, predictor less loop: -0.7% [-5.9%, +4.6%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 34.3% [28.7%, 40.3%] (n = 190 cases with a prediction); paired difference, predictor less loop: -0.0% [-5.6%, +6.0%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 47.1% [41.2%, 52.9%] (n = 190 cases with a prediction); paired difference, predictor less loop: -1.1% [-7.0%, +5.1%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 23.8% [18.9%, 29.1%] (n = 190); paired difference, predictor less loop: -4.2% [-9.2%, +1.2%] (n = 190)
+- mean recall at 8 digits: 30.9% [25.5%, 36.4%] (n = 190); paired difference, predictor less loop: -6.2% [-11.7%, -0.1%] (n = 190)
+- mean recall at 6 digits: 48.9% [42.9%, 55.0%] (n = 190); paired difference, predictor less loop: -4.2% [-10.3%, +2.2%] (n = 190)
+- mean precision at 10 digits: 23.2% [18.5%, 28.2%] (n = 190 cases with a prediction); paired difference, predictor less loop: -3.5% [-8.6%, +1.9%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 31.2% [25.9%, 36.8%] (n = 190 cases with a prediction); paired difference, predictor less loop: -3.1% [-8.6%, +2.6%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 46.0% [40.4%, 51.6%] (n = 190 cases with a prediction); paired difference, predictor less loop: -2.2% [-8.2%, +3.7%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 32.0% [27.0%, 37.9%] (n = 190); paired difference, predictor less loop: +4.1% [-1.0%, +9.4%] (n = 190)
+- mean recall at 8 digits: 37.2% [32.0%, 42.8%] (n = 190); paired difference, predictor less loop: +0.1% [-5.6%, +6.3%] (n = 190)
+- mean recall at 6 digits: 48.9% [42.8%, 55.1%] (n = 190); paired difference, predictor less loop: -4.2% [-10.8%, +2.5%] (n = 190)
+- mean precision at 10 digits: 34.3% [28.6%, 40.0%] (n = 174 cases with a prediction); paired difference, predictor less loop: +6.6% [+1.3%, +12.2%] (n = 174 cases where both are defined)
+- mean precision at 8 digits: 43.2% [37.4%, 49.4%] (n = 174 cases with a prediction); paired difference, predictor less loop: +8.6% [+3.1%, +14.2%] (n = 174 cases where both are defined)
+- mean precision at 6 digits: 54.4% [48.4%, 60.7%] (n = 174 cases with a prediction); paired difference, predictor less loop: +6.0% [-0.0%, +11.8%] (n = 174 cases where both are defined)
+- no prediction: 16 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 15.8% [11.7%, 20.4%] (n = 190); paired difference, predictor less loop: -12.2% [-17.4%, -6.9%] (n = 190)
+- mean recall at 8 digits: 22.6% [17.8%, 27.6%] (n = 190); paired difference, predictor less loop: -14.5% [-20.1%, -8.7%] (n = 190)
+- mean recall at 6 digits: 33.5% [27.7%, 39.5%] (n = 190); paired difference, predictor less loop: -19.6% [-26.4%, -12.7%] (n = 190)
+- mean precision at 10 digits: 15.2% [11.3%, 19.8%] (n = 190 cases with a prediction); paired difference, predictor less loop: -11.5% [-16.9%, -6.0%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 20.9% [16.4%, 26.0%] (n = 190 cases with a prediction); paired difference, predictor less loop: -13.4% [-19.2%, -7.7%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 31.8% [26.3%, 37.5%] (n = 190 cases with a prediction); paired difference, predictor less loop: -16.4% [-23.4%, -9.5%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 13.4% [9.6%, 17.3%] (n = 190); paired difference, predictor less loop: -14.6% [-19.9%, -9.3%] (n = 190)
+- mean recall at 8 digits: 20.5% [15.9%, 25.4%] (n = 190); paired difference, predictor less loop: -16.6% [-22.5%, -10.8%] (n = 190)
+- mean recall at 6 digits: 32.8% [27.5%, 38.3%] (n = 190); paired difference, predictor less loop: -20.3% [-27.0%, -13.5%] (n = 190)
+- mean precision at 10 digits: 12.5% [9.0%, 16.3%] (n = 190 cases with a prediction); paired difference, predictor less loop: -14.2% [-19.5%, -8.9%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 18.5% [14.3%, 23.1%] (n = 190 cases with a prediction); paired difference, predictor less loop: -15.9% [-21.6%, -10.0%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 30.8% [25.3%, 36.1%] (n = 190 cases with a prediction); paired difference, predictor less loop: -17.5% [-24.3%, -10.6%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 20.0% [15.5%, 24.9%] (n = 190); paired difference, predictor less loop: -7.9% [-12.9%, -2.8%] (n = 190)
+- mean recall at 8 digits: 25.2% [20.2%, 30.6%] (n = 190); paired difference, predictor less loop: -11.9% [-17.5%, -6.0%] (n = 190)
+- mean recall at 6 digits: 30.2% [24.8%, 36.3%] (n = 190); paired difference, predictor less loop: -22.9% [-29.3%, -16.3%] (n = 190)
+- mean precision at 10 digits: 29.2% [22.8%, 35.2%] (n = 161 cases with a prediction); paired difference, predictor less loop: +1.2% [-5.1%, +7.4%] (n = 161 cases where both are defined)
+- mean precision at 8 digits: 36.1% [29.3%, 42.4%] (n = 161 cases with a prediction); paired difference, predictor less loop: +0.5% [-6.3%, +6.6%] (n = 161 cases where both are defined)
+- mean precision at 6 digits: 42.0% [34.9%, 48.7%] (n = 161 cases with a prediction); paired difference, predictor less loop: -7.3% [-14.9%, -0.3%] (n = 161 cases where both are defined)
+- no prediction: 29 of 190 judged cases (recall counted 0, precision left out)
+
+## Run a (20261001T201506-fd6053f-dev-400-C), whole pool
+
+Pool: the whole pool, a second reading (registered in bb5155b after the first result was seen): every pool case except those on the judged case's own event date, earlier or later. The judged cases and the loop's own scores are the same as in the date-limited block.
+Cases in the run: 401, each counted once, in this order: failed 7; abstained 6; no flagged finding 2; judged 386 (196 fatal, 190 non-fatal).
+
+### All judged cases: 386 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 28.2% [25.2%, 31.3%] (n = 386)
+- mean recall at 8 digits: 35.4% [32.2%, 38.8%] (n = 386)
+- mean recall at 6 digits: 52.3% [48.9%, 55.9%] (n = 386)
+- mean precision at 10 digits: 30.0% [27.0%, 33.2%] (n = 386 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 36.8% [33.5%, 40.0%] (n = 386 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 52.7% [49.2%, 56.3%] (n = 386 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 27.5% [24.2%, 31.0%] (n = 386); paired difference, predictor less loop: -0.6% [-3.8%, +2.6%] (n = 386)
+- mean recall at 8 digits: 34.7% [31.2%, 38.3%] (n = 386); paired difference, predictor less loop: -0.7% [-4.3%, +2.8%] (n = 386)
+- mean recall at 6 digits: 48.3% [44.5%, 52.0%] (n = 386); paired difference, predictor less loop: -4.0% [-7.8%, -0.2%] (n = 386)
+- mean precision at 10 digits: 30.1% [26.6%, 33.9%] (n = 386 cases with a prediction); paired difference, predictor less loop: +0.1% [-3.4%, +3.8%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 38.1% [34.3%, 42.0%] (n = 386 cases with a prediction); paired difference, predictor less loop: +1.4% [-2.4%, +5.3%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 52.4% [48.5%, 56.3%] (n = 386 cases with a prediction); paired difference, predictor less loop: -0.4% [-4.4%, +3.7%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 25.9% [22.6%, 29.3%] (n = 386); paired difference, predictor less loop: -2.3% [-5.5%, +0.9%] (n = 386)
+- mean recall at 8 digits: 33.5% [29.9%, 37.1%] (n = 386); paired difference, predictor less loop: -2.0% [-5.5%, +1.7%] (n = 386)
+- mean recall at 6 digits: 47.9% [44.2%, 51.6%] (n = 386); paired difference, predictor less loop: -4.4% [-8.2%, -0.6%] (n = 386)
+- mean precision at 10 digits: 26.5% [23.2%, 29.9%] (n = 386 cases with a prediction); paired difference, predictor less loop: -3.6% [-6.9%, -0.2%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 34.8% [31.1%, 38.5%] (n = 386 cases with a prediction); paired difference, predictor less loop: -2.0% [-5.8%, +2.0%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 49.9% [46.0%, 53.7%] (n = 386 cases with a prediction); paired difference, predictor less loop: -2.8% [-6.8%, +1.4%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 31.1% [27.7%, 34.7%] (n = 386); paired difference, predictor less loop: +2.9% [-0.3%, +6.2%] (n = 386)
+- mean recall at 8 digits: 37.3% [33.6%, 40.9%] (n = 386); paired difference, predictor less loop: +1.9% [-1.9%, +5.4%] (n = 386)
+- mean recall at 6 digits: 48.1% [44.4%, 52.0%] (n = 386); paired difference, predictor less loop: -4.2% [-8.1%, -0.2%] (n = 386)
+- mean precision at 10 digits: 35.1% [31.6%, 38.7%] (n = 369 cases with a prediction); paired difference, predictor less loop: +4.5% [+0.9%, +7.8%] (n = 369 cases where both are defined)
+- mean precision at 8 digits: 43.7% [40.0%, 47.3%] (n = 369 cases with a prediction); paired difference, predictor less loop: +6.5% [+2.6%, +10.1%] (n = 369 cases where both are defined)
+- mean precision at 6 digits: 55.3% [51.3%, 59.2%] (n = 369 cases with a prediction); paired difference, predictor less loop: +2.6% [-1.2%, +6.3%] (n = 369 cases where both are defined)
+- no prediction: 17 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 17.2% [14.3%, 20.2%] (n = 386); paired difference, predictor less loop: -11.0% [-14.5%, -7.6%] (n = 386)
+- mean recall at 8 digits: 23.1% [20.0%, 26.3%] (n = 386); paired difference, predictor less loop: -12.4% [-16.2%, -8.8%] (n = 386)
+- mean recall at 6 digits: 34.1% [30.6%, 37.8%] (n = 386); paired difference, predictor less loop: -18.2% [-22.4%, -14.1%] (n = 386)
+- mean precision at 10 digits: 18.0% [14.8%, 21.3%] (n = 386 cases with a prediction); paired difference, predictor less loop: -12.0% [-16.0%, -8.1%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 23.7% [20.2%, 27.2%] (n = 386 cases with a prediction); paired difference, predictor less loop: -13.1% [-17.4%, -8.8%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 34.6% [30.6%, 38.4%] (n = 386 cases with a prediction); paired difference, predictor less loop: -18.2% [-22.8%, -13.3%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 16.3% [13.6%, 19.1%] (n = 386); paired difference, predictor less loop: -11.9% [-15.5%, -8.5%] (n = 386)
+- mean recall at 8 digits: 22.9% [19.9%, 26.0%] (n = 386); paired difference, predictor less loop: -12.6% [-16.4%, -8.9%] (n = 386)
+- mean recall at 6 digits: 35.2% [31.6%, 38.9%] (n = 386); paired difference, predictor less loop: -17.1% [-21.2%, -13.2%] (n = 386)
+- mean precision at 10 digits: 16.0% [13.3%, 18.7%] (n = 386 cases with a prediction); paired difference, predictor less loop: -14.1% [-17.9%, -10.3%] (n = 386 cases where both are defined)
+- mean precision at 8 digits: 21.8% [18.8%, 25.0%] (n = 386 cases with a prediction); paired difference, predictor less loop: -14.9% [-19.0%, -10.9%] (n = 386 cases where both are defined)
+- mean precision at 6 digits: 33.7% [30.0%, 37.3%] (n = 386 cases with a prediction); paired difference, predictor less loop: -19.1% [-23.6%, -14.4%] (n = 386 cases where both are defined)
+- no prediction: 0 of 386 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 23.3% [20.2%, 26.6%] (n = 386); paired difference, predictor less loop: -4.9% [-8.3%, -1.6%] (n = 386)
+- mean recall at 8 digits: 27.5% [24.2%, 30.9%] (n = 386); paired difference, predictor less loop: -7.9% [-11.5%, -4.4%] (n = 386)
+- mean recall at 6 digits: 34.5% [31.0%, 38.1%] (n = 386); paired difference, predictor less loop: -17.9% [-22.1%, -13.9%] (n = 386)
+- mean precision at 10 digits: 30.6% [26.7%, 34.5%] (n = 354 cases with a prediction); paired difference, predictor less loop: -0.3% [-4.2%, +3.6%] (n = 354 cases where both are defined)
+- mean precision at 8 digits: 36.1% [32.1%, 40.1%] (n = 354 cases with a prediction); paired difference, predictor less loop: -1.3% [-5.3%, +3.0%] (n = 354 cases where both are defined)
+- mean precision at 6 digits: 44.1% [39.7%, 48.5%] (n = 354 cases with a prediction); paired difference, predictor less loop: -8.2% [-12.8%, -3.5%] (n = 354 cases where both are defined)
+- no prediction: 32 of 386 judged cases (recall counted 0, precision left out)
+
+### Fatal cases: 196 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 28.4% [24.5%, 32.2%] (n = 196)
+- mean recall at 8 digits: 33.8% [29.6%, 37.8%] (n = 196)
+- mean recall at 6 digits: 51.5% [47.0%, 56.0%] (n = 196)
+- mean precision at 10 digits: 33.3% [29.0%, 37.7%] (n = 196 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 39.1% [34.7%, 43.6%] (n = 196 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 57.1% [52.3%, 62.1%] (n = 196 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 26.2% [22.1%, 30.6%] (n = 196); paired difference, predictor less loop: -2.2% [-6.3%, +2.3%] (n = 196)
+- mean recall at 8 digits: 30.9% [26.7%, 35.5%] (n = 196); paired difference, predictor less loop: -2.9% [-7.4%, +2.0%] (n = 196)
+- mean recall at 6 digits: 43.5% [39.0%, 48.4%] (n = 196); paired difference, predictor less loop: -8.0% [-12.8%, -3.0%] (n = 196)
+- mean precision at 10 digits: 32.0% [27.0%, 37.4%] (n = 196 cases with a prediction); paired difference, predictor less loop: -1.3% [-6.4%, +4.1%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 37.9% [33.0%, 43.2%] (n = 196 cases with a prediction); paired difference, predictor less loop: -1.3% [-6.5%, +4.4%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 53.3% [48.1%, 58.5%] (n = 196 cases with a prediction); paired difference, predictor less loop: -3.9% [-9.4%, +1.3%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 26.2% [22.1%, 30.7%] (n = 196); paired difference, predictor less loop: -2.2% [-6.3%, +2.3%] (n = 196)
+- mean recall at 8 digits: 30.9% [26.6%, 35.6%] (n = 196); paired difference, predictor less loop: -2.9% [-7.7%, +1.9%] (n = 196)
+- mean recall at 6 digits: 44.1% [39.4%, 48.9%] (n = 196); paired difference, predictor less loop: -7.4% [-12.4%, -2.3%] (n = 196)
+- mean precision at 10 digits: 29.3% [24.4%, 34.4%] (n = 196 cases with a prediction); paired difference, predictor less loop: -4.0% [-8.8%, +1.4%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 35.0% [30.1%, 39.9%] (n = 196 cases with a prediction); paired difference, predictor less loop: -4.1% [-9.5%, +1.4%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 50.7% [45.4%, 56.1%] (n = 196 cases with a prediction); paired difference, predictor less loop: -6.4% [-12.0%, -1.0%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 30.9% [26.5%, 35.4%] (n = 196); paired difference, predictor less loop: +2.5% [-1.9%, +6.7%] (n = 196)
+- mean recall at 8 digits: 35.3% [30.9%, 39.8%] (n = 196); paired difference, predictor less loop: +1.4% [-3.0%, +6.0%] (n = 196)
+- mean recall at 6 digits: 44.3% [39.7%, 49.1%] (n = 196); paired difference, predictor less loop: -7.3% [-12.1%, -2.3%] (n = 196)
+- mean precision at 10 digits: 37.5% [33.0%, 42.4%] (n = 187 cases with a prediction); paired difference, predictor less loop: +3.3% [-1.1%, +8.1%] (n = 187 cases where both are defined)
+- mean precision at 8 digits: 44.0% [39.5%, 49.1%] (n = 187 cases with a prediction); paired difference, predictor less loop: +3.7% [-1.0%, +8.6%] (n = 187 cases where both are defined)
+- mean precision at 6 digits: 55.5% [50.3%, 60.6%] (n = 187 cases with a prediction); paired difference, predictor less loop: -1.7% [-6.7%, +3.0%] (n = 187 cases where both are defined)
+- no prediction: 9 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 16.4% [13.1%, 20.0%] (n = 196); paired difference, predictor less loop: -12.0% [-16.5%, -7.3%] (n = 196)
+- mean recall at 8 digits: 20.5% [17.0%, 24.2%] (n = 196); paired difference, predictor less loop: -13.4% [-18.2%, -8.4%] (n = 196)
+- mean recall at 6 digits: 31.5% [26.9%, 36.0%] (n = 196); paired difference, predictor less loop: -20.0% [-25.6%, -14.7%] (n = 196)
+- mean precision at 10 digits: 18.2% [14.3%, 22.4%] (n = 196 cases with a prediction); paired difference, predictor less loop: -15.1% [-20.5%, -9.3%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 23.0% [18.7%, 27.6%] (n = 196 cases with a prediction); paired difference, predictor less loop: -16.1% [-22.0%, -10.0%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 34.9% [29.9%, 39.9%] (n = 196 cases with a prediction); paired difference, predictor less loop: -22.3% [-28.5%, -15.9%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 17.0% [13.6%, 20.5%] (n = 196); paired difference, predictor less loop: -11.4% [-15.9%, -6.8%] (n = 196)
+- mean recall at 8 digits: 21.1% [17.6%, 24.8%] (n = 196); paired difference, predictor less loop: -12.7% [-17.6%, -7.8%] (n = 196)
+- mean recall at 6 digits: 33.8% [29.3%, 38.2%] (n = 196); paired difference, predictor less loop: -17.8% [-22.9%, -12.6%] (n = 196)
+- mean precision at 10 digits: 17.8% [14.0%, 21.6%] (n = 196 cases with a prediction); paired difference, predictor less loop: -15.5% [-20.8%, -10.0%] (n = 196 cases where both are defined)
+- mean precision at 8 digits: 22.2% [18.1%, 26.4%] (n = 196 cases with a prediction); paired difference, predictor less loop: -16.9% [-22.6%, -10.9%] (n = 196 cases where both are defined)
+- mean precision at 6 digits: 35.0% [30.2%, 39.6%] (n = 196 cases with a prediction); paired difference, predictor less loop: -22.1% [-28.3%, -16.1%] (n = 196 cases where both are defined)
+- no prediction: 0 of 196 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 24.1% [20.1%, 28.2%] (n = 196); paired difference, predictor less loop: -4.3% [-8.6%, +0.1%] (n = 196)
+- mean recall at 8 digits: 27.0% [22.9%, 31.2%] (n = 196); paired difference, predictor less loop: -6.9% [-11.6%, -1.9%] (n = 196)
+- mean recall at 6 digits: 34.1% [29.6%, 38.9%] (n = 196); paired difference, predictor less loop: -17.5% [-23.0%, -11.8%] (n = 196)
+- mean precision at 10 digits: 30.6% [26.0%, 35.4%] (n = 182 cases with a prediction); paired difference, predictor less loop: -3.6% [-8.7%, +1.5%] (n = 182 cases where both are defined)
+- mean precision at 8 digits: 35.2% [30.5%, 40.1%] (n = 182 cases with a prediction); paired difference, predictor less loop: -4.5% [-9.8%, +1.1%] (n = 182 cases where both are defined)
+- mean precision at 6 digits: 43.8% [38.5%, 49.4%] (n = 182 cases with a prediction); paired difference, predictor less loop: -13.4% [-19.4%, -7.0%] (n = 182 cases where both are defined)
+- no prediction: 14 of 196 judged cases (recall counted 0, precision left out)
+
+### Non-fatal cases: 190 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 27.9% [23.4%, 32.8%] (n = 190)
+- mean recall at 8 digits: 37.1% [31.9%, 42.6%] (n = 190)
+- mean recall at 6 digits: 53.1% [47.2%, 58.8%] (n = 190)
+- mean precision at 10 digits: 26.7% [22.3%, 31.2%] (n = 190 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 34.3% [29.5%, 39.7%] (n = 190 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 48.2% [42.8%, 53.7%] (n = 190 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 28.9% [23.7%, 34.6%] (n = 190); paired difference, predictor less loop: +0.9% [-3.9%, +6.0%] (n = 190)
+- mean recall at 8 digits: 38.6% [33.0%, 44.5%] (n = 190); paired difference, predictor less loop: +1.5% [-3.6%, +7.1%] (n = 190)
+- mean recall at 6 digits: 53.3% [47.3%, 59.2%] (n = 190); paired difference, predictor less loop: +0.1% [-5.5%, +6.2%] (n = 190)
+- mean precision at 10 digits: 28.2% [23.2%, 33.7%] (n = 190 cases with a prediction); paired difference, predictor less loop: +1.5% [-3.4%, +6.7%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 38.4% [32.8%, 44.3%] (n = 190 cases with a prediction); paired difference, predictor less loop: +4.1% [-1.4%, +9.6%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 51.5% [45.8%, 57.5%] (n = 190 cases with a prediction); paired difference, predictor less loop: +3.2% [-2.7%, +9.0%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 25.6% [20.8%, 30.7%] (n = 190); paired difference, predictor less loop: -2.3% [-7.3%, +2.5%] (n = 190)
+- mean recall at 8 digits: 36.1% [30.9%, 41.9%] (n = 190); paired difference, predictor less loop: -0.9% [-6.4%, +4.5%] (n = 190)
+- mean recall at 6 digits: 51.9% [46.0%, 57.8%] (n = 190); paired difference, predictor less loop: -1.3% [-6.8%, +4.6%] (n = 190)
+- mean precision at 10 digits: 23.6% [18.9%, 28.5%] (n = 190 cases with a prediction); paired difference, predictor less loop: -3.1% [-7.8%, +1.4%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 34.5% [29.6%, 40.0%] (n = 190 cases with a prediction); paired difference, predictor less loop: +0.2% [-4.9%, +5.3%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 49.1% [43.5%, 54.7%] (n = 190 cases with a prediction); paired difference, predictor less loop: +0.9% [-4.7%, +6.3%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 31.4% [26.3%, 37.1%] (n = 190); paired difference, predictor less loop: +3.4% [-1.3%, +8.4%] (n = 190)
+- mean recall at 8 digits: 39.4% [34.0%, 45.4%] (n = 190); paired difference, predictor less loop: +2.3% [-2.9%, +8.2%] (n = 190)
+- mean recall at 6 digits: 52.1% [46.2%, 58.3%] (n = 190); paired difference, predictor less loop: -1.0% [-6.8%, +5.2%] (n = 190)
+- mean precision at 10 digits: 32.6% [26.9%, 38.1%] (n = 182 cases with a prediction); paired difference, predictor less loop: +5.7% [+0.6%, +10.9%] (n = 182 cases where both are defined)
+- mean precision at 8 digits: 43.3% [37.1%, 49.5%] (n = 182 cases with a prediction); paired difference, predictor less loop: +9.3% [+3.7%, +15.0%] (n = 182 cases where both are defined)
+- mean precision at 6 digits: 55.0% [48.9%, 61.0%] (n = 182 cases with a prediction); paired difference, predictor less loop: +7.1% [+1.2%, +12.8%] (n = 182 cases where both are defined)
+- no prediction: 8 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 17.9% [13.5%, 22.7%] (n = 190); paired difference, predictor less loop: -10.0% [-15.2%, -4.9%] (n = 190)
+- mean recall at 8 digits: 25.7% [20.4%, 30.9%] (n = 190); paired difference, predictor less loop: -11.4% [-17.3%, -5.9%] (n = 190)
+- mean recall at 6 digits: 36.8% [31.1%, 42.7%] (n = 190); paired difference, predictor less loop: -16.3% [-22.7%, -10.4%] (n = 190)
+- mean precision at 10 digits: 17.9% [13.3%, 22.6%] (n = 190 cases with a prediction); paired difference, predictor less loop: -8.8% [-14.2%, -3.1%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 24.4% [19.1%, 29.5%] (n = 190 cases with a prediction); paired difference, predictor less loop: -10.0% [-15.8%, -4.3%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 34.3% [28.5%, 39.9%] (n = 190 cases with a prediction); paired difference, predictor less loop: -13.9% [-21.4%, -6.9%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 15.5% [11.4%, 19.7%] (n = 190); paired difference, predictor less loop: -12.5% [-17.5%, -7.3%] (n = 190)
+- mean recall at 8 digits: 24.6% [19.4%, 29.7%] (n = 190); paired difference, predictor less loop: -12.5% [-18.2%, -6.9%] (n = 190)
+- mean recall at 6 digits: 36.7% [30.8%, 42.5%] (n = 190); paired difference, predictor less loop: -16.4% [-22.6%, -10.5%] (n = 190)
+- mean precision at 10 digits: 14.1% [10.5%, 18.2%] (n = 190 cases with a prediction); paired difference, predictor less loop: -12.6% [-17.8%, -7.3%] (n = 190 cases where both are defined)
+- mean precision at 8 digits: 21.5% [16.9%, 26.2%] (n = 190 cases with a prediction); paired difference, predictor less loop: -12.9% [-18.6%, -7.4%] (n = 190 cases where both are defined)
+- mean precision at 6 digits: 32.3% [26.8%, 37.5%] (n = 190 cases with a prediction); paired difference, predictor less loop: -16.0% [-22.9%, -9.1%] (n = 190 cases where both are defined)
+- no prediction: 0 of 190 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 22.6% [17.9%, 27.4%] (n = 190); paired difference, predictor less loop: -5.4% [-10.2%, -0.4%] (n = 190)
+- mean recall at 8 digits: 28.1% [23.0%, 33.3%] (n = 190); paired difference, predictor less loop: -8.9% [-14.3%, -3.6%] (n = 190)
+- mean recall at 6 digits: 34.8% [29.1%, 40.4%] (n = 190); paired difference, predictor less loop: -18.3% [-24.6%, -12.0%] (n = 190)
+- mean precision at 10 digits: 30.6% [24.4%, 36.6%] (n = 172 cases with a prediction); paired difference, predictor less loop: +3.1% [-2.8%, +9.5%] (n = 172 cases where both are defined)
+- mean precision at 8 digits: 37.1% [30.8%, 43.4%] (n = 172 cases with a prediction); paired difference, predictor less loop: +2.2% [-4.0%, +8.3%] (n = 172 cases where both are defined)
+- mean precision at 6 digits: 44.4% [37.9%, 50.8%] (n = 172 cases with a prediction); paired difference, predictor less loop: -2.7% [-9.9%, +4.0%] (n = 172 cases where both are defined)
+- no prediction: 18 of 190 judged cases (recall counted 0, precision left out)
+
+## Run b (20261001T201648-fd6053f-dev-400-C), beside run a; decides nothing
+
+Pool: the date-limited pool, as committed: only the pool cases whose event date is strictly earlier than the judged case's.
+Cases in the run: 401, each counted once, in this order: failed 10; abstained 6; no flagged finding 2; judged 383 (194 fatal, 189 non-fatal).
+
+### All judged cases: 383 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 25.8% [22.7%, 28.9%] (n = 383)
+- mean recall at 8 digits: 32.7% [29.6%, 36.2%] (n = 383)
+- mean recall at 6 digits: 52.9% [49.3%, 56.4%] (n = 383)
+- mean precision at 10 digits: 27.3% [24.3%, 30.6%] (n = 383 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 34.5% [31.3%, 37.9%] (n = 383 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 53.2% [49.5%, 57.0%] (n = 383 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 23.6% [20.5%, 26.9%] (n = 383); paired difference, predictor less loop: -2.1% [-5.5%, +1.2%] (n = 383)
+- mean recall at 8 digits: 29.6% [26.1%, 33.0%] (n = 383); paired difference, predictor less loop: -3.2% [-6.6%, +0.3%] (n = 383)
+- mean recall at 6 digits: 44.2% [40.4%, 47.8%] (n = 383); paired difference, predictor less loop: -8.7% [-12.3%, -4.7%] (n = 383)
+- mean precision at 10 digits: 28.1% [24.6%, 31.6%] (n = 383 cases with a prediction); paired difference, predictor less loop: +0.8% [-3.1%, +4.6%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 35.2% [31.5%, 39.0%] (n = 383 cases with a prediction); paired difference, predictor less loop: +0.8% [-3.2%, +4.7%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 50.3% [46.3%, 54.1%] (n = 383 cases with a prediction); paired difference, predictor less loop: -2.9% [-7.0%, +1.2%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 22.5% [19.6%, 25.8%] (n = 383); paired difference, predictor less loop: -3.3% [-6.7%, +0.2%] (n = 383)
+- mean recall at 8 digits: 28.8% [25.5%, 32.2%] (n = 383); paired difference, predictor less loop: -3.9% [-7.7%, -0.2%] (n = 383)
+- mean recall at 6 digits: 43.2% [39.6%, 46.9%] (n = 383); paired difference, predictor less loop: -9.7% [-13.8%, -5.5%] (n = 383)
+- mean precision at 10 digits: 25.1% [21.9%, 28.4%] (n = 383 cases with a prediction); paired difference, predictor less loop: -2.2% [-6.1%, +1.6%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 32.6% [29.0%, 36.1%] (n = 383 cases with a prediction); paired difference, predictor less loop: -1.9% [-5.9%, +2.1%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 47.7% [44.0%, 51.9%] (n = 383 cases with a prediction); paired difference, predictor less loop: -5.4% [-9.4%, -1.3%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 30.3% [26.9%, 33.7%] (n = 383); paired difference, predictor less loop: +4.5% [+1.4%, +7.7%] (n = 383)
+- mean recall at 8 digits: 34.9% [31.4%, 38.7%] (n = 383); paired difference, predictor less loop: +2.2% [-1.3%, +5.6%] (n = 383)
+- mean recall at 6 digits: 45.9% [42.3%, 49.7%] (n = 383); paired difference, predictor less loop: -7.0% [-10.5%, -3.3%] (n = 383)
+- mean precision at 10 digits: 37.5% [33.5%, 41.4%] (n = 360 cases with a prediction); paired difference, predictor less loop: +9.3% [+5.3%, +13.2%] (n = 360 cases where both are defined)
+- mean precision at 8 digits: 44.7% [40.5%, 48.8%] (n = 360 cases with a prediction); paired difference, predictor less loop: +9.4% [+5.1%, +13.5%] (n = 360 cases where both are defined)
+- mean precision at 6 digits: 57.7% [53.4%, 61.5%] (n = 360 cases with a prediction); paired difference, predictor less loop: +3.8% [-0.5%, +7.8%] (n = 360 cases where both are defined)
+- no prediction: 23 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 20.3% [17.4%, 23.6%] (n = 383); paired difference, predictor less loop: -5.5% [-9.4%, -1.8%] (n = 383)
+- mean recall at 8 digits: 25.2% [22.1%, 28.6%] (n = 383); paired difference, predictor less loop: -7.5% [-11.6%, -3.6%] (n = 383)
+- mean recall at 6 digits: 36.1% [32.5%, 39.7%] (n = 383); paired difference, predictor less loop: -16.8% [-21.1%, -12.4%] (n = 383)
+- mean precision at 10 digits: 22.0% [18.7%, 25.5%] (n = 383 cases with a prediction); paired difference, predictor less loop: -5.3% [-9.6%, -1.2%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 27.1% [23.6%, 30.8%] (n = 383 cases with a prediction); paired difference, predictor less loop: -7.4% [-11.6%, -3.1%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 38.3% [34.4%, 42.3%] (n = 383 cases with a prediction); paired difference, predictor less loop: -14.9% [-19.5%, -10.2%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 19.3% [16.3%, 22.5%] (n = 383); paired difference, predictor less loop: -6.5% [-10.3%, -2.8%] (n = 383)
+- mean recall at 8 digits: 24.7% [21.4%, 28.1%] (n = 383); paired difference, predictor less loop: -8.1% [-12.1%, -4.0%] (n = 383)
+- mean recall at 6 digits: 36.1% [32.5%, 39.6%] (n = 383); paired difference, predictor less loop: -16.8% [-21.3%, -12.4%] (n = 383)
+- mean precision at 10 digits: 20.2% [17.0%, 23.4%] (n = 383 cases with a prediction); paired difference, predictor less loop: -7.1% [-11.3%, -3.0%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 25.4% [22.0%, 29.0%] (n = 383 cases with a prediction); paired difference, predictor less loop: -9.1% [-13.4%, -4.8%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 37.1% [33.4%, 40.9%] (n = 383 cases with a prediction); paired difference, predictor less loop: -16.1% [-20.6%, -11.6%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 22.6% [19.4%, 25.8%] (n = 383); paired difference, predictor less loop: -3.2% [-6.2%, +0.1%] (n = 383)
+- mean recall at 8 digits: 25.6% [22.5%, 29.0%] (n = 383); paired difference, predictor less loop: -7.1% [-10.4%, -3.4%] (n = 383)
+- mean recall at 6 digits: 32.9% [29.7%, 36.4%] (n = 383); paired difference, predictor less loop: -20.0% [-23.9%, -15.7%] (n = 383)
+- mean precision at 10 digits: 34.1% [30.0%, 38.1%] (n = 335 cases with a prediction); paired difference, predictor less loop: +5.7% [+1.3%, +10.2%] (n = 335 cases where both are defined)
+- mean precision at 8 digits: 39.3% [35.2%, 43.5%] (n = 335 cases with a prediction); paired difference, predictor less loop: +3.3% [-1.4%, +8.0%] (n = 335 cases where both are defined)
+- mean precision at 6 digits: 49.2% [44.9%, 53.3%] (n = 335 cases with a prediction); paired difference, predictor less loop: -4.6% [-9.4%, +0.2%] (n = 335 cases where both are defined)
+- no prediction: 48 of 383 judged cases (recall counted 0, precision left out)
+
+### Fatal cases: 194 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 27.0% [23.3%, 31.0%] (n = 194)
+- mean recall at 8 digits: 33.0% [28.9%, 37.1%] (n = 194)
+- mean recall at 6 digits: 53.1% [48.9%, 57.6%] (n = 194)
+- mean precision at 10 digits: 31.1% [27.0%, 35.9%] (n = 194 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 37.9% [33.6%, 42.7%] (n = 194 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 57.9% [53.3%, 62.5%] (n = 194 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 21.5% [17.9%, 25.1%] (n = 194); paired difference, predictor less loop: -5.5% [-9.7%, -1.4%] (n = 194)
+- mean recall at 8 digits: 25.4% [21.3%, 29.5%] (n = 194); paired difference, predictor less loop: -7.6% [-12.1%, -3.2%] (n = 194)
+- mean recall at 6 digits: 37.9% [33.3%, 42.2%] (n = 194); paired difference, predictor less loop: -15.2% [-19.8%, -10.6%] (n = 194)
+- mean precision at 10 digits: 26.6% [22.2%, 31.0%] (n = 194 cases with a prediction); paired difference, predictor less loop: -4.6% [-9.7%, +0.4%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 31.3% [26.7%, 35.8%] (n = 194 cases with a prediction); paired difference, predictor less loop: -6.7% [-11.9%, -1.7%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 46.3% [41.1%, 51.6%] (n = 194 cases with a prediction); paired difference, predictor less loop: -11.6% [-16.7%, -6.5%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 21.4% [17.8%, 25.1%] (n = 194); paired difference, predictor less loop: -5.6% [-10.0%, -1.4%] (n = 194)
+- mean recall at 8 digits: 25.7% [21.8%, 29.7%] (n = 194); paired difference, predictor less loop: -7.3% [-12.2%, -2.5%] (n = 194)
+- mean recall at 6 digits: 38.3% [33.7%, 42.7%] (n = 194); paired difference, predictor less loop: -14.8% [-19.7%, -9.8%] (n = 194)
+- mean precision at 10 digits: 25.1% [20.9%, 29.3%] (n = 194 cases with a prediction); paired difference, predictor less loop: -6.1% [-11.1%, -0.8%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 30.1% [25.6%, 34.5%] (n = 194 cases with a prediction); paired difference, predictor less loop: -7.8% [-13.1%, -2.3%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 46.5% [41.3%, 51.8%] (n = 194 cases with a prediction); paired difference, predictor less loop: -11.4% [-16.6%, -6.3%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 29.0% [24.7%, 33.1%] (n = 194); paired difference, predictor less loop: +1.9% [-1.9%, +5.6%] (n = 194)
+- mean recall at 8 digits: 32.3% [27.8%, 36.6%] (n = 194); paired difference, predictor less loop: -0.7% [-4.9%, +3.7%] (n = 194)
+- mean recall at 6 digits: 43.1% [38.5%, 47.7%] (n = 194); paired difference, predictor less loop: -10.0% [-14.3%, -5.5%] (n = 194)
+- mean precision at 10 digits: 37.8% [33.0%, 42.8%] (n = 183 cases with a prediction); paired difference, predictor less loop: +5.5% [+0.7%, +10.5%] (n = 183 cases where both are defined)
+- mean precision at 8 digits: 42.8% [37.7%, 48.0%] (n = 183 cases with a prediction); paired difference, predictor less loop: +4.0% [-1.4%, +9.6%] (n = 183 cases where both are defined)
+- mean precision at 6 digits: 57.4% [52.2%, 62.3%] (n = 183 cases with a prediction); paired difference, predictor less loop: -1.6% [-7.0%, +3.4%] (n = 183 cases where both are defined)
+- no prediction: 11 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 17.5% [14.0%, 21.2%] (n = 194); paired difference, predictor less loop: -9.6% [-14.4%, -4.9%] (n = 194)
+- mean recall at 8 digits: 21.3% [17.6%, 25.3%] (n = 194); paired difference, predictor less loop: -11.6% [-16.7%, -6.6%] (n = 194)
+- mean recall at 6 digits: 33.4% [29.0%, 38.1%] (n = 194); paired difference, predictor less loop: -19.7% [-25.1%, -13.9%] (n = 194)
+- mean precision at 10 digits: 20.6% [16.1%, 25.1%] (n = 194 cases with a prediction); paired difference, predictor less loop: -10.5% [-16.2%, -5.1%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 24.7% [20.1%, 29.4%] (n = 194 cases with a prediction); paired difference, predictor less loop: -13.2% [-19.1%, -7.6%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 38.6% [33.1%, 43.9%] (n = 194 cases with a prediction); paired difference, predictor less loop: -19.4% [-25.6%, -13.2%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 16.5% [13.1%, 20.0%] (n = 194); paired difference, predictor less loop: -10.6% [-15.1%, -5.8%] (n = 194)
+- mean recall at 8 digits: 21.3% [17.6%, 25.3%] (n = 194); paired difference, predictor less loop: -11.7% [-16.7%, -6.6%] (n = 194)
+- mean recall at 6 digits: 34.1% [29.6%, 38.7%] (n = 194); paired difference, predictor less loop: -19.0% [-24.1%, -13.5%] (n = 194)
+- mean precision at 10 digits: 19.5% [15.4%, 23.8%] (n = 194 cases with a prediction); paired difference, predictor less loop: -11.6% [-17.3%, -5.8%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 24.2% [20.0%, 29.0%] (n = 194 cases with a prediction); paired difference, predictor less loop: -13.7% [-19.5%, -8.0%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 38.9% [33.5%, 44.3%] (n = 194 cases with a prediction); paired difference, predictor less loop: -19.0% [-25.3%, -13.0%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 22.3% [18.2%, 26.4%] (n = 194); paired difference, predictor less loop: -4.8% [-9.3%, -0.3%] (n = 194)
+- mean recall at 8 digits: 25.2% [21.1%, 29.4%] (n = 194); paired difference, predictor less loop: -7.8% [-12.5%, -3.0%] (n = 194)
+- mean recall at 6 digits: 32.0% [27.5%, 36.4%] (n = 194); paired difference, predictor less loop: -21.1% [-25.9%, -15.9%] (n = 194)
+- mean precision at 10 digits: 36.2% [30.5%, 42.2%] (n = 174 cases with a prediction); paired difference, predictor less loop: +3.6% [-3.0%, +10.2%] (n = 174 cases where both are defined)
+- mean precision at 8 digits: 40.8% [35.1%, 46.7%] (n = 174 cases with a prediction); paired difference, predictor less loop: +0.8% [-6.1%, +7.7%] (n = 174 cases where both are defined)
+- mean precision at 6 digits: 50.7% [44.9%, 56.8%] (n = 174 cases with a prediction); paired difference, predictor less loop: -7.9% [-14.4%, -1.2%] (n = 174 cases where both are defined)
+- no prediction: 20 of 194 judged cases (recall counted 0, precision left out)
+
+### Non-fatal cases: 189 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 24.4% [19.7%, 29.3%] (n = 189)
+- mean recall at 8 digits: 32.5% [27.4%, 37.7%] (n = 189)
+- mean recall at 6 digits: 52.7% [47.0%, 58.2%] (n = 189)
+- mean precision at 10 digits: 23.4% [18.9%, 28.1%] (n = 189 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 30.9% [26.2%, 35.9%] (n = 189 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 48.2% [42.9%, 53.5%] (n = 189 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 25.8% [20.8%, 31.1%] (n = 189); paired difference, predictor less loop: +1.4% [-3.8%, +6.4%] (n = 189)
+- mean recall at 8 digits: 33.8% [28.6%, 39.4%] (n = 189); paired difference, predictor less loop: +1.3% [-4.3%, +6.7%] (n = 189)
+- mean recall at 6 digits: 50.7% [45.2%, 56.2%] (n = 189); paired difference, predictor less loop: -1.9% [-7.8%, +4.0%] (n = 189)
+- mean precision at 10 digits: 29.6% [23.9%, 35.3%] (n = 189 cases with a prediction); paired difference, predictor less loop: +6.2% [+0.4%, +11.9%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 39.3% [33.2%, 45.5%] (n = 189 cases with a prediction); paired difference, predictor less loop: +8.4% [+2.2%, +14.4%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 54.3% [48.6%, 60.4%] (n = 189 cases with a prediction); paired difference, predictor less loop: +6.1% [+0.1%, +11.9%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 23.6% [18.8%, 28.7%] (n = 189); paired difference, predictor less loop: -0.8% [-6.2%, +4.8%] (n = 189)
+- mean recall at 8 digits: 32.1% [26.8%, 37.5%] (n = 189); paired difference, predictor less loop: -0.5% [-6.4%, +5.8%] (n = 189)
+- mean recall at 6 digits: 48.2% [42.5%, 54.0%] (n = 189); paired difference, predictor less loop: -4.5% [-10.7%, +2.2%] (n = 189)
+- mean precision at 10 digits: 25.1% [20.0%, 30.4%] (n = 189 cases with a prediction); paired difference, predictor less loop: +1.7% [-3.9%, +7.3%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 35.0% [29.2%, 41.0%] (n = 189 cases with a prediction); paired difference, predictor less loop: +4.1% [-1.8%, +10.3%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 48.9% [43.2%, 54.7%] (n = 189 cases with a prediction); paired difference, predictor less loop: +0.7% [-5.5%, +6.8%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 31.7% [26.2%, 37.0%] (n = 189); paired difference, predictor less loop: +7.2% [+2.0%, +12.4%] (n = 189)
+- mean recall at 8 digits: 37.7% [31.8%, 43.1%] (n = 189); paired difference, predictor less loop: +5.1% [-0.7%, +10.6%] (n = 189)
+- mean recall at 6 digits: 48.8% [43.0%, 54.6%] (n = 189); paired difference, predictor less loop: -3.9% [-9.4%, +1.6%] (n = 189)
+- mean precision at 10 digits: 37.2% [31.2%, 42.9%] (n = 177 cases with a prediction); paired difference, predictor less loop: +13.2% [+7.4%, +18.7%] (n = 177 cases where both are defined)
+- mean precision at 8 digits: 46.7% [40.3%, 52.8%] (n = 177 cases with a prediction); paired difference, predictor less loop: +15.0% [+9.2%, +21.0%] (n = 177 cases where both are defined)
+- mean precision at 6 digits: 57.9% [51.5%, 64.2%] (n = 177 cases with a prediction); paired difference, predictor less loop: +9.4% [+3.2%, +15.5%] (n = 177 cases where both are defined)
+- no prediction: 12 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 23.2% [18.4%, 28.4%] (n = 189); paired difference, predictor less loop: -1.3% [-6.9%, +4.1%] (n = 189)
+- mean recall at 8 digits: 29.2% [23.8%, 34.6%] (n = 189); paired difference, predictor less loop: -3.3% [-9.4%, +2.8%] (n = 189)
+- mean recall at 6 digits: 38.8% [33.3%, 44.7%] (n = 189); paired difference, predictor less loop: -13.8% [-20.6%, -7.0%] (n = 189)
+- mean precision at 10 digits: 23.5% [18.6%, 28.7%] (n = 189 cases with a prediction); paired difference, predictor less loop: +0.1% [-5.9%, +6.0%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 29.5% [24.0%, 35.0%] (n = 189 cases with a prediction); paired difference, predictor less loop: -1.4% [-7.7%, +4.7%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 38.0% [32.5%, 43.6%] (n = 189 cases with a prediction); paired difference, predictor less loop: -10.3% [-17.2%, -2.9%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 22.1% [17.3%, 27.3%] (n = 189); paired difference, predictor less loop: -2.3% [-7.8%, +3.1%] (n = 189)
+- mean recall at 8 digits: 28.2% [22.8%, 33.7%] (n = 189); paired difference, predictor less loop: -4.3% [-10.7%, +2.1%] (n = 189)
+- mean recall at 6 digits: 38.1% [32.5%, 43.9%] (n = 189); paired difference, predictor less loop: -14.6% [-21.6%, -7.9%] (n = 189)
+- mean precision at 10 digits: 21.0% [16.5%, 25.7%] (n = 189 cases with a prediction); paired difference, predictor less loop: -2.4% [-8.4%, +3.0%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 26.5% [21.5%, 31.7%] (n = 189 cases with a prediction); paired difference, predictor less loop: -4.4% [-10.6%, +1.5%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 35.2% [29.9%, 40.9%] (n = 189 cases with a prediction); paired difference, predictor less loop: -13.0% [-19.8%, -6.1%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 22.8% [17.8%, 28.0%] (n = 189); paired difference, predictor less loop: -1.6% [-6.3%, +3.1%] (n = 189)
+- mean recall at 8 digits: 26.0% [20.8%, 31.3%] (n = 189); paired difference, predictor less loop: -6.5% [-12.0%, -1.3%] (n = 189)
+- mean recall at 6 digits: 33.9% [28.6%, 39.2%] (n = 189); paired difference, predictor less loop: -18.8% [-25.1%, -12.6%] (n = 189)
+- mean precision at 10 digits: 31.7% [25.4%, 38.3%] (n = 161 cases with a prediction); paired difference, predictor less loop: +8.0% [+1.6%, +14.2%] (n = 161 cases where both are defined)
+- mean precision at 8 digits: 37.6% [30.9%, 44.5%] (n = 161 cases with a prediction); paired difference, predictor less loop: +6.0% [-1.0%, +13.1%] (n = 161 cases where both are defined)
+- mean precision at 6 digits: 47.5% [40.9%, 54.3%] (n = 161 cases with a prediction); paired difference, predictor less loop: -1.1% [-8.9%, +6.3%] (n = 161 cases where both are defined)
+- no prediction: 28 of 189 judged cases (recall counted 0, precision left out)
+
+## Run b (20261001T201648-fd6053f-dev-400-C), beside run a; decides nothing, whole pool
+
+Pool: the whole pool, a second reading (registered in bb5155b after the first result was seen): every pool case except those on the judged case's own event date, earlier or later. The judged cases and the loop's own scores are the same as in the date-limited block.
+Cases in the run: 401, each counted once, in this order: failed 10; abstained 6; no flagged finding 2; judged 383 (194 fatal, 189 non-fatal).
+
+### All judged cases: 383 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 25.8% [22.7%, 28.9%] (n = 383)
+- mean recall at 8 digits: 32.7% [29.6%, 36.2%] (n = 383)
+- mean recall at 6 digits: 52.9% [49.3%, 56.4%] (n = 383)
+- mean precision at 10 digits: 27.3% [24.3%, 30.6%] (n = 383 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 34.5% [31.3%, 37.9%] (n = 383 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 53.2% [49.5%, 57.0%] (n = 383 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 24.0% [20.8%, 27.4%] (n = 383); paired difference, predictor less loop: -1.8% [-4.9%, +1.4%] (n = 383)
+- mean recall at 8 digits: 30.1% [26.8%, 33.8%] (n = 383); paired difference, predictor less loop: -2.6% [-6.0%, +0.7%] (n = 383)
+- mean recall at 6 digits: 43.8% [40.2%, 47.6%] (n = 383); paired difference, predictor less loop: -9.1% [-12.8%, -5.4%] (n = 383)
+- mean precision at 10 digits: 26.8% [23.4%, 30.5%] (n = 383 cases with a prediction); paired difference, predictor less loop: -0.5% [-4.1%, +3.2%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 34.4% [30.6%, 38.3%] (n = 383 cases with a prediction); paired difference, predictor less loop: -0.1% [-3.8%, +3.7%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 48.6% [44.7%, 52.8%] (n = 383 cases with a prediction); paired difference, predictor less loop: -4.6% [-8.6%, -0.5%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 24.5% [21.3%, 27.8%] (n = 383); paired difference, predictor less loop: -1.3% [-4.5%, +2.0%] (n = 383)
+- mean recall at 8 digits: 30.8% [27.3%, 34.3%] (n = 383); paired difference, predictor less loop: -2.0% [-5.5%, +1.6%] (n = 383)
+- mean recall at 6 digits: 45.1% [41.5%, 48.9%] (n = 383); paired difference, predictor less loop: -7.8% [-11.5%, -4.1%] (n = 383)
+- mean precision at 10 digits: 25.4% [22.1%, 28.8%] (n = 383 cases with a prediction); paired difference, predictor less loop: -2.0% [-5.4%, +1.6%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 32.7% [29.2%, 36.5%] (n = 383 cases with a prediction); paired difference, predictor less loop: -1.8% [-5.5%, +2.0%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 47.3% [43.6%, 51.3%] (n = 383 cases with a prediction); paired difference, predictor less loop: -5.9% [-9.8%, -2.0%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 30.8% [27.4%, 34.3%] (n = 383); paired difference, predictor less loop: +5.0% [+1.9%, +8.3%] (n = 383)
+- mean recall at 8 digits: 35.9% [32.5%, 39.6%] (n = 383); paired difference, predictor less loop: +3.1% [-0.3%, +6.7%] (n = 383)
+- mean recall at 6 digits: 47.4% [43.8%, 51.1%] (n = 383); paired difference, predictor less loop: -5.5% [-9.1%, -1.7%] (n = 383)
+- mean precision at 10 digits: 34.9% [31.0%, 38.7%] (n = 365 cases with a prediction); paired difference, predictor less loop: +6.3% [+2.5%, +10.1%] (n = 365 cases where both are defined)
+- mean precision at 8 digits: 41.9% [37.9%, 46.1%] (n = 365 cases with a prediction); paired difference, predictor less loop: +6.4% [+2.4%, +10.5%] (n = 365 cases where both are defined)
+- mean precision at 6 digits: 55.0% [50.8%, 59.0%] (n = 365 cases with a prediction); paired difference, predictor less loop: +0.8% [-3.2%, +4.8%] (n = 365 cases where both are defined)
+- no prediction: 18 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 19.4% [16.5%, 22.5%] (n = 383); paired difference, predictor less loop: -6.3% [-9.9%, -2.9%] (n = 383)
+- mean recall at 8 digits: 25.4% [22.3%, 28.8%] (n = 383); paired difference, predictor less loop: -7.3% [-11.1%, -3.5%] (n = 383)
+- mean recall at 6 digits: 37.4% [33.8%, 41.1%] (n = 383); paired difference, predictor less loop: -15.5% [-19.7%, -11.3%] (n = 383)
+- mean precision at 10 digits: 21.1% [17.9%, 24.5%] (n = 383 cases with a prediction); paired difference, predictor less loop: -6.2% [-10.2%, -2.0%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 27.4% [24.1%, 31.1%] (n = 383 cases with a prediction); paired difference, predictor less loop: -7.1% [-11.2%, -2.9%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 39.5% [35.8%, 43.6%] (n = 383 cases with a prediction); paired difference, predictor less loop: -13.6% [-18.3%, -9.2%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 19.6% [16.7%, 22.7%] (n = 383); paired difference, predictor less loop: -6.2% [-9.5%, -2.7%] (n = 383)
+- mean recall at 8 digits: 25.7% [22.7%, 29.2%] (n = 383); paired difference, predictor less loop: -7.0% [-10.7%, -3.2%] (n = 383)
+- mean recall at 6 digits: 38.0% [34.5%, 41.8%] (n = 383); paired difference, predictor less loop: -14.9% [-18.8%, -10.7%] (n = 383)
+- mean precision at 10 digits: 19.9% [16.9%, 23.1%] (n = 383 cases with a prediction); paired difference, predictor less loop: -7.4% [-11.2%, -3.5%] (n = 383 cases where both are defined)
+- mean precision at 8 digits: 26.0% [22.9%, 29.4%] (n = 383 cases with a prediction); paired difference, predictor less loop: -8.5% [-12.6%, -4.6%] (n = 383 cases where both are defined)
+- mean precision at 6 digits: 38.3% [34.8%, 42.3%] (n = 383 cases with a prediction); paired difference, predictor less loop: -14.8% [-19.2%, -10.5%] (n = 383 cases where both are defined)
+- no prediction: 0 of 383 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 24.1% [20.9%, 27.4%] (n = 383); paired difference, predictor less loop: -1.6% [-5.2%, +1.8%] (n = 383)
+- mean recall at 8 digits: 28.6% [25.3%, 32.2%] (n = 383); paired difference, predictor less loop: -4.1% [-7.8%, -0.4%] (n = 383)
+- mean recall at 6 digits: 36.1% [32.6%, 39.9%] (n = 383); paired difference, predictor less loop: -16.8% [-20.8%, -12.4%] (n = 383)
+- mean precision at 10 digits: 31.8% [27.9%, 35.8%] (n = 340 cases with a prediction); paired difference, predictor less loop: +3.5% [-1.2%, +8.0%] (n = 340 cases where both are defined)
+- mean precision at 8 digits: 38.8% [34.5%, 42.7%] (n = 340 cases with a prediction); paired difference, predictor less loop: +2.9% [-2.0%, +7.7%] (n = 340 cases where both are defined)
+- mean precision at 6 digits: 48.2% [43.7%, 52.3%] (n = 340 cases with a prediction); paired difference, predictor less loop: -6.1% [-11.1%, -1.1%] (n = 340 cases where both are defined)
+- no prediction: 43 of 383 judged cases (recall counted 0, precision left out)
+
+### Fatal cases: 194 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 27.0% [23.3%, 31.0%] (n = 194)
+- mean recall at 8 digits: 33.0% [28.9%, 37.1%] (n = 194)
+- mean recall at 6 digits: 53.1% [48.9%, 57.6%] (n = 194)
+- mean precision at 10 digits: 31.1% [27.0%, 35.9%] (n = 194 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 37.9% [33.6%, 42.7%] (n = 194 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 57.9% [53.3%, 62.5%] (n = 194 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 22.2% [18.2%, 26.2%] (n = 194); paired difference, predictor less loop: -4.8% [-9.0%, -0.8%] (n = 194)
+- mean recall at 8 digits: 26.9% [22.6%, 31.1%] (n = 194); paired difference, predictor less loop: -6.1% [-10.5%, -1.8%] (n = 194)
+- mean recall at 6 digits: 39.8% [35.0%, 44.5%] (n = 194); paired difference, predictor less loop: -13.3% [-18.1%, -8.5%] (n = 194)
+- mean precision at 10 digits: 26.4% [21.9%, 31.2%] (n = 194 cases with a prediction); paired difference, predictor less loop: -4.7% [-10.0%, +0.7%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 32.3% [27.5%, 37.4%] (n = 194 cases with a prediction); paired difference, predictor less loop: -5.7% [-11.1%, -0.1%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 47.5% [42.2%, 53.0%] (n = 194 cases with a prediction); paired difference, predictor less loop: -10.5% [-16.1%, -4.8%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 22.3% [18.3%, 26.1%] (n = 194); paired difference, predictor less loop: -4.8% [-9.1%, -0.7%] (n = 194)
+- mean recall at 8 digits: 27.2% [23.1%, 31.3%] (n = 194); paired difference, predictor less loop: -5.7% [-10.4%, -1.3%] (n = 194)
+- mean recall at 6 digits: 40.4% [35.8%, 44.9%] (n = 194); paired difference, predictor less loop: -12.7% [-17.4%, -7.9%] (n = 194)
+- mean precision at 10 digits: 25.0% [20.6%, 29.3%] (n = 194 cases with a prediction); paired difference, predictor less loop: -6.2% [-11.0%, -1.0%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 31.0% [26.3%, 35.7%] (n = 194 cases with a prediction); paired difference, predictor less loop: -6.9% [-12.3%, -1.6%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 46.4% [41.2%, 51.6%] (n = 194 cases with a prediction); paired difference, predictor less loop: -11.6% [-16.6%, -6.2%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 29.7% [25.1%, 34.3%] (n = 194); paired difference, predictor less loop: +2.6% [-1.6%, +6.7%] (n = 194)
+- mean recall at 8 digits: 33.7% [29.2%, 38.3%] (n = 194); paired difference, predictor less loop: +0.8% [-3.9%, +5.3%] (n = 194)
+- mean recall at 6 digits: 45.1% [40.2%, 49.8%] (n = 194); paired difference, predictor less loop: -8.0% [-13.1%, -2.9%] (n = 194)
+- mean precision at 10 digits: 34.9% [30.0%, 39.9%] (n = 185 cases with a prediction); paired difference, predictor less loop: +2.4% [-2.7%, +7.5%] (n = 185 cases where both are defined)
+- mean precision at 8 digits: 40.5% [35.8%, 45.6%] (n = 185 cases with a prediction); paired difference, predictor less loop: +1.8% [-3.6%, +7.5%] (n = 185 cases where both are defined)
+- mean precision at 6 digits: 53.9% [48.6%, 59.1%] (n = 185 cases with a prediction); paired difference, predictor less loop: -4.8% [-9.9%, +0.6%] (n = 185 cases where both are defined)
+- no prediction: 9 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 18.3% [14.8%, 22.1%] (n = 194); paired difference, predictor less loop: -8.8% [-13.3%, -4.1%] (n = 194)
+- mean recall at 8 digits: 22.6% [18.9%, 26.8%] (n = 194); paired difference, predictor less loop: -10.3% [-15.0%, -5.4%] (n = 194)
+- mean recall at 6 digits: 34.6% [30.2%, 39.2%] (n = 194); paired difference, predictor less loop: -18.6% [-23.8%, -13.1%] (n = 194)
+- mean precision at 10 digits: 21.1% [16.9%, 25.8%] (n = 194 cases with a prediction); paired difference, predictor less loop: -10.0% [-15.3%, -4.3%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 25.7% [21.4%, 30.7%] (n = 194 cases with a prediction); paired difference, predictor less loop: -12.3% [-17.9%, -6.1%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 39.7% [34.7%, 44.8%] (n = 194 cases with a prediction); paired difference, predictor less loop: -18.2% [-24.3%, -12.0%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 18.8% [15.1%, 22.8%] (n = 194); paired difference, predictor less loop: -8.3% [-12.6%, -3.7%] (n = 194)
+- mean recall at 8 digits: 23.7% [19.8%, 27.9%] (n = 194); paired difference, predictor less loop: -9.3% [-13.8%, -4.4%] (n = 194)
+- mean recall at 6 digits: 36.0% [31.4%, 40.6%] (n = 194); paired difference, predictor less loop: -17.1% [-22.0%, -12.0%] (n = 194)
+- mean precision at 10 digits: 20.8% [16.7%, 25.3%] (n = 194 cases with a prediction); paired difference, predictor less loop: -10.3% [-15.4%, -5.0%] (n = 194 cases where both are defined)
+- mean precision at 8 digits: 25.6% [21.2%, 30.3%] (n = 194 cases with a prediction); paired difference, predictor less loop: -12.3% [-17.8%, -6.6%] (n = 194 cases where both are defined)
+- mean precision at 6 digits: 40.2% [35.3%, 45.2%] (n = 194 cases with a prediction); paired difference, predictor less loop: -17.7% [-23.7%, -11.8%] (n = 194 cases where both are defined)
+- no prediction: 0 of 194 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 24.3% [20.3%, 28.6%] (n = 194); paired difference, predictor less loop: -2.8% [-7.2%, +1.6%] (n = 194)
+- mean recall at 8 digits: 27.7% [23.4%, 32.1%] (n = 194); paired difference, predictor less loop: -5.3% [-10.2%, -0.6%] (n = 194)
+- mean recall at 6 digits: 35.5% [30.8%, 40.3%] (n = 194); paired difference, predictor less loop: -17.6% [-22.8%, -12.4%] (n = 194)
+- mean precision at 10 digits: 34.5% [29.1%, 40.2%] (n = 178 cases with a prediction); paired difference, predictor less loop: +1.8% [-4.7%, +8.1%] (n = 178 cases where both are defined)
+- mean precision at 8 digits: 40.3% [34.6%, 45.9%] (n = 178 cases with a prediction); paired difference, predictor less loop: +0.7% [-6.0%, +7.4%] (n = 178 cases where both are defined)
+- mean precision at 6 digits: 50.7% [44.9%, 56.5%] (n = 178 cases with a prediction); paired difference, predictor less loop: -8.1% [-14.5%, -1.9%] (n = 178 cases where both are defined)
+- no prediction: 16 of 194 judged cases (recall counted 0, precision left out)
+
+### Non-fatal cases: 189 judged
+
+The loop's own findings, from its stored scores:
+- mean recall at 10 digits: 24.4% [19.7%, 29.3%] (n = 189)
+- mean recall at 8 digits: 32.5% [27.4%, 37.7%] (n = 189)
+- mean recall at 6 digits: 52.7% [47.0%, 58.2%] (n = 189)
+- mean precision at 10 digits: 23.4% [18.9%, 28.1%] (n = 189 cases where the loop named a finding; 0 left out)
+- mean precision at 8 digits: 30.9% [26.2%, 35.9%] (n = 189 cases where the loop named a finding; 0 left out)
+- mean precision at 6 digits: 48.2% [42.9%, 53.5%] (n = 189 cases where the loop named a finding; 0 left out)
+
+probable cause query, commonest set predictor (headline):
+- mean recall at 10 digits: 25.8% [20.6%, 31.2%] (n = 189); paired difference, predictor less loop: +1.4% [-3.6%, +6.2%] (n = 189)
+- mean recall at 8 digits: 33.5% [27.9%, 39.3%] (n = 189); paired difference, predictor less loop: +0.9% [-4.3%, +6.1%] (n = 189)
+- mean recall at 6 digits: 47.9% [41.9%, 53.9%] (n = 189); paired difference, predictor less loop: -4.8% [-10.6%, +0.8%] (n = 189)
+- mean precision at 10 digits: 27.2% [21.8%, 32.8%] (n = 189 cases with a prediction); paired difference, predictor less loop: +3.8% [-1.9%, +9.5%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 36.6% [30.6%, 42.6%] (n = 189 cases with a prediction); paired difference, predictor less loop: +5.7% [+0.1%, +11.3%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 49.8% [43.4%, 55.8%] (n = 189 cases with a prediction); paired difference, predictor less loop: +1.5% [-4.3%, +7.5%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+probable cause query, nearest predictor:
+- mean recall at 10 digits: 26.7% [21.7%, 32.0%] (n = 189); paired difference, predictor less loop: +2.3% [-2.8%, +7.1%] (n = 189)
+- mean recall at 8 digits: 34.4% [28.9%, 40.0%] (n = 189); paired difference, predictor less loop: +1.9% [-3.5%, +7.1%] (n = 189)
+- mean recall at 6 digits: 49.9% [44.1%, 55.7%] (n = 189); paired difference, predictor less loop: -2.7% [-8.6%, +2.9%] (n = 189)
+- mean precision at 10 digits: 25.8% [21.0%, 30.8%] (n = 189 cases with a prediction); paired difference, predictor less loop: +2.4% [-2.8%, +7.2%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 34.4% [28.8%, 40.2%] (n = 189 cases with a prediction); paired difference, predictor less loop: +3.4% [-1.9%, +8.7%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 48.2% [42.4%, 53.9%] (n = 189 cases with a prediction); paired difference, predictor less loop: -0.0% [-5.6%, +5.6%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+probable cause query, at least two predictor:
+- mean recall at 10 digits: 32.0% [26.4%, 37.2%] (n = 189); paired difference, predictor less loop: +7.5% [+2.5%, +12.4%] (n = 189)
+- mean recall at 8 digits: 38.1% [32.0%, 43.7%] (n = 189); paired difference, predictor less loop: +5.6% [+0.3%, +10.9%] (n = 189)
+- mean recall at 6 digits: 49.7% [43.8%, 55.6%] (n = 189); paired difference, predictor less loop: -2.9% [-8.1%, +2.3%] (n = 189)
+- mean precision at 10 digits: 34.9% [29.4%, 40.4%] (n = 180 cases with a prediction); paired difference, predictor less loop: +10.3% [+5.0%, +16.1%] (n = 180 cases where both are defined)
+- mean precision at 8 digits: 43.4% [37.3%, 49.6%] (n = 180 cases with a prediction); paired difference, predictor less loop: +11.2% [+5.5%, +17.2%] (n = 180 cases where both are defined)
+- mean precision at 6 digits: 56.1% [50.0%, 62.5%] (n = 180 cases with a prediction); paired difference, predictor less loop: +6.5% [+0.3%, +12.6%] (n = 180 cases where both are defined)
+- no prediction: 9 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, commonest set predictor:
+- mean recall at 10 digits: 20.6% [15.9%, 25.5%] (n = 189); paired difference, predictor less loop: -3.9% [-9.2%, +1.2%] (n = 189)
+- mean recall at 8 digits: 28.2% [23.0%, 33.4%] (n = 189); paired difference, predictor less loop: -4.3% [-10.3%, +1.6%] (n = 189)
+- mean recall at 6 digits: 40.3% [34.4%, 46.2%] (n = 189); paired difference, predictor less loop: -12.3% [-18.7%, -6.2%] (n = 189)
+- mean precision at 10 digits: 21.1% [16.4%, 26.0%] (n = 189 cases with a prediction); paired difference, predictor less loop: -2.3% [-8.4%, +3.4%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 29.2% [23.8%, 34.6%] (n = 189 cases with a prediction); paired difference, predictor less loop: -1.8% [-7.6%, +4.3%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 39.3% [33.5%, 45.1%] (n = 189 cases with a prediction); paired difference, predictor less loop: -8.9% [-15.6%, -2.6%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, nearest predictor:
+- mean recall at 10 digits: 20.4% [15.7%, 25.2%] (n = 189); paired difference, predictor less loop: -4.0% [-9.3%, +1.0%] (n = 189)
+- mean recall at 8 digits: 27.8% [22.5%, 33.0%] (n = 189); paired difference, predictor less loop: -4.7% [-10.6%, +0.9%] (n = 189)
+- mean recall at 6 digits: 40.1% [34.1%, 45.9%] (n = 189); paired difference, predictor less loop: -12.6% [-19.0%, -6.6%] (n = 189)
+- mean precision at 10 digits: 19.0% [14.6%, 23.4%] (n = 189 cases with a prediction); paired difference, predictor less loop: -4.4% [-10.2%, +0.9%] (n = 189 cases where both are defined)
+- mean precision at 8 digits: 26.4% [21.4%, 31.4%] (n = 189 cases with a prediction); paired difference, predictor less loop: -4.5% [-10.2%, +0.9%] (n = 189 cases where both are defined)
+- mean precision at 6 digits: 36.4% [30.9%, 41.8%] (n = 189 cases with a prediction); paired difference, predictor less loop: -11.8% [-18.2%, -5.9%] (n = 189 cases where both are defined)
+- no prediction: 0 of 189 judged cases (recall counted 0, precision left out)
+
+evidence narrative query, at least two predictor:
+- mean recall at 10 digits: 24.0% [19.0%, 29.2%] (n = 189); paired difference, predictor less loop: -0.4% [-5.8%, +4.7%] (n = 189)
+- mean recall at 8 digits: 29.6% [24.2%, 35.0%] (n = 189); paired difference, predictor less loop: -2.9% [-8.9%, +2.9%] (n = 189)
+- mean recall at 6 digits: 36.7% [31.1%, 42.3%] (n = 189); paired difference, predictor less loop: -16.0% [-22.8%, -9.5%] (n = 189)
+- mean precision at 10 digits: 28.9% [23.5%, 34.7%] (n = 162 cases with a prediction); paired difference, predictor less loop: +5.5% [-0.7%, +12.0%] (n = 162 cases where both are defined)
+- mean precision at 8 digits: 37.1% [31.2%, 43.3%] (n = 162 cases with a prediction); paired difference, predictor less loop: +5.3% [-1.4%, +12.5%] (n = 162 cases where both are defined)
+- mean precision at 6 digits: 45.4% [39.3%, 51.9%] (n = 162 cases with a prediction); paired difference, predictor less loop: -3.8% [-11.0%, +4.0%] (n = 162 cases where both are defined)
+- no prediction: 27 of 189 judged cases (recall counted 0, precision left out)

@@ -1,14 +1,23 @@
 """scoring/coding_stats.py: counts of how the NTSB codes occurrences (decision 0094)."""
 
+import hashlib
 import re
 from pathlib import Path
 
+import pytest
+
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.coding_stats import (
     NO_GROUP,
+    POOL_EXCLUDED,
+    STATS_NAMES,
     CodingStats,
     PoolCase,
+    StatsName,
     build,
     load_stats,
+    refuse_pool_holding,
 )
 
 LOC, STALL, CFIT = "452240", "452241", "452120"
@@ -107,6 +116,92 @@ def test_the_committed_counts_load_and_name_no_case() -> None:
         Path("docs/results/s27-coding-stats.txt"),
     ):
         assert not _CASE_NUMBER.search(path.read_text()), path
+
+
+# SHA-256 of S2.7's two committed files at the base of S3.1. Decision 0129 item 5: S2.7's
+# statistics file stays as it is, so S2.7's numbers stay citable. A change to either file is a
+# decision, not a rebuild: change a pin only with a decision record that says why.
+_S27_JSON_SHA256 = "b3096de4d7556050e97b0cd89eaff3d5f20125ae9f3599aabf383648ed453cbd"
+_S27_TEXT_SHA256 = "d3f3a1c08af8ffce70a69db7105a9189dacea351eff08b3a7c38e9eaf99811ec"
+
+
+def test_the_s27_counts_and_their_readable_file_are_byte_identical_to_their_commit() -> None:
+    files = {
+        Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json"): _S27_JSON_SHA256,
+        Path("docs/results/s27-coding-stats.txt"): _S27_TEXT_SHA256,
+    }
+    for path, pinned in files.items():
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == pinned, path
+
+
+def test_load_stats_defaults_to_s27_and_keeps_one_object_per_name() -> None:
+    assert load_stats() is load_stats("s27")
+    assert "excluding dev-400 and dev-seal-400" in load_stats("s27").built_from
+    assert "dev-seal-s3-400" not in load_stats("s27").built_from
+
+
+def test_the_s3_counts_name_all_three_samples_and_the_decision() -> None:
+    s3, s27 = load_stats("s3"), load_stats("s27")
+    assert s3.built_from == (
+        "development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 "
+        "(scripts/coding_stats.py, decisions 0094, 129)"
+    )
+    assert load_stats("s3") is load_stats("s3")
+    assert s3 is not s27
+
+
+def test_the_s3_pool_is_the_s27_pool_less_the_new_sample() -> None:
+    """Decision 0129 item 5: the pool shrinks by the new sample's cases, and by no more."""
+    s3, s27 = load_stats("s3"), load_stats("s27")
+    assert set(s3.cases) == set(s27.cases)
+    for half, n in s3.cases.items():
+        assert n < s27.cases[half], half
+    removed = sum(s27.cases.values()) - sum(s3.cases.values())
+    assert 0 < removed <= len(samples.sample_ids("dev-seal-s3-400"))
+
+
+def test_the_committed_s3_counts_load_and_name_no_case() -> None:
+    for path in (
+        Path("src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json"),
+        Path("docs/results/s3-coding-stats.txt"),
+    ):
+        assert not _CASE_NUMBER.search(path.read_text()), path
+
+
+def test_each_stats_file_leaves_out_the_samples_its_provenance_names() -> None:
+    assert POOL_EXCLUDED["s27"] == ("dev-400", "dev-seal-400")
+    assert POOL_EXCLUDED["s3"] == ("dev-400", "dev-seal-400", "dev-seal-s3-400")
+    for name in STATS_NAMES:
+        built_from = load_stats(name).built_from
+        assert all(sample in built_from for sample in POOL_EXCLUDED[name]), name
+
+
+@pytest.mark.parametrize("name", ["s27", "s3"])
+@pytest.mark.parametrize("sample", ["dev-400", "dev-seal-400", "heldout-400"])
+def test_a_sample_both_pools_leave_out_may_be_checked_with_either(
+    sample: str, name: StatsName
+) -> None:
+    """``dev-400`` and ``dev-seal-400`` are outside both pools; a held-out sample is not a
+    development sample, and the check's own rule refuses it elsewhere."""
+    refuse_pool_holding(name, sample)
+
+
+def test_the_s3_sample_may_not_be_checked_with_counts_that_hold_its_own_verdicts() -> None:
+    """S2.7's pool still holds ``dev-seal-s3-400``'s cases (decision 0129 item 5)."""
+    refuse_pool_holding("s3", "dev-seal-s3-400")
+    with pytest.raises(ConfigurationError, match=r"--stats s3 \(decision 0129\)"):
+        refuse_pool_holding("s27", "dev-seal-s3-400")
+
+
+def test_a_development_sample_no_pool_leaves_out_is_refused_with_either_file() -> None:
+    """Fail closed: a later sample is refused until a file that excludes it is built."""
+    for name in STATS_NAMES:
+        with pytest.raises(ConfigurationError, match="no statistics file leaves it out"):
+            refuse_pool_holding(name, "dev-seal-s4-400")
+
+
+def test_the_stats_names_are_the_two_stages() -> None:
+    assert STATS_NAMES == ("s27", "s3")
 
 
 def test_group_n_counts_every_past_case_in_a_group() -> None:

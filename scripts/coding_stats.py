@@ -1,24 +1,31 @@
 """Build the statistics pool's coding counts, once (decision 0094).
 
 Status
-    One build for S2.7, free: streams the processed file, writes
-    src/ntsb_probable_cause/scoring/tables/coding_stats.json (the counts the ordering check and
-    the guidance read) and docs/results/s27-coding-stats.txt (the same counts, readable).
-    Counts and code labels only; no case number or text is written.
+    One build per stage, free, chosen with ``--stage`` (default ``s27``): streams the processed
+    file and writes that stage's counts, and only that stage's. ``s27`` (S2.7, built once)
+    writes src/ntsb_probable_cause/scoring/tables/coding_stats.json (the counts the ordering
+    check and the guidance read); ``s3`` (S3, decision 0129) writes
+    src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json from a pool that also leaves
+    out dev-seal-s3-400. ``--out`` writes the same counts, readable (docs/results/
+    s27-coding-stats.txt, docs/results/s3-coding-stats.txt). Counts and code labels only; no
+    case number or text is written. S2.7's files are not rebuilt: its numbers stay citable.
 
 Why
-    The ordering check and the guidance need the NTSB's own coding habits. They come from
-    development cases outside both samples, so no scored case helps answer itself; a guard
-    refuses the build if a sample, held-out or open case reaches the pool.
+    The ordering check, the guidance and S3's coding tools need the NTSB's own coding habits.
+    They come from development cases outside every sample, so no scored case helps answer
+    itself; a guard refuses the build if a sample, held-out or open case reaches the pool. The
+    ``s3`` stage needs dev-seal-s3-400 drawn first (scripts/draw_sealed.py), or it stops before
+    writing anything.
 
 Usage
-    NTSB_DATA_DIR=... uv run python -m scripts.coding_stats [--out PATH]
+    NTSB_DATA_DIR=... uv run python -m scripts.coding_stats [--stage {s27,s3}] [--out PATH]
 """
 
 import argparse
 import json
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -28,21 +35,53 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
-from ntsb_probable_cause.scoring.coding_stats import HALVES, CodingStats, PoolCase, build
+from ntsb_probable_cause.scoring.coding_stats import (
+    HALVES,
+    POOL_EXCLUDED,
+    STATS_NAMES,
+    CodingStats,
+    PoolCase,
+    StatsName,
+    build,
+)
 from ntsb_probable_cause.settings import Settings
 
 # `build` is re-exported (mypy --strict's implicit-reexport check) so the test module's
 # `cs.build(...)` -- exercising the same function `main` calls -- resolves without a second
 # import path; behaviour is unchanged.
-__all__ = ["build", "check_pool", "main", "pool_cases", "processed_rows", "report"]
+__all__ = ["STAGES", "build", "check_pool", "main", "pool_cases", "processed_rows", "report"]
 
 POOL_CLASSES = frozenset({"C", "F", "L"})
-EXCLUDED_SAMPLES = ("dev-400", "dev-seal-400")
-JSON_OUT = Path("src/ntsb_probable_cause/scoring/tables/coding_stats.json")
-BUILT_FROM = (
-    "development split, classes C/F/L, excluding dev-400 and dev-seal-400 "
-    "(scripts/coding_stats.py, decision 0094)"
-)
+TABLES_DIR = Path("src/ntsb_probable_cause/scoring/tables")
+
+
+@dataclass(frozen=True)
+class Stage:
+    """What one stage's counts are built from and where they are written."""
+
+    excluded: tuple[str, ...]  # the samples whose cases stay out of the pool
+    json_out: Path
+    built_from: str  # recorded inside the JSON
+
+
+STAGES: dict[StatsName, Stage] = {
+    "s27": Stage(
+        excluded=POOL_EXCLUDED["s27"],
+        json_out=TABLES_DIR / "coding_stats.json",
+        built_from=(
+            "development split, classes C/F/L, excluding dev-400 and dev-seal-400 "
+            "(scripts/coding_stats.py, decision 0094)"
+        ),
+    ),
+    "s3": Stage(
+        excluded=POOL_EXCLUDED["s3"],
+        json_out=TABLES_DIR / "coding_stats_s3.json",
+        built_from=(
+            "development split, classes C/F/L, excluding dev-400, dev-seal-400 and "
+            "dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129)"
+        ),
+    ),
+}
 TOP = 40
 FINDING_EVENTS = 15
 FINDINGS_EACH = 6
@@ -183,12 +222,14 @@ def _finding_label(code: str, tables: CodeTables) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Build the pool, guard it, write the JSON and the report."""
+    """Build the chosen stage's pool, guard it, write that stage's JSON and the report."""
     parser = argparse.ArgumentParser(prog="coding_stats")
+    parser.add_argument("--stage", choices=STATS_NAMES, default="s27")
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
+    stage = STAGES[args.stage]
     processed = Settings().data_dir / "processed"
-    excluded = frozenset(i for name in EXCLUDED_SAMPLES for i in samples.sample_ids(name))
+    excluded = frozenset(i for name in stage.excluded for i in samples.sample_ids(name))
     # One streaming pass: holding every raw record at once costs about 600 MB (the note on
     # samples.seen_pairs); only each case's split is kept beside the pool.
     splits: dict[str, str] = {}
@@ -200,8 +241,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     cases, ids = pool_cases(tapped(), excluded=excluded)
     check_pool(ids, excluded=excluded, splits=splits)
-    stats = build(cases, built_from=BUILT_FROM)
-    JSON_OUT.write_text(stats.to_json() + "\n")
+    stats = build(cases, built_from=stage.built_from)
+    stage.json_out.write_text(stats.to_json() + "\n")
     text = report(stats)
     print(text)
     if args.out is not None:

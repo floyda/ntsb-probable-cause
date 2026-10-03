@@ -645,6 +645,28 @@ the fixed-order comparison that tests that.
 docket — is measured after this stage, once arms B and C exist, as a separate table labelled
 by model. The bar and the agent always share one model, the default set in 0031.
 
+*Amended 2026-09-30 (0121–0130).* The S3 specification
+([2026-09-30-s3-agent-loop-design.md](2026-09-30-s3-agent-loop-design.md)) moves the loop's
+choices from gathering evidence to two decisions on every case: which documents to read, and
+how to code, by drafting codes and then checking them with tools that take codes as arguments
+(0121). The first hypothesis uses all non-docket evidence present, and a later trigger re-sends
+every document read before (0122). Native tool calling, with in-process tools (0124); a
+suggestion tool (0125); confidence calibrated in code (0126). Arm B calls every coding tool in a
+fixed order and keeps S2.7's ordering check, which the loop does not get (0127). The staged
+replay and the masked condition are paused until the recorder sees a docket arrive before closure
+(0123). The predictions P1 to P6 are withdrawn and the four results that count against the loop
+are reworded (0121); new predictions are registered at the start of S3.2. S3 runs as three
+sub-stages under one $50 spend line (0128): **S3.1**, the loop, built on `dev-400` with its
+noise floor and format gate (0130) and no claim; **S3.2**, the claims, registered before its
+first run: arm C against arm B at equal cost, the ablations, the calibration fit, and a new
+sealed sample (0129) and `heldout-400`, each used once; **S3.3**, live shadow, running the loop
+nightly on open cases with nothing locked or published. The text above stays as written.
+
+*S3.1 — done (2026-10-03, pull request #21).* As built: see the S3 specification's
+[S3.1 As-built section](2026-09-30-s3-agent-loop-design.md#as-built-s31-2026-10-03). Tuning
+closed without a registered round (0139); the precedent tool the agent questions is built after
+S4, as a measured second version (0140). S3.2, the claims, is next.
+
 ### S4. Predictions and resolution
 
 Predictions store with case, evidence fingerprint, timestamp, answer, cost and commit
@@ -696,6 +718,14 @@ guess at what was weighed. Rule 8 in `CLAUDE.md`; format in `docs/decisions/READ
 | Reasoning level of the agent's model | the model axis, after S3 | pinned to `medium` and recorded by S2.4 so the switch changes one thing; Andy asked that it be examined with the model (0073) |
 | Weather tool | S3 for the record's weather fields; the archive after S3 | one of 17 misses; parameters already verified in the spike; an archive value needs its own provenance rule (0023) |
 | Similar-case search, as a declared experiment | after S3 | no measured demand on complete records; allowed only as a declared experiment: stated before it runs, earlier accidents only, with the retrieval-contamination test |
+
+*Amended 2026-10-03 (0138, 0140).* Similar-case search, as a precedent tool the agent questions
+in its own words, is built after S4 as the agent's second version, tested against the first on
+development samples and head to head on live cases (0140; design note
+`docs/specs/2026-10-03-s3-precedent-tool-design.md`). In development work a precedent search reads
+the whole pool less the judged case's own date, with the earlier-only search printed beside it;
+in held-out and live use every pool case is earlier, so "earlier accidents only" holds there by
+construction (0138). The row above stays as written.
 
 ---
 

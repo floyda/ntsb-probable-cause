@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -217,6 +217,220 @@ stage-spend:
 	uv run python -m scripts.stage_spend --estimate $(or $(EST),0)
 # S2.7 (decision 0098 item 6): the stage's spend by commit on both branches, free. Every paid
 # S2.7 target runs this first with its estimate and stops if the $25 line would be passed.
+
+s3-spend:
+	uv run python -m scripts.stage_spend --stage s3 --estimate $(or $(EST),0)
+# S3 (spec §14, decision 0128 item 2): the stage's spend by commit on its own s3- branches, free.
+# Every paid S3 target runs this first with its estimate and stops if the $50 line would be
+# passed. The learning probe's $1.1954 (s3-probe, decision 0131) is outside the line.
+
+s3-draw-sealed:
+	uv run python -m scripts.draw_sealed --sample dev-seal-s3-400
+# S3 spec §12 (decision 0129 item 1), free, ONCE: draws dev-seal-s3-400 (seed 20260930,
+# excluding dev-400 and dev-seal-400) into tests/fixtures/eval/dev_seal_s3_400_ids.csv and
+# refuses to overwrite it. Check it with: uv run python -m scripts.draw_sealed --sample
+# dev-seal-s3-400 --verify. Refused by every command until S3.2's registration is committed.
+
+s3-coding-stats:
+	uv run python -m scripts.coding_stats --stage s3 --out docs/results/s3-coding-stats.txt
+# S3 spec §12 (decision 0129 item 4), free: S3's statistics from the pool without
+# dev-seal-s3-400. Writes scoring/tables/coding_stats_s3.json and the readable results file;
+# run it after s3-draw-sealed. S2.7's file and s27-coding-stats are not touched.
+
+s3-shape-probe:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.08
+	uv run python -m scripts.s3_shape_probe --out docs/results/s3-shape-probe.txt
+# S3.1 spec §5.5 (plan Task 4), paid (cents), ONCE, on or after 1 October 2026: the native-tool
+# shape probe. Sends the loop's own tool definitions and system text on an invented case to
+# GPT-6 Luna, standard then batch, with arm B's fixed turn and a later trigger's opening, and
+# prints the six checks and checks 7 and 8. Needs OPENROUTER_API_KEY in the environment (from
+# pass, never printed); the stage line is checked first and the probe reserves
+# $0.08 against the monthly guard. Writes docs/results/s3-shape-probe.txt and the saved pairs
+# under tests/fixtures/openrouter/s3/; commit both, then apply the plan's Task 4 outcome.
+
+s3-armb-tools:
+	$(if $(RUN),,$(error RUN is required: the finished development arm B run id))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.80
+	uv run ntsb-eval tools $(RUN)
+# S3.1 spec §7.1 (decision 0127; plan Task 12), paid (about $0.80 a dev-400 run, estimate; the
+# command reserves $0.004 a case): arm B's parts 2 and 3 as a post-pass over a finished arm B
+# run, in batch rounds. Writes the derived run <RUN>-tools; part 4 is then
+# uv run ntsb-eval check <RUN>-tools --way luna --stats s3.
+
+s3-smoke-sync:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.05
+	uv run ntsb-eval run --arm C --sample dev-400 --limit 1 --sync --price-variant standard --expected-cost-per-case-usd 0.05
+# S3.1 spec §10.1 step 6 (plan Task 14), paid (cents): arm C on dev-400's first case, at the
+# standard price, synchronously. Read its trail by eye: calls in order, tool choice honoured,
+# costs recorded, no protocol breaks.
+
+s3-smoke-batch:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.40
+	uv run ntsb-eval run --arm C --sample dev-400 --limit 20 --expected-cost-per-case-usd 0.02
+# S3.1 spec §10.1 step 6 (plan Task 14), paid (about $0.20): arm C on dev-400's first 20 cases,
+# in batch rounds. Its cost per case re-estimates s3-noise-floor's --expected-cost-per-case-usd.
+
+s3-noise-floor:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 5.00
+	uv run ntsb-eval run --arm C --sample dev-400 --expected-cost-per-case-usd 0.008
+# S3.1 spec §10.2 (decision 0130), paid: arm C on the whole of dev-400, in batch rounds, from a
+# clean tree on the frozen commit. Run it twice, then s3-noise-report; a third time only if that
+# report prints "third run: needed". The estimate is the batch smoke run's computed cost per case
+# ($0.1458 for 20 cases, $0.0073), rounded up (plan Task 14). Measured on the two noise-floor runs
+# (docs/results/s3-noise-floor-dev.txt): $4.57 and $4.45 computed, $1.84 and $1.97 billed; the
+# spend line counts what was billed (decision 0135).
+
+s3-noise-report:
+	$(if $(RUNS),,$(error RUNS is required: two or three arm C run ids))
+	uv run python -m scripts.s3_noise_floor $(RUNS) --out docs/results/s3-noise-floor-dev.txt
+# S3.1 spec §10.2 to §10.4 (decision 0130), free: the noise floor, the format gate and the
+# third-run rule from the noise-floor runs, counts only. RUNS="<a> <b>" or "<a> <b> <c>".
+
+s3-round:
+	$(if $(N),,$(error N is required: the round number))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 5.00
+	uv run ntsb-eval run --arm C --sample dev-400 --round $(N) --expected-cost-per-case-usd 0.012
+# S3.1 spec §10.3, paid (about $3.50): one registered tuning round's arm C run on dev-400. Refused
+# unless docs/rounds/s3-round-<N>.md is committed; the round is recorded in spec.json and the
+# prompt version (+r<N>).
+
+s3-round-result:
+	$(if $(N),,$(error N is required: the round number))
+	$(if $(RUN),,$(error RUN is required))$(if $(REFERENCE),,$(error REFERENCE is required))$(if $(NOISE),,$(error NOISE is required: two noise-floor run ids))
+	uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) --noise $(NOISE) --append docs/rounds/s3-round-$(N).md
+# S3.1 spec §10.3, free: decision 0098 item 4's reading against the loop's own noise floor,
+# appended to the round's registration. NOISE="<a> <b>", two of the noise-floor runs, in quotes.
+# For arm C runs it applies decision 0136: a failed case counts as wrong, and a run over the
+# format gate (more than 8 of 401) drops the round whatever its accuracy.
+
+s3-case-groups:
+	$(if $(RUNS),,$(error RUNS is required: two or more finished dev-400 run ids, arm C or arm B))
+	uv run python -m scripts.s3_case_groups $(RUNS) --out docs/results/s3-case-groups-dev.txt
+# S3.1 plan Task 15 (spec §10.3), free: dev-400 sorted into always right, always wrong and
+# flipping on occurrence top-1, across the noise-floor runs and S2.7's arm B runs; a failed case
+# counts as wrong (decision 0136 item 1). Prints counts only, and writes them to the results
+# file; the case lists go to <NTSB_RUNS_DIR>/s3-case-groups/<UTC time>/groups.json, never
+# committed. RUNS="<ids>", in quotes. Trails for a round's design are read from a stated group.
+
+s3-trail-pages:
+	$(if $(RUN),,$(error RUN is required: a finished dev-400 arm C run id))
+	$(if $(GROUPS),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
+	uv run python -m scripts.s3_trail_pages --run $(RUN) $(if $(COMPARE),--compare $(COMPARE)) --groups $(GROUPS) --group $(or $(GROUP),always_wrong) --arm C --fatal $(or $(N),5) --nonfatal $(or $(N),5) --seed $(or $(SEED),20261002)$(if $(PATTERN), --pattern $(PATTERN))$(if $(SPREAD), --spread-by $(SPREAD))$(foreach path,$(EXCLUDE), --exclude-from $(path))
+# S3.1 plan Task 15, free: a private reading aid. N fatal and N non-fatal cases (default 5 each)
+# drawn with SEED (default 20261002) from one arm C group of GROUPS (GROUP, default always_wrong);
+# each case's trail in call order, with the coding tools' text rebuilt, beside the NTSB's verdict
+# and, with COMPARE, the other run's final answer. Each case opens with its differences at a
+# glance (scripts/miss_kinds.py); codes and findings are marked match, wrong place or partial, or
+# no match, in colour and in words. Optional: PATTERN (a miss_kinds pattern, e.g.
+# generic_consequence: only the cases RUN shows it in), SPREAD=ntsb_first_event (spread the cases
+# over the NTSB's first events in place of the draw), EXCLUDE="<page folders or cases.json>"
+# (leave out the cases earlier pages showed). Reads the docket cache only. Writes one HTML page,
+# a Markdown copy and cases.json (the cases shown and how they were chosen) to
+# <NTSB_RUNS_DIR>/s3-trail-pages/<UTC time>/, never committed.
+
+s3-miss-kinds:
+	$(if $(RUNS),,$(error RUNS is required: finished dev-400 arm C run ids))
+	$(if $(or $(GROUPS),$(filter all,$(GROUP))),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
+	uv run python -m scripts.exploratory.s3_miss_kinds --runs $(RUNS) $(if $(GROUPS),--groups $(GROUPS)) --group "$(or $(GROUP),always wrong)" --out docs/results/s3-miss-kinds-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it sets no bar and tunes nothing. How
+# the loop's first code misses the NTSB's defining event, per run, over one arm C group of
+# GROUPS (GROUP, default "always wrong"; GROUP=all counts every case and takes no GROUPS): each
+# case's kind and patterns (scripts/miss_kinds.py, as on the trail pages), split fatal and
+# non-fatal, and the NTSB's first events behind the generic-consequence pattern. Counts only;
+# writes the results file. RUNS="<ids>", in quotes.
+
+s3-precedent-probe:
+	$(if $(RUNS),,$(error RUNS is required: two finished dev-400 arm C run ids, run a then run b))
+	$(if $(GROUPS),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
+	uv run python -m scripts.exploratory.s3_precedent_probe --runs $(RUNS) --groups $(GROUPS) --out docs/results/s3-precedent-probe-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it sets no bar and tunes nothing. No
+# model call. Whether earlier closed cases, found by BM25 from the loop's own words (its final
+# probable cause, and separately its evidence narrative), hold the NTSB's first occurrence code,
+# against a control that needs no search; over the arm C groups of GROUPS and every case.
+# Applies the rule committed before the script existed (S3.1 plan, "A precedent probe before
+# round 1") and prints its outcome first. Reads the processed file and the S3 statistics pool;
+# counts only; writes the results file. RUNS="<run a> <run b>", in quotes.
+
+s3-precedent-pages:
+	$(if $(RUN),,$(error RUN is required: run a, a finished dev-400 arm C run id))
+	$(if $(GROUPS),,$(error GROUPS is required: the groups.json s3-case-groups wrote))
+	uv run python -m scripts.exploratory.s3_precedent_pages --run $(RUN) --groups $(GROUPS) --seed $(or $(SEED),20261002)
+# S3.1 plan Task 15, free and exploratory (decision 0059): a private reading aid, no model call;
+# no number on it is cited. The precedent probe's sample to read: 10 arm C "always wrong" cases
+# whose NTSB first code the five nearest earlier cases hold, 5 whose it does not, 5 "always
+# right" cases whose nearest case points away, drawn with SEED (default 20261002); per case the
+# NTSB's verdict, the loop's first three codes and its probable cause (the query), the five
+# nearest earlier cases with their scores, texts (shared words in bold) and marked codes, and the
+# phase-aware control. Reads the processed file and the S3 statistics pool. Writes one HTML page
+# and cases.json to <NTSB_RUNS_DIR>/s3-precedent-pages/<UTC time>/, never committed.
+
+s3-coding-consistency:
+	uv run python -m scripts.exploratory.s3_coding_consistency --out docs/results/s3-coding-consistency-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it decides nothing. No model call. How
+# far the NTSB's own probable-cause sentence settles its first occurrence code: cases of the S3
+# statistics pool whose sentences match word for word (exact twins) or in their words less stop
+# words (loose twins), compared on their first code, over all years and within 2009-2014 and
+# 2015-2019; leave-one-out and pairwise agreement with Wilson intervals, the expectation committed
+# before the script existed, and the ten first-code pairs that most often disagree. Counts and
+# code labels only; writes the results file. The 25 largest exact-twin groups, with their texts,
+# go to <NTSB_RUNS_DIR>/s3-coding-consistency/<UTC time>/largest-groups.md, never committed.
+
+s3-finding-consistency:
+	uv run python -m scripts.exploratory.s3_finding_consistency --out docs/results/s3-finding-consistency-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it decides nothing. No model call. How
+# far the NTSB's own probable-cause sentence settles the findings it flagged as cause: for the
+# coding-consistency probe's exact and loose twin groups (all years, 2009-2014, 2015-2019), the
+# commonest flagged-finding set among the other members, scored against the case's own at 10, 8
+# and 6 digits (mean precision and recall, equal-whole, and the commonest flagged value found at each digit count), beside
+# a control that ignores twins; prints the expectation committed before the script existed, and
+# the occurrence probe's figure read from docs/results/s3-coding-consistency-dev.txt (refused if
+# that file or its headline line is missing). Counts, means and code labels only; writes the
+# results file; no variables.
+
+s3-finding-precedent:
+	$(if $(RUNS),,$(error RUNS is required: two finished dev-400 arm C run ids, run a then run b))
+	uv run python -m scripts.exploratory.s3_finding_precedent --runs $(RUNS) --out docs/results/s3-finding-precedent-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it sets no bar and tunes nothing. No
+# model call. Whether the flagged findings of the five earlier NTSB cases nearest to the loop's
+# own cause sentence (BM25 over the S3 statistics pool, only cases strictly earlier than the
+# judged case, the precedent probe's headline search) would beat the findings the loop chose: the
+# commonest flagged set among the five (headline), the nearest case's set, and the findings in
+# two or more of the five, each scored at 10, 8 and 6 digits against the NTSB's flagged findings
+# beside the loop's stored scores, as paired differences with bootstrap intervals, for the final
+# answer's probable cause (headline) and evidence narrative. Applies the rule committed before
+# the script existed (S3.1 plan, "A findings-from-precedent probe, with its rule committed
+# first") and prints its word first. Reads the processed file and the S3 statistics pool; counts
+# and means only; writes the results file. RUNS="<run a> <run b>", in quotes.
+
+s3-finding-misses:
+	$(if $(RUNS),,$(error RUNS is required: two finished dev-400 arm C run ids, run a then run b))
+	uv run python -m scripts.exploratory.s3_finding_misses --runs $(RUNS) --out docs/results/s3-finding-misses-dev.txt
+# S3.1 plan Task 15, free and exploratory (decision 0059): it sets no bar and tunes nothing. No
+# model call. Where the loop's final findings lose the findings the NTSB flagged as cause: each
+# flagged finding of the judged cases classed by how far the loop's findings reach it (exact, item
+# right with the modifier wrong, category right with the item wrong, category missed), overall, by
+# section and for fatal and non-fatal cases, with Wilson intervals; the S3 statistics pool's
+# habits (each category's commonest item and each item's commonest modifier, and how strong they
+# are); for the item and modifier misses, whether the NTSB's choice and the loop's is the pool's
+# commonest, the ten commonest (NTSB, loop) pairs and the ten categories (items) with the most
+# misses; and the loop's findings that reach no flagged finding even at 6 digits, by section.
+# Applies the next-step rule committed before the script existed (S3.1 plan, "A 'where the
+# findings go wrong' probe, with its definitions and next-step rule committed first") on run a and
+# prints its line first. Reads the processed file and the S3 statistics pool; counts, shares and
+# code labels only; writes the results file. RUNS="<run a> <run b>", in quotes.
+
+s3-check-diagnostic:
+	$(if $(RUN),,$(error RUN is required: the finished dev-400 arm C run id, noise-floor run a))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.81
+	uv run ntsb-eval check $(RUN) --way luna --stats s3
+# S3.1 plan Task 15 (decision 0137), paid, ONCE: S2.7's ordering check (GPT-6 Luna, synchronous,
+# standard price) as a diagnostic over one finished arm C run, noise-floor run a
+# (20261001T201506-fd6053f-dev-400-C). It counts in S3's statistics, the file the loop's own tools
+# read; any other way or file is refused. About $0.12: S2.7's Luna check over the 401-case sealed
+# run cost $0.1133 (S2.7 track 1 plan, 2026-09-29). The command reserves $0.002 a case ($0.802
+# for 401), so the stage line is checked against $0.81. Writes the derived run <RUN>-check-luna:
+# never arm C's result, a round's run or reference, or a bar. Read it once, by decision 0137's
+# rule: uv run ntsb-eval report <RUN>-check-luna --against <RUN>.
 
 s27-coding-stats:
 	uv run python -m scripts.coding_stats --out docs/results/s27-coding-stats.txt

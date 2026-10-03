@@ -38,6 +38,33 @@ def _user_content(payload: Payload) -> str | list[dict[str, object]]:
     return parts
 
 
+def _tool_content(turn: Turn) -> str:
+    """A tool turn's content: the payload text, then the tool text, whichever are present.
+
+    With both, a blank line separates them. ``Turn``'s validator guarantees at
+    least one is present.
+    """
+    parts = [part.text for part in (turn.payload, turn.tool_text) if part is not None]
+    return "\n\n".join(parts)
+
+
+def _assistant_message(turn: Turn, settings: ModelSettings) -> dict[str, object]:
+    """An earlier assistant turn, with its tool calls and (if passing it back) its reasoning."""
+    message: dict[str, object] = {"role": "assistant", "content": turn.content}
+    if turn.tool_calls:
+        message["tool_calls"] = [
+            {
+                "id": c.call_id,
+                "type": "function",
+                "function": {"name": c.name, "arguments": c.arguments},
+            }
+            for c in turn.tool_calls
+        ]
+    if turn.reasoning_details and settings.pass_reasoning:
+        message["reasoning_details"] = [dict(detail) for detail in turn.reasoning_details]
+    return message
+
+
 def request_body(
     payload: Payload, settings: ModelSettings, *, system: str, history: Sequence[Turn]
 ) -> dict[str, object]:
@@ -48,22 +75,10 @@ def request_body(
     messages.append({"role": "user", "content": _user_content(payload)})
     for turn in history:
         if turn.role == "assistant":
-            message: dict[str, object] = {"role": "assistant", "content": turn.content}
-            if turn.tool_calls:
-                message["tool_calls"] = [
-                    {
-                        "id": c.call_id,
-                        "type": "function",
-                        "function": {"name": c.name, "arguments": c.arguments},
-                    }
-                    for c in turn.tool_calls
-                ]
-            messages.append(message)
+            messages.append(_assistant_message(turn, settings))
         else:
-            if turn.payload is None:  # pragma: no cover -- Turn's validator refuses this
-                raise ModelError("a tool turn without a Payload cannot be sent")
             messages.append(
-                {"role": "tool", "tool_call_id": turn.tool_call_id, "content": turn.payload.text}
+                {"role": "tool", "tool_call_id": turn.tool_call_id, "content": _tool_content(turn)}
             )
     body: dict[str, object] = {
         "model": settings.model_id(),
@@ -83,6 +98,10 @@ def request_body(
         }
     if settings.tools:
         body["tools"] = list(settings.tools)
+    if settings.tool_choice is not None:
+        body["tool_choice"] = settings.tool_choice
+    if settings.parallel_tool_calls is not None:
+        body["parallel_tool_calls"] = settings.parallel_tool_calls
     if settings.reasoning_effort is not None:
         body["reasoning"] = {"effort": settings.reasoning_effort}
     return body

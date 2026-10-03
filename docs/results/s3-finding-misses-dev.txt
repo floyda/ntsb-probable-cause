@@ -1,0 +1,287 @@
+S3.1 where-the-findings-go-wrong probe on dev-400 (scripts/exploratory/s3_finding_misses.py; S3.1 Task 15)
+Exploratory (decision 0059): free and offline, no model call; it sets no bar and tunes nothing. How far the loop's final findings reach each finding the NTSB flagged as cause, and whether the NTSB's item and modifier choices follow the pool's habits.
+Counts, shares and code labels only: no case number and no record text. Shares have a Wilson 95% interval, each with its denominator.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C (printed beside run a; decides nothing)
+
+## The rule (committed in ef25347, before this script existed)
+
+Next-step rule (Andy, 2026-10-03). On run a: if, among the "category right, item wrong" findings, the NTSB's item is the pool's commonest item for that category in at least half, the next step is an offline test of a "use the usual item" step (registered before it is computed); otherwise item choice is read as case-specific judgement, and findings are reported at the category level beside the full code. The script applies the rule and prints which.
+Run a (20261001T201506-fd6053f-dev-400-C): among the 213 findings classed "category right, item wrong", the NTSB's item is the pool's commonest item for its category in 46 of 213 (21.6%).
+Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: the NTSB's item is the pool's commonest in 59 of 251 (23.5%).
+next: item choice read as case-specific; report findings at the category level beside the full code
+Expectation (decides nothing). The item step loses more of the loop's findings than the modifier step, and the NTSB's item is the pool's commonest item in at least half of the item misses.
+- the item step loses more of the loop's findings than the modifier step, on run a: "category right, item wrong" 213 against "item right, modifier wrong" 80: met
+- the NTSB's item is the pool's commonest item in at least half of the item misses, on run a, 46 of 213 (21.6%): not met
+
+## Method
+
+Judged cases, for each run: as the findings-from-precedent probe judges them (`s3_finding_precedent.sort_cases`): scored (not failed: decision 0136 item 1), not abstained (the final answer's abstain flag is false), and with at least one finding the NTSB flagged as cause. Each of the run's cases is counted once, in that order: failed, abstained, no flagged finding, judged.
+Unit: each finding the NTSB flagged as cause in a judged case, each ten-digit code once per case. It is classed one finding at a time by `scoring.misses.finding_depth` against the loop's final findings, at the deepest level any of them reaches it: exact (all ten digits); item right, modifier wrong (the first eight digits, not all ten); category right, item wrong (the first six, not the first eight); category missed (not even the first six). The loop's final findings are the last step's answer (`miss_kinds.scored_answer`): the ten-digit codes of its findings that carry an item, each code once, which are the findings the harness scores.
+Shares are over findings, not cases: a case with more flagged findings counts for more, so the exact share is not the harness's mean per-case recall at 10 digits. The Wilson 95% intervals treat findings as independent, although the findings of one case are not.
+Sections: a finding's first two digits, named as the code tables name them. Personnel issues' modifiers name who acted; the others' name a state or an effect.
+Pool: the S3 statistics pool, development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129): 12090 cases; kept, each with an NTSB probable-cause text and at least one occurrence code: 12090 (event years 2009-2019); left out: 0 with no probable-cause text, 0 more with no occurrence code. Of the kept cases 12062 have at least one finding flagged as cause, holding 30554 flagged findings, each case counting each distinct ten-digit code once. The judged cases are `dev-400`'s, which the pool leaves out, so a judged case's findings are never in the habits they are read against.
+Habits: for each category (first six digits) the commonest item (first eight) among its pool findings, and the share of the category's findings carrying it; for each item the commonest modifier (last two) and the share of the item's findings carrying it. A tie goes to the smallest code. An item sits under one category, so the item names the (category, item) the modifier habit is read under.
+Misses: among the findings classed "category right, item wrong", whether the NTSB's item is the pool's commonest item for its category, and whether the loop's item is (the loop's findings in that category; if it has several, the loop counts as using the commonest item when any of them carries it); a finding whose category holds several different loop items is counted once under each (NTSB item, loop item) pair. The same for "item right, modifier wrong", for the modifier under the item. A category (or an item) the pool holds no finding in has no commonest value, so neither side's choice can be it; those findings are counted apart.
+Beside: the loop's final findings (each distinct code once per case) whose first six digits match none of the NTSB's flagged findings of their case. This is against the flagged findings only, so it is not the trail pages' 'matches no NTSB finding', which also counts the NTSB's unflagged findings.
+The rule is applied above on run a. Everything else is printed and decides nothing.
+
+## The pool's habits
+
+Pool findings: 30554 in 12062 cases (each case's distinct ten-digit flagged codes).
+
+The commonest item under each category (123 categories hold a pool finding):
+- findings-weighted mean of the commonest item's share across categories, that is the pool's findings carrying their category's commonest item: 16166 of 30554 (52.9%)
+- categories with at least 10 pool findings: 83 of 123; of those, with a commonest item carrying at least 80% of the category's findings: 19 of 83 (22.9%), of which 10 hold one item only in the pool
+
+The commonest modifier under each item (620 items hold a pool finding):
+- findings-weighted mean of the commonest modifier's share across items, that is the pool's findings carrying their item's commonest modifier: 22141 of 30554 (72.5%)
+- items with at least 10 pool findings: 252 of 620; of those, with a commonest modifier carrying at least 80% of the item's findings: 63 of 252 (25.0%), of which 9 hold one modifier only in the pool
+
+## Run a (20261001T201506-fd6053f-dev-400-C)
+
+Cases in the run: 401, each counted once, in this order: failed 7; abstained 6; no flagged finding 2; judged 386 (196 fatal, 190 non-fatal).
+The NTSB's flagged findings of the judged cases: 1085 (each ten-digit code once per case; a code flagged twice in one case, left out once: 1).
+
+### All judged cases: 1085 flagged findings in 386 cases
+- exact: 293 of 1085 (27.0%) [24.4%, 29.7%]
+- item right, modifier wrong: 80 of 1085 (7.4%) [6.0%, 9.1%]
+- category right, item wrong: 213 of 1085 (19.6%) [17.4%, 22.1%]
+- category missed: 499 of 1085 (46.0%) [43.0%, 49.0%]
+
+### Section 01 Aircraft: 400 flagged findings
+- exact: 112 of 400 (28.0%) [23.8%, 32.6%]
+- item right, modifier wrong: 34 of 400 (8.5%) [6.1%, 11.6%]
+- category right, item wrong: 130 of 400 (32.5%) [28.1%, 37.2%]
+- category missed: 124 of 400 (31.0%) [26.7%, 35.7%]
+
+### Section 02 Personnel issues: 527 flagged findings
+- exact: 170 of 527 (32.3%) [28.4%, 36.4%]
+- item right, modifier wrong: 28 of 527 (5.3%) [3.7%, 7.6%]
+- category right, item wrong: 67 of 527 (12.7%) [10.1%, 15.8%]
+- category missed: 262 of 527 (49.7%) [45.5%, 54.0%]
+
+### Section 03 Environmental issues: 107 flagged findings
+- exact: 6 of 107 (5.6%) [2.6%, 11.7%]
+- item right, modifier wrong: 18 of 107 (16.8%) [10.9%, 25.0%]
+- category right, item wrong: 16 of 107 (15.0%) [9.4%, 22.9%]
+- category missed: 67 of 107 (62.6%) [53.2%, 71.2%]
+
+### Section 04 Organizational issues: 2 flagged findings
+- exact: 0 of 2 (0.0%) [0.0%, 65.8%]
+- item right, modifier wrong: 0 of 2 (0.0%) [0.0%, 65.8%]
+- category right, item wrong: 0 of 2 (0.0%) [0.0%, 65.8%]
+- category missed: 2 of 2 (100.0%) [34.2%, 100.0%]
+
+### Section 05 Not determined: 49 flagged findings
+- exact: 5 of 49 (10.2%) [4.4%, 21.8%]
+- item right, modifier wrong: 0 of 49 (0.0%) [0.0%, 7.3%]
+- category right, item wrong: 0 of 49 (0.0%) [0.0%, 7.3%]
+- category missed: 44 of 49 (89.8%) [78.2%, 95.6%]
+
+### Fatal cases: 652 flagged findings in 196 cases
+- exact: 174 of 652 (26.7%) [23.4%, 30.2%]
+- item right, modifier wrong: 39 of 652 (6.0%) [4.4%, 8.1%]
+- category right, item wrong: 132 of 652 (20.2%) [17.3%, 23.5%]
+- category missed: 307 of 652 (47.1%) [43.3%, 50.9%]
+
+### Non-fatal cases: 433 flagged findings in 190 cases
+- exact: 119 of 433 (27.5%) [23.5%, 31.9%]
+- item right, modifier wrong: 41 of 433 (9.5%) [7.1%, 12.6%]
+- category right, item wrong: 81 of 433 (18.7%) [15.3%, 22.6%]
+- category missed: 192 of 433 (44.3%) [39.7%, 49.1%]
+
+### category right, item wrong: the NTSB's item against the pool's habit
+
+- findings classed "category right, item wrong": 213
+- the NTSB's item is the pool's commonest item for its category: 46 of 213 (21.6%) [16.6%, 27.6%]
+- the loop's item is it (any of the loop's findings under the category carrying it): 52 of 213 (24.4%) [19.1%, 30.6%]
+- the pool holds no finding under the category, so neither can be: 0 of 213 (0.0%)
+
+The 10 commonest (NTSB item, loop item) pairs (126 different pairs, from 213 findings; a finding counts once under each different loop item in its category):
+- 19  01062042: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 8  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063015: Personnel issues — Task performance — Use of equip/info — Use of equip/system
+- 7  01062012: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 6  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063035: Personnel issues — Task performance — Use of equip/info — Use of available resources
+- 5  01062000: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 5  01062000: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) -> 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control
+- 5  01062000: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) -> 01062023: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Lateral/bank control
+- 5  01062041: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare -> 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control
+- 4  02063015: Personnel issues — Task performance — Use of equip/info — Use of equip/system -> 02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control
+- 4  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063032: Personnel issues — Task performance — Use of equip/info — Use of policy/procedure
+
+The 10 categories with the most item misses (25 categories lose a finding at this step):
+- 109  010620: Aircraft — Aircraft oper/perf/capability — Performance/control parameters: the NTSB's item is the pool's commonest in 7 of them; the pool's commonest item is 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control, 2126 of 7048 (30.2%) of its findings
+- 32  020630: Personnel issues — Task performance — Use of equip/info: the NTSB's item is the pool's commonest in 23 of them; the pool's commonest item is 02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control, 5058 of 6090 (83.1%) of its findings
+- 12  020410: Personnel issues — Action/decision — Action: the NTSB's item is the pool's commonest in 3 of them; the pool's commonest item is 02041015: Personnel issues — Action/decision — Action — Incorrect action performance, 802 of 2219 (36.1%) of its findings
+- 8  030340: Environmental issues — Conditions/weather/phenomena — Wind: the NTSB's item is the pool's commonest in 1 of them; the pool's commonest item is 03034045: Environmental issues — Conditions/weather/phenomena — Wind — Gusts, 208 of 730 (28.5%) of its findings
+- 5  010585: Aircraft — Aircraft power plant — Engine (reciprocating): the NTSB's item is the pool's commonest in 2 of them; the pool's commonest item is 01058530: Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng cyl section, 224 of 708 (31.6%) of its findings
+- 5  020310: Personnel issues — Experience/knowledge — Experience/qualifications: the NTSB's item is the pool's commonest in 1 of them; the pool's commonest item is 02031025: Personnel issues — Experience/knowledge — Experience/qualifications — Total experience w/ equipment, 127 of 347 (36.6%) of its findings
+- 5  030350: Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip: the NTSB's item is the pool's commonest in 2 of them; the pool's commonest item is 03035075: Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Below VFR minima, 86 of 302 (28.5%) of its findings
+- 4  020220: Personnel issues — Psychological — Perception/orientation/illusion: the NTSB's item is the pool's commonest in 3 of them; the pool's commonest item is 02022025: Personnel issues — Psychological — Perception/orientation/illusion — Spatial disorientation, 165 of 265 (62.3%) of its findings
+- 3  010232: Aircraft — Aircraft systems — Landing gear system: the NTSB's item is the pool's commonest in 0 of them; the pool's commonest item is 01023230: Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys, 204 of 916 (22.3%) of its findings
+- 3  020120: Personnel issues — Physical — Impairment/incapacitation: the NTSB's item is the pool's commonest in 0 of them; the pool's commonest item is 02012015: Personnel issues — Physical — Impairment/incapacitation — Alcohol, 46 of 230 (20.0%) of its findings
+
+### item right, modifier wrong: the NTSB's modifier against the pool's habit
+
+- findings classed "item right, modifier wrong": 80
+- the NTSB's modifier is the pool's commonest modifier for its item: 25 of 80 (31.2%) [22.2%, 42.1%]
+- the loop's modifier is it (any of the loop's findings under the item carrying it): 35 of 80 (43.8%) [33.4%, 54.7%]
+- the pool holds no finding under the item, so neither can be: 1 of 80 (1.2%)
+
+The 10 commonest (NTSB modifier, loop modifier) pairs (45 different pairs, from 80 findings; a finding counts once under each different loop modifier in its item):
+- 9  46: Student pilot -> 44: Pilot
+- 8  82: Effect on operation -> 91: Contributed to outcome
+- 5  44: Pilot -> 46: Student pilot
+- 4  21: Attain/maintain not possible -> 20: Not attained/maintained
+- 4  40: Instructor/check pilot -> 44: Pilot
+- 3  05: Damaged/degraded -> 01: Failure
+- 3  11: Incorrect use/operation -> 20: Not attained/maintained
+- 3  99: Not specified -> 44: Pilot
+- 2  06: Fatigue/wear/corrosion -> 01: Failure
+- 2  13: Incorrect service/maintenance -> 01: Failure
+
+The 10 items with the most modifier misses (44 items lose a finding at this step):
+- 18  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control: the NTSB's modifier is the pool's commonest in 5 of them; the pool's commonest modifier is 44: Pilot, 4271 of 5058 (84.4%) of its findings
+- 5  01071010: Aircraft — Fluids/misc hardware — Fluids — Fuel: the NTSB's modifier is the pool's commonest in 2 of them; the pool's commonest modifier is 24: Fluid level, 423 of 1020 (41.5%) of its findings
+- 3  01046123: Aircraft — Aircraft propeller/rotor — Propeller system — Propeller feather/reversing: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 10: Not used/operated, 4 of 9 (44.4%) of its findings
+- 3  01062041: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 20: Not attained/maintained, 460 of 714 (64.4%) of its findings
+- 3  03034045: Environmental issues — Conditions/weather/phenomena — Wind — Gusts: the NTSB's modifier is the pool's commonest in 2 of them; the pool's commonest modifier is 82: Effect on operation, 91 of 208 (43.8%) of its findings
+- 2  01023230: Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 10: Not used/operated, 92 of 204 (45.1%) of its findings
+- 2  01057322: Aircraft — Aircraft power plant — Engine fuel and control — Fuel control/carburetor: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 13: Incorrect service/maintenance, 20 of 113 (17.7%) of its findings
+- 2  01057800: Aircraft — Aircraft power plant — Engine exhaust — (general): the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 01: Failure, 10 of 30 (33.3%) of its findings
+- 2  01058520: Aircraft — Aircraft power plant — Engine (reciprocating) — Recip engine power section: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 01: Failure, 78 of 149 (52.3%) of its findings
+- 2  01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 20: Not attained/maintained, 1983 of 2126 (93.3%) of its findings
+
+### Beside: the loop's own findings that match no NTSB flagged finding at all
+
+- the loop's final findings in the judged cases (each distinct code once per case) reaching no NTSB flagged finding of their case even at 6 digits: 471 of 994 (47.4%)
+- 01 Aircraft: 163 of 394 (41.4%)
+- 02 Personnel issues: 236 of 491 (48.1%)
+- 03 Environmental issues: 69 of 101 (68.3%)
+- 04 Organizational issues: 1 of 1 (100.0%)
+- 05 Not determined: 2 of 7 (28.6%)
+
+## Run b (20261001T201648-fd6053f-dev-400-C), beside run a; decides nothing
+
+Cases in the run: 401, each counted once, in this order: failed 10; abstained 6; no flagged finding 2; judged 383 (194 fatal, 189 non-fatal).
+The NTSB's flagged findings of the judged cases: 1071 (each ten-digit code once per case; a code flagged twice in one case, left out once: 1).
+
+### All judged cases: 1071 flagged findings in 383 cases
+- exact: 265 of 1071 (24.7%) [22.3%, 27.4%]
+- item right, modifier wrong: 79 of 1071 (7.4%) [6.0%, 9.1%]
+- category right, item wrong: 251 of 1071 (23.4%) [21.0%, 26.1%]
+- category missed: 476 of 1071 (44.4%) [41.5%, 47.4%]
+
+### Section 01 Aircraft: 392 flagged findings
+- exact: 92 of 392 (23.5%) [19.5%, 27.9%]
+- item right, modifier wrong: 31 of 392 (7.9%) [5.6%, 11.0%]
+- category right, item wrong: 143 of 392 (36.5%) [31.9%, 41.4%]
+- category missed: 126 of 392 (32.1%) [27.7%, 36.9%]
+
+### Section 02 Personnel issues: 522 flagged findings
+- exact: 164 of 522 (31.4%) [27.6%, 35.5%]
+- item right, modifier wrong: 27 of 522 (5.2%) [3.6%, 7.4%]
+- category right, item wrong: 88 of 522 (16.9%) [13.9%, 20.3%]
+- category missed: 243 of 522 (46.6%) [42.3%, 50.8%]
+
+### Section 03 Environmental issues: 106 flagged findings
+- exact: 4 of 106 (3.8%) [1.5%, 9.3%]
+- item right, modifier wrong: 21 of 106 (19.8%) [13.3%, 28.4%]
+- category right, item wrong: 20 of 106 (18.9%) [12.6%, 27.4%]
+- category missed: 61 of 106 (57.5%) [48.0%, 66.5%]
+
+### Section 04 Organizational issues: 2 flagged findings
+- exact: 0 of 2 (0.0%) [0.0%, 65.8%]
+- item right, modifier wrong: 0 of 2 (0.0%) [0.0%, 65.8%]
+- category right, item wrong: 0 of 2 (0.0%) [0.0%, 65.8%]
+- category missed: 2 of 2 (100.0%) [34.2%, 100.0%]
+
+### Section 05 Not determined: 49 flagged findings
+- exact: 5 of 49 (10.2%) [4.4%, 21.8%]
+- item right, modifier wrong: 0 of 49 (0.0%) [0.0%, 7.3%]
+- category right, item wrong: 0 of 49 (0.0%) [0.0%, 7.3%]
+- category missed: 44 of 49 (89.8%) [78.2%, 95.6%]
+
+### Fatal cases: 642 flagged findings in 194 cases
+- exact: 162 of 642 (25.2%) [22.0%, 28.7%]
+- item right, modifier wrong: 42 of 642 (6.5%) [4.9%, 8.7%]
+- category right, item wrong: 153 of 642 (23.8%) [20.7%, 27.3%]
+- category missed: 285 of 642 (44.4%) [40.6%, 48.3%]
+
+### Non-fatal cases: 429 flagged findings in 189 cases
+- exact: 103 of 429 (24.0%) [20.2%, 28.3%]
+- item right, modifier wrong: 37 of 429 (8.6%) [6.3%, 11.7%]
+- category right, item wrong: 98 of 429 (22.8%) [19.1%, 27.0%]
+- category missed: 191 of 429 (44.5%) [39.9%, 49.3%]
+
+### category right, item wrong: the NTSB's item against the pool's habit
+
+- findings classed "category right, item wrong": 251
+- the NTSB's item is the pool's commonest item for its category: 59 of 251 (23.5%) [18.7%, 29.1%]
+- the loop's item is it (any of the loop's findings under the category carrying it): 63 of 251 (25.1%) [20.1%, 30.8%]
+- the pool holds no finding under the category, so neither can be: 0 of 251 (0.0%)
+
+The 10 commonest (NTSB item, loop item) pairs (149 different pairs, from 251 findings; a finding counts once under each different loop item in its category):
+- 17  01062042: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Angle of attack -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 11  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063035: Personnel issues — Task performance — Use of equip/info — Use of available resources
+- 9  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063015: Personnel issues — Task performance — Use of equip/info — Use of equip/system
+- 6  01062000: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) -> 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control
+- 6  02063015: Personnel issues — Task performance — Use of equip/info — Use of equip/system -> 02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control
+- 6  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control -> 02063032: Personnel issues — Task performance — Use of equip/info — Use of policy/procedure
+- 5  01062000: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 5  01062012: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude -> 01062010: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Airspeed
+- 5  01062041: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare -> 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control
+- 5  02041510: Personnel issues — Action/decision — Info processing/decision — Identification/recognition -> 02041520: Personnel issues — Action/decision — Info processing/decision — Decision making/judgment
+
+The 10 categories with the most item misses (26 categories lose a finding at this step):
+- 119  010620: Aircraft — Aircraft oper/perf/capability — Performance/control parameters: the NTSB's item is the pool's commonest in 8 of them; the pool's commonest item is 01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control, 2126 of 7048 (30.2%) of its findings
+- 46  020630: Personnel issues — Task performance — Use of equip/info: the NTSB's item is the pool's commonest in 30 of them; the pool's commonest item is 02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control, 5058 of 6090 (83.1%) of its findings
+- 17  020410: Personnel issues — Action/decision — Action: the NTSB's item is the pool's commonest in 4 of them; the pool's commonest item is 02041015: Personnel issues — Action/decision — Action — Incorrect action performance, 802 of 2219 (36.1%) of its findings
+- 9  030350: Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip: the NTSB's item is the pool's commonest in 2 of them; the pool's commonest item is 03035075: Environmental issues — Conditions/weather/phenomena — Ceiling/visibility/precip — Below VFR minima, 86 of 302 (28.5%) of its findings
+- 7  030340: Environmental issues — Conditions/weather/phenomena — Wind: the NTSB's item is the pool's commonest in 3 of them; the pool's commonest item is 03034045: Environmental issues — Conditions/weather/phenomena — Wind — Gusts, 208 of 730 (28.5%) of its findings
+- 6  020415: Personnel issues — Action/decision — Info processing/decision: the NTSB's item is the pool's commonest in 0 of them; the pool's commonest item is 02041520: Personnel issues — Action/decision — Info processing/decision — Decision making/judgment, 1472 of 1702 (86.5%) of its findings
+- 5  010585: Aircraft — Aircraft power plant — Engine (reciprocating): the NTSB's item is the pool's commonest in 2 of them; the pool's commonest item is 01058530: Aircraft — Aircraft power plant — Engine (reciprocating) — Recip eng cyl section, 224 of 708 (31.6%) of its findings
+- 5  020310: Personnel issues — Experience/knowledge — Experience/qualifications: the NTSB's item is the pool's commonest in 0 of them; the pool's commonest item is 02031025: Personnel issues — Experience/knowledge — Experience/qualifications — Total experience w/ equipment, 127 of 347 (36.6%) of its findings
+- 4  010232: Aircraft — Aircraft systems — Landing gear system: the NTSB's item is the pool's commonest in 2 of them; the pool's commonest item is 01023230: Aircraft — Aircraft systems — Landing gear system — Gear extension and retract sys, 204 of 916 (22.3%) of its findings
+- 4  020620: Personnel issues — Task performance — Maintenance: the NTSB's item is the pool's commonest in 0 of them; the pool's commonest item is 02062035: Personnel issues — Task performance — Maintenance — Installation, 185 of 508 (36.4%) of its findings
+
+### item right, modifier wrong: the NTSB's modifier against the pool's habit
+
+- findings classed "item right, modifier wrong": 79
+- the NTSB's modifier is the pool's commonest modifier for its item: 26 of 79 (32.9%) [23.6%, 43.9%]
+- the loop's modifier is it (any of the loop's findings under the item carrying it): 30 of 79 (38.0%) [28.1%, 49.0%]
+- the pool holds no finding under the item, so neither can be: 1 of 79 (1.3%)
+
+The 10 commonest (NTSB modifier, loop modifier) pairs (45 different pairs, from 79 findings; a finding counts once under each different loop modifier in its item):
+- 7  46: Student pilot -> 44: Pilot
+- 6  82: Effect on operation -> 91: Contributed to outcome
+- 5  21: Attain/maintain not possible -> 20: Not attained/maintained
+- 4  40: Instructor/check pilot -> 44: Pilot
+- 4  44: Pilot -> 46: Student pilot
+- 3  06: Fatigue/wear/corrosion -> 01: Failure
+- 3  11: Incorrect use/operation -> 20: Not attained/maintained
+- 3  85: Response/compensation -> 91: Contributed to outcome
+- 3  91: Contributed to outcome -> 82: Effect on operation
+- 3  99: Not specified -> 44: Pilot
+
+The 10 items with the most modifier misses (46 items lose a finding at this step):
+- 14  02063040: Personnel issues — Task performance — Use of equip/info — Aircraft control: the NTSB's modifier is the pool's commonest in 4 of them; the pool's commonest modifier is 44: Pilot, 4271 of 5058 (84.4%) of its findings
+- 5  01071010: Aircraft — Fluids/misc hardware — Fluids — Fuel: the NTSB's modifier is the pool's commonest in 2 of them; the pool's commonest modifier is 24: Fluid level, 423 of 1020 (41.5%) of its findings
+- 3  03033010: Environmental issues — Conditions/weather/phenomena — Convective weather — Thunderstorm: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 84: Decision related to condition, 17 of 48 (35.4%) of its findings
+- 2  01022820: Aircraft — Aircraft systems — Fuel system — Fuel distribution: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 13: Incorrect service/maintenance, 18 of 74 (24.3%) of its findings
+- 2  01022823: Aircraft — Aircraft systems — Fuel system — Fuel selector/shutoff valve: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 11: Incorrect use/operation, 61 of 107 (57.0%) of its findings
+- 2  01046111: Aircraft — Aircraft propeller/rotor — Propeller system — Propeller blade section: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 01: Failure, 12 of 32 (37.5%) of its findings
+- 2  01057322: Aircraft — Aircraft power plant — Engine fuel and control — Fuel control/carburetor: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 13: Incorrect service/maintenance, 20 of 113 (17.7%) of its findings
+- 2  01058520: Aircraft — Aircraft power plant — Engine (reciprocating) — Recip engine power section: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 01: Failure, 78 of 149 (52.3%) of its findings
+- 2  01062012: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Altitude: the NTSB's modifier is the pool's commonest in 1 of them; the pool's commonest modifier is 20: Not attained/maintained, 445 of 527 (84.4%) of its findings
+- 2  01062020: Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control: the NTSB's modifier is the pool's commonest in 0 of them; the pool's commonest modifier is 20: Not attained/maintained, 1983 of 2126 (93.3%) of its findings
+
+### Beside: the loop's own findings that match no NTSB flagged finding at all
+
+- the loop's final findings in the judged cases (each distinct code once per case) reaching no NTSB flagged finding of their case even at 6 digits: 465 of 992 (46.9%)
+- 01 Aircraft: 152 of 374 (40.6%)
+- 02 Personnel issues: 243 of 511 (47.6%)
+- 03 Environmental issues: 64 of 96 (66.7%)
+- 04 Organizational issues: 3 of 3 (100.0%)
+- 05 Not determined: 3 of 8 (37.5%)

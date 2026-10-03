@@ -1,0 +1,77 @@
+S3.1 noise floor and format gate (scripts/s3_noise_floor.py; spec §10.2 to §10.4, decision 0130)
+Counts only: no case number. Every figure is printed with its denominator.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C
+spec.json: identical in the 2 runs (23 settings compared; budget_usd and expected_cost_per_case_usd size the budget reservation only and are not compared)
+
+## the decisions
+
+format gate, run a: PASS -- 5 of 401 cases failed for format or tool reasons (failed: coding 4, failed: h2 1); of which 0 had no reply on the failing call; at most 8 pass (2% of dev-400's 401 cases, spec §10.4, decision 0130 item 5)
+round limit (failed: rounds), run a: 0 of 401 cases (the batch rounds ran out; not a format or tool failure, so not in the gate)
+format gate, run b: PASS -- 8 of 401 cases failed for format or tool reasons (failed: coding 6, failed: h1 2); of which 0 had no reply on the failing call; at most 8 pass (2% of dev-400's 401 cases, spec §10.4, decision 0130 item 5)
+round limit (failed: rounds), run b: 0 of 401 cases (the batch rounds ran out; not a format or tool failure, so not in the gate)
+third run: not needed -- the paired occurrence top-1 difference between runs a and b is -2.07 points (net -8 of 387 cases scored in both), not larger than 4.0 points (spec §10.2, decision 0130 item 2)
+
+## run a
+
+run 20261001T201506-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:15:06.897112+00:00 finished=2026-10-01T23:04:42.458162+00:00
+cases=401 total_cost_usd=4.5711
+failures by reason: failed 5, leak (probable_cause) 2
+format gate, run a: PASS -- 5 of 401 cases failed for format or tool reasons (failed: coding 4, failed: h2 1); of which 0 had no reply on the failing call; at most 8 pass (2% of dev-400's 401 cases, spec §10.4, decision 0130 item 5)
+round limit (failed: rounds), run a: 0 of 401 cases (the batch rounds ran out; not a format or tool failure, so not in the gate)
+cost, run a: computed $4.5711 for 401 cases, $0.0114 per case; billed $1.8400, $0.0046 per case (the batch rounds' own reports); the spend line and the monthly guard count the billed figure (decision 0135)
+cached share of prompt tokens, run a: 60692183 of 84745585 (71.6%) over 4004 model calls; 0 calls reported no cached count (counted as none)
+confidence at the answer, run a: mean 0.617 over 394 scored cases of 401 (raw, as stated; right or wrong on occurrence top-1; kept for S3.2's fit, decision 0126; nothing is fitted here)
+- <0.4: right 10, wrong 53, of 63
+- 0.4-0.6: right 18, wrong 66, of 84
+- 0.6-0.8: right 50, wrong 118, of 168
+- ≥0.8: right 26, wrong 53, of 79
+abstained, run a: 6 of 394 scored cases (each counted wrong, as top-1 counts it)
+
+## run b
+
+run 20261001T201648-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:16:48.699656+00:00 finished=2026-10-01T23:23:33.969331+00:00
+cases=401 total_cost_usd=4.4476
+failures by reason: failed 8, leak (probable_cause) 2
+format gate, run b: PASS -- 8 of 401 cases failed for format or tool reasons (failed: coding 6, failed: h1 2); of which 0 had no reply on the failing call; at most 8 pass (2% of dev-400's 401 cases, spec §10.4, decision 0130 item 5)
+round limit (failed: rounds), run b: 0 of 401 cases (the batch rounds ran out; not a format or tool failure, so not in the gate)
+cost, run b: computed $4.4476 for 401 cases, $0.0111 per case; billed $1.9738, $0.0049 per case (the batch rounds' own reports); the spend line and the monthly guard count the billed figure (decision 0135)
+cached share of prompt tokens, run b: 54973116 of 82374409 (66.7%) over 3921 model calls; 0 calls reported no cached count (counted as none)
+confidence at the answer, run b: mean 0.622 over 391 scored cases of 401 (raw, as stated; right or wrong on occurrence top-1; kept for S3.2's fit, decision 0126; nothing is fitted here)
+- <0.4: right 18, wrong 47, of 65
+- 0.4-0.6: right 18, wrong 51, of 69
+- 0.6-0.8: right 45, wrong 136, of 181
+- ≥0.8: right 29, wrong 47, of 76
+abstained, run b: 6 of 391 scored cases (each counted wrong, as top-1 counts it)
+
+## run a against run b
+
+(a - b) here is run a minus run b
+paired difference (a - b) on 387 shared, scored cases:
+- occurrence top-1: -2.1% [-5.9%, +1.6%] on n=387 cases
+- occurrence top-3: +1.3% [-2.6%, +5.2%] on n=387 cases
+- finding recall@10: +2.2% [-0.4%, +4.9%] on n=385 cases
+fatal: paired difference (a - b) on 195 shared, scored cases:
+- occurrence top-1: -3.1% [-7.7%, +1.0%] on n=195 cases
+- occurrence top-3: +1.5% [-3.6%, +6.7%] on n=195 cases
+- finding recall@10: +1.7% [-1.5%, +4.8%] on n=195 cases
+non-fatal: paired difference (a - b) on 192 shared, scored cases:
+- occurrence top-1: -1.0% [-6.8%, +4.7%] on n=192 cases
+- occurrence top-3: +1.0% [-4.7%, +7.3%] on n=192 cases
+- finding recall@10: +2.7% [-1.6%, +6.6%] on n=190 cases
+
+read-or-skip agreement: 2392 of 2608 documents offered in both runs got the same decision (read in both 1975, skipped in both 417; read in run a only 119, in run b only 97), over 379 cases; 0 documents offered in one run only
+coding-call agreement: 3 of 387 cases scored in both runs made the same coding calls (tool and arguments, list order inside the arguments kept, reason and expected_effect left out, as a multiset); 0 of those 3 made no coding call in either run
+
+## churn against the second run (cases scored in both)
+same first guess: 225 of 387
+top-1 gained 22, lost 30 (this run against the second)
+first occurrence code changed: 162 of 387 cases scored in both runs

@@ -26,7 +26,8 @@ class RunRecord(BaseModel):
 
     run_id: str
     sample: str
-    arm: Literal["A", "B", "ceiling"]
+    # "C" is the agent loop (S3.1 Task 10), written by ``agent/run.py``.
+    arm: Literal["A", "B", "ceiling", "C"]
     # "v1" on a run from before S2.6, which read text layers only (0076 item 2).
     evidence_version: EvidenceVersion = "v1"
     exclusions: tuple[str, ...]

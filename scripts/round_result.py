@@ -1,7 +1,8 @@
 """A guidance round's result, by decision 0098 item 4's rule; appended to its registration.
 
 Status
-    Live for S2.7 (spec §6.4), free: reads run folders; counts only.
+    Live for S2.7 (spec §6.4) and S3.1's tuning rounds (S3 spec §10.3, read by decision 0136),
+    free: reads run folders; counts only.
 
 Why
     The rule was fixed before the first round: kept only if the gain is real, larger than the
@@ -13,22 +14,59 @@ Usage
 
     ``--supplement`` (decision 0105 item 4) adds a line for the cases a code added to the tables
     touches, for the first round whose run has the added codes and whose reference does not.
+
+    S3's rounds (S3.1 Task 13) read arm C runs the same way. Their tools count in S3's
+    statistics file (decision 0129 item 4), which the run's ``spec.json`` names (``stats``), so
+    the push line counts in that file too and says so; a run whose ``spec.json`` names none (every
+    S2.7 run) reads S2.7's, as before.
+
+An S3 round (decision 0136)
+    A round whose runs are arm C is read with two more rules, set by Andy before S3.1's first
+    tuning round. An arm B run (every S2.7 round) is read exactly as before, byte for byte.
+
+    1. **A failed case counts as wrong.** The paired differences are over every case of the
+       runs, which must be the same cases in all four. A case that failed in a run (any
+       ``failure``: format or tool, a guard refusal, the cap, the round limit), or holds no
+       score, scores 0 there: a miss on occurrence top-1 and top-3, and finding recall@10 of 0
+       where the NTSB flagged findings in the probable cause. A case whose verdict flags none
+       has nothing to score, in every run, as before. The noise pair is read the same way.
+    2. **The format gate is a hard limit.** The round's run's gate is counted as
+       ``scripts/s3_noise_floor.py`` counts it (``format_gate``: ``failed: <step>`` but not
+       ``failed: rounds``; guard refusals and cap stops not counted), from its ``cases.jsonl``
+       and ``trail.jsonl``. Over 8 of 401, the round is dropped whatever its accuracy.
+
+    The result prints, in order: the gate's lines for the round's run (and, if it failed, that
+    the round is dropped); the runs; how many cases failed in each of the four runs; the run's
+    failures by reason; the reading's differences, each with its ``n``; occurrence top-3 beside
+    the rule; the push line; the outcome. ``--supplement`` is S2.7's and is refused here.
+
+    The ordering check's diagnostic over an arm C run (``<run id>-check-luna``, decision 0137)
+    is refused as the run, the reference or either noise run: it is never part of a round.
 """
 
 import argparse
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ntsb_probable_cause import fields
+from ntsb_probable_cause.agent.run import TRAIL_FILE
+from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
-from ntsb_probable_cause.scoring import codes, samples
-from ntsb_probable_cause.scoring.coding_stats import CodingStats, load_stats
-from ntsb_probable_cause.scoring.metrics import bootstrap_mean
+from ntsb_probable_cause.scoring import codes, report, samples
+from ntsb_probable_cause.scoring.coding_stats import (
+    STATS_NAMES,
+    CodingStats,
+    StatsName,
+    load_stats,
+)
+from ntsb_probable_cause.scoring.metrics import CaseScores, bootstrap_mean
 from ntsb_probable_cause.scoring.ordering import toward_more_common
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
+from scripts.s3_noise_floor import GATE_MAX, Gate, format_gate, gate_lines
 
 
 @dataclass(frozen=True)
@@ -68,6 +106,49 @@ def _recall(cases: Sequence[CaseResult]) -> dict[str, float]:
     }
 
 
+def _answered(case: CaseResult) -> CaseScores | None:
+    """The case's scores if it was scored and did not fail, else None (decision 0136 item 1)."""
+    return case.scores if case.failure is None and case.steps else None
+
+
+def counted_failed(case: CaseResult) -> bool:
+    """Whether decision 0136 item 1 counts the case as failed: a failure, or no score."""
+    return _answered(case) is None
+
+
+def top1_counting_failures(cases: Sequence[CaseResult]) -> dict[str, float]:
+    """Occurrence top-1 on every case; a failed case scores 0 (decision 0136 item 1)."""
+    return {
+        c.case_id: float(s.occurrence_top1) if (s := _answered(c)) is not None else 0.0
+        for c in cases
+    }
+
+
+def top3_counting_failures(cases: Sequence[CaseResult]) -> dict[str, float]:
+    """Occurrence top-3 on every case; a failed case scores 0 (decision 0136 item 1)."""
+    return {
+        c.case_id: float(s.occurrence_top3) if (s := _answered(c)) is not None else 0.0
+        for c in cases
+    }
+
+
+def recall_counting_failures(cases: Sequence[CaseResult]) -> dict[str, float]:
+    """Finding recall@10 on every case with a flagged finding to find; a failed case scores 0.
+
+    A scored case whose verdict flags no finding has no recall (``None``), and a failed case
+    whose verdict flags none is left out the same way: nothing to score, in any run.
+    """
+    values: dict[str, float] = {}
+    for case in cases:
+        scores = _answered(case)
+        if scores is None:
+            if case.verdict_findings_in_cause:
+                values[case.case_id] = 0.0
+        elif scores.finding_recall_10 is not None:
+            values[case.case_id] = scores.finding_recall_10
+    return values
+
+
 def diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff:
     """Paired over the shared case ids."""
     shared = sorted(set(a) & set(b))
@@ -77,19 +158,46 @@ def diff(a: Mapping[str, float], b: Mapping[str, float]) -> Diff:
     return Diff(mean, low, high, len(shared))
 
 
-def read(
+def read(  # noqa: PLR0913 -- decision 0136 adds one keyword per rule to 0098's reading.
     run: Sequence[CaseResult],
     reference: Sequence[CaseResult],
     noise_a: Sequence[CaseResult],
     noise_b: Sequence[CaseResult],
     *,
     finding_round: bool,
+    failures_wrong: bool = False,
+    gate: Gate | None = None,
 ) -> Reading:
-    """Decision 0098 item 4."""
-    first, second = (_recall, _top1) if finding_round else (_top1, _recall)
+    """Decision 0098 item 4; for an S3 round, with decision 0136's two rules.
+
+    Args:
+        run: the round's run.
+        reference: the run it is paired against.
+        noise_a: the first of the two identical runs.
+        noise_b: the second.
+        finding_round: finding recall@10 is the gain and occurrence top-1 the harm.
+        failures_wrong: decision 0136 item 1, every case paired and a failed case scoring 0
+            (S3); otherwise a failed case leaves ``n`` (S2.7).
+        gate: decision 0136 item 2, the round's run's format gate (S3): if it failed, the
+            round is dropped before anything else is read.
+    """
+    if failures_wrong:
+        top1, recall = top1_counting_failures, recall_counting_failures
+    else:
+        top1, recall = _top1, _recall
+    first, second = (recall, top1) if finding_round else (top1, recall)
     primary = diff(first(run), first(reference))
     noise = abs(diff(first(noise_a), first(noise_b)).mean)
     secondary = diff(second(run), second(reference))
+    if gate is not None and not gate.passed:
+        return Reading(
+            primary,
+            noise,
+            secondary,
+            False,
+            f"dropped: the format gate failed ({gate.count} of {gate.cases} cases failed for "
+            f"format or tool reasons, more than {GATE_MAX}; decision 0136 item 2)",
+        )
     if secondary.high < 0:
         return Reading(
             primary,
@@ -226,6 +334,39 @@ def _refuse_mismatched(
             )
 
 
+def _refuse_check_diagnostic(*runs: tuple[str, RunRecord]) -> None:
+    """Refuse the ordering check's diagnostic over arm C in any of a round's four places.
+
+    Decision 0137 item 3: the derived run ``<run id>-check-luna`` over an arm C run is a
+    diagnostic, never a round's run, reference or noise run. Its prompt version holds
+    ``+check-``. S2.7's rounds (arm B) read checked runs and never reach this.
+    """
+    for run_id, record in runs:
+        if "+check-" in record.prompt_version:
+            raise SystemExit(
+                f"round_result: {run_id} is the ordering check's diagnostic over an arm C run: "
+                "never a round's run, reference or noise run (decision 0137 item 3)"
+            )
+
+
+def _stats_name(run_id: str) -> StatsName:
+    """The statistics file the run's own tools counted in: its ``spec.json``'s ``stats``.
+
+    S3.1 Task 13: arm C records ``"stats": "s3"`` (decision 0129 item 4). A run that records none
+    (S2.7's arm B runs, which have no such key) counted in S2.7's file.
+    """
+    path = Settings().runs_dir / run_id / "spec.json"
+    recorded = json.loads(path.read_text()) if path.is_file() else {}
+    named = recorded.get("stats", "s27") if isinstance(recorded, dict) else "s27"
+    for name in STATS_NAMES:
+        if name == named:
+            return name
+    raise SystemExit(
+        f"round_result: {run_id}'s spec.json names the statistics file {named!r}, which is "
+        f"none of {', '.join(STATS_NAMES)}"
+    )
+
+
 def _load(run_id: str) -> list[CaseResult]:
     """A development run's cases, after every refusal (held-out, sealed, finished, split)."""
     _record(run_id)
@@ -238,6 +379,127 @@ def _load(run_id: str) -> list[CaseResult]:
 
 def _fmt(d: Diff) -> str:
     return f"{d.mean:+.1%} [{d.low:+.1%}, {d.high:+.1%}] on n={d.n}"
+
+
+@dataclass(frozen=True)
+class Loaded:
+    """One run of a round, read after every refusal: its id, record and cases."""
+
+    run_id: str
+    record: RunRecord
+    cases: list[CaseResult]
+
+
+def _names(*, finding_round: bool) -> tuple[str, str]:
+    """The gain's score and the harm's score."""
+    return (
+        ("finding recall@10", "occurrence top-1")
+        if finding_round
+        else ("occurrence top-1", "finding recall@10")
+    )
+
+
+def s27_result(runs: Sequence[Loaded], *, finding_round: bool, supplement: bool, push: str) -> str:
+    """An S2.7 round's result (arm B), exactly as decision 0098 item 4 has always read it."""
+    run, reference, noise_a, noise_b = runs
+    reading = read(
+        run.cases, reference.cases, noise_a.cases, noise_b.cases, finding_round=finding_round
+    )
+    primary, secondary = _names(finding_round=finding_round)
+    return "\n".join(
+        [
+            "## Result (scripts/round_result.py, decision 0098 item 4)",
+            "",
+            f"- run: {run.run_id} (prompt {run.record.prompt_version}); "
+            f"reference: {reference.run_id} (prompt {reference.record.prompt_version}); "
+            f"noise pair: {noise_a.run_id}, {noise_b.run_id}",
+            f"- {primary}: {_fmt(reading.primary)}",
+            f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",
+            f"- {secondary} (do no harm): {_fmt(reading.secondary)}",
+            push,
+            *([supplement_line(run.cases, reference.cases)] if supplement else []),
+            f"- outcome: {reading.reason}",
+        ]
+    )
+
+
+# --- an S3 round (decision 0136) ---
+
+
+def _trail(run_id: str) -> list[AgentCall]:
+    """The run's ``trail.jsonl``, which the gate's no-reply count reads; arm C writes one."""
+    folder = Settings().runs_dir / run_id
+    if not (folder / TRAIL_FILE).is_file():
+        raise SystemExit(
+            f"round_result: {run_id}: no {TRAIL_FILE} in {folder}; an arm C run writes one, and "
+            "the format gate reads it (decision 0136 item 2)"
+        )
+    return read_jsonl(folder / TRAIL_FILE, AgentCall)
+
+
+def _refuse_other_cases(runs: Sequence[Loaded]) -> None:
+    """Refuse runs that do not hold the same cases: an S3 round pairs every case (0136 item 1)."""
+    first, *others = runs
+    ids = {c.case_id for c in first.cases}
+    for other in others:
+        if {c.case_id for c in other.cases} != ids:
+            raise SystemExit(
+                f"round_result: {other.run_id} holds other cases than {first.run_id}; an S3 "
+                "round is paired over every case, the same cases in each run (decision 0136 "
+                "item 1)"
+            )
+
+
+def _failed(cases: Sequence[CaseResult]) -> str:
+    """How many of the run's cases failed, of its cases."""
+    return f"{sum(counted_failed(c) for c in cases)} of {len(cases)}"
+
+
+def s3_result(runs: Sequence[Loaded], *, finding_round: bool, push: str) -> str:
+    """An S3 round's result: the gate first, then the reading with failures counted wrong."""
+    _refuse_other_cases(runs)
+    run, reference, noise_a, noise_b = runs
+    gate = format_gate(run.cases, _trail(run.run_id))
+    reading = read(
+        run.cases,
+        reference.cases,
+        noise_a.cases,
+        noise_b.cases,
+        finding_round=finding_round,
+        failures_wrong=True,
+        gate=gate,
+    )
+    top3 = diff(top3_counting_failures(run.cases), top3_counting_failures(reference.cases))
+    gate_text = [f"- {line}" for line in gate_lines(run.run_id, gate)]
+    if not gate.passed:
+        gate_text.insert(
+            1,
+            "- the round is dropped whatever its accuracy: its run failed the format gate "
+            "(decision 0136 item 2); the figures below are printed for the record",
+        )
+    primary, secondary = _names(finding_round=finding_round)
+    wrong = "a failed case counted wrong"
+    return "\n".join(
+        [
+            "## Result (scripts/round_result.py, decision 0098 item 4; failures and the format "
+            "gate by decision 0136)",
+            "",
+            *gate_text,
+            f"- run: {run.run_id} (prompt {run.record.prompt_version}); "
+            f"reference: {reference.run_id} (prompt {reference.record.prompt_version}); "
+            f"noise pair: {noise_a.run_id}, {noise_b.run_id}",
+            "- failed cases, each counted wrong below (decision 0136 item 1): "
+            f"run {_failed(run.cases)}, reference {_failed(reference.cases)}, noise pair "
+            f"{_failed(noise_a.cases)} and {_failed(noise_b.cases)}",
+            f"- the run's {report.failure_summary(run.cases)}",
+            f"- {primary} ({wrong}): {_fmt(reading.primary)}",
+            f"- noise floor ({primary}, the two identical runs, {wrong}): {reading.noise:.1%}",
+            f"- {secondary} (do no harm, {wrong}): {_fmt(reading.secondary)}",
+            f"- occurrence top-3 ({wrong}; beside the rule, not in it): {_fmt(top3)}",
+            push,
+            f"- outcome: {reading.reason}",
+        ]
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -257,34 +519,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     _refuse_mismatched(args.run, run_record, args.reference, reference_record)
     _refuse_mismatched(args.run, run_record, args.noise[0], noise_a_record)
     _refuse_mismatched(args.run, run_record, args.noise[1], noise_b_record)
-    run, reference = _load(args.run), _load(args.reference)
-    reading = read(
-        run,
-        reference,
-        _load(args.noise[0]),
-        _load(args.noise[1]),
-        finding_round=args.finding_round,
-    )
-    push = push_line(run, reference, _groups(run), load_stats())
-    primary, secondary = (
-        ("finding recall@10", "occurrence top-1")
-        if args.finding_round
-        else ("occurrence top-1", "finding recall@10")
-    )
-    text = "\n".join(
-        [
-            "## Result (scripts/round_result.py, decision 0098 item 4)",
-            "",
-            f"- run: {args.run} (prompt {run_record.prompt_version}); "
-            f"reference: {args.reference} (prompt {reference_record.prompt_version}); "
-            f"noise pair: {args.noise[0]}, {args.noise[1]}",
-            f"- {primary}: {_fmt(reading.primary)}",
-            f"- noise floor ({primary}, the two identical runs): {reading.noise:.1%}",
-            f"- {secondary} (do no harm): {_fmt(reading.secondary)}",
-            push,
-            *([supplement_line(run, reference)] if args.supplement else []),
-            f"- outcome: {reading.reason}",
-        ]
+    s3 = run_record.arm == "C"  # decision 0136: an S3 round; the four runs share the arm
+    if s3:
+        _refuse_check_diagnostic(
+            (args.run, run_record),
+            (args.reference, reference_record),
+            (args.noise[0], noise_a_record),
+            (args.noise[1], noise_b_record),
+        )
+    if s3 and args.supplement:
+        raise SystemExit(
+            "round_result: --supplement is S2.7's (decision 0105 item 4): an S3 round's run and "
+            "reference both hold the codes 0105 added"
+        )
+    stats = _stats_name(args.run)
+    runs = [
+        Loaded(run_id, record, _load(run_id))
+        for run_id, record in (
+            (args.run, run_record),
+            (args.reference, reference_record),
+            (args.noise[0], noise_a_record),
+            (args.noise[1], noise_b_record),
+        )
+    ]
+    run, reference = runs[0].cases, runs[1].cases
+    push = push_line(run, reference, _groups(run), load_stats(stats))
+    if stats != "s27":  # S2.7's results read exactly as they always have
+        push += (
+            f"\n- statistics file for the line above: {stats} (the run's spec.json; decision "
+            "0129 item 4)"
+        )
+    text = (
+        s3_result(runs, finding_round=args.finding_round, push=push)
+        if s3
+        else s27_result(
+            runs, finding_round=args.finding_round, supplement=args.supplement, push=push
+        )
     )
     print(text)
     if args.append is not None:

@@ -1,0 +1,99 @@
+S3.1 miss kinds on dev-400 (scripts/exploratory/s3_miss_kinds.py; S3.1 Task 15)
+Exploratory (decision 0059), for the design of a tuning round: it sets no bar and tunes nothing.
+Counts only: no case number and no text. Every figure is printed with its denominator.
+The defining event is the NTSB's first occurrence code. The loop's answer is the last checkpoint of a case not counted as failed (decision 0136 item 1), its codes in the loop's order. Classified by scripts/miss_kinds.py, as on the trail pages.
+Cases: arm C, always wrong, from s3-case-groups/20261002T065520/groups.json: 266 cases (132 fatal, 134 non-fatal)
+run 1 = 20261001T201506-fd6053f-dev-400-C
+run 2 = 20261001T201648-fd6053f-dev-400-C
+
+Kinds (exactly one per case):
+- first code right: the loop's first code is the NTSB's first (scored right unless the loop abstained)
+- order: the NTSB's first code is the loop's second or third code
+- same phase, different event: the loop's first code has the NTSB's first's phase, not its event
+- same event, different phase: the loop's first code has the NTSB's first's event, not its phase
+- different phase and event: the loop's first code shares neither, and the NTSB's first is not among its codes
+- failed or not scored: the case failed, or holds no score: no answer to compare (decision 0136 item 1)
+Patterns (none, one or several per scored case; a failed case has none):
+- NTSB stall/spin first, loop loss of control first: the NTSB's first event is 241, the loop's first event 240
+- NTSB loss of control first, loop stall/spin first: the NTSB's first event is 240, the loop's first event 241
+- generic consequence: the loop's first event is 240, 341 or 342, the NTSB's first event is none of these, and the NTSB's first code is not among the loop's codes
+- NTSB cause undetermined: 0500000000 is flagged as cause, or the NTSB's first code is 990000, and the loop did not abstain
+- abstained: the loop abstained
+Codes named: event 240 Loss of control in flight; event 241 Aerodynamic stall/spin; event 341 Loss of engine power (total); event 342 Loss of engine power (partial); finding 0500000000 Not determined; occurrence 990000 Unknown / Unknown or undetermined.
+
+## run 1: 20261001T201506-fd6053f-dev-400-C
+
+Kinds, of the 266 cases (132 fatal, 134 non-fatal):
+- first code right: 0 of 266 (0.0%); fatal 0 of 132 (0.0%); non-fatal 0 of 134 (0.0%)
+- order: 35 of 266 (13.2%); fatal 20 of 132 (15.2%); non-fatal 15 of 134 (11.2%)
+- same phase, different event: 73 of 266 (27.4%); fatal 32 of 132 (24.2%); non-fatal 41 of 134 (30.6%)
+- same event, different phase: 50 of 266 (18.8%); fatal 31 of 132 (23.5%); non-fatal 19 of 134 (14.2%)
+- different phase and event: 102 of 266 (38.3%); fatal 46 of 132 (34.8%); non-fatal 56 of 134 (41.8%)
+- failed or not scored: 6 of 266 (2.3%); fatal 3 of 132 (2.3%); non-fatal 3 of 134 (2.2%)
+Patterns, of the 260 scored cases (129 fatal, 131 non-fatal):
+- NTSB stall/spin first, loop loss of control first: 17 of 260 (6.5%); fatal 12 of 129 (9.3%); non-fatal 5 of 131 (3.8%)
+- NTSB loss of control first, loop stall/spin first: 5 of 260 (1.9%); fatal 3 of 129 (2.3%); non-fatal 2 of 131 (1.5%)
+- generic consequence: 63 of 260 (24.2%); fatal 39 of 129 (30.2%); non-fatal 24 of 131 (18.3%)
+- NTSB cause undetermined: 27 of 260 (10.4%); fatal 17 of 129 (13.2%); non-fatal 10 of 131 (7.6%)
+- abstained: 5 of 260 (1.9%); fatal 1 of 129 (0.8%); non-fatal 4 of 131 (3.1%)
+The NTSB's first events behind "generic consequence", of its 63 cases:
+- 241 Aerodynamic stall/spin: 8 (fatal 5, non-fatal 3)
+- 191 Fuel starvation: 7 (fatal 3, non-fatal 4)
+- 000 Unknown or undetermined: 6 (fatal 6, non-fatal 0)
+- 120 Control flight into terr/obj: 6 (fatal 4, non-fatal 2)
+- 340 Powerplant sys/comp malf/fail: 4 (fatal 2, non-fatal 2)
+- 402 Loss of visual reference: 4 (fatal 4, non-fatal 0)
+- 192 Fuel exhaustion: 3 (fatal 2, non-fatal 1)
+- 193 Fuel contamination: 3 (fatal 0, non-fatal 3)
+- 470 Collision with terr/obj (non-CFIT): 3 (fatal 2, non-fatal 1)
+- 090 Abnormal runway contact: 2 (fatal 0, non-fatal 2)
+- 096 Nose over/nose down: 2 (fatal 1, non-fatal 1)
+- 220 Low altitude operations: 2 (fatal 2, non-fatal 0)
+- 270 Abrupt maneuver: 2 (fatal 1, non-fatal 1)
+- 401 VFR encounter with IMC: 2 (fatal 2, non-fatal 0)
+- 490 Collision during takeoff/land: 2 (fatal 1, non-fatal 1)
+- 500 Loss of lift: 2 (fatal 0, non-fatal 2)
+- 900 Miscellaneous/other: 2 (fatal 2, non-fatal 0)
+- 242 Loss of tail rotor effectiveness: 1 (fatal 0, non-fatal 1)
+- 338 Part(s) separation from AC: 1 (fatal 1, non-fatal 0)
+- 350 Security/criminal event: 1 (fatal 1, non-fatal 0)
+
+## run 2: 20261001T201648-fd6053f-dev-400-C
+
+Kinds, of the 266 cases (132 fatal, 134 non-fatal):
+- first code right: 0 of 266 (0.0%); fatal 0 of 132 (0.0%); non-fatal 0 of 134 (0.0%)
+- order: 29 of 266 (10.9%); fatal 15 of 132 (11.4%); non-fatal 14 of 134 (10.4%)
+- same phase, different event: 60 of 266 (22.6%); fatal 25 of 132 (18.9%); non-fatal 35 of 134 (26.1%)
+- same event, different phase: 58 of 266 (21.8%); fatal 33 of 132 (25.0%); non-fatal 25 of 134 (18.7%)
+- different phase and event: 112 of 266 (42.1%); fatal 56 of 132 (42.4%); non-fatal 56 of 134 (41.8%)
+- failed or not scored: 7 of 266 (2.6%); fatal 3 of 132 (2.3%); non-fatal 4 of 134 (3.0%)
+Patterns, of the 259 scored cases (129 fatal, 130 non-fatal):
+- NTSB stall/spin first, loop loss of control first: 17 of 259 (6.6%); fatal 12 of 129 (9.3%); non-fatal 5 of 130 (3.8%)
+- NTSB loss of control first, loop stall/spin first: 3 of 259 (1.2%); fatal 2 of 129 (1.6%); non-fatal 1 of 130 (0.8%)
+- generic consequence: 67 of 259 (25.9%); fatal 44 of 129 (34.1%); non-fatal 23 of 130 (17.7%)
+- NTSB cause undetermined: 27 of 259 (10.4%); fatal 17 of 129 (13.2%); non-fatal 10 of 130 (7.7%)
+- abstained: 6 of 259 (2.3%); fatal 2 of 129 (1.6%); non-fatal 4 of 130 (3.1%)
+The NTSB's first events behind "generic consequence", of its 67 cases:
+- 241 Aerodynamic stall/spin: 12 (fatal 8, non-fatal 4)
+- 000 Unknown or undetermined: 7 (fatal 7, non-fatal 0)
+- 191 Fuel starvation: 6 (fatal 3, non-fatal 3)
+- 120 Control flight into terr/obj: 5 (fatal 3, non-fatal 2)
+- 401 VFR encounter with IMC: 4 (fatal 4, non-fatal 0)
+- 402 Loss of visual reference: 4 (fatal 4, non-fatal 0)
+- 192 Fuel exhaustion: 3 (fatal 2, non-fatal 1)
+- 193 Fuel contamination: 3 (fatal 0, non-fatal 3)
+- 470 Collision with terr/obj (non-CFIT): 3 (fatal 2, non-fatal 1)
+- 220 Low altitude operations: 2 (fatal 2, non-fatal 0)
+- 270 Abrupt maneuver: 2 (fatal 1, non-fatal 1)
+- 340 Powerplant sys/comp malf/fail: 2 (fatal 0, non-fatal 2)
+- 490 Collision during takeoff/land: 2 (fatal 1, non-fatal 1)
+- 500 Loss of lift: 2 (fatal 1, non-fatal 1)
+- 900 Miscellaneous/other: 2 (fatal 2, non-fatal 0)
+- 090 Abnormal runway contact: 1 (fatal 0, non-fatal 1)
+- 096 Nose over/nose down: 1 (fatal 0, non-fatal 1)
+- 242 Loss of tail rotor effectiveness: 1 (fatal 0, non-fatal 1)
+- 333 Flight control sys malf/fail: 1 (fatal 0, non-fatal 1)
+- 338 Part(s) separation from AC: 1 (fatal 1, non-fatal 0)
+- 350 Security/criminal event: 1 (fatal 1, non-fatal 0)
+- 390 Windshear or thunderstorm: 1 (fatal 1, non-fatal 0)
+- 901 Birdstrike: 1 (fatal 1, non-fatal 0)

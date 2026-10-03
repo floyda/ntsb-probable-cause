@@ -3,7 +3,7 @@ import gzip
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from tests.boundary import (
     RecordingBatchRunner,
     Splitter,
     _code_pattern,
+    _request_texts,
     _window_spans,
     _windows,
     as_ongoing,
@@ -29,11 +30,21 @@ from tests.boundary import (
     withheld_windows,
 )
 from tests.pdf_builder import PageSpec, build_pdf
+from tests.test_agent_documents import _raw as _agent_raw
+from tests.test_agent_documents import _withheld as _withheld_record
+from tests.test_agent_drive import _answers, _scripts, _sync_replies
+from tests.test_agent_drive import _other as _other_record
+from tests.test_agent_run import _runner as _agent_runner
+from tests.test_agent_run import _spec as _agent_spec
+from tests.test_agent_run import _sync_spec as _agent_sync_spec
 from tests.test_attach import _docket as _small_docket
 from tests.test_occurrence_misses import _case
 from tests.test_recorder_run import FEED_URL, MONTH_URL, _month_body
+from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import fields, sources
+from ntsb_probable_cause.agent import steps as steps_module
+from ntsb_probable_cause.agent.texts import NONE_READABLE
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket import transcribe as transcribe_module
 from ntsb_probable_cause.docket.attach import attach_docket
@@ -56,11 +67,13 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.model import client as client_module
 from ntsb_probable_cause.model.batch import BatchRequest
 from ntsb_probable_cause.model.client import (
+    ModelReply,
     ModelSettings,
     PageImage,
     Payload,
     RecordingFakeClient,
     ToolCall,
+    ToolText,
     Turn,
 )
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
@@ -283,7 +296,16 @@ def test_batch_boundary_test_fails_when_a_system_prompt_leaks(
 
 @pytest.mark.parametrize(
     "where",
-    ["system", "payload", "history", "tool_payload", "tool_call_arguments"],
+    [
+        "system",
+        "payload",
+        "history",
+        "tool_payload",
+        "tool_text",
+        "tool_call_arguments",
+        "reasoning_summary",
+        "reasoning_text",
+    ],
 )
 def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     """Each surface _request_texts inspects must be able to fail, not only the system prompt."""
@@ -300,12 +322,30 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
                 payload=Payload(text=needle, _token=client_module._CONSTRUCTION_TOKEN),
             ),
         )
+    elif where == "tool_text":
+        history = (Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of(needle)),)
     elif where == "tool_call_arguments":
         history = (
             Turn(
                 role="assistant",
                 content=None,
                 tool_calls=(ToolCall(call_id="c1", name="list_docket", arguments=needle),),
+            ),
+        )
+    elif where in {"reasoning_summary", "reasoning_text"}:
+        # An assistant turn's passed-back reasoning (S3.1 Task 4, call 2b): the readable
+        # entries are screened; the encrypted ones cannot be.
+        key = "summary" if where == "reasoning_summary" else "text"
+        kind = "reasoning.summary" if where == "reasoning_summary" else "reasoning.text"
+        history = (
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(
+                    {"type": "reasoning.encrypted", "data": "opaque"},
+                    {"type": kind, key: needle, "index": 1},
+                ),
             ),
         )
     request = BatchRequest(
@@ -321,6 +361,74 @@ def test_assert_requests_clean_trips_on_every_surface(where: str) -> None:
     )
     with pytest.raises(AssertionError, match=r"^tripwire"):
         assert_requests_clean([request], [("factual narrative", needle)])
+
+
+def test_assert_requests_clean_reads_reasoning_summaries_and_skips_encrypted_data() -> None:
+    """A clean summary passes; an encrypted entry is not text and is left alone (Task 4)."""
+    needle = "the pilot did not extend the landing gear"
+    request = BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="",
+        history=(
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(
+                    {"type": "reasoning.summary", "summary": "A clean summary.", "index": 0},
+                    {"type": "reasoning.encrypted", "data": f"opaque {needle}"},
+                ),
+            ),
+        ),
+    )
+    assert_requests_clean([request], [("factual narrative", needle)])
+    assert ("assistant turn reasoning summary", "A clean summary.") in _request_texts(request)
+
+
+def _reasoning_request(detail: dict[str, object]) -> BatchRequest:
+    """A request whose one assistant turn passes back ``detail`` as its reasoning."""
+    return BatchRequest(
+        custom_id="case-1",
+        payload=Payload(text="clean evidence", _token=client_module._CONSTRUCTION_TOKEN),
+        settings=ModelSettings(),
+        system="",
+        history=(
+            Turn(
+                role="assistant",
+                content=None,
+                tool_calls=(ToolCall(call_id="c1", name="record_hypothesis", arguments="{}"),),
+                reasoning_details=(detail,),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize("key", ["summary", "text"])
+def test_a_reasoning_summary_or_text_that_is_a_list_is_screened_item_by_item(key: str) -> None:
+    """A provider may split a summary into parts: each part is screened, so a list that holds
+    withheld text trips, and a clean list passes."""
+    needle = "the pilot did not extend the landing gear"
+    withheld = [("factual narrative", needle)]
+    leaky = _reasoning_request({"type": f"reasoning.{key}", key: ["A clean part.", needle]})
+    with pytest.raises(AssertionError, match=r"^tripwire: factual narrative .* reasoning"):
+        assert_requests_clean([leaky], withheld)
+    clean = _reasoning_request({"type": f"reasoning.{key}", key: ["One part.", "Another."]})
+    assert_requests_clean([clean], withheld)
+    assert (f"assistant turn reasoning {key}", "Another.") in _request_texts(clean)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [{"part": "text"}, 7, 0.5, True, ["a part", {"nested": "text"}], ["a part", None]],
+)
+def test_a_reasoning_shape_that_cannot_be_screened_fails_the_check_closed(value: object) -> None:
+    """Anything but a string or a list of strings is not read past: the helper fails, even
+    when the request holds no withheld text, rather than pass an unknown shape unread."""
+    request = _reasoning_request({"type": "reasoning.summary", "summary": value})
+    with pytest.raises(AssertionError, match=r"^tripwire: .* cannot be screened"):
+        assert_requests_clean([request], [("factual narrative", "the gear was not extended")])
 
 
 def test_assert_requests_clean_passes_when_nothing_leaks() -> None:
@@ -1383,3 +1491,135 @@ def test_the_jev2_check_sends_no_withheld_text(
     for sent in _jev2_sent_texts(route.calls[0].request.content):
         for window in windows:
             assert window not in sent
+
+
+# --------------------------------------------------------------------------------------------
+# Arm C, the agent loop (S3.1 Task 10): every request an arm C run sends, on both paths
+# --------------------------------------------------------------------------------------------
+#
+# Two cases, driven with scripted tool replies: ANC09CA024 with its narratives and probable
+# cause set to text the guard can match (``tests/test_agent_documents.py``'s ``_withheld``) and
+# a two-document docket it reads one of, and a second real fixture record. Every request goes
+# through ``assert_requests_clean``: system text, the first user payload, each earlier turn's
+# content and tool calls, every tool result's payload and ``ToolText``, and the assistant turns'
+# reasoning, which the run passes back. The two mutation tests put the probable cause in a
+# ``ToolText`` and in passed-back reasoning, and the check must fail on each (decision 0016).
+
+_CLEAN_REASONING = "The evidence describes a departure from the runway on landing."
+
+
+def _arm_c_raws() -> tuple[dict[str, object], dict[str, object]]:
+    return _withheld_record(_agent_raw()), _other_record()
+
+
+def _arm_c_withheld(raws: Sequence[Mapping[str, object]]) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for raw in raws:
+        for kind, text in (
+            ("factual narrative", fields.factual_narrative(raw)),
+            ("analysis narrative", fields.analysis_narrative(raw)),
+            ("probable cause", fields.probable_cause(raw)),
+        ):
+            if text:
+                found.append((kind, text))
+    assert len(found) >= 4, "the cases carry withheld text: the check is not vacuous"
+    return found
+
+
+def _reasoned(
+    scripts: Mapping[str, Sequence[ModelReply | None]], summary: str
+) -> dict[str, list[ModelReply | None]]:
+    """Each reply with a readable reasoning summary, which the run passes back to the model."""
+    detail = {"type": "reasoning.summary", "summary": summary, "index": 0}
+    return {
+        case_id: [
+            None if r is None else r.model_copy(update={"reasoning_details": (detail,)})
+            for r in replies
+        ]
+        for case_id, replies in scripts.items()
+    }
+
+
+def _arm_c_batch_requests(tmp_path: Path, summary: str = _CLEAN_REASONING) -> list[BatchRequest]:
+    fake = FakeBatchClient(handlers=[_answers(_reasoned(_scripts(), summary))] * 8)
+    _agent_runner(tmp_path / "runs", batch=fake, pass_reasoning=True).run(
+        _agent_spec(), _arm_c_raws()
+    )
+    return [request for batch in fake.submitted for request in batch]
+
+
+def _sync_requests(client: RecordingFakeClient) -> list[BatchRequest]:
+    """What a synchronous client was sent, as batch requests, so one check reads both paths."""
+    return [
+        BatchRequest(
+            custom_id=f"sync-{n}",
+            payload=payload,
+            settings=settings,
+            system=system,
+            history=history,
+        )
+        for n, (payload, settings, system, history) in enumerate(
+            zip(client.payloads, client.settings, client.systems, client.histories, strict=True)
+        )
+    ]
+
+
+def test_an_arm_c_batch_run_sends_no_withheld_text_in_any_request(tmp_path: Path) -> None:
+    requests = _arm_c_batch_requests(tmp_path)
+    assert len(requests) == 10  # eight calls for the first case, two for the second
+    turns = [turn for request in requests for turn in request.history]
+    assert any(turn.tool_text is not None for turn in turns), "ToolText reached the model"
+    assert any(turn.payload is not None for turn in turns), "a document was read"
+    assert any(turn.reasoning_details for turn in turns), "reasoning was passed back"
+    assert all(request.settings.pass_reasoning for request in requests)
+    # The second case's docket lists three documents, none readable: its listing is checked too
+    # (Andy, 2026-10-01: arm C sees the listing arm B's payload holds).
+    assert any(
+        turn.payload is not None
+        and set(turn.payload.fields()) == {"docket_listing"}
+        and turn.tool_text is not None
+        and NONE_READABLE in turn.tool_text.text
+        for turn in turns
+    ), "an unreadable docket's listing was sent"
+    assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_an_arm_c_sync_run_sends_no_withheld_text_in_any_request(tmp_path: Path) -> None:
+    scripts = _reasoned(_scripts(), _CLEAN_REASONING)
+    client = RecordingFakeClient([r for r in _sync_replies(scripts) if r is not None])
+    _agent_runner(tmp_path / "runs", client=client, pass_reasoning=True).run(
+        _agent_sync_spec(), _arm_c_raws()
+    )
+    requests = _sync_requests(client)
+    assert len(requests) == 10
+    turns = [turn for request in requests for turn in request.history]
+    assert any(turn.tool_text is not None for turn in turns)
+    assert any(turn.reasoning_details for turn in turns)
+    assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_the_arm_c_check_fails_on_withheld_text_in_a_tool_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation test: the agent's own words carrying the probable cause must be caught."""
+    cause = fields.probable_cause(_arm_c_raws()[0])
+    assert cause
+
+    def leaky(read: Sequence[int], skipped: Sequence[int]) -> str:
+        return f"You read: {list(read)}. {cause}"
+
+    monkeypatch.setattr(steps_module, "read_summary", leaky)
+    requests = _arm_c_batch_requests(tmp_path)
+    with pytest.raises(AssertionError, match=r"^tripwire: probable cause .* tool text"):
+        assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+def test_the_arm_c_check_fails_on_withheld_text_in_passed_back_reasoning(
+    tmp_path: Path,
+) -> None:
+    """Mutation test: reasoning that quotes the probable cause must be caught when passed back."""
+    cause = fields.probable_cause(_arm_c_raws()[0])
+    assert cause
+    requests = _arm_c_batch_requests(tmp_path, summary=f"Perhaps: {cause}")
+    with pytest.raises(AssertionError, match=r"^tripwire: probable cause .* reasoning summary"):
+        assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))

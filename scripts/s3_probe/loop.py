@@ -245,7 +245,7 @@ class _Case:
         try:
             return parse(text), text
         except SchemaError as error:
-            retry_system = f"{system}\n\nYour previous reply was rejected: {error}"
+            retry_system = f"{system}\n\n{prompt.REJECTED}{error}"
             text = self._call(phase, payload, retry_system, history, retry=True, reserve=reserve)
             try:
                 return parse(text), text

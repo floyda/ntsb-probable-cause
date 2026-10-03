@@ -27,6 +27,7 @@ from ntsb_probable_cause.errors import (
     ConfigurationError,
     LeakageError,
     ModelError,
+    SchemaError,
 )
 from ntsb_probable_cause.fields import EvidenceRole, factual_narrative
 from ntsb_probable_cause.model.batch import BatchCounts, BatchRequest, BatchResult, BatchStatus
@@ -48,6 +49,7 @@ from ntsb_probable_cause.scoring.budget import (
     reserve,
 )
 from ntsb_probable_cause.scoring.codes import load_tables
+from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import (
     ANSWERING_TURNS,
@@ -3171,6 +3173,39 @@ def test_sync_retry_prompt_never_carries_the_reply_detail(
     assert case.failure is not None
     assert case.failure.startswith("schema:")
     assert "finish_reason=" in case.failure
+
+
+def test_the_retry_line_is_one_constant_and_arm_a_and_bs_bytes_are_unchanged(
+    tmp_path: Path, record_fixtures: list[dict[str, object]]
+) -> None:
+    """Decision 0133: ``prompt.REJECTED`` replaced the literal every caller wrote out; the
+    systems the runner sends are byte for byte what the literal gave (written out here)."""
+    assert prompt.REJECTED == "Your previous reply was rejected: "
+    assert Runner._retry_system("SYS", "boom") == "SYS\n\nYour previous reply was rejected: boom"
+    assert Runner._retry_system("SYS", None) == "SYS"
+    tables = load_tables()
+    hypothesis = parse_hypothesis(GOOD, tables)
+    assert hypothesis.findings
+    assert runner(tmp_path, RecordingFakeClient([]))._stage2_system(hypothesis, "boom") == (
+        f"{prompt.SYSTEM_REFINE}\n\nYour previous reply was rejected: boom\n\n"
+        f"{prompt.refine_message(hypothesis, tables)}"
+    )
+    client = RecordingFakeClient(["not json", "still not json"])
+    runner(tmp_path / "sync", client).run(
+        RunSpec(
+            sample="dev-400",
+            arm="ceiling",
+            sync=True,
+            price_variant="standard",
+            expected_cost_per_case_usd=0.001,
+        ),
+        record_fixtures[:1],
+    )
+    with pytest.raises(SchemaError) as caught:
+        parse_hypothesis("not json", tables)
+    assert client.systems[1] == (
+        f"{client.systems[0]}\n\nYour previous reply was rejected: {caught.value}"
+    )
 
 
 def test_successful_case_records_reasoning_tokens_summed_over_its_replies(

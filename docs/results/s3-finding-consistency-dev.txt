@@ -1,0 +1,222 @@
+S3.1 finding-consistency probe on the development pool (scripts/exploratory/s3_finding_consistency.py; S3.1 Task 15)
+Exploratory (decision 0059): free and offline, no model call; it decides nothing. How far the NTSB's own probable-cause sentence settles the findings it flagged as cause: for cases whose sentences match word for word (exact twins), or in their words less common function words (loose twins), the commonest flagged-finding set among the other members is scored against the case's own, beside a control that ignores twins.
+Counts, means and code labels only: no case number and no text from any record. Means with a bootstrap 95% interval, shares with a 95% Wilson interval, each with its denominator.
+
+## The expectation (committed in 211c50e, before this script existed)
+
+Expectation (decides nothing). Findings are more consistent than first codes: among exact twins, all years, the mean recall of the predicted set at 10 digits is above 50%, against the occurrence probe's 37.5%.
+Headline: exact twins, all years, mean recall at 10 digits of the predicted set: 74.1% [72.2%, 75.9%] over 1648 scored cases
+expectation met
+The occurrence probe's figure, read from docs/results/s3-coding-consistency-dev.txt: leave-one-out agreement on the six-digit first code among exact twins, all years, 619 of 1650 (37.5%) [35.2%, 39.9%].
+
+## Method
+
+Pool: the S3 statistics pool, development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129): 12090 cases; kept, each with an NTSB probable-cause text and at least one occurrence code: 12090 (event years 2009-2019); left out: 0 with no probable-cause text, 0 more with no occurrence code.
+Groups: exactly the coding-consistency probe's (its own grouping functions). Exact twins: the same tokens in the same order, a token being a run of [a-z0-9] in the lower-cased text. Loose twins: the same set of those tokens less the precedent probe's 134 stop words. A group is two or more cases with the same non-empty key. Eras: all years; 2009–2014 and 2015–2019, the groups formed again among the cases with an event year in the era. Group membership does not depend on findings.
+Findings: those the NTSB flagged as in the probable cause (inProbableCause), as a set of ten-digit codes; the same findings the scoring's flagged recall reads. A scored case is a group member with at least one. A member with none is another member's twin, and its empty set is a candidate for the commonest set among the others, but it is not scored; the cases in groups, the scored and the unscored are printed for each grouping and era.
+Predicted set (twins): the commonest flagged-finding set among the other members of the case's group, a set compared whole. Ties go to the smallest tuple of the set's sorted codes, so the empty set, whose tuple () is the smallest, wins a tie. Then the case has no prediction: its recall is 0 and its precision is left out of the precision mean (counted as 'no prediction').
+Control (no twins): the same scored cases, the predicted set the commonest non-empty flagged-finding set of the era's whole pool (every kept case with a year in the era, twin or not) less the case itself, ties as above. It shows how much of the result a common set gives for nothing; the twins' number is read against it.
+Precision and recall: ``scoring.metrics._precision_recall`` itself, on the predicted set and the case's own flagged set, with each code cut to its first 10, 8 or 6 digits (the finding, its item, its category) and the two cut sets compared. Recall is the share of the case's own flagged codes the predicted set holds; precision is the share of the predicted set's codes the case holds. A larger predicted set raises recall and lowers precision, so both are printed. Each mean is over the scored cases, with the number behind it.
+Equal whole: the predicted set equals the case's own flagged set, ten digits, nothing more and nothing less.
+Like-for-like with the occurrence probe, which takes its commonest value at each level: at each of 10, 8 and 6 digits separately, the commonest value among the other members (the flagged codes cut to that many digits, each other member counting each distinct value once; for the control, each other pool case once; ties to the smallest value as a string at that level), then whether the case's own flagged set holds a code whose first 10, 8 or 6 digits equal that level's commonest value. The commonest 8-digit item need not be the item of the commonest 10-digit code.
+Intervals: the means have the project's bootstrap interval (``mean_cell``: 2,000 resamples over cases, a fixed seed); the shares have a 95% Wilson interval. Both treat cases as independent, although cases of one group share a sentence and each case's prediction is made from the others, so the intervals are narrower than the data warrant.
+The expectation is decided on the exact mean (a fraction), not on the printed rounding: a mean that prints as 50.0% can be above one half.
+What it does not say: that the NTSB was inconsistent. The same sentence can follow accidents whose findings differ; it bounds what a coder reading only the sentence could score on findings.
+
+## exact twins
+
+### exact twins, all years
+groups: 374; cases in groups: 1650 of 12090 (13.6%) of the era's pool cases
+scored cases (at least one flagged finding): 1648; unscored cases (none): 2
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 74.1% [72.2%, 75.9%] (n = 1648)
+- mean recall at 8 digits: 80.1% [78.5%, 81.7%] (n = 1648)
+- mean recall at 6 digits: 84.5% [83.1%, 86.0%] (n = 1648)
+- mean precision at 10 digits: 75.2% [73.4%, 77.0%] (n = 1647 cases with a prediction)
+- mean precision at 8 digits: 81.0% [79.4%, 82.6%] (n = 1647 cases with a prediction)
+- mean precision at 6 digits: 85.2% [83.8%, 86.6%] (n = 1647 cases with a prediction)
+- no prediction: 1 of 1648 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 908 of 1648 (55.1%) [52.7%, 57.5%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 1315 of 1648 (79.8%) [77.8%, 81.7%]
+  - at 8 digits: 1426 of 1648 (86.5%) [84.8%, 88.1%]
+  - at 6 digits: 1493 of 1648 (90.6%) [89.1%, 91.9%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 41.2% [39.0%, 43.3%] (n = 1648)
+- mean recall at 8 digits: 44.9% [42.7%, 47.1%] (n = 1648)
+- mean recall at 6 digits: 57.1% [54.8%, 59.3%] (n = 1648)
+- mean precision at 10 digits: 41.8% [39.7%, 43.9%] (n = 1648 cases with a prediction)
+- mean precision at 8 digits: 45.6% [43.4%, 47.7%] (n = 1648 cases with a prediction)
+- mean precision at 6 digits: 57.7% [55.4%, 59.9%] (n = 1648 cases with a prediction)
+- no prediction: 0 of 1648 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 475 of 1648 (28.8%) [26.7%, 31.1%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 763 of 1648 (46.3%) [43.9%, 48.7%]
+  - at 8 digits: 881 of 1648 (53.5%) [51.0%, 55.9%]
+  - at 6 digits: 970 of 1648 (58.9%) [56.5%, 61.2%]
+
+### exact twins, 2009–2014 (groups formed among cases with event years 2009 to 2014 only)
+groups: 227; cases in groups: 952 of 6956 (13.7%) of the era's pool cases
+scored cases (at least one flagged finding): 952; unscored cases (none): 0
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 68.9% [66.5%, 71.5%] (n = 952)
+- mean recall at 8 digits: 75.6% [73.3%, 77.8%] (n = 952)
+- mean recall at 6 digits: 80.8% [78.9%, 82.8%] (n = 952)
+- mean precision at 10 digits: 70.1% [67.6%, 72.5%] (n = 952 cases with a prediction)
+- mean precision at 8 digits: 76.5% [74.4%, 78.7%] (n = 952 cases with a prediction)
+- mean precision at 6 digits: 81.6% [79.6%, 83.6%] (n = 952 cases with a prediction)
+- no prediction: 0 of 952 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 461 of 952 (48.4%) [45.3%, 51.6%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 717 of 952 (75.3%) [72.5%, 77.9%]
+  - at 8 digits: 784 of 952 (82.4%) [79.8%, 84.6%]
+  - at 6 digits: 838 of 952 (88.0%) [85.8%, 89.9%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 39.4% [36.7%, 42.2%] (n = 952)
+- mean recall at 8 digits: 42.6% [39.9%, 45.4%] (n = 952)
+- mean recall at 6 digits: 55.6% [52.7%, 58.5%] (n = 952)
+- mean precision at 10 digits: 39.3% [36.6%, 42.1%] (n = 952 cases with a prediction)
+- mean precision at 8 digits: 42.6% [39.9%, 45.4%] (n = 952 cases with a prediction)
+- mean precision at 6 digits: 55.7% [52.7%, 58.6%] (n = 952 cases with a prediction)
+- no prediction: 0 of 952 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 248 of 952 (26.1%) [23.4%, 28.9%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 413 of 952 (43.4%) [40.3%, 46.6%]
+  - at 8 digits: 473 of 952 (49.7%) [46.5%, 52.9%]
+  - at 6 digits: 562 of 952 (59.0%) [55.9%, 62.1%]
+
+### exact twins, 2015–2019 (groups formed among cases with event years 2015 to 2019 only)
+groups: 142; cases in groups: 573 of 5134 (11.2%) of the era's pool cases
+scored cases (at least one flagged finding): 571; unscored cases (none): 2
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 82.9% [80.4%, 85.3%] (n = 571)
+- mean recall at 8 digits: 89.0% [87.0%, 91.0%] (n = 571)
+- mean recall at 6 digits: 91.7% [89.9%, 93.4%] (n = 571)
+- mean precision at 10 digits: 84.0% [81.4%, 86.5%] (n = 570 cases with a prediction)
+- mean precision at 8 digits: 89.6% [87.5%, 91.5%] (n = 570 cases with a prediction)
+- mean precision at 6 digits: 92.1% [90.2%, 93.8%] (n = 570 cases with a prediction)
+- no prediction: 1 of 571 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 382 of 571 (66.9%) [62.9%, 70.6%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 496 of 571 (86.9%) [83.8%, 89.4%]
+  - at 8 digits: 524 of 571 (91.8%) [89.2%, 93.8%]
+  - at 6 digits: 538 of 571 (94.2%) [92.0%, 95.9%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 45.8% [42.1%, 49.4%] (n = 571)
+- mean recall at 8 digits: 50.5% [46.9%, 54.1%] (n = 571)
+- mean recall at 6 digits: 62.1% [58.2%, 65.6%] (n = 571)
+- mean precision at 10 digits: 47.5% [43.9%, 51.1%] (n = 571 cases with a prediction)
+- mean precision at 8 digits: 52.3% [48.6%, 55.8%] (n = 571 cases with a prediction)
+- mean precision at 6 digits: 63.8% [60.1%, 67.5%] (n = 571 cases with a prediction)
+- no prediction: 0 of 571 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 199 of 571 (34.9%) [31.1%, 38.8%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 304 of 571 (53.2%) [49.1%, 57.3%]
+  - at 8 digits: 357 of 571 (62.5%) [58.5%, 66.4%]
+  - at 6 digits: 378 of 571 (66.2%) [62.2%, 70.0%]
+
+## loose twins
+
+### loose twins, all years
+groups: 425; cases in groups: 2002 of 12090 (16.6%) of the era's pool cases
+scored cases (at least one flagged finding): 1997; unscored cases (none): 5
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 73.8% [72.2%, 75.2%] (n = 1997)
+- mean recall at 8 digits: 79.6% [78.2%, 80.9%] (n = 1997)
+- mean recall at 6 digits: 84.2% [82.8%, 85.4%] (n = 1997)
+- mean precision at 10 digits: 75.1% [73.5%, 76.5%] (n = 1994 cases with a prediction)
+- mean precision at 8 digits: 81.1% [79.6%, 82.4%] (n = 1994 cases with a prediction)
+- mean precision at 6 digits: 85.4% [84.1%, 86.6%] (n = 1994 cases with a prediction)
+- no prediction: 3 of 1997 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 1090 of 1997 (54.6%) [52.4%, 56.8%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 1567 of 1997 (78.5%) [76.6%, 80.2%]
+  - at 8 digits: 1711 of 1997 (85.7%) [84.1%, 87.1%]
+  - at 6 digits: 1800 of 1997 (90.1%) [88.7%, 91.4%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 40.0% [38.0%, 41.8%] (n = 1997)
+- mean recall at 8 digits: 43.6% [41.6%, 45.4%] (n = 1997)
+- mean recall at 6 digits: 56.0% [54.0%, 57.8%] (n = 1997)
+- mean precision at 10 digits: 40.7% [38.8%, 42.5%] (n = 1997 cases with a prediction)
+- mean precision at 8 digits: 44.4% [42.4%, 46.2%] (n = 1997 cases with a prediction)
+- mean precision at 6 digits: 56.8% [54.8%, 58.7%] (n = 1997 cases with a prediction)
+- no prediction: 0 of 1997 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 542 of 1997 (27.1%) [25.2%, 29.1%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 902 of 1997 (45.2%) [43.0%, 47.4%]
+  - at 8 digits: 1042 of 1997 (52.2%) [50.0%, 54.4%]
+  - at 6 digits: 1163 of 1997 (58.2%) [56.1%, 60.4%]
+
+### loose twins, 2009–2014 (groups formed among cases with event years 2009 to 2014 only)
+groups: 255; cases in groups: 1161 of 6956 (16.7%) of the era's pool cases
+scored cases (at least one flagged finding): 1160; unscored cases (none): 1
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 68.5% [66.2%, 70.5%] (n = 1160)
+- mean recall at 8 digits: 74.6% [72.5%, 76.4%] (n = 1160)
+- mean recall at 6 digits: 80.2% [78.3%, 81.9%] (n = 1160)
+- mean precision at 10 digits: 69.8% [67.7%, 71.9%] (n = 1160 cases with a prediction)
+- mean precision at 8 digits: 76.0% [73.9%, 77.8%] (n = 1160 cases with a prediction)
+- mean precision at 6 digits: 81.2% [79.4%, 83.0%] (n = 1160 cases with a prediction)
+- no prediction: 0 of 1160 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 553 of 1160 (47.7%) [44.8%, 50.5%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 850 of 1160 (73.3%) [70.7%, 75.7%]
+  - at 8 digits: 947 of 1160 (81.6%) [79.3%, 83.8%]
+  - at 6 digits: 1020 of 1160 (87.9%) [85.9%, 89.7%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 38.7% [36.3%, 41.3%] (n = 1160)
+- mean recall at 8 digits: 41.9% [39.4%, 44.4%] (n = 1160)
+- mean recall at 6 digits: 55.2% [52.7%, 57.9%] (n = 1160)
+- mean precision at 10 digits: 38.8% [36.4%, 41.3%] (n = 1160 cases with a prediction)
+- mean precision at 8 digits: 42.0% [39.6%, 44.6%] (n = 1160 cases with a prediction)
+- mean precision at 6 digits: 55.4% [52.8%, 58.0%] (n = 1160 cases with a prediction)
+- no prediction: 0 of 1160 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 285 of 1160 (24.6%) [22.2%, 27.1%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 502 of 1160 (43.3%) [40.5%, 46.1%]
+  - at 8 digits: 573 of 1160 (49.4%) [46.5%, 52.3%]
+  - at 6 digits: 684 of 1160 (59.0%) [56.1%, 61.8%]
+
+### loose twins, 2015–2019 (groups formed among cases with event years 2015 to 2019 only)
+groups: 162; cases in groups: 684 of 5134 (13.3%) of the era's pool cases
+scored cases (at least one flagged finding): 680; unscored cases (none): 4
+twins: the predicted set is the commonest flagged-finding set among the other members of the case's group
+- mean recall at 10 digits: 82.8% [80.5%, 85.1%] (n = 680)
+- mean recall at 8 digits: 89.1% [87.3%, 90.9%] (n = 680)
+- mean recall at 6 digits: 91.5% [89.9%, 93.1%] (n = 680)
+- mean precision at 10 digits: 84.3% [82.0%, 86.5%] (n = 677 cases with a prediction)
+- mean precision at 8 digits: 90.5% [88.8%, 92.3%] (n = 677 cases with a prediction)
+- mean precision at 6 digits: 92.7% [91.1%, 94.2%] (n = 677 cases with a prediction)
+- no prediction: 3 of 680 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 460 of 680 (67.6%) [64.0%, 71.1%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 592 of 680 (87.1%) [84.3%, 89.4%]
+  - at 8 digits: 631 of 680 (92.8%) [90.6%, 94.5%]
+  - at 6 digits: 645 of 680 (94.9%) [92.9%, 96.3%]
+control (no twins): the predicted set is the commonest non-empty flagged-finding set of the era's whole pool less the case itself
+- mean recall at 10 digits: 43.9% [40.5%, 47.4%] (n = 680)
+- mean recall at 8 digits: 48.6% [45.2%, 51.9%] (n = 680)
+- mean recall at 6 digits: 60.0% [56.5%, 63.4%] (n = 680)
+- mean precision at 10 digits: 45.6% [42.1%, 49.0%] (n = 680 cases with a prediction)
+- mean precision at 8 digits: 50.2% [46.8%, 53.5%] (n = 680 cases with a prediction)
+- mean precision at 6 digits: 61.8% [58.3%, 65.3%] (n = 680 cases with a prediction)
+- no prediction: 0 of 680 scored cases (an empty predicted set; left out of the precision means, scored 0 in the recall means)
+- own flagged set equals the predicted set whole: 229 of 680 (33.7%) [30.2%, 37.3%]
+- like-for-like with the occurrence probe: own flagged set holds a code that starts with the commonest flagged value among the others, found at each digit count
+  - at 10 digits: 344 of 680 (50.6%) [46.8%, 54.3%]
+  - at 8 digits: 405 of 680 (59.6%) [55.8%, 63.2%]
+  - at 6 digits: 436 of 680 (64.1%) [60.4%, 67.6%]
+
+## exact twins, all years: the 10 flagged findings that most often differ within a group
+
+Each line is a ten-digit finding code and the number of groups in which at least one member has it flagged as cause and at least one other member does not (a member with no flagged finding does not); 212 codes differ in at least one of 374 groups.
+1. 0206304044 Personnel issues — Task performance — Use of equip/info — Aircraft control / Pilot: 84 groups
+2. 0204101544 Personnel issues — Action/decision — Action — Incorrect action performance / Pilot: 47 groups
+3. 0106202020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Directional control / Not attained/maintained: 39 groups
+4. 0206304046 Personnel issues — Task performance — Use of equip/info — Aircraft control / Student pilot: 30 groups
+5. 0106204111 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Incorrect use/operation: 26 groups
+6. 0106200020 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — (general) / Not attained/maintained: 24 groups
+7. 0106204120 Aircraft — Aircraft oper/perf/capability — Performance/control parameters — Landing flare / Not attained/maintained: 22 groups
+8. 0204103044 Personnel issues — Action/decision — Action — Lack of action / Pilot: 22 groups
+9. 0206301544 Personnel issues — Task performance — Use of equip/info — Use of equip/system / Pilot: 21 groups
+10. 0204152044 Personnel issues — Action/decision — Info processing/decision — Decision making/judgment / Pilot: 18 groups

@@ -30,6 +30,7 @@ from ntsb_probable_cause.scoring.budget import budget_lock, open_reservations
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, strict_schema
 from ntsb_probable_cause.scoring.metrics import CaseScores
+from ntsb_probable_cause.scoring.prompt import REJECTED
 from ntsb_probable_cause.scoring.runner import RunSpec, project_cost, refuse_over_budget
 
 JUDGE_MODEL = "anthropic/claude-haiku-4.5"
@@ -155,7 +156,7 @@ def judge_case(  # noqa: PLR0913 -- interface fixed by spec §8 / decision 0028.
         retry = client.complete(
             empty,
             settings,
-            system=f"{system}\n\nYour previous reply was rejected: {error}",
+            system=f"{system}\n\n{REJECTED}{error}",
         )
         return _parse_judge_reply(retry.content), retry
 

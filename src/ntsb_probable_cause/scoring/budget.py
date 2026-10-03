@@ -21,19 +21,23 @@ from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl, write_jso
 RESERVATION_FILE = "reservation.json"
 LOCK_FILE = ".budget.lock"
 SPEND_FILE = "spend.jsonl"
+# The original rows of a job whose rows were relabelled (decision 0131 item 3). The budget code
+# reads ``*/spend.jsonl`` only, so this copy is kept beside the new rows and is never counted.
+RELABEL_FILE = "spend-before-relabel.jsonl"
 
 
 class SpendRecord(BaseModel):
     """Paid work that is not an evaluation run: evidence preparation (decision 0081).
 
     A job appends one row per chunk of calls, so a job that dies mid-way has still recorded
-    what it spent up to its last chunk.
+    what it spent up to its last chunk. ``probe`` (decision 0131) is paid work that tests a
+    shape or a flow and is neither an evaluation run nor evidence preparation.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: str
-    kind: Literal["inventory", "transcriber-test", "transcription"]
+    kind: Literal["inventory", "transcriber-test", "transcription", "probe"]
     model: str
     started: datetime
     calls: int
@@ -47,12 +51,44 @@ def write_spend(runs_dir: Path, record: SpendRecord) -> None:
     write_jsonl(runs_dir / record.job_id / SPEND_FILE, [record])
 
 
+# Decision 0135: the run kinds whose spend counts what the provider billed. Arm C's runs, and arm
+# B's tool post-pass, a derived arm B run whose prompt version holds this mark (``agent/armb.py``).
+BILLED_ARMS = frozenset({"C"})
+TOOLS_MARK = "+tools-"
+
+
+def counts_billed(record: RunRecord) -> bool:
+    """Whether a run's spend is the provider's reported total, not the computed price (0135).
+
+    True for S3's own kinds of run (arm C, and arm B's tool post-pass) when every batch round
+    reported its cost (``reported_batch_cost_usd`` is not None). A sync run has no rounds, so
+    no reported total; nor does a judge pass or an ordering check, which call synchronously.
+    No run from before S3 is of these kinds, so none changes what it counts.
+    """
+    return record.reported_batch_cost_usd is not None and (
+        record.arm in BILLED_ARMS or TOOLS_MARK in record.prompt_version
+    )
+
+
+def spent_usd(record: RunRecord) -> float:
+    """What one run record counts as spent, in the monthly guard and a stage's spend line.
+
+    The provider's reported total (``reported_batch_cost_usd``) when ``counts_billed``, else the
+    computed price (``cost_usd``). The computed price prices every prompt token at the full
+    input rate, cached ones too, so it errs high; it stays in the record, and the per-case cap
+    keeps using it (decision 0135).
+    """
+    reported = record.reported_batch_cost_usd
+    return reported if reported is not None and counts_billed(record) else record.cost_usd
+
+
 def month_spent(runs_dir: Path, *, now: datetime) -> float:
     """Cost of every run started in ``now``'s month, aborted runs included.
 
     A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` (the answering run
-    and a judge pass), and every one of them counts. So does every preparation job's spend
-    rows (0081). Reservations are not spend and are not counted here.
+    and a judge pass), and every one of them counts, each as ``spent_usd`` says (0135). So does
+    every preparation job's spend rows (0081). Reservations are not spend and are not counted
+    here.
     """
     if not runs_dir.exists():
         return 0.0
@@ -60,7 +96,7 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
     for run_file in sorted(runs_dir.glob("*/run.jsonl")):
         for record in read_jsonl(run_file, RunRecord):
             if record.started.year == now.year and record.started.month == now.month:
-                total += record.cost_usd
+                total += spent_usd(record)
     for spend_file in sorted(runs_dir.glob(f"*/{SPEND_FILE}")):
         for spend in read_jsonl(spend_file, SpendRecord):
             if spend.started.year == now.year and spend.started.month == now.month:
@@ -83,9 +119,10 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
 
     Counted by commit, not by date, because S2.6 found a date filter caught another stage's
     runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
+    Each run record counts as ``spent_usd`` says (decision 0135).
     """
     runs = sum(
-        record.cost_usd
+        spent_usd(record)
         for path in sorted(runs_dir.glob("*/run.jsonl"))
         for record in read_jsonl(path, RunRecord)
         if in_stage(record.commit_sha, stage_commits)

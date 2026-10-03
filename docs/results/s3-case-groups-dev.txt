@@ -1,0 +1,51 @@
+S3.1 case groups on dev-400 (scripts/s3_case_groups.py; plan Task 15, spec §10.3)
+Counts only: no case number. Every figure is printed with its denominator.
+Occurrence top-1 in each run. A case that failed in a run, or holds no score there, counts as wrong in that run (decision 0136 item 1).
+run 1 = 20261001T201506-fd6053f-dev-400-C (arm C)
+run 2 = 20261001T201648-fd6053f-dev-400-C (arm C)
+run 3 = 20260926T082427-d19aafa-dev-400-B (arm B)
+run 4 = 20260927T111202-fbab38a-dev-400-B (arm B)
+
+## all 4 runs (runs 1, 2, 3, 4)
+
+always right: 30 of 401 (7.5%)
+always wrong: 235 of 401 (58.6%)
+flipping: 136 of 401 (33.9%)
+- fatal: always right 12 of 200 (6.0%), always wrong 119 of 200 (59.5%), flipping 69 of 200 (34.5%)
+- non-fatal: always right 18 of 201 (9.0%), always wrong 116 of 201 (57.7%), flipping 67 of 201 (33.3%)
+failed in at least one of these runs: 14 of 401 (3.5%); in every one: 2 of 401 (0.5%)
+
+## arm C runs only (runs 1, 2)
+
+always right: 79 of 401 (19.7%)
+always wrong: 266 of 401 (66.3%)
+flipping: 56 of 401 (14.0%)
+- fatal: always right 47 of 200 (23.5%), always wrong 132 of 200 (66.0%), flipping 21 of 200 (10.5%)
+- non-fatal: always right 32 of 201 (15.9%), always wrong 134 of 201 (66.7%), flipping 35 of 201 (17.4%)
+failed in at least one of these runs: 14 of 401 (3.5%); in every one: 3 of 401 (0.7%)
+
+## arm B runs only (runs 3, 4)
+
+always right: 48 of 401 (12.0%)
+always wrong: 299 of 401 (74.6%)
+flipping: 54 of 401 (13.5%)
+- fatal: always right 22 of 200 (11.0%), always wrong 149 of 200 (74.5%), flipping 29 of 200 (14.5%)
+- non-fatal: always right 26 of 201 (12.9%), always wrong 150 of 201 (74.6%), flipping 25 of 201 (12.4%)
+failed in at least one of these runs: 2 of 401 (0.5%); in every one: 2 of 401 (0.5%)
+
+## arm C group against arm B group (cases; each row an arm C group, split by arm B group)
+
+all cases (401):
+- arm C always right: arm B always right 30, always wrong 26, flipping 23; 79 of 401 cases
+- arm C always wrong: arm B always right 7, always wrong 235, flipping 24; 266 of 401 cases
+- arm C flipping: arm B always right 11, always wrong 38, flipping 7; 56 of 401 cases
+fatal cases (200):
+- arm C always right: arm B always right 12, always wrong 17, flipping 18; 47 of 200 cases
+- arm C always wrong: arm B always right 4, always wrong 119, flipping 9; 132 of 200 cases
+- arm C flipping: arm B always right 6, always wrong 13, flipping 2; 21 of 200 cases
+non-fatal cases (201):
+- arm C always right: arm B always right 18, always wrong 9, flipping 5; 32 of 201 cases
+- arm C always wrong: arm B always right 3, always wrong 116, flipping 15; 134 of 201 cases
+- arm C flipping: arm B always right 5, always wrong 25, flipping 5; 35 of 201 cases
+
+case lists (case ids; under NTSB_RUNS_DIR, never committed): s3-case-groups/20261002T065520/groups.json

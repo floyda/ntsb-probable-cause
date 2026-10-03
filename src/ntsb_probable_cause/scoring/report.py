@@ -166,6 +166,37 @@ def compare_by_fatal(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
     return "\n".join(blocks)
 
 
+def _first_code(case: CaseResult) -> str:
+    guess = case.steps[-1].hypothesis.occurrence[0]
+    return guess.phase + guess.event
+
+
+def first_code_changes(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> str:
+    """How many first occurrence codes differ between two runs, with the fixes and breaks.
+
+    Over the shared, scored cases, as :func:`compare` pairs them. A fix is a case whose first
+    code is right in ``a`` and wrong in ``b``; a break, the reverse. Printed beside the paired
+    difference when ``a`` is the ordering check's diagnostic over arm C (decision 0137): only a
+    changed first code can fix or break a case on occurrence top-1.
+    """
+    by_b = {r.case_id: r for r in b if r.scores is not None and r.steps}
+    shared = changed = fixes = breaks = 0
+    for case in a:
+        other = by_b.get(case.case_id)
+        if case.scores is None or not case.steps or other is None or other.scores is None:
+            continue
+        shared += 1
+        if _first_code(case) == _first_code(other):
+            continue
+        changed += 1
+        fixes += case.scores.occurrence_top1 and not other.scores.occurrence_top1
+        breaks += other.scores.occurrence_top1 and not case.scores.occurrence_top1
+    return (
+        f"first codes changed (a against b): {changed} of {shared} shared, scored cases; "
+        f"fixes {fixes}, breaks {breaks} (decision 0137)"
+    )
+
+
 _THRESHOLDS = tuple(i / 20 for i in range(1, 20))
 
 
@@ -312,13 +343,23 @@ def summarise(results: Sequence[CaseResult], *, floor: Mapping[str, float] | Non
     return "\n".join(lines)
 
 
-def cap_summary(results: Sequence[CaseResult]) -> str:
+def cap_summary(
+    results: Sequence[CaseResult], *, heading: str = "cap", what: str = "hit the cap"
+) -> str:
     """How much of the docket the result was measured on (decision 0043 item 3).
 
     Reads each case's own ``documents_not_read`` rather than summing over ``steps``: a case
     whose base prompt (with whatever documents made it in) is still over the cap fails
     before a step is ever recorded (``steps=()``), and that is exactly the case that dropped
     the most of the docket -- it must not be invisible in this count (fix round 1, Finding 4).
+
+    Args:
+        results: the run's cases.
+        heading: the line's first word; ``cap`` for arm B, whose documents are left out at the
+            cap.
+        what: what a case with documents left out did. Arm C's agent leaves documents unread
+            by choice, or by stopping before it chose (S3.1 Task 10), so its line reads
+            ``unread: N of M cases left documents unread; ...``.
     """
 
     def counts(rows: Sequence[CaseResult]) -> tuple[int, int]:
@@ -330,7 +371,7 @@ def cap_summary(results: Sequence[CaseResult]) -> str:
     fatal_hit, fatal_docs = counts([r for r in results if r.fatal])
     non_hit, non_docs = counts([r for r in results if not r.fatal])
     return (
-        f"cap: {cases_hit} of {len(results)} cases hit the cap; {docs} documents not read "
+        f"{heading}: {cases_hit} of {len(results)} cases {what}; {docs} documents not read "
         f"(fatal {fatal_hit} cases/{fatal_docs} documents, non-fatal {non_hit}/{non_docs})"
     )
 

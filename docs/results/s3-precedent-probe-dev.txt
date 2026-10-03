@@ -1,0 +1,218 @@
+S3.1 precedent probe on dev-400 (scripts/exploratory/s3_precedent_probe.py; S3.1 Task 15)
+Exploratory (decision 0059): free and offline, no model call; it sets no bar and tunes nothing. Whether earlier closed cases, found from the loop's own words, hold the NTSB's first occurrence code.
+Counts only: no case number and no text from any record. Every count is printed with its denominator; found@5 and the controls with a 95% Wilson interval.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C (printed beside run a; decides nothing)
+Groups: arm C, from s3-case-groups/20261002T065520/groups.json: always wrong 266 cases (132 fatal, 134 non-fatal); always right 79 cases (47 fatal, 32 non-fatal)
+
+## The rule (committed in a0c6cc6, before this script existed)
+
+Prediction (Andy, 2026-10-02). Read on run a, with the better of the two queries: promising if found in at least 67 of the 266 cases (25%) and the found count is above the control's count; not promising if found in fewer than 27 (10%), or the found count is not above the control's; in between: read a sample of cases before deciding anything.
+Run a (20261001T201506-fd6053f-dev-400-C), "always wrong", date-limited pool (earlier cases only):
+- found@5, probable-cause query: 48 of 266 (18.0%) [13.9%, 23.1%]
+- found@5, evidence-narrative query: 34 of 266 (12.8%) [9.3%, 17.3%]
+- control (the pool's five commonest first codes, no search): 19 of 266 (7.1%) [4.6%, 10.9%]
+- the better query (a tie goes to the probable cause): probable cause, found in 48 of 266, against the control's 19
+Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: found@5 probable-cause query 53 of 266 (19.9%), evidence-narrative query 44 of 266 (16.5%); control 19 of 266 (7.1%)
+Outcome: in between
+
+## Method
+
+Pool: the S3 statistics pool, development split, classes C/F/L, excluding dev-400, dev-seal-400 and dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129): 12090 cases; kept, each with an NTSB probable-cause text and at least one occurrence code: 12090 (event years 2009-2019); left out: 0 with no probable-cause text, 0 more with no occurrence code. The judged cases' event dates come from the same processed file.
+Search: BM25 (k1 = 1.2, b = 0.75; IDF = ln(1 + (N - df + 0.5) / (df + 0.5))) over the lower-cased word tokens ([a-z0-9]+) of the pool's NTSB probable-cause texts, less a fixed list of 134 English stop words. Each distinct query word counts once; a pool case sharing no word with the query is not ranked. The five highest-ranked, ties by case id ascending.
+Date-limited pool (the headline): only pool cases whose event date is strictly earlier than the judged case's; N, df and the average length over that set.
+Whole pool: every pool case except those on the judged case's event date; statistics over that set.
+Queries: the final answer's probable cause and, separately, its evidence narrative. A case counted as failed (decision 0136 item 1) has no query and is not found; it stays in the denominator.
+Measures: found@5, the NTSB's first occurrence code (six digits) is the first code of at least one of the five; nearest@1, of the highest-ranked; majority@5, the commonest first code among the five (ties by rank) is it; event-only@5, its event (last three digits) is that of one of the five's first codes.
+Control (no search): the NTSB's first code is among the five commonest first codes of the same pool (ties by code ascending); every case counts, failed or not, as it needs no answer. Phase-aware control: the five commonest first codes among the pool cases whose first code has the phase of the loop's own answer's first code; a case with no answer is not found.
+The five commonest first codes of the kept pool, for reference: 552230 Landing-Landing Roll / Loss of control on ground (967); 551092 Landing-Flare/Touchdown / Hard landing (425); 300230 Takeoff / Loss of control on ground (365); 402341 Enroute-Cruise / Loss of engine power (total) (325); 550230 Landing / Loss of control on ground (313).
+
+## arm C, always wrong: 266 cases (132 fatal, 134 non-fatal)
+
+Cases whose date-limited pool holds fewer than 5 cases: 0 of 266 (0.0%)
+
+### date-limited pool (only cases strictly earlier than the judged case)
+control (no search): 19 of 266 (7.1%) [4.6%, 10.9%]; fatal 2 of 132 (1.5%) [0.4%, 5.4%]; non-fatal 17 of 134 (12.7%) [8.1%, 19.4%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 6 of 266 (2.3%)
+  probable cause query:
+  - found@5: 48 of 266 (18.0%) [13.9%, 23.1%]; fatal 25 of 132 (18.9%) [13.2%, 26.5%]; non-fatal 23 of 134 (17.2%) [11.7%, 24.4%]
+  - nearest@1: 17 of 266 (6.4%); fatal 9 of 132 (6.8%); non-fatal 8 of 134 (6.0%)
+  - majority@5: 18 of 266 (6.8%); fatal 8 of 132 (6.1%); non-fatal 10 of 134 (7.5%)
+  - event-only@5: 131 of 266 (49.2%); fatal 67 of 132 (50.8%); non-fatal 64 of 134 (47.8%)
+  evidence narrative query:
+  - found@5: 34 of 266 (12.8%) [9.3%, 17.3%]; fatal 12 of 132 (9.1%) [5.3%, 15.2%]; non-fatal 22 of 134 (16.4%) [11.1%, 23.6%]
+  - nearest@1: 12 of 266 (4.5%); fatal 2 of 132 (1.5%); non-fatal 10 of 134 (7.5%)
+  - majority@5: 15 of 266 (5.6%); fatal 4 of 132 (3.0%); non-fatal 11 of 134 (8.2%)
+  - event-only@5: 125 of 266 (47.0%); fatal 63 of 132 (47.7%); non-fatal 62 of 134 (46.3%)
+  phase-aware control: 57 of 266 (21.4%) [16.9%, 26.7%]; fatal 25 of 132 (18.9%) [13.2%, 26.5%]; non-fatal 32 of 134 (23.9%) [17.5%, 31.8%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 7 of 266 (2.6%)
+  probable cause query:
+  - found@5: 53 of 266 (19.9%) [15.6%, 25.1%]; fatal 23 of 132 (17.4%) [11.9%, 24.8%]; non-fatal 30 of 134 (22.4%) [16.2%, 30.2%]
+  - nearest@1: 17 of 266 (6.4%); fatal 8 of 132 (6.1%); non-fatal 9 of 134 (6.7%)
+  - majority@5: 19 of 266 (7.1%); fatal 10 of 132 (7.6%); non-fatal 9 of 134 (6.7%)
+  - event-only@5: 137 of 266 (51.5%); fatal 67 of 132 (50.8%); non-fatal 70 of 134 (52.2%)
+  evidence narrative query:
+  - found@5: 44 of 266 (16.5%) [12.6%, 21.5%]; fatal 14 of 132 (10.6%) [6.4%, 17.0%]; non-fatal 30 of 134 (22.4%) [16.2%, 30.2%]
+  - nearest@1: 13 of 266 (4.9%); fatal 3 of 132 (2.3%); non-fatal 10 of 134 (7.5%)
+  - majority@5: 15 of 266 (5.6%); fatal 2 of 132 (1.5%); non-fatal 13 of 134 (9.7%)
+  - event-only@5: 125 of 266 (47.0%); fatal 62 of 132 (47.0%); non-fatal 63 of 134 (47.0%)
+  phase-aware control: 47 of 266 (17.7%) [13.6%, 22.7%]; fatal 20 of 132 (15.2%) [10.0%, 22.2%]; non-fatal 27 of 134 (20.1%) [14.2%, 27.7%]
+
+### whole pool (cases on the judged case's event date left out)
+control (no search): 26 of 266 (9.8%) [6.8%, 13.9%]; fatal 2 of 132 (1.5%) [0.4%, 5.4%]; non-fatal 24 of 134 (17.9%) [12.3%, 25.3%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 6 of 266 (2.3%)
+  probable cause query:
+  - found@5: 56 of 266 (21.1%) [16.6%, 26.3%]; fatal 26 of 132 (19.7%) [13.8%, 27.3%]; non-fatal 30 of 134 (22.4%) [16.2%, 30.2%]
+  - nearest@1: 18 of 266 (6.8%); fatal 8 of 132 (6.1%); non-fatal 10 of 134 (7.5%)
+  - majority@5: 20 of 266 (7.5%); fatal 10 of 132 (7.6%); non-fatal 10 of 134 (7.5%)
+  - event-only@5: 139 of 266 (52.3%); fatal 72 of 132 (54.5%); non-fatal 67 of 134 (50.0%)
+  evidence narrative query:
+  - found@5: 36 of 266 (13.5%) [9.9%, 18.2%]; fatal 15 of 132 (11.4%) [7.0%, 17.9%]; non-fatal 21 of 134 (15.7%) [10.5%, 22.8%]
+  - nearest@1: 7 of 266 (2.6%); fatal 2 of 132 (1.5%); non-fatal 5 of 134 (3.7%)
+  - majority@5: 13 of 266 (4.9%); fatal 3 of 132 (2.3%); non-fatal 10 of 134 (7.5%)
+  - event-only@5: 129 of 266 (48.5%); fatal 61 of 132 (46.2%); non-fatal 68 of 134 (50.7%)
+  phase-aware control: 61 of 266 (22.9%) [18.3%, 28.3%]; fatal 27 of 132 (20.5%) [14.5%, 28.1%]; non-fatal 34 of 134 (25.4%) [18.8%, 33.4%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 7 of 266 (2.6%)
+  probable cause query:
+  - found@5: 48 of 266 (18.0%) [13.9%, 23.1%]; fatal 21 of 132 (15.9%) [10.6%, 23.1%]; non-fatal 27 of 134 (20.1%) [14.2%, 27.7%]
+  - nearest@1: 20 of 266 (7.5%); fatal 9 of 132 (6.8%); non-fatal 11 of 134 (8.2%)
+  - majority@5: 21 of 266 (7.9%); fatal 12 of 132 (9.1%); non-fatal 9 of 134 (6.7%)
+  - event-only@5: 134 of 266 (50.4%); fatal 65 of 132 (49.2%); non-fatal 69 of 134 (51.5%)
+  evidence narrative query:
+  - found@5: 44 of 266 (16.5%) [12.6%, 21.5%]; fatal 19 of 132 (14.4%) [9.4%, 21.4%]; non-fatal 25 of 134 (18.7%) [13.0%, 26.1%]
+  - nearest@1: 11 of 266 (4.1%); fatal 4 of 132 (3.0%); non-fatal 7 of 134 (5.2%)
+  - majority@5: 14 of 266 (5.3%); fatal 5 of 132 (3.8%); non-fatal 9 of 134 (6.7%)
+  - event-only@5: 127 of 266 (47.7%); fatal 60 of 132 (45.5%); non-fatal 67 of 134 (50.0%)
+  phase-aware control: 49 of 266 (18.4%) [14.2%, 23.5%]; fatal 21 of 132 (15.9%) [10.6%, 23.1%]; non-fatal 28 of 134 (20.9%) [14.9%, 28.5%]
+
+## arm C, always right: 79 cases (47 fatal, 32 non-fatal)
+
+Cases whose date-limited pool holds fewer than 5 cases: 0 of 79 (0.0%)
+
+### date-limited pool (only cases strictly earlier than the judged case)
+control (no search): 19 of 79 (24.1%) [16.0%, 34.5%]; fatal 4 of 47 (8.5%) [3.4%, 19.9%]; non-fatal 15 of 32 (46.9%) [30.9%, 63.6%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 0 of 79 (0.0%)
+  probable cause query:
+  - found@5: 57 of 79 (72.2%) [61.4%, 80.8%]; fatal 32 of 47 (68.1%) [53.8%, 79.6%]; non-fatal 25 of 32 (78.1%) [61.2%, 89.0%]
+  - nearest@1: 24 of 79 (30.4%); fatal 13 of 47 (27.7%); non-fatal 11 of 32 (34.4%)
+  - majority@5: 33 of 79 (41.8%); fatal 19 of 47 (40.4%); non-fatal 14 of 32 (43.8%)
+  - event-only@5: 74 of 79 (93.7%); fatal 43 of 47 (91.5%); non-fatal 31 of 32 (96.9%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 55 of 79 (69.6%); fatal 34 of 47 (72.3%); non-fatal 21 of 32 (65.6%)
+  - the NTSB's first code is not among the five: 22 of 79 (27.8%); fatal 15 of 47 (31.9%); non-fatal 7 of 32 (21.9%)
+  evidence narrative query:
+  - found@5: 33 of 79 (41.8%) [31.5%, 52.8%]; fatal 17 of 47 (36.2%) [24.0%, 50.5%]; non-fatal 16 of 32 (50.0%) [33.6%, 66.4%]
+  - nearest@1: 10 of 79 (12.7%); fatal 6 of 47 (12.8%); non-fatal 4 of 32 (12.5%)
+  - majority@5: 16 of 79 (20.3%); fatal 7 of 47 (14.9%); non-fatal 9 of 32 (28.1%)
+  - event-only@5: 63 of 79 (79.7%); fatal 39 of 47 (83.0%); non-fatal 24 of 32 (75.0%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 69 of 79 (87.3%); fatal 41 of 47 (87.2%); non-fatal 28 of 32 (87.5%)
+  - the NTSB's first code is not among the five: 46 of 79 (58.2%); fatal 30 of 47 (63.8%); non-fatal 16 of 32 (50.0%)
+  phase-aware control: 73 of 79 (92.4%) [84.4%, 96.5%]; fatal 46 of 47 (97.9%) [88.9%, 99.6%]; non-fatal 27 of 32 (84.4%) [68.2%, 93.1%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 0 of 79 (0.0%)
+  probable cause query:
+  - found@5: 46 of 79 (58.2%) [47.2%, 68.5%]; fatal 24 of 47 (51.1%) [37.2%, 64.7%]; non-fatal 22 of 32 (68.8%) [51.4%, 82.0%]
+  - nearest@1: 13 of 79 (16.5%); fatal 5 of 47 (10.6%); non-fatal 8 of 32 (25.0%)
+  - majority@5: 23 of 79 (29.1%); fatal 10 of 47 (21.3%); non-fatal 13 of 32 (40.6%)
+  - event-only@5: 68 of 79 (86.1%); fatal 39 of 47 (83.0%); non-fatal 29 of 32 (90.6%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 66 of 79 (83.5%); fatal 42 of 47 (89.4%); non-fatal 24 of 32 (75.0%)
+  - the NTSB's first code is not among the five: 33 of 79 (41.8%); fatal 23 of 47 (48.9%); non-fatal 10 of 32 (31.2%)
+  evidence narrative query:
+  - found@5: 41 of 79 (51.9%) [41.1%, 62.6%]; fatal 22 of 47 (46.8%) [33.3%, 60.8%]; non-fatal 19 of 32 (59.4%) [42.3%, 74.5%]
+  - nearest@1: 7 of 79 (8.9%); fatal 3 of 47 (6.4%); non-fatal 4 of 32 (12.5%)
+  - majority@5: 11 of 79 (13.9%); fatal 5 of 47 (10.6%); non-fatal 6 of 32 (18.8%)
+  - event-only@5: 64 of 79 (81.0%); fatal 39 of 47 (83.0%); non-fatal 25 of 32 (78.1%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 72 of 79 (91.1%); fatal 44 of 47 (93.6%); non-fatal 28 of 32 (87.5%)
+  - the NTSB's first code is not among the five: 38 of 79 (48.1%); fatal 25 of 47 (53.2%); non-fatal 13 of 32 (40.6%)
+  phase-aware control: 73 of 79 (92.4%) [84.4%, 96.5%]; fatal 46 of 47 (97.9%) [88.9%, 99.6%]; non-fatal 27 of 32 (84.4%) [68.2%, 93.1%]
+
+### whole pool (cases on the judged case's event date left out)
+control (no search): 14 of 79 (17.7%) [10.9%, 27.6%]; fatal 1 of 47 (2.1%) [0.4%, 11.1%]; non-fatal 13 of 32 (40.6%) [25.5%, 57.7%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 0 of 79 (0.0%)
+  probable cause query:
+  - found@5: 48 of 79 (60.8%) [49.7%, 70.8%]; fatal 26 of 47 (55.3%) [41.2%, 68.6%]; non-fatal 22 of 32 (68.8%) [51.4%, 82.0%]
+  - nearest@1: 21 of 79 (26.6%); fatal 10 of 47 (21.3%); non-fatal 11 of 32 (34.4%)
+  - majority@5: 25 of 79 (31.6%); fatal 13 of 47 (27.7%); non-fatal 12 of 32 (37.5%)
+  - event-only@5: 71 of 79 (89.9%); fatal 42 of 47 (89.4%); non-fatal 29 of 32 (90.6%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 58 of 79 (73.4%); fatal 37 of 47 (78.7%); non-fatal 21 of 32 (65.6%)
+  - the NTSB's first code is not among the five: 31 of 79 (39.2%); fatal 21 of 47 (44.7%); non-fatal 10 of 32 (31.2%)
+  evidence narrative query:
+  - found@5: 32 of 79 (40.5%) [30.4%, 51.5%]; fatal 18 of 47 (38.3%) [25.8%, 52.6%]; non-fatal 14 of 32 (43.8%) [28.2%, 60.7%]
+  - nearest@1: 7 of 79 (8.9%); fatal 2 of 47 (4.3%); non-fatal 5 of 32 (15.6%)
+  - majority@5: 12 of 79 (15.2%); fatal 4 of 47 (8.5%); non-fatal 8 of 32 (25.0%)
+  - event-only@5: 60 of 79 (75.9%); fatal 37 of 47 (78.7%); non-fatal 23 of 32 (71.9%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 72 of 79 (91.1%); fatal 45 of 47 (95.7%); non-fatal 27 of 32 (84.4%)
+  - the NTSB's first code is not among the five: 47 of 79 (59.5%); fatal 29 of 47 (61.7%); non-fatal 18 of 32 (56.2%)
+  phase-aware control: 75 of 79 (94.9%) [87.7%, 98.0%]; fatal 46 of 47 (97.9%) [88.9%, 99.6%]; non-fatal 29 of 32 (90.6%) [75.8%, 96.8%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 0 of 79 (0.0%)
+  probable cause query:
+  - found@5: 45 of 79 (57.0%) [46.0%, 67.3%]; fatal 25 of 47 (53.2%) [39.2%, 66.7%]; non-fatal 20 of 32 (62.5%) [45.3%, 77.1%]
+  - nearest@1: 16 of 79 (20.3%); fatal 7 of 47 (14.9%); non-fatal 9 of 32 (28.1%)
+  - majority@5: 21 of 79 (26.6%); fatal 8 of 47 (17.0%); non-fatal 13 of 32 (40.6%)
+  - event-only@5: 67 of 79 (84.8%); fatal 38 of 47 (80.9%); non-fatal 29 of 32 (90.6%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 63 of 79 (79.7%); fatal 40 of 47 (85.1%); non-fatal 23 of 32 (71.9%)
+  - the NTSB's first code is not among the five: 34 of 79 (43.0%); fatal 22 of 47 (46.8%); non-fatal 12 of 32 (37.5%)
+  evidence narrative query:
+  - found@5: 32 of 79 (40.5%) [30.4%, 51.5%]; fatal 19 of 47 (40.4%) [27.6%, 54.7%]; non-fatal 13 of 32 (40.6%) [25.5%, 57.7%]
+  - nearest@1: 7 of 79 (8.9%); fatal 2 of 47 (4.3%); non-fatal 5 of 32 (15.6%)
+  - majority@5: 12 of 79 (15.2%); fatal 6 of 47 (12.8%); non-fatal 6 of 32 (18.8%)
+  - event-only@5: 59 of 79 (74.7%); fatal 35 of 47 (74.5%); non-fatal 24 of 32 (75.0%)
+  - the nearest case's first code differs from the NTSB's (= the loop's) first code: 72 of 79 (91.1%); fatal 45 of 47 (95.7%); non-fatal 27 of 32 (84.4%)
+  - the NTSB's first code is not among the five: 47 of 79 (59.5%); fatal 28 of 47 (59.6%); non-fatal 19 of 32 (59.4%)
+  phase-aware control: 75 of 79 (94.9%) [87.7%, 98.0%]; fatal 46 of 47 (97.9%) [88.9%, 99.6%]; non-fatal 29 of 32 (90.6%) [75.8%, 96.8%]
+
+## all cases (failed cases counted as not found): 401 cases (200 fatal, 201 non-fatal)
+
+Cases whose date-limited pool holds fewer than 5 cases: 0 of 401 (0.0%)
+
+### date-limited pool (only cases strictly earlier than the judged case)
+control (no search): 54 of 401 (13.5%) [10.5%, 17.2%]; fatal 7 of 200 (3.5%) [1.7%, 7.0%]; non-fatal 47 of 201 (23.4%) [18.1%, 29.7%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 7 of 401 (1.7%)
+  probable cause query:
+  - found@5: 127 of 401 (31.7%) [27.3%, 36.4%]; fatal 66 of 200 (33.0%) [26.9%, 39.8%]; non-fatal 61 of 201 (30.3%) [24.4%, 37.0%]
+  - nearest@1: 46 of 401 (11.5%); fatal 23 of 200 (11.5%); non-fatal 23 of 201 (11.4%)
+  - majority@5: 59 of 401 (14.7%); fatal 30 of 200 (15.0%); non-fatal 29 of 201 (14.4%)
+  - event-only@5: 248 of 401 (61.8%); fatal 128 of 200 (64.0%); non-fatal 120 of 201 (59.7%)
+  evidence narrative query:
+  - found@5: 83 of 401 (20.7%) [17.0%, 24.9%]; fatal 36 of 200 (18.0%) [13.3%, 23.9%]; non-fatal 47 of 201 (23.4%) [18.1%, 29.7%]
+  - nearest@1: 27 of 401 (6.7%); fatal 10 of 200 (5.0%); non-fatal 17 of 201 (8.5%)
+  - majority@5: 37 of 401 (9.2%); fatal 13 of 200 (6.5%); non-fatal 24 of 201 (11.9%)
+  - event-only@5: 228 of 401 (56.9%); fatal 119 of 200 (59.5%); non-fatal 109 of 201 (54.2%)
+  phase-aware control: 166 of 401 (41.4%) [36.7%, 46.3%]; fatal 83 of 200 (41.5%) [34.9%, 48.4%]; non-fatal 83 of 201 (41.3%) [34.7%, 48.2%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 10 of 401 (2.5%)
+  probable cause query:
+  - found@5: 119 of 401 (29.7%) [25.4%, 34.3%]; fatal 53 of 200 (26.5%) [20.9%, 33.0%]; non-fatal 66 of 201 (32.8%) [26.7%, 39.6%]
+  - nearest@1: 35 of 401 (8.7%); fatal 14 of 200 (7.0%); non-fatal 21 of 201 (10.4%)
+  - majority@5: 51 of 401 (12.7%); fatal 22 of 200 (11.0%); non-fatal 29 of 201 (14.4%)
+  - event-only@5: 246 of 401 (61.3%); fatal 119 of 200 (59.5%); non-fatal 127 of 201 (63.2%)
+  evidence narrative query:
+  - found@5: 102 of 401 (25.4%) [21.4%, 29.9%]; fatal 40 of 200 (20.0%) [15.0%, 26.1%]; non-fatal 62 of 201 (30.8%) [24.9%, 37.5%]
+  - nearest@1: 24 of 401 (6.0%); fatal 7 of 200 (3.5%); non-fatal 17 of 201 (8.5%)
+  - majority@5: 33 of 401 (8.2%); fatal 8 of 200 (4.0%); non-fatal 25 of 201 (12.4%)
+  - event-only@5: 227 of 401 (56.6%); fatal 114 of 200 (57.0%); non-fatal 113 of 201 (56.2%)
+  phase-aware control: 152 of 401 (37.9%) [33.3%, 42.7%]; fatal 79 of 200 (39.5%) [33.0%, 46.4%]; non-fatal 73 of 201 (36.3%) [30.0%, 43.2%]
+
+### whole pool (cases on the judged case's event date left out)
+control (no search): 53 of 401 (13.2%) [10.2%, 16.9%]; fatal 4 of 200 (2.0%) [0.8%, 5.0%]; non-fatal 49 of 201 (24.4%) [19.0%, 30.8%]
+run a (20261001T201506-fd6053f-dev-400-C); no query (failed or not scored): 7 of 401 (1.7%)
+  probable cause query:
+  - found@5: 128 of 401 (31.9%) [27.5%, 36.6%]; fatal 63 of 200 (31.5%) [25.5%, 38.2%]; non-fatal 65 of 201 (32.3%) [26.3%, 39.1%]
+  - nearest@1: 46 of 401 (11.5%); fatal 22 of 200 (11.0%); non-fatal 24 of 201 (11.9%)
+  - majority@5: 58 of 401 (14.5%); fatal 29 of 200 (14.5%); non-fatal 29 of 201 (14.4%)
+  - event-only@5: 256 of 401 (63.8%); fatal 133 of 200 (66.5%); non-fatal 123 of 201 (61.2%)
+  evidence narrative query:
+  - found@5: 90 of 401 (22.4%) [18.6%, 26.8%]; fatal 43 of 200 (21.5%) [16.4%, 27.7%]; non-fatal 47 of 201 (23.4%) [18.1%, 29.7%]
+  - nearest@1: 22 of 401 (5.5%); fatal 6 of 200 (3.0%); non-fatal 16 of 201 (8.0%)
+  - majority@5: 36 of 401 (9.0%); fatal 11 of 200 (5.5%); non-fatal 25 of 201 (12.4%)
+  - event-only@5: 233 of 401 (58.1%); fatal 116 of 200 (58.0%); non-fatal 117 of 201 (58.2%)
+  phase-aware control: 172 of 401 (42.9%) [38.1%, 47.8%]; fatal 85 of 200 (42.5%) [35.9%, 49.4%]; non-fatal 87 of 201 (43.3%) [36.6%, 50.2%]
+run b (20261001T201648-fd6053f-dev-400-C); no query (failed or not scored): 10 of 401 (2.5%)
+  probable cause query:
+  - found@5: 116 of 401 (28.9%) [24.7%, 33.5%]; fatal 54 of 200 (27.0%) [21.3%, 33.5%]; non-fatal 62 of 201 (30.8%) [24.9%, 37.5%]
+  - nearest@1: 47 of 401 (11.7%); fatal 21 of 200 (10.5%); non-fatal 26 of 201 (12.9%)
+  - majority@5: 55 of 401 (13.7%); fatal 25 of 200 (12.5%); non-fatal 30 of 201 (14.9%)
+  - event-only@5: 245 of 401 (61.1%); fatal 118 of 200 (59.0%); non-fatal 127 of 201 (63.2%)
+  evidence narrative query:
+  - found@5: 99 of 401 (24.7%) [20.7%, 29.1%]; fatal 45 of 200 (22.5%) [17.3%, 28.8%]; non-fatal 54 of 201 (26.9%) [21.2%, 33.4%]
+  - nearest@1: 24 of 401 (6.0%); fatal 8 of 200 (4.0%); non-fatal 16 of 201 (8.0%)
+  - majority@5: 34 of 401 (8.5%); fatal 14 of 200 (7.0%); non-fatal 20 of 201 (10.0%)
+  - event-only@5: 228 of 401 (56.9%); fatal 109 of 200 (54.5%); non-fatal 119 of 201 (59.2%)
+  phase-aware control: 156 of 401 (38.9%) [34.3%, 43.8%]; fatal 80 of 200 (40.0%) [33.5%, 46.9%]; non-fatal 76 of 201 (37.8%) [31.4%, 44.7%]

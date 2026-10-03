@@ -70,3 +70,17 @@ narrative is empty in all 19,641 processed cases, which are all closed
 
 Accepted on Andy's squash merge of the pull request that carries the agency design revision,
 2026-09-14.
+
+## Superseded in part, 2026-09-30 (appended; nothing above is edited)
+
+- **Items 1, 2 and 4 are superseded by
+  [0121](0121-agency-moves-to-reading-and-coding.md).** Structured evidence is not put behind
+  tools: the first hypothesis uses all non-docket evidence the case holds
+  ([0122](0122-h0-and-later-triggers.md)). The start facts listed in item 1 remain arm A's
+  input. Every offered docket document gets a read-or-skip decision, whatever its size. The
+  masked condition is paused with the staged replay
+  ([0123](0123-the-staged-replay-is-paused.md)).
+- The Context's "docket documents arrive over months" is not what the recorder has seen so far:
+  in 7 nights, no docket was seen to arrive before closure. A probe of 100 cases ongoing as of
+  2026-09-15 found 2 dockets already released before closure, with no arrival time (0123).
+- Items 3, 5 and 6 stand.
