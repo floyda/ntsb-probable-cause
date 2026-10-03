@@ -205,3 +205,16 @@ def test_calibrated_needs_exactly_three_groups() -> None:
     for groups in ([], [ok], [ok, ok], [ok, ok, ok, ok]):
         with pytest.raises(ValueError, match="needs 3 groups"):
             calibrated(groups)
+
+
+def test_the_committed_curve_loads_and_rises() -> None:
+    """The packaged file, fitted by ``scripts/s32_calibration.py`` (S3.2 Task 9), is read as is."""
+    curve = load_curve()
+    check_rising(curve)
+    assert curve.p(0.9) > curve.p(0.1)
+    stored = json.loads(
+        (Path(calibration.__file__).parent / "tables" / calibration.CURVE_FILE).read_text()
+    )
+    assert curve.intercept == stored["intercept"]
+    assert curve.slope == stored["slope"]
+    assert stored["n"] == 785
