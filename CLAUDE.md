@@ -29,8 +29,9 @@ tool the agent would question is built after S4, as a measured second version (0
 ablations, the calibration fit, then S3's sealed sample and `heldout-400` once each; S3.3 is
 live shadow. Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
-(`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, which every stage from S1 to S5
-takes a part of; its 2026-09-30 note says what 0121 to 0130 changed), and each stage's
+(`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, Superseded on 2026-10-03 by the S1
+and S3 specifications, which took over its parts; still the record of how S0 changed the design,
+and its 2026-09-30 note says what 0121 to 0130 changed), and each stage's
 specification under `docs/specs/` (its As-built section records what was delivered), which
 amend the brief where they differ. S3's specification
 (`docs/specs/2026-09-30-s3-agent-loop-design.md`) holds the shared design and S3.1 in full, S3.2

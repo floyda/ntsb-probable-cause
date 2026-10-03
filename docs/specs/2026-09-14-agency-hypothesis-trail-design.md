@@ -3,7 +3,10 @@
 *Drafted 2026-09-14 from a design discussion with Andy, and merged as a Draft in pull
 request #1. Revised the same day after S0 closed (pull request #2, release `v0.1.0`), and
 rewritten so that it is absorbed into the rest of the documentation.
-Status: Approved on the merge of the pull request that carries this revision.
+Status: Superseded (2026-10-03, Andy) by the S1 specification
+([2026-09-14-s1-scoring-and-evaluation-design.md](2026-09-14-s1-scoring-and-evaluation-design.md))
+and the S3 specification ([2026-09-30-s3-agent-loop-design.md](2026-09-30-s3-agent-loop-design.md)),
+as §1 provides; it was Approved on the merge of the pull request that carried its revision.
 What was decided is in decision records 0021 to 0024. When each part is built is in
 [the architecture and roadmap](2026-09-12-architecture-and-roadmap.md). This document keeps
 only what those point to: the detail that the S1 and S3 specifications will take over, and
