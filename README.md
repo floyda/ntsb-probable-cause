@@ -344,7 +344,8 @@ own cause sentence settles its first code, which decides nothing;
 `s3_finding_consistency` writes `docs/results/s3-finding-consistency-dev.txt`, the same
 question for the findings flagged as cause, which decides nothing either;
 `s3_finding_precedent` writes `docs/results/s3-finding-precedent-dev.txt`, whether the findings of
-the nearest earlier cases beat the loop's own, which sets no bar;
+the nearest earlier cases beat the loop's own, read again on the whole pool less the judged case's
+date as a labelled second reading (decision 0138), which sets no bar;
 `s3_finding_misses` writes `docs/results/s3-finding-misses-dev.txt`, where the loop's findings are
 lost and whether the NTSB's item and modifier choices follow the pool's habits, which sets no bar
 either.
