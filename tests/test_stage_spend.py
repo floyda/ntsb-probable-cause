@@ -27,7 +27,7 @@ def test_the_stage_table_holds_s27_as_it_was_and_s3_as_decision_0128_fixes_it() 
         line_usd=50.0,
         prefix="s3-",
         line_rule="decision 0128 item 2",
-        count_rule="decision 0128 item 2",
+        count_rule="decisions 0128 item 2, 0135",
     )
     assert frozenset({"main"}) == ss.EXCLUDED_BRANCHES
 
@@ -54,7 +54,7 @@ def test_s3s_lines_cite_s3s_own_decision() -> None:
     assert over
     assert text == (
         "S3 spend so far: $40.00 ($30.00 evaluation runs, $10.00 preparation spend rows; "
-        "counted by commit from 4178ca1 on S3's own branches, decision 0128 item 2)\n"
+        "counted by commit from 4178ca1 on S3's own branches, decisions 0128 item 2, 0135)\n"
         "this step's estimate: $10.01; the stage line: $50.00\n"
         "refused: $50.01 would pass the line (decision 0128 item 2)"
     )

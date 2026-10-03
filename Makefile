@@ -276,9 +276,9 @@ s3-noise-floor:
 # S3.1 spec §10.2 (decision 0130), paid: arm C on the whole of dev-400, in batch rounds, from a
 # clean tree on the frozen commit. Run it twice, then s3-noise-report; a third time only if that
 # report prints "third run: needed". The estimate is the batch smoke run's computed cost per case
-# ($0.1458 for 20 cases, $0.0073), rounded up (plan Task 14): about $2.92 a run computed. The
-# provider billed that run about a third of it ($0.0484), and the spend line counts what was
-# billed (decision 0135): about $0.97 a run.
+# ($0.1458 for 20 cases, $0.0073), rounded up (plan Task 14). Measured on the two noise-floor runs
+# (docs/results/s3-noise-floor-dev.txt): $4.57 and $4.45 computed, $1.84 and $1.97 billed; the
+# spend line counts what was billed (decision 0135).
 
 s3-noise-report:
 	$(if $(RUNS),,$(error RUNS is required: two or three arm C run ids))

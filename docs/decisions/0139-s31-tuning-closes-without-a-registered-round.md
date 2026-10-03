@@ -8,9 +8,11 @@ $20 ([0128](0128-s3-in-three-sub-stages-with-one-spend-line.md)).
 ## Context
 
 1. **The noise a round has to beat.** Two identical runs of the frozen loop differ by -2.1%
-   [-5.9%, +1.6%] on occurrence top-1, on 387 paired cases (`docs/results/s3-noise-floor-dev.txt`).
-   A round is kept only when its gain clears that noise
-   ([0136](0136-s3-rounds-count-failed-cases-as-wrong.md)).
+   [-5.9%, +1.6%] on occurrence top-1, over the 387 cases both runs scored
+   (`docs/results/s3-noise-floor-dev.txt`). A round is read over all 401 cases with failed cases
+   counted wrong ([0136](0136-s3-rounds-count-failed-cases-as-wrong.md)); the noise pair read that
+   way was not committed, so the 387-case figure stands in for it here. A round is kept only when
+   its gain clears the noise.
 2. **Before registering a round, Task 15 measured where gains could come from.** Every result below
    is a committed file, read by a rule written before it ran where it had one:
    - **The ordering check adds nothing to the loop's top-1:** +1.3% [-1.5%, +4.1%]
@@ -51,8 +53,8 @@ $20 ([0128](0128-s3-in-three-sub-stages-with-one-spend-line.md)).
 
 ## Why
 
-1. **No candidate's expected gain clears the noise.** Two identical runs differ by up to about 4
-   points of top-1; no measurement points to a change worth more.
+1. **No candidate's expected gain clears the noise.** The interval between two identical runs
+   spans -5.9 to +1.6 points of top-1; no measurement points to a change of that size.
 2. **The measurements already say where the limits are**: the NTSB's own spread on occurrence
    codes, the ordering job already done, precedent flat when used mechanically, and finding losses
    that are mostly which kind of cause, not how it is coded.

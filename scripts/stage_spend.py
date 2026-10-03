@@ -60,7 +60,7 @@ STAGES: Mapping[str, Stage] = {
         line_usd=50.0,
         prefix="s3-",
         line_rule="decision 0128 item 2",
-        count_rule="decision 0128 item 2",
+        count_rule="decisions 0128 item 2, 0135",
     ),
 }
 # main holds every stage once merged, and later stages' commits too; it is never counted.
