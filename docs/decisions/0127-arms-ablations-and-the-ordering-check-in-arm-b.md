@@ -78,3 +78,8 @@ and +9.8% [+6.0%, +13.8%] on two answer sets (`docs/results/s27-round1-dev.txt`)
 ## Status
 
 Accepted, 2026-09-30 (Andy, S3 design session; specification approved 2026-09-30).
+
+**Amended 2026-10-03 by [0141](0141-s32-five-runs-and-the-sealed-sample-kept-for-v2.md)
+(appended; nothing above is edited).** The no-docket ablation runs on held-out only, and the
+`suggest_codes` ablation is not run in S3.2. Item 1's re-run of arm A on `dev-400` is not made
+either: arm A runs on held-out only.

@@ -103,3 +103,7 @@ Accepted, 2026-10-01 (Andy, S3.1 final review).
 - **Prompt version**: the label each run records for what elicited its answers.
 - **Tuning round**: a registered change to the loop's text or limits, kept or dropped by its
   result against the noise floor (0130).
+
+**To be amended by [0143](0143-the-fingerprint-should-cover-what-the-agent-receives.md) in S3.3
+(appended 2026-10-03; nothing above is edited).** The `+p` fingerprint of source is to be replaced
+by a hash of the rendered text the agent receives. This record stands until then.

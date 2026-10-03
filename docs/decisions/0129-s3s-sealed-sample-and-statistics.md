@@ -69,3 +69,9 @@ choice A. Detail: [the S3 specification](../specs/2026-09-30-s3-agent-loop-desig
 ## Status
 
 Accepted, 2026-09-30 (Andy, S3 design session; specification approved 2026-09-30).
+
+**Amended 2026-10-03 by [0141](0141-s32-five-runs-and-the-sealed-sample-kept-for-v2.md)
+(appended; nothing above is edited).** Items 2 and 3: the sample stays sealed in S3.2 and is kept
+for v2's development test ([0140](0140-the-precedent-tool-after-s4-as-a-measured-v2.md) item 3).
+Its unlock moves from `docs/rounds/s3-registration.md` to `docs/rounds/s3-sealed.md`, written only
+when the sample is used. Items 1 and 4 to 6 stand.
