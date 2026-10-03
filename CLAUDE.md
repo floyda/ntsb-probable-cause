@@ -89,8 +89,7 @@ and S3.3 in outline; the precedent tool's design note
   `load_stats("s3")` (`scoring/coding_stats.py`; `scoring/tables/coding_stats_s3.json`,
   `docs/results/s3-coding-stats.txt`: the development pool less `dev-400`, `dev-seal-400` and
   `dev-seal-s3-400`, 12,090 cases), and S2.7's `load_stats("s27")` file is never rewritten;
-  `dev-seal-s3-400` is S3's sealed sample (401 cases, seed 20260930), refused until S3.2's
-  registration is committed and used once there (0129).
+  `dev-seal-s3-400` is S3's sealed sample (401 cases, seed 20260930), refused until `docs/rounds/s3-sealed.md` is committed (decision 141) and used once there (0129).
   The spike's `baseline.py` and `oneshot.py` are numerical anchors, not a harness. From S2.6
   every run records its **evidence version** (0076): v1 is text layers, v2 adds
   transcriptions, v3 (pictures alongside text) is a name only and every run refuses it (0090);
@@ -593,7 +592,7 @@ an arm C run is checked with `s3` only, and an arm C run with `--way luna` only,
 diagnostic (0137): `report <check id> --against <source>` prints the first codes changed, with
 fixes and breaks. Arm C and
 the post-pass refuse `dev-seal-400`; `dev-seal-s3-400` is refused by every command until
-`docs/rounds/s3-registration.md` is committed (0129). Spend rows gain the kind `probe` (paid
+`docs/rounds/s3-sealed.md` is committed (decision 141). Spend rows gain the kind `probe` (paid
 work that tests a shape or a flow, 0131): the learning probe's three jobs were relabelled to
 it, their original rows kept beside them as `spend-before-relabel.jsonl`, which the budget code
 never reads; the probe's $1.1954 is outside S3's line (0128).
