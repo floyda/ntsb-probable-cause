@@ -12,7 +12,9 @@ import pyarrow.parquet as pq
 import pytest
 from apps.eval.__main__ import (
     MAX_FAILED_SHARE,
+    _ablated,
     _maybe_mark_done,
+    _recorded_spec,
     answering_run_record,
     main,
     month_spent,
@@ -186,6 +188,41 @@ def test_help_lists_subcommands(capsys: pytest.CaptureFixture[str]) -> None:
     out = capsys.readouterr().out
     for word in ("baseline", "run", "report", "judge", "threshold"):
         assert word in out
+
+
+def test_recorded_spec_refuses_unreadable_json(tmp_path: Path) -> None:
+    """S3.2 Task 4: an unreadable spec.json is refused, not read as `{}`.
+
+    A run folder with unreadable JSON in spec.json raises ConfigurationError.
+    A folder with no spec.json returns {}. A spec.json holding a JSON list raises.
+    """
+    # Unreadable JSON: raises ConfigurationError
+    folder_bad_json = tmp_path / "bad-json"
+    folder_bad_json.mkdir()
+    (folder_bad_json / "spec.json").write_text("{not json")
+    with pytest.raises(ConfigurationError, match="not readable JSON"):
+        _recorded_spec(folder_bad_json)
+
+    # No spec.json: returns {}
+    folder_no_spec = tmp_path / "no-spec"
+    folder_no_spec.mkdir()
+    assert _recorded_spec(folder_no_spec) == {}
+
+    # JSON list, not object: raises ConfigurationError
+    folder_list = tmp_path / "list"
+    folder_list.mkdir()
+    (folder_list / "spec.json").write_text('["item1", "item2"]')
+    with pytest.raises(ConfigurationError, match="not a JSON object"):
+        _recorded_spec(folder_list)
+
+
+def test_ablated_raises_on_unreadable_spec_json(tmp_path: Path) -> None:
+    """S3.2 Task 4: _ablated raises ConfigurationError when spec.json is unreadable."""
+    folder = tmp_path / "unreadable-spec"
+    folder.mkdir()
+    (folder / "spec.json").write_text("{not json")
+    with pytest.raises(ConfigurationError, match="not readable JSON"):
+        _ablated(folder)
 
 
 def test_month_spent_includes_aborted_runs_in_the_current_month(tmp_path: Path) -> None:

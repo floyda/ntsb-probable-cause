@@ -108,13 +108,21 @@ def answering_run_record(folder: Path) -> RunRecord:
 
 
 def _recorded_spec(folder: Path) -> dict[str, object]:
-    """A run folder's ``spec.json``, or ``{}`` where it has none or it cannot be read."""
+    """A run folder's ``spec.json``; ``{}`` where it has none; refused where it cannot be read.
+
+    S3.2 Task 4: an unreadable file used to read as ``{}``, so an ablation could be labelled
+    the plain loop.
+    """
     path = folder / "spec.json"
-    try:
-        recorded = json.loads(path.read_text()) if path.is_file() else {}
-    except json.JSONDecodeError:
+    if not path.is_file():
         return {}
-    return recorded if isinstance(recorded, dict) else {}
+    try:
+        recorded = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        raise ConfigurationError(f"{path}: not readable JSON; refusing to guess what ran") from None
+    if not isinstance(recorded, dict):
+        raise ConfigurationError(f"{path}: not a JSON object; refusing to guess what ran")
+    return recorded
 
 
 def _ablated(folder: Path) -> bool:
