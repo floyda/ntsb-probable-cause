@@ -682,6 +682,246 @@ class TestRuleLines:
 
 
 # --------------------------------------------------------------------------------------------
+# The committed rule block is unchanged by the whole pool; its second reading is a block of its own
+# --------------------------------------------------------------------------------------------
+
+# The committed rule block as the script printed it before the whole pool was added (captured from
+# the script at commit bb5155b, on the two results built in ``_old_block_results``): the text and
+# the word of the earlier-only block must not move.
+_OLD_RULE_PROMISING = "\n".join(
+    [
+        "## The rule (committed in 1c44b9d, before this script existed)",
+        "",
+        (
+            "Rule (Andy, 2026-10-02). Read on run a, the probable-cause query, the headline"
+            " predictor: promising if the paired difference in mean recall at 10 digits has"
+            " its interval above zero and the paired difference in mean precision at 10"
+            " digits does not have its interval below zero; mixed if the recall difference's"
+            " interval is above zero and the precision difference's interval is below zero;"
+            " not promising otherwise. The script applies the rule and prints the word."
+            " Either result is published as it stands; a promising result starts a round's"
+            " design (a findings tool the loop may call), not a tool."
+        ),
+        (
+            "Run a (20261001T201506-fd6053f-dev-400-C), the probable-cause query, the"
+            " commonest-set predictor, all judged cases (10 of 10 cases):"
+        ),
+        (
+            "- paired difference in mean recall at 10 digits, predictor less loop: +47.5%"
+            " [+37.5%, +57.5%] (n = 10 cases)"
+        ),
+        (
+            "- paired difference in mean precision at 10 digits, predictor less loop: -2.5%"
+            " [-25.0%, +20.0%] (n = 10 cases where both precisions are defined)"
+        ),
+        (
+            "- recall at 10 digits against the loop's, case by case: higher in 10, equal in"
+            " 0, lower in 0 of 10 judged cases"
+        ),
+        (
+            "Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: recall"
+            " difference -100.0% [-100.0%, -100.0%] (n = 1); precision difference -100.0%"
+            " [-100.0%, -100.0%] (n = 1)"
+        ),
+        "Outcome: promising",
+        "Expectation (decides nothing). Promising.",
+        "The expectation was met.",
+    ]
+)
+
+_OLD_RULE_NOT_PROMISING = "\n".join(
+    [
+        "## The rule (committed in 1c44b9d, before this script existed)",
+        "",
+        (
+            "Rule (Andy, 2026-10-02). Read on run a, the probable-cause query, the headline"
+            " predictor: promising if the paired difference in mean recall at 10 digits has"
+            " its interval above zero and the paired difference in mean precision at 10"
+            " digits does not have its interval below zero; mixed if the recall difference's"
+            " interval is above zero and the precision difference's interval is below zero;"
+            " not promising otherwise. The script applies the rule and prints the word."
+            " Either result is published as it stands; a promising result starts a round's"
+            " design (a findings tool the loop may call), not a tool."
+        ),
+        (
+            "Run a (20261001T201506-fd6053f-dev-400-C), the probable-cause query, the"
+            " commonest-set predictor, all judged cases (5 of 5 cases):"
+        ),
+        (
+            "- paired difference in mean recall at 10 digits, predictor less loop: -50.0%"
+            " [-50.0%, -50.0%] (n = 5 cases)"
+        ),
+        (
+            "- paired difference in mean precision at 10 digits, predictor less loop: +0.0%"
+            " [+0.0%, +0.0%] (n = 5 cases where both precisions are defined)"
+        ),
+        (
+            "- recall at 10 digits against the loop's, case by case: higher in 0, equal in 0,"
+            " lower in 5 of 5 judged cases"
+        ),
+        (
+            "Run b (20261001T201648-fd6053f-dev-400-C), beside it, decides nothing: recall"
+            " difference -100.0% [-100.0%, -100.0%] (n = 1); precision difference -100.0%"
+            " [-100.0%, -100.0%] (n = 1)"
+        ),
+        "Outcome: not promising",
+        "Expectation (decides nothing). Promising.",
+        "The expectation was not met.",
+    ]
+)
+
+
+def _earlier_only(result: fp.RunResult) -> fp.RunResult:
+    """``result`` with the date-limited figures only: reading the whole pool raises a KeyError."""
+    return replace(result, whole={})
+
+
+def _whole_only(result: fp.RunResult) -> fp.RunResult:
+    """``result``'s figures as the whole pool's, with none for the date-limited pool."""
+    return replace(result, scored={}, whole=result.scored)
+
+
+def _old_block_results() -> tuple[fp.RunResult, fp.RunResult, fp.RunResult]:
+    spread = _paired_result(_RUN_A, _around(0.25, _RECALL_ABOVE), _around(0.5, _PRECISION_ACROSS))
+    below = _result(_RUN_A, [0.0] * 5, [0.5] * 5, 0.5, 0.5)
+    run_b = _result(_RUN_B, [0.0], [1.0], 0.0, 1.0)
+    return spread, below, run_b
+
+
+class TestEarlierRuleBlockUnchanged:
+    """Adding the whole pool does not change the committed rule block: its text and its word."""
+
+    def test_the_promising_block_is_the_text_it_was_before(self) -> None:
+        spread, _below, run_b = _old_block_results()
+        assert "\n".join(fp.rule_lines([spread, run_b])) == _OLD_RULE_PROMISING
+
+    def test_the_not_promising_block_is_the_text_it_was_before(self) -> None:
+        _spread, below, run_b = _old_block_results()
+        assert "\n".join(fp.rule_lines([below, run_b])) == _OLD_RULE_NOT_PROMISING
+
+    def test_whole_pool_figures_never_reach_the_committed_block(self) -> None:
+        # Whole-pool figures that would give the opposite words, and another run b: the block is
+        # the same text. With none at all it is the same text again.
+        spread, below, run_b = _old_block_results()
+        opposite_a = replace(spread, whole=below.scored)
+        opposite_b = replace(run_b, whole=_result(_RUN_B, [1.0] * 5, [0.0] * 5, 1.0, 0.0).scored)
+        assert "\n".join(fp.rule_lines([opposite_a, opposite_b])) == _OLD_RULE_PROMISING
+        assert "\n".join(fp.rule_lines([_earlier_only(spread), _earlier_only(run_b)])) == (
+            _OLD_RULE_PROMISING
+        )
+        opposite_below = replace(below, whole=spread.scored)
+        assert "\n".join(fp.rule_lines([opposite_below, run_b])) == _OLD_RULE_NOT_PROMISING
+
+    def test_only_the_committed_block_has_an_expectation(self) -> None:
+        spread, _below, run_b = _old_block_results()
+        first = "\n".join(fp.rule_lines([spread, run_b]))
+        second = "\n".join(fp.whole_rule_lines([_whole_only(spread), _whole_only(run_b)]))
+        assert fp.EXPECTATION in first
+        assert "The expectation was met." in first
+        assert "xpectation" not in second.replace("No expectation was committed for it.", "")
+        assert fp.RULE not in second  # the rule is printed once, in the committed block
+
+
+class TestWholePoolRuleLines:
+    """The second reading: the same rule, read on the whole-pool figures, with no expectation."""
+
+    @staticmethod
+    def _lines(a: fp.RunResult, b: fp.RunResult | None = None) -> str:
+        run_b = b if b is not None else _result(_RUN_B, [0.0], [1.0], 0.0, 1.0)
+        return "\n".join(fp.whole_rule_lines([_whole_only(a), _whole_only(run_b)]))
+
+    def test_it_is_headed_as_a_second_reading_registered_after_the_first_result(self) -> None:
+        text = self._lines(_result(_RUN_A, [1.0] * 5, [0.5] * 5, 0.5, 0.5))
+        assert text.startswith(
+            "## Second reading under the whole pool (registered in bb5155b, after the first "
+            "result was seen)\n"
+        )
+        assert "applied again without change to the whole pool" in text
+        assert "every pool case except those on the judged case's own event date" in text
+        assert "stays the committed outcome" in text
+        assert "No expectation was committed for it." in text
+
+    def test_promising_when_recall_is_above_zero_and_precision_is_not_below(self) -> None:
+        text = self._lines(_result(_RUN_A, [1.0] * 5, [0.5] * 5, 0.5, 0.5))
+        assert text.endswith("Second reading outcome: promising")
+        assert (
+            "all judged cases (5 of 5 cases), whole pool:\n"
+            "- paired difference in mean recall at 10 digits, predictor less loop: "
+            "+50.0% [+50.0%, +50.0%] (n = 5 cases)"
+        ) in text
+        assert "predictor less loop: +0.0% [+0.0%, +0.0%] (n = 5 cases where both" in text
+
+    def test_mixed_when_precision_is_entirely_below_zero(self) -> None:
+        text = self._lines(_result(_RUN_A, [1.0] * 5, [0.5] * 5, 0.25, 0.5))
+        assert text.endswith("Second reading outcome: mixed")
+
+    def test_not_promising_when_the_recall_interval_only_touches_zero(self) -> None:
+        text = self._lines(_result(_RUN_A, [0.5] * 5, [0.5] * 5, 0.5, 0.5))
+        assert text.endswith("Second reading outcome: not promising")
+
+    def test_not_promising_when_recall_is_below(self) -> None:
+        text = self._lines(_result(_RUN_A, [0.0] * 5, [0.5] * 5, 0.5, 0.5))
+        assert text.endswith("Second reading outcome: not promising")
+        assert (
+            "recall at 10 digits against the loop's, case by case: higher in 0, equal in 0, "
+            "lower in 5 of 5 judged cases"
+        ) in text
+
+    def test_no_precision_pair_is_said_and_read_as_not_below_zero(self) -> None:
+        text = self._lines(_result(_RUN_A, [1.0] * 5, [0.5] * 5, None, 0.5))
+        assert "Note: no case has both precisions, so the precision interval is read as not" in text
+        assert text.endswith("Second reading outcome: promising")
+
+    def test_run_b_is_printed_beside_and_does_not_decide(self) -> None:
+        b = _result(_RUN_B, [1.0] * 5, [0.5] * 5, 0.5, 0.5)
+        a = _result(_RUN_A, [0.0] * 5, [0.5] * 5, 0.5, 0.5)
+        text = self._lines(a, b)
+        assert text.count("outcome:") == 1
+        assert text.endswith("Second reading outcome: not promising")
+        assert f"Run b ({_RUN_B}), beside it, decides nothing: recall difference +50.0%" in text
+
+    def test_it_reads_the_whole_pool_figures_and_never_the_date_limited_ones(self) -> None:
+        # Date-limited figures that would be promising, whole-pool figures that are not: the
+        # committed block says promising and the second reading says not promising, and the other
+        # way about. (A result with no date-limited figures cannot be read for them at all.)
+        promising = _result(_RUN_A, [1.0] * 5, [0.5] * 5, 0.5, 0.5)
+        not_promising = _result(_RUN_A, [0.0] * 5, [0.5] * 5, 0.5, 0.5)
+        run_b = _result(_RUN_B, [0.0], [1.0], 0.0, 1.0)
+        for earlier, whole, first, second in (
+            (promising, not_promising, "promising", "not promising"),
+            (not_promising, promising, "not promising", "promising"),
+        ):
+            a = replace(earlier, whole=whole.scored)
+            b = replace(run_b, whole=run_b.scored)
+            assert f"Outcome: {first}\n" in "\n".join(fp.rule_lines([a, b]))
+            assert "\n".join(fp.whole_rule_lines([a, b])).endswith(
+                f"Second reading outcome: {second}"
+            )
+
+    @pytest.mark.parametrize(
+        ("recall", "precision", "word"),
+        [
+            (_around(0.5, _RECALL_SPREAD_ZERO), _around(0.5, [0.0] * 12), "not promising"),
+            (_around(0.25, _RECALL_ABOVE), _around(0.5, _PRECISION_ACROSS), "promising"),
+            (_around(0.25, _RECALL_ABOVE), _around(1.0, _PRECISION_BELOW), "mixed"),
+        ],
+        ids=["recall across zero", "precision across zero", "precision below zero"],
+    )
+    def test_the_word_is_read_from_the_right_end_of_each_interval(
+        self, recall: list[tuple[float, float]], precision: list[tuple[float, float]], word: str
+    ) -> None:
+        # The same three cases as the committed rule's spread tests: reading the high end of
+        # the recall interval, or the low end of the precision interval, would change the word.
+        result = _paired_result(_RUN_A, recall, precision)
+        found = fp.compare(result.split.judged, result.scored[(fp.HEADLINE_QUERY, "commonest set")])
+        text = self._lines(result)
+        assert text.endswith(f"Second reading outcome: {word}")
+        # And it prints the unrounded ends the word was read from.
+        assert f"{found.recall_diff[10].low:+.1%}" in text
+        assert f"{found.precision_diff[10].high:+.1%}" in text
+
+
+# --------------------------------------------------------------------------------------------
 # The reused search: the date limit reaches through the index
 # --------------------------------------------------------------------------------------------
 
@@ -745,6 +985,71 @@ class TestFiveSets:
             pp.Precedent("ZQP001", _day("2012-01-01"), "552230", ("fuel", "tanks"))
         ]
 
+    def test_the_whole_pool_ranks_a_later_case_and_never_one_on_the_judged_date(self) -> None:
+        # P001 (earlier) and P004 (later) tie at length 1, ranked by id; then P002. P003, on the
+        # judged date, is never ranked although it matches as well as P001 does.
+        (judged,) = fp.sort_cases([_one("ZQX000", cause="fuel")]).judged
+        index = pp.Index(self.POOL)
+        whole = fp.five_sets(index, self.FLAGS, judged, _day(_DAY), "probable cause", pool="whole")
+        assert whole == (_flagged(_FA), _flagged(_FC), _NONE)
+        assert _flagged(_FB) not in whole  # P003's set
+        # The default, and "earlier" by name, are the date-limited pool: no later case.
+        earlier = (_flagged(_FA), _NONE)
+        assert fp.five_sets(index, self.FLAGS, judged, _day(_DAY), "probable cause") == earlier
+        assert (
+            fp.five_sets(index, self.FLAGS, judged, _day(_DAY), "probable cause", pool="earlier")
+            == earlier
+        )
+
+    def test_a_later_case_can_be_the_only_one_ranked_on_the_whole_pool(self) -> None:
+        pool = (*self.POOL, _precedent("ZQP005", "2018-01-01", ("zorvexine",)))
+        flags = {**self.FLAGS, "ZQP005": _flagged(_FD)}
+        index = pp.Index(pool)
+        (judged,) = fp.sort_cases([_one("ZQX000", cause="zorvexine")]).judged
+        assert fp.five_sets(index, flags, judged, _day(_DAY), "probable cause") == ()
+        whole = fp.five_sets(index, flags, judged, _day(_DAY), "probable cause", pool="whole")
+        assert whole == (_flagged(_FD),)
+
+    def test_the_whole_pool_other_query_and_the_five_limit(self) -> None:
+        pool = [_precedent(f"ZQP{n:03d}", f"2012-0{n}-01", ("fuel",)) for n in range(1, 8)]
+        pool.append(_precedent("ZQP008", "2019-01-01", ("fuel",)))
+        flags = {p.case_id: _flagged(_FA) for p in pool}
+        index = pp.Index(pool)
+        (judged,) = fp.sort_cases([_one("ZQX000", cause="x", narrative="fuel")]).judged
+        five = fp.five_sets(index, flags, judged, _day(_DAY), "evidence narrative", pool="whole")
+        assert len(five) == 5
+
+    def test_the_search_is_the_precedent_probes_own_on_each_pool(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """analyse searches through ``Index.search`` once per case, query and pool; no copy."""
+        calls: list[tuple[date, pp.Pool]] = []
+        real = pp.Index.search
+
+        def spy(
+            self: pp.Index, query: Sequence[str], day: date, pool: pp.Pool
+        ) -> tuple[pp.Precedent, ...]:
+            calls.append((day, pool))
+            return real(self, query, day, pool)
+
+        monkeypatch.setattr(pp.Index, "search", spy)
+        split = fp.sort_cases([_one("ZQX000", cause="fuel"), _one("ZQX001", cause="tank")])
+        result = fp.analyse(
+            "run",
+            split,
+            index=pp.Index(self.POOL),
+            flags=self.FLAGS,
+            days={"ZQX000": _day(_DAY), "ZQX001": _day("2014-01-01")},
+        )
+        # Two queries, two cases, each searched on the date-limited pool and then the whole pool.
+        assert len(calls) == 8
+        assert sorted({pool for _day_, pool in calls}) == ["earlier", "whole"]
+        assert calls.count((_day(_DAY), "whole")) == 2
+        assert calls.count((_day("2014-01-01"), "earlier")) == 2
+        assert set(result.scored) == set(result.whole)
+        assert result.scores("earlier") is result.scored
+        assert result.scores("whole") is result.whole
+
 
 # --------------------------------------------------------------------------------------------
 # The whole script, on synthetic runs and a processed file
@@ -779,6 +1084,20 @@ class TestFiveSets:
 #   {FA, FE}  recall 0, 1/3, 1/2; precision 0, 1/2, 1/2
 # ZQX006's probable cause finds P013 {} and P012 {FA}: commonest {FA}, nearest {FA}, no code
 # twice: none. ZQX004 and ZQX005 find no flagged set at all: none for all three predictors.
+#
+# The whole pool leaves out only P008 and P032, the pool cases on the judged day (2016-06-01), and
+# ranks the later ones, P007 and P031 (2017):
+#   ZQX000's probable cause "brambleton": P001 and P007 tie at length 1 (by id, P001 first), then
+#     P002, P003, P004; P005 and P006 drop out of the five; P008 (the judged day, {FB}, which would
+#     rank third) is never ranked. The five: {FA, FD}, {FB}, {FE}, {FA}, {FA}. Commonest {FA};
+#     nearest {FA, FD}; at least two {FA} (three cases hold it). Against own {FB, FC, FD}:
+#     {FA, FD} as above, and {FA} as above: recall 0, 1/3, 1/2; precision 0, 1, 1.
+#   ZQX005's probable cause "thistlecomb": only P031 (2017, {FA}) is ranked; P032, the judged
+#     day, is not. Commonest {FA}, nearest {FA}, at least two none. Against own {FD}: recall 0,
+#     precision 0 at each digit count.
+#   ZQX004 ("thistlebrook") and ZQX006 ("marrowfat") find what they found before.
+# Evidence narratives: ZQX000's "quillfern" and ZQX006's "marrowfat" as before; ZQX005's
+#   "brambleton" finds the same five as ZQX000's probable cause.
 
 
 def _pool_rows() -> list[_Row]:
@@ -907,13 +1226,23 @@ class TestReport:
             "S3.1 findings-from-precedent probe on dev-400 (scripts/exploratory/"
         )
         assert f"run a = {_RUN_A}\nrun b = {_RUN_B} (printed beside run a; decides nothing)" in text
-        marks = ["## The rule", "## Method", f"## Run a ({_RUN_A})", f"## Run b ({_RUN_B}), beside"]
-        assert [text.index(mark) for mark in marks] == sorted(text.index(mark) for mark in marks)
+        marks = [
+            "## The rule",
+            "## Second reading under the whole pool",
+            "## Method",
+            f"## Run a ({_RUN_A})\n",
+            f"## Run a ({_RUN_A}), whole pool\n",
+            f"## Run b ({_RUN_B}), beside run a; decides nothing\n",
+            f"## Run b ({_RUN_B}), beside run a; decides nothing, whole pool\n",
+        ]
+        positions = [text.index(mark) for mark in marks]
+        assert positions == sorted(positions)
+        assert len(set(positions)) == len(marks)
 
     def test_the_rule_is_applied_to_run_a_and_the_word_printed(
         self, runs: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rule = _section(_report(_argv(), capsys), "## The rule", "## Method")
+        rule = _section(_report(_argv(), capsys), "## The rule", "## Second reading")
         assert fp.RULE in rule
         assert (
             "the probable-cause query, the commonest-set predictor, all judged cases "
@@ -1137,6 +1466,248 @@ class TestReport:
         self, runs: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         assert _report(_argv(), capsys) == _report(_argv(), capsys)
+
+
+def _run_block(text: str, letter: str, *, whole: bool) -> str:
+    """Run ``letter``'s block of the report on one pool: from its ``## Run`` heading to the next."""
+    lines = text.split("\n")
+    start = next(
+        i
+        for i, line in enumerate(lines)
+        if line.startswith(f"## Run {letter} (") and line.endswith(", whole pool") == whole
+    )
+    stop = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start:stop])
+
+
+def _whole_pool(text: str, letter: str = "a") -> str:
+    """Run ``letter``'s whole-pool block."""
+    return _run_block(text, letter, whole=True)
+
+
+class TestReportWholePool:
+    """The whole-pool figures, for every run, query and predictor, scored case by case."""
+
+    def test_the_second_reading_is_applied_to_the_whole_pool_figures_of_run_a(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        text = _report(_argv(), capsys)
+        reading = _section(text, "## Second reading under the whole pool", "## Method")
+        assert (
+            "the probable-cause query, the commonest-set predictor, all judged cases "
+            "(4 of 8 cases), whole pool:"
+        ) in reading
+        # Recall at 10 digits is the date-limited figure's again (ZQX005 has a set, {FA}, but
+        # recall 0 as with none); the precision pairs are not: ZQX005's {FA} has precision 0
+        # against the loop's 1, and ZQX006's 1 against 0.5; ZQX000's loop named nothing.
+        assert (
+            f"predictor less loop: {_signed(_diff([0, 0, 0, 1], [0, 0.5, 1, 1]))} (n = 4 cases)"
+            in reading
+        )
+        assert (
+            f"predictor less loop: {_signed([-1.0, 0.5])} (n = 2 cases where both precisions"
+            in reading
+        )
+        assert "higher in 0, equal in 2, lower in 2 of 4 judged cases" in reading
+        # Run b, beside: ZQX000, ZQX004 and ZQX005 judged; recall 0 0 0 against 0 0.5 1; the one
+        # precision pair is ZQX005's, 0 against 1.
+        assert (
+            f"Run b ({_RUN_B}), beside it, decides nothing: recall difference "
+            f"{_signed(_diff([0, 0, 0], [0, 0.5, 1]))} (n = 3); precision difference "
+            f"{_signed([-1.0])} (n = 1)"
+        ) in reading
+        assert reading.count("outcome:") == 1
+        assert "Second reading outcome: not promising" in reading
+        assert "Outcome:" not in reading
+        assert fp.EXPECTATION not in reading
+        assert "The expectation was" not in reading
+
+    def test_the_committed_rule_block_is_still_the_date_limited_reading(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rule = _section(_report(_argv(), capsys), "## The rule", "## Second reading")
+        # ZQX005's words are only in a later and a same-day case: no date-limited precedent, so
+        # the precision pair is ZQX006's alone, as before the whole pool existed.
+        assert "predictor less loop: +50.0% [+50.0%, +50.0%] (n = 1 cases where both" in rule
+        assert "Outcome: not promising" in rule
+
+    def test_both_pools_are_printed_for_each_run_with_every_set_of_cases(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        text = _report(_argv(), capsys)
+        for letter, ids in (("a", (4, 2, 2)), ("b", (3, 1, 2))):
+            whole = _whole_pool(text, letter)
+            assert whole.startswith(f"## Run {letter} (")
+            assert "Pool: the whole pool, a second reading (registered in bb5155b" in whole
+            assert "the same as in the date-limited block." in whole
+            headings = [line for line in whole.splitlines() if line.startswith("### ")]
+            assert headings == [
+                f"### All judged cases: {ids[0]} judged",
+                f"### Fatal cases: {ids[1]} judged",
+                f"### Non-fatal cases: {ids[2]} judged",
+            ]
+            # Every set of cases holds the loop's own findings and the six query and predictor
+            # blocks.
+            assert whole.count("The loop's own findings, from its stored scores:") == 3
+            for query in ("probable cause", "evidence narrative"):
+                for name in ("commonest set", "nearest", "at least two"):
+                    assert whole.count(f"{query} query, {name} predictor") == 3
+            date_limited = _run_block(text, letter, whole=False)
+            assert "Pool: the date-limited pool, as committed" in date_limited
+            assert date_limited != whole
+
+    def test_the_headline_block_is_scored_case_by_case_on_the_whole_pool(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        text = _whole_pool(_report(_argv(), capsys))
+        a = _section(text, "### All judged cases", "### Fatal cases")
+        block = _section(a, "probable cause query, commonest set predictor (headline):", "nearest")
+        loop10, loop8, loop6 = [0, 0.5, 1, 1], [0, 0.5, 1, 1], [0, 1, 1, 1]
+        # ZQX000 {FA} (the same day's {FB} not ranked: with it the commonest set would be {FB}
+        # and recall at 10 digits 1/3); ZQX004 none; ZQX005 {FA}, from the later case; ZQX006 {FA}.
+        for digits, mine, loop in (
+            (10, [0, 0, 0, 1], loop10),
+            (8, [1 / 3, 0, 0, 1], loop8),
+            (6, [1 / 2, 0, 0, 1], loop6),
+        ):
+            assert (
+                f"- mean recall at {digits} digits: {_pct(mine)} (n = 4); paired difference, "
+                f"predictor less loop: {_signed(_diff(mine, loop))} (n = 4)"
+            ) in block
+        # Precision: the predictor has a set for ZQX000 (0 at 10 digits), ZQX005 (0) and ZQX006
+        # (1); paired where both are defined: ZQX005 (0 against 1) and ZQX006 (1 against 0.5).
+        assert (
+            f"- mean precision at 10 digits: {_pct([0, 0, 1])} (n = 3 cases with a prediction); "
+            f"paired difference, predictor less loop: {_signed([-1.0, 0.5])} "
+            "(n = 2 cases where both are defined)"
+        ) in block
+        assert (
+            f"- mean precision at 8 digits: {_pct([1, 0, 1])} (n = 3 cases with a prediction); "
+            f"paired difference, predictor less loop: {_signed([-1.0, 0.5])} "
+        ) in block
+        assert (
+            "- no prediction: 1 of 4 judged cases (recall counted 0, precision left out)" in block
+        )
+
+    def test_the_nearest_and_the_at_least_two_predictors_on_the_whole_pool(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a = _section(_whole_pool(_report(_argv(), capsys)), "### All judged cases", "### Fatal")
+        near = _section(a, "probable cause query, nearest predictor:", "probable cause query, at")
+        loop = [0, 0.5, 1, 1]
+        assert (
+            f"- mean recall at 10 digits: {_pct([1 / 3, 0, 0, 1])} (n = 4); paired difference, "
+            f"predictor less loop: {_signed(_diff([1 / 3, 0, 0, 1], loop))}" in near
+        )
+        assert f"- mean precision at 10 digits: {_pct([1 / 2, 0, 1])} (n = 3 cases" in near
+        assert "- no prediction: 1 of 4 judged cases" in near
+        two = _section(
+            a, "probable cause query, at least two predictor:", "evidence narrative query"
+        )
+        # ZQX000's {FA} is held by three of its five (P001, P003, P004): at least two. The date
+        # limit gave {FA, FE}, whose precision at 8 digits was 1/2. ZQX005's one later case
+        # gives no code twice, and the same-day case is not ranked (with it, {FA} would be two).
+        assert f"- mean recall at 8 digits: {_pct([1 / 3, 0, 0, 0])} (n = 4)" in two
+        assert f"- mean precision at 8 digits: {_pct([1])} (n = 1 cases with a prediction)" in two
+        assert "predictor less loop: none (n = 0 cases where both are defined)" in two
+        assert "- no prediction: 3 of 4 judged cases" in two
+
+    def test_the_evidence_narrative_is_the_other_query_on_the_whole_pool(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a = _section(_whole_pool(_report(_argv(), capsys)), "### All judged cases", "### Fatal")
+        block = _section(
+            a,
+            "evidence narrative query, commonest set predictor:",
+            "evidence narrative query, nearest",
+        )
+        # ZQX000 (quillfern: {FE, FC}) 1/3; ZQX004 none; ZQX005 (brambleton: {FA}) 0; ZQX006 1.
+        assert f"- mean recall at 10 digits: {_pct([1 / 3, 0, 0, 1])} (n = 4)" in block
+
+    def test_fatal_and_non_fatal_cases_are_measured_apart_on_the_whole_pool(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        a = _whole_pool(_report(_argv(), capsys))
+        fatal = _section(a, "### Fatal cases: 2 judged", "### Non-fatal cases")
+        non_fatal = _section(a, "### Non-fatal cases: 2 judged", None)
+        head = _section(
+            fatal, "probable cause query, commonest set predictor (headline):", "nearest"
+        )
+        # ZQX000 and ZQX006: recall 0 and 1 against the loop's 0 and 1.
+        assert f"predictor less loop: {_signed([0, 0])} (n = 2)" in head
+        assert "- no prediction: 0 of 2 judged cases" in head
+        quiet = _section(
+            non_fatal, "probable cause query, commonest set predictor (headline):", "nearest"
+        )
+        # ZQX004 has no set; ZQX005 has {FA} from the later case (recall 0, precision 0): recall 0
+        # against the loop's 0.5 and 1; the one precision pair is ZQX005's, 0 against 1.
+        assert f"predictor less loop: {_signed([-0.5, -1])} (n = 2)" in quiet
+        assert (
+            f"- mean precision at 10 digits: {_pct([0])} (n = 1 cases with a prediction)" in quiet
+        )
+        assert f"paired difference, predictor less loop: {_signed([-1.0])} " in quiet
+        assert "- no prediction: 1 of 2 judged cases" in quiet
+
+    def test_run_b_is_scored_on_its_own_judged_cases_on_the_whole_pool(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        b = _whole_pool(_report(_argv(), capsys), "b")
+        head = _section(
+            _section(b, "### All judged cases", "### Fatal cases"),
+            "probable cause query, commonest set predictor (headline):",
+            "nearest",
+        )
+        loop = [0, 0.5, 1]
+        assert (
+            f"- mean recall at 10 digits: {_pct([0, 0, 0])} (n = 3); paired difference, "
+            f"predictor less loop: {_signed(_diff([0, 0, 0], loop))} (n = 3)"
+        ) in head
+        assert (
+            f"- mean precision at 10 digits: {_pct([0, 0])} (n = 2 cases with a prediction); "
+            f"paired difference, predictor less loop: {_signed([-1.0])} "
+        ) in head
+        assert "- no prediction: 1 of 3 judged cases" in head
+
+    def test_a_pool_case_on_the_judged_date_is_never_ranked_and_a_later_one_can_be(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        text = _report(_argv(), capsys)
+        whole = _section(_whole_pool(text), "### All judged cases", "### Fatal cases")
+        early = _section(_run_block(text, "a", whole=False), "### All judged", "### Fatal cases")
+        # Later cases: ZQX005 has a precedent on the whole pool (P031) and not on the
+        # date-limited one: one fewer case without a prediction.
+        assert "- no prediction: 2 of 4 judged cases (recall" in _section(
+            early, "headline", "nearest"
+        )
+        assert "- no prediction: 1 of 4 judged cases (recall" in _section(
+            whole, "headline", "nearest"
+        )
+        # The same-day cases, P008 and P032, are not ranked: P032 would be a second case holding
+        # {FA} for ZQX005 (so ``at least two`` would give a set and 2 of 4 no prediction), and P008
+        # would make ZQX000's commonest set {FB} (recall 1/3 at 10 digits, not 0).
+        assert "- no prediction: 3 of 4 judged cases" in _section(
+            whole, "probable cause query, at least two predictor:", "evidence narrative query"
+        )
+        assert f"- mean recall at 10 digits: {_pct([0, 0, 0, 1])} (n = 4)" in _section(
+            whole, "headline", "nearest"
+        )
+
+    def test_the_method_states_the_whole_pool_definition(
+        self, runs: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        method = _section(_report(_argv(), capsys), "## Method", "## Run a")
+        assert (
+            "Whole pool (a second reading, registered in bb5155b after the first result" in method
+        )
+        assert "development work reads the whole pool" in method
+        assert "the date-limited figures staying beside as a sensitivity check" in method
+        assert "over every pool case except those on the judged case's own event date" in method
+        assert "N, df and the average length over that set" in method
+        assert "`Index.search` on its `whole` pool, not rewritten here" in method
+        assert "The second reading, above, applies that rule again on the whole pool" in method
+        # The committed definition and its limits are still there, word for word.
+        assert "strictly earlier than the judged case's (N, df and the average length" in method
+        assert "the date limit uses the event date" in method.lower()
 
 
 # --------------------------------------------------------------------------------------------

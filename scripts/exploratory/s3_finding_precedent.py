@@ -5,7 +5,9 @@ Status
     sets no bar and tunes nothing. Its rule was committed before it existed (commit 1c44b9d, the
     S3.1 plan's entry "A findings-from-precedent probe, with its rule committed first"), and it
     applies that rule and prints the word at the top. ``make s3-finding-precedent`` writes its
-    output to ``docs/results/s3-finding-precedent-dev.txt``.
+    output to ``docs/results/s3-finding-precedent-dev.txt``. From 2026-10-03 (the plan's entry
+    "The precedent probes re-read with the whole pool", commit bb5155b) it also reads the whole
+    pool, as a labelled second reading, after the first result was seen: see "Pools" below.
 
 Why
     The finding-consistency probe found that NTSB cases with identical cause sentences share most
@@ -32,6 +34,15 @@ What it measures
     them, and as a paired difference, predictor less loop, with bootstrap intervals. Counts and
     means only: no case number, no finding code and no text from any record.
 
+Pools
+    The date-limited pool is the committed one: only the pool cases whose event date is strictly
+    earlier than the judged case's. The whole pool (``s3_precedent_probe``'s ``whole`` pool, its
+    own search, not rewritten here) is every pool case except those on the judged case's own event
+    date, with N, df and the average length over that set, so a later case can be ranked and a
+    case on the judged date never is. Every figure is printed for both pools, the date-limited
+    ones first and unchanged; the committed rule is applied to the date-limited figures (its
+    outcome) and again to the whole-pool figures (a second reading, with no expectation).
+
 Refusals
     The runs through ``s3_precedent_probe.load_run``: a held-out run id; a folder with no
     ``run.jsonl``, or whose record names another run; any sample but ``dev-400`` (held-out, open
@@ -53,14 +64,14 @@ Usage
 import argparse
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Final, Literal, NoReturn
 
 from scripts.coding_stats import STAGES
 from scripts.exploratory import s3_precedent_probe as pp
-from scripts.exploratory.s3_precedent_probe import QUERIES, Index, Query
+from scripts.exploratory.s3_precedent_probe import QUERIES, Index, Pool, Query
 from scripts.miss_kinds import scored_answer
 from scripts.s3_case_groups import Run
 
@@ -80,6 +91,7 @@ TWICE: Final = 2
 HEADLINE_QUERY: Final[Query] = "probable cause"
 HEADLINE_PREDICTOR: Final[Predictor] = "commonest set"
 RULE_COMMIT: Final = "1c44b9d"
+WHOLE_POOL_COMMIT: Final = "bb5155b"  # the second reading, registered after the first result
 
 # The committed rule (plan entry "A findings-from-precedent probe, with its rule committed
 # first", commit 1c44b9d), word for word less the entry's bold marks.
@@ -272,12 +284,20 @@ def score(predicted: Flagged | None, own: Sequence[str]) -> Scored:
     return Scored(recall, precision)
 
 
-def five_sets(
-    index: Index, flags: Mapping[str, Flagged], judged: Judged, day: date, query: Query
+def five_sets(  # noqa: PLR0913 -- the index, the flags, the case, its day, the query, the pool.
+    index: Index,
+    flags: Mapping[str, Flagged],
+    judged: Judged,
+    day: date,
+    query: Query,
+    *,
+    pool: Pool = "earlier",
 ) -> tuple[Flagged, ...]:
-    """The flagged sets of the five nearest earlier cases, best first.
+    """The flagged sets of the five nearest pool cases, best first.
 
-    The precedent probe's headline search: BM25 over the pool cases strictly earlier than ``day``.
+    The precedent probe's own search (``Index.search``, not rewritten here): BM25 over the pool
+    cases strictly earlier than ``day`` (``earlier``, the committed headline), or over every pool
+    case except those on ``day`` (``whole``), N, df and the average length over that set.
 
     Args:
         index: the pool, indexed.
@@ -285,9 +305,10 @@ def five_sets(
         judged: the judged case.
         day: the judged case's event date.
         query: which of the final answer's two texts is the query.
+        pool: ``earlier`` or ``whole``.
 
     Returns:
-        Up to five sets, in rank order; none if no earlier case shares a word with the query.
+        Up to five sets, in rank order; none if no pool case shares a word with the query.
 
     Raises:
         ValueError: the case has no answer, which a judged case always has.
@@ -295,7 +316,7 @@ def five_sets(
     text = pp.query_text(judged.case, query)
     if text is None:
         raise ValueError("a judged case has a final answer")
-    return tuple(flags[p.case_id] for p in index.search(pp.tokens(text), day, "earlier"))
+    return tuple(flags[p.case_id] for p in index.search(pp.tokens(text), day, pool))
 
 
 type Key = tuple[Query, Predictor]
@@ -307,7 +328,12 @@ class RunResult:
 
     run_id: str
     split: CaseSplit
-    scored: Mapping[Key, Mapping[str, Scored]]  # by (query, predictor), then case id
+    scored: Mapping[Key, Mapping[str, Scored]]  # date-limited pool: by (query, predictor), case id
+    whole: Mapping[Key, Mapping[str, Scored]] = field(default_factory=dict)  # the whole pool
+
+    def scores(self, pool: Pool) -> Mapping[Key, Mapping[str, Scored]]:
+        """The scores read on ``pool``: by (query, predictor), then case id."""
+        return self.scored if pool == "earlier" else self.whole
 
 
 def analyse(
@@ -318,7 +344,7 @@ def analyse(
     flags: Mapping[str, Flagged],
     days: Mapping[str, date],
 ) -> RunResult:
-    """Search once per judged case and query, then apply and score each predictor.
+    """Search once per judged case, query and pool, then apply and score each predictor.
 
     Args:
         run_id: the run's id.
@@ -328,17 +354,18 @@ def analyse(
         days: each judged case's event date.
 
     Returns:
-        The run's scores.
+        The run's scores, on the date-limited pool and on the whole pool.
     """
-    scored: dict[Key, dict[str, Scored]] = {}
+    scored: dict[Pool, dict[Key, dict[str, Scored]]] = {pool: {} for pool in pp.POOLS}
     for query in QUERIES:
         for judged in split.judged:
-            five = five_sets(index, flags, judged, days[judged.case_id], query)
-            for name, predict in PREDICTORS:
-                scored.setdefault((query, name), {})[judged.case_id] = score(
-                    predict(five), judged.own
-                )
-    return RunResult(run_id, split, scored)
+            for pool in pp.POOLS:
+                five = five_sets(index, flags, judged, days[judged.case_id], query, pool=pool)
+                for name, predict in PREDICTORS:
+                    scored[pool].setdefault((query, name), {})[judged.case_id] = score(
+                        predict(five), judged.own
+                    )
+    return RunResult(run_id, split, scored["earlier"], scored["whole"])
 
 
 # --- the comparison ---
@@ -469,29 +496,28 @@ def _fatal(judged: Sequence[Judged]) -> str:
     return f"({deaths} fatal, {len(judged) - deaths} non-fatal)"
 
 
-def rule_lines(results: Sequence[RunResult]) -> list[str]:
-    """The committed rule applied on run a, with run b's two differences beside it.
+def _reading(results: Sequence[RunResult], pool: Pool) -> tuple[list[str], Word]:
+    """The committed rule's measures on ``pool`` for run a, with run b's beside, and its word.
 
     Args:
         results: run a's and run b's results.
+        pool: ``earlier`` (the committed reading) or ``whole`` (the second reading).
 
     Returns:
-        The lines, ending with the word.
+        The lines from "Run a" to "Run b", and the word read on run a.
     """
     key = (HEADLINE_QUERY, HEADLINE_PREDICTOR)
-    found = [compare(r.split.judged, r.scored[key]) for r in results]
+    found = [compare(r.split.judged, r.scores(pool)[key]) for r in results]
     a, b = found
     first = DIGITS[0]
     word = outcome(
         a.recall_diff[first].low,
         a.precision_diff[first].high if a.precision_diff[first].n else None,
     )
+    where = "" if pool == "earlier" else ", whole pool"
     lines = [
-        f"## The rule (committed in {RULE_COMMIT}, before this script existed)",
-        "",
-        RULE,
         f"Run a ({results[0].run_id}), the probable-cause query, the commonest-set predictor, all "
-        f"judged cases ({a.n} of {results[0].split.total} cases):",
+        f"judged cases ({a.n} of {results[0].split.total} cases){where}:",
         f"- paired difference in mean recall at {first} digits, predictor less loop: "
         f"{_signed(a.recall_diff[first])} (n = {a.recall_diff[first].n} cases)",
         f"- paired difference in mean precision at {first} digits, predictor less loop: "
@@ -505,15 +531,66 @@ def rule_lines(results: Sequence[RunResult]) -> list[str]:
             "Note: no case has both precisions, so the precision interval is read as not below "
             "zero."
         )
-    lines += [
+    lines.append(
         f"Run b ({results[1].run_id}), beside it, decides nothing: recall difference "
         f"{_signed(b.recall_diff[first])} (n = {b.recall_diff[first].n}); precision difference "
-        f"{_signed(b.precision_diff[first])} (n = {b.precision_diff[first].n})",
+        f"{_signed(b.precision_diff[first])} (n = {b.precision_diff[first].n})"
+    )
+    return lines, word
+
+
+def rule_lines(results: Sequence[RunResult]) -> list[str]:
+    """The committed rule applied on run a, with run b's two differences beside it.
+
+    Read on the date-limited pool, as committed. The whole pool's second reading is
+    :func:`whole_rule_lines`.
+
+    Args:
+        results: run a's and run b's results.
+
+    Returns:
+        The lines, ending with the word.
+    """
+    body, word = _reading(results, "earlier")
+    return [
+        f"## The rule (committed in {RULE_COMMIT}, before this script existed)",
+        "",
+        RULE,
+        *body,
         f"Outcome: {word}",
         EXPECTATION,
         "The expectation was met." if word == "promising" else "The expectation was not met.",
     ]
-    return lines
+
+
+def whole_rule_lines(results: Sequence[RunResult]) -> list[str]:
+    """The same committed rule read again on the whole pool: a labelled second reading.
+
+    It applies the rule as committed, unchanged, to the whole-pool figures (run a, the
+    probable-cause query, the commonest-set predictor, all judged cases), prints the two
+    differences with their intervals and the word, and run b's two differences beside, with no
+    word. It carries no expectation: none was committed for it.
+
+    Args:
+        results: run a's and run b's results, each holding its whole-pool scores.
+
+    Returns:
+        The lines, ending with the word.
+    """
+    body, word = _reading(results, "whole")
+    return [
+        f"## Second reading under the whole pool (registered in {WHOLE_POOL_COMMIT}, after the "
+        "first result was seen)",
+        "",
+        f"The rule above (committed in {RULE_COMMIT}), applied again without change to the whole "
+        "pool: every pool case except those on the judged case's own event date, earlier or "
+        "later. The outcome above, read on the date-limited pool, stays the committed outcome; "
+        "this is a second reading, chosen after that result was seen (the plan's entry 'The "
+        f"precedent probes re-read with the whole pool', {WHOLE_POOL_COMMIT}), and is "
+        "published as it stands, whichever way it comes out. No expectation was committed for it.",
+        *body,
+        f"Second reading outcome: {word}",
+    ]
 
 
 def method_lines(pool: Mapping[str, int], kept: int, flagged: int, years: str) -> list[str]:
@@ -549,6 +626,16 @@ def method_lines(pool: Mapping[str, int], kept: int, flagged: int, years: str) -
         "strictly earlier than the judged case's (N, df and the average length over that set); "
         f"ties by case id; the {pp.TOP} highest-ranked. A pool case sharing no word with the "
         "query is not ranked, so a case may have fewer than five.",
+        f"Whole pool (a second reading, registered in {WHOLE_POOL_COMMIT} after the first result "
+        "was seen; development work reads the whole pool, the date-limited figures staying "
+        "beside as a sensitivity check): the same search, unchanged (the precedent probe's own "
+        "whole-pool search, `Index.search` on its `whole` pool, not rewritten here), over every "
+        "pool case except those on the judged case's own event date, earlier or later, with N, "
+        "df and the average length over that set. The judged case, `dev-400` and both sealed "
+        "samples are outside the pool, so a case is never its own precedent; a pool case on the "
+        "judged date is left out because it may be the same accident under a second case "
+        "number. In live use and in S3.2's held-out run every pool case is earlier than the "
+        "judged case, so the date limit never binds there.",
         "Predictors, each turning the five cases' flagged-finding sets (ten-digit codes) into "
         "one set, or none:",
         *(f"- {name}: {meaning}" for name, meaning in PREDICTOR_MEANINGS.items()),
@@ -568,10 +655,16 @@ def method_lines(pool: Mapping[str, int], kept: int, flagged: int, years: str) -
         "The rule is applied above on run a, the probable-cause query and the commonest-set "
         "predictor, over all judged cases. A low end of exactly zero is not above zero; a high "
         "end of exactly zero is not below it. Everything else is printed and decides nothing.",
+        "The second reading, above, applies that rule again on the whole pool in the same way "
+        "(the same run, query, predictor and cases, the same edges, no expectation); its word "
+        "does not replace the committed outcome, and apart from the two rule blocks everything "
+        "is printed and decides nothing.",
         "What the intervals do not say: they treat cases as independent, although cases that "
         "share a sentence share a prediction. The date limit uses the event date, not the date "
         "an earlier verdict was published, so a precedent may have been available to the search "
         "before it was to an investigator; that can only favour the search.",
+        "Under the whole pool a precedent may also be later than the judged case, which the "
+        "date-limited figures (the sensitivity check) do not allow.",
     ]
 
 
@@ -624,21 +717,38 @@ def count_line(split: CaseSplit) -> str:
     )
 
 
-def run_lines(result: RunResult, *, letter: str) -> list[str]:
+POOL_LINES: Final[Mapping[Pool, str]] = {
+    "earlier": (
+        "Pool: the date-limited pool, as committed: only the pool cases whose event date is "
+        "strictly earlier than the judged case's."
+    ),
+    "whole": (
+        f"Pool: the whole pool, a second reading (registered in {WHOLE_POOL_COMMIT} after the "
+        "first result was seen): every pool case except those on the judged case's own event "
+        "date, earlier or later. The judged cases and the loop's own scores are the same as in "
+        "the date-limited block."
+    ),
+}
+
+
+def run_lines(result: RunResult, *, letter: str, pool: Pool = "earlier") -> list[str]:
     """One run: its case counts, then each set of judged cases, query and predictor.
 
     Args:
         result: the run's scores.
         letter: ``a`` or ``b``.
+        pool: ``earlier`` (the committed reading) or ``whole`` (the second reading).
 
     Returns:
         The lines.
     """
     split = result.split
     note = "" if letter == "a" else ", beside run a; decides nothing"
+    where = "" if pool == "earlier" else ", whole pool"
     lines = [
-        f"## Run {letter} ({result.run_id}){note}",
+        f"## Run {letter} ({result.run_id}){note}{where}",
         "",
+        POOL_LINES[pool],
         count_line(split),
     ]
     for title, wanted in SUBSETS:
@@ -653,7 +763,7 @@ def run_lines(result: RunResult, *, letter: str) -> list[str]:
                 lines += [
                     "",
                     f"{query} query, {name} predictor{tag}:",
-                    *comparison_lines(compare(cases, result.scored[(query, name)])),
+                    *comparison_lines(compare(cases, result.scores(pool)[(query, name)])),
                 ]
     return lines
 
@@ -661,7 +771,11 @@ def run_lines(result: RunResult, *, letter: str) -> list[str]:
 def report(
     results: Sequence[RunResult], *, pool: Mapping[str, int], kept: int, flagged: int, years: str
 ) -> str:
-    """The whole report: the head, the rule, the method, then run a and run b.
+    """The whole report: the head, the rule, its second reading, the method, then each run.
+
+    The committed rule's block comes first, then the same rule read again on the whole pool (a
+    second reading), then the method, then run a and run b, each on the date-limited pool and on
+    the whole pool.
 
     Args:
         results: run a's and run b's results.
@@ -687,8 +801,13 @@ def report(
     blocks = [
         "\n".join(head),
         "\n".join(rule_lines(results)),
+        "\n".join(whole_rule_lines(results)),
         "\n".join(method_lines(pool, kept, flagged, years)),
-        *("\n".join(run_lines(r, letter="ab"[n])) for n, r in enumerate(results)),
+        *(
+            "\n".join(run_lines(r, letter="ab"[n], pool=which))
+            for n, r in enumerate(results)
+            for which in pp.POOLS
+        ),
     ]
     return "\n\n".join(blocks)
 
