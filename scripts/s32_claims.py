@@ -61,7 +61,7 @@ from ntsb_probable_cause.scoring.metrics import bootstrap_mean
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
 from scripts._s3_runs import Run, refuse, refuse_unclean_results, write_result
-from scripts.s3_noise_floor import Gate, format_gate, gate_lines
+from scripts.s3_noise_floor import Gate, format_gate
 from scripts.s32_behaviour import (
     ReadCounts,
     Routes,
@@ -69,6 +69,7 @@ from scripts.s32_behaviour import (
     effects_naming_codes,
     read_counts,
     result1_holds,
+    tally_line,
 )
 from scripts.s32_coding_ablation import (
     NOISE_RUNS,
@@ -89,6 +90,7 @@ MODEL: Final = "openai/gpt-6-luna"
 EFFORT: Final = "medium"
 MAX_OUTPUT_TOKENS: Final = 8000
 CAP_USD: Final = 0.30
+STATS: Final = "s3"
 GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")
 DOCKET_ROLES: Final = ("docket_documents", "docket_listing")
 TOOLS_SUFFIX: Final = "-tools"
@@ -234,6 +236,7 @@ def _head(role: Role, run_id: str) -> tuple[RunRecord, dict[str, object]]:
         _expect(run_id, "agent_prompt_version", spec.get("agent_prompt_version"), FROZEN_PROMPT)
         _expect(run_id, "prompt_version", record.prompt_version, FROZEN_PROMPT)
         _expect(run_id, "without", spec.get("without"), [])
+        _expect(run_id, "stats", spec.get("stats"), STATS)
         if spec.get("dirty"):
             refuse(PROG, f"{run_id}: spec.json says it ran from a tree with uncommitted changes")
     if role.trail and not (folder / TRAIL_FILE).is_file():
@@ -554,15 +557,17 @@ def saving_lines(fig: Figures) -> list[str]:
         f"loop discount (computed - billed): {_usd(split.loop_discount_usd)}",
         f"arm B discount (computed - billed): {_usd(split.armb_discount_usd)}",
     ]
+    saving = fig.armb_usd - fig.loop_billed.usd
+    lines.append(
+        f"billed saving (arm B billed - loop billed) {saving:+.4f} USD = reading less "
+        f"(-work) {-split.work_usd:+.4f} USD + cache discounts (loop discount - arm B "
+        f"discount) {split.loop_discount_usd - split.armb_discount_usd:+.4f} USD"
+    )
     if fig.band == "lower":
         lines.append(
-            "the loop's saving comes from "
-            + (
-                "reading less (its computed cost is no higher than arm B's)"
-                if split.work_usd <= 0
-                else "its cache discount, not from less work (its computed cost is higher than "
-                "arm B's)"
-            )
+            f"the loop's saving comes from reading less: {-split.work_usd:+.4f} USD, and from "
+            f"cache discounts: {split.loop_discount_usd - split.armb_discount_usd:+.4f} USD "
+            "(a negative figure is not a saving but a cost)"
         )
     return lines
 
@@ -580,6 +585,10 @@ def results_lines(fig: Figures) -> list[str]:
         "of the cases with documents on offer",
         "- first used the coding tools in arm B's fixed order: "
         f"{_share(counts.fixed_order, counts.counted)} of the cases counted",
+        "- by fatal and non-fatal:",
+        *(tally_line(name, t) for name, t in counts.by_fatal.items()),
+        "- by documents offered (docket size):",
+        *(tally_line(name, t) for name, t in counts.by_offered.items()),
         f"result 2: {'holds' if claims.result2_holds(top1, fig.band) else 'does not hold'} "
         f"(the loop does not beat arm B on top-1 and its bill is equal or greater; outcome "
         f"{top1}, band {fig.band}; spec §9.2)",
@@ -644,6 +653,19 @@ def ablation_lines(fig: Figures) -> list[str]:
 
 def _verdict(met: bool) -> str:
     return "met" if met else "not met"
+
+
+def gate_lines(label: str, gate: Gate) -> list[str]:
+    """The format gate of a held-out run, naming the run's own case count."""
+    reasons = ", ".join(f"{k} {v}" for k, v in sorted(gate.failed.items())) or "none"
+    return [
+        f"format gate, run {label}: {'PASS' if gate.count <= FORMAT_GATE_MAX else 'FAIL'} -- "
+        f"{gate.count} of {gate.cases} cases failed for format or tool reasons ({reasons}); of "
+        f"which {gate.no_reply} had no reply on the failing call; at most {FORMAT_GATE_MAX} of "
+        f"{gate.cases} pass (prediction 9, counted as scripts/s3_noise_floor.py counts it)",
+        f"round limit (failed: rounds), run {label}: {gate.rounds} of {gate.cases} cases (not a "
+        "format or tool failure, so not in the gate)",
+    ]
 
 
 def prediction_lines(fig: Figures) -> list[str]:
@@ -763,8 +785,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.out is not None:
         refuse_unclean_results(PROG, Path(args.out))
-    held = load_heldout(args)
     ablation, noise = load_ablation(PROG, args.ablation, args.noise)
+    held = load_heldout(args)
     try:
         fig = measure(held, ablation, noise)
     except ValueError as error:

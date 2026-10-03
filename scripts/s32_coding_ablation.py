@@ -55,6 +55,15 @@ METRIC_NAMES: Final[dict[str, str]] = {
     "top3": "occurrence top-3",
     "recall10": "finding recall@10",
 }
+# Everything but ``without`` (and the cap, which only guards cost, spec §5) must match.
+SAME_AS_NOISE: Final = (
+    "agent_prompt_version",
+    "model",
+    "reasoning_effort",
+    "max_output_tokens",
+    "guidance",
+    "stats",
+)
 NONE_LEFT: Final = "no case is left to pair"
 
 
@@ -133,12 +142,13 @@ def load_ablation(prog: str, ablation_id: str, noise_ids: Sequence[str]) -> tupl
             "not ['coding']: it is not the coding ablation",
         )
     for run in noise:
-        if run.spec.get("agent_prompt_version") != ablation.spec.get("agent_prompt_version"):
-            refuse(
-                prog,
-                f"{ablation_id} differs from {run.record.run_id} at 'agent_prompt_version': "
-                "the ablation must be the same loop text",
-            )
+        for key in SAME_AS_NOISE:
+            if run.spec.get(key) != ablation.spec.get(key):
+                refuse(
+                    prog,
+                    f"{ablation_id} differs from {run.record.run_id} at {key!r}: the ablation "
+                    "must be the same loop, model and settings as the noise runs",
+                )
     return ablation, noise
 
 

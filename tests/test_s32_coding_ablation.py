@@ -156,3 +156,29 @@ def test_an_ablation_run_of_a_different_loop_is_refused(runs: Path) -> None:
     _write(runs, NOISE_B, _cases(20))
     with pytest.raises(SystemExit, match="agent_prompt_version"):
         ab.main(_args())
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"model": "other/model"},
+        {"reasoning_effort": "high"},
+        {"max_output_tokens": 2000},
+        {"guidance": ["r3-loc-stall"]},
+        {"stats": "s27"},
+    ],
+)
+def test_an_ablation_with_other_settings_than_the_noise_runs_is_refused(
+    runs: Path, change: dict[str, object]
+) -> None:
+    key = next(iter(change))
+    _write(
+        runs,
+        ABLATION,
+        _cases(0),
+        spec=_spec_json(list(_IDS), without=["coding"], **change),
+    )
+    _write(runs, NOISE_A, _cases(20))
+    _write(runs, NOISE_B, _cases(20))
+    with pytest.raises(SystemExit, match=key):
+        ab.main(_args())

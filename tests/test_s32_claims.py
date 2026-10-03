@@ -890,3 +890,64 @@ def test_a_held_out_result_is_written_to_the_output_file(
     target = tmp_path / "out" / "claims.txt"
     printed = run_claims(capsys, "--out", str(target))
     assert target.read_text() == printed
+
+
+def test_result_1_is_also_printed_by_fatal_and_by_documents_offered(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs, World(loop_calls=_read_everything_calls(True)))
+    out = run_claims(capsys)
+    assert "- fatal: 5 counted; read every document on offer 5 of 5 (100.0%)" in out
+    assert "- non-fatal: 15 counted; read every document on offer 15 of 15 (100.0%)" in out
+    assert "- 2-4: 20 counted; read every document on offer 20 of 20 (100.0%)" in out
+    assert "- none: 0 counted" in out
+    assert "by documents offered (docket size)" in out
+
+
+def test_the_saving_is_split_by_an_identity_with_figures(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs, World(loop_cost=(0.5, 2.0)))
+    out = run_claims(capsys)
+    # billed saving 1.0 - 0.5 = +0.5 = (-0.8 work) + (1.5 - 0.2 discounts)
+    assert (
+        "billed saving (arm B billed - loop billed) +0.5000 USD = reading less (-work) "
+        "-0.8000 USD + cache discounts (loop discount - arm B discount) +1.3000 USD"
+    ) in out
+
+
+def test_the_identity_is_printed_when_the_band_is_not_lower(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs)
+    assert "billed saving (arm B billed - loop billed) +0.0000 USD" in run_claims(capsys)
+
+
+@pytest.mark.parametrize("role", [LOOP, NODOCKET])
+def test_the_loop_runs_must_have_counted_in_s3_statistics(runs: Path, role: str) -> None:
+    build(runs)
+    spec = json.loads((runs / role / "spec.json").read_text())
+    spec["stats"] = "s27"
+    (runs / role / "spec.json").write_text(json.dumps(spec))
+    with pytest.raises(SystemExit, match="stats"):
+        sc.main(_argv())
+
+
+def test_a_development_refusal_comes_before_any_held_out_case_is_read(runs: Path) -> None:
+    build(runs)
+    spec = json.loads((runs / ABLATION / "spec.json").read_text())
+    spec["without"] = []
+    (runs / ABLATION / "spec.json").write_text(json.dumps(spec))
+    (runs / ARM_A / "cases.jsonl").write_text("not json\n")  # a read would fail differently
+    with pytest.raises(SystemExit, match="coding ablation"):
+        sc.main(_argv())
+
+
+def test_the_format_gate_line_names_the_runs_own_sample(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs)
+    out = run_claims(capsys)
+    assert "format gate, run loop: PASS -- 0 of 20 cases failed" in out
+    assert "at most 8 of 20 pass" in out
+    assert "dev-400's 401" not in out.split("## 8.")[1]

@@ -258,7 +258,8 @@ def _more_than_half(part: int, whole: int) -> bool:
     return 2 * part > whole
 
 
-def _tally_line(name: str, t: Tally) -> str:
+def tally_line(name: str, t: Tally) -> str:
+    """One tally as a line: cases counted, read-everything share and fixed-order share."""
     return (
         f"- {name}: {t.counted} counted; read every document on offer "
         f"{_share(t.read_everything, t.with_offer)} of those with documents on offer; "
@@ -293,9 +294,9 @@ def run_lines(label: str, counts: ReadCounts, routes: Routes) -> list[str]:
         f"{_share(counts.fixed_order, counts.counted)} of the cases counted",
         f"result 1: {'holds' if holds else 'does not hold'} (more than half on either)",
         "by fatal and non-fatal:",
-        *(_tally_line(name, t) for name, t in counts.by_fatal.items()),
+        *(tally_line(name, t) for name, t in counts.by_fatal.items()),
         "by documents offered:",
-        *(_tally_line(name, t) for name, t in counts.by_offered.items()),
+        *(tally_line(name, t) for name, t in counts.by_offered.items()),
         f"result 4's measure: {_share(routes.naming, routes.total)} stated effects on documents "
         "read name an event or a finding category (an event label, a category label's leaf, or "
         "an event code as a whole word)",
