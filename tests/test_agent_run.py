@@ -149,6 +149,9 @@ def _runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     without: frozenset[Without] = frozenset(),
     max_rounds: int = 40,
     ledger_path: Path | None = None,
+    # S3.2 Task 6: a `heldout-400` run needs the registration committed; these tests are about
+    # the other rules, so the registration is committed unless a test says it is not.
+    is_committed: Callable[[Path], bool] = lambda _path: True,
 ) -> AgentRunner:
     return AgentRunner(
         client if client is not None else ScriptedClient([]),
@@ -166,6 +169,7 @@ def _runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
         without=without,
         max_rounds=max_rounds,
         ledger_path=ledger_path,
+        is_committed=is_committed,
     )
 
 
