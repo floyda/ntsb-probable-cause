@@ -20,9 +20,11 @@ Two files in the run folder make it exact:
 A round's finishing row records how it ended, and only some endings are a case's business:
 
 - ``completed``: its replies are used; a call with no result is that case's failed call.
-- ``expired``, ``failed`` or ``completed`` with a result for none of its calls: the provider's
-  failure, not any case's. No reply is taken, no loop is told, and the same calls go out as the
-  next round (bounded by ``max_rounds``).
+- ``expired``, ``failed`` or ``completed`` with a result for none of the calls still owed: the
+  provider's failure, not any case's. No reply is taken, no loop is told, and the same calls go
+  out as the next round (bounded by ``max_rounds``). In a resumed round the calls whose replies
+  are already on disk are not owed; a resumed round that owes nothing is finished with whatever
+  status its batch reports, ``cancelled`` included.
 - ``lost``: a batch recorded by an earlier attempt that the provider no longer serves. Finished,
   and its calls that are still unanswered go out again, as for a dead batch.
 - ``cancelled``: usually an operator stopping spend, so the run does not go on by itself. The
@@ -38,7 +40,7 @@ Case ids are public NTSB numbers, so the refusals below may name them. They neve
 a payload or provider text.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence, Set
 from datetime import datetime
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol
@@ -308,6 +310,13 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
             continue
         _refuse_foreign_results(row, status)
         cost = status.reported_cost_usd
+        wanted = {c.custom_id for c in calls}
+        if resumed and not calls:
+            # Every reply of the open round was on disk: only its finishing row was missing. Its
+            # status, whatever it is, says nothing about a call still owed (S3.2 Task 3).
+            done = _finish_round(row, folder, now(), status=status.status, cost=cost)
+            _tell(on_round, done, loops, waited=resumed)
+            continue
         if status.status == _CANCELLED:
             finished = _finish_round(row, folder, now(), status=_CANCELLED, cost=cost)
             _tell(on_round, finished, loops, waited=resumed)
@@ -315,7 +324,7 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
                 f"batch {row.batch_id} (round {row.round}) was cancelled, so the run stops here. "
                 "The run can be resumed: a resume sends its calls again."
             )
-        if _is_dead(status):  # nothing was accepted: the same calls go out in the next round
+        if _is_dead(status, wanted):  # none owed was answered: the same calls go out again
             dead = _finish_round(row, folder, now(), status=status.status, cost=cost)
             _tell(on_round, dead, loops, waited=resumed)
             continue
@@ -530,15 +539,18 @@ def _wait(batch: BatchRunner, row: RoundRow, *, resumed: bool) -> BatchStatus | 
         return None
 
 
-def _is_dead(status: BatchStatus) -> bool:
-    """A batch that returned no result at all: the provider's failure, not any case's.
+def _is_dead(status: BatchStatus, wanted: Set[str]) -> bool:
+    """No result for any call still owed: the provider's failure, not any case's.
 
-    By now ``_refuse_foreign_results`` has run, so every result is for a call of the round: no
-    results means none for any of them. This holds for ``expired``, ``failed`` and ``completed``
-    alike (``cancelled`` is dealt with before). A batch that returned some results is not dead:
-    a call it left out is that case's failed call.
+    For a fresh round every call is owed, as before. For a resumed round the replies already
+    on disk are not owed, so a batch holding only those is dead for the rest (S3.2 Task 3).
+
+    By now ``_refuse_foreign_results`` has run, so every result is for a call of the round. This
+    holds for ``expired``, ``failed`` and ``completed`` alike (``cancelled`` is dealt with
+    before). A batch that returned a result for some owed call is not dead: a call it left out
+    is that case's failed call.
     """
-    return not status.results
+    return not any(r.custom_id in wanted for r in status.results)
 
 
 def _finish_round(

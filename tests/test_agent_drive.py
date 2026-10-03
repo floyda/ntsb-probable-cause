@@ -732,6 +732,96 @@ class TestResume:
         assert (cut / REPLIES_FILE).read_text() == (whole / REPLIES_FILE).read_text()
         assert (cut / ROUNDS_FILE).read_text() == (whole / ROUNDS_FILE).read_text()
 
+    def test_an_open_round_whose_replies_are_all_on_disk_finishes_whatever_its_status(
+        self, tmp_path: Path
+    ) -> None:
+        """S3.2 Task 3: the batch's status says nothing about a call that is no longer owed.
+
+        A kill after both replies were written and before the round was finished leaves an open
+        round that owes nothing. If its batch then reports ``cancelled``, the run must not stop.
+        """
+        whole, cut = tmp_path / "whole", tmp_path / "cut"
+        reference = _uninterrupted(whole)
+        first = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+        drive_batch(_loops(), first, folder=cut, now=Clock())
+        rounds = (cut / ROUNDS_FILE).read_text().splitlines(keepends=True)
+        replies = (cut / REPLIES_FILE).read_text().splitlines(keepends=True)
+        (cut / ROUNDS_FILE).write_text("".join(rounds[:1]))  # round 1 open, nothing finished
+        (cut / REPLIES_FILE).write_text("".join(replies[:2]))  # both of its replies are on disk
+
+        def cancelled(batch_id: str, requests: Sequence[BatchRequest]) -> BatchStatus:
+            status = _answers(_scripts())(batch_id, requests)
+            return status.model_copy(update={"status": "cancelled", "reported_cost_usd": 0.0625})
+
+        resumed = _resumer(first, "b1", [cancelled, *[_answers(_scripts())] * 7])
+        loops = _loops()
+        drive_batch(loops, resumed, folder=cut, now=Clock(ticks=1))  # no BatchCancelledError
+
+        assert resumed.waited[0] == "b1"
+        finished = [r for r in _rounds(cut) if r.finished_at is not None]
+        assert (finished[0].round, finished[0].status, finished[0].reported_cost_usd) == (
+            1,
+            "cancelled",
+            0.0625,
+        )
+        assert [(r.case_id, r.call_index) for r in _replies(cut)] == [
+            (r.case_id, r.call_index) for r in _replies(whole)
+        ]  # nothing written twice, nothing lost
+        assert [_core(o) for o in _outcomes(loops)] == [_core(o) for o in _outcomes(reference)]
+
+    @pytest.mark.parametrize("ended", ["completed", "expired"])
+    def test_a_resumed_batch_with_nothing_for_what_is_still_owed_is_dead_for_it(
+        self, tmp_path: Path, ended: str
+    ) -> None:
+        """S3.2 Task 3: the results held for calls already on disk do not make the batch alive.
+
+        Three cases are in round 1; only A's reply reached the disk. The batch holds a result for
+        A alone. B and C are owed, and the batch has nothing for them: that is the provider's
+        failure, so they are sent again and neither loses an attempt.
+        """
+        c = next(r for r in load_record_fixtures() if r["ntsbNumber"] not in (A, B))
+        case_c = str(c["ntsbNumber"])
+        scripts = {**_scripts(), case_c: _script(B_REPLIES)}
+
+        def three() -> list[CaseLoop]:
+            return [*_loops(), CaseLoop(c, None, _config())]
+
+        folder = tmp_path / "cut"
+        first = FakeBatchClient(handlers=[_answers(scripts)] * 8)
+        drive_batch(three(), first, folder=folder, now=Clock())
+        rounds = (folder / ROUNDS_FILE).read_text().splitlines(keepends=True)
+        replies = (folder / REPLIES_FILE).read_text().splitlines(keepends=True)
+        (folder / ROUNDS_FILE).write_text("".join(rounds[:1]))  # round 1 open
+        (folder / REPLIES_FILE).write_text("".join(replies[:1]))  # A's reply only
+        assert (_replies(folder)[0].case_id, len(_replies(folder))) == (A, 1)
+
+        def only_a(batch_id: str, requests: Sequence[BatchRequest]) -> BatchStatus:
+            held = [r for r in requests if r.custom_id.startswith(f"{A}#")]
+            status = _answers(scripts)(batch_id, held)
+            return status.model_copy(update={"status": ended, "reported_cost_usd": 0.5})
+
+        resumed = _resumer(first, "b1", [only_a, *[_answers(scripts)] * 7])
+        loops = three()
+        at_finish: list[tuple[int, ...]] = []
+
+        def listen(row: object, _running: int, _waited: bool) -> None:
+            if getattr(row, "finished_at", None) is not None and not at_finish:
+                at_finish.append(tuple(loop.call_index for loop in loops))
+
+        drive_batch(loops, resumed, folder=folder, now=Clock(ticks=1), on_round=listen)
+
+        assert at_finish == [(1, 0, 0)]  # B and C were not given a failed call
+        round_one = next(r for r in _rounds(folder) if r.finished_at is not None)
+        assert (round_one.round, round_one.status, round_one.reported_cost_usd) == (1, ended, 0.5)
+        sent_again = {r.custom_id for r in resumed.submitted[1]}
+        assert sent_again == {custom_id(A, 1), custom_id(B, 0), custom_id(case_c, 0)}
+        owed = [r for r in first.submitted[0] if not r.custom_id.startswith(f"{A}#")]
+        assert [r for r in resumed.submitted[1] if r in owed] == owed  # the same requests
+        for loop in loops:
+            assert loop.outcome.stop_reason is not None
+            assert not loop.outcome.stop_reason.startswith("failed:")
+            assert all(call.protocol_error is None for call in loop.outcome.calls)
+
     def test_replay_gives_the_loops_exactly_the_state_the_live_run_had(
         self, tmp_path: Path
     ) -> None:
