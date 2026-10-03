@@ -72,8 +72,9 @@ def is_guard_refusal(case: CaseResult) -> bool:
     """Whether the leakage guard refused a document of this case (spec §7.3).
 
     The runner writes ``"leak: <message>"`` for arm B and arm C alike (``leaked_case``). The
-    loop's own stop reason ``"failed: leak"`` is accepted as well, though arm C converts it,
-    so a record in either form leaves both arms.
+    loop's own stop reason ``"failed: leak"`` is accepted as well. This is not only a safety
+    net: arm B's tool post-pass (``agent/armb.py``) writes the loop's stop reason as it is, so
+    a record in that form does reach a run folder, and it must leave both arms too.
     """
     return case.failure is not None and (
         case.failure.startswith("leak") or case.failure == "failed: leak"
@@ -120,8 +121,26 @@ def per_case(cases: Sequence[CaseResult], metric: Metric) -> dict[str, float]:
     return values
 
 
+def _refuse_different_cases(a: Sequence[CaseResult], b: Sequence[CaseResult]) -> None:
+    """Refuse two runs that do not cover the same cases (spec §6, §7.2: "the same cases").
+
+    The check is made before any guard refusal is removed. The message gives counts only, never
+    a case id.
+    """
+    ids_a = {c.case_id for c in a}
+    ids_b = {c.case_id for c in b}
+    if ids_a != ids_b:
+        raise ValueError(
+            f"the two runs do not cover the same cases: {len(ids_a)} and {len(ids_b)} cases, "
+            f"{len(ids_a ^ ids_b)} in only one of them"
+        )
+
+
 def _paired(a: Mapping[str, float], b: Mapping[str, float]) -> Paired:
     shared = sorted(set(a) & set(b))
+    if not shared:
+        # bootstrap_mean([]) is (0, 0, 0), which outcome() would read as "matches".
+        raise ValueError("no case is left to pair: a difference of nothing is not a reading")
     mean, low, high = bootstrap_mean([a[i] - b[i] for i in shared])
     return Paired(mean, low, high, len(shared))
 
@@ -131,13 +150,25 @@ def paired(a: Sequence[CaseResult], b: Sequence[CaseResult], metric: Metric) -> 
 
     A case refused by the guard in either arm is in neither. Every other failure counts as
     wrong in its own arm. The interval is ``metrics.bootstrap_mean`` with its default seed.
+
+    Raises:
+        ValueError: if the two runs do not cover the same case ids (checked before refusals are
+            removed), or if no case is left to pair.
     """
+    _refuse_different_cases(a, b)
     return _paired(per_case(a, metric), per_case(b, metric))
 
 
 def both_answered(a: Sequence[CaseResult], b: Sequence[CaseResult], metric: Metric) -> Paired:
-    """The same difference on the cases both arms answered: printed beside (spec §7.3)."""
-    keep = {c.case_id for c in a if answered(c)} & {c.case_id for c in b if answered(c)}
+    """The same difference on the cases both arms answered: printed beside (spec §7.3).
+
+    Raises:
+        ValueError: as ``paired``, including when no case was answered in both arms.
+    """
+    _refuse_different_cases(a, b)
+    keep = {c.case_id for c in a if answered(c) is not None} & {
+        c.case_id for c in b if answered(c) is not None
+    }
     pa = {k: v for k, v in per_case(a, metric).items() if k in keep}
     pb = {k: v for k, v in per_case(b, metric).items() if k in keep}
     return _paired(pa, pb)

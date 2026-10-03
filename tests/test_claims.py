@@ -154,7 +154,10 @@ class TestPaired:
         a = [_scored(f"C{i}", top1=i < 3) for i in range(10)]
         b = [_scored(f"C{i}", top1=i < 1) for i in range(10)]
         d = claims.paired(a, b, "top1")
-        mean, low, high = bootstrap_mean([1.0, 1.0] + [0.0] * 8)
+        # The expected list is in sorted-id order, as the call builds it.
+        ids = sorted(f"C{i}" for i in range(10))
+        diffs = [float(i < 3) - float(i < 1) for i in (int(x[1:]) for x in ids)]
+        mean, low, high = bootstrap_mean(diffs)
         assert d == Paired(mean, low, high, 10)
         assert d.mean == pytest.approx(0.2)
 
@@ -165,12 +168,26 @@ class TestPaired:
         assert d.n == 2
         assert d.mean == pytest.approx(-0.5)
 
-    def test_an_empty_pairing_is_zero(self) -> None:
-        assert claims.paired([], [], "top1") == Paired(0.0, 0.0, 0.0, 0)
+    def test_runs_over_different_cases_are_refused_with_counts_only(self) -> None:
+        with pytest.raises(ValueError, match=r"2 and 1 cases, 1 in only one") as caught:
+            claims.paired([_scored("SECRET1"), _scored("SECRET2")], [_scored("SECRET1")], "top1")
+        assert "SECRET" not in str(caught.value)
 
-    def test_cases_in_only_one_arm_are_left_out(self) -> None:
-        d = claims.paired([_scored("C1"), _scored("C2")], [_scored("C1")], "top1")
-        assert d.n == 1
+    def test_runs_over_different_cases_are_refused_before_refusals_are_removed(self) -> None:
+        a = [_scored("C1"), _failed("C2", "leak: x")]
+        b = [_scored("C1")]
+        with pytest.raises(ValueError, match="do not cover the same cases"):
+            claims.paired(a, b, "top1")
+
+    def test_an_empty_pairing_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="no case is left"):
+            claims.paired([], [], "top1")
+
+    def test_a_pairing_of_only_guard_refusals_is_refused(self) -> None:
+        a = [_failed("C1", "leak: x"), _failed("C2", "failed: leak")]
+        b = [_scored("C1"), _scored("C2")]
+        with pytest.raises(ValueError, match="no case is left"):
+            claims.paired(a, b, "top1")
 
 
 class TestBothAnswered:
@@ -180,6 +197,16 @@ class TestBothAnswered:
         d = claims.both_answered(a, b, "top1")
         assert d.n == 1
         assert d.mean == pytest.approx(1.0)
+
+    def test_runs_over_different_cases_are_refused(self) -> None:
+        with pytest.raises(ValueError, match="do not cover the same cases"):
+            claims.both_answered([_scored("C1")], [_scored("C2")], "top1")
+
+    def test_no_case_answered_in_both_is_refused(self) -> None:
+        a = [_failed("C1", "failed: coding")]
+        b = [_scored("C1")]
+        with pytest.raises(ValueError, match="no case is left"):
+            claims.both_answered(a, b, "top1")
 
     def test_recall10_with_no_recall_on_a_case_leaves_it_out(self) -> None:
         a = [_scored("C1", recall=0.5), _scored("C2", recall=None)]
@@ -240,7 +267,11 @@ class TestWarranted:
             ("matches", "equal", False),
             ("matches", "greater", False),
             ("worse", "lower", False),
+            ("worse", "equal", False),
+            ("worse", "greater", False),
             ("undecided", "lower", False),
+            ("undecided", "equal", False),
+            ("undecided", "greater", False),
         ],
     )
     def test_warranted(self, o: Outcome, band: claims.CostBand, expected: bool) -> None:
@@ -253,8 +284,10 @@ class TestResult2:
         [
             ("matches", "equal"),
             ("matches", "greater"),
+            ("worse", "equal"),
             ("worse", "greater"),
             ("undecided", "equal"),
+            ("undecided", "greater"),
         ],
     )
     def test_holds(self, o: Outcome, band: claims.CostBand) -> None:
