@@ -16,7 +16,8 @@ by documents offered:
 - 1: 60 counted; read every document on offer 59 of 60 (98.3%) of those with documents on offer; fixed order 0 of 60 (0.0%)
 - 2-4: 117 counted; read every document on offer 107 of 117 (91.5%) of those with documents on offer; fixed order 0 of 117 (0.0%)
 - 5 or more: 202 counted; read every document on offer 59 of 202 (29.2%) of those with documents on offer; fixed order 1 of 202 (0.5%)
-result 4's measure: 48 of 2094 (2.3%) stated effects on documents read name an event or a finding category (labels of 6 characters or more, or an event code as a whole word)
+result 4's measure: 336 of 2094 (16.0%) stated effects on documents read name an event or a finding category (an event label, a category label's leaf, or an event code as a whole word)
+by route (an effect can match more than one): event label 48, category leaf 292, event code 0
 
 ## run b
 run b: 401 cases counted, 379 of them with documents on offer
@@ -31,4 +32,5 @@ by documents offered:
 - 1: 60 counted; read every document on offer 59 of 60 (98.3%) of those with documents on offer; fixed order 0 of 60 (0.0%)
 - 2-4: 117 counted; read every document on offer 103 of 117 (88.0%) of those with documents on offer; fixed order 0 of 117 (0.0%)
 - 5 or more: 202 counted; read every document on offer 58 of 202 (28.7%) of those with documents on offer; fixed order 0 of 202 (0.0%)
-result 4's measure: 50 of 2072 (2.4%) stated effects on documents read name an event or a finding category (labels of 6 characters or more, or an event code as a whole word)
+result 4's measure: 331 of 2072 (16.0%) stated effects on documents read name an event or a finding category (an event label, a category label's leaf, or an event code as a whole word)
+by route (an effect can match more than one): event label 50, category leaf 283, event code 0
