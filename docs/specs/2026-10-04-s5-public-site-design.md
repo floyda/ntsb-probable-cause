@@ -304,36 +304,44 @@ Closed-case numbers from the board and held-out numbers from evaluation never sh
   as a terminal display in dot-matrix letters, and the small vignettes on the Path page
   (§10.1). Everything else is plain signage type.
 - **Small airport cues are allowed outside the board**: an amber wayfinding sign as a label,
-  for example. No drawings of aircraft, and none of accidents.
+  for example. Aircraft appear only in the Path vignettes, on the ground (§10.1). Nothing
+  anywhere shows an accident.
 - **Long text never goes on the board.** Dot letters are hard to read in sentences. Cause
   statements live in the opened case.
 - **Light and dark** are both designed. The board is dark in both.
 - **Meaning is carried by shape and words, not colour alone.** No red and green.
 
-### 10.1 Pixel-art vignettes of investigators at work
+### 10.1 Pixel-art vignettes of people at work
 
-Andy asked for animated pixel art of engineers investigating, done carefully and subtly
-(2026-10-04). Each Path stop carries one small vignette of a person doing, by hand, the step
-that question is about.
+Andy asked for animated pixel art of engineers investigating, done carefully and subtly, and
+widened it to engine work and roles around the airport, air traffic control among them
+(2026-10-04). Each Path stop carries one small vignette.
 
-**The rule that keeps it honest and respectful: the vignettes show desk work only.** They show
-people reading, sorting, comparing and filing documents. They never show wreckage, a crash
-site, an aircraft in distress, or an injured person. This is also the truthful picture: the
-agent replaces the analysis done at the desk, not the field investigation, and the art should
-not suggest otherwise.
+**What the vignettes show: the people whose work becomes the docket.** An engine examination,
+a controller's radar and radio log, a weather observation, a mechanic's logbook: each is a
+document the agent reads. Showing those people tells the reader where the messy files come
+from, which is the first of the three impressions (§2). Each vignette's caption names the
+record that role produces, so the art says "this is what the agent reads", never "this is
+what the agent does". The agent replaces the analysis, not the field work.
+
+**The rule that keeps it respectful: normal operations only.** People at work, an intact
+engine on a stand, an aircraft parked or taxiing at a distance. Never an accident, damage,
+smoke or fire, wreckage, an emergency response, distress, or an injured person. No aircraft in
+flight: on a site about accidents, an aircraft in the air reads as foreshadowing. An engine is
+always shown whole; a damaged one would be wreckage.
 
 Proposed scenes, one per question:
 
-| question | the vignette |
-|---|---|
-| 1. An answer key | a closed folder placed in a filing drawer |
-| 2. One model call | a person reading a single sheet |
-| 3. Reading the docket | a box of files opened and spread on a desk |
-| 4. Scanned pages | a handwritten form held under a desk lamp |
-| 5. Misses are coding | a hand choosing between two index cards |
-| 6. The answer key's consistency | two desks, the same sheet, two different cards written |
-| 7. Choosing what to read | some folders taken from a shelf, others left |
-| 8. Newly closed cases | a person at a window, the terminal display beyond |
+| question | the vignette | the record it stands for |
+|---|---|---|
+| 1. An answer key | an investigator places a closed report in a filing drawer | the published verdict |
+| 2. One model call | a person holding a single card of basic facts | the start facts, all the one call sees |
+| 3. Reading the docket | an engine on a stand, an examiner with a lamp and a clipboard | the engine examination report, often the document that settles a case |
+| 4. Scanned pages | a mechanic writing in a logbook by hand | handwritten records arrive as scans the agent cannot read while transcription is paused |
+| 5. Misses are coding | a hand choosing between two index cards | the NTSB's coding conventions |
+| 6. The answer key's consistency | two desks, the same report, two different cards written | two coders, one account |
+| 7. Choosing what to read | a controller at a radar screen, a weather observer at an instrument | radar, radio transcripts and weather data, which make up most large dockets; the agent chooses whether to read them |
+| 8. Newly closed cases | a person at a terminal window, the display board beyond, an aircraft parked at the stand | the live test |
 
 **How they look and move:**
 
@@ -437,7 +445,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
    author line linking to Andy's profile page (§3.1).
 9. Abstained cases have their own row on the board (§4).
 10. The Path page is a second scrolling route, one stop per question (§7).
-11. Pixel-art vignettes of desk work on the Path page only, with the rules of §10.1.
+11. Pixel-art vignettes on the Path page only, showing the people whose work becomes the
+    docket, in normal operations only (§10.1).
 
 ## 16. Open questions for Andy
 
