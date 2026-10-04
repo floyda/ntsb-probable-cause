@@ -68,7 +68,7 @@ to bottom. Each stop is a short form of a page in the table above and links to t
 | 3. One case | the opened case for the chosen row (§5) | the case's own address |
 | 4. Its trail | that case's beliefs as a strip of four blocks, with what was read between them | Trail view (§6) |
 | 5. Was a loop needed? | the ladder and one plain sentence stating the result (§7.1) | Methods (§9) |
-| 6. The path taken | the eight questions, each with a one-line answer (§7.2) | Path (§7) |
+| 6. The path taken | the eight questions, each with a one-line answer (§7.2) | Path (§7), each question to its own stop |
 
 A slim rail of the six stops stays in view and marks the stop being read: at the left on a
 wide screen, across the top on a phone.
@@ -96,6 +96,11 @@ Four limits apply:
 - The reader keeps control of the scroll. Nothing pins the page or moves it.
 - With a reduced-motion setting, or with scripts off, everything is shown at once, with no
   animation. No content depends on the animation to be read.
+- Anything that reads the page without scrolling sees all of it: a link preview, a search
+  engine, a printed copy. A render of the current example at a true phone width, on
+  2026-10-04, fitted the screen but showed every stop below the first one blank in a
+  whole-page capture, because each stop waits for a scroll. The built page must start with
+  its content visible and hide it only once a script has confirmed the reader is scrolling.
 - Motion is for arrival only. It never marks a result as good or bad, so nothing reads as a
   game (§11).
 
@@ -211,7 +216,17 @@ shows one reason per read choice; the built page shows the expected effect per d
 
 ## 7. The Path page
 
-The Path page tells how the project decided what to build. It has three parts.
+The Path page tells how the project decided what to build.
+
+**It is a second scrolling route, built like the first page** (Andy, 2026-10-04), so the two
+feel like one site. It opens with the ladder, then gives each of the eight questions its own
+stop, then closes with what could come next. Each question's stop holds the question, its
+measured answer, the decision taken, one small figure, a pixel-art vignette (§10.1), and
+links to its results file, its script and its Methods entry. Each line of the first page's
+last stop links to its question's stop here. The rail of stops and the motion rules of §3.1
+apply unchanged.
+
+It has three parts.
 
 ### 7.1 The ladder
 
@@ -285,14 +300,55 @@ Closed-case numbers from the board and held-out numbers from evaluation never sh
 
 ## 10. Appearance
 
-- **The theme is an airport, used quietly.** The pixel look has one home: the board, drawn as
-  a terminal display in dot-matrix letters. Everything else is plain signage type.
+- **The theme is an airport, used quietly.** The pixel look has two homes: the board, drawn
+  as a terminal display in dot-matrix letters, and the small vignettes on the Path page
+  (§10.1). Everything else is plain signage type.
 - **Small airport cues are allowed outside the board**: an amber wayfinding sign as a label,
   for example. No drawings of aircraft, and none of accidents.
 - **Long text never goes on the board.** Dot letters are hard to read in sentences. Cause
   statements live in the opened case.
 - **Light and dark** are both designed. The board is dark in both.
 - **Meaning is carried by shape and words, not colour alone.** No red and green.
+
+### 10.1 Pixel-art vignettes of investigators at work
+
+Andy asked for animated pixel art of engineers investigating, done carefully and subtly
+(2026-10-04). Each Path stop carries one small vignette of a person doing, by hand, the step
+that question is about.
+
+**The rule that keeps it honest and respectful: the vignettes show desk work only.** They show
+people reading, sorting, comparing and filing documents. They never show wreckage, a crash
+site, an aircraft in distress, or an injured person. This is also the truthful picture: the
+agent replaces the analysis done at the desk, not the field investigation, and the art should
+not suggest otherwise.
+
+Proposed scenes, one per question:
+
+| question | the vignette |
+|---|---|
+| 1. An answer key | a closed folder placed in a filing drawer |
+| 2. One model call | a person reading a single sheet |
+| 3. Reading the docket | a box of files opened and spread on a desk |
+| 4. Scanned pages | a handwritten form held under a desk lamp |
+| 5. Misses are coding | a hand choosing between two index cards |
+| 6. The answer key's consistency | two desks, the same sheet, two different cards written |
+| 7. Choosing what to read | some folders taken from a shelf, others left |
+| 8. Newly closed cases | a person at a window, the terminal display beyond |
+
+**How they look and move:**
+
+- Small, beside the question, never larger than its figure. Two or three colours, all from
+  the page's own tokens, so they sit in both light and dark.
+- People have no faces and no names. There is no recurring character, so nothing reads as a
+  mascot or a game.
+- No agency's name, logo or uniform lettering. The NTSB is never drawn, so the site cannot be
+  read as speaking for it.
+- A few frames, such as a page turning or a lamp coming on. Each plays once when its stop
+  arrives and rests on its last frame. With reduced motion, only the last frame is shown.
+- Each has a plain text description for screen readers.
+
+The first page carries no vignettes. Its stops hold real cases, and the art stays away from
+them.
 
 ## 11. Respect
 
@@ -380,6 +436,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 8. The first page is one scrolling route of six stops, with the caveat above the board and the
    author line linking to Andy's profile page (§3.1).
 9. Abstained cases have their own row on the board (§4).
+10. The Path page is a second scrolling route, one stop per question (§7).
+11. Pixel-art vignettes of desk work on the Path page only, with the rules of §10.1.
 
 ## 16. Open questions for Andy
 
@@ -389,6 +447,17 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 4. Every point in §12.
 5. Whether the board shows documents read and cost, which carry impressions 1 and 3, or leaves
    them in the opened case as now.
+6. The vignettes' scenes (§10.1 proposes eight), and who draws them. Pixel art at this size
+   succeeds or fails on craft; a weak drawing would cheapen the page more than no drawing.
+7. Which figure each Path question carries. Proposed: the ladder for questions 2 and 3; the
+   share of scanned pages per docket for 4; the commonest pairs of agent and NTSB first codes
+   for 5; one repeated NTSB cause sentence with its different first codes for 6; each case's
+   beliefs before reading, after reading and at the answer, against the NTSB's, for 7; a strip
+   of closed cases over time, one mark each, for 8. Also proposed: the docket strip in the
+   first page's trail stop, and the run-twice noise band behind the ladder. A map of accident
+   sites, agent minutes against investigation months, and a live headline percentage are
+   ruled out: the first can identify people, the second suggests the agent replaces the
+   investigation, the third makes the board a scoreboard.
 
 ## Glossary
 
