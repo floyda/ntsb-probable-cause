@@ -37,6 +37,7 @@ from tests.test_attach import _docket as small_docket
 from tests.test_marks import FACTUAL, S1, S2
 from tests.test_runner import FakeBatchClient
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as run_module
 from ntsb_probable_cause.agent import texts
@@ -66,9 +67,10 @@ from ntsb_probable_cause.model.client import (
 )
 from ntsb_probable_cause.model.client import tool_reply as reply_calling
 from ntsb_probable_cause.records.marks import CaseMark
-from ntsb_probable_cause.scoring import prompt
+from ntsb_probable_cause.scoring import claims, prompt
 from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
     CaseResult,
     RunRecord,
     StepRecord,
@@ -939,6 +941,39 @@ class TestCapAndDocket:
         assert a.documents_not_read == ("1: undecided", "2: undecided")
         assert b.failure == "cap"
         assert client.calls == 0
+
+    def test_a_case_stopped_at_the_context_ceiling_is_recorded_with_that_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Decision 152: a call of A after its first is over the ceiling, so it is never sent. The
+        case fails ``cap: context`` in ``cases.jsonl``, its last checkpoint says ``cap``, and
+        the claims count it wrong; B, under the ceiling, is answered as before."""
+        _, reference = _sync_run(tmp_path / "reference")
+        price = sources.price_of("openai/gpt-6-luna")  # the sync run's standard price
+        tokens = {
+            (c.case_id, c.call_index): (c.estimated_usd * 1e6 - 8000 * price.output_usd_per_mtok)
+            / price.input_usd_per_mtok
+            for c in read_jsonl(reference / TRAIL_FILE, AgentCall)
+        }
+        # A's first call that is larger than every call before it and both of B's.
+        stop = next(
+            k
+            for k in range(1, 8)
+            if tokens[A, k] > max(*(tokens[A, n] for n in range(k)), tokens[B, 0], tokens[B, 1]) + 2
+        )
+        below = max(*(tokens[A, n] for n in range(stop)), tokens[B, 0], tokens[B, 1])
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", int((below + tokens[A, stop]) / 2))
+        scripts = _scripts()
+        client = ScriptedClient([*scripts[A][:stop], *scripts[B]])
+        record = _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS)
+        a, b = _cases(tmp_path / "runs" / record.run_id)
+        assert client.calls == stop + 2
+        assert (a.failure, a.scores) == (CONTEXT_FAILURE, None)
+        assert a.steps[0].tool == "checkpoint:h0"
+        assert a.steps[-1].stop_reason == "cap"
+        assert b.failure is None
+        assert claims.per_case([a, b], "top1")[A] == 0.0
+        assert not claims.is_guard_refusal(a)
 
     def test_a_refinement_the_case_cannot_afford_leaves_it_unscored_like_arm_b(
         self, tmp_path: Path

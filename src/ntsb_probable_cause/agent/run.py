@@ -57,6 +57,7 @@ from ntsb_probable_cause.scoring.coding_stats import CodingStats, StatsName
 from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and_dirty
 from ntsb_probable_cause.scoring.metrics import score_case
 from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
     CaseResult,
     RunRecord,
     StepRecord,
@@ -97,6 +98,8 @@ STATS: Final[StatsName] = "s3"
 USED_ONCE: Final = "dev-seal-400"
 _DOCKET_ROLES: Final = frozenset({EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS})
 _ARM: Final = "C"
+# The loop's stop reasons a step records as ``cap``: the cost cap and the context ceiling (152).
+_CAP_STOPS: Final = frozenset({"cap", CONTEXT_FAILURE})
 
 
 @dataclass(frozen=True)
@@ -746,12 +749,16 @@ def _reasoning(calls: Sequence[AgentCall]) -> int | None:
 
 
 def _stop_reason(outcome: LoopOutcome, *, final: bool) -> str:
-    """How a checkpoint ended the case: only the last says, and only for an answer or the cap."""
+    """How a checkpoint ended the case: only the last says, and only for an answer or the cap.
+
+    A stop at the context ceiling (decision 152) is a cap too; the case's ``failure`` keeps
+    which one it was (``cap`` or ``cap: context``).
+    """
     if not final:
         return ""
     if outcome.stop_reason == "done" and outcome.answer is not None:
         return "abstained" if outcome.answer.abstain else "answered"
-    return "cap" if outcome.stop_reason == "cap" else ""
+    return "cap" if outcome.stop_reason in _CAP_STOPS else ""
 
 
 def _attached(view: DocketView | None, read: Sequence[int]) -> tuple[str, ...]:

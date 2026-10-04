@@ -2089,6 +2089,9 @@ def test_check_refuses_a_held_out_run_before_any_client_is_built(
     monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
     run_id = "20260926T000000-abc1234-heldout-400-B"
     _write_judgeable_run(runs, run_id, "c1", sample="heldout-400", arm="B")
+    # The registration uncommitted, injected rather than read from this repository (Task 13
+    # committed it on this branch): the refusal is "development only".
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
 
     def boom_client(_settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
         raise AssertionError("no client may be built for a held-out run")
@@ -2667,6 +2670,8 @@ def test_check_way_jev2_refuses_an_ablation_source_and_a_held_out_run_before_any
     assert "ablation" in capsys.readouterr().err
     held = "20260926T000000-abc1234-heldout-400-B"
     _write_judgeable_run(runs, held, "c1", sample="heldout-400", arm="B")
+    # The registration uncommitted, injected rather than read from this repository (Task 13).
+    monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
     assert (
         main(["check", held, "--way", "jev2"], client_factory=_boom_client, jev_factory=_boom_jev)
         == 1

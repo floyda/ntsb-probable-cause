@@ -35,7 +35,7 @@ from tests.test_eval_app import GOOD, REFINE, _eval_env, _factory, _StubDocketRe
 from tests.test_occurrence_misses import _case
 from tests.test_runner import FakeBatchClient
 
-from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause import gitinfo, sources
 from ntsb_probable_cause.agent import armb, texts
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent.armb import (
@@ -86,6 +86,7 @@ from ntsb_probable_cause.scoring.coding_stats import NO_GROUP, StatsName
 from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA, Hypothesis, parse_hypothesis
 from ntsb_probable_cause.scoring.metrics import score_case
 from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
     CaseResult,
     RunRecord,
     read_jsonl,
@@ -877,6 +878,22 @@ class TestTheDerivedRun:
         assert client.calls == 0
         assert (after[A].failure, after[B].failure) == (PAYLOAD_CHANGED, "cap")
 
+    def test_a_post_pass_call_over_the_context_ceiling_fails_the_case_with_that_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Decision 152: B (no documents, so its payload is unchanged) has its first post-pass
+        call over the ceiling; it is never sent and the case records ``cap: context``. A's
+        documents are left out at that ceiling, so its payload is not the source's."""
+        runs = tmp_path / "runs"
+        source, _ = _source(runs)
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1)
+        client = ScriptedClient([])
+        record = _post(runs, source, client=client)
+        after = _cases(runs / record.run_id)
+        assert client.calls == 0
+        assert (after[A].failure, after[B].failure) == (PAYLOAD_CHANGED, CONTEXT_FAILURE)
+        assert after[B].scores is None
+
     def test_a_docket_changed_since_the_source_run_fails_the_case_before_any_call(
         self, tmp_path: Path
     ) -> None:
@@ -977,8 +994,17 @@ class TestRefusals:
         ],
     )
     def test_a_source_that_is_not_a_plain_finished_development_arm_b_run_is_refused(
-        self, tmp_path: Path, suffix: str, changes: dict[str, object], match: str
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        suffix: str,
+        changes: dict[str, object],
+        match: str,
     ) -> None:
+        # The held-out case is the refusal before S3.2's registration is committed (Task 6):
+        # injected, so the test does not read this repository's own git state (Task 13
+        # committed the registration on this branch).
+        monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
         runs = tmp_path / "runs"
         source, _ = _source(runs)
         variant = _variant(source, f"20261001T000000-abc1234-{suffix}", **changes)
