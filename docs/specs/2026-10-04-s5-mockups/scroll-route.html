@@ -85,21 +85,20 @@ ol.codes .n{color:var(--muted);width:1.4em;flex:none}
 .q b{font-weight:600}
 footer{padding-block:28px;display:flex;gap:20px;flex-wrap:wrap;font-size:.92rem}
 footer a{color:var(--blue);font-weight:600}
-/* one stop per screen: each stop is at least a screen tall, so the next stays out of sight */
-html{scroll-snap-type:y proximity}
-main section{min-height:100svh;justify-content:center;border-bottom:0;scroll-snap-align:start}
-/* arrival: set only when script runs and the reader has not asked for reduced motion.
-   A stop's parts stay unseen until the stop has risen about a third of the way up the screen. */
-.anim main section:not(#s1) > *{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease;transition-delay:calc(var(--k,0) * 120ms)}
-.anim main section.in > *{opacity:1;transform:none}
+/* arrival: set only when script runs and the reader has not asked for reduced motion */
+.anim [data-reveal]{opacity:0;transform:translateY(16px);transition:opacity .55s ease,transform .55s ease}
+.anim [data-reveal].in{opacity:1;transform:none}
 .anim .board .brow:not(.head){opacity:0;transform:perspective(600px) rotateX(-85deg);transform-origin:50% 0}
-.anim section.in .board .brow:not(.head){animation:flip .5s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:calc(var(--i) * 110ms + 500ms)}
+.anim .board.in .brow:not(.head){animation:flip .5s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:calc(var(--i) * 110ms + 250ms)}
 .anim .board.done .brow:not(.head){opacity:1;transform:none;animation:none}
 @keyframes flip{to{opacity:1;transform:perspective(600px) rotateX(0)}}
-.anim .rung .fill{transform:scaleX(0);transform-origin:0 50%;transition:transform .8s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--i,0) * 250ms + 450ms)}
-.anim section.in .rung .fill{transform:none}
-.anim .strip .bel,.anim .qs .q{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease;transition-delay:calc(var(--i,0) * 120ms + 400ms)}
-.anim section.in .strip .bel,.anim section.in .qs .q{opacity:1;transform:none}
+.anim .rung .fill{transform:scaleX(0);transform-origin:0 50%;transition:transform .8s cubic-bezier(.2,.7,.2,1)}
+.anim .ladder.in .fill{transform:none}
+.anim .ladder .rung:nth-child(2) .fill{transition-delay:.25s}
+.anim .ladder .rung:nth-child(3) .fill{transition-delay:.5s}
+.anim .ladder .rung:nth-child(4) .fill{transition-delay:.75s}
+.anim .strip .bel,.anim .qs .q{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease;transition-delay:calc(var(--i) * 120ms + 150ms)}
+.anim .strip.in .bel,.anim .qs.in .q{opacity:1;transform:none}
 @media (max-width:860px){
   .page{grid-template-columns:minmax(0,1fr);gap:0}
   .rail{flex-direction:row;overflow-x:auto;padding:8px 0;top:env(safe-area-inset-top, 0px);background:var(--bg);border-bottom:1px solid var(--line);z-index:2}
@@ -146,13 +145,11 @@ main section{min-height:100svh;justify-content:center;border-bottom:0;scroll-sna
       <p>Each row is one investigation the NTSB has closed. The agent coded it from the docket, with the NTSB's verdict withheld. Choose a row to open it.</p>
       <div class="board" id="board"></div>
       <p class="small muted">"Different" does not simply mean wrong. The NTSB's own coding of near-identical cases often differs. <a class="more" href="#s6">See question 6 of the path.</a></p>
-      <a class="next" href="#s3">Next: one case, side by side &darr;</a>
     </section>
 
     <section id="s3">
       <div class="stop"><span class="sign">3</span><h2>One case, side by side</h2></div>
       <div class="frame" id="detail"></div>
-      <a class="next" href="#s4">Next: how the agent got there &darr;</a>
     </section>
 
     <section id="s4">
@@ -165,7 +162,6 @@ main section{min-height:100svh;justify-content:center;border-bottom:0;scroll-sna
         <div class="bel"><span class="cap">Answer</span><span class="code">Aerodynamic stall/spin</span><span class="small">The NTSB put loss of control first. The agent's first belief had matched it.</span><span class="act">7 model calls in all.</span><span class="cost">$0.012 total</span></div>
       </div>
       <a class="more" href="#s4">Open the full trail for this case</a>
-      <a class="next" href="#s5">Next: was a loop needed? &darr;</a>
     </section>
 
     <section id="s5">
@@ -179,7 +175,6 @@ main section{min-height:100svh;justify-content:center;border-bottom:0;scroll-sna
       </div>
       <p class="differ">So far the loop is level with reading everything, at about twice the cost. It has not yet earned its keep.</p>
       <p class="small muted">Example values. The real figures come from one held-out sample, with intervals, when the comparison stage finishes. <a class="more" href="#s5">Methods</a></p>
-      <a class="next" href="#s6">Next: the path taken &darr;</a>
     </section>
 
     <section id="s6">
@@ -249,14 +244,14 @@ const links=[...document.querySelectorAll('.rail a')];
 const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.setAttribute('aria-current',l.getAttribute('href')==='#'+e.target.id))}})},{rootMargin:'-40% 0px -55% 0px'});
 document.querySelectorAll('main section').forEach(s=>io.observe(s));
 links[0].setAttribute('aria-current','true');
-// Arrival: a stop's parts appear only once the stop is well onto the screen. Skipped for reduced motion.
+// Arrival: each part of a stop appears as it is reached. Skipped for reduced motion.
 if('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches){
-  document.querySelectorAll('.strip .bel,.qs .q,.ladder .rung').forEach(el=>el.style.setProperty('--i',[...el.parentNode.children].indexOf(el)));
-  const stops=document.querySelectorAll('main section:not(#s1)');
-  stops.forEach(st=>[...st.children].forEach((el,k)=>el.style.setProperty('--k',k)));
+  document.querySelectorAll('.strip .bel,.qs .q').forEach(el=>el.style.setProperty('--i',[...el.parentNode.children].indexOf(el)));
+  const parts=document.querySelectorAll('main section:not(#s1) > *, footer');
+  parts.forEach(el=>el.setAttribute('data-reveal',''));
   document.documentElement.classList.add('anim');
   const ro=new IntersectionObserver(es=>{es.forEach(e=>{if(!e.isIntersecting)return;e.target.classList.add('in');ro.unobserve(e.target);
-    if(e.target.id==='s2')setTimeout(()=>document.getElementById('board').classList.add('done'),2000);})},{rootMargin:'0px 0px -35% 0px'});
-  stops.forEach(st=>ro.observe(st));
+    if(e.target.id==='board')setTimeout(()=>e.target.classList.add('done'),1600);})},{threshold:.15});
+  parts.forEach(el=>ro.observe(el));
 }
 </script>
