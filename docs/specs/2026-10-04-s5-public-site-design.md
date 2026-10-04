@@ -180,8 +180,11 @@ Every case in a mock-up is invented.
 
 Choosing a board row opens the case beneath the board, in plain type. It has five parts.
 
-1. **A line of facts.** Date closed, time to close, aircraft type, state, kind of flight,
-   injury level, documents read, cost of the run.
+1. **A line of facts.** NTSB case number, date closed, time to close, aircraft type, state,
+   kind of flight, injury level, and documents read, stated as "3 of 7 documents read". Never
+   the registration (§12, item 11). Cost is not in this line (Andy, 2026-10-04): it barely
+   varies from case to case, and its story is told by the trail view, step by step, and by
+   the ladder.
 2. **One sentence on where the two differ.** Example: "Both name the same event. The NTSB put
    loss of control first. The agent put the stall first." Code writes this sentence from the
    two sets of codes. No model call is made for it.
@@ -289,6 +292,32 @@ transcription of scanned pages; the precedent tool the agent questions (decision
 archive; the model comparison. When the second version of the agent runs, the site needs a
 place to show the first against the second on the same cases (§12).
 
+### 7.4 One figure per question
+
+Accepted by Andy as a first draft on 2026-10-04.
+
+| question | figure | data |
+|---|---|---|
+| 1. An answer key | one closed, non-fatal development case as the NTSB published it: its cause and its codes | exists; a non-fatal case keeps the first example gentle |
+| 2. One model call | the ladder, first two steps lit | S3.2 |
+| 3. Reading the docket | the ladder, third step lit | S3.2 |
+| 4. Scanned pages | the share of each docket's pages that are scans only | exists, as counts (`make page-kinds`) |
+| 5. Misses are coding | the commonest pairs of agent and NTSB first codes | exists (`docs/results/s26-occurrence-misses-dev.txt`); rerun on S3's runs |
+| 6. Consistency | one cause sentence the NTSB used word for word on many cases, with the different first codes those cases received | a small new script; development split only |
+| 7. Choosing what to read | each case's belief before reading, after reading and at the answer, against the NTSB's first code | a new script over S3.2's trails |
+| 8. Newly closed cases | a strip of closed cases over time, one mark per case, shaped by result | S4's live data |
+
+Two more sit outside the questions: a **docket strip** in the first page's trail stop, each
+document a block sized by pages and marked read, skipped, scan only or withheld; and the
+**run-twice band** behind the ladder, showing how far the same agent moves when run again
+(`docs/results/s3-noise-floor-dev.txt`). The ladder lights each step as the story reaches it,
+so the reader watches it being climbed. Question 7's figure is the direct evidence on agency
+and can go either way.
+
+Ruled out: a map of accident sites, which can identify people; agent minutes against
+investigation months, which suggests the agent replaces the investigation; and a live
+headline percentage, which makes the board a scoreboard.
+
 ## 8. The Open cases page
 
 A separate page, complete, reached by a plain link. Andy's view is that this data may not be
@@ -301,7 +330,13 @@ to be counted by a script from the recorder's store, as a number only (decision
 [0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)), before this note
 is approved.
 
-What a row for an open case with no answer shows is open (§16).
+**A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
+accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
+documents". No first belief is made or shown for open cases without a docket: facts alone
+score below the no-model baseline, so a thousand such guesses about fatal accidents would cost
+money and mislead. The status column shows evidence arriving over months, which is the one
+thing this page can say that the board cannot. The page follows §11; no registration, no
+names.
 
 ## 9. The Methods page
 
@@ -420,8 +455,12 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     another order, 68 different, 6 abstained, 3 not coded." It links to the Methods page,
     where intervals appear once there are enough cases. The strip of closed cases on the Path
     page's last question shows the same tally as marks over time.
-11. **Links out.** Each case links to the NTSB's own page and docket. Whether the case number
-    and registration are shown as text is open; a registration can identify an owner.
+11. **Links out.** Settled (Andy, 2026-10-04): each case links to the NTSB's own page and
+    docket, and shows the NTSB case number as text, so any row can be checked against the
+    source. The registration is not shown: it adds nothing to the comparison, and it leads
+    straight to an owner's name in the public aircraft register, often the pilot who died. It
+    stays one click away on the NTSB's page; the choice is what the site puts forward, on the
+    reasoning of decision 0020.
 12. **Shared links.** Each case and each Path question needs its own address, and a preview
     that reads well when a link is posted.
 13. **The first against the second version.** Where the comparison of agent versions sits once
@@ -473,22 +512,14 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 ## 16. Open questions for Andy
 
 1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
-2. What an open case with no answer shows (§8).
+2. Settled: an open case shows facts and status, never an answer (§8).
 3. The layout of the Methods page (§9).
 4. Every point in §12.
-5. Whether the board shows documents read and cost, which carry impressions 1 and 3, or leaves
-   them in the opened case as now.
+5. Settled: the board keeps its six columns; the opened case states documents read as "3 of 7
+   documents read" and leaves out cost (§5).
 6. The vignettes' scenes (§10.1 proposes eight), and who draws them. Pixel art at this size
    succeeds or fails on craft; a weak drawing would cheapen the page more than no drawing.
-7. Which figure each Path question carries. Proposed: the ladder for questions 2 and 3; the
-   share of scanned pages per docket for 4; the commonest pairs of agent and NTSB first codes
-   for 5; one repeated NTSB cause sentence with its different first codes for 6; each case's
-   beliefs before reading, after reading and at the answer, against the NTSB's, for 7; a strip
-   of closed cases over time, one mark each, for 8. Also proposed: the docket strip in the
-   first page's trail stop, and the run-twice noise band behind the ladder. A map of accident
-   sites, agent minutes against investigation months, and a live headline percentage are
-   ruled out: the first can identify people, the second suggests the agent replaces the
-   investigation, the third makes the board a scoreboard.
+7. Accepted as a first draft (Andy, 2026-10-04): the figures of §7.4.
 
 ## Glossary
 
