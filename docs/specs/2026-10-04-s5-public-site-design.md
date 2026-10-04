@@ -80,11 +80,21 @@ the roadmap's rule that caveats come before results, without burying the board.
 **Each stop animates in as the reader reaches it** (Andy, 2026-10-04). The parts of a stop
 rise into place; the board's rows turn over one after another, as a terminal display does; the
 ladder's bars grow from the left in order; the trail's beliefs and the path's questions appear
-in sequence. Four limits apply:
+in sequence.
+
+**One stop fills the screen, and the next is not seen until it animates in** (Andy,
+2026-10-04). Each stop is at least one screen tall. A stop's parts stay unseen until the stop
+has risen about a third of the way up the screen, so the reader never sees the next stop
+waiting below. Each stop ends with a plain "Next" link naming the stop that follows, so the
+reader knows the page continues. A stop taller than the screen, such as the opened case on a
+phone, scrolls in the ordinary way.
+
+Four limits apply:
 
 - Each animation runs once, is short (under about a second for a stop), and never repeats or
   loops. The board does not flip again when a row is chosen.
-- The reader keeps control of the scroll. Nothing pins the page or moves it.
+- The reader keeps control of the scroll. The page may settle gently on a stop, but nothing
+  pins it or holds it.
 - With a reduced-motion setting, or with scripts off, everything is shown at once, with no
   animation. No content depends on the animation to be read.
 - Motion is for arrival only. It never marks a result as good or bad, so nothing reads as a
