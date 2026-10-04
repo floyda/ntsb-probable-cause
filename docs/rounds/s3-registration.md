@@ -151,3 +151,15 @@ Each of these was seen or chosen before the predictions above were written:
   same nightly run as the case's closure, none before or after; about 1% to 2% of open cases hold
   a docket whose arrival time is unknown. Dockets almost always arrive at closure, so S3.2
   measures the full condition only.
+
+## Dated note, 2026-10-04 (appended after the commit above; nothing above is edited)
+
+Held-out arm B's first answer run (`20261004T094550-7948ac0-heldout-400-B`) was refused twice by
+the provider, 0 of 400 answered and nothing billed, because one case's request exceeded GPT-6
+Luna's 1,050,000-token context window. It is recorded ABORTED in the held-out ledger. Decision 0152
+adds a prompt-size ceiling of 345,000 estimated tokens for both arms: arm B leaves out documents
+past it (recorded `context`), and a loop or post-pass call over it is never sent (its case stops
+`cap: context` and counts as wrong). Nothing under the ceiling changes, and the loop's prompt
+version is unchanged. Arm B's answer run is made again, fresh, from a commit with the ceiling;
+commands 3 to 7 follow in the order above. The rules and predictions are unchanged. No result of
+arm B or arm C on held-out had been seen when this note was written.

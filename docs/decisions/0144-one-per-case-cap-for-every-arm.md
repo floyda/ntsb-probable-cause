@@ -58,3 +58,10 @@ Accepted, 2026-10-03 (Andy, S3.2 design session; specification approved 2026-10-
 - **Computed price**: every token priced at the list rate, ignoring the cache discount.
 - **Per-case cap**: the most one case may cost; a case that reaches it stops (0030).
 - **Room**: the budget a case keeps for its answer when it chooses its next step.
+
+## Amended in part, 2026-10-04 (appended; nothing above is edited)
+
+- **Why 1's reason about arm B is corrected by [0152](0152-a-prompt-size-ceiling-under-the-context-window.md).**
+  A higher cap let arm B try to send a held-out prompt of about 1.44 million tokens, over GPT-6
+  Luna's 1,050,000-token context window, and the provider refused the whole batch. A prompt-size
+  ceiling now bounds every arm's request; the $0.30 cap stands for cost.

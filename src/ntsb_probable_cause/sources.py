@@ -66,10 +66,15 @@ LUNA_6_BATCH = ModelPrice(
 # context length is 1050000 tokens" (held-out arm B's answer batch, S3.2 Task 15a). One request
 # over it fails its whole batch.
 LUNA_6_CONTEXT_TOKENS: Final = 1_050_000
-# The most estimated prompt tokens (characters / 4, the runner's and the loop's own estimate) a
-# call may send: decision 152. The estimate undercounts document text, which tokenizes at about
-# two characters a token: over both dev-400 noise-floor trails, real prompt tokens were at most
-# 2.4303 times the estimate (docs/results/s32-context-ratio-dev.txt). So the ceiling is
+# The prompt-size ceiling in estimated tokens (characters / 4, the runner's and the loop's own
+# estimate), decision 152. It bounds arm B's stage-1 answer prompt (payload and system text) and
+# every loop and post-pass call. Arm B's later turns are not checked: the stage-2 refinement may
+# exceed it by the stage-1 reply (at most the 8,000-token reply budget) plus the refinement
+# message, less the stage-1 system text it replaces, and a retry by its rejection message. The
+# margin under the context window absorbs that (tests/test_runner.py pins the overshoot). The
+# estimate undercounts document text, which tokenizes at about two characters a token: over
+# both dev-400 noise-floor trails, real prompt tokens were at most 2.4303 times the estimate
+# (docs/results/s32-context-ratio-dev.txt). So the ceiling is
 # floor(0.8 * 1,050,000 / 2.430343) = 345,630, rounded down to a thousand: a call at the ceiling
 # is at most about 838,000 real tokens, 80% of the window.
 PROMPT_TOKEN_CEILING: Final[int] = 345_000
