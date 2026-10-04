@@ -1,0 +1,139 @@
+<title>S5 Theme Register</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800&family=Overpass:wght@400;600;800&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: one column of three framed options; each frame holds the same first screen
+   (question, ticker of closed cases) drawn at a different strength of the airport theme. */
+:root{
+  --bg:#f1f4f5; --panel:#ffffff; --fg:#1a2228; --muted:#586570; --line:#cdd5da;
+  --sign:#f5b800; --sign-fg:#15191c; --blue:#1d4f7a;
+  --board:#14181b; --board-fg:#ebe6d6; --board-dim:#8d958f; --board-amber:#f2b632; --board-line:#2a3035;
+  --sans:"Overpass","Helvetica Neue",Arial,sans-serif;
+  --dot:"Doto","Courier New",monospace;
+  --pixel:"Pixelify Sans","Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --blue:#8fc0ea; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --blue:#8fc0ea; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.5;padding-inline:16px;padding-block:28px 56px}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:36px}
+h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:800;text-wrap:balance}
+p{margin:0;max-width:65ch}
+.intro{display:flex;flex-direction:column;gap:10px}
+.note{color:var(--muted);font-size:.92rem}
+.opt{display:flex;flex-direction:column;gap:12px}
+.opt-head{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.tag{background:var(--sign);color:var(--sign-fg);font-weight:800;padding:2px 10px;letter-spacing:.04em}
+.opt-head h2{margin:0;font-size:1.15rem;font-weight:800}
+.frame{background:var(--panel);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.q{font-size:1.25rem;font-weight:600;line-height:1.3;max-width:34ch;text-wrap:balance}
+.sub{color:var(--muted);font-size:.9rem}
+.cap{font-size:.75rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:5.5rem 1.1fr 1.4fr 1.4fr 7rem;gap:12px;padding:10px 0;border-top:1px solid var(--line);align-items:baseline;font-variant-numeric:tabular-nums}
+.row>*{min-width:0}
+.row.head{border-top:0;padding-top:0}
+.row.head span{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.res{font-weight:600;white-space:nowrap}
+.res::before{content:"";display:inline-block;width:.6em;height:.6em;border:2px solid currentColor;margin-right:.5em;vertical-align:.02em}
+.res.same::before{background:currentColor}
+.procon{display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:.92rem}
+.procon b{display:block;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+@media (max-width:680px){
+  .row{grid-template-columns:1fr 1fr;gap:4px 12px}
+  .row.head{display:none}
+  .row [data-l]::before{content:attr(data-l) " ";display:block;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;opacity:.65;font-family:var(--sans);font-weight:600}
+  .row .res{grid-column:1/-1}
+  .procon{grid-template-columns:1fr}
+}
+/* A: quiet */
+.a .signline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.a .sign{background:var(--sign);color:var(--sign-fg);font-weight:800;padding:4px 12px;font-size:.85rem;letter-spacing:.05em}
+.a .arrow{font-weight:800}
+/* B: board */
+.board{background:var(--board);color:var(--board-fg);padding:16px 18px;font-family:var(--dot);font-weight:800;font-size:.95rem;letter-spacing:.02em}
+.board .row{border-color:var(--board-line)}
+.board .row.head span{color:var(--board-amber);font-family:var(--dot);font-weight:800;font-size:.8rem}
+.board .res.same{color:var(--board-amber)}
+.board .res.diff{color:var(--board-dim)}
+.board-title{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--board-amber);padding-bottom:12px;font-size:1rem}
+/* C: full pixel */
+.c .frame{border:4px solid var(--fg);box-shadow:6px 6px 0 var(--line)}
+.c .q{font-family:var(--pixel);font-weight:700;font-size:1.4rem}
+.c .top{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.c svg{width:78px;height:auto;flex:none;color:var(--blue)}
+.runway{height:22px;background:
+  repeating-linear-gradient(90deg,var(--panel) 0 14px,transparent 14px 34px) center/100% 4px no-repeat,
+  repeating-linear-gradient(0deg,var(--panel) 0 2px,transparent 2px 5px) left/26px 100% no-repeat,
+  repeating-linear-gradient(0deg,var(--panel) 0 2px,transparent 2px 5px) right/26px 100% no-repeat,
+  var(--fg)}
+.c .rows{font-family:var(--pixel);font-weight:500}
+.c .row{border-top:2px dashed var(--line)}
+.c .row.head span{font-family:var(--pixel)}
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>How strong should the airport theme be?</h1>
+    <p>The same first screen, drawn three ways. Each shows the question and the ticker of closed cases, with the agent's first code beside the NTSB's.</p>
+    <p class="note">Every row below is an invented example. No real case appears on this page.</p>
+  </div>
+
+  <section class="opt a">
+    <div class="opt-head"><span class="tag">A</span><h2>Quiet: airport signs only</h2></div>
+    <div class="frame">
+      <div class="signline"><span class="sign">CLOSED CASES</span><span class="arrow">&rarr;</span><span class="sub">most recent first</span></div>
+      <div class="q">Can an agent read an accident docket and code the cause as the investigator did?</div>
+      <div class="rows" data-rows></div>
+    </div>
+    <div class="procon">
+      <p><b>What it gives</b>The clinical tone is safe. The theme shows only in the amber wayfinding sign and the plain signage typeface.</p>
+      <p><b>The risk</b>It could be any careful report page. The pixel idea is absent.</p>
+    </div>
+  </section>
+
+  <section class="opt b">
+    <div class="opt-head"><span class="tag">B</span><h2>Board: the ticker is a terminal display</h2></div>
+    <div class="frame">
+      <div class="q">Can an agent read an accident docket and code the cause as the investigator did?</div>
+      <div class="board">
+        <div class="board-title"><span>CLOSED CASES</span><span>UPDATED 03:00 UTC</span></div>
+        <div class="rows" data-rows></div>
+      </div>
+      <div class="sub">Everything outside the board stays in the plain typeface of option A.</div>
+    </div>
+    <div class="procon">
+      <p><b>What it gives</b>The pixel look has one home, and it is an object every reader knows. A board lists facts in rows, so it does not read as a game.</p>
+      <p><b>The risk</b>Dot letters are harder to read in long text, so cause sentences must stay off the board.</p>
+    </div>
+  </section>
+
+  <section class="opt c">
+    <div class="opt-head"><span class="tag">C</span><h2>Full pixel: pixel type and pixel drawings</h2></div>
+    <div class="frame">
+      <div class="top"><span data-plane></span><div class="q">Can an agent read an accident docket and code the cause as the investigator did?</div></div>
+      <div class="runway" role="img" aria-label="A pixel drawing of a runway"></div>
+      <div class="rows" data-rows></div>
+    </div>
+    <div class="procon">
+      <p><b>What it gives</b>The most character, and the most memorable first screen.</p>
+      <p><b>The risk</b>Pixel drawings beside fatal accidents read as a game. An aircraft drawing could never sit near a case row.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+const rows=[
+ ["12 Sep","Aeroplane, one piston engine","Loss of control in flight","Loss of control in flight","same"],
+ ["11 Sep","Helicopter","Loss of engine power (total)","Fuel exhaustion","diff"],
+ ["11 Sep","Aeroplane, one piston engine","Runway excursion","Runway excursion","same"],
+ ["09 Sep","Aeroplane, amateur-built","Aerodynamic stall/spin","Loss of control in flight","diff"]
+];
+const head='<div class="row head"><span>Closed</span><span>Aircraft</span><span>Agent coded</span><span>NTSB coded</span><span>Result</span></div>';
+document.querySelectorAll('[data-rows]').forEach(el=>{
+  el.innerHTML=head+rows.map(r=>`<div class="row"><span data-l="Closed">${r[0]}</span><span data-l="Aircraft">${r[1]}</span><span data-l="Agent coded">${r[2]}</span><span data-l="NTSB coded">${r[3]}</span><span class="res ${r[4]}">${r[4]==='same'?'Same code':'Different'}</span></div>`).join('');
+});
+const plane=["......#......",".....###.....",".....###.....",".....###.....","#############","#############",".....###.....",".....###.....",".....###.....","...#######...","...#######...","......#......"];
+let s='';plane.forEach((l,y)=>[...l].forEach((ch,x)=>{if(ch==='#')s+=`<rect x="${x}" y="${y}" width="1" height="1" fill="currentColor"/>`}));
+document.querySelector('[data-plane]').innerHTML=`<svg viewBox="0 0 13 12" shape-rendering="crispEdges" role="img" aria-label="A pixel drawing of an aircraft seen from above">${s}</svg>`;
+</script>
