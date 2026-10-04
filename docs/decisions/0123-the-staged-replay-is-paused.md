@@ -77,3 +77,11 @@ together with the verdict.
 ## Status
 
 Accepted, 2026-09-30 (Andy, S3 design session; specification approved 2026-09-30).
+
+## Amended in part, 2026-10-04 (appended; nothing above is edited)
+
+- **Item 3 is amended by [0151](0151-the-recorder-re-check-closes-at-twelve-nights.md).** The
+  re-check closed at 12 distinct nights, not 14 (`docs/results/s3-recorder-report-2026-10-04.txt`):
+  46 of 46 timed docket arrivals came in the same nightly run as closure, and about 1% to 2% of
+  open cases hold a docket whose arrival time is unknown. S3.2 measures the full condition only,
+  as item 3 provided. Items 1 and 2 stand.
