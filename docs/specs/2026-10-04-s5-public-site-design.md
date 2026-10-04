@@ -77,9 +77,18 @@ wide screen, across the top on a phone.
 investigator on a minority of cases and that a simpler method does about as well. This meets
 the roadmap's rule that caveats come before results, without burying the board.
 
-**The page scrolls in the ordinary way.** Nothing takes control of the scroll, nothing is
-hidden until the reader reaches it, and a reduced-motion setting is respected. The flow comes
-from the order of the stops, not from animation.
+**Each stop animates in as the reader reaches it** (Andy, 2026-10-04). The parts of a stop
+rise into place; the board's rows turn over one after another, as a terminal display does; the
+ladder's bars grow from the left in order; the trail's beliefs and the path's questions appear
+in sequence. Four limits apply:
+
+- Each animation runs once, is short (under about a second for a stop), and never repeats or
+  loops. The board does not flip again when a row is chosen.
+- The reader keeps control of the scroll. Nothing pins the page or moves it.
+- With a reduced-motion setting, or with scripts off, everything is shown at once, with no
+  animation. No content depends on the animation to be read.
+- Motion is for arrival only. It never marks a result as good or bad, so nothing reads as a
+  game (§11).
 
 **The author.** The foot of the page carries one line, "Built by Andy Floyd", linking to his
 main profile page, with links to the repository, Methods and Open cases. The site holds no
@@ -284,7 +293,7 @@ These are fatal accidents. The rules of the project apply to every page.
   label `Amateur-built` (decision
   [0020](../decisions/0020-amateur-built-make-and-model-replaced-in-evidence.md)).
 - Nothing reads as a game. The result words are "same" and "different", never "right", "wrong",
-  "win" or "score". The board does not animate for effect.
+  "win" or "score". Motion marks arrival only, never a result (§3.1).
 - **Injury level appears in the opened case only**, in plain type, as one fact among the
   others. It is not on the board. (Andy accepted this as a starting point; open to change.)
 - Mock-ups and screenshots use invented cases or development-split cases only. No open-split
@@ -306,8 +315,8 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
    failed (a guard refusal, a format failure) is open.
 6. **The thin board at launch.** The board must look complete with few rows, and on a night
    with no closures.
-7. **Motion.** A real terminal display flips. Any motion must be slight, must respect a
-   reduced-motion setting, and must not make the board read as a game. No scrolling text.
+7. **Motion.** Settled: each stop animates in on arrival, within the four limits of §3.1. No
+   scrolling text.
 8. **Reading the board without sight.** Dot-matrix letters need a plain-text equivalent for
    screen readers, and enough contrast.
 9. **Uncertainty.** Every score on the Path and Methods pages carries its interval and count.
