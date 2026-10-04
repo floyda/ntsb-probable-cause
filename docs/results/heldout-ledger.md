@@ -27,3 +27,4 @@ Every row above this table read the docket at evidence version v1.
 | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | f744622 | 1.05 | 20261004T111937-dd64854-heldout-400-B-tools/cases.jsonl |
 | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | 60fdd75 | 0.11 | 20261004T111937-dd64854-heldout-400-B-tools-check-luna/cases.jsonl |
 | 2026-10-04 | heldout-400 | C | v1 | - | - | openai/gpt-6-luna | e0dc881 | 3.93 | 20261004T140804-e0dc881-heldout-400-C/cases.jsonl |
+| 2026-10-04 | heldout-400 | C | v1 | docket_documents,docket_listing | - | openai/gpt-6-luna | 80c539e | 0.98 | 20261004T184547-80c539e-heldout-400-C/cases.jsonl |
