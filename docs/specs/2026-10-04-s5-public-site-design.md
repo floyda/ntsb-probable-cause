@@ -133,20 +133,33 @@ row is one case. Columns, in order:
 **The result has three grades**, each with a mark whose shape, not colour, carries the meaning:
 
 - **Same first code** (filled mark): the agent's first code is the NTSB's first code.
-- **Same codes, other order** (half mark): the two lists share a code, but not in first place.
-  This grade matters because the project found the NTSB's coding order, more than missing
+- **Same codes, other order** (half mark): the NTSB's first code is among the agent's three,
+  but not first (Andy, 2026-10-04). This is the harness's occurrence top-3 score less top-1,
+  so the board's grades are the same measures the Methods page reports. A looser rule, any
+  shared code, was rejected: "collision with terrain or object" ends many sequences, so nearly
+  every case would share a code. This grade matters because the project found the NTSB's coding order, more than missing
   evidence, behind what the fixed pipeline missed
   (`docs/results/s26-occurrence-misses-dev.txt`).
 - **Different** (open mark).
 
 **A case the agent abstained on has its own row** (Andy, 2026-10-04): "No answer" in the agent's
 column and "Agent abstained" as the result, with a dashed mark. Its opened case gives the
-agent's stated reason beside the NTSB's cause. Leaving such cases off would be selection. A
-failed case (a guard refusal or a format failure) needs a row on the same principle; its
-wording is open (§12).
+agent's stated reason beside the NTSB's cause. Leaving such cases off would be selection.
 
-The exact rule for the middle grade is fixed when this note is approved; it must be one a
-script computes from the two code lists.
+**A failed case has its own row too** (Andy, 2026-10-04): "Not coded" as the result, with a
+mark of its own, distinct from the abstain mark, because an abstain is the agent's judgement
+and a failure is the system producing no answer. The opened case gives the reason in one plain
+sentence beside the NTSB's cause, for example "A document in the docket held the NTSB's
+probable cause, so the case could not be shown to the agent" or "The agent's reply failed a
+technical check twice". Failed rows count in any totals beside the board. Whether a technical
+failure is retried is S4's decision; the board shows the result that stands.
+
+How often this happens, today: on `dev-400`, the loop's two noise-floor runs failed 5 and 8 of
+401 cases for format or tool reasons, and the guard refused 2 cases in each because a document
+held a probable-cause sentence (`docs/results/s3-noise-floor-dev.txt`). Since S2.6 a docket
+sentence shared with the analysis narrative reaches the agent and only marks the case
+(decision [0077](../decisions/0077-analysis-sentences-in-docket-documents-mark-the-case.md)),
+so S2.4's 40 guard refusals in 400 held-out cases do not describe the loop.
 
 On a phone the board keeps Closed, Aircraft and Result. About eight rows are shown, so the
 opened case stays within reach.
@@ -188,8 +201,9 @@ The trail view shows one case as numbered steps, top to bottom, in plain type.
 
 **Beliefs are the spine.** A belief is the agent's hypothesis at a checkpoint: before reading,
 after each read choice that read something, and the answer (decision
-[0122](../decisions/0122-h0-and-later-triggers.md)). Each belief block shows its first code, a
-short explanation, its confidence, and whether it changed from the belief before.
+[0122](../decisions/0122-h0-and-later-triggers.md)). Each belief block shows its first code, its
+cause statement at that point, its confidence, and whether it changed from the belief before.
+It does not show the explanation written for a non-expert (§12, item 4).
 
 **Actions sit between beliefs.**
 
@@ -381,11 +395,15 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
    (§3.1).
 3. **Caveats before results.** Proposed in §3.1: the caveat sits in stop 1, above the board.
    Its exact wording waits for S3.2's result.
-4. **Terms for a non-expert.** "Occurrence code", "finding" and "docket" need a plain
-   explanation at the point of use. Each belief already carries an explanation written for a
-   non-expert; whether the opened case shows it is open.
-5. **Failures on the board.** Abstains are settled (§4). The wording of a row for a case that
-   failed (a guard refusal, a format failure) is open.
+4. **Terms for a non-expert.** Settled (Andy, 2026-10-04): plain labels first, the NTSB's
+   term second in small type, for example "What happened · NTSB occurrence codes", "Why it
+   happened · NTSB findings", "The case's evidence files · the docket". Full definitions sit
+   in a glossary on the Methods page. The agent's own explanation written for a non-expert is
+   **not shown**: the NTSB publishes nothing to compare it with, and on a site where every
+   claim is measured, unscored text sits badly. It stays in the trail data and can return if
+   it is ever graded.
+5. **Failures on the board.** Settled: abstains and failed cases each have their own row and
+   mark (§4).
 6. **The thin board at launch.** The board must look complete with few rows, and on a night
    with no closures.
 7. **Motion.** Settled: each stop animates in on arrival, within the four limits of §3.1. No
@@ -396,8 +414,12 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
    screen readers, and enough contrast.
 9. **Uncertainty.** Every score on the Path and Methods pages carries its interval and count.
    How a ladder step draws an interval is open.
-10. **Totals on the first screen.** Whether the board carries a running tally of the three
-    grades, and how to state it so that it is not a scoreboard.
+10. **Totals on the first screen.** Settled (Andy, 2026-10-04): one line under the board gives
+    plain counts since launch for each grade, abstains and failed cases included, with no
+    percentage. Example (invented): "Since launch: 41 same first code, 37 same codes in
+    another order, 68 different, 6 abstained, 3 not coded." It links to the Methods page,
+    where intervals appear once there are enough cases. The strip of closed cases on the Path
+    page's last question shows the same tally as marks over time.
 11. **Links out.** Each case links to the NTSB's own page and docket. Whether the case number
     and registration are shown as text is open; a registration can identify an owner.
 12. **Shared links.** Each case and each Path question needs its own address, and a preview
@@ -450,7 +472,7 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 
 ## 16. Open questions for Andy
 
-1. The exact rule for the middle result grade (§4).
+1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
 2. What an open case with no answer shows (§8).
 3. The layout of the Methods page (§9).
 4. Every point in §12.
