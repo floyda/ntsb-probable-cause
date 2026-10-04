@@ -14,3 +14,11 @@ Every run that touched a held-out sample (decision 0026).
 | 2026-09-24 | heldout-400 | ceiling | - | - | openai/gpt-6-luna | 05c5c5b | 0.24 | 20260924T070202-05c5c5b-heldout-400-ceiling/cases.jsonl |
 | 2026-09-24 | heldout-400 | B — ABORTED: OpenRouter lost the stage-1 retry batch after 10 h queued (404); 40 refused by the guard, 360 unanswered, none scored; re-run fresh by Andy's decision | - | - | openai/gpt-6-luna | 36bcd22 | 0.58 | 20260924T075506-36bcd22-heldout-400-B/cases.jsonl |
 | 2026-09-24 | heldout-400 | B | - | - | openai/gpt-6-luna | 7071800 | 1.13 | 20260924T185800-7071800-heldout-400-B/cases.jsonl |
+
+## From S2.6: with the evidence version (decision 0076)
+
+Every row above this table read the docket at evidence version v1.
+
+| date | sample | arm | evidence | exclusions | includes | model | commit | cost USD | results |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-04 | heldout-400 | A | v1 | - | - | openai/gpt-6-luna | 751d50d | 0.21 | 20261004T092646-751d50d-heldout-400-A/cases.jsonl |
