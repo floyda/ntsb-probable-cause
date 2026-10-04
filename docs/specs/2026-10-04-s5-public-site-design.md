@@ -238,8 +238,7 @@ The Path page tells how the project decided what to build.
 **It is a second scrolling route, built like the first page** (Andy, 2026-10-04), so the two
 feel like one site. It opens with the ladder, then gives each of the eight questions its own
 stop, then closes with what could come next. Each question's stop holds the question, its
-measured answer, the decision taken, one small figure, a pixel-art vignette (§10.1), and
-links to its results file, its script and its Methods entry. Each line of the first page's
+measured answer, the decision taken, one small figure, and links to its results file, its script and its Methods entry. Each line of the first page's
 last stop links to its question's stop here. The rail of stops and the motion rules of §3.1
 apply unchanged.
 
@@ -349,9 +348,9 @@ Closed-case numbers from the board and held-out numbers from evaluation never sh
 
 ## 10. Appearance
 
-- **The theme is an airport, used quietly.** The pixel look has two homes: the board, drawn
-  as a terminal display in dot-matrix letters, and the small vignettes on the Path page
-  (§10.1). Everything else is plain signage type.
+- **The theme is an airport, used quietly.** At launch the pixel look has one home: the board,
+  drawn as a terminal display in dot-matrix letters. Everything else is plain signage type.
+  Pixel-art vignettes are a later addition (§10.1).
 - **Small airport cues are allowed outside the board**: an amber wayfinding sign as a label,
   for example. Aircraft appear only in the Path vignettes, on the ground (§10.1). Nothing
   anywhere shows an accident.
@@ -360,7 +359,15 @@ Closed-case numbers from the board and held-out numbers from evaluation never sh
 - **Light and dark** are both designed. The board is dark in both.
 - **Meaning is carried by shape and words, not colour alone.** No red and green.
 
-### 10.1 Pixel-art vignettes of people at work
+### 10.1 Pixel-art vignettes of people at work (deferred)
+
+**Deferred, not part of S5's first version** (Andy, 2026-10-04). The Path page is designed to
+work without them, and the site does not wait for them. What follows is the brief for when
+they are made. Andy's visual reference is <https://pnn.watch/>; from it, role portraits in one
+fixed template (a small bust in a square frame, a job title, no name, and one line on the
+record that role produces) were proposed as a simpler form than the scenes below, and are
+part of this brief. PNN's named characters, jokes, viewer counts and "LIVE" badges do not
+transfer to a site about fatal accidents.
 
 Andy asked for animated pixel art of engineers investigating, done carefully and subtly, and
 widened it to engine work and roles around the airport, air traffic control among them
@@ -506,8 +513,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
    author line linking to Andy's profile page (§3.1).
 9. Abstained cases have their own row on the board (§4).
 10. The Path page is a second scrolling route, one stop per question (§7).
-11. Pixel-art vignettes on the Path page only, showing the people whose work becomes the
-    docket, in normal operations only (§10.1).
+11. Pixel-art vignettes are deferred past S5's first version; when made, they show the people
+    whose work becomes the docket, in normal operations only (§10.1).
 
 ## 16. Open questions for Andy
 
@@ -517,8 +524,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 4. Every point in §12.
 5. Settled: the board keeps its six columns; the opened case states documents read as "3 of 7
    documents read" and leaves out cost (§5).
-6. The vignettes' scenes (§10.1 proposes eight), and who draws them. Pixel art at this size
-   succeeds or fails on craft; a weak drawing would cheapen the page more than no drawing.
+6. Settled: the vignettes come later, after S5's first version (§10.1). Their form, scenes
+   or role portraits, and who draws them are decided then.
 7. Accepted as a first draft (Andy, 2026-10-04): the figures of §7.4.
 
 ## Glossary
