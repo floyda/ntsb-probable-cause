@@ -1,0 +1,233 @@
+<title>S5 Scroll Route</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800&family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one long page read by scrolling. A slim rail of six numbered stops stays in view
+   (left on a wide screen, top on a phone) and marks the stop being read. Each stop is a full
+   section: question, board, one case, its trail, the ladder, the path. */
+:root{
+  --bg:#f1f4f5; --panel:#ffffff; --fg:#1a2228; --muted:#586570; --line:#cdd5da; --soft:#e8edf0;
+  --sign:#f5b800; --sign-fg:#15191c; --blue:#1d4f7a; --belief:#e9f0f6; --bar:#1d4f7a; --bar-dim:#9fb3c4;
+  --board:#14181b; --board-fg:#ebe6d6; --board-dim:#8d958f; --board-amber:#f2b632; --board-line:#2a3035; --board-sel:#232a2f;
+  --sans:"Overpass","Helvetica Neue",Arial,sans-serif; --dot:"Doto","Courier New",monospace; --mono:"Overpass Mono","Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --soft:#202a31; --blue:#8fc0ea; --belief:#1b2a36; --bar:#8fc0ea; --bar-dim:#3d5266; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --soft:#202a31; --blue:#8fc0ea; --belief:#1b2a36; --bar:#8fc0ea; --bar-dim:#3d5266; color-scheme:dark }
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.5;padding-inline:16px;padding-block:0 64px}
+.page{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:11rem minmax(0,1fr);gap:32px;align-items:start}
+/* rail */
+.rail{position:sticky;top:calc(env(safe-area-inset-top, 0px) + 20px);display:flex;flex-direction:column;gap:2px;padding-top:28px;font-size:.88rem}
+.rail a{display:flex;gap:10px;align-items:baseline;padding:6px 8px;color:var(--muted);text-decoration:none;border-left:3px solid transparent}
+.rail a .n{font-variant-numeric:tabular-nums;font-weight:800}
+.rail a[aria-current="true"]{color:var(--fg);border-left-color:var(--sign);font-weight:600}
+.rail a:focus-visible{outline:2px solid var(--blue)}
+.rail .mocknote{margin-top:14px;padding:8px;font-size:.78rem;color:var(--muted);border-top:1px solid var(--line)}
+main{display:flex;flex-direction:column;min-width:0}
+section{padding-block:44px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:18px;scroll-margin-top:60px;min-width:0}
+section:last-of-type{border-bottom:0}
+.stop{display:flex;gap:10px;align-items:center}
+.stop .sign{background:var(--sign);color:var(--sign-fg);font-weight:800;padding:2px 10px;font-size:.8rem;letter-spacing:.05em}
+h1{font-size:2rem;line-height:1.15;margin:0;font-weight:800;text-wrap:balance;max-width:24ch}
+h2{font-size:1.4rem;line-height:1.2;margin:0;font-weight:800;text-wrap:balance}
+p{margin:0;max-width:65ch}
+.lede{font-size:1.1rem}
+.muted{color:var(--muted)}
+.small{font-size:.9rem}
+a.more{color:var(--blue);font-weight:600}
+.cap{display:block;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:2px}
+.caveat{background:var(--soft);padding:12px 14px;max-width:65ch}
+.next{font-weight:600;color:var(--blue);text-decoration:none}
+/* board */
+.board{background:var(--board);color:var(--board-fg);padding:14px 8px;font-family:var(--dot);font-weight:800;font-size:.95rem;min-width:0}
+.board-title{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--board-amber);padding:0 10px 10px}
+.brow{display:grid;grid-template-columns:4.4rem 3.8rem 1fr 1.25fr 1.25fr 10.5rem;gap:12px;padding:10px;border-top:1px solid var(--board-line);align-items:baseline;width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;cursor:pointer}
+.brow>*{min-width:0}
+.brow.head{cursor:default;color:var(--board-amber);font-size:.8rem;border-top:0}
+.brow[aria-pressed="true"]{background:var(--board-sel);box-shadow:inset 3px 0 0 var(--board-amber)}
+.brow:focus-visible{outline:2px solid var(--board-amber);outline-offset:-2px}
+.mark{display:inline-block;width:.62em;height:.62em;border:2px solid currentColor;margin-right:.5em;flex:none}
+.mark.full{background:currentColor}
+.mark.half{background:linear-gradient(90deg,currentColor 50%,transparent 50%)}
+.mark.abst{border-style:dashed}
+.res.full{color:var(--board-amber)} .res.none,.res.abst,.dimcell{color:var(--board-dim)}
+/* case */
+.frame{background:var(--panel);border:1px solid var(--line);padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.differ{background:var(--soft);padding:12px 14px;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.two>div{min-width:0}
+ol.codes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+ol.codes li{display:flex;align-items:baseline}
+ol.codes .n{color:var(--muted);width:1.4em;flex:none}
+.meta{color:var(--muted);font-size:.9rem}
+/* trail strip */
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
+.bel{background:var(--belief);border-top:4px solid var(--blue);padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.bel+.bel{border-left:1px solid var(--line)}
+.bel .code{font-weight:800;line-height:1.25}
+.bel .act{font-size:.82rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:6px;margin-top:auto}
+.bel .cost{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+/* ladder */
+.ladder{display:flex;flex-direction:column;gap:10px}
+.rung{display:grid;grid-template-columns:13rem minmax(0,1fr) 3.2rem 5rem;gap:12px;align-items:center}
+.rung .track{height:22px;background:var(--soft)}
+.rung .fill{height:100%;background:var(--bar-dim)}
+.rung.on .fill{background:var(--bar)}
+.rung .v{font-variant-numeric:tabular-nums;font-weight:800;text-align:right}
+.rung .c{font-family:var(--mono);font-size:.82rem;color:var(--muted);text-align:right}
+/* path */
+.qs{display:flex;flex-direction:column}
+.q{display:grid;grid-template-columns:1.6rem minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:10px 0;border-top:1px solid var(--line);align-items:baseline}
+.q .n{font-weight:800;color:var(--muted)}
+.q .ans{color:var(--muted)}
+.q b{font-weight:600}
+footer{padding-block:28px;display:flex;gap:20px;flex-wrap:wrap;font-size:.92rem}
+footer a{color:var(--blue);font-weight:600}
+@media (max-width:860px){
+  .page{grid-template-columns:minmax(0,1fr);gap:0}
+  .rail{flex-direction:row;overflow-x:auto;padding:8px 0;top:env(safe-area-inset-top, 0px);background:var(--bg);border-bottom:1px solid var(--line);z-index:2}
+  .rail a{border-left:0;border-bottom:3px solid transparent;white-space:nowrap;padding:4px 8px}
+  .rail a[aria-current="true"]{border-bottom-color:var(--sign)}
+  .rail a .t{display:none}
+  .rail a[aria-current="true"] .t{display:inline}
+  .rail .mocknote{display:none}
+  .two,.strip{grid-template-columns:1fr}
+  .bel+.bel{border-left:0;border-top:4px solid var(--blue)}
+  .brow{grid-template-columns:4.4rem 1fr}
+  .brow .x{display:none}
+  .brow .res{grid-column:2}
+  .rung{grid-template-columns:minmax(0,1fr) 3.2rem;gap:4px 12px}
+  .rung .name{grid-column:1/-1}
+  .rung .c{grid-column:1/-1;text-align:left}
+  .q{grid-template-columns:1.6rem minmax(0,1fr)}
+  .q .ans{grid-column:2}
+  h1{font-size:1.6rem}
+}
+</style>
+
+<div class="page">
+  <nav class="rail" aria-label="Stops on this page">
+    <a href="#s1"><span class="n">1</span><span class="t">The question</span></a>
+    <a href="#s2"><span class="n">2</span><span class="t">Closed cases</span></a>
+    <a href="#s3"><span class="n">3</span><span class="t">One case</span></a>
+    <a href="#s4"><span class="n">4</span><span class="t">Its trail</span></a>
+    <a href="#s5"><span class="n">5</span><span class="t">Was a loop needed?</span></a>
+    <a href="#s6"><span class="n">6</span><span class="t">The path taken</span></a>
+    <div class="mocknote">Mock-up. Every case and every figure on this page is an invented example.</div>
+  </nav>
+
+  <main>
+    <section id="s1">
+      <h1>Can an agent read an accident docket and code the cause as the investigator did?</h1>
+      <p class="lede">When the NTSB closes a general-aviation accident investigation, it publishes a probable cause and a set of codes. This agent reads the same public evidence files and codes the case itself. The NTSB's own verdict is the answer key.</p>
+      <p class="caveat"><b>Read this first.</b> The agent agrees with the investigator's first code on a minority of cases, and a simpler method does about as well. This site is the record of how that was measured, step by step.</p>
+      <a class="next" href="#s2">Start with the latest closed cases &darr;</a>
+    </section>
+
+    <section id="s2">
+      <div class="stop"><span class="sign">2</span><h2>The latest closed cases</h2></div>
+      <p>Each row is one investigation the NTSB has closed. The agent coded it from the docket, with the NTSB's verdict withheld. Choose a row to open it.</p>
+      <div class="board" id="board"></div>
+      <p class="small muted">"Different" does not simply mean wrong. The NTSB's own coding of near-identical cases often differs. <a class="more" href="#s6">See question 6 of the path.</a></p>
+    </section>
+
+    <section id="s3">
+      <div class="stop"><span class="sign">3</span><h2>One case, side by side</h2></div>
+      <div class="frame" id="detail"></div>
+    </section>
+
+    <section id="s4">
+      <div class="stop"><span class="sign">4</span><h2>How the agent got there</h2></div>
+      <p>The agent states what it believes before it reads anything, then after each choice of what to read. Seven documents were in this docket. It read three.</p>
+      <div class="strip">
+        <div class="bel"><span class="cap">Before reading</span><span class="code">Loss of control in flight</span><span class="small">Nothing yet says why control was lost.</span><span class="act">Then read 2 of 7 documents: the wreckage examination and the witness statements.</span><span class="cost">$0.004</span></div>
+        <div class="bel"><span class="cap">After the first read</span><span class="code">Aerodynamic stall/spin</span><span class="small">Changed. Witnesses saw a steep turn and a wing drop.</span><span class="act">Then read 1 more: the radar track summary.</span><span class="cost">$0.004</span></div>
+        <div class="bel"><span class="cap">After the second read</span><span class="code">Aerodynamic stall/spin</span><span class="small">Unchanged. Groundspeed fell through the turn.</span><span class="act">Then made 3 lookups in the code tables.</span><span class="cost">$0.003</span></div>
+        <div class="bel"><span class="cap">Answer</span><span class="code">Aerodynamic stall/spin</span><span class="small">The NTSB put loss of control first. The agent's first belief had matched it.</span><span class="act">7 model calls in all.</span><span class="cost">$0.012 total</span></div>
+      </div>
+      <a class="more" href="#s4">Open the full trail for this case</a>
+    </section>
+
+    <section id="s5">
+      <div class="stop"><span class="sign">5</span><h2>Was a loop needed?</h2></div>
+      <p>Each step adds machinery, and each had to pay for itself. The bar is how often the first code matched the NTSB's. The last column is the cost of one case.</p>
+      <div class="ladder">
+        <div class="rung"><span class="name">No model: the commonest code</span><div class="track"><div class="fill" style="width:36%"></div></div><span class="v">18%</span><span class="c">$0</span></div>
+        <div class="rung"><span class="name">One model call, no docket</span><div class="track"><div class="fill" style="width:22%"></div></div><span class="v">11%</span><span class="c">$0.001</span></div>
+        <div class="rung"><span class="name">Read every document, fixed order</span><div class="track"><div class="fill" style="width:54%"></div></div><span class="v">27%</span><span class="c">$0.006</span></div>
+        <div class="rung on"><span class="name">The loop: choose what to read</span><div class="track"><div class="fill" style="width:54%"></div></div><span class="v">27%</span><span class="c">$0.011</span></div>
+      </div>
+      <p class="differ">So far the loop is level with reading everything, at about twice the cost. It has not yet earned its keep.</p>
+      <p class="small muted">Example values. The real figures come from one held-out sample, with intervals, when the comparison stage finishes. <a class="more" href="#s5">Methods</a></p>
+    </section>
+
+    <section id="s6">
+      <div class="stop"><span class="sign">6</span><h2>The path taken, in eight questions</h2></div>
+      <div class="qs">
+        <div class="q"><span class="n">1</span><b>Is there an answer key nobody had to write?</b><span class="ans">Yes. The NTSB codes every closed case.</span></div>
+        <div class="q"><span class="n">2</span><b>Is one model call enough?</b><span class="ans">No. It scored below a method that uses no model.</span></div>
+        <div class="q"><span class="n">3</span><b>Does reading the docket help?</b><span class="ans">Yes. This is the largest gain.</span></div>
+        <div class="q"><span class="n">4</span><b>Does reading scanned pages help?</b><span class="ans">Not shown yet, and costly. Paused, and a candidate to return.</span></div>
+        <div class="q"><span class="n">5</span><b>Are the misses about evidence or coding?</b><span class="ans">Mostly the order of the codes.</span></div>
+        <div class="q"><span class="n">6</span><b>How consistent is the answer key itself?</b><span class="ans">Identical cause sentences often carry different first codes.</span></div>
+        <div class="q"><span class="n">7</span><b>Does choosing what to read beat reading everything?</b><span class="ans">Level so far, at a higher cost.</span></div>
+        <div class="q"><span class="n">8</span><b>Does it hold on newly closed cases?</b><span class="ans">The board above is the test.</span></div>
+      </div>
+      <a class="more" href="#s6">Read each question with its measurement and script</a>
+    </section>
+
+    <footer>
+      <span>Built by Andy Floyd. <a href="#s1">Profile</a></span>
+      <a href="#s1">Repository</a><a href="#s5">Methods</a><a href="#s2">Open cases</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+const cases=[
+ {d:"12 Sep",took:"14 mo",bac:"Aeroplane, 1 piston",more:"Texas &middot; personal flight &middot; 3 of 7 documents read &middot; $0.012",grade:"half",word:"Same codes, other order",
+  differ:"Both name the same event. The NTSB put loss of control first. The agent put the stall first.",
+  agent:"The pilot did not maintain airspeed in the turn from base to final. The aeroplane exceeded its critical angle of attack and stalled at a height too low for recovery.",
+  ntsb:"The pilot's failure to maintain adequate airspeed during the turn to final, which resulted in an exceedance of the critical angle of attack and an aerodynamic stall.",
+  ac:[["Aerodynamic stall/spin","half"],["Loss of control in flight","half"],["Collision with terrain or object","full"]],
+  nt:[["Loss of control in flight","half"],["Aerodynamic stall/spin","half"],["Collision with terrain or object","full"]]},
+ {d:"11 Sep",took:"22 mo",bac:"Helicopter",more:"Alaska &middot; aerial observation &middot; 5 of 14 documents read &middot; $0.019",grade:"none",word:"Different",
+  differ:"The two differ on what happened. The NTSB found the fuel ran out. The agent found an engine failure with no stated reason.",
+  agent:"A total loss of engine power during cruise for reasons the available evidence did not establish, which led to an autorotation onto unsuitable terrain.",
+  ntsb:"The pilot's inadequate preflight fuel planning, which resulted in fuel exhaustion and a total loss of engine power.",
+  ac:[["Loss of engine power (total)","half"],["Off-field or emergency landing","full"]],
+  nt:[["Fuel exhaustion","none"],["Off-field or emergency landing","full"],["Loss of engine power (total)","half"]]},
+ {d:"11 Sep",took:"7 mo",bac:"Aeroplane, 1 piston",more:"Ohio &middot; instructional flight &middot; 2 of 4 documents read &middot; $0.008",grade:"full",word:"Same first code",
+  differ:"Both put the same event first.",
+  agent:"The pilot did not keep directional control during the landing roll in a gusting crosswind, and the aeroplane left the side of the runway.",
+  ntsb:"The pilot's failure to maintain directional control during landing in gusting crosswind conditions, which resulted in a runway excursion.",
+  ac:[["Loss of control on ground","full"],["Runway excursion","full"]],
+  nt:[["Loss of control on ground","full"],["Runway excursion","full"]]},
+ {d:"09 Sep",took:"19 mo",bac:"Aeroplane, amateur-built",more:"Oregon &middot; personal flight &middot; 0 of 2 documents readable &middot; $0.002",grade:"abst",word:"Agent abstained",abst:true,
+  differ:"The agent gave no answer. Both documents in the docket were scans it could not read.",
+  agent:"No cause stated. The recorded facts give the phase of flight and the damage, and nothing on why power was lost.",
+  ntsb:"A total loss of engine power due to fuel starvation, which resulted from the pilot's mismanagement of the fuel selector.",
+  ac:[],nt:[["Fuel starvation","none"],["Loss of engine power (total)","none"]]}
+];
+const mark=g=>`<span class="mark ${g}"></span>`;
+const codes=a=>a.length?`<ol class="codes">${a.map((c,i)=>`<li><span class="n">${i+1}</span>${mark(c[1])}<span>${c[0]}</span></li>`).join('')}</ol>`:`<p class="muted">None given</p>`;
+let sel=0;
+function draw(){
+  document.getElementById('board').innerHTML=`<div class="board-title"><span>CLOSED CASES</span><span>UPDATED 03:00 UTC</span></div>
+  <div class="brow head"><span>CLOSED</span><span class="x">TOOK</span><span>AIRCRAFT</span><span class="x">AGENT CODED</span><span class="x">NTSB CODED</span><span>RESULT</span></div>`+
+  cases.map((c,i)=>`<button class="brow" data-i="${i}" aria-pressed="${i===sel}"><span>${c.d}</span><span class="x">${c.took}</span><span>${c.bac}</span><span class="x ${c.abst?'dimcell':''}">${c.abst?'No answer':c.ac[0][0]}</span><span class="x">${c.nt[0][0]}</span><span class="res ${c.grade}">${mark(c.grade)}${c.word}</span></button>`).join('');
+  const c=cases[sel];
+  document.getElementById('detail').innerHTML=`<span class="meta">Closed ${c.d} &middot; ${c.took} after the accident &middot; ${c.bac} &middot; ${c.more}</span>
+  <div class="differ">${c.differ}</div>
+  <div class="two"><div><span class="cap">${c.abst?'The agent, abstaining':"The agent's cause"}</span><p>${c.agent}</p></div><div><span class="cap">The NTSB's probable cause</span><p>${c.ntsb}</p></div></div>
+  <div class="two"><div><span class="cap">What happened, agent's order</span>${codes(c.ac)}</div><div><span class="cap">What happened, NTSB's order</span>${codes(c.nt)}</div></div>`;
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button.brow');if(!b)return;sel=+b.dataset.i;draw();document.getElementById('s3').scrollIntoView();});
+draw();
+const links=[...document.querySelectorAll('.rail a')];
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.setAttribute('aria-current',l.getAttribute('href')==='#'+e.target.id))}})},{rootMargin:'-40% 0px -55% 0px'});
+document.querySelectorAll('main section').forEach(s=>io.observe(s));
+links[0].setAttribute('aria-current','true');
+</script>

@@ -55,6 +55,40 @@ This replaces the roadmap's five pages (§8 there). Home and the live board beco
 The board lists closed cases, not open ones. Open cases move to their own page. §14 lists the
 roadmap changes this needs at merge.
 
+### 3.1 The first page is one scrolling route
+
+Andy asked for a page that flows as the reader scrolls, and agreed that the first page should
+offer one marked three-minute route. So the first page is one long page of six stops, read top
+to bottom. Each stop is a short form of a page in the table above and links to the full one.
+
+| stop | what the reader sees | the full page it links to |
+|---|---|---|
+| 1. The question | the question, two sentences on the task, and the caveat | none |
+| 2. Closed cases | the board (§4) | none |
+| 3. One case | the opened case for the chosen row (§5) | the case's own address |
+| 4. Its trail | that case's beliefs as a strip of four blocks, with what was read between them | Trail view (§6) |
+| 5. Was a loop needed? | the ladder and one plain sentence stating the result (§7.1) | Methods (§9) |
+| 6. The path taken | the eight questions, each with a one-line answer (§7.2) | Path (§7) |
+
+A slim rail of the six stops stays in view and marks the stop being read: at the left on a
+wide screen, across the top on a phone.
+
+**The caveat sits in stop 1, above the board.** It says plainly that the agent agrees with the
+investigator on a minority of cases and that a simpler method does about as well. This meets
+the roadmap's rule that caveats come before results, without burying the board.
+
+**The page scrolls in the ordinary way.** Nothing takes control of the scroll, nothing is
+hidden until the reader reaches it, and a reduced-motion setting is respected. The flow comes
+from the order of the stops, not from animation.
+
+**The author.** The foot of the page carries one line, "Built by Andy Floyd", linking to his
+main profile page, with links to the repository, Methods and Open cases. The site holds no
+biography; the profile page does that work and is Andy's to update.
+
+Mock-up: `docs/specs/2026-10-04-s5-mockups/scroll-route.html`
+(<https://claude.ai/artifact/J9xBm7c1FUmfVR195s6oYF>). Its cases and its ladder figures are
+invented examples.
+
 ## 4. The first screen and the board
 
 **The board lists the most recently closed cases.** Closure is the event that matters: when the
@@ -81,6 +115,12 @@ row is one case. Columns, in order:
   evidence, behind what the fixed pipeline missed
   (`docs/results/s26-occurrence-misses-dev.txt`).
 - **Different** (open mark).
+
+**A case the agent abstained on has its own row** (Andy, 2026-10-04): "No answer" in the agent's
+column and "Agent abstained" as the result, with a dashed mark. Its opened case gives the
+agent's stated reason beside the NTSB's cause. Leaving such cases off would be selection. A
+failed case (a guard refusal or a format failure) needs a row on the same principle; its
+wording is open (§12).
 
 The exact rule for the middle grade is fixed when this note is approved; it must be one a
 script computes from the two code lists.
@@ -254,19 +294,16 @@ These are fatal accidents. The rules of the project apply to every page.
 
 Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 
-1. **The author.** The site supports a job search. It needs a discreet line saying who built
-   it, with links to the repository and a way to make contact. Where it sits, and how much it
-   says, is open.
-2. **A three-minute route.** Whether the first screen offers one marked route (board, one
-   case, its trail, the path) or leaves the reader to explore.
-3. **Caveats before results.** The roadmap requires caveats to be stated before results. On a
-   first screen that opens with the board, where do they go without burying the board?
+1. **The author.** Settled: one line at the foot, linking to Andy's profile page (§3.1).
+2. **A three-minute route.** Settled: the first page is one scrolling route of six stops
+   (§3.1).
+3. **Caveats before results.** Proposed in §3.1: the caveat sits in stop 1, above the board.
+   Its exact wording waits for S3.2's result.
 4. **Terms for a non-expert.** "Occurrence code", "finding" and "docket" need a plain
    explanation at the point of use. Each belief already carries an explanation written for a
    non-expert; whether the opened case shows it is open.
-5. **Abstains and failures on the board.** A case the agent abstained on, and a case that
-   failed (a guard refusal, a format failure), each need an honest row. Leaving them off would
-   be selection.
+5. **Failures on the board.** Abstains are settled (§4). The wording of a row for a case that
+   failed (a guard refusal, a format failure) is open.
 6. **The thin board at launch.** The board must look complete with few rows, and on a night
    with no closures.
 7. **Motion.** A real terminal display flips. Any motion must be slight, must respect a
@@ -320,6 +357,9 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 5. Injury level in the opened case only (§11).
 6. Beliefs as the spine of the trail view (§6).
 7. The Path page: a ladder from one sample, then eight questions (§7).
+8. The first page is one scrolling route of six stops, with the caveat above the board and the
+   author line linking to Andy's profile page (§3.1).
+9. Abstained cases have their own row on the board (§4).
 
 ## 16. Open questions for Andy
 
