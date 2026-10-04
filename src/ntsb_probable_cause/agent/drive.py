@@ -40,6 +40,7 @@ Case ids are public NTSB numbers, so the refusals below may name them. They neve
 a payload or provider text.
 """
 
+import json
 from collections.abc import Callable, Mapping, Sequence, Set
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +48,7 @@ from typing import Final, NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent.loop import PendingCall
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
@@ -55,8 +57,8 @@ from ntsb_probable_cause.errors import (
     ModelError,
 )
 from ntsb_probable_cause.model.batch import BatchRequest, BatchStatus
-from ntsb_probable_cause.model.client import ModelClient, ModelReply
-from ntsb_probable_cause.scoring.records import read_jsonl, write_jsonl
+from ntsb_probable_cause.model.client import ModelClient, ModelReply, Turn
+from ntsb_probable_cause.scoring.records import CONTEXT_FAILURE, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner
 
 REPLIES_FILE: Final = "replies.jsonl"
@@ -65,6 +67,7 @@ _SEPARATOR: Final = "#"
 _ROUNDS_SPENT: Final = "failed: rounds"
 _LOST: Final = "lost"
 _CANCELLED: Final = "cancelled"
+_CHARS_PER_TOKEN: Final = 4
 
 
 class DrivenLoop(Protocol):
@@ -173,6 +176,44 @@ class _Call(NamedTuple):
     call: PendingCall
 
 
+def estimated_prompt_tokens(call: PendingCall) -> float:
+    """The call's prompt in estimated tokens: its characters over four (decision 152).
+
+    The characters are the ones ``loop.estimate_usd`` counts for ``call.estimated_usd``: the
+    system text, the payload, the tool definitions and every earlier turn (its content, its
+    tool calls, its tool result, and its reasoning when that is passed back). The ceiling's
+    ratio was measured against that estimate, so this must be the same count.
+    """
+    settings = call.settings
+    chars = len(call.system) + len(call.payload.text) + len(json.dumps(list(settings.tools)))
+    chars += sum(_turn_chars(turn, with_reasoning=settings.pass_reasoning) for turn in call.history)
+    return chars / _CHARS_PER_TOKEN
+
+
+def _turn_chars(turn: Turn, *, with_reasoning: bool) -> int:
+    """All the text one earlier turn sends, as ``loop.estimate_usd`` counts it."""
+    result = "\n\n".join(part.text for part in (turn.payload, turn.tool_text) if part is not None)
+    chars = len(turn.content or "") + len(result)
+    chars += sum(len(call.name) + len(call.arguments) for call in turn.tool_calls)
+    if with_reasoning and turn.reasoning_details:
+        chars += len(json.dumps(list(turn.reasoning_details)))
+    return chars
+
+
+def _stop_over_context(loops: Sequence[DrivenLoop], *, skip: Set[str] = frozenset()) -> None:
+    """Stop every loop whose next call is over the context ceiling; that call is never sent.
+
+    Decision 152: one request over the model's context window fails its whole batch. ``skip``
+    names the cases of a round already sent, which a resume waits on as it is.
+    """
+    for loop in loops:
+        if loop.case_id in skip:
+            continue
+        call = loop.next_call()
+        if call is not None and estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
+            loop.stop(CONTEXT_FAILURE)
+
+
 def custom_id(case_id: str, call_index: int) -> str:
     """The name of one call in a batch: the case, then the call's place in it."""
     return f"{case_id}{_SEPARATOR}{call_index}"
@@ -208,6 +249,9 @@ def drive_sync(
         )
     for loop in loops:
         while (call := loop.next_call()) is not None:
+            if estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
+                loop.stop(CONTEXT_FAILURE)
+                break
             sent_at = now()
             reply: ModelReply | None = None
             error: str | None = None
@@ -287,6 +331,14 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
     """
     cases = _by_case(loops)
     unfinished = replay(loops, folder)
+    # A stop at the ceiling is not on disk, so a replayed loop is back at its call over it. Stop
+    # it again now, or the open round would look short of that call (decision 152).
+    open_cases = (
+        set()
+        if unfinished is None
+        else {c.rpartition(_SEPARATOR)[0] for c in unfinished.custom_ids}
+    )
+    _stop_over_context(loops, skip=open_cases)
     rounds = max(_rounds(folder), default=0)
     while True:
         resumed = unfinished is not None
@@ -294,6 +346,7 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
             row, calls = unfinished, _remaining(unfinished, cases)
             unfinished = None
         else:
+            _stop_over_context(loops)
             calls = _pending(loops)
             if not calls:
                 break

@@ -582,6 +582,16 @@ def test_failure_summary_counts_by_reason_and_never_names_a_case() -> None:
     assert not any(case_id in text for case_id in ("CEN20LA123", "ERA21LA161", "WPR22FA087"))
 
 
+def test_failure_summary_names_a_stop_at_the_context_ceiling_apart_from_the_cap() -> None:
+    """S3.2 Task 15a (decision 152): ``cap: context`` reads as its own reason."""
+    rows = [
+        _case("WPR23FA080", failure="cap"),
+        _case("WPR23FA081", failure="cap: context"),
+        _case("WPR23FA082", failure="cap: context"),
+    ]
+    assert report.failure_summary(rows) == "failures by reason: cap 1, cap (context) 2"
+
+
 def test_failure_summary_with_no_failures() -> None:
     assert report.failure_summary([_case("WPR20LA001")]) == "failures by reason: none"
 

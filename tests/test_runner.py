@@ -50,7 +50,13 @@ from ntsb_probable_cause.scoring.budget import (
 )
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, StepRecord, read_jsonl
+from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
+    CaseResult,
+    RunRecord,
+    StepRecord,
+    read_jsonl,
+)
 from ntsb_probable_cause.scoring.runner import (
     ANSWERING_TURNS,
     BatchRunner,
@@ -64,6 +70,7 @@ from ntsb_probable_cause.scoring.runner import (
     dead_batches,
     estimated_cost_usd,
     over_cap,
+    over_context,
     prepare_case,
     project_cost,
     recorded_batches,
@@ -2868,6 +2875,143 @@ def test_arm_b_drops_whole_documents_smallest_first_at_the_cap(
     assert step.documents_attached == ("1: exam_site, 5 tokens",)
     assert step.documents_not_read == ("2: cap, 10003 tokens",)
     assert "xxxx" not in client.payloads[0].text
+
+
+# --- the prompt-size ceiling (S3.2 Task 15a, decision 152) ---
+
+_BIG = "[page 1 of 3]\n" + "x" * 40_000 + "\n"  # 10,003 estimated tokens
+_SMALL = "[page 1 of 3]\nsmall\n"
+
+
+def _ceiling_over_the_small_document(raw: Mapping[str, object], spec: RunSpec) -> int:
+    """A ceiling 5,000 tokens over the prompt with the small document: the big one breaks it."""
+    prepared = prepare_case(raw, spec, load_tables(), small_docket({1: _SMALL}))
+    assert prepared.attached == (1,)
+    return (len(prepared.payload.text) + len(prepared.system)) // 4 + 5000
+
+
+def test_over_context_is_the_runners_estimate_against_the_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1000)
+    assert not over_context("x" * 3000, "y" * 1000)  # 1,000 tokens: at the ceiling, not over
+    assert over_context("x" * 3001, "y" * 1000)
+    assert CONTEXT_FAILURE == "cap: context"
+
+
+def test_arm_b_leaves_out_a_document_over_the_context_ceiling_with_reason_context(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        cap_usd=0.30,
+        expected_cost_per_case_usd=0.001,
+    )
+    raw = record_fixtures[0]
+    monkeypatch.setattr(
+        sources, "PROMPT_TOKEN_CEILING", _ceiling_over_the_small_document(raw, spec)
+    )
+    assert not over_cap("x" * 200_000, "", spec), (
+        "the cap must not be what binds here"
+    )  # far more than both documents
+    docket = small_docket({1: _SMALL, 2: _BIG})
+    client = RecordingFakeClient([GOOD, REFINE])
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, [raw])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure is None
+    (step,) = case.steps
+    assert step.documents_attached == ("1: exam_site, 5 tokens",)
+    assert step.documents_not_read == ("2: context, 10003 tokens",)
+    assert "xxxx" not in client.payloads[0].text
+
+
+def test_arm_b_reason_reads_cap_when_the_cap_binds_as_well(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The setting of the cap test above: the big document is over the cap and the ceiling."""
+    spec = RunSpec(
+        sample="dev-400",
+        arm="B",
+        sync=True,
+        price_variant="standard",
+        model="anthropic/claude-sonnet-5",
+        cap_usd=0.08,
+        max_output_tokens=2000,
+        expected_cost_per_case_usd=0.001,
+    )
+    raw = record_fixtures[0]
+    monkeypatch.setattr(
+        sources, "PROMPT_TOKEN_CEILING", _ceiling_over_the_small_document(raw, spec)
+    )
+    docket = small_docket({1: _SMALL, 2: _BIG})
+    client = RecordingFakeClient([GOOD, REFINE])
+    run = runner(tmp_path, client, docket=FakeDocketReader(docket)).run(spec, [raw])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    (step,) = case.steps
+    assert step.documents_not_read == ("2: cap, 10003 tokens",)
+
+
+@pytest.mark.parametrize("arm", ["B", "ceiling"])
+def test_a_case_whose_base_prompt_is_over_the_ceiling_fails_without_a_call(
+    tmp_path: Path,
+    record_fixtures: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    arm: Literal["B", "ceiling"],
+) -> None:
+    monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1)
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm=arm,
+        sync=True,
+        price_variant="standard",
+        cap_usd=0.30,
+        expected_cost_per_case_usd=0.001,
+    )
+    docket = FakeDocketReader(small_docket({1: _SMALL}))
+    run = runner(tmp_path, client, docket=docket).run(spec, record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert (case.failure, case.cost_usd, case.steps) == (CONTEXT_FAILURE, 0.0, ())
+    assert client.payloads == []
+
+
+def test_a_batch_case_over_the_ceiling_is_left_out_of_the_batch(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1)
+    fake = FakeBatchClient(handlers=[])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=False,
+        cap_usd=0.30,
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, RecordingFakeClient([]), batch=fake).run(spec, record_fixtures[:1])
+    assert fake.submitted == []
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure == CONTEXT_FAILURE
+
+
+def test_a_case_over_both_the_cap_and_the_ceiling_fails_cap(
+    tmp_path: Path, record_fixtures: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1)
+    client = RecordingFakeClient([GOOD, REFINE])
+    spec = RunSpec(
+        sample="dev-400",
+        arm="ceiling",
+        sync=True,
+        price_variant="standard",
+        cap_usd=0.0000001,
+        expected_cost_per_case_usd=0.0,
+    )
+    run = runner(tmp_path, client).run(spec, record_fixtures[:1])
+    (case,) = read_jsonl(tmp_path / "runs" / run.run_id / "cases.jsonl", CaseResult)
+    assert case.failure == "cap"
 
 
 def test_ceiling_and_arm_a_never_read_the_docket(

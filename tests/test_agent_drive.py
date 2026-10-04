@@ -8,6 +8,7 @@ A resume is shown exact the way the brief puts it: the same outcomes and the sam
 ``replies.jsonl`` as a run that was never interrupted.
 """
 
+import dataclasses
 import json
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
@@ -19,6 +20,7 @@ from tests.test_agent_documents import _raw
 from tests.test_agent_loop import HAPPY, T0, _config, _hyp, _view
 from tests.test_runner import FakeBatchClient
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent.drive import (
     REPLIES_FILE,
     ROUNDS_FILE,
@@ -27,6 +29,7 @@ from ntsb_probable_cause.agent.drive import (
     custom_id,
     drive_batch,
     drive_sync,
+    estimated_prompt_tokens,
     replay,
 )
 from ntsb_probable_cause.agent.loop import CaseLoop
@@ -40,7 +43,8 @@ from ntsb_probable_cause.errors import (
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import ModelReply, Payload, Turn, Usage, tool_reply
 from ntsb_probable_cause.model.client import ModelSettings as Settings
-from ntsb_probable_cause.scoring.records import read_jsonl
+from ntsb_probable_cause.model.tool_text import ToolText
+from ntsb_probable_cause.scoring.records import CONTEXT_FAILURE, read_jsonl
 
 A = "ANC09CA024"
 Handler = Callable[[str, Sequence[BatchRequest]], BatchStatus]
@@ -1248,3 +1252,163 @@ class TestRefusals:
         loops = [self._loop_named("ANC09CA024"), self._loop_named("ANC09CA024")]
         with pytest.raises(ConfigurationError, match="twice"):
             drive_batch(loops, FakeBatchClient(handlers=[]), folder=tmp_path / "run", now=Clock())
+
+
+# --------------------------------------------------------------------------------------------
+# The prompt-size ceiling (S3.2 Task 15a, decision 152)
+# --------------------------------------------------------------------------------------------
+
+
+def _estimates(loop: CaseLoop, replies: Sequence[ModelReply | None]) -> list[float]:
+    """Each pending call's ``estimated_prompt_tokens`` as the loop goes through its replies."""
+    out: list[float] = []
+    for reply in replies:
+        call = loop.next_call()
+        if call is None:
+            break
+        out.append(estimated_prompt_tokens(call))
+        loop.accept(reply, error=None if reply else "boom", sent_at=T0, returned_at=T0)
+    return out
+
+
+def _ceiling_between_a0_and_a1() -> int:
+    """A ceiling over A's first call and both of B's, under A's second (its read choice).
+
+    Measured on the fixtures rather than written as a number, so the tests follow the texts.
+    """
+    scripts = _scripts()
+    a = _estimates(_loops()[0], scripts[A])
+    b = _estimates(_loops()[1], scripts[B])
+    below = max(a[0], *b)
+    assert a[1] > below + 2, "the fixtures no longer separate A's second call"
+    return int((below + a[1]) / 2)
+
+
+class TestContextCeiling:
+    def test_the_estimate_is_the_loops_own_estimate_in_tokens(self) -> None:
+        """The ratio of decision 152 was measured against the loop's estimate: it must be this."""
+        loop = _loops()[0]
+        for reply in _scripts()[A]:
+            call = loop.next_call()
+            assert call is not None
+            price = sources.price_of(call.settings.model_id())
+            from_usd = (
+                call.estimated_usd * 1e6
+                - call.settings.max_output_tokens * price.output_usd_per_mtok
+            ) / price.input_usd_per_mtok
+            assert estimated_prompt_tokens(call) == pytest.approx(from_usd)
+            loop.accept(reply, sent_at=T0, returned_at=T0)
+
+    def test_the_estimate_counts_history_turns(self) -> None:
+        call = _loops()[0].next_call()
+        assert call is not None
+        longer = dataclasses.replace(
+            call, history=(*call.history, Turn(role="assistant", content="x" * 400))
+        )
+        assert estimated_prompt_tokens(longer) == estimated_prompt_tokens(call) + 100
+
+    def test_the_estimate_counts_a_tool_result(self) -> None:
+        call = _loops()[0].next_call()
+        assert call is not None
+        result = Turn(role="tool", tool_call_id="c1", tool_text=ToolText.of("y" * 800))
+        longer = dataclasses.replace(call, history=(*call.history, result))
+        assert estimated_prompt_tokens(longer) == estimated_prompt_tokens(call) + 200
+
+    def test_a_batch_call_over_the_ceiling_is_never_submitted_and_its_case_stops(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", _ceiling_between_a0_and_a1())
+        fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+        loops = _loops()
+        drive_batch(loops, fake, folder=tmp_path / "run", now=Clock())
+        sent = [r.custom_id for batch in fake.submitted for r in batch]
+        assert custom_id(A, 1) not in sent
+        assert sent == [custom_id(A, 0), custom_id(B, 0), custom_id(B, 1)]
+        assert [o.stop_reason for o in _outcomes(loops)] == [CONTEXT_FAILURE, "done"]
+        assert CONTEXT_FAILURE == "cap: context"
+        assert len(loops[0].outcome.calls) == 1  # only the call that was sent
+
+    def test_the_round_still_goes_out_with_the_calls_under_the_ceiling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", _ceiling_between_a0_and_a1())
+        fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+        drive_batch(_loops(), fake, folder=tmp_path / "run", now=Clock())
+        assert [[r.custom_id for r in batch] for batch in fake.submitted] == [
+            [custom_id(A, 0), custom_id(B, 0)],
+            [custom_id(B, 1)],
+        ]
+        second = [r for r in _rounds(tmp_path / "run") if r.round == 2]
+        assert {r.custom_ids for r in second} == {(custom_id(B, 1),)}
+
+    def test_every_call_over_the_ceiling_means_no_batch_at_all(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", 1)
+        fake = FakeBatchClient(handlers=[])
+        loops = _loops()
+        drive_batch(loops, fake, folder=tmp_path / "run", now=Clock())
+        assert fake.submitted == []
+        assert [o.stop_reason for o in _outcomes(loops)] == [CONTEXT_FAILURE] * 2
+        assert not (tmp_path / "run" / ROUNDS_FILE).exists()
+
+    def test_a_sync_call_over_the_ceiling_is_never_made_and_its_case_stops(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", _ceiling_between_a0_and_a1())
+        scripts = _scripts()
+        client = ScriptedClient([scripts[A][0], *scripts[B]])
+        loops = _loops()
+        drive_sync(loops, client, folder=tmp_path / "run", now=Clock())
+        assert client.calls == 3
+        assert [(r.case_id, r.call_index) for r in _replies(tmp_path / "run")] == [
+            (A, 0),
+            (B, 0),
+            (B, 1),
+        ]
+        assert [o.stop_reason for o in _outcomes(loops)] == [CONTEXT_FAILURE, "done"]
+
+    def test_a_resume_after_a_case_was_stopped_at_the_ceiling_is_not_a_mismatch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The stop is not on disk: after the replay, A is back at its call over the ceiling.
+
+        Round 2 holds only B's call. Unless the guard runs again after the replay, A's pending
+        call looks like a call missing from the open round, and the resume is refused.
+        """
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", _ceiling_between_a0_and_a1())
+        whole, cut = tmp_path / "whole", tmp_path / "cut"
+        reference = _loops()
+        drive_batch(
+            reference,
+            FakeBatchClient(handlers=[_answers(_scripts())] * 2),
+            folder=whole,
+            now=Clock(),
+        )
+        dead = FakeBatchClient(handlers=[_answers(_scripts()), _die])
+        with pytest.raises(_KilledError):
+            drive_batch(_loops(), dead, folder=cut, now=Clock())
+        assert _rounds(cut)[-1].custom_ids == (custom_id(B, 1),)
+
+        resumed = _resumer(dead, "b2", [_answers(_scripts())])
+        loops = _loops()
+        drive_batch(loops, resumed, folder=cut, now=Clock(ticks=3))
+        assert resumed.waited == ["b2"]
+        assert len(resumed.submitted) == 2  # the seeded entries only: nothing sent again
+        assert _outcomes(loops) == _outcomes(reference)
+        assert (cut / REPLIES_FILE).read_text() == (whole / REPLIES_FILE).read_text()
+
+    def test_a_resumed_round_is_waited_on_even_if_its_calls_are_now_over_the_ceiling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fresh rounds only: a call already sent is paid for, so its reply is taken."""
+        cut = tmp_path / "cut"
+        dead = _interrupt_after_round_two_is_submitted(cut)  # round 2 holds A#1 and B#1
+        monkeypatch.setattr(sources, "PROMPT_TOKEN_CEILING", _ceiling_between_a0_and_a1())
+        resumed = _resumer(dead, "b2", [_answers(_scripts())] * 7)
+        loops = _loops()
+        drive_batch(loops, resumed, folder=cut, now=Clock(ticks=3))
+        assert resumed.waited == ["b2"]
+        assert len(resumed.submitted) == 2  # A's next call (index 2) is over: no round 3
+        assert [len(o.calls) for o in _outcomes(loops)] == [2, 2]
+        assert [o.stop_reason for o in _outcomes(loops)] == [CONTEXT_FAILURE, "done"]

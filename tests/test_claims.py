@@ -366,3 +366,11 @@ class TestHeadline:
             "On held-out cases, the loop was not shown to improve on the fixed pipeline: "
             "it was undecided."
         )
+
+
+def test_a_case_stopped_at_the_context_ceiling_counts_as_wrong_not_as_a_guard_refusal() -> None:
+    """S3.2 Task 15a (decision 152): ``cap: context`` is a failure like ``cap`` (spec §7.3)."""
+    case = _failed("x1", "cap: context", flagged=True)
+    assert not claims.is_guard_refusal(case)
+    assert claims.per_case([case], "top1") == {"x1": 0.0}
+    assert claims.per_case([case], "recall10") == {"x1": 0.0}
