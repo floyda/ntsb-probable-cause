@@ -70,7 +70,7 @@ LUNA_6_CONTEXT_TOKENS: Final = 1_050_000
 # call may send: decision 152. The estimate undercounts document text, which tokenizes at about
 # two characters a token: over both dev-400 noise-floor trails, real prompt tokens were at most
 # 2.4303 times the estimate (docs/results/s32-context-ratio-dev.txt). So the ceiling is
-# floor(0.8 * 1,050,000 / 2.4303...) = 345,630, rounded down to a thousand: a call at the ceiling
+# floor(0.8 * 1,050,000 / 2.430343) = 345,630, rounded down to a thousand: a call at the ceiling
 # is at most about 838,000 real tokens, 80% of the window.
 PROMPT_TOKEN_CEILING: Final[int] = 345_000
 HAIKU_45_BATCH = ModelPrice(

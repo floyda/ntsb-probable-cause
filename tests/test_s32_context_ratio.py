@@ -121,7 +121,7 @@ def test_main_writes_every_line_and_names_no_case(
     assert "run a: 1 calls with a reply of 2; ratio real/estimated: min 1.2000" in text
     assert "run b: 1 calls with a reply of 1" in text
     assert "both runs: 2 calls; ratio median 0.8500, p99 1.2000, max 1.2000; above 1.5: 0" in text
-    assert "ceiling: floor(0.8 x 1,050,000 / 1.2000) = 700,000 -> 700,000" in text
+    assert "ceiling: floor(0.8 x 1,050,000 / 1.200000) = 700,000 -> 700,000" in text
     assert "DIFFERENT: correct the literal" in text  # the literal is the real one, 345,000
     assert "over the ceiling: noise-floor calls 0 of 3 (largest estimate 2,000)" in text
     assert "over the ceiling: arm B dev-400 prompts 0 of 20 cases that sent one; 20" in text

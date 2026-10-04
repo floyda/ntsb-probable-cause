@@ -207,7 +207,7 @@ def report(run_ids: Sequence[str], armb_run: str) -> str:
         f"both runs: {len(every)} calls; ratio median {statistics.median(every):.4f}, p99 "
         f"{percentile(every, 0.99):.4f}, max {top:.4f}; above {OVER_RATIO}: "
         f"{sum(1 for v in every if v > OVER_RATIO)}",
-        f"ceiling: floor({WINDOW_SHARE} x {sources.LUNA_6_CONTEXT_TOKENS:,} / {top:.4f}) = "
+        f"ceiling: floor({WINDOW_SHARE} x {sources.LUNA_6_CONTEXT_TOKENS:,} / {top:.6f}) = "
         f"{exact:,} -> {rounded:,} estimated tokens (rounded down to a thousand); "
         f"sources.PROMPT_TOKEN_CEILING = {limit:,} "
         f"({'the same' if rounded == limit else 'DIFFERENT: correct the literal'})",
