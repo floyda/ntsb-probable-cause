@@ -25,3 +25,4 @@ Every row above this table read the docket at evidence version v1.
 | 2026-10-04 | heldout-400 | B — ABORTED: the provider refused the stage-1 batch twice (first run, then one resume), 0 of 400 answered, none scored: one request was over the model's 1,050,000-token context window. Re-run fresh after decision 152 | v1 | - | - | openai/gpt-6-luna | 7948ac0 | 0.00 | 20261004T094550-7948ac0-heldout-400-B/cases.jsonl |
 | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | dd64854 | 1.19 | 20261004T111937-dd64854-heldout-400-B/cases.jsonl |
 | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | f744622 | 1.05 | 20261004T111937-dd64854-heldout-400-B-tools/cases.jsonl |
+| 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | 60fdd75 | 0.11 | 20261004T111937-dd64854-heldout-400-B-tools-check-luna/cases.jsonl |
