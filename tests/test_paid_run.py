@@ -52,7 +52,6 @@ def test_the_script_stops_on_error_and_never_traces() -> None:
 
 def test_the_defaults_are_the_documented_ones() -> None:
     text = SCRIPT.read_text()
-    assert "${NTSB_PAID_BRANCH:-s3-2-claims}" in text
     assert "${NTSB_PAID_CHECKOUT:-$HOME/Workspace/ntsb-demo-agent/ntsb-paid-runs}" in text
     assert "${NTSB_PASS_OPENROUTER:-api/openrouter}" in text
     assert "${NTSB_DATA_DIR:-$HOME/Workspace/ntsb-demo-agent/ntsb-probable-cause/data}" in text
@@ -119,3 +118,29 @@ def test_a_failed_push_is_loud_and_the_script_exits_nonzero() -> None:
     assert "NOT PUSHED" in after
     assert ">&2" in after
     assert "exit 1" in after
+
+
+def test_the_branch_is_required_and_has_no_default() -> None:
+    """Final review: a default branch outlives its stage, so the branch must be named each time."""
+    code = _lines()
+    branch = next(line for line in code if line.startswith("branch="))
+    assert branch.startswith('branch="${NTSB_PAID_BRANCH:?')
+    assert not any("s3-2-claims" in line for line in code)
+    assert _index("branch=") < _index("git fetch")
+
+
+def test_main_is_refused_before_anything_is_fetched() -> None:
+    """The script commits and pushes a ledger row to its branch: never to main."""
+    refusal = _index('if [[ "$branch" == "main" ]]')
+    assert refusal < _index("git fetch")
+    assert "exit 1" in "\n".join(_lines()[refusal : refusal + 3])
+
+
+def test_the_fetch_prunes() -> None:
+    assert "git fetch --quiet --prune origin" in _lines()
+
+
+def test_the_dirty_checkout_message_says_commit_never_discard() -> None:
+    message = _lines()[_index("git status --porcelain") + 1]
+    assert "commit (never discard) a ledger row" in message.lower()
+    assert "Commit or discard" not in message
