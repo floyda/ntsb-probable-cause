@@ -322,10 +322,11 @@ headline percentage, which makes the board a scoreboard.
 A separate page, complete, reached by a plain link. Andy's view is that this data may not be
 interesting, so it is not on the main path.
 
-Most open cases have no docket until closure, so the agent has little to read. The few whose
-docket arrives before closure get their own section, labelled **answers locked before the
-verdict**. Their results are never added into the board's tallies. Counted as numbers only (decision
-[0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)).
+Most open cases have no docket until closure, so the agent has little to read. **There is no
+early-docket section** (Andy, 2026-10-05): the page carries one counted line instead, for
+example "5 open cases have a docket so far", and those cases are coded at closure like every
+other. The count below is why: such a section would be almost empty. Counted as numbers only
+(decision [0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)).
 
 **First count, provisional** (`docs/results/s5-recorder-report-2026-10-04.txt`, the
 recorder's report over its first 12 finished nights, 23 September to 4 October 2026; the
@@ -337,8 +338,8 @@ report itself says its output is not citable before 14 nights):
   bound on early dockets, about 0.5%, well below Andy's estimate of 2 to 5%.
 - 300 documents appeared at those 46 closures.
 
-So far, the early-docket section would be almost empty, and the closure run is the only run
-with evidence to read. This is re-counted once the recorder passes 14 nights.
+So far, the closure run is the only run with evidence to read. This is re-counted once the
+recorder passes 14 nights.
 
 **A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
 accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
@@ -509,7 +510,11 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 - **S4: the main run happens at closure.** The roadmap describes predictions locked on open
   cases and scored at closure. With few dockets before closure, the run that matters is the
   one made when the case closes, with the verdict withheld by the same split and guard as
-  evaluation. Locking before the verdict applies to the early-docket cases (§8). S4's own
+  evaluation. The recorder's first count found no docket arriving before closure (§8), so the
+  site shows no answers locked before the verdict. Whether S4 still runs and locks early
+  answers is S4's decision; the count argues it is low value. A stored answer that cannot be
+  edited afterwards is still worth having for every case, as proof that rows were not changed
+  later, though it no longer proves anything about not knowing the verdict. S4's own
   specification decides how the site can show that the verdict was withheld.
 - **S4 or S5: document titles.** The trail view needs each document's title, joined from the
   docket listing by position. A document classed as synthesis is shown as withheld, without
