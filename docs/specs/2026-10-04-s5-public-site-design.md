@@ -84,7 +84,7 @@ A slim rail of the six stops stays in view and marks the stop being read: at the
 wide screen, across the top on a phone.
 
 **The caveat sits in stop 1, above the board.** This meets the roadmap's rule that caveats
-come before results, without burying the board. Proposed wording, written on 2026-10-05 after
+come before results, without burying the board. Wording approved by Andy on 2026-10-05, written after
 S3.2's held-out reading was known, so it is not a registered prediction:
 
 > Read this first. The board runs version 1 of this agent. It reads the same evidence, with the
@@ -276,17 +276,36 @@ It has three parts.
 
 ### 7.1 The ladder
 
-One figure with four steps: no model; one model call without the docket; the fixed pipeline
-that reads every readable document; the loop. Each step shows its score and its cost. A plain
-sentence beneath states the present result.
+One figure with four ways of coding an accident, each with more machinery than the one before.
+Each step shows how often its first code matched the NTSB's, and its cost. A plain sentence
+beneath states the present result. It appears on the first page's stop "Was a loop needed?"
+and at the top of the Path page.
 
-All four steps must come from **one sample on one model**, or the figure compares unlike
-things. S3.2's held-out runs provide that (`docs/results/s32-claims-heldout.txt`, all on
-`heldout-400` on GPT-6 Luna). The loop's step sits **below** the fixed pipeline's, and the
-ladder draws it that way: the figure's point is that a step up in machinery is not a step up
-in result. Its cost column shows two figures for each step, billed and at list price, because
-the loop's bill equals the pipeline's only through the provider's discount on cached prompts;
-at list price it does about two-thirds more work.
+**The steps and their runs** (Andy, 2026-10-05). Every model step is from S3.2's held-out runs
+on `heldout-400`, GPT-6 Luna, on 2026-10-04, read with `ntsb-eval report`; the no-model step
+is S1's honest baseline (`docs/results/s1-bars.txt`):
+
+| step | plain words | run | top-1 | cost for 400 cases, list price |
+|---|---|---|---|---|
+| 1. No model | always guess the commonest code | S1 baseline, scored on all 4,241 held-out cases | 17.7% [16.6%, 18.9%] | none |
+| 2. The case record only | the agent with the recorded facts, no documents | `20261004T184547-80c539e-heldout-400-C` (S3.2's no-docket ablation) | 15.0% [11.8%, 18.8%], n=400 | $0.98 |
+| 3. Every document, fixed order | the fixed pipeline: answer, coding tools, ordering check | `20261004T111937-dd64854-heldout-400-B-tools-check-luna` and its two source runs | 33.0% [28.6%, 37.8%], n=400 | $2.34 ($2.13 billed) |
+| 4. Choosing what to read | the loop, version 1 | `20261004T140804-e0dc881-heldout-400-C` | 23.9% [19.9%, 28.3%], n=394 scored | $3.93 ($2.06 billed) |
+
+Step 2 is S3.2's own no-docket run, not S2.4's one-shot ceiling: it ran beside the loop with
+everything equal but the documents, so steps 2 and 4 differ by the documents alone. The
+ceiling stays on the Methods page as history. Step 2's interval includes the no-model rate,
+so the page says the case record alone did **no better than guessing**, not worse.
+
+The loop's step sits **below** the fixed pipeline's, and the ladder draws it that way: the
+figure's point is that a step up in machinery is not a step up in result. Costs show billed
+and list price, because the loop's bill equals the pipeline's only through the provider's
+discount on cached prompts; at list price it does about two-thirds more work.
+
+**How it is drawn.** Each step is a bar from zero with a thin whisker for its 95% interval. A
+faint line at the no-model rate runs across all four bars, so every step reads against
+"better than guessing?". The run-twice band does not go on the ladder: it was measured on
+development cases, and the ladder is held-out; it goes to question 7's stop and to Methods.
 
 ### 7.2 Eight questions
 
@@ -294,8 +313,9 @@ Each has a measured answer, the decision taken from it, and a link to its script
 file. Dead ends stay in.
 
 1. **Is there an answer key nobody had to write?** Yes. The NTSB codes every closed case.
-2. **Is one model call enough?** No. It scored below a baseline that uses no model
-   (`docs/results/s1-bars.txt`).
+2. **Is the case record enough?** No. With the recorded facts alone, the agent did no better
+   than always guessing the commonest code (§7.1, step 2). S1's one-shot ceiling, on an
+   earlier stack, scored below that guess (`docs/results/s1-bars.txt`).
 3. **Does reading the docket help?** Yes. It is the largest gain on the ladder
    (`docs/results/s24-bars.txt`).
 4. **Does reading words in scanned pages help?** On development cases it was not shown to
@@ -334,7 +354,7 @@ Accepted by Andy as a first draft on 2026-10-04.
 | question | figure | data |
 |---|---|---|
 | 1. An answer key | one closed, non-fatal development case as the NTSB published it: its cause and its codes | exists; a non-fatal case keeps the first example gentle |
-| 2. One model call | the ladder, first two steps lit | S3.2 |
+| 2. The case record only | the ladder, first two steps lit | S3.2 (§7.1) |
 | 3. Reading the docket | the ladder, third step lit | S3.2 |
 | 4. Scanned pages | the share of each docket's pages that are scans only | exists, as counts (`make page-kinds`) |
 | 5. Misses are coding | the commonest pairs of agent and NTSB first codes | exists (`docs/results/s26-occurrence-misses-dev.txt`); rerun on S3's runs |
@@ -344,8 +364,9 @@ Accepted by Andy as a first draft on 2026-10-04.
 
 Two more sit outside the questions: a **docket strip** in the first page's trail stop, each
 document a block sized by pages and marked read, skipped, scan only or withheld; and the
-**run-twice band** behind the ladder, showing how far the same agent moves when run again
-(`docs/results/s3-noise-floor-dev.txt`). The ladder lights each step as the story reaches it,
+**run-twice band**, showing how far the same agent moves when run again
+(`docs/results/s3-noise-floor-dev.txt`), at question 7's stop and on Methods, not on the
+ladder, because it was measured on development cases. The ladder lights each step as the story reaches it,
 so the reader watches it being climbed. Question 7's figure is the direct evidence on agency
 and can go either way.
 
