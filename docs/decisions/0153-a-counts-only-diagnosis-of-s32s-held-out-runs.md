@@ -23,7 +23,7 @@ to be B otherwise how can I determine where to focus my efforts".
 
 ## Decision
 
-1. **One diagnostic reading of S3.2's seven held-out runs** (arm A; arm B's answer, tool
+1. **One diagnostic reading of S3.2's six held-out runs** (arm A; arm B's answer, tool
    post-pass and ordering check; the loop; the loop without the docket), by one committed script,
    `scripts/exploratory/s32_heldout_diagnosis.py`, which writes
    `docs/results/s32-heldout-diagnosis.txt`. No model call, no new run, $0. Counts only: no case
