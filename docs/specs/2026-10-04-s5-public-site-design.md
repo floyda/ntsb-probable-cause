@@ -584,8 +584,18 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
    animate in, with all content present for anything that does not scroll. Andy will find an
    example site that does the effect well, and it is revisited from that. The mock-ups here are sketches of content and order; none has been
    tested across devices, and the built site needs proper front-end work.
-8. **Reading the board without sight.** Dot-matrix letters need a plain-text equivalent for
-   screen readers, and enough contrast.
+8. **Access.** Settled (Andy, 2026-10-05): the site aims to meet **WCAG 2.2 level AA** on
+   every page, built in from the start, not added after. In particular:
+   - The board is a real HTML table set in the dot font, never an image, so screen readers
+     read it and its text can be searched and copied.
+   - Every result mark carries its word ("same first code", "same codes, other order",
+     "different", "agent abstained", "not coded"); shape is never the only signal.
+   - The ladder and every figure have a data table behind them for screen readers.
+   - Contrast meets AA in light and dark, the board's dim text included.
+   - Motion never hides content from assistive technology, and reduced motion shows
+     everything at once (§3.1).
+   - The build runs an automated accessibility audit before launch and fails on AA errors;
+     a manual keyboard and screen-reader pass covers what automation cannot.
 9. **Uncertainty.** Every score on the Path and Methods pages carries its interval and count.
    How a ladder step draws an interval is open.
 10. **Totals on the first screen.** Settled (Andy, 2026-10-04): one line under the board gives
