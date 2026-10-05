@@ -410,7 +410,25 @@ names.
 
 The reference page for the second reader. Every number on the site links to its entry here:
 the sample, the model, the commit, the script, the interval, and the count it rests on. It
-states the three arms, the baseline, the ablations, and the caveats. Its layout is open (§16).
+states the three arms, the baseline, the ablations, and the caveats.
+
+**Layout: in the order the reader meets the numbers** (Andy, 2026-10-05). A plain page, not a
+scrolling route, so a link from any page lands beside the entries around it:
+
+1. **How to read the numbers.** What "first code matches" (top-1) and "among its three"
+   (top-3) mean; what a 95% interval is; held-out, development and live cases, and why they
+   never share a figure; billed cost and list price.
+2. **The board.** The three grades, the counts since launch, failures and abstains, the
+   declared start date.
+3. **The ladder.** Each step's run, sample, model, commit, script, interval and count (§7.1).
+4. **Each Path question in turn**, with its figure's source.
+5. **S3.2's registered predictions**, given prominence: each prediction as written before the
+   held-out run, and whether it was met (`docs/rounds/s3-registration.md`,
+   `docs/results/s32-claims-heldout.txt`). Predictions made in advance and shown when not met
+   are among the strongest honesty signals the site has.
+6. **History.** S1's one-shot ceiling and S2.4's bars, which the ladder replaced.
+7. **Limits.** The run-twice band, the per-case cost cap, failure counts.
+8. **Glossary**, with the NTSB terms that the other pages show in small type (§12, item 4).
 
 Closed-case numbers from the board and held-out numbers from evaluation never share a figure
 (decision [0021](../decisions/0021-agency-measured-as-hypothesis-trail.md)).
@@ -620,7 +638,7 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 
 1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
 2. Settled: an open case shows facts and status, never an answer (§8).
-3. The layout of the Methods page (§9).
+3. Settled: the Methods page follows the order the reader meets the numbers (§9).
 4. Every point in §12.
 5. Settled: the board keeps its six columns; the opened case states documents read as "3 of 7
    documents read" and leaves out cost (§5).
