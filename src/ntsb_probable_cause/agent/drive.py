@@ -232,6 +232,11 @@ def drive_sync(
     re-issued once, then the case stops). Any other error ends the run, and the calls finished
     so far are on disk. Calls the folder already holds are replayed, not made again.
 
+    A call whose estimated prompt (:func:`estimated_prompt_tokens`) is over the context ceiling
+    (``sources.PROMPT_TOKEN_CEILING``, decision 152) is never sent: its loop is stopped
+    ``cap: context`` and the run goes on to the next loop. The stop is not written to disk; a
+    resume replays the loop back to that call and stops it again.
+
     Args:
         loops: one loop per case, fresh (see the module docstring).
         client: the model client.
@@ -286,23 +291,33 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
     """Run every loop to its end in batch rounds, and resume a run that was cut short.
 
     A round collects the next call of every loop that has not stopped, submits them as one
-    batch, waits, and gives each loop its reply. A call with no result in a batch that returned
-    some, or whose result is an error, is given to its loop as a failed call: the loop re-issues
-    it in the next round once, then stops the case. A batch that returned no result for any of
-    its calls (``expired``, ``failed``, or ``completed`` empty) is not a case's failure: no loop
-    is told, its round is recorded with that status, and the same calls are submitted again as
-    the next round. Every round counts toward ``max_rounds``, dead ones too; at the limit the
-    cases still running are stopped ``failed: rounds``. A batch that ended ``cancelled`` is
-    usually an operator stopping spend: its round is recorded and the run stops with
-    ``BatchCancelledError`` (its replies, if it returned any, are not used, as the runner's are
-    not). Resume it, and the calls go out again.
+    batch, waits, and gives each loop its reply. Before a round is collected, every loop whose
+    next call is over the context ceiling (``sources.PROMPT_TOKEN_CEILING``, decision 152) is
+    stopped ``cap: context``, and that call is never sent: one request over the model's window
+    fails its whole batch. A call with no result in a batch that returned some owed result, or
+    whose result is an error, is given to its loop as a failed call: the loop re-issues it in the
+    next round once, then stops the case. A batch that returned no result for any call still
+    owed (``expired``, ``failed``, or ``completed`` with none of them) is not a case's failure:
+    no loop is told, its round is recorded with that status, and the same calls are submitted
+    again as the next round. Every round counts toward ``max_rounds``, dead ones too; at the
+    limit the cases still running are stopped ``failed: rounds``. A batch that ended
+    ``cancelled`` is usually an operator stopping spend: its round is recorded and the run stops
+    with ``BatchCancelledError`` (its replies, if it returned any, are not used, as the runner's
+    are not). Resume it, and the calls go out again.
 
     Resume is the same call: the replies the folder holds are replayed (no model call), and a
-    round that was submitted and never finished is waited on instead of submitted again. If the
-    provider has lost that batch (``BatchNotFoundError`` from the wait), the round is recorded
-    as ``lost`` and its calls that are still unanswered are submitted again. A batch this call
-    submitted that is lost is not: the error propagates, so no call is paid for twice. Time is
-    read from ``now`` twice a round, after the submit and after the wait.
+    round that was submitted and never finished is waited on instead of submitted again. In
+    that resumed round a call is owed only if its reply is not already on disk; the calls
+    answered before the stop are not sent or taken again. A resumed round that owes nothing
+    (every reply was on disk, only its finishing row was missing) is finished with whatever
+    status its batch reports, ``cancelled`` included, and the run continues: that status says
+    nothing about a call still owed. The ceiling stop is not on disk, so after the replay every
+    loop over the ceiling is stopped again, except the cases of the open round, which is waited
+    on as it was sent. If the provider has lost that batch (``BatchNotFoundError`` from the
+    wait), the round is recorded as ``lost`` and its calls that are still unanswered are
+    submitted again. A batch this call submitted that is lost is not: the error propagates, so
+    no call is paid for twice. Time is read from ``now`` twice a round, after the submit and
+    after the wait.
 
     Args:
         loops: one loop per case, fresh (see the module docstring).

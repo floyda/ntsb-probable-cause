@@ -560,32 +560,32 @@ def test_failure_summary_counts_by_reason_and_never_names_a_case() -> None:
     """S2.4 spec §6: the refusal count S2.6 needs, from a script, without case numbers."""
     rows = [
         _case(
-            "CEN20LA123",
-            failure="leak: CEN20LA123: sentence from analysis_narrative in docket_documents"
+            "CEN20LA923",
+            failure="leak: CEN20LA923: sentence from analysis_narrative in docket_documents"
             " (80 chars withheld)",
         ),
         _case(
-            "ERA21LA161",
-            failure="leak: ERA21LA161: sentence from analysis_narrative in docket_documents"
+            "ERA21LA961",
+            failure="leak: ERA21LA961: sentence from analysis_narrative in docket_documents"
             " (40 chars withheld); sentence from probable_cause in docket_documents"
             " (60 chars withheld)",
         ),
-        _case("WPR22FA087", failure="schema: reply is not a Hypothesis"),
-        _case("WPR23FA080", failure="cap"),
-        _case("WPR20LA001"),
+        _case("WPR22FA987", failure="schema: reply is not a Hypothesis"),
+        _case("WPR23FA980", failure="cap"),
+        _case("WPR20LA901"),
     ]
     text = report.failure_summary(rows)
     assert text == (
         "failures by reason: cap 1, leak (analysis_narrative) 1, "
         "leak (analysis_narrative, probable_cause) 1, schema 1"
     )
-    assert not any(case_id in text for case_id in ("CEN20LA123", "ERA21LA161", "WPR22FA087"))
+    assert not any(case_id in text for case_id in ("CEN20LA923", "ERA21LA961", "WPR22FA987"))
 
 
 def test_failure_summary_names_a_stop_at_the_context_ceiling_apart_from_the_cap() -> None:
     """S3.2 Task 15a (decision 152): ``cap: context`` reads as its own reason."""
     rows = [
-        _case("WPR23FA080", failure="cap"),
+        _case("WPR23FA980", failure="cap"),
         _case("WPR23FA081", failure="cap: context"),
         _case("WPR23FA082", failure="cap: context"),
     ]
@@ -593,7 +593,7 @@ def test_failure_summary_names_a_stop_at_the_context_ceiling_apart_from_the_cap(
 
 
 def test_failure_summary_with_no_failures() -> None:
-    assert report.failure_summary([_case("WPR20LA001")]) == "failures by reason: none"
+    assert report.failure_summary([_case("WPR20LA901")]) == "failures by reason: none"
 
 
 def test_comparison_heading_labels_a_cross_model_comparison(run_record: RunRecord) -> None:
