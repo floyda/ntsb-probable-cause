@@ -623,7 +623,11 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 15. **The name.** Open, and a large gap (Andy, 2026-10-05): neither the agent nor the site has
     a name, and the site has no web address. Andy wanted to name the agent; no earlier ideas
     were written down. The preview cards, the page titles and the author line all need it.
-    "Probable cause", the NTSB's own term, is a placeholder only.
+    "Probable cause", the NTSB's own term, is a placeholder only. Settled so far (Andy,
+    2026-10-05): the site lives under Andy's domain, `floyda.dev`; the name should play on the
+    analysis side of an investigation, the part the agent replaces. Whether it sits at a path
+    or a subdomain is a hosting choice for S5's build. Rules for any name: no "NTSB" in it, no
+    accident wordplay, not a person's name.
 13. **The first against the second version.** Settled (Andy, 2026-10-05): a ninth stop on the
     Path page, "Does letting the agent question precedent help?", showing the second version
     against the first on the same cases, held-out and live kept apart. The board keeps showing
