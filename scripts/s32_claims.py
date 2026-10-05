@@ -572,6 +572,26 @@ def saving_lines(fig: Figures) -> list[str]:
     return lines
 
 
+def _result1_finding(counts: ReadCounts) -> str:
+    """What was found, in words: the bracket after result 1 states the finding, not the rule."""
+    if result1_holds(counts):
+        return "more than half on at least one reading"
+    return "not more than half on either reading"
+
+
+def _result2_finding(top1: Outcome, band: CostBand) -> str:
+    """What was found, in words: the bracket after result 2 states the finding, not the rule."""
+    if claims.result2_holds(top1, band):
+        return "the loop does not beat arm B on top-1 and its bill is not lower"
+    return "the loop beats arm B on top-1 or its bill is lower"
+
+
+def _result3_finding(calibrated: bool) -> str:
+    """What was found, in words: result 3 holds when the curve is *not* calibrated."""
+    state = "calibrated" if calibrated else "not calibrated"
+    return f"the fitted confidence is {state} on held-out"
+
+
 def results_lines(fig: Figures) -> list[str]:
     """Section 5: the four results that count against the loop (spec §9)."""
     counts, routes = fig.counts, fig.routes
@@ -579,7 +599,7 @@ def results_lines(fig: Figures) -> list[str]:
     lines = [
         "## 5. The four results",
         f"result 1: {'holds' if result1_holds(counts) else 'does not hold'} "
-        "(more than half on either reading; spec §9.1)",
+        f"({_result1_finding(counts)}; spec §9.1)",
         f"- cases counted {counts.counted}, with documents on offer {counts.with_offer}",
         f"- read every document on offer: {_share(counts.read_everything, counts.with_offer)} "
         "of the cases with documents on offer",
@@ -590,10 +610,9 @@ def results_lines(fig: Figures) -> list[str]:
         "- by documents offered (docket size):",
         *(tally_line(name, t) for name, t in counts.by_offered.items()),
         f"result 2: {'holds' if claims.result2_holds(top1, fig.band) else 'does not hold'} "
-        f"(the loop does not beat arm B on top-1 and its bill is equal or greater; outcome "
-        f"{top1}, band {fig.band}; spec §9.2)",
+        f"({_result2_finding(top1, fig.band)}; outcome {top1}, band {fig.band}; spec §9.2)",
         f"result 3: {'does not hold' if fig.calibrated else 'holds'} "
-        "(not calibrated on held-out; spec §9.3, §8.3)",
+        f"({_result3_finding(fig.calibrated)}; spec §9.3, §8.3)",
     ]
     for name, group in zip(("low", "middle", "high"), fig.groups, strict=True):
         lines.append(
@@ -719,7 +738,7 @@ def reading_lines(fig: Figures) -> list[str]:
         f"(read every offered document on {_share(counts.read_everything, counts.with_offer)})",
         f"result 2: {'holds' if claims.result2_holds(top1, fig.band) else 'does not hold'} "
         f"(outcome {top1}, cost band {fig.band})",
-        f"result 3: {'holds' if result3 else 'does not hold'} (not calibrated on held-out)",
+        f"result 3: {'holds' if result3 else 'does not hold'} ({_result3_finding(fig.calibrated)})",
         "result 4: not shown (the stated effects are descriptions, not predictions of change)",
         "question 2: what the board may show",
         "- the board shows its confidence "

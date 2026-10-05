@@ -554,6 +554,63 @@ def test_result_2_does_not_hold_when_the_loop_is_cheaper(
     assert "result 2: does not hold" in run_claims(capsys)
 
 
+def _result_lines(out: str, number: int) -> list[str]:
+    """The ``result N:`` line in section 5 and the one in section 9, in that order."""
+    return [line for line in out.splitlines() if line.startswith(f"result {number}:")]
+
+
+def test_result_3_line_states_the_finding_when_the_curve_is_calibrated(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: Curve(0.0, 0.0))
+    alternate = (True, False) * 10
+    build(runs, World(loop_hits=alternate, armb_hits=alternate))
+    lines = _result_lines(run_claims(capsys), 3)
+    assert lines == [
+        "result 3: does not hold (the fitted confidence is calibrated on held-out; "
+        "spec §9.3, §8.3)",
+        "result 3: does not hold (the fitted confidence is calibrated on held-out)",
+    ]
+
+
+def test_result_3_line_states_the_finding_when_the_curve_is_not_calibrated(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: Curve(0.0, 0.0))
+    build(runs, World(loop_hits=NONE, armb_hits=NONE))
+    lines = _result_lines(run_claims(capsys), 3)
+    assert lines == [
+        "result 3: holds (the fitted confidence is not calibrated on held-out; spec §9.3, §8.3)",
+        "result 3: holds (the fitted confidence is not calibrated on held-out)",
+    ]
+
+
+def test_result_1_and_2_lines_state_the_finding_when_they_hold(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs, World(loop_calls=_read_everything_calls(True)))
+    out = run_claims(capsys)
+    assert _result_lines(out, 1)[0] == (
+        "result 1: holds (more than half on at least one reading; spec §9.1)"
+    )
+    assert _result_lines(out, 2)[0].startswith(
+        "result 2: holds (the loop does not beat arm B on top-1 and its bill is not lower; "
+    )
+
+
+def test_result_1_and_2_lines_state_the_finding_when_they_do_not_hold(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs, World(loop_cost=(0.5, 2.0)))
+    out = run_claims(capsys)
+    assert _result_lines(out, 1)[0] == (
+        "result 1: does not hold (not more than half on either reading; spec §9.1)"
+    )
+    assert _result_lines(out, 2)[0].startswith(
+        "result 2: does not hold (the loop beats arm B on top-1 or its bill is lower; "
+    )
+
+
 def test_result_3_prints_each_group_and_the_sorting_figure(
     runs: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
