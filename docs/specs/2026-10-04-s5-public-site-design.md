@@ -324,10 +324,21 @@ interesting, so it is not on the main path.
 
 Most open cases have no docket until closure, so the agent has little to read. The few whose
 docket arrives before closure get their own section, labelled **answers locked before the
-verdict**. Their results are never added into the board's tallies. How many such cases exist is
-to be counted by a script from the recorder's store, as a number only (decision
-[0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)), before this note
-is approved.
+verdict**. Their results are never added into the board's tallies. Counted as numbers only (decision
+[0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)).
+
+**First count, provisional** (`docs/results/s5-recorder-report-2026-10-04.txt`, the
+recorder's report over its first 12 finished nights, 23 September to 4 October 2026; the
+report itself says its output is not citable before 14 nights):
+
+- Of the cases that closed while watched, none had a docket before closing. Every docket
+  that appeared, 46 of them, appeared on the same nightly run as its case's closure.
+- Of the 936 cases watched from the first night, 5 already had a docket. That is a lower
+  bound on early dockets, about 0.5%, well below Andy's estimate of 2 to 5%.
+- 300 documents appeared at those 46 closures.
+
+So far, the early-docket section would be almost empty, and the closure run is the only run
+with evidence to read. This is re-counted once the recorder passes 14 nights.
 
 **A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
 accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
@@ -350,7 +361,9 @@ Closed-case numbers from the board and held-out numbers from evaluation never sh
 
 - **The theme is an airport, used quietly.** At launch the pixel look has one home: the board,
   drawn as a terminal display in dot-matrix letters. Everything else is plain signage type.
-  Pixel-art vignettes are a later addition (§10.1).
+  Pixel-art vignettes are a later addition (§10.1). Pixel type for the site name, navigation
+  and headings, as Andy's reference site uses, was considered and declined (Andy,
+  2026-10-05): headings stay plain.
 - **Small airport cues are allowed outside the board**: an amber wayfinding sign as a label,
   for example. Aircraft appear only in the Path vignettes, on the ground (§10.1). Nothing
   anywhere shows an accident.
@@ -447,7 +460,11 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 5. **Failures on the board.** Settled: abstains and failed cases each have their own row and
    mark (§4).
 6. **The thin board at launch.** The board must look complete with few rows, and on a night
-   with no closures.
+   with no closures. First count, provisional (§8's source): 47 cases closed in the
+   recorder's first 12 nights, and they closed in three batches, on 23 September, 1 October
+   and 2 October; the other nights had none (a per-night breakdown from an ad-hoc read-only
+   query of the store's status changes, to be replaced by a script before approval). So most
+   nights bring no new rows, and closures arrive in bursts.
 7. **Motion.** Settled: each stop animates in on arrival, within the four limits of §3.1. No
    scrolling text. Open: hiding the next stop until it arrives, which failed on a phone in the
    first attempt (§3.1). The mock-ups here are sketches of content and order; none has been
@@ -470,8 +487,11 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     reasoning of decision 0020.
 12. **Shared links.** Each case and each Path question needs its own address, and a preview
     that reads well when a link is posted.
-13. **The first against the second version.** Where the comparison of agent versions sits once
-    the precedent tool runs (§7.3).
+13. **The first against the second version.** Settled (Andy, 2026-10-05): a ninth stop on the
+    Path page, "Does letting the agent question precedent help?", showing the second version
+    against the first on the same cases, held-out and live kept apart. The board keeps showing
+    the first version until the second wins its registered comparison, so the second version
+    earns its place as the loop had to (§7.3).
 14. **Freshness.** The board states when it was last rebuilt, in UTC.
 
 ## 13. What this asks of other stages
