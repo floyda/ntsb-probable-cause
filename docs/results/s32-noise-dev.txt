@@ -1,0 +1,17 @@
+S3.2 noise floor under the claim's rule (scripts/s32_noise.py; spec §7.3)
+Counts only: no case number. Differences are run a minus run b, in points, with the 95% bootstrap interval and the cases they rest on.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C
+cases: run a 401, run b 401
+guard refusals removed from both runs: 2
+failures counted wrong: run a 5, run b 8
+cases kept: 399
+occurrence top-1, all: a - b = -1.5 points [-5.0, +2.0], n=399; both answered -2.1 points [-5.9, +1.6], n=387
+occurrence top-1, fatal: a - b = -2.5 points [-7.1, +2.0], n=198; both answered -3.1 points [-7.7, +1.0], n=195
+occurrence top-1, non-fatal: a - b = -0.5 points [-6.5, +5.5], n=201; both answered -1.0 points [-6.8, +4.7], n=192
+occurrence top-3, all: a - b = +2.0 points [-1.8, +6.0], n=399; both answered +1.3 points [-2.6, +5.2], n=387
+occurrence top-3, fatal: a - b = +2.0 points [-3.0, +7.6], n=198; both answered +1.5 points [-3.6, +6.7], n=195
+occurrence top-3, non-fatal: a - b = +2.0 points [-4.5, +8.0], n=201; both answered +1.0 points [-4.7, +7.3], n=192
+finding recall@10, all: a - b = +2.6 points [-0.0, +5.2], n=397; both answered +2.2 points [-0.4, +4.9], n=385
+finding recall@10, fatal: a - b = +1.6 points [-1.4, +4.6], n=198; both answered +1.7 points [-1.5, +4.8], n=195
+finding recall@10, non-fatal: a - b = +3.5 points [-0.5, +7.6], n=199; both answered +2.7 points [-1.6, +6.6], n=190

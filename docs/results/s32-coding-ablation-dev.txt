@@ -1,0 +1,48 @@
+S3.2 coding ablation on dev-400 (scripts/s32_coding_ablation.py; spec §11, §12)
+Counts only: no case number. Differences are ablation minus noise run, in points, with the 95% bootstrap interval and the cases they rest on. A guard refusal removes the case; every other failure counts as wrong (spec §7.3).
+
+run 20261004T053238-f0e78b7-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=f0e78b7 started=2026-10-04T05:32:38.887444+00:00 finished=2026-10-04T09:25:55.375913+00:00
+cases=401 total_cost_usd=2.3504
+ablation: without=coding agent_prompt_version=s3-v1+ge17fecdc66ec+p947fac1c86a4 cap_usd=0.3
+run 20261001T201506-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:15:06.897112+00:00 finished=2026-10-01T23:04:42.458162+00:00
+cases=401 total_cost_usd=4.5711
+run 20261001T201648-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:16:48.699656+00:00 finished=2026-10-01T23:23:33.969331+00:00
+cases=401 total_cost_usd=4.4476
+format gate, run ablation: PASS -- 2 of 401 cases failed for format or tool reasons (failed: h1 2); of which 0 had no reply on the failing call; at most 8 pass (2% of dev-400's 401 cases, spec §10.4, decision 0130 item 5)
+round limit (failed: rounds), run ablation: 0 of 401 cases (the batch rounds ran out; not a format or tool failure, so not in the gate)
+
+against 20261001T201506-fd6053f-dev-400-C (noise run a):
+occurrence top-1, all: ablation - noise = -0.3 points [-4.3, +3.8], n=399; both answered -0.3 points [-4.6, +3.8], n=392
+occurrence top-1, fatal: ablation - noise = +1.5 points [-4.0, +7.6], n=198; both answered +1.5 points [-4.6, +7.7], n=196
+occurrence top-1, non-fatal: ablation - noise = -2.0 points [-8.0, +3.5], n=201; both answered -2.0 points [-8.2, +3.6], n=196
+occurrence top-3, all: ablation - noise = +0.0 points [-4.5, +4.0], n=399; both answered +0.0 points [-4.1, +4.3], n=392
+occurrence top-3, fatal: ablation - noise = -0.5 points [-6.1, +5.1], n=198; both answered -0.5 points [-6.1, +5.1], n=196
+occurrence top-3, non-fatal: ablation - noise = +0.5 points [-5.5, +7.0], n=201; both answered +0.5 points [-6.1, +7.1], n=196
+finding recall@10, all: ablation - noise = -2.6 points [-5.3, -0.0], n=397; both answered -2.8 points [-5.5, -0.2], n=390
+finding recall@10, fatal: ablation - noise = -2.5 points [-5.7, +0.5], n=198; both answered -2.5 points [-5.6, +0.4], n=196
+finding recall@10, non-fatal: ablation - noise = -2.7 points [-7.0, +1.6], n=199; both answered -3.1 points [-7.8, +1.2], n=194
+
+against 20261001T201648-fd6053f-dev-400-C (noise run b):
+occurrence top-1, all: ablation - noise = -1.8 points [-6.0, +2.3], n=399; both answered -2.3 points [-6.4, +1.8], n=389
+occurrence top-1, fatal: ablation - noise = -1.0 points [-6.6, +5.1], n=198; both answered -1.5 points [-7.2, +4.6], n=195
+occurrence top-1, non-fatal: ablation - noise = -2.5 points [-8.0, +3.0], n=201; both answered -3.1 points [-8.8, +3.1], n=194
+occurrence top-3, all: ablation - noise = +2.0 points [-2.5, +6.5], n=399; both answered +1.3 points [-2.8, +5.7], n=389
+occurrence top-3, fatal: ablation - noise = +1.5 points [-4.5, +7.6], n=198; both answered +1.0 points [-5.1, +7.2], n=195
+occurrence top-3, non-fatal: ablation - noise = +2.5 points [-4.0, +8.5], n=201; both answered +1.5 points [-4.6, +7.7], n=194
+finding recall@10, all: ablation - noise = -0.1 points [-2.8, +2.5], n=397; both answered -0.7 points [-3.2, +1.8], n=387
+finding recall@10, fatal: ablation - noise = -0.9 points [-3.9, +2.0], n=198; both answered -1.0 points [-3.9, +1.9], n=195
+finding recall@10, non-fatal: ablation - noise = +0.8 points [-3.5, +5.0], n=199; both answered -0.5 points [-4.7, +3.8], n=192
+
+prediction 6: not met -- the loop without its coding tools is worse on top-1 than each noise-floor run, each interval wholly below zero (ablation minus noise run; noise run a: -0.3 points [-4.3, +3.8], n=399; noise run b: -1.8 points [-6.0, +2.3], n=399)

@@ -25,7 +25,7 @@ from ntsb_probable_cause.scoring.metrics import (
     paired_difference,
     wilson,
 )
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
+from ntsb_probable_cause.scoring.records import CONTEXT_FAILURE, CaseResult, RunRecord
 from ntsb_probable_cause.splits import Split
 
 
@@ -392,7 +392,9 @@ def failure_summary(results: Sequence[CaseResult]) -> str:
         if not result.failure:
             continue
         kind = result.failure.split(":", 1)[0].strip()
-        if kind == "leak":
+        if result.failure == CONTEXT_FAILURE:  # decision 152: apart from the cost cap
+            kind = "cap (context)"
+        elif kind == "leak":
             named = sorted(set(_LEAK_SOURCE.findall(result.failure)))
             kind = f"leak ({', '.join(named) or 'unparsed'})"
         counts[kind] += 1

@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, TypedDict
 
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.agent import texts
 from ntsb_probable_cause.agent.documents import DocketView, case_marks, docket_view
 from ntsb_probable_cause.agent.drive import (
@@ -50,11 +51,13 @@ from ntsb_probable_cause.model.client import ModelClient, Payload
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import settle
+from ntsb_probable_cause.scoring.checkpass import HELDOUT_SAMPLE, S32_REGISTRATION, S32_USED
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, StatsName
 from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and_dirty
 from ntsb_probable_cause.scoring.metrics import score_case
 from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
     CaseResult,
     RunRecord,
     StepRecord,
@@ -95,6 +98,8 @@ STATS: Final[StatsName] = "s3"
 USED_ONCE: Final = "dev-seal-400"
 _DOCKET_ROLES: Final = frozenset({EvidenceRole.DOCKET_LISTING, EvidenceRole.DOCKET_DOCUMENTS})
 _ARM: Final = "C"
+# The loop's stop reasons a step records as ``cap``: the cost cap and the context ceiling (152).
+_CAP_STOPS: Final = frozenset({"cap", CONTEXT_FAILURE})
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,38 @@ class _Case:
     view: DocketView | None
     loop: CaseLoop | None
     leak: LeakageError | None = None
+
+
+def refuse_unregistered_heldout(sample: str, is_committed: Callable[[Path], bool]) -> None:
+    """Refuse arm C on ``heldout-400`` until S3.2's registration is committed, and once used.
+
+    The registration fixes the plan the held-out runs follow, so it is committed before any of
+    them (spec §4.3 item 5). The runs are made once (decision 0142): once ``S32_USED`` is
+    committed at S3.2's close-out, every new held-out arm C run is refused again. Any other
+    sample passes without asking git: development samples need nothing, and a held-out sample
+    other than ``heldout-400`` is refused by the harness elsewhere.
+
+    Args:
+        sample: the run's sample.
+        is_committed: whether a path is committed (``gitinfo.is_committed``, looked up by the
+            caller when it is called, so a test can replace it).
+
+    Raises:
+        ConfigurationError: ``sample`` is ``heldout-400`` and the registration is not committed,
+            or the used mark is.
+    """
+    if sample != HELDOUT_SAMPLE:
+        return
+    if not is_committed(S32_REGISTRATION):
+        raise ConfigurationError(
+            f"{HELDOUT_SAMPLE}: arm C runs on held-out only after {S32_REGISTRATION} is "
+            "committed (decision 142)"
+        )
+    if is_committed(S32_USED):
+        raise ConfigurationError(
+            f"{HELDOUT_SAMPLE}: S3.2 used held-out once and it is closed: {S32_USED} is committed "
+            "(decision 0142); no further arm C run on held-out is admitted"
+        )
 
 
 class AgentRunner:
@@ -134,6 +171,8 @@ class AgentRunner:
         without: the tool ablation (spec §7.2).
         max_rounds: the most batch rounds the run may take.
         ledger_path: the held-out ledger; a held-out run needs it, as ``Runner``'s does.
+        is_committed: whether a path is committed; git's unless a test gives another. A
+            ``heldout-400`` run is refused until ``S32_REGISTRATION`` is (decision 0142).
     """
 
     def __init__(  # noqa: PLR0913 -- the plan's interface, plus the loop settings it records.
@@ -154,6 +193,7 @@ class AgentRunner:
         without: frozenset[Without] = frozenset(),
         max_rounds: int = MAX_ROUNDS,
         ledger_path: Path | None = None,
+        is_committed: Callable[[Path], bool] | None = None,
     ) -> None:
         self._client = client
         self._batch = batch
@@ -170,6 +210,8 @@ class AgentRunner:
         self._without = without
         self._max_rounds = max_rounds
         self._ledger = ledger_path
+        # Looked up when the runner is made, so a replaced ``gitinfo.is_committed`` reaches it.
+        self._is_committed = is_committed if is_committed is not None else gitinfo.is_committed
 
     def run(
         self,
@@ -301,6 +343,7 @@ class AgentRunner:
                 f"{USED_ONCE} is the sealed development sample S2.7 used once (decision 0095): "
                 "it is never read again, so arm C does not run on it"
             )
+        refuse_unregistered_heldout(spec.sample, self._is_committed)
         refuse_if_heldout_and_dirty(spec.sample, self._dirty)
         refuse_sync_with_batch_price(spec)
         if spec.evidence_version != "v1":
@@ -716,12 +759,16 @@ def _reasoning(calls: Sequence[AgentCall]) -> int | None:
 
 
 def _stop_reason(outcome: LoopOutcome, *, final: bool) -> str:
-    """How a checkpoint ended the case: only the last says, and only for an answer or the cap."""
+    """How a checkpoint ended the case: only the last says, and only for an answer or the cap.
+
+    A stop at the context ceiling (decision 152) is a cap too; the case's ``failure`` keeps
+    which one it was (``cap`` or ``cap: context``).
+    """
     if not final:
         return ""
     if outcome.stop_reason == "done" and outcome.answer is not None:
         return "abstained" if outcome.answer.abstain else "answered"
-    return "cap" if outcome.stop_reason == "cap" else ""
+    return "cap" if outcome.stop_reason in _CAP_STOPS else ""
 
 
 def _attached(view: DocketView | None, read: Sequence[int]) -> tuple[str, ...]:

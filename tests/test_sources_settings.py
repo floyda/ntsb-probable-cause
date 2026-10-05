@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import pytest
@@ -253,3 +254,14 @@ def test_the_transcriber_candidates_are_priced_and_levelled() -> None:
     assert sources.LOWEST_REASONING["google/gemini-3.6-flash"] == "minimal"
     assert sources.LOWEST_REASONING["openai/gpt-6-luna"] == "none"
     assert sources.LOWEST_REASONING["qwen/qwen3.5-122b-a10b"] == "none"
+
+
+def test_the_prompt_ceiling_is_the_measured_rule_under_luna_6s_context_window() -> None:
+    """S3.2 Task 15a (decision 152): 80% of the window over the measured max ratio, in thousands.
+
+    The ratio, 2.4303 real tokens per estimated token, is the maximum over both noise-floor
+    trails (``docs/results/s32-context-ratio-dev.txt``).
+    """
+    assert sources.LUNA_6_CONTEXT_TOKENS == 1_050_000
+    rule = math.floor(0.8 * sources.LUNA_6_CONTEXT_TOKENS / 2.4303 / 1000) * 1000
+    assert sources.PROMPT_TOKEN_CEILING == rule == 345_000

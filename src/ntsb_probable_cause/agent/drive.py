@@ -20,9 +20,11 @@ Two files in the run folder make it exact:
 A round's finishing row records how it ended, and only some endings are a case's business:
 
 - ``completed``: its replies are used; a call with no result is that case's failed call.
-- ``expired``, ``failed`` or ``completed`` with a result for none of its calls: the provider's
-  failure, not any case's. No reply is taken, no loop is told, and the same calls go out as the
-  next round (bounded by ``max_rounds``).
+- ``expired``, ``failed`` or ``completed`` with a result for none of the calls still owed: the
+  provider's failure, not any case's. No reply is taken, no loop is told, and the same calls go
+  out as the next round (bounded by ``max_rounds``). In a resumed round the calls whose replies
+  are already on disk are not owed; a resumed round that owes nothing is finished with whatever
+  status its batch reports, ``cancelled`` included.
 - ``lost``: a batch recorded by an earlier attempt that the provider no longer serves. Finished,
   and its calls that are still unanswered go out again, as for a dead batch.
 - ``cancelled``: usually an operator stopping spend, so the run does not go on by itself. The
@@ -38,13 +40,15 @@ Case ids are public NTSB numbers, so the refusals below may name them. They neve
 a payload or provider text.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+import json
+from collections.abc import Callable, Mapping, Sequence, Set
 from datetime import datetime
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent.loop import PendingCall
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
@@ -53,8 +57,8 @@ from ntsb_probable_cause.errors import (
     ModelError,
 )
 from ntsb_probable_cause.model.batch import BatchRequest, BatchStatus
-from ntsb_probable_cause.model.client import ModelClient, ModelReply
-from ntsb_probable_cause.scoring.records import read_jsonl, write_jsonl
+from ntsb_probable_cause.model.client import ModelClient, ModelReply, Turn
+from ntsb_probable_cause.scoring.records import CONTEXT_FAILURE, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner
 
 REPLIES_FILE: Final = "replies.jsonl"
@@ -63,6 +67,7 @@ _SEPARATOR: Final = "#"
 _ROUNDS_SPENT: Final = "failed: rounds"
 _LOST: Final = "lost"
 _CANCELLED: Final = "cancelled"
+_CHARS_PER_TOKEN: Final = 4
 
 
 class DrivenLoop(Protocol):
@@ -171,6 +176,44 @@ class _Call(NamedTuple):
     call: PendingCall
 
 
+def estimated_prompt_tokens(call: PendingCall) -> float:
+    """The call's prompt in estimated tokens: its characters over four (decision 152).
+
+    The characters are the ones ``loop.estimate_usd`` counts for ``call.estimated_usd``: the
+    system text, the payload, the tool definitions and every earlier turn (its content, its
+    tool calls, its tool result, and its reasoning when that is passed back). The ceiling's
+    ratio was measured against that estimate, so this must be the same count.
+    """
+    settings = call.settings
+    chars = len(call.system) + len(call.payload.text) + len(json.dumps(list(settings.tools)))
+    chars += sum(_turn_chars(turn, with_reasoning=settings.pass_reasoning) for turn in call.history)
+    return chars / _CHARS_PER_TOKEN
+
+
+def _turn_chars(turn: Turn, *, with_reasoning: bool) -> int:
+    """All the text one earlier turn sends, as ``loop.estimate_usd`` counts it."""
+    result = "\n\n".join(part.text for part in (turn.payload, turn.tool_text) if part is not None)
+    chars = len(turn.content or "") + len(result)
+    chars += sum(len(call.name) + len(call.arguments) for call in turn.tool_calls)
+    if with_reasoning and turn.reasoning_details:
+        chars += len(json.dumps(list(turn.reasoning_details)))
+    return chars
+
+
+def _stop_over_context(loops: Sequence[DrivenLoop], *, skip: Set[str] = frozenset()) -> None:
+    """Stop every loop whose next call is over the context ceiling; that call is never sent.
+
+    Decision 152: one request over the model's context window fails its whole batch. ``skip``
+    names the cases of a round already sent, which a resume waits on as it is.
+    """
+    for loop in loops:
+        if loop.case_id in skip:
+            continue
+        call = loop.next_call()
+        if call is not None and estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
+            loop.stop(CONTEXT_FAILURE)
+
+
 def custom_id(case_id: str, call_index: int) -> str:
     """The name of one call in a batch: the case, then the call's place in it."""
     return f"{case_id}{_SEPARATOR}{call_index}"
@@ -189,6 +232,11 @@ def drive_sync(
     re-issued once, then the case stops). Any other error ends the run, and the calls finished
     so far are on disk. Calls the folder already holds are replayed, not made again.
 
+    A call whose estimated prompt (:func:`estimated_prompt_tokens`) is over the context ceiling
+    (``sources.PROMPT_TOKEN_CEILING``, decision 152) is never sent: its loop is stopped
+    ``cap: context`` and the run goes on to the next loop. The stop is not written to disk; a
+    resume replays the loop back to that call and stops it again.
+
     Args:
         loops: one loop per case, fresh (see the module docstring).
         client: the model client.
@@ -206,6 +254,9 @@ def drive_sync(
         )
     for loop in loops:
         while (call := loop.next_call()) is not None:
+            if estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
+                loop.stop(CONTEXT_FAILURE)
+                break
             sent_at = now()
             reply: ModelReply | None = None
             error: str | None = None
@@ -240,23 +291,33 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
     """Run every loop to its end in batch rounds, and resume a run that was cut short.
 
     A round collects the next call of every loop that has not stopped, submits them as one
-    batch, waits, and gives each loop its reply. A call with no result in a batch that returned
-    some, or whose result is an error, is given to its loop as a failed call: the loop re-issues
-    it in the next round once, then stops the case. A batch that returned no result for any of
-    its calls (``expired``, ``failed``, or ``completed`` empty) is not a case's failure: no loop
-    is told, its round is recorded with that status, and the same calls are submitted again as
-    the next round. Every round counts toward ``max_rounds``, dead ones too; at the limit the
-    cases still running are stopped ``failed: rounds``. A batch that ended ``cancelled`` is
-    usually an operator stopping spend: its round is recorded and the run stops with
-    ``BatchCancelledError`` (its replies, if it returned any, are not used, as the runner's are
-    not). Resume it, and the calls go out again.
+    batch, waits, and gives each loop its reply. Before a round is collected, every loop whose
+    next call is over the context ceiling (``sources.PROMPT_TOKEN_CEILING``, decision 152) is
+    stopped ``cap: context``, and that call is never sent: one request over the model's window
+    fails its whole batch. A call with no result in a batch that returned some owed result, or
+    whose result is an error, is given to its loop as a failed call: the loop re-issues it in the
+    next round once, then stops the case. A batch that returned no result for any call still
+    owed (``expired``, ``failed``, or ``completed`` with none of them) is not a case's failure:
+    no loop is told, its round is recorded with that status, and the same calls are submitted
+    again as the next round. Every round counts toward ``max_rounds``, dead ones too; at the
+    limit the cases still running are stopped ``failed: rounds``. A batch that ended
+    ``cancelled`` is usually an operator stopping spend: its round is recorded and the run stops
+    with ``BatchCancelledError`` (its replies, if it returned any, are not used, as the runner's
+    are not). Resume it, and the calls go out again.
 
     Resume is the same call: the replies the folder holds are replayed (no model call), and a
-    round that was submitted and never finished is waited on instead of submitted again. If the
-    provider has lost that batch (``BatchNotFoundError`` from the wait), the round is recorded
-    as ``lost`` and its calls that are still unanswered are submitted again. A batch this call
-    submitted that is lost is not: the error propagates, so no call is paid for twice. Time is
-    read from ``now`` twice a round, after the submit and after the wait.
+    round that was submitted and never finished is waited on instead of submitted again. In
+    that resumed round a call is owed only if its reply is not already on disk; the calls
+    answered before the stop are not sent or taken again. A resumed round that owes nothing
+    (every reply was on disk, only its finishing row was missing) is finished with whatever
+    status its batch reports, ``cancelled`` included, and the run continues: that status says
+    nothing about a call still owed. The ceiling stop is not on disk, so after the replay every
+    loop over the ceiling is stopped again, except the cases of the open round, which is waited
+    on as it was sent. If the provider has lost that batch (``BatchNotFoundError`` from the
+    wait), the round is recorded as ``lost`` and its calls that are still unanswered are
+    submitted again. A batch this call submitted that is lost is not: the error propagates, so
+    no call is paid for twice. Time is read from ``now`` twice a round, after the submit and
+    after the wait.
 
     Args:
         loops: one loop per case, fresh (see the module docstring).
@@ -285,6 +346,14 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
     """
     cases = _by_case(loops)
     unfinished = replay(loops, folder)
+    # A stop at the ceiling is not on disk, so a replayed loop is back at its call over it. Stop
+    # it again now, or the open round would look short of that call (decision 152).
+    open_cases = (
+        set()
+        if unfinished is None
+        else {c.rpartition(_SEPARATOR)[0] for c in unfinished.custom_ids}
+    )
+    _stop_over_context(loops, skip=open_cases)
     rounds = max(_rounds(folder), default=0)
     while True:
         resumed = unfinished is not None
@@ -292,6 +361,7 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
             row, calls = unfinished, _remaining(unfinished, cases)
             unfinished = None
         else:
+            _stop_over_context(loops)
             calls = _pending(loops)
             if not calls:
                 break
@@ -308,6 +378,13 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
             continue
         _refuse_foreign_results(row, status)
         cost = status.reported_cost_usd
+        wanted = {c.custom_id for c in calls}
+        if resumed and not calls:
+            # Every reply of the open round was on disk: only its finishing row was missing. Its
+            # status, whatever it is, says nothing about a call still owed (S3.2 Task 3).
+            done = _finish_round(row, folder, now(), status=status.status, cost=cost)
+            _tell(on_round, done, loops, waited=resumed)
+            continue
         if status.status == _CANCELLED:
             finished = _finish_round(row, folder, now(), status=_CANCELLED, cost=cost)
             _tell(on_round, finished, loops, waited=resumed)
@@ -315,7 +392,7 @@ def drive_batch(  # noqa: PLR0913 -- the loops, the client, the folder, the cloc
                 f"batch {row.batch_id} (round {row.round}) was cancelled, so the run stops here. "
                 "The run can be resumed: a resume sends its calls again."
             )
-        if _is_dead(status):  # nothing was accepted: the same calls go out in the next round
+        if _is_dead(status, wanted):  # none owed was answered: the same calls go out again
             dead = _finish_round(row, folder, now(), status=status.status, cost=cost)
             _tell(on_round, dead, loops, waited=resumed)
             continue
@@ -530,15 +607,18 @@ def _wait(batch: BatchRunner, row: RoundRow, *, resumed: bool) -> BatchStatus | 
         return None
 
 
-def _is_dead(status: BatchStatus) -> bool:
-    """A batch that returned no result at all: the provider's failure, not any case's.
+def _is_dead(status: BatchStatus, wanted: Set[str]) -> bool:
+    """No result for any call still owed: the provider's failure, not any case's.
 
-    By now ``_refuse_foreign_results`` has run, so every result is for a call of the round: no
-    results means none for any of them. This holds for ``expired``, ``failed`` and ``completed``
-    alike (``cancelled`` is dealt with before). A batch that returned some results is not dead:
-    a call it left out is that case's failed call.
+    For a fresh round every call is owed, as before. For a resumed round the replies already
+    on disk are not owed, so a batch holding only those is dead for the rest (S3.2 Task 3).
+
+    By now ``_refuse_foreign_results`` has run, so every result is for a call of the round. This
+    holds for ``expired``, ``failed`` and ``completed`` alike (``cancelled`` is dealt with
+    before). A batch that returned a result for some owed call is not dead: a call it left out
+    is that case's failed call.
     """
-    return not status.results
+    return not any(r.custom_id in wanted for r in status.results)
 
 
 def _finish_round(

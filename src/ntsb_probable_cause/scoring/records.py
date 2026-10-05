@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -101,6 +101,13 @@ class StepRecord(BaseModel):
     cumulative_cost_usd: float
     commit_sha: str
     dirty: bool
+
+
+# A case refused, or a loop stopped, because its prompt would be over the context ceiling
+# (``sources.PROMPT_TOKEN_CEILING``, decision 152). It reads as a kind of cap: the run's limit,
+# not a reply's failure, so it counts as wrong (spec §7.3) and the format gate leaves it out.
+# ``scoring/runner.py`` refuses a case with it; ``agent/drive.py`` stops a loop with it.
+CONTEXT_FAILURE: Final = "cap: context"
 
 
 class CaseResult(BaseModel):

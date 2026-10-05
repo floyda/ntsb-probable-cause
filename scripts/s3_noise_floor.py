@@ -67,7 +67,7 @@ The third-run rule (spec §10.2, decision 0130 item 2)
     ``not needed``. Decided on whole counts (``100 x |net hits| > 4.0 x cases``), so a difference
     of exactly 4.0 points is never pushed over by a float's rounding.
 
-Refusals, before any case or trail is read
+Refusals, before any case or trail is read (made in ``scripts/_s3_runs.py``)
     A held-out run id; a folder with no ``run.jsonl``, or whose record names another run (a
     copied or renamed folder); a run on any sample but ``dev-400``, of any arm but C, or not
     finished; a run on part of ``dev-400`` (a ``--limit`` run: decision 0130 measures the whole
@@ -92,18 +92,15 @@ from dataclasses import dataclass
 from fractions import Fraction
 from itertools import combinations
 from pathlib import Path
-from typing import Final, NoReturn
+from typing import Final
 
-from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments
 from ntsb_probable_cause.agent.trail import AgentCall
-from ntsb_probable_cause.errors import ConfigurationError
-from ntsb_probable_cause.scoring import budget, report, samples
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
-from ntsb_probable_cause.settings import Settings
+from ntsb_probable_cause.scoring import budget, report
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
+from scripts._s3_runs import MISSING, RESERVATION_ONLY, Run, load_runs
 from scripts.occurrence_misses import churn
 
-SAMPLE: Final = "dev-400"
 # Decision 0130 item 5: at most 2% of cases, 8 of dev-400's 401, may fail for format or tools.
 GATE_MAX: Final = 8
 # Decision 0130 item 2: S2.7's figure, in points of occurrence top-1.
@@ -111,29 +108,16 @@ THIRD_RUN_POINTS: Final = Fraction(4)
 _FAILED: Final = "failed: "
 _ROUNDS: Final = "failed: rounds"
 _NOT_FORMAT: Final = frozenset({"failed: leak", _ROUNDS})
-# Settings that only size the budget reservation; they never reach a model call.
-_RESERVATION_ONLY: Final = ("budget_usd", "expected_cost_per_case_usd")
 _WHY: Final = frozenset({"reason", "expected_effect"})
 # Half-open bands of the stated confidence: "0.4-0.6" is at least 0.4 and below 0.6.
-_BANDS: Final = (
+BANDS: Final = (
     (0.0, 0.4, "<0.4"),
     (0.4, 0.6, "0.4-0.6"),
     (0.6, 0.8, "0.6-0.8"),
     (0.8, math.inf, "≥0.8"),
 )
-_LABELS: Final = "abc"
-_MISSING: Final = "(not recorded)"
-
-
-@dataclass(frozen=True)
-class Run:
-    """One run, read whole: its label in the report, record, ``spec.json``, cases and trail."""
-
-    label: str
-    record: RunRecord
-    spec: dict[str, object]
-    cases: list[CaseResult]
-    calls: list[AgentCall]
+_MAX_RUNS: Final = 3
+PROG: Final = "s3_noise_floor"
 
 
 @dataclass(frozen=True)
@@ -209,10 +193,6 @@ class CodingAgreement:
     same: int
     cases: int
     none: int
-
-
-def _refuse(message: str) -> NoReturn:
-    raise SystemExit(f"s3_noise_floor: {message}")
 
 
 # --- the measures ---
@@ -425,7 +405,7 @@ def confidence_lines(label: str, cases: Sequence[CaseResult]) -> list[str]:
         f"cases of {len(cases)} (raw, as stated; right or wrong on occurrence top-1; kept for "
         "S3.2's fit, decision 0126; nothing is fitted here)"
     ]
-    for low, high, name in _BANDS:
+    for low, high, name in BANDS:
         band = [s for s in scored if low <= s.confidence < high]
         right = sum(s.occurrence_top1 for s in band)
         lines.append(f"- {name}: right {right}, wrong {len(band) - right}, of {len(band)}")
@@ -507,16 +487,16 @@ def pair_block(first: Run, second: Run) -> str:
 def spec_line(runs: Sequence[Run]) -> str:
     """How alike the runs' ``spec.json`` files are: compared settings, and the budget ones."""
     first = runs[0]
-    compared = len([k for k in first.spec if k not in _RESERVATION_ONLY])
+    compared = len([k for k in first.spec if k not in RESERVATION_ONLY])
     differing = [
         key
-        for key in _RESERVATION_ONLY
-        if len({json.dumps(run.spec.get(key, _MISSING)) for run in runs}) > 1
+        for key in RESERVATION_ONLY
+        if len({json.dumps(run.spec.get(key, MISSING)) for run in runs}) > 1
     ]
     if not differing:
         return (
             f"spec.json: identical in the {len(runs)} runs ({compared} settings compared; "
-            f"{' and '.join(_RESERVATION_ONLY)} size the budget reservation only and are not "
+            f"{' and '.join(RESERVATION_ONLY)} size the budget reservation only and are not "
             "compared)"
         )
     lines = [
@@ -524,7 +504,7 @@ def spec_line(runs: Sequence[Run]) -> str:
         f"size the budget reservation only ({compared} settings compared)"
     ]
     for key in differing:
-        values = "; ".join(f"{run.spec.get(key, _MISSING)} in {run.record.run_id}" for run in runs)
+        values = "; ".join(f"{run.spec.get(key, MISSING)} in {run.record.run_id}" for run in runs)
         lines.append(f"- {key}: {values}")
     return "\n".join(lines)
 
@@ -558,100 +538,15 @@ def noise_report(runs: Sequence[Run]) -> str:
     return "\n\n".join(["\n".join(lines), *blocks])
 
 
-# --- reading the runs ---
-
-
-def _head(run_id: str) -> tuple[RunRecord, dict[str, object]]:
-    """A run's record and ``spec.json``, after every refusal that needs no case."""
-    try:
-        samples.refuse_unless_development(run_id, None)
-    except ConfigurationError as error:
-        _refuse(str(error))
-    folder = Settings().runs_dir / run_id
-    if not (folder / "run.jsonl").is_file():
-        _refuse(f"{run_id}: no run.jsonl in {folder}")
-    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
-    if record.run_id != run_id:
-        _refuse(f"{run_id}: its run.jsonl names run {record.run_id}: a copied or renamed folder")
-    if record.sample != SAMPLE:
-        _refuse(f"{run_id} is on {record.sample}; the noise floor is measured on {SAMPLE} only")
-    if record.arm != "C":
-        _refuse(f"{run_id} is arm {record.arm}, not arm C")
-    if record.finished is None:
-        _refuse(f"{run_id} has not finished: it did not complete a pass")
-    spec = _spec(folder, run_id)
-    if record.dirty or spec.get("dirty"):
-        _refuse(
-            f"{run_id} ran from a tree with uncommitted changes; the noise floor is measured on "
-            "one frozen commit, from a clean tree (plan Task 14)"
-        )
-    if spec.get("case_ids") != list(samples.sample_ids(SAMPLE)):
-        _refuse(
-            f"{run_id} is not the whole of {SAMPLE} (a --limit run?); decision 0130 measures the "
-            "noise floor on the whole sample"
-        )
-    if not (folder / TRAIL_FILE).is_file():
-        _refuse(f"{run_id}: no {TRAIL_FILE} in {folder}")
-    return record, spec
-
-
-def _spec(folder: Path, run_id: str) -> dict[str, object]:
-    path = folder / "spec.json"
-    try:
-        recorded = json.loads(path.read_text()) if path.is_file() else None
-    except json.JSONDecodeError:
-        recorded = None
-    if not isinstance(recorded, dict):
-        _refuse(f"{run_id}: no readable spec.json in {folder}")
-    return recorded
-
-
-def refuse_mismatched(heads: Sequence[tuple[RunRecord, dict[str, object]]]) -> None:
-    """Refuse runs whose ``spec.json`` differ at any key but the reservation-only ones."""
-    (first, mine), *others = heads
-    for other, theirs in others:
-        for key in dict.fromkeys([*mine, *theirs]):
-            if key in _RESERVATION_ONLY:
-                continue
-            a, b = mine.get(key, _MISSING), theirs.get(key, _MISSING)
-            if a != b:
-                # A case list is case numbers: never repeated in a message.
-                shown = (
-                    "" if key == "case_ids" else f" ({first.run_id}: {a!r}; {other.run_id}: {b!r})"
-                )
-                _refuse(
-                    f"{other.run_id} is configured differently from {first.run_id}: spec.json "
-                    f"differs at {key!r}{shown}; the noise floor compares identical runs "
-                    "(spec §10.2)"
-                )
-
-
-def _read(label: str, run_id: str, head: tuple[RunRecord, dict[str, object]]) -> Run:
-    folder = Settings().runs_dir / run_id
-    cases = read_jsonl(folder / "cases.jsonl", CaseResult)
-    if any(c.split != "dev" for c in cases):
-        _refuse(f"{run_id} holds a case outside the dev split")
-    calls = read_jsonl(folder / TRAIL_FILE, AgentCall)
-    record, spec = head
-    return Run(label, record, spec, cases, calls)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     """Print, and with ``--out`` also write, the noise floor of two or three arm C runs."""
     parser = argparse.ArgumentParser(prog="s3_noise_floor")
     parser.add_argument("runs", nargs="+", metavar="RUN_ID", help="two or three arm C run ids")
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
-    if not 2 <= len(args.runs) <= len(_LABELS):  # noqa: PLR2004 -- two runs, or three
+    if not 2 <= len(args.runs) <= _MAX_RUNS:  # noqa: PLR2004 -- two runs, or three
         parser.error("give two or three run ids")
-    if len(set(args.runs)) != len(args.runs):
-        _refuse("a run is named twice; the noise floor compares distinct runs")
-    heads = [_head(run_id) for run_id in args.runs]
-    refuse_mismatched(heads)
-    runs = [
-        _read(label, run_id, head)
-        for label, run_id, head in zip(_LABELS, args.runs, heads, strict=False)
-    ]
+    runs = load_runs(PROG, args.runs)
     text = noise_report(runs)
     print(text)
     if args.out is not None:

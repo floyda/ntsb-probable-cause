@@ -314,7 +314,7 @@ def test_the_s3_sealed_sample_is_a_sample_with_its_own_registration() -> None:
     registrations = dict(samples.SEALED_REGISTRATIONS)
     assert registrations == {
         "dev-seal-400": Path("docs/rounds/s27-sealed.md"),
-        "dev-seal-s3-400": Path("docs/rounds/s3-registration.md"),
+        "dev-seal-s3-400": Path("docs/rounds/s3-sealed.md"),
     }
     sealed = set(samples.SEALED)
     assert sealed == set(registrations)
@@ -323,16 +323,27 @@ def test_the_s3_sealed_sample_is_a_sample_with_its_own_registration() -> None:
     )
 
 
-def test_refuse_sealed_names_the_s3_registration_for_the_s3_sample() -> None:
-    with pytest.raises(ConfigurationError, match=r"docs/rounds/s3-registration\.md"):
+def test_refuse_sealed_names_the_s3_sealed_file_for_the_s3_sample() -> None:
+    with pytest.raises(ConfigurationError, match=r"docs/rounds/s3-sealed\.md"):
         samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda _path: False)
+
+
+def test_s32_registration_does_not_open_the_s3_sealed_sample() -> None:
+    """Decision 0141 item 2: s3-registration.md does not open the sample; s3-sealed.md does."""
+    s3_reg = Path("docs/rounds/s3-registration.md")
+    s3_sealed = Path("docs/rounds/s3-sealed.md")
+    # s3-registration.md is committed but s3-sealed.md is not: raises error
+    with pytest.raises(ConfigurationError, match=r"s3-sealed\.md"):
+        samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda path: path == s3_reg)
+    # s3-sealed.md is committed: passes
+    samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda path: path == s3_sealed)
 
 
 def test_the_s27_registration_does_not_open_the_s3_sample_nor_the_reverse() -> None:
     """Each sealed sample is opened by its own registration and by no other."""
     s27 = Path("docs/rounds/s27-sealed.md")
-    s3 = Path("docs/rounds/s3-registration.md")
-    with pytest.raises(ConfigurationError, match=r"s3-registration\.md"):
+    s3 = Path("docs/rounds/s3-sealed.md")
+    with pytest.raises(ConfigurationError, match=r"s3-sealed\.md"):
         samples.refuse_sealed("dev-seal-s3-400", is_committed=lambda path: path == s27)
     with pytest.raises(ConfigurationError, match=r"s27-sealed\.md"):
         samples.refuse_sealed("dev-seal-400", is_committed=lambda path: path == s3)
@@ -344,7 +355,7 @@ def test_refuse_unless_development_refuses_the_s3_sealed_sample_until_committed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): False)
-    with pytest.raises(ConfigurationError, match=r"s3-registration\.md"):
+    with pytest.raises(ConfigurationError, match=r"s3-sealed\.md"):
         samples.refuse_unless_development("dev-run", "dev-seal-s3-400")
     monkeypatch.setattr(gitinfo, "is_committed", lambda _path, repo=Path(): True)
     samples.refuse_unless_development("dev-run", "dev-seal-s3-400")

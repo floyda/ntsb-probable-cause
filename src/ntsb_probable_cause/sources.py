@@ -1,7 +1,7 @@
 """Facts about external services, each with the source it came from (decision 0012)."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 # ../ntsb-spike/public.yaml, operation get-cases-by-date-range-v2; confirmed by saved responses.
 NTSB_BASE_URL = "https://api.ntsb.gov/public"
@@ -62,6 +62,22 @@ LUNA_6 = ModelPrice("openai/gpt-6-luna", 0.10, 0.50, "OpenRouter models API, 202
 LUNA_6_BATCH = ModelPrice(
     "openai/gpt-6-luna:batch", 0.05, 0.25, "OpenRouter models API, 2026-09-22"
 )
+# The provider's own refusal of an over-long request on 2026-10-04: "This endpoint's maximum
+# context length is 1050000 tokens" (held-out arm B's answer batch, S3.2 Task 15a). One request
+# over it fails its whole batch.
+LUNA_6_CONTEXT_TOKENS: Final = 1_050_000
+# The prompt-size ceiling in estimated tokens (characters / 4, the runner's and the loop's own
+# estimate), decision 152. It bounds arm B's stage-1 answer prompt (payload and system text) and
+# every loop and post-pass call. Arm B's later turns are not checked: the stage-2 refinement may
+# exceed it by the stage-1 reply (at most the 8,000-token reply budget) plus the refinement
+# message, less the stage-1 system text it replaces, and a retry by its rejection message. The
+# margin under the context window absorbs that (tests/test_runner.py pins the overshoot). The
+# estimate undercounts document text, which tokenizes at about two characters a token: over
+# both dev-400 noise-floor trails, real prompt tokens were at most 2.4303 times the estimate
+# (docs/results/s32-context-ratio-dev.txt). So the ceiling is
+# floor(0.8 * 1,050,000 / 2.430343) = 345,630, rounded down to a thousand: a call at the ceiling
+# is at most about 838,000 real tokens, 80% of the window.
+PROMPT_TOKEN_CEILING: Final[int] = 345_000
 HAIKU_45_BATCH = ModelPrice(
     "anthropic/claude-haiku-4.5:batch", 0.50, 2.50, "OpenRouter models API, 2026-09-15"
 )

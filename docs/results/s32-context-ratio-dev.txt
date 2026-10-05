@@ -1,0 +1,13 @@
+S3.2 context ratio (scripts/s32_context_ratio.py; decision 152)
+Counts only: no case number.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C
+arm B = 20260929T053953-674c92e-dev-400-B; its post-pass = 20260929T053953-674c92e-dev-400-B-tools
+estimate: a call's prompt characters / 4, recovered as (estimated_usd x 1e6 - max_output_tokens x output price) / input price (agent/loop.py estimate_usd); real: the reply's prompt_tokens
+run a: 4004 calls with a reply of 4004; ratio real/estimated: min 0.8479, median 1.0207, p99 2.0639, max 2.4303; above 1.5: 214
+run b: 3921 calls with a reply of 3921; ratio real/estimated: min 0.8479, median 1.0216, p99 2.0793, max 2.4241; above 1.5: 194
+both runs: 7925 calls; ratio median 1.0211, p99 2.0791, max 2.4303; above 1.5: 408
+ceiling: floor(0.8 x 1,050,000 / 2.430343) = 345,630 -> 345,000 estimated tokens (rounded down to a thousand); sources.PROMPT_TOKEN_CEILING = 345,000 (the same)
+over the ceiling: noise-floor calls 0 of 7925 (largest estimate 125,737)
+over the ceiling: arm B dev-400 prompts 0 of 399 cases that sent one; 397 bounded by their post-pass's first call, which sends arm B's payload and system text and more (largest 262,548); 2 with no post-pass call, bounded by real prompt tokens / the smallest measured ratio 0.8479 (largest 13,581); 2 failed before any call
+over the ceiling: arm B post-pass calls 0 of 818 (largest estimate 263,148)

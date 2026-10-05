@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-context-ratio s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-heldout-diagnosis s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results
 
 check: lint type test
 
@@ -285,6 +285,108 @@ s3-noise-report:
 	uv run python -m scripts.s3_noise_floor $(RUNS) --out docs/results/s3-noise-floor-dev.txt
 # S3.1 spec §10.2 to §10.4 (decision 0130), free: the noise floor, the format gate and the
 # third-run rule from the noise-floor runs, counts only. RUNS="<a> <b>" or "<a> <b> <c>".
+
+# S3.2 Task 9, free: the readings on the two noise-floor runs (the S3.1 pair below). Each prints
+# counts only, reads development runs only, and writes under docs/results/ from a clean tree.
+# RUNS="<a> <b>" overrides the pair.
+S32_NOISE_RUNS = 20261001T201506-fd6053f-dev-400-C 20261001T201648-fd6053f-dev-400-C
+
+s32-cap-check:
+	uv run python -m scripts.s32_cap_check $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-cap-check-dev.txt
+# Spec §5: did the $0.15 cap cut any noise-floor case's coding short? Its last line is the
+# decision: the $0.30 cap stands, or STOP and the cap goes back to Andy.
+
+s32-context-ratio:
+	uv run python -m scripts.s32_context_ratio $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-context-ratio-dev.txt
+# Task 15a (decision 152): how far the four-characters-a-token estimate undercounts real prompt
+# tokens on the noise-floor runs, the prompt-size ceiling that sets, and that no dev-400 arm B
+# prompt, noise-floor call or arm B post-pass call was over it. Reads S3's dev-400 arm B run too.
+
+s32-noise:
+	uv run python -m scripts.s32_noise $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-noise-dev.txt
+# Spec §7.3: the noise-floor pair read by the claim's rule (guard refusals removed, other
+# failures wrong), beside the cases both runs answered.
+
+s32-calibration:
+	uv run python -m scripts.s32_calibration $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-calibration-dev.txt
+# Spec §8.2: fits the confidence curve on both runs and writes the frozen
+# src/ntsb_probable_cause/scoring/tables/calibration_s3.json. Refuses to replace it (add
+# --refit to the script by hand to do so on purpose).
+
+s32-behaviour-dev:
+	uv run python -m scripts.s32_behaviour $(or $(RUNS),$(S32_NOISE_RUNS)) --out docs/results/s32-behaviour-dev.txt
+# Spec §9.1 and §9.4: results 1 and 4 counted from the noise-floor trails.
+
+s32-coding-ablation-report:
+	$(if $(RUN),,$(error RUN is required: the coding-ablation run id))
+	uv run python -m scripts.s32_coding_ablation $(RUN) $(S32_NOISE_RUNS) --out docs/results/s32-coding-ablation-dev.txt
+# S3.2 Task 11, free: the coding ablation against each noise-floor run, and prediction 6
+# (spec §11, §12). Reads dev-400 runs only. RUN is the finished --without coding run.
+
+s32-claims:
+	$(if $(and $(LOOP),$(NODOCKET),$(ARMA),$(BANSWER),$(ABLATION)),,$(error LOOP NODOCKET ARMA BANSWER ABLATION are required run ids))
+	uv run python -m scripts.s32_claims --loop $(LOOP) --nodocket $(NODOCKET) --arm-a $(ARMA) --armb-answer $(BANSWER) --armb-tools $(BANSWER)-tools --armb-check $(BANSWER)-tools-check-luna --ablation $(ABLATION) --noise $(S32_NOISE_RUNS) --out docs/results/s32-claims-heldout.txt
+# S3.2 Task 11, free: the held-out verdict, the four results, the ablations and the nine
+# predictions (spec §6 to §12). Reads the six held-out runs, only after the registration is
+# committed and each run has a ledger row. BANSWER is arm B's answer run; its -tools and
+# -tools-check-luna folders are derived from it.
+
+s32-heldout-diagnosis:
+	$(if $(and $(LOOP),$(NODOCKET),$(ARMA),$(BANSWER)),,$(error LOOP NODOCKET ARMA BANSWER are required run ids))
+	uv run python -m scripts.exploratory.s32_heldout_diagnosis --loop $(LOOP) --nodocket $(NODOCKET) --arm-a $(ARMA) --armb-answer $(BANSWER) --armb-tools $(BANSWER)-tools --armb-check $(BANSWER)-tools-check-luna --out docs/results/s32-heldout-diagnosis.txt
+# Decision 0153, free and exploratory (decision 0059): it decides nothing and claims nothing. No
+# model call. The six counts-only breakdowns 0153 fixed before any was read, over S3.2's six
+# held-out runs: arm B by stage, the gap by group, reading, coding, failures, wins and losses.
+# Refused unless 0153 and the registration are committed and the tree is clean. Reading these
+# runs ends heldout-400's use for any later version of the agent (0153 item 4).
+
+# S3.2 Task 10, paid: the five runs of spec §3. Every one passes --cap-usd 0.30 (spec §5) and
+# first runs the stage line. Run them through scripts/paid_run.sh from the clean checkout, not
+# from this tree. Each --expected-cost-per-case-usd is the measured or estimated computed cost
+# per case, rounded up, so the monthly guard reserves enough.
+
+s32-coding-ablation:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 2.00
+	uv run ntsb-eval run --arm C --sample dev-400 --without coding --cap-usd 0.30 --expected-cost-per-case-usd 0.008 $(if $(RESUME),--resume $(RESUME))
+# S3.2 spec §3 run 1 (decision 0141), paid, about $1.20 billed (estimate): the loop without its
+# coding tools on dev-400, in batch rounds, about 3 hours. After the registration (Task 13).
+# A cancelled or interrupted run continues with RESUME=<run id> (it reuses the paid batches).
+
+s32-heldout-a:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.50
+	uv run ntsb-eval run --arm A --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.002 $(if $(RESUME),--resume $(RESUME))
+# S3.2 spec §3 run 2, ONCE, held-out: commit its ledger row before the next held-out target.
+# RESUME=<run id> continues an interrupted run.
+
+s32-heldout-b-answer:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 1.50
+	uv run ntsb-eval run --arm B --sample heldout-400 --guidance r3-loc-stall --guidance r6-aircraft-control --cap-usd 0.30 --expected-cost-per-case-usd 0.01 $(if $(RESUME),--resume $(RESUME))
+# S3.2 spec §3 run 3, part 1 (S2.7's answer), ONCE, held-out. Commit its ledger row next.
+# RESUME=<run id> continues an interrupted run.
+
+s32-heldout-b-tools:
+	$(if $(RUN),,$(error RUN is required: the held-out arm B answer run id))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 1.20
+	uv run ntsb-eval tools $(RUN)
+# S3.2 spec §3 run 3, parts 2 and 3, ONCE, held-out (decision 0142). Commit its ledger row next.
+
+s32-heldout-b-check:
+	$(if $(RUN),,$(error RUN is required: the held-out arm B -tools run id))
+	uv run python -m scripts.stage_spend --stage s3 --estimate 0.20
+	uv run ntsb-eval check $(RUN) --way luna --stats s3
+# S3.2 spec §3 run 3, part 4, ONCE, held-out, synchronous at the standard price. Commit its row.
+
+s32-heldout-c:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 2.50
+	uv run ntsb-eval run --arm C --sample heldout-400 --cap-usd 0.30 --expected-cost-per-case-usd 0.012 $(if $(RESUME),--resume $(RESUME))
+# S3.2 spec §3 run 4, ONCE, held-out: the loop, about 3 hours. Commit its ledger row next.
+# RESUME=<run id> continues an interrupted run.
+
+s32-heldout-c-nodocket:
+	uv run python -m scripts.stage_spend --stage s3 --estimate 1.50
+	uv run ntsb-eval run --arm C --sample heldout-400 --exclude docket_listing --exclude docket_documents --cap-usd 0.30 --expected-cost-per-case-usd 0.012 $(if $(RESUME),--resume $(RESUME))
+# S3.2 spec §3 run 5, ONCE, held-out: the loop without the docket. Commit its ledger row.
+# RESUME=<run id> continues an interrupted run.
 
 s3-round:
 	$(if $(N),,$(error N is required: the round number))

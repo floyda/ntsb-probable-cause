@@ -30,7 +30,8 @@ EVAL_DIR = Path("tests/fixtures/eval")
 # S3's sample, and S3's does not open S2.7's.
 SEALED_REGISTRATIONS: Mapping[str, Path] = {
     "dev-seal-400": Path("docs/rounds/s27-sealed.md"),
-    "dev-seal-s3-400": Path("docs/rounds/s3-registration.md"),
+    # Decision 0141: kept sealed for v2 (0140); S3.2's registration does not open it.
+    "dev-seal-s3-400": Path("docs/rounds/s3-sealed.md"),
 }
 SEALED = frozenset(SEALED_REGISTRATIONS)
 START_FACTS = frozenset(
