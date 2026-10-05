@@ -464,7 +464,17 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
    recorder's first 12 nights, and they closed in three batches, on 23 September, 1 October
    and 2 October; the other nights had none (a per-night breakdown from an ad-hoc read-only
    query of the store's status changes, to be replaced by a script before approval). So most
-   nights bring no new rows, and closures arrive in bursts.
+   nights bring no new rows, and closures arrive in bursts. Settled (Andy, 2026-10-05):
+   - The board lists the most recent closures whatever their date, so it never empties, and
+     its stamp names both the last rebuild and the last closures, for example "Updated 03:00
+     UTC · last closures 2 Oct".
+   - **At launch the board is backfilled from a declared start date**: the recorder's first
+     night, 23 September 2026. Every watched case that closed on or after it is coded,
+     abstains and failures included, so nothing is selected. Those rows carry the label
+     "coded after launch, from the declared start". The verdict was public by then; the guard
+     withholds it exactly as in evaluation and as on every live row. Starting the recorder
+     early is what makes this possible: it holds when each case closed and when its docket
+     appeared.
 7. **Motion.** Settled: each stop animates in on arrival, within the four limits of §3.1. No
    scrolling text. Open: hiding the next stop until it arrives, which failed on a phone in the
    first attempt (§3.1). The mock-ups here are sketches of content and order; none has been
@@ -531,10 +541,16 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 7. The Path page: a ladder from one sample, then eight questions (§7).
 8. The first page is one scrolling route of six stops, with the caveat above the board and the
    author line linking to Andy's profile page (§3.1).
-9. Abstained cases have their own row on the board (§4).
-10. The Path page is a second scrolling route, one stop per question (§7).
+9. Abstained and failed cases have their own rows on the board; the middle grade is a top-3
+   match that is not a top-1 match (§4).
+10. The Path page is a second scrolling route, one stop per question, ending with the version
+    comparison (§7, §12 item 13).
 11. Pixel-art vignettes are deferred past S5's first version; when made, they show the people
     whose work becomes the docket, in normal operations only (§10.1).
+12. At launch the board is backfilled from a declared start date, the recorder's first night
+    (§12, item 6).
+13. What the site puts forward about a case: the NTSB case number, never the registration;
+    plain labels before NTSB terms; counts, not percentages, beside the board (§12).
 
 ## 16. Open questions for Andy
 
