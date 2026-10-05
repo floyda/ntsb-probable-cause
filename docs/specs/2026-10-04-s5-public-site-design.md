@@ -85,14 +85,20 @@ wide screen, across the top on a phone.
 
 **The caveat sits in stop 1, above the board.** This meets the roadmap's rule that caveats
 come before results, without burying the board. Proposed wording, written on 2026-10-05 after
-S3.2's held-out reading was known, so it is not a registered prediction; its numbers are to be
-taken from `docs/results/s32-claims-heldout.txt` when S3.2 merges:
+S3.2's held-out reading was known, so it is not a registered prediction:
 
 > Read this first. The board runs version 1 of this agent. It reads the same evidence, with the
-> same tools, as a simpler fixed method, and on cases it had never seen it did worse: its first
-> code matched the investigator's on about one case in four, and the fixed method matched 9.5
-> percentage points more often. It runs here because it is the version being improved, and each
-> new version is measured against that fixed method first. This site is the record of how.
+> same tools, as a simpler fixed method. On 400 accidents it had never seen, its first code
+> matched the investigator's in about one case in four. The fixed method matched in about one
+> case in three. It runs here because it is the version being improved, and each new version is
+> measured against that fixed method. This site is the record of how.
+
+"Points" were dropped from the wording (Andy, 2026-10-05): a reader who does not know how a
+percentage-point difference is defined cannot use it. The two rates come from the harness's
+report on the two held-out runs (`ntsb-eval report`): the fixed pipeline,
+`20261004T111937-dd64854-heldout-400-B-tools-check-luna`, top-1 33.0% [28.6%, 37.8%], n=400;
+the loop, `20261004T140804-e0dc881-heldout-400-C`, top-1 23.9% [19.9%, 28.3%], n=394 scored.
+The registered difference and its interval stay on the Methods page.
 
 **Each stop animates in as the reader reaches it** (Andy, 2026-10-04). The parts of a stop
 rise into place; the board's rows turn over one after another, as a terminal display does; the
