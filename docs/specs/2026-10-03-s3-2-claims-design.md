@@ -1,7 +1,7 @@
 # S3.2 — The claims: design
 
 *Drafted 2026-10-03 from a design session with Andy, the same day S3.1 closed (pull request #21,
-release v0.8.0, merge commit `1c79dde`). Status: Approved (2026-10-03, Andy: "all looks good"). This is the
+release v0.8.0, merge commit `1c79dde`). Status: Implemented (approved 2026-10-03, Andy: "all looks good"; As-built 2026-10-05). This is the
 specification for sub-stage S3.2 of
 [the S3 specification](2026-09-30-s3-agent-loop-design.md) (§3, §11), which holds the design S3
 shares and S3.1 in full. The implementation plan is written from this document separately, in
@@ -704,3 +704,170 @@ S3.2 adds tests that:
 - **Sealed sample:** cases set aside, unread and unscored, until one final check.
 - **Stated effect:** the agent's one-line reason for reading a document.
 - **Warranted:** the loop beats arm B at equal or lower cost, or matches it at lower cost.
+
+## As built (S3.2, 2026-10-05)
+
+*S3.2 closed on 2026-10-05 in pull request #27. This part records what was built and measured,
+against §19.*
+
+S3.2 registered its rules and nine predictions, ran the five registered runs, and published what
+they said. **On `heldout-400` the loop is worse than S3's full arm B on occurrence top-1, at equal
+billed cost: not warranted** (`docs/results/s32-claims-heldout.txt`). Every figure below is from a
+committed results file.
+
+### Delivered
+
+- **The registration** (`docs/rounds/s3-registration.md`, commit `f0e78b7`), committed before any
+  S3.2 run, with a dated note for decision 0152; and **the used marker**
+  (`docs/rounds/s3-2-used.md`), which closes the held-out gates after S3.2's single use.
+- **The plumbing, outside the ten fingerprinted files** (§4): resume fixes in `agent/drive.py`
+  (a resumed round re-sends only what it still owes, at no attempt's cost, and finishes a round
+  whose replies are all on disk); a report refuses an unreadable `spec.json`; the sealed sample's
+  unlock moved to `docs/rounds/s3-sealed.md`; held-out gates for arm C and for arm B's tool
+  post-pass and `luna` ordering check (registration committed, used marker not, clean tree first,
+  one ledger row each); `tests/test_s32_frozen.py` pins the prompt version, the temperature and a
+  dead round's billed spend.
+- **The prompt-size ceiling** (decision 0152): 345,000 estimated tokens
+  (`sources.PROMPT_TOKEN_CEILING`), in arm B's document loop and whole-case checks
+  (`scoring/runner.py`) and before every call in both drivers (`agent/drive.py`).
+- **The rules as code**: `scoring/claims.py` (failure rule, paired readings, the four outcomes,
+  the cost band, warranted, result 2, the headline, the billed figure, the saving split) and
+  `scoring/calibration.py` (logistic fit, three-group test, sorting figure, abstain cut-off,
+  rising-curve check); the frozen curve `scoring/tables/calibration_s3.json`.
+- **Scripts and readings**: `s32_cap_check`, `s32_noise`, `s32_calibration`, `s32_behaviour`,
+  `s32_context_ratio`, `s32_coding_ablation`, `s32_claims` (shared loader `scripts/_s3_runs.py`),
+  with their results files; `scripts/paid_run.sh` and the `s32-*` targets.
+- **Decision records 0141 to 0152**, and dated notes on 0123, 0127, 0129, 0133 and 0144.
+
+### Done means, with evidence
+
+1. The recorder re-check is committed and its outcome applied — met, as amended by decision 0151:
+   closed at 12 nights (`docs/results/s3-recorder-report-2026-10-04.txt`): 46 of 46 timed docket
+   arrivals came at closure; full condition only.
+2. The fixes and new work of §4.3 are built with the tests of §18; the prompt-version test passes
+   at every commit — met. `make check` at the close-out: 4,076 tests passed, coverage 98.40%
+   (fix-wave report); the ten fingerprinted files are unchanged on the branch (final review).
+3. The calibration curve and the free readings of §5 and §7.3 are committed before the
+   registration — met: `s32-cap-check-dev.txt` (0 cases cut short at $0.15),
+   `s32-noise-dev.txt` (top-1 −1.5 points [−5.0, +2.0] under the claim's rule),
+   `s32-calibration-dev.txt` (intercept −1.5762, slope 0.9435, 785 answers), committed at
+   `eaf8e89`, before `f0e78b7`.
+4. The registration is committed before any S3.2 run — met: `f0e78b7` at 05:32:10 UTC on
+   2026-10-04; the first run started 28 seconds later from a clean checkout of that commit.
+5. The five runs complete; the held-out ledger holds the new rows, each committed before the next
+   — met, with one aborted attempt: seven rows (arm A; arm B's answer ABORTED; arm B's answer;
+   its post-pass; its check; the loop; the loop without the docket), each committed and pushed by
+   `scripts/paid_run.sh` before the next command.
+6. `s32-claims-heldout.txt` and `s32-coding-ablation-dev.txt` are committed from scripts, with the
+   verdict, the four results, the reading and the nine predictions scored — met.
+7. `make check` passes — met (item 2).
+8. As-built appended, plan deleted, version 0.9.0, pull request `S3.2: the claims`, merged with a
+   merge commit — this close-out; the merge is Andy's.
+
+**The results, as the registered script printed them.** The loop's top-1 is 23.5% [19.2%,
+27.5%] against arm B's 33.0% [28.5%, 37.5%]: −9.5 points [−14.0, −5.2] on 400 cases ("worse").
+Billed cost is equal: $2.0610 against $2.1347 (−3.4%). Top-3 −15.8 [−20.2, −11.2]; finding
+recall@10 −3.8 [−6.5, −1.4]. Without the docket the loop loses −8.5 points [−13.0, −3.8]. Arm A
+scores 5.0%. Result 1 holds (245 of 375, 65.3%), result 2 holds, result 3 does not hold (the
+three-group test passes; sorting +3.2 points [−7.0, +13.5]), result 4 is not shown. Predictions met:
+P3, P7, P8 (abstain half by construction), P9; not met: P1, P2, P4, P5, P6. On `dev-400` the loop
+without its coding tools was not worse than either noise-floor run (−0.3 [−4.3, +3.8], −1.8
+[−6.0, +2.3]).
+
+**Cautions for every later reading** (final statistics review): held-out disagreed with the
+`dev-400` readings, and one held-out sample cannot say whether that is overfitting to
+development or a change between years; "passes the three-group test" means not shown to be
+miscalibrated at about 131 cases a group, not that the confidence is informative; the nine
+predictions are not independent and are not a score; the verdict holds under the both-answered
+reading and with every unscored loop case counted right.
+
+### Departures from this specification
+
+- **§14 item 1, the recorder re-check** closed at 12 nights, not 14 (decision 0151, Andy).
+- **§5 and decision 0144, the cap's reason**: a $0.30 cap let held-out arm B try to send a prompt
+  over GPT-6 Luna's 1,050,000-token context window; the provider refused the batch twice ($0).
+  Decision 0152 added the prompt-size ceiling, and arm B's answer run was made again, fresh.
+  Before that note, no arm B or arm C held-out result had been seen, and arm A's result had not
+  been read either: only its cost line was printed.
+- **§14, who ran the paid runs**: the spec says Andy, in his terminal. With Andy's permission
+  ("Once ready to start performing runs you have my permission for the agreed spend"), the
+  controller ran `scripts/paid_run.sh` itself, from the separate clean checkout, with the key read
+  from `pass` and never printed.
+- **§14, batch timing**: the held-out loop (14:08 UTC) and the loop without the docket (18:45 UTC)
+  were submitted outside 01:00 to 12:00 UTC; they finished, more slowly.
+- **The claims script read held-out three times**: a first output set aside for a wording defect
+  (result 3's line stated the result's definition), a re-run after the fix (`36073b5`), and a re-run
+  after the final review added lines (`940c770`). No rule or figure changed between them (each
+  diff checked).
+- **§9.4, result 4's measure**: the plan's category-label rule could not match; categories are
+  matched by their last segment (controller's ruling), a loose route, so the event-label count
+  (63 of 1781) is the strict figure.
+- **§8.2, the curve**: `load_curve` refuses a curve that does not rise. **§8.4, abstain**: the
+  frozen curve's floor is 0.171, above the 0.164 cut-off, so abstain cannot fire; disclosed in the
+  registration, and the prediction 8 line says so.
+- **§7, pairing**: `claims.paired` refuses two runs over different case sets, or an empty pairing.
+- **§6 rule 3**: reply tokens are printed beside cost (final review).
+- **§9.1 and decision 0148, result 1's wording**: the spec and 0148 say "more than half of the
+  cases counted"; the code and the registration use the cases with documents on offer for the
+  read-everything share. The outcome is the same either way (245 of 400 is also over half).
+- **The plan's Deviations** hold every other entry, dated, task by task; the plan at its last
+  commit is linked below.
+
+### Known issues carried to S3.3
+
+- `scripts/paid_run.sh` is checked statically only (no behaviour test with stubbed commands).
+- `ntsb-eval tools` has no resume; an aborted held-out post-pass or check appends no ledger row
+  (an ABORTED row is written by hand, as in S2.4 and here).
+- `agent/drive.py` copies `loop._turn_chars` (the loop is frozen); a test pins them together only
+  with reasoning not passed back.
+- No test covers a resumed, partly answered round whose batch is cancelled; a run whose replies
+  are all on disk continues after an operator-cancelled batch.
+- Arm B's stage-2 refinement and retries are not checked against the ceiling (pinned by a test:
+  244 estimated tokens over at the ceiling).
+- The frozen-label test fails on any dependency update that changes the tool schemas as sent;
+  hold such updates until the rendered-text fingerprint (decision 0143) is built in S3.3.
+- S3.2's $12 share is not enforced in code (only S3's $50 line is).
+- `resolve_latest` now aborts on a damaged `spec.json`; a non-UTF-8 `spec.json` raises a
+  traceback, not a refusal.
+- From the task reviews, open and minor: decision 0146 cites "0136's rule" for the noise reading
+  (it is S3.2's rule), 0150's "$5.11" sentence reads ambiguously, and 0128's S3.2 row names the
+  sealed sample; each is corrected here and not in the records.
+
+### Decisions taken during the stage
+
+- [0141](../decisions/0141-s32-five-runs-and-the-sealed-sample-kept-for-v2.md) — five runs; the
+  sealed sample kept for v2.
+- [0142](../decisions/0142-frozen-means-an-unchanged-prompt-version.md) — "frozen" means an
+  unchanged prompt version; the fix list; the held-out gates.
+- [0143](../decisions/0143-the-fingerprint-should-cover-what-the-agent-receives.md) — the
+  fingerprint should cover what the agent receives; built in S3.3.
+- [0144](../decisions/0144-one-per-case-cap-for-every-arm.md) — one $0.30 cap for every arm.
+- [0145](../decisions/0145-equal-cost-is-billed-cost-with-a-ten-percent-band.md) — equal cost is
+  billed cost, with a 10% band.
+- [0146](../decisions/0146-the-headline-test-and-failed-cases.md) — the headline test and failed
+  cases.
+- [0147](../decisions/0147-calibration-and-abstain.md) — calibration and abstain.
+- [0148](../decisions/0148-results-one-and-four-made-measurable.md) — results 1 and 4 made
+  measurable.
+- [0149](../decisions/0149-how-the-results-are-read-together.md) — how the results are read
+  together.
+- [0150](../decisions/0150-s32s-share-of-the-spend-line.md) — S3.2's $12 share.
+- [0151](../decisions/0151-the-recorder-re-check-closes-at-twelve-nights.md) — the recorder
+  re-check closes at 12 nights.
+- [0152](../decisions/0152-a-prompt-size-ceiling-under-the-context-window.md) — a prompt-size
+  ceiling under the context window.
+
+### Implementation record
+
+- Pull request: #27 (https://github.com/floyda/ntsb-probable-cause/pull/27), to be merged with a
+  merge commit (decision 0033).
+- Plan, at its last commit:
+  https://github.com/floyda/ntsb-probable-cause/blob/e019d62/docs/plans/2026-10-03-s3-2-claims.md
+- Commits: from `413f587` (this specification's draft) to the close-out.
+- Runs: `20261004T053238-f0e78b7-dev-400-C` (coding ablation, $1.4495 billed);
+  `20261004T092646-751d50d-heldout-400-A`; `20261004T094550-7948ac0-heldout-400-B` (ABORTED, $0);
+  `20261004T111937-dd64854-heldout-400-B`, its `-tools` and `-tools-check-luna`;
+  `20261004T140804-e0dc881-heldout-400-C`; `20261004T184547-80c539e-heldout-400-C` (no docket).
+- Spend: S3 $11.46 of $50, S3.2 $6.35 of its $12 share, billed (`scripts/stage_spend.py --stage
+  s3`, 2026-10-05; decisions 0128, 0135, 0150). S3.3 has $38.54 of the line.
+- Release: v0.9.0 (tag created by Andy after the merge).
