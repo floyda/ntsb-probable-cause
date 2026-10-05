@@ -145,6 +145,8 @@ row is one case. Columns, in order:
 **A case the agent abstained on has its own row** (Andy, 2026-10-04): "No answer" in the agent's
 column and "Agent abstained" as the result, with a dashed mark. Its opened case gives the
 agent's stated reason beside the NTSB's cause. Leaving such cases off would be selection.
+Such rows will be rare: on S3.2's held-out run the abstain cut-off could not fire on the
+fitted confidence curve, and fired on none of 394 scored cases.
 
 **A failed case has its own row too** (Andy, 2026-10-04): "Not coded" as the result, with a
 mark of its own, distinct from the abstain mark, because an abstain is the agent's judgement
@@ -206,13 +208,18 @@ The trail view shows one case as numbered steps, top to bottom, in plain type.
 after each read choice that read something, and the answer (decision
 [0122](../decisions/0122-h0-and-later-triggers.md)). Each belief block shows its first code, its
 cause statement at that point, its confidence, and whether it changed from the belief before.
-It does not show the explanation written for a non-expert (§12, item 4).
+It does not show the explanation written for a non-expert (§12, item 4). Confidence is shown
+as fitted, which S3.2's registered reading allows because the fit was calibrated on held-out
+cases (result 3 does not hold). The fitted values sit close together and barely separate right
+answers from wrong ones, so the trail shows the number plainly and makes no claim from it.
 
 **Actions sit between beliefs.**
 
 - A **read choice** lists every docket document as read, skipped, or scan only. For each
-  document it shows what the agent expected the document to show, and the belief after it shows
-  what changed. Expected against observed is the direct evidence of whether choosing mattered.
+  document it shows what the agent wrote about it, labelled **"the agent's note"**, never a
+  prediction, and the belief after it shows what changed. This follows S3.2's registered
+  reading: the agent's stated effects are descriptions, not predictions of change (result 4
+  not shown; `docs/results/s32-claims-heldout.txt`, on S3.2's branch until it merges).
 - The **coding step** lists each lookup the agent made in the code tables and past usage.
 
 **Cost runs beside every step**, with the case total at the top.
