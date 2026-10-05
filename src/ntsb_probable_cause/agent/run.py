@@ -51,7 +51,7 @@ from ntsb_probable_cause.model.client import ModelClient, Payload
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.budget import settle
-from ntsb_probable_cause.scoring.checkpass import HELDOUT_SAMPLE, S32_REGISTRATION
+from ntsb_probable_cause.scoring.checkpass import HELDOUT_SAMPLE, S32_REGISTRATION, S32_USED
 from ntsb_probable_cause.scoring.codes import CodeTables
 from ntsb_probable_cause.scoring.coding_stats import CodingStats, StatsName
 from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and_dirty
@@ -116,11 +116,13 @@ class _Case:
 
 
 def refuse_unregistered_heldout(sample: str, is_committed: Callable[[Path], bool]) -> None:
-    """Refuse arm C on ``heldout-400`` until S3.2's registration is committed (decision 0142).
+    """Refuse arm C on ``heldout-400`` until S3.2's registration is committed, and once used.
 
     The registration fixes the plan the held-out runs follow, so it is committed before any of
-    them (spec §4.3 item 5). Any other sample passes: development samples need nothing, and a
-    held-out sample other than ``heldout-400`` is refused by the harness elsewhere.
+    them (spec §4.3 item 5). The runs are made once (decision 0142): once ``S32_USED`` is
+    committed at S3.2's close-out, every new held-out arm C run is refused again. Any other
+    sample passes without asking git: development samples need nothing, and a held-out sample
+    other than ``heldout-400`` is refused by the harness elsewhere.
 
     Args:
         sample: the run's sample.
@@ -128,12 +130,20 @@ def refuse_unregistered_heldout(sample: str, is_committed: Callable[[Path], bool
             caller when it is called, so a test can replace it).
 
     Raises:
-        ConfigurationError: ``sample`` is ``heldout-400`` and the registration is not committed.
+        ConfigurationError: ``sample`` is ``heldout-400`` and the registration is not committed,
+            or the used mark is.
     """
-    if sample == HELDOUT_SAMPLE and not is_committed(S32_REGISTRATION):
+    if sample != HELDOUT_SAMPLE:
+        return
+    if not is_committed(S32_REGISTRATION):
         raise ConfigurationError(
             f"{HELDOUT_SAMPLE}: arm C runs on held-out only after {S32_REGISTRATION} is "
             "committed (decision 142)"
+        )
+    if is_committed(S32_USED):
+        raise ConfigurationError(
+            f"{HELDOUT_SAMPLE}: S3.2 used held-out once and it is closed: {S32_USED} is committed "
+            "(decision 0142); no further arm C run on held-out is admitted"
         )
 
 

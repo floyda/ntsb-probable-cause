@@ -342,6 +342,11 @@ ARM_C_WAY: Way = "luna"
 # post-pass and the ordering check) and arm C to ``heldout-400``. It is committed before any
 # held-out run, so the plan the runs follow is on record first.
 S32_REGISTRATION: Final = Path("docs/rounds/s3-registration.md")
+# Decision 0142: S3.2 makes its held-out runs once. This file is committed at S3.2's close-out,
+# after the six registered runs; from then both held-out gates (:func:`heldout_open` and
+# ``agent/run.py:refuse_unregistered_heldout``) refuse every new held-out run, so a registration
+# that stays committed does not keep ``heldout-400`` open.
+S32_USED: Final = Path("docs/rounds/s3-2-used.md")
 HELDOUT_SAMPLE: Final = "heldout-400"
 HELDOUT_WAY: Final = "luna"
 
@@ -358,8 +363,9 @@ def _committed(path: Path) -> bool:
 def heldout_open(record: RunRecord, *, is_committed: Callable[[Path], bool] = _committed) -> bool:
     """Whether a held-out run is one the post-pass and the check may now read.
 
-    True only for an arm B run on ``heldout-400`` once :data:`S32_REGISTRATION` is committed
-    (decision 0142). Every other held-out run, and every other arm on it, stays refused here:
+    True only for an arm B run on ``heldout-400`` once :data:`S32_REGISTRATION` is committed and
+    while :data:`S32_USED` is not (decision 0142: used once). Every other held-out run, and every
+    other arm on it, stays refused here:
     arm C on held-out is opened by its own runner (``agent/run.py``), and no other held-out
     sample has a registration. A development run never asks git.
 
@@ -368,9 +374,15 @@ def heldout_open(record: RunRecord, *, is_committed: Callable[[Path], bool] = _c
         is_committed: whether a path is committed; git's, unless a test gives another.
 
     Returns:
-        Whether the run is an arm B run on ``heldout-400`` with the registration committed.
+        Whether the run is an arm B run on ``heldout-400`` with the registration committed and
+        the used mark not.
     """
-    return record.sample == HELDOUT_SAMPLE and record.arm == "B" and is_committed(S32_REGISTRATION)
+    return (
+        record.sample == HELDOUT_SAMPLE
+        and record.arm == "B"
+        and is_committed(S32_REGISTRATION)
+        and not is_committed(S32_USED)
+    )
 
 
 def _refuse_unless_development(
@@ -434,8 +446,13 @@ def refuse_heldout_way(run_id: str, way: Way) -> None:
 
 
 def _registration_hint(record: RunRecord) -> str:
-    """What opens a refused ``heldout-400`` arm B run: its registration (decision 0142)."""
+    """Why a ``heldout-400`` arm B run is refused: no registration yet, or used once (0142)."""
     if record.sample == HELDOUT_SAMPLE and record.arm == "B":
+        if _committed(S32_USED):
+            return (
+                f"; S3.2 used {HELDOUT_SAMPLE} once and it is closed: {S32_USED} is committed "
+                "(decision 0142)"
+            )
         return f"; an arm B run on {HELDOUT_SAMPLE} opens once {S32_REGISTRATION} is committed"
     return ""
 

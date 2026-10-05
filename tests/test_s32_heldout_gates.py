@@ -22,7 +22,7 @@ from tests.test_occurrence_misses import _case
 
 from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.agent import armb
-from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner
+from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner, refuse_unregistered_heldout
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.model.client import ModelClient, RecordingFakeClient, tool_reply
 from ntsb_probable_cause.scoring import checkpass, ledger, samples
@@ -35,18 +35,24 @@ from ntsb_probable_cause.settings import Settings
 HELD = "heldout-400"
 CASE = "ERA21LA901"  # made up: no such case exists
 REGISTRATION = Path("docs/rounds/s3-registration.md")
+USED = Path("docs/rounds/s3-2-used.md")  # decision 0142: committed by the controller at close-out
 
 
 class Repo:
-    """The repository's state as the gates read it: the registration and a dirty tree."""
+    """The repository's state as the gates read it: registration, used mark, dirty tree."""
 
     def __init__(self) -> None:
         self.registered = False
+        self.used = False
         self.dirty = False
 
     def is_committed(self, path: Path, repo: Path = Path()) -> bool:
-        """Only the held-out registration is ever in doubt; every other file is committed."""
-        return self.registered if Path(path) == REGISTRATION else True
+        """The registration and the used mark are in doubt; every other file is committed."""
+        if Path(path) == REGISTRATION:
+            return self.registered
+        if Path(path) == USED:
+            return self.used
+        return True
 
     def commit_state(self, repo: Path = Path()) -> tuple[str, bool]:
         """A fixed short SHA and the fake dirty flag."""
@@ -591,3 +597,72 @@ def test_development_tools_and_check_leave_the_heldout_ledger_alone(
     assert main(["check", derived, "--way", "rule", "--stats", "s3"]) == 0
     assert (runs / f"{derived}-check-rule" / "run.jsonl").exists()
     assert not ledger_path.exists()
+
+
+# --------------------------------------------------------------------------------------------
+# 7: used once (decision 0142). Once docs/rounds/s3-2-used.md is committed, both gates close.
+# --------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("registered", "used", "opened"),
+    [(True, False, True), (True, True, False), (False, False, False), (False, True, False)],
+)
+def test_heldout_open_admits_a_registered_run_only_until_the_used_mark_is_committed(
+    tmp_path: Path, repo: Repo, registered: bool, used: bool, opened: bool
+) -> None:
+    repo.registered, repo.used = registered, used
+    record = _record(tmp_path, HELD, "B")
+    assert checkpass.heldout_open(record, is_committed=repo.is_committed) is opened
+
+
+def test_a_heldout_arm_b_run_after_use_is_refused_naming_the_mark_and_0142(
+    tmp_path: Path, repo: Repo
+) -> None:
+    repo.registered = repo.used = True
+    record = _record(tmp_path, HELD, "B")
+    with pytest.raises(ConfigurationError, match=r"s3-2-used\.md is committed \(decision 0142\)"):
+        checkpass._refuse_unless_development(record, [])
+
+
+def test_the_tools_command_is_refused_once_the_used_mark_is_committed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_fixtures: list[dict[str, object]],
+    repo: Repo,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source, runs, ledger_path = _answer_run(tmp_path, monkeypatch, record_fixtures)
+    repo.registered = repo.used = True
+    capsys.readouterr()
+    assert main(["tools", source, "--sync"], client_factory=_no_client) == 1
+    assert "s3-2-used.md" in capsys.readouterr().err
+    assert not (runs / armb.tools_id(source)).exists()
+    assert len(_ledger_rows(ledger_path)) == 1
+
+
+@pytest.mark.parametrize(
+    ("registered", "used", "refusal"),
+    [
+        (True, False, None),
+        (True, True, r"s3-2-used\.md is committed .*decision 0142"),
+        (False, False, r"s3-registration\.md"),
+        (False, True, r"s3-registration\.md"),
+    ],
+)
+def test_arm_c_on_heldout_is_refused_once_the_used_mark_is_committed(
+    repo: Repo, registered: bool, used: bool, refusal: str | None
+) -> None:
+    repo.registered, repo.used = registered, used
+    if refusal is None:
+        refuse_unregistered_heldout(HELD, repo.is_committed)
+        return
+    with pytest.raises(ConfigurationError, match=refusal):
+        refuse_unregistered_heldout(HELD, repo.is_committed)
+
+
+def test_a_development_arm_c_run_never_asks_about_the_used_mark() -> None:
+    def asked(_path: Path) -> bool:
+        raise AssertionError("a development run asks git nothing")
+
+    refuse_unregistered_heldout("dev-400", asked)

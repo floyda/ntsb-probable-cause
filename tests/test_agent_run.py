@@ -69,6 +69,7 @@ from ntsb_probable_cause.model.client import tool_reply as reply_calling
 from ntsb_probable_cause.records.marks import CaseMark
 from ntsb_probable_cause.scoring import claims, prompt
 from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
+from ntsb_probable_cause.scoring.checkpass import S32_USED
 from ntsb_probable_cause.scoring.records import (
     CONTEXT_FAILURE,
     CaseResult,
@@ -152,8 +153,9 @@ def _runner(  # noqa: PLR0913 -- every parameter is a seam a test needs.
     max_rounds: int = 40,
     ledger_path: Path | None = None,
     # S3.2 Task 6: a `heldout-400` run needs the registration committed; these tests are about
-    # the other rules, so the registration is committed unless a test says it is not.
-    is_committed: Callable[[Path], bool] = lambda _path: True,
+    # the other rules, so the registration is committed unless a test says it is not, and the
+    # used mark (decision 0142) is not.
+    is_committed: Callable[[Path], bool] = lambda path: path != S32_USED,
 ) -> AgentRunner:
     return AgentRunner(
         client if client is not None else ScriptedClient([]),
