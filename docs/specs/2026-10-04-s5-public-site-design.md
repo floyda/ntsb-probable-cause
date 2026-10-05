@@ -579,8 +579,10 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
      early is what makes this possible: it holds when each case closed and when its docket
      appeared.
 7. **Motion.** Settled: each stop animates in on arrival, within the four limits of §3.1. No
-   scrolling text. Open: hiding the next stop until it arrives, which failed on a phone in the
-   first attempt (§3.1). The mock-ups here are sketches of content and order; none has been
+   scrolling text. Hiding the next stop until it arrives, which failed on a phone in the first
+   attempt (§3.1), is set aside for now (Andy, 2026-10-05): the site stays with stops that
+   animate in, with all content present for anything that does not scroll. Andy will find an
+   example site that does the effect well, and it is revisited from that. The mock-ups here are sketches of content and order; none has been
    tested across devices, and the built site needs proper front-end work.
 8. **Reading the board without sight.** Dot-matrix letters need a plain-text equivalent for
    screen readers, and enough contrast.
