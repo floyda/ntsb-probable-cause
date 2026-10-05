@@ -32,11 +32,12 @@ Refusals, in this order, before any case is read
     5. Each case file holds held-out cases only, and the whole of ``heldout-400``.
 
 What it prints
-    Nine sections, in this order: provenance (with each run's ledger row); the verdict (the loop
-    minus arm B's final run on top-1, its outcome, the billed cost of each arm, the band, the
-    work done, ``warranted`` and the headline); the secondary readings (top-3 and finding
-    recall@10); where the saving comes from; the four results; the abstain reading; the
-    no-docket ablation and arm A; the nine predictions; and the reading (spec §10).
+    Nine sections, in this order: provenance (with each run's ledger row, and each held-out
+    run's failures by kind); the verdict (the loop minus arm B's final run on top-1, its outcome,
+    the billed cost of each arm, the band, the work done in prompt and reply tokens,
+    ``warranted`` and the headline); the secondary readings (top-3 and finding recall@10); where
+    the saving comes from; the four results; the abstain reading; the no-docket ablation, each
+    arm's own top-1 and arm A; the nine predictions; and the reading (spec §10).
 
 Usage
     uv run python -m scripts.s32_claims --loop RUN --nodocket RUN --arm-a RUN --armb-answer RUN
@@ -45,6 +46,7 @@ Usage
 
 import argparse
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,7 +60,12 @@ from ntsb_probable_cause.scoring.calibration import ABSTAIN_BELOW, GroupCheck
 from ntsb_probable_cause.scoring.claims import Billed, CostBand, Metric, Outcome, Paired
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.metrics import bootstrap_mean
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
+from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
+    CaseResult,
+    RunRecord,
+    read_jsonl,
+)
 from ntsb_probable_cause.settings import Settings
 from scripts._s3_runs import Run, refuse, refuse_unclean_results, write_result
 from scripts.s3_noise_floor import Gate, format_gate
@@ -100,6 +107,15 @@ WAY: Final = "luna"
 FORMAT_GATE_MAX: Final = 8  # prediction 9 (spec §12)
 SMALL_DROP: Final = -0.10  # prediction 5: ten points
 RARE: Final = 20  # "fewer than 5%" is 20 * part < whole
+GUARD: Final = "guard refusals"
+CAP: Final = "cap"
+OTHER: Final = "other"
+# The loop's and the tool post-pass's own stop reason, ``failed: <step>`` (agent/loop.py,
+# agent/armb.py): a step name, never a case number or a reply's text.
+_FAILED_STEP: Final = re.compile(r"failed: [a-z0-9_]+")
+# Arm B's answer run records a document left out at the context ceiling as
+# ``<index>: context, <N> tokens`` (scoring/runner.py, decision 152).
+_CONTEXT_DOCUMENT: Final = re.compile(r"\d+: context, ")
 _METRICS: Final[tuple[tuple[Metric, str], ...]] = (
     ("top1", "top-1"),
     ("top3", "top-3"),
@@ -349,6 +365,52 @@ def _reading_text(reading: Reading) -> str:
     return f"{points(reading.paired)}; {beside}"
 
 
+Level = tuple[float, float, float, int]
+"""One arm's own top-1: the mean, its 95% bootstrap interval, and the cases it rests on."""
+
+
+def level(cases: Sequence[CaseResult]) -> Level:
+    """One arm's own top-1 under the failure rule (spec §7.3), alone, not paired.
+
+    Every failure counts as wrong; a guard refusal is left out of this arm (in a paired
+    reading it leaves both).
+    """
+    values = list(claims.per_case(cases, "top1").values())
+    return (*bootstrap_mean(values), len(values))
+
+
+def failure_kinds(cases: Sequence[CaseResult]) -> dict[str, int]:
+    """Failed cases counted by kind, never naming a case or quoting a message.
+
+    The kinds are guard refusals (``claims.is_guard_refusal``), each ``failed: <step>`` the loop
+    or the tool post-pass wrote, ``cap``, ``cap: context`` (decision 152) and other. All but the
+    steps are always present, at zero when none; the steps come in their alphabetical order.
+    """
+    steps: dict[str, int] = {}
+    fixed = dict.fromkeys((GUARD, CAP, CONTEXT_FAILURE, OTHER), 0)
+    for case in cases:
+        failure = case.failure
+        if failure is None:
+            continue
+        if claims.is_guard_refusal(case):
+            fixed[GUARD] += 1
+        elif failure in (CAP, CONTEXT_FAILURE):
+            fixed[failure] += 1
+        elif _FAILED_STEP.fullmatch(failure):
+            steps[failure] = steps.get(failure, 0) + 1
+        else:
+            fixed[OTHER] += 1
+    return {GUARD: fixed[GUARD], **dict(sorted(steps.items()))} | {
+        k: fixed[k] for k in (CAP, CONTEXT_FAILURE, OTHER)
+    }
+
+
+def context_left_out(cases: Sequence[CaseResult]) -> tuple[int, int]:
+    """Documents arm B left out at the context ceiling, and the cases that had one (152)."""
+    per_case = [sum(1 for d in c.documents_not_read if _CONTEXT_DOCUMENT.match(d)) for c in cases]
+    return sum(per_case), sum(1 for n in per_case if n)
+
+
 @dataclass(frozen=True)
 class Abstain:
     """The abstain cut-off applied to the loop's scored answers (spec §8.4)."""
@@ -381,7 +443,8 @@ class Figures:
     floor: float
     abstain: Abstain
     nodocket: dict[Metric, Reading]
-    arm_a: tuple[float, float, float, int]
+    arm_a: Level
+    levels: tuple[tuple[str, Level], ...]
     gate: Gate
     p6: Prediction6
 
@@ -413,7 +476,6 @@ def measure(held: Held, ablation: Run, noise: Sequence[Run]) -> Figures:
     fired = [right for _, p, right in answers if calibration.abstains(p)]
     kept = [right for _, p, right in answers if not calibration.abstains(p)]
     tables = load_tables()
-    values = list(claims.per_case(held.arm_a.cases, "top1").values())
     return Figures(
         reading=reading,
         outcome=outcome,
@@ -433,7 +495,12 @@ def measure(held: Held, ablation: Run, noise: Sequence[Run]) -> Figures:
         floor=curve.p(0.0),
         abstain=Abstain(len(answers), len(fired), sum(fired), sum(kept)),
         nodocket={metric: read_pair(held.nodocket.cases, loop, metric) for metric, _ in _METRICS},
-        arm_a=(*bootstrap_mean(values), len(values)),
+        arm_a=level(held.arm_a.cases),
+        levels=(
+            ("the loop", level(loop)),
+            ("arm B (final)", level(final)),
+            ("the loop without the docket", level(held.nodocket.cases)),
+        ),
         gate=format_gate(loop, held.loop.calls),
         p6=prediction6(ablation.cases, [r.cases for r in noise]),
     )
@@ -455,7 +522,16 @@ def _usd(value: float) -> str:
 def _tokens(label: str, calls: Sequence[AgentCall]) -> str:
     prompt = sum(c.prompt_tokens for c in calls)
     cached = sum(c.cached_tokens or 0 for c in calls)
-    return f"{label}: {prompt} prompt tokens, {cached} cached"
+    reply = sum(c.completion_tokens for c in calls)
+    return f"{label}: {prompt} prompt tokens, {cached} cached, {reply} reply tokens"
+
+
+def _step_tokens(label: str, cases: Sequence[CaseResult], tool: str | None, note: str) -> str:
+    """The prompt and reply tokens a run's steps record; ``tool`` keeps that tool's steps only."""
+    steps = [s for c in cases for s in c.steps if tool is None or s.tool == tool]
+    prompt = sum(s.prompt_tokens for s in steps)
+    reply = sum(s.completion_tokens for s in steps)
+    return f"{label}: {prompt} prompt tokens, {reply} reply tokens ({note})"
 
 
 def _run_names(held: Held) -> list[tuple[str, Run]]:
@@ -483,6 +559,26 @@ def provenance_lines(held: Held, ablation: Run, noise: Sequence[Run]) -> list[st
         ("noise run b (dev-400)", noise[1]),
     ):
         lines += [f"[{name}]", report.provenance(run.record).rstrip()]
+    return [*lines, *failure_lines(held)]
+
+
+def failure_lines(held: Held) -> list[str]:
+    """Each held-out run's failures by kind, and arm B's documents left out at the ceiling."""
+    lines = [
+        "failures by kind (a guard refusal leaves the case out of both arms; every other "
+        "failure counts as wrong; spec §7.3):"
+    ]
+    for name, run in _run_names(held):
+        kinds = failure_kinds(run.cases)
+        detail = ", ".join(f"{kind} {count}" for kind, count in kinds.items())
+        line = f"- {name}: {sum(kinds.values())} of {len(run.cases)} failed: {detail}"
+        if run is held.answer:
+            documents, cases = context_left_out(run.cases)
+            line += (
+                "; documents left out at the context ceiling (recorded context): "
+                f"{documents} in {cases} case{'' if cases == 1 else 's'}"
+            )
+        lines.append(line)
     return lines
 
 
@@ -526,10 +622,18 @@ def verdict_lines(held: Held, fig: Figures) -> list[str]:
         *_billing_notes(fig),
         f"the loop's bill against arm B's: {change:+.1%}",
         f"cost band: {fig.band} (lower or greater: more than 10% below or above arm B's bill)",
-        "work done, from the trails:",
+        "work done (printed beside, never deciding; spec §6 rule 3):",
         _tokens("loop", held.loop.calls),
+        _step_tokens(
+            "arm B answer",
+            held.answer.cases,
+            None,
+            "the steps of the cases that answered; a failed case records no step",
+        ),
         _tokens("arm B tool post-pass", held.tools.calls),
-        "arm B's answer and check runs keep no trail: their computed cost stands for their work",
+        _step_tokens(
+            "arm B ordering check", held.check.cases, checkpass.CHECK_TOOL, "its own steps"
+        ),
         f"warranted: {'yes' if fig.warranted else 'no'}",
         claims.headline(fig.outcome, fig.band),
     ]
@@ -563,6 +667,10 @@ def saving_lines(fig: Figures) -> list[str]:
         f"(-work) {-split.work_usd:+.4f} USD + cache discounts (loop discount - arm B "
         f"discount) {split.loop_discount_usd - split.armb_discount_usd:+.4f} USD"
     )
+    lines.append(
+        'a negative "reading less" figure means the loop did more list-price work than arm B '
+        "(not a saving but a cost)"
+    )
     if fig.band == "lower":
         lines.append(
             f"the loop's saving comes from reading less: {-split.work_usd:+.4f} USD, and from "
@@ -587,9 +695,17 @@ def _result2_finding(top1: Outcome, band: CostBand) -> str:
 
 
 def _result3_finding(calibrated: bool) -> str:
-    """What was found, in words: result 3 holds when the curve is *not* calibrated."""
-    state = "calibrated" if calibrated else "not calibrated"
-    return f"the fitted confidence is {state} on held-out"
+    """What was found, in words: result 3 holds when the curve fails the three-group test.
+
+    Passing the test does not show the curve is calibrated, only that it was not shown to be
+    miscalibrated; the words say so.
+    """
+    state = (
+        "passes the three-group test (not shown to be miscalibrated)"
+        if calibrated
+        else "fails the three-group test"
+    )
+    return f"the fitted confidence {state} on held-out"
 
 
 def results_lines(fig: Figures) -> list[str]:
@@ -622,7 +738,12 @@ def results_lines(fig: Figures) -> list[str]:
         )
     diff, low, high = fig.sorting
     lines += [
-        f"- calibrated: {'yes' if fig.calibrated else 'no'} (every group inside its interval)",
+        "- three-group test: "
+        + (
+            "passes (every group inside its interval)"
+            if fig.calibrated
+            else "fails (a group outside its interval)"
+        ),
         "- sorting (share right in the high group minus the low group): "
         f"{diff * 100:+.1f} points [{low * 100:+.1f}, {high * 100:+.1f}] (reported, not tested)",
         "result 4: not shown (spec §9.4)",
@@ -630,7 +751,8 @@ def results_lines(fig: Figures) -> list[str]:
         f"- naming an event or a finding category, any route (an upper bound; the "
         f"category-leaf route is loose): {fig.named[0]} of {fig.named[1]}",
         f"- by route: event label (strict) {routes.event_label}, category leaf (loose) "
-        f"{routes.category_leaf}, event code {routes.event_code}",
+        f"{routes.category_leaf}, event code {routes.event_code} (an effect can match more "
+        "than one route)",
     ]
     return lines
 
@@ -663,11 +785,17 @@ def ablation_lines(fig: Figures) -> list[str]:
         f"no-docket - loop, {name}: {_reading_text(fig.nodocket[metric])}"
         for metric, name in _METRICS
     ]
+    lines += [_level_line(name, value) for name, value in fig.levels]
     lines.append(
         f"arm A top-1: {mean:.1%} [{low:.1%}, {high:.1%}], n={n} (start facts only; decides "
         "nothing)"
     )
     return lines
+
+
+def _level_line(name: str, value: Level) -> str:
+    mean, low, high, n = value
+    return f"{name} top-1: {mean:.1%} [{low:.1%}, {high:.1%}], n={n} (a failure counts as wrong)"
 
 
 def _verdict(met: bool) -> str:
@@ -717,12 +845,26 @@ def prediction_lines(fig: Figures) -> list[str]:
         f"P7: {_verdict(p7)} -- result 1: reads every offered document on more than half "
         f"({_share(counts.read_everything, counts.with_offer)}) and uses arm B's exact order on "
         f"fewer than 5% ({_share(counts.fixed_order, counts.counted)})",
-        f"P8: {_verdict(p8)} -- calibration passes ({'yes' if fig.calibrated else 'no'}) and "
-        f"the abstain cut-off fires on fewer than 5% of scored cases "
-        f"({fig.abstain.fired} of {fig.abstain.scored})",
+        f"P8: {_verdict(p8)} -- the three-group test passes ({'yes' if fig.calibrated else 'no'}) "
+        f"and the abstain cut-off fires on fewer than 5% of scored cases "
+        f"({fig.abstain.fired} of {fig.abstain.scored}){_by_construction(fig.floor)}",
         f"P9: {_verdict(p9)} -- format: at most {FORMAT_GATE_MAX} cases fail for format or tool "
         f"reasons in the loop run ({fig.gate.count} of {fig.gate.cases})",
     ]
+
+
+def _by_construction(floor: float) -> str:
+    """Prediction 8's disclosure: a curve whose lowest value is not below the cut-off never fires.
+
+    The curve rises (``calibration.check_rising``), so its lowest value is ``p(0)``.
+    """
+    if floor < ABSTAIN_BELOW:
+        return ""
+    where = "above" if floor > ABSTAIN_BELOW else "at"
+    return (
+        f" (the abstain half is met by construction: the curve's lowest value is {floor:.3f}, "
+        f"{where} the {ABSTAIN_BELOW} cut-off; registration disclosure)"
+    )
 
 
 def reading_lines(fig: Figures) -> list[str]:

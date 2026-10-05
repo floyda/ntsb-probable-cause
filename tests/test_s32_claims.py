@@ -32,7 +32,7 @@ from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.scoring import calibration, samples
 from ntsb_probable_cause.scoring.calibration import Curve
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
+from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
 
 FROZEN = "s3-v1+ge17fecdc66ec+p947fac1c86a4"
 ARM_A = "20261010T000000-abc1234-heldout-400-A"
@@ -365,7 +365,7 @@ def test_tokens_are_summed_from_the_trails(runs: Path, capsys: pytest.CaptureFix
     out = run_claims(capsys)
     assert "loop: 1500 prompt tokens, 600 cached" in out
     assert "arm B tool post-pass: 700 prompt tokens, 500 cached" in out
-    assert "answer and check runs keep no trail" in out
+    assert "arm B answer: 0 prompt tokens, 0 reply tokens" in out
 
 
 def test_the_saving_split_is_always_figures_and_explained_when_lower(
@@ -567,9 +567,10 @@ def test_result_3_line_states_the_finding_when_the_curve_is_calibrated(
     build(runs, World(loop_hits=alternate, armb_hits=alternate))
     lines = _result_lines(run_claims(capsys), 3)
     assert lines == [
-        "result 3: does not hold (the fitted confidence is calibrated on held-out; "
-        "spec §9.3, §8.3)",
-        "result 3: does not hold (the fitted confidence is calibrated on held-out)",
+        "result 3: does not hold (the fitted confidence passes the three-group test (not shown "
+        "to be miscalibrated) on held-out; spec §9.3, §8.3)",
+        "result 3: does not hold (the fitted confidence passes the three-group test (not shown "
+        "to be miscalibrated) on held-out)",
     ]
 
 
@@ -580,8 +581,9 @@ def test_result_3_line_states_the_finding_when_the_curve_is_not_calibrated(
     build(runs, World(loop_hits=NONE, armb_hits=NONE))
     lines = _result_lines(run_claims(capsys), 3)
     assert lines == [
-        "result 3: holds (the fitted confidence is not calibrated on held-out; spec §9.3, §8.3)",
-        "result 3: holds (the fitted confidence is not calibrated on held-out)",
+        "result 3: holds (the fitted confidence fails the three-group test on held-out; "
+        "spec §9.3, §8.3)",
+        "result 3: holds (the fitted confidence fails the three-group test on held-out)",
     ]
 
 
@@ -619,7 +621,7 @@ def test_result_3_prints_each_group_and_the_sorting_figure(
     for group in ("low", "middle", "high"):
         assert f"group {group}:" in out
     assert "sorting (share right in the high group minus the low group)" in out
-    assert "calibrated:" in out
+    assert "three-group test:" in out
 
 
 def test_result_4_is_not_shown_and_counts_the_routes(
@@ -1008,3 +1010,190 @@ def test_the_format_gate_line_names_the_runs_own_sample(
     assert "format gate, run loop: PASS -- 0 of 20 cases failed" in out
     assert "at most 8 of 20 pass" in out
     assert "dev-400's 401" not in out.split("## 8.")[1]
+
+
+# --------------------------------------------------------------------------------------------
+# Final review (2026-10-05): failures by kind, each arm's level, tokens, the reworded lines
+# --------------------------------------------------------------------------------------------
+
+
+def _rewrite_cases(runs: Path, run_id: str, change: dict[int, dict[str, object]]) -> None:
+    """Rewrite some cases of a built run folder; ``change`` maps a case's place to its fields."""
+    path = runs / run_id / "cases.jsonl"
+    cases = read_jsonl(path, CaseResult)
+    path.unlink()
+    write_jsonl(path, [c.model_copy(update=change.get(n, {})) for n, c in enumerate(cases)])
+
+
+def test_failures_are_printed_by_kind_for_every_arm(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loop_failures = {
+        0: "failed: coding",
+        1: "failed: coding",
+        2: "failed: rounds",
+        3: "cap",
+        4: "cap: context",
+        5: "failed: leak",
+        6: f"schema: {_IDS[6]} reply is not a Hypothesis",
+    }
+    build(
+        runs,
+        World(
+            loop_failures=loop_failures,
+            armb_failures={0: f"leak: {_IDS[0]}: verbatim from probable_cause"},
+        ),
+    )
+    out = run_claims(capsys)
+    assert _line(out, "- the loop: ") == (
+        "- the loop: 7 of 20 failed: guard refusals 1, failed: coding 2, failed: rounds 1, "
+        "cap 1, cap: context 1, other 1"
+    )
+    assert _line(out, "- arm B ordering check: ") == (
+        "- arm B ordering check: 1 of 20 failed: guard refusals 1, cap 0, cap: context 0, other 0"
+    )
+    assert _line(out, "- arm A: ").startswith("- arm A: 0 of 20 failed: guard refusals 0, cap 0")
+    for name in ("arm B tool post-pass", "the loop without the docket"):
+        assert _line(out, f"- {name}: ").startswith(f"- {name}: 0 of 20 failed")
+    assert "ZQX" not in out
+
+
+def test_arm_b_answer_prints_the_documents_left_out_at_the_context_ceiling(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs)
+    _rewrite_cases(
+        runs,
+        ANSWER,
+        {
+            0: {"documents_not_read": ("3: context, 90000 tokens", "4: context, 1000 tokens")},
+            1: {"documents_not_read": ("2: cap, 5000 tokens",)},
+            2: {"documents_not_read": ("7: context, 80000 tokens",), "failure": "cap: context"},
+        },
+    )
+    out = run_claims(capsys)
+    line = _line(out, "- arm B answer: ")
+    assert line.startswith(
+        "- arm B answer: 1 of 20 failed: guard refusals 0, cap 0, cap: context 1"
+    )
+    assert line.endswith(
+        "; documents left out at the context ceiling (recorded context): 3 in 2 cases"
+    )
+    assert "ZQX" not in out
+
+
+def test_each_arms_own_top1_level_is_printed_under_the_failure_rule(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(
+        runs,
+        World(
+            loop_hits=ALL,
+            loop_failures={0: "failed: coding", 1: "failed: leak"},
+            armb_hits=NONE,
+            nodocket_hits=(True,) * 5 + (False,) * 15,
+        ),
+    )
+    out = run_claims(capsys)
+    # the loop: the guard refusal is left out (19 cases), the other failure counts as wrong
+    assert _line(out, "the loop top-1: ").startswith("the loop top-1: 94.7% [")
+    assert _line(out, "the loop top-1: ").endswith("], n=19 (a failure counts as wrong)")
+    assert _line(out, "arm B (final) top-1: ").startswith("arm B (final) top-1: 0.0% [0.0%, 0.0%]")
+    assert "n=20" in _line(out, "arm B (final) top-1: ")
+    assert _line(out, "the loop without the docket top-1: ").startswith(
+        "the loop without the docket top-1: 25.0% ["
+    )
+    assert "ZQX" not in out
+
+
+def test_tokens_are_printed_beside_cost_for_every_arm_that_records_them(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = [
+        _call(_IDS[0], "describe_codes", prompt_tokens=1000, cached=600),
+        _call(_IDS[1], "describe_codes", prompt_tokens=500, cached=None),
+    ]
+    build(runs, World(loop_calls=calls))
+    answer = read_jsonl(runs / ANSWER / "cases.jsonl", CaseResult)
+    step = answer[0].steps[0].model_copy(update={"prompt_tokens": 3000, "completion_tokens": 400})
+    check = step.model_copy(update={"tool": "ordering_check", "prompt_tokens": 90})
+    _rewrite_cases(
+        runs,
+        ANSWER,
+        {0: {"steps": (step,)}, 1: {"steps": (step,)}},
+    )
+    _rewrite_cases(runs, CHECK, {0: {"steps": (step, check)}})
+    out = run_claims(capsys)
+    # each trail call records 10 reply tokens (tests/test_s3_noise_floor.py's _call)
+    assert "loop: 1500 prompt tokens, 600 cached, 20 reply tokens" in out
+    assert "arm B tool post-pass: 700 prompt tokens, 500 cached, 10 reply tokens" in out
+    assert (
+        "arm B answer: 6000 prompt tokens, 800 reply tokens (the steps of the cases that "
+        "answered; a failed case records no step)"
+    ) in out
+    assert "arm B ordering check: 90 prompt tokens, 400 reply tokens (its own steps)" in out
+
+
+def test_prediction_8_says_the_abstain_half_is_met_by_construction_when_it_cannot_fire(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    curve = Curve(-1.5, 1.0)  # p(0) = 0.182, above the cut-off
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: curve)
+    build(runs)
+    line = _prediction(run_claims(capsys), 8)
+    assert line.endswith(
+        f"(the abstain half is met by construction: the curve's lowest value is "
+        f"{curve.p(0.0):.3f}, above the 0.164 cut-off; registration disclosure)"
+    )
+    assert "0.182" in line
+
+
+def test_prediction_8_says_nothing_by_construction_when_the_cut_off_can_fire(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: Curve(-3.0, 6.0))
+    build(runs)
+    assert "by construction" not in _prediction(run_claims(capsys), 8)
+
+
+def test_result_3_names_the_three_group_test_not_calibration(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: Curve(0.0, 0.0))
+    alternate = (True, False) * 10
+    build(runs, World(loop_hits=alternate, armb_hits=alternate))
+    out = run_claims(capsys)
+    assert "passes the three-group test (not shown to be miscalibrated)" in out
+    assert "is calibrated" not in out
+    assert "- three-group test: passes (every group inside its interval)" in out
+
+
+def test_result_3_says_the_curve_fails_the_three_group_test(
+    runs: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(calibration, "load_curve", lambda path=None: Curve(0.0, 0.0))
+    build(runs, World(loop_hits=NONE, armb_hits=NONE))
+    out = run_claims(capsys)
+    assert "fails the three-group test" in out
+    assert "not calibrated" not in out
+    assert "- three-group test: fails (a group outside its interval)" in out
+
+
+@pytest.mark.parametrize("loop_cost", [(0.5, 2.0), (1.0, 2.0), (1.5, 2.0)])
+def test_the_saving_split_always_says_what_a_negative_reading_less_figure_means(
+    runs: Path, capsys: pytest.CaptureFixture[str], loop_cost: tuple[float, float]
+) -> None:
+    build(runs, World(loop_cost=loop_cost))
+    out = run_claims(capsys)
+    assert (
+        'a negative "reading less" figure means the loop did more list-price work than arm B '
+        "(not a saving but a cost)"
+    ) in out
+
+
+def test_result_4_route_line_says_an_effect_can_match_more_than_one_route(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs)
+    out = run_claims(capsys)
+    assert _line(out, "- by route: ").endswith("(an effect can match more than one route)")
