@@ -17,8 +17,18 @@ negative results, and legible to a non-expert (`ntsb-spike/docs/demo-criteria.md
 spike's folder).
 
 **Success is not a high score.** The project is an experiment in how to find out whether an
-agent loop earns its keep. At the time of writing the loop is level with the fixed pipeline on
-the first code. The site shows that as the present state of an honest experiment.
+agent loop earns its keep. S3.2's registered held-out reading is that the loop was worse than
+the fixed pipeline, at an equal bill (`docs/results/s32-claims-heldout.txt`, on S3.2's branch
+until it merges). The site shows that as the present state of an honest experiment.
+
+**The board runs the loop, as version 1** (Andy, 2026-10-05). The fixed pipeline measured
+better, and running it on the board was considered and declined. The reason: the loop is the
+thing being improved, and version 1 was given exactly the evidence and tools the fixed pipeline
+had, so its result is a fair starting point, not a handicap. The page says so in plain words:
+the board runs version 1 of the agent, it measured worse than a simpler fixed method, and later
+versions are measured too. A later version replaces version 1 on the board when it beats
+version 1 in a registered comparison (§12, item 13). Every version is also measured against
+the fixed method, which stays the bar for calling the loop warranted (§7.3).
 
 ## 2. The reader
 
@@ -73,9 +83,16 @@ to bottom. Each stop is a short form of a page in the table above and links to t
 A slim rail of the six stops stays in view and marks the stop being read: at the left on a
 wide screen, across the top on a phone.
 
-**The caveat sits in stop 1, above the board.** It says plainly that the agent agrees with the
-investigator on a minority of cases and that a simpler method does about as well. This meets
-the roadmap's rule that caveats come before results, without burying the board.
+**The caveat sits in stop 1, above the board.** This meets the roadmap's rule that caveats
+come before results, without burying the board. Proposed wording, written on 2026-10-05 after
+S3.2's held-out reading was known, so it is not a registered prediction; its numbers are to be
+taken from `docs/results/s32-claims-heldout.txt` when S3.2 merges:
+
+> Read this first. The board runs version 1 of this agent. It reads the same evidence, with the
+> same tools, as a simpler fixed method, and on cases it had never seen it did worse: its first
+> code matched the investigator's on about one case in four, and the fixed method matched 9.5
+> percentage points more often. It runs here because it is the version being improved, and each
+> new version is measured against that fixed method first. This site is the record of how.
 
 **Each stop animates in as the reader reaches it** (Andy, 2026-10-04). The parts of a stop
 rise into place; the board's rows turn over one after another, as a terminal display does; the
@@ -258,8 +275,12 @@ that reads every readable document; the loop. Each step shows its score and its 
 sentence beneath states the present result.
 
 All four steps must come from **one sample on one model**, or the figure compares unlike
-things. S3.2's held-out runs provide that. The ladder's shape is fixed now; its numbers wait
-for S3.2. The page works whichever way S3.2 comes out.
+things. S3.2's held-out runs provide that (`docs/results/s32-claims-heldout.txt`, all on
+`heldout-400` on GPT-6 Luna). The loop's step sits **below** the fixed pipeline's, and the
+ladder draws it that way: the figure's point is that a step up in machinery is not a step up
+in result. Its cost column shows two figures for each step, billed and at list price, because
+the loop's bill equals the pipeline's only through the provider's discount on cached prompts;
+at list price it does about two-thirds more work.
 
 ### 7.2 Eight questions
 
@@ -285,9 +306,11 @@ file. Dead ends stay in.
    (`docs/results/s3-finding-consistency-dev.txt`). The page repeats that file's own caution:
    this does not say the NTSB was inconsistent, because one sentence can follow accidents whose
    sequences differ. It bounds what any coder reading only the sentence could score.
-7. **Does choosing what to read beat reading everything?** On development cases the loop is
-   level on the first code, behind on the top three, at a higher cost
-   (`docs/results/s3-armc-a-vs-s3-armb-full-dev.txt`). S3.2 decides.
+7. **Does choosing what to read beat reading everything?** No. On held-out cases the loop
+   was worse on the first code, the top three and the findings, at an equal bill that it
+   reached only through cached-prompt discounts (`docs/results/s32-claims-heldout.txt`).
+   Reading the docket still mattered: without it the loop lost more. The loop read every
+   offered document in most cases, and skipped most often on large fatal dockets.
 8. **Does it hold on newly closed cases?** The board answers this in public.
 
 ### 7.3 What could come next
@@ -456,8 +479,8 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 1. **The author.** Settled: one line at the foot, linking to Andy's profile page (§3.1).
 2. **A three-minute route.** Settled: the first page is one scrolling route of six stops
    (§3.1).
-3. **Caveats before results.** Proposed in §3.1: the caveat sits in stop 1, above the board.
-   Its exact wording waits for S3.2's result.
+3. **Caveats before results.** The caveat sits in stop 1, above the board; its proposed
+   wording is in §3.1, for Andy's approval, with numbers filled from S3.2's results file.
 4. **Terms for a non-expert.** Settled (Andy, 2026-10-04): plain labels first, the NTSB's
    term second in small type, for example "What happened · NTSB occurrence codes", "Why it
    happened · NTSB findings", "The case's evidence files · the docket". Full definitions sit
@@ -563,6 +586,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
     (§12, item 6).
 13. What the site puts forward about a case: the NTSB case number, never the registration;
     plain labels before NTSB terms; counts, not percentages, beside the board (§12).
+14. The board runs the loop as version 1, stated as such, although the fixed pipeline measured
+    better on held-out cases (§1).
 
 ## 16. Open questions for Andy
 
