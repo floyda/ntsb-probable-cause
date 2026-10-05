@@ -221,7 +221,11 @@ Choosing a board row opens the case beneath the board, in plain type. It has fiv
 5. **Why it happened.** Findings both named, findings only the NTSB named, findings only the
    agent named.
 
-It ends with links to the trail view and to the NTSB's own page for the case.
+It ends with links to the trail view and to the NTSB's own page for the case, and with **one
+plain line saying the verdict was withheld** (Andy, 2026-10-05), for example: "Coded 2 Oct
+2026, 03:40 UTC, from the docket as published at closure. The NTSB's cause and codes were
+withheld from the agent. Code version 4f2a9c1." The code version links to that commit, and the
+line links to the split diagram on the Methods page (§9). No evidence fingerprint is shown.
 
 ## 6. The trail view
 
@@ -428,6 +432,29 @@ scrolling route, so a link from any page lands beside the entries around it:
    are among the strongest honesty signals the site has.
 6. **History.** S1's one-shot ceiling and S2.4's bars, which the ladder replaced.
 7. **Limits.** The run-twice band, the per-case cost cap, failure counts.
+7a. **How the verdict is withheld**, with a diagram of the split (Andy, 2026-10-05), reached
+   from the line on every opened case (§5). It draws the real mechanism of decisions 0013,
+   0016 and 0077, in plain words:
+
+   ```mermaid
+   flowchart LR
+     R["One case: the NTSB record and its docket"] --> S{"The split, one function"}
+     S -->|evidence| E["Recorded facts; docket documents classed as evidence"]
+     S -->|synthesis| Y["The investigators' factual and analysis write-ups; docket documents classed as synthesis"]
+     S -->|verdict| V["Probable cause; occurrence and finding codes"]
+     E --> G["The guard: five checks"] --> A["The agent"]
+     Y --> W1["Withheld"]
+     V --> W2["Withheld until the agent has answered"]
+     A --> C["Scoring: the answer against the verdict"]
+     W2 --> C
+   ```
+
+   Beneath it, the guard's five checks in one line each: only declared fields are read; the
+   evidence has a fixed shape; no field comes from a withheld part of the record; a test
+   checks every value against its source; and a final check refuses the case if any verdict
+   sentence or code appears in what the agent would see, while a sentence shared with the
+   analysis write-up only marks the case. A last line says a test deliberately breaks the
+   split to prove the checks catch it.
 8. **Glossary**, with the NTSB terms that the other pages show in small type (§12, item 4).
 
 Closed-case numbers from the board and held-out numbers from evaluation never share a figure
@@ -589,8 +616,12 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
   site shows no answers locked before the verdict. Whether S4 still runs and locks early
   answers is S4's decision; the count argues it is low value. A stored answer that cannot be
   edited afterwards is still worth having for every case, as proof that rows were not changed
-  later, though it no longer proves anything about not knowing the verdict. S4's own
-  specification decides how the site can show that the verdict was withheld.
+  later, though it no longer proves anything about not knowing the verdict. The site shows a
+  withheld-verdict line on each opened case (§5); S4 supplies its date, time and commit.
+- **S4: the model's training cut-off.** A model can only have seen a verdict in training if
+  the case closed before its training data was gathered. Cases closing now are likely after
+  GPT-6 Luna's cut-off, which makes the live board the cleanest test the project has; this
+  has not been verified. S4 records the model's published cut-off so the site can state it.
 - **S4 or S5: document titles.** The trail view needs each document's title, joined from the
   docket listing by position. A document classed as synthesis is shown as withheld, without
   its text.
