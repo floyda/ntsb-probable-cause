@@ -1,7 +1,7 @@
 # S3.2 — The claims: design
 
 *Drafted 2026-10-03 from a design session with Andy, the same day S3.1 closed (pull request #21,
-release v0.8.0, merge commit `1c79dde`). Status: Implemented (approved 2026-10-03, Andy: "all looks good"; As-built 2026-10-05). This is the
+release v0.8.0, merge commit `1c79dde`). Status: Implemented (2026-10-05, pull request #27). This is the
 specification for sub-stage S3.2 of
 [the S3 specification](2026-09-30-s3-agent-loop-design.md) (§3, §11), which holds the design S3
 shares and S3.1 in full. The implementation plan is written from this document separately, in
@@ -737,7 +737,12 @@ committed results file.
 - **Scripts and readings**: `s32_cap_check`, `s32_noise`, `s32_calibration`, `s32_behaviour`,
   `s32_context_ratio`, `s32_coding_ablation`, `s32_claims` (shared loader `scripts/_s3_runs.py`),
   with their results files; `scripts/paid_run.sh` and the `s32-*` targets.
-- **Decision records 0141 to 0152**, and dated notes on 0123, 0127, 0129, 0133 and 0144.
+- **Decision records 0141 to 0153**, and dated notes on 0123, 0127, 0129, 0133 and 0144.
+- **A counts-only diagnosis of the held-out runs** (decision 0153, Andy, after the verdict):
+  `scripts/exploratory/s32_heldout_diagnosis.py` (`make s32-heldout-diagnosis`), its six
+  breakdowns fixed in the record before it was read, and
+  `docs/results/s32-heldout-diagnosis.txt`. It is exploratory and decides nothing; its cost is that
+  `heldout-400` can no longer test a later version of the agent.
 
 ### Done means, with evidence
 
@@ -745,8 +750,10 @@ committed results file.
    closed at 12 nights (`docs/results/s3-recorder-report-2026-10-04.txt`): 46 of 46 timed docket
    arrivals came at closure; full condition only.
 2. The fixes and new work of §4.3 are built with the tests of §18; the prompt-version test passes
-   at every commit — met. `make check` at the close-out: 4,076 tests passed, coverage 98.40%
-   (fix-wave report); the ten fingerprinted files are unchanged on the branch (final review).
+   at every commit — met. `make check` at the close-out: 4,076 tests passed, coverage 98.40%;
+   pull request #27's CI passed (lint, test, audit, image build:
+   https://github.com/floyda/ntsb-probable-cause/actions/runs/37277994033); the ten fingerprinted
+   files are unchanged on the branch (final review).
 3. The calibration curve and the free readings of §5 and §7.3 are committed before the
    registration — met: `s32-cap-check-dev.txt` (0 cases cut short at $0.15),
    `s32-noise-dev.txt` (top-1 −1.5 points [−5.0, +2.0] under the claim's rule),
@@ -773,6 +780,17 @@ three-group test passes; sorting +3.2 points [−7.0, +13.5]), result 4 is not s
 P3, P7, P8 (abstain half by construction), P9; not met: P1, P2, P4, P5, P6. On `dev-400` the loop
 without its coding tools was not worse than either noise-floor run (−0.3 [−4.3, +3.8], −1.8
 [−6.0, +2.3]).
+
+**Where the loop lost** (`docs/results/s32-heldout-diagnosis.txt`, decision 0153; exploratory, a
+lead and not a claim). Arm B's answer alone scores 27.8%, its tools step lifts it to 34.2% (+6.5
+points [+3.5, +9.5]), and its ordering check takes it to 33.0% (−1.2 [−4.0, +1.5]). The loop is
+behind arm B's answer alone by −4.2 [−8.5, +0.0] and behind arm B after its tools step by −10.8
+[−14.8, −6.5]. The loop's own coding step lifts it +3.0 [+0.5, +5.6] (20 fixes, 7 breaks), against
+arm B's tools step's 32 fixes and 6 breaks. The gap is present where the loop read every document
+on offer (−8.6 [−14.3, −2.4]) as well as where it left some unread (−10.8 [−18.5, −3.1]),
+confounded by docket size, and is largest on dockets of five or more documents (−11.6 [−17.7,
+−5.6]); with one document it is 0.0 [−12.2, +12.2]. Leaving out the loop's 6 failed cases leaves
+−8.9 [−13.2, −4.6]. Arm B alone was right on 63 cases, the loop alone on 25.
 
 **Cautions for every later reading** (final statistics review): held-out disagreed with the
 `dev-400` readings, and one held-out sample cannot say whether that is overfitting to
@@ -856,6 +874,8 @@ reading and with every unscored loop case counted right.
   re-check closes at 12 nights.
 - [0152](../decisions/0152-a-prompt-size-ceiling-under-the-context-window.md) — a prompt-size
   ceiling under the context window.
+- [0153](../decisions/0153-a-counts-only-diagnosis-of-s32s-held-out-runs.md) — a counts-only
+  diagnosis of S3.2's held-out runs, fixed before it was read.
 
 ### Implementation record
 
@@ -863,7 +883,7 @@ reading and with every unscored loop case counted right.
   merge commit (decision 0033).
 - Plan, at its last commit:
   https://github.com/floyda/ntsb-probable-cause/blob/e019d62/docs/plans/2026-10-03-s3-2-claims.md
-- Commits: from `413f587` (this specification's draft) to the close-out.
+- Commits: `413f587` (this specification's draft) to `ab6e86f`, then the close-out.
 - Runs: `20261004T053238-f0e78b7-dev-400-C` (coding ablation, $1.4495 billed);
   `20261004T092646-751d50d-heldout-400-A`; `20261004T094550-7948ac0-heldout-400-B` (ABORTED, $0);
   `20261004T111937-dd64854-heldout-400-B`, its `-tools` and `-tools-check-luna`;

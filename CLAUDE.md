@@ -367,7 +367,13 @@ noise-floor run (−0.3 [−4.3, +3.8] and −1.8 [−6.0, +2.3],
 `docs/results/s32-coding-ablation-dev.txt`). Predictions met: P3, P7, P8 (its abstain half by
 construction), P9; not met: P1, P2, P4, P5, P6. Held-out arm B's first answer run was refused by
 the provider (one request over GPT-6 Luna's 1,050,000-token context window, $0) and is recorded
-ABORTED in the ledger; decision 0152 added a prompt-size ceiling before it was run again.
+ABORTED in the ledger; decision 0152 added a prompt-size ceiling before it was run again. **Where
+the loop lost** (`docs/results/s32-heldout-diagnosis.txt`, decision 0153, exploratory): arm B's
+answer alone is 27.8% and its fixed tools step adds +6.5 points [+3.5, +9.5], while the loop's own
+coding step adds +3.0 [+0.5, +5.6]; the loop trails arm B's answer alone by −4.2 [−8.5, +0.0], and
+trails arm B by about as much where it read every document (−8.6) as where it skipped some
+(−10.8). Since 0153, `heldout-400` cannot test a later version of the agent: v2 goes to
+`dev-seal-s3-400` and the live board.
 
 ## Model access
 
