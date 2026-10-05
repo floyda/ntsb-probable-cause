@@ -70,6 +70,13 @@ exclusions=- includes=-
 guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
 commit=fd6053f started=2026-10-01T20:16:48.699656+00:00 finished=2026-10-01T23:23:33.969331+00:00
 cases=401 total_cost_usd=4.4476
+failures by kind (a guard refusal leaves the case out of both arms; every other failure counts as wrong; spec §7.3):
+- arm A: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B answer: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0; documents left out at the context ceiling (recorded context): 4 in 4 cases
+- arm B tool post-pass: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B ordering check: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- the loop: 6 of 400 failed: guard refusals 0, failed: coding 4, cap 1, cap: context 1, other 0
+- the loop without the docket: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
 
 ## 2. The verdict (occurrence top-1 decides; spec §7)
 top-1, loop - arm B: -9.5 points [-14.0, -5.2], n=400; both answered -8.9 points [-13.2, -4.6], n=394
@@ -81,10 +88,11 @@ arm B computed 2.3439 USD
 every figure used is a billed figure
 the loop's bill against arm B's: -3.4%
 cost band: equal (lower or greater: more than 10% below or above arm B's bill)
-work done, from the trails:
-loop: 71939068 prompt tokens, 41466490 cached
-arm B tool post-pass: 19157294 prompt tokens, 2540768 cached
-arm B's answer and check runs keep no trail: their computed cost stands for their work
+work done (printed beside, never deciding; spec §6 rule 3):
+loop: 71939068 prompt tokens, 41466490 cached, 1320295 reply tokens
+arm B answer: 19507262 prompt tokens, 846105 reply tokens (the steps of the cases that answered; a failed case records no step)
+arm B tool post-pass: 19157294 prompt tokens, 2540768 cached, 372444 reply tokens
+arm B ordering check: 309958 prompt tokens, 150160 reply tokens (its own steps)
 warranted: no
 On held-out cases, the loop was not shown to improve on the fixed pipeline: it was worse.
 
@@ -99,6 +107,7 @@ work (loop computed - arm B computed): +1.5831 USD
 loop discount (computed - billed): 1.8660 USD
 arm B discount (computed - billed): 0.2093 USD
 billed saving (arm B billed - loop billed) +0.0736 USD = reading less (-work) -1.5831 USD + cache discounts (loop discount - arm B discount) +1.6567 USD
+a negative "reading less" figure means the loop did more list-price work than arm B (not a saving but a cost)
 
 ## 5. The four results
 result 1: holds (more than half on at least one reading; spec §9.1)
@@ -114,16 +123,16 @@ result 1: holds (more than half on at least one reading; spec §9.1)
 - 2-4: 128 counted; read every document on offer 114 of 128 (89.1%) of those with documents on offer; fixed order 0 of 128 (0.0%)
 - 5 or more: 198 counted; read every document on offer 83 of 198 (41.9%) of those with documents on offer; fixed order 0 of 198 (0.0%)
 result 2: holds (the loop does not beat arm B on top-1 and its bill is not lower; outcome worse, band equal; spec §9.2)
-result 3: does not hold (the fitted confidence is calibrated on held-out; spec §9.3, §8.3)
+result 3: does not hold (the fitted confidence passes the three-group test (not shown to be miscalibrated) on held-out; spec §9.3, §8.3)
 - group low: n=132, mean fitted 0.220, right 29 of 132 (22.0%), 98.3% interval [0.146, 0.317], inside
 - group middle: n=131, mean fitted 0.277, right 32 of 131 (24.4%), 98.3% interval [0.166, 0.344], inside
 - group high: n=131, mean fitted 0.310, right 33 of 131 (25.2%), 98.3% interval [0.173, 0.352], inside
-- calibrated: yes (every group inside its interval)
+- three-group test: passes (every group inside its interval)
 - sorting (share right in the high group minus the low group): +3.2 points [-7.0, +13.5] (reported, not tested)
 result 4: not shown (spec §9.4)
 - stated effects on documents read: 1781
 - naming an event or a finding category, any route (an upper bound; the category-leaf route is loose): 258 of 1781
-- by route: event label (strict) 63, category leaf (loose) 199, event code 0
+- by route: event label (strict) 63, category leaf (loose) 199, event code 0 (an effect can match more than one route)
 
 ## 6. Abstain
 curve floor p(0) = 0.171; the abstain cut-off 0.164 cannot fire on this curve at all
@@ -135,6 +144,9 @@ right among answered: 94 of 394 (23.9%)
 no-docket - loop, top-1: -8.5 points [-13.0, -3.8], n=400; both answered -9.4 points [-13.7, -4.8], n=394
 no-docket - loop, top-3: -8.5 points [-13.5, -3.5], n=400; both answered -9.4 points [-14.5, -4.1], n=394
 no-docket - loop, recall@10: -8.4 points [-11.4, -5.4], n=382; both answered -8.8 points [-11.9, -5.8], n=376
+the loop top-1: 23.5% [19.2%, 27.5%], n=400 (a failure counts as wrong)
+arm B (final) top-1: 33.0% [28.5%, 37.5%], n=400 (a failure counts as wrong)
+the loop without the docket top-1: 15.0% [11.5%, 18.5%], n=400 (a failure counts as wrong)
 arm A top-1: 5.0% [3.0%, 7.2%], n=400 (start facts only; decides nothing)
 
 ## 8. The predictions (registered in docs/rounds/s3-registration.md; spec §12)
@@ -147,7 +159,7 @@ P4: not met -- findings: recall@10 is level, the interval including zero ([-6.5,
 P5: not met -- without the docket the loop loses at least 10.0 points of top-1 (without - with -8.5 points)
 P6: not met -- the loop without its coding tools is worse on top-1 than each noise-floor run, each interval wholly below zero (ablation minus noise run; noise run a: -0.3 points [-4.3, +3.8], n=399; noise run b: -1.8 points [-6.0, +2.3], n=399)
 P7: met -- result 1: reads every offered document on more than half (245 of 375 (65.3%)) and uses arm B's exact order on fewer than 5% (0 of 400 (0.0%))
-P8: met -- calibration passes (yes) and the abstain cut-off fires on fewer than 5% of scored cases (0 of 394)
+P8: met -- the three-group test passes (yes) and the abstain cut-off fires on fewer than 5% of scored cases (0 of 394) (the abstain half is met by construction: the curve's lowest value is 0.171, above the 0.164 cut-off; registration disclosure)
 P9: met -- format: at most 8 cases fail for format or tool reasons in the loop run (4 of 400)
 
 ## 9. The reading (spec §10)
@@ -155,7 +167,7 @@ question 1: On held-out cases, the loop was not shown to improve on the fixed pi
 results 1 to 4 say how that came about; they do not overturn it:
 result 1: holds (read every offered document on 245 of 375 (65.3%))
 result 2: holds (outcome worse, cost band equal)
-result 3: does not hold (the fitted confidence is calibrated on held-out)
+result 3: does not hold (the fitted confidence passes the three-group test (not shown to be miscalibrated) on held-out)
 result 4: not shown (the stated effects are descriptions, not predictions of change)
 question 2: what the board may show
 - the board shows its confidence as fitted (result 3 does not hold)
