@@ -1,0 +1,68 @@
+S3.2 held-out diagnosis (scripts/exploratory/s32_heldout_diagnosis.py; decision 0153)
+Exploratory (decision 0059): it decides nothing and claims nothing; every figure is a lead, read with its interval.
+Counts only: no case number. Occurrence top-1 under S3.2's failure rule unless stated: a guard refusal leaves the case out of both arms, every other failure counts as wrong. Differences are in points, first minus second, with the 95% bootstrap interval and the cases they rest on.
+arm A: 20261004T092646-751d50d-heldout-400-A
+arm B answer: 20261004T111937-dd64854-heldout-400-B
+arm B tools: 20261004T111937-dd64854-heldout-400-B-tools
+arm B check: 20261004T111937-dd64854-heldout-400-B-tools-check-luna
+the loop: 20261004T140804-e0dc881-heldout-400-C
+no docket: 20261004T184547-80c539e-heldout-400-C
+
+## 1. Arm B by stage (paired, first minus second)
+the loop top-1: 23.5% [19.2%, 27.5%], n=400 (a failure counts as wrong)
+arm B answer top-1: 27.8% [23.5%, 32.0%], n=400 (a failure counts as wrong)
+arm B tools top-1: 34.2% [29.8%, 38.8%], n=400 (a failure counts as wrong)
+arm B check top-1: 33.0% [28.5%, 37.5%], n=400 (a failure counts as wrong)
+top-1, loop - arm B answer: -4.2 points [-8.5, +0.0], n=400
+top-1, loop - arm B tools: -10.8 points [-14.8, -6.5], n=400
+top-1, loop - arm B check: -9.5 points [-14.0, -5.2], n=400
+top-1, arm B tools - arm B answer: +6.5 points [+3.5, +9.5], n=400
+top-1, arm B check - arm B tools: -1.2 points [-4.0, +1.5], n=400
+
+## 2. The gap by group (top-1, loop - arm B check)
+- fatal: 200 cases; -10.0 points [-15.5, -5.0], n=200
+- non-fatal: 200 cases; -9.0 points [-15.5, -1.5], n=200
+- documents offered none: 25 cases; -12.0 points [-28.0, +4.0], n=25; of which 1 are loop failures before any read choice
+- documents offered 1: 49 cases; +0.0 points [-12.2, +12.2], n=49
+- documents offered 2-4: 128 cases; -9.4 points [-18.8, -0.8], n=128
+- documents offered 5 or more: 198 cases; -11.6 points [-17.7, -5.6], n=198
+- cases with no row in the loop's trail (in no documents-offered band): 0
+
+## 3. Reading
+caution: cases that read every document on offer are concentrated in small dockets, so the read-all and left-unread gaps below are confounded by docket size; no difference between them is tested
+top-1, loop - arm B check, by what the loop read:
+- read every document on offer: 245 cases; -8.6 points [-14.3, -2.4], n=245
+- left some unread: 130 cases; -10.8 points [-18.5, -3.1], n=130
+- nothing on offer: 25 cases; -12.0 points [-28.0, +4.0], n=25; of which 1 are loop failures before any read choice
+- no trail row: 0 cases; no case is left to pair
+within the loop, on the cases it answered, H0 (before any read choice) and answer:
+- H0 right 43 of 394 (10.9%); answer right 94 of 394 (23.9%)
+- answer - H0: +12.9 points [+9.1, +16.8], n=394
+- H0 -> answer: fixes 60, breaks 9 (first code changed on 247 of 394 (62.7%); score changed with the first code kept 2)
+- answered cases with no H0 in the trail (left out): 0
+
+## 4. Coding (first code before and after; on the cases answered at both ends)
+- the loop, last hypothesis before coding -> answer: 394 cases; first code changed on 88 of 394 (22.3%); fixes 20, breaks 7 (net +13); score changed with the first code kept 1
+  top-1, answer - last hypothesis before coding: +3.0 points [+0.5, +5.6], n=394
+  (loop cases answered with no checkpoint before coding, left out: 0)
+- arm B answer -> tools: 400 cases; first code changed on 92 of 400 (23.0%); fixes 32, breaks 6 (net +26); score changed with the first code kept 0
+- arm B tools -> check: 400 cases; first code changed on 68 of 400 (17.0%); fixes 13, breaks 18 (net -5); score changed with the first code kept 0
+
+## 5. Failures
+failures by kind (a guard refusal leaves the case out of both arms; every other failure counts as wrong; spec §7.3):
+- arm A: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B answer: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0; documents left out at the context ceiling (recorded context): 4 in 4 cases
+- arm B tool post-pass: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B ordering check: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- the loop: 6 of 400 failed: guard refusals 0, failed: coding 4, cap 1, cap: context 1, other 0
+- the loop without the docket: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+top-1, loop - arm B check, the loop's 6 failed cases left out of both: -8.9 points [-13.2, -4.6], n=394
+
+## 6. Wins and losses (top-1; arm B is its check run)
+- all: n=400; right in arm B only 63, in the loop only 25, in both 69, in neither 243
+- fatal: n=200; right in arm B only 27, in the loop only 7, in both 33, in neither 133
+- non-fatal: n=200; right in arm B only 36, in the loop only 18, in both 36, in neither 110
+- documents offered none: n=25; right in arm B only 4, in the loop only 1, in both 6, in neither 14
+- documents offered 1: n=49; right in arm B only 5, in the loop only 5, in both 8, in neither 31
+- documents offered 2-4: n=128; right in arm B only 23, in the loop only 11, in both 27, in neither 67
+- documents offered 5 or more: n=198; right in arm B only 31, in the loop only 8, in both 28, in neither 131
