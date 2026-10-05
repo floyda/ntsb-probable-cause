@@ -21,10 +21,12 @@ Refusals, in this order, before any held-out run is opened
     1. The ids, as ``s32_claims`` refuses them.
     2. ``docs/decisions/0153-a-counts-only-diagnosis-of-s32s-held-out-runs.md`` is not committed.
     3. ``docs/rounds/s3-registration.md`` (the S3.2 registration) is not committed.
-    4. ``--out`` is under ``docs/results/`` and the tree has another uncommitted change.
+    4. The tree has an uncommitted change outside ``docs/results/``, whatever ``--out`` is: the
+       one reading is made from a commit that names it.
+    Once the runs are read: a trail row of a trigger other than 1 (an evaluation run has one).
 
 The rules it applies (none new)
-    * Occurrence top-1 and top-3 per case under S3.2's failure rule (decision 0146):
+    * Occurrence top-1 per case under S3.2's failure rule (decision 0146):
       ``claims.per_case`` (a guard refusal leaves the case out of both arms; every other failure
       counts as wrong). Paired differences are ``claims.paired``, first minus second, with its
       95% bootstrap interval.
@@ -32,9 +34,13 @@ The rules it applies (none new)
       the case's own verdict codes (``CaseResult.verdict_occurrence``), exactly as the answer is
       scored; the answer's own score is the one its case result records. Two of the loop's own
       hypotheses are paired with ``metrics.paired_difference`` (the same bootstrap and seed as
-      ``claims.paired``), on the cases the loop answered (``claims.answered``).
-    * H0 is the loop's ``record_hypothesis`` before any read choice (trail step ``h0``); its last
-      hypothesis before coding is the latest of the ``h0``, ``h1`` and ``h2`` checkpoints. A
+      ``claims.paired``), on the cases the loop answered (``claims.answered``), taken in case-id
+      order as ``claims.paired`` takes them, so the draws are the same.
+    * H0 is the loop's ``record_hypothesis`` before any read choice: the *first* accepted
+      checkpoint of step ``h0`` (a rejected call records no hypothesis; with one trigger there is
+      one accepted ``h0``, and taking the first keeps H0 the hypothesis made before anything else
+      happened, whatever follows it). Its last hypothesis before coding is the latest accepted
+      checkpoint of steps ``h0``, ``h1`` and ``h2``. A
       case result's answer is its last step's hypothesis (arm B's tool post-pass and check each
       append a step); its first code is that hypothesis's first occurrence code.
     * Documents offered, read every one, left some unread, nothing on offer: per case, from the
@@ -55,8 +61,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from scripts import s32_claims
-from scripts._s3_runs import refuse, refuse_unclean_results, write_result
+from scripts import _s3_runs, s32_claims
+from scripts._s3_runs import refuse, write_result
 from scripts.s32_behaviour import read_counts
 from scripts.s32_claims import Held, failure_lines, level, load_heldout
 from scripts.s32_coding_ablation import NOISE_RUNS, points
@@ -82,7 +88,8 @@ READ_SOME: Final = "left some unread"
 NOTHING: Final = "nothing on offer"
 NO_TRAIL: Final = "no trail row"
 _BEFORE_CODING: Final = frozenset({"h0", "h1", "h2"})
-_METRICS: Final[tuple[tuple[Metric, str], ...]] = (("top1", "top-1"), ("top3", "top-3"))
+_CHOICES: Final = frozenset({"choice1", "choice2"})
+_RESULTS_PREFIX: Final = "docs/results/"
 
 
 # --------------------------------------------------------------------------------------------
@@ -99,21 +106,39 @@ class LoopCase:
         reading: read every document on offer, left some unread, nothing on offer, or no trail.
         h0: the hypothesis recorded before any read choice, when one was.
         before_coding: the latest hypothesis checkpoint before the coding step, when one was.
+        chose: whether the trail holds a read-choice row (``choice1`` or ``choice2``).
     """
 
     band: str | None
     reading: str
     h0: Hypothesis | None
     before_coding: Hypothesis | None
+    chose: bool = False
 
 
-def _last_hypothesis(rows: Sequence[AgentCall], steps: frozenset[str]) -> Hypothesis | None:
-    found = [row.hypothesis for row in rows if row.step in steps and row.hypothesis is not None]
+def _accepted(rows: Sequence[AgentCall], steps: frozenset[str]) -> list[Hypothesis]:
+    return [row.hypothesis for row in rows if row.step in steps and row.hypothesis is not None]
+
+
+def _first(found: Sequence[Hypothesis]) -> Hypothesis | None:
+    return found[0] if found else None
+
+
+def _last(found: Sequence[Hypothesis]) -> Hypothesis | None:
     return found[-1] if found else None
 
 
 def loop_cases(calls: Sequence[AgentCall], cases: Sequence[CaseResult]) -> dict[str, LoopCase]:
-    """Each loop case's band, reading, H0 and last hypothesis before coding."""
+    """Each loop case's band, reading, H0 and last hypothesis before coding.
+
+    Raises:
+        ValueError: a trail row of a trigger other than 1 (an evaluation run has one trigger).
+    """
+    later = sum(1 for call in calls if call.trigger != 1)
+    if later:
+        raise ValueError(
+            f"{later} trail row(s) of a trigger other than 1: an evaluation run has one trigger"
+        )
     by_case: dict[str, list[AgentCall]] = defaultdict(list)
     for call in calls:
         by_case[call.case_id].append(call)
@@ -134,8 +159,9 @@ def loop_cases(calls: Sequence[AgentCall], cases: Sequence[CaseResult]) -> dict[
         out[case.case_id] = LoopCase(
             band,
             reading,
-            _last_hypothesis(rows, frozenset({"h0"})),
-            _last_hypothesis(rows, _BEFORE_CODING),
+            _first(_accepted(rows, frozenset({"h0"}))),
+            _last(_accepted(rows, _BEFORE_CODING)),
+            any(row.step in _CHOICES for row in rows),
         )
     return out
 
@@ -204,6 +230,48 @@ def _transition_line(label: str, t: Transition) -> str:
     )
 
 
+@dataclass(frozen=True)
+class WithinLoop:
+    """One of the loop's hypotheses against its answer, on the cases it answered.
+
+    Attributes:
+        pairs: (that hypothesis, the answer) per case, in case-id order.
+        missing: answered cases whose trail holds no such hypothesis (left out).
+    """
+
+    pairs: list[tuple[Point, Point]]
+    missing: int
+
+    def difference(self) -> Paired:
+        """Answer minus the hypothesis on top-1, drawn as ``claims.paired`` draws."""
+        mean, low, high = paired_difference(
+            [after.right for _, after in self.pairs], [before.right for before, _ in self.pairs]
+        )
+        return Paired(mean, low, high, len(self.pairs))
+
+
+def within_loop(
+    loop: Sequence[CaseResult],
+    per_case: dict[str, LoopCase],
+    tables: CodeTables,
+    pick: Callable[[LoopCase], Hypothesis | None],
+) -> WithinLoop:
+    """The answered cases, in case-id order, with the hypothesis ``pick`` takes from each."""
+    pairs: list[tuple[Point, Point]] = []
+    missing = 0
+    for case in sorted(loop, key=lambda c: c.case_id):
+        after = answer_point(case, tables)
+        if after is None:
+            continue
+        hypothesis = pick(per_case[case.case_id])
+        if hypothesis is None:
+            missing += 1
+            continue
+        before = Point(first_code(hypothesis, tables), hypothesis_top1(hypothesis, case, tables))
+        pairs.append((before, after))
+    return WithinLoop(pairs, missing)
+
+
 # --------------------------------------------------------------------------------------------
 # Formatting
 # --------------------------------------------------------------------------------------------
@@ -233,6 +301,17 @@ def _level_text(cases: Sequence[CaseResult]) -> str:
 # --------------------------------------------------------------------------------------------
 # The six breakdowns (decision 0153 item 2)
 # --------------------------------------------------------------------------------------------
+
+
+def _early_failures(
+    loop: Sequence[CaseResult], ids: set[str], per_case: dict[str, LoopCase]
+) -> int:
+    """Loop cases in ``ids`` that failed before any read choice (no read-choice row)."""
+    return sum(
+        1
+        for c in loop
+        if c.case_id in ids and c.failure is not None and not per_case[c.case_id].chose
+    )
 
 
 def groups_of(loop: Sequence[CaseResult], per_case: dict[str, LoopCase]) -> dict[str, set[str]]:
@@ -269,8 +348,7 @@ def stage_lines(held: Held) -> list[str]:
         ("arm B check", check),
     ):
         lines.append(f"{name} top-1: {_level_text(cases)} (a failure counts as wrong)")
-    for metric, metric_name in _METRICS:
-        lines += [f"{metric_name}, {label}: {pair_text(a, b, metric)}" for label, a, b in pairs]
+    lines += [f"top-1, {label}: {pair_text(a, b, 'top1')}" for label, a, b in pairs]
     return lines
 
 
@@ -282,9 +360,15 @@ def group_lines(
     lines = ["## 2. The gap by group (top-1, loop - arm B check)"]
     for name, ids in groups.items():
         label = name if name in FATAL else f"documents offered {name}"
-        lines.append(
+        line = (
             f"- {label}: {len(ids)} cases; {pair_text(_only(loop, ids), _only(check, ids), 'top1')}"
         )
+        if name == BANDS[0]:
+            line += (
+                f"; of which {_early_failures(loop, ids, per_case)} are loop failures before any "
+                "read choice"
+            )
+        lines.append(line)
     missing = sum(1 for c in per_case.values() if c.band is None)
     lines.append(
         f"- cases with no row in the loop's trail (in no documents-offered band): {missing}"
@@ -295,67 +379,55 @@ def group_lines(
 def reading_lines(held: Held, per_case: dict[str, LoopCase], tables: CodeTables) -> list[str]:
     """Item 3: the gap by how much the loop read, and H0 against the answer within the loop."""
     loop, check = held.loop.cases, held.check.cases
-    lines = ["## 3. Reading", "top-1, loop - arm B check, by what the loop read:"]
+    lines = [
+        "## 3. Reading",
+        "caution: cases that read every document on offer are concentrated in small dockets, so "
+        "the read-all and left-unread gaps below are confounded by docket size; no difference "
+        "between them is tested",
+        "top-1, loop - arm B check, by what the loop read:",
+    ]
     for reading in (READ_ALL, READ_SOME, NOTHING, NO_TRAIL):
         ids = {case_id for case_id, c in per_case.items() if c.reading == reading}
-        lines.append(
-            f"- {reading}: {len(ids)} cases; "
-            f"{pair_text(_only(loop, ids), _only(check, ids), 'top1')}"
-        )
-    h0: list[bool] = []
-    answer: list[bool] = []
-    pairs: list[tuple[Point, Point]] = []
-    no_h0 = 0
-    for case in loop:
-        point = answer_point(case, tables)
-        if point is None:
-            continue
-        hypothesis = per_case[case.case_id].h0
-        if hypothesis is None:
-            no_h0 += 1
-            continue
-        before = Point(first_code(hypothesis, tables), hypothesis_top1(hypothesis, case, tables))
-        h0.append(before.right)
-        answer.append(point.right)
-        pairs.append((before, point))
+        gap = pair_text(_only(loop, ids), _only(check, ids), "top1")
+        line = f"- {reading}: {len(ids)} cases; {gap}"
+        if reading == NOTHING:
+            line += (
+                f"; of which {_early_failures(loop, ids, per_case)} are loop failures before any "
+                "read choice"
+            )
+        lines.append(line)
+    found = within_loop(loop, per_case, tables, lambda c: c.h0)
     lines.append(
         "within the loop, on the cases it answered, H0 (before any read choice) and answer:"
     )
-    if not pairs:
-        lines.append(f"- {NONE_LEFT} (answered cases with no H0 in the trail: {no_h0})")
+    if not found.pairs:
+        lines.append(f"- {NONE_LEFT} (answered cases with no H0 in the trail: {found.missing})")
         return lines
-    mean, low, high = paired_difference(answer, h0)
-    t = transition(pairs)
+    h0 = sum(before.right for before, _ in found.pairs)
+    answer = sum(after.right for _, after in found.pairs)
+    n = len(found.pairs)
+    t = transition(found.pairs)
     lines += [
-        f"- H0 right {_share(sum(h0), len(h0))}; answer right {_share(sum(answer), len(answer))}",
-        f"- answer - H0: {points(Paired(mean, low, high, len(pairs)))}",
+        f"- H0 right {_share(h0, n)}; answer right {_share(answer, n)}",
+        f"- answer - H0: {points(found.difference())}",
         f"- H0 -> answer: fixes {t.fixes}, breaks {t.breaks} (first code changed on "
         f"{_share(t.changed, t.cases)}; score changed with the first code kept {t.score_only})",
-        f"- answered cases with no H0 in the trail (left out): {no_h0}",
+        f"- answered cases with no H0 in the trail (left out): {found.missing}",
     ]
     return lines
 
 
 def coding_lines(held: Held, per_case: dict[str, LoopCase], tables: CodeTables) -> list[str]:
     """Item 4: what the coding step did to the first code, in the loop and in arm B."""
-    loop_pairs: list[tuple[Point, Point]] = []
-    no_checkpoint = 0
-    for case in held.loop.cases:
-        after = answer_point(case, tables)
-        if after is None:
-            continue
-        hypothesis = per_case[case.case_id].before_coding
-        if hypothesis is None:
-            no_checkpoint += 1
-            continue
-        before = Point(first_code(hypothesis, tables), hypothesis_top1(hypothesis, case, tables))
-        loop_pairs.append((before, after))
+    found = within_loop(held.loop.cases, per_case, tables, lambda c: c.before_coding)
+    difference = points(found.difference()) if found.pairs else NONE_LEFT
     lines = [
         "## 4. Coding (first code before and after; on the cases answered at both ends)",
         _transition_line(
-            "the loop, last hypothesis before coding -> answer", transition(loop_pairs)
+            "the loop, last hypothesis before coding -> answer", transition(found.pairs)
         ),
-        f"  (loop cases answered with no checkpoint before coding, left out: {no_checkpoint})",
+        f"  top-1, answer - last hypothesis before coding: {difference}",
+        f"  (loop cases answered with no checkpoint before coding, left out: {found.missing})",
     ]
     for label, first, second in (
         ("arm B answer -> tools", held.answer.cases, held.tools.cases),
@@ -469,6 +541,17 @@ def refuse_ids(args: argparse.Namespace) -> None:
     s32_claims.refuse_ids(argparse.Namespace(**vars(args), noise=list(NOISE_RUNS)))
 
 
+def refuse_dirty_tree() -> None:
+    """Refuse a tree with any uncommitted change outside ``docs/results/``, whatever ``--out``."""
+    dirty = [p for p in _s3_runs.changed_files() if not p.startswith(_RESULTS_PREFIX)]
+    if dirty:
+        refuse(
+            PROG,
+            f"the tree has {len(dirty)} uncommitted change(s) outside the results files; the "
+            "held-out runs are read from a clean tree only",
+        )
+
+
 def main(
     argv: Sequence[str] | None = None, *, is_committed: Callable[[Path], bool] | None = None
 ) -> int:
@@ -503,8 +586,7 @@ def main(
             f"{checkpass.S32_REGISTRATION} is not committed: the held-out runs are read only "
             "after the registration is on record (decision 0142)",
         )
-    if args.out is not None:
-        refuse_unclean_results(PROG, Path(args.out))
+    refuse_dirty_tree()
     held = load_heldout(args)
     try:
         text = "\n".join(report_lines(held, load_tables()))

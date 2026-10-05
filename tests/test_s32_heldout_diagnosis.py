@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from scripts import _s3_runs as sr
 from scripts.exploratory import s32_heldout_diagnosis as dg
+from scripts.s32_coding_ablation import points
 from tests.test_s3_noise_floor import _IDS, _call, _choose, _spec_json, _write
 from tests.test_s32_claims import (
     ANSWER,
@@ -35,7 +36,7 @@ from tests.test_s32_claims import (
 
 from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.records.verdict import Verdict
-from ntsb_probable_cause.scoring import samples
+from ntsb_probable_cause.scoring import claims, samples
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.metrics import score_case
@@ -44,6 +45,8 @@ from ntsb_probable_cause.scoring.records import CaseResult, StepRecord
 TRUTH = "552240"
 RIGHT = TRUTH
 WRONG = "552241"
+# A sentinel in every model text field: the counts-only test proves none reaches the output.
+TEXT = "ZQX-model-text"
 LEAK = "leak: verbatim from probable_cause in docket_documents (40 chars withheld)"
 TABLES = load_tables()
 
@@ -73,11 +76,11 @@ OFFERS: dict[int, tuple[tuple[int, ...], set[int]]] = {
 
 def _hyp(first: str, *, abstain: bool = False) -> Hypothesis:
     return Hypothesis(
-        evidence_narrative="n",
+        evidence_narrative=f"{TEXT} narrative",
         occurrence=(OccurrenceGuess(phase=first[:3], event=first[3:], probability=0.5),),
         findings=(),
-        probable_cause="p",
-        lay_explanation="l",
+        probable_cause=f"{TEXT} working cause",
+        lay_explanation=f"{TEXT} lay",
         confidence=0.5,
         abstain=abstain,
         evidence_used=(),
@@ -164,8 +167,15 @@ def _trail(
         rows.append(_checkpoint(case_id, "h0", 0, h0[n]))
         if offered:
             choice = _choose(case_id, {d: d in read for d in offered}, index=1, offered=offered)
+            arguments = {
+                "decisions": [
+                    {"document": d, "read": d in read, "expected_effect": f"{TEXT} effect"}
+                    for d in offered
+                ],
+                "reason": f"{TEXT} reason",
+            }
             rows += [
-                choice.model_copy(update={"step": "choice1"}),
+                choice.model_copy(update={"step": "choice1", "arguments": arguments}),
                 _checkpoint(case_id, "h1", 2, before[n]),
             ]
         rows += [
@@ -234,6 +244,7 @@ def runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ledger.write_text(_ledger_rows([ARM_A, ANSWER, TOOLS, CHECK, LOOP, NODOCKET]))
     monkeypatch.setenv("NTSB_HELDOUT_LEDGER_PATH", str(ledger))
     monkeypatch.setattr(samples, "sample_ids", lambda name: _IDS if name == "heldout-400" else ())
+    monkeypatch.setattr(sr, "changed_files", list)  # a clean tree
     return folder
 
 
@@ -288,10 +299,10 @@ def test_breakdown_1_arm_b_by_stage(runs: Path, capsys: pytest.CaptureFixture[st
         ("arm B tools - arm B answer", "+15.0"),
         ("arm B check - arm B tools", "+0.0"),
     ):
-        for metric in ("top-1", "top-3"):  # one guess per answer: top-3 is top-1 here
-            line = _line(lines, f"{metric}, {label}: ")
-            assert line.startswith(f"{metric}, {label}: {mean} points ["), line
-            assert line.endswith("n=20"), line
+        line = _line(lines, f"top-1, {label}: ")
+        assert line.startswith(f"top-1, {label}: {mean} points ["), line
+        assert line.endswith("n=20"), line
+    assert not any(line.startswith("top-3") for line in lines)  # 0153 fixed top-1 only
     assert _line(lines, "arm B answer top-1: ").startswith("arm B answer top-1: 30.0% [")
     assert _line(lines, "the loop top-1: ").startswith("the loop top-1: 15.0% [")
 
@@ -309,7 +320,10 @@ def test_breakdown_2_the_gap_by_group(runs: Path, capsys: pytest.CaptureFixture[
     ):
         line = _line(lines, f"- {label}: ")
         assert line.startswith(f"- {label}: {count} cases; {mean} points ["), line
-        assert line.endswith(f"n={count}"), line
+        assert f"n={count}" in line, line
+    assert _line(lines, "- documents offered none: ").endswith(
+        "; of which 0 are loop failures before any read choice"
+    )
     assert _line(lines, "- cases with no row").endswith(": 1")
 
 
@@ -325,17 +339,32 @@ def test_breakdown_3_reading_and_h0(runs: Path, capsys: pytest.CaptureFixture[st
         line = _line(lines, f"- {label}: ")
         assert line.startswith(f"- {label}: {count} cases; {mean} points ["), line
     assert "- H0 right 3 of 19 (15.8%); answer right 3 of 19 (15.8%)" in lines
-    assert _line(lines, "- answer - H0: ").startswith("- answer - H0: +0.0 points [")
-    assert _line(lines, "- answer - H0: ").endswith("n=19")
+    # the interval is the one claims.paired would draw over the same answered cases
+    assert f"- answer - H0: {_drawn(LOOP_RUN[:19], H0)}" in lines
+    assert (
+        f"- answer - H0: {_drawn(LOOP_RUN[:19], H0)}"
+        == "- answer - H0: +0.0 points [-15.8, +15.8], n=19"
+    )
     assert _line(lines, "- H0 -> answer: ").startswith(
         "- H0 -> answer: fixes 1, breaks 1 (first code changed on 2 of 19"
     )
     assert "- answered cases with no H0 in the trail (left out): 0" in lines
 
 
+def _drawn(answer: Sequence[str], before: Sequence[str]) -> str:
+    """``claims``' own paired draw: answer minus the hypothesis, over the answered cases."""
+    after = {_IDS[n]: float(mark == "R") for n, mark in enumerate(answer)}
+    prior = {_IDS[n]: float(before[n] == "R") for n in range(len(answer))}
+    return points(claims._paired(after, prior))
+
+
 def test_breakdown_4_coding(runs: Path, capsys: pytest.CaptureFixture[str]) -> None:
     build(runs)
     lines = _section(diagnose(capsys), 4)
+    expected = _drawn(LOOP_RUN[:19], BEFORE_CODING)
+    assert expected.startswith("-5.3 points [")
+    assert expected.endswith("n=19")
+    assert f"  top-1, answer - last hypothesis before coding: {expected}" in lines
     assert _line(lines, "- the loop, last hypothesis before coding -> answer: ").endswith(
         "19 cases; first code changed on 1 of 19 (5.3%); fixes 0, breaks 1 (net -1); score "
         "changed with the first code kept 0"
@@ -489,3 +518,83 @@ def test_a_run_is_checked_against_the_registration_as_s32_claims_checks_it(
     (runs / LOOP / "trail.jsonl").unlink()
     with pytest.raises(SystemExit, match=r"no trail\.jsonl"):
         diagnose(capsys)
+
+
+# --------------------------------------------------------------------------------------------
+# Review fixes: a clean tree always, one trigger, retried checkpoints, early failures
+# --------------------------------------------------------------------------------------------
+
+
+def test_a_dirty_tree_is_refused_without_out_before_any_run_is_read(
+    runs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sr, "changed_files", lambda: ["src/x.py"])
+    with pytest.raises(SystemExit, match="uncommitted"):
+        dg.main(_argv(), is_committed=_always)
+    assert not runs.exists()
+
+
+def test_a_changed_results_file_is_not_a_dirty_tree(
+    runs: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    build(runs)
+    monkeypatch.setattr(sr, "changed_files", lambda: ["docs/results/s32-claims-heldout.txt"])
+    assert "## 6." in diagnose(capsys)
+
+
+def test_a_second_trigger_is_refused(runs: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    trail = _trail()
+    trail[0] = trail[0].model_copy(update={"trigger": 2})
+    build(runs, trail=trail)
+    with pytest.raises(SystemExit, match="trigger other than 1"):
+        diagnose(capsys)
+
+
+def test_a_retried_checkpoint_takes_the_accepted_hypothesis() -> None:
+    case_id = _IDS[0]
+    rejected = _call(case_id, "record_hypothesis", index=0, error="bad")
+    rows = [
+        rejected.model_copy(update={"step": "h0"}),
+        _checkpoint(case_id, "h0", 1, "R").model_copy(update={"retry": True}),
+        _checkpoint(case_id, "h1", 3, "W"),
+        _call(case_id, "record_hypothesis", index=4, error="bad").model_copy(
+            update={"step": "h2", "retry": False}
+        ),
+        _call(case_id, "describe_codes", index=5),
+    ]
+    found = dg.loop_cases(rows, [_case(0, "W")])[case_id]
+    assert found.h0 is not None
+    assert dg.first_code(found.h0, TABLES) == RIGHT
+    assert found.before_coding is not None  # the rejected h2 records nothing: h1 stands
+    assert dg.first_code(found.before_coding, TABLES) == WRONG
+
+
+def test_h0_is_the_first_accepted_h0() -> None:
+    case_id = _IDS[0]
+    rows = [_checkpoint(case_id, "h0", 0, "R"), _checkpoint(case_id, "h0", 1, "W")]
+    found = dg.loop_cases(rows, [_case(0, "W")])[case_id]
+    assert found.h0 is not None
+    assert dg.first_code(found.h0, TABLES) == RIGHT
+
+
+def test_loop_failures_before_any_read_choice_are_counted(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loop = list(LOOP_RUN)
+    loop[15] = "failed: h0"  # nothing on offer, no read choice
+    loop[3] = "failed: choice1"  # a read choice row exists: not counted
+    build(runs, loop=loop)
+    out = diagnose(capsys)
+    assert _line(_section(out, 2), "- documents offered none: ").endswith(
+        "; of which 1 are loop failures before any read choice"
+    )
+    assert _line(_section(out, 3), f"- {dg.NOTHING}: ").endswith(
+        "; of which 1 are loop failures before any read choice"
+    )
+
+
+def test_section_3_carries_its_caution(runs: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    build(runs)
+    lines = _section(diagnose(capsys), 3)
+    assert lines[1].startswith("caution: cases that read every document on offer are concentrated")
+    assert "confounded by docket size" in lines[1]
