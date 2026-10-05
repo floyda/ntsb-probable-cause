@@ -667,6 +667,13 @@ nightly on open cases with nothing locked or published. The text above stays as 
 closed without a registered round (0139); the precedent tool the agent questions is built after
 S4, as a measured second version (0140). S3.2, the claims, is next.
 
+*S3.2 — done (2026-10-05).* As built: see the
+[S3.2 specification's As-built section](2026-10-03-s3-2-claims-design.md#as-built-s32-2026-10-05).
+Registered first, measured once on `heldout-400`: the loop is worse than S3's full arm B on top-1
+at equal billed cost, so it is not warranted (`docs/results/s32-claims-heldout.txt`); S3's full
+arm B is the bar. The sealed sample stays sealed for v2 (0141); a prompt-size ceiling bounds every
+request (0152). S3.3, live shadow, is next.
+
 ### S4. Predictions and resolution
 
 Predictions store with case, evidence fingerprint, timestamp, answer, cost and commit

@@ -25,9 +25,12 @@ coding tools; S3's own statistics file and sealed sample; arm B's fixed tool pos
 loop's noise floor and format gate on `dev-400`. Tuning closed without a registered round
 (0139): the loop frozen at `fd6053f` is S3.1's result and the loop S3.2 measures. The precedent
 tool the agent would question is built after S4, as a measured second version (0140). **S3.2
-(the claims) is next**: predictions registered first, arm C against arm B at equal cost, the
-ablations, the calibration fit, then S3's sealed sample and `heldout-400` once each; S3.3 is
-live shadow. Read build-brief §7 before writing any code, then
+(the claims) is built**: registered before its first run (`docs/rounds/s3-registration.md`), it
+measured the frozen loop once on `heldout-400` against S3's full arm B at equal cost, with the
+no-docket ablation, arm A and a `dev-400` coding ablation: the loop is worse on top-1 at equal
+billed cost, so it is not warranted (`docs/results/s32-claims-heldout.txt`). `dev-seal-s3-400`
+stays sealed for v2 (0141), and the held-out gates closed after use (`docs/rounds/s3-2-used.md`).
+**S3.3 (live shadow) is next.** Read build-brief §7 before writing any code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, Superseded on 2026-10-03 by the S1
 and S3 specifications, which took over its parts; still the record of how S0 changed the design,
@@ -342,6 +345,30 @@ are in a category the loop never named, 213 (19.6%) lose the item and 80 (7.4%) 
 the NTSB's item is the pool's commonest in only 46 of those 213, so item choice reads as
 case-specific (`docs/results/s3-finding-misses-dev.txt`).
 
+**S3.2 measured the claims on `heldout-400` once, by rules registered before its first run
+(`docs/rounds/s3-registration.md`, decisions 0141 to 0152); every figure here is from
+`docs/results/s32-claims-heldout.txt`.** **The loop is worse than S3's full arm B**: occurrence
+top-1 23.5% [19.2%, 27.5%] against 33.0% [28.5%, 37.5%], paired −9.5 points [−14.0, −5.2] on 400
+cases (both answered: −8.9 [−13.2, −4.6] on 394); top-3 −15.8 [−20.2, −11.2]; finding recall@10
+−3.8 [−6.5, −1.4] (382). **Cost is equal**: billed $2.0610 against $2.1347 (−3.4%, inside the
+±10% band, 0145); computed $3.9270 against $2.3439, so the loop did more list-price work and
+cache discounts alone brought its bill level. The headline, as registered: "On held-out cases,
+the loop was not shown to improve on the fixed pipeline: it was worse." Not warranted (0146).
+**S3's full arm B on held-out (33.0%) replaces S2.4's arm B (26.5%) as the bar.** Held-out
+disagreed with the `dev-400` readings, where the loop was level with arm B; one held-out sample
+cannot say why. Also: without the docket the loop loses −8.5 points [−13.0, −3.8] (15.0%); arm A
+scores 5.0% [3.0%, 7.2%]; result 1 holds (the loop read every document on offer on 245 of 375
+cases, 65.3%; arm B's exact tool order on 0 of 400), result 2 holds, result 3 does not hold (the
+fitted confidence passes the three-group test, but sorts right from wrong by only +3.2 points
+[−7.0, +13.5]), result 4 is not shown (the stated effects are descriptions; 63 of 1781 name an
+event); the abstain cut-off cannot fire on the frozen curve (its floor is 0.171); format
+failures 4 of 400. On `dev-400` the loop without its coding tools was not worse than either
+noise-floor run (−0.3 [−4.3, +3.8] and −1.8 [−6.0, +2.3],
+`docs/results/s32-coding-ablation-dev.txt`). Predictions met: P3, P7, P8 (its abstain half by
+construction), P9; not met: P1, P2, P4, P5, P6. Held-out arm B's first answer run was refused by
+the provider (one request over GPT-6 Luna's 1,050,000-token context window, $0) and is recorded
+ABORTED in the ledger; decision 0152 added a prompt-size ceiling before it was run again.
+
 ## Model access
 
 **Claude Code develops and maintains this project.** Every model call the *product* makes —
@@ -406,9 +433,15 @@ Two consequences to hold on to:
 
 A per-case cost cap is enforced in code, not just measured, because these calls are metered.
 The spike's line was £0.05/case; it is re-measured in S1 and S3, because every case now reads
-the docket (0013). Arm C's cap is $0.15 a case (`agent/run.py:CAP_USD`, the learning probe's;
-S3.2 fixes it before any comparison run); the noise-floor runs cost $0.0114 and $0.0111 a case
-computed, $0.0046 and $0.0049 billed (`docs/results/s3-noise-floor-dev.txt`). GPT-5.6 Luna
+the docket (0013). Every S3.2 run used one cap of $0.30 a case for every arm and part (0144), passed by the `s32-*`
+targets; the defaults in code stay $0.05 (`RunSpec.cap_usd`) and $0.15 (`agent/run.py:CAP_USD`).
+The noise-floor runs cost $0.0114 and $0.0111 a case computed, $0.0046 and $0.0049 billed
+(`docs/results/s3-noise-floor-dev.txt`). Since decision 0152 a **prompt-size ceiling** of 345,000
+estimated tokens (`sources.PROMPT_TOKEN_CEILING`: 80% of GPT-6 Luna's 1,050,000-token context over
+the measured 2.43× undercount of the characters-over-four estimate,
+`docs/results/s32-context-ratio-dev.txt`) bounds arm B's stage-1 prompt (documents past it are
+left out, recorded `context`) and every loop and post-pass call (a call over it is never sent;
+its case stops `cap: context`): one over-long request fails a whole batch. GPT-5.6 Luna
 results elsewhere in this file are historical reference points, not bars.
 
 ## Commands
@@ -527,6 +560,19 @@ make s3-finding-precedent RUNS="<a> <b>"  # precedent's findings against the loo
 make s3-finding-misses RUNS="<a> <b>"     # where the loop's findings miss; free
 ```
 
+S3.2's targets (`s32-*`; the paid ones check S3's line first; every `ntsb-eval run` passes
+`--cap-usd 0.30`; held-out targets ONCE each, through `scripts/paid_run.sh`, which needs
+`NTSB_PAID_BRANCH`):
+
+```bash
+make s32-cap-check / s32-noise / s32-calibration / s32-behaviour-dev / s32-context-ratio  # free dev readings
+make s32-coding-ablation [RESUME=<id>]   # the loop without coding tools on dev-400 (paid)
+make s32-heldout-a | s32-heldout-b-answer | s32-heldout-c | s32-heldout-c-nodocket [RESUME=<id>]  # held-out, ONCE, closed (0142)
+make s32-heldout-b-tools RUN=<id> / s32-heldout-b-check RUN=<id>   # arm B's later parts on held-out, ONCE, closed
+make s32-coding-ablation-report RUN=<id>   # docs/results/s32-coding-ablation-dev.txt; free
+make s32-claims LOOP= NODOCKET= ARMA= BANSWER= ABLATION=   # docs/results/s32-claims-heldout.txt; free
+```
+
 The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):
 no model call, and they decide nothing. What any `s3-*` target commits is counts only; the
 reading pages and case lists go under `NTSB_RUNS_DIR`, never committed.
@@ -596,6 +642,22 @@ the post-pass refuse `dev-seal-400`; `dev-seal-s3-400` is refused by every comma
 work that tests a shape or a flow, 0131): the learning probe's three jobs were relabelled to
 it, their original rows kept beside them as `spend-before-relabel.jsonl`, which the budget code
 never reads; the probe's $1.1954 is outside S3's line (0128).
+
+S3.2 added: the held-out gates of decision 0142 — arm C on `heldout-400`, and `tools` and `check
+--way luna --stats s3` on a held-out arm B run (the check over a `-tools` run only), each refused
+until `docs/rounds/s3-registration.md` is committed and again once `docs/rounds/s3-2-used.md` is
+(`checkpass.S32_REGISTRATION`, `S32_USED`), each refusing a dirty tree before anything is read and
+appending one ledger row; a report refuses an unreadable `spec.json`; `drive_batch` re-sends what a
+resumed round still owes and finishes a round whose replies are all on disk; the prompt-size
+ceiling (0152) in `scoring/runner.py` and `agent/drive.py`; `scoring/claims.py` (the registered
+failure rule, paired readings, the four outcomes, the cost band, "warranted", the headline) and
+`scoring/calibration.py` (the logistic curve, the three-group test, the abstain cut-off; the frozen
+curve is `scoring/tables/calibration_s3.json`); the `scripts/s32_*` readings; and
+`scripts/paid_run.sh`, which runs one paid target from a separate clean checkout
+(`NTSB_PAID_CHECKOUT`, default `~/Workspace/ntsb-demo-agent/ntsb-paid-runs`) reset to
+`origin/$NTSB_PAID_BRANCH` (required; `main` refused), reads the OpenRouter key from `pass`
+(`NTSB_PASS_OPENROUTER`, default `api/openrouter`) without printing it, and commits and pushes a
+held-out ledger row. `tests/test_s32_frozen.py` pins the loop's prompt version.
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
