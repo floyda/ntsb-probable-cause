@@ -627,7 +627,16 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     2026-10-05): the site lives under Andy's domain, `floyda.dev`; the name should play on the
     analysis side of an investigation, the part the agent replaces. Whether it sits at a path
     or a subdomain is a hosting choice for S5's build. Rules for any name: no "NTSB" in it, no
-    accident wordplay, not a person's name.
+    accident wordplay. Andy then chose a human name after all, invented, not a real person's,
+    old-fashioned and American, beginning with A, in the spirit of "Analysing Arthur"
+    (2026-10-05); the site calls the agent "it" whatever its name, and Methods says the name
+    stands for no real person. A web search on 2026-10-05 for existing AI agents with the
+    shortlisted names found: **Archie** crowded (several commercial AI agents and assistants,
+    legal, finance, marketing, data catalogues); **Amos** to be avoided (AMOS is a known macOS
+    information-stealing malware that disguises itself as AI agent tools); **Asa** colliding
+    with "ASA", Amazon Web Services' agentic shopping assistant; **Ansel** used by several AI
+    agent products; **Alonzo** lightly used (a small analytics engine named after Alonzo Church,
+    and a small consultancy). This was a quick search, not a trademark search.
 13. **The first against the second version.** Settled (Andy, 2026-10-05): a ninth stop on the
     Path page, "Does letting the agent question precedent help?", showing the second version
     against the first on the same cases, held-out and live kept apart. The board keeps showing
