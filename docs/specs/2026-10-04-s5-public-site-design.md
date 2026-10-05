@@ -610,8 +610,20 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     straight to an owner's name in the public aircraft register, often the pilot who died. It
     stays one click away on the NTSB's page; the choice is what the site puts forward, on the
     reasoning of decision 0020.
-12. **Shared links.** Each case and each Path question needs its own address, and a preview
-    that reads well when a link is posted.
+12. **Shared links.** Settled (Andy, 2026-10-05):
+    - Addresses: a case page lives at its NTSB case number; each Path question has a short
+      readable anchor, such as `/path#choosing`.
+    - Preview cards by kind of page. The first page, Path, Methods, Open cases and **every
+      case page** carry one site card: the board's dark panel with the site's question in dot
+      letters, the site's title, and one line on what it does. **Each Path question** gets
+      its own card with its question and its answer, for example "Does choosing what to read
+      beat reading everything? No.", because the findings are what readers should share.
+      No card ever shows a case's details: individual accidents, often fatal, are kept out of
+      social feeds (§11).
+15. **The name.** Open, and a large gap (Andy, 2026-10-05): neither the agent nor the site has
+    a name, and the site has no web address. Andy wanted to name the agent; no earlier ideas
+    were written down. The preview cards, the page titles and the author line all need it.
+    "Probable cause", the NTSB's own term, is a placeholder only.
 13. **The first against the second version.** Settled (Andy, 2026-10-05): a ninth stop on the
     Path page, "Does letting the agent question precedent help?", showing the second version
     against the first on the same cases, held-out and live kept apart. The board keeps showing
