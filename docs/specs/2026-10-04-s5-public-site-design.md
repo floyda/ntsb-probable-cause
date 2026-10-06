@@ -636,7 +636,13 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     information-stealing malware that disguises itself as AI agent tools); **Asa** colliding
     with "ASA", Amazon Web Services' agentic shopping assistant; **Ansel** used by several AI
     agent products; **Alonzo** lightly used (a small analytics engine named after Alonzo Church,
-    and a small consultancy). This was a quick search, not a trademark search.
+    and a small consultancy). This was a quick search, not a trademark search. Andy then
+    widened the search beyond A to any name that plays on analysis or investigation
+    (2026-10-06). A second search found: **Ellery** used only by one custom GPT on OpenAI's
+    store; **Findlay** with no AI agent found; **Tracy** crowded (a supply-chain agent, a hiring
+    agent and several more). Names set aside without searching, for their associations:
+    Casey (Casey Jones died in a train wreck), Quincy (a television medical examiner),
+    Sherlock, Watson (IBM's AI), Marlowe (an anchor on Andy's reference site), Dexter.
 13. **The first against the second version.** Settled (Andy, 2026-10-05): a ninth stop on the
     Path page, "Does letting the agent question precedent help?", showing the second version
     against the first on the same cases, held-out and live kept apart. The board keeps showing
