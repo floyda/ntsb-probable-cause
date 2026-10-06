@@ -546,7 +546,8 @@ These are fatal accidents. The rules of the project apply to every page.
 
 ## 12. Appearance and reader-experience points still to settle
 
-Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
+Raised on 2026-10-04 and worked through with Andy on 2026-10-04 to 2026-10-06. Each item
+says whether it is settled.
 
 1. **The author.** Settled: one line at the foot, linking to Andy's profile page (§3.1).
 2. **A three-minute route.** Settled: the first page is one scrolling route of six stops
@@ -741,14 +742,14 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 3. Settled: the Methods page follows the order the reader meets the numbers (§9).
 4. Every point in §12 is settled, except hiding the next stop until it arrives, which waits
    for an example site from Andy (item 7).
-8. Still open: the recorder's counts are provisional until it passes 14 nights (§8, §12 item
-   6); the per-night closure count needs a committed script; the figures of §7.4 are a first
-   draft; the mock-ups predate most decisions here and are sketches only.
 5. Settled: the board keeps its six columns; the opened case states documents read as "3 of 7
    documents read" and leaves out cost (§5).
 6. Settled: the vignettes come later, after S5's first version (§10.1). Their form, scenes
    or role portraits, and who draws them are decided then.
 7. Accepted as a first draft (Andy, 2026-10-04): the figures of §7.4.
+8. Still open: the recorder's counts are provisional until it passes 14 nights (§8, §12 item
+   6); the per-night closure count needs a committed script; the mock-ups predate most
+   decisions here and are sketches only.
 
 ## Glossary
 
