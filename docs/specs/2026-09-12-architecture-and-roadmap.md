@@ -305,6 +305,14 @@ problem.
 
 ## 8. The public surface
 
+*Note, 2026-10-06:* S5's Draft specification,
+`docs/specs/2026-10-04-s5-public-site-design.md`, proposes six pages in place of the five
+below: a first page that leads with a board of recently closed cases, an opened case, the
+trail view, a Path page, an Open cases page and Methods. Decisions 0154 to 0156 already bind
+S3.3 and S4: the live run is at closure, the board is backfilled from 23 September 2026, and
+it runs the loop as Ellery, version 1. This section is rewritten when that specification is
+approved.
+
 Five pages. This list is also the complete set of questions the store must be able to
 answer, which is why it is settled before the store is designed.
 
@@ -694,6 +702,10 @@ design §7.2 (0021).
 
 *Done means:* a public URL, rebuilt from the store, with hosting cost that does not move
 with traffic.
+
+*Note, 2026-10-06:* the site's design is the Draft
+`docs/specs/2026-10-04-s5-public-site-design.md`, written early while S3.2 ran; the public URL
+is `ellery.demo.floyda.dev` (0156).
 
 ---
 

@@ -39,7 +39,11 @@ specification under `docs/specs/` (its As-built section records what was deliver
 amend the brief where they differ. S3's specification
 (`docs/specs/2026-09-30-s3-agent-loop-design.md`) holds the shared design and S3.1 in full, S3.2
 and S3.3 in outline; the precedent tool's design note
-(`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4.
+(`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4. S5's site
+design (`docs/specs/2026-10-04-s5-public-site-design.md`) is a Draft, written early; three of
+its decisions bind S3.3 and S4 now: the agent's live run is at closure (0154), the board is
+backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, version 1, at
+`ellery.demo.floyda.dev` (0156).
 
 ## Required components (build-brief §7)
 
