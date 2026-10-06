@@ -402,9 +402,10 @@ example "5 open cases have a docket so far", and those cases are coded at closur
 other. The count below is why: such a section would be almost empty. Counted as numbers only
 (decision [0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)).
 
-**First count, provisional** (`docs/results/s5-recorder-report-2026-10-04.txt`, the
-recorder's report over its first 12 finished nights, 23 September to 4 October 2026; the
-report itself says its output is not citable before 14 nights):
+**The count, citable** (`docs/results/s5-recorder-report-2026-10-06.txt`, the recorder's
+report over its first 14 finished nights, 23 September to 6 October 2026, the threshold at
+which the report counts as citable; the earlier 12-night copy,
+`docs/results/s5-recorder-report-2026-10-04.txt`, gave the same docket figures):
 
 - Of the cases that closed while watched, none had a docket before closing. Every docket
   that appeared, 46 of them, appeared on the same nightly run as its case's closure.
@@ -412,8 +413,8 @@ report itself says its output is not citable before 14 nights):
   bound on early dockets, about 0.5%, well below Andy's estimate of 2 to 5%.
 - 300 documents appeared at those 46 closures.
 
-So far, the closure run is the only run with evidence to read. This is re-counted once the
-recorder passes 14 nights.
+So far, the closure run is the only run with evidence to read. Nights 13 and 14 brought no
+closures and no new documents.
 
 **A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
 accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
@@ -577,10 +578,11 @@ says whether it is settled.
 5. **Failures on the board.** Settled: abstains and failed cases each have their own row and
    mark (§4).
 6. **The thin board at launch.** The board must look complete with few rows, and on a night
-   with no closures. First count, provisional (§8's source): 47 cases closed in the
-   recorder's first 12 nights, and they closed in three batches, on 23 September, 1 October
-   and 2 October; the other nights had none (a per-night breakdown from an ad-hoc read-only
-   query of the store's status changes, to be replaced by a script before approval). So most
+   with no closures. The count (§8's source, 14 nights): 47 cases closed in the recorder's
+   first 14 nights, in three batches, on 23 September, 1 October and 2 October; the other
+   eleven nights had none (the per-night breakdown is from an ad-hoc read-only query of the
+   store's status changes, re-run on 2026-10-06, to be replaced by a script before
+   approval). So most
    nights bring no new rows, and closures arrive in bursts. Settled (Andy, 2026-10-05):
    - The board lists the most recent closures whatever their date, so it never empties, and
      its stamp names both the last rebuild and the last closures, for example "Updated 03:00
@@ -654,8 +656,15 @@ says whether it is settled.
     with no change at Squarespace. The two-level name costs nothing with an exact-name
     certificate; it matters only for wildcards, where `*.floyda.dev` would cover
     `ellery-demo.floyda.dev` but not `ellery.demo.floyda.dev`, and `*.demo.floyda.dev` would
-    cover every future demo. To check in the build: which AWS account holds the hosted zone,
-    and whether it is the account the recorder already runs in.
+    cover every future demo. **Checked 2026-10-06: the two are different AWS accounts.** The
+    `floyda.dev` hosted zone is in Andy's personal account, beside his profile site's bucket;
+    the recorder runs in the project's own member account of the same organisation. The
+    proposed answer, for S5's build: create a hosted zone for `demo.floyda.dev` in the
+    project's account and delegate to it with NS records in the `floyda.dev` zone. That is
+    four records, added once, all in Route 53 with nothing at Squarespace. S5's stack then
+    makes Ellery's certificate and records in its own account, and every later demo under
+    `demo.floyda.dev` can do the same. This is a second reason the two-level name was a good
+    choice.
 
     Neither the agent nor the site had a name before 2026-10-05, and no earlier ideas were
     written down. "Probable cause", the NTSB's own term, was a placeholder. Settled first (Andy,
@@ -760,9 +769,9 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 6. Settled: the vignettes come later, after S5's first version (§10.1). Their form, scenes
    or role portraits, and who draws them are decided then.
 7. Accepted as a first draft (Andy, 2026-10-04): the figures of §7.4.
-8. Still open: the recorder's counts are provisional until it passes 14 nights (§8, §12 item
-   6); the per-night closure count needs a committed script; the mock-ups predate most
-   decisions here and are sketches only.
+8. Still open: the per-night closure count needs a committed script (§12 item 6); the
+   mock-ups predate most decisions here and are sketches only. The recorder's counts became
+   citable at 14 nights on 2026-10-06 (§8).
 
 ## Glossary
 
