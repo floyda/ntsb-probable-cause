@@ -697,6 +697,10 @@ says whether it is settled.
 
 ## 13. What this asks of other stages
 
+- **S3.3: point the shadow at closure runs** (decision 0154 item 6). A nightly shadow on open
+  cases would mostly run on the recorded facts alone, where the agent does no better than
+  guessing; the runs worth exercising are closure runs and the backfill from 23 September
+  2026 (0155). S3.3's specification decides how.
 - **S4: the main run happens at closure.** The roadmap describes predictions locked on open
   cases and scored at closure. With few dockets before closure, the run that matters is the
   one made when the case closes, with the verdict withheld by the same split and guard as
@@ -727,9 +731,16 @@ five pages become the six of §3; the live board becomes the board of closed cas
 hypothesis trail is described as checkpoints, not a belief after every call; "two availability
 conditions" becomes one. The top-level and repository `CLAUDE.md` files follow.
 
-## 15. Decisions to record at merge
+## 15. Decisions
 
-Decision numbers are assigned at merge, after S3.2's, so the two branches do not clash.
+**Recorded on 2026-10-06, because they bind S3.3 and S4:** decision
+[0154](../decisions/0154-the-live-run-is-at-closure.md) (the live run is at closure, no
+answers locked before the verdict; items 3 and 4 below in part, and §13),
+[0155](../decisions/0155-the-board-is-backfilled-from-the-recorders-first-night.md) (the
+backfill; item 12) and [0156](../decisions/0156-the-board-runs-ellery-version-1.md) (Ellery,
+version 1, on the board; items 14 and 15).
+
+**The rest are recorded when this specification is approved**, as S5's own decisions:
 
 1. The primary reader, the second reader, and the link rule (§2).
 2. The board lists closed cases; open cases have their own page (§3, §4, §8).
