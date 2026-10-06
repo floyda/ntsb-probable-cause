@@ -628,8 +628,20 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     is the site's premise: Ellery works from the evidence the investigators recorded, and every
     reader can check its answer against the NTSB's verdict. Methods says this in one line, and
     says the name stands for no real person. The caveat (§3.1) and the site card (item 12)
-    use the name. The address is a third-level subdomain, so S5's build needs a certificate
-    that covers it. The record of how the name was reached follows.
+    use the name. The record of how the name was reached follows.
+
+    **Certificate and DNS, checked 2026-10-06.** A public lookup of `floyda.dev` found its
+    name servers are Amazon Route 53's (`awsdns`), so DNS is already in AWS and Squarespace
+    holds only the registration; there is no CAA record, so no certificate issuer is
+    restricted; the apex already points at AWS addresses. So S5's stack can request an exact-
+    name certificate for `ellery.demo.floyda.dev` from AWS Certificate Manager (free,
+    auto-renewing, in `us-east-1` because CloudFront requires it), validate it with a DNS
+    record, and add the site's alias record, all in the existing hosted zone and all in code,
+    with no change at Squarespace. The two-level name costs nothing with an exact-name
+    certificate; it matters only for wildcards, where `*.floyda.dev` would cover
+    `ellery-demo.floyda.dev` but not `ellery.demo.floyda.dev`, and `*.demo.floyda.dev` would
+    cover every future demo. To check in the build: which AWS account holds the hosted zone,
+    and whether it is the account the recorder already runs in.
 
     Neither the agent nor the site had a name before 2026-10-05, and no earlier ideas were
     written down. "Probable cause", the NTSB's own term, was a placeholder. Settled first (Andy,
