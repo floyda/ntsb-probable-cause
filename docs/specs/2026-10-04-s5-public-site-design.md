@@ -551,8 +551,8 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
 1. **The author.** Settled: one line at the foot, linking to Andy's profile page (§3.1).
 2. **A three-minute route.** Settled: the first page is one scrolling route of six stops
    (§3.1).
-3. **Caveats before results.** The caveat sits in stop 1, above the board; its proposed
-   wording is in §3.1, for Andy's approval, with numbers filled from S3.2's results file.
+3. **Caveats before results.** Settled: the caveat sits in stop 1, above the board, in the
+   wording Andy approved on 2026-10-05 (§3.1).
 4. **Terms for a non-expert.** Settled (Andy, 2026-10-04): plain labels first, the NTSB's
    term second in small type, for example "What happened · NTSB occurrence codes", "Why it
    happened · NTSB findings", "The case's evidence files · the docket". Full definitions sit
@@ -596,8 +596,8 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
      everything at once (§3.1).
    - The build runs an automated accessibility audit before launch and fails on AA errors;
      a manual keyboard and screen-reader pass covers what automation cannot.
-9. **Uncertainty.** Every score on the Path and Methods pages carries its interval and count.
-   How a ladder step draws an interval is open.
+9. **Uncertainty.** Settled: every score on the Path and Methods pages carries its interval and
+   count; the ladder draws each step as a bar with a whisker for its interval (§7.1).
 10. **Totals on the first screen.** Settled (Andy, 2026-10-04): one line under the board gives
     plain counts since launch for each grade, abstains and failed cases included, with no
     percentage. Example (invented): "Since launch: 41 same first code, 37 same codes in
@@ -657,7 +657,8 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
     against the first on the same cases, held-out and live kept apart. The board keeps showing
     the first version until the second wins its registered comparison, so the second version
     earns its place as the loop had to (§7.3).
-14. **Freshness.** The board states when it was last rebuilt, in UTC.
+14. **Freshness.** Settled: the board's stamp names the last rebuild, in UTC, and the last
+    closures (item 6).
 
 ## 13. What this asks of other stages
 
@@ -726,7 +727,11 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
 1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
 2. Settled: an open case shows facts and status, never an answer (§8).
 3. Settled: the Methods page follows the order the reader meets the numbers (§9).
-4. Every point in §12.
+4. Every point in §12 is settled, except hiding the next stop until it arrives, which waits
+   for an example site from Andy (item 7).
+8. Still open: the recorder's counts are provisional until it passes 14 nights (§8, §12 item
+   6); the per-night closure count needs a committed script; the figures of §7.4 are a first
+   draft; the mock-ups predate most decisions here and are sketches only.
 5. Settled: the board keeps its six columns; the opened case states documents read as "3 of 7
    documents read" and leaves out cost (§5).
 6. Settled: the vignettes come later, after S5's first version (§10.1). Their form, scenes
