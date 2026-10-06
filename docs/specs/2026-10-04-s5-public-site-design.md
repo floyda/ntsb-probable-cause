@@ -87,7 +87,7 @@ wide screen, across the top on a phone.
 come before results, without burying the board. Wording approved by Andy on 2026-10-05, written after
 S3.2's held-out reading was known, so it is not a registered prediction:
 
-> Read this first. The board runs version 1 of this agent. It reads the same evidence, with the
+> Read this first. The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the
 > same tools, as a simpler fixed method. On 400 accidents it had never seen, its first code
 > matched the investigator's in about one case in four. The fixed method matched in about one
 > case in three. It runs here because it is the version being improved, and each new version is
@@ -615,15 +615,24 @@ Raised on 2026-10-04 and not yet decided. Each needs a choice before approval.
       readable anchor, such as `/path#choosing`.
     - Preview cards by kind of page. The first page, Path, Methods, Open cases and **every
       case page** carry one site card: the board's dark panel with the site's question in dot
-      letters, the site's title, and one line on what it does. **Each Path question** gets
+      letters, the title "Ellery", and one line on what it does. **Each Path question** gets
       its own card with its question and its answer, for example "Does choosing what to read
       beat reading everything? No.", because the findings are what readers should share.
       No card ever shows a case's details: individual accidents, often fatal, are kept out of
       social feeds (§11).
-15. **The name.** Open, and a large gap (Andy, 2026-10-05): neither the agent nor the site has
-    a name, and the site has no web address. Andy wanted to name the agent; no earlier ideas
-    were written down. The preview cards, the page titles and the author line all need it.
-    "Probable cause", the NTSB's own term, is a placeholder only. Settled so far (Andy,
+15. **The name.** Settled (Andy, 2026-10-06): the agent and the site are both **Ellery**, at
+    **`ellery.demo.floyda.dev`**. On the site the agent is "Ellery, version 1", and later
+    versions keep the name with a new number. The site calls Ellery "it". The name comes from
+    Ellery Queen, the American detective of 1930s fiction, whose novels stopped near the end
+    with a "Challenge to the Reader": the reader now held every clue the detective had. That
+    is the site's premise: Ellery works from the evidence the investigators recorded, and every
+    reader can check its answer against the NTSB's verdict. Methods says this in one line, and
+    says the name stands for no real person. The caveat (§3.1) and the site card (item 12)
+    use the name. The address is a third-level subdomain, so S5's build needs a certificate
+    that covers it. The record of how the name was reached follows.
+
+    Neither the agent nor the site had a name before 2026-10-05, and no earlier ideas were
+    written down. "Probable cause", the NTSB's own term, was a placeholder. Settled first (Andy,
     2026-10-05): the site lives under Andy's domain, `floyda.dev`; the name should play on the
     analysis side of an investigation, the part the agent replaces. Whether it sits at a path
     or a subdomain is a hosting choice for S5's build. Rules for any name: no "NTSB" in it, no
@@ -707,6 +716,10 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
     plain labels before NTSB terms; counts, not percentages, beside the board (§12).
 14. The board runs the loop as version 1, stated as such, although the fixed pipeline measured
     better on held-out cases (§1).
+15. The agent and the site are named Ellery, at `ellery.demo.floyda.dev` (§12, item 15).
+16. WCAG 2.2 level AA on every page (§12, item 8); preview cards by kind of page, with cases
+    kept out of social feeds (§12, item 12); a withheld-verdict line on every case and a
+    diagram of the split on Methods (§5, §9).
 
 ## 16. Open questions for Andy
 
@@ -729,6 +742,8 @@ Decision numbers are assigned at merge, after S3.2's, so the two branches do not
   terminal display.
 - **Closure**: the moment the NTSB closes a case and publishes its codes and probable cause.
 - **Docket**: the NTSB's public folder of supporting documents for a case.
+- **Ellery**: the agent's name and the site's, after Ellery Queen's "Challenge to the Reader";
+  version 1 is the loop of S3.1, frozen at `fd6053f`.
 - **Finding code**: the NTSB's code for a reason the accident happened.
 - **Fixed pipeline**: arm B. It reads every readable document in a fixed order and answers
   once.
