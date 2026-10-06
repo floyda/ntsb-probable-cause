@@ -108,13 +108,21 @@ def answering_run_record(folder: Path) -> RunRecord:
 
 
 def _recorded_spec(folder: Path) -> dict[str, object]:
-    """A run folder's ``spec.json``, or ``{}`` where it has none or it cannot be read."""
+    """A run folder's ``spec.json``; ``{}`` where it has none; refused where it cannot be read.
+
+    S3.2 Task 4: an unreadable file used to read as ``{}``, so an ablation could be labelled
+    the plain loop.
+    """
     path = folder / "spec.json"
-    try:
-        recorded = json.loads(path.read_text()) if path.is_file() else {}
-    except json.JSONDecodeError:
+    if not path.is_file():
         return {}
-    return recorded if isinstance(recorded, dict) else {}
+    try:
+        recorded = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        raise ConfigurationError(f"{path}: not readable JSON; refusing to guess what ran") from None
+    if not isinstance(recorded, dict):
+        raise ConfigurationError(f"{path}: not a JSON object; refusing to guess what ran")
+    return recorded
 
 
 def _ablated(folder: Path) -> bool:
@@ -569,6 +577,9 @@ def _cmd_run(args: argparse.Namespace, settings: Settings, client_factory: Clien
         # The loop's tools count in S3's statistics, whose pool must not hold this sample's own
         # verdicts (decision 0129).
         refuse_pool_holding(agent_run.STATS, args.sample)
+    if args.arm == "C":
+        # Before the cases are read, a client is built or anything is reserved (decision 0142).
+        agent_run.refuse_unregistered_heldout(args.sample, gitinfo.is_committed)
     guidance = _run_guidance(args)
     readings = _readings_for_run(args, settings)
     processed = settings.data_dir / "processed"
@@ -1014,16 +1025,23 @@ def _cmd_release(args: argparse.Namespace, settings: Settings) -> int:
 _GROUP_FIELD = next(f for f in EVIDENCE_FIELDS if f.role is EvidenceRole.PHASE_OF_FLIGHT)
 
 
-def _cmd_check(
-    args: argparse.Namespace,
-    settings: Settings,
-    client_factory: ClientFactory,
-    jev_factory: JevFactory,
-) -> None:
-    folder = settings.runs_dir / args.run_id
-    record = answering_run_record(folder)
-    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
-    if (
+def _admit_check_source(args: argparse.Namespace, record: RunRecord) -> bool:
+    """Refuse a source the ordering check may not read; say whether it is a held-out run.
+
+    Decision 0142: arm B's last part reads a ``heldout-400`` run once the registration is
+    committed, and only the tool post-pass's derived run (the check follows the post-pass), with
+    way ``luna`` (Jev is admitted for development runs only, 0097; one check per source).
+    Every other held-out run is refused as it always was. Nothing is read or built here.
+    """
+    heldout = checkpass.heldout_open(record, is_committed=gitinfo.is_committed)
+    if heldout:
+        if not args.run_id.endswith("-tools"):
+            raise ConfigurationError(
+                f"check: {args.run_id} is a {record.sample} answer run; arm B's check comes after "
+                "its tool post-pass, so name the <run id>-tools run (decision 0142)"
+            )
+        checkpass.refuse_heldout_way(args.run_id, args.way)
+    elif (
         not record.sample.startswith("dev")
         or "heldout" in args.run_id
         or record.arm not in checkpass.CHECKED_ARMS
@@ -1033,6 +1051,22 @@ def _cmd_check(
             f"C runs as a diagnostic, only; {args.run_id} is {record.sample}, arm {record.arm} "
             "(decisions 0096, 0097, 0137)"
         )
+    return heldout
+
+
+def _cmd_check(
+    args: argparse.Namespace,
+    settings: Settings,
+    client_factory: ClientFactory,
+    jev_factory: JevFactory,
+) -> None:
+    folder = settings.runs_dir / args.run_id
+    record = answering_run_record(folder)
+    samples.refuse_sealed(record.sample, is_committed=gitinfo.is_committed)
+    heldout = _admit_check_source(args, record)
+    # A held-out run counts only from a clean tree (decision 0018): before any case is read.
+    commit = ledger.commit_state()
+    ledger.refuse_if_heldout_and_dirty(record.sample, commit[1])
     # Decision 0137: the diagnostic reads the arm, whose `occurrence_usage` tool is the premise
     # it tests. A tool ablation (`--without`, recorded in `spec.json` only) dropped that tool or
     # the suggestion tool, so it is refused here, before anything is read or reserved.
@@ -1080,7 +1114,6 @@ def _cmd_check(
     # Computed before any reservation too (fix round 2): a failure in either call must not
     # leave a reservation with nothing left to settle it.
     seen_pairs = samples.seen_pairs(processed)
-    commit = ledger.commit_state()
     run_id = pre.run_id
     if way == "rule":
         checker = checkpass.rule_checker(stats)
@@ -1133,23 +1166,40 @@ def _cmd_check(
         except BaseException:
             release(settings.runs_dir, run_id)
             raise
+    if heldout:
+        # The check is a model call over held-out cases: the ledger lists it (decision 0026).
+        ledger.append_row(
+            settings.heldout_ledger_path,
+            derived,
+            str(settings.runs_dir / derived.run_id / "cases.jsonl"),
+        )
     print(f"check {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
 
 
 def _cmd_tools(args: argparse.Namespace, settings: Settings, client_factory: ClientFactory) -> None:
     """Arm B's fixed tool post-pass over a finished arm B run (S3.1 Task 12, spec §7.1).
 
-    Every refusal (``armb.preflight``, then the sealed sample) comes before any case is read or
-    any client is built. The budget is reserved and settled inside ``armb.tools_run``.
+    Every refusal (a dirty tree for a held-out run, read from the source's run record alone, then
+    ``armb.preflight``, then the sealed sample) comes before any case is read or any client is
+    built. The budget is reserved and settled
+    inside ``armb.tools_run``. A ``heldout-400`` source is admitted once the registration is
+    committed (``checkpass.heldout_open``, reached through ``armb.preflight``, decision 0142), and
+    the post-pass then adds one row to the held-out ledger.
     """
     folder = settings.runs_dir / args.run_id
+    commit = ledger.commit_state()
+    # An admitted held-out run counts only from a clean tree: refused on the run record alone,
+    # before `armb.preflight` reads a case. A folder with no record is left to preflight.
+    if (folder / "run.jsonl").is_file():
+        source = answering_run_record(folder)
+        if checkpass.heldout_open(source, is_committed=gitinfo.is_committed):
+            ledger.refuse_if_heldout_and_dirty(source.sample, commit[1])
     pre = armb.preflight(folder, settings.runs_dir)
     samples.refuse_sealed(pre.record.sample, is_committed=gitinfo.is_committed)
     processed = settings.data_dir / "processed"
     ids = [case.case_id for case in pre.cases if armb.in_post_pass(case)]
     raws = dict(zip(ids, samples.load_cases(processed, ids), strict=True))
     seen = samples.seen_pairs(processed)
-    commit = ledger.commit_state()
     budget = args.budget_usd if args.budget_usd is not None else settings.monthly_budget_usd
     client, batch = client_factory(settings)
     with DocketClient(
@@ -1169,6 +1219,12 @@ def _cmd_tools(args: argparse.Namespace, settings: Settings, client_factory: Cli
             budget_usd=budget,
             commit=commit,
             sync=args.sync,
+        )
+    if derived.sample.startswith("heldout"):
+        ledger.append_row(
+            settings.heldout_ledger_path,
+            derived,
+            str(settings.runs_dir / derived.run_id / "cases.jsonl"),
         )
     print(f"tools {derived.run_id}: {derived.cases} cases, ${derived.cost_usd:.4f}")
 

@@ -1,0 +1,7 @@
+S3.2 cap check (scripts/s32_cap_check.py; spec §5, decision 144)
+Counts only: no case number.
+run a = 20261001T201506-fd6053f-dev-400-C
+run b = 20261001T201648-fd6053f-dev-400-C
+run a: 401 cases counted, 0 forced to answer by the cap (an answer call after fewer than 6 coding calls)
+run b: 401 cases counted, 0 forced to answer by the cap (an answer call after fewer than 6 coding calls)
+cap check: 0 cases had coding cut short at $0.15 -> the $0.30 cap stands (decision 144)

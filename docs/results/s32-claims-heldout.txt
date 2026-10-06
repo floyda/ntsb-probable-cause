@@ -1,0 +1,174 @@
+S3.2 held-out claims (scripts/s32_claims.py; spec §6 to §12)
+Counts only: no case number. Differences are in points, with the 95% bootstrap interval and the cases they rest on. A guard refusal removes a case from both arms; every other failure counts as wrong (spec §7.3).
+
+## 1. Provenance
+[arm A]
+run 20261004T092646-751d50d-heldout-400-A [complete]
+sample=heldout-400 arm=A evidence=v1 prompt=s1-v6 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+commit=751d50d started=2026-10-04T09:26:46.039547+00:00 finished=2026-10-04T09:45:28.221878+00:00
+cases=400 total_cost_usd=0.2051
+ledger: | 2026-10-04 | heldout-400 | A | v1 | - | - | openai/gpt-6-luna | 751d50d | 0.21 | 20261004T092646-751d50d-heldout-400-A/cases.jsonl |
+[arm B answer]
+run 20261004T111937-dd64854-heldout-400-B [complete]
+sample=heldout-400 arm=B evidence=v1 prompt=s1-v6+ge17fecdc66ec model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=dd64854 started=2026-10-04T11:19:37.272203+00:00 finished=2026-10-04T12:31:44.490744+00:00
+cases=400 total_cost_usd=1.1869
+ledger: | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | dd64854 | 1.19 | 20261004T111937-dd64854-heldout-400-B/cases.jsonl |
+[arm B tool post-pass]
+run 20261004T111937-dd64854-heldout-400-B-tools [complete]
+sample=heldout-400 arm=B evidence=v1 prompt=s1-v6+ge17fecdc66ec+tools-s3+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=f744622 started=2026-10-04T12:42:24.736026+00:00 finished=2026-10-04T13:22:53.164326+00:00
+cases=400 total_cost_usd=1.0510
+ledger: | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | f744622 | 1.05 | 20261004T111937-dd64854-heldout-400-B-tools/cases.jsonl |
+[arm B ordering check]
+run 20261004T111937-dd64854-heldout-400-B-tools-check-luna [complete]
+sample=heldout-400 arm=B evidence=v1 prompt=s1-v6+ge17fecdc66ec+tools-s3+p947fac1c86a4+check-luna-s3 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=60fdd75 started=2026-10-04T13:23:18.459223+00:00 finished=2026-10-04T14:07:38.095208+00:00
+cases=400 total_cost_usd=0.1061
+ledger: | 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | 60fdd75 | 0.11 | 20261004T111937-dd64854-heldout-400-B-tools-check-luna/cases.jsonl |
+[the loop]
+run 20261004T140804-e0dc881-heldout-400-C [complete]
+sample=heldout-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=e0dc881 started=2026-10-04T14:08:04.082864+00:00 finished=2026-10-04T18:45:15.955732+00:00
+cases=400 total_cost_usd=3.9270
+ledger: | 2026-10-04 | heldout-400 | C | v1 | - | - | openai/gpt-6-luna | e0dc881 | 3.93 | 20261004T140804-e0dc881-heldout-400-C/cases.jsonl |
+[the loop without the docket]
+run 20261004T184547-80c539e-heldout-400-C [complete]
+sample=heldout-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=docket_documents,docket_listing includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=80c539e started=2026-10-04T18:45:47.216074+00:00 finished=2026-10-04T20:52:15.090724+00:00
+cases=400 total_cost_usd=0.9774
+ledger: | 2026-10-04 | heldout-400 | C | v1 | docket_documents,docket_listing | - | openai/gpt-6-luna | 80c539e | 0.98 | 20261004T184547-80c539e-heldout-400-C/cases.jsonl |
+[coding ablation (dev-400)]
+run 20261004T053238-f0e78b7-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=f0e78b7 started=2026-10-04T05:32:38.887444+00:00 finished=2026-10-04T09:25:55.375913+00:00
+cases=401 total_cost_usd=2.3504
+[noise run a (dev-400)]
+run 20261001T201506-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:15:06.897112+00:00 finished=2026-10-01T23:04:42.458162+00:00
+cases=401 total_cost_usd=4.5711
+[noise run b (dev-400)]
+run 20261001T201648-fd6053f-dev-400-C [complete]
+sample=dev-400 arm=C evidence=v1 prompt=s3-v1+ge17fecdc66ec+p947fac1c86a4 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=fd6053f started=2026-10-01T20:16:48.699656+00:00 finished=2026-10-01T23:23:33.969331+00:00
+cases=401 total_cost_usd=4.4476
+failures by kind (a guard refusal leaves the case out of both arms; every other failure counts as wrong; spec §7.3):
+- arm A: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B answer: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0; documents left out at the context ceiling (recorded context): 4 in 4 cases
+- arm B tool post-pass: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- arm B ordering check: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+- the loop: 6 of 400 failed: guard refusals 0, failed: coding 4, cap 1, cap: context 1, other 0
+- the loop without the docket: 0 of 400 failed: guard refusals 0, cap 0, cap: context 0, other 0
+
+## 2. The verdict (occurrence top-1 decides; spec §7)
+top-1, loop - arm B: -9.5 points [-14.0, -5.2], n=400; both answered -8.9 points [-13.2, -4.6], n=394
+bottom of the interval: -14.0 points (a stricter margin can be applied to this figure)
+outcome: worse
+cost, billed (spec §6): loop billed 2.0610 USD, computed 3.9270 USD
+arm B billed 2.1347 USD (answer 1.0919 + tools 0.9366 + check 0.1061)
+arm B computed 2.3439 USD
+every figure used is a billed figure
+the loop's bill against arm B's: -3.4%
+cost band: equal (lower or greater: more than 10% below or above arm B's bill)
+work done (printed beside, never deciding; spec §6 rule 3):
+loop: 71939068 prompt tokens, 41466490 cached, 1320295 reply tokens
+arm B answer: 19507262 prompt tokens, 846105 reply tokens (the steps of the cases that answered; a failed case records no step)
+arm B tool post-pass: 19157294 prompt tokens, 2540768 cached, 372444 reply tokens
+arm B ordering check: 309958 prompt tokens, 150160 reply tokens (its own steps)
+warranted: no
+On held-out cases, the loop was not shown to improve on the fixed pipeline: it was worse.
+
+## 3. Secondary readings (same rule; neither decides)
+top-3, loop - arm B: -15.8 points [-20.2, -11.2], n=400; both answered -15.0 points [-19.5, -10.2], n=394
+top-3 outcome (not deciding): worse; bottom of the interval -20.2 points
+recall@10, loop - arm B: -3.8 points [-6.5, -1.4], n=382; both answered -3.5 points [-6.0, -1.1], n=376
+recall@10 outcome (not deciding): worse; bottom of the interval -6.5 points
+
+## 4. Where the saving comes from (spec §10)
+work (loop computed - arm B computed): +1.5831 USD
+loop discount (computed - billed): 1.8660 USD
+arm B discount (computed - billed): 0.2093 USD
+billed saving (arm B billed - loop billed) +0.0736 USD = reading less (-work) -1.5831 USD + cache discounts (loop discount - arm B discount) +1.6567 USD
+a negative "reading less" figure means the loop did more list-price work than arm B (not a saving but a cost)
+
+## 5. The four results
+result 1: holds (more than half on at least one reading; spec §9.1)
+- cases counted 400, with documents on offer 375
+- read every document on offer: 245 of 375 (65.3%) of the cases with documents on offer
+- first used the coding tools in arm B's fixed order: 0 of 400 (0.0%) of the cases counted
+- by fatal and non-fatal:
+- fatal: 200 counted; read every document on offer 87 of 199 (43.7%) of those with documents on offer; fixed order 0 of 200 (0.0%)
+- non-fatal: 200 counted; read every document on offer 158 of 176 (89.8%) of those with documents on offer; fixed order 0 of 200 (0.0%)
+- by documents offered (docket size):
+- none: 25 counted; read every document on offer 0 of 0 of those with documents on offer; fixed order 0 of 25 (0.0%)
+- 1: 49 counted; read every document on offer 48 of 49 (98.0%) of those with documents on offer; fixed order 0 of 49 (0.0%)
+- 2-4: 128 counted; read every document on offer 114 of 128 (89.1%) of those with documents on offer; fixed order 0 of 128 (0.0%)
+- 5 or more: 198 counted; read every document on offer 83 of 198 (41.9%) of those with documents on offer; fixed order 0 of 198 (0.0%)
+result 2: holds (the loop does not beat arm B on top-1 and its bill is not lower; outcome worse, band equal; spec §9.2)
+result 3: does not hold (the fitted confidence passes the three-group test (not shown to be miscalibrated) on held-out; spec §9.3, §8.3)
+- group low: n=132, mean fitted 0.220, right 29 of 132 (22.0%), 98.3% interval [0.146, 0.317], inside
+- group middle: n=131, mean fitted 0.277, right 32 of 131 (24.4%), 98.3% interval [0.166, 0.344], inside
+- group high: n=131, mean fitted 0.310, right 33 of 131 (25.2%), 98.3% interval [0.173, 0.352], inside
+- three-group test: passes (every group inside its interval)
+- sorting (share right in the high group minus the low group): +3.2 points [-7.0, +13.5] (reported, not tested)
+result 4: not shown (spec §9.4)
+- stated effects on documents read: 1781
+- naming an event or a finding category, any route (an upper bound; the category-leaf route is loose): 258 of 1781
+- by route: event label (strict) 63, category leaf (loose) 199, event code 0 (an effect can match more than one route)
+
+## 6. Abstain
+curve floor p(0) = 0.171; the abstain cut-off 0.164 cannot fire on this curve at all
+fired on 0 of 394 scored loop cases (0.0%)
+right among abstained: 0 of 0
+right among answered: 94 of 394 (23.9%)
+
+## 7. The no-docket ablation and arm A
+no-docket - loop, top-1: -8.5 points [-13.0, -3.8], n=400; both answered -9.4 points [-13.7, -4.8], n=394
+no-docket - loop, top-3: -8.5 points [-13.5, -3.5], n=400; both answered -9.4 points [-14.5, -4.1], n=394
+no-docket - loop, recall@10: -8.4 points [-11.4, -5.4], n=382; both answered -8.8 points [-11.9, -5.8], n=376
+the loop top-1: 23.5% [19.2%, 27.5%], n=400 (a failure counts as wrong)
+arm B (final) top-1: 33.0% [28.5%, 37.5%], n=400 (a failure counts as wrong)
+the loop without the docket top-1: 15.0% [11.5%, 18.5%], n=400 (a failure counts as wrong)
+arm A top-1: 5.0% [3.0%, 7.2%], n=400 (start facts only; decides nothing)
+
+## 8. The predictions (registered in docs/rounds/s3-registration.md; spec §12)
+format gate, run loop: PASS -- 4 of 400 cases failed for format or tool reasons (failed: coding 4); of which 0 had no reply on the failing call; at most 8 of 400 pass (prediction 9, counted as scripts/s3_noise_floor.py counts it)
+round limit (failed: rounds), run loop: 0 of 400 cases (not a format or tool failure, so not in the gate)
+P1: not met -- top-1: the loop matches but does not beat arm B (outcome worse; interval [-14.0, -5.2])
+P2: not met -- cost: the loop's bill is more than 10% below arm B's (loop 2.0610 USD, arm B 2.1347 USD, band equal)
+P3: met -- top-3: the loop is below arm B, the interval wholly below zero (top of the interval -11.2 points)
+P4: not met -- findings: recall@10 is level, the interval including zero ([-6.5, -1.4])
+P5: not met -- without the docket the loop loses at least 10.0 points of top-1 (without - with -8.5 points)
+P6: not met -- the loop without its coding tools is worse on top-1 than each noise-floor run, each interval wholly below zero (ablation minus noise run; noise run a: -0.3 points [-4.3, +3.8], n=399; noise run b: -1.8 points [-6.0, +2.3], n=399)
+P7: met -- result 1: reads every offered document on more than half (245 of 375 (65.3%)) and uses arm B's exact order on fewer than 5% (0 of 400 (0.0%))
+P8: met -- the three-group test passes (yes) and the abstain cut-off fires on fewer than 5% of scored cases (0 of 394) (the abstain half is met by construction: the curve's lowest value is 0.171, above the 0.164 cut-off; registration disclosure)
+P9: met -- format: at most 8 cases fail for format or tool reasons in the loop run (4 of 400)
+
+## 9. The reading (spec §10)
+question 1: On held-out cases, the loop was not shown to improve on the fixed pipeline: it was worse.
+results 1 to 4 say how that came about; they do not overturn it:
+result 1: holds (read every offered document on 245 of 375 (65.3%))
+result 2: holds (outcome worse, cost band equal)
+result 3: does not hold (the fitted confidence passes the three-group test (not shown to be miscalibrated) on held-out)
+result 4: not shown (the stated effects are descriptions, not predictions of change)
+question 2: what the board may show
+- the board shows its confidence as fitted (result 3 does not hold)
+- the board labels a stated effect "the agent's note", never a prediction (result 4 is not shown)

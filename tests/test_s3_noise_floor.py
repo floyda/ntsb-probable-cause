@@ -913,3 +913,9 @@ def test_the_free_targets_refuse_missing_variables() -> None:
         "uv run python -m scripts.round_result --run $(RUN) --reference $(REFERENCE) "
         "--noise $(NOISE) --append docs/rounds/s3-round-$(N).md"
     )
+
+
+def test_the_gate_does_not_count_a_stop_at_the_context_ceiling() -> None:
+    """S3.2 Task 15a (decision 152): ``cap: context`` is the run's limit, not a format failure."""
+    gate = nf.format_gate([_failed("x1", "cap: context"), _scored("x2")])
+    assert (gate.count, gate.rounds, gate.cases) == (0, 0, 2)

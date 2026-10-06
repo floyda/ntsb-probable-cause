@@ -14,3 +14,17 @@ Every run that touched a held-out sample (decision 0026).
 | 2026-09-24 | heldout-400 | ceiling | - | - | openai/gpt-6-luna | 05c5c5b | 0.24 | 20260924T070202-05c5c5b-heldout-400-ceiling/cases.jsonl |
 | 2026-09-24 | heldout-400 | B — ABORTED: OpenRouter lost the stage-1 retry batch after 10 h queued (404); 40 refused by the guard, 360 unanswered, none scored; re-run fresh by Andy's decision | - | - | openai/gpt-6-luna | 36bcd22 | 0.58 | 20260924T075506-36bcd22-heldout-400-B/cases.jsonl |
 | 2026-09-24 | heldout-400 | B | - | - | openai/gpt-6-luna | 7071800 | 1.13 | 20260924T185800-7071800-heldout-400-B/cases.jsonl |
+
+## From S2.6: with the evidence version (decision 0076)
+
+Every row above this table read the docket at evidence version v1.
+
+| date | sample | arm | evidence | exclusions | includes | model | commit | cost USD | results |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-04 | heldout-400 | A | v1 | - | - | openai/gpt-6-luna | 751d50d | 0.21 | 20261004T092646-751d50d-heldout-400-A/cases.jsonl |
+| 2026-10-04 | heldout-400 | B — ABORTED: the provider refused the stage-1 batch twice (first run, then one resume), 0 of 400 answered, none scored: one request was over the model's 1,050,000-token context window. Re-run fresh after decision 152 | v1 | - | - | openai/gpt-6-luna | 7948ac0 | 0.00 | 20261004T094550-7948ac0-heldout-400-B/cases.jsonl |
+| 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | dd64854 | 1.19 | 20261004T111937-dd64854-heldout-400-B/cases.jsonl |
+| 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | f744622 | 1.05 | 20261004T111937-dd64854-heldout-400-B-tools/cases.jsonl |
+| 2026-10-04 | heldout-400 | B | v1 | - | - | openai/gpt-6-luna | 60fdd75 | 0.11 | 20261004T111937-dd64854-heldout-400-B-tools-check-luna/cases.jsonl |
+| 2026-10-04 | heldout-400 | C | v1 | - | - | openai/gpt-6-luna | e0dc881 | 3.93 | 20261004T140804-e0dc881-heldout-400-C/cases.jsonl |
+| 2026-10-04 | heldout-400 | C | v1 | docket_documents,docket_listing | - | openai/gpt-6-luna | 80c539e | 0.98 | 20261004T184547-80c539e-heldout-400-C/cases.jsonl |

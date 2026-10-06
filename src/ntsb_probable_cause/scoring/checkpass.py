@@ -21,9 +21,9 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
-from ntsb_probable_cause import sources
+from ntsb_probable_cause import gitinfo, sources
 from ntsb_probable_cause.errors import ConfigurationError, SchemaError
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings, Payload, cost_usd
 from ntsb_probable_cause.model.typesafe import JEV_PINNED, TypeSafeClient
@@ -338,24 +338,81 @@ ARM_B_ONLY = frozenset({"B"})
 ARM_C_WAY: Way = "luna"
 
 
+# Decision 0142; spec §4.3 item 5: the one file whose commit opens arm B's later parts (the tool
+# post-pass and the ordering check) and arm C to ``heldout-400``. It is committed before any
+# held-out run, so the plan the runs follow is on record first.
+S32_REGISTRATION: Final = Path("docs/rounds/s3-registration.md")
+# Decision 0142: S3.2 makes its held-out runs once. This file is committed at S3.2's close-out,
+# after the six registered runs; from then both held-out gates (:func:`heldout_open` and
+# ``agent/run.py:refuse_unregistered_heldout``) refuse every new held-out run, so a registration
+# that stays committed does not keep ``heldout-400`` open.
+S32_USED: Final = Path("docs/rounds/s3-2-used.md")
+HELDOUT_SAMPLE: Final = "heldout-400"
+HELDOUT_WAY: Final = "luna"
+
+
+def _committed(path: Path) -> bool:
+    """Whether ``path`` is committed, asked of git at the time of the call.
+
+    The default of :func:`heldout_open`. It looks ``gitinfo.is_committed`` up when called, not
+    when this module loads, so a replaced function (a test's fake) reaches the gate.
+    """
+    return gitinfo.is_committed(path)
+
+
+def heldout_open(record: RunRecord, *, is_committed: Callable[[Path], bool] = _committed) -> bool:
+    """Whether a held-out run is one the post-pass and the check may now read.
+
+    True only for an arm B run on ``heldout-400`` once :data:`S32_REGISTRATION` is committed and
+    while :data:`S32_USED` is not (decision 0142: used once). Every other held-out run, and every
+    other arm on it, stays refused here:
+    arm C on held-out is opened by its own runner (``agent/run.py``), and no other held-out
+    sample has a registration. A development run never asks git.
+
+    Args:
+        record: the source run's record.
+        is_committed: whether a path is committed; git's, unless a test gives another.
+
+    Returns:
+        Whether the run is an arm B run on ``heldout-400`` with the registration committed and
+        the used mark not.
+    """
+    return (
+        record.sample == HELDOUT_SAMPLE
+        and record.arm == "B"
+        and is_committed(S32_REGISTRATION)
+        and not is_committed(S32_USED)
+    )
+
+
 def _refuse_unless_development(
     record: RunRecord, cases: Sequence[CaseResult], arms: frozenset[str] = ARM_B_ONLY
 ) -> None:
-    """Refuse a run that is not a finished development run of one of ``arms``, or is derived.
+    """Refuse a run that is not a finished run of one of ``arms`` this pass may read.
+
+    A run is readable if it is a development run, or an arm B run on ``heldout-400`` once the
+    registration is committed (:func:`heldout_open`, decision 0142). A held-out run must hold
+    held-out cases only, as a development run must hold development cases only. A derived check
+    run and an unfinished run are refused whichever split they are on.
 
     ``arms`` defaults to arm B alone, with the wording every refusal had before decision 0137,
-    so a caller other than the ordering check (arm B's tool post-pass) is unchanged by it.
+    so a caller other than the ordering check (arm B's tool post-pass) is unchanged by it. The
+    post-pass keeps its import of this function by name (``agent/armb.py`` is not edited).
     """
-    if not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm not in arms:
+    opened = heldout_open(record)
+    if not opened and (
+        not record.sample.startswith("dev") or "heldout" in record.run_id or record.arm not in arms
+    ):
         if arms == ARM_B_ONLY:
             raise ConfigurationError(
                 f"the ordering check runs on development arm B runs only; {record.run_id} is "
                 f"{record.sample}, arm {record.arm} (decisions 0096, 0097)"
+                f"{_registration_hint(record)}"
             )
         raise ConfigurationError(
             f"the ordering check runs on development arm B runs, and on development arm C runs "
             f"as a diagnostic, only; {record.run_id} is {record.sample}, arm {record.arm} "
-            "(decisions 0096, 0097, 0137)"
+            f"(decisions 0096, 0097, 0137){_registration_hint(record)}"
         )
     if "-check-" in record.run_id:
         raise ConfigurationError(
@@ -365,8 +422,39 @@ def _refuse_unless_development(
         raise ConfigurationError(
             f"{record.run_id} has not finished: the check needs a complete answer for every case"
         )
-    if any(c.split != "dev" for c in cases):
-        raise ConfigurationError(f"{record.run_id} holds a case outside the development split")
+    split = "heldout" if opened else "dev"
+    if any(c.split != split for c in cases):
+        name = "held-out" if opened else "development"
+        raise ConfigurationError(f"{record.run_id} holds a case outside the {name} split")
+
+
+def refuse_heldout_way(run_id: str, way: Way) -> None:
+    """A held-out check is made one way, GPT-6 Luna's, once (decisions 0097, 0142).
+
+    The rule way and the Jev ways are development tools: Jev is admitted on a second transport
+    for development runs only (0097), and four ways on one source would be four checks and four
+    ledger rows. ``preflight`` and the command both call this, the command before it reads a case.
+
+    Raises:
+        ConfigurationError: ``way`` is not ``luna``.
+    """
+    if way != HELDOUT_WAY:
+        raise ConfigurationError(
+            f"{run_id} is on {HELDOUT_SAMPLE}: its ordering check is made with way {HELDOUT_WAY} "
+            f"only, not {way} (decisions 0097, 0142)"
+        )
+
+
+def _registration_hint(record: RunRecord) -> str:
+    """Why a ``heldout-400`` arm B run is refused: no registration yet, or used once (0142)."""
+    if record.sample == HELDOUT_SAMPLE and record.arm == "B":
+        if _committed(S32_USED):
+            return (
+                f"; S3.2 used {HELDOUT_SAMPLE} once and it is closed: {S32_USED} is committed "
+                "(decision 0142)"
+            )
+        return f"; an arm B run on {HELDOUT_SAMPLE} opens once {S32_REGISTRATION} is committed"
+    return ""
 
 
 def _refuse_for_arm_c(record: RunRecord, way: Way, stats: StatsName) -> None:
@@ -418,8 +506,10 @@ def preflight(
 
     Refuses a source that isn't a finished development arm B or arm C run, that is itself a
     derived check run, or that holds a case outside the development split
-    (`_refuse_unless_development`); an arm C source checked any way but ``luna``, on a sealed
-    sample, or with statistics other than ``TOOLS_STATS`` (`_refuse_for_arm_c`, decision 0137);
+    (`_refuse_unless_development`; an arm B run on ``heldout-400`` is read instead once its
+    registration is committed, and then only a tool post-pass, decision 0142); an arm C source
+    checked any way but ``luna``, on a sealed sample, or with statistics other than
+    ``TOOLS_STATS`` (`_refuse_for_arm_c`, decision 0137);
     a tool post-pass (its prompt version holds ``+tools-``) checked with statistics other than
     ``TOOLS_STATS``, the file its tools counted in (decision 0129 item 4); and a derived id whose
     folder already holds a finished check's output. Read-only: no folder is created and no
@@ -429,6 +519,13 @@ def preflight(
     record = read_jsonl(source / "run.jsonl", RunRecord)[0]
     cases = read_jsonl(source / "cases.jsonl", CaseResult)
     _refuse_unless_development(record, cases, arms=CHECKED_ARMS)
+    if record.sample == HELDOUT_SAMPLE and "+tools-" not in record.prompt_version:
+        raise ConfigurationError(
+            f"{record.run_id} is a {HELDOUT_SAMPLE} answer run: arm B's check comes after its "
+            "tool post-pass, so it reads the <run id>-tools run only (decision 0142)"
+        )
+    if record.sample == HELDOUT_SAMPLE:
+        refuse_heldout_way(record.run_id, way)
     if record.arm == "C":
         _refuse_for_arm_c(record, way, stats)
     if "+tools-" in record.prompt_version and stats != TOOLS_STATS:

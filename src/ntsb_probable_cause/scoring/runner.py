@@ -61,6 +61,7 @@ from ntsb_probable_cause.scoring.hypothesis import (
 from ntsb_probable_cause.scoring.ledger import append_row, refuse_if_heldout_and_dirty
 from ntsb_probable_cause.scoring.metrics import CaseScores, score_case
 from ntsb_probable_cause.scoring.records import (
+    CONTEXT_FAILURE,
     CaseResult,
     EvidenceVersion,
     RunRecord,
@@ -859,6 +860,10 @@ def prepare_case(
 
     Decisions 0052, 0054, 0056: every readable document is weighed against the cap -- there is
     no longer a category-based filter that can exclude one before that loop ever sees it.
+
+    Decision 152: the first document that would take the prompt over the context ceiling
+    (``over_context``) stops the loop the same way. Those documents are recorded
+    ``context`` when the ceiling, not the cap, is what stopped them.
     """
     evidence, verdict, payload = _split_and_render(raw, spec)
     system = _system_text(raw, spec, tables, evidence.case_id)
@@ -881,9 +886,18 @@ def prepare_case(
     for position, index in enumerate(ordered):
         trial = attachment.context_for([*attached, index])
         trial_evidence, trial_verdict, trial_payload = _split_and_render(trial.context, spec)
-        if over_cap(trial_payload.text, system, spec):
+        # The cap first: a document over both is left out for the cap, as before decision 152.
+        limit = (
+            "cap"
+            if over_cap(trial_payload.text, system, spec)
+            else "context"
+            if over_context(trial_payload.text, system)
+            else None
+        )
+        if limit is not None:
             not_read.extend(
-                f"{i}: cap, {docket.record(i).estimated_tokens} tokens" for i in ordered[position:]
+                f"{i}: {limit}, {docket.record(i).estimated_tokens} tokens"
+                for i in ordered[position:]
             )
             break
         attached.append(index)
@@ -945,6 +959,28 @@ def estimated_cost_usd(payload_text: str, system: str, spec: RunSpec) -> float:
 def over_cap(payload_text: str, system: str, spec: RunSpec) -> bool:
     """Would answering the case (both calls) cost more than the cap?"""
     return estimated_cost_usd(payload_text, system, spec) > spec.cap_usd
+
+
+def over_context(payload_text: str, system: str) -> bool:
+    """Would the prompt be over ``sources.PROMPT_TOKEN_CEILING`` (decision 152)?
+
+    The prompt is estimated as ``estimated_cost_usd`` estimates it, one token per four
+    characters of the payload and system text. The ceiling allows for that estimate's
+    undercount of real tokens.
+    """
+    return (len(payload_text) + len(system)) / 4 > sources.PROMPT_TOKEN_CEILING
+
+
+def _whole_case_limit(payload_text: str, system: str, spec: RunSpec) -> str | None:
+    """Why a case is refused before any call, its documents already left out; None if it is not.
+
+    The cap first: a case over both reads ``cap``, as it did before the ceiling existed.
+    """
+    if over_cap(payload_text, system, spec):
+        return "cap"
+    if over_context(payload_text, system):
+        return CONTEXT_FAILURE
+    return None
 
 
 @dataclass
@@ -1502,8 +1538,9 @@ class Runner:
             documents_attached=prepared.documents_attached,
             preparation_cost_usd=prepared.preparation_cost_usd,
         )
-        if over_cap(prepared.payload.text, prepared.system, spec):
-            return self._failed(ctx, "cap", 0.0)
+        limit = _whole_case_limit(prepared.payload.text, prepared.system, spec)
+        if limit is not None:
+            return self._failed(ctx, limit, 0.0)
         hypothesis: Hypothesis | None = None
         failure: str | None = None
         try:
@@ -2051,8 +2088,9 @@ class Runner:
                 documents_attached=prepared.documents_attached,
                 preparation_cost_usd=prepared.preparation_cost_usd,
             )
-            if over_cap(prepared.payload.text, prepared.system, spec):
-                run.results[prepared.evidence.case_id] = self._failed(ctx, "cap", 0.0)
+            limit = _whole_case_limit(prepared.payload.text, prepared.system, spec)
+            if limit is not None:
+                run.results[prepared.evidence.case_id] = self._failed(ctx, limit, 0.0)
                 continue
             run.contexts[prepared.evidence.case_id] = ctx
 
