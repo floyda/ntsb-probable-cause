@@ -18,8 +18,8 @@ spike's folder).
 
 **Success is not a high score.** The project is an experiment in how to find out whether an
 agent loop earns its keep. S3.2's registered held-out reading is that the loop was worse than
-the fixed pipeline, at an equal bill (`docs/results/s32-claims-heldout.txt`, on S3.2's branch
-until it merges). The site shows that as the present state of an honest experiment.
+the fixed pipeline, at an equal bill (`docs/results/s32-claims-heldout.txt`). The site shows
+that as the present state of an honest experiment.
 
 **The board runs the loop, as version 1** (Andy, 2026-10-05). The fixed pipeline measured
 better, and running it on the board was considered and declined. The reason: the loop is the
@@ -94,11 +94,11 @@ S3.2's held-out reading was known, so it is not a registered prediction:
 > measured against that fixed method. This site is the record of how.
 
 "Points" were dropped from the wording (Andy, 2026-10-05): a reader who does not know how a
-percentage-point difference is defined cannot use it. The two rates come from the harness's
-report on the two held-out runs (`ntsb-eval report`): the fixed pipeline,
-`20261004T111937-dd64854-heldout-400-B-tools-check-luna`, top-1 33.0% [28.6%, 37.8%], n=400;
-the loop, `20261004T140804-e0dc881-heldout-400-C`, top-1 23.9% [19.9%, 28.3%], n=394 scored.
-The registered difference and its interval stay on the Methods page.
+percentage-point difference is defined cannot use it. The two rates are S3.2's, under its
+failure rule (a failed case counts as wrong; decision 0146), from
+`docs/results/s32-heldout-diagnosis.txt`: the fixed pipeline 33.0% [28.5%, 37.5%] and the
+loop 23.5% [19.2%, 27.5%], each on 400 cases. The registered difference and its interval stay
+on the Methods page.
 
 **Each stop animates in as the reader reaches it** (Andy, 2026-10-04). The parts of a stop
 rise into place; the board's rows turn over one after another, as a terminal display does; the
@@ -227,6 +227,13 @@ plain line saying the verdict was withheld** (Andy, 2026-10-05), for example: "C
 withheld from the agent. Code version 4f2a9c1." The code version links to that commit, and the
 line links to the split diagram on the Methods page (§9). No evidence fingerprint is shown.
 
+Last comes **a sources line** (Andy, 2026-10-06), after the visible sources on Andy's reference
+site: "Sources: the NTSB's case page · the case's docket · how this case was graded". The
+first two link to the NTSB; the third links to the board's grading entry on Methods. Every
+claim on the opened case can then be checked in one click, which is the link rule of §2 made
+visible. Each Path question's stop already ends with its results file, script and Methods
+entry (§7).
+
 ## 6. The trail view
 
 The trail view shows one case as numbered steps, top to bottom, in plain type.
@@ -246,7 +253,7 @@ answers from wrong ones, so the trail shows the number plainly and makes no clai
   document it shows what the agent wrote about it, labelled **"the agent's note"**, never a
   prediction, and the belief after it shows what changed. This follows S3.2's registered
   reading: the agent's stated effects are descriptions, not predictions of change (result 4
-  not shown; `docs/results/s32-claims-heldout.txt`, on S3.2's branch until it merges).
+  not shown; `docs/results/s32-claims-heldout.txt`).
 - The **coding step** lists each lookup the agent made in the code tables and past usage.
 
 **Cost runs beside every step**, with the case total at the top.
@@ -286,15 +293,18 @@ beneath states the present result. It appears on the first page's stop "Was a lo
 and at the top of the Path page.
 
 **The steps and their runs** (Andy, 2026-10-05). Every model step is from S3.2's held-out runs
-on `heldout-400`, GPT-6 Luna, on 2026-10-04, read with `ntsb-eval report`; the no-model step
-is S1's honest baseline (`docs/results/s1-bars.txt`):
+on `heldout-400`, GPT-6 Luna, on 2026-10-04, under S3.2's failure rule (a failed case counts
+as wrong), from `docs/results/s32-heldout-diagnosis.txt` and the project guide's S3.2 summary;
+the no-model step is S1's honest baseline (`docs/results/s1-bars.txt`). Step 2's interval is
+the harness report's; the build takes every step's interval from one script, so that one is
+recomputed by S3.2's bootstrap before launch:
 
 | step | plain words | run | top-1 | cost for 400 cases, list price |
 |---|---|---|---|---|
 | 1. No model | always guess the commonest code | S1 baseline, scored on all 4,241 held-out cases | 17.7% [16.6%, 18.9%] | none |
 | 2. The case record only | the agent with the recorded facts, no documents | `20261004T184547-80c539e-heldout-400-C` (S3.2's no-docket ablation) | 15.0% [11.8%, 18.8%], n=400 | $0.98 |
-| 3. Every document, fixed order | the fixed pipeline: answer, coding tools, ordering check | `20261004T111937-dd64854-heldout-400-B-tools-check-luna` and its two source runs | 33.0% [28.6%, 37.8%], n=400 | $2.34 ($2.13 billed) |
-| 4. Choosing what to read | the loop, version 1 | `20261004T140804-e0dc881-heldout-400-C` | 23.9% [19.9%, 28.3%], n=394 scored | $3.93 ($2.06 billed) |
+| 3. Every document, fixed order | the fixed pipeline: answer, coding tools, ordering check | `20261004T111937-dd64854-heldout-400-B-tools-check-luna` and its two source runs | 33.0% [28.5%, 37.5%], n=400 | $2.34 ($2.13 billed) |
+| 4. Choosing what to read | the loop, version 1 | `20261004T140804-e0dc881-heldout-400-C` | 23.5% [19.2%, 27.5%], n=400 | $3.93 ($2.06 billed) |
 
 Step 2 is S3.2's own no-docket run, not S2.4's one-shot ceiling: it ran beside the loop with
 everything equal but the documents, so steps 2 and 4 differ by the documents alone. The
@@ -340,7 +350,10 @@ file. Dead ends stay in.
    was worse on the first code, the top three and the findings, at an equal bill that it
    reached only through cached-prompt discounts (`docs/results/s32-claims-heldout.txt`).
    Reading the docket still mattered: without it the loop lost more. The loop read every
-   offered document in most cases, and skipped most often on large fatal dockets.
+   offered document in most cases, and skipped most often on large fatal dockets. Most of the
+   fixed pipeline's lead came from its coding-tools step: against the pipeline's first answer
+   alone, before that step, the loop was −4.2 points [−8.5, +0.0]
+   (`docs/results/s32-heldout-diagnosis.txt`, decision 0153, exploratory).
 8. **Does it hold on newly closed cases?** The board answers this in public.
 
 ### 7.3 What could come next
@@ -693,7 +706,7 @@ says whether it is settled.
   its text.
 - **S4: the store answers these pages.** For each closed case: the facts on the board, both
   code lists, both cause statements, the findings, the trail, and the costs.
-- **S3.2: the ladder's numbers.** Four steps on one sample and one model.
+- **S3.2: the ladder's numbers.** Delivered (§7.1); one interval to recompute by one script.
 - **The masked condition is paused** (decision
   [0123](../decisions/0123-the-staged-replay-is-paused.md)), so the Methods page describes
   one availability condition, not two.
