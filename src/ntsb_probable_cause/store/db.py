@@ -769,6 +769,11 @@ class Store:
             for row in rows
         }
 
+    def documents_recorded(self, mkey: int) -> int:
+        """How many documents the store has ever recorded for a case, present or gone."""
+        row = self._conn.execute("SELECT COUNT(*) FROM documents WHERE mkey=?", (mkey,)).fetchone()
+        return int(row[0])
+
     def upsert_document(self, row: DocumentRow) -> None:
         """Insert a document, or replace its row entirely if ``(mkey, doc_id)`` is known."""
         with self.transaction() as conn:

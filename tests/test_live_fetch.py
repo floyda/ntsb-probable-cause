@@ -79,7 +79,7 @@ def test_a_docket_with_failing_documents_reports_fetch_failed(
         return_value=httpx.Response(404)
     )
     with _docket_client(tmp_path) as client:
-        docket = prefetch_docket(client, MKEY)
+        docket = prefetch_docket(client, MKEY, known_documents=0)
     assert len(docket.documents) == len(parse_listing(SAVED, mkey=MKEY).entries)
     fetched = [d for d in docket.documents if d.entry.is_pdf() and not d.entry.is_photo_only()]
     assert fetched
@@ -91,7 +91,7 @@ def test_not_released_page_is_a_docket_with_no_entries(
 ) -> None:
     _serve_listing(respx_mock, NOT_RELEASED)
     with _docket_client(tmp_path) as client:
-        docket = prefetch_docket(client, MKEY)
+        docket = prefetch_docket(client, MKEY, known_documents=0)
     assert docket.listing.entries == ()
     assert docket.documents == ()
     assert docket.texts == {}
@@ -102,7 +102,34 @@ def test_a_404_listing_is_a_docket_with_no_entries(
 ) -> None:
     respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(404))
     with _docket_client(tmp_path) as client:
-        assert prefetch_docket(client, MKEY).documents == ()
+        assert prefetch_docket(client, MKEY, known_documents=0).documents == ()
+
+
+def test_a_404_for_a_case_the_store_saw_documents_for_is_a_fetch_error(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(404))
+    with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="3 documents"):
+        prefetch_docket(client, MKEY, known_documents=3)
+
+
+def test_not_released_for_a_case_the_store_saw_documents_for_is_a_fetch_error(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    _serve_listing(respx_mock, NOT_RELEASED)
+    with _docket_client(tmp_path) as client, pytest.raises(FetchError, match=str(MKEY)):
+        prefetch_docket(client, MKEY, known_documents=3)
+
+
+def test_a_normal_listing_ignores_known_documents(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    _serve_listing(respx_mock, SAVED)
+    respx_mock.get(url__startswith=sources.DOCKET_BASE_URL + "/Docket/Document").mock(
+        return_value=httpx.Response(404)
+    )
+    with _docket_client(tmp_path) as client:
+        assert prefetch_docket(client, MKEY, known_documents=3).documents
 
 
 @pytest.mark.parametrize("status", [500, 503, 429])
@@ -111,13 +138,13 @@ def test_a_site_that_keeps_failing_is_a_fetch_error(
 ) -> None:
     respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(status))
     with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="after-retries"):
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
 
 
 def test_a_transport_failure_is_a_fetch_error(tmp_path: Path, respx_mock: respx.MockRouter) -> None:
     respx_mock.get(sources.docket_url(MKEY)).mock(side_effect=httpx.ConnectError("down"))
     with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="fetch-failed"):
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
 
 
 def test_a_non_retried_error_status_is_a_fetch_error(
@@ -125,7 +152,7 @@ def test_a_non_retried_error_status_is_a_fetch_error(
 ) -> None:
     respx_mock.get(sources.docket_url(MKEY)).mock(return_value=httpx.Response(403))
     with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="http-403"):
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
 
 
 def test_a_page_with_no_info_block_is_not_no_docket(
@@ -133,13 +160,13 @@ def test_a_page_with_no_info_block_is_not_no_docket(
 ) -> None:
     _serve_listing(respx_mock, "<html><body>The layout changed.</body></html>")
     with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="no-info-block"):
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
 
 
 def test_a_count_mismatch_is_a_fetch_error(tmp_path: Path, respx_mock: respx.MockRouter) -> None:
     _serve_listing(respx_mock, SAVED.replace("Docket Items: 5", "Docket Items: 6", 1))
     with _docket_client(tmp_path) as client, pytest.raises(FetchError, match="declared 6"):
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
 
 
 def test_documents_are_cached_only_where_the_client_was_told(
@@ -151,6 +178,6 @@ def test_documents_are_cached_only_where_the_client_was_told(
     )
     cache = tmp_path / "live-docket"
     with DocketClient(cache, sleep=lambda _s: None, max_attempts=1) as client:
-        prefetch_docket(client, MKEY)
+        prefetch_docket(client, MKEY, known_documents=0)
     assert [p.name for p in tmp_path.iterdir()] == ["live-docket"]
     assert json.loads((cache / str(MKEY) / "fetch.json").read_text())

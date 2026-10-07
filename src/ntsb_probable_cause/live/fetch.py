@@ -49,7 +49,7 @@ def fetch_record(client: NtsbClient, case: QueuedCase) -> dict[str, object]:
     raise FetchError(f"case record for {case.case_id}: no record with mKey {case.mkey}")
 
 
-def prefetch_docket(client: DocketClient, mkey: int) -> Docket:
+def prefetch_docket(client: DocketClient, mkey: int, *, known_documents: int) -> Docket:
     """Read the case's docket, telling "no docket" from "the site did not answer".
 
     The site answers "no released docket" with an ordinary page (``docket.listing.
@@ -61,12 +61,21 @@ def prefetch_docket(client: DocketClient, mkey: int) -> Docket:
     the same way (``recorder.dockets.observe_docket``). One document failing is not an
     error: it comes back with a ``"fetch failed"`` status.
 
+    "No docket" (the not-released page or a 404) is accepted only when the recorder's store
+    has never recorded a document for the case (``known_documents == 0``). Under the seen
+    rule (decision 0157) a case coded now is never tried again, and dockets almost always
+    exist at closure, so for a case the store has seen documents for the same answer is
+    more likely a passing site fault: it raises ``FetchError`` and the case returns to the
+    queue. The recorder can take a 404 at face value because it looks again every night.
+
     The caller builds ``client`` on ``Settings.live_docket_dir``: nothing here caches
     elsewhere.
 
     Args:
         client: the docket client.
         mkey: the case's key.
+        known_documents: documents the store has ever recorded for the case
+            (``Store.documents_recorded``).
 
     Returns:
         The docket, with no entries when the site says there is none.
@@ -79,10 +88,10 @@ def prefetch_docket(client: DocketClient, mkey: int) -> Docket:
     except DocketError as error:
         reason = outcome_for_error(str(error))
         if reason == _NO_DOCKET_STATUS:
-            return _empty_docket(mkey)
+            return _no_docket(mkey, known_documents)
         raise FetchError(f"docket {mkey}: listing not read ({reason})") from error
     if is_not_released(page):
-        return _empty_docket(mkey)
+        return _no_docket(mkey, known_documents)
     try:
         listing = parse_listing(page, mkey=mkey)
         if listing.info is None:
@@ -90,6 +99,15 @@ def prefetch_docket(client: DocketClient, mkey: int) -> Docket:
         return read_docket(client, mkey)
     except DocketError as error:
         raise FetchError(f"docket {mkey}: listing not read ({error})") from error
+
+
+def _no_docket(mkey: int, known_documents: int) -> Docket:
+    if known_documents:
+        raise FetchError(
+            f"docket {mkey}: the site says no docket, but the store holds "
+            f"{known_documents} documents for it"
+        )
+    return _empty_docket(mkey)
 
 
 def _empty_docket(mkey: int) -> Docket:

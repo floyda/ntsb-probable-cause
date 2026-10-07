@@ -955,3 +955,35 @@ def test_closure_queries_work_on_a_read_only_store(tmp_path: Path) -> None:
     with Store(path, readonly=True) as reader:
         assert [c.mkey for c in reader.closures()] == [10, 30, 20]
         assert reader.run_finished_on(date(2026, 10, 1)) is True
+
+
+def _document(mkey: int, doc_id: int, *, gone: bool = False) -> DocumentRow:
+    return DocumentRow(
+        mkey=mkey,
+        doc_id=doc_id,
+        href=f"/Docket/Document/docBLOB?ID={doc_id}",
+        position=doc_id,
+        title="Weather",
+        pages=2,
+        photos=0,
+        extension=".pdf",
+        absent_run=None,
+        present_run=1,
+        last_present_run=1,
+        gone_absent_run=1 if gone else None,
+        gone_present_run=2 if gone else None,
+    )
+
+
+def test_documents_recorded_counts_every_document_ever_seen(tmp_path: Path) -> None:
+    path = tmp_path / "docs.sqlite"
+    with Store(path) as writable:
+        writable.migrate()
+        assert writable.documents_recorded(1) == 0
+        writable.upsert_document(_document(1, 10))
+        writable.upsert_document(_document(1, 11, gone=True))
+        writable.upsert_document(_document(2, 12))
+    with Store(path, readonly=True) as reader:
+        assert reader.documents_recorded(1) == 2
+        assert reader.documents_recorded(2) == 1
+        assert reader.documents_recorded(3) == 0
