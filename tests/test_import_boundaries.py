@@ -119,7 +119,8 @@ def test_nothing_in_the_library_imports_the_agent() -> None:
     """
     contract = _contract("Nothing in the library imports the agent")
     graph = grimp.build_graph(_ROOT)
-    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.agent"}
+    # ``live`` is the one library package that runs the agent (decision 0160), so it is not named.
+    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.agent", f"{_ROOT}.live"}
     assert set(contract["source_modules"]) == children  # type: ignore[call-overload]
     assert contract["forbidden_modules"] == [f"{_ROOT}.agent"]
     outside = {
