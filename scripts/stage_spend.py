@@ -1,9 +1,10 @@
 """A stage's spend, counted by commit on the stage's own branches, against the stage's line.
 
 Status
-    Live check for S2.7 (decision 0098 item 6) and S3 (decision 0128 item 2), chosen with
-    ``--stage`` (default ``s27``). Every paid ``make`` target of a stage runs it first with the
-    step's estimate; it exits 1 when the stage's spend plus the estimate would pass the line.
+    Live check for S2.7 (decision 0098 item 6), S3 (decision 0128 item 2) and S3.3 (decision 163),
+    chosen with ``--stage`` (default ``s27``). Every paid ``make`` target of a stage runs it first
+    with the step's estimate; it exits 1 when the stage's spend plus the estimate would pass the
+    line.
     Free: reads run folders only.
 
 Why
@@ -17,7 +18,7 @@ Why
     (decision 0128 item 3).
 
 Usage
-    uv run python -m scripts.stage_spend [--stage {s27,s3}] [--estimate USD]
+    uv run python -m scripts.stage_spend [--stage {s27,s3,s33}] [--estimate USD]
 """
 
 import argparse
@@ -60,6 +61,17 @@ STAGES: Mapping[str, Stage] = {
         line_usd=50.0,
         prefix="s3-",
         line_rule="decision 0128 item 2",
+        count_rule="decisions 0128 item 2, 0135",
+    ),
+    # S3.3's own $10 is S3's line less S3.1's and S3.2's $11.46 (decision 163): it counts the same
+    # commits as "s3" (S3.1, S3.2 and S3.3 grew from the same first commit) against $21.46.
+    "s33": Stage(
+        "S3.3",
+        base="4178ca1",
+        first="777c2a5",
+        line_usd=21.46,
+        prefix="s3-",
+        line_rule="decision 163",
         count_rule="decisions 0128 item 2, 0135",
     ),
 }

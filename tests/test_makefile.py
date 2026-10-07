@@ -244,3 +244,19 @@ def test_the_post_passes_name_the_registered_way_and_statistics() -> None:
     assert _flags(check, "--stats") == ["s3"]
     tools = next(x for x in recipe(text, "s32-heldout-b-tools") if "ntsb-eval tools" in x)
     assert tools.endswith("ntsb-eval tools $(RUN)")
+
+
+def test_every_s33_target_is_phony_and_the_morning_checks_both_lines_first() -> None:
+    text = Path("Makefile").read_text()
+    s33 = {name for name in targets(text) if name.startswith("s33-")}
+    assert {"s33-dry-run", "s33-morning", "s33-report"} <= s33
+    assert s33 <= set(phony_words(text))
+    recipe = text.split("\ns33-morning:\n", 1)[1].split("\n\n", 1)[0]
+    lines = [line.strip() for line in recipe.splitlines() if line.startswith("\t")]
+    stages = [i for i, line in enumerate(lines) if "stage_spend" in line]
+    run = next(i for i, line in enumerate(lines) if "ntsb-live run" in line)
+    assert [("--stage s3 " in lines[i], "--stage s33 " in lines[i]) for i in stages] == [
+        (True, False),
+        (False, True),
+    ]
+    assert max(stages) < run

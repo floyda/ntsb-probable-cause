@@ -162,3 +162,15 @@ def test_only_live_may_import_the_agent_from_outside_it() -> None:
         f"{_ROOT}.liveness",
         f"{_ROOT}.store",
     }
+
+
+def test_nothing_else_imports_the_live_package() -> None:
+    """S3.3 Task 9: every library package but ``live``, and the other commands, are sources."""
+    contract = _contract("Nothing in the library or the other commands imports the live package")
+    graph = grimp.build_graph(_ROOT)
+    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.live"}
+    commands = {"apps.eval", "apps.recorder", "apps.ingest"}
+    assert set(contract["source_modules"]) == children | commands  # type: ignore[call-overload]
+    assert contract["type"] == "forbidden"
+    assert set(contract["forbidden_modules"]) == {f"{_ROOT}.live", "apps.live"}  # type: ignore[call-overload]
+    assert "ignore_imports" not in contract

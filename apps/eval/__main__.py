@@ -76,6 +76,10 @@ from ntsb_probable_cause.settings import Settings
 # it from here, so it is named explicitly to satisfy mypy's strict re-export check.
 __all__ = ["main", "month_spent"]
 
+# The sample name a live run records (``live/local.py`` owns it; the library does not import
+# ``live``, so the string is repeated here and held equal by tests/test_live_fence.py).
+LIVE_SAMPLE = "live"
+
 ClientFactory = Callable[[Settings], tuple[ModelClient, BatchRunner | None]]
 
 
@@ -95,6 +99,31 @@ def _default_jev_factory(settings: Settings) -> TypeSafeClient:
     return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
 
 
+def _refuse_live(record: RunRecord) -> None:
+    """Refuse a live run: the evaluation commands never read the open split (decision 0024).
+
+    Every command that reads a run's record goes through :func:`answering_run_record`, so the
+    refusal sits there once. Live results are scored by the live report alone (S3.3 spec 9).
+
+    Raises:
+        ConfigurationError: the record's sample is ``live``.
+    """
+    if record.sample == LIVE_SAMPLE:
+        raise ConfigurationError(
+            f"{record.run_id} is a live run on the open split: the evaluation commands do not "
+            "read it (decision 0024); the live report scores it (S3.3 spec section 9)"
+        )
+
+
+def _refuse_live_sample(sample: str) -> None:
+    """Refuse to resolve "the latest live run": it would only read as "no completed run"."""
+    if sample == LIVE_SAMPLE:
+        raise ConfigurationError(
+            "a live run cannot be resolved: the evaluation commands do not read the open split "
+            "(decision 0024)"
+        )
+
+
 def answering_run_record(folder: Path) -> RunRecord:
     """The answering run's own ``RunRecord`` -- always the first row in ``run.jsonl``.
 
@@ -103,8 +132,9 @@ def answering_run_record(folder: Path) -> RunRecord:
     already exists -- so the first row is always the answering run, whether or not the
     folder has since been judged.
     """
-    records = read_jsonl(folder / "run.jsonl", RunRecord)
-    return records[0]
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    _refuse_live(record)
+    return record
 
 
 def _recorded_spec(folder: Path) -> dict[str, object]:
@@ -194,12 +224,14 @@ def resolve_latest(
     ``+tools-`` (the tool post-pass, ``<source>+tools-s3``) is a derived run, not a new
     answering run.
     """
+    _refuse_live_sample(sample)
     candidates: list[tuple[str, str]] = []
     for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
-        record = answering_run_record(folder)
-        if record.run_id != folder.name or _derived(record):
+        record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+        # A live record is skipped whatever its folder is called (decision 0024).
+        if record.sample == LIVE_SAMPLE or record.run_id != folder.name or _derived(record):
             continue
         if record.finished is None:
             continue
@@ -685,8 +717,8 @@ def _cached_share(folder: Path) -> str:
 def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_id = _resolve_run_id(settings.runs_dir, args.run_id, args.latest)
     folder = settings.runs_dir / run_id
+    run_record = answering_run_record(folder)  # first: it refuses a live run (decision 0024)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
-    run_record = answering_run_record(folder)
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + _ablation_line(folder)
     text += "\n" + report.summarise(cases, floor=floor) + floor_note

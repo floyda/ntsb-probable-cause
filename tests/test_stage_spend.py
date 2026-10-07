@@ -12,7 +12,7 @@ S3 = ss.STAGES["s3"]
 
 
 def test_the_stage_table_holds_s27_as_it_was_and_s3_as_decision_0128_fixes_it() -> None:
-    assert set(ss.STAGES) == {"s27", "s3"}
+    assert set(ss.STAGES) == {"s27", "s3", "s33"}
     assert ss.STAGES["s27"] == ss.Stage(
         "S2.7", base="971ee40", first="94f5d42", line_usd=25.0, prefix="s27-"
     )
@@ -210,3 +210,19 @@ def test_a_git_failure_is_a_configuration_error_not_a_zero_count(
         ss.stage_branches(S3)
     with pytest.raises(ConfigurationError, match="git could not list"):
         ss.stage_commits(S3, ("s3-agent-loop",))
+
+
+def test_s33_is_s3s_branches_against_the_line_left_after_s31_and_s32() -> None:
+    """Decision 0163: S3.3's own $10 is S3's line less S3.1's and S3.2's $11.46."""
+    assert ss.STAGES["s33"] == ss.Stage(
+        "S3.3",
+        base="4178ca1",
+        first="777c2a5",
+        line_usd=21.46,
+        prefix="s3-",
+        line_rule="decision 163",
+        count_rule="decisions 0128 item 2, 0135",
+    )
+    text, over = ss.report(ss.STAGES["s33"], runs=11.46, spend=0.0, estimate=10.01)
+    assert over
+    assert "refused: $21.47 would pass the line (decision 163)" in text

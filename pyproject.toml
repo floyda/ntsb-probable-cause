@@ -32,6 +32,7 @@ dependencies = [
 ntsb-ingest = "apps.ingest.__main__:main"
 ntsb-eval = "apps.eval.__main__:main"
 ntsb-record = "apps.recorder.__main__:main"
+ntsb-live = "apps.live.__main__:main"
 
 [project.optional-dependencies]
 # The recorder's S3 store sync (`store/sync.py`, Task 10) needs this only behind an `s3://`
@@ -154,6 +155,9 @@ forbidden_modules = [
     "ntsb_probable_cause.scoring",
 ]
 
+# S3.3 Task 9 (decision 0160): ``live`` is a consumer of the agent, like ``apps`` (it runs
+# ``AgentRunner``), so it is deliberately not a source below; tests/test_import_boundaries.py
+# holds the list to the package's children minus ``agent`` and ``live``.
 # S3.1 Task 10 (spec §8.5): the agent imports the library, never the reverse; only apps/eval
 # imports it. Every top-level library module is named (tests/test_import_boundaries.py holds the
 # list to the package's children, so a module added later fails the test until it is named).
@@ -202,6 +206,33 @@ forbidden_modules = [
     "ntsb_probable_cause.docket",
     "ntsb_probable_cause.data",
 ]
+
+# S3.3 Task 9 (spec 9, decision 0160): the live shadow is a consumer. Nothing else imports it,
+# so no evaluation command or library module can reach a live run or the live store by import.
+[[tool.importlinter.contracts]]
+name = "Nothing in the library or the other commands imports the live package"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.agent",
+    "ntsb_probable_cause.data",
+    "ntsb_probable_cause.docket",
+    "ntsb_probable_cause.errors",
+    "ntsb_probable_cause.fields",
+    "ntsb_probable_cause.gitinfo",
+    "ntsb_probable_cause.model",
+    "ntsb_probable_cause.paths",
+    "ntsb_probable_cause.recorder",
+    "ntsb_probable_cause.records",
+    "ntsb_probable_cause.scoring",
+    "ntsb_probable_cause.settings",
+    "ntsb_probable_cause.sources",
+    "ntsb_probable_cause.splits",
+    "ntsb_probable_cause.store",
+    "apps.eval",
+    "apps.recorder",
+    "apps.ingest",
+]
+forbidden_modules = ["ntsb_probable_cause.live", "apps.live"]
 
 [tool.deptry]
 # `recorder_stack` (infra/app.py's plain, unqualified `from recorder_stack import ...`) is this
