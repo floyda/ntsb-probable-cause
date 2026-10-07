@@ -117,10 +117,10 @@ Tasks 4, 5 and 6 are independent of each other once Task 2 has landed; 7 needs 5
 - Consumes: `agent/rendered.py` (Task 2), git.
 - Produces: `def main(argv: Sequence[str] | None = None) -> int`; prints and, with `--out`, writes the results file.
 
-- [ ] **Failing test first:** with a fake runner (inject a callable that returns a hex per tree), `main(["--out", tmp])` writes a file holding the commit `fd6053f`, `SOURCE_LABEL_V1`, the `+t` on `fd6053f`, the `+t` on HEAD, and `match: yes`; with two different hexes it writes `match: no` and returns 1.
-- [ ] Implement: `git worktree add --detach <tmp> fd6053f` (under `tempfile.mkdtemp()`), copy this tree's `src/ntsb_probable_cause/agent/rendered.py` into `<tmp>/src/ntsb_probable_cause/agent/`, run `[sys.executable, "-c", "from ntsb_probable_cause.agent.rendered import rendered_sha256; print(rendered_sha256())"]` with `cwd=<tmp>` and `PYTHONPATH=<tmp>/src`, then the same in this tree; always `git worktree remove --force <tmp>` in `finally`. A `Status` paragraph (0059): "Run once in S3.3 (spec §7.2); writes `docs/results/s33-fingerprint-continuity.txt`."
-- [ ] `Makefile`: `s33-continuity:` → `uv run --locked python -m scripts.s33_fingerprint_continuity --out docs/results/s33-fingerprint-continuity.txt` (free), with a comment, and the target in `.PHONY`.
-- [ ] `make check`; commit: `S3.3 Task 3: the fingerprint continuity script`.
+- [x] **Failing test first:** with a fake runner (inject a callable that returns a hex per tree), `main(["--out", tmp])` writes a file holding the commit `fd6053f`, `SOURCE_LABEL_V1`, the `+t` on `fd6053f`, the `+t` on HEAD, and `match: yes`; with two different hexes it writes `match: no` and returns 1.
+- [x] Implement: `git worktree add --detach <tmp> fd6053f` (under `tempfile.mkdtemp()`), copy this tree's `src/ntsb_probable_cause/agent/rendered.py` into `<tmp>/src/ntsb_probable_cause/agent/`, run `[sys.executable, "-c", "from ntsb_probable_cause.agent.rendered import rendered_sha256; print(rendered_sha256())"]` with `cwd=<tmp>` and `PYTHONPATH=<tmp>/src`, then the same in this tree; always `git worktree remove --force <tmp>` in `finally`. A `Status` paragraph (0059): "Run once in S3.3 (spec §7.2); writes `docs/results/s33-fingerprint-continuity.txt`."
+- [x] `Makefile`: `s33-continuity:` → `uv run --locked python -m scripts.s33_fingerprint_continuity --out docs/results/s33-fingerprint-continuity.txt` (free), with a comment, and the target in `.PHONY`.
+- [x] `make check`; commit: `S3.3 Task 3: the fingerprint continuity script`.
 - [ ] **Controller:** run `make s33-continuity`. If `match: yes`, commit the results file (`S3.3 Task 3: +t matches on fd6053f`); decision 0161 already cites it for version 1's two labels. **If `match: no`, or the script fails because `rendered.py` needs code `fd6053f` lacks: stop and put it to Andy (spec §18); do not start Task 4.**
 
 ## Task 4: `paid_run.sh` installs locked, and is tested by behaviour
