@@ -202,3 +202,17 @@ class RegulationTransitions(BaseModel, frozen=True):
     empty_to_other: int
     changed_value: int
     value_to_empty: int
+
+
+class Closure(BaseModel, frozen=True):
+    """A case that really closed, and when (S3.3 Task 5).
+
+    ``closure_run`` is the earliest real closure's ``present_run`` (the one definition in
+    ``Store._closure_runs``); ``closed_on`` is that run's ``started_at`` as a UTC ISO date.
+    """
+
+    mkey: int
+    ntsb_number: str
+    event_date: str
+    closure_run: int
+    closed_on: str

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.store import (
     CaseRow,
+    Closure,
     DocumentRow,
     FeedRow,
     RunSummary,
@@ -832,3 +834,124 @@ def test_readonly_store_quotes_special_characters_in_the_path(tmp_path: Path) ->
     expected = {path.name, path.name + "-wal", path.name + "-shm", path.name + "-journal"}
     after = {p.name for p in tmp_path.iterdir()}
     assert after <= expected
+
+
+# --- closures (S3.3 Task 5) -----------------------------------------------------------------
+
+
+def _closure_case(mkey: int) -> CaseRow:
+    return CaseRow(
+        mkey=mkey,
+        ntsb_number=f"INVENTED{mkey:03d}",
+        event_date="2026-09-01",
+        regulation="091",
+        status="Ongoing",
+        first_seen_run=1,
+        last_seen_run=1,
+        last_case_run=1,
+        last_docket_run=None,
+        watch_until=None,
+    )
+
+
+def _finish(store: Store, run_id: int, finished_at: str) -> None:
+    store.finish_run(
+        run_id,
+        finished_at=finished_at,
+        summary=RunSummary(
+            cases_polled=0,
+            cases_changed=0,
+            new_documents=0,
+            failures=0,
+            suspected_renumbers=0,
+            minutes=1.0,
+        ),
+    )
+
+
+def _three_closures(store: Store) -> None:
+    # Run 4 starts late in the evening at UTC-5: its UTC date is the next day.
+    starts = [
+        "2026-10-01T03:00:00+00:00",
+        "2026-10-02T03:00:00+00:00",
+        "2026-10-03T03:00:00+00:00",
+        "2026-10-04T23:30:00-05:00",
+    ]
+    for expected, started_at in enumerate(starts, start=1):
+        assert store.begin_run(started_at=started_at, commit_sha="a" * 7, dirty=False) == expected
+    for mkey in (30, 10, 20):
+        store.upsert_case(_closure_case(mkey))
+    # 10: Ongoing -> Completed at run 2.
+    store.add_status_event(
+        10, old="Ongoing", new="Completed", absent_run=1, present_run=2, run_id=2
+    )
+    # 20: Ongoing -> not returned -> N/A at run 4.
+    store.add_status_event(
+        20, old="Ongoing", new="not returned", absent_run=1, present_run=3, run_id=3
+    )
+    store.add_status_event(20, old="not returned", new="N/A", absent_run=3, present_run=4, run_id=4)
+    # 30: closed at run 3, re-labelled at run 4: counts once, at 3.
+    store.add_status_event(
+        30, old="Ongoing", new="Completed", absent_run=2, present_run=3, run_id=3
+    )
+    store.add_status_event(30, old="Completed", new="N/A", absent_run=3, present_run=4, run_id=4)
+
+
+def test_closures_lists_every_real_closure_in_order(store: Store) -> None:
+    _three_closures(store)
+    assert store.closures() == [
+        Closure(
+            mkey=10,
+            ntsb_number="INVENTED010",
+            event_date="2026-09-01",
+            closure_run=2,
+            closed_on="2026-10-02",
+        ),
+        Closure(
+            mkey=30,
+            ntsb_number="INVENTED030",
+            event_date="2026-09-01",
+            closure_run=3,
+            closed_on="2026-10-03",
+        ),
+        Closure(
+            mkey=20,
+            ntsb_number="INVENTED020",
+            event_date="2026-09-01",
+            closure_run=4,
+            closed_on="2026-10-05",
+        ),
+    ]
+
+
+def test_closures_agree_with_closure_runs(store: Store) -> None:
+    _three_closures(store)
+    assert store._closure_runs() == {10: 2, 20: 4, 30: 3}
+    assert {c.mkey: c.closure_run for c in store.closures()} == store._closure_runs()
+
+
+def test_closures_is_empty_without_closures(store: Store) -> None:
+    assert store.closures() == []
+
+
+def test_run_finished_on(store: Store) -> None:
+    _three_closures(store)
+    _finish(store, 1, "2026-10-01T03:30:00+00:00")
+    # run 2 (2 Oct) never finished; run 4 finished, started on 5 Oct UTC.
+    _finish(store, 4, "2026-10-05T04:30:00+00:00")
+    assert store.run_finished_on(date(2026, 10, 1)) is True
+    assert store.run_finished_on(date(2026, 10, 2)) is False
+    assert store.run_finished_on(date(2026, 10, 4)) is False
+    assert store.run_finished_on(date(2026, 10, 5)) is True
+    assert store.run_finished_on(date(2026, 10, 9)) is False
+
+
+def test_closure_queries_work_on_a_read_only_store(tmp_path: Path) -> None:
+    path = tmp_path / "ro.sqlite"
+    with Store(path) as writable:
+        writable.migrate()
+        _three_closures(writable)
+        _finish(writable, 1, "2026-10-01T03:30:00+00:00")
+    with Store(path, readonly=True) as reader:
+        assert [c.mkey for c in reader.closures()] == [10, 30, 20]
+        assert reader.run_finished_on(date(2026, 10, 1)) is True

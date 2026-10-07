@@ -1,6 +1,8 @@
 """Facts about external services, each with the source it came from (decision 0012)."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Final, Literal
 
 # ../ntsb-spike/public.yaml, operation get-cases-by-date-range-v2; confirmed by saved responses.
@@ -247,6 +249,24 @@ LOWEST_REASONING: dict[str, ReasoningEffort] = {
 # with nothing in a run's record to show it (S2.4 spec §4.1).
 DEFAULT_MODEL = "openai/gpt-6-luna"
 DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium"
+
+
+@dataclass(frozen=True)
+class TrainingCutoff:
+    """A model's stated training cut-off, with the page that states it (decision 0012)."""
+
+    day: date
+    source: str  # the page that states it
+    read_on: date
+
+
+TRAINING_CUTOFFS: Final[Mapping[str, TrainingCutoff]] = {
+    "openai/gpt-6-luna": TrainingCutoff(
+        date(2026, 5, 18),
+        "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        date(2026, 10, 7),
+    ),
+}
 
 
 # https://openrouter.ai/docs (decision 0009) and https://openrouter.ai/docs/batch-quickstart,

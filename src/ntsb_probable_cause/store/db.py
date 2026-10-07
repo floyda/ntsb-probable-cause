@@ -21,6 +21,7 @@ from ntsb_probable_cause.store.models import (
     ArrivalClassification,
     ArrivalRow,
     CaseRow,
+    Closure,
     DocketArrivalRow,
     DocumentRow,
     FeedComparisonResult,
@@ -979,6 +980,44 @@ class Store:
             (*_REAL_CLOSURE_STATUSES, *_REAL_CLOSURE_STATUSES),
         ).fetchall()
         return {int(mkey): int(present_run) for mkey, present_run in rows}
+
+    def closures(self) -> list[Closure]:
+        """Every real closure, ordered by ``(closure_run, mkey)``; read-only.
+
+        Built on :meth:`_closure_runs`, the one definition of a closure. ``closed_on`` is the
+        UTC calendar date of the closure run's ``started_at`` (SQLite's ``date()`` converts an
+        offset timestamp to UTC).
+        """
+        closure_runs = self._closure_runs()
+        if not closure_runs:
+            return []
+        run_days = dict(self._conn.execute("SELECT run_id, date(started_at) FROM runs").fetchall())
+        cases = {
+            int(mkey): (ntsb_number, event_date)
+            for mkey, ntsb_number, event_date in self._conn.execute(
+                "SELECT mkey, ntsb_number, event_date FROM cases"
+            ).fetchall()
+        }
+        found = [
+            Closure(
+                mkey=mkey,
+                ntsb_number=cases[mkey][0],
+                event_date=cases[mkey][1],
+                closure_run=run,
+                closed_on=run_days[run],
+            )
+            for mkey, run in closure_runs.items()
+            if mkey in cases and run in run_days
+        ]
+        return sorted(found, key=lambda c: (c.closure_run, c.mkey))
+
+    def run_finished_on(self, day: date) -> bool:
+        """Whether a run that started on this UTC date has a ``finished_at``; read-only."""
+        row = self._conn.execute(
+            "SELECT 1 FROM runs WHERE date(started_at) = ? AND finished_at IS NOT NULL LIMIT 1",
+            (day.isoformat(),),
+        ).fetchone()
+        return row is not None
 
     def _regulation_events_by_mkey(
         self,
