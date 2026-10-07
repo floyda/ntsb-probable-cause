@@ -16,8 +16,8 @@ from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import AgentRunner
-from ntsb_probable_cause.agent.texts import is_plain as is_plain_agent_prompt
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.agent.version import is_plain as is_plain_agent_prompt
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.render import RESOLUTION

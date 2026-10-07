@@ -64,9 +64,10 @@ from ntsb_probable_cause.agent.schemas import (
     parse_call,
 )
 from ntsb_probable_cause.agent.steps import sanitised, wrong_tool
-from ntsb_probable_cause.agent.texts import not_accepted, text_mark
+from ntsb_probable_cause.agent.texts import not_accepted
 from ntsb_probable_cause.agent.tools import run_coding_tool
 from ntsb_probable_cause.agent.trail import AgentCall, DocketState, LoopOutcome, StepKind
+from ntsb_probable_cause.agent.version import text_mark
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
     ConfigurationError,

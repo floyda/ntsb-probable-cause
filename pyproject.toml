@@ -182,6 +182,11 @@ forbidden_modules = ["ntsb_probable_cause.agent"]
 # no case record by any chain, direct or indirect. ToolText lives in model/tool_text.py, which
 # imports nothing from the library, so no exemption is needed. The step table (menus, refusals,
 # step texts) and the document facts it reads are named too (S3.1 final review).
+# S3.3 Task 2: ``agent.version`` and ``agent.rendered`` are not named here, on purpose. The
+# rendered-text fingerprint (decision 0143) drives the loop over an invented case record, so
+# ``agent.rendered`` builds a ``Docket`` and imports ``docket`` (and ``scoring.runner``, which
+# reaches ``records``), and ``agent.version`` imports ``agent.rendered``. They hold no evidence
+# and send nothing; the modules that build the text the model receives stay in this contract.
 [[tool.importlinter.contracts]]
 name = "The agent's tools and texts see no case record"
 type = "forbidden"

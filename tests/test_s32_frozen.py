@@ -2,9 +2,11 @@
 
 Three pins, none of which drives a change:
 
-1. The loop's prompt version is the one S3.1 froze (decision 142). The version fingerprints the
-   source of ten files (``agent.texts.TEXT_SOURCES``), a comment included, so an edit to any of
-   them fails here.
+1. The loop's prompt version is version 1's (decisions 142, 0161): the label under the rendered-text
+   fingerprint, pinned as ``agent.version.VERSION_1``. The fingerprint hashes what the agent
+   sends (decision 0143), so an edit to any text the model receives fails here, and a comment
+   does not. Version 1's own label under the source fingerprint, which S3.1 and S3.2's runs
+   recorded, is ``SOURCE_LABEL_V1``.
 2. Every call arm C and arm B's tool post-pass send carries temperature 0.0, read from the exact
    JSON body the OpenRouter client would post.
 3. A batch run whose dead round reported a cost counts that cost in the monthly guard: the run's
@@ -22,7 +24,7 @@ from tests.test_agent_run import _runner, _sync_spec
 from tests.test_boundary import _arm_c_batch_requests, _arm_c_raws
 from tests.test_budget import _record
 
-from ntsb_probable_cause.agent import run, texts
+from ntsb_probable_cause.agent import run, version
 from ntsb_probable_cause.agent.drive import REPLIES_FILE, ROUNDS_FILE, ReplyRow, RoundRow
 from ntsb_probable_cause.agent.run import round_costs
 from ntsb_probable_cause.model.batch import BatchRequest
@@ -31,12 +33,11 @@ from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.scoring.budget import month_spent, spent_usd
 from ntsb_probable_cause.scoring.records import write_jsonl
 
-FROZEN = "s3-v1+ge17fecdc66ec+p947fac1c86a4"
-
 
 def test_the_loops_prompt_version_is_the_frozen_one() -> None:
-    """Spec §4.1, decision 142: S3.2 changes no byte the model sees."""
-    assert texts.prompt_version(run.GUIDANCE) == FROZEN
+    """Spec §4.1, decisions 142 and 0161: S3.2 changes no byte the model sees."""
+    assert version.prompt_version(run.GUIDANCE) == version.VERSION_1
+    assert version.SOURCE_LABEL_V1 == "s3-v1+ge17fecdc66ec+p947fac1c86a4"
 
 
 def _temperatures(requests: Sequence[BatchRequest]) -> list[object]:

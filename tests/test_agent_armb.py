@@ -36,8 +36,9 @@ from tests.test_occurrence_misses import _case
 from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import gitinfo, sources
-from ntsb_probable_cause.agent import armb, texts
+from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.agent import loop as agent_loop
+from ntsb_probable_cause.agent import version as agent_version
 from ntsb_probable_cause.agent.armb import (
     EXPECTED_COST_PER_CASE_USD,
     FIXED,
@@ -49,9 +50,10 @@ from ntsb_probable_cause.agent.armb import (
     tools_run,
 )
 from ntsb_probable_cause.agent.later import as_recorded
+from ntsb_probable_cause.agent.rendered import rendered_sha256
 from ntsb_probable_cause.agent.run import GUIDANCE, TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import definitions, force, parse_call
-from ntsb_probable_cause.agent.texts import agent_text_sha256, not_accepted, text_mark
+from ntsb_probable_cause.agent.texts import not_accepted
 from ntsb_probable_cause.agent.tools import (
     ToolResult,
     describe_codes,
@@ -61,6 +63,7 @@ from ntsb_probable_cause.agent.tools import (
     suggest_codes,
 )
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.agent.version import text_mark
 from ntsb_probable_cause.docket.listing import Listing
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import (
@@ -633,7 +636,7 @@ class TestTheDerivedRun:
         # Decision 0133: the post-pass sends the agent's texts, so its label carries their
         # fingerprint after +tools-s3, as arm C's version does.
         assert record.prompt_version == f"{original.prompt_version}+tools-s3{text_mark()}"
-        assert text_mark() == f"+p{agent_text_sha256()[:12]}"
+        assert text_mark() == f"+t{rendered_sha256()[:12]}"
         assert (record.guidance, record.guidance_sha256) == (
             original.guidance,
             original.guidance_sha256,
@@ -668,10 +671,7 @@ class TestTheDerivedRun:
                 history: Sequence[Turn] = (),
             ) -> ModelReply:
                 if not self.payloads:
-                    original = texts.source_text
-                    monkeypatch.setattr(
-                        texts, "source_text", lambda p, n: f"{original(p, n)}# an edit\n"
-                    )
+                    monkeypatch.setattr(agent_version, "rendered_sha256", lambda: "e" * 64)
                 return super().complete(payload, settings, system=system, history=history)
 
         record = _post(runs, source, client=EditingClient(POST))

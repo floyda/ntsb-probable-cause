@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Final, TypedDict
 
 from ntsb_probable_cause import gitinfo
-from ntsb_probable_cause.agent import texts
+from ntsb_probable_cause.agent import version as agent_version
 from ntsb_probable_cause.agent.documents import DocketView, case_marks, docket_view
 from ntsb_probable_cause.agent.drive import (
     REPLIES_FILE,
@@ -249,7 +249,7 @@ class AgentRunner:
         # The version is fixed here, before any model call, and every record of the run carries
         # this one value: an edit to a covered file while the run is in flight (a batch takes
         # hours) must not make ``run.jsonl`` name text the run never sent (decision 0133).
-        version = texts.prompt_version(spec.guidance, self._round)
+        version = agent_version.prompt_version(spec.guidance, self._round)
         started = self._now()
         case_ids = [str(raw["ntsbNumber"]) for raw in raws]
         extra = self._recorded(version)
