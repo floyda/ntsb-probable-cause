@@ -127,6 +127,7 @@ from pathlib import Path
 from ntsb_probable_cause.scoring import report
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.settings import Settings
+from scripts._live_fence import refuse_live
 
 BUDGET_STEPS = (4_000, 8_000, 16_000)
 
@@ -884,6 +885,8 @@ def main(argv: Sequence[str]) -> int:
             raise SystemExit("--run cannot be combined with --confirm/--size")
         confirm_folder = runs_dir / args.confirm
         size_folder = runs_dir / args.size
+        refuse_live("reply_budget", confirm_folder)
+        refuse_live("reply_budget", size_folder)
         confirm_cases = read_jsonl(confirm_folder / "cases.jsonl", CaseResult)
         confirm_record = read_jsonl(confirm_folder / "run.jsonl", RunRecord)[0]
         size_cases = read_jsonl(size_folder / "cases.jsonl", CaseResult)
@@ -891,6 +894,7 @@ def main(argv: Sequence[str]) -> int:
         text = confirm_and_size(confirm_cases, confirm_record, size_cases, size_record)
     elif args.run:
         folder = runs_dir / args.run
+        refuse_live("reply_budget", folder)
         cases = read_jsonl(folder / "cases.jsonl", CaseResult)
         run_record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
         budget = args.budget if args.budget is not None else run_record.max_output_tokens

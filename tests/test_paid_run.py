@@ -158,13 +158,23 @@ esac
 exit 0
 """
 _STUB_UV = '#!/bin/bash\necho "uv $*" >> "$STUB_LOG"\n'
-_STUB_KEYSTORE = '#!/bin/bash\necho "pass $*" >> "$STUB_LOG"\necho sk-or-test-not-a-key\n'
-_STUB_MAKE = '#!/bin/bash\necho "make $* UV_LOCKED=${UV_LOCKED:-unset}" >> "$STUB_LOG"\n'
+_STUB_KEYSTORE = """#!/bin/bash
+echo "pass $*" >> "$STUB_LOG"
+case "$2" in
+  api/ntsb|custom/ntsb) echo ntsb-test-not-a-key ;;
+  *) echo sk-or-test-not-a-key ;;
+esac
+"""
+_STUB_MAKE = """#!/bin/bash
+echo "make $* UV_LOCKED=${UV_LOCKED:-unset}" >> "$STUB_LOG"
+echo "env NTSB_API_KEY=${NTSB_API_KEY:-unset}" >> "$STUB_LOG"
+"""
 _FAKE_KEY = "sk-or-test-not-a-key"
+_FAKE_NTSB_KEY = "ntsb-test-not-a-key"
 
 
 def _run(
-    tmp_path: Path, branch: str = "s3-3-live-shadow", **extra: str
+    tmp_path: Path, branch: str = "s3-3-live-shadow", target: str = "s33-dry-run", **extra: str
 ) -> tuple[int, str, list[str]]:
     """Run the script against stand-in commands; return exit code, output, and the call log."""
     bin_dir = tmp_path / "bin"
@@ -191,7 +201,7 @@ def _run(
         **extra,
     }
     done = subprocess.run(  # noqa: S603 -- fixed argv; every external command is a stand-in
-        ["/bin/bash", str(SCRIPT), "s33-dry-run"],
+        ["/bin/bash", str(SCRIPT), target],
         env=env,
         capture_output=True,
         text=True,
@@ -229,3 +239,27 @@ def test_unpushed_commits_are_refused_before_checkout(tmp_path: Path) -> None:
     assert code == 1
     assert not any(call.startswith("git checkout") for call in calls)
     assert not any(call.startswith("make") for call in calls)
+
+
+def test_an_s33_target_gets_the_ntsb_key_from_pass_and_it_is_never_printed(tmp_path: Path) -> None:
+    code, output, calls = _run(tmp_path)
+    assert code == 0, output
+    assert "pass show api/ntsb" in calls
+    assert "env NTSB_API_KEY=ntsb-test-not-a-key" in calls
+    assert calls.index("pass show api/ntsb") < calls.index("make s33-dry-run UV_LOCKED=1")
+    assert _FAKE_NTSB_KEY not in output
+    assert _FAKE_KEY not in output
+
+
+def test_the_ntsb_pass_entry_can_be_overridden(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, NTSB_PASS_NTSB="custom/ntsb")  # noqa: S106
+    assert code == 0
+    assert "pass show custom/ntsb" in calls
+    assert "env NTSB_API_KEY=ntsb-test-not-a-key" in calls
+
+
+def test_another_target_never_reads_the_ntsb_key(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, target="s32-heldout-a")
+    assert code == 0
+    assert "pass show api/ntsb" not in calls
+    assert "env NTSB_API_KEY=unset" in calls

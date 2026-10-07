@@ -24,7 +24,7 @@ from pathlib import Path
 
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError
+from ntsb_probable_cause.errors import BatchCancelledError, BudgetError, ConfigurationError
 from ntsb_probable_cause.gitinfo import commit_state
 from ntsb_probable_cause.live.local import (
     STORE_WORK_FILENAME,
@@ -137,8 +137,36 @@ def format_summary(summary: MorningSummary) -> str:
     return "\n".join(lines)
 
 
+# An expired login, by class name or error code (matched by name so that botocore need not be
+# installed where this is read).
+_EXPIRED_CLASSES = frozenset(
+    {"TokenRetrievalError", "UnauthorizedSSOTokenError", "SSOTokenLoadError"}
+)
+_EXPIRED_CODES = frozenset(
+    {"ExpiredToken", "ExpiredTokenException", "RequestExpired", "InvalidClientTokenId"}
+)
+
+
 def _is_aws_error(error: Exception) -> bool:
     return type(error).__module__.startswith(("botocore", "boto3"))
+
+
+def _login_expired(error: Exception) -> bool:
+    if type(error).__name__ in _EXPIRED_CLASSES:
+        return True
+    response = getattr(error, "response", None)
+    code = response.get("Error", {}).get("Code") if isinstance(response, dict) else None
+    return code in _EXPIRED_CODES
+
+
+def _aws_message(command: str, error: Exception) -> str:
+    if _login_expired(error):
+        return (
+            f"{command}: the AWS login has expired ({type(error).__name__}). Run "
+            "`aws login --profile ntsb` and run the morning again."
+        )
+    text = " ".join(str(error).split())[:200]
+    return f"{command}: AWS error ({type(error).__name__}): {text}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -155,17 +183,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+    except BatchCancelledError as error:
+        print(
+            f"{args.command}: {error} (ntsb-live has no --resume option: run the same command "
+            "again.)",
+            file=sys.stderr,
+        )
+        return 1
     except (BudgetError, ConfigurationError, FileNotFoundError) as error:
         print(f"{args.command}: {error}", file=sys.stderr)
         return 1
     except Exception as error:
         if not _is_aws_error(error):
             raise
-        print(
-            f"{args.command}: AWS refused the request ({type(error).__name__}); the login has "
-            "probably expired. Run `aws login --profile ntsb` and run the morning again.",
-            file=sys.stderr,
-        )
+        print(_aws_message(args.command, error), file=sys.stderr)
         return 1
     print(format_summary(summary))
     return 0

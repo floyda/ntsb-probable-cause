@@ -260,3 +260,14 @@ def test_every_s33_target_is_phony_and_the_morning_checks_both_lines_first() -> 
         (False, True),
     ]
     assert max(stages) < run
+
+
+def test_the_s33_recipes_reach_the_s3_store_through_live_env_and_the_aws_extra() -> None:
+    text = Path("Makefile").read_text()
+    for name in ("s33-dry-run", "s33-morning"):
+        recipe = text.split(f"\n{name}:\n", 1)[1].split("\n\n", 1)[0]
+        (run,) = [line for line in recipe.splitlines() if "ntsb-live run" in line]
+        assert "scripts/live_env.sh" in run, name
+        assert "--extra aws --with awscrt" in run, name
+        assert run.index("live_env.sh") < run.index("ntsb-live run")
+        assert "&& eval" in run, name  # a failed lookup stops the recipe

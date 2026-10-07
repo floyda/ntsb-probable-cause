@@ -44,6 +44,12 @@ uv sync --quiet --locked
 export NTSB_DATA_DIR="$data_dir"
 OPENROUTER_API_KEY="$(pass show "$pass_entry" | sed -n 1p)"
 export OPENROUTER_API_KEY
+# S3.3's live mornings also call the NTSB API (decision 0158): the key is read for an `s33-`
+# target only, from the entry `api/ntsb` (override: NTSB_PASS_NTSB), and never printed.
+if [[ "$target" == s33-* ]]; then
+  NTSB_API_KEY="$(pass show "${NTSB_PASS_NTSB:-api/ntsb}" | sed -n 1p)"
+  export NTSB_API_KEY
+fi
 # --locked refuses a lockfile that would change; UV_LOCKED=1 makes every nested uv run refuse
 # the same way (decision 161).
 export UV_LOCKED=1

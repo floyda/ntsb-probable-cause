@@ -11,10 +11,12 @@ from pathlib import Path
 
 import apps.eval.__main__ as app
 import pytest
-from scripts import _s3_runs
+from scripts import _s3_runs, reply_budget, sealed_report
 from tests.test_live_local import NOW, _run_record
 
+from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.scoring import checkpass
 from ntsb_probable_cause.scoring.budget import month_spent
 from ntsb_probable_cause.scoring.records import CaseResult, write_jsonl
 
@@ -96,7 +98,7 @@ def test_resolve_latest_never_returns_a_live_run(runs: Path) -> None:
 
 
 def test_a_live_run_is_not_readable_by_the_s3_scripts(runs: Path) -> None:
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit, match="noise floor is measured on dev-400"):
         _s3_runs.load_runs("prog", [RUN_ID])
 
 
@@ -118,3 +120,37 @@ def test_the_evaluation_commands_spell_the_live_sample_as_the_live_package_does(
     from ntsb_probable_cause.live.local import LIVE_SAMPLE  # noqa: PLC0415
 
     assert app.LIVE_SAMPLE == LIVE_SAMPLE
+
+
+def test_threshold_refuses_a_live_run_before_reading_its_cases(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (runs / RUN_ID / "cases.jsonl").unlink()
+    assert "0024" in _refusal(["threshold", RUN_ID], capsys)
+
+
+def test_against_a_live_run_is_refused_before_its_cases_are_read(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dev = "20261007T020000Z-abc1234-dev-400-C"
+    _live_run(runs, sample="dev-400", run_id=dev)
+    (runs / RUN_ID / "cases.jsonl").unlink()
+    assert "0024" in _refusal(["report", dev, "--against", RUN_ID], capsys)
+
+
+def test_checkpass_and_armb_refuse_a_live_run_without_the_fence_in_front(runs: Path) -> None:
+    """The plan's "(test it)": the existing development-only refusals cover `check` and `tools`."""
+    with pytest.raises(ConfigurationError, match="development"):
+        checkpass.preflight(runs / RUN_ID, "rule", runs)
+    with pytest.raises(ConfigurationError, match="development"):
+        armb.preflight(runs / RUN_ID, runs)
+
+
+def test_the_two_report_scripts_refuse_a_live_run_before_reading_its_cases(runs: Path) -> None:
+    (runs / RUN_ID / "cases.jsonl").unlink()
+    with pytest.raises(SystemExit, match="0024"):
+        reply_budget.main(["--run", RUN_ID])
+    with pytest.raises(SystemExit, match="0024"):
+        reply_budget.main(["--confirm", RUN_ID, "--size", RUN_ID])
+    with pytest.raises(SystemExit, match="0024"):
+        sealed_report._scored(RUN_ID)

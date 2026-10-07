@@ -10,7 +10,7 @@ from typing import Any
 import apps.live.__main__ as app
 import pytest
 
-from ntsb_probable_cause.errors import BudgetError
+from ntsb_probable_cause.errors import BatchCancelledError, BudgetError
 from ntsb_probable_cause.live.local import STORE_WORK_FILENAME
 from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary
 from ntsb_probable_cause.settings import Settings
@@ -158,18 +158,78 @@ def test_a_refusal_is_one_line_and_exit_one(
     assert "the month is at its cap" in capsys.readouterr().err
 
 
-def test_an_aws_login_error_says_to_log_in(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def _raising(error: Exception) -> Any:
+    def raiser(deps: MorningDeps, **kwargs: Any) -> MorningSummary:
+        raise error
+
+    return raiser
+
+
+def _aws_error(name: str, *, code: str | None = None, module: str = "botocore.exceptions") -> Any:
+    cls = type(name, (Exception,), {"__module__": module})
+    error = cls("boom")
+    if code is not None:
+        error.response = {"Error": {"Code": code}}
+    return error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _aws_error("TokenRetrievalError"),
+        _aws_error("UnauthorizedSSOTokenError"),
+        _aws_error("SSOTokenLoadError"),
+        _aws_error("ClientError", code="ExpiredToken"),
+        _aws_error("ClientError", code="ExpiredTokenException"),
+        _aws_error("ClientError", code="RequestExpired"),
+        _aws_error("ClientError", code="InvalidClientTokenId"),
+    ],
+)
+def test_an_expired_login_says_to_log_in_again(
+    error: Exception, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    class TokenRetrievalError(Exception):
-        __module__ = "botocore.exceptions"
-
-    def expired(deps: MorningDeps, **kwargs: Any) -> MorningSummary:
-        raise TokenRetrievalError("expired")
-
-    monkeypatch.setattr(app, "run_morning", expired)
+    monkeypatch.setattr(app, "run_morning", _raising(error))
     assert app.main(["run"]) == 1
     assert "aws login --profile ntsb" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        _aws_error("NoCredentialsError"),
+        _aws_error("ProfileNotFound"),
+        _aws_error("MissingDependencyException"),
+        _aws_error("EndpointConnectionError"),
+        _aws_error("ClientError", code="AccessDenied"),
+        _aws_error("ClientError", code="NoSuchBucket"),
+        _aws_error("S3TransferFailedError", module="boto3.exceptions"),
+    ],
+)
+def test_any_other_aws_error_is_named_and_does_not_say_to_log_in(
+    error: Exception, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(app, "run_morning", _raising(error))
+    assert app.main(["run"]) == 1
+    err = capsys.readouterr().err
+    assert f"AWS error ({type(error).__name__})" in err
+    assert "boom" in err
+    assert "aws login" not in err
+
+
+def test_a_cancelled_batch_stops_the_morning_and_says_to_run_it_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(app, "run_morning", _raising(BatchCancelledError("batch x cancelled")))
+    assert app.main(["run"]) == 1
+    err = capsys.readouterr().err
+    assert "batch x cancelled" in err
+    assert "has no --resume option" in err
+
+
+def test_an_error_that_is_not_aws_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app, "run_morning", _raising(RuntimeError("bug")))
+    with pytest.raises(RuntimeError):
+        app.main(["run"])
 
 
 def test_a_second_morning_is_refused_while_the_first_holds_the_lock(

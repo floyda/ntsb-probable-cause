@@ -746,8 +746,8 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
     if args.against or args.against_latest:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
+        other_record = answering_run_record(settings.runs_dir / other_id)  # refuses a live run
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
-        other_record = answering_run_record(settings.runs_dir / other_id)
         report.refuse_cross_version(
             run_record, other_record, versions_compared=args.versions_compared
         )
@@ -788,13 +788,14 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
 
 def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     folder = settings.runs_dir / args.run_id
+    run_record = answering_run_record(folder)  # first: it refuses a live run (decision 0024)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     # The same provenance header `report` writes. Without it the committed curve names
     # neither the run nor the sample it came from, so a reader cannot tell a development
     # curve from a held-out one, and rule 3's "every reported number comes from a script"
     # has nothing to point at (the close-out review found exactly this gap).
     curve = report.threshold_curve(cases)
-    lines = [report.provenance(answering_run_record(folder)), ""]
+    lines = [report.provenance(run_record), ""]
     lines.append("threshold\tmean score\tcases answered")
     lines += [f"{t:.2f}\t{v:+.3f}\t{report.answered_at(cases, t)}" for t, v in curve]
     chosen = report.choose_threshold(cases)
