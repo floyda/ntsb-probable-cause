@@ -287,6 +287,11 @@ class Store:
         self.close()
 
     @property
+    def path(self) -> Path:
+        """The file this store was opened on (the live morning measures it before it deletes it)."""
+        return self._path
+
+    @property
     def connection(self) -> sqlite3.Connection:
         """The underlying connection, read-only use: tests and the report script."""
         return self._conn
