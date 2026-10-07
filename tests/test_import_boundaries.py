@@ -127,6 +127,38 @@ def test_nothing_in_the_library_imports_the_agent() -> None:
         importer
         for module in graph.find_descendants(f"{_ROOT}.agent") | {f"{_ROOT}.agent"}
         for importer in graph.find_modules_that_directly_import(module)
-        if not importer.startswith(f"{_ROOT}.agent")
     }
-    assert outside == set()
+    assert _disallowed_agent_importers(outside) == set()
+
+
+# Decision 0160: ``live`` is a consumer of the agent, like ``apps`` (it runs ``AgentRunner``).
+# It is the only library package so allowed; pyproject.toml's contracts are Task 9's.
+_AGENT_CONSUMER = f"{_ROOT}.live"
+
+
+def _disallowed_agent_importers(importers: set[str]) -> set[str]:
+    """Return the importers of the agent that are neither the agent itself nor ``live``."""
+    return {
+        importer
+        for importer in importers
+        if not importer.startswith(f"{_ROOT}.agent")
+        and importer != _AGENT_CONSUMER
+        and not importer.startswith(f"{_AGENT_CONSUMER}.")
+    }
+
+
+def test_only_live_may_import_the_agent_from_outside_it() -> None:
+    """The exemption is narrow: any other library package that imports the agent is caught."""
+    importers = {
+        f"{_ROOT}.agent.tools",
+        f"{_ROOT}.live",
+        f"{_ROOT}.live.morning",
+        f"{_ROOT}.scoring.runner",
+        f"{_ROOT}.liveness",
+        f"{_ROOT}.store",
+    }
+    assert _disallowed_agent_importers(importers) == {
+        f"{_ROOT}.scoring.runner",
+        f"{_ROOT}.liveness",
+        f"{_ROOT}.store",
+    }
