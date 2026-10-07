@@ -107,3 +107,12 @@ Accepted, 2026-10-01 (Andy, S3.1 final review).
 **To be amended by [0143](0143-the-fingerprint-should-cover-what-the-agent-receives.md) in S3.3
 (appended 2026-10-03; nothing above is edited).** The `+p` fingerprint of source is to be replaced
 by a hash of the rendered text the agent receives. This record stands until then.
+
+## Amended in part, 2026-10-07 (appended; nothing above is edited)
+
+- **The text fingerprint `+p` is replaced by `+t`, by [0161](0161-the-rendered-text-fingerprint-and-the-version-1-check.md)**,
+  applying [0143](0143-the-fingerprint-should-cover-what-the-agent-receives.md): the prompt version
+  now hashes the text the agent and arm B's post-pass send, rendered from invented inputs, not the
+  source of the modules that build it. Version 1's runs keep their recorded `+p` label; the two
+  labels are shown continuous in `docs/results/s33-fingerprint-continuity.txt`. The listing of a
+  docket with nothing readable (this record's first part) stands.

@@ -186,7 +186,7 @@ started after 09:00 UTC, because rounds may then run past 12:00 UTC.
 Live runs use the **batch price** (Andy, 2026-10-07): half the standard price, and the same service
 Ellery version 1 was measured on. Nobody watches a closure run as it happens, so speed buys
 nothing. The roadmap's §4 says the live path does not use batch; that sentence was written for
-answers on open cases, where speed might have mattered. Record 2 of §15 records the departure for
+answers on open cases, where speed might have mattered. Decision 0158 records the departure for
 S3.3. S4 chooses its own service for the cloud.
 
 ## 5. The preliminary narrative is left out, and counted
@@ -261,7 +261,7 @@ label), amending decision 0133, as 0143 provided.
 
 - **Continuity:** `+t` computed on `fd6053f`'s code equals `+t` on S3.3's code. Decision 0142 kept
   the ten text files unchanged through S3.2, so they must match; if they do not, work stops and Andy
-  decides. Record 5 of §15 records version 1's old and new labels side by side.
+  decides. Version 1's old and new labels stand side by side in `docs/results/s33-fingerprint-continuity.txt` and in code (`agent/version.py`), and decision 0161 cites both.
 - **It cannot miss a text:** a mutation test changes each string that builds model text, in turn,
   and checks that `+t` moves or a test fails. A string that is not model text (an exception
   message, a log line) is listed with its reason.
@@ -360,7 +360,7 @@ the plan, when the plan's reading of `docket/` found it). Decision 0154 item 5 a
 decision 0056 removed title-based classing, so every readable document is offered. Withheld text is
 caught by the guard on the text itself: a probable-cause sentence in a document refuses the whole
 case ("not coded: guard"), and an analysis or narrative sentence only marks the case (0077, 0078).
-Record 4 of §15 says so, for S4 and S5.
+Decision 0160 says so, for S4 and S5.
 
 *Example closure record (invented):* "closed 1 Oct; coded 2 Oct 07:42 UTC, waited 1 day; commit
 4f2a9c1; prompt s3-v1+ge17fecdc66ec+t…; batch; model trained to 18 May 2026; documents: 1 Pilot
@@ -551,27 +551,27 @@ The new import-linter contracts run in CI.
 
 Written in the plan's first task, numbered from 157 on:
 
-1. S3.3's scope under decisions 0154 to 0156: closure runs and the backfill rehearsal,
+1. **0157** — S3.3's scope under decisions 0154 to 0156: closure runs and the backfill rehearsal,
    the queue at 10 a day, one run per case, the closing rule. *Session:* the entry rule, option A;
    the daily limit, queue and 10; the close, option A.
-2. Live runs on Andy's Mac in S3.3, at the batch price; amends the roadmap's §4 note on
+2. **0158** — Live runs on Andy's Mac in S3.3, at the batch price; amends the roadmap's §4 note on
    the live path; S4 moves them to AWS and chooses its own service. *Session:* where, option A;
    the price, batch.
-3. Closure runs are scored the same morning, as counts only, printed alone. *Session:*
+3. **0159** — Closure runs are scored the same morning, as counts only, printed alone. *Session:*
    scoring, option A.
-4. The `live` package and its three seams; local run folders built to move to a private
+4. **0160** — The `live` package and its three seams; local run folders built to move to a private
    bucket; the open-split fence in code; the live document cache; cleanup; the closure record's
    document statuses, with the correction to decision 0154 item 5's premise that a document can be
    "classed as synthesis" (§8.2). *Session:* storage, option A with Andy's move rule; the package
    named `live`.
-5. The rendered-text fingerprint `+t` replaces `+p` (applies 0143, amends 0133), with
+5. **0161** — The rendered-text fingerprint `+t` replaces `+p` (applies 0143, amends 0133), with
    version 1's old and new labels; a live run refuses on a mismatch; `--locked`, `UV_LOCKED` and
    the lockfile's checksum. *Session:* the fingerprint, option A; Andy's lockfile point.
-6. The preliminary narrative is left out of live runs and counted; answers the S3
+6. **0162** — The preliminary narrative is left out of live runs and counted; answers the S3
    specification's §20 open question. *Session:* the preliminary narrative, option A.
-7. The caps: $0.30 a case, $5 a month for live runs, S3.3's $10 stop within S3's line,
+7. **0163** — The caps: $0.30 a case, $5 a month for live runs, S3.3's $10 stop within S3's line,
    each in code. *Session:* the caps, option A.
-8. What no longer arises: the structured expected-change field (0148 item 4) moves to
+8. **0164** — What no longer arises: the structured expected-change field (0148 item 4) moves to
    version 2, because it changes Ellery's text; `later.py` stays unused on live cases; Ellery is not
    told more documents may arrive, because at closure the docket is complete. *Session:* the
    summary after decisions 0154 to 0156.

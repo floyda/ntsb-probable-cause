@@ -70,3 +70,14 @@ docket section, "yes A").
 - **Closure run**: the agent coding a case on the night the NTSB closes it.
 - **Early docket**: a docket that appears while the case is still open.
 - **Locked answer**: an answer stored, with its time, before the verdict exists.
+
+## Amended in part, 2026-10-07 (appended; nothing above is edited)
+
+- **Item 5's premise is corrected by [0160](0160-the-live-package-its-run-folders-and-the-open-split-fence.md).**
+  No docket document is "classed as synthesis": [0056](0056-the-deny-list-cannot-be-filled-from-titles.md)
+  removed title-based classing, and every readable document is offered. Withheld text is caught by
+  the guard on the text: a probable-cause sentence refuses the whole case ("not coded: guard"), and
+  an analysis or narrative sentence marks it (0077, 0078). The record S4 keeps for each closure run
+  carries each document's title and the docket reader's status; nothing is shown as withheld.
+- **Item 6 is applied by [0157](0157-s33-codes-closures-through-a-queue.md)**: S3.3's shadow codes
+  closures through a queue and rehearses the backfill.

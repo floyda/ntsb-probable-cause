@@ -70,3 +70,9 @@ Accepted, 2026-10-03 (Andy, S3.2 design session; specification approved 2026-10-
 - **Mutation test**: a test that changes the code on purpose and checks that something fails,
   to prove the check can fail (0016).
 - **Prompt version**: the label each run records for what elicited its answers.
+
+## Applied, 2026-10-07 (appended; nothing above is edited)
+
+- **Built in S3.3 by [0161](0161-the-rendered-text-fingerprint-and-the-version-1-check.md)**: `+t`
+  replaces `+p`, with a reach test, a mutation test and continuity on `fd6053f`; a live run refuses
+  unless its prompt version is version 1's.
