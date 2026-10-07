@@ -1,6 +1,7 @@
 """Frozen row and summary models for the store package (spec S2.5, Task 4)."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -216,3 +217,4 @@ class Closure(BaseModel, frozen=True):
     event_date: str
     closure_run: int
     closed_on: str
+    closed_as: Literal["Completed", "N/A"]  # the closure event's new_status

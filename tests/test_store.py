@@ -906,6 +906,7 @@ def test_closures_lists_every_real_closure_in_order(store: Store) -> None:
             event_date="2026-09-01",
             closure_run=2,
             closed_on="2026-10-02",
+            closed_as="Completed",
         ),
         Closure(
             mkey=30,
@@ -913,6 +914,7 @@ def test_closures_lists_every_real_closure_in_order(store: Store) -> None:
             event_date="2026-09-01",
             closure_run=3,
             closed_on="2026-10-03",
+            closed_as="Completed",
         ),
         Closure(
             mkey=20,
@@ -920,6 +922,7 @@ def test_closures_lists_every_real_closure_in_order(store: Store) -> None:
             event_date="2026-09-01",
             closure_run=4,
             closed_on="2026-10-05",
+            closed_as="N/A",
         ),
     ]
 
@@ -928,6 +931,15 @@ def test_closures_agree_with_closure_runs(store: Store) -> None:
     _three_closures(store)
     assert store._closure_runs() == {10: 2, 20: 4, 30: 3}
     assert {c.mkey: c.closure_run for c in store.closures()} == store._closure_runs()
+
+
+def test_closed_as_is_the_status_of_the_first_closure_event(store: Store) -> None:
+    _three_closures(store)  # 30 closed Completed, then was re-labelled N/A: stays Completed
+    assert {c.mkey: c.closed_as for c in store.closures()} == {
+        10: "Completed",
+        20: "N/A",
+        30: "Completed",
+    }
 
 
 def test_closures_is_empty_without_closures(store: Store) -> None:

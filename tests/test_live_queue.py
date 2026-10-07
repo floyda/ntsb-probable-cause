@@ -21,6 +21,7 @@ def _closure(mkey: int, closed_on: str = "2026-09-24", run: int = 5) -> Closure:
         event_date="2026-08-01",
         closure_run=run,
         closed_on=closed_on,
+        closed_as="Completed",
     )
 
 

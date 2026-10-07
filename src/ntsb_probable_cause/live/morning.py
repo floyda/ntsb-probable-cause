@@ -72,6 +72,8 @@ MAX_OUTPUT_TOKENS: Final = 8000
 PENDING_BACKFILL_FILE: Final = "live-pending-backfill.json"
 PENDING_INPUTS_FILE: Final = "live-pending-inputs.jsonl"
 REFUSALS_FILE: Final = "live-refusals.jsonl"
+MORNING_COUNTS_FILE: Final = "live-morning-counts.jsonl"
+MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
 
 
@@ -220,12 +222,21 @@ class _Morning:
         self._pin_backfill(queue)
         fetched, returned = self._fetch(take)
         if not fetched:
-            return self._summary(
+            summary = self._summary(
                 None, [], returned=returned, queued=len(queue), record=None, freed=0
             )
+            return self._log_counts(summary, queue_at_start=len(queue), taken=len(take))
         raws = [f.raw for f in fetched]
         self._write_pending(raws)
-        return self._execute(fetched, raws, resume=None, returned=returned, done=done)
+        return self._execute(
+            fetched,
+            raws,
+            resume=None,
+            returned=returned,
+            done=done,
+            queue_at_start=len(queue),
+            taken=len(take),
+        )
 
     def _check_cap(self, n: int) -> None:
         """Refuse before any call when the month's live spend plus ``n`` cases passes the cap."""
@@ -361,7 +372,15 @@ class _Morning:
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
         prepared = self._prepare(raws)
         done = self.deps.sink.done_case_ids() - {p.case.case_id for p in prepared}
-        return self._execute(prepared, raws, resume=run_id, returned=0, done=done)
+        return self._execute(
+            prepared,
+            raws,
+            resume=run_id,
+            returned=0,
+            done=done,
+            queue_at_start=len(build_queue(self.store.closures(), done)),
+            taken=len(prepared),
+        )
 
     def _complete_unrecorded(self) -> None:
         """Write the records of any finished live run that lacks them or its manifest."""
@@ -373,7 +392,7 @@ class _Morning:
 
     # --- the run ---
 
-    def _execute(
+    def _execute(  # noqa: PLR0913 -- one run's inputs.
         self,
         prepared: Sequence[Prepared],
         raws: Sequence[dict[str, object]],
@@ -381,6 +400,8 @@ class _Morning:
         resume: str | None,
         returned: int,
         done: frozenset[str],
+        queue_at_start: int,
+        taken: int,
     ) -> MorningSummary:
         deps, settings = self.deps, self.deps.settings
         spec = self._spec()
@@ -413,9 +434,31 @@ class _Morning:
         freed += _store_bytes(self.store.path)
         ran = {p.case.case_id for p in prepared}
         queued = len(build_queue(self.store.closures(), done | ran))
-        return self._summary(
+        summary = self._summary(
             record.run_id, records, returned=returned, queued=queued, record=record, freed=freed
         )
+        return self._log_counts(summary, queue_at_start=queue_at_start, taken=taken)
+
+    def _log_counts(
+        self, summary: MorningSummary, *, queue_at_start: int, taken: int
+    ) -> MorningSummary:
+        """Append the morning's counts (and its run id, if any); never a case id (Task 10)."""
+        if not self.dry_run:
+            row = {
+                "format": MORNING_COUNTS_FORMAT,
+                "at": self.deps.now().astimezone(UTC).isoformat(),
+                "run_id": summary.run_id,
+                "queue_at_start": queue_at_start,
+                "taken": taken,
+                "coded": summary.coded,
+                "not_coded": sum(summary.not_coded.values()),
+                "returned": summary.returned,
+                "queued_after": summary.queued,
+            }
+            self.runs_dir.mkdir(parents=True, exist_ok=True)
+            with (self.runs_dir / MORNING_COUNTS_FILE).open("a") as handle:
+                handle.write(json.dumps(row) + "\n")
+        return summary
 
     def _complete(
         self, run_id: str, prepared: Sequence[Prepared] | None

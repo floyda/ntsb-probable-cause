@@ -167,6 +167,7 @@ def _closure(n: int, *, run: int | None = None, closed_on: str = "2026-10-05") -
         event_date="2026-09-01",
         closure_run=run if run is not None else n,
         closed_on=closed_on,
+        closed_as="Completed",
     )
 
 
@@ -696,6 +697,7 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
             event_date="2026-09-01",
             closure_run=n,
             closed_on="2026-10-05",
+            closed_as="Completed",
         )
         for n, r in enumerate(RAWS, start=1)
     ]
@@ -854,3 +856,58 @@ def test_a_development_run_folder_made_meanwhile_is_never_written_to(rig: Rig) -
     assert not (side / BACKFILL_FILE).exists()
     live = [p for p in rig.runs_dir.iterdir() if p.is_dir() and p != side]
     assert (live[0] / INPUTS_FILE).is_file()
+
+
+def _counts(rig: Rig) -> list[dict[str, Any]]:
+    path = rig.runs_dir / "live-morning-counts.jsonl"
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def test_p_a_morning_appends_its_counts_and_no_case_id(rig: Rig) -> None:
+    rig.fetch_fails = {"ERA26LA001"}
+    summary = run_morning(rig.deps())
+    (row,) = _counts(rig)
+    assert row["format"] == "live-morning/1"
+    assert datetime.fromisoformat(row["at"]).utcoffset() == timedelta(0)
+    assert {k: v for k, v in row.items() if k not in {"format", "at"}} == {
+        "run_id": summary.run_id,
+        "queue_at_start": 3,
+        "taken": 3,
+        "coded": 2,
+        "not_coded": 0,
+        "returned": 1,
+        "queued_after": 1,
+    }
+    assert "ERA26" not in json.dumps(row)
+
+
+def test_p_a_morning_where_every_fetch_fails_still_appends_its_counts(rig: Rig) -> None:
+    rig.fetch_fails = {"ERA26LA001", "ERA26LA002", "ERA26LA003"}
+    run_morning(rig.deps())
+    (row,) = _counts(rig)
+    assert row["run_id"] is None
+    assert (row["queue_at_start"], row["taken"], row["coded"], row["returned"]) == (3, 3, 0, 3)
+    assert row["queued_after"] == 3
+
+
+def test_p_a_refused_morning_and_a_dry_run_append_none(rig: Rig) -> None:
+    rig.sink.coded = DAILY_LIMIT
+    run_morning(rig.deps())
+    rig.sink.coded = 0
+    rig.spend.usd = 5.0
+    with pytest.raises(BudgetError):
+        run_morning(rig.deps())
+    rig.spend.usd = 0.0
+    run_morning(rig.deps(), dry_run=True)
+    assert _counts(rig) == []
+
+
+def test_p_a_resumed_morning_appends_its_counts(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    rig.sink.unfinished = run_id
+    rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
+    run_morning(rig.deps())
+    (row,) = _counts(rig)
+    assert row["taken"] == 1

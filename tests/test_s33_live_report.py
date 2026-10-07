@@ -33,6 +33,28 @@ GOOD_FINDING = ("0101000001",)
 World = tuple[list[Path], list[Closure], list[dict[str, str]]]
 
 
+def _count_row(at: str, **changes: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "format": "live-morning/1",
+        "at": at,
+        "run_id": "a",
+        "queue_at_start": 3,
+        "taken": 3,
+        "coded": 3,
+        "not_coded": 0,
+        "returned": 0,
+        "queued_after": 0,
+    }
+    return row | changes
+
+
+COUNTS = [
+    _count_row("2026-10-07T02:00:00+00:00", queue_at_start=9, taken=3, queued_after=6),
+    _count_row("2026-10-08T02:00:00+00:00", queue_at_start=6, taken=3, returned=1, queued_after=3),
+    _count_row("2026-10-08T03:00:00+00:00", run_id=None, queue_at_start=3, taken=3, returned=3),
+]
+
+
 def _res(case_id: str, **changes: Any) -> CaseResult:
     changes.setdefault("verdict_occurrence", GOOD_OCCURRENCE)
     changes.setdefault("verdict_findings", GOOD_FINDING)
@@ -92,7 +114,7 @@ def _folder(  # noqa: PLR0913 -- a test builder
     return folder
 
 
-def _closures(*days: str) -> list[Closure]:
+def _closures(*days: str, na: tuple[int, ...] = ()) -> list[Closure]:
     return [
         Closure(
             mkey=i,
@@ -100,6 +122,7 @@ def _closures(*days: str) -> list[Closure]:
             event_date="2026-09-01",
             closure_run=i,
             closed_on=day,
+            closed_as="N/A" if i in na else "Completed",
         )
         for i, day in enumerate(days, start=1)
     ]
@@ -116,7 +139,7 @@ def world(tmp_path: Path) -> World:
     ]
     second = [
         _closure_record(
-            "ERA26LA004", outcome="not coded", failure="format: bad json", scored=False
+            "ERA26LA004", outcome="not coded", failure="schema: bad json", scored=False
         ),
         _closure_record("ERA26LA005", closed_on=date(2026, 10, 8), waited_days=1),
     ]
@@ -134,14 +157,20 @@ def world(tmp_path: Path) -> World:
         {"at": "2026-10-08T00:11:00+00:00", "reason": "monthly-cap"},
     ]
     closures = _closures(
-        "2026-09-23", "2026-09-23", "2026-09-25", "2026-10-08", "2026-10-08", "2026-10-08"
+        "2026-09-23",
+        "2026-09-23",
+        "2026-09-25",
+        "2026-10-08",
+        "2026-10-08",
+        "2026-10-08",
+        na=(2, 6),
     )
     return folders, closures, refusals
 
 
 def _text(world: World, today: date = TODAY) -> str:
     folders, closures, refusals = world
-    return report_text(folders, closures, TABLES, refusals, today=today)
+    return report_text(folders, closures, TABLES, refusals, today=today, counts=COUNTS)
 
 
 def test_sections_come_in_the_specified_order(world: World) -> None:
@@ -158,7 +187,10 @@ def test_mornings_count_runs_cases_and_queue(world: World) -> None:
     assert "runs: 2" in text
     assert "cases per run: 3, 2" in text
     assert "days waited: p50 3, max 9" in text
-    assert "queue after each run (as the store stands today): 3, 1" in text
+    assert "mornings recorded: 3" in text
+    assert "queue at the start of each morning: 9, 6, 3" in text
+    assert "mornings per day: 2026-10-07: 1, 2026-10-08: 2" in text
+    assert "as the store stands" not in text
     assert "minutes, first round to last:" in text
 
 
@@ -176,7 +208,7 @@ def test_outcomes_have_the_three_grades_and_a_wilson_interval(world: World) -> N
     assert "different: 1" in text
     assert "95% interval for first code right (1 of 3 scored): 6% to 79%" in text
     assert "abstained: 0" in text
-    assert "not coded, format: 1" in text
+    assert "not coded, schema: 1" in text
 
 
 def test_the_new_checks(world: World) -> None:
@@ -187,8 +219,9 @@ def test_the_new_checks(world: World) -> None:
     assert "verdict codes missing from the tables, occurrence: 1 code in 1 case" in text
     assert "verdict codes missing from the tables, finding: 1 code in 1 case" in text
     assert "closures without a verdict: 1" in text
-    assert "closures as N/A:" in text
-    assert "returned to the queue:" in text
+    assert "closures as N/A, coded in live runs: 1" in text
+    assert "closures as N/A, all in the store: 2" in text
+    assert "cases returned to the queue: 4" in text
 
 
 def test_the_backfill_is_a_count_and_a_digest(world: World) -> None:
@@ -221,13 +254,13 @@ def test_a_failure_text_that_names_a_case_is_cut_to_its_reason(tmp_path: Path) -
     record = _closure_record(
         "ERA26LA001",
         outcome="not coded",
-        failure="format: reply for ERA26LA001 held a bad title",
+        failure="schema: reply for ERA26LA001 held a bad title",
         scored=False,
     )
     folder = _folder(tmp_path, "20261008-b", 8, [record])
     text = report_text([folder], [], TABLES, [], today=TODAY)
     assert not PATTERN.search(text)
-    assert "not coded, format: 1" in text
+    assert "not coded, schema: 1" in text
 
 
 def test_closing_rule_not_met_while_the_backfill_is_draining(world: World) -> None:
@@ -295,3 +328,40 @@ def test_main_writes_the_file_from_the_folders_the_store_and_the_refusals(
     assert "refusals, label: 1" in written
     assert "runs: 1" in written
     assert not PATTERN.search(written)
+
+
+def test_a_failure_head_outside_the_known_kinds_prints_as_other(tmp_path: Path) -> None:
+    unknown = _closure_record(
+        "ERA26LA001", outcome="not coded", failure="mkey 1234567 unreadable", scored=False
+    )
+    context = _closure_record(
+        "ERA26LA002", outcome="not coded", failure="cap: context", scored=False
+    )
+    plain = _closure_record("ERA26LA003", outcome="not coded", failure="cap", scored=False)
+    folder = _folder(tmp_path, "20261008-b", 8, [unknown, context, plain])
+    text = report_text([folder], [], TABLES, [], today=TODAY)
+    assert "not coded, other: 1" in text
+    assert "not coded, cap: context: 1" in text
+    assert "not coded, cap: 1" in text
+    assert "1234567" not in text
+
+
+def test_without_the_counts_file_the_report_says_so(tmp_path: Path) -> None:
+    text = report_text([], [], TABLES, [], today=TODAY)
+    assert "mornings recorded: 0" in text
+    assert "cases returned to the queue: 0" in text
+
+
+def test_main_reads_the_morning_counts_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "live-morning-counts.jsonl").write_text(json.dumps(COUNTS[1]) + "\n")
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("NTSB_STORE", str(tmp_path / "store.sqlite"))
+    monkeypatch.setattr(module, "_read_closures", lambda settings: [])
+    out = tmp_path / "out.txt"
+    assert module.main(["--out", str(out)]) == 0
+    assert "cases returned to the queue: 1" in out.read_text()

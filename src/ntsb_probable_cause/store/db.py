@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Literal, Self
 
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.store import schema
@@ -991,16 +991,36 @@ class Store:
         ).fetchall()
         return {int(mkey): int(present_run) for mkey, present_run in rows}
 
+    def _closure_statuses(self) -> dict[int, Literal["Completed", "N/A"]]:
+        """Each case's closure status: the ``new_status`` of the event :meth:`_closure_runs` keys.
+
+        The same predicate as :meth:`_closure_runs`; the earliest such event (by ``present_run``,
+        then ``id``) says whether the case closed as ``Completed`` or as ``N/A``.
+        """
+        placeholders = ", ".join("?" for _ in _REAL_CLOSURE_STATUSES)
+        rows = self._conn.execute(
+            "SELECT mkey, new_status FROM status_events "  # noqa: S608 -- placeholders
+            f"WHERE new_status IN ({placeholders}) "
+            f"AND (old_status IS NULL OR old_status NOT IN ({placeholders})) "
+            "ORDER BY present_run, id",
+            (*_REAL_CLOSURE_STATUSES, *_REAL_CLOSURE_STATUSES),
+        ).fetchall()
+        found: dict[int, Literal["Completed", "N/A"]] = {}
+        for mkey, status in rows:
+            found.setdefault(int(mkey), "N/A" if status == "N/A" else "Completed")
+        return found
+
     def closures(self) -> list[Closure]:
         """Every real closure, ordered by ``(closure_run, mkey)``; read-only.
 
         Built on :meth:`_closure_runs`, the one definition of a closure. ``closed_on`` is the
         UTC calendar date of the closure run's ``started_at`` (SQLite's ``date()`` converts an
-        offset timestamp to UTC).
+        offset timestamp to UTC). ``closed_as`` is the status that closure event carried.
         """
         closure_runs = self._closure_runs()
         if not closure_runs:
             return []
+        statuses = self._closure_statuses()
         run_days = dict(self._conn.execute("SELECT run_id, date(started_at) FROM runs").fetchall())
         cases = {
             int(mkey): (ntsb_number, event_date)
@@ -1015,6 +1035,7 @@ class Store:
                 event_date=cases[mkey][1],
                 closure_run=run,
                 closed_on=run_days[run],
+                closed_as=statuses[mkey],
             )
             for mkey, run in closure_runs.items()
             if mkey in cases and run in run_days

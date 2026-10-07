@@ -30,11 +30,11 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from ntsb_probable_cause.live.local import STORE_WORK_FILENAME, S3StoreSource, live_run_folders
-from ntsb_probable_cause.live.morning import REFUSALS_FILE
-from ntsb_probable_cause.live.queue import DECLARED_START, build_queue, closures_per_night
+from ntsb_probable_cause.live.morning import MORNING_COUNTS_FILE, REFUSALS_FILE
+from ntsb_probable_cause.live.queue import DECLARED_START, closures_per_night
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
@@ -49,7 +49,10 @@ from ntsb_probable_cause.store import Closure
 from ntsb_probable_cause.store.sync import Location
 
 WAIT_LIMIT_DAYS: Final = 14  # spec §11
-_REASON_CHARS: Final = 40
+_CONTEXT_FAILURE: Final = "cap: context"
+_FAILURE_KINDS: Final = frozenset(
+    {"schema", "model", "leak", "cap", "failed", "aborted", "missing result"}
+)
 _CASE_NUMBER = re.compile(r"[A-Z]{3}\d{2}[A-Z]{2}\d{3}")
 _OCCURRENCE_PHASE_LEN: Final = 3
 _FINDING_ITEM_LEN: Final = 8
@@ -79,24 +82,32 @@ def _pct(value: float) -> str:
 
 
 def _reason(failure: str | None) -> str:
-    """A failure cut to its kind: the words before the first colon, with no case number."""
-    text = _CASE_NUMBER.sub("", failure or "unknown")
-    head = re.split(r"[:;(]", text, maxsplit=1)[0].strip() or "unknown"
-    return head[:_REASON_CHARS]
+    """A failure's kind, from a closed set; anything else is "other" (decision 0024).
+
+    The kinds are the heads the runners write: ``schema``, ``model``, ``leak``, ``cap``,
+    ``cap: context``, ``failed`` (the loop failed at a step), ``aborted``, and ``missing result``.
+    """
+    text = (failure or "").strip()
+    if text.startswith(_CONTEXT_FAILURE):
+        return _CONTEXT_FAILURE
+    head = re.split(r"[:;(]", text, maxsplit=1)[0].strip()
+    return head if head in _FAILURE_KINDS else "other"
 
 
 def _mornings(
-    runs: Sequence[_Run], closures: Sequence[Closure], records: list[ClosureRecord]
+    runs: Sequence[_Run], counts: Sequence[Mapping[str, Any]], records: list[ClosureRecord]
 ) -> list[str]:
     lines = ["mornings", f"runs: {len(runs)}"]
     lines.append("cases per run: " + (", ".join(str(len(r.results)) for r in runs) or "none"))
-    done: set[str] = set()
-    queue: list[str] = []
-    for run in runs:
-        done.update(r.case_id for r in run.results)
-        queue.append(str(len(build_queue(closures, done))))
+    lines.append(f"mornings recorded: {len(counts)}")
     lines.append(
-        "queue after each run (as the store stands today): " + (", ".join(queue) or "none")
+        "queue at the start of each morning: "
+        + (", ".join(str(row["queue_at_start"]) for row in counts) or "none")
+    )
+    per_day = Counter(str(row["at"])[:10] for row in counts)
+    lines.append(
+        "mornings per day: "
+        + (", ".join(f"{d}: {n}" for d, n in sorted(per_day.items())) or "none")
     )
     waited = [r.waited_days for r in records]
     lines.append(
@@ -206,30 +217,33 @@ def _missing_codes(
     return (len(occurrence), _cases_in(occurrence)), (len(finding), _cases_in(finding))
 
 
-def _checks(
+def _checks(  # noqa: PLR0913, PLR0917 -- one section, six inputs.
     runs: Sequence[_Run],
     records: Sequence[ClosureRecord],
     tables: CodeTables,
     refusals: Sequence[Mapping[str, str]],
+    counts: Sequence[Mapping[str, Any]],
+    closures: Sequence[Closure],
 ) -> list[str]:
     (occ_codes, occ_cases), (find_codes, find_cases) = _missing_codes(runs, tables)
     kinds = Counter(str(row.get("reason", "unknown")) for row in refusals)
     unscored = sum(1 for r in records if r.outcome == "coded" and not r.scored)
+    na_numbers = {c.ntsb_number for c in closures if c.closed_as == "N/A"}
+    na_coded = sum(1 for r in records if r.case_id in na_numbers)
     return [
         "checks",
         f"preliminary narrative present: {sum(1 for r in records if r.prelim_present)} "
         f"of {len(records)}",
         f"refusals before a run: {sum(kinds.values())}",
         *(f"refusals, {kind}: {count}" for kind, count in sorted(kinds.items())),
-        "cases returned to the queue: not recorded (a case that fails before it is seen "
-        "leaves no row; the morning's summary printed the count)",
+        f"cases returned to the queue: {sum(int(row['returned']) for row in counts)}",
         f"verdict codes missing from the tables, occurrence: {occ_codes} code"
         f"{'' if occ_codes == 1 else 's'} in {occ_cases} case{'' if occ_cases == 1 else 's'}",
         f"verdict codes missing from the tables, finding: {find_codes} code"
         f"{'' if find_codes == 1 else 's'} in {find_cases} case{'' if find_cases == 1 else 's'}",
         f"closures without a verdict: {unscored}",
-        "closures as N/A: not separable (a record that closed as N/A holds no verdict, so it "
-        f"is in the line above; {unscored} in all)",
+        f"closures as N/A, coded in live runs: {na_coded}",
+        f"closures as N/A, all in the store: {len(na_numbers)}",
     ]
 
 
@@ -282,13 +296,14 @@ def _closing(
     ]
 
 
-def report_text(
+def report_text(  # noqa: PLR0913 -- the report's inputs.
     folders: Sequence[Path],
     closures: Sequence[Closure],
     tables: CodeTables,
     refusals: Sequence[Mapping[str, str]],
     *,
     today: date,
+    counts: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """The report as plain text; counts only.
 
@@ -298,6 +313,7 @@ def report_text(
         tables: The code tables Ellery and the scorer share.
         refusals: Rows of ``live-refusals.jsonl`` (``{"at", "reason"}``).
         today: The UTC date the report is read on (the closing rule's clock).
+        counts: Rows of ``live-morning-counts.jsonl`` (counts and run ids only).
 
     Returns:
         The text, ending with the closing rule line.
@@ -310,10 +326,10 @@ def report_text(
             "S3.3 live shadow: counts only (decision 0024). Live and held-out numbers are never "
             "shown together (decision 0021); at this size the interval is wide.",
         ],
-        _mornings(runs, closures, records),
+        _mornings(runs, counts, records),
         _money(runs),
         _outcomes(records),
-        _checks(runs, records, tables, refusals),
+        _checks(runs, records, tables, refusals, counts, closures),
         backfill_lines,
         _per_night(closures, today),
         _closing(runs, held, records, today),
@@ -329,8 +345,8 @@ def _read_closures(settings: Settings) -> list[Closure]:
         source.discard()
 
 
-def _read_refusals(runs_dir: Path) -> list[dict[str, str]]:
-    path = runs_dir / REFUSALS_FILE
+def _read_rows(runs_dir: Path, name: str) -> list[dict[str, Any]]:
+    path = runs_dir / name
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
@@ -346,8 +362,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         live_run_folders(settings.runs_dir),
         _read_closures(settings),
         load_tables(),
-        _read_refusals(settings.runs_dir),
+        _read_rows(settings.runs_dir, REFUSALS_FILE),
         today=datetime.now(UTC).date(),
+        counts=_read_rows(settings.runs_dir, MORNING_COUNTS_FILE),
     )
     print(text, end="")
     if args.out:
