@@ -24,15 +24,13 @@ from typing import Final
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner
-from ntsb_probable_cause.agent.schemas import ChooseDocuments
-from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.agent.version import VERSION_1, prompt_version
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
-from ntsb_probable_cause.live.fetch import FetchError, fetch_record, prefetch_docket, prelim_present
+from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE, Prepared, build_records
+from ntsb_probable_cause.live.fetch import FetchError, fetch_record, prefetch_docket
 from ntsb_probable_cause.live.local import LIVE_SAMPLE
 from ntsb_probable_cause.live.queue import (
     DAILY_LIMIT,
@@ -40,9 +38,15 @@ from ntsb_probable_cause.live.queue import (
     backfill_digest,
     build_queue,
     todays_take,
-    waited_days,
 )
-from ntsb_probable_cause.live.records import INPUTS_FILE, Backfill, ClosureRecord, DocumentLine
+from ntsb_probable_cause.live.records import (
+    BACKFILL_FILE,
+    CLOSURES_FILE,
+    INPUTS_FILE,
+    MANIFEST_FILE,
+    Backfill,
+    ClosureRecord,
+)
 from ntsb_probable_cause.live.seams import ResultSink, SpendCounter, StoreSource
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.scoring.budget import month_spent
@@ -52,7 +56,7 @@ from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_json
 from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, RunSpec
 from ntsb_probable_cause.scoring.samples import seen_pairs
 from ntsb_probable_cause.settings import Settings
-from ntsb_probable_cause.sources import TRAINING_CUTOFFS
+from ntsb_probable_cause.sources import LUNA_6, TRAINING_CUTOFFS, ReasoningEffort
 from ntsb_probable_cause.store import Store
 
 LIVE_CAP_USD: Final = 0.30  # decision 163
@@ -60,9 +64,14 @@ MONTHLY_CAP_USD: Final = 5.0  # decision 163
 EXPECTED_COST_PER_CASE_USD: Final = 0.015  # estimate, spec section 9; the reservation's projection
 LATE_START_UTC: Final = time(9, 0)  # spec section 4: warn after this
 
+# Pinned here, not read from library defaults: a development edit of those must not move live
+# runs off the model (decisions 0073, 0084, 0156). The `+t` fingerprint does not hash them.
+MODEL_ID: Final = LUNA_6.model_id  # a named price entry, so DEFAULT_MODEL cannot move it
+REASONING_EFFORT: Final[ReasoningEffort] = "medium"
+MAX_OUTPUT_TOKENS: Final = 8000
+PENDING_BACKFILL_FILE: Final = "live-pending-backfill.json"
 PENDING_INPUTS_FILE: Final = "live-pending-inputs.jsonl"
 REFUSALS_FILE: Final = "live-refusals.jsonl"
-_CHOICE_STEPS: Final = frozenset({"choice1", "choice2"})
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
 
 
@@ -97,13 +106,6 @@ class MorningSummary:
     minutes: float
     freed_bytes: int
     warnings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class _Fetched:
-    case: QueuedCase
-    raw: dict[str, object]
-    docket: Docket
 
 
 def run_morning(
@@ -183,12 +185,16 @@ class _Morning:
         self.runs_dir = deps.settings.runs_dir
         self.warnings: list[str] = []
         self.interrupted = False
+        self.lock_sha = ""
         if began.astimezone(UTC).time() > LATE_START_UTC:
             self.warnings.append(f"started after {LATE_START_UTC:%H:%M} UTC")
 
     # --- the order of a morning ---
 
     def run(self) -> MorningSummary:
+        self.lock_sha = self.deps.uv_lock_sha256()  # read with the other checks, before any run
+        if not self.dry_run:
+            self._complete_unrecorded()
         if not self.store.run_finished_on(self.today):
             self.refusals.add("recorder-unfinished")
             raise ConfigurationError(
@@ -205,19 +211,13 @@ class _Morning:
             self.warnings.append(f"the day's limit of {DAILY_LIMIT} cases is reached")
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
         n = room if self.limit is None else min(room, self.limit)
-        projected = self.deps.spend.live_month_usd(self.began) + n * EXPECTED_COST_PER_CASE_USD
-        if projected > MONTHLY_CAP_USD:
-            self.refusals.add("monthly-cap")
-            raise BudgetError(
-                f"live spend this month plus {n} cases at ${EXPECTED_COST_PER_CASE_USD} would "
-                f"be ${projected:.2f}, past the ${MONTHLY_CAP_USD:.2f} monthly cap (decision 163)"
-            )
+        self._check_cap(n)
         done = self.deps.sink.done_case_ids()
         queue = build_queue(self.store.closures(), done)
         take = todays_take(queue, coded_today)[:n]
         if self.dry_run:
             return self._dry_run(queue, take)
-        backfill = self._backfill(queue)
+        self._pin_backfill(queue)
         fetched, returned = self._fetch(take)
         if not fetched:
             return self._summary(
@@ -225,16 +225,31 @@ class _Morning:
             )
         raws = [f.raw for f in fetched]
         self._write_pending(raws)
-        return self._execute(
-            fetched, raws, resume=None, backfill=backfill, returned=returned, done=done
-        )
+        return self._execute(fetched, raws, resume=None, returned=returned, done=done)
 
-    def _backfill(self, queue: Sequence[QueuedCase]) -> Backfill | None:
-        """The whole queue as it stands, on the first morning only."""
-        if self.deps.sink.backfill() is not None:
-            return None
+    def _check_cap(self, n: int) -> None:
+        """Refuse before any call when the month's live spend plus ``n`` cases passes the cap."""
+        projected = self.deps.spend.live_month_usd(self.began) + n * EXPECTED_COST_PER_CASE_USD
+        if projected > MONTHLY_CAP_USD:
+            self.refusals.add("monthly-cap")
+            raise BudgetError(
+                f"live spend this month plus {n} cases at ${EXPECTED_COST_PER_CASE_USD} would "
+                f"be ${projected:.2f}, past the ${MONTHLY_CAP_USD:.2f} monthly cap (decision 163)"
+            )
+
+    def _pin_backfill(self, queue: Sequence[QueuedCase]) -> None:
+        """Fix the backfill on disk the first time the queue is seen, before anything can fail.
+
+        It waits in ``live-pending-backfill.json`` and moves into the first live run's folder
+        beside the inputs; a later morning never recomputes it (decision 0157).
+        """
+        pending = self.runs_dir / PENDING_BACKFILL_FILE
+        if self.deps.sink.backfill() is not None or pending.is_file():
+            return
         ids = tuple(sorted(q.case_id for q in queue))
-        return Backfill(fixed_on=self.today, case_ids=ids, sha256=backfill_digest(ids))
+        backfill = Backfill(fixed_on=self.today, case_ids=ids, sha256=backfill_digest(ids))
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        pending.write_text(backfill.model_dump_json() + "\n")
 
     def _dry_run(self, queue: Sequence[QueuedCase], take: Sequence[QueuedCase]) -> MorningSummary:
         _say(
@@ -251,9 +266,9 @@ class _Morning:
         _say("dry run: no model was called and no run folder was written.")
         return self._summary(None, [], returned=0, queued=len(queue), record=None, freed=0)
 
-    def _fetch(self, take: Sequence[QueuedCase]) -> tuple[list[_Fetched], int]:
+    def _fetch(self, take: Sequence[QueuedCase]) -> tuple[list[Prepared], int]:
         """Each case's record and docket, in order; a failure returns the case to the queue."""
-        fetched: list[_Fetched] = []
+        fetched: list[Prepared] = []
         returned = 0
         with contextlib.ExitStack() as stack:
             ntsb = stack.enter_context(self.deps.ntsb())
@@ -269,10 +284,24 @@ class _Morning:
                 except FetchError:
                     returned += 1
                     continue
-                fetched.append(_Fetched(case, raw, docket))
+                fetched.append(Prepared(case, raw, docket))
         return fetched, returned
 
-    # --- inputs, for an exact resume ---
+    def _prepare(self, raws: Sequence[dict[str, object]]) -> list[Prepared]:
+        """Rebuild a run's cases from its inputs, the store's closures and the docket cache."""
+        by_id = {q.case_id: q for q in build_queue(self.store.closures(), frozenset())}
+        prepared: list[Prepared] = []
+        with self.deps.docket() as docket_client:
+            for raw in raws:
+                case = by_id.get(str(raw["ntsbNumber"]))
+                if case is None:
+                    raise ConfigurationError("a live run holds a case that is not a closure")
+                known = self.store.documents_recorded(case.mkey)
+                docket = prefetch_docket(docket_client, case.mkey, known_documents=known)
+                prepared.append(Prepared(case, raw, docket))
+        return prepared
+
+    # --- inputs and backfill, kept for an exact resume ---
 
     def _write_pending(self, raws: Sequence[Mapping[str, object]]) -> None:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
@@ -281,15 +310,35 @@ class _Morning:
         )
 
     def _settle_pending(self, folder: Path) -> None:
-        """Move the pending inputs into the run's folder (or drop a stale copy)."""
-        pending = self.runs_dir / PENDING_INPUTS_FILE
-        if not pending.is_file():
-            return
-        target = folder / INPUTS_FILE
-        if target.exists():
-            pending.unlink()
-        else:
-            shutil.move(pending, target)
+        """Move the pending inputs and backfill into a live run's folder (or drop stale ones)."""
+        for name, target_name in (
+            (PENDING_INPUTS_FILE, INPUTS_FILE),
+            (PENDING_BACKFILL_FILE, BACKFILL_FILE),
+        ):
+            pending = self.runs_dir / name
+            if not pending.is_file():
+                continue
+            target = folder / target_name
+            held = target_name == BACKFILL_FILE and self.deps.sink.backfill() is not None
+            if target.exists() or held:
+                pending.unlink()
+            else:
+                shutil.move(pending, target)
+
+    def _settle_new_live_folder(self, before: set[str], error: BaseException) -> None:
+        """After a failed run: the one new live run folder takes the pending files.
+
+        Folders of other kinds (a development run started meanwhile) are never touched. None
+        new means the runner failed before it made a folder: the pending files stay.
+        """
+        new = [n for n in sorted(_folders(self.runs_dir) - before) if _is_live(self.runs_dir / n)]
+        if len(new) > 1:
+            raise ConfigurationError(
+                f"{len(new)} live run folders appeared during the run: the pending files are "
+                "not moved into any of them"
+            ) from error
+        if new:
+            self._settle_pending(self.runs_dir / new[0])
 
     def _resume(self, run_id: str) -> MorningSummary:
         folder = self.runs_dir / run_id
@@ -300,41 +349,42 @@ class _Morning:
                 f"the unfinished live run {run_id} has no {INPUTS_FILE}, so it cannot be "
                 "resumed with the records it began with"
             )
-        raws = [json.loads(line) for line in inputs.read_text().splitlines() if line.strip()]
+        raws = _read_inputs(inputs)
+        if self.deps.sink.backfill() is None and not (folder / BACKFILL_FILE).is_file():
+            raise ConfigurationError(
+                f"the unfinished live run {run_id} is resumed with no backfill held anywhere: "
+                "it is never recomputed from a later queue"
+            )
+        self._check_cap(len(raws) - len(_answered(folder)))
         if self.dry_run:
             _say(f"dry run: a morning would resume the unfinished run with {len(raws)} cases.")
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
-        closures = self.store.closures()
-        by_id = {q.case_id: q for q in build_queue(closures, frozenset())}
-        fetched: list[_Fetched] = []
-        with self.deps.docket() as docket_client:
-            for raw in raws:
-                case = by_id.get(str(raw["ntsbNumber"]))
-                if case is None:
-                    raise ConfigurationError(f"the unfinished run {run_id} holds a case not closed")
-                known = self.store.documents_recorded(case.mkey)
-                docket = prefetch_docket(docket_client, case.mkey, known_documents=known)
-                fetched.append(_Fetched(case, raw, docket))
-        done = self.deps.sink.done_case_ids() - {f.case.case_id for f in fetched}
-        backfill = self._backfill(build_queue(closures, done))
-        return self._execute(fetched, raws, resume=run_id, backfill=backfill, returned=0, done=done)
+        prepared = self._prepare(raws)
+        done = self.deps.sink.done_case_ids() - {p.case.case_id for p in prepared}
+        return self._execute(prepared, raws, resume=run_id, returned=0, done=done)
+
+    def _complete_unrecorded(self) -> None:
+        """Write the records of any finished live run that lacks them or its manifest."""
+        for name in sorted(_folders(self.runs_dir)):
+            folder = self.runs_dir / name
+            if _is_live(folder) and _needs_records(folder):
+                self._complete(name, None)
+                self.warnings.append(f"completed the records of an earlier run, {name}")
 
     # --- the run ---
 
-    def _execute(  # noqa: PLR0913 -- the morning's state, passed on once.
+    def _execute(
         self,
-        fetched: Sequence[_Fetched],
+        prepared: Sequence[Prepared],
         raws: Sequence[dict[str, object]],
         *,
         resume: str | None,
-        backfill: Backfill | None,
         returned: int,
         done: frozenset[str],
     ) -> MorningSummary:
         deps, settings = self.deps, self.deps.settings
         spec = self._spec()
-        cutoff = TRAINING_CUTOFFS.get(spec.model)
-        if cutoff is None:
+        if spec.model not in TRAINING_CUTOFFS:
             raise ConfigurationError(f"no recorded training cut-off for {spec.model}")
         client, batch = deps.models()
         with deps.docket() as docket_client:
@@ -354,20 +404,34 @@ class _Morning:
             before = _folders(self.runs_dir)
             try:
                 record = runner.run(spec, raws, resume=resume)
-            except BaseException:
+            except BaseException as error:
                 self.interrupted = True
-                for name in sorted(_folders(self.runs_dir) - before):
-                    self._settle_pending(self.runs_dir / name)
+                self._settle_new_live_folder(before, error)
                 raise
         self._settle_pending(self.runs_dir / record.run_id)
-        records = self._records(record, fetched, deps.uv_lock_sha256())
-        deps.sink.write(record.run_id, records, backfill)
-        freed = self._cleanup(fetched)
-        ran = {f.case.case_id for f in fetched}
+        records, freed = self._complete(record.run_id, prepared)
+        freed += _store_bytes(self.store.path)
+        ran = {p.case.case_id for p in prepared}
         queued = len(build_queue(self.store.closures(), done | ran))
         return self._summary(
             record.run_id, records, returned=returned, queued=queued, record=record, freed=freed
         )
+
+    def _complete(
+        self, run_id: str, prepared: Sequence[Prepared] | None
+    ) -> tuple[list[ClosureRecord], int]:
+        """Write a finished run's closure records, backfill and manifest, then clean up."""
+        folder = self.runs_dir / run_id
+        if prepared is None:
+            inputs = folder / INPUTS_FILE
+            if not inputs.is_file():
+                raise ConfigurationError(f"the finished live run {run_id} has no {INPUTS_FILE}")
+            prepared = self._prepare(_read_inputs(inputs))
+        records = build_records(folder, prepared, self.lock_sha)
+        held = folder / BACKFILL_FILE
+        backfill = Backfill.model_validate_json(held.read_text()) if held.is_file() else None
+        self.deps.sink.write(run_id, records, backfill)
+        return records, self._cleanup(prepared)
 
     def _spec(self) -> RunSpec:
         return RunSpec(
@@ -375,6 +439,9 @@ class _Morning:
             arm="C",
             evidence_version="v1",
             exclusions=frozenset({EvidenceRole.PRELIM_NARRATIVE}),
+            model=MODEL_ID,
+            reasoning_effort=REASONING_EFFORT,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
             price_variant="batch",
             cap_usd=LIVE_CAP_USD,
             budget_usd=self.deps.settings.monthly_budget_usd,
@@ -383,68 +450,15 @@ class _Morning:
             guidance=GUIDANCE,
         )
 
-    # --- the records ---
-
-    def _records(
-        self, record: RunRecord, fetched: Sequence[_Fetched], lock_sha: str
-    ) -> list[ClosureRecord]:
-        folder = self.runs_dir / record.run_id
-        results = {r.case_id: r for r in read_jsonl(folder / "cases.jsonl", CaseResult)}
-        trail = folder / agent_run.TRAIL_FILE
-        calls = read_jsonl(trail, AgentCall) if trail.is_file() else []
-        cutoff = TRAINING_CUTOFFS[record.model]
-        out: list[ClosureRecord] = []
-        for f in fetched:
-            case_calls = [c for c in calls if c.case_id == f.case.case_id]
-            result = results.get(f.case.case_id)
-            scored = result is not None and bool(result.verdict_occurrence)
-            scores = result.scores if scored and result is not None else None
-            failure = "missing result" if result is None else result.failure
-            out.append(
-                ClosureRecord(
-                    case_id=f.case.case_id,
-                    mkey=f.case.mkey,
-                    closed_on=f.case.closed_on,
-                    closure_run=f.case.closure_run,
-                    waited_days=waited_days(f.case, record.started.astimezone(UTC).date()),
-                    first_sent=min((c.sent_at for c in case_calls), default=None),
-                    last_returned=max((c.returned_at for c in case_calls), default=None),
-                    commit_sha=record.commit_sha,
-                    dirty=record.dirty,
-                    prompt_version=record.prompt_version,
-                    price_variant="batch" if record.price_variant == "batch" else "standard",
-                    model=record.model,
-                    reasoning_effort=record.reasoning_effort,
-                    training_cutoff=cutoff.day,
-                    training_cutoff_source=cutoff.source,
-                    uv_lock_sha256=lock_sha,
-                    documents=_document_lines(f.docket, case_calls),
-                    prelim_present=prelim_present(f.raw),
-                    outcome="not coded" if failure else "coded",
-                    failure=failure,
-                    marks=() if result is None else tuple(m.kind for m in result.marks),
-                    scored=scored,
-                    top1=None if scores is None else scores.occurrence_top1,
-                    top3=None if scores is None else scores.occurrence_top3,
-                    abstained=None if scores is None else scores.abstained,
-                    cost_usd=0.0 if result is None else result.cost_usd,
-                )
-            )
-        return out
-
-    def _cleanup(self, fetched: Sequence[_Fetched]) -> int:
-        """Delete the run's cases' cached documents and the store work copy; count the bytes."""
+    def _cleanup(self, prepared: Sequence[Prepared]) -> int:
+        """Delete the run's cases' cached documents; return the bytes freed."""
         freed = 0
         live = self.deps.settings.live_docket_dir
-        for f in fetched:
-            folder = live / str(f.case.mkey)
+        for p in prepared:
+            folder = live / str(p.case.mkey)
             if folder.is_dir():
                 freed += _tree_bytes(folder)
                 shutil.rmtree(folder)
-        path = self.store.path
-        for candidate in (path, *(path.with_name(path.name + s) for s in _SIDE_SUFFIXES)):
-            if candidate.is_file():
-                freed += candidate.stat().st_size
         return freed
 
     def _summary(  # noqa: PLR0913 -- the summary's own fields.
@@ -476,35 +490,49 @@ class _Morning:
         )
 
 
-def _document_lines(docket: Docket, calls: Sequence[AgentCall]) -> tuple[DocumentLine, ...]:
-    """Each document's status, and what the agent decided: read, skipped, or never on offer."""
-    offered: set[int] = set()
-    read: set[int] = set()
-    for call in calls:
-        if call.step not in _CHOICE_STEPS or call.protocol_error is not None:
-            continue
-        offered.update(call.offered)
-        choice = ChooseDocuments.model_validate(call.arguments)
-        read.update(d.document for d in choice.decisions if d.read and d.document in call.offered)
-    return tuple(
-        DocumentLine(
-            position=d.entry.index,
-            title=d.entry.title,
-            status=d.status,
-            ellery=("read" if d.entry.index in read else "skipped")
-            if d.entry.index in offered
-            else None,
-        )
-        for d in docket.documents
-    )
-
-
 def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
 
 
 def _folders(runs_dir: Path) -> set[str]:
     return {p.name for p in runs_dir.iterdir() if p.is_dir()} if runs_dir.is_dir() else set()
+
+
+def _is_live(folder: Path) -> bool:
+    try:
+        loaded = json.loads((folder / "spec.json").read_text())
+    except OSError, ValueError:
+        return False
+    return isinstance(loaded, dict) and loaded.get("sample") == LIVE_SAMPLE
+
+
+def _needs_records(folder: Path) -> bool:
+    """A finished run whose closure records or manifest are missing."""
+    path = folder / RUN_FILE
+    if not path.is_file():
+        return False
+    records = read_jsonl(path, RunRecord)
+    if not records or records[-1].finished is None:
+        return False
+    return not (folder / CLOSURES_FILE).is_file() or not (folder / MANIFEST_FILE).is_file()
+
+
+def _read_inputs(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _answered(folder: Path) -> set[str]:
+    """Case ids a run folder holds an answer for (not ``aborted``)."""
+    path = folder / CASES_FILE
+    if not path.is_file():
+        return set()
+    results = read_jsonl(path, CaseResult)
+    return {r.case_id for r in results if not (r.failure or "").startswith("aborted")}
+
+
+def _store_bytes(path: Path) -> int:
+    names = (path, *(path.with_name(path.name + s) for s in _SIDE_SUFFIXES))
+    return sum(p.stat().st_size for p in names if p.is_file())
 
 
 def _tree_bytes(folder: Path) -> int:

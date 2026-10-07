@@ -195,7 +195,7 @@ class _Store:
         return list(self._closures)
 
     def run_finished_on(self, day: date) -> bool:
-        return self._finished and day == TODAY
+        return self._finished
 
     def documents_recorded(self, mkey: int) -> int:
         return self.known.get(mkey, 0)
@@ -210,7 +210,9 @@ class _Spend:
 
 
 class _Sink:
-    def __init__(self) -> None:
+    def __init__(self, events: list[str] | None = None) -> None:
+        self.events = events if events is not None else []
+        self.fail_write = False
         self.done: frozenset[str] = frozenset()
         self.coded = 0
         self.unfinished: str | None = None
@@ -232,6 +234,10 @@ class _Sink:
     def write(
         self, run_id: str, records: Sequence[ClosureRecord], backfill: Backfill | None
     ) -> None:
+        if self.fail_write:
+            self.fail_write = False
+            raise RuntimeError("sink down")
+        self.events.append("write")
         self.writes.append((run_id, list(records), backfill))
 
 
@@ -254,6 +260,7 @@ class _StubRunner:
     instances: list[_StubRunner] = []  # noqa: RUF012 -- a test double's log
     script: dict[str, Any] = {}  # noqa: RUF012
     raises: Exception | None = None
+    side_folder: str | None = None
 
     def __init__(self, client: ModelClient, **kwargs: Any) -> None:
         self.kwargs = kwargs
@@ -270,7 +277,10 @@ class _StubRunner:
         folder = runs_dir / run_id
         folder.mkdir(parents=True, exist_ok=resume is not None)
         ids = [str(r["ntsbNumber"]) for r in raws]
-        results = [_result(i, **self.script.get(i, {}).get("result", {})) for i in ids]
+        aborted = {"failure": f"aborted: {self.raises}", "scores": None} if self.raises else {}
+        results = [
+            _result(i, **{**aborted, **self.script.get(i, {}).get("result", {})}) for i in ids
+        ]
         calls = [c for i in ids for c in self.script.get(i, {}).get("calls", [])]
         write_jsonl(folder / "cases.jsonl", results)
         write_jsonl(folder / "trail.jsonl", calls)
@@ -297,6 +307,10 @@ class _StubRunner:
         )
         write_jsonl(folder / "run.jsonl", [record])
         (folder / "spec.json").write_text(json.dumps({"sample": spec.sample}))
+        if self.side_folder is not None:
+            side = runs_dir / self.side_folder
+            side.mkdir()
+            (side / "spec.json").write_text(json.dumps({"sample": "dev-400"}))
         if self.raises is not None:
             raise self.raises
         return record
@@ -308,7 +322,7 @@ class Rig:
     events: list[str] = field(default_factory=list)
     store: _Store = field(init=False)
     source: _Source = field(init=False)
-    sink: _Sink = field(default_factory=_Sink)
+    sink: _Sink = field(init=False)
     spend: _Spend = field(default_factory=_Spend)
     settings: Settings = field(init=False)
     label: str = VERSION_1
@@ -363,9 +377,11 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     work.write_bytes(b"x" * 1000)
     r.store = _Store(work, [_closure(n) for n in range(1, 4)])
     r.source = _Source(r.events, r.store)
+    r.sink = _Sink(r.events)
     _StubRunner.instances = []
     _StubRunner.script = {}
     _StubRunner.raises = None
+    _StubRunner.side_folder = None
 
     def fetch_record(client: object, case: Any) -> dict[str, object]:
         r.events.append(f"fetch {case.case_id}")
@@ -418,6 +434,9 @@ def test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts(ri
     raws = [_raw("ERA26LA002", 1002), _raw("ERA26LA001", 1001)]
     (folder / INPUTS_FILE).write_text("".join(json.dumps(r) + "\n" for r in raws))
     rig.sink.unfinished = run_id
+    rig.sink.held = Backfill(
+        fixed_on=date(2026, 10, 1), case_ids=("X",), sha256=backfill_digest(["X"])
+    )
     summary = run_morning(rig.deps())
     (runner,) = _StubRunner.instances
     assert len(runner.runs) == 1
@@ -435,6 +454,9 @@ def test_c_a_pending_inputs_file_is_moved_into_the_unfinished_run_first(rig: Rig
     raws = [_raw("ERA26LA001", 1001)]
     (rig.runs_dir / PENDING).write_text(json.dumps(raws[0]) + "\n")
     rig.sink.unfinished = run_id
+    rig.sink.held = Backfill(
+        fixed_on=date(2026, 10, 1), case_ids=("X",), sha256=backfill_digest(["X"])
+    )
     run_morning(rig.deps())
     assert not (rig.runs_dir / PENDING).exists()
     assert _StubRunner.instances[0].runs[0][1] == raws
@@ -501,6 +523,9 @@ def test_g_the_run_spec(rig: Rig) -> None:
     assert spec.price_variant == "batch"
     assert spec.sync is False
     assert spec.evidence_version == "v1"
+    assert spec.model == "openai/gpt-6-luna"
+    assert spec.reasoning_effort == "medium"
+    assert spec.max_output_tokens == 8000
     assert spec.expected_cost_per_case_usd == EXPECTED_COST_PER_CASE_USD
     assert runner.runs[0][2] is None
     assert runner.kwargs["commit"] == ("abc1234", False)
@@ -731,3 +756,101 @@ def test_o_every_refusal_appends_a_row_with_no_case_id(rig: Rig) -> None:
     for row in rows:
         assert set(row) == {"at", "reason"}
         assert datetime.fromisoformat(row["at"]).utcoffset() == timedelta(0)
+
+
+def _first_morning_interrupted(rig: Rig) -> str:
+    _StubRunner.raises = RuntimeError("killed")
+    with pytest.raises(RuntimeError, match="killed"):
+        run_morning(rig.deps(), limit=1)
+    _StubRunner.raises = None
+    (folder,) = [p for p in rig.runs_dir.iterdir() if p.is_dir()]
+    return folder.name
+
+
+def test_backfill_survives_an_interrupted_first_run_and_a_later_queue(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    assert (rig.runs_dir / run_id / BACKFILL_FILE).is_file()
+    rig.store._closures.append(_closure(4))
+    rig.sink.unfinished = run_id
+    rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
+    run_morning(rig.deps())
+    backfill = rig.sink.writes[-1][2]
+    ids = ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    assert backfill is not None
+    assert backfill.case_ids == ids
+    assert backfill.sha256 == backfill_digest(ids)
+    assert backfill.fixed_on == TODAY
+
+
+def test_backfill_survives_a_morning_where_every_fetch_failed(rig: Rig) -> None:
+    rig.fetch_fails = {"ERA26LA001", "ERA26LA002", "ERA26LA003"}
+    summary = run_morning(rig.deps())
+    assert summary.run_id is None
+    rig.fetch_fails = set()
+    rig.store._closures.append(_closure(4))
+    rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
+    run_morning(rig.deps())
+    backfill = rig.sink.writes[-1][2]
+    assert backfill is not None
+    assert backfill.case_ids == ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    assert backfill.fixed_on == TODAY
+
+
+def test_resume_without_a_backfill_anywhere_is_refused(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    (rig.runs_dir / run_id / BACKFILL_FILE).unlink()
+    rig.sink.unfinished = run_id
+    with pytest.raises(ConfigurationError, match="backfill"):
+        run_morning(rig.deps())
+
+
+def test_a_failed_write_is_completed_at_the_start_of_the_next_morning(rig: Rig) -> None:
+    live = rig.settings.live_docket_dir
+    _cache(1001, live)
+    rig.sink.fail_write = True
+    with pytest.raises(RuntimeError, match="sink down"):
+        run_morning(rig.deps(), limit=1)
+    assert (live / "1001").exists()
+    (first,) = [p for p in rig.runs_dir.iterdir() if p.is_dir()]
+    first_id = first.name
+    rig.events.clear()
+    rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
+    run_morning(rig.deps(), limit=1)
+    assert rig.sink.writes[0][0] == first_id
+    assert [r.case_id for r in rig.sink.writes[0][1]] == ["ERA26LA001"]
+    assert rig.events.index("write") < rig.events.index("fetch ERA26LA001")
+    assert not (live / "1001").exists()
+
+
+def test_the_lockfile_checksum_is_read_before_any_fetch_or_run(rig: Rig) -> None:
+    def broken() -> str:
+        raise OSError("no uv.lock")
+
+    with pytest.raises(OSError, match=r"uv\.lock"):
+        run_morning(rig.deps(uv_lock_sha256=broken))
+    assert rig.fetched == []
+    assert rig.model_calls == 0
+
+
+def test_a_resume_is_held_to_the_monthly_cap(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    _StubRunner.instances.clear()
+    rig.sink.unfinished = run_id
+    rig.spend.usd = 4.99
+    with pytest.raises(BudgetError):
+        run_morning(rig.deps())
+    assert _StubRunner.instances == []
+    assert rig.model_calls == 1  # only the first morning's
+    assert [r["reason"] for r in rig.refusals()] == ["monthly-cap"]
+
+
+def test_a_development_run_folder_made_meanwhile_is_never_written_to(rig: Rig) -> None:
+    _StubRunner.raises = RuntimeError("killed")
+    _StubRunner.side_folder = "20261007T000000-abc1234-dev-400-C"
+    with pytest.raises(RuntimeError, match="killed"):
+        run_morning(rig.deps(), limit=1)
+    side = rig.runs_dir / _StubRunner.side_folder
+    assert not (side / INPUTS_FILE).exists()
+    assert not (side / BACKFILL_FILE).exists()
+    live = [p for p in rig.runs_dir.iterdir() if p.is_dir() and p != side]
+    assert (live[0] / INPUTS_FILE).is_file()
