@@ -2,7 +2,7 @@
 
 *Drafted 2026-10-07 from a design session with Andy (2026-10-06 to 2026-10-07), after S3.2 closed
 (pull request #27, release v0.9.0, merge commit `832a121`) and the S5 site design merged (pull
-request #28, commit `0e467bd`, decisions 0154 to 0156). Status: Draft. This is the specification
+request #28, commit `0e467bd`, decisions 0154 to 0156). Status: Approved (2026-10-07, Andy: "Spec approved!"). This is the specification
 for sub-stage S3.3 of [the S3 specification](2026-09-30-s3-agent-loop-design.md) (§3, §11), which
 holds the design S3 shares. The implementation plan is written from this document separately, in
 `docs/plans/`.*
@@ -343,18 +343,29 @@ Four rules make that a plain copy:
   flag, the prompt version with `+t`, the price variant, the model and reasoning level, the
   model's training cut-off (from a committed source constant naming the page and the date read),
   and the SHA-256 of `uv.lock`;
-- each listed document by its listing position: its title, and whether it was read, skipped, scan
-  only, not a PDF, or withheld as synthesis. A withheld document's title is recorded and its text
-  never is;
-- whether the API still held a preliminary narrative (§5); the outcome (coded, not coded with its
-  reason) and the case's scores (§10).
+- each listed document by its listing position: its title, the docket reader's status for it (one
+  of `read`, `unreadable: scan`, `unreadable: not a pdf`, `skipped: photo-only`, `fetch failed`;
+  `docket/manifest.py`), and, for a document on offer, whether Ellery read or skipped it. Titles
+  only: no document text;
+- whether the API still held a preliminary narrative (§5); the outcome (coded, or not coded with
+  its reason, a guard refusal included); the case's marks (decisions 0077, 0078); and the case's
+  scores (§10).
 
 The trail keeps its existing rule: no document title and no document text. Titles live only in the
 closure record, joined to the trail by listing position.
 
+**There is no "withheld as synthesis" document** (corrected 2026-10-07, after approval and before
+the plan, when the plan's reading of `docket/` found it). Decision 0154 item 5 and the S5 Draft
+(§6, §13) speak of a document "classed as synthesis" shown as withheld. No such class exists:
+decision 0056 removed title-based classing, so every readable document is offered. Withheld text is
+caught by the guard on the text itself: a probable-cause sentence in a document refuses the whole
+case ("not coded: guard"), and an analysis or narrative sentence only marks the case (0077, 0078).
+Record 4 of §15 says so, for S4 and S5.
+
 *Example closure record (invented):* "closed 1 Oct; coded 2 Oct 07:42 UTC, waited 1 day; commit
 4f2a9c1; prompt s3-v1+ge17fecdc66ec+t…; batch; model trained to 18 May 2026; documents: 1 Pilot
-statement, read; 2 Weather study, skipped; 3 Photos, scan only; 4 [synthesis], withheld."
+statement, read, Ellery read it; 2 Weather study, read, Ellery skipped it; 3 Photos, skipped:
+photo-only; 4 Engine examination, unreadable: scan; marks: none."
 
 ### 8.3 The open-split fence, in code
 
@@ -525,8 +536,8 @@ S3.3 adds tests that:
 - `live` cannot reach the store's upload, and a write to the store copy fails;
 - the preliminary narrative never reaches Ellery's text, and its presence is recorded;
 - a run folder copied elsewhere verifies against its manifest and reads back; it holds no absolute
-  path and no secret; the trail holds no title or text; the closure record holds titles only, with
-  synthesis marked withheld;
+  path and no secret; the trail holds no title or text; the closure record holds titles and
+  statuses only, never document text;
 - cleanup deletes documents only after a finished run;
 - the $5 monthly cap, the $10 stop, the $40 guard and S3's line each refuse before any call;
 - every development and evaluation command refuses a `live` run; the counts file holds no case
@@ -549,8 +560,10 @@ Written in the plan's first task, numbered from 157 on:
 3. Closure runs are scored the same morning, as counts only, printed alone. *Session:*
    scoring, option A.
 4. The `live` package and its three seams; local run folders built to move to a private
-   bucket; the open-split fence in code; the live document cache; cleanup. *Session:* storage,
-   option A with Andy's move rule; the package named `live`.
+   bucket; the open-split fence in code; the live document cache; cleanup; the closure record's
+   document statuses, with the correction to decision 0154 item 5's premise that a document can be
+   "classed as synthesis" (§8.2). *Session:* storage, option A with Andy's move rule; the package
+   named `live`.
 5. The rendered-text fingerprint `+t` replaces `+p` (applies 0143, amends 0133), with
    version 1's old and new labels; a live run refuses on a mismatch; `--locked`, `UV_LOCKED` and
    the lockfile's checksum. *Session:* the fingerprint, option A; Andy's lockfile point.
