@@ -105,6 +105,11 @@ def _live_runs(runs_dir: Path) -> Iterator[Path]:
             yield folder
 
 
+def live_run_folders(runs_dir: Path) -> list[Path]:
+    """The live run folders under ``runs_dir``, sorted by name (the sink's own recognition)."""
+    return list(_live_runs(runs_dir))
+
+
 class LocalSpend:
     """Live spend, from the run records in a runs folder."""
 

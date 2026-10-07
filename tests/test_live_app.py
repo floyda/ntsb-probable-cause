@@ -245,3 +245,23 @@ def test_a_second_morning_is_refused_while_the_first_holds_the_lock(
     assert calls.deps is None  # nothing else was done
     assert "another morning" in capsys.readouterr().err
     assert app.main(["run"]) == 0  # the lock is free again
+
+
+def test_report_calls_the_script_with_the_out_path_and_holds_the_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import scripts.s33_live_report as script  # noqa: PLC0415
+
+    seen: list[list[str]] = []
+
+    def fake_main(argv: list[str] | None = None) -> int:
+        seen.append(list(argv or []))
+        return 0
+
+    monkeypatch.setattr(script, "main", fake_main)
+    assert app.main(["report"]) == 0
+    assert app.main(["report", "--out", "x.txt"]) == 0
+    assert seen == [[], ["--out", "x.txt"]]
+    with app.morning_lock(Settings().runs_dir):
+        assert app.main(["report"]) == 1  # a morning holds the lock
+    assert seen == [[], ["--out", "x.txt"]]

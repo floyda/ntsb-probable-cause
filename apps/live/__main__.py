@@ -1,4 +1,6 @@
-"""``ntsb-live run``: one live morning (S3.3 spec sections 4 and 9, decisions 0158, 0160, 0163).
+"""``ntsb-live run`` (one live morning) and ``ntsb-live report`` (the counts-only report).
+
+``run``: one live morning (S3.3 spec sections 4 and 9, decisions 0158, 0160, 0163).
 
 This builds the deployed :class:`~ntsb_probable_cause.live.morning.MorningDeps` from
 :class:`~ntsb_probable_cause.settings.Settings` and runs the morning. The store is pulled to a
@@ -75,7 +77,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--limit", type=_positive, default=None, metavar="N", help="take at most N cases"
     )
+    report = commands.add_parser("report", help="print the counts-only report of the live runs")
+    report.add_argument("--out", default=None, metavar="PATH", help="also write it to PATH")
     return parser
+
+
+def _report(args: argparse.Namespace, settings: Settings) -> int:
+    """Run ``scripts.s33_live_report`` (S3.3 Task 10); it reads, calls no model, spends nothing."""
+    if str(_REPO_ROOT) not in sys.path:  # `scripts` is in the checkout, not the installed package
+        sys.path.insert(0, str(_REPO_ROOT))
+    from scripts.s33_live_report import main as report_main  # noqa: PLC0415
+
+    with morning_lock(settings.runs_dir):  # it replaces the same store work file
+        return report_main(["--out", args.out] if args.out else [])
 
 
 def _models(settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
@@ -176,10 +190,12 @@ def _aws_message(command: str, error: Exception) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse arguments and run one morning. Returns the process exit code."""
+    """Parse arguments and run one morning, or print the report. Returns the exit code."""
     args = _build_parser().parse_args(argv)
     settings = Settings()
     try:
+        if args.command == "report":
+            return _report(args, settings)
         with morning_lock(settings.runs_dir):
             summary = run_morning(build_deps(settings), dry_run=args.dry_run, limit=args.limit)
     except MorningRunningError:

@@ -741,6 +741,7 @@ s33-morning:
 # docs/runbooks/live-shadow-mornings.md first.
 
 s33-report:
-	uv run --locked python -m scripts.s33_live_report --out docs/results/s33-live-shadow.txt
-# S3.3 spec §10, free: the counts-only results file docs/results/s33-live-shadow.txt. The script
-# is Task 10's; until it exists this target fails.
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws python -m scripts.s33_live_report --out docs/results/s33-live-shadow.txt
+# S3.3 spec §10, free: the counts-only results file docs/results/s33-live-shadow.txt, from the live
+# run folders, the refusal log and the recorder's store (same AWS login and store lookup as the
+# morning recipes). No model key, no NTSB key. Reads the store; uploads nothing.
