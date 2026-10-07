@@ -9,7 +9,8 @@
 # What it prints: `export AWS_PROFILE=...` (default `ntsb`, an explicit value wins) and
 # `export NTSB_STORE=...` (an explicit value wins; otherwise `s3://<BucketName>/recorder.sqlite`
 # from the `NtsbRecorderStack` output). If the lookup fails or is empty (most likely the AWS login
-# has expired) it prints a plain message on stderr and exits 1, and prints no export.
+# has expired) it prints a plain message and then aws's own error on stderr, exits 1, and prints
+# no export.
 set -euo pipefail
 set +x
 profile="${AWS_PROFILE:-ntsb}"
@@ -17,11 +18,15 @@ echo "export AWS_PROFILE='$profile'"
 if [[ -n "${NTSB_STORE:-}" ]]; then
   exit 0
 fi
+err_file="$(mktemp)"
+trap 'rm -f "$err_file"' EXIT
 bucket="$(aws cloudformation describe-stacks --profile "$profile" --region eu-west-2 \
   --stack-name NtsbRecorderStack \
-  --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text 2>/dev/null)" || bucket=""
+  --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text 2>"$err_file")" || bucket=""
 if [[ -z "$bucket" || "$bucket" == "None" ]]; then
   echo "live_env: could not read the recorder bucket name from AWS. The login has probably expired: run 'aws login --profile $profile' and try again. Or set NTSB_STORE yourself." >&2
+  echo "live_env: aws said:" >&2
+  cat "$err_file" >&2  # aws's own error carries no secret; it tells a login problem from another
   exit 1
 fi
 echo "export NTSB_STORE='s3://$bucket/recorder.sqlite'"

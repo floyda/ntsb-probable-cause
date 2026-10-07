@@ -179,6 +179,8 @@ def _aws_error(name: str, *, code: str | None = None, module: str = "botocore.ex
         _aws_error("TokenRetrievalError"),
         _aws_error("UnauthorizedSSOTokenError"),
         _aws_error("SSOTokenLoadError"),
+        _aws_error("LoginRefreshRequired"),
+        _aws_error("LoginTokenLoadError"),
         _aws_error("ClientError", code="ExpiredToken"),
         _aws_error("ClientError", code="ExpiredTokenException"),
         _aws_error("ClientError", code="RequestExpired"),

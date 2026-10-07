@@ -154,3 +154,36 @@ def test_the_two_report_scripts_refuse_a_live_run_before_reading_its_cases(runs:
         reply_budget.main(["--confirm", RUN_ID, "--size", RUN_ID])
     with pytest.raises(SystemExit, match="0024"):
         sealed_report._scored(RUN_ID)
+
+
+def test_the_scripts_fence_spells_live_as_the_live_package_does() -> None:
+    from scripts import _live_fence  # noqa: PLC0415
+
+    from ntsb_probable_cause.live.local import LIVE_SAMPLE  # noqa: PLC0415
+
+    assert _live_fence.LIVE_SAMPLE == LIVE_SAMPLE
+
+
+def test_the_scripts_fence_reads_spec_json_when_run_jsonl_is_missing(runs: Path) -> None:
+    """agent/run.py writes cases.jsonl before run.jsonl: a kill in between leaves this folder."""
+    (runs / RUN_ID / "run.jsonl").unlink()
+    with pytest.raises(SystemExit, match="0024"):
+        sealed_report._scored(RUN_ID)
+    with pytest.raises(SystemExit, match="0024"):
+        reply_budget.main(["--run", RUN_ID])
+
+
+def test_the_scripts_fence_refuses_an_unreadable_live_named_folder(runs: Path) -> None:
+    (runs / RUN_ID / "run.jsonl").unlink()
+    (runs / RUN_ID / "spec.json").unlink()
+    with pytest.raises(SystemExit, match="0024"):
+        sealed_report._scored(RUN_ID)
+    (runs / RUN_ID / "run.jsonl").write_text("not json\n")
+    with pytest.raises(SystemExit, match="0024"):
+        sealed_report._scored(RUN_ID)
+
+
+def test_the_scripts_fence_lets_a_development_run_through(runs: Path) -> None:
+    dev = "20261007T020000Z-abc1234-dev-400-C"
+    _live_run(runs, sample="dev-400", run_id=dev)
+    assert sealed_report._scored(dev) == []

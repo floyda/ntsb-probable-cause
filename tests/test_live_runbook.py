@@ -53,3 +53,11 @@ def test_the_runbook_keeps_the_binding_rules() -> None:
         "aws login --profile ntsb",
     ):
         assert needle in text, needle
+
+
+def test_the_dry_run_goes_through_paid_run_and_the_runbook_says_where_to_run_from() -> None:
+    text = RUNBOOK.read_text()
+    assert "NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-dry-run" in text
+    assert "`make s33-dry-run`" not in text  # make alone has no NTSB_API_KEY
+    assert ".claude/worktrees/s3-3-live-shadow" in text
+    assert "until S3.3 is merged" in text

@@ -24,14 +24,21 @@ Words in **bold** the first time they appear are in the glossary at the end.
 5. You do not type the store location or the AWS profile. The command does it for you
    (`scripts/live_env.sh`): it sets `AWS_PROFILE` to `ntsb` and, if `NTSB_STORE` is not set,
    asks AWS for the recorder's bucket name and uses `s3://<bucket>/recorder.sqlite`. It also
-   installs the AWS parts it needs (`--extra aws --with awscrt`) for that one run. If the
+   installs the AWS parts it needs (`--extra aws`: boto3 and awscrt, pinned in `uv.lock`) for that one run. If the
    lookup fails it stops with a message (section 6).
 6. `scripts/paid_run.sh` reads the NTSB key (password-store entry `api/ntsb`) and the model key
    (`api/openrouter`) for you. It never prints them.
-7. Do the free check first: `make s33-dry-run`. It opens the store, builds the queue, fetches
-   one case and its docket, and prints what a morning would do. No model is called and no run
-   folder is written. Run it after 03:45 UTC, like a real morning. Do the first paid morning
-   only when it ends with a summary and no refusal.
+7. Do the free check first, from the place named in section 3:
+
+   ```
+   NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-dry-run
+   ```
+
+   It opens the store, builds the queue, fetches one case and its docket, and prints what a
+   morning would do. No model is called and no run folder is written. Do not use `make
+   s33-dry-run` on its own: only `paid_run.sh` passes the NTSB key. Run it after 03:45 UTC,
+   like a real morning. Do the first paid morning only when it ends with a summary and no
+   refusal.
 
 ## 2. When to run
 
@@ -45,7 +52,11 @@ Words in **bold** the first time they appear are in the glossary at the end.
 
 ## 3. The commands
 
-Run these in your own terminal, from the main project folder. **Start one paid command at a
+Run these in your own terminal. **Where to run from:** until S3.3 is merged, the main project
+folder is on an old `main` that has no `scripts/paid_run.sh` and no `s33-` targets. Run from this
+branch's worktree: `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s3-3-live-shadow`.
+`paid_run.sh` then runs the target in its own clean checkout of the branch tip. After S3.3 is
+merged, run from the main project folder. **Start one paid command at a
 time.** Do not start a second `paid_run.sh` while one is running: it resets the shared paid
 checkout under the first one before the lock of `ntsb-live` can refuse it.
 

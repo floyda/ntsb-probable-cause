@@ -725,16 +725,16 @@ s33-continuity:
 	uv run --locked python -m scripts.s33_fingerprint_continuity --out docs/results/s33-fingerprint-continuity.txt
 
 s33-dry-run:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws --with awscrt ntsb-live run --dry-run
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live run --dry-run
 # scripts/live_env.sh sets AWS_PROFILE (default ntsb) and, if unset, NTSB_STORE from the recorder
-# stack's BucketName; --extra aws --with awscrt lets boto3 read the `aws login` profile.
+# stack's BucketName; --extra aws brings boto3 and awscrt (pinned in uv.lock) to read the `aws login` profile.
 # S3.3 spec §12 item 5, free: checks, store, queue, one fetch; no model call. Needs the AWS login
 # and the NTSB API; writes only the store work file and the live docket cache under NTSB_DATA_DIR.
 
 s33-morning:
 	uv run --locked python -m scripts.stage_spend --stage s3 --estimate 0.15
 	uv run --locked python -m scripts.stage_spend --stage s33 --estimate 0.15
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws --with awscrt ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
 # S3.3 spec §4, paid: one live morning, at most 10 cases, about 1 to 2 hours on batch.
 # Run through scripts/paid_run.sh after `aws login --profile ntsb`. LIMIT=1 on the first one.
 # Writes a live run folder (record, closures, manifest) under NTSB_RUNS_DIR. Read

@@ -140,7 +140,13 @@ def format_summary(summary: MorningSummary) -> str:
 # An expired login, by class name or error code (matched by name so that botocore need not be
 # installed where this is read).
 _EXPIRED_CLASSES = frozenset(
-    {"TokenRetrievalError", "UnauthorizedSSOTokenError", "SSOTokenLoadError"}
+    {
+        "TokenRetrievalError",
+        "UnauthorizedSSOTokenError",
+        "SSOTokenLoadError",
+        "LoginRefreshRequired",
+        "LoginTokenLoadError",
+    }
 )
 _EXPIRED_CODES = frozenset(
     {"ExpiredToken", "ExpiredTokenException", "RequestExpired", "InvalidClientTokenId"}

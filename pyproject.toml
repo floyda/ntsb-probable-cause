@@ -44,6 +44,9 @@ ntsb-live = "apps.live.__main__:main"
 aws = [
     "boto3>=1.43.100",
     "botocore>=1.43.100",
+    # The `ntsb` profile signs in through `aws login`, which boto3 reads only with awscrt
+    # (docs/runbooks/recorder-deploy.md). In the extra, uv.lock pins it (S3.3 Task 9 round 2).
+    "awscrt",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -250,6 +253,8 @@ extend_exclude = ["scripts/exploratory"]
 # project's dev-only test and lint tooling; this is that same shape of dependency, not product
 # code that happens to be misclassified.
 DEP004 = ["aws_cdk", "constructs"]
+# `awscrt` is never imported: botocore loads it itself to read the `aws login` provider.
+DEP002 = ["awscrt"]
 
 [tool.vulture]
 paths = ["src", "apps", "scripts", "infra"]

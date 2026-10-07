@@ -268,6 +268,15 @@ def test_the_s33_recipes_reach_the_s3_store_through_live_env_and_the_aws_extra()
         recipe = text.split(f"\n{name}:\n", 1)[1].split("\n\n", 1)[0]
         (run,) = [line for line in recipe.splitlines() if "ntsb-live run" in line]
         assert "scripts/live_env.sh" in run, name
-        assert "--extra aws --with awscrt" in run, name
+        assert "--extra aws" in run, name
+        assert "awscrt" not in run, name  # it is in the aws extra, pinned by uv.lock
         assert run.index("live_env.sh") < run.index("ntsb-live run")
         assert "&& eval" in run, name  # a failed lookup stops the recipe
+
+
+def test_awscrt_is_in_the_aws_extra_and_so_in_the_lockfile() -> None:
+    import tomllib  # noqa: PLC0415
+
+    extra = tomllib.loads(Path("pyproject.toml").read_text())["project"]["optional-dependencies"]
+    assert any(dep.startswith("awscrt") for dep in extra["aws"])
+    assert 'name = "awscrt"' in Path("uv.lock").read_text()

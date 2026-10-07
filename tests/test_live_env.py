@@ -6,6 +6,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live_env.sh"
 _STUB_AWS = """#!/bin/bash
 echo "aws $*" >> "$STUB_LOG"
+if [[ -n "${STUB_AWS_STDERR:-}" ]]; then echo "$STUB_AWS_STDERR" >&2; fi
 if [[ "${STUB_AWS_FAIL:-}" == "1" ]]; then exit 255; fi
 echo "${STUB_BUCKET:-}"
 """
@@ -52,3 +53,15 @@ def test_a_failed_or_empty_lookup_refuses_plainly_and_prints_no_store(tmp_path: 
         assert code == 1
         assert "NTSB_STORE" not in out
         assert "aws login --profile ntsb" in err
+
+
+def test_awss_own_error_is_shown_after_the_plain_message_and_nothing_is_exported(
+    tmp_path: Path,
+) -> None:
+    code, out, err, _ = _run(
+        tmp_path, STUB_AWS_FAIL="1", STUB_AWS_STDERR="Unable to locate profile"
+    )
+    assert code == 1
+    assert "NTSB_STORE" not in out
+    assert "Unable to locate profile" in err
+    assert err.index("aws login --profile ntsb") < err.index("Unable to locate profile")
