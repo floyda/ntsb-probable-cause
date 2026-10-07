@@ -2,8 +2,8 @@
 # Run one paid make target from a separate, clean checkout reset to the branch tip.
 #
 # Status
-#     Live tool (S3.2, spec §14). The S3.2 paid-run wrapper: Andy runs it in his own terminal,
-#     once per paid s32 target. It spends money only through the make
+#     Live tool (S3.2, spec §14), used by S3.2's held-out runs and S3.3's live mornings. Andy
+#     runs it in his own terminal, once per paid target. It spends money only through the make
 #     target it is given; it spends nothing itself.
 #
 # Usage: NTSB_PAID_BRANCH=<branch> scripts/paid_run.sh <make-target> [VAR=value ...]
@@ -40,10 +40,13 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 git checkout --quiet -B "$branch" "origin/$branch"
 echo "checkout $checkout at $(git rev-parse --short HEAD) ($branch)"
-uv sync --quiet --frozen
+uv sync --quiet --locked
 export NTSB_DATA_DIR="$data_dir"
 OPENROUTER_API_KEY="$(pass show "$pass_entry" | sed -n 1p)"
 export OPENROUTER_API_KEY
+# --locked refuses a lockfile that would change; UV_LOCKED=1 makes every nested uv run refuse
+# the same way (decision 161).
+export UV_LOCKED=1
 make "$target" "$@"
 if ! git diff --quiet -- docs/results/heldout-ledger.md; then
   git add docs/results/heldout-ledger.md
