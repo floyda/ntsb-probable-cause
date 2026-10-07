@@ -2,8 +2,9 @@
 
 import pytest
 
-from ntsb_probable_cause.agent import version
+from ntsb_probable_cause.agent import armb, run, version
 from ntsb_probable_cause.agent.rendered import rendered_sha256
+from ntsb_probable_cause.agent.tools import run_coding_tool
 from ntsb_probable_cause.agent.version import (
     AGENT_PROMPT_VERSION,
     SOURCE_LABEL_V1,
@@ -84,3 +85,19 @@ class TestIsPlain:
         assert is_plain(VERSION_1, GUIDANCE)
         assert not is_plain(f"{SOURCE_LABEL_V1}+r1", GUIDANCE)
         assert not is_plain(SOURCE_LABEL_V1.replace("+p", "+x"), GUIDANCE)
+
+
+class TestLabelDoesNotDependOnTestOrder:
+    """The label hashes live module state once per process; a patched test must not freeze it."""
+
+    def test_a_patched_scenario_global_does_not_move_the_frozen_label(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real = run_coding_tool
+
+        def leaky(*args: object, **kwargs: object) -> object:
+            result = real(*args, **kwargs)  # type: ignore[arg-type]
+            return type(result)(f"{result.text}\nleak", result.argument_errors)
+
+        monkeypatch.setattr(armb, "run_coding_tool", leaky)
+        assert version.prompt_version(run.GUIDANCE) == VERSION_1

@@ -583,6 +583,11 @@ def rendered_requests() -> list[dict[str, object]]:
 
 @functools.cache
 def rendered_sha256() -> str:
-    """SHA-256 (hex) of ``json.dumps(rendered_requests(), sort_keys=True, ensure_ascii=False)``."""
+    """SHA-256 (hex) of ``json.dumps(rendered_requests(), sort_keys=True, ensure_ascii=False)``.
+
+    Cached for the process and computed from live module state on the first call: code that
+    patches a module global the scenarios use must not make that first call (the test suite
+    fills it in a session fixture in ``tests/conftest.py``).
+    """
     text = json.dumps(rendered_requests(), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
