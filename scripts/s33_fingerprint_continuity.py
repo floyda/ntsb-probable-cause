@@ -15,7 +15,7 @@ Why
 Usage
     uv run python -m scripts.s33_fingerprint_continuity [--out PATH]
 
-Exit status: 0 on a match, 1 on a mismatch, 2 if the run on the frozen commit itself fails.
+Exit status: 0 on a match, 1 on a mismatch, 2 if any setup or run fails, on either side.
 """
 
 import argparse
@@ -54,22 +54,25 @@ def _git(*args: str) -> str:
 
 
 @contextlib.contextmanager
-def frozen_checkout() -> Iterator[Path]:
+def frozen_checkout(git: Callable[..., str] = _git) -> Iterator[Path]:
     """Yield a throwaway worktree of the frozen commit holding this tree's ``rendered.py``.
 
     Always removed on exit, with a prune, even after a failure.
+
+    Args:
+        git: Runs a git command in this repository; injectable.
     """
     tmp = Path(tempfile.mkdtemp(prefix="s33-continuity-")) / "tree"
     try:
-        _git("worktree", "add", "--detach", str(tmp), FROZEN_COMMIT)
+        git("worktree", "add", "--detach", str(tmp), FROZEN_COMMIT)
         shutil.copyfile(REPO_ROOT / RENDERED, tmp / RENDERED)
         yield tmp
     finally:
         with contextlib.suppress(subprocess.CalledProcessError):
-            _git("worktree", "remove", "--force", str(tmp))
+            git("worktree", "remove", "--force", str(tmp))
         shutil.rmtree(tmp.parent, ignore_errors=True)
         with contextlib.suppress(subprocess.CalledProcessError):
-            _git("worktree", "prune")
+            git("worktree", "prune")
 
 
 def run_in_tree(tree: Path) -> str:
@@ -98,6 +101,13 @@ def run_in_tree(tree: Path) -> str:
     return done.stdout.strip()
 
 
+def _cause(exc: Exception) -> str:
+    """Say why a step failed: git's or the run's standard error, else the error itself."""
+    if isinstance(exc, subprocess.CalledProcessError):
+        return str(exc.stderr or exc)
+    return str(exc) or type(exc).__name__
+
+
 def _head() -> str:
     return _git("rev-parse", "--short", "HEAD")
 
@@ -118,7 +128,7 @@ def main(
         head: Returns HEAD's short commit; injectable.
 
     Returns:
-        0 on a match, 1 on a mismatch, 2 if the run on the frozen commit fails.
+        0 on a match, 1 on a mismatch, 2 if any setup or run fails.
     """
     parser = argparse.ArgumentParser(description="Fingerprint continuity on the frozen commit.")
     parser.add_argument("--out", type=Path, help="write the results file here")
@@ -127,10 +137,14 @@ def main(
     try:
         with checkout() as frozen:
             frozen_hex = runner(frozen)
-    except RunFailedError as exc:
-        print(f"the run on {FROZEN_COMMIT} failed:\n{exc}", file=sys.stderr)
+    except (RunFailedError, subprocess.CalledProcessError, OSError) as exc:
+        print(f"the run on {FROZEN_COMMIT} failed:\n{_cause(exc)}", file=sys.stderr)
         return 2
-    head_hex = runner(REPO_ROOT)
+    try:
+        head_hex = runner(REPO_ROOT)
+    except (RunFailedError, subprocess.CalledProcessError, OSError) as exc:
+        print(f"the run on HEAD failed:\n{_cause(exc)}", file=sys.stderr)
+        return 2
     match = frozen_hex == head_hex
     n = FINGERPRINT_CHARS
     lines = [
