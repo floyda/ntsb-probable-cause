@@ -20,7 +20,9 @@ Words in **bold** the first time they appear are in the glossary at the end.
 3. Plug the laptop into mains power and **keep the lid open** for the whole morning. The
    command runs `caffeinate`, which stops the laptop sleeping when idle, but a closed lid
    still puts it to sleep.
-4. Log in to AWS: `aws login --profile ntsb`. The login lasts a few hours.
+4. Log in to AWS: `aws login`. The login lasts a few hours.
+   The `ntsb` profile is a role profile that borrows the `default` login, so plain `aws login`
+   refreshes it. `aws login --profile ntsb` does not work.
 5. You do not type the store location or the AWS profile. The command does it for you
    (`scripts/live_env.sh`): it sets `AWS_PROFILE` to `ntsb` and, if `NTSB_STORE` is not set,
    asks AWS for the recorder's bucket name and uses `s3://<bucket>/recorder.sqlite`. It also
@@ -60,7 +62,7 @@ merged, run from the main project folder. **Start one paid command at a
 time.** Do not start a second `paid_run.sh` while one is running: it resets the shared paid
 checkout under the first one before the lock of `ntsb-live` can refuse it.
 
-1. `aws login --profile ntsb`
+1. `aws login`
 2. The first morning:
 
    ```
@@ -149,9 +151,10 @@ that each quoted text is in the program.
 | `monthly guard of` | The month's spend and open reservations, plus this morning's projection, pass the all-purpose $40 monthly guard (`monthly_budget_usd`). Nothing was fetched and no run was made. | Do not run. Tell Claude. |
 | `monthly cap (decision 163)` | This month's live spend plus this morning's projection passes $5. The cases stay queued. | Do not run. Tell Claude. Only a new decision changes the cap. |
 | `would pass the line` | A spending line is reached. `paid_run.sh` prints which: S3's $50 (decision 0128) or the S3.3 line (decision 163, $10 of S3.3's own). | Do not run. Tell Claude the numbers printed. |
-| `the AWS login has expired` | The AWS login ended. | Run `aws login --profile ntsb`, then run the same command again. |
+| `the AWS login has expired` | The AWS login ended. | Run `aws login`, then run the same command again. |
 | `AWS error (` | Another AWS problem: no credentials, a wrong profile, a missing bucket, no permission, no network. The class name in brackets says which. | Do not just log in again. Tell Claude the line. |
-| `could not read the recorder bucket name from AWS` | `scripts/live_env.sh` could not ask AWS. Most likely the login ended. | Run `aws login --profile ntsb` and try again. If it fails again, tell Claude. |
+| `could not read the recorder bucket name from AWS` | `scripts/live_env.sh` could not ask AWS. Most likely the login ended. | Run `aws login` and try again. If it fails again, tell Claude. |
+| The AWS command says the profile is "already configured with Assume Role credentials" (this is the AWS command's own message, not ours) | You ran `aws login --profile ntsb`. `ntsb` is a role profile that borrows the `default` login, so it cannot be logged in by itself. | Run `aws login` instead, then run the morning command. |
 | `no store at` | The recorder's store is not at the location. | Tell Claude. Do not set `NTSB_STORE` by hand unless Claude says so. |
 | `boto3 is not installed` | The AWS parts are missing in this run. | Tell Claude. (The make target installs them for each run; this means it was started another way.) |
 | `NTSB_API_KEY is not set` | The NTSB key was not passed. | Start the morning through `scripts/paid_run.sh` as in section 3, not `make` alone. If you did, check that the `pass` entry `api/ntsb` exists, then tell Claude. |
@@ -192,8 +195,10 @@ that each quoted text is in the program.
 ## Glossary
 
 - **AWS.** Amazon's cloud service. The recorder keeps its store (a database file) there.
-- **`aws login --profile ntsb`.** A command that signs you in to the AWS account for this
+- **`aws login`.** A command that signs you in to the AWS account for this
   project. The sign-in lasts a few hours. It is how the command is allowed to read the store.
+  `ntsb` is a role profile that borrows the `default` login, so this refreshes it;
+  `aws login --profile ntsb` fails with "already configured with Assume Role credentials".
 - **Profile.** A named set of AWS sign-in settings. This project's is called `ntsb`.
 - **S3.** The AWS part that keeps files. The store is one file in S3. The morning command
   downloads a copy and never uploads.

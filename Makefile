@@ -744,7 +744,7 @@ s33-morning:
 	uv run --locked python -m scripts.stage_spend --stage s33 --estimate 0.15
 	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
 # S3.3 spec §4, paid: one live morning, at most 10 cases, about 1 to 2 hours on batch.
-# Run through scripts/paid_run.sh after `aws login --profile ntsb`. LIMIT=1 on the first one.
+# Run through scripts/paid_run.sh after `aws login`. LIMIT=1 on the first one.
 # Writes a live run folder (record, closures, manifest) under NTSB_RUNS_DIR. Read
 # docs/runbooks/live-shadow-mornings.md first.
 

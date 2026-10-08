@@ -211,7 +211,8 @@ def _aws_message(command: str, error: Exception) -> str:
     if _login_expired(error):
         return (
             f"{command}: the AWS login has expired ({type(error).__name__}). Run "
-            "`aws login --profile ntsb` and run the morning again."
+            "`aws login` (it refreshes the default profile, which the ntsb profile uses) and run "
+            "the morning again."
         )
     text = " ".join(str(error).split())[:200]
     return f"{command}: AWS error ({type(error).__name__}): {text}"

@@ -50,7 +50,8 @@ def test_the_runbook_keeps_the_binding_rules() -> None:
         "keep the lid open",
         "Do not start a second `paid_run.sh`",
         "no `run.jsonl` file at all",
-        "aws login --profile ntsb",
+        "`aws login`",
+        "borrows the `default` login",
     ):
         assert needle in text, needle
 

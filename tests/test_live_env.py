@@ -52,7 +52,8 @@ def test_a_failed_or_empty_lookup_refuses_plainly_and_prints_no_store(tmp_path: 
         code, out, err, _ = _run(tmp_path, **extra)
         assert code == 1
         assert "NTSB_STORE" not in out
-        assert "aws login --profile ntsb" in err
+        assert "aws login'" in err
+        assert "--profile" not in err
 
 
 def test_awss_own_error_is_shown_after_the_plain_message_and_nothing_is_exported(
@@ -64,4 +65,4 @@ def test_awss_own_error_is_shown_after_the_plain_message_and_nothing_is_exported
     assert code == 1
     assert "NTSB_STORE" not in out
     assert "Unable to locate profile" in err
-    assert err.index("aws login --profile ntsb") < err.index("Unable to locate profile")
+    assert err.index("aws login'") < err.index("Unable to locate profile")

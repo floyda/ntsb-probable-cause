@@ -198,7 +198,9 @@ def test_an_expired_login_says_to_log_in_again(
 ) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(error))
     assert app.main(["run"]) == 1
-    assert "aws login --profile ntsb" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "`aws login`" in err
+    assert "--profile" not in err
 
 
 @pytest.mark.parametrize(

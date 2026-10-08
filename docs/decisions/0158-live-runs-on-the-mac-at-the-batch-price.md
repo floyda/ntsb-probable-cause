@@ -57,3 +57,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 
 - **Batch price**: the provider's half-price queued service.
 - **Fargate task**: a container AWS starts, runs and stops; paid only while it runs.
+
+## Corrected, 2026-10-08 (appended; nothing above is edited)
+
+- Decision item 1's `aws login --profile ntsb` should read `aws login`, because `ntsb` is an assume-role profile whose `source_profile` is `default`.

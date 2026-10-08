@@ -24,7 +24,7 @@ bucket="$(aws cloudformation describe-stacks --profile "$profile" --region eu-we
   --stack-name NtsbRecorderStack \
   --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text 2>"$err_file")" || bucket=""
 if [[ -z "$bucket" || "$bucket" == "None" ]]; then
-  echo "live_env: could not read the recorder bucket name from AWS. The login has probably expired: run 'aws login --profile $profile' and try again. Or set NTSB_STORE yourself." >&2
+  echo "live_env: could not read the recorder bucket name from AWS. The login has probably expired: run 'aws login' (it refreshes the default profile, which the ntsb profile uses) and try again. Or set NTSB_STORE yourself." >&2
   echo "live_env: aws said:" >&2
   cat "$err_file" >&2  # aws's own error carries no secret; it tells a login problem from another
   exit 1
