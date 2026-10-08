@@ -21,7 +21,7 @@ from ntsb_probable_cause.live.records import (
 
 def _record() -> ClosureRecord:
     return ClosureRecord(
-        case_id="ERA26LA001",
+        case_id="XXX26LA001",
         mkey=1,
         closed_on=date(2026, 9, 24),
         closure_run=5,

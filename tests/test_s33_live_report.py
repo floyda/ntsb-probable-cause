@@ -18,6 +18,7 @@ from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
     Backfill,
     ClosureRecord,
+    DocumentLine,
 )
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
@@ -82,8 +83,17 @@ def _run(run_id: str, day: int, *, cost: float, billed: float | None) -> RunReco
     )
 
 
+DISTINCT_MKEY = 9876543
+DISTINCT_TITLES = ("Zephyr Hangar Inspection", "Quillon Wreckage Plot")
+
+
 def _closure_record(case_id: str, **changes: Any) -> ClosureRecord:
-    return _record().model_copy(update={"case_id": case_id, "mkey": 7, **changes})
+    documents = (
+        DocumentLine(position=1, title=DISTINCT_TITLES[0], status="read", ellery="read"),
+        DocumentLine(position=2, title=DISTINCT_TITLES[1], status="read", ellery="skipped"),
+    )
+    update = {"case_id": case_id, "mkey": DISTINCT_MKEY, "documents": documents, **changes}
+    return _record().model_copy(update=update)
 
 
 def _graded(case_id: str, top1: bool, top3: bool, **changes: Any) -> ClosureRecord:
@@ -118,7 +128,7 @@ def _closures(*days: str, na: tuple[int, ...] = ()) -> list[Closure]:
     return [
         Closure(
             mkey=i,
-            ntsb_number=f"ERA26LA{i:03d}",
+            ntsb_number=f"XXX26LA{i:03d}",
             event_date="2026-09-01",
             closure_run=i,
             closed_on=day,
@@ -130,22 +140,22 @@ def _closures(*days: str, na: tuple[int, ...] = ()) -> list[Closure]:
 
 @pytest.fixture
 def world(tmp_path: Path) -> World:
-    ids = ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    ids = ("XXX26LA001", "XXX26LA002", "XXX26LA003")
     backfill = Backfill(fixed_on=date(2026, 10, 7), case_ids=ids, sha256=backfill_digest(ids))
     first = [
-        _graded("ERA26LA001", True, True, waited_days=3),
-        _graded("ERA26LA002", False, True, waited_days=5),
-        _graded("ERA26LA003", False, False, waited_days=9, prelim_present=False),
+        _graded("XXX26LA001", True, True, waited_days=3),
+        _graded("XXX26LA002", False, True, waited_days=5),
+        _graded("XXX26LA003", False, False, waited_days=9, prelim_present=False),
     ]
     second = [
         _closure_record(
-            "ERA26LA004", outcome="not coded", failure="schema: bad json", scored=False
+            "XXX26LA004", outcome="not coded", failure="schema: bad json", scored=False
         ),
-        _closure_record("ERA26LA005", closed_on=date(2026, 10, 8), waited_days=1),
+        _closure_record("XXX26LA005", closed_on=date(2026, 10, 8), waited_days=1),
     ]
     results = [
-        _res("ERA26LA004", verdict_occurrence=("999999",), verdict_findings=("0000000099",)),
-        _res("ERA26LA005", verdict_occurrence=()),
+        _res("XXX26LA004", verdict_occurrence=("999999",), verdict_findings=("0000000099",)),
+        _res("XXX26LA005", verdict_occurrence=()),
     ]
     folders = [
         _folder(tmp_path, "20261007-a", 7, first, backfill=backfill),
@@ -227,7 +237,7 @@ def test_the_new_checks(world: World) -> None:
 
 def test_the_backfill_is_a_count_and_a_digest(world: World) -> None:
     text = _text(world)
-    digest = backfill_digest(("ERA26LA001", "ERA26LA002", "ERA26LA003"))
+    digest = backfill_digest(("XXX26LA001", "XXX26LA002", "XXX26LA003"))
     assert f"backfill: 3 cases, SHA-256 {digest}" in text
     assert "fixed on 2026-10-07" in text
 
@@ -245,6 +255,8 @@ def test_no_case_id_key_or_held_out_figure(world: World) -> None:
     text = _text(world)
     assert not PATTERN.search(text)
     assert "mkey" not in text.lower()
+    assert str(DISTINCT_MKEY) not in text, "a distinctive key the fixture's records all carry"
+    assert not [title for title in DISTINCT_TITLES if title in text]
     assert "heldout" not in text.lower()
     assert "23.5" not in text
     assert "never shown together" in text
@@ -253,9 +265,9 @@ def test_no_case_id_key_or_held_out_figure(world: World) -> None:
 
 def test_a_failure_text_that_names_a_case_is_cut_to_its_reason(tmp_path: Path) -> None:
     record = _closure_record(
-        "ERA26LA001",
+        "XXX26LA001",
         outcome="not coded",
-        failure="schema: reply for ERA26LA001 held a bad title",
+        failure="schema: reply for XXX26LA001 held a bad title",
         scored=False,
     )
     folder = _folder(tmp_path, "20261008-b", 8, [record])
@@ -315,7 +327,7 @@ def test_main_writes_the_file_from_the_folders_the_store_and_the_refusals(
 ) -> None:
     runs = tmp_path / "runs"
     runs.mkdir()
-    _folder(runs, "20261007-a", 7, [_graded("ERA26LA001", True, True)])
+    _folder(runs, "20261007-a", 7, [_graded("XXX26LA001", True, True)])
     (runs / "live-refusals.jsonl").write_text(
         json.dumps({"at": "2026-10-07T00:00:00+00:00", "reason": "label"}) + "\n"
     )
@@ -331,14 +343,27 @@ def test_main_writes_the_file_from_the_folders_the_store_and_the_refusals(
     assert not PATTERN.search(written)
 
 
+def test_the_morning_and_the_report_say_a_failure_by_the_same_closed_set() -> None:
+    from ntsb_probable_cause.live.records import FAILURE_KINDS, failure_kind  # noqa: PLC0415
+
+    assert failure_kind("schema: bad json") == "schema"
+    assert failure_kind("cap: context 1050001 tokens") == "cap: context"
+    assert failure_kind("failed: h0 XXX26LA001") == "failed"
+    assert failure_kind("XXX26LA001 exploded") == "other"
+    assert failure_kind(None) == "other"
+    assert failure_kind("") == "other"
+    assert vars(module)["failure_kind"] is failure_kind
+    assert "other" not in FAILURE_KINDS
+
+
 def test_a_failure_head_outside_the_known_kinds_prints_as_other(tmp_path: Path) -> None:
     unknown = _closure_record(
-        "ERA26LA001", outcome="not coded", failure="mkey 1234567 unreadable", scored=False
+        "XXX26LA001", outcome="not coded", failure="mkey 1234567 unreadable", scored=False
     )
     context = _closure_record(
-        "ERA26LA002", outcome="not coded", failure="cap: context", scored=False
+        "XXX26LA002", outcome="not coded", failure="cap: context", scored=False
     )
-    plain = _closure_record("ERA26LA003", outcome="not coded", failure="cap", scored=False)
+    plain = _closure_record("XXX26LA003", outcome="not coded", failure="cap", scored=False)
     folder = _folder(tmp_path, "20261008-b", 8, [unknown, context, plain])
     text = report_text([folder], [], TABLES, [], today=TODAY)
     assert "not coded, other: 1" in text
@@ -433,3 +458,20 @@ def test_the_fourteen_day_clock_starts_when_the_backfill_was_fixed_not_at_a_runs
     text = report_text([folder], [], TABLES, [], today=date(2026, 10, 21))
     assert "days since the backfill was fixed: 14" in text
     assert text.rstrip().endswith("closing rule: met (14 days)")
+
+
+def test_the_report_refuses_to_print_or_write_text_shaped_like_a_case_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C4: the report checks its own output, not only the inputs it was built from."""
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("NTSB_STORE", str(tmp_path / "store.sqlite"))
+    monkeypatch.setattr(module, "_read_closures", lambda settings: [])
+    monkeypatch.setattr(module, "report_text", lambda *a, **k: "not coded, XXX26LA001: 1\n")
+    out = tmp_path / "out.txt"
+    assert module.main(["--out", str(out)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "XXX26LA001" not in captured.err
+    assert not out.exists()

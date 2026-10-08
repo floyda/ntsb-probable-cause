@@ -13,11 +13,16 @@ and does nothing else (a dry run takes the lock too: it replaces the same store 
 
 A refusal (a ``ConfigurationError`` or ``BudgetError``, or an AWS login that has expired) is one
 line on stderr and exit code 1, never a traceback and never a value from the environment.
+
+No error line names a live case (decision 0160, the open-split fence): a ``FetchError`` or
+``DocketError`` is reported by its class alone, and every line printed for an error passes through
+:func:`scrubbed`, which replaces NTSB case numbers and docket and case keys.
 """
 
 import argparse
 import fcntl
 import hashlib
+import re
 import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -26,8 +31,14 @@ from pathlib import Path
 
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import BatchCancelledError, BudgetError, ConfigurationError
+from ntsb_probable_cause.errors import (
+    BatchCancelledError,
+    BudgetError,
+    ConfigurationError,
+    DocketError,
+)
 from ntsb_probable_cause.gitinfo import commit_state
+from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import (
     STORE_WORK_FILENAME,
     LocalFolderSink,
@@ -43,11 +54,28 @@ from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.store.sync import Location
 
 LOCK_FILENAME = "live.lock"
+_CASE_NUMBER = re.compile(r"\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}\b")
+# "docket 1234567", "mKey 1234567", and the pairing guard's "not its own 1234567".
+_KEY = re.compile(r"\b(docket|mkey|own)([\s:=]+)\d+", re.IGNORECASE)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class MorningRunningError(Exception):
     """Another morning holds the lock."""
+
+
+def scrubbed(text: str) -> str:
+    """``text`` with any NTSB case number and docket or case key replaced.
+
+    Rare paths (a resume, a completion, the pairing guard) raise errors that name the live case
+    they were reading; nothing of the kind may reach a terminal that is copied or shared.
+    """
+    return _KEY.sub(lambda m: f"{m.group(1)}{m.group(2)}<key>", _CASE_NUMBER.sub("<case>", text))
+
+
+def _fail(line: str) -> int:
+    print(scrubbed(line), file=sys.stderr)
+    return 1
 
 
 def uv_lock_sha256() -> str:
@@ -189,6 +217,26 @@ def _aws_message(command: str, error: Exception) -> str:
     return f"{command}: AWS error ({type(error).__name__}): {text}"
 
 
+def _error_line(command: str, settings: Settings, error: Exception) -> str | None:
+    """The one line an error is reported as, or None when it is a bug that should propagate."""
+    if isinstance(error, MorningRunningError):
+        return (
+            f"{command}: another morning is running (lock {settings.runs_dir / LOCK_FILENAME}); "
+            "nothing was done. Wait for it to finish."
+        )
+    if isinstance(error, BatchCancelledError):
+        return f"{command}: {error} (ntsb-live has no --resume option: run the same command again.)"
+    if isinstance(error, FetchError | DocketError):
+        # Its text names the case's docket key, so only its class is said.
+        return (
+            f"{command}: {type(error).__name__}: a case's record or docket could not be read; "
+            "no case is named here. Tell Claude if it happens again."
+        )
+    if isinstance(error, BudgetError | ConfigurationError | FileNotFoundError):
+        return f"{command}: {error}"
+    return _aws_message(command, error) if _is_aws_error(error) else None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse arguments and run one morning, or print the report. Returns the exit code."""
     args = _build_parser().parse_args(argv)
@@ -198,28 +246,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _report(args, settings)
         with morning_lock(settings.runs_dir):
             summary = run_morning(build_deps(settings), dry_run=args.dry_run, limit=args.limit)
-    except MorningRunningError:
-        print(
-            f"{args.command}: another morning is running (lock "
-            f"{settings.runs_dir / LOCK_FILENAME}); nothing was done. Wait for it to finish.",
-            file=sys.stderr,
-        )
-        return 1
-    except BatchCancelledError as error:
-        print(
-            f"{args.command}: {error} (ntsb-live has no --resume option: run the same command "
-            "again.)",
-            file=sys.stderr,
-        )
-        return 1
-    except (BudgetError, ConfigurationError, FileNotFoundError) as error:
-        print(f"{args.command}: {error}", file=sys.stderr)
-        return 1
     except Exception as error:
-        if not _is_aws_error(error):
+        line = _error_line(args.command, settings, error)
+        if line is None:
             raise
-        print(_aws_message(args.command, error), file=sys.stderr)
-        return 1
+        return _fail(line)
     print(format_summary(summary))
     return 0
 

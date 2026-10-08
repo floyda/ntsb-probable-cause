@@ -15,7 +15,7 @@ from ntsb_probable_cause.live.queue import QueuedCase
 
 CASE = QueuedCase(
     mkey=7,
-    case_id="ERA26LA001",
+    case_id="XXX26LA001",
     event_date=date(2026, 9, 1),
     closed_on=date(2026, 9, 25),
     closure_run=3,
@@ -36,12 +36,12 @@ def _body(data: list[dict[str, object]], marker: str | None) -> dict[str, object
 def test_fetch_record_finds_the_case_on_a_later_page() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if "marker" in request.url.params:
-            return httpx.Response(200, json=_body([{"mKey": 7, "ntsbNumber": "ERA26LA001"}], None))
+            return httpx.Response(200, json=_body([{"mKey": 7, "ntsbNumber": "XXX26LA001"}], None))
         return httpx.Response(200, json=_body([{"mKey": 6}], "m2"))
 
     with _client(httpx.MockTransport(handler)) as client:
         record = fetch_record(client, CASE)
-    assert record["ntsbNumber"] == "ERA26LA001"
+    assert record["ntsbNumber"] == "XXX26LA001"
 
 
 def test_fetch_record_missing_record_is_a_fetch_error() -> None:

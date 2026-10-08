@@ -24,8 +24,28 @@ BACKFILL_FILE: Final = "backfill.json"
 INPUTS_FILE: Final = "inputs.jsonl"
 MANIFEST_FILE: Final = "manifest.json"
 
+CONTEXT_FAILURE: Final = "cap: context"
+# The kinds a not-coded case's failure text can start with (the heads the runners write): the
+# morning's summary and the report both say a failure by one of these or "other", never by the
+# text, which can quote a case (decision 0024).
+FAILURE_KINDS: Final = frozenset(
+    {"schema", "model", "leak", "cap", "failed", "aborted", "missing result"}
+)
 _SECRET_VALUE = re.compile(r"sk-or-|AKIA[0-9A-Z]{16}")
 _SECRET_KEYS: Final = frozenset({"aws_profile", "api_key"})
+
+
+def failure_kind(failure: str | None) -> str:
+    """A failure's kind, from a closed set; anything else is "other" (decision 0024).
+
+    The kinds are the heads the runners write: ``schema``, ``model``, ``leak``, ``cap``,
+    ``cap: context``, ``failed`` (the loop failed at a step), ``aborted``, and ``missing result``.
+    """
+    text = (failure or "").strip()
+    if text.startswith(CONTEXT_FAILURE):
+        return CONTEXT_FAILURE
+    head = re.split(r"[:;(]", text, maxsplit=1)[0].strip()
+    return head if head in FAILURE_KINDS else "other"
 
 
 class DocumentLine(BaseModel, frozen=True):

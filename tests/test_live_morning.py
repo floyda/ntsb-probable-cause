@@ -41,6 +41,7 @@ from ntsb_probable_cause.live.morning import (
     MONTHLY_CAP_USD,
     VERSION_1_SETTINGS,
     MorningDeps,
+    MorningSummary,
     current_settings,
     run_morning,
     settings_differences,
@@ -56,6 +57,7 @@ from ntsb_probable_cause.live.records import (
     verify_manifest,
 )
 from ntsb_probable_cause.model.client import ModelClient
+from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, write_jsonl
 from ntsb_probable_cause.scoring.runner import RunSpec
@@ -168,7 +170,7 @@ def _docket(mkey: int, statuses: Mapping[int, str]) -> Docket:
 def _closure(n: int, *, run: int | None = None, closed_on: str = "2026-10-05") -> Closure:
     return Closure(
         mkey=1000 + n,
-        ntsb_number=f"ERA26LA{n:03d}",
+        ntsb_number=f"XXX26LA{n:03d}",
         event_date="2026-09-01",
         closure_run=run if run is not None else n,
         closed_on=closed_on,
@@ -437,7 +439,7 @@ def test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts(ri
     run_id = "20261007T050000-abc1234-live-C"
     folder = rig.runs_dir / run_id
     folder.mkdir(exist_ok=True)
-    raws = [_raw("ERA26LA002", 1002), _raw("ERA26LA001", 1001)]
+    raws = [_raw("XXX26LA002", 1002), _raw("XXX26LA001", 1001)]
     (folder / INPUTS_FILE).write_text("".join(json.dumps(r) + "\n" for r in raws))
     rig.sink.unfinished = run_id
     rig.sink.held = Backfill(
@@ -457,7 +459,7 @@ def test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts(ri
 def test_c_a_pending_inputs_file_is_moved_into_the_unfinished_run_first(rig: Rig) -> None:
     run_id = "20261007T050000-abc1234-live-C"
     (rig.runs_dir / run_id).mkdir()
-    raws = [_raw("ERA26LA001", 1001)]
+    raws = [_raw("XXX26LA001", 1001)]
     (rig.runs_dir / PENDING).write_text(json.dumps(raws[0]) + "\n")
     rig.sink.unfinished = run_id
     rig.sink.held = Backfill(
@@ -501,12 +503,12 @@ def test_e_a_smaller_take_fits_under_the_cap(rig: Rig) -> None:
 
 
 def test_f_a_fetch_failure_leaves_the_case_out_and_counts_it_returned(rig: Rig) -> None:
-    rig.fetch_fails = {"ERA26LA001"}
+    rig.fetch_fails = {"XXX26LA001"}
     summary = run_morning(rig.deps())
     assert summary.returned == 1
     assert summary.coded == 2
     (runner,) = _StubRunner.instances
-    assert [str(r["ntsbNumber"]) for r in runner.runs[0][1]] == ["ERA26LA002", "ERA26LA003"]
+    assert [str(r["ntsbNumber"]) for r in runner.runs[0][1]] == ["XXX26LA002", "XXX26LA003"]
     assert summary.queued == 1
 
 
@@ -547,29 +549,29 @@ def test_h_a_closure_record_per_case(rig: Rig) -> None:
         reason="r",
     )
     _StubRunner.script = {
-        "ERA26LA001": {
+        "XXX26LA001": {
             "calls": [
-                _call("ERA26LA001", "h0", 0),
+                _call("XXX26LA001", "h0", 0),
                 _call(
-                    "ERA26LA001",
+                    "XXX26LA001",
                     "choice1",
                     1,
                     tool="choose_documents",
                     arguments=choice.model_dump(),
                     offered=(1, 2),
                 ),
-                _call("ERA26LA001", "answer", 2),
+                _call("XXX26LA001", "answer", 2),
             ]
         },
-        "ERA26LA002": {"result": {"verdict_occurrence": (), "scores": None}},
-        "ERA26LA003": {"result": {"failure": "cap", "scores": None, "cost_usd": 0.31}},
+        "XXX26LA002": {"result": {"verdict_occurrence": (), "scores": None}},
+        "XXX26LA003": {"result": {"failure": "cap", "scores": None, "cost_usd": 0.31}},
     }
     rig.docket_statuses = {1: "read", 2: "read", 3: "unreadable: scan"}
     summary = run_morning(rig.deps())
     ((run_id, records, _bf),) = rig.sink.writes
     assert run_id == summary.run_id
     first, second, third = records
-    assert first.case_id == "ERA26LA001"
+    assert first.case_id == "XXX26LA001"
     assert [(d.position, d.status, d.ellery) for d in first.documents] == [
         (1, "read", "read"),
         (2, "read", "skipped"),
@@ -605,7 +607,7 @@ def test_i_the_first_morning_writes_the_whole_queue_as_the_backfill(rig: Rig) ->
     summary = run_morning(rig.deps(), limit=1)
     ((_id, _records, backfill),) = rig.sink.writes
     assert backfill is not None
-    ids = ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    ids = ("XXX26LA001", "XXX26LA002", "XXX26LA003")
     assert backfill.case_ids == ids
     assert backfill.fixed_on == TODAY
     assert backfill.sha256 == backfill_digest(ids)
@@ -653,14 +655,14 @@ def test_j_an_interrupted_run_keeps_them(rig: Rig) -> None:
     assert not (rig.runs_dir / PENDING).exists()
     (folder,) = [p for p in rig.runs_dir.iterdir() if p.is_dir()]
     first = (folder / INPUTS_FILE).read_text().splitlines()[0]
-    assert json.loads(first)["ntsbNumber"] == "ERA26LA001"
+    assert json.loads(first)["ntsbNumber"] == "XXX26LA001"
 
 
 def test_k_a_dry_run_fetches_one_case_and_calls_no_model(
     rig: Rig, capsys: pytest.CaptureFixture[str]
 ) -> None:
     summary = run_morning(rig.deps(), dry_run=True)
-    assert rig.fetched == ["ERA26LA001"]
+    assert rig.fetched == ["XXX26LA001"]
     assert len(rig.dockets) == 1
     assert rig.model_calls == 0
     assert _StubRunner.instances == []
@@ -672,7 +674,7 @@ def test_k_a_dry_run_fetches_one_case_and_calls_no_model(
     out = capsys.readouterr().out
     assert "dry run" in out
     assert "3" in out
-    assert "ERA26LA001" not in out
+    assert "XXX26LA001" not in out
 
 
 def test_l_a_late_start_warns(rig: Rig) -> None:
@@ -699,13 +701,14 @@ def test_l_an_early_start_does_not(rig: Rig, capsys: pytest.CaptureFixture[str])
 def test_m_limit_one_takes_one_case(rig: Rig) -> None:
     summary = run_morning(rig.deps(), limit=1)
     assert summary.coded == 1
-    assert rig.fetched == ["ERA26LA001"]
+    assert rig.fetched == ["XXX26LA001"]
 
 
-def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
-    rig: Rig, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    raws = {str(r["ntsbNumber"]): r for r in RAWS}
+def _real_runner_morning(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch, raws: Sequence[Mapping[str, object]]
+) -> tuple[MorningSummary, FakeBatchClient]:
+    """One morning on the real ``AgentRunner`` and a scripted batch client, over ``raws``."""
+    by_id = {str(r["ntsbNumber"]): r for r in raws}
     rig.store._closures = [
         Closure(
             mkey=_mkey(r),
@@ -715,7 +718,7 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
             closed_on="2026-10-05",
             closed_as="Completed",
         )
-        for n, r in enumerate(RAWS, start=1)
+        for n, r in enumerate(raws, start=1)
     ]
     fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
 
@@ -735,10 +738,16 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
         )
 
     monkeypatch.setattr(morning, "AgentRunner", build)
-    monkeypatch.setattr(morning, "fetch_record", lambda client, case: dict(raws[case.case_id]))
+    monkeypatch.setattr(morning, "fetch_record", lambda client, case: dict(by_id[case.case_id]))
     ticks = iter(NOW + timedelta(seconds=n) for n in range(100000))
     sink = LocalFolderSink(rig.runs_dir)
-    summary = run_morning(rig.deps(sink=sink, now=lambda: next(ticks)))
+    return run_morning(rig.deps(sink=sink, now=lambda: next(ticks))), fake
+
+
+def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary, _ = _real_runner_morning(rig, monkeypatch, RAWS)
     assert summary.run_id is not None
     folder = rig.runs_dir / summary.run_id
     assert summary.coded == 2
@@ -747,6 +756,36 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
     names = {p.name for p in folder.iterdir()}
     assert {INPUTS_FILE, CLOSURES_FILE, BACKFILL_FILE, "spec.json"} <= names
     assert len((folder / CLOSURES_FILE).read_text().splitlines()) == 2
+
+
+SENTINEL = "Zyxwvut preliminary sentinel: the airplane was seen to roll left on short final."
+
+
+def test_n_a_preliminary_narrative_never_reaches_a_request(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C6: the exclusion in ``live_spec`` holds on the real runner, end to end (decision 0162)."""
+    with_prelim = [dict(r) for r in RAWS]
+    with_prelim[0]["narratives"] = [{"prelimNarrative": SENTINEL}]
+    summary, fake = _real_runner_morning(rig, monkeypatch, with_prelim)
+    assert summary.run_id is not None
+    assert summary.coded == 2
+    assert fake.submitted, "the scripted batch client saw requests"
+    for batch in fake.submitted:
+        for request in batch:
+            body = request_body(
+                request.payload, request.settings, system=request.system, history=request.history
+            )
+            assert SENTINEL not in json.dumps(body)
+    folder = rig.runs_dir / summary.run_id
+    records = [
+        ClosureRecord.model_validate_json(line)
+        for line in (folder / CLOSURES_FILE).read_text().splitlines()
+    ]
+    assert sorted(r.prelim_present for r in records) == [False, True]
+    assert SENTINEL not in "".join(
+        p.read_text() for p in folder.iterdir() if p.name != INPUTS_FILE and p.is_file()
+    ), "only the inputs, which a resume needs, hold the record's own text"
 
 
 def test_o_every_refusal_appends_a_row_with_no_case_id(rig: Rig) -> None:
@@ -793,7 +832,7 @@ def test_backfill_survives_an_interrupted_first_run_and_a_later_queue(rig: Rig) 
     rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
     run_morning(rig.deps())
     backfill = rig.sink.writes[-1][2]
-    ids = ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    ids = ("XXX26LA001", "XXX26LA002", "XXX26LA003")
     assert backfill is not None
     assert backfill.case_ids == ids
     assert backfill.sha256 == backfill_digest(ids)
@@ -801,7 +840,7 @@ def test_backfill_survives_an_interrupted_first_run_and_a_later_queue(rig: Rig) 
 
 
 def test_backfill_survives_a_morning_where_every_fetch_failed(rig: Rig) -> None:
-    rig.fetch_fails = {"ERA26LA001", "ERA26LA002", "ERA26LA003"}
+    rig.fetch_fails = {"XXX26LA001", "XXX26LA002", "XXX26LA003"}
     summary = run_morning(rig.deps())
     assert summary.run_id is None
     rig.fetch_fails = set()
@@ -810,7 +849,7 @@ def test_backfill_survives_a_morning_where_every_fetch_failed(rig: Rig) -> None:
     run_morning(rig.deps())
     backfill = rig.sink.writes[-1][2]
     assert backfill is not None
-    assert backfill.case_ids == ("ERA26LA001", "ERA26LA002", "ERA26LA003")
+    assert backfill.case_ids == ("XXX26LA001", "XXX26LA002", "XXX26LA003")
     assert backfill.fixed_on == TODAY
 
 
@@ -835,8 +874,8 @@ def test_a_failed_write_is_completed_at_the_start_of_the_next_morning(rig: Rig) 
     rig.now = datetime(2026, 10, 8, 6, 0, tzinfo=UTC)
     run_morning(rig.deps(), limit=1)
     assert rig.sink.writes[0][0] == first_id
-    assert [r.case_id for r in rig.sink.writes[0][1]] == ["ERA26LA001"]
-    assert rig.events.index("write") < rig.events.index("fetch ERA26LA001")
+    assert [r.case_id for r in rig.sink.writes[0][1]] == ["XXX26LA001"]
+    assert rig.events.index("write") < rig.events.index("fetch XXX26LA001")
     assert not (live / "1001").exists()
 
 
@@ -881,8 +920,18 @@ def _counts(rig: Rig) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+def test_the_summary_says_a_failure_by_the_closed_set_of_kinds(rig: Rig) -> None:
+    """C8: a failure text that names a case reaches the terminal as "other", not as itself."""
+    _StubRunner.script = {
+        "XXX26LA001": {"result": {"failure": "XXX26LA001 mkey 1001 exploded"}},
+        "XXX26LA002": {"result": {"failure": "cap: context 1050001 tokens"}},
+    }
+    summary = run_morning(rig.deps())
+    assert summary.not_coded == {"other": 1, "cap: context": 1}
+
+
 def test_p_a_morning_appends_its_counts_and_no_case_id(rig: Rig) -> None:
-    rig.fetch_fails = {"ERA26LA001"}
+    rig.fetch_fails = {"XXX26LA001"}
     summary = run_morning(rig.deps())
     (row,) = _counts(rig)
     assert row["format"] == "live-morning/1"
@@ -896,11 +945,11 @@ def test_p_a_morning_appends_its_counts_and_no_case_id(rig: Rig) -> None:
         "returned": 1,
         "queued_after": 1,
     }
-    assert "ERA26" not in json.dumps(row)
+    assert "XXX26" not in json.dumps(row)
 
 
 def test_p_a_morning_where_every_fetch_fails_still_appends_its_counts(rig: Rig) -> None:
-    rig.fetch_fails = {"ERA26LA001", "ERA26LA002", "ERA26LA003"}
+    rig.fetch_fails = {"XXX26LA001", "XXX26LA002", "XXX26LA003"}
     run_morning(rig.deps())
     (row,) = _counts(rig)
     assert row["run_id"] is None
@@ -1025,3 +1074,42 @@ def test_a_resume_does_not_count_its_own_reservation_against_the_guard(rig: Rig)
     run_morning(rig.deps())
     assert len(_StubRunner.instances) == 1
     assert rig.refusals() == []
+
+
+# --- the live and development docket folders (final review C2) ---
+
+
+@pytest.mark.parametrize("how", ["equal", "symlink", "live inside", "development inside"])
+def test_the_live_and_development_docket_folders_must_be_apart(
+    rig: Rig, tmp_path: Path, how: str
+) -> None:
+    development = tmp_path / "dev-docket"
+    development.mkdir()
+    live = {
+        "equal": development,
+        "symlink": tmp_path / "link",
+        "live inside": development / "live",
+        "development inside": tmp_path,
+    }[how]
+    if how == "symlink":
+        live.symlink_to(development, target_is_directory=True)
+    if how == "live inside":
+        live.mkdir()
+    rig.settings = Settings(
+        data_dir=tmp_path / "data", docket_dir=development, live_docket_dir=live
+    )
+    with pytest.raises(ConfigurationError, match="live_docket_dir must differ from docket_dir"):
+        run_morning(rig.deps())
+    assert "open" not in rig.events, "refused before the store was opened"
+    assert rig.model_calls == 0
+
+
+def test_separate_docket_folders_are_accepted(rig: Rig, tmp_path: Path) -> None:
+    (tmp_path / "dev-docket").mkdir()
+    (tmp_path / "live-docket").mkdir()
+    rig.settings = Settings(
+        data_dir=tmp_path / "data",
+        docket_dir=tmp_path / "dev-docket",
+        live_docket_dir=tmp_path / "live-docket",
+    )
+    assert run_morning(rig.deps()).coded == 3

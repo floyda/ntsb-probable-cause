@@ -17,7 +17,7 @@ from ntsb_probable_cause.store import Closure
 def _closure(mkey: int, closed_on: str = "2026-09-24", run: int = 5) -> Closure:
     return Closure(
         mkey=mkey,
-        ntsb_number=f"ERA26LA{mkey:03d}",
+        ntsb_number=f"XXX26LA{mkey:03d}",
         event_date="2026-08-01",
         closure_run=run,
         closed_on=closed_on,
@@ -38,11 +38,11 @@ def test_build_queue_drops_early_and_done_and_orders_by_run_then_mkey() -> None:
         _closure(2, run=6),
         _closure(1, closed_on="2026-09-23", run=5),
     ]
-    queue = build_queue(closures, done={"ERA26LA002"})
+    queue = build_queue(closures, done={"XXX26LA002"})
     assert [(q.mkey, q.closure_run) for q in queue] == [(1, 5), (7, 5), (9, 6)]
     assert queue[0] == QueuedCase(
         mkey=1,
-        case_id="ERA26LA001",
+        case_id="XXX26LA001",
         event_date=date(2026, 8, 1),
         closed_on=date(2026, 9, 23),
         closure_run=5,

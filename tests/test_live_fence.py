@@ -110,8 +110,10 @@ def test_nothing_under_live_names_the_stores_upload() -> None:
     files = [
         *(ROOT / "src" / "ntsb_probable_cause" / "live").rglob("*.py"),
         *(ROOT / "apps" / "live").rglob("*.py"),
+        ROOT / "scripts" / "s33_live_report.py",
     ]
     assert files
+    assert all(path.is_file() for path in files)
     for path in files:
         assert not re.search(r"\bpush\b", path.read_text()), path
 
@@ -187,3 +189,13 @@ def test_the_scripts_fence_lets_a_development_run_through(runs: Path) -> None:
     dev = "20261007T020000Z-abc1234-dev-400-C"
     _live_run(runs, sample="dev-400", run_id=dev)
     assert sealed_report._scored(dev) == []
+
+
+def test_reply_budget_refuses_a_live_run_in_either_position_of_a_pair(runs: Path) -> None:
+    """C5: ``--confirm`` and ``--size`` are checked one by one; a development run is no cover."""
+    dev = "20261007T020000Z-abc1234-dev-400-C"
+    _live_run(runs, sample="dev-400", run_id=dev)
+    for confirm, size in ((dev, RUN_ID), (RUN_ID, dev)):
+        with pytest.raises(SystemExit, match="0024") as refused:
+            reply_budget.main(["--confirm", confirm, "--size", size])
+        assert RUN_ID in str(refused.value), "it names the live run, not the development one"

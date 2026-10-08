@@ -10,7 +10,13 @@ from typing import Any
 import apps.live.__main__ as app
 import pytest
 
-from ntsb_probable_cause.errors import BatchCancelledError, BudgetError
+from ntsb_probable_cause.errors import (
+    BatchCancelledError,
+    BudgetError,
+    ConfigurationError,
+    DocketError,
+)
+from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import STORE_WORK_FILENAME
 from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary
 from ntsb_probable_cause.settings import Settings
@@ -265,3 +271,68 @@ def test_report_calls_the_script_with_the_out_path_and_holds_the_lock(
     with app.morning_lock(Settings().runs_dir):
         assert app.main(["report"]) == 1  # a morning holds the lock
     assert seen == [[], ["--out", "x.txt"]]
+
+
+@pytest.mark.parametrize("error_class", [FetchError, DocketError])
+def test_a_fetch_or_docket_error_is_reported_by_its_class_alone(
+    error_class: type[Exception],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """C1: on a resume or a completion these escape ``morning`` with the docket key in the text."""
+    monkeypatch.setattr(
+        app, "run_morning", _raising(error_class("docket 9876543: listing not read (XXX26LA001)"))
+    )
+    assert app.main(["run"]) == 1
+    err = capsys.readouterr().err
+    assert error_class.__name__ in err
+    assert "9876543" not in err
+    assert "XXX26LA001" not in err
+
+
+@pytest.mark.parametrize(
+    ("text", "kept", "gone"),
+    [
+        ("XXX26LA001: no mKey, so no docket", "no mKey, so no docket", "XXX26LA001"),
+        (
+            "the docket read for XXX26LA002 is docket 111, not its own 222",
+            "is docket",
+            "XXX26LA002",
+        ),
+        (
+            "the docket read for XXX26LA002 is docket 1112223, not its own 2223334",
+            "not its own",
+            "1112223",
+        ),
+        ("mkey 5550001 unreadable", "unreadable", "5550001"),
+        ("batch abc cancelled, run 20261007T040000-abc1234-live-C", "20261007T040000", "<none>"),
+    ],
+)
+def test_every_error_line_is_scrubbed_of_case_numbers_and_keys(
+    text: str,
+    kept: str,
+    gone: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(app, "run_morning", _raising(ConfigurationError(text)))
+    assert app.main(["run"]) == 1
+    err = capsys.readouterr().err
+    assert kept in err
+    assert gone not in err
+    assert not app._CASE_NUMBER.search(err)
+    assert app.scrubbed("nothing to hide here: $0.015") == "nothing to hide here: $0.015"
+
+
+def test_the_lock_message_is_scrubbed_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "XXX26LA003"))
+    runs = Settings().runs_dir
+    runs.mkdir(parents=True)
+    with (runs / "live.lock").open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        assert app.main(["run"]) == 1
+    err = capsys.readouterr().err
+    assert "another morning is running" in err
+    assert "XXX26LA003" not in err

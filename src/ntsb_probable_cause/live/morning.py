@@ -49,6 +49,7 @@ from ntsb_probable_cause.live.records import (
     MANIFEST_FILE,
     Backfill,
     ClosureRecord,
+    failure_kind,
 )
 from ntsb_probable_cause.live.seams import ResultSink, SpendCounter, StoreSource
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings
@@ -226,8 +227,14 @@ def run_morning(
             "version 1 only (decisions 0156, 0161)"
         )
     settings = deps.settings
-    if settings.live_docket_dir.resolve() == settings.docket_dir.resolve():
-        raise ConfigurationError("live_docket_dir must differ from docket_dir")
+    live, development = settings.live_docket_dir.resolve(), settings.docket_dir.resolve()
+    if live == development or live.is_relative_to(development) or development.is_relative_to(live):
+        # Resolved, so a symlink to the same folder counts. One folder inside the other would
+        # mix open-case documents with the development cache just as well.
+        refusals.add("docket-folders")
+        raise ConfigurationError(
+            "live_docket_dir must differ from docket_dir, and neither may sit inside the other"
+        )
     morning = _Morning(deps, deps.store.open(), began, refusals, dry_run=dry_run, limit=limit)
     try:
         return morning.run()
@@ -620,7 +627,7 @@ class _Morning:
         not_coded: dict[str, int] = {}
         for r in records:
             if r.outcome == "not coded":
-                reason = (r.failure or "unknown").split(":", 1)[0]
+                reason = failure_kind(r.failure)
                 not_coded[reason] = not_coded.get(reason, 0) + 1
         return MorningSummary(
             run_id=run_id,

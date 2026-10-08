@@ -26,6 +26,7 @@ import argparse
 import json
 import re
 import statistics
+import sys
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -40,6 +41,7 @@ from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
     Backfill,
     ClosureRecord,
+    failure_kind,
 )
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.metrics import wilson
@@ -49,10 +51,6 @@ from ntsb_probable_cause.store import Closure
 from ntsb_probable_cause.store.sync import Location
 
 WAIT_LIMIT_DAYS: Final = 14  # spec §11
-_CONTEXT_FAILURE: Final = "cap: context"
-_FAILURE_KINDS: Final = frozenset(
-    {"schema", "model", "leak", "cap", "failed", "aborted", "missing result"}
-)
 _CASE_NUMBER = re.compile(r"[A-Z]{3}\d{2}[A-Z]{2}\d{3}")
 _OCCURRENCE_PHASE_LEN: Final = 3
 _FINDING_ITEM_LEN: Final = 8
@@ -79,19 +77,6 @@ class _Run:
 
 def _pct(value: float) -> str:
     return f"{value * 100:.0f}%"
-
-
-def _reason(failure: str | None) -> str:
-    """A failure's kind, from a closed set; anything else is "other" (decision 0024).
-
-    The kinds are the heads the runners write: ``schema``, ``model``, ``leak``, ``cap``,
-    ``cap: context``, ``failed`` (the loop failed at a step), ``aborted``, and ``missing result``.
-    """
-    text = (failure or "").strip()
-    if text.startswith(_CONTEXT_FAILURE):
-        return _CONTEXT_FAILURE
-    head = re.split(r"[:;(]", text, maxsplit=1)[0].strip()
-    return head if head in _FAILURE_KINDS else "other"
 
 
 def _mornings(
@@ -185,7 +170,7 @@ def _outcomes(records: Sequence[ClosureRecord]) -> list[str]:
     with_verdict = sum(1 for r in records if r.scored)
     low, high = wilson(first, with_verdict)
     interval = f"{_pct(low)} to {_pct(high)}" if with_verdict else "n/a"
-    reasons = Counter(_reason(r.failure) for r in records if r.outcome == "not coded")
+    reasons = Counter(failure_kind(r.failure) for r in records if r.outcome == "not coded")
     return [
         "outcomes",
         f"cases: {len(records)}",
@@ -382,6 +367,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         today=datetime.now(UTC).date(),
         counts=_read_rows(settings.runs_dir, MORNING_COUNTS_FILE),
     )
+    if _CASE_NUMBER.search(text):
+        # The report is built from counts, so this is a bug; it is checked on the output itself
+        # because a report that names a live case must not be printed, written or committed.
+        print(
+            "s33_live_report: the report holds text shaped like an NTSB case number, so nothing "
+            "was printed or written. Tell Claude.",
+            file=sys.stderr,
+        )
+        return 1
     print(text, end="")
     if args.out:
         Path(args.out).write_text(text)
