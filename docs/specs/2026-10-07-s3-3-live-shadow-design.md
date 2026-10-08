@@ -168,7 +168,7 @@ and runs the `make` target, which keeps the Mac awake while it runs (`caffeinate
 9. **Clean up** (§8.4) and **print a summary:** cases coded, not coded with reasons, left in the
    queue, cost (computed and billed), time taken, space freed.
 
-**Timing.** The recorder's night usually finishes at about 03:45 UTC (scripted, the run summaries
+**Timing.** *(Superseded 2026-10-08 by decision 0165: live runs use the standard price through the sync driver; there is no batch window and no late-start warning.)* The recorder's night usually finishes at about 03:45 UTC (scripted, the run summaries
 of `docs/results/s5-recorder-report-2026-10-06.txt`), and at the latest at about 05:31 UTC (the
 scheduler's retry window and the task's 90-minute limit, `infra/recorder_stack.py`). Checks and
 fetching take about 3 minutes (estimate: about 7 documents a case, 300 documents over 46 closures,

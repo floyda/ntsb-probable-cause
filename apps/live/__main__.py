@@ -163,14 +163,14 @@ def morning_lock(runs_dir: Path) -> Iterator[None]:
 
 def format_summary(summary: MorningSummary) -> str:
     """The morning's counts as plain lines; no case is named."""
-    billed = "not yet known" if summary.billed_usd is None else f"${summary.billed_usd:.4f}"
+    billed = "" if summary.billed_usd is None else f" (billed: ${summary.billed_usd:.4f})"
     lines = [
         f"run: {summary.run_id or 'none'}",
         f"coded: {summary.coded}",
         *(f"not coded, {reason}: {count}" for reason, count in sorted(summary.not_coded.items())),
         f"returned to the queue: {summary.returned}",
         f"still queued: {summary.queued}",
-        f"cost: ${summary.cost_usd:.4f} (billed: {billed})",
+        f"cost: ${summary.cost_usd:.4f}{billed}",
         f"minutes: {summary.minutes:.1f}",
         f"bytes freed: {summary.freed_bytes}",
         *(f"warning: {warning}" for warning in summary.warnings),

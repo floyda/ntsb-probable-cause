@@ -2,7 +2,7 @@
 
 import fcntl
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -98,6 +98,13 @@ def test_dry_run_builds_the_deps_from_settings_and_prints_the_summary(
     assert "coded: 2" in out
     assert "no docket: 1" in out
     assert "late start" in out
+
+
+def test_a_sync_run_summary_has_no_billed_part() -> None:
+    sync = replace(_summary(), billed_usd=None)
+    assert "cost: $0.0500\n" in app.format_summary(sync) + "\n"
+    assert "billed" not in app.format_summary(sync)
+    assert "cost: $0.0500 (billed: $0.0400)" in app.format_summary(_summary())
 
 
 def test_the_factories_build_the_real_clients_from_settings(

@@ -135,6 +135,7 @@ def _money(runs: Sequence[_Run]) -> list[str]:
         "money",
         f"computed: ${_computed(started):.4f} in all, "
         f"{_per_case(_computed(started), sum(len(r.results) for r in started))} per case",
+        "billed: sync runs report no billed figure, so the computed cost is the figure",
         f"billed ({len(reported)} of {len(started)} runs reported): "
         f"${_billed(reported):.4f} in all, "
         f"{_per_case(_billed(reported), sum(len(r.results) for r in reported))} per case",

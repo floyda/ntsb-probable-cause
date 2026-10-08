@@ -208,6 +208,7 @@ def test_money_is_per_case_and_per_month_computed_and_billed(world: World) -> No
     text = _text(world)
     assert "computed: $0.6000 in all, $0.1200 per case" in text
     assert "billed (1 of 2 runs reported): $0.3000 in all, $0.1000 per case" in text
+    assert "sync runs report no billed figure, so the computed cost is the figure" in text
     assert "2026-10: computed $0.6000, billed $0.3000" in text
 
 

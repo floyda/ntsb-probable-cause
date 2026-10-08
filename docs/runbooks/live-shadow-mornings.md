@@ -101,9 +101,10 @@ The command prints counts only. It names no case.
 | `warning` | Something to read. For example, "completed the records of an earlier run". |
 
 The monthly live cap is $5. If the next morning would pass it, the command refuses. The check
-projects $0.04 a case (the standard price, with room for large dockets). A day that has an unfinished run to resume and then a fresh run can code up
-to 20 cases (see section 5), so a day's cost can reach about $0.30 projected, and the real cost is
-usually lower. The all-purpose $40 monthly guard is checked too (section 6).
+projects $0.04 a case (the standard price, with room for large dockets). That is a ceiling the
+caps use, not the expected spend: the real cost is about $0.02 a case. A day that has an unfinished
+run to resume and then a fresh run can code up to 20 cases (see section 5), so a day's cost can
+reach about $0.80 projected (20 x $0.04), and the real cost is usually about half that. The all-purpose $40 monthly guard is checked too (section 6).
 
 ## 5. An interrupted morning
 

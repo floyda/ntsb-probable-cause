@@ -70,3 +70,7 @@ Accepted, 2026-10-08 (Andy, during S3.3's first paid morning).
 - **Standard price**: the provider's normal service; answers in seconds, at the full price.
 - **Sync driver**: the loop's driver that sends one call at a time and records each reply.
 - **Resume**: continuing an interrupted run from its folder, replaying the replies on disk.
+
+## Clarified, 2026-10-08 (appended; nothing above is edited)
+
+- A call in flight when a run is killed has no reply on disk, so it is sent again on the resume: at most one call per interruption is paid twice.
