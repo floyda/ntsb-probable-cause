@@ -734,9 +734,9 @@ s33-mutation-sweep:
 
 s33-dry-run:
 	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live run --dry-run
-# scripts/live_env.sh sets AWS_PROFILE (default ntsb) and, if unset, NTSB_STORE from the recorder
-# stack's BucketName; --extra aws brings boto3 and awscrt (pinned in uv.lock) to read the `aws login` profile.
-# S3.3 spec §12 item 5, free: checks, store, queue, one fetch; no model call. Needs the AWS login
+# scripts/live_env.sh sets AWS_PROFILE (default ntsb-live) and, if unset, NTSB_STORE from the recorder
+# stack's BucketName; --extra aws brings boto3 and awscrt (pinned in uv.lock) to read the `ntsb-live` profile.
+# S3.3 spec §12 item 5, free: checks, store, queue, one fetch; no model call. Needs the `ntsb-live` key in pass
 # and the NTSB API; writes only the store work file and the live docket cache under NTSB_DATA_DIR.
 
 s33-morning:
@@ -745,7 +745,7 @@ s33-morning:
 	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
 # S3.3 spec §4, paid: one live morning, at most 10 cases, about half an hour at the standard price
 # (decision 0165; the estimate is 10 cases at $0.04).
-# Run through scripts/paid_run.sh after `aws login`. LIMIT=1 on the first one.
+# Run through scripts/paid_run.sh (no `aws login` needed; pass must be unlocked). LIMIT=1 on the first one.
 # Writes a live run folder (record, closures, manifest) under NTSB_RUNS_DIR. Read
 # docs/runbooks/live-shadow-mornings.md first.
 

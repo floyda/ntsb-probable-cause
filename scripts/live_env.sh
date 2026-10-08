@@ -6,14 +6,14 @@
 #     reads the recorder stack's bucket name from AWS (one read-only CloudFormation call) and
 #     spends nothing. It prints no key.
 #
-# What it prints: `export AWS_PROFILE=...` (default `ntsb`, an explicit value wins) and
+# What it prints: `export AWS_PROFILE=...` (default `ntsb-live`, an explicit value wins) and
 # `export NTSB_STORE=...` (an explicit value wins; otherwise `s3://<BucketName>/recorder.sqlite`
-# from the `NtsbRecorderStack` output). If the lookup fails or is empty (most likely the AWS login
-# has expired) it prints a plain message and then aws's own error on stderr, exits 1, and prints
+# from the `NtsbRecorderStack` output). If the lookup fails or is empty (most likely `pass` is locked or
+# the profile is missing) it prints a plain message and then aws's own error on stderr, exits 1, and prints
 # no export.
 set -euo pipefail
 set +x
-profile="${AWS_PROFILE:-ntsb}"
+profile="${AWS_PROFILE:-ntsb-live}"
 echo "export AWS_PROFILE='$profile'"
 if [[ -n "${NTSB_STORE:-}" ]]; then
   exit 0
@@ -24,7 +24,7 @@ bucket="$(aws cloudformation describe-stacks --profile "$profile" --region eu-we
   --stack-name NtsbRecorderStack \
   --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text 2>"$err_file")" || bucket=""
 if [[ -z "$bucket" || "$bucket" == "None" ]]; then
-  echo "live_env: could not read the recorder bucket name from AWS. The login has probably expired: run 'aws login' (it refreshes the default profile, which the ntsb profile uses) and try again. Or set NTSB_STORE yourself." >&2
+  echo "live_env: the $profile profile could not read the stack that holds the recorder bucket name. Check that pass is unlocked and that the profile exists (see docs/runbooks/live-shadow-mornings.md, 'The live shadow's AWS key'). Or set NTSB_STORE yourself." >&2
   echo "live_env: aws said:" >&2
   cat "$err_file" >&2  # aws's own error carries no secret; it tells a login problem from another
   exit 1

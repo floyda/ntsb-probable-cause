@@ -201,6 +201,8 @@ def test_an_expired_login_says_to_log_in_again(
     assert app.main(["run"]) == 1
     err = capsys.readouterr().err
     assert "`aws login`" in err
+    assert "ntsb-live" in err
+    assert "pass" in err
     assert "--profile" not in err
 
 

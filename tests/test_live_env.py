@@ -31,10 +31,10 @@ def _run(tmp_path: Path, **extra: str) -> tuple[int, str, str, list[str]]:
 def test_it_resolves_the_store_from_the_stacks_bucket_output(tmp_path: Path) -> None:
     code, out, _, calls = _run(tmp_path, STUB_BUCKET="the-bucket")
     assert code == 0
-    assert "export AWS_PROFILE='ntsb'" in out
+    assert "export AWS_PROFILE='ntsb-live'" in out
     assert "export NTSB_STORE='s3://the-bucket/recorder.sqlite'" in out
     (call,) = calls
-    assert "--profile ntsb" in call
+    assert "--profile ntsb-live" in call
     assert "--stack-name NtsbRecorderStack" in call
     assert "BucketName" in call
 
@@ -52,7 +52,8 @@ def test_a_failed_or_empty_lookup_refuses_plainly_and_prints_no_store(tmp_path: 
         code, out, err, _ = _run(tmp_path, **extra)
         assert code == 1
         assert "NTSB_STORE" not in out
-        assert "aws login'" in err
+        assert "the ntsb-live profile could not read the stack" in err
+        assert "pass" in err
         assert "--profile" not in err
 
 
@@ -65,4 +66,6 @@ def test_awss_own_error_is_shown_after_the_plain_message_and_nothing_is_exported
     assert code == 1
     assert "NTSB_STORE" not in out
     assert "Unable to locate profile" in err
-    assert err.index("aws login'") < err.index("Unable to locate profile")
+    assert err.index("the ntsb-live profile could not read the stack") < err.index(
+        "Unable to locate profile"
+    )
