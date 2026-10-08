@@ -221,9 +221,13 @@ public NTSB case data.
 2. List the keys: `aws iam list-access-keys --user-name ntsb-live-reader --profile ntsb`.
    Note the old key's `AccessKeyId`.
 3. Make a new key and store it in `pass` in one step, so it is never shown on screen. The
-   command must write the JSON fields the profile reads (`Version`, `AccessKeyId`,
-   `SecretAccessKey`); if you are unsure, ask Claude to give you the exact line first.
-   Start from: `aws iam create-access-key --user-name ntsb-live-reader --profile ntsb ... | pass insert -m -f aws/ntsb-live-reader`
+   `--query` part writes the three JSON fields the profile reads (`Version`, `AccessKeyId`,
+   `SecretAccessKey`); `-f` replaces the old entry. This is the same command as the first setup,
+   with `-f` added:
+
+   ```
+   aws iam create-access-key --user-name ntsb-live-reader --profile ntsb --query 'AccessKey.{Version: `1`, AccessKeyId: AccessKeyId, SecretAccessKey: SecretAccessKey}' --output json | pass insert -m -f aws/ntsb-live-reader
+   ```
 4. Run a free check: `NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-dry-run`.
 5. Delete the old key:
    `aws iam delete-access-key --user-name ntsb-live-reader --access-key-id <old id> --profile ntsb`
