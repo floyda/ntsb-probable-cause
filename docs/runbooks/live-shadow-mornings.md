@@ -75,7 +75,8 @@ checkout under the first one before the lock of `ntsb-live` can refuse it.
 
 `paid_run.sh` makes a clean copy of the branch and runs `make s33-morning`. That target first
 checks two spending lines (S3's $50 and S3.3's own line), and only then starts `ntsb-live run`.
-A morning takes about 1 to 2 hours. Leave the terminal open.
+A morning takes up to about 2 hours, whatever its size: a run is 10 to 15 batch rounds, and
+one case needs as many rounds as ten. Leave the terminal open.
 
 Only one morning can run at a time. The command locks `live.lock` in the runs folder.
 
@@ -87,15 +88,18 @@ The command prints counts only. It names no case.
 |---|---|
 | `run` | The run folder's name (date, commit, `live`, arm `C`). |
 | `coded` | Cases the agent gave a verdict for. Each has a closure record. |
-| `not coded, <reason>` | Cases that were closed but not coded, with the reason (for example `format`, `cap`, `no docket`, a guard refusal). The record is written. The case is not tried again. |
+| `not coded, <reason>` | Cases that were closed but not coded, with the reason: one of `schema` (the reply broke its format), `model` (the model failed), `leak` (the leakage guard stopped it), `cap` or `cap: context` (the case reached its cost cap or the context limit), `failed` (the loop failed at a step), `aborted`, `missing result`, or `other`. The record is written. The case is not tried again. |
 | `returned to the queue` | Cases that failed before the agent saw them (a fetch failed). They are tried again tomorrow. |
-| `still queued` | Closed cases waiting for a later morning. A morning takes at most 10 cases. |
+| `still queued` | Closed cases waiting for a later morning. A morning takes at most 10 cases. A case that comes back as `returned to the queue` on three mornings in a row: tell Claude (it would hold the closing rule back). |
 | `cost` | The computed cost, and the amount the batch service billed (it may arrive later). |
 | `minutes` | How long the morning took. |
 | `bytes freed` | Space deleted at the end (section 7). |
 | `warning` | Something to read. For example, "started after 09:00 UTC". |
 
-The monthly live cap is $5. If the next morning would pass it, the command refuses.
+The monthly live cap is $5. If the next morning would pass it, the command refuses. The check
+projects $0.015 a case. A day that has an unfinished run to resume and then a fresh run can code up
+to 20 cases (see section 5), so a day's cost can reach about $0.30 projected, and the real cost is
+usually lower. The all-purpose $40 monthly guard is checked too (section 6).
 
 ## 5. An interrupted morning
 
@@ -107,13 +111,27 @@ the batches already paid for, and finishes it. It uses the same cases as the fir
 **Finish (or resume) an interrupted morning before any code is pushed to the branch.**
 `paid_run.sh` resets its copy to the branch tip, and a resume on a different commit is
 refused. If code is pushed while a run is unfinished, that run is stranded. To avoid it,
-check before you push anything. A folder under `data/runs` is an unfinished live run if either:
+check before you push anything. A folder under `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/runs` is an unfinished live run if either:
 
 - it has no `run.jsonl` file at all (a power cut or a kill leaves this), and its `spec.json`
   says `"sample": "live"`; or
 - its `run.jsonl` has no `finished` time.
 
-If you find one, run the morning command again first.
+If you find one, run the morning command again first. Use the absolute path of the main
+folder's runs (`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/runs`); a
+worktree's own `data/` is empty.
+
+**A morning that only resumes.** If a run was unfinished, the command resumes it and stops. It
+does not start today's new cases in the same command. After it ends, run the command **once more**
+to code today's cases.
+
+**A stranded run** (code was pushed first, and the resume is refused with `cannot resume ...
+commit_sha was ... and is ... now`). Push nothing more. Tell Claude. The recovery, which Claude
+does with you: read `commit_sha` in the run's `spec.json`; create a branch named `s3-recover-<date>`
+at that commit and push it; run
+`NTSB_PAID_BRANCH=s3-recover-<date> scripts/paid_run.sh s33-morning` **once**, to finish that run
+on the code that began it; then go back to `NTSB_PAID_BRANCH=s3-3-live-shadow` for every later
+morning. Do not delete the run folder.
 
 ## 6. When the command refuses
 
@@ -127,6 +145,8 @@ that each quoted text is in the program.
 | `these settings are not version 1's` | A setting that changes what Ellery receives or how it is asked (the model, the reply budget, the cap, the temperature, the statistics file, the pass-reasoning switch) is not the one version 1 was measured with. The line names which. Nothing was fetched or spent. | Stop. Do not run again. Tell Claude. |
 | `the recorder has not finished a run on` | The store is not tonight's yet. | Wait. Try again after the recorder finishes (usually 03:45 UTC, at the latest about 05:31 UTC). If it is later than 06:00 UTC, tell Claude (`docs/runbooks/recorder-bridge.md`). |
 | `the day's limit of` | Ten cases were already coded today. This is a warning, not a refusal: the exit code is 0 and no run is made. | Nothing. Run again tomorrow. |
+| `cannot resume` ... `commit_sha` ... `when the run started, and is` | An unfinished run was begun on one commit, and the tree is on another now (code was pushed first). The run cannot be resumed on different code. Nothing was spent. | Stop. Push nothing. Tell Claude. The recovery is in section 5 ("A stranded run"). |
+| `monthly guard of` | The month's spend and open reservations, plus this morning's projection, pass the all-purpose $40 monthly guard (`monthly_budget_usd`). Nothing was fetched and no run was made. | Do not run. Tell Claude. |
 | `monthly cap (decision 163)` | This month's live spend plus this morning's projection passes $5. The cases stay queued. | Do not run. Tell Claude. Only a new decision changes the cap. |
 | `would pass the line` | A spending line is reached. `paid_run.sh` prints which: S3's $50 (decision 0128) or the S3.3 line (decision 163, $10 of S3.3's own). | Do not run. Tell Claude the numbers printed. |
 | `the AWS login has expired` | The AWS login ended. | Run `aws login --profile ntsb`, then run the same command again. |
@@ -152,9 +172,9 @@ that each quoted text is in the program.
   deletes the store working copy. It prints the space freed.
 - A run that stopped part-way keeps its documents until it finishes, so a resume needs no
   second fetch.
-- Run folders are kept. They are about 1 MB each. Do not delete them: they hold the closure
+- Run folders are kept, in `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/runs`. They are about 1 MB each. Do not delete them: they hold the closure
   records, the manifest and the spend that the monthly cap counts.
-- To see space: `du -sh data/live-docket data/runs`. If the live docket folder is large (more
+- To see space: `du -sh /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/live-docket /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data/runs`. If the live docket folder is large (more
   than 2 GB) and no morning is unfinished, tell Claude before deleting anything.
 - The large development cache (`data/docket`, about 28 GB) is not touched by a morning.
 
@@ -162,7 +182,9 @@ that each quoted text is in the program.
 
 - Read the summary. Tell Claude the counts (coded, not coded, queued, cost, minutes).
 - Do not open the run folder's case files in an editor or share them. They hold text from open
-  cases. Only counts leave the computer (`make s33-report`, a later step).
+  cases. Only counts leave the computer (`make s33-report`, a later step: run it by hand, from this
+  branch's worktree until S3.3 is merged, with `NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data` set; never
+  through `paid_run.sh`, and not while a morning runs: it takes the same lock).
 - Do not run `ntsb-eval` on a live run. It refuses (decision 0024).
 
 ---
@@ -184,7 +206,7 @@ that each quoted text is in the program.
 - **Queue.** The closed cases waiting to be coded, oldest first.
 - **Batch.** A way of sending many model requests at a lower price. The answer comes back later,
   usually within an hour or two.
-- **Run folder.** A folder under `data/runs` holding one morning's records.
+- **Run folder.** A folder under the main folder's `data/runs` holding one morning's records.
 - **Closure record.** The record for one case: what the agent was given, what it said, and when.
   It holds no document text.
 - **Manifest.** A list of the run folder's files with their checksums, so a changed file is seen.

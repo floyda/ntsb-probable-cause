@@ -169,22 +169,35 @@ def _money(runs: Sequence[_Run]) -> list[str]:
 
 
 def _outcomes(records: Sequence[ClosureRecord]) -> list[str]:
-    scored = [r for r in records if r.scored]
-    first = sum(1 for r in scored if r.top1)
-    other = sum(1 for r in scored if r.top3 and not r.top1)
-    different = len(scored) - first - other
-    low, high = wilson(first, len(scored))
-    interval = f"{_pct(low)} to {_pct(high)}" if scored else "n/a"
+    """Every case once: graded, abstained, coded with no verdict to grade, or not coded.
+
+    The three grades count only cases Ellery coded (``outcome == "coded"``) that held a verdict
+    and did not abstain. A not-coded case that has a verdict (the record held one, the run
+    failed) is in "not coded" alone, and counts as not right in the interval, which is over every
+    case with a verdict.
+    """
+    graded = [r for r in records if r.outcome == "coded" and r.scored and not r.abstained]
+    first = sum(1 for r in graded if r.top1)
+    other = sum(1 for r in graded if r.top3 and not r.top1)
+    different = len(graded) - first - other
+    abstained = sum(1 for r in records if r.outcome == "coded" and r.abstained)
+    no_verdict = sum(1 for r in records if r.outcome == "coded" and not r.scored)
+    with_verdict = sum(1 for r in records if r.scored)
+    low, high = wilson(first, with_verdict)
+    interval = f"{_pct(low)} to {_pct(high)}" if with_verdict else "n/a"
     reasons = Counter(_reason(r.failure) for r in records if r.outcome == "not coded")
     return [
         "outcomes",
+        f"cases: {len(records)}",
         f"first code right: {first}",
         f"right code in another position: {other}",
         f"different: {different}",
-        f"95% interval for first code right ({first} of {len(scored)} scored): {interval}",
-        f"abstained: {sum(1 for r in records if r.abstained)}",
+        f"abstained: {abstained}",
+        f"coded, no verdict to grade: {no_verdict}",
         f"not coded: {sum(reasons.values())}",
         *(f"not coded, {reason}: {count}" for reason, count in sorted(reasons.items())),
+        f"95% interval for first code right ({first} of {with_verdict} cases with a verdict, "
+        f"a not-coded case counting as not right): {interval}",
     ]
 
 
@@ -274,16 +287,19 @@ def _closing(
 ) -> list[str]:
     coded = {r.case_id for run in runs for r in run.results}
     drained = backfill is not None and set(backfill.case_ids) <= coded
+    # A fresh closure is a coded case that is not on the backfill list (spec 3.2), decided by the
+    # list and not by a date. The clock starts on the day the backfill was fixed, which a resume
+    # (it rewrites a run's start) cannot move.
+    listed = set(backfill.case_ids) if backfill is not None else set()
     fresh = (
-        sum(1 for r in records if r.outcome == "coded" and r.closed_on > backfill.fixed_on)
+        sum(1 for r in records if r.outcome == "coded" and r.case_id not in listed)
         if backfill is not None
         else 0
     )
-    starts = [run.record.started.astimezone(UTC).date() for run in runs if run.record]
-    days = (today - min(starts)).days if starts else 0
+    days = (today - backfill.fixed_on).days if backfill is not None else 0
     if drained and fresh >= 1:
         verdict = "met (fresh closure)"
-    elif drained and starts and days >= WAIT_LIMIT_DAYS:
+    elif drained and days >= WAIT_LIMIT_DAYS:
         verdict = "met (14 days)"
     else:
         verdict = "not met"
@@ -291,7 +307,7 @@ def _closing(
         "closing rule inputs",
         f"backfill drained: {'yes' if drained else 'no'}",
         f"fresh closures coded: {fresh}",
-        f"days since the first live morning: {days}",
+        f"days since the backfill was fixed: {days}",
         f"closing rule: {verdict}",
     ]
 

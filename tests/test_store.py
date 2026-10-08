@@ -999,3 +999,22 @@ def test_documents_recorded_counts_every_document_ever_seen(tmp_path: Path) -> N
         assert reader.documents_recorded(1) == 2
         assert reader.documents_recorded(2) == 1
         assert reader.documents_recorded(3) == 0
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "DELETE FROM cases WHERE mkey = 20",
+        "UPDATE runs SET run_id = run_id + 100 WHERE run_id = 4",
+    ],
+)
+def test_closures_refuses_a_closure_whose_case_or_run_row_is_missing(
+    store: Store, damage: str
+) -> None:
+    """B4: a dropped closure would be outside the backfill and the queue for good."""
+    _three_closures(store)
+    store.connection.execute("PRAGMA foreign_keys = OFF")
+    store.connection.execute(damage)
+    with pytest.raises(ConfigurationError, match=r"1 closure in the store has no case row") as e:
+        store.closures()
+    assert "INVENTED" not in str(e.value), "the count is named, not the case"

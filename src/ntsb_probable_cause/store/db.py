@@ -1016,6 +1016,10 @@ class Store:
         Built on :meth:`_closure_runs`, the one definition of a closure. ``closed_on`` is the
         UTC calendar date of the closure run's ``started_at`` (SQLite's ``date()`` converts an
         offset timestamp to UTC). ``closed_as`` is the status that closure event carried.
+
+        Raises:
+            ConfigurationError: a closure has no case row or no run row (the count is named, not
+                the case).
         """
         closure_runs = self._closure_runs()
         if not closure_runs:
@@ -1028,6 +1032,17 @@ class Store:
                 "SELECT mkey, ntsb_number, event_date FROM cases"
             ).fetchall()
         }
+        broken = sum(
+            1 for mkey, run in closure_runs.items() if mkey not in cases or run not in run_days
+        )
+        if broken:
+            # A dropped closure would be outside the live backfill and the queue for good
+            # (decision 0155), so it is an error, not a skip. The count names no case.
+            noun, verb = ("closure", "has") if broken == 1 else ("closures", "have")
+            raise ConfigurationError(
+                f"{broken} {noun} in the store {verb} no case row or no run row: the store is not "
+                "sound, so no closure list is made from it"
+            )
         found = [
             Closure(
                 mkey=mkey,
@@ -1038,7 +1053,6 @@ class Store:
                 closed_as=statuses[mkey],
             )
             for mkey, run in closure_runs.items()
-            if mkey in cases and run in run_days
         ]
         return sorted(found, key=lambda c: (c.closure_run, c.mkey))
 

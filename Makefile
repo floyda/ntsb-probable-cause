@@ -749,7 +749,12 @@ s33-morning:
 # docs/runbooks/live-shadow-mornings.md first.
 
 s33-report:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws python -m scripts.s33_live_report --out docs/results/s33-live-shadow.txt
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live report --out docs/results/s33-live-shadow.txt
 # S3.3 spec §10, free: the counts-only results file docs/results/s33-live-shadow.txt, from the live
 # run folders, the refusal log and the recorder's store (same AWS login and store lookup as the
 # morning recipes). No model key, no NTSB key. Reads the store; uploads nothing.
+# It runs through the report command of ntsb-live, which holds live.lock: the report replaces the same store
+# work file a morning uses, so it must never run beside one. Run it by hand from this branch's
+# worktree until S3.3 is merged (then from the main folder), with NTSB_DATA_DIR set to the main
+# folder's data/ (the runs are there). Never through scripts/paid_run.sh: that would leave the
+# paid checkout with an uncommitted results file.

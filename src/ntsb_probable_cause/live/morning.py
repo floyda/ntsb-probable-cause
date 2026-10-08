@@ -52,7 +52,7 @@ from ntsb_probable_cause.live.records import (
 )
 from ntsb_probable_cause.live.seams import ResultSink, SpendCounter, StoreSource
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings
-from ntsb_probable_cause.scoring.budget import month_spent
+from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
@@ -276,7 +276,11 @@ class _Morning:
         self.interrupted = False
         self.lock_sha = ""
         if began.astimezone(UTC).time() > LATE_START_UTC:
-            self.warnings.append(f"started after {LATE_START_UTC:%H:%M} UTC")
+            late = f"started after {LATE_START_UTC:%H:%M} UTC"
+            self.warnings.append(late)
+            # Said at once as well as in the end summary: Andy sees it while the morning runs
+            # (the batch service is slower later in the day), not hours afterwards.
+            sys.stderr.write(f"warning: {late}\n")
 
     # --- the order of a morning ---
 
@@ -325,14 +329,39 @@ class _Morning:
             taken=len(take),
         )
 
-    def _check_cap(self, n: int) -> None:
-        """Refuse before any call when the month's live spend plus ``n`` cases passes the cap."""
+    def _check_cap(self, n: int, *, resuming: str | None = None) -> None:
+        """Refuse before any fetch, folder or call when ``n`` cases do not fit a limit.
+
+        Two limits: the live shadow's own $5 month (decision 163), and the all-purpose monthly
+        guard (``monthly_budget_usd``, $40) that ``AgentRunner`` enforces again when it reserves.
+        Checking the second here too means a refusal leaves nothing behind: ``AgentRunner`` makes
+        its run folder and ``spec.json`` before it reserves, so its own refusal would leave a live
+        folder with no ``run.jsonl`` that every later morning would find unfinished.
+
+        Args:
+            n: the cases this morning would code.
+            resuming: the run being resumed; its own open reservation is not counted against it.
+
+        Raises:
+            BudgetError: a limit would be passed.
+        """
         projected = self.deps.spend.live_month_usd(self.began) + n * EXPECTED_COST_PER_CASE_USD
         if projected > MONTHLY_CAP_USD:
             self.refusals.add("monthly-cap")
             raise BudgetError(
                 f"live spend this month plus {n} cases at ${EXPECTED_COST_PER_CASE_USD} would "
                 f"be ${projected:.2f}, past the ${MONTHLY_CAP_USD:.2f} monthly cap (decision 163)"
+            )
+        spent = month_spent(self.runs_dir, now=self.began)
+        reserved = sum(v for k, v in open_reservations(self.runs_dir).items() if k != resuming)
+        budget = self.deps.settings.monthly_budget_usd
+        guarded = spent + reserved + n * EXPECTED_COST_PER_CASE_USD
+        if guarded > budget:
+            self.refusals.add("monthly-guard")
+            raise BudgetError(
+                f"${spent:.2f} spent this month and ${reserved:.2f} reserved by other runs, plus "
+                f"{n} cases at ${EXPECTED_COST_PER_CASE_USD}, would be ${guarded:.2f}, past the "
+                f"monthly guard of ${budget:.2f}: nothing was fetched and no run was made"
             )
 
     def _pin_backfill(self, queue: Sequence[QueuedCase]) -> None:
@@ -453,7 +482,7 @@ class _Morning:
                 f"the unfinished live run {run_id} is resumed with no backfill held anywhere: "
                 "it is never recomputed from a later queue"
             )
-        self._check_cap(len(raws) - len(_answered(folder)))
+        self._check_cap(len(raws) - len(_answered(folder)), resuming=run_id)
         if self.dry_run:
             _say(f"dry run: a morning would resume the unfinished run with {len(raws)} cases.")
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)

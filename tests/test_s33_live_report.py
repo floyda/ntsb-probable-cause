@@ -206,7 +206,8 @@ def test_outcomes_have_the_three_grades_and_a_wilson_interval(world: World) -> N
     assert "first code right: 1" in text
     assert "right code in another position: 1" in text
     assert "different: 1" in text
-    assert "95% interval for first code right (1 of 3 scored): 6% to 79%" in text
+    assert "95% interval for first code right (1 of 3 cases with a verdict" in text
+    assert "): 6% to 79%" in text
     assert "abstained: 0" in text
     assert "not coded, schema: 1" in text
 
@@ -276,7 +277,7 @@ def test_closing_rule_met_by_a_fresh_closure(world: World) -> None:
     text = _text(world)
     assert "backfill drained: yes" in text
     assert "fresh closures coded: 1" in text
-    assert "days since the first live morning: 2" in text
+    assert "days since the backfill was fixed: 2" in text
     assert text.rstrip().endswith("closing rule: met (fresh closure)")
 
 
@@ -365,3 +366,70 @@ def test_main_reads_the_morning_counts_file(
     out = tmp_path / "out.txt"
     assert module.main(["--out", str(out)]) == 0
     assert "cases returned to the queue: 1" in out.read_text()
+
+
+def test_a_not_coded_case_with_a_verdict_is_counted_once_and_the_parts_sum(tmp_path: Path) -> None:
+    """B1: the three grades are for coded cases; a failed one with a verdict is "not coded"."""
+    records = [
+        _graded("XXX26LA001", True, True),
+        _graded("XXX26LA002", False, True),
+        _graded("XXX26LA003", False, False),
+        _graded("XXX26LA004", False, False).model_copy(
+            update={"abstained": True, "top1": False, "top3": False}
+        ),
+        _closure_record("XXX26LA005", scored=False),
+        # The record held a verdict, the run failed: it has scores and no answer.
+        _graded("XXX26LA006", False, False, outcome="not coded", failure="schema: bad json"),
+        _closure_record("XXX26LA007", outcome="not coded", failure="cap", scored=False),
+    ]
+    folder = _folder(tmp_path, "20261007-a", 7, records)
+    text = report_text([folder], [], TABLES, [], today=TODAY)
+    values = {
+        line.partition(": ")[0]: int(line.partition(": ")[2])
+        for line in text.splitlines()
+        if re.fullmatch(r"[a-z ,]+: \d+", line)
+    }
+    assert values["cases"] == 7
+    parts = (
+        values["first code right"]
+        + values["right code in another position"]
+        + values["different"]
+        + values["abstained"]
+        + values["coded, no verdict to grade"]
+        + values["not coded"]
+    )
+    assert parts == values["cases"]
+    assert values["different"] == 1, "the failed case with a verdict is not 'different'"
+    assert values["not coded"] == 2
+    # Five cases hold a verdict (the abstained and the failed among them); one is right.
+    assert "(1 of 5 cases with a verdict, a not-coded case counting as not right)" in text
+
+
+def test_a_fresh_closure_is_a_coded_case_off_the_backfill_list_whatever_its_date(
+    tmp_path: Path,
+) -> None:
+    """B5: decided by the list, not by a date compared with the day the list was fixed."""
+    ids = ("XXX26LA001",)
+    backfill = Backfill(fixed_on=date(2026, 10, 7), case_ids=ids, sha256=backfill_digest(ids))
+    records = [
+        _graded("XXX26LA001", True, True),
+        _graded("XXX26LA002", True, True, closed_on=date(2026, 10, 7)),  # the day it was fixed
+    ]
+    folder = _folder(tmp_path, "20261007-a", 7, records, backfill=backfill)
+    text = report_text([folder], [], TABLES, [], today=TODAY)
+    assert "fresh closures coded: 1" in text
+    assert text.rstrip().endswith("closing rule: met (fresh closure)")
+
+
+def test_the_fourteen_day_clock_starts_when_the_backfill_was_fixed_not_at_a_runs_start(
+    tmp_path: Path,
+) -> None:
+    ids = ("XXX26LA001",)
+    backfill = Backfill(fixed_on=date(2026, 10, 7), case_ids=ids, sha256=backfill_digest(ids))
+    # The run record's start (a resume rewrites it) is later than the day the list was fixed.
+    folder = _folder(
+        tmp_path, "20261012-a", 12, [_graded("XXX26LA001", True, True)], backfill=backfill
+    )
+    text = report_text([folder], [], TABLES, [], today=date(2026, 10, 21))
+    assert "days since the backfill was fixed: 14" in text
+    assert text.rstrip().endswith("closing rule: met (14 days)")

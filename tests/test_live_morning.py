@@ -436,7 +436,7 @@ def test_b_no_finished_recorder_run_today_is_refused_and_nothing_is_fetched(rig:
 def test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts(rig: Rig) -> None:
     run_id = "20261007T050000-abc1234-live-C"
     folder = rig.runs_dir / run_id
-    folder.mkdir()
+    folder.mkdir(exist_ok=True)
     raws = [_raw("ERA26LA002", 1002), _raw("ERA26LA001", 1001)]
     (folder / INPUTS_FILE).write_text("".join(json.dumps(r) + "\n" for r in raws))
     rig.sink.unfinished = run_id
@@ -681,8 +681,19 @@ def test_l_a_late_start_warns(rig: Rig) -> None:
     assert any("09:00" in w for w in summary.warnings)
 
 
-def test_l_an_early_start_does_not(rig: Rig) -> None:
+def test_l_a_late_start_is_said_on_stderr_at_the_start_too(
+    rig: Rig, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rig.now = datetime(2026, 10, 7, 9, 30, tzinfo=UTC)
+    rig.store._finished = False  # the morning refuses, so only the start can have said it
+    with pytest.raises(ConfigurationError):
+        run_morning(rig.deps())
+    assert "warning: started after 09:00 UTC" in capsys.readouterr().err
+
+
+def test_l_an_early_start_does_not(rig: Rig, capsys: pytest.CaptureFixture[str]) -> None:
     assert run_morning(rig.deps()).warnings == ()
+    assert "started after" not in capsys.readouterr().err
 
 
 def test_m_limit_one_takes_one_case(rig: Rig) -> None:
@@ -974,3 +985,43 @@ def test_a_changed_statistics_or_items_file_is_refused(
     with pytest.raises(ConfigurationError, match="items_csv_sha256"):
         run_morning(rig.deps())
     assert "open" not in rig.events
+
+
+# --- the $40 guard (final review B2) ---
+
+
+def _reserve(rig: Rig, run_id: str, usd: float) -> None:
+    folder = rig.runs_dir / run_id
+    folder.mkdir(exist_ok=True)
+    (folder / "reservation.json").write_text(json.dumps({"projected_usd": usd}))
+
+
+def test_the_monthly_guard_refuses_before_any_fetch_or_folder(rig: Rig) -> None:
+    """B2: AgentRunner's own refusal comes after it made a folder; this one leaves nothing."""
+    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.98)  # 3 cases would be 0.045 more
+    before = {p.name for p in rig.runs_dir.iterdir()}
+    with pytest.raises(BudgetError, match="monthly guard"):
+        run_morning(rig.deps())
+    assert rig.fetched == []
+    assert rig.model_calls == 0
+    assert {p.name for p in rig.runs_dir.iterdir() if p.is_dir()} == before - {
+        "live-refusals.jsonl"
+    }
+    assert [r["reason"] for r in rig.refusals()] == ["monthly-guard"]
+    assert not (rig.runs_dir / PENDING).exists()
+
+
+def test_a_smaller_take_fits_under_the_monthly_guard(rig: Rig) -> None:
+    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.98)  # room for one case, not three
+    summary = run_morning(rig.deps(), limit=1)
+    assert summary.coded == 1
+
+
+def test_a_resume_does_not_count_its_own_reservation_against_the_guard(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    _StubRunner.instances.clear()
+    rig.sink.unfinished = run_id
+    _reserve(rig, run_id, 39.99)  # the run's own: excluded; the guard sees spend 0 + 0 + cases
+    run_morning(rig.deps())
+    assert len(_StubRunner.instances) == 1
+    assert rig.refusals() == []
