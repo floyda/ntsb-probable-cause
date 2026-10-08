@@ -1,4 +1,4 @@
-.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-context-ratio s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-heldout-diagnosis s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results s33-continuity s33-dry-run s33-morning s33-report
+.PHONY: check lint type test ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-context-ratio s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-heldout-diagnosis s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results s33-continuity s33-dry-run s33-morning s33-report s33-mutation-sweep
 
 check: lint type test
 
@@ -723,6 +723,14 @@ s27-retest-readable:
 # this branch. Run once; the results file is committed.
 s33-continuity:
 	uv run --locked python -m scripts.s33_fingerprint_continuity --out docs/results/s33-fingerprint-continuity.txt
+
+# S3.3 final review (A1), free and local: edits each string literal of the modules that write or
+# shape model text, one at a time, in a fresh copy of src, and recomputes the +t fingerprint. Lists
+# every literal whose edit changes nothing and that is not named in
+# tests/fixtures/rendered/not_model_text.toml; exits 1 if there is one. About 1.5 minutes on 8 cores.
+# Run it after any change to agent/rendered.py, to the covered modules or to the list.
+s33-mutation-sweep:
+	uv run --locked python -m scripts.s33_mutation_sweep
 
 s33-dry-run:
 	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live run --dry-run

@@ -123,7 +123,8 @@ that each quoted text is in the program.
 
 | What you see | What it means | What to do |
 |---|---|---|
-| `the agent's prompt version is` ... `morning runs version 1 only (decision 0161)` (**fingerprint** mismatch; the full line reads "..., not the frozen s3-v1+ge17fecdc66ec+tc6497367ee94: a live morning runs version 1 only") | The text the agent would send is not the text measured on held-out. A code or package change moved it. | Stop. Do not run again. Tell Claude. The cause is a change on the branch or in `uv.lock`. |
+| `the agent's prompt version is` ... `morning runs version 1 only (decision 0161)` (**fingerprint** mismatch; the full line reads "..., not the frozen s3-v1+ge17fecdc66ec+te7811b387b31: a live morning runs version 1 only") | The text the agent would send is not the text measured on held-out. A code or package change moved it. | Stop. Do not run again. Tell Claude. The cause is a change on the branch or in `uv.lock`. |
+| `these settings are not version 1's` | A setting that changes what Ellery receives or how it is asked (the model, the reply budget, the cap, the temperature, the statistics file, the pass-reasoning switch) is not the one version 1 was measured with. The line names which. Nothing was fetched or spent. | Stop. Do not run again. Tell Claude. |
 | `the recorder has not finished a run on` | The store is not tonight's yet. | Wait. Try again after the recorder finishes (usually 03:45 UTC, at the latest about 05:31 UTC). If it is later than 06:00 UTC, tell Claude (`docs/runbooks/recorder-bridge.md`). |
 | `the day's limit of` | Ten cases were already coded today. This is a warning, not a refusal: the exit code is 0 and no run is made. | Nothing. Run again tomorrow. |
 | `monthly cap (decision 163)` | This month's live spend plus this morning's projection passes $5. The cases stay queued. | Do not run. Tell Claude. Only a new decision changes the cap. |

@@ -21,6 +21,8 @@ from tests.test_agent_loop import STATS, TABLES
 from tests.test_agent_run import RAWS, Dockets, _mkey
 from tests.test_runner import FakeBatchClient
 
+from ntsb_probable_cause.agent import loop as agent_loop
+from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner
 from ntsb_probable_cause.agent.schemas import ChooseDocuments, DocumentDecision
 from ntsb_probable_cause.agent.trail import AgentCall
@@ -37,8 +39,11 @@ from ntsb_probable_cause.live.morning import (
     LATE_START_UTC,
     LIVE_CAP_USD,
     MONTHLY_CAP_USD,
+    VERSION_1_SETTINGS,
     MorningDeps,
+    current_settings,
     run_morning,
+    settings_differences,
 )
 from ntsb_probable_cause.live.queue import DAILY_LIMIT, backfill_digest
 from ntsb_probable_cause.live.records import (
@@ -911,3 +916,61 @@ def test_p_a_resumed_morning_appends_its_counts(rig: Rig) -> None:
     run_morning(rig.deps())
     (row,) = _counts(rig)
     assert row["taken"] == 1
+
+
+# --- the pinned settings (final review A2) ---
+
+
+def test_the_pinned_settings_are_the_codes_today() -> None:
+    assert current_settings() == dict(VERSION_1_SETTINGS)
+    assert settings_differences() == []
+
+
+@pytest.mark.parametrize(
+    ("patch", "setting"),
+    [
+        ((agent_run, "MAX_CODING_CALLS", 7), "max_coding_calls"),
+        ((agent_run, "STATS", "s27"), "stats"),
+        ((agent_loop, "PASS_REASONING", True), "pass_reasoning"),
+        ((morning, "MODEL_ID", "openai/gpt-6-luna-pro"), "model"),
+        ((morning, "REASONING_EFFORT", "high"), "reasoning_effort"),
+        ((morning, "MAX_OUTPUT_TOKENS", 2000), "max_output_tokens"),
+        ((morning, "LIVE_CAP_USD", 0.5), "cap_usd"),
+        ((morning, "WITHOUT", frozenset({"coding"})), "without"),
+    ],
+)
+def test_a_changed_setting_is_refused_before_the_store_is_opened(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch, patch: tuple[Any, str, object], setting: str
+) -> None:
+    target, name, value = patch
+    monkeypatch.setattr(target, name, value)
+    with pytest.raises(ConfigurationError, match=setting):
+        run_morning(rig.deps())
+    assert "open" not in rig.events
+    assert rig.model_calls == 0
+    assert [r["reason"] for r in rig.refusals()] == ["settings"]
+
+
+def test_a_changed_temperature_default_is_refused(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    @dataclass
+    class Warmer:
+        temperature: float = 0.7
+
+    monkeypatch.setattr(morning, "ModelSettings", Warmer)
+    with pytest.raises(ConfigurationError, match="temperature"):
+        run_morning(rig.deps())
+    assert "open" not in rig.events
+
+
+def test_a_changed_statistics_or_items_file_is_refused(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = morning._table_sha256
+    monkeypatch.setattr(
+        morning, "_table_sha256", lambda name: "0" * 64 if "items" in name else real(name)
+    )
+    with pytest.raises(ConfigurationError, match="items_csv_sha256"):
+        run_morning(rig.deps())
+    assert "open" not in rig.events

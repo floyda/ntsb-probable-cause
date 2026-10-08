@@ -28,8 +28,13 @@ AGENT_PROMPT_VERSION: Final = "s3-v1"
 # What version 1's runs recorded under the source fingerprint (decision 0133): S3.1's and S3.2's
 # runs carry it, and ``is_plain`` still accepts it.
 SOURCE_LABEL_V1: Final = "s3-v1+ge17fecdc66ec+p947fac1c86a4"
-# Version 1 under the rendered-text fingerprint, pinned in S3.3 Task 2 (decision 0161).
-VERSION_1: Final = "s3-v1+ge17fecdc66ec+tc6497367ee94"
+# Version 1 under the rendered-text fingerprint, pinned in S3.3 Task 2 and re-pinned in the
+# final review (2026-10-08), before any live record carried the first value, when the renderer was
+# extended to cover more of what a live run sends (decision 0161, note of 2026-10-08).
+# ``tests/test_agent_version.py`` ties it to ``docs/results/s33-fingerprint-continuity.txt``,
+# which proves the same value on ``fd6053f`` and on the current code. A new text is a new
+# version (decision 0156, item 4), never a new value here.
+VERSION_1: Final = "s3-v1+ge17fecdc66ec+te7811b387b31"
 
 # The text fingerprint's place in a prompt version: ``+p`` (source, decision 0133) or ``+t``
 # (rendered text, decision 0143), and twelve hex characters.

@@ -12,18 +12,21 @@ afterwards, so a resume reads back exactly the records the run began with, in or
 """
 
 import contextlib
+import hashlib
 import json
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
+from importlib import resources
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner
+from ntsb_probable_cause.agent.schemas import Without
 from ntsb_probable_cause.agent.version import VERSION_1, prompt_version
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
@@ -48,7 +51,7 @@ from ntsb_probable_cause.live.records import (
     ClosureRecord,
 )
 from ntsb_probable_cause.live.seams import ResultSink, SpendCounter, StoreSource
-from ntsb_probable_cause.model.client import ModelClient
+from ntsb_probable_cause.model.client import ModelClient, ModelSettings
 from ntsb_probable_cause.scoring.budget import month_spent
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
@@ -69,12 +72,88 @@ LATE_START_UTC: Final = time(9, 0)  # spec section 4: warn after this
 MODEL_ID: Final = LUNA_6.model_id  # a named price entry, so DEFAULT_MODEL cannot move it
 REASONING_EFFORT: Final[ReasoningEffort] = "medium"
 MAX_OUTPUT_TOKENS: Final = 8000
+WITHOUT: Final[frozenset[Without]] = frozenset()  # no tool ablation in a live run
+# What `+t` cannot see (S3.3 final review, A2): settings that change what Ellery receives or how
+# it is asked without being text in a request. Version 1 as S3.2 froze it; `run_morning` compares
+# these with the code's current values before the store is opened or a model is called, and refuses
+# on any difference. The two hashes are of `scoring/tables/coding_stats_s3.json` and `items.csv`,
+# unchanged since `fd6053f`. A deliberate change is a new version (decision 0156, item 4), not an
+# edit of this table. The model is spelled in `sources.py` only (a test keeps it so), so it is
+# pinned by that named price entry; `test_g_the_run_spec` holds the id's text.
+VERSION_1_SETTINGS: Final[Mapping[str, object]] = {
+    "stats": "s3",
+    "max_coding_calls": 6,
+    "without": [],
+    "pass_reasoning": False,
+    "temperature": 0.0,
+    "model": LUNA_6.model_id,
+    "reasoning_effort": "medium",
+    "max_output_tokens": 8000,
+    "cap_usd": 0.3,
+    "price_variant": "batch",
+    "exclusions": ["prelim_narrative"],
+    "evidence_version": "v1",
+    "coding_stats_s3_sha256": "aa29bf42fba3dcd3672159464d41c2f106ba45cf3314b08ff22ec21231b47800",
+    "items_csv_sha256": "3d42c7a3511e759c51238ee8275023a4c7eee16a98aa94e674f56120caf1bdb4",
+}
 PENDING_BACKFILL_FILE: Final = "live-pending-backfill.json"
 PENDING_INPUTS_FILE: Final = "live-pending-inputs.jsonl"
 REFUSALS_FILE: Final = "live-refusals.jsonl"
 MORNING_COUNTS_FILE: Final = "live-morning-counts.jsonl"
 MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
+
+
+def live_spec(budget_usd: float) -> RunSpec:
+    """The spec of every live run: version 1's settings, the month's budget as given."""
+    return RunSpec(
+        sample=LIVE_SAMPLE,
+        arm="C",
+        evidence_version="v1",
+        exclusions=frozenset({EvidenceRole.PRELIM_NARRATIVE}),
+        model=MODEL_ID,
+        reasoning_effort=REASONING_EFFORT,
+        max_output_tokens=MAX_OUTPUT_TOKENS,
+        price_variant="batch",
+        cap_usd=LIVE_CAP_USD,
+        budget_usd=budget_usd,
+        sync=False,
+        expected_cost_per_case_usd=EXPECTED_COST_PER_CASE_USD,
+        guidance=GUIDANCE,
+    )
+
+
+def _table_sha256(name: str) -> str:
+    data = resources.files("ntsb_probable_cause.scoring").joinpath("tables", name).read_bytes()
+    return hashlib.sha256(data).hexdigest()
+
+
+def current_settings() -> dict[str, Any]:
+    """The values the code would run a morning with, under :data:`VERSION_1_SETTINGS`' keys."""
+    spec = live_spec(0.0)
+    return {
+        "stats": agent_run.STATS,
+        "max_coding_calls": agent_run.MAX_CODING_CALLS,
+        "without": sorted(WITHOUT),
+        "pass_reasoning": agent_loop.PASS_REASONING,
+        "temperature": ModelSettings().temperature,
+        "model": spec.model,
+        "reasoning_effort": spec.reasoning_effort,
+        "max_output_tokens": spec.max_output_tokens,
+        "cap_usd": spec.cap_usd,
+        "price_variant": spec.price_variant,
+        "exclusions": sorted(spec.exclusions),
+        "evidence_version": spec.evidence_version,
+        "coding_stats_s3_sha256": _table_sha256("coding_stats_s3.json"),
+        "items_csv_sha256": _table_sha256("items.csv"),
+    }
+
+
+def settings_differences() -> list[str]:
+    """The names of the settings whose current value is not version 1's; empty when all match."""
+    now = current_settings()
+    names = set(VERSION_1_SETTINGS) | set(now)
+    return sorted(n for n in names if VERSION_1_SETTINGS.get(n) != now.get(n))
 
 
 @dataclass(frozen=True)
@@ -125,7 +204,8 @@ def run_morning(
         The morning's counts.
 
     Raises:
-        ConfigurationError: the prompt-version label is not version 1, the recorder has not
+        ConfigurationError: the prompt-version label is not version 1, a setting is not version
+            1's (:data:`VERSION_1_SETTINGS`), the recorder has not
             finished a run today, or an unfinished live run cannot be resumed.
         BudgetError: the month's live spend plus this morning's projection passes the cap.
     """
@@ -137,6 +217,13 @@ def run_morning(
         raise ConfigurationError(
             f"the agent's prompt version is {label}, not the frozen {VERSION_1}: a live "
             "morning runs version 1 only (decision 0161)"
+        )
+    differing = settings_differences()
+    if differing:
+        refusals.add("settings")
+        raise ConfigurationError(
+            f"these settings are not version 1's: {', '.join(differing)}. A live morning runs "
+            "version 1 only (decisions 0156, 0161)"
         )
     settings = deps.settings
     if settings.live_docket_dir.resolve() == settings.docket_dir.resolve():
@@ -421,6 +508,7 @@ class _Morning:
                 docket=CachedDocketReader(docket_client, readings=None),
                 now=deps.now,
                 pass_reasoning=agent_loop.PASS_REASONING,
+                without=WITHOUT,
             )
             before = _folders(self.runs_dir)
             try:
@@ -477,21 +565,7 @@ class _Morning:
         return records, self._cleanup(prepared)
 
     def _spec(self) -> RunSpec:
-        return RunSpec(
-            sample=LIVE_SAMPLE,
-            arm="C",
-            evidence_version="v1",
-            exclusions=frozenset({EvidenceRole.PRELIM_NARRATIVE}),
-            model=MODEL_ID,
-            reasoning_effort=REASONING_EFFORT,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
-            price_variant="batch",
-            cap_usd=LIVE_CAP_USD,
-            budget_usd=self.deps.settings.monthly_budget_usd,
-            sync=False,
-            expected_cost_per_case_usd=EXPECTED_COST_PER_CASE_USD,
-            guidance=GUIDANCE,
-        )
+        return live_spec(self.deps.settings.monthly_budget_usd)
 
     def _cleanup(self, prepared: Sequence[Prepared]) -> int:
         """Delete the run's cases' cached documents; return the bytes freed."""

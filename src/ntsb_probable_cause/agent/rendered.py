@@ -7,9 +7,15 @@ reads from each request body (:data:`MODEL_FACING_KEYS`): the messages, the tool
 tool choice, the parallel-calls flag and the response format. A change to any text the model
 receives changes the hash; a comment, a docstring or a rename does not.
 
-Invented, never a real case (decision 0143): :data:`_RAW` and :data:`_DOCKET` hold made-up values.
-The scenarios walk every branch that writes text for the model; ``tests/test_agent_rendered.py``
-parses the covered modules and fails when a text literal in them is sent by none of them.
+Invented, never a real case (decision 0143): :data:`_RAW`, :data:`_RAW_BUILT` and the dockets hold
+made-up values. The scenarios are chosen to send the texts a live run sends, but they do not prove
+that they send every one: ``tests/test_agent_rendered.py`` fails when a model-text literal of the
+covered modules appears in no request, and ``make s33-mutation-sweep`` edits every such literal in
+turn and lists any whose edit leaves the fingerprint unchanged. A text that neither check names is
+still a text the fingerprint may not follow; so is a setting that changes what the model receives
+without being text (the temperature, the model, the reply budget, the statistics file's rows, the
+pass-reasoning switch). Those are pinned instead in ``live.morning.VERSION_1_SETTINGS``, which a
+morning compares before it calls a model.
 
 This module imports only what already existed at commit ``fd6053f``, with the same signatures:
 version 1's fingerprint is proved by running this file, unchanged, in a checkout of that commit.
@@ -18,6 +24,7 @@ It imports nothing that is new in S3.3, and not ``agent.run``, whose guidance it
 (code tables, statistics, guidance), which are part of what the agent sends.
 """
 
+import copy
 import functools
 import hashlib
 import json
@@ -30,12 +37,13 @@ from ntsb_probable_cause.agent.documents import DocketView, docket_view
 from ntsb_probable_cause.agent.loop import CaseLoop, LoopConfig, PendingCall
 from ntsb_probable_cause.agent.schemas import DocumentDecision
 from ntsb_probable_cause.agent.trail import LoopOutcome, Prior, ReadRecord
+from ntsb_probable_cause.docket.extract import extract_pdf
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
 from ntsb_probable_cause.model.client import ModelReply, ToolCall, Usage
 from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.scoring.codes import load_tables
-from ntsb_probable_cause.scoring.coding_stats import load_stats
+from ntsb_probable_cause.scoring.coding_stats import StatsName, load_stats
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis, parse_hypothesis
 from ntsb_probable_cause.scoring.runner import RunSpec, prepare_case
 
@@ -52,6 +60,10 @@ MODEL_FACING_KEYS: Final = (
 # The guidance the live agent reads (``agent.run.GUIDANCE``), copied so that this module needs no
 # module that is new since ``fd6053f``. ``tests/test_agent_rendered.py`` holds the two equal.
 RENDER_GUIDANCE: Final[tuple[str, ...]] = ("r3-loc-stall", "r6-aircraft-control")
+# The statistics file and the coding-call limit the live agent runs with (``agent.run.STATS`` and
+# ``agent.run.MAX_CODING_CALLS``), copied for the same reason; a test holds each pair equal.
+RENDER_STATS: Final[StatsName] = "s3"
+RENDER_MAX_CODING_CALLS: Final = 6
 
 _SENT_AT: Final = datetime(2026, 10, 7, 12, tzinfo=UTC)
 _NO_USAGE: Final = Usage(prompt_tokens=0, completion_tokens=0)
@@ -143,14 +155,59 @@ def _docket(records: Sequence[DocumentRecord], texts: dict[int, str]) -> Docket:
     return Docket(mkey=1, listing=listing, documents=tuple(records), texts=texts)
 
 
-_TEXT_1: Final = (
-    "[page 1 of 2]\nThe examination found the left main gear leg bent aft. The tire showed a "
-    "flat spot on the inboard side. The brake lines were intact and the fluid was full.\n"
-    "[page 2 of 2]\nThe tailwheel steering arm moved freely through its range of travel.\n"
+def _pdf(pages: Sequence[str]) -> bytes:
+    """A minimal PDF with one line of text on each page, built by hand.
+
+    ``docket.extract.extract_pdf`` reads it, so a document's page markers and the joins between
+    its pages are the extractor's own, not a copy of them kept here. Nothing in it is a real
+    document.
+    """
+    first = 4  # object numbers: 1 catalog, 2 page tree, 3 font, then a page and its text each
+    kids = " ".join(f"{first + 2 * n} 0 R" for n in range(len(pages)))
+    bodies: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    for n, text in enumerate(pages):
+        escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode()
+        bodies.append(
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % (first + 2 * n + 1)
+        )
+        bodies.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for number, body in enumerate(bodies, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    table = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
+    for offset in offsets:
+        out += b"%010d 00000 n \n" % offset
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        len(bodies) + 1,
+        table,
+    )
+    return bytes(out)
+
+
+def _extracted(*pages: str) -> str:
+    """The text of an invented document as the docket reader makes it: marked, page by page."""
+    return extract_pdf(_pdf(pages)).text
+
+
+_TEXT_1: Final = _extracted(
+    "The examination found the left main gear leg bent aft. The tire showed a flat spot on the "
+    "inboard side. The brake lines were intact and the fluid was full.",
+    "The tailwheel steering arm moved freely through its range of travel.",
 )
-_TEXT_2: Final = (
-    "[page 1 of 3]\nThe operator states that the airplane was last flown two days before the "
-    "event and that no discrepancy was written up.\n"
+_TEXT_2: Final = _extracted(
+    "The operator states that the airplane was last flown two days before the event and that no "
+    "discrepancy was written up.",
+    "The airplane was kept in a hangar between flights.",
+    "Fuel was last added the day before the flight.",
 )
 
 _READ_1: Final = _record(
@@ -170,6 +227,49 @@ _PHOTO: Final = _record(
 _DOCKET: Final = _docket((_READ_1, _READ_2, _SCAN, _PHOTO), {1: _TEXT_1, 2: _TEXT_2})
 # A docket whose listed documents none can be read.
 _DOCKET_UNREADABLE: Final = _docket((_SCAN, _PHOTO), {})
+
+# An invented amateur-built case whose owner/operator is on record (decisions 0044, 0046), and a
+# docket that names the make, the model and that operator in its text: the attach step replaces
+# each. One document has one page (so it reads ``1 page``); one has three pages, of which two
+# held readable text (so its header says so). Both ``aircraftAmateurBuilt`` and ``ownerOperators``
+# are fields of the record that exist at ``fd6053f``; ``_RAW`` has neither set.
+_BUILT_OPERATOR: Final = "Invented Soaring Club"
+
+
+def _built_raw() -> dict[str, object]:
+    raw = copy.deepcopy(_RAW)
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)  # noqa: S101 -- the invented record above is a list
+    aircrafts[0] = {
+        **aircrafts[0],
+        "aircraftAmateurBuilt": True,
+        "ownerOperators": [{"operatorName": _BUILT_OPERATOR}],
+    }
+    return raw
+
+
+_RAW_BUILT: Final[dict[str, object]] = _built_raw()
+_BUILT_1: Final = _record(
+    _entry(1, "Builder Inspection Note", 1), "exam_site", "read", "born-digital", 1
+)
+_BUILT_2: Final = _record(
+    _entry(2, "Maintenance Log Extract", 3), "party_submission", "read", "born-digital", 2
+)
+_DOCKET_BUILT: Final = _docket(
+    (_BUILT_1, _BUILT_2),
+    {
+        1: _extracted(
+            "The Examplecraft EX-100 was built over four years by Invented Soaring Club. The "
+            "inspector found the wing attach fittings secure."
+        ),
+        2: _extracted(
+            "Invented Soaring Club recorded the last annual inspection of the Examplecraft "
+            "airframe and found no discrepancy.",
+            "The log shows the left main gear leg was replaced eight months earlier.",
+            "",
+        ),
+    },
+)
 
 # --- the scripted replies ---
 
@@ -206,7 +306,15 @@ def _decisions(pairs: Sequence[tuple[int, bool]]) -> str:
     )
 
 
-def _calling(*calls: tuple[str, str]) -> ModelReply:
+# Invented provider reasoning, given to one scripted reply. The loop keeps it on the assistant turn
+# and ``request_body`` passes it back only when ``LoopConfig.pass_reasoning`` is on, so today's
+# hash does not carry it; a flip of ``loop.PASS_REASONING`` would move the hash.
+_REASONING: Final[tuple[dict[str, object], ...]] = (
+    {"type": "reasoning.text", "text": "The gear leg and the crosswind decide it.", "index": 0},
+)
+
+
+def _calling(*calls: tuple[str, str], reasoning: bool = False) -> ModelReply:
     """A reply that calls tools, the first being the one the loop acts on."""
     return ModelReply(
         content=None,
@@ -218,6 +326,7 @@ def _calling(*calls: tuple[str, str]) -> ModelReply:
         usage=_NO_USAGE,
         model="rendered",
         response_id="rendered",
+        reasoning_details=_REASONING if reasoning else (),
     )
 
 
@@ -292,8 +401,9 @@ class ScenarioRun:
 def _config(**changes: object) -> LoopConfig:
     base = LoopConfig(
         tables=load_tables(),
-        stats=load_stats("s3"),
+        stats=load_stats(RENDER_STATS),
         guidance=RENDER_GUIDANCE,
+        max_coding_calls=RENDER_MAX_CODING_CALLS,
         exclusions=frozenset(),
         cap_usd=_CAP_USD,
         price_variant="batch",
@@ -301,14 +411,18 @@ def _config(**changes: object) -> LoopConfig:
     return replace(base, **changes)  # type: ignore[arg-type]  # keyword names are the caller's
 
 
-def _view(docket: Docket = _DOCKET) -> DocketView:
-    return docket_view(_RAW, docket)
+def _view(docket: Docket = _DOCKET, raw: dict[str, object] = _RAW) -> DocketView:
+    return docket_view(raw, docket)
 
 
 def _case(
-    view: DocketView | None, config: LoopConfig | None = None, **later: object
+    view: DocketView | None,
+    config: LoopConfig | None = None,
+    *,
+    raw: dict[str, object] = _RAW,
+    **later: object,
 ) -> Callable[[], _Machine]:
-    return lambda: CaseLoop(_RAW, view, config or _config(), **later)  # type: ignore[arg-type]
+    return lambda: CaseLoop(raw, view, config or _config(), **later)  # type: ignore[arg-type]
 
 
 def _prior(*, read: Sequence[int], reads: Sequence[ReadRecord]) -> Prior:
@@ -391,7 +505,7 @@ def _scenarios() -> list[_Scenario]:
             "full path",
             _case(view),
             (
-                _calling(_RECORD),
+                _calling(_RECORD, reasoning=True),
                 # Reads one document, skips the other; decides on a number the listing does not
                 # hold and on a document that cannot be read.
                 _calling(_choosing([(1, True), (2, False), (99, True), (3, True)])),
@@ -415,7 +529,7 @@ def _scenarios() -> list[_Scenario]:
         ),
         _Scenario(
             "refused replies and the coding tools' edge cases",
-            _case(view, _config(max_coding_calls=20)),
+            _case(view, _config(max_coding_calls=24)),
             (
                 _calling(("record_hypothesis", "{not json")),
                 _calling(_RECORD),
@@ -443,6 +557,8 @@ def _scenarios() -> list[_Scenario]:
                 _calling(_describing("finding_category", "999999")),
                 _calling(_submitting(findings=[_finding("020630", "04")])),
                 _calling(_describing("item", "99999999")),
+                _calling(_describing("item", "02063015")),
+                _calling(("past_findings", json.dumps({**_WHY, "occurrence": "999999"}))),
                 _calling(_submitting(findings=[_finding("020630", "44", item8="99999999")])),
                 _calling(_describing("item")),
                 _calling(_usage()),
@@ -467,6 +583,21 @@ def _scenarios() -> list[_Scenario]:
             (
                 _calling(_RECORD),
                 _calling(_usage("552230")),
+                _calling(_ANSWER),
+                _saying(_REFINEMENT),
+            ),
+        ),
+        _Scenario(
+            "amateur-built, owner named, a one-page and a part-readable document",
+            _case(
+                _view(_DOCKET_BUILT, _RAW_BUILT),
+                _config(without=frozenset({"coding"})),
+                raw=_RAW_BUILT,
+            ),
+            (
+                _calling(_RECORD),
+                _calling(_choosing([(1, True), (2, True)])),
+                _calling(_RECORD),
                 _calling(_ANSWER),
                 _saying(_REFINEMENT),
             ),
@@ -534,6 +665,11 @@ def _scenarios() -> list[_Scenario]:
                 _calling(_ANSWER),
                 _saying(_REFINEMENT),
             ),
+        ),
+        _Scenario(
+            "coding ablation, nothing readable",
+            _case(_view(_DOCKET_UNREADABLE), _config(without=frozenset({"coding"}))),
+            (_calling(_RECORD), _calling(_ANSWER), _saying(_REFINEMENT)),
         ),
         _Scenario(
             "a cap that forces the answer", _capped, (_calling(_ANSWER), _saying(_REFINEMENT))

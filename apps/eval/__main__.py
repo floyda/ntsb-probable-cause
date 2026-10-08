@@ -168,9 +168,9 @@ def _plain_prompt(record: RunRecord) -> bool:
 
     Arms A, B and the ceiling: no guidance (a guided run, S2.7, is not the plain arm). Arm C
     always reads S3's guidance (spec §20), so its plain prompt is that guidance and no tuning
-    round (``+r``). The text fingerprint (``+p``, Andy 2026-10-01) is not compared, as arms A
-    and B's prompt versions are not: a run made before a kept round changed the agent's text is
-    still the plain arm of its day (``texts.is_plain``).
+    round (``+r``). The text fingerprint (``+p`` or ``+t``, Andy 2026-10-01) is not compared,
+    as arms A and B's prompt versions are not: a run made before a kept round changed the
+    agent's text is still the plain arm of its day (``version.is_plain``).
     """
     if record.arm != "C":
         return not record.guidance

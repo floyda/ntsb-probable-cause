@@ -61,3 +61,25 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 - **`+t`**: the prompt version's fingerprint of the rendered text.
 - **Reach test**: every text-building string must turn up in what the agent receives.
 - **`--locked`**: uv's mode that refuses to run if the lockfile would change.
+
+**Note, 2026-10-08 (final review, before any live record carried the first value):** the value
+pinned on 2026-10-07 (`+tc6497367ee94`) was re-pinned to `+te7811b387b31`
+(`s3-v1+ge17fecdc66ec+te7811b387b31`) because the renderer was extended, not because the agent's
+text changed. A per-literal mutation sweep (969 literals, 19 modules) showed that "It cannot miss
+a text" in Decision, item 2, overstated the reach test: a literal can appear in a request by
+coincidence while the text the model reads comes from elsewhere. The sweep found texts a live run
+sends that the fingerprint did not follow: a one-page document's menu word and header, the
+partly-readable header, the amateur-built label, the owner or operator label, the page marker, the
+success line of `describe_codes` for an item, and `past_findings` for an unknown occurrence code.
+`agent/rendered.py` now sends each of them (a hand-built PDF read by `docket.extract.extract_pdf`
+gives the page markers and joins), the reach test also covers `fields.py`, `docket/attach.py`,
+`docket/extract.py` and `docket/listing.py`, and `make s33-mutation-sweep` lists any literal whose
+edit leaves the fingerprint unchanged and which the list in
+`tests/fixtures/rendered/not_model_text.toml` does not explain. The extended renderer gives the same
+value on `fd6053f` and on the current code (re-checked by `make s33-continuity`). Settings that
+change what the model receives without being text (the temperature, the model, the reply budget,
+the statistics file and `items.csv`, the pass-reasoning switch) are pinned in
+`live.morning.VERSION_1_SETTINGS`, which a morning compares before it opens the store. Decision
+item 4 still holds: a new text is a new version; a wider renderer on unchanged text re-pins
+"version 1" once, here, and the test `tests/test_agent_version.py` ties the value to the
+continuity file.

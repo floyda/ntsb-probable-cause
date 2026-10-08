@@ -30,7 +30,8 @@ source's plus one ``fixed_tools`` step; every other case is copied through uncha
 ``trail.jsonl`` (one ``AgentCall`` per model call; the pipeline's own calls are in the step's
 arguments, with their result sizes), the drivers' files, and ``run.jsonl``: arm B, the source's
 prompt version with ``+tools-s3`` (the S3 statistics file the tools counted in, decision 0129) and
-``+p`` with the agent's text fingerprint (decision 0133), and the post-pass's own cost. A post-pass
+``+t`` with the agent's rendered-text fingerprint (decisions 0133, 0143), and the post-pass's
+own cost. A post-pass
 is run once per source run and is not resumed.
 """
 
@@ -868,10 +869,11 @@ def _write(  # noqa: PLR0913 -- the run, its cases and settings, then when and w
     Its cost is the post-pass's own: every reply it took, and any round no reply came from. The
     source's answers were paid for, and counted, in the source run. Its prompt version is the
     label ``tools_run`` fixed at its start: the source's with ``+tools-<stats_name>`` (the
-    statistics the tool results counted in) and then ``+p`` and the agent's text fingerprint
-    (``texts.text_mark``; decision 0133). The post-pass sends the agent's tool definitions, tool
-    results and refusals, so its label follows their text as arm C's does; it is passed in, never
-    recomputed, so an edit made while the post-pass ran cannot reach the record.
+    statistics the tool results counted in) and then ``+t`` and the rendered-text fingerprint
+    (``version.text_mark``; decisions 0133, 0143). The post-pass sends the agent's tool
+    definitions, tool results and refusals, so its label follows their text as arm C's does; it
+    is passed in, never recomputed, so an edit made while the post-pass ran cannot reach the
+    record.
     """
     results = [_result(case, config, seen_pairs) for case in cases]
     write_jsonl(folder / _CASES_FILE, results)
