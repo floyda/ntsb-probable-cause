@@ -260,6 +260,8 @@ def test_every_s33_target_is_phony_and_the_morning_checks_both_lines_first() -> 
         (False, True),
     ]
     assert max(stages) < run
+    # decision 0165: 10 cases at the $0.04 projection
+    assert all(lines[i].endswith("--estimate 0.40") for i in stages)
 
 
 def test_the_s33_recipes_reach_the_s3_store_through_live_env_and_the_aws_extra() -> None:

@@ -18,7 +18,7 @@ import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any, Final
@@ -65,8 +65,9 @@ from ntsb_probable_cause.store import Store
 
 LIVE_CAP_USD: Final = 0.30  # decision 163
 MONTHLY_CAP_USD: Final = 5.0  # decision 163
-EXPECTED_COST_PER_CASE_USD: Final = 0.015  # estimate, spec section 9; the reservation's projection
-LATE_START_UTC: Final = time(9, 0)  # spec section 4: warn after this
+# Estimate for the caps' projections (decision 0165: the standard price is about twice batch per
+# token, and large dockets cost more). It feeds the reservation's projection only.
+EXPECTED_COST_PER_CASE_USD: Final = 0.04
 
 # Pinned here, not read from library defaults: a development edit of those must not move live
 # runs off the model (decisions 0073, 0084, 0156). The `+t` fingerprint does not hash them.
@@ -91,7 +92,8 @@ VERSION_1_SETTINGS: Final[Mapping[str, object]] = {
     "reasoning_effort": "medium",
     "max_output_tokens": 8000,
     "cap_usd": 0.3,
-    "price_variant": "batch",
+    "price_variant": "standard",
+    "sync": True,
     "exclusions": ["prelim_narrative"],
     "evidence_version": "v1",
     "coding_stats_s3_sha256": "aa29bf42fba3dcd3672159464d41c2f106ba45cf3314b08ff22ec21231b47800",
@@ -115,10 +117,10 @@ def live_spec(budget_usd: float) -> RunSpec:
         model=MODEL_ID,
         reasoning_effort=REASONING_EFFORT,
         max_output_tokens=MAX_OUTPUT_TOKENS,
-        price_variant="batch",
+        price_variant="standard",
         cap_usd=LIVE_CAP_USD,
         budget_usd=budget_usd,
-        sync=False,
+        sync=True,
         expected_cost_per_case_usd=EXPECTED_COST_PER_CASE_USD,
         guidance=GUIDANCE,
     )
@@ -143,6 +145,7 @@ def current_settings() -> dict[str, Any]:
         "max_output_tokens": spec.max_output_tokens,
         "cap_usd": spec.cap_usd,
         "price_variant": spec.price_variant,
+        "sync": spec.sync,
         "exclusions": sorted(spec.exclusions),
         "evidence_version": spec.evidence_version,
         "coding_stats_s3_sha256": _table_sha256("coding_stats_s3.json"),
@@ -282,12 +285,6 @@ class _Morning:
         self.warnings: list[str] = []
         self.interrupted = False
         self.lock_sha = ""
-        if began.astimezone(UTC).time() > LATE_START_UTC:
-            late = f"started after {LATE_START_UTC:%H:%M} UTC"
-            self.warnings.append(late)
-            # Said at once as well as in the end summary: Andy sees it while the morning runs
-            # (the batch service is slower later in the day), not hours afterwards.
-            sys.stderr.write(f"warning: {late}\n")
 
     # --- the order of a morning ---
 

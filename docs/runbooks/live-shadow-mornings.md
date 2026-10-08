@@ -47,8 +47,9 @@ Words in **bold** the first time they appear are in the glossary at the end.
 - **Not before about 03:45 UTC** (04:45 UK time in summer; 03:45 in winter). The recorder's
   night run usually finishes at about 03:45 UTC. If you start earlier, the command refuses
   (section 6, "recorder has not finished").
-- **Before 09:00 UTC.** After 09:00 the command prints a warning, because the batch service is
-  slower after about 12:00 UTC.
+- **Any time after that.** There is no batch window (decision 0165): a live run uses the
+  standard price and answers in seconds. Start whenever you can keep the laptop open for about
+  half an hour.
 - The first paid morning uses `LIMIT=1`. It codes one case only. You look at the summary, then
   later mornings run without a limit.
 
@@ -77,8 +78,9 @@ checkout under the first one before the lock of `ntsb-live` can refuse it.
 
 `paid_run.sh` makes a clean copy of the branch and runs `make s33-morning`. That target first
 checks two spending lines (S3's $50 and S3.3's own line), and only then starts `ntsb-live run`.
-A morning takes up to about 2 hours, whatever its size: a run is 10 to 15 batch rounds, and
-one case needs as many rounds as ten. Leave the terminal open.
+A morning of 10 cases takes about half an hour: about 12 calls a case at about 12 seconds each
+(one case takes about 3 minutes). Keep the laptop open and leave the terminal open for that
+half hour. The calls go one at a time at the standard price, so there is no queue to wait in.
 
 Only one morning can run at a time. The command locks `live.lock` in the runs folder.
 
@@ -93,22 +95,22 @@ The command prints counts only. It names no case.
 | `not coded, <reason>` | Cases that were closed but not coded, with the reason: one of `schema` (the reply broke its format), `model` (the model failed), `leak` (the leakage guard stopped it), `cap` or `cap: context` (the case reached its cost cap or the context limit), `failed` (the loop failed at a step), `aborted`, `missing result`, or `other`. The record is written. The case is not tried again. |
 | `returned to the queue` | Cases that failed before the agent saw them (a fetch failed). They are tried again tomorrow. |
 | `still queued` | Closed cases waiting for a later morning. A morning takes at most 10 cases. A case that comes back as `returned to the queue` on three mornings in a row: tell Claude (it would hold the closing rule back). |
-| `cost` | The computed cost, and the amount the batch service billed (it may arrive later). |
+| `cost` | The computed cost. A live run is not a batch, so no separate billed amount comes back. |
 | `minutes` | How long the morning took. |
 | `bytes freed` | Space deleted at the end (section 7). |
-| `warning` | Something to read. For example, "started after 09:00 UTC". |
+| `warning` | Something to read. For example, "completed the records of an earlier run". |
 
 The monthly live cap is $5. If the next morning would pass it, the command refuses. The check
-projects $0.015 a case. A day that has an unfinished run to resume and then a fresh run can code up
+projects $0.04 a case (the standard price, with room for large dockets). A day that has an unfinished run to resume and then a fresh run can code up
 to 20 cases (see section 5), so a day's cost can reach about $0.30 projected, and the real cost is
 usually lower. The all-purpose $40 monthly guard is checked too (section 6).
 
 ## 5. An interrupted morning
 
-If the command stops (power cut, network loss, `Ctrl-C`, a crash, a cancelled batch), the run
+If the command stops (power cut, network loss, `Ctrl-C`, a crash), the run
 folder stays on disk. **Run the same command again.** (A message may say `--resume`; `ntsb-live`
 has no such option. Just run the same command.) The command finds the unfinished run, reuses
-the batches already paid for, and finishes it. It uses the same cases as the first start.
+the replies already on disk (they are not paid for again), and sends only the calls not yet answered. It uses the same cases as the first start.
 
 **Finish (or resume) an interrupted morning before any code is pushed to the branch.**
 `paid_run.sh` resets its copy to the branch tip, and a resume on a different commit is
@@ -165,7 +167,7 @@ that each quoted text is in the program.
 | `resumed with the records it began with` or `the finished live run` | The folder of an interrupted or finished run lacks the file that holds the cases it began with. | Do not delete it. Tell Claude. |
 | `is resumed with no backfill held anywhere` | The folder of an interrupted run lacks its backfill list. | Do not delete it. Tell Claude. |
 | `another morning is running` | A second morning holds the lock. | Wait for it. If you are sure none is running (the laptop restarted), run again: a lock does not survive a restart. |
-| `has no --resume option` | A batch was cancelled (usually someone stopped it). The records so far are written. | Run the same command again. If the batch was not stopped on purpose, tell Claude. |
+| `has no --resume option` | A run was cancelled (a batch run only; live runs are not batches, so this should not appear). The records so far are written. | Run the same command again. If it appears, tell Claude. |
 | `has uncommitted changes` (from `paid_run.sh`) | The paid-runs copy holds unsaved work. | Follow the message. Commit and push from that folder. Never discard. |
 | `not on origin/` (from `paid_run.sh`) | The paid-runs copy holds a commit that is not pushed. | Follow the message. Push it. |
 
@@ -209,8 +211,10 @@ that each quoted text is in the program.
 - **Closed case.** A case where the NTSB has published its final report.
 - **Coded.** The agent gave a verdict for the case (what happened and why).
 - **Queue.** The closed cases waiting to be coded, oldest first.
-- **Batch.** A way of sending many model requests at a lower price. The answer comes back later,
-  usually within an hour or two.
+- **Standard price.** The provider's normal service: one request at a time, answered in seconds,
+  at about twice the batch price per token. Live runs use it (decision 0165).
+- **Batch.** A way of sending many model requests at a lower price. The answer comes back later.
+  Live runs no longer use it.
 - **Run folder.** A folder under the main folder's `data/runs` holding one morning's records.
 - **Closure record.** The record for one case: what the agent was given, what it said, and when.
   It holds no document text.

@@ -16,10 +16,9 @@ from types import TracebackType
 from typing import Any, Self
 
 import pytest
-from tests.test_agent_drive import _answers, _scripts
+from tests.test_agent_drive import ScriptedClient, _KilledError, _scripts, _sync_replies
 from tests.test_agent_loop import STATS, TABLES
 from tests.test_agent_run import RAWS, Dockets, _mkey
-from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
@@ -36,7 +35,6 @@ from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import LocalFolderSink
 from ntsb_probable_cause.live.morning import (
     EXPECTED_COST_PER_CASE_USD,
-    LATE_START_UTC,
     LIVE_CAP_USD,
     MONTHLY_CAP_USD,
     VERSION_1_SETTINGS,
@@ -412,9 +410,23 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     return r
 
 
+def test_the_pinned_settings_name_the_standard_price_and_the_sync_driver() -> None:
+    assert VERSION_1_SETTINGS["price_variant"] == "standard"
+    assert VERSION_1_SETTINGS["sync"] is True
+
+
+def test_the_settings_check_flags_a_return_to_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = morning.live_spec
+    monkeypatch.setattr(
+        morning,
+        "live_spec",
+        lambda budget: dataclasses.replace(real(budget), price_variant="batch", sync=False),
+    )
+    assert settings_differences() == ["price_variant", "sync"]
+
+
 def test_constants() -> None:
-    assert (LIVE_CAP_USD, MONTHLY_CAP_USD, EXPECTED_COST_PER_CASE_USD) == (0.30, 5.0, 0.015)
-    assert LATE_START_UTC.hour == 9
+    assert (LIVE_CAP_USD, MONTHLY_CAP_USD, EXPECTED_COST_PER_CASE_USD) == (0.30, 5.0, 0.04)
 
 
 def test_a_wrong_label_is_refused_before_the_store_is_opened(rig: Rig) -> None:
@@ -528,8 +540,8 @@ def test_g_the_run_spec(rig: Rig) -> None:
     assert spec.cap_usd == 0.30
     assert spec.exclusions == frozenset({EvidenceRole.PRELIM_NARRATIVE})
     assert spec.guidance == GUIDANCE
-    assert spec.price_variant == "batch"
-    assert spec.sync is False
+    assert spec.price_variant == "standard"
+    assert spec.sync is True
     assert spec.evidence_version == "v1"
     assert spec.model == "openai/gpt-6-luna"
     assert spec.reasoning_effort == "medium"
@@ -677,23 +689,9 @@ def test_k_a_dry_run_fetches_one_case_and_calls_no_model(
     assert "XXX26LA001" not in out
 
 
-def test_l_a_late_start_warns(rig: Rig) -> None:
+def test_l_no_start_time_warns(rig: Rig, capsys: pytest.CaptureFixture[str]) -> None:
+    """Decision 0165: the late-start warning was about the batch queue and is gone."""
     rig.now = datetime(2026, 10, 7, 9, 30, tzinfo=UTC)
-    summary = run_morning(rig.deps())
-    assert any("09:00" in w for w in summary.warnings)
-
-
-def test_l_a_late_start_is_said_on_stderr_at_the_start_too(
-    rig: Rig, capsys: pytest.CaptureFixture[str]
-) -> None:
-    rig.now = datetime(2026, 10, 7, 9, 30, tzinfo=UTC)
-    rig.store._finished = False  # the morning refuses, so only the start can have said it
-    with pytest.raises(ConfigurationError):
-        run_morning(rig.deps())
-    assert "warning: started after 09:00 UTC" in capsys.readouterr().err
-
-
-def test_l_an_early_start_does_not(rig: Rig, capsys: pytest.CaptureFixture[str]) -> None:
     assert run_morning(rig.deps()).warnings == ()
     assert "started after" not in capsys.readouterr().err
 
@@ -704,9 +702,24 @@ def test_m_limit_one_takes_one_case(rig: Rig) -> None:
     assert rig.fetched == ["XXX26LA001"]
 
 
+class _Recording(ScriptedClient):
+    """A scripted sync client that keeps the body of every request it is sent."""
+
+    def __init__(self, replies: Sequence[Any], *, die_at: int | None = None) -> None:
+        super().__init__(replies, die_at=die_at)
+        self.bodies: list[Any] = []
+
+    def complete(self, payload: Any, settings: Any, *, system: str = "", history: Any = ()) -> Any:
+        self.bodies.append(request_body(payload, settings, system=system, history=history))
+        return super().complete(payload, settings, system=system, history=history)
+
+
 def _real_runner_morning(
-    rig: Rig, monkeypatch: pytest.MonkeyPatch, raws: Sequence[Mapping[str, object]]
-) -> tuple[MorningSummary, FakeBatchClient]:
+    rig: Rig,
+    monkeypatch: pytest.MonkeyPatch,
+    raws: Sequence[Mapping[str, object]],
+    fake: _Recording | None = None,
+) -> tuple[MorningSummary, _Recording]:
     """One morning on the real ``AgentRunner`` and a scripted batch client, over ``raws``."""
     by_id = {str(r["ntsbNumber"]): r for r in raws}
     rig.store._closures = [
@@ -720,12 +733,12 @@ def _real_runner_morning(
         )
         for n, r in enumerate(raws, start=1)
     ]
-    fake = FakeBatchClient(handlers=[_answers(_scripts())] * 8)
+    fake = fake if fake is not None else _Recording(_sync_replies(_scripts()))
 
     def build(client: ModelClient, **kwargs: Any) -> AgentRunner:
         return AgentRunner(
-            client,
-            batch=fake,
+            fake,
+            batch=None,
             tables=TABLES,
             stats=STATS,
             seen_pairs=frozenset({"552230"}),
@@ -758,6 +771,24 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
     assert len((folder / CLOSURES_FILE).read_text().splitlines()) == 2
 
 
+def test_a_cut_live_morning_resumes_on_the_real_runner_and_asks_only_for_the_rest(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decision 0165: a sync live run is resumed; the replies on disk are replayed, not re-sent."""
+    replies = _sync_replies(_scripts())
+    cut = _Recording(replies, die_at=4)
+    with pytest.raises(_KilledError):
+        _real_runner_morning(rig, monkeypatch, RAWS, fake=cut)
+    (folder,) = [p for p in rig.runs_dir.iterdir() if p.is_dir()]
+    on_disk = len((folder / "replies.jsonl").read_text().splitlines())
+    assert on_disk == 3
+    rest = _Recording(replies[on_disk:])
+    summary, _ = _real_runner_morning(rig, monkeypatch, RAWS, fake=rest)
+    assert summary.run_id == folder.name
+    assert summary.coded == 2
+    assert rest.calls == len(replies) - on_disk
+
+
 SENTINEL = "Zyxwvut preliminary sentinel: the airplane was seen to roll left on short final."
 
 
@@ -770,13 +801,9 @@ def test_n_a_preliminary_narrative_never_reaches_a_request(
     summary, fake = _real_runner_morning(rig, monkeypatch, with_prelim)
     assert summary.run_id is not None
     assert summary.coded == 2
-    assert fake.submitted, "the scripted batch client saw requests"
-    for batch in fake.submitted:
-        for request in batch:
-            body = request_body(
-                request.payload, request.settings, system=request.system, history=request.history
-            )
-            assert SENTINEL not in json.dumps(body)
+    assert fake.bodies, "the scripted sync client saw requests"
+    for body in fake.bodies:
+        assert SENTINEL not in json.dumps(body)
     folder = rig.runs_dir / summary.run_id
     records = [
         ClosureRecord.model_validate_json(line)
@@ -1061,7 +1088,7 @@ def test_the_monthly_guard_refuses_before_any_fetch_or_folder(rig: Rig) -> None:
 
 
 def test_a_smaller_take_fits_under_the_monthly_guard(rig: Rig) -> None:
-    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.98)  # room for one case, not three
+    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.95)  # room for one case, not three
     summary = run_morning(rig.deps(), limit=1)
     assert summary.coded == 1
 

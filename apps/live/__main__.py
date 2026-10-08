@@ -46,7 +46,6 @@ from ntsb_probable_cause.live.local import (
     S3StoreSource,
 )
 from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary, run_morning
-from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.scoring.runner import BatchRunner
@@ -124,7 +123,7 @@ def _models(settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
     http = OpenRouterClient(
         settings.require_openrouter_key(), base_url=settings.openrouter_base_url
     )
-    return http, BatchClient(http)
+    return http, None  # decision 0165: live runs are sync, so no batch client is built
 
 
 def build_deps(settings: Settings) -> MorningDeps:

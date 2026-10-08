@@ -46,7 +46,6 @@ def test_the_runbook_keeps_the_binding_rules() -> None:
         "before any code is pushed to the branch",
         "LIMIT=1",
         "03:45 UTC",
-        "09:00 UTC",
         "keep the lid open",
         "Do not start a second `paid_run.sh`",
         "no `run.jsonl` file at all",

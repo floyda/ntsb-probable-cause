@@ -740,10 +740,11 @@ s33-dry-run:
 # and the NTSB API; writes only the store work file and the live docket cache under NTSB_DATA_DIR.
 
 s33-morning:
-	uv run --locked python -m scripts.stage_spend --stage s3 --estimate 0.15
-	uv run --locked python -m scripts.stage_spend --stage s33 --estimate 0.15
+	uv run --locked python -m scripts.stage_spend --stage s3 --estimate 0.40
+	uv run --locked python -m scripts.stage_spend --stage s33 --estimate 0.40
 	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
-# S3.3 spec §4, paid: one live morning, at most 10 cases, about 1 to 2 hours on batch.
+# S3.3 spec §4, paid: one live morning, at most 10 cases, about half an hour at the standard price
+# (decision 0165; the estimate is 10 cases at $0.04).
 # Run through scripts/paid_run.sh after `aws login`. LIMIT=1 on the first one.
 # Writes a live run folder (record, closures, manifest) under NTSB_RUNS_DIR. Read
 # docs/runbooks/live-shadow-mornings.md first.

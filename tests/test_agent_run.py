@@ -1158,10 +1158,14 @@ class TestRefusals:
         if batch is not None:
             assert batch.submitted == []
 
-    def test_a_sync_resume_is_refused(self, tmp_path: Path) -> None:
+    def test_a_sync_resume_of_a_missing_folder_is_refused_by_the_folder_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0165: the sync refusal is gone; the folder check refuses what is not there."""
         client = ScriptedClient([])
-        with pytest.raises(ConfigurationError, match="--resume cannot be used with --sync"):
+        with pytest.raises(ConfigurationError, match="no run folder"):
             _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS, resume="x")
+        assert client.calls == 0
 
     def test_no_docket_reader_is_refused_unless_the_docket_is_excluded(
         self, tmp_path: Path
@@ -1195,3 +1199,56 @@ class TestRefusals:
         )
         with pytest.raises(ConfigurationError, match="AgentRunner"):
             runner.run(_sync_spec(), RAWS)
+
+
+class TestSyncResume:
+    """Decision 0165: a sync run of the loop is resumed from the replies it recorded."""
+
+    def _interrupted(self, runs: Path, *, die_at: int) -> Path:
+        client = ScriptedClient(_sync_replies(_scripts()), die_at=die_at)
+        with pytest.raises(_KilledError):
+            _runner(runs, client=client).run(_sync_spec(), RAWS)
+        assert client.calls == die_at
+        (folder,) = (p for p in runs.iterdir() if p.is_dir() and p.name[0].isdigit())
+        return folder
+
+    def test_a_cut_sync_run_resumes_and_asks_only_for_the_calls_not_yet_answered(
+        self, tmp_path: Path
+    ) -> None:
+        runs = tmp_path / "runs"
+        folder = self._interrupted(runs, die_at=4)
+        replies = _sync_replies(_scripts())
+        on_disk = len((folder / REPLIES_FILE).read_text().splitlines())
+        assert on_disk == 3
+        client = ScriptedClient(replies[on_disk:])
+        record = _runner(runs, client=client, clock=Clock(ticks=100)).run(
+            _sync_spec(), RAWS, resume=folder.name
+        )
+        assert client.calls == len(replies) - on_disk  # replayed calls are not sent again
+        assert record.run_id == folder.name
+        assert record.finished is not None
+        assert record.cases == 2
+
+    def test_a_resumed_sync_run_gives_the_cases_of_an_uninterrupted_one(
+        self, tmp_path: Path
+    ) -> None:
+        folder = self._interrupted(tmp_path / "cut", die_at=4)
+        replies = _sync_replies(_scripts())
+        client = ScriptedClient(replies[3:])
+        _runner(tmp_path / "cut", client=client, clock=Clock(ticks=100)).run(
+            _sync_spec(), RAWS, resume=folder.name
+        )
+        _, plain = _sync_run(tmp_path / "plain")
+        assert [(c.case_id, c.failure, c.cost_usd) for c in _cases(folder)] == [
+            (c.case_id, c.failure, c.cost_usd) for c in _cases(plain)
+        ]
+
+    def test_a_resumed_sync_run_whose_spec_differs_is_refused(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        folder = self._interrupted(runs, die_at=4)
+        client = ScriptedClient([])
+        with pytest.raises(ConfigurationError, match="cannot resume"):
+            _runner(runs, client=client).run(
+                _sync_spec(max_output_tokens=1234), RAWS, resume=folder.name
+            )
+        assert client.calls == 0

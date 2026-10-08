@@ -61,3 +61,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 ## Corrected, 2026-10-08 (appended; nothing above is edited)
 
 - Decision item 1's `aws login --profile ntsb` should read `aws login`, because `ntsb` is an assume-role profile whose `source_profile` is `default`.
+
+## Superseded in part, 2026-10-08 (appended; nothing above is edited)
+
+- Items 2 and 3 (the batch price, and the batch-window timing) are superseded by [0165](0165-live-runs-at-the-standard-price.md): live runs use the standard price through the sync driver. Items 1 and 4 stand.

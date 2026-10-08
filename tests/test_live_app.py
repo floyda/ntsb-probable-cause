@@ -118,14 +118,9 @@ def test_the_factories_build_the_real_clients_from_settings(
         def __init__(self, key: str, *, base_url: str) -> None:
             seen["http"] = (key, base_url)
 
-    class Batch:
-        def __init__(self, http: object) -> None:
-            seen["batch"] = http
-
     monkeypatch.setattr(app, "NtsbClient", Ntsb)
     monkeypatch.setattr(app, "DocketClient", Docket)
     monkeypatch.setattr(app, "OpenRouterClient", Http)
-    monkeypatch.setattr(app, "BatchClient", Batch)
     assert app.main(["run", "--limit", "3"]) == 0
     assert calls.kwargs == {"dry_run": False, "limit": 3}
     deps = calls.deps
@@ -133,13 +128,12 @@ def test_the_factories_build_the_real_clients_from_settings(
     settings = Settings()
     deps.ntsb()
     deps.docket()
-    http, batch = deps.models()
+    _http, batch = deps.models()
     assert seen["ntsb"] == ("test-key", settings.requests_per_minute)
     assert seen["docket"] == (settings.live_docket_dir, settings.docket_seconds_per_request)
     assert seen["docket"][0] != settings.docket_dir
     assert seen["http"] == ("or-key", settings.openrouter_base_url)
-    assert seen["batch"] is http
-    assert isinstance(batch, Batch)
+    assert batch is None  # decision 0165: live runs are sync, so no batch client is built
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "x"])

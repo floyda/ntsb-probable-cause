@@ -185,6 +185,8 @@ started after 09:00 UTC, because rounds may then run past 12:00 UTC.
 
 ### 4.1 The batch price
 
+*(Superseded 2026-10-08 by decision 0165: live runs use the standard price through the sync driver.)*
+
 Live runs use the **batch price** (Andy, 2026-10-07): half the standard price, and the same service
 Ellery version 1 was measured on. Nobody watches a closure run as it happens, so speed buys
 nothing. The roadmap's §4 says the live path does not use batch; that sentence was written for

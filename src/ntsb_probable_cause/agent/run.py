@@ -71,7 +71,6 @@ from ntsb_probable_cause.scoring.runner import (
     RunSpec,
     case_identity,
     leaked_case,
-    refuse_sync_resume,
     refuse_sync_with_batch_price,
     refuse_unnamed_reading,
     refuse_unresumable,
@@ -245,7 +244,9 @@ class AgentRunner:
             BatchCancelledError: a batch was cancelled; the message names the run to resume.
         """
         self._refuse(spec)
-        refuse_sync_resume(spec, resume)
+        # No sync-resume refusal here (decision 0165): the loop's sync driver records every
+        # reply in replies.jsonl and replays them, so only unanswered calls are sent again.
+        # The evaluation runner's arms keep that refusal.
         # The version is fixed here, before any model call, and every record of the run carries
         # this one value: an edit to a covered file while the run is in flight (a batch takes
         # hours) must not make ``run.jsonl`` name text the run never sent (decision 0133).
