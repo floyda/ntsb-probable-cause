@@ -2,7 +2,7 @@
 
 *Drafted 2026-10-07 from a design session with Andy (2026-10-06 to 2026-10-07), after S3.2 closed
 (pull request #27, release v0.9.0, merge commit `832a121`) and the S5 site design merged (pull
-request #28, commit `0e467bd`, decisions 0154 to 0156). Status: Approved (2026-10-07, Andy: "Spec approved!"). This is the specification
+request #28, commit `0e467bd`, decisions 0154 to 0156). Status: Implemented (2026-10-09, pull request #29). This is the specification
 for sub-stage S3.3 of [the S3 specification](2026-09-30-s3-agent-loop-design.md) (§3, §11), which
 holds the design S3 shares. The implementation plan is written from this document separately, in
 `docs/plans/`.*
@@ -626,6 +626,249 @@ Written in the plan's first task, numbered from 157 on:
 - **Disk space:** the cleanup of §8.4 keeps live documents to one run's worth.
 - **Live results look different from held-out.** They are printed alone, with their interval, and
   read as a sign only (§10).
+
+## As built (S3.3, 2026-10-09)
+
+*S3.3 closed on 2026-10-09 in pull request #29. This part records what was built and measured,
+against §16.*
+
+S3.3 ran Ellery version 1, unchanged, on cases the NTSB closed. Four live runs coded every case of
+the 47-case backfill and 13 fresh closures, once each, with the verdict withheld. The closing rule
+was met by its first limb on 2026-10-09. Every figure below is from a committed results file
+(`docs/results/s33-live-shadow.txt`, `docs/results/s33-fingerprint-continuity.txt`) or from
+`scripts/stage_spend.py`.
+
+### Delivered
+
+- **Decision records 0157 to 0167.** 0157 to 0164 were written from the design session before any
+  code. 0165 to 0167 came from the live mornings: the standard price, a read-only AWS key, and a
+  daily limit of 50. Dated notes were added to 0133, 0143, 0148, 0150, 0154, 0157, 0158, 0161 and
+  0163.
+- **The rendered-text fingerprint `+t`** (`agent/rendered.py`, `agent/version.py`; decision 0161).
+  The loop and arm B's post-pass are driven over invented inputs, and the model-facing text of
+  every request they would send is hashed. Version 1's label is
+  `s3-v1+ge17fecdc66ec+te7811b387b31` (`VERSION_1`). Several tests and tools check it:
+  - the reach test (every model-text literal is sent) and the mutation test (an edited text moves
+    the label, an edited comment does not), both in `tests/test_agent_rendered.py`;
+  - `scripts/s33_mutation_sweep.py` (`make s33-mutation-sweep`);
+  - `scripts/s33_fingerprint_continuity.py` (`make s33-continuity`), which computes `+t` on
+    `fd6053f` and on the branch.
+- **The `live` package** (`src/ntsb_probable_cause/live/`, decision 0160):
+  - `queue.py`: the queue, oldest closure first and ties by case key, at most `DAILY_LIMIT` cases a
+    UTC day, with the backfill digest.
+  - `records.py`: closure records, manifests and the portability check.
+  - `fetch.py`: the record and docket fetch. "No docket" is accepted only when the store recorded
+    no document.
+  - `seams.py`: the three seams, `StoreSource`, `SpendCounter` and `ResultSink`.
+  - `local.py`: their Mac versions, `S3StoreSource`, `LocalSpend` and `LocalFolderSink`.
+  - `closure.py`: building the closure records.
+  - `morning.py`: one morning. In order, it runs the label and settings checks, the recorder-night
+    check, a resume of an unfinished run, the daily limit, the caps, the queue, the fetch, the run,
+    the records, the manifest, the cleanup and the counts row.
+- **The command `ntsb-live`** (`apps/live/`). `run [--dry-run] [--limit N]` and `report [--out
+  PATH]` hold an exclusive lock on `live.lock`. Error lines pass through a scrubber that removes
+  case numbers and keys, and AWS errors are named with their remedy.
+- **The store's closure reading** (`store/db.py`):
+  - `closures()` reads closures and raises on an orphan instead of dropping it;
+  - `run_finished_on()` and `documents_recorded()`;
+  - `Closure.closed_as`.
+
+  Two settings were added: `live_docket_dir` (`NTSB_LIVE_DOCKET_DIR`, default
+  `<NTSB_DATA_DIR>/live-docket`) and `sources.TRAINING_CUTOFFS`.
+- **The open-split fence in code** (0024, 0160):
+  - sample `live` is refused by every `ntsb-eval` command and by the development scripts
+    (`scripts/_live_fence.py`);
+  - the live and development docket folders must differ;
+  - import contracts keep the library and the other commands from importing `live`;
+  - the report refuses to write text that holds a case number.
+- **Money in code** (0163, 0165):
+  - $0.30 a case;
+  - $5 a calendar month of live spend, checked before a morning as a projection at $0.04 a case;
+  - S3.3's stop at $10 of its own spend, a $21.46 line on S3's (`stage_spend --stage s33`);
+  - the $40 monthly guard, checked before any folder is made.
+
+  Live runs use the standard price through the loop's sync driver, and a sync run of the loop can
+  be resumed from `replies.jsonl`.
+- **Operations:**
+  - `scripts/live_env.sh` sets the AWS profile and finds the store, and prints nothing on failure;
+  - `scripts/paid_run.sh` now installs with `--locked` and reads the NTSB key from `pass` for
+    `s33-` targets;
+  - the targets `s33-continuity`, `s33-mutation-sweep`, `s33-dry-run`, `s33-morning` and
+    `s33-report`;
+  - the runbook `docs/runbooks/live-shadow-mornings.md`;
+  - the read-only IAM user `ntsb-live-reader` behind the `ntsb-live` profile (0166).
+- **The report** `scripts/s33_live_report.py` (`make s33-report`), which writes
+  `docs/results/s33-live-shadow.txt`.
+
+### Done means, with evidence
+
+1. The records of §15 are committed, and `+t` is built and shown continuous on `fd6053f` before
+   any other S3.3 code touches the loop's modules. **Met.**
+   - Records 0157 to 0164 were committed in `5d295c7`, the first code commit's parent.
+   - `+t` was built in `75583a0`, and its continuity on `fd6053f` was committed in `9c7802a`,
+     before Task 4.
+   - The final review widened the renderer, and `VERSION_1` was re-pinned once, before any live
+     record. Continuity was shown again, `+t e7811b387b31` on `fd6053f` and on `363e231`, "match:
+     yes" (`docs/results/s33-fingerprint-continuity.txt`, commit `5fc6e48`).
+2. `ntsb-live run` codes a queue end to end, resumably, and every test of §14 passes in `make
+   check` and in CI. **Met.**
+   - Four live mornings coded 60 cases end to end (`s33-live-shadow.txt`, "runs: 4").
+   - Resumes are covered by `tests/test_live_morning.py::test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts`
+     and `tests/test_live_morning.py::test_a_cut_live_morning_resumes_on_the_real_runner_and_asks_only_for_the_rest`.
+   - §14's tests are in `tests/test_agent_rendered.py`, `test_agent_version.py`,
+     `test_live_*.py`, `test_s33_*.py`, `test_paid_run.py` and `test_stage_spend.py`.
+   - `make check` at the close-out: 4,351 tests passed, coverage 98.27%. Pull request #29's CI
+     passed on `36b65f2` (lint, test, audit, image build:
+     https://github.com/floyda/ntsb-probable-cause/actions/runs/37993253318).
+   - §14's "at most 10 cases per UTC day" is now 50 (0167), tested in
+     `tests/test_live_queue.py::test_todays_take_sixty_on_one_night`.
+3. The live runs meet the closing rule of §11. **Met by its first limb.** The backfill drained,
+   and 13 fresh closures were coded, one day after the backfill was fixed (`s33-live-shadow.txt`,
+   "closing rule: met (fresh closure)").
+4. `docs/results/s33-live-shadow.txt` is committed, from its script. **Met:** `make s33-report`,
+   commit `b208918`.
+5. The As-built record is appended, the plan deleted and the version set to 0.10.0, and the pull
+   request is titled `S3.3: live shadow` and merged with a merge commit. **Met by this pull
+   request's close-out commit**; `uv run python -m scripts.check_docs` is clean. The merge is
+   Andy's.
+
+**What the live runs measured** (`docs/results/s33-live-shadow.txt`; counts only, printed alone,
+never beside a held-out figure, decision 0021):
+- **Mornings:** four runs, of 1, 9, 10 and 40 cases. The queue held 47, 46, 52 and 42 cases at
+  their starts. A case waited a median of 7 days from closure to coding, and at most 15.
+- **Outcomes:** of 60 cases, the first code was right on 19, the right code was in another
+  position on 3, and the code was different on 37. None abstained, and 1 was not coded (`leak`, a
+  guard refusal). The 95% interval for "first code right" is 21% to 44%: an early sign, not a
+  result (§10).
+- **Cost:** $0.3082 computed in all, $0.0051 a case. Only the first, batch run reported a billed
+  figure ($0.0433), so for the sync runs the computed cost is the figure.
+- **Checks:**
+  - a preliminary narrative was present in 0 of 60 closure records;
+  - 0 refusals before a run;
+  - 0 cases returned to the queue;
+  - 0 verdict codes missing from the code tables;
+  - 0 closures without a verdict, and 0 closed as N/A.
+- **For S5,** closures per recorder night since 2026-09-23: 7, 13, 27 and 15, on four nights
+  (2026-09-23, 2026-10-01, 2026-10-02 and 2026-10-09), and none on the other 13.
+- **Spend:** S3's line stands at $11.76 of $50 after S3.3 (`stage_spend --stage s3`), and S3.3's
+  own line has $9.70 of its $10 left.
+
+### Departures from this specification
+
+- **The price (0165, superseding 0158 items 2 and 3).** §4.1's batch price was dropped after the
+  first morning. A batch of one request waited up to about 3 hours a round, and the one-case
+  morning took 786 minutes. Live runs use the standard price, one call at a time through the sync
+  driver, and the timing window and late-start warning were removed. To allow it, a sync run of
+  the loop can now be resumed: `drive_sync` replays `replies.jsonl`, and the evaluation runner
+  still refuses a sync resume. `VERSION_1_SETTINGS` records the new price and the `sync` flag, and
+  the per-case projection is $0.04.
+- **The login (0166).** `aws login` sessions expired within a day and stopped one morning before
+  it spent anything. Mornings now read the store through a read-only IAM user, `ntsb-live-reader`,
+  whose two permissions are reading `recorder.sqlite` and describing the recorder stack. Its key
+  is in `pass`, behind the `ntsb-live` profile. The login command in §4 had also been wrong: `ntsb`
+  is an assume-role profile on `default`, so the login is `aws login`.
+- **The daily limit (0167, amending 0157 item 2).** It was raised from 10 to 50 for the rest of
+  S3.3. After three mornings the 42 waiting cases were already closed, so waiting three more days
+  added nothing. A day's worst case is no longer bounded at $3: the $5 month is a projection
+  checked before a morning, not a stop during it.
+- **The final review ran before the mornings,** not after them (plan Task 12). A live run cannot
+  be resumed on different code, so fixes made during the mornings would have stranded a run. Its
+  one fix wave had three groups:
+  - **The fingerprint:** the renderer sends more of the texts a live run can send, `VERSION_1` was
+    re-pinned from `+tc6497367ee94`, the version 1 settings are pinned and checked before any
+    call, and the mutation sweep was added.
+  - **The morning and money:** the report counts each case once, the $40 guard is checked before
+    any folder is made, and the runbook covers a stranded run.
+  - **The fence:** error lines are scrubbed, the docket folders are compared resolved, and the
+    report refuses to write a case number.
+
+  Each later change was reviewed on its own: 0165 and 0167 before they ran, and 0166 at the
+  close-out. That review found the key-replacement command could empty the stored key if `aws`
+  failed, and it was fixed.
+- **Additions not in the specification:**
+  - the morning lock (`live.lock`);
+  - `scripts/live_env.sh` and the `aws` extra (with `awscrt`) for reading the S3 store;
+  - the NTSB key passed by `paid_run.sh` to `s33-` targets;
+  - the morning counts file `live-morning-counts.jsonl`, the report's source for queue lengths,
+    mornings per day and returned cases;
+  - `Closure.closed_as`;
+  - `Store.closures()` raising on an orphan;
+  - completing a finished run that has no closure records at the next morning;
+  - a closed set of failure kinds.
+- **Smaller changes, task by task** (the plan's Deviations, rewritten plainly):
+  - Decision 0161 cites the continuity file for the label instead of holding it.
+  - `rendered.py` imports arm B late to avoid a cycle, and keeps an `[unreachable]` list for texts
+    no input can send today.
+  - The label cache is filled before any test runs, so test order cannot change it.
+  - The continuity script exits 2 on any setup failure.
+  - The boundary test lets `live`, and only `live`, import the agent.
+  - The docket listing is fetched before it is read, so a layout change is not taken for "no
+    docket".
+  - The backfill is pinned to disk before anything can fail, and is never recomputed on a resume.
+  - A resume is held to the $5 cap; the daily limit does not apply to it.
+  - `morning.py` is about 540 lines and was not split further.
+  - The report reads the morning counts file.
+  - A failure reason prints from a closed set.
+  - N/A closures are counted both among coded cases and in the store.
+
+### Known issues carried to S4
+
+- `fields.py`'s event-selection keys (`sequenceNumber`, `isDefiningEvent`) choose what evidence the
+  model reads, but are not covered by `+t`. The file is byte-identical to `fd6053f`. Covering them
+  needs a second invented event and a re-pin, so it belongs with version 2. §7.2's "it cannot miss
+  a text" is too strong.
+- `VERSION_1_SETTINGS["model"]` compares the model id with itself; a test catches an edit in CI.
+  S4 should pin a SHA-256 of the id.
+- A resume within $0.15 of the $40 guard can still be refused inside the runner, after the
+  morning's own check passed. It could not bind in S3.3.
+- Two messages have no runbook row: a fetch or docket error printed by class alone, and "the store
+  is not sound".
+- The docket a case was coded from is not frozen with its run. The closure record keeps each
+  document's title and status, and the documents are deleted after a finished run.
+- A case that fails before it is seen returns to the queue without limit. None returned in S3.3.
+- The IAM user `ntsb-live-reader` and its key are removed at S4. The steps are in the runbook,
+  "The live shadow's AWS key".
+- 2 fresh closures stay queued. S4's backfill rule covers them (§11).
+
+### Decisions taken during the stage
+
+- [0157](../decisions/0157-s33-codes-closures-through-a-queue.md): S3.3 codes closures through a
+  queue, rehearses the backfill, and closes by a fixed rule.
+- [0158](../decisions/0158-live-runs-on-the-mac-at-the-batch-price.md): live runs on the Mac at the
+  batch price (items 2 and 3 superseded by 0165).
+- [0159](../decisions/0159-closure-runs-are-scored-as-counts-only.md): closure runs are scored the
+  same morning, as counts only, and printed alone.
+- [0160](../decisions/0160-the-live-package-its-run-folders-and-the-open-split-fence.md): the `live`
+  package, its three seams, run folders built to move, and the open-split fence in code.
+- [0161](../decisions/0161-the-rendered-text-fingerprint-and-the-version-1-check.md): the
+  rendered-text fingerprint `+t` replaces `+p`, and a live run refuses unless it is version 1.
+- [0162](../decisions/0162-the-preliminary-narrative-is-left-out-of-live-runs.md): the preliminary
+  narrative is left out of live runs, and its presence is counted.
+- [0163](../decisions/0163-the-live-shadows-caps.md): the caps, $0.30 a case, $5 a month and S3.3's
+  stop at $10.
+- [0164](../decisions/0164-what-no-longer-arises-in-s33.md): what no longer arises in S3.3.
+- [0165](../decisions/0165-live-runs-at-the-standard-price.md): live runs at the standard price, and
+  a sync loop run can be resumed.
+- [0166](../decisions/0166-a-read-only-aws-key-for-the-live-shadow.md): a dedicated read-only AWS
+  key for the live shadow.
+- [0167](../decisions/0167-the-live-shadows-daily-limit-is-raised-to-50.md): the daily limit is
+  raised to 50 for the rest of S3.3.
+
+### Implementation record
+
+- Pull request: #29 (https://github.com/floyda/ntsb-probable-cause/pull/29).
+- Plan, at its last commit: https://github.com/floyda/ntsb-probable-cause/blob/36b65f2d4408c32175793e61e9316234ba8af86d/docs/plans/2026-10-07-s3-3-live-shadow.md
+- Commits: `ce22d80`..`36b65f2`.
+- Live runs:
+  - started 2026-10-08 06:55 UTC at commit `9ad5576` (batch, 1 case);
+  - started 2026-10-08 20:14 UTC at commit `bdb54ba` (9 cases);
+  - started 2026-10-09 04:11 UTC at commit `0519312` (10 cases);
+  - started 2026-10-09 20:50 UTC at commit `9c2477c` (40 cases).
+
+  Their folders are under `NTSB_RUNS_DIR` and are never committed. The backfill list is committed
+  only as its count and SHA-256.
+- Release: v0.10.0. Andy creates the tag after the merge, which is a merge commit (decisions 0018
+  and 0033).
 
 ## Glossary
 

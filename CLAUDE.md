@@ -30,7 +30,12 @@ measured the frozen loop once on `heldout-400` against S3's full arm B at equal 
 no-docket ablation, arm A and a `dev-400` coding ablation: the loop is worse on top-1 at equal
 billed cost, so it is not warranted (`docs/results/s32-claims-heldout.txt`). `dev-seal-s3-400`
 stays sealed for v2 (0141), and the held-out gates closed after use (`docs/rounds/s3-2-used.md`).
-**S3.3 (live shadow) is next.** Read build-brief §7 before writing any code, then
+**S3.3 (live shadow) is built**: Ellery version 1, unchanged, coded each case the NTSB closed
+once, at closure, through a daily queue on Andy's Mac (the `live` package and `ntsb-live`),
+scored as counts only and printed alone (`docs/results/s33-live-shadow.txt`): four runs coded
+the 47-case backfill and 13 fresh closures, and its closing rule was met on 2026-10-09. S3 is
+complete. **S4 (predictions and resolution) is next.** Read build-brief §7 before writing any
+code, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, Superseded on 2026-10-03 by the S1
 and S3 specifications, which took over its parts; still the record of how S0 changed the design,
@@ -41,7 +46,7 @@ amend the brief where they differ. S3's specification
 and S3.3 in outline; the precedent tool's design note
 (`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4. S5's site
 design (`docs/specs/2026-10-04-s5-public-site-design.md`) is a Draft, written early; three of
-its decisions bind S3.3 and S4 now: the agent's live run is at closure (0154), the board is
+its decisions bound S3.3 and bind S4: the agent's live run is at closure (0154), the board is
 backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, version 1, at
 `ellery.demo.floyda.dev` (0156).
 
@@ -66,7 +71,7 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
   and the prompt version; `documents.py` the only place a record or docket becomes model text
   (the evidence, the listing and the documents read, each its own split); `trail.py` the
   per-call `AgentCall` rows and `LoopOutcome`; `later.py` a later trigger's opening (0122; built
-  and tested, first used live in S3.3); `facts.py` a document's numbers. Non-evidence tool text
+  and tested, unused on live cases, 0164); `facts.py` a document's numbers. Non-evidence tool text
   is `model/tool_text.py`'s `ToolText`; import-linter contracts keep the library from importing
   `agent` and its tools and texts from any case record, and the boundary test reads every tool
   text. Tool #1 is the docket at evidence v1: scan-only documents are listed as not readable,
@@ -428,7 +433,12 @@ found strict tools and forced tool choice honoured at both prices, and no need t
 reasoning back (`loop.PASS_REASONING` is `False`). Arm C's prompt version is
 `s3-v1+g<12>+p<12>` (`+r<N>` for a tuning round): `+g` fingerprints the guidance, `+p` the
 source of every module that composes model-facing text, so any edit to those files, a comment
-included, changes it (0133). Batch replies carry no cost of their own, so a run's computed cost
+included, changes it (0133). From S3.3, `+t` replaces `+p` (0161): it fingerprints the
+model-facing text of every request the loop and arm B's post-pass send over invented inputs
+(`agent/rendered.py`), so a comment no longer moves it; version 1, the frozen loop, is
+`s3-v1+ge17fecdc66ec+te7811b387b31` (`agent/version.py:VERSION_1`, continuous on `fd6053f`:
+`docs/results/s33-fingerprint-continuity.txt`), and a live run refuses any other label or
+setting. Live runs use the standard price through the sync driver (0165). Batch replies carry no cost of their own, so a run's computed cost
 prices every prompt token at the batch input rate, while the provider bills cached tokens
 lower: for arm C and arm B's tool post-pass, S3's spend line and the monthly guard count what
 was billed when every round reported it, else the computed price (0135). Both figures stay in
@@ -583,6 +593,18 @@ make s32-coding-ablation-report RUN=<id>   # docs/results/s32-coding-ablation-de
 make s32-claims LOOP= NODOCKET= ARMA= BANSWER= ABLATION=   # docs/results/s32-claims-heldout.txt; free
 ```
 
+S3.3's targets (`s33-*`; read `docs/runbooks/live-shadow-mornings.md` first; the morning checks
+S3's $50 line and S3.3's $21.46 line, decision 0163, and runs through `scripts/paid_run.sh` with
+`NTSB_PAID_BRANCH`):
+
+```bash
+make s33-continuity        # +t on fd6053f and on the tree; docs/results/s33-fingerprint-continuity.txt; free
+make s33-mutation-sweep    # every model-text literal, edited in turn, must move +t; free, about 1.5 minutes
+make s33-dry-run           # a morning's checks, the store, the queue and one fetch; no model call; free
+make s33-morning [LIMIT=N] # one live morning: at most 50 cases a UTC day (0167), standard price (paid)
+make s33-report            # docs/results/s33-live-shadow.txt, counts only; free; never through paid_run.sh
+```
+
 The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):
 no model call, and they decide nothing. What any `s3-*` target commits is counts only; the
 reading pages and case lists go under `NTSB_RUNS_DIR`, never committed.
@@ -669,6 +691,16 @@ curve is `scoring/tables/calibration_s3.json`); the `scripts/s32_*` readings; an
 (`NTSB_PASS_OPENROUTER`, default `api/openrouter`) without printing it, and commits and pushes a
 held-out ledger row. `tests/test_s32_frozen.py` pins the loop's prompt version.
 
+S3.3 added: `ntsb-live run [--dry-run] [--limit N]` and `ntsb-live report [--out PATH]`
+(`apps/live/`), which hold `<runs_dir>/live.lock`; the `live` package (`queue`, `records`,
+`fetch`, `seams`, `local`, `closure`, `morning`; decision 0160); the sample `live`, refused by
+every `ntsb-eval` command and development script (0024, `scripts/_live_fence.py`); the store's
+`closures()`, `run_finished_on()` and `documents_recorded()`; a sync run of the loop resumes from
+`replies.jsonl` (0165); the live caps in code ($0.30 a case, $5 a calendar month, 0163) and
+`stage_spend --stage s33`; `scripts/live_env.sh`, which sets `AWS_PROFILE` (default `ntsb-live`,
+a read-only key in `pass`, 0166) and finds the store from the recorder stack; and `paid_run.sh`
+installing with `--locked` and passing the NTSB key (`pass` `api/ntsb`) to `s33-` targets.
+
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
@@ -687,7 +719,10 @@ committed), `NTSB_DOCKET_SECONDS_PER_REQUEST` (the floor between requests to
 `data.ntsb.gov`, default 2.0 seconds, enforced in code so it cannot be set to 0 in
 production) and `NTSB_TRANSCRIPTION_DIR` (where per-page transcriptions are cached; defaults
 to `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly;
-never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057). S3.1 added no setting.
+never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057). S3.1 added no setting. S3.3 added
+`NTSB_LIVE_DOCKET_DIR` (where live cases' docket documents are cached, apart from the
+development cache; defaults to `<NTSB_DATA_DIR>/live-docket`; never committed, and cleared after
+each finished live run, 0160).
 
 The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
 store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`
