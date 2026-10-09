@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Literal, Self
 
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.store import schema
@@ -21,6 +21,7 @@ from ntsb_probable_cause.store.models import (
     ArrivalClassification,
     ArrivalRow,
     CaseRow,
+    Closure,
     DocketArrivalRow,
     DocumentRow,
     FeedComparisonResult,
@@ -284,6 +285,11 @@ class Store:
         _tb: TracebackType | None,
     ) -> None:
         self.close()
+
+    @property
+    def path(self) -> Path:
+        """The file this store was opened on (the live morning measures it before it deletes it)."""
+        return self._path
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -768,6 +774,11 @@ class Store:
             for row in rows
         }
 
+    def documents_recorded(self, mkey: int) -> int:
+        """How many documents the store has ever recorded for a case, present or gone."""
+        row = self._conn.execute("SELECT COUNT(*) FROM documents WHERE mkey=?", (mkey,)).fetchone()
+        return int(row[0])
+
     def upsert_document(self, row: DocumentRow) -> None:
         """Insert a document, or replace its row entirely if ``(mkey, doc_id)`` is known."""
         with self.transaction() as conn:
@@ -979,6 +990,79 @@ class Store:
             (*_REAL_CLOSURE_STATUSES, *_REAL_CLOSURE_STATUSES),
         ).fetchall()
         return {int(mkey): int(present_run) for mkey, present_run in rows}
+
+    def _closure_statuses(self) -> dict[int, Literal["Completed", "N/A"]]:
+        """Each case's closure status: the ``new_status`` of the event :meth:`_closure_runs` keys.
+
+        The same predicate as :meth:`_closure_runs`; the earliest such event (by ``present_run``,
+        then ``id``) says whether the case closed as ``Completed`` or as ``N/A``.
+        """
+        placeholders = ", ".join("?" for _ in _REAL_CLOSURE_STATUSES)
+        rows = self._conn.execute(
+            "SELECT mkey, new_status FROM status_events "  # noqa: S608 -- placeholders
+            f"WHERE new_status IN ({placeholders}) "
+            f"AND (old_status IS NULL OR old_status NOT IN ({placeholders})) "
+            "ORDER BY present_run, id",
+            (*_REAL_CLOSURE_STATUSES, *_REAL_CLOSURE_STATUSES),
+        ).fetchall()
+        found: dict[int, Literal["Completed", "N/A"]] = {}
+        for mkey, status in rows:
+            found.setdefault(int(mkey), "N/A" if status == "N/A" else "Completed")
+        return found
+
+    def closures(self) -> list[Closure]:
+        """Every real closure, ordered by ``(closure_run, mkey)``; read-only.
+
+        Built on :meth:`_closure_runs`, the one definition of a closure. ``closed_on`` is the
+        UTC calendar date of the closure run's ``started_at`` (SQLite's ``date()`` converts an
+        offset timestamp to UTC). ``closed_as`` is the status that closure event carried.
+
+        Raises:
+            ConfigurationError: a closure has no case row or no run row (the count is named, not
+                the case).
+        """
+        closure_runs = self._closure_runs()
+        if not closure_runs:
+            return []
+        statuses = self._closure_statuses()
+        run_days = dict(self._conn.execute("SELECT run_id, date(started_at) FROM runs").fetchall())
+        cases = {
+            int(mkey): (ntsb_number, event_date)
+            for mkey, ntsb_number, event_date in self._conn.execute(
+                "SELECT mkey, ntsb_number, event_date FROM cases"
+            ).fetchall()
+        }
+        broken = sum(
+            1 for mkey, run in closure_runs.items() if mkey not in cases or run not in run_days
+        )
+        if broken:
+            # A dropped closure would be outside the live backfill and the queue for good
+            # (decision 0155), so it is an error, not a skip. The count names no case.
+            noun, verb = ("closure", "has") if broken == 1 else ("closures", "have")
+            raise ConfigurationError(
+                f"{broken} {noun} in the store {verb} no case row or no run row: the store is not "
+                "sound, so no closure list is made from it"
+            )
+        found = [
+            Closure(
+                mkey=mkey,
+                ntsb_number=cases[mkey][0],
+                event_date=cases[mkey][1],
+                closure_run=run,
+                closed_on=run_days[run],
+                closed_as=statuses[mkey],
+            )
+            for mkey, run in closure_runs.items()
+        ]
+        return sorted(found, key=lambda c: (c.closure_run, c.mkey))
+
+    def run_finished_on(self, day: date) -> bool:
+        """Whether a run that started on this UTC date has a ``finished_at``; read-only."""
+        row = self._conn.execute(
+            "SELECT 1 FROM runs WHERE date(started_at) = ? AND finished_at IS NOT NULL LIMIT 1",
+            (day.isoformat(),),
+        ).fetchone()
+        return row is not None
 
     def _regulation_events_by_mkey(
         self,

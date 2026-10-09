@@ -608,7 +608,7 @@ once (0095). Specification: `docs/specs/2026-09-26-s27-coding-guidance-design.md
 
 *Done means:* the specification's §15. The bar S3's loop faces is set after this stage (0089).
 
-### S3. The agent loop
+### S3. The agent loop — done
 
 Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.
 The deterministic narrative router planned here is removed (0013): no case carries a
@@ -681,6 +681,12 @@ Registered first, measured once on `heldout-400`: the loop is worse than S3's fu
 at equal billed cost, so it is not warranted (`docs/results/s32-claims-heldout.txt`); S3's full
 arm B is the bar. The sealed sample stays sealed for v2 (0141); a prompt-size ceiling bounds every
 request (0152). S3.3, live shadow, is next.
+
+*S3.3 — done (2026-10-09, pull request #29).* As built: see the
+[S3.3 specification's As-built section](2026-10-07-s3-3-live-shadow-design.md#as-built-s33-2026-10-09).
+Ellery version 1 coded the 47-case backfill and 13 fresh closures once each, at closure, scored
+as counts only (`docs/results/s33-live-shadow.txt`); live runs use the standard price (0165) and a
+read-only AWS key (0166). S3 is complete. S4, predictions and resolution, is next.
 
 ### S4. Predictions and resolution
 

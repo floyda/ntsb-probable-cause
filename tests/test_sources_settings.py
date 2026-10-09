@@ -1,4 +1,5 @@
 import math
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -265,3 +266,20 @@ def test_the_prompt_ceiling_is_the_measured_rule_under_luna_6s_context_window() 
     assert sources.LUNA_6_CONTEXT_TOKENS == 1_050_000
     rule = math.floor(0.8 * sources.LUNA_6_CONTEXT_TOKENS / 2.4303 / 1000) * 1000
     assert sources.PROMPT_TOKEN_CEILING == rule == 345_000
+
+
+def test_live_docket_dir_derives_from_data_dir_and_explicit_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("NTSB_LIVE_DOCKET_DIR", raising=False)
+    assert Settings(data_dir=tmp_path).live_docket_dir == tmp_path / "live-docket"
+    monkeypatch.setenv("NTSB_LIVE_DOCKET_DIR", "/elsewhere/live")
+    assert Settings(data_dir=tmp_path).live_docket_dir == Path("/elsewhere/live")
+
+
+def test_training_cutoff_for_the_default_model() -> None:
+    cutoff = sources.TRAINING_CUTOFFS["openai/gpt-6-luna"]
+    assert cutoff.day == date(2026, 5, 18)
+    assert cutoff.read_on == date(2026, 10, 7)
+    assert cutoff.source.startswith("https://")
+    assert sources.DEFAULT_MODEL in sources.TRAINING_CUTOFFS

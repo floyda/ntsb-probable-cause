@@ -89,3 +89,9 @@ Accepted, 2026-10-03 (Andy, S3.2 design session; specification approved 2026-10-
   offered document (0121).
 - **Stated effect**: the agent's one-line reason for reading a document.
 - **v1**: the loop as frozen at `fd6053f`.
+
+## Amended in part, 2026-10-07 (appended; nothing above is edited)
+
+- **Item 4's timing is amended by [0164](0164-what-no-longer-arises-in-s33.md).** S3.3 changes no
+  text Ellery receives ([0156](0156-the-board-runs-ellery-version-1.md)), so the structured
+  expected-change field comes with version 2, not S3.3. Result 4 stays "not shown" on version 1.

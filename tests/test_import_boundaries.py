@@ -119,13 +119,58 @@ def test_nothing_in_the_library_imports_the_agent() -> None:
     """
     contract = _contract("Nothing in the library imports the agent")
     graph = grimp.build_graph(_ROOT)
-    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.agent"}
+    # ``live`` is the one library package that runs the agent (decision 0160), so it is not named.
+    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.agent", f"{_ROOT}.live"}
     assert set(contract["source_modules"]) == children  # type: ignore[call-overload]
     assert contract["forbidden_modules"] == [f"{_ROOT}.agent"]
     outside = {
         importer
         for module in graph.find_descendants(f"{_ROOT}.agent") | {f"{_ROOT}.agent"}
         for importer in graph.find_modules_that_directly_import(module)
-        if not importer.startswith(f"{_ROOT}.agent")
     }
-    assert outside == set()
+    assert _disallowed_agent_importers(outside) == set()
+
+
+# Decision 0160: ``live`` is a consumer of the agent, like ``apps`` (it runs ``AgentRunner``).
+# It is the only library package so allowed; pyproject.toml's contracts are Task 9's.
+_AGENT_CONSUMER = f"{_ROOT}.live"
+
+
+def _disallowed_agent_importers(importers: set[str]) -> set[str]:
+    """Return the importers of the agent that are neither the agent itself nor ``live``."""
+    return {
+        importer
+        for importer in importers
+        if not importer.startswith(f"{_ROOT}.agent")
+        and importer != _AGENT_CONSUMER
+        and not importer.startswith(f"{_AGENT_CONSUMER}.")
+    }
+
+
+def test_only_live_may_import_the_agent_from_outside_it() -> None:
+    """The exemption is narrow: any other library package that imports the agent is caught."""
+    importers = {
+        f"{_ROOT}.agent.tools",
+        f"{_ROOT}.live",
+        f"{_ROOT}.live.morning",
+        f"{_ROOT}.scoring.runner",
+        f"{_ROOT}.liveness",
+        f"{_ROOT}.store",
+    }
+    assert _disallowed_agent_importers(importers) == {
+        f"{_ROOT}.scoring.runner",
+        f"{_ROOT}.liveness",
+        f"{_ROOT}.store",
+    }
+
+
+def test_nothing_else_imports_the_live_package() -> None:
+    """S3.3 Task 9: every library package but ``live``, and the other commands, are sources."""
+    contract = _contract("Nothing in the library or the other commands imports the live package")
+    graph = grimp.build_graph(_ROOT)
+    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.live"}
+    commands = {"apps.eval", "apps.recorder", "apps.ingest"}
+    assert set(contract["source_modules"]) == children | commands  # type: ignore[call-overload]
+    assert contract["type"] == "forbidden"
+    assert set(contract["forbidden_modules"]) == {f"{_ROOT}.live", "apps.live"}  # type: ignore[call-overload]
+    assert "ignore_imports" not in contract

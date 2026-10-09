@@ -57,3 +57,9 @@ Accepted, 2026-10-03 (Andy, S3.2 design session; specification approved 2026-10-
 - **Reservation**: the budget a run holds from its start to its end, so that two runs cannot
   both spend the same headroom (0045).
 - **Spend line**: a stage's limit on what it may spend, counted by commit (`make s3-spend`).
+
+## Amended in part, 2026-10-07 (appended; nothing above is edited)
+
+- **S3.3's share of the remainder is limited by [0163](0163-the-live-shadows-caps.md)**: S3.3 stops
+  for Andy when its own spend reaches $10, a line of $21.46 on S3's spend, checked in code by
+  `scripts/stage_spend.py --stage s33`.

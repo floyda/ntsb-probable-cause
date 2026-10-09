@@ -27,10 +27,10 @@ from tests.test_occurrence_misses import _case
 from tests.test_runner import FakeBatchClient
 
 from ntsb_probable_cause import gitinfo
-from ntsb_probable_cause.agent import texts as agent_texts
+from ntsb_probable_cause.agent import version as agent_version
 from ntsb_probable_cause.agent.run import TRAIL_FILE
-from ntsb_probable_cause.agent.texts import prompt_version
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.agent.version import prompt_version
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -3195,9 +3195,8 @@ def test_resolve_latest_finds_a_plain_arm_c_run_made_on_an_earlier_agent_text(
     """Andy, 2026-10-01: plain arm C is S3's guidance and no round; ``+p`` is not compared."""
     runs = tmp_path / "runs"
     current = _arm_c_record("x", guidance=_S3_GUIDANCE).prompt_version
-    original = agent_texts.source_text
     with monkeypatch.context() as patched:
-        patched.setattr(agent_texts, "source_text", lambda p, n: f"{original(p, n)}# earlier\n")
+        patched.setattr(agent_version, "rendered_sha256", lambda: "e" * 64)
         earlier = _arm_c_record("x", guidance=_S3_GUIDANCE)
         later_round = _arm_c_record("x", guidance=_S3_GUIDANCE, round_number=1)
     assert earlier.prompt_version != current

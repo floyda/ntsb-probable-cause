@@ -40,7 +40,7 @@ from tests.test_runner import FakeBatchClient
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as run_module
-from ntsb_probable_cause.agent import texts
+from ntsb_probable_cause.agent import version as agent_version
 from ntsb_probable_cause.agent.documents import case_marks, docket_view, evidence_payload
 from ntsb_probable_cause.agent.drive import REPLIES_FILE, ROUNDS_FILE
 from ntsb_probable_cause.agent.loop import LoopConfig
@@ -225,7 +225,7 @@ class TestSyncRun:
         assert (record.arm, record.sample, record.evidence_version) == ("C", "dev-400", "v1")
         assert record.finished is not None
         assert record.cases == 2
-        assert record.prompt_version == texts.prompt_version(GUIDANCE)
+        assert record.prompt_version == agent_version.prompt_version(GUIDANCE)
         assert (record.guidance, record.guidance_sha256) == (
             GUIDANCE,
             prompt.guidance_sha256(GUIDANCE),
@@ -304,7 +304,7 @@ class TestSyncRun:
         _, folder = _sync_run(tmp_path / "runs")
         recorded = _spec_file(folder)
         assert recorded["arm"] == "C"
-        assert recorded["agent_prompt_version"] == texts.prompt_version(GUIDANCE)
+        assert recorded["agent_prompt_version"] == agent_version.prompt_version(GUIDANCE)
         assert recorded["stats"] == "s3"
         assert (recorded["max_rounds"], recorded["max_coding_calls"]) == (40, 6)
         assert (recorded["without"], recorded["pass_reasoning"]) == ([], False)
@@ -317,13 +317,10 @@ class TestSyncRun:
 
 def _edit_covered_source(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
     """What an edit to a covered file looks like to a reader once it is made: a callback that
-    makes ``texts.source_text`` return every file with a comment line added."""
-    original = texts.source_text
+    makes the rendered-text fingerprint another one (the text the agent sends changed)."""
 
     def edit() -> None:
-        monkeypatch.setattr(
-            texts, "source_text", lambda package, name: f"{original(package, name)}# an edit\n"
-        )
+        monkeypatch.setattr(agent_version, "rendered_sha256", lambda: "e" * 64)
 
     return edit
 
@@ -355,10 +352,10 @@ class TestPromptVersionIsFixedAtTheStart:
     def test_a_covered_file_edited_after_the_run_starts_is_not_recorded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        version = texts.prompt_version(GUIDANCE)
+        version = agent_version.prompt_version(GUIDANCE)
         client = _EditingClient(_sync_replies(_scripts()), _edit_covered_source(monkeypatch))
         record = _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS)
-        assert texts.prompt_version(GUIDANCE) != version, "the edit is in force at the end"
+        assert agent_version.prompt_version(GUIDANCE) != version, "the edit is in force at the end"
         folder = tmp_path / "runs" / record.run_id
         assert record.prompt_version == version
         assert _record(folder).prompt_version == version
@@ -373,7 +370,7 @@ class TestPromptVersionIsFixedAtTheStart:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The records written on the way out of a dead run are the start's too."""
-        version = texts.prompt_version(GUIDANCE)
+        version = agent_version.prompt_version(GUIDANCE)
         edit = _edit_covered_source(monkeypatch)
 
         def edit_then_die(_batch_id: str, _requests: Sequence[BatchRequest]) -> BatchStatus:
@@ -384,7 +381,7 @@ class TestPromptVersionIsFixedAtTheStart:
         with pytest.raises(_KilledError):
             _runner(runs, batch=FakeBatchClient(handlers=[edit_then_die])).run(_spec(), RAWS)
         (folder,) = [p for p in runs.iterdir() if p.is_dir()]
-        assert texts.prompt_version(GUIDANCE) != version
+        assert agent_version.prompt_version(GUIDANCE) != version
         assert _record(folder).prompt_version == version
         assert _spec_file(folder)["agent_prompt_version"] == version
 
@@ -734,10 +731,7 @@ class TestResume:
         with pytest.raises(_KilledError):
             _runner(runs, batch=dead).run(_spec(), RAWS)
         (folder,) = [p for p in runs.iterdir() if p.is_dir()]
-        original = texts.source_text
-        monkeypatch.setattr(
-            texts, "source_text", lambda package, name: f"{original(package, name)}# an edit\n"
-        )
+        monkeypatch.setattr(agent_version, "rendered_sha256", lambda: "e" * 64)
         runner = _runner(runs, batch=FakeBatchClient(handlers=[]))
         with pytest.raises(
             ConfigurationError, match=f"cannot resume {folder.name}: agent_prompt_version"
@@ -1082,7 +1076,7 @@ class TestSettings:
         record = _runner(tmp_path / "runs", client=client, round_number=3).run(
             _sync_spec(guidance=("r3-loc-stall",)), RAWS
         )
-        assert record.prompt_version == texts.prompt_version(("r3-loc-stall",), 3)
+        assert record.prompt_version == agent_version.prompt_version(("r3-loc-stall",), 3)
         assert record.prompt_version.endswith("+r3")
         recorded = _spec_file(tmp_path / "runs" / record.run_id)
         assert recorded["round"] == 3
@@ -1164,10 +1158,14 @@ class TestRefusals:
         if batch is not None:
             assert batch.submitted == []
 
-    def test_a_sync_resume_is_refused(self, tmp_path: Path) -> None:
+    def test_a_sync_resume_of_a_missing_folder_is_refused_by_the_folder_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Decision 0165: the sync refusal is gone; the folder check refuses what is not there."""
         client = ScriptedClient([])
-        with pytest.raises(ConfigurationError, match="--resume cannot be used with --sync"):
+        with pytest.raises(ConfigurationError, match="no run folder"):
             _runner(tmp_path / "runs", client=client).run(_sync_spec(), RAWS, resume="x")
+        assert client.calls == 0
 
     def test_no_docket_reader_is_refused_unless_the_docket_is_excluded(
         self, tmp_path: Path
@@ -1201,3 +1199,56 @@ class TestRefusals:
         )
         with pytest.raises(ConfigurationError, match="AgentRunner"):
             runner.run(_sync_spec(), RAWS)
+
+
+class TestSyncResume:
+    """Decision 0165: a sync run of the loop is resumed from the replies it recorded."""
+
+    def _interrupted(self, runs: Path, *, die_at: int) -> Path:
+        client = ScriptedClient(_sync_replies(_scripts()), die_at=die_at)
+        with pytest.raises(_KilledError):
+            _runner(runs, client=client).run(_sync_spec(), RAWS)
+        assert client.calls == die_at
+        (folder,) = (p for p in runs.iterdir() if p.is_dir() and p.name[0].isdigit())
+        return folder
+
+    def test_a_cut_sync_run_resumes_and_asks_only_for_the_calls_not_yet_answered(
+        self, tmp_path: Path
+    ) -> None:
+        runs = tmp_path / "runs"
+        folder = self._interrupted(runs, die_at=4)
+        replies = _sync_replies(_scripts())
+        on_disk = len((folder / REPLIES_FILE).read_text().splitlines())
+        assert on_disk == 3
+        client = ScriptedClient(replies[on_disk:])
+        record = _runner(runs, client=client, clock=Clock(ticks=100)).run(
+            _sync_spec(), RAWS, resume=folder.name
+        )
+        assert client.calls == len(replies) - on_disk  # replayed calls are not sent again
+        assert record.run_id == folder.name
+        assert record.finished is not None
+        assert record.cases == 2
+
+    def test_a_resumed_sync_run_gives_the_cases_of_an_uninterrupted_one(
+        self, tmp_path: Path
+    ) -> None:
+        folder = self._interrupted(tmp_path / "cut", die_at=4)
+        replies = _sync_replies(_scripts())
+        client = ScriptedClient(replies[3:])
+        _runner(tmp_path / "cut", client=client, clock=Clock(ticks=100)).run(
+            _sync_spec(), RAWS, resume=folder.name
+        )
+        _, plain = _sync_run(tmp_path / "plain")
+        assert [(c.case_id, c.failure, c.cost_usd) for c in _cases(folder)] == [
+            (c.case_id, c.failure, c.cost_usd) for c in _cases(plain)
+        ]
+
+    def test_a_resumed_sync_run_whose_spec_differs_is_refused(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        folder = self._interrupted(runs, die_at=4)
+        client = ScriptedClient([])
+        with pytest.raises(ConfigurationError, match="cannot resume"):
+            _runner(runs, client=client).run(
+                _sync_spec(max_output_tokens=1234), RAWS, resume=folder.name
+            )
+        assert client.calls == 0

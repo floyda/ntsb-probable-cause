@@ -244,3 +244,45 @@ def test_the_post_passes_name_the_registered_way_and_statistics() -> None:
     assert _flags(check, "--stats") == ["s3"]
     tools = next(x for x in recipe(text, "s32-heldout-b-tools") if "ntsb-eval tools" in x)
     assert tools.endswith("ntsb-eval tools $(RUN)")
+
+
+def test_every_s33_target_is_phony_and_the_morning_checks_both_lines_first() -> None:
+    text = Path("Makefile").read_text()
+    s33 = {name for name in targets(text) if name.startswith("s33-")}
+    assert {"s33-dry-run", "s33-morning", "s33-report"} <= s33
+    assert s33 <= set(phony_words(text))
+    recipe = text.split("\ns33-morning:\n", 1)[1].split("\n\n", 1)[0]
+    lines = [line.strip() for line in recipe.splitlines() if line.startswith("\t")]
+    stages = [i for i, line in enumerate(lines) if "stage_spend" in line]
+    run = next(i for i, line in enumerate(lines) if "ntsb-live run" in line)
+    assert [("--stage s3 " in lines[i], "--stage s33 " in lines[i]) for i in stages] == [
+        (True, False),
+        (False, True),
+    ]
+    assert max(stages) < run
+    # decisions 0165 and 0167: 50 cases at the $0.04 projection
+    assert all(lines[i].endswith("--estimate 2.00") for i in stages)
+
+
+def test_the_s33_recipes_reach_the_s3_store_through_live_env_and_the_aws_extra() -> None:
+    text = Path("Makefile").read_text()
+    for name, command in (
+        ("s33-dry-run", "ntsb-live run"),
+        ("s33-morning", "ntsb-live run"),
+        ("s33-report", "ntsb-live report"),
+    ):
+        recipe = text.split(f"\n{name}:\n", 1)[1].split("\n\n", 1)[0]
+        (run,) = [line for line in recipe.splitlines() if command in line]
+        assert "scripts/live_env.sh" in run, name
+        assert "--extra aws" in run, name
+        assert "awscrt" not in run, name  # it is in the aws extra, pinned by uv.lock
+        assert run.index("live_env.sh") < run.index(command)
+        assert "&& eval" in run, name  # a failed lookup stops the recipe
+
+
+def test_awscrt_is_in_the_aws_extra_and_so_in_the_lockfile() -> None:
+    import tomllib  # noqa: PLC0415
+
+    extra = tomllib.loads(Path("pyproject.toml").read_text())["project"]["optional-dependencies"]
+    assert any(dep.startswith("awscrt") for dep in extra["aws"])
+    assert 'name = "awscrt"' in Path("uv.lock").read_text()

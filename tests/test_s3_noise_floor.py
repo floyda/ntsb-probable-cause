@@ -20,9 +20,10 @@ from tests.test_agent_run import RAWS, _runner, _spec
 from tests.test_occurrence_misses import _SCORES, _case
 from tests.test_runner import FakeBatchClient
 
-from ntsb_probable_cause.agent import texts
+from ntsb_probable_cause.agent import version as agent_version
 from ntsb_probable_cause.agent.run import GUIDANCE, TRAIL_FILE
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.agent.version import SOURCE_LABEL_V1
 from ntsb_probable_cause.model.client import tool_reply
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl, write_jsonl
@@ -54,7 +55,7 @@ def _spec_json(ids: Sequence[str], **changes: object) -> dict[str, object]:
         expected_cost_per_case_usd=0.012,
     )
     extra: dict[str, object] = {
-        "agent_prompt_version": texts.prompt_version(GUIDANCE),
+        "agent_prompt_version": SOURCE_LABEL_V1,
         "stats": "s3",
         "max_rounds": 40,
         "max_coding_calls": 6,
@@ -73,7 +74,7 @@ def _record(run_id: str, cases: int, **changes: object) -> RunRecord:
         evidence_version="v1",
         exclusions=(),
         includes=(),
-        prompt_version=texts.prompt_version(GUIDANCE),
+        prompt_version=SOURCE_LABEL_V1,
         guidance=GUIDANCE,
         model="openai/gpt-6-luna",
         price_variant="batch",
@@ -706,14 +707,13 @@ def test_differently_configured_runs_are_refused_naming_the_setting(runs: Path) 
 
 
 def test_runs_on_two_agent_texts_are_refused(runs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Andy, 2026-10-01: the prompt version's ``+p`` part differs when the agent's text does."""
+    """Andy, 2026-10-01: the prompt version's ``+t`` part differs when the agent's text does."""
     _write(runs, _RUN_A, _plain())
-    original = texts.source_text
     with monkeypatch.context() as patched:
-        patched.setattr(texts, "source_text", lambda p, n: f"{original(p, n)}# an edit\n")
-        other = texts.prompt_version(GUIDANCE)
-    assert other != texts.prompt_version(GUIDANCE)
-    assert other.partition("+p")[0] == texts.prompt_version(GUIDANCE).partition("+p")[0]
+        patched.setattr(agent_version, "rendered_sha256", lambda: "e" * 64)
+        other = agent_version.prompt_version(GUIDANCE)
+    assert other != agent_version.prompt_version(GUIDANCE)
+    assert other.partition("+t")[0] == agent_version.prompt_version(GUIDANCE).partition("+t")[0]
     _write(runs, _RUN_B, _plain(), spec=_spec_json(_IDS, agent_prompt_version=other))
     _refused([_RUN_A, _RUN_B], "'agent_prompt_version'")
 
