@@ -10,12 +10,12 @@
 # `export NTSB_STORE=...` (an explicit value wins; otherwise `s3://<BucketName>/recorder.sqlite`
 # from the `NtsbRecorderStack` output). If the lookup fails or is empty (most likely `pass` is locked or
 # the profile is missing) it prints a plain message and then aws's own error on stderr, exits 1, and prints
-# no export.
+# no export at all (decision 0166).
 set -euo pipefail
 set +x
 profile="${AWS_PROFILE:-ntsb-live}"
-echo "export AWS_PROFILE='$profile'"
 if [[ -n "${NTSB_STORE:-}" ]]; then
+  printf 'export AWS_PROFILE=%q\n' "$profile"
   exit 0
 fi
 err_file="$(mktemp)"
@@ -29,4 +29,6 @@ if [[ -z "$bucket" || "$bucket" == "None" ]]; then
   cat "$err_file" >&2  # aws's own error carries no secret; it tells a login problem from another
   exit 1
 fi
-echo "export NTSB_STORE='s3://$bucket/recorder.sqlite'"
+# Both lines only after a good lookup, quoted for `eval` whatever the names hold.
+printf 'export AWS_PROFILE=%q\n' "$profile"
+printf 'export NTSB_STORE=%q\n' "s3://$bucket/recorder.sqlite"

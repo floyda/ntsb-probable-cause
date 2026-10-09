@@ -137,6 +137,8 @@ NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-morning
 ```
 
 *(Corrected 2026-10-08: `ntsb` is an assume-role profile on `default`, so the login is `aws login`.)*
+*(Superseded 2026-10-08 by decision 0166: mornings read the store with a read-only key through the
+`ntsb-live` profile, so no `aws login` comes first.)*
 
 `paid_run.sh` resets the clean paid-runs checkout to the branch tip, installs with `uv sync
 --locked` and sets `UV_LOCKED=1` (§7.3), reads the OpenRouter key from `pass` without printing it,
