@@ -110,7 +110,8 @@ later.
   (decision 0024); the committed results file holds its count and the SHA-256 of the sorted list,
   so anyone holding the list can later show it was not changed.
 - **A fresh closure** is a case that closes after the backfill list is fixed.
-- **The backfill drains through the same queue**, at 10 a day. S4 codes the backfill again at
+- **The backfill drains through the same queue**, at 10 a day *(50 a day from 2026-10-09, decision
+  0167)*. S4 codes the backfill again at
   launch with its own store, as decision 0155 says; S3.3's runs are a rehearsal and never become
   board rows. This rule is fixed now, so no one can later choose whichever of two draws looks
   better.

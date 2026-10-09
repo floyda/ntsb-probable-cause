@@ -105,9 +105,11 @@ The command prints counts only. It names no case.
 
 The monthly live cap is $5. If the next morning would pass it, the command refuses. The check
 projects $0.04 a case (the standard price, with room for large dockets). That is a ceiling the
-caps use, not the expected spend: the real cost is about $0.02 a case. A day that has an unfinished
-run to resume and then a fresh run can code up to 20 cases (see section 5), so a day's cost can
-reach about $0.80 projected (20 x $0.04), and the real cost is usually about half that. The all-purpose $40 monthly guard is checked too (section 6).
+caps use, not the expected spend: the standard-price mornings cost about $0.005 to $0.007 a case.
+A day that has an unfinished run to resume and then a fresh run can code up to 100 cases (50 a
+run since decision 0167; see section 5), so a day's cost can reach about $4.00 projected
+(100 x $0.04), and the real cost is far less. The all-purpose $40 monthly guard is checked too
+(section 6).
 
 ## 5. An interrupted morning
 
@@ -152,7 +154,7 @@ that each quoted text is in the program.
 | `the agent's prompt version is` ... `morning runs version 1 only (decision 0161)` (**fingerprint** mismatch; the full line reads "..., not the frozen s3-v1+ge17fecdc66ec+te7811b387b31: a live morning runs version 1 only") | The text the agent would send is not the text measured on held-out. A code or package change moved it. | Stop. Do not run again. Tell Claude. The cause is a change on the branch or in `uv.lock`. |
 | `these settings are not version 1's` | A setting that changes what Ellery receives or how it is asked (the model, the reply budget, the cap, the temperature, the statistics file, the pass-reasoning switch) is not the one version 1 was measured with. The line names which. Nothing was fetched or spent. | Stop. Do not run again. Tell Claude. |
 | `the recorder has not finished a run on` | The store is not tonight's yet. | Wait. Try again after the recorder finishes (usually 03:45 UTC, at the latest about 05:31 UTC). If it is later than 06:00 UTC, tell Claude (`docs/runbooks/recorder-bridge.md`). |
-| `the day's limit of` | Ten cases were already coded today. This is a warning, not a refusal: the exit code is 0 and no run is made. | Nothing. Run again tomorrow. |
+| `the day's limit of` | The day's limit (50 cases since decision 0167; 10 before) was already coded today. This is a warning, not a refusal: the exit code is 0 and no run is made. | Nothing. Run again tomorrow. |
 | `cannot resume` ... `commit_sha` ... `when the run started, and is` | An unfinished run was begun on one commit, and the tree is on another now (code was pushed first). The run cannot be resumed on different code. Nothing was spent. | Stop. Push nothing. Tell Claude. The recovery is in section 5 ("A stranded run"). |
 | `monthly guard of` | The month's spend and open reservations, plus this morning's projection, pass the all-purpose $40 monthly guard (`monthly_budget_usd`). Nothing was fetched and no run was made. | Do not run. Tell Claude. |
 | `monthly cap (decision 163)` | This month's live spend plus this morning's projection passes $5. The cases stay queued. | Do not run. Tell Claude. Only a new decision changes the cap. |
