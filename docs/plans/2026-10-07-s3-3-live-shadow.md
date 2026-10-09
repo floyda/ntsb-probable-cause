@@ -398,16 +398,16 @@ Tasks 4, 5 and 6 are independent of each other once Task 2 has landed; 7 needs 5
 
 ## Task 11 (Controller): The dry run, the first paid morning, the mornings
 
-- [ ] Push the branch. Run `aws login` if needed, then `NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-dry-run` (free). Read its summary (counts only). Fix anything it finds before any paid run.
-- [ ] **Ask Andy** before the first paid morning, stating: one case (`LIMIT=1`), about $0.01 and up to about 2 hours (a run is 10 to 15 batch rounds whatever its size, so one case is not much faster than ten), inside 01:00 to 12:00 UTC. It fixes the backfill list. On his go-ahead: `NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-morning LIMIT=1`. Report its cost and duration.
-- [ ] If the backfill list holds more than 100 cases, stop and put it to Andy (spec §18).
-- [ ] Each later morning (Andy's permission stands within the $5 cap): `scripts/paid_run.sh s33-morning`; report the summary's coded, not coded, queued, cost and minutes to Andy. Log each morning's date and cost in Deviations under "Mornings".
-- [ ] Stop when the closing rule of spec §11 is met; note which limb met it.
+- [x] Push the branch. Run `aws login` if needed, then `NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-dry-run` (free). Read its summary (counts only). Fix anything it finds before any paid run.
+- [x] **Ask Andy** before the first paid morning, stating: one case (`LIMIT=1`), about $0.01 and up to about 2 hours (a run is 10 to 15 batch rounds whatever its size, so one case is not much faster than ten), inside 01:00 to 12:00 UTC. It fixes the backfill list. On his go-ahead: `NTSB_PAID_BRANCH=s3-3-live-shadow scripts/paid_run.sh s33-morning LIMIT=1`. Report its cost and duration.
+- [x] If the backfill list holds more than 100 cases, stop and put it to Andy (spec §18).
+- [x] Each later morning (Andy's permission stands within the $5 cap): `scripts/paid_run.sh s33-morning`; report the summary's coded, not coded, queued, cost and minutes to Andy. Log each morning's date and cost in Deviations under "Mornings".
+- [x] Stop when the closing rule of spec §11 is met; note which limb met it.
 
 ## Task 12 (Controller): The report and the close-out
 
-- [ ] `make s33-report`; read `docs/results/s33-live-shadow.txt` against spec §10 (counts only); commit it.
-- [ ] Final review on `opus`, split by dimension, three reviewers in parallel: (1) the open-split fence and leakage (nothing from a live case reaches a committed file, a development command or Ellery's text; the preliminary narrative is excluded; the closure record holds no document text); (2) the fingerprint (`+t` covers every text; the reach and mutation tests can fail; continuity; the refusal); (3) the morning, money and the scripts (queue rules, the seen rule, resume, caps, cleanup, `paid_run.sh`). Fix every Critical and Important finding; log the rest.
+- [x] `make s33-report`; read `docs/results/s33-live-shadow.txt` against spec §10 (counts only); commit it.
+- [x] Final review on `opus`, split by dimension, three reviewers in parallel: (1) the open-split fence and leakage (nothing from a live case reaches a committed file, a development command or Ellery's text; the preliminary narrative is excluded; the closure record holds no document text); (2) the fingerprint (`+t` covers every text; the reach and mutation tests can fail; continuity; the refusal); (3) the morning, money and the scripts (queue rules, the seen rule, resume, caps, cleanup, `paid_run.sh`). Fix every Critical and Important finding; log the rest.
 - [ ] Run the `close-stage` skill: As-built record appended to the specification (what was delivered, Done means with evidence, departures, known issues carried to S4, decisions, implementation record with run ids and spend), the specification marked Implemented, the roadmap's S3 entry noted done with a dated line, `CLAUDE.md` updated (S3.3 built, the `ntsb-live` command and `s33-*` targets, the `NTSB_LIVE_DOCKET_DIR` setting, `+t`), this plan deleted, `version = "0.10.0"`.
 - [ ] Pull request titled `S3.3: live shadow`, to be merged with a merge commit (0033); the merge and the release are Andy's.
 
@@ -446,3 +446,9 @@ Tasks 4, 5 and 6 are independent of each other once Task 2 has landed; 7 needs 5
 - **Morning 1, 2026-10-08** (batch, `LIMIT=1`, started 06:55 UTC at commit `9ad5576`): 1 coded, $0.0520 computed, $0.0433 billed, 786.1 minutes, 11 batch rounds. The backfill list was fixed at 47 cases (SHA-256 beginning `bd23bae62863`).
 - **Morning 2, 2026-10-08** (standard, started 20:14 UTC at commit `bdb54ba`): 9 taken, 8 coded, 1 not coded (`leak`), 0 returned, $0.0654, 14.2 minutes.
 - **Morning 3, 2026-10-09** (standard, started by a schedule at 04:07 UTC, at commit `0519312`): 10 taken, 10 coded, 0 returned, $0.0470, 12.4 minutes; 42 queued after it (27 left of the backfill).
+- **Morning 4, 2026-10-09** (standard, at 50 a day under decision 0167, started 20:50 UTC at commit `9c2477c`): 40 taken, 40 coded, 0 returned, $0.1439, 38.2 minutes; 2 queued after it.
+
+### Closing
+
+- **2026-10-09, Task 11:** the closing rule of spec §11 was met by its first limb on 2026-10-09, after morning 4: the backfill drained and 13 fresh closures were coded, one day after the backfill was fixed (`docs/results/s33-live-shadow.txt`, "closing rule: met (fresh closure)"). 2 fresh closures stay queued; S4's backfill rule covers them (spec §11).
+- **2026-10-07, Task 12's final review ran before Task 11's mornings, not after.** A live run cannot be resumed on a different commit and `paid_run.sh` resets to the branch tip, so code fixes during the mornings would strand a run. The three-dimension review on `opus` (open-split fence, fingerprint, morning and money) and its one fix wave (groups A to C above) finished on 2026-10-08 before morning 1. Later changes were reviewed on their own: 0165 before it was pushed (fixes `bdb54ba`), 0167 before morning 4 (fixes `9c2477c`), and 0166 (`43d7ec9`, `0519312`) after the mornings, at the close-out; 0166 changed the AWS profile, its error messages and the runbook, and the controller checked the key before morning 3 (it reads the store; listing the bucket and IAM are denied).
