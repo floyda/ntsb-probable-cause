@@ -27,7 +27,7 @@ def _closure(mkey: int, closed_on: str = "2026-09-24", run: int = 5) -> Closure:
 
 def test_constants() -> None:
     assert date(2026, 9, 23) == DECLARED_START
-    assert DAILY_LIMIT == 10
+    assert DAILY_LIMIT == 50
 
 
 def test_build_queue_drops_early_and_done_and_orders_by_run_then_mkey() -> None:
@@ -54,12 +54,14 @@ def test_build_queue_is_independent_of_input_order() -> None:
     assert build_queue(closures, set()) == build_queue(closures[::-1], set())
 
 
-def test_todays_take_forty_on_one_night() -> None:
-    queue = build_queue([_closure(m) for m in range(40, 0, -1)], set())
-    assert [q.mkey for q in todays_take(queue, 0)] == list(range(1, 11))
-    assert todays_take(queue, 10) == []
-    assert todays_take(queue, 12) == []
-    assert [q.mkey for q in todays_take(queue, 8)] == [1, 2]
+def test_todays_take_sixty_on_one_night() -> None:
+    queue = build_queue([_closure(m) for m in range(60, 0, -1)], set())
+    assert [q.mkey for q in todays_take(queue, 0)] == list(range(1, 51))
+    assert todays_take(queue, 50) == []
+    assert todays_take(queue, 52) == []
+    assert [q.mkey for q in todays_take(queue, 48)] == [1, 2]
+    # 2026-10-09: 10 coded under the old limit, then decision 0167 raised it
+    assert [q.mkey for q in todays_take(queue, 10)] == list(range(1, 41))
     assert [q.mkey for q in todays_take(queue, 0, limit=3)] == [1, 2, 3]
 
 

@@ -16,7 +16,8 @@ Words in **bold** the first time they appear are in the glossary at the end.
 
 1. Do not push code to the branch while a morning is unfinished. See section 5.
 2. Check that the disk has at least 5 GB free. A 10-case morning adds about 175 MB while it
-   runs. The command deletes most of it when the run is finished (section 7).
+   runs, so a 50-case one (the most in a day, decision 0167) adds about 900 MB. The command
+   deletes most of it when the run is finished (section 7).
 3. Plug the laptop into mains power and **keep the lid open** for the whole morning. The
    command runs `caffeinate`, which stops the laptop sleeping when idle, but a closed lid
    still puts it to sleep.
@@ -79,9 +80,10 @@ checkout under the first one before the lock of `ntsb-live` can refuse it.
 
 `paid_run.sh` makes a clean copy of the branch and runs `make s33-morning`. That target first
 checks two spending lines (S3's $50 and S3.3's own line), and only then starts `ntsb-live run`.
-A morning of 10 cases takes about half an hour: about 12 calls a case at about 12 seconds each
-(one case takes about 3 minutes). Keep the laptop open and leave the terminal open for that
-half hour. The calls go one at a time at the standard price, so there is no queue to wait in.
+A morning takes about 1.2 to 1.6 minutes a case (9 cases took 14.2 minutes and 10 took 12.4, on
+2026-10-08 and 2026-10-09), so a full day of 50 cases (decision 0167) takes about an hour.
+Keep the laptop open and leave the terminal open until it ends. The calls go one at a time at the
+standard price, so there is no queue to wait in.
 
 Only one morning can run at a time. The command locks `live.lock` in the runs folder.
 
@@ -95,7 +97,7 @@ The command prints counts only. It names no case.
 | `coded` | Cases the agent gave a verdict for. Each has a closure record. |
 | `not coded, <reason>` | Cases that were closed but not coded, with the reason: one of `schema` (the reply broke its format), `model` (the model failed), `leak` (the leakage guard stopped it), `cap` or `cap: context` (the case reached its cost cap or the context limit), `failed` (the loop failed at a step), `aborted`, `missing result`, or `other`. The record is written. The case is not tried again. |
 | `returned to the queue` | Cases that failed before the agent saw them (a fetch failed). They are tried again tomorrow. |
-| `still queued` | Closed cases waiting for a later morning. A morning takes at most 10 cases. A case that comes back as `returned to the queue` on three mornings in a row: tell Claude (it would hold the closing rule back). |
+| `still queued` | Closed cases waiting for a later morning. A UTC day takes at most 50 cases (decision 0167; 10 until 2026-10-09). A case that comes back as `returned to the queue` on three mornings in a row: tell Claude (it would hold the closing rule back). |
 | `cost` | The computed cost. A live run is not a batch, so no separate billed amount comes back. |
 | `minutes` | How long the morning took. |
 | `bytes freed` | Space deleted at the end (section 7). |

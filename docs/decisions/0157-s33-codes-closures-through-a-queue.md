@@ -73,3 +73,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 - **Fresh closure**: a case that closes after the backfill list is fixed.
 - **Seen**: a case whose first model call has been sent.
 - **Second draw**: running the same case again; answers vary between identical runs.
+
+## Amended, 2026-10-09 (appended; nothing above is edited)
+
+- Item 2's limit, and Why 3's bound of $3 on a day, are amended by [0167](0167-the-live-shadows-daily-limit-is-raised-to-50.md): at most 50 cases a UTC day for the rest of S3.3. The queue, its order, one run per case, the backfill list and the closing rule stand.

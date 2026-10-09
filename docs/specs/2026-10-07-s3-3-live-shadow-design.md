@@ -90,6 +90,8 @@ not coded (§6). Nothing else enters or leaves.
 
 **At most 10 cases a day** (Andy, 2026-10-07), counted per UTC calendar day across every live run
 started that day. Cases over the limit wait for the following mornings, ahead of later closures.
+*(Amended 2026-10-09 by decision 0167: at most 50 cases a UTC day for the rest of S3.3; the order and
+the queue are unchanged.)*
 
 *Why a queue and not a skip:* skipping cases over the limit would leave them uncoded, and choosing
 which cases are coded is selection, which decision 0155 rules out. *Why 10:* closures come in
@@ -414,7 +416,8 @@ $4.
 **The caps, each enforced in code before any call** (Andy, 2026-10-07):
 
 - **$0.30 a case**, the cap version 1 was measured with on held-out (decision 0144), not the code's
-  $0.15 default. With the daily limit, the worst possible day is $3.
+  $0.15 default. With the daily limit, the worst possible day is $3. *(Clarified 2026-10-09: at 50 a day, decision
+  0167, the worst day is $15 in principle; the $5 month is a projection checked before a morning.)*
 - **$5 a calendar month for live runs.** Before each morning, the command adds this month's live
   spend to the queue's expected cost and refuses if that passes $5. The cases stay queued.
 - **S3.3 stops for Andy when its own spend reaches $10.** Its own spend is S3's spend, counted by

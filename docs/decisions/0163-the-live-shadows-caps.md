@@ -53,3 +53,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 - **Billed / computed cost**: what the provider charged after cached-prompt discounts, and every
   token at the list rate.
 - **Spend line**: a stage's allowance, counted by commit on its branches.
+
+## Clarified, 2026-10-09 (appended; nothing above is edited)
+
+- Decision item 1's "the worst possible day is $3" held at 10 cases a day. From [0167](0167-the-live-shadows-daily-limit-is-raised-to-50.md) (50 a day) the worst day is 50 × $0.30 = $15 in principle: the $5 month is checked before a morning as a projection at $0.04 a case, not as a stop during the run, whose budget is the $40 monthly guard. The caps themselves are unchanged.

@@ -14,7 +14,7 @@ from typing import Final
 from ntsb_probable_cause.store import Closure
 
 DECLARED_START: Final = date(2026, 9, 23)  # decision 0155
-DAILY_LIMIT: Final = 10  # decision 0157
+DAILY_LIMIT: Final = 50  # decision 0157, raised from 10 by 0167
 
 
 @dataclass(frozen=True)
