@@ -18,11 +18,13 @@ From the S4 design session with Andy, 2026-10-10. Detail: the S4 specification, 
    per closed case) and one `cases/<case number>.json` per case (the facts, the withheld line,
    both codings, the comparison with finding scores, the trail, a fixed sentence for a case not
    coded). Each belief in the trail carries Ellery's account of the evidence (`evidence_narrative`),
-   after the names step (decision 0180), so S5 can show it if wanted. JSON, every file `"format": "board/1"`, rebuilt nightly from the run folders.
+   after the names step (decision 0180), so S5 can show it if wanted. JSON, every file
+   `"format": "board/1"`, rebuilt nightly from the run folders.
 2. **Six grades**: same first code, same codes in another order, different, abstained, not coded,
    awaiting the NTSB's codes, computed by the harness's scoring code.
-3. **It never holds** the registration, the non-expert explanation, any document text, the evidence fingerprint, a make or model, personal names, or anything about an
-   open case beyond counts. A test checks every string.
+3. **It never holds** the registration, the non-expert explanation, any document text, the
+   evidence fingerprint, a make or model, personal names, or anything about an open case beyond
+   counts. A test checks every string.
 4. **Typed models, a committed JSON Schema, and an invented sample** that S5 builds against. Adding
    an optional field keeps `board/1`; anything else is `board/2`.
 5. **S5 writes the one sentence on where the codings differ.** The replying model and provider are
