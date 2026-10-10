@@ -429,8 +429,10 @@ what was sent without publishing it.
   findings the NTSB flagged as in the cause (decision
   [0029](../decisions/0029-live-headline-is-the-finding-score.md) makes that the live headline, so
   S5 has it to show);
-- **the trail**: each belief's first code, cause statement, confidence, and whether it changed from
-  the belief before; each read choice's documents, each with its position, its title, read,
+- **the trail**: each belief's first code, cause statement, confidence, whether it changed from
+  the belief before, and Ellery's account of the evidence at that point (`evidence_narrative`, the
+  text that takes the place of the investigator's factual narrative; Andy, 2026-10-10: "in case it
+  is wanted in S5"; whether S5 shows it is S5's choice); each read choice's documents, each with its position, its title, read,
   skipped or scan only, and the agent's note; the coding lookups (tool and arguments); and each
   step's cost, with the case total;
 - **for a case not coded**: its failure kind and one fixed plain sentence for that kind, chosen in
@@ -440,8 +442,7 @@ Titles, the agent's text and the NTSB's cause statement pass through the names s
 
 ### 10.2 What the export never holds
 
-The registration; the explanation written for a non-expert; Ellery's account of the evidence
-(`evidence_narrative`); any document text; the evidence fingerprint; an aircraft's make and model;
+The registration; the explanation written for a non-expert; any document text; the evidence fingerprint; an aircraft's make and model;
 personal names; and anything about an open case beyond the counts. A test reads every string in an
 export built from invented runs against this list, using the boundary test's method.
 
@@ -509,7 +510,8 @@ statement reach the board, and any of them can hold a name.
 
 - **Titles:** every capitalised word that is neither in the committed title vocabulary nor in the
   word list is replaced with `[name]` (`docket/title_vocab.py`'s rule, `redact_title`).
-- **Ellery's text (cause statements and notes) and the NTSB's cause statement:** the words that
+- **Ellery's text (cause statements, notes and accounts of the evidence) and the NTSB's cause
+  statement:** the words that
   rule replaced in that case's own titles, and the owner and operator strings of decision
   [0046](../decisions/0046-known-owner-and-operator-names-are-replaced-in-document-text.md)
   (`docket/attach.py`'s `redact_known_names`), are replaced.
@@ -519,12 +521,14 @@ statement reach the board, and any of them can hold a name.
   the library.
 - **A free measurement first**, on `dev-400`'s two arm C noise-floor runs
   (`20261001T201506-fd6053f-dev-400-C` and `20261001T201648-fd6053f-dev-400-C`) and their records:
-  in how many cases do Ellery's cause statements and notes, and the NTSB's cause statement, hold a
-  word flagged in that case's own titles, and in how many do they hold any flagged word at all?
-  Counts only, `docs/results/s4-names-dev.txt`, from `scripts/s4_names_probe.py`. Fixed before it
+  in how many cases do Ellery's cause statements, notes and accounts of the evidence, and the
+  NTSB's cause statement, hold a word flagged in that case's own titles, and in how many do they
+  hold any flagged word at all? Each kind of text is counted apart. Counts only, `docs/results/s4-names-dev.txt`, from `scripts/s4_names_probe.py`. Fixed before it
   runs: if no case holds a flagged word outside the rule, the rule stands. If any does, Andy chooses
   between applying the full title rule to Ellery's text too, which also replaces brand and place
-  names, and keeping the rule and publishing its limit.
+  names, and keeping the rule and publishing its limit. For the accounts of the evidence, which are
+  long and summarise documents that name people, a third choice is open: the field stays in
+  `board/1` but is left empty until a stronger rule exists.
 - **The limit is published either way:** the rule replaces what it can recognise, the Methods page
   says so, and the S4 report gives the count of words replaced as a floor.
 

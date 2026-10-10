@@ -17,11 +17,11 @@ From the S4 design session with Andy, 2026-10-10. Detail: the S4 specification, 
 1. **S4 builds the whole export**: one `index.json` (the build stamp, the site-wide counts, one row
    per closed case) and one `cases/<case number>.json` per case (the facts, the withheld line,
    both codings, the comparison with finding scores, the trail, a fixed sentence for a case not
-   coded). JSON, every file `"format": "board/1"`, rebuilt nightly from the run folders.
+   coded). Each belief in the trail carries Ellery's account of the evidence (`evidence_narrative`),
+   after the names step (decision 0180), so S5 can show it if wanted. JSON, every file `"format": "board/1"`, rebuilt nightly from the run folders.
 2. **Six grades**: same first code, same codes in another order, different, abstained, not coded,
    awaiting the NTSB's codes, computed by the harness's scoring code.
-3. **It never holds** the registration, the non-expert explanation, Ellery's evidence account, any
-   document text, the evidence fingerprint, a make or model, personal names, or anything about an
+3. **It never holds** the registration, the non-expert explanation, any document text, the evidence fingerprint, a make or model, personal names, or anything about an
    open case beyond counts. A test checks every string.
 4. **Typed models, a committed JSON Schema, and an invented sample** that S5 builds against. Adding
    an optional field keeps `board/1`; anything else is `board/2`.
@@ -40,6 +40,11 @@ From the S4 design session with Andy, 2026-10-10. Detail: the S4 specification, 
   internals to fill the trail, and the never-holds test would have nothing to check.
 - **The difference sentence in the export.** Rejected: wording is the site's, and code writes it
   from the two code lists either way.
+
+Ellery's account of the evidence was first left out (as unused by S5's Draft and long text that
+can name people); Andy put it in before the specification was approved (2026-10-10: "Yes I think
+it should be in the export in case it is wanted in S5"). It is the text that takes the place of
+the investigator's factual narrative, the work the agent exists to do.
 
 ## Status
 
