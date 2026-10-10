@@ -534,8 +534,9 @@ statement reach the board, and any of them can hold a name.
 
 ## 13. Tests and continuous integration
 
-- **No AWS in the tests.** The cloud seams are tested against stubbed boto clients
-  (`tests/s3_probe_fixtures.py`), and `NtsbLiveStack` by CDK template assertions, as
+- **No AWS in the tests.** The cloud seams take narrow protocols, as `store/sync.py`'s `S3Like`
+  does, and are tested against in-memory fakes (corrected 2026-10-10, while writing the plan: this
+  line first named `tests/s3_probe_fixtures.py`, which holds S3.1 probe trails, not an S3 fake); and `NtsbLiveStack` by CDK template assertions, as
   `tests/test_infra_stack.py` does for the recorder. The template tests check that the task role
   cannot delete, that the ledger role reads only manifests, and that the schedule is disabled
   unless the context enables it. The recorder's template tests stay unchanged and pass.
