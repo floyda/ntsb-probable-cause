@@ -1,7 +1,7 @@
 # S4 — Predictions and resolution: design
 
 *Drafted 2026-10-10 from a design session with Andy (2026-10-10), after S3.3 closed (pull request
-#29, merge commit `ebb16cb`). Status: Draft. The implementation plan is written from this document
+#29, merge commit `ebb16cb`). Status: Approved (Andy, 2026-10-10). The implementation plan is written from this document
 separately, in `docs/plans/`. The specification, the plan and the code are on one branch,
 `s4-predictions-and-resolution`, and one pull request.*
 
