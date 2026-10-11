@@ -2,8 +2,8 @@
 
 A run folder is a *live* run when its ``run.jsonl``'s first record has ``sample == "live"``;
 a folder with no ``run.jsonl`` yet (a run killed before it finished) is one when its
-``spec.json`` says so. The folder name is never the test. This module pulls the store and never
-uploads it: no code in S3.3 writes to S3 (the sink is a local folder; a later stage may add one).
+``spec.json`` says so. The folder name is never the test.
+S4's bucket mirror (``live/cloud.py``) uploads run folders; this module never uploads the store.
 """
 
 import json

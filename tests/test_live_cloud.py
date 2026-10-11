@@ -28,6 +28,7 @@ class FakeBucket:
     def __init__(self, objects: dict[str, bytes] | None = None) -> None:
         self.objects = dict(objects or {})
         self.uploads: list[str] = []
+        self.fail_uploads = False
 
     def list_keys(self, bucket: str, prefix: str) -> list[tuple[str, int]]:
         return [(k, len(v)) for k, v in sorted(self.objects.items()) if k.startswith(prefix)]
@@ -36,6 +37,8 @@ class FakeBucket:
         Path(filename).write_bytes(self.objects[key])
 
     def upload_file(self, filename: str, bucket: str, key: str) -> None:
+        if self.fail_uploads:
+            raise OSError("down")
         self.objects[key] = Path(filename).read_bytes()
         self.uploads.append(key)
 
@@ -175,6 +178,7 @@ def test_key_spend_transport_error_hides_the_key() -> None:
     assert caught.value.kind == "key-unreachable"
     assert KEY not in str(caught.value)
     assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
 
 
 class FakeSns:
@@ -194,10 +198,10 @@ def test_sns_alert_carries_kinds_and_counts_only() -> None:
     assert first == {
         "TopicArn": "arn:t",
         "Subject": "Ellery live night: outage",
-        "Message": "cases: 3",
+        "Message": "kinds: outage\ncases: 3",
     }
     assert len(sns.published[1]["Subject"]) < 100
-    assert sns.published[1]["Message"] == "cases: 3\nfailed: 1"
+    assert sns.published[1]["Message"].endswith("\ncases: 3\nfailed: 1")
     pattern = re.compile(r"[A-Z]{3}\d{2}[A-Z]{2}\d{3}")
     assert not any(pattern.search(v) for p in sns.published for v in p.values())
 
@@ -226,3 +230,68 @@ def test_publish_finished_sends_one_point() -> None:
     assert len(data) == 1
     assert data[0]["MetricName"] == METRIC_NAME == "NightFinished"
     assert data[0]["Value"] == 1
+
+
+def test_sns_message_always_names_the_kinds() -> None:
+    sns = FakeSns()
+    SnsAlerts("arn:t", sns).send(["key-unreachable"], {})
+    assert sns.published[0]["Message"] == "kinds: key-unreachable"
+    long_kinds = [f"unreachable-kind-{i}" for i in range(20)]
+    SnsAlerts("arn:t", sns).send(long_kinds, {"cases": 2})
+    last = sns.published[1]
+    assert len(last["Subject"]) < 100
+    assert last["Message"] == f"kinds: {', '.join(long_kinds)}\ncases: 2"
+
+
+def test_alerts_refuse_anything_but_kinds_and_integers(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sns = FakeSns()
+    for alerts in (SnsAlerts("arn:t", sns), PrintAlerts()):
+        for kinds, counts in (
+            (["CEN24FA123"], {}),
+            (["outage"], {"CEN24FA123": 1}),
+            (["outage"], {"cases": 1.5}),
+            (["outage"], {"cases": True}),
+            (["Outage"], {}),
+        ):
+            with pytest.raises(ValueError, match="alert"):
+                alerts.send(kinds, counts)  # type: ignore[arg-type]
+    assert sns.published == []
+    assert capsys.readouterr().out == ""
+
+
+def test_push_refuses_paths_outside_the_mirrored_folders(tmp_path: Path) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other/x.txt").write_text("x")
+    for bad in (Path(), Path("../x"), Path("other"), Path("export")):
+        with pytest.raises(ValueError, match="outside"):
+            mirror.push(bad)
+    assert bucket.uploads == []
+
+
+def test_pull_skips_a_key_that_would_leave_the_folder(tmp_path: Path) -> None:
+    local = tmp_path / "local"
+    mirror, _ = _mirror(local, {"runs/ok.txt": b"1", "runs/../../escape.txt": b"2"})
+    assert mirror.pull() == 1
+    assert (local / "runs/ok.txt").is_file()
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_a_failed_upload_is_retried_by_the_next_push(tmp_path: Path) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    (tmp_path / "runs/r").mkdir(parents=True)
+    (tmp_path / "runs/r/a.txt").write_text("a")
+    bucket.fail_uploads = True
+    with pytest.raises(OSError, match="down"):
+        mirror.push(Path("runs/r"))
+    bucket.fail_uploads = False
+    assert mirror.push(Path("runs/r")) == 1
+    assert bucket.objects["runs/r/a.txt"] == b"a"
+
+
+def test_push_of_a_missing_path_uploads_nothing(tmp_path: Path) -> None:
+    mirror, _ = _mirror(tmp_path, {})
+    assert mirror.push(Path("runs/none")) == 0
+    assert mirror.push(Path("runs/none/file.txt")) == 0

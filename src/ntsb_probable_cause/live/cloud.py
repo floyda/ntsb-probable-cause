@@ -7,6 +7,7 @@ neither (an import-linter contract keeps it so), and its tests use in-memory fak
 
 import hashlib
 import math
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
@@ -25,6 +26,7 @@ NIGHT_STATE_FILE: Final = "state.json"
 METRIC_NAMESPACE: Final = "Ntsb/Live"
 METRIC_NAME: Final = "NightFinished"
 _OK: Final = 200
+_NAME: Final = re.compile(r"^[a-z][a-z0-9-]*$")
 _SUBJECT_MAX: Final = 99  # SNS subjects must be under 100 characters
 _SUBJECT_PREFIX: Final = "Ellery live night: "
 
@@ -66,24 +68,41 @@ class BucketMirror:
         self._s3 = s3
         self._seen: dict[str, str] = {}  # key -> SHA-256 at the last pull or push
 
-    def pull(self) -> None:
-        """Download every object under ``runs/``, ``scores/`` and ``nights/``, never ``export/``."""
+    def pull(self) -> int:
+        """Download every object under ``runs/``, ``scores/`` and ``nights/``, never ``export/``.
+
+        A key that would resolve outside the local folder (``..`` parts) is skipped, never
+        written. Returns how many keys were skipped.
+        """
+        root = self._local.resolve()
+        skipped = 0
         for prefix in PULLED_PREFIXES:
             for key, _size in self._s3.list_keys(self._bucket, f"{prefix}/"):
                 if key.endswith("/"):
                     continue
                 target = self._local / key
+                if not target.resolve().is_relative_to(root / prefix):
+                    skipped += 1
+                    continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 self._s3.download_file(self._bucket, key, str(target))
                 self._seen[key] = _sha256(target)
+        return skipped
 
     def push(self, relative: Path) -> int:
         """Upload the files changed since the last pull or push; return how many.
 
         ``relative`` is a file or a folder under the local folder; a folder means every file
-        under it. A file is changed when its SHA-256 differs from the one recorded.
+        under it. A file is changed when its SHA-256 differs from the one recorded; a missing
+        path uploads nothing.
+
+        Raises:
+            ValueError: ``relative`` resolves outside ``runs/``, ``scores/`` and ``nights/``.
         """
         base = self._local / relative
+        root = self._local.resolve()
+        if not any(base.resolve().is_relative_to(root / prefix) for prefix in PULLED_PREFIXES):
+            raise ValueError(f"{relative}: outside runs/, scores/ and nights/")
         files = sorted(p for p in base.rglob("*") if p.is_file()) if base.is_dir() else [base]
         uploaded = 0
         for path in files:
@@ -176,12 +195,16 @@ class OpenRouterKeySpend:
                 or holds a spend or limit that is not a finite, non-negative number. The message
                 never holds the key.
         """
+        failure: str | None = None
+        status, body = 0, None
         try:
             status, body = self._get(self._url, headers={"Authorization": f"Bearer {self._key}"})
         except Exception as error:
+            failure = type(error).__name__
+        if failure is not None:  # raised outside the handler: no __context__ carries the error
             raise LiveRefusal(
-                "key-unreachable", f"the key endpoint could not be reached ({type(error).__name__})"
-            ) from None
+                "key-unreachable", f"the key endpoint could not be reached ({failure})"
+            )
         if status != _OK:
             raise LiveRefusal("key-unreachable", f"the key endpoint answered {status}")
         data = body.get("data") if isinstance(body, dict) else None
@@ -194,6 +217,21 @@ class OpenRouterKeySpend:
         if limit is None or limit < 0:
             raise LiveRefusal("key-unreachable", "the key's limit is not a valid number")
         return MonthSpend(used_usd=used, limit_usd=limit)
+
+
+def _checked(kinds: Sequence[str], counts: Mapping[str, int]) -> None:
+    """Refuse anything but alert kinds and integer counts (a case id never passes).
+
+    Raises:
+        ValueError: a kind or count name is not lower-case words and hyphens, or a count is not
+            an ``int`` (a ``bool`` is not).
+    """
+    for name in (*kinds, *counts):
+        if not _NAME.fullmatch(name):
+            raise ValueError("alert kinds and count names must be lower-case words and hyphens")
+    for value in counts.values():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("alert counts must be integers")  # noqa: TRY004 -- one error type
 
 
 class Alerts(Protocol):
@@ -209,6 +247,7 @@ class PrintAlerts:
 
     def send(self, kinds: Sequence[str], counts: Mapping[str, int]) -> None:
         """Print the kinds and counts."""
+        _checked(kinds, counts)
         pairs = ", ".join(f"{k}: {v}" for k, v in counts.items())
         sys.stdout.write(f"alert: {', '.join(kinds)}" + (f" ({pairs})" if pairs else "") + "\n")
 
@@ -230,8 +269,10 @@ class SnsAlerts:
 
     def send(self, kinds: Sequence[str], counts: Mapping[str, int]) -> None:
         """Publish ``Ellery live night: <kinds>`` with a ``kind: count`` line per count."""
+        _checked(kinds, counts)
         subject = (_SUBJECT_PREFIX + ", ".join(kinds))[:_SUBJECT_MAX]
-        message = "\n".join(f"{kind}: {int(count)}" for kind, count in counts.items())
+        lines = [f"kinds: {', '.join(kinds)}", *(f"{k}: {v}" for k, v in counts.items())]
+        message = "\n".join(lines)
         self._sns.publish(TopicArn=self._topic_arn, Subject=subject, Message=message)
 
 

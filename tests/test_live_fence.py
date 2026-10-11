@@ -5,8 +5,8 @@ record refuses it with a message naming decision 0024; the spend still counts, a
 function of the store is named nowhere under ``live`` (import-linter forbids modules, not names).
 """
 
+import ast
 import json
-import re
 from pathlib import Path
 
 import apps.eval.__main__ as app
@@ -106,7 +106,7 @@ def test_the_live_runs_spend_still_counts_against_the_month(runs: Path) -> None:
     assert month_spent(runs, now=NOW) == 2.0
 
 
-def test_nothing_under_live_names_the_stores_upload() -> None:
+def _live_files() -> list[Path]:
     files = [
         *(ROOT / "src" / "ntsb_probable_cause" / "live").rglob("*.py"),
         *(ROOT / "apps" / "live").rglob("*.py"),
@@ -114,10 +114,33 @@ def test_nothing_under_live_names_the_stores_upload() -> None:
     ]
     assert files
     assert all(path.is_file() for path in files)
-    # S4 Task 9 (decision 0172): live/cloud.py's bucket mirror pushes live results, by design;
-    # it is a different object from the recorder's pull-only store.
-    for path in (p for p in files if p.name != "cloud.py"):
-        assert not re.search(r"\bpush\b", path.read_text()), path
+    return files
+
+
+def test_nothing_under_live_takes_the_stores_upload() -> None:
+    # S4 Task 9 (decision 0172): the word `push` is allowed (the bucket mirror pushes run
+    # folders); what stays banned is the recorder store's own upload, `store.sync.push`.
+    sync = "ntsb_probable_cause.store.sync"
+    for path in _live_files():
+        tree = ast.parse(path.read_text())
+        bound: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module in (
+                sync,
+                "ntsb_probable_cause.store",
+            ):
+                assert "push" not in {a.name for a in node.names}, path
+                bound.update(a.asname or a.name for a in node.names if a.name == "sync")
+            if isinstance(node, ast.Import):
+                bound.update(a.asname or a.name for a in node.names if a.name == sync)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "push"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in bound
+            ):
+                raise AssertionError(path)
 
 
 def test_the_evaluation_commands_spell_the_live_sample_as_the_live_package_does() -> None:
