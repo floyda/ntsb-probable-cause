@@ -52,6 +52,14 @@ def deploy_environment() -> cdk.Environment:
     return cdk.Environment(region="eu-west-2")
 
 
+def parse_branches(value: object) -> tuple[str, ...]:
+    """The ledger branches from the context: comma-separated, blanks dropped, default if none."""
+    if not isinstance(value, str):
+        return DEFAULT_LEDGER_BRANCHES
+    names = tuple(part.strip() for part in value.split(",") if part.strip())
+    return names or DEFAULT_LEDGER_BRANCHES
+
+
 if __name__ == "__main__":
     app = cdk.App()
 
@@ -68,7 +76,22 @@ if __name__ == "__main__":
     # optionally `live_schedule=enabled` and `ledger_branches` (comma-separated).
     recorder_bucket = app.node.try_get_context("recorder_bucket")
     if recorder_bucket:
-        branches = app.node.try_get_context("ledger_branches")
+        placeholder = str(app.node.try_get_context("live_image_digest_placeholder")) == "1"
+        missing = [
+            name
+            for name in ("alert_email", "github_oidc_provider_arn")
+            if not app.node.try_get_context(name)
+        ]
+        if not app.node.try_get_context("live_image_digest") and not placeholder:
+            missing.append("live_image_digest (or live_image_digest_placeholder=1)")
+        if placeholder and app.node.try_get_context("live_schedule") == "enabled":
+            raise SystemExit(
+                "NtsbLiveStack: live_image_digest_placeholder=1 and live_schedule=enabled "
+                "cannot be set together"
+            )
+        if missing:
+            raise SystemExit("NtsbLiveStack needs CDK context: " + ", ".join(missing))
+        branches = parse_branches(app.node.try_get_context("ledger_branches"))
         NtsbLiveStack(
             app,
             "NtsbLiveStack",
@@ -77,10 +100,9 @@ if __name__ == "__main__":
             alert_email=app.node.try_get_context("alert_email"),
             github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
             image_digest=app.node.try_get_context("live_image_digest"),
-            allow_placeholder_digest=str(app.node.try_get_context("live_image_digest_placeholder"))
-            == "1",
+            allow_placeholder_digest=placeholder,
             schedule_enabled=app.node.try_get_context("live_schedule") == "enabled",
-            ledger_branches=tuple(branches.split(",")) if branches else DEFAULT_LEDGER_BRANCHES,
+            ledger_branches=branches,
         )
 
     app.synth()

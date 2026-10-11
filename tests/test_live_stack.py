@@ -107,9 +107,14 @@ def test_bucket_is_private_versioned_encrypted_and_retained(tpl: Template) -> No
 def test_noncurrent_versions_expire_under_runs_and_export_only(tpl: Template) -> None:
     (bucket,) = tpl.find_resources("AWS::S3::Bucket").values()
     rules = bucket["Properties"]["LifecycleConfiguration"]["Rules"]
-    assert {r["Prefix"] for r in rules} == {"runs/", "export/"}
+    versioned = [r for r in rules if "NoncurrentVersionExpiration" in r]
+    assert {r["Prefix"] for r in versioned} == {"runs/", "export/"}
+    (abort,) = [r for r in rules if "AbortIncompleteMultipartUpload" in r]
+    assert abort["AbortIncompleteMultipartUpload"] == {"DaysAfterInitiation": 7}
+    assert "NoncurrentVersionExpiration" not in abort
     for rule in rules:
         assert rule["Status"] == "Enabled"
+    for rule in versioned:
         assert rule["NoncurrentVersionExpiration"] == {"NoncurrentDays": 30}
         assert "ExpirationInDays" not in rule
 
@@ -142,6 +147,8 @@ def test_container_argv_is_timeout_ntsb_live_run(tpl: Template) -> None:
     # The image's ENTRYPOINT is `ntsb-record`, so the entry point is overridden too.
     assert container["EntryPoint"] + container["Command"] == [
         "timeout",
+        "--signal=TERM",
+        "--kill-after=60",
         "10800",
         "ntsb-live",
         "run",
@@ -253,7 +260,9 @@ def test_schedule_is_disabled_by_default_and_enabled_by_context(tpl: Template) -
         ),
     }
     tpl.has_resource_properties("AWS::Scheduler::Schedule", props)
-    _build(enabled=True).has_resource_properties("AWS::Scheduler::Schedule", {"State": "ENABLED"})
+    _build(enabled=True, digest="sha256:" + "ee" * 32).has_resource_properties(
+        "AWS::Scheduler::Schedule", {"State": "ENABLED"}
+    )
 
 
 def test_scheduler_role_runs_the_task_and_passes_two_roles(tpl: Template) -> None:
@@ -261,7 +270,17 @@ def test_scheduler_role_runs_the_task_and_passes_two_roles(tpl: Template) -> Non
     run = next(s for s in statements if _actions(s) == ["ecs:RunTask"])
     assert "task-definition/ntsb-live:*" in str(run["Resource"])
     passed = next(s for s in statements if _actions(s) == ["iam:PassRole"])
-    assert len(passed["Resource"]) == 2
+    assert [
+        r["Fn::GetAtt"][0].startswith(("TaskDefinitionTaskRole", "TaskDefinitionExecutionRole"))
+        for r in passed["Resource"]
+    ] == [True, True]
+    assert passed["Resource"][0]["Fn::GetAtt"][0].startswith("TaskDefinitionTaskRole")
+    assert passed["Resource"][1]["Fn::GetAtt"][0].startswith("TaskDefinitionExecutionRole")
+    assert all(r["Fn::GetAtt"][1] == "Arn" for r in passed["Resource"])
+    cluster = run["Condition"]["ArnEquals"]["ecs:cluster"]["Fn::GetAtt"]
+    assert cluster[0].startswith("Cluster")
+    assert cluster[1] == "Arn"
+    assert set(run["Condition"]) == {"ArnEquals"}
 
 
 def test_ledger_role_trust_and_permissions(tpl: Template) -> None:
@@ -298,3 +317,33 @@ def test_outputs(tpl: Template) -> None:
         "LedgerRoleArn",
         "LogGroupName",
     }
+
+
+def test_missed_night_alarm_also_sends_a_recovery_email(tpl: Template) -> None:
+    (alarm,) = tpl.find_resources("AWS::CloudWatch::Alarm").values()
+    props = alarm["Properties"]
+    assert props["OKActions"] == props["AlarmActions"]
+    assert len(props["OKActions"]) == 1
+
+
+def test_execution_role_reads_two_parameters_and_pulls_one_repository(tpl: Template) -> None:
+    statements = _statements(tpl, "TaskDefinitionExecutionRole")
+    ssm = [s for s in statements if all(a.startswith("ssm:") for a in _actions(s))]
+    names = sorted(s["Resource"]["Fn::Join"][1][-1].split(":parameter")[1] for s in ssm)
+    assert names == ["/ntsb/api-key", "/ntsb/live/openrouter-key"]
+    pull = [
+        s
+        for s in statements
+        if any(a.startswith("ecr:") and a != "ecr:GetAuthorizationToken" for a in _actions(s))
+    ]
+    assert len(pull) == 1
+    assert pull[0]["Resource"]["Fn::GetAtt"][0].startswith("Repository")
+
+
+def test_a_real_digest_with_the_schedule_enabled_is_allowed() -> None:
+    _build(enabled=True, digest="sha256:" + "cd" * 32)
+
+
+def test_the_placeholder_digest_with_the_schedule_enabled_is_refused() -> None:
+    with pytest.raises(ValueError, match="placeholder"):
+        _build(enabled=True)

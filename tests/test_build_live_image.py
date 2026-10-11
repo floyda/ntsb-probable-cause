@@ -16,6 +16,7 @@ case "$1" in
 esac
 """
 _AWS = """#!/bin/sh
+echo "$@" >> "$STUB_AWS_LOG"
 echo "123456789012.dkr.ecr.eu-west-2.amazonaws.com/ntsb-live"
 """
 _DOCKER = """#!/bin/sh
@@ -29,7 +30,9 @@ done
 """
 
 
-def _run(tmp_path: Path, *, dirty: bool) -> tuple[subprocess.CompletedProcess[str], Path]:
+def _run(
+    tmp_path: Path, *, dirty: bool, digest: str = DIGEST
+) -> tuple[subprocess.CompletedProcess[str], Path]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (("git", _GIT), ("aws", _AWS), ("docker", _DOCKER)):
@@ -42,7 +45,9 @@ def _run(tmp_path: Path, *, dirty: bool) -> tuple[subprocess.CompletedProcess[st
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "STUB_DIRTY": " M file.py\n" if dirty else "",
         "STUB_LOG": str(log),
-        "STUB_DIGEST": DIGEST,
+        "STUB_DIGEST": digest,
+        "STUB_AWS_LOG": str(tmp_path / "aws.log"),
+        "AWS_PROFILE": "ntsb-live",
     }
     done = subprocess.run(  # noqa: S603 -- fixed argv; stubs on PATH stand in for the tools
         [shutil.which("bash") or "bash", str(SCRIPT)],
@@ -70,3 +75,19 @@ def test_a_clean_tree_builds_for_amd64_with_the_sha_and_prints_the_digest(tmp_pa
     assert "--push" in call
     assert "latest" not in call
     assert done.stdout.strip() == DIGEST
+    assert "--provenance=false --sbom=false" in call
+
+
+def test_the_profile_is_fixed_whatever_aws_profile_holds(tmp_path: Path) -> None:
+    done, _ = _run(tmp_path, dirty=False)
+    assert done.returncode == 0, done.stderr
+    aws_call = (tmp_path / "aws.log").read_text()
+    assert "--profile ntsb " in aws_call
+    assert "ntsb-live " not in aws_call.replace("/ntsb-live", "")
+
+
+def test_an_empty_digest_exits_1_with_one_line(tmp_path: Path) -> None:
+    done, _ = _run(tmp_path, dirty=False, digest="")
+    assert done.returncode == 1
+    assert done.stdout == ""
+    assert len(done.stderr.strip().splitlines()) == 1

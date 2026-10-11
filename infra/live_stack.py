@@ -44,7 +44,7 @@ PLACEHOLDER_DIGEST = "sha256:" + "0" * 64
 
 _FAMILY = "ntsb-live"
 _TIMEOUT_SECONDS = "10800"  # 3 hours; the recorder's wrapper is 90 minutes
-_ENTRY_POINT = ["timeout", _TIMEOUT_SECONDS, "ntsb-live"]
+_ENTRY_POINT = ["timeout", "--signal=TERM", "--kill-after=60", _TIMEOUT_SECONDS, "ntsb-live"]
 _COMMAND = ["run"]
 _NIGHTLY_CRON = "cron(0 6 * * ? *)"
 _METRIC_NAMESPACE = "Ntsb/Live"
@@ -87,9 +87,14 @@ class NtsbLiveStack(Stack):
             ledger_branches: Branches whose workflows may assume the ledger role.
 
         Raises:
-            ValueError: No digest was given and the placeholder was not allowed.
+            ValueError: No digest was given and the placeholder was not allowed, or the schedule
+                was enabled with the placeholder digest.
         """
         super().__init__(scope, construct_id, env=env)
+        if schedule_enabled and image_digest is None:
+            raise ValueError(
+                "live_schedule=enabled needs a real live_image_digest, not the placeholder"
+            )
         if image_digest is None:
             if not allow_placeholder_digest:
                 raise ValueError(
@@ -146,6 +151,13 @@ class NtsbLiveStack(Stack):
                     noncurrent_version_expiration=Duration.days(30),
                 )
                 for prefix in ("runs", "export")
+            ]
+            + [
+                # The task cannot abort its own killed uploads (no s3:AbortMultipartUpload).
+                s3.LifecycleRule(
+                    id="abort-incomplete-uploads",
+                    abort_incomplete_multipart_upload_after=Duration.days(7),
+                )
             ],
         )
 
@@ -254,6 +266,8 @@ class NtsbLiveStack(Stack):
             treat_missing_data=cloudwatch.TreatMissingData.BREACHING,
         )
         alarm.add_alarm_action(cw_actions.SnsAction(topic))
+        # The first finished night sends a recovery email.
+        alarm.add_ok_action(cw_actions.SnsAction(topic))
 
         scheduler_role = iam.Role(
             self, "SchedulerRole", assumed_by=iam.ServicePrincipal("scheduler.amazonaws.com")
@@ -262,6 +276,7 @@ class NtsbLiveStack(Stack):
             iam.PolicyStatement(
                 actions=["ecs:RunTask"],
                 resources=[f"arn:aws:ecs:{self.region}:{self.account}:task-definition/{_FAMILY}:*"],
+                conditions={"ArnEquals": {"ecs:cluster": cluster.cluster_arn}},
             )
         )
         scheduler_role.add_to_policy(
