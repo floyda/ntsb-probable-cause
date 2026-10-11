@@ -136,8 +136,7 @@ spent. What you do:
    aws s3 cp s3://<bucket>/runs/<run id>/spec.json - --profile ntsb --region eu-west-2
    aws ecr describe-images --repository-name ntsb-live --image-ids imageTag=live-<commit> --profile ntsb --region eu-west-2 --query "imageDetails[0].imageDigest" --output text
    ```
-   (`spec.json` holds the commit and no case text. If the commit is longer than the tag, the tag
-   uses its first 7 characters.) Keep `-c live_schedule=enabled` in that deploy if the schedule
+   (`spec.json` holds the commit, which is the tag's suffix, and no case text.) Keep `-c live_schedule=enabled` in that deploy if the schedule
    is on. Let the next night finish the run.
 3. Once it has finished, deploy again with the new digest (full context). The nights after that
    run on the current image.
@@ -219,6 +218,7 @@ quotes the program's own text. A test checks that each quoted text is in the pro
 | `live run folders appeared during the run` | Two live run folders were made during one night. | Do not delete anything. Tell Claude. |
 | `NTSB_API_KEY is not set` | On your Mac: the NTSB key was not read. | Use `make s4-dry-run`; check that the `pass` entry `api/ntsb` exists. |
 | `OPENROUTER_API_KEY is not set` | On your Mac: the live key was not read. | Check that the `pass` entry `api/openrouter-live` exists. |
+| `AWS login expired: run 'aws login'` | `scripts/live_env.sh` could not read the live stack because the sign-in ended. It prints no settings. | Run `aws login`, then run the command again. |
 | `profile could not read the stack` | `scripts/live_env.sh` could not read a stack's output. | Run `aws login`, and check that the `ntsb` profile exists (`aws configure list-profiles`). AWS's own error follows the line. |
 | `has no --resume option` | A batch run was cancelled. Live runs are not batches, so this should not appear. | Tell Claude. |
 
@@ -287,7 +287,8 @@ pass show api/openrouter-live | head -n1 | tr -d '\n' | aws ssm put-parameter --
 `head -n1` keeps the first line of the `pass` entry only, and `tr -d '\n'` removes its newline.
 Without them AWS would store the newline, the `Authorization` header would hold it, and every
 night would stop with `key-unreachable`. (The recorder runbook writes its key with a short
-Python program for the same reason; this form was checked with aws-cli 2.36.44.) The command
+Python program because `--cli-input-json file:///dev/stdin` failed there, and to keep the key out
+of the argument list; this `--value` form was checked with aws-cli 2.36.44.) The command
 prints a version number only. Check what was stored, by name and type, never by value:
 
 ```
@@ -332,8 +333,10 @@ You need this for section 5 and for a first test. It runs the same command as th
    aws scheduler get-schedule --name <schedule name> --region eu-west-2 --profile ntsb --query "Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration"
    ```
 2. Start the task. Put the subnet ids and the security group id from the last output in place.
-   **Verify on first use:** the `awsvpcConfiguration` key names in that output are in camelCase
-   (`subnets`, `securityGroups`, `assignPublicIp`); the command below uses the same spelling.
+   **Verify on first use:** the scheduler's `get-schedule` output has PascalCase members
+   (`Subnets`, `SecurityGroups`, `AssignPublicIp`) under the outer key `awsvpcConfiguration`. The
+   ECS `run-task` command below needs camelCase (`subnets`, `securityGroups`, `assignPublicIp`).
+   The difference is correct: copy the values, not the spelling, and do not "fix" it.
    ```
    aws ecs run-task --cluster ntsb-live --task-definition ntsb-live --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[<subnet ids>],securityGroups=[<security group>],assignPublicIp=ENABLED}" --region eu-west-2 --profile ntsb --no-cli-pager --query "tasks[0].taskArn" --output text
    ```

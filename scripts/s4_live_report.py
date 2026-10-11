@@ -476,6 +476,7 @@ def _closing_section(  # noqa: PLR0913, PLR0917 -- one section, seven conditions
     continuity: str | None,
     today: date,
     drained_on: date | None,
+    upper_bound: bool = False,
 ) -> list[str]:
     records = [r for run in runs for r in run.closures]
     held_ids = set(backfill.case_ids) if backfill is not None else set()
@@ -547,7 +548,12 @@ def _closing_section(  # noqa: PLR0913, PLR0917 -- one section, seven conditions
         f"{_met(seven)}",
         "(condition 6 also needs this file committed by Andy from this script; "
         "conditions 5 and 7 are Andy's word, dated in the attestation file)",
-        f"days since the backfill drained: {days if days is not None else 'not drained'}",
+        f"days since the backfill drained: {days if days is not None else 'not drained'}"
+        + (
+            " (upper bound: unreachable cases are dated by the last night in the mirror)"
+            if upper_bound
+            else ""
+        ),
         f"time limit ({WAIT_LIMIT_DAYS} days after the drain, no fresh closure): "
         f"{'reached' if limit_reached else 'not reached'}",
     ]
@@ -595,7 +601,14 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
     loaded = _Export(export)
     nightly = _Export(night_export)
     last_night = max((n.date for n in nights if n.started), default=None)
-    drained = _drained_on(runs, held, _unreachable_ids(mirror), last_night)
+    unreachable = _unreachable_ids(mirror)
+    drained = _drained_on(runs, held, unreachable, last_night)
+    closed = {r.case_id for run in runs for r in run.closures}
+    upper = (
+        drained is not None
+        and held is not None
+        and bool((unreachable & set(held.case_ids)) - closed)
+    )
     later_ids, later_lines = _later_ids(mirror)
     sections = [
         [
@@ -614,7 +627,17 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
         _backfill_section(held),
         _per_night_section(nightly, today),
         _closing_section(
-            runs, nights, held, nightly, ledger, later_ids, attest or {}, continuity, today, drained
+            runs,
+            nights,
+            held,
+            nightly,
+            ledger,
+            later_ids,
+            attest or {},
+            continuity,
+            today,
+            drained,
+            upper,
         ),
     ]
     return "\n\n".join("\n".join(section) for section in sections) + "\n"

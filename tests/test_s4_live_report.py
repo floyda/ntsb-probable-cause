@@ -436,7 +436,9 @@ def test_a_not_coded_backfill_case_with_no_first_sent_is_settled(tmp_path: Path)
 
 def test_a_backfill_case_settled_unreachable_counts_as_settled(tmp_path: Path) -> None:
     def edit(mirror: Path) -> None:
-        (mirror / "runs" / RUN_A / "closures.jsonl").write_text(_closure(BACKFILL[0]))
+        (mirror / "runs" / RUN_A / "closures.jsonl").write_text(
+            _closure(BACKFILL[0], first_sent=None, last_returned=None)
+        )
         state = {
             "format": "live-state/1",
             "failures": {},
@@ -449,6 +451,7 @@ def test_a_backfill_case_settled_unreachable_counts_as_settled(tmp_path: Path) -
     text = _drain_world(tmp_path, edit)
     assert "(2 cases): met" in text
     assert "days since the backfill drained: 0" in text  # the last night folder is 2026-10-12
+    assert "(upper bound: unreachable cases are dated by the last night in the mirror)" in text
 
 
 def test_condition_2_says_it_counts_any_night_manifest(tmp_path: Path) -> None:
@@ -469,3 +472,9 @@ def test_an_attestation_that_is_not_a_date_is_not_met_and_dates_are_printed(
     good = _report(mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
     assert "2026-10-11; 2026-10-11" in good
     assert "Andy's attestation: 2026-10-12" in good
+
+
+def test_no_upper_bound_note_when_every_case_has_a_closure_record(tmp_path: Path) -> None:
+    text = _text(tmp_path)
+    assert "days since the backfill drained: 3" in text
+    assert "upper bound" not in text

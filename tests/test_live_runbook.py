@@ -241,6 +241,7 @@ def test_resume_refused_redeploys_the_starting_digest_and_the_tag_matches_the_sc
     ) in text
     assert "deregisters the older revision" in text
     assert "ntsb-live:<revision>" not in text
+    assert "first 7 characters" not in text
     assert "list-task-definitions" not in text
 
 
@@ -274,7 +275,10 @@ def test_the_first_use_checks_and_the_small_fixes_are_in_the_runbook() -> None:
     text = RUNBOOK.read_text()
     assert text.count("Verify on first use") >= 7
     for needle in (
-        "`awsvpcConfiguration` key names",
+        "has PascalCase members",
+        "needs camelCase (`subnets`, `securityGroups`, `assignPublicIp`)",
+        "AWS login expired: run 'aws login'",
+        "because `--cli-input-json file:///dev/stdin` failed there",
         "the name starts with the stack\n   name and the alarm's id `MissedNight`",
         "the next\n   check can take up to one 6-hour period",
         "delete marker",
