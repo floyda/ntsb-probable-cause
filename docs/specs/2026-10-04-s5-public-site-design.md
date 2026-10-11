@@ -3,8 +3,9 @@
 Status: Draft, 2026-10-04. Nothing here is built. This note is written early, on its own branch,
 while S3.2 runs, because the site's design is a large piece of work and its page list decides
 what S4's store must answer (roadmap §8). It is revised and approved as S5's specification when
-S5 starts. It covers what the site says and how a reader moves through it. It does not cover the
-site generator, the hosting or the build pipeline; those are S5's own and depend on S4's store.
+S5 starts. §1 to §16 cover what the site says and how a reader moves through it. *Added
+2026-10-11:* §17 to §22 cover the site generator, the hosting and the build pipeline, designed with
+Andy once S4's export format, `board/1`, existed.
 
 Every choice below was made by Andy in a design session on 2026-10-04, one question at a time.
 Where a point is still open it is listed in §12 and §16, not guessed.
@@ -771,6 +772,17 @@ version 1, on the board; items 14 and 15).
 16. WCAG 2.2 level AA on every page (§12, item 8); preview cards by kind of page, with cases
     kept out of social feeds (§12, item 12); a withheld-verdict line on every case and a
     diagram of the split on Methods (§5, §9).
+17. The site is built with Astro, its packages managed by pnpm, locked and delayed 7 days (§17.1,
+    §17.2).
+18. The site is rebuilt by AWS CodeBuild when the export lands and after each merge to `main`,
+    not by a scheduled GitHub workflow (§18.1).
+19. CloudFront serves the site on the flat-rate Free plan (§18.3).
+20. Every number on the Path and Methods pages comes from a script-written numbers file, quoted by
+    name (§17.3).
+21. Previews are private pages; the public address shows a holding line until Andy decides to
+    launch (§20).
+
+Items 17 to 21 are numbered after S4 merges, because S4's branch is still adding records.
 
 ## 16. Open questions for Andy
 
@@ -789,8 +801,285 @@ version 1, on the board; items 14 and 15).
    mock-ups predate most decisions here and are sketches only. The recorder's counts became
    citable at 14 nights on 2026-10-06 (§8).
 
+## 17. How the site is built
+
+§1 to §16 say what the site shows. §17 to §22 say how it is built, published and checked. Andy
+chose each point in a design session on 2026-10-11, one question at a time; the reasons and what
+each rules out are recorded as decisions when this specification is approved (§15, items 17 to
+21).
+
+**The starting rule is decision [0003](../decisions/0003-static-site-as-pure-function-of-store.md):**
+the site is generated ahead of time as files and served from S3 behind CloudFront. Nothing is
+computed when a reader arrives: no server, no database, no API. Everything below keeps that rule.
+
+### 17.1 The generator: Astro
+
+The site is an Astro project in `site/`, beside the Python packages.
+
+*Why:* Astro builds plain HTML and sends no script unless a part asks for it. So the board, the
+opened case and Methods work with scripts off and read well in a screen reader by default (§12,
+item 8), and only the parts with behaviour carry script. It suits pages that are mostly text, one
+table and a few figures.
+
+*Ruled out:* **Python with templates.** One toolchain, but the scrolling route, the board and the
+figures are where the JavaScript tools are strongest (Andy, 2026-10-11). **SvelteKit.** The best
+built-in animation, but every page loads its runtime script, so working with scripts off needs
+care on every page. **Eleventy.** The plainest, but all behaviour would be loose hand-written
+script.
+
+### 17.2 Dependencies: pnpm, locked and delayed
+
+The site's packages are managed with pnpm. Andy asked that dependencies be locked and that new
+releases not be taken too soon (2026-10-11), because a poisoned release is the commonest way a
+supply-chain attack reaches a project. Each setting below is from pnpm's settings reference, read
+2026-10-11:
+
+- **A committed lockfile**, installed with `--frozen-lockfile` everywhere, so a build never
+  resolves anything new.
+- **`minimumReleaseAge: 10080`** (7 days, in minutes): pnpm refuses a version published less than
+  a week ago. Most poisoned releases are found and removed within days. pnpm 11's default is one
+  day; the site sets 7 explicitly.
+- **No install scripts by default.** A package may run a build script only if it is named in
+  `allowBuilds`; with `strictDepBuilds` an install fails if an unreviewed package tries.
+- **`trustPolicy: no-downgrade`**: the install fails if a package's release is less trusted than
+  its earlier ones, for example a release published without the usual signing.
+- **`blockExoticSubdeps`** (on by default): only a direct dependency may come from git or a
+  download link; every indirect one comes from the registry.
+- **Dependabot** watches the site's packages weekly, with a 7-day cooldown. The same cooldown was
+  added for the Python packages on 2026-10-11, in an incidental pull request outside S5.
+
+The site's checks are held to the strictness of decision
+[0011](../decisions/0011-tooling-uv-hatchling-strict-analysis.md): strict TypeScript, Astro's
+type check, a linter, a formatter, a pinned Node version and a dependency audit, run by
+`make check`, in CI and in the pre-commit hooks.
+
+### 17.3 Inputs
+
+The site reads two things, and nothing else.
+
+1. **The export, `board/1`**, S4's nightly files: `index.json` and `cases/<case number>.json`. A
+   loader checks every file against `docs/schemas/board-1.schema.json` and stops the build on a
+   mismatch; the site's types are generated from the same schema. A missing key is read as null
+   (S4's request). Development builds use S4's invented sample in `tests/fixtures/board/` unless a
+   real export is named.
+2. **The numbers file, `site/data/numbers.json`**, for every number on the Path and Methods pages
+   (§7, §9). A Python script under `scripts/`, with its own tests, writes it. Each entry holds the
+   value, its interval and count, the sample, the model, the run, the results file and the script.
+   Example (the values are S3.2's, from `docs/results/s32-claims-heldout.txt`):
+
+   ```json
+   "ladder.loop.top1": {
+     "value": 0.235, "low": 0.192, "high": 0.275, "n": 400,
+     "sample": "heldout-400", "model": "openai/gpt-6-luna",
+     "run": "20261004T140804-e0dc881-heldout-400-C",
+     "results_file": "docs/results/s32-claims-heldout.txt",
+     "script": "scripts/s32_claims.py"
+   }
+   ```
+
+   A page names the number, `ladder.loop.top1`; the build writes "23.5% [19.2%, 27.5%], 400
+   cases" and links it to its Methods entry, and the ladder draws its bar from the same entry. No
+   number is typed into a page. The Methods page is generated from the entries. The file changes
+   only when results change, and its diff shows which numbers on the site moved.
+
+   *Ruled out:* **Astro reading the results files directly**, which are written for people, each
+   laid out differently, so a change of wording could silently break a number. **Numbers typed
+   into pages with a check** that each appears in its cited file, which is weak ("23.5%" can
+   appear for another reason) and against the rule that every number comes from a script.
+
+### 17.4 Pages and addresses
+
+| address | page |
+|---|---|
+| `/` | the scrolling route of six stops (§3.1) |
+| `/case/<case number>/` | the opened case (§5) |
+| `/case/<case number>/trail/` | the trail view (§6) |
+| `/path/` | the Path page; each question has a short anchor, for example `/path#choosing` (§7, §12 item 12) |
+| `/methods/` | the Methods page (§9) |
+| `/open/` | the Open cases page, counts only (§8) |
+
+Made at build time, so they need no script: the board as a real HTML table in a self-hosted
+dot-matrix font; each figure as SVG with a data table behind it; the sentence on where the two
+codings differ, written in site code from the comparison marks (§5), never by a model; and the
+preview-card images, one for the site and one per Path question (§12, item 12).
+
+What runs in the reader's browser is small:
+
+- **The stops** rise into place once as they reach the screen. All content is in the page before
+  any script runs, and reduced motion shows everything at once (§3.1).
+- **Choosing a board row.** Without script each row is a link to its case page; with script the
+  case opens beneath the board. Either way the address can be shared.
+
+Fonts and scripts are served from the site itself, never from another site at read time.
+
+## 18. The rebuild and the AWS stack
+
+### 18.1 Each morning
+
+1. S4's nightly task rebuilds the export into `export/board-1/` in its private bucket, at about
+   06:15 UTC (S4's specification, §5), and writes a finished mark last (§22).
+2. The mark starts the site's CodeBuild job, through an EventBridge rule.
+3. The job fetches the site's code from `main`, copies the export down, checks it against the
+   schema, builds the site with Astro, and runs the checks of §19.
+4. If all pass, it copies the site to the site bucket (§19.1 gives the order) and clears
+   CloudFront's copies. Readers see the new board within minutes.
+5. If any step fails, nothing is published, yesterday's site stays, and an email goes out through
+   S4's alert topic.
+
+A merge to `main` starts the same job, so a change to the site's code goes live the same way. The
+Path and Methods pages change only when the numbers file is regenerated and committed.
+
+*Why CodeBuild, not GitHub Actions:* both cost about nothing here (below). GitHub turns off
+scheduled workflows in a public repository after 60 days without activity, so a quiet project
+could leave the board stale with no alert. A build started by the export's arrival never goes
+dormant, keeps its logs private, and can email on failure. *Ruled out:* **GitHub Actions on a
+schedule**, for that reason; **the build inside S4's nightly task**, because a change to the site's
+styling would then need a new live image.
+
+### 18.2 The stack, `NtsbSiteStack`
+
+A new CDK stack in Python, in the project's AWS account, beside `NtsbRecorderStack` and S4's live
+stack.
+
+- **DNS.** A hosted zone for `demo.floyda.dev` in this account. Andy adds four NS records once in
+  the `floyda.dev` zone in his personal account, to delegate to it (§12, item 15).
+- **Certificate.** An exact-name certificate for `ellery.demo.floyda.dev` from AWS Certificate
+  Manager, in `us-east-1` because CloudFront requires it, validated by DNS and renewed
+  automatically.
+- **The site bucket.** Private, versioned, in `eu-west-2`, readable only by CloudFront.
+- **The distribution.** CloudFront on the **flat-rate Free plan** (§18.3), HTTPS only, with
+  standard security headers and an error page.
+- **The build.** A CodeBuild project on the smallest machine, with a 15-minute limit. Its role may
+  read `export/board-1/` and nothing else in S4's bucket, write the site bucket, clear CloudFront's
+  copies, and publish to S4's alert topic.
+- **The rules.** S4's finished mark starts a build; a merge to `main` starts a build, through a
+  GitHub connection that Andy approves once; a failed build sends an email.
+- **Who does what.** Andy runs `cdk deploy`, since the stack creates roles, as for the earlier
+  stacks; adds the NS records; and approves the GitHub connection.
+
+### 18.3 Cost
+
+About **$0.50 a month**, nearly all of it one fixed charge. Prices are external, from AWS's
+pricing pages, read 2026-10-11; volumes are estimates.
+
+| part | cost | basis |
+|---|---|---|
+| hosted zone `demo.floyda.dev` | $0.50 a month | Route 53: "$0.50 per hosted zone per month"; alias lookups to CloudFront are free |
+| CloudFront, flat-rate Free plan | $0 | 1 million requests and 100 GB a month; "no overage charges … even during traffic spikes or attacks"; includes 5 GB of S3 storage credit |
+| site bucket | $0 | a few megabytes, inside the plan's credit |
+| CodeBuild | about $0 | 100 free build minutes a month on the smallest machine, which do not expire after the first year; a build is estimated at 2 to 3 minutes, so about 60 to 90 minutes a month; past that, the page's example rate is $0.005 a minute |
+| certificate, event rules | $0 | |
+
+A visit is roughly 10 to 20 requests (estimate), so the Free plan carries something like 50,000 to
+100,000 visits a month. The step up, if ever needed, is the Pro plan at $15 a month.
+
+*Why the flat-rate plan:* decision 0003 promises a hosting bill that does not move with traffic.
+Pay-as-you-go pricing still bills a spike of readers; a flat-rate plan does not. *Ruled out:*
+**pay-as-you-go**, for that reason.
+
+**To check before relying on it:** what CloudFront does when the Free plan's allowance is passed,
+and whether CDK can choose the plan or Andy sets it once in the console. The runbook records the
+answer.
+
+## 19. Failures and checks
+
+### 19.1 When something goes wrong
+
+- **The export fails the schema, or any step fails:** nothing is published; yesterday's site
+  stays; an email goes out.
+- **S4's night fails, so no new export arrives:** no build starts and the board keeps its last
+  state. The board's stamp shows the export's own build time (`stamp.built_at`), never the site's,
+  so stale data never looks fresh (§12, item 14). S4 already alerts on a failed night.
+- **Publishing order:** new styles and scripts first, then pages, then removal of files no longer
+  used, so a reader mid-deploy never gets a page without its styles. The bucket keeps old
+  versions; going back is a build at the previous commit.
+
+### 19.2 Checks on every pull request
+
+Run in CI and by `make check`:
+
+- The site builds against S4's invented sample, and the sample passes the schema.
+- Unit tests for the site's logic: the difference sentence, the grade marks, a missing key read as
+  null.
+- **Accessibility:** an automated WCAG 2.2 AA check of every built page, in light and dark, fails
+  on any error (§12, item 8). Screenshots at a phone width of 390 pixels, by the method that renders
+  true phone width on this machine. A manual keyboard and screen-reader pass covers what automation
+  cannot, before launch (§20).
+- **Links:** every internal link resolves, and every number links to an existing Methods entry.
+- **The numbers file:** the script's tests, and a consistency check that each entry's value
+  appears, formatted, in the results file it names. This catches a copy that has drifted from its
+  source, although CI cannot re-run the parts that read run folders on Andy's Mac.
+- **Respect (§11):** the built pages are scanned for the registration pattern, and every case page
+  must belong to a row on the board, so no other case reaches the site. S4's export is already
+  checked; this checks what is published.
+
+## 20. Previews and launch
+
+**Previews are private pages.** Each part, when ready, is built against S4's sample, or a real
+export once one exists, and published as a private claude.ai page that Andy can open on any
+device, labelled with its commit and checked at phone width before it is sent. No second AWS
+setup is kept. *Ruled out:* **a password-protected preview address**, a second distribution and an
+edge function for one reviewer; **publishing unfinished**, an unfinished page about fatal
+accidents at Andy's own domain.
+
+**Before launch the public address shows one holding line**, for example "Ellery: coming soon".
+The stack is deployed early, so the certificate, the DNS and the builds are proven before launch.
+
+**Launch is Andy's decision** (2026-10-11). These conditions are what Claude reports as ready;
+they never trigger it:
+
+1. S4 has merged, its first cloud night has run, and the backfill is coded, so the board starts
+   complete from 23 September 2026 (decision
+   [0155](../decisions/0155-the-board-is-backfilled-from-the-recorders-first-night.md)).
+2. Every page is built, and every check in §19 passes.
+3. Andy has made the manual pass on his phone and with a screen reader.
+
+On launch day the holding line is replaced by the site, and the real address's certificate,
+redirects and preview cards are checked.
+
+## 21. Order of work
+
+Each step ends in a private preview.
+
+1. **The skeleton:** the Astro project, the pnpm settings, the checks in CI, and `NtsbSiteStack`
+   serving the holding line.
+2. **The board and the opened case**, against the sample.
+3. **The trail view.**
+4. **The numbers script and file**, then the Path page with the ladder.
+5. **The Methods page**, generated from the numbers file.
+6. **The Open cases page** (counts), the stops' animation, and the preview cards.
+7. **Andy's manual accessibility pass.** Launch, when Andy decides.
+
+The site works after step 5, without animation or preview cards; whether to launch then or after
+step 6 is Andy's choice.
+
+## 22. What this asks of S4
+
+Passed to the S4 session on 2026-10-11:
+
+1. **A finished mark**, written last, after every file of the night's export is written, so a build
+   never reads half an export.
+2. **The live bucket sends events to EventBridge**, so the mark can start the build.
+3. **Read access for the site's build role** to `export/board-1/` only, if the live bucket's
+   policy would otherwise refuse it.
+
+Delivered by S4 on 2026-10-11, at Claude's request after reviewing the sample: optional `board/1`
+fields for the NTSB's internal case key (`mkey`, for the links of §5), the launch date and a
+backfill flag (§12, item 6), each document's page count (§7.4), and a reason for a document not
+offered.
+
 ## Glossary
 
+- **Astro**: the tool that builds the site's pages ahead of time from the export and the numbers
+  file (§17.1).
+- **CloudFront**: AWS's service that hands the site's files to readers; on the flat-rate Free plan
+  its bill does not grow with readers (§18.3).
+- **CodeBuild**: AWS's build service; it builds and publishes the site each morning (§18.1).
+- **Export (`board/1`)**: S4's nightly files that the board, cases and trails are built from.
+- **Minimum release age**: pnpm's rule that a package version must be a set time old before it is
+  installed (§17.2).
+- **Numbers file**: `site/data/numbers.json`, every number on Path and Methods with its source,
+  written by a script (§17.3).
 - **Abstain**: the agent's statement that the evidence is too thin to answer.
 - **Belief**: the agent's hypothesis at a checkpoint; the project's records call it H0, H1, H2
   and the answer.
