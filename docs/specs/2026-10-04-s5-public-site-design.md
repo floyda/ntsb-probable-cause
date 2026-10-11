@@ -58,7 +58,7 @@ docket and code the cause as the investigator did, and does it need to be an age
 | Opened case | one case: the agent's coding beside the NTSB's | a board row; it opens beneath the board |
 | Trail view | one case: what the agent believed, read and spent | the opened case |
 | Path | how the project decided what to build, step by step | the first screen |
-| Open cases | every watched open case | a plain link; not promoted |
+| Open cases | counts of the open cases watched, never a list | a plain link; not promoted |
 | Methods | every number, its sample and its script | any number on the site |
 
 This replaces the roadmap's five pages (§8 there). Home and the live board become one screen.
@@ -380,7 +380,8 @@ Accepted by Andy as a first draft on 2026-10-04.
 | 8. Newly closed cases | a strip of closed cases over time, one mark per case, shaped by result | S4's live data |
 
 Two more sit outside the questions: a **docket strip** in the first page's trail stop, each
-document a block sized by pages and marked read, skipped, scan only or withheld; and the
+document a block sized by pages and marked read, skipped, scan only or not offered (with its
+reason: not a PDF, photographs only, could not be fetched); and the
 **run-twice band**, showing how far the same agent moves when run again
 (`docs/results/s3-noise-floor-dev.txt`), at question 7's stop and on Methods, not on the
 ladder, because it was measured on development cases. The ladder lights each step as the story reaches it,
@@ -416,13 +417,13 @@ which the report counts as citable; the earlier 12-night copy,
 So far, the closure run is the only run with evidence to read. Nights 13 and 14 brought no
 closures and no new documents.
 
-**A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
-accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
-documents". No first belief is made or shown for open cases without a docket: facts alone
-score below the no-model baseline, so a thousand such guesses about fatal accidents would cost
-money and mislead. The status column shows evidence arriving over months, which is the one
-thing this page can say that the board cannot. The page follows §11; no registration, no
-names.
+**The page shows counts, never a list of open cases** (Andy, 2026-10-11). An earlier draft gave
+each open case a row of facts and status (accident date, aircraft type, state, and "awaiting
+docket" or "docket: 4 documents"), never an answer. Andy dropped the rows: a list of open cases
+says little a count does not, and the export S5 reads, `board/1`, holds nothing about an open
+case beyond counts (S4's export decision, on the S4 branch until it merges). So the page states, from `board/1`'s `counts`: the open cases watched, how many hold a
+docket so far, and the closures each night. No first belief is made or shown for any open case:
+facts alone score below the no-model baseline. The page follows §11.
 
 ## 9. The Methods page
 
@@ -717,6 +718,9 @@ says whether it is settled.
 - **S4 or S5: document titles.** The trail view needs each document's title, joined from the
   docket listing by position. A document classed as synthesis is shown as withheld, without
   its text.
+  *Note, 2026-10-11:* S4's `board/1` carries the titles. A document the agent could not be
+  offered is `not_offered`, with its reason, never "withheld": a document holding the
+  probable cause makes the whole case "not coded".
 - **S4: the store answers these pages.** For each closed case: the facts on the board, both
   code lists, both cause statements, the findings, the trail, and the costs.
 - **S3.2: the ladder's numbers.** Delivered (§7.1); one interval to recompute by one script.
@@ -743,7 +747,7 @@ version 1, on the board; items 14 and 15).
 **The rest are recorded when this specification is approved**, as S5's own decisions:
 
 1. The primary reader, the second reader, and the link rule (§2).
-2. The board lists closed cases; open cases have their own page (§3, §4, §8).
+2. The board lists closed cases; open cases have their own page, of counts only (§3, §4, §8).
 3. The agent's main live run is at closure (§13); this amends what S4 was to build.
 4. The theme: an airport terminal display for the board only (§10).
 5. Injury level in the opened case only (§11).
@@ -771,7 +775,8 @@ version 1, on the board; items 14 and 15).
 ## 16. Open questions for Andy
 
 1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
-2. Settled: an open case shows facts and status, never an answer (§8).
+2. Settled: an open case is never listed; the Open cases page shows counts only (§8; Andy,
+   2026-10-11, replacing the 2026-10-04 rows of facts and status).
 3. Settled: the Methods page follows the order the reader meets the numbers (§9).
 4. Every point in §12 is settled, except hiding the next stop until it arrives, which waits
    for an example site from Andy (item 7).
