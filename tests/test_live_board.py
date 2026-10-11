@@ -18,6 +18,7 @@ from tests.test_live_later import _closure, _raw_with_codes, _step
 from tests.test_live_morning import _call, _result, _scores
 
 from ntsb_probable_cause.errors import ConfigurationError, LeakageError
+from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.board import (
     build_export,
     grade,
@@ -854,3 +855,76 @@ def test_the_closure_time_finding_scores_reach_the_comparison(tmp_path: Path) ->
         comparison = _case(out, number).comparison
         assert comparison is not None
         assert (comparison.finding_precision_10, comparison.finding_recall_10) == (0.4, 0.3)
+
+
+def _refusable(raw: dict[str, Any]) -> dict[str, Any]:
+    """``raw`` with the NTSB's cause copied into an evidence field: the split really refuses it."""
+    leaky = copy.deepcopy(raw)
+    leaky["aircrafts"][0]["aircraftModel"] = leaky["narratives"][0]["probableCause"]
+    with pytest.raises(LeakageError):
+        split_record(leaky, exclude=frozenset({EvidenceRole.PRELIM_NARRATIVE}))
+    return leaky
+
+
+def test_a_not_coded_leak_case_exports_with_no_verdict(tmp_path: Path) -> None:
+    ev = date(2026, 8, 1)
+    record = _record(
+        "XXX26XX001",
+        date(2026, 10, 9),
+        outcome="not coded",
+        failure="leak: a document held the cause",
+        scored=False,
+        top1=None,
+        top3=None,
+    )
+    mirror = _one_run(tmp_path, [(record, _refusable(_raw("XXX26XX001", ev)), None)])
+    out = _build(tmp_path, mirror)
+    case = _case(out, "XXX26XX001")
+    assert case.grade == "not_coded"
+    assert case.verdict is None
+    assert case.comparison is None
+    assert case.not_coded is not None
+    assert case.not_coded.sentence == NOT_CODED_SENTENCES["leak"]
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    assert index.rows[0].ntsb_first is None
+
+
+def test_a_coded_case_the_split_really_refuses_fails_closed(tmp_path: Path) -> None:
+    ev = date(2026, 8, 1)
+    mirror = _one_run(
+        tmp_path,
+        [
+            (
+                _record("XXX26XX001", date(2026, 10, 9)),
+                _refusable(_raw("XXX26XX001", ev)),
+                _hypothesis(STALL),
+            )
+        ],
+    )
+    message = _refused(mirror, tmp_path / "out")
+    assert "1 raw record refused by the split" in message
+
+
+def test_a_failed_move_puts_the_previous_export_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil  # noqa: PLC0415
+
+    mirror = _mirror(tmp_path)
+    out = _build(tmp_path, mirror)
+    before = {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*.json")}
+    real = shutil.move
+    calls = {"n": 0}
+
+    def flaky(src: str | Path, dst: str | Path) -> object:
+        calls["n"] += 1
+        if calls["n"] == 4:  # the new index.json, after cases/ was swapped
+            raise OSError("disk full")
+        return real(src, dst)
+
+    monkeypatch.setattr("ntsb_probable_cause.live.board.shutil.move", flaky)
+    with pytest.raises(OSError, match="disk full"):
+        build_export(mirror, out, store=None, today=TODAY, commit="other", now=NOW)
+    monkeypatch.undo()
+    assert {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*.json")} == before
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []

@@ -219,16 +219,20 @@ def _aircraft(raw: Mapping[str, object] | None) -> Aircraft:
 _Codes = tuple[tuple[str, ...], tuple[str, ...], str | None]
 
 
-def _record_verdict(raw: Mapping[str, object]) -> _Codes | None:
+def _record_verdict(raw: Mapping[str, object], *, coded: bool) -> _Codes | None:
     """The NTSB's occurrence codes, finding codes and cause in ``raw``, through ``split_record``.
 
-    None when the record holds no occurrence codes. A record the split refuses is damaged: the
-    build fails closed (:class:`_Damaged`).
+    None when the record holds no occurrence codes. A record the split refuses is an ordinary
+    outcome for a case that was not coded ("not coded: leak"): its verdict is None, and it is
+    never read another way. For a coded case it is damage: the build fails closed
+    (:class:`_Damaged`).
     """
     try:
         verdict = split_record(raw, exclude=_EXCLUSIONS)[2]
     except LeakageError:
-        raise _Damaged(_SPLIT_REFUSED) from None
+        if coded:
+            raise _Damaged(_SPLIT_REFUSED) from None
+        return None
     if not verdict.occurrence_codes:
         return None
     return verdict.occurrence_codes, verdict.finding_codes, verdict.probable_cause
@@ -560,7 +564,7 @@ def _coded_case(
     calls = run.calls.get(record.case_id, ())
     final = result.steps[-1].hypothesis if coded and result is not None else None
     the_grade = grade(record, later, abstained=None if final is None else final.abstain)
-    verdict = _verdict(_record_verdict(raw), later, names, tables)
+    verdict = _verdict(_record_verdict(raw, coded=coded), later, names, tables)
     facts = Facts(
         state=_text(raw, "eventStateOrRegion"),
         kind_of_flight=_text(raw, "aircrafts[0].ownerOperators[0].flightOperationType"),
@@ -756,10 +760,21 @@ def _move_into_place(work: Path, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     old = work / "previous"
     old.mkdir()
-    for name in (CASES_DIR, INDEX_FILE):
-        if (out / name).exists():
-            shutil.move(out / name, old / name)
-        shutil.move(work / name, out / name)
+    aside: list[str] = []
+    try:
+        for name in (CASES_DIR, INDEX_FILE):
+            if (out / name).exists():
+                shutil.move(out / name, old / name)
+                aside.append(name)
+            shutil.move(work / name, out / name)
+    except BaseException:
+        # Put the previous files back before the caller removes ``work``.
+        for name in (CASES_DIR, INDEX_FILE):
+            if (out / name).exists() and name in aside:
+                shutil.rmtree(out / name) if (out / name).is_dir() else (out / name).unlink()
+            if name in aside:
+                shutil.move(old / name, out / name)
+        raise
 
 
 def write_export(  # noqa: PLR0913 -- the builder's fixed interface plus the report
