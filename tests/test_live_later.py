@@ -9,14 +9,17 @@ from typing import Any
 from tests.conftest import load_record_fixtures
 from tests.test_live_morning import _result
 
+from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.closure import CASES_FILE
 from ntsb_probable_cause.live.later import (
+    _EXCLUSIONS,
     AWAIT_ALERT_NIGHTS,
     Awaiting,
     awaiting,
     overdue,
     score_later,
 )
+from ntsb_probable_cause.live.morning import live_spec
 from ntsb_probable_cause.live.records import CLOSURES_FILE, ClosureRecord
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring.codes import load_tables
@@ -208,3 +211,30 @@ def test_overdue_counts_seven_nights_not_six() -> None:
     seven = _case(date(2026, 10, 20 - AWAIT_ALERT_NIGHTS))
     six = _case(date(2026, 10, 20 - AWAIT_ALERT_NIGHTS + 1))
     assert overdue([seven, six], TODAY) == 1
+
+
+def test_a_case_scored_in_another_folder_is_not_awaiting(tmp_path: Path) -> None:
+    one = _folder(tmp_path, [_closure("X")])
+    two = tmp_path / "run2"
+    two.mkdir()
+    done = _closure("X", scored=True, top1=True, top3=True, abstained=False)
+    (two / CLOSURES_FILE).write_text(done.model_dump_json() + "\n")
+    (two / CASES_FILE).write_text((one / CASES_FILE).read_text())
+    assert awaiting([one, two], set()) == []
+    assert awaiting([two, one], set()) == []
+
+
+def test_a_case_with_a_later_not_coded_line_is_not_awaiting(tmp_path: Path) -> None:
+    folder = _folder(tmp_path, [_closure("X"), _closure("X", outcome="not coded", failure="x")])
+    assert awaiting([folder], set()) == []
+
+
+def test_a_case_with_no_coding_time_is_skipped(tmp_path: Path) -> None:
+    folder = _folder(tmp_path, [_closure("X", first_sent=None, last_returned=None)])
+    assert awaiting([folder], set()) == []
+    only_sent = _folder(tmp_path, [_closure("X", last_returned=None)])
+    assert awaiting([only_sent], set())[0].coded_on == date(2026, 10, 13)
+
+
+def test_the_split_exclusions_are_the_live_runs() -> None:
+    assert _EXCLUSIONS == live_spec(1.0).exclusions == frozenset({EvidenceRole.PRELIM_NARRATIVE})

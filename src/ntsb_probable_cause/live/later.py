@@ -19,8 +19,8 @@ from typing import Final, Literal
 
 from pydantic import BaseModel
 
-from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.closure import CASES_FILE
+from ntsb_probable_cause.live.morning import live_spec
 from ntsb_probable_cause.live.records import CLOSURES_FILE, ClosureRecord, read_closure_records
 from ntsb_probable_cause.records.split import split_record
 from ntsb_probable_cause.scoring.codes import load_tables
@@ -31,9 +31,9 @@ from ntsb_probable_cause.scoring.samples import load_seen_pairs
 
 SCORES_FORMAT: Final = "live-score/1"
 AWAIT_ALERT_NIGHTS: Final = 7
-# The evidence Ellery version 1 was shown (``live/morning.py``): the split runs with the same
-# exclusion so a later score and a score at coding see the same record.
-_EXCLUSIONS: Final = frozenset({EvidenceRole.PRELIM_NARRATIVE})
+# The exclusions of every live run (``live/morning.py``), so a later score and a score at coding
+# split the same record.
+_EXCLUSIONS: Final = live_spec(1.0).exclusions
 
 
 class LaterScore(BaseModel, frozen=True):
@@ -66,21 +66,27 @@ class Awaiting:
     answer: Hypothesis  # the case's final step's hypothesis
 
 
-def _coded_on(record: ClosureRecord) -> date:
-    """The UTC day the case's last model reply came back; the closure day if none is recorded."""
+def _coded_on(record: ClosureRecord) -> date | None:
+    """The UTC day the case's last model reply came back, else its first send; None if neither.
+
+    There is no fallback to the closure day: a guessed date could make a case overdue too early.
+    """
     when = record.last_returned or record.first_sent
-    return when.astimezone(UTC).date() if when is not None else record.closed_on
+    return when.astimezone(UTC).date() if when is not None else None
 
 
 def awaiting(runs: Sequence[Path], scored: Set[str]) -> list[Awaiting]:
     """Coded cases whose closure record is unscored and that no later score covers.
 
-    ``runs`` are live run folders. A folder without a closures file is skipped. Version 1
-    records (S3.3's runs) carry no event date, which a later score's board row needs, so they are
-    skipped; so is a coded case whose result holds no step (it has no answer to grade). A case
-    appearing in several folders counts once, from the earliest folder given.
+    ``runs`` are live run folders. A folder without a closures file is skipped. A case with any
+    scored record, or any record whose outcome is not "coded", in any folder given, is never
+    awaiting. Version 1 records (S3.3's runs) carry no event date, which a later score's board
+    row needs, so they are skipped; so is a coded case whose result holds no step (it has no
+    answer to grade) and one with neither a reply time nor a send time (its coding day is
+    unknown). A case appearing more than once counts once, from the earliest folder given.
     """
     found: dict[str, Awaiting] = {}
+    settled: set[str] = set(scored)
     for folder in runs:
         closures = folder / CLOSURES_FILE
         cases = folder / CASES_FILE
@@ -88,28 +94,28 @@ def awaiting(runs: Sequence[Path], scored: Set[str]) -> list[Awaiting]:
             continue
         results: dict[str, CaseResult] | None = None
         for record in read_closure_records(closures):
-            if (
-                not isinstance(record, ClosureRecord)
-                or record.outcome != "coded"
-                or record.scored
-                or record.case_id in scored
-                or record.case_id in found
-            ):
+            if not isinstance(record, ClosureRecord):
+                continue
+            if record.outcome != "coded" or record.scored:
+                settled.add(record.case_id)
+                continue
+            if record.case_id in found:
                 continue
             if results is None:
                 results = {r.case_id: r for r in read_jsonl(cases, CaseResult)}
             result = results.get(record.case_id)
-            if result is None or not result.steps:
+            coded_on = _coded_on(record)
+            if result is None or not result.steps or coded_on is None:
                 continue
             found[record.case_id] = Awaiting(
                 case_id=record.case_id,
                 mkey=record.mkey,
                 event_date=record.event_date,
                 closed_on=record.closed_on,
-                coded_on=_coded_on(record),
+                coded_on=coded_on,
                 answer=result.steps[-1].hypothesis,
             )
-    return list(found.values())
+    return [c for c in found.values() if c.case_id not in settled]
 
 
 def record_sha256(raw: Mapping[str, object]) -> str:
@@ -120,7 +126,8 @@ def record_sha256(raw: Mapping[str, object]) -> str:
 def score_later(raw: Mapping[str, object], case: Awaiting, today: date) -> LaterScore | None:
     """Score ``case`` against ``raw``'s verdict through ``split_record`` and ``score_case``.
 
-    Returns None while the record has no occurrence codes. Raises ``LeakageError`` if the
+    Returns None while the record has no occurrence codes. A record with occurrence codes but no
+    findings is scored as final, as closure scoring does. Raises ``LeakageError`` if the
     guard refuses the record, as it would at coding.
     """
     _, _, verdict = split_record(raw, exclude=_EXCLUSIONS)
