@@ -18,7 +18,7 @@ from ntsb_probable_cause.errors import (
 )
 from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import STORE_WORK_FILENAME
-from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary
+from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary, NightOutcome
 from ntsb_probable_cause.settings import Settings
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,6 +36,7 @@ def _summary() -> MorningSummary:
         minutes=12.5,
         freed_bytes=1000,
         warnings=("late start",),
+        held_back=0,
     )
 
 
@@ -56,9 +57,9 @@ class _Calls:
 def calls(monkeypatch: pytest.MonkeyPatch) -> _Calls:
     seen = _Calls()
 
-    def fake(deps: MorningDeps, **kwargs: Any) -> MorningSummary:
+    def fake(deps: MorningDeps, **kwargs: Any) -> NightOutcome:
         seen.deps, seen.kwargs = deps, kwargs
-        return _summary()
+        return NightOutcome(_summary(), ("money-held-back",))
 
     monkeypatch.setattr(app, "run_morning", fake)
     return seen

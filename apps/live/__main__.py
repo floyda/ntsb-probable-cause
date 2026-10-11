@@ -170,6 +170,7 @@ def format_summary(summary: MorningSummary) -> str:
         *(f"not coded, {reason}: {count}" for reason, count in sorted(summary.not_coded.items())),
         f"returned to the queue: {summary.returned}",
         f"still queued: {summary.queued}",
+        f"held back by money: {summary.held_back}",
         f"cost: ${summary.cost_usd:.4f}{billed}",
         f"minutes: {summary.minutes:.1f}",
         f"bytes freed: {summary.freed_bytes}",
@@ -246,13 +247,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "report":
             return _report(args, settings)
         with morning_lock(settings.runs_dir):
-            summary = run_morning(build_deps(settings), dry_run=args.dry_run, limit=args.limit)
+            outcome = run_morning(build_deps(settings), dry_run=args.dry_run, limit=args.limit)
     except Exception as error:
         line = _error_line(args.command, settings, error)
         if line is None:
             raise
         return _fail(line)
-    print(format_summary(summary))
+    print(format_summary(outcome.summary))
+    for kind in outcome.alerts:
+        print(f"alert: {kind}")
     return 0
 
 

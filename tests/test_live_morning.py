@@ -28,23 +28,26 @@ from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.agent.version import VERSION_1
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live import morning
 from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import LocalFolderSink
 from ntsb_probable_cause.live.morning import (
-    EXPECTED_COST_PER_CASE_USD,
     LIVE_CAP_USD,
-    MONTHLY_CAP_USD,
+    LIVE_MARGIN_USD,
+    LIVE_MONTH_CAP_USD,
     VERSION_1_SETTINGS,
+    LiveRefusal,
     MorningDeps,
     MorningSummary,
+    NightOutcome,
+    cases_tonight,
     current_settings,
-    run_morning,
     settings_differences,
 )
-from ntsb_probable_cause.live.queue import DAILY_LIMIT, backfill_digest
+from ntsb_probable_cause.live.morning import run_morning as run_night
+from ntsb_probable_cause.live.queue import backfill_digest
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
@@ -54,6 +57,8 @@ from ntsb_probable_cause.live.records import (
     portability_problems,
     verify_manifest,
 )
+from ntsb_probable_cause.live.seams import MonthSpend
+from ntsb_probable_cause.live.state import Closed, NightState
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.scoring.metrics import CaseScores
@@ -65,6 +70,15 @@ from ntsb_probable_cause.store import Closure
 NOW = datetime(2026, 10, 7, 6, 0, tzinfo=UTC)
 TODAY = NOW.date()
 PENDING = "live-pending-inputs.jsonl"
+
+
+def run_morning(deps: MorningDeps, *, dry_run: bool = False, limit: int | None = None) -> Any:
+    """The morning's counts (its outcome's ``summary``); ``night`` gives the whole outcome."""
+    return run_night(deps, dry_run=dry_run, limit=limit).summary
+
+
+def night(deps: MorningDeps, **kwargs: Any) -> NightOutcome:
+    return run_night(deps, **kwargs)
 
 
 def _scores(top1: bool = True) -> CaseScores:
@@ -208,11 +222,15 @@ class _Store:
 
 
 class _Spend:
-    def __init__(self, usd: float = 0.0) -> None:
+    def __init__(self, usd: float = 0.0, limit: float = 10.0) -> None:
         self.usd = usd
+        self.limit = limit
+        self.refuse = False
 
-    def live_month_usd(self, now: datetime) -> float:
-        return self.usd
+    def month(self, now: datetime) -> MonthSpend:
+        if self.refuse:
+            raise LiveRefusal("key-unreachable", "the key endpoint could not be read")
+        return MonthSpend(self.usd, self.limit)
 
 
 class _Sink:
@@ -220,7 +238,8 @@ class _Sink:
         self.events = events if events is not None else []
         self.fail_write = False
         self.done: frozenset[str] = frozenset()
-        self.coded = 0
+        self.state = NightState()
+        self.state_writes: list[NightState] = []
         self.unfinished: str | None = None
         self.held: Backfill | None = None
         self.writes: list[tuple[str, list[ClosureRecord], Backfill | None]] = []
@@ -228,8 +247,13 @@ class _Sink:
     def done_case_ids(self) -> frozenset[str]:
         return self.done
 
-    def coded_on(self, day: date) -> int:
-        return self.coded
+    def night_state(self) -> NightState:
+        return self.state
+
+    def write_night_state(self, state: NightState) -> None:
+        self.events.append("state")
+        self.state = state
+        self.state_writes.append(state)
 
     def unfinished_run(self) -> str | None:
         return self.unfinished
@@ -426,7 +450,16 @@ def test_the_settings_check_flags_a_return_to_batch(monkeypatch: pytest.MonkeyPa
 
 
 def test_constants() -> None:
-    assert (LIVE_CAP_USD, MONTHLY_CAP_USD, EXPECTED_COST_PER_CASE_USD) == (0.30, 5.0, 0.04)
+    assert (LIVE_CAP_USD, LIVE_MONTH_CAP_USD, LIVE_MARGIN_USD) == (0.30, 9.0, 1.0)
+
+
+def test_cases_tonight_by_the_full_cap_rule() -> None:
+    cases, room = cases_tonight(MonthSpend(0.71, 10.0))
+    assert (cases, round(room, 2)) == (27, 8.29)
+    assert cases_tonight(MonthSpend(0.0, 5.0)) == (13, 4.0)  # the limit less $1 is the lower cap
+    assert cases_tonight(MonthSpend(9.5, 10.0)) == (0, 0.0)
+    assert cases_tonight(MonthSpend(0.0, 0.5)) == (0, 0.0)  # a limit under the margin
+    assert cases_tonight(MonthSpend(0.0, 10.0)) == (30, 9.0)  # exact multiples are not lost
 
 
 def test_a_wrong_label_is_refused_before_the_store_is_opened(rig: Rig) -> None:
@@ -489,29 +522,53 @@ def test_c_an_unfinished_run_with_no_inputs_is_refused(rig: Rig) -> None:
         run_morning(rig.deps())
 
 
-def test_d_the_daily_limit_takes_nothing(rig: Rig) -> None:
-    rig.sink.coded = DAILY_LIMIT
-    summary = run_morning(rig.deps())
-    assert summary.coded == 0
-    assert any("limit" in w for w in summary.warnings)
+def test_d_forty_queued_and_room_for_twenty_seven_codes_twenty_seven(rig: Rig) -> None:
+    rig.store._closures = [_closure(n) for n in range(1, 41)]
+    rig.spend.usd = 0.71
+    outcome = night(rig.deps())
+    assert outcome.summary.coded == 27
+    assert outcome.summary.held_back == 13
+    assert outcome.summary.queued == 13
+    assert outcome.alerts == ("money-held-back",)
+    assert len(rig.fetched) == 27
+
+
+def test_d_a_night_with_no_room_fetches_nothing_and_says_so(rig: Rig) -> None:
+    rig.spend.usd = 9.5
+    outcome = night(rig.deps())
+    assert outcome.summary.coded == 0
+    assert outcome.summary.held_back == 3
+    assert outcome.alerts == ("money-held-back",)
     assert rig.fetched == []
     assert _StubRunner.instances == []
-    assert [r["reason"] for r in rig.refusals()] == ["daily-limit"]
 
 
-def test_e_the_monthly_cap_refuses_before_any_fetch(rig: Rig) -> None:
-    rig.spend.usd = 4.95
-    with pytest.raises(BudgetError):
-        run_morning(rig.deps())
+def test_d_enough_room_holds_nothing_back(rig: Rig) -> None:
+    outcome = night(rig.deps())
+    assert outcome.summary.held_back == 0
+    assert outcome.alerts == ()
+
+
+def test_d_a_limit_is_not_a_reason_to_alert(rig: Rig) -> None:
+    outcome = night(rig.deps(), limit=1)
+    assert (outcome.summary.coded, outcome.summary.held_back, outcome.alerts) == (1, 0, ())
+
+
+def test_e_the_spend_counter_is_read_before_the_store_is_opened(rig: Rig) -> None:
+    rig.spend.refuse = True
+    with pytest.raises(LiveRefusal) as caught:
+        night(rig.deps())
+    assert caught.value.kind == "key-unreachable"
+    assert "open" not in rig.events
     assert rig.fetched == []
-    assert rig.model_calls == 0
-    assert [r["reason"] for r in rig.refusals()] == ["monthly-cap"]
+    assert [r["kind"] for r in rig.refusals()] == ["key-unreachable"]
 
 
-def test_e_a_smaller_take_fits_under_the_cap(rig: Rig) -> None:
-    rig.spend.usd = 4.95
-    summary = run_morning(rig.deps(), limit=1)
-    assert summary.coded == 1
+def test_e_the_run_spec_projects_each_case_at_the_cap(rig: Rig) -> None:
+    run_morning(rig.deps())
+    spec = _StubRunner.instances[0].runs[0][0]
+    assert spec.expected_cost_per_case_usd == LIVE_CAP_USD
+    assert spec.budget_usd == rig.settings.monthly_budget_usd
 
 
 def test_f_a_fetch_failure_leaves_the_case_out_and_counts_it_returned(rig: Rig) -> None:
@@ -546,7 +603,7 @@ def test_g_the_run_spec(rig: Rig) -> None:
     assert spec.model == "openai/gpt-6-luna"
     assert spec.reasoning_effort == "medium"
     assert spec.max_output_tokens == 8000
-    assert spec.expected_cost_per_case_usd == EXPECTED_COST_PER_CASE_USD
+    assert spec.expected_cost_per_case_usd == LIVE_CAP_USD
     assert runner.runs[0][2] is None
     assert runner.kwargs["commit"] == ("abc1234", False)
     assert runner.kwargs["runs_dir"] == rig.runs_dir
@@ -815,31 +872,92 @@ def test_n_a_preliminary_narrative_never_reaches_a_request(
     ), "only the inputs, which a resume needs, hold the record's own text"
 
 
-def test_o_every_refusal_appends_a_row_with_no_case_id(rig: Rig) -> None:
+def test_o_every_refusal_appends_a_row_with_its_kind_and_no_case_id(rig: Rig) -> None:
     rig.label = "other"
-    with pytest.raises(ConfigurationError):
+    with pytest.raises(LiveRefusal) as label:
         run_morning(rig.deps())
+    assert label.value.kind == "version-refused"
     rig.label = VERSION_1
     rig.store._finished = False
-    with pytest.raises(ConfigurationError):
+    with pytest.raises(LiveRefusal) as recorder:
         run_morning(rig.deps())
+    assert recorder.value.kind == "recorder-not-finished"
     rig.store._finished = True
-    rig.sink.coded = DAILY_LIMIT
-    run_morning(rig.deps())
-    rig.sink.coded = 0
-    rig.spend.usd = 5.0
-    with pytest.raises(BudgetError):
+    rig.spend.refuse = True
+    with pytest.raises(LiveRefusal):
         run_morning(rig.deps())
     rows = rig.refusals()
-    assert [r["reason"] for r in rows] == [
-        "label",
-        "recorder-unfinished",
-        "daily-limit",
-        "monthly-cap",
+    assert [r["kind"] for r in rows] == [
+        "version-refused",
+        "recorder-not-finished",
+        "key-unreachable",
     ]
     for row in rows:
-        assert set(row) == {"at", "reason"}
+        assert set(row) == {"at", "kind"}
         assert datetime.fromisoformat(row["at"]).utcoffset() == timedelta(0)
+
+
+def test_a_store_that_is_not_sound_is_a_refusal_of_its_own_kind(rig: Rig) -> None:
+    def broken() -> list[Closure]:
+        raise ConfigurationError("the store is not sound")
+
+    rig.store.closures = broken  # type: ignore[method-assign]
+    with pytest.raises(LiveRefusal, match="not sound") as caught:
+        run_morning(rig.deps())
+    assert caught.value.kind == "store-unsound"
+    assert [r["kind"] for r in rig.refusals()] == ["store-unsound"]
+    assert "discard" in rig.events
+
+
+def test_a_case_settled_unreachable_is_never_queued_again(rig: Rig) -> None:
+    rig.sink.state = NightState(
+        unreachable={
+            "XXX26LA001": Closed(
+                mkey=1001, event_date=date(2026, 9, 1), closed_on=date(2026, 10, 5)
+            )
+        }
+    )
+    outcome = night(rig.deps())
+    assert "XXX26LA001" not in rig.fetched
+    assert outcome.summary.coded == 2
+    assert outcome.summary.queued == 0
+
+
+def test_fetch_failures_are_counted_across_nights_and_alert_kinds_only_leave(rig: Rig) -> None:
+    rig.fetch_fails = {"XXX26LA001"}
+    kinds: list[tuple[str, ...]] = []
+    for day in range(7):
+        rig.store._closures = [_closure(n) for n in range(1, 3 + day)]
+        rig.now = datetime(2026, 10, 7 + day, 6, 0, tzinfo=UTC)
+        rig.sink.done = frozenset()
+        outcome = night(rig.deps())
+        kinds.append(outcome.alerts)
+        assert "XXX26" not in repr(outcome)
+    assert kinds[:2] == [(), ()]
+    assert kinds[2] == ("unreachable-3",)
+    assert kinds[3:6] == [(), (), ()]
+    assert kinds[6] == ("unreachable-final",)
+    assert "XXX26LA001" in rig.sink.state.unreachable
+    assert "XXX26LA001" not in rig.sink.state.failures
+    assert rig.sink.state_writes  # written each night
+
+
+def test_an_outage_night_counts_against_no_case(rig: Rig) -> None:
+    rig.fetch_fails = {"XXX26LA001", "XXX26LA002", "XXX26LA003"}
+    outcome = night(rig.deps())
+    assert outcome.alerts == ("outage",)
+    assert rig.sink.state == NightState()
+    assert outcome.summary.returned == 3
+
+
+def test_the_night_state_is_written_after_the_records(rig: Rig) -> None:
+    night(rig.deps())
+    assert rig.events.index("write") < rig.events.index("state")
+
+
+def test_a_dry_run_writes_no_state(rig: Rig) -> None:
+    night(rig.deps(), dry_run=True)
+    assert rig.sink.state_writes == []
 
 
 def _first_morning_interrupted(rig: Rig) -> str:
@@ -916,16 +1034,25 @@ def test_the_lockfile_checksum_is_read_before_any_fetch_or_run(rig: Rig) -> None
     assert rig.model_calls == 0
 
 
-def test_a_resume_is_held_to_the_monthly_cap(rig: Rig) -> None:
+def test_a_resume_needing_more_than_the_room_is_refused(rig: Rig) -> None:
     run_id = _first_morning_interrupted(rig)
     _StubRunner.instances.clear()
     rig.sink.unfinished = run_id
-    rig.spend.usd = 4.99
-    with pytest.raises(BudgetError):
+    rig.spend.usd = 8.8  # room $0.20: one unanswered case at $0.30 does not fit
+    with pytest.raises(LiveRefusal) as caught:
         run_morning(rig.deps())
+    assert caught.value.kind == "money-held-back"
     assert _StubRunner.instances == []
     assert rig.model_calls == 1  # only the first morning's
-    assert [r["reason"] for r in rig.refusals()] == ["monthly-cap"]
+    assert rig.refusals()[-1]["kind"] == "money-held-back"
+
+
+def test_a_resume_that_fits_the_room_goes_on(rig: Rig) -> None:
+    run_id = _first_morning_interrupted(rig)
+    _StubRunner.instances.clear()
+    rig.sink.unfinished = run_id
+    rig.spend.usd = 8.6  # room $0.40: one case fits
+    assert run_morning(rig.deps()).run_id == run_id
 
 
 def test_a_development_run_folder_made_meanwhile_is_never_written_to(rig: Rig) -> None:
@@ -985,13 +1112,10 @@ def test_p_a_morning_where_every_fetch_fails_still_appends_its_counts(rig: Rig) 
 
 
 def test_p_a_refused_morning_and_a_dry_run_append_none(rig: Rig) -> None:
-    rig.sink.coded = DAILY_LIMIT
-    run_morning(rig.deps())
-    rig.sink.coded = 0
-    rig.spend.usd = 5.0
-    with pytest.raises(BudgetError):
+    rig.spend.refuse = True
+    with pytest.raises(LiveRefusal):
         run_morning(rig.deps())
-    rig.spend.usd = 0.0
+    rig.spend.refuse = False
     run_morning(rig.deps(), dry_run=True)
     assert _counts(rig) == []
 
@@ -1035,7 +1159,7 @@ def test_a_changed_setting_is_refused_before_the_store_is_opened(
         run_morning(rig.deps())
     assert "open" not in rig.events
     assert rig.model_calls == 0
-    assert [r["reason"] for r in rig.refusals()] == ["settings"]
+    assert [r["kind"] for r in rig.refusals()] == ["version-refused"]
 
 
 def test_a_changed_temperature_default_is_refused(
@@ -1063,46 +1187,6 @@ def test_a_changed_statistics_or_items_file_is_refused(
     assert "open" not in rig.events
 
 
-# --- the $40 guard (final review B2) ---
-
-
-def _reserve(rig: Rig, run_id: str, usd: float) -> None:
-    folder = rig.runs_dir / run_id
-    folder.mkdir(exist_ok=True)
-    (folder / "reservation.json").write_text(json.dumps({"projected_usd": usd}))
-
-
-def test_the_monthly_guard_refuses_before_any_fetch_or_folder(rig: Rig) -> None:
-    """B2: AgentRunner's own refusal comes after it made a folder; this one leaves nothing."""
-    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.98)  # 3 cases would be 0.045 more
-    before = {p.name for p in rig.runs_dir.iterdir()}
-    with pytest.raises(BudgetError, match="monthly guard"):
-        run_morning(rig.deps())
-    assert rig.fetched == []
-    assert rig.model_calls == 0
-    assert {p.name for p in rig.runs_dir.iterdir() if p.is_dir()} == before - {
-        "live-refusals.jsonl"
-    }
-    assert [r["reason"] for r in rig.refusals()] == ["monthly-guard"]
-    assert not (rig.runs_dir / PENDING).exists()
-
-
-def test_a_smaller_take_fits_under_the_monthly_guard(rig: Rig) -> None:
-    _reserve(rig, "20261007T000000-abc1234-dev-400-C", 39.95)  # room for one case, not three
-    summary = run_morning(rig.deps(), limit=1)
-    assert summary.coded == 1
-
-
-def test_a_resume_does_not_count_its_own_reservation_against_the_guard(rig: Rig) -> None:
-    run_id = _first_morning_interrupted(rig)
-    _StubRunner.instances.clear()
-    rig.sink.unfinished = run_id
-    _reserve(rig, run_id, 39.99)  # the run's own: excluded; the guard sees spend 0 + 0 + cases
-    run_morning(rig.deps())
-    assert len(_StubRunner.instances) == 1
-    assert rig.refusals() == []
-
-
 # --- the live and development docket folders (final review C2) ---
 
 
@@ -1125,8 +1209,9 @@ def test_the_live_and_development_docket_folders_must_be_apart(
     rig.settings = Settings(
         data_dir=tmp_path / "data", docket_dir=development, live_docket_dir=live
     )
-    with pytest.raises(ConfigurationError, match="live_docket_dir must differ from docket_dir"):
+    with pytest.raises(LiveRefusal, match="live_docket_dir must differ from docket_dir") as caught:
         run_morning(rig.deps())
+    assert caught.value.kind == "docket-folders"
     assert "open" not in rig.events, "refused before the store was opened"
     assert rig.model_calls == 0
 

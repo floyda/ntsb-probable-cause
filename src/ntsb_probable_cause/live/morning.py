@@ -3,8 +3,10 @@
 ``run_morning`` is library code. Every outside effect (the clock, the store, the spend counter,
 the sink, the three client factories, the commit, the lockfile checksum and the prompt-version
 label) comes in through :class:`MorningDeps`, so a test replaces each with a fake. The order is
-fixed: label, store, the recorder's run, a resume, the daily limit, the caps, the queue, the
-backfill, the fetches, the run, the closure records, the cleanup.
+fixed: label and settings, docket folders, the live key's spend, the store, the recorder's run,
+a resume, the queue, the backfill, the fetches, the run, the closure records, the cleanup, the
+night state. The night's size comes from money alone (decision 0170); a refusal is a
+:class:`LiveRefusal` with a kind, and nothing that leaves the morning names a case (decision 0024).
 
 The raw records of a run go to ``<runs_dir>/live-pending-inputs.jsonl`` before ``AgentRunner``
 makes its folder (it creates the folder itself), and move to ``<run folder>/inputs.jsonl``
@@ -12,8 +14,10 @@ afterwards, so a resume reads back exactly the records the run began with, in or
 """
 
 import contextlib
+import dataclasses
 import hashlib
 import json
+import math
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -30,18 +34,12 @@ from ntsb_probable_cause.agent.schemas import Without
 from ntsb_probable_cause.agent.version import VERSION_1, prompt_version
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import BudgetError, ConfigurationError
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE, Prepared, build_records
 from ntsb_probable_cause.live.fetch import FetchError, fetch_record, prefetch_docket
 from ntsb_probable_cause.live.local import LIVE_SAMPLE
-from ntsb_probable_cause.live.queue import (
-    DAILY_LIMIT,
-    QueuedCase,
-    backfill_digest,
-    build_queue,
-    todays_take,
-)
+from ntsb_probable_cause.live.queue import QueuedCase, backfill_digest, build_queue
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
@@ -51,9 +49,10 @@ from ntsb_probable_cause.live.records import (
     ClosureRecord,
     failure_kind,
 )
-from ntsb_probable_cause.live.seams import ResultSink, SpendCounter, StoreSource
+from ntsb_probable_cause.live.seams import MonthSpend, ResultSink, SpendCounter, StoreSource
+from ntsb_probable_cause.live.state import NightState, after_fetches
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings
-from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
+from ntsb_probable_cause.scoring.budget import month_spent
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
@@ -61,13 +60,11 @@ from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, 
 from ntsb_probable_cause.scoring.samples import load_seen_pairs
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import LUNA_6, TRAINING_CUTOFFS, ReasoningEffort
-from ntsb_probable_cause.store import Store
+from ntsb_probable_cause.store import Closure, Store
 
-LIVE_CAP_USD: Final = 0.30  # decision 163
-MONTHLY_CAP_USD: Final = 5.0  # decision 163
-# Estimate for the caps' projections (decision 0165: the standard price is about twice batch per
-# token, and large dockets cost more). It feeds the reservation's projection only.
-EXPECTED_COST_PER_CASE_USD: Final = 0.04
+LIVE_CAP_USD: Final = 0.30  # decision 0144, a version 1 setting
+LIVE_MONTH_CAP_USD: Final = 9.0  # decision 0170
+LIVE_MARGIN_USD: Final = 1.0  # kept below the key's own limit (decision 0170)
 
 # Pinned here, not read from library defaults: a development edit of those must not move live
 # runs off the model (decisions 0073, 0084, 0156). The `+t` fingerprint does not hash them.
@@ -108,8 +105,25 @@ MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
 
 
+def cases_tonight(spend: MonthSpend) -> tuple[int, float]:
+    """Tonight's number of cases and the room in dollars, by the full-cap rule (decision 0170).
+
+    Every case may run to its $0.30 cap, so no night can pass the key's limit.
+
+    Args:
+        spend: this month's spend on the live key and the limit it is held to.
+
+    Returns:
+        ``(cases, room)``: ``floor((cap - used) / $0.30)`` cases, ``cap`` being the lower of $9
+        and the limit less $1, and the dollars left under ``cap``; neither is ever below 0.
+    """
+    cap = min(LIVE_MONTH_CAP_USD, spend.limit_usd - LIVE_MARGIN_USD)
+    room = max(0.0, cap - spend.used_usd)
+    return math.floor(room / LIVE_CAP_USD + 1e-9), room
+
+
 def live_spec(budget_usd: float) -> RunSpec:
-    """The spec of every live run: version 1's settings, the month's budget as given."""
+    """The spec of every live run: version 1's settings, the budget as given."""
     return RunSpec(
         sample=LIVE_SAMPLE,
         arm="C",
@@ -122,7 +136,7 @@ def live_spec(budget_usd: float) -> RunSpec:
         cap_usd=LIVE_CAP_USD,
         budget_usd=budget_usd,
         sync=True,
-        expected_cost_per_case_usd=EXPECTED_COST_PER_CASE_USD,
+        expected_cost_per_case_usd=LIVE_CAP_USD,
         guidance=GUIDANCE,
     )
 
@@ -161,6 +175,18 @@ def settings_differences() -> list[str]:
     return sorted(n for n in names if VERSION_1_SETTINGS.get(n) != now.get(n))
 
 
+class LiveRefusal(ConfigurationError):  # noqa: N818 -- the name the S4 design fixes
+    """A night that must not go on, with the kind an alert names (decision 0177).
+
+    ``kind`` is one of ``"version-refused"``, ``"recorder-not-finished"``, ``"store-unsound"``,
+    ``"key-unreachable"``, ``"money-held-back"`` and ``"docket-folders"``.
+    """
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
 @dataclass(frozen=True)
 class MorningDeps:
     """Everything the morning touches outside itself; a test gives a fake for each."""
@@ -192,54 +218,78 @@ class MorningSummary:
     minutes: float
     freed_bytes: int
     warnings: tuple[str, ...]
+    held_back: int  # queued past tonight's number of cases, by money
+
+
+@dataclass(frozen=True)
+class NightOutcome:
+    """A morning's counts and the kinds of alert it raised; no case id is in either."""
+
+    summary: MorningSummary
+    alerts: tuple[str, ...]
 
 
 def run_morning(
     deps: MorningDeps, *, dry_run: bool = False, limit: int | None = None
-) -> MorningSummary:
+) -> NightOutcome:
     """Run one live morning.
 
     Args:
         deps: the outside world, as fakes or the deployed versions.
         dry_run: open the store, build the queue and fetch the first case and its docket, then
             print what a morning would do; no model is called and no run folder is written.
-        limit: take at most this many cases (never more than the day's room).
+        limit: take at most this many cases (never more than tonight's number).
 
     Returns:
-        The morning's counts.
+        The morning's counts and the kinds of alert it raised.
 
     Raises:
-        ConfigurationError: the prompt-version label is not version 1, a setting is not version
-            1's (:data:`VERSION_1_SETTINGS`), the recorder has not
-            finished a run today, or an unfinished live run cannot be resumed.
-        BudgetError: the month's live spend plus this morning's projection passes the cap.
+        LiveRefusal: kind ``version-refused`` (the prompt-version label is not version 1, or a
+            setting is not version 1's, :data:`VERSION_1_SETTINGS`), ``docket-folders``,
+            ``key-unreachable`` (from the spend counter), ``store-unsound``,
+            ``recorder-not-finished``, or ``money-held-back`` (an unfinished run needs more than
+            the room).
+        ConfigurationError: an unfinished live run cannot be resumed.
     """
     began = deps.now()
     refusals = _Refusals(deps, enabled=not dry_run)
+    try:
+        return _run_checked(deps, began, refusals, dry_run=dry_run, limit=limit)
+    except LiveRefusal as refusal:
+        refusals.add(refusal.kind)
+        raise
+
+
+def _run_checked(
+    deps: MorningDeps, began: datetime, refusals: _Refusals, *, dry_run: bool, limit: int | None
+) -> NightOutcome:
     label = deps.label()
     if label != VERSION_1:
-        refusals.add("label")
-        raise ConfigurationError(
+        raise LiveRefusal(
+            "version-refused",
             f"the agent's prompt version is {label}, not the frozen {VERSION_1}: a live "
-            "morning runs version 1 only (decision 0161)"
+            "morning runs version 1 only (decision 0161)",
         )
     differing = settings_differences()
     if differing:
-        refusals.add("settings")
-        raise ConfigurationError(
+        raise LiveRefusal(
+            "version-refused",
             f"these settings are not version 1's: {', '.join(differing)}. A live morning runs "
-            "version 1 only (decisions 0156, 0161)"
+            "version 1 only (decisions 0156, 0161)",
         )
     settings = deps.settings
     live, development = settings.live_docket_dir.resolve(), settings.docket_dir.resolve()
     if live == development or live.is_relative_to(development) or development.is_relative_to(live):
         # Resolved, so a symlink to the same folder counts. One folder inside the other would
         # mix open-case documents with the development cache just as well.
-        refusals.add("docket-folders")
-        raise ConfigurationError(
-            "live_docket_dir must differ from docket_dir, and neither may sit inside the other"
+        raise LiveRefusal(
+            "docket-folders",
+            "live_docket_dir must differ from docket_dir, and neither may sit inside the other",
         )
-    morning = _Morning(deps, deps.store.open(), began, refusals, dry_run=dry_run, limit=limit)
+    spend = deps.spend.month(began)  # before the store is opened; may raise key-unreachable
+    morning = _Morning(
+        deps, deps.store.open(), began, spend, refusals, dry_run=dry_run, limit=limit
+    )
     try:
         return morning.run()
     finally:
@@ -248,18 +298,18 @@ def run_morning(
 
 
 class _Refusals:
-    """Appends one ``{"at", "reason"}`` row per refusal, never a case id (for Task 10)."""
+    """Appends one ``{"at", "kind"}`` row per refusal, never a case id."""
 
     def __init__(self, deps: MorningDeps, *, enabled: bool) -> None:
         self._deps = deps
         self._enabled = enabled
 
-    def add(self, reason: str) -> None:
+    def add(self, kind: str) -> None:
         if not self._enabled:
             return
         runs_dir = self._deps.settings.runs_dir
         runs_dir.mkdir(parents=True, exist_ok=True)
-        row = {"at": self._deps.now().astimezone(UTC).isoformat(), "reason": reason}
+        row = {"at": self._deps.now().astimezone(UTC).isoformat(), "kind": kind}
         with (runs_dir / REFUSALS_FILE).open("a") as handle:
             handle.write(json.dumps(row) + "\n")
 
@@ -270,6 +320,7 @@ class _Morning:
         deps: MorningDeps,
         store: Store,
         began: datetime,
+        spend: MonthSpend,
         refusals: _Refusals,
         *,
         dry_run: bool,
@@ -278,6 +329,7 @@ class _Morning:
         self.deps = deps
         self.store = store
         self.began = began
+        self.cases, self.room = cases_tonight(spend)
         self.refusals = refusals
         self.dry_run = dry_run
         self.limit = limit
@@ -286,88 +338,73 @@ class _Morning:
         self.warnings: list[str] = []
         self.interrupted = False
         self.lock_sha = ""
+        self.alerts: list[str] = []
+        self.new_state: NightState | None = None
 
     # --- the order of a morning ---
 
-    def run(self) -> MorningSummary:
+    def run(self) -> NightOutcome:
         self.lock_sha = self.deps.uv_lock_sha256()  # read with the other checks, before any run
         if not self.dry_run:
             self._complete_unrecorded()
         if not self.store.run_finished_on(self.today):
-            self.refusals.add("recorder-unfinished")
-            raise ConfigurationError(
+            raise LiveRefusal(
+                "recorder-not-finished",
                 f"the recorder has not finished a run on {self.today}: the store is not "
-                "tonight's, so no case is coded"
+                "tonight's, so no case is coded",
             )
         unfinished = self.deps.sink.unfinished_run()
         if unfinished is not None:
-            return self._resume(unfinished)
-        coded_today = self.deps.sink.coded_on(self.today)
-        room = DAILY_LIMIT - coded_today
-        if room <= 0:
-            self.refusals.add("daily-limit")
-            self.warnings.append(f"the day's limit of {DAILY_LIMIT} cases is reached")
-            return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
-        n = room if self.limit is None else min(room, self.limit)
-        self._check_cap(n)
+            return self._outcome(self._resume(unfinished))
+        state = self.deps.sink.night_state()
         done = self.deps.sink.done_case_ids()
-        queue = build_queue(self.store.closures(), done)
-        take = todays_take(queue, coded_today)[:n]
-        if self.dry_run:
-            return self._dry_run(queue, take)
-        self._pin_backfill(queue)
-        fetched, returned = self._fetch(take)
-        if not fetched:
-            summary = self._summary(
-                None, [], returned=returned, queued=len(queue), record=None, freed=0
+        queue = build_queue(self._closures(), done | state.unreachable.keys())
+        held_back = max(0, len(queue) - self.cases)
+        if held_back:
+            self.alerts.append("money-held-back")
+            self.warnings.append(
+                f"money holds back {held_back} of {len(queue)} queued cases tonight "
+                f"(room ${self.room:.2f})"
             )
-            return self._log_counts(summary, queue_at_start=len(queue), taken=len(take))
+        n = self.cases if self.limit is None else min(self.cases, self.limit)
+        take = queue[:n]
+        if self.dry_run:
+            return self._outcome(self._dry_run(queue, take, held_back))
+        self._pin_backfill(queue)
+        fetched, failed = self._fetch(take)
+        self.new_state, kinds = after_fetches(state, take, failed, len(fetched))
+        self.alerts.extend(kinds)
+        if not fetched:
+            self.deps.sink.write_night_state(self.new_state)
+            summary = self._summary(
+                None, [], returned=len(failed), queued=len(queue), record=None, freed=0
+            )
+            summary = dataclasses.replace(summary, held_back=held_back)
+            return self._outcome(
+                self._log_counts(summary, queue_at_start=len(queue), taken=len(take))
+            )
         raws = [f.raw for f in fetched]
         self._write_pending(raws)
-        return self._execute(
+        summary = self._execute(
             fetched,
             raws,
             resume=None,
-            returned=returned,
-            done=done,
+            returned=len(failed),
+            done=done | self.new_state.unreachable.keys(),
             queue_at_start=len(queue),
             taken=len(take),
         )
+        return self._outcome(dataclasses.replace(summary, held_back=held_back))
 
-    def _check_cap(self, n: int, *, resuming: str | None = None) -> None:
-        """Refuse before any fetch, folder or call when ``n`` cases do not fit a limit.
+    def _outcome(self, summary: MorningSummary) -> NightOutcome:
+        return NightOutcome(summary, tuple(dict.fromkeys(self.alerts)))
 
-        Two limits: the live shadow's own $5 month (decision 163), and the all-purpose monthly
-        guard (``monthly_budget_usd``, $40) that ``AgentRunner`` enforces again when it reserves.
-        Checking the second here too means a refusal leaves nothing behind: ``AgentRunner`` makes
-        its run folder and ``spec.json`` before it reserves, so its own refusal would leave a live
-        folder with no ``run.jsonl`` that every later morning would find unfinished.
-
-        Args:
-            n: the cases this morning would code.
-            resuming: the run being resumed; its own open reservation is not counted against it.
-
-        Raises:
-            BudgetError: a limit would be passed.
-        """
-        projected = self.deps.spend.live_month_usd(self.began) + n * EXPECTED_COST_PER_CASE_USD
-        if projected > MONTHLY_CAP_USD:
-            self.refusals.add("monthly-cap")
-            raise BudgetError(
-                f"live spend this month plus {n} cases at ${EXPECTED_COST_PER_CASE_USD} would "
-                f"be ${projected:.2f}, past the ${MONTHLY_CAP_USD:.2f} monthly cap (decision 163)"
-            )
-        spent = month_spent(self.runs_dir, now=self.began)
-        reserved = sum(v for k, v in open_reservations(self.runs_dir).items() if k != resuming)
-        budget = self.deps.settings.monthly_budget_usd
-        guarded = spent + reserved + n * EXPECTED_COST_PER_CASE_USD
-        if guarded > budget:
-            self.refusals.add("monthly-guard")
-            raise BudgetError(
-                f"${spent:.2f} spent this month and ${reserved:.2f} reserved by other runs, plus "
-                f"{n} cases at ${EXPECTED_COST_PER_CASE_USD}, would be ${guarded:.2f}, past the "
-                f"monthly guard of ${budget:.2f}: nothing was fetched and no run was made"
-            )
+    def _closures(self) -> list[Closure]:
+        """The store's closures; a store that is not sound is a refusal, not a crash."""
+        try:
+            return self.store.closures()
+        except ConfigurationError as error:
+            raise LiveRefusal("store-unsound", str(error)) from error
 
     def _pin_backfill(self, queue: Sequence[QueuedCase]) -> None:
         """Fix the backfill on disk the first time the queue is seen, before anything can fail.
@@ -383,10 +420,12 @@ class _Morning:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         pending.write_text(backfill.model_dump_json() + "\n")
 
-    def _dry_run(self, queue: Sequence[QueuedCase], take: Sequence[QueuedCase]) -> MorningSummary:
+    def _dry_run(
+        self, queue: Sequence[QueuedCase], take: Sequence[QueuedCase], held_back: int
+    ) -> MorningSummary:
         _say(
             f"dry run: {len(queue)} cases queued; a morning would code {len(take)} "
-            f"(at most {DAILY_LIMIT} a day)."
+            f"(money allows {self.cases} tonight; {held_back} held back)."
         )
         if take:
             fetched, _ = self._fetch(take[:1])
@@ -396,12 +435,16 @@ class _Morning:
             else:
                 _say("dry run: the first case could not be fetched.")
         _say("dry run: no model was called and no run folder was written.")
-        return self._summary(None, [], returned=0, queued=len(queue), record=None, freed=0)
+        summary = self._summary(None, [], returned=0, queued=len(queue), record=None, freed=0)
+        return dataclasses.replace(summary, held_back=held_back)
 
-    def _fetch(self, take: Sequence[QueuedCase]) -> tuple[list[Prepared], int]:
-        """Each case's record and docket, in order; a failure returns the case to the queue."""
+    def _fetch(self, take: Sequence[QueuedCase]) -> tuple[list[Prepared], set[str]]:
+        """Each case's record and docket, in order, and the ids whose fetch failed.
+
+        A failed case returns to the queue; ``after_fetches`` decides whether it counts.
+        """
         fetched: list[Prepared] = []
-        returned = 0
+        failed: set[str] = set()
         with contextlib.ExitStack() as stack:
             ntsb = stack.enter_context(self.deps.ntsb())
             docket_client = stack.enter_context(self.deps.docket())
@@ -414,14 +457,14 @@ class _Morning:
                         known_documents=self.store.documents_recorded(case.mkey),
                     )
                 except FetchError:
-                    returned += 1
+                    failed.add(case.case_id)
                     continue
                 fetched.append(Prepared(case, raw, docket))
-        return fetched, returned
+        return fetched, failed
 
     def _prepare(self, raws: Sequence[dict[str, object]]) -> list[Prepared]:
         """Rebuild a run's cases from its inputs, the store's closures and the docket cache."""
-        by_id = {q.case_id: q for q in build_queue(self.store.closures(), frozenset())}
+        by_id = {q.case_id: q for q in build_queue(self._closures(), frozenset())}
         prepared: list[Prepared] = []
         with self.deps.docket() as docket_client:
             for raw in raws:
@@ -487,19 +530,26 @@ class _Morning:
                 f"the unfinished live run {run_id} is resumed with no backfill held anywhere: "
                 "it is never recomputed from a later queue"
             )
-        self._check_cap(len(raws) - len(_answered(folder)), resuming=run_id)
+        unanswered = len(raws) - len(_answered(folder))
+        if unanswered * LIVE_CAP_USD > self.room + 1e-9:
+            raise LiveRefusal(
+                "money-held-back",
+                f"the unfinished run has {unanswered} cases to answer, which at the "
+                f"${LIVE_CAP_USD} cap a case needs more than the ${self.room:.2f} left this month",
+            )
         if self.dry_run:
             _say(f"dry run: a morning would resume the unfinished run with {len(raws)} cases.")
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
         prepared = self._prepare(raws)
-        done = self.deps.sink.done_case_ids() - {p.case.case_id for p in prepared}
+        hidden = self.deps.sink.night_state().unreachable.keys()
+        done = (self.deps.sink.done_case_ids() | hidden) - {p.case.case_id for p in prepared}
         return self._execute(
             prepared,
             raws,
             resume=run_id,
             returned=0,
             done=done,
-            queue_at_start=len(build_queue(self.store.closures(), done)),
+            queue_at_start=len(build_queue(self._closures(), done)),
             taken=len(prepared),
         )
 
@@ -529,6 +579,7 @@ class _Morning:
         if spec.model not in TRAINING_CUTOFFS:
             raise ConfigurationError(f"no recorded training cut-off for {spec.model}")
         client, batch = deps.models()
+        spent = month_spent(self.runs_dir, now=self.began)
         with deps.docket() as docket_client:
             runner = AgentRunner(
                 client,
@@ -537,7 +588,7 @@ class _Morning:
                 stats=load_stats(agent_run.STATS),
                 seen_pairs=load_seen_pairs(),
                 runs_dir=self.runs_dir,
-                month_spent_usd=month_spent(self.runs_dir, now=self.began),
+                month_spent_usd=spent,
                 commit=deps.commit(),
                 docket=CachedDocketReader(docket_client, readings=None),
                 now=deps.now,
@@ -553,9 +604,11 @@ class _Morning:
                 raise
         self._settle_pending(self.runs_dir / record.run_id)
         records, freed = self._complete(record.run_id, prepared)
+        if self.new_state is not None:
+            deps.sink.write_night_state(self.new_state)
         freed += _store_bytes(self.store.path)
         ran = {p.case.case_id for p in prepared}
-        queued = len(build_queue(self.store.closures(), done | ran))
+        queued = len(build_queue(self._closures(), done | ran))
         summary = self._summary(
             record.run_id, records, returned=returned, queued=queued, record=record, freed=freed
         )
@@ -601,6 +654,13 @@ class _Morning:
         return records, self._cleanup(prepared)
 
     def _spec(self) -> RunSpec:
+        """The run's spec.
+
+        Its budget is the settings' monthly guard, as in S3.3, not tonight's room: the runner
+        refuses a resume whose spec differs from the run's first one, and the room changes as the
+        month's spend does. The money was decided by :func:`cases_tonight` before any fetch, so
+        this is a backstop that the cloud's empty runs folder never reaches.
+        """
         return live_spec(self.deps.settings.monthly_budget_usd)
 
     def _cleanup(self, prepared: Sequence[Prepared]) -> int:
@@ -640,6 +700,7 @@ class _Morning:
             minutes=(self.deps.now() - self.began).total_seconds() / 60,
             freed_bytes=freed,
             warnings=tuple(self.warnings),
+            held_back=0,
         )
 
 
