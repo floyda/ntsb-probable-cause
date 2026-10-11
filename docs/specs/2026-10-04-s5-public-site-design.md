@@ -860,7 +860,9 @@ The site reads two things, and nothing else.
 1. **The export, `board/1`**, S4's nightly files: `index.json` and `cases/<case number>.json`. A
    loader checks every file against `docs/schemas/board-1.schema.json` and stops the build on a
    mismatch; the site's types are generated from the same schema. A missing key is read as null
-   (S4's request). Development builds use S4's invented sample in `tests/fixtures/board/` unless a
+   (S4's request). **Only the case files that `index.json` lists are read**: S4's task cannot
+   delete, so a case file that drops out of the export stays in the bucket (§22). Development
+   builds use S4's invented sample in `tests/fixtures/board/` unless a
    real export is named.
 2. **The numbers file, `site/data/numbers.json`**, for every number on the Path and Methods pages
    (§7, §9). A Python script under `scripts/`, with its own tests, writes it. Each entry holds the
@@ -1062,6 +1064,18 @@ Passed to the S4 session on 2026-10-11:
 2. **The live bucket sends events to EventBridge**, so the mark can start the build.
 3. **Read access for the site's build role** to `export/board-1/` only, if the live bucket's
    policy would otherwise refuse it.
+
+S4's answer, 2026-10-11 (items 1 and 2 in S4's final fixes, before its first deploy):
+
+- **The mark is `export/board-1/_finished.json`**, holding `{"format": "board-finished/1",
+  "built_at": …, "commit": …}`. S4 uploads `cases/*`, then `index.json`, then the mark, and
+  overwrites the mark each night. If an upload fails partway, the mark keeps the previous night's
+  `built_at`, so **the build goes ahead only when the mark's `built_at` equals `index.json`'s**.
+- **The live bucket gets `eventBridgeEnabled`.**
+- **No change to the bucket's policy is needed.** Its one statement refuses requests not made over
+  TLS. The site's role is given, in its own IAM policy, `s3:GetObject` on
+  `export/board-1/*` and `s3:ListBucket` with an `s3:prefix` condition on `export/board-1/*`. The
+  bucket's name is S4's stack output `LiveBucketName`.
 
 Delivered by S4 on 2026-10-11, at Claude's request after reviewing the sample: optional `board/1`
 fields for the NTSB's internal case key (`mkey`, for the links of §5), the launch date and a
