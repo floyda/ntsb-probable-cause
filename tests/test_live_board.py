@@ -11,16 +11,19 @@ import json
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 import pytest
 from tests.test_live_closure import _run as _run_record
 from tests.test_live_later import _closure, _raw_with_codes, _step
 from tests.test_live_morning import _call, _result, _scores
 
+from ntsb_probable_cause.docket.manifest import Status
 from ntsb_probable_cause.errors import ConfigurationError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.board import (
+    _NOT_OFFERED,
+    _SCAN_ONLY,
     build_export,
     grade,
     occurrence_marks,
@@ -1018,3 +1021,16 @@ def test_not_offered_reasons_follow_the_readers_status(tmp_path: Path) -> None:
         ("not_offered", "fetch_failed", 6),
         ("not_offered", None, 7),
     ]
+
+
+def test_a_corrupt_spec_in_the_mirror_is_refused_with_no_path(tmp_path: Path) -> None:
+    mirror = _mirror(tmp_path)
+    folder = next((mirror / "runs").iterdir())
+    (folder / "spec.json").write_text("{not json")
+    message = _refused(mirror, tmp_path / "out")
+    assert "unreadable" in message
+    assert str(tmp_path) not in message
+
+
+def test_every_docket_status_has_a_not_offered_answer() -> None:
+    assert set(_NOT_OFFERED) | {"read", _SCAN_ONLY} == set(get_args(Status))

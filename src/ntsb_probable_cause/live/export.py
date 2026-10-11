@@ -211,15 +211,15 @@ class DocumentChoice(_Model):
 
     position: int
     title: str = Field(description="After the names step.")
-    decision: Literal["read", "skipped", "scan_only", "not_offered"]
-    """What the agent did with the document.
-
-    ``read`` and ``skipped`` are the agent's choices over a document it was offered.
-    ``scan_only`` is a scan the reader could not turn into text. ``not_offered`` is a document
-    the reader could not offer as text, other than a scan (see ``not_offered_reason``); it never
-    means a withheld document. A docket document that holds the NTSB's probable cause makes the
-    whole case "not coded: leak" instead.
-    """
+    decision: Literal["read", "skipped", "scan_only", "not_offered"] = Field(
+        description=(
+            "What the agent did with the document. read and skipped are its choices over a "
+            "document it was offered. scan_only is a scan the reader could not turn into text. "
+            "not_offered is a document the reader could not offer as text, other than a scan "
+            "(see not_offered_reason); it never means a withheld document. A docket document "
+            "that holds the NTSB's probable cause makes the whole case not coded (leak) instead."
+        )
+    )
     note: str | None = Field(description="The agent's expected_effect, after the names step.")
     pages: int | None = Field(
         default=None,
@@ -319,6 +319,8 @@ def board_json_schema() -> dict[str, object]:
     fields added within ``board/1`` (``mkey``, ``launched_on``, ``backfilled``, ``pages``,
     ``not_offered_reason``) are therefore listed as required too, and every file written
     carries them (``null`` when unknown); the models still accept a file that lacks them.
+    The schema lists these fields as required because every file we write carries them; a
+    reader should still treat a missing key as null.
     """
     return {
         "index": BoardIndex.model_json_schema(mode="serialization"),

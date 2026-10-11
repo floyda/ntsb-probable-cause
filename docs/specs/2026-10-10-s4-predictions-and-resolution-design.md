@@ -448,7 +448,7 @@ when there is no backfill); the list itself is never exported. `DocumentChoice.p
 docket manifest's page count, carried by closure record version 2's `DocumentLine`) and
 `DocumentChoice.not_offered_reason` (`not_pdf`, `photo_only` or `fetch_failed`, only on a
 `not_offered` document). `not_offered` means a document the reader could not offer as text,
-other than a scan; it never means a withheld document.
+other than a scan; it never means a withheld document. The schema lists these fields as required because every file we write carries them; a reader should still treat a missing key as null.
 
 ### 10.2 What the export never holds
 

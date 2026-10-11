@@ -735,7 +735,13 @@ def _build_files(  # noqa: PLR0913 -- the builder's fixed interface
 
     model = max(models)[1] if models and max(models)[1] in TRAINING_CUTOFFS else MODEL_ID
     cutoff = TRAINING_CUTOFFS[model]
-    backfill = LocalFolderSink(mirror / "runs").backfill()
+    try:
+        backfill = LocalFolderSink(mirror / "runs").backfill()
+    except ValueError as error:
+        raise ConfigurationError(
+            "export refused: a run folder's spec.json or backfill.json in the mirror is "
+            "unreadable (1 folder). Nothing was written; the previous export is unchanged."
+        ) from error
     # The list is used only to set each row's flag; it never enters the export.
     backfilled = None if backfill is None else frozenset(backfill.case_ids)
     rows = sorted(

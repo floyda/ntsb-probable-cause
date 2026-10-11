@@ -242,6 +242,7 @@
         "description": "One document of the docket and what the agent did with it.",
         "properties": {
           "decision": {
+            "description": "What the agent did with the document. read and skipped are its choices over a document it was offered. scan_only is a scan the reader could not turn into text. not_offered is a document the reader could not offer as text, other than a scan (see not_offered_reason); it never means a withheld document. A docket document that holds the NTSB's probable cause makes the whole case not coded (leak) instead.",
             "enum": [
               "read",
               "skipped",
