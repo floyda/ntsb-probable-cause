@@ -156,6 +156,10 @@ def _sequence(event: Mapping[str, object]) -> int:
     return value if isinstance(value, int) else 0
 
 
+def _is_defining(event: Mapping[str, object]) -> bool:
+    return event.get("isDefiningEvent") is True
+
+
 def _finding_number(finding: Mapping[str, object]) -> int:
     value = finding.get("findingNumber")
     return value if isinstance(value, int) else 0
@@ -163,14 +167,14 @@ def _finding_number(finding: Mapping[str, object]) -> int:
 
 def _ordered_events(raw: Raw) -> list[Mapping[str, object]]:
     events = _dicts(resolve_path(raw, "aircrafts[0].events"))
-    defining = [e for e in events if e.get("isDefiningEvent") is True]
-    rest = sorted((e for e in events if e.get("isDefiningEvent") is not True), key=_sequence)
+    defining = [e for e in events if _is_defining(e)]
+    rest = sorted((e for e in events if not _is_defining(e)), key=_sequence)
     return defining + rest
 
 
 def _phase_of_flight(raw: Raw) -> EvidenceValue:
     events = _dicts(resolve_path(raw, "aircrafts[0].events"))
-    defining = [e for e in events if e.get("isDefiningEvent") is True]
+    defining = [e for e in events if _is_defining(e)]
     ordered = defining or sorted(events, key=_sequence)
     phase = ordered[0].get("cicttPhaseSOEGroup") if ordered else None
     return phase if isinstance(phase, str) and phase.strip() else None
