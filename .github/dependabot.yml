@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait a week after a release before proposing it (default 3 days):
+    # most poisoned releases are caught and pulled within days.
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:
