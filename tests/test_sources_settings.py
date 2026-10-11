@@ -288,3 +288,14 @@ def test_training_cutoff_for_the_default_model() -> None:
     assert cutoff.read_on == date(2026, 10, 7)
     assert cutoff.source.startswith("https://")
     assert sources.DEFAULT_MODEL in sources.TRAINING_CUTOFFS
+
+
+def test_live_bucket_and_topic_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_LIVE_BUCKET", raising=False)
+    monkeypatch.delenv("NTSB_LIVE_ALERT_TOPIC_ARN", raising=False)
+    assert Settings().live_bucket is None
+    assert Settings().live_alert_topic_arn is None
+    monkeypatch.setenv("NTSB_LIVE_BUCKET", "a-bucket")
+    monkeypatch.setenv("NTSB_LIVE_ALERT_TOPIC_ARN", "arn:aws:sns:us-east-1:1:t")
+    assert Settings().live_bucket == "a-bucket"
+    assert Settings().live_alert_topic_arn == "arn:aws:sns:us-east-1:1:t"

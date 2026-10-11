@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     docket_dir: Path = Path("data/docket")
     # S3.3: the live shadow's own document cache, apart from the development one.
     live_docket_dir: Path = Path("data/live-docket")
+    # S4 (decisions 0172, 0177): the live night's bucket and alert topic; unset off the cloud.
+    live_bucket: str | None = None
+    live_alert_topic_arn: str | None = None
     # S2.6 (decision 0081): the per-page transcription cache; never committed.
     transcription_dir: Path = Path("data/transcriptions")
     # `str`, not `Path`: the recorder's sync step (Task 10) accepts an `s3://bucket/key`

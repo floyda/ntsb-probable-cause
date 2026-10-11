@@ -114,7 +114,9 @@ def test_nothing_under_live_names_the_stores_upload() -> None:
     ]
     assert files
     assert all(path.is_file() for path in files)
-    for path in files:
+    # S4 Task 9 (decision 0172): live/cloud.py's bucket mirror pushes live results, by design;
+    # it is a different object from the recorder's pull-only store.
+    for path in (p for p in files if p.name != "cloud.py"):
         assert not re.search(r"\bpush\b", path.read_text()), path
 
 
