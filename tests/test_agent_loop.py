@@ -1637,6 +1637,20 @@ class TestDriverSeams:
         loop.accept(tool_reply("record_hypothesis", _hyp()), sent_at=T0, returned_at=T0)
         assert loop.call_index == 2
 
+    def test_a_call_records_the_replying_model_and_provider_none_when_it_failed(self) -> None:
+        loop = CaseLoop(_raw(), None, _config())
+        assert loop.next_call() is not None
+        loop.accept(None, error="boom", sent_at=T0, returned_at=T0)
+        assert loop.next_call() is not None
+        reply = tool_reply("record_hypothesis", _hyp()).model_copy(
+            update={"model": "openai/gpt-6-luna", "provider": "OpenAI"}
+        )
+        loop.accept(reply, sent_at=T0, returned_at=T0)
+        loop.stop("failed: rounds")
+        failed, answered = loop.outcome.calls[:2]
+        assert (failed.reply_model, failed.reply_provider) == (None, None)
+        assert (answered.reply_model, answered.reply_provider) == ("openai/gpt-6-luna", "OpenAI")
+
     def test_stop_ends_a_case_with_a_call_pending_and_keeps_its_trail(self) -> None:
         loop = CaseLoop(_raw(), _view(), _config())
         assert loop.next_call() is not None

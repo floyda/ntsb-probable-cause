@@ -80,15 +80,16 @@ WITHOUT: Final[frozenset[Without]] = frozenset()  # no tool ablation in a live r
 # these with the code's current values before the store is opened or a model is called, and refuses
 # on any difference. The two hashes are of `scoring/tables/coding_stats_s3.json` and `items.csv`,
 # unchanged since `fd6053f`. A deliberate change is a new version (decision 0156, item 4), not an
-# edit of this table. The model is spelled in `sources.py` only (a test keeps it so), so it is
-# pinned by that named price entry; `test_g_the_run_spec` holds the id's text.
+# edit of this table. The model is pinned by name here, a literal (decision 0169); `MODEL_ID`
+# is the running side.
 VERSION_1_SETTINGS: Final[Mapping[str, object]] = {
     "stats": "s3",
     "max_coding_calls": 6,
     "without": [],
     "pass_reasoning": False,
     "temperature": 0.0,
-    "model": LUNA_6.model_id,
+    # A literal, so an edit of `LUNA_6` cannot pass this check by moving both sides (decision 0169).
+    "model": "openai/gpt-6-luna",
     "reasoning_effort": "medium",
     "max_output_tokens": 8000,
     "cap_usd": 0.3,

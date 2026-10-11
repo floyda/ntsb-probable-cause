@@ -65,6 +65,10 @@ class AgentCall(_Record):
         batch_id: the batch the call went in, if any.
         commit_sha: the commit that ran the call (0018).
         dirty: whether the tree had uncommitted changes (0033).
+        reply_model: the model id the reply named; None when the call failed or it named none
+            (decision 0176).
+        reply_provider: the provider that served the reply; None when the call failed or the
+            reply named none (decision 0176).
     """
 
     run_id: str
@@ -94,6 +98,9 @@ class AgentCall(_Record):
     batch_id: str | None
     commit_sha: str
     dirty: bool
+    # Defaults, so a trail written before decision 0176 still reads.
+    reply_model: str | None = None
+    reply_provider: str | None = None
 
 
 class ReadRecord(_Record):

@@ -1140,3 +1140,11 @@ def test_separate_docket_folders_are_accepted(rig: Rig, tmp_path: Path) -> None:
         live_docket_dir=tmp_path / "live-docket",
     )
     assert run_morning(rig.deps()).coded == 3
+
+
+def test_version_1_pins_the_model_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert morning.VERSION_1_SETTINGS["model"] == "openai/gpt-6-luna"
+    assert settings_differences() == []
+    monkeypatch.setattr(morning, "MODEL_ID", "openai/other")
+    assert morning.live_spec(1.0).model == "openai/other"
+    assert settings_differences() == ["model"]

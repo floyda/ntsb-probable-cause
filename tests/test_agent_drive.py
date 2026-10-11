@@ -10,6 +10,7 @@ A resume is shown exact the way the brief puts it: the same outcomes and the sam
 
 import dataclasses
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1070,6 +1071,40 @@ class TestSync:
                 None,
             )
         assert [o.stop_reason for o in _outcomes(loops)] == ["done", "done"]
+
+    def test_every_row_carries_a_request_hash_that_follows_the_history(
+        self, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "run"
+        drive_sync(_loops(), ScriptedClient(_sync_replies(_scripts())), folder=folder, now=Clock())
+        hashes = [r.request_sha256 for r in _replies(folder)]
+        assert all(h is not None and re.fullmatch(r"[0-9a-f]{64}", h) for h in hashes)
+        assert len(set(hashes)) == len(hashes)  # every call had a different history or payload
+
+    def test_batch_rows_carry_the_same_hashes_as_sync_rows(self, tmp_path: Path) -> None:
+        drive_sync(
+            _loops(),
+            ScriptedClient(_sync_replies(_scripts())),
+            folder=tmp_path / "sync",
+            now=Clock(),
+        )
+        _uninterrupted(tmp_path / "batch")
+
+        def by_call(folder: Path) -> dict[tuple[str, int], str | None]:
+            return {(r.case_id, r.call_index): r.request_sha256 for r in _replies(folder)}
+
+        assert by_call(tmp_path / "batch") == by_call(tmp_path / "sync")
+        assert None not in by_call(tmp_path / "batch").values()
+
+    def test_a_row_written_before_the_hash_still_reads(self, tmp_path: Path) -> None:
+        folder = tmp_path / "run"
+        drive_sync(_loops(), ScriptedClient(_sync_replies(_scripts())), folder=folder, now=Clock())
+        lines = (folder / REPLIES_FILE).read_text(encoding="utf-8").splitlines()
+        old = [
+            {k: v for k, v in json.loads(line).items() if k != "request_sha256"} for line in lines
+        ]
+        (folder / REPLIES_FILE).write_text("".join(json.dumps(o) + "\n" for o in old))
+        assert {r.request_sha256 for r in _replies(folder)} == {None}
 
     def test_sync_and_batch_give_equal_outcomes_for_the_same_replies(self, tmp_path: Path) -> None:
         batch_loops = _uninterrupted(tmp_path / "batch")

@@ -229,10 +229,15 @@ def test_no_module_but_sources_names_a_luna_model() -> None:
     package_root = Path(__file__).resolve().parent.parent / "src" / "ntsb_probable_cause"
     paths = list(package_root.rglob("*.py"))
     assert paths, f"no source files found under {package_root} -- the glob resolved wrong"
+    # live/morning.py spells version 1's model as a literal on purpose (decision 0169): the pin
+    # must not move when the constant does. A test in test_live_morning.py holds its value.
+    allowed = {"sources.py", "morning.py"}
     offenders = [
-        str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
+        str(path) for path in paths if path.name not in allowed and "-luna" in path.read_text()
     ]
     assert offenders == []
+    morning = (package_root / "live" / "morning.py").read_text()
+    assert morning.count("-luna") == 1
 
 
 def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch) -> None:
