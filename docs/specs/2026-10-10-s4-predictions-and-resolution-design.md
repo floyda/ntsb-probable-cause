@@ -529,6 +529,10 @@ statement reach the board, and any of them can hold a name.
   names, and keeping the rule and publishing its limit. For the accounts of the evidence, which are
   long and summarise documents that name people, a third choice is open: the field stays in
   `board/1` but is left empty until a stronger rule exists.
+- *Amended 2026-10-11 (decision 0182):* the measurement found flagged words outside the rule in
+  seven kinds of text, and Andy chose exact parts only. Prose (Ellery's text, the coding lookups'
+  free-text arguments, the NTSB's cause statement) has only owner and operator strings replaced;
+  titles keep the title rule. The second bullet above is replaced.
 - **The limit is published either way:** the rule replaces what it can recognise, the Methods page
   says so, and the S4 report gives the count of words replaced as a floor.
 
