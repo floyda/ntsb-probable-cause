@@ -83,3 +83,5 @@ the statistics file and `items.csv`, the pass-reasoning switch) are pinned in
 item 4 still holds: a new text is a new version; a wider renderer on unchanged text re-pins
 "version 1" once, here, and the test `tests/test_agent_version.py` ties the value to the
 continuity file.
+
+*Note, 2026-10-10 (decision 0168):* the invented inputs gained two records with several events, so `+t` now covers `fields.py`'s event selection; version 1 was re-pinned to `s3-v1+ge17fecdc66ec+tdff9dea78f23` with continuity on `fd6053f` shown again.

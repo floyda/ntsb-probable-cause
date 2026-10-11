@@ -122,6 +122,39 @@ _RAW: Final[dict[str, object]] = {
 }
 
 
+def _with_events(number: str, mkey: int, events: list[dict[str, object]]) -> dict[str, object]:
+    """A copy of :data:`_RAW` with another number and key and these events (decision 0168)."""
+    raw = copy.deepcopy(_RAW)
+    raw["ntsbNumber"] = number
+    raw["mKey"] = mkey
+    aircrafts = raw["aircrafts"]
+    assert isinstance(aircrafts, list)  # noqa: S101 -- the invented record above is a list
+    aircrafts[0] = {**aircrafts[0], "events": events}
+    return raw
+
+
+# Several events, so that the choice of the event whose phase is sent reaches the text: the
+# defining event is listed second and numbered 3.
+_RAW_EVENTS: Final[dict[str, object]] = _with_events(
+    "XXX00XX002",
+    2,
+    [
+        {"isDefiningEvent": False, "sequenceNumber": 2, "cicttPhaseSOEGroup": "Maneuvering"},
+        {"isDefiningEvent": True, "sequenceNumber": 3, "cicttPhaseSOEGroup": "Approach"},
+        {"isDefiningEvent": False, "sequenceNumber": 1, "cicttPhaseSOEGroup": "Enroute"},
+    ],
+)
+# No defining event: the lowest sequence number is sent, although it is listed last.
+_RAW_NO_DEFINING: Final[dict[str, object]] = _with_events(
+    "XXX00XX003",
+    3,
+    [
+        {"isDefiningEvent": False, "sequenceNumber": 2, "cicttPhaseSOEGroup": "Landing"},
+        {"isDefiningEvent": False, "sequenceNumber": 1, "cicttPhaseSOEGroup": "Takeoff"},
+    ],
+)
+
+
 def _entry(index: int, title: str, pages: int, photos: int = 0) -> ListingEntry:
     return ListingEntry(
         index=index,
@@ -683,6 +716,18 @@ def _scenarios() -> list[_Scenario]:
                 _saying(json.dumps({"items": [{"index": 0, "item8": "99999999"}]})),
                 _saying(_REFINEMENT),
             ),
+        ),
+        _Scenario(
+            "several events, one defining",
+            _case(_view(_DOCKET_UNREADABLE, _RAW_EVENTS), _config(without=frozenset({"coding"}))),
+            (_calling(_RECORD), _calling(_ANSWER), _saying(_REFINEMENT)),
+        ),
+        _Scenario(
+            "several events, none defining",
+            _case(
+                _view(_DOCKET_UNREADABLE, _RAW_NO_DEFINING), _config(without=frozenset({"coding"}))
+            ),
+            (_calling(_RECORD), _calling(_ANSWER), _saying(_REFINEMENT)),
         ),
     ]
 

@@ -72,7 +72,7 @@ Tasks 2, 3 and 4 are independent once 1 has landed; 5 needs 4's reading; 6 needs
 - Produces, in `agent/rendered.py`: `_RAW_EVENTS: Final[dict[str, object]]` (a copy of `_RAW` with `ntsbNumber` `"XXX00XX002"`, `mKey` `2`, and `aircrafts[0].events` = three events, in this list order: `{"isDefiningEvent": False, "sequenceNumber": 2, "cicttPhaseSOEGroup": "Maneuvering"}`, `{"isDefiningEvent": True, "sequenceNumber": 3, "cicttPhaseSOEGroup": "Approach"}`, `{"isDefiningEvent": False, "sequenceNumber": 1, "cicttPhaseSOEGroup": "Enroute"}`) and `_RAW_NO_DEFINING` (`"XXX00XX003"`, `mKey` `3`, two events, none defining: sequence 2 `"Landing"` listed first, sequence 1 `"Takeoff"` second). Two new scenarios at the end of `_scenarios()`.
 - `VERSION_1` changes value; `SOURCE_LABEL_V1` does not.
 
-- [ ] **Step 1: Write the failing test** in `tests/test_agent_rendered.py`:
+- [x] **Step 1: Write the failing test** in `tests/test_agent_rendered.py`:
 
 ```python
 def test_event_selection_reaches_the_text() -> None:
@@ -84,8 +84,8 @@ def test_event_selection_reaches_the_text() -> None:
     assert "Maneuvering" not in sent and "Enroute" not in sent
 ```
 
-- [ ] **Step 2: Run it.** `uv run --locked pytest tests/test_agent_rendered.py::test_event_selection_reaches_the_text -v` — Expected: FAIL (`"Approach"` not in sent).
-- [ ] **Step 3: Add the two records and scenarios.** Build `_RAW_EVENTS` and `_RAW_NO_DEFINING` with `copy.deepcopy(_RAW)` and the changes above (a helper `_with_events(number, mkey, events)`). Append to `_scenarios()`:
+- [x] **Step 2: Run it.** `uv run --locked pytest tests/test_agent_rendered.py::test_event_selection_reaches_the_text -v` — Expected: FAIL (`"Approach"` not in sent).
+- [x] **Step 3: Add the two records and scenarios.** Build `_RAW_EVENTS` and `_RAW_NO_DEFINING` with `copy.deepcopy(_RAW)` and the changes above (a helper `_with_events(number, mkey, events)`). Append to `_scenarios()`:
 
 ```python
         _Scenario(
@@ -103,8 +103,8 @@ def test_event_selection_reaches_the_text() -> None:
 ```
 
   If `_view` or `_case` does not take the raw record this way, read their signatures (`rendered.py:414`, `:418`) and pass the record the way the "coding ablation, nothing readable" scenario does. Each new scenario must end with the stop that scenario ends with (`expected_stop`).
-- [ ] **Step 4: Run it.** Same command — Expected: PASS. Then `uv run --locked pytest tests/test_agent_rendered.py -v` — every test passes except the version pin (next step).
-- [ ] **Step 5: Move the two keys to `[selects]`.** In `tests/fixtures/rendered/not_model_text.toml`, delete the lines `"fields.py:sequenceNumber" = …` and `"fields.py:isDefiningEvent" = …` from their table and add to `[selects]`:
+- [x] **Step 4: Run it.** Same command — Expected: PASS. Then `uv run --locked pytest tests/test_agent_rendered.py -v` — every test passes except the version pin (next step).
+- [x] **Step 5: Move the two keys to `[selects]`.** In `tests/fixtures/rendered/not_model_text.toml`, delete the lines `"fields.py:sequenceNumber" = …` and `"fields.py:isDefiningEvent" = …` from their table and add to `[selects]`:
 
 ```toml
 "fields.py:isDefiningEvent" = "the key that marks the defining event, whose phase is sent: the phase is sent, the key is not, and the sweep shows an edit to it moves the fingerprint (decision 0168)"
@@ -112,9 +112,9 @@ def test_event_selection_reaches_the_text() -> None:
 ```
 
   `sequenceNumber` is also read by `_ordered_events` for `eventCode`, which is withheld; the `[selects]` entry covers both sites, and the sweep checks the edit moves `+t` at least through the phase.
-- [ ] **Step 6: Re-pin version 1.** Run `uv run --locked python -c "from ntsb_probable_cause.agent import version, run; print(version.prompt_version(run.GUIDANCE))"` and write the printed value into `VERSION_1`. Extend the comment above it: "Re-pinned in S4 Task 1 (2026-10-10, decision 0168), when the invented inputs gained several events, before any cloud night." Show the pin can fail: change `"Approach"` to `"Approach2"` in `_RAW_EVENTS`, run `uv run --locked pytest tests/test_s32_frozen.py -v`, see FAIL, revert; say so in the commit message.
-- [ ] **Step 7: The notes.** Append to 0161: "*Note, 2026-10-10 (decision 0168):* the invented inputs gained two records with several events, so `+t` now covers `fields.py`'s event selection; version 1 was re-pinned to `<new label>` with continuity on `fd6053f` shown again." In the S3.3 specification, replace "it cannot miss a text" with "it covers the cases its invented inputs exercise" and add "*(Amended 2026-10-10, decision 0168.)*" after the sentence.
-- [ ] **Step 8:** `make check`; commit: `S4 Task 1: the fingerprint covers several events; version 1 re-pinned (decision 0168)`.
+- [x] **Step 6: Re-pin version 1.** Run `uv run --locked python -c "from ntsb_probable_cause.agent import version, run; print(version.prompt_version(run.GUIDANCE))"` and write the printed value into `VERSION_1`. Extend the comment above it: "Re-pinned in S4 Task 1 (2026-10-10, decision 0168), when the invented inputs gained several events, before any cloud night." Show the pin can fail: change `"Approach"` to `"Approach2"` in `_RAW_EVENTS`, run `uv run --locked pytest tests/test_s32_frozen.py -v`, see FAIL, revert; say so in the commit message.
+- [x] **Step 7: The notes.** Append to 0161: "*Note, 2026-10-10 (decision 0168):* the invented inputs gained two records with several events, so `+t` now covers `fields.py`'s event selection; version 1 was re-pinned to `<new label>` with continuity on `fd6053f` shown again." In the S3.3 specification, replace "it cannot miss a text" with "it covers the cases its invented inputs exercise" and add "*(Amended 2026-10-10, decision 0168.)*" after the sentence.
+- [x] **Step 8:** `make check`; commit: `S4 Task 1: the fingerprint covers several events; version 1 re-pinned (decision 0168)`.
 - [ ] **Step 9 (Controller):** `make s33-continuity`. The results file must say `match: yes`; add one line at its end by hand only if the script does not already date the run (it does: check the file). If `match: no`, or the script fails because `rendered.py` needs code `fd6053f` lacks, **stop and put it to Andy**. Then `make s33-mutation-sweep`: exit 0, and both keys reported as moving the fingerprint. Commit: `S4 Task 1: +t matches on fd6053f after the re-pin`.
 
 ## Task 2: The model pinned by name; replying model, provider and request hash recorded (decision 0169, 0176 item 1)
@@ -819,3 +819,4 @@ jobs:
 - 2026-10-10 (plan writing): the specification's §13 named `tests/s3_probe_fixtures.py` as the S3 fake; it holds S3.1 probe trails. Corrected in the specification with a dated note; the cloud seams take narrow protocols tested with in-memory fakes (Task 9).
 - 2026-10-10 (plan writing): `seen_pairs` reads `data/processed/cases.parquet`, which the container does not hold. Task 6 commits the development split's primary occurrence codes as a table (codes only). Not in the specification; it changes no score.
 - 2026-10-10 (plan writing): the specification says the run folder is copied "after each case". The plan pushes changed files after every reply (Task 10), which is finer and needs only a hook in `drive_sync`. A call sent but unanswered when the task dies is paid again on resume; before the first reply nothing is in the bucket, so a task killed between the first send and the first reply codes that case again the next night (cost cents; noted as a known limit in the runbook).
+- 2026-10-11, Task 1: the brief's test asserted `"Maneuvering" not in sent`, but the code tables in the prompt name every phase, so it could not pass; the test reads only the `phase_of_flight` evidence line (a regex over the sent text) and asserts on a set of phases. It calls `rendered_requests()` directly, as the file already imports it. The two new scenarios are appended after "arm B tool post-pass".

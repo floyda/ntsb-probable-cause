@@ -197,3 +197,14 @@ def test_a_flipped_reasoning_switch_moves_the_fingerprint(tmp_path: Path) -> Non
 def test_the_scripted_replies_carry_reasoning_the_default_switch_leaves_out() -> None:
     sent = json.dumps(rendered_requests(), ensure_ascii=False)
     assert "reasoning_details" not in sent, "off in version 1: no request passes it back"
+
+
+def test_event_selection_reaches_the_text() -> None:
+    # The code tables name every phase, so only the evidence line `phase_of_flight` is looked at.
+    sent = json.dumps(rendered_requests(), ensure_ascii=False)
+    phases = set(re.findall(r'phase_of_flight\\": \\"([A-Za-z]+)', sent))
+    # The defining event is listed second and numbered 3: it is the one sent.
+    # With no defining event, the lowest sequence number is sent, although listed last.
+    assert {"Approach", "Takeoff"} <= phases
+    # The events that are not chosen are never sent as the phase (a bool, so a failure is quick).
+    assert not ({"Maneuvering", "Enroute"} & phases)
