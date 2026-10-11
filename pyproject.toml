@@ -251,7 +251,7 @@ allow_indirect_imports = true  # direct imports only: morning and local reach th
 # project's own CDK stack module, not a third-party package -- CDK's own convention is a flat
 # `app.py` next to the stack file it imports, with no package wrapper, so there is no dotted
 # package name to list here instead.
-known_first_party = ["ntsb_probable_cause", "apps", "scripts", "recorder_stack"]
+known_first_party = ["ntsb_probable_cause", "apps", "scripts", "recorder_stack", "live_stack"]
 extend_exclude = ["scripts/exploratory"]
 
 [tool.deptry.per_rule_ignores]

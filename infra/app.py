@@ -40,6 +40,7 @@ free.
 
 import aws_cdk as cdk
 
+from live_stack import DEFAULT_LEDGER_BRANCHES, NtsbLiveStack
 from recorder_stack import NtsbRecorderStack
 
 
@@ -60,5 +61,26 @@ if __name__ == "__main__":
         env=deploy_environment(),
         github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
     )
+
+    # The live stack is built when `recorder_bucket` is given as context (the recorder's own
+    # `cdk synth` needs none of this). Its other context values are then required: `alert_email`,
+    # `github_oidc_provider_arn`, `live_image_digest` (or `live_image_digest_placeholder=1`),
+    # optionally `live_schedule=enabled` and `ledger_branches` (comma-separated).
+    recorder_bucket = app.node.try_get_context("recorder_bucket")
+    if recorder_bucket:
+        branches = app.node.try_get_context("ledger_branches")
+        NtsbLiveStack(
+            app,
+            "NtsbLiveStack",
+            env=deploy_environment(),
+            recorder_bucket=recorder_bucket,
+            alert_email=app.node.try_get_context("alert_email"),
+            github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
+            image_digest=app.node.try_get_context("live_image_digest"),
+            allow_placeholder_digest=str(app.node.try_get_context("live_image_digest_placeholder"))
+            == "1",
+            schedule_enabled=app.node.try_get_context("live_schedule") == "enabled",
+            ledger_branches=tuple(branches.split(",")) if branches else DEFAULT_LEDGER_BRANCHES,
+        )
 
     app.synth()
