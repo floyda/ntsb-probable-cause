@@ -342,3 +342,30 @@ def test_the_lock_message_is_scrubbed_too(
     err = capsys.readouterr().err
     assert "another morning is running" in err
     assert "XXX26LA003" not in err
+
+
+def test_export_writes_the_files_and_prints_counts_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    from tests.test_live_board import _mirror  # noqa: PLC0415
+
+    mirror = _mirror(tmp_path)
+    out = tmp_path / "export"
+    assert app.main(["export", "--from", str(mirror), "--out", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert re.search(r"[A-Z]{3}\d{2}[A-Z]{2}\d{3}", printed) is None
+    assert "cases: 8" in printed
+    assert "grade, same_first: 2" in printed
+    assert "left out, no event date: 0" in printed
+    assert json.loads((out / "index.json").read_text())["format"] == "board/1"
+    assert len(list((out / "cases").glob("*.json"))) == 8
+
+
+def test_export_from_a_missing_folder_is_one_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert app.main(["export", "--from", str(tmp_path / "nope"), "--out", str(tmp_path)]) == 1
+    assert "is not a folder" in capsys.readouterr().err

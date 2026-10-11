@@ -1,5 +1,9 @@
 """``ntsb-live run`` (one live morning) and ``ntsb-live report`` (the counts-only report).
 
+``export --from DIR --out DIR``: the public board's JSON export (``board/1``) from a local copy of
+the bucket (``runs/``, ``scores/``, ``nights/``), with no store, so the open-case counts are zero.
+It reads files, calls no model and prints counts only, never a case number.
+
 ``run``: one live morning (S3.3 spec sections 4 and 9, decisions 0158, 0160, 0163).
 
 This builds the deployed :class:`~ntsb_probable_cause.live.morning.MorningDeps` from
@@ -38,6 +42,7 @@ from ntsb_probable_cause.errors import (
     DocketError,
 )
 from ntsb_probable_cause.gitinfo import commit_state
+from ntsb_probable_cause.live.board import write_export
 from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import (
     STORE_WORK_FILENAME,
@@ -106,7 +111,37 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     report = commands.add_parser("report", help="print the counts-only report of the live runs")
     report.add_argument("--out", default=None, metavar="PATH", help="also write it to PATH")
+    export = commands.add_parser(
+        "export", help="build the board/1 export from a local copy of the bucket"
+    )
+    export.add_argument("--from", dest="source", required=True, metavar="DIR", help="the mirror")
+    export.add_argument("--out", required=True, metavar="DIR", help="where to write the export")
     return parser
+
+
+def _export(args: argparse.Namespace) -> int:
+    """Build the export from a mirror folder and print its counts; no store, no model call."""
+    mirror = Path(args.source)
+    if not mirror.is_dir():
+        return _fail(f"export: {mirror} is not a folder")
+    now = datetime.now(UTC)
+    sha, dirty = commit_state(_REPO_ROOT)
+    report = write_export(
+        mirror,
+        Path(args.out),
+        store=None,
+        today=now.date(),
+        commit=f"{sha}+dirty" if dirty else sha,
+        now=now,
+    )
+    lines = [
+        f"cases: {report.cases}",
+        *(f"grade, {name}: {count}" for name, count in report.grades.items()),
+        f"unreachable: {report.unreachable}",
+        f"left out, no event date: {report.skipped_no_event_date}",
+    ]
+    print("\n".join(lines))
+    return 0
 
 
 def _report(args: argparse.Namespace, settings: Settings) -> int:
@@ -244,6 +279,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     settings = Settings()
     try:
+        if args.command == "export":
+            return _export(args)
         if args.command == "report":
             return _report(args, settings)
         with morning_lock(settings.runs_dir):
