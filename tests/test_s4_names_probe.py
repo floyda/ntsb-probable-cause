@@ -54,15 +54,44 @@ def test_main_writes_counts_and_no_invented_word(
     assert written.strip() == capsys.readouterr().out.strip()
     assert "cause: (1) 0; (2) 0; (3) 1; (4) 1" in written
     assert "without a cached docket listing: 3" in written
-    assert "the rule does not stand for: cause" in written
+    assert "cannot conclude" in written
     for word in INVENTED:
         assert word not in written
 
 
 def test_rule_stands_when_nothing_is_outside(tmp_path: Path) -> None:
     def loader(run_ids: object) -> Loaded:
-        return Loaded([_case(note="The pilot saw")], ("a", "b"))
+        texts = dict.fromkeys(probe.KINDS, ("The pilot saw",))
+        return Loaded([NameCase((), (), texts)], ("a", "b"))
 
     out = tmp_path / "result.txt"
     probe.main(["--out", str(out)], loader)
     assert "result: the rule stands" in out.read_text()
+
+
+def test_lookup_kinds_are_counted() -> None:
+    case = _case(lookup_reason="Quimby asked", lookup_effect="Smithers", lookup_arg="Zorbo")
+    by_kind = count_names([case], KNOWN).by_kind
+    assert [by_kind[k].outside for k in ("lookup_reason", "lookup_effect", "lookup_arg")] == [
+        1,
+        1,
+        1,
+    ]
+
+
+def test_scan_sizes_are_reported() -> None:
+    case = NameCase((), (), {"note": ("Quimby saw", "The pilot")})
+    note = count_names([case], KNOWN).by_kind["note"]
+    assert (note.with_text, note.texts, note.words_scanned) == (1, 2, 2)
+
+
+def test_empty_kind_means_cannot_conclude(tmp_path: Path) -> None:
+    def loader(run_ids: object) -> Loaded:
+        return Loaded([_case(note="The pilot saw")], ("a", "b"))
+
+    out = tmp_path / "result.txt"
+    probe.main(["--out", str(out)], loader)
+    written = out.read_text()
+    assert "cannot conclude: kind cause" in written
+    assert "result: the rule stands" not in written
+    assert "same detector as the rule" in written

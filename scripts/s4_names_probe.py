@@ -36,7 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from ntsb_probable_cause.agent.schemas import ChooseDocuments
+from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments
+from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.attach import owner_operator_values
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.title_vocab import capitalised_words, known_title_words
@@ -51,7 +52,16 @@ DEFAULT_RUNS: Final = (
     "20261001T201506-fd6053f-dev-400-C",
     "20261001T201648-fd6053f-dev-400-C",
 )
-KINDS: Final = ("cause", "account", "note", "reason", "ntsb_cause")
+KINDS: Final = (
+    "cause",
+    "account",
+    "note",
+    "reason",
+    "lookup_reason",
+    "lookup_effect",
+    "lookup_arg",
+    "ntsb_cause",
+)
 _CHOICES: Final = frozenset({"choice1", "choice2"})
 
 
@@ -78,6 +88,9 @@ class KindCounts:
     owner_operator: int = 0
     outside: int = 0
     outside_words: int = 0
+    with_text: int = 0
+    texts: int = 0
+    words_scanned: int = 0
 
 
 @dataclass(frozen=True)
@@ -110,23 +123,27 @@ def _owner_pattern(value: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
 
 
-def _count_kind(case: NameCase, kind: str, known: frozenset[str]) -> tuple[bool, bool, set[str]]:
+def _count_kind(
+    case: NameCase, kind: str, known: frozenset[str]
+) -> tuple[bool, bool, set[str], int]:
     own = {w for title in case.titles for w in _flagged(title, known)}
     patterns = [
         _owner_pattern(v) for v in sorted(set(case.owner_operator), key=lambda v: (-len(v), v))
     ]
     in_titles = has_owner = False
     outside: set[str] = set()
+    scanned = 0
     for original in case.texts.get(kind, ()):
         text = original
         for pattern in patterns:
             if pattern.search(text):
                 has_owner = True
             text = pattern.sub(" ", text)
+        scanned += len(capitalised_words(text))
         words = set(_flagged(text, known))
         in_titles |= bool(words & own)
         outside |= words - own
-    return in_titles, has_owner, outside
+    return in_titles, has_owner, outside, scanned
 
 
 def count_names(cases: Sequence[NameCase], known: frozenset[str]) -> NameCounts:
@@ -142,14 +159,18 @@ def count_names(cases: Sequence[NameCase], known: frozenset[str]) -> NameCounts:
     """
     by_kind: dict[str, KindCounts] = {}
     for kind in KINDS:
-        titles = owners = outside = words = 0
+        titles = owners = outside = words = with_text = texts = scanned_total = 0
         for case in cases:
-            in_titles, has_owner, loose = _count_kind(case, kind, known)
+            in_titles, has_owner, loose, scanned = _count_kind(case, kind, known)
+            n_texts = len(case.texts.get(kind, ()))
+            texts += n_texts
+            with_text += n_texts > 0
+            scanned_total += scanned
             titles += in_titles
             owners += has_owner
             outside += bool(loose)
             words += len(loose)
-        by_kind[kind] = KindCounts(titles, owners, outside, words)
+        by_kind[kind] = KindCounts(titles, owners, outside, words, with_text, texts, scanned_total)
     return NameCounts(len(cases), by_kind)
 
 
@@ -158,6 +179,9 @@ def report_lines(counts: NameCounts, loaded: Loaded, *, dictionary: bool) -> lis
     lines = [
         "S4 names measurement on dev-400 (scripts/s4_names_probe.py; spec §12.2, decision 0180)",
         "Counts only: no word, title or case number is printed.",
+        "The probe uses the same detector as the rule (a capitalised word not in the word list). "
+        "So a zero in count (3) means no name that detector sees. It does not mean no names: "
+        "names in capitals, short names, or names that are dictionary words are not counted.",
         *(f"run = {run_id}" for run_id in loaded.run_ids),
         f"cases counted: {counts.cases}; without a cached docket listing: {loaded.no_listing}; "
         f"skipped (record or docket unreadable): {loaded.skipped}",
@@ -170,9 +194,11 @@ def report_lines(counts: NameCounts, loaded: Loaded, *, dictionary: bool) -> lis
     for kind, c in counts.by_kind.items():
         lines.append(
             f"{kind}: (1) {c.in_titles}; (2) {c.owner_operator}; (3) {c.outside}; "
-            f"(4) {c.outside_words}"
+            f"(4) {c.outside_words}; cases with a text {c.with_text}; texts scanned {c.texts}; "
+            f"capitalised words scanned {c.words_scanned}"
         )
     outside = {kind: c.outside for kind, c in counts.by_kind.items()}
+    empty = [kind for kind, c in counts.by_kind.items() if c.texts == 0]
     stands = all(n == 0 for n in outside.values())
     lines += [
         "",
@@ -180,7 +206,9 @@ def report_lines(counts: NameCounts, loaded: Loaded, *, dictionary: bool) -> lis
         "chooses.",
         "result: "
         + (
-            "the rule stands"
+            f"cannot conclude: kind {', '.join(empty)} has no texts"
+            if empty
+            else "the rule stands"
             if stands
             else "the rule does not stand for: "
             + ", ".join(k for k, n in outside.items() if n)
@@ -188,6 +216,31 @@ def report_lines(counts: NameCounts, loaded: Loaded, *, dictionary: bool) -> lis
         ),
     ]
     return lines
+
+
+def _collect(call: AgentCall, bucket: dict[str, list[str]]) -> None:  # pragma: no cover
+    """Add one trail row's free text to a case's ``bucket``, by kind."""
+    if call.hypothesis is not None:
+        bucket["cause"].append(call.hypothesis.probable_cause)
+        bucket["account"].append(call.hypothesis.evidence_narrative)
+    if call.protocol_error:
+        return
+    if call.step in _CHOICES and call.tool == "choose_documents":
+        chosen = ChooseDocuments.model_validate(call.arguments)
+        bucket["reason"].append(chosen.reason)
+        bucket["note"].extend(d.expected_effect for d in chosen.decisions)
+    elif call.tool in CODING_TOOLS:
+        # The four coding tools (S4 fix round 1): free-text fields, and the string arguments
+        # (codes, an occurrence code), which a model could fill with anything.
+        args = call.arguments
+        for key, kind in (("reason", "lookup_reason"), ("expected_effect", "lookup_effect")):
+            if isinstance(args.get(key), str):
+                bucket[kind].append(str(args[key]))
+        codes = args.get("codes")
+        if isinstance(codes, list | tuple):
+            bucket["lookup_arg"].extend(c for c in codes if isinstance(c, str))
+        if isinstance(args.get("occurrence"), str):
+            bucket["lookup_arg"].append(str(args["occurrence"]))
 
 
 def load_dev_cases(run_ids: Sequence[str]) -> Loaded:  # pragma: no cover -- real data
@@ -205,20 +258,8 @@ def load_dev_cases(run_ids: Sequence[str]) -> Loaded:  # pragma: no cover -- rea
     texts: dict[str, dict[str, list[str]]] = {cid: {k: [] for k in KINDS} for cid in shared}
     for run in runs:
         for call in run.calls:
-            bucket = texts.get(call.case_id)
-            if bucket is None:
-                continue
-            if call.hypothesis is not None:
-                bucket["cause"].append(call.hypothesis.probable_cause)
-                bucket["account"].append(call.hypothesis.evidence_narrative)
-            if (
-                call.step in _CHOICES
-                and call.tool == "choose_documents"
-                and not call.protocol_error
-            ):
-                chosen = ChooseDocuments.model_validate(call.arguments)
-                bucket["reason"].append(chosen.reason)
-                bucket["note"].extend(d.expected_effect for d in chosen.decisions)
+            if call.case_id in texts:
+                _collect(call, texts[call.case_id])
     cases: list[NameCase] = []
     no_listing = skipped = 0
     for raw in load_cases(settings.data_dir / "processed", shared):
