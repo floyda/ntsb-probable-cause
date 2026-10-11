@@ -56,3 +56,35 @@ def test_import_works_with_no_tests_folder(tmp_path: Path) -> None:
         [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=True
     )
     assert done.stdout.strip() == "Cessna Statement of [name]"
+
+
+_RAW_REG = {
+    "aircrafts": [
+        {
+            "aircraftRegistrationNumber": "N123XX",
+            "ownerOperators": [{"registeredOwner": "Invented Aviation LLC"}],
+        }
+    ]
+}
+
+
+def test_registration_is_replaced_in_each_kind_of_prose() -> None:
+    names = case_names(_RAW_REG)
+    assert names.registration == "N123XX"
+    for kind in ("cause", "account", "note", "reason"):
+        text = f"The {kind} says n123xx, and Invented Aviation LLC flew N123XX."
+        assert board_text(text, names) == f"The {kind} says [name], and [name] flew [name]."
+
+
+def test_registration_is_replaced_in_a_title() -> None:
+    """The title rule alone never matches an N-number; the case's own registration is replaced."""
+    known, _ = known_title_words()
+    names = case_names(_RAW_REG)
+    assert board_title("Maintenance records N123XX", known) == "Maintenance records N123XX"
+    assert board_title("Maintenance records N123XX", known, names) == "Maintenance records [name]"
+
+
+def test_a_case_without_a_registration_replaces_none() -> None:
+    names = case_names({"aircrafts": [{"aircraftRegistrationNumber": "  "}]})
+    assert names.registration is None
+    assert board_text("N123XX stays", names) == "N123XX stays"

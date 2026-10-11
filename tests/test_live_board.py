@@ -6,6 +6,7 @@ every key of every exported file.
 """
 
 import copy
+import dataclasses
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
@@ -16,16 +17,17 @@ import pytest
 from tests.test_live_later import _closure, _raw_with_codes, _step
 from tests.test_live_morning import _call, _result, _scores
 
+from ntsb_probable_cause.errors import ConfigurationError, LeakageError
 from ntsb_probable_cause.live.board import (
     build_export,
     grade,
     occurrence_marks,
-    write_export,
 )
 from ntsb_probable_cause.live.closure import CASES_FILE
 from ntsb_probable_cause.live.export import NOT_CODED_SENTENCES, BoardIndex, CaseFile
 from ntsb_probable_cause.live.later import LaterScore
 from ntsb_probable_cause.live.names import NAME_MARKER
+from ntsb_probable_cause.live.queue import build_queue
 from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
     INPUTS_FILE,
@@ -95,6 +97,7 @@ def _raw(case_id: str, event: date, *, amateur: bool = False) -> dict[str, Any]:
     aircraft["aircraftModel"] = "INV-1"
     aircraft["aircraftAmateurBuilt"] = amateur
     aircraft["aircraftNumberOfEngines"] = 1
+    raw["narratives"][0]["probableCause"] = "Invented Owner in N123XX failed to maintain control."
     aircraft["ownerOperators"] = [
         {
             "registeredOwner": "Invented Owner",
@@ -152,7 +155,14 @@ def _calls(case_id: str) -> list[Any]:
         ),
         _call(case_id, "coding", 2, tool=None, protocol_error="bad", cost_usd=0.002),
         _call(case_id, "coding", 3, tool="describe_codes", arguments=lookup, cost_usd=0.001),
-        _call(case_id, "answer", 4, tool="submit_answer", cost_usd=0.006),
+        # The real shape: the loop usually submits the answer during the coding step.
+        _call(
+            case_id,
+            "answer" if case_id.endswith("2") else "coding",
+            4,
+            tool="submit_answer",
+            cost_usd=0.006,
+        ),
     ]
 
 
@@ -186,7 +196,10 @@ def _write_run(
                 update={"step": 1, "tool": "checkpoint:answer", "cost_usd": 0.006}
             ),
         )
-        results.append(_result(record.case_id, steps=steps, scores=_scores(record.top1 is True)))
+        scores = dataclasses.replace(
+            _scores(record.top1 is True), finding_precision_10=0.4, finding_recall_10=0.3
+        )
+        results.append(_result(record.case_id, steps=steps, scores=scores))
         calls.extend(_calls(record.case_id))
     write_jsonl(folder / CASES_FILE, results)
     write_jsonl(folder / "trail.jsonl", calls)
@@ -221,7 +234,12 @@ def _mirror(tmp_path: Path) -> Path:
         (
             _record("XXX26XX001", date(2026, 10, 9)),
             _raw("XXX26XX001", ev),
-            _hypothesis(LOC_FLIGHT, OTHER, cause="Invented Owner lost control."),
+            _hypothesis(
+                LOC_FLIGHT,
+                OTHER,
+                cause="Invented Owner lost control of N123XX.",
+                account="Invented Owner flew N123XX low; the airplane struck the ground.",
+            ),
         ),
         (
             _record("XXX26XX002", date(2026, 10, 8), top1=False, top3=True),
@@ -421,6 +439,9 @@ def test_the_trail_total_is_the_sum_of_its_parts(tmp_path: Path) -> None:
         + sum(x.cost_usd for x in trail.lookups)
     )
     assert trail.total_usd == round(parts, 4) == 0.016
+    # the answer submitted during the coding step is the answer belief's, not a lookup's
+    assert [b.cost_usd for b in trail.beliefs] == [0.004, 0.006]
+    assert trail.total_usd == round(sum(c.cost_usd for c in _calls("XXX26XX001")), 4)
     # the failed coding call's cost went onto the lookup that followed it
     assert [x.cost_usd for x in trail.lookups] == [0.003]
     (choice,) = trail.read_choices
@@ -447,8 +468,9 @@ def test_the_comparison_marks_and_finding_scores(tmp_path: Path) -> None:
     codes = [c.code for c in second.verdict.occurrence]
     agent = [c.code for c in second.comparison.agent_occurrence]
     assert [m.mark for m in second.comparison.agent_occurrence] == occurrence_marks(agent, codes)[0]
-    # a score from the closure run carries the run's finding scores (None in the invented run)
-    assert second.comparison.finding_recall_10 is None
+    # a score from the closure run carries the run's finding scores
+    assert second.comparison.finding_precision_10 == 0.4
+    assert second.comparison.finding_recall_10 == 0.3
     later = _case(out, "XXX26XX007")
     assert later.comparison is not None
     assert later.comparison.finding_recall_10 == 0.25
@@ -558,36 +580,6 @@ def test_the_never_holds_check_can_fail() -> None:
     assert not any("stamp" in f for f in found)
 
 
-def test_a_version_1_run_is_included_with_its_event_date_from_its_inputs(
-    tmp_path: Path,
-) -> None:
-    mirror = tmp_path / "mirror"
-    ev = date(2026, 9, 1)
-    v2 = _record("XXX26XX001", date(2026, 10, 9))
-    v1_fields = {
-        k: v
-        for k, v in v2.model_dump().items()
-        if k in ClosureRecordV1.model_fields and k != "format"
-    }
-    v1 = ClosureRecordV1(**{**v1_fields, "case_id": "XXX26XX002", "closed_on": date(2026, 9, 30)})
-    v1_lost = ClosureRecordV1(**{**v1_fields, "case_id": "XXX26XX003"})
-    _write_run(
-        mirror,
-        "20260930T040000Z-abc-live-C",
-        [
-            (v1, _raw("XXX26XX002", ev), _hypothesis(STALL)),
-            (v1_lost, None, _hypothesis(STALL)),
-        ],
-    )
-    report = write_export(mirror, tmp_path / "out", store=None, today=TODAY, commit="c", now=NOW)
-    assert (report.cases, report.skipped_no_event_date) == (1, 1)
-    case = _case(tmp_path / "out", "XXX26XX002")
-    assert case.took_days == 29
-    assert case.withheld is not None
-    assert case.withheld.replied_models == ()  # a version 1 trail holds no replying model
-    assert case.grade == "same_first"
-
-
 def test_a_stale_case_file_is_removed_from_the_output_folder(tmp_path: Path) -> None:
     out = tmp_path / "out"
     (out / "cases").mkdir(parents=True)
@@ -610,7 +602,12 @@ class _FakeStore:
                 closed_on=day,
                 closed_as="Completed",
             )
-            for n, day in ((1, "2026-10-09"), (2, "2026-10-09"), (3, "2026-10-08"))
+            for n, day in (
+                (1, "2026-10-09"),
+                (2, "2026-10-09"),
+                (3, "2026-10-08"),
+                (7, "2026-09-20"),  # before the queue's declared start
+            )
         ]
 
     def watched_mkeys(self, *, today: str) -> list[int]:
@@ -636,6 +633,9 @@ def test_the_store_gives_counts_only(tmp_path: Path) -> None:
     assert counts.open_watched == 3
     assert counts.open_with_docket == 2
     assert counts.closures_per_night == {date(2026, 10, 8): 1, date(2026, 10, 9): 2}
+    # the per-night counts reconcile with the queue's own selection
+    queued = build_queue(cast(Store, store).closures(), frozenset())
+    assert sum(counts.closures_per_night.values()) == len(queued) == 3
     assert _violations(_all_files(out)) == []
 
 
@@ -669,3 +669,188 @@ def test_a_refinement_is_folded_into_the_answer_it_refines() -> None:
     assert beliefs[1].changed
     assert beliefs[1].cost_usd == 0.015
     assert beliefs[1].account == f"After refining for {NAME_MARKER}."
+
+
+def _one_run(tmp_path: Path, specs: Sequence[Any]) -> Path:
+    mirror = tmp_path / "mirror"
+    _write_run(mirror, "20261009T040000Z-abc-live-C", specs)
+    return mirror
+
+
+def _refused(mirror: Path, out: Path) -> str:
+    with pytest.raises(ConfigurationError) as caught:
+        build_export(mirror, out, store=None, today=TODAY, commit="c", now=NOW)
+    assert not out.exists() or not list(out.rglob("*.json"))
+    assert not [p for p in out.parent.iterdir() if p.name.startswith(".")]  # no temp folder left
+    return str(caught.value)
+
+
+def test_an_abstained_case_whose_codes_have_not_arrived_is_abstained(tmp_path: Path) -> None:
+    """Ellery's abstain is known at coding, so it outranks waiting for the NTSB (spec 10.3)."""
+    ev = date(2026, 8, 1)
+    record = _record("XXX26XX001", date(2026, 10, 9), scored=False, top1=None, top3=None)
+    assert record.abstained is False
+    unscored = record.model_copy(update={"abstained": None})
+    mirror = _one_run(
+        tmp_path,
+        [(unscored, _no_codes(_raw("XXX26XX001", ev)), _hypothesis(OTHER, abstain=True))],
+    )
+    out = _build(tmp_path, mirror)
+    case = _case(out, "XXX26XX001")
+    assert case.grade == "abstained"
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    assert index.counts.awaiting_ntsb == 0
+    # the same case answered, not abstained, still waits
+    waiting = _one_run(
+        tmp_path / "w", [(unscored, _no_codes(_raw("XXX26XX001", ev)), _hypothesis(OTHER))]
+    )
+    assert _case(_build(tmp_path / "w", waiting), "XXX26XX001").grade == "awaiting_ntsb"
+
+
+def test_grade_takes_the_answers_abstain_flag_over_the_record() -> None:
+    record = _record("XXX26XX001", date(2026, 10, 9), scored=False, top1=None, top3=None)
+    assert grade(record, None, abstained=True) == "abstained"
+    assert grade(record, None, abstained=False) == "awaiting_ntsb"
+    scored = _record("XXX26XX001", date(2026, 10, 9), top1=True)
+    assert grade(scored, None, abstained=True) == "abstained"
+    failed = _record("XXX26XX001", date(2026, 10, 9), outcome="not coded", scored=False)
+    assert grade(failed, None, abstained=True) == "not_coded"
+
+
+def test_a_version_1_record_in_the_mirror_is_refused(tmp_path: Path) -> None:
+    v2 = _record("XXX26XX001", date(2026, 10, 9))
+    fields = {
+        k: v
+        for k, v in v2.model_dump().items()
+        if k in ClosureRecordV1.model_fields and k != "format"
+    }
+    v1 = ClosureRecordV1(**fields)
+    mirror = _one_run(tmp_path, [(v1, _raw("XXX26XX001", date(2026, 8, 1)), _hypothesis(STALL))])
+    message = _refused(mirror, tmp_path / "out")
+    assert "version 1" in message
+    assert "XXX26XX001" not in message
+
+
+def test_a_run_with_no_inputs_file_is_refused_with_counts_only(tmp_path: Path) -> None:
+    mirror = _mirror(tmp_path)
+    (mirror / "runs" / "20261009T040000Z-abc-live-C" / INPUTS_FILE).unlink()
+    message = _refused(mirror, tmp_path / "out")
+    assert "7 cases: 7 no inputs file" in message
+    assert "XXX26XX" not in message
+
+
+def test_a_case_with_no_raw_record_is_refused(tmp_path: Path) -> None:
+    ev = date(2026, 8, 1)
+    mirror = _one_run(
+        tmp_path,
+        [
+            (_record("XXX26XX001", date(2026, 10, 9)), _raw("XXX26XX001", ev), _hypothesis(STALL)),
+            (_record("XXX26XX002", date(2026, 10, 8)), None, _hypothesis(STALL)),
+        ],
+    )
+    message = _refused(mirror, tmp_path / "out")
+    assert "1 cases: 1 no raw record" in message
+    assert "XXX26XX" not in message
+
+
+def test_a_coded_record_with_no_result_is_refused(tmp_path: Path) -> None:
+    mirror = _mirror(tmp_path)
+    folder = mirror / "runs" / "20261009T040000Z-abc-live-C"
+    (folder / CASES_FILE).write_text("")
+    message = _refused(mirror, tmp_path / "out")
+    assert "coded with no result" in message
+    assert "XXX26XX" not in message
+
+
+def test_a_record_the_split_refuses_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mirror = _mirror(tmp_path)
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise LeakageError("a case's text, which must not be quoted")
+
+    monkeypatch.setattr("ntsb_probable_cause.live.board.split_record", refuse)
+    message = _refused(mirror, tmp_path / "out")
+    assert "refused by the split" in message
+    assert "must not be quoted" not in message
+
+
+def test_a_failed_build_leaves_the_previous_export_intact(tmp_path: Path) -> None:
+    mirror = _mirror(tmp_path)
+    out = _build(tmp_path, mirror)
+    before = {p.name: p.read_text() for p in out.rglob("*.json")}
+    (out / "keep.txt").write_text("not ours")
+    (mirror / "runs" / "20261009T040000Z-abc-live-C" / INPUTS_FILE).unlink()
+    with pytest.raises(ConfigurationError):
+        build_export(mirror, out, store=None, today=TODAY, commit="c", now=NOW)
+    assert {p.name: p.read_text() for p in out.rglob("*.json")} == before
+    assert (out / "keep.txt").read_text() == "not ours"
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
+
+
+def test_the_trail_total_is_every_calls_cost_even_a_claimed_by_no_part(tmp_path: Path) -> None:
+    """A choice step whose calls were all refused still has its cost counted."""
+    from ntsb_probable_cause.live.board import _trail  # noqa: PLC0415
+    from ntsb_probable_cause.live.names import CaseNames  # noqa: PLC0415
+    from ntsb_probable_cause.scoring.codes import load_tables  # noqa: PLC0415
+
+    hypothesis = _hypothesis(STALL)
+    steps = (
+        _step("X", hypothesis).model_copy(update={"tool": "checkpoint:h0"}),
+        _step("X", hypothesis).model_copy(update={"tool": "checkpoint:answer"}),
+    )
+    result: CaseResult = _result("X", steps=steps)
+    calls = [
+        _call("X", "h0", 0, cost_usd=0.01),
+        _call("X", "choice1", 1, tool=None, protocol_error="bad", cost_usd=0.02),
+        _call("X", "coding", 2, tool="submit_answer", cost_usd=0.03),
+        _call("X", "coding", 3, tool=None, protocol_error="bad", cost_usd=0.04),
+    ]
+    record = _record("X", date(2026, 10, 9))
+    trail = _trail(record, result, calls, CaseNames(owner_operator=()), load_tables(), frozenset())
+    assert trail.total_usd == 0.1
+    assert round(sum(b.cost_usd for b in trail.beliefs), 6) == 0.1  # nothing else claims a cost
+
+
+def test_a_planted_name_and_registration_never_reach_the_export(tmp_path: Path) -> None:
+    out = _build(tmp_path)
+    first = _case(out, "XXX26XX001")
+    assert first.trail is not None
+    assert first.answer is not None
+    answer_belief = first.trail.beliefs[-1]
+    assert (
+        answer_belief.account
+        == f"{NAME_MARKER} flew {NAME_MARKER} low; the airplane struck the ground."
+    )
+    assert answer_belief.cause == f"{NAME_MARKER} lost control of {NAME_MARKER}."
+    assert first.answer.cause == f"{NAME_MARKER} lost control of {NAME_MARKER}."
+    # the NTSB's cause at closure
+    assert first.verdict is not None
+    assert first.verdict.cause == f"{NAME_MARKER} in {NAME_MARKER} failed to maintain control."
+    everything = "".join(p.read_text() for p in out.rglob("*.json"))
+    assert "Invented Owner" not in everything
+    assert "N123XX" not in everything
+
+
+def test_a_registration_in_a_title_is_replaced(tmp_path: Path) -> None:
+    ev = date(2026, 8, 1)
+    record = _record("XXX26XX001", date(2026, 10, 9)).model_copy(
+        update={
+            "documents": (
+                DocumentLine(position=1, title="Records for N123XX", status="read", ellery="read"),
+            )
+        }
+    )
+    mirror = _one_run(tmp_path, [(record, _raw("XXX26XX001", ev), _hypothesis(STALL))])
+    text = "".join(p.read_text() for p in _build(tmp_path, mirror).rglob("*.json"))
+    assert "N123XX" not in text
+    assert "Records for [name]" in text
+
+
+def test_the_closure_time_finding_scores_reach_the_comparison(tmp_path: Path) -> None:
+    out = _build(tmp_path)
+    for number in ("XXX26XX001", "XXX26XX002", "XXX26XX003", "XXX26XX004"):
+        comparison = _case(out, number).comparison
+        assert comparison is not None
+        assert (comparison.finding_precision_10, comparison.finding_recall_10) == (0.4, 0.3)

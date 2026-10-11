@@ -12,6 +12,7 @@
     "open_with_docket": 187,
     "closures_per_night": {
       "2026-09-29": 1,
+      "2026-10-01": 1,
       "2026-10-02": 1,
       "2026-10-05": 1,
       "2026-10-07": 1,
@@ -19,7 +20,8 @@
     },
     "coded": 5,
     "not_coded": {
-      "leak": 1
+      "leak": 1,
+      "unreachable": 1
     },
     "awaiting_ntsb": 1
   },
@@ -111,6 +113,19 @@
         "code": "300341",
         "label": "Takeoff / Loss of engine power (total)"
       },
+      "grade": "not_coded"
+    },
+    {
+      "case_number": "XXX26XX007",
+      "closed_on": "2026-10-01",
+      "took_days": 57,
+      "aircraft": {
+        "category": null,
+        "engines": null,
+        "engine_type": null
+      },
+      "agent_first": null,
+      "ntsb_first": null,
       "grade": "not_coded"
     },
     {

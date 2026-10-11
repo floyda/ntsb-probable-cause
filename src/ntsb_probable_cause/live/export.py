@@ -85,7 +85,10 @@ class Counts(_Model):
     open_watched: int
     open_with_docket: int
     closures_per_night: dict[date, int] = Field(
-        description="Cases closed on each night; the keys are ISO dates (YYYY-MM-DD)."
+        description=(
+            "Cases closed on each night, counting only the closures the live queue takes "
+            "(closed on or after 2026-09-23); the keys are ISO dates (YYYY-MM-DD)."
+        )
     )
     coded: int
     not_coded: dict[str, int] = Field(description="Failure kind to number of cases.")

@@ -2,8 +2,9 @@
 
 Status
     Test support (S4 Task 3). Free. Writes ``tests/fixtures/board/`` from invented values; no
-    real case, record or run is read. Case numbers are ``XXX26XX001`` to ``XXX26XX006``, one per
-    grade. Code labels come from the real code tables so the site sees realistic labels.
+    real case, record or run is read. Case numbers are ``XXX26XX001`` to ``XXX26XX007``: the
+    first six one per grade, the seventh a case settled unreachable. Code labels come from the
+    real code tables so the site sees realistic labels.
 
 Usage:
     uv run --locked python -m tests.board_sample
@@ -146,7 +147,13 @@ def _simple_trail(
                 position=n,
                 title=title,
                 decision=decision,
-                note="May bear on the cause." if decision == "read" else None,
+                note=(
+                    "May bear on the cause."
+                    if decision == "read"
+                    else "Unlikely to change the answer."
+                    if decision == "skipped"
+                    else None
+                ),
             )
             for n, (title, decision) in enumerate(docs, start=1)
         )
@@ -164,7 +171,18 @@ def _simple_trail(
             _belief("answer", first, cause, account, conf, False, 0.0066),
         ),
         choices,
-        (Lookup(tool="describe_codes", arguments={"codes": [first.code]}, cost_usd=0.0),),
+        (
+            Lookup(
+                tool="describe_codes",
+                arguments={
+                    "kind": "occurrence",
+                    "codes": [first.code],
+                    "reason": "Check the meaning of the first code before answering.",
+                    "expected_effect": "Confirms the label matches the evidence read.",
+                },
+                cost_usd=0.0012,
+            ),
+        ),
     )
 
 
@@ -180,7 +198,7 @@ def _withheld() -> Withheld:
 
 
 def _cases() -> tuple[CaseFile, ...]:
-    """The six invented cases, one per grade."""
+    """The seven invented cases: six grades, then an unreachable case."""
     stall = _occ("452", "241")
     loc_flight = _occ("452", "240")
     hard = _occ("551", "092")
@@ -296,7 +314,7 @@ def _cases() -> tuple[CaseFile, ...]:
                             position=3,
                             title=docs[2],
                             decision="skipped",
-                            note=None,
+                            note="Likely to repeat what the pilot statement already shows.",
                         ),
                         DocumentChoice(
                             position=4,
@@ -308,7 +326,7 @@ def _cases() -> tuple[CaseFile, ...]:
                             position=5,
                             title="Radar and radio record",
                             decision="skipped",
-                            note=None,
+                            note="Long and unlikely to change the answer.",
                         ),
                     ),
                     cost_usd=0.0033,
@@ -340,23 +358,49 @@ def _cases() -> tuple[CaseFile, ...]:
                             position=5,
                             title="Radar and radio record",
                             decision="skipped",
-                            note=None,
+                            note="Still unlikely to change the answer.",
                         ),
                     ),
                     cost_usd=0.0029,
                 ),
             ),
             lookups=(
-                Lookup(tool="describe_codes", arguments={"codes": [stall.code]}, cost_usd=0.0),
+                Lookup(
+                    tool="describe_codes",
+                    arguments={
+                        "kind": "occurrence",
+                        "codes": [stall.code],
+                        "reason": "Check what the stall code covers before using it.",
+                        "expected_effect": "Confirms the code fits a stall at low altitude.",
+                    },
+                    cost_usd=0.0011,
+                ),
                 Lookup(
                     tool="occurrence_usage",
-                    arguments={"phase": "452", "event": "241"},
-                    cost_usd=0.0,
+                    arguments={
+                        "codes": [stall.code, loc_flight.code],
+                        "reason": "See how often each code is coded first.",
+                        "expected_effect": "Decides which code to put first.",
+                    },
+                    cost_usd=0.0013,
                 ),
                 Lookup(
                     tool="past_findings",
-                    arguments={"occurrence": stall.code},
-                    cost_usd=0.0,
+                    arguments={
+                        "occurrence": stall.code,
+                        "reason": "See which findings usually follow this code.",
+                        "expected_effect": "Suggests the findings to list.",
+                    },
+                    cost_usd=0.0012,
+                ),
+                Lookup(
+                    tool="suggest_codes",
+                    arguments={
+                        "phase_group": "Maneuvering",
+                        "reason": "See the codes common in this phase of flight.",
+                        "expected_effect": "Checks no common code was missed.",
+                    },
+                    cost_usd=0.0014,
                 ),
             ),
         ),
@@ -553,7 +597,23 @@ def _cases() -> tuple[CaseFile, ...]:
         ),
         not_coded=None,
     )
-    return (c1, c2, c3, c4, c5, c6)
+
+    # 007 settled unreachable: no record could be read, so there are no facts.
+    c7 = CaseFile(
+        case_number="XXX26XX007",
+        closed_on=date(2026, 10, 1),
+        took_days=57,
+        aircraft=Aircraft(category=None, engines=None, engine_type=None),
+        grade="not_coded",
+        facts=None,
+        withheld=None,
+        answer=None,
+        verdict=None,
+        comparison=None,
+        trail=None,
+        not_coded=NotCoded(kind="unreachable", sentence=NOT_CODED_SENTENCES["unreachable"]),
+    )
+    return (c1, c2, c3, c4, c5, c6, c7)
 
 
 def _row(case: CaseFile) -> BoardRow:
@@ -597,13 +657,14 @@ def build() -> dict[str, str]:
             open_with_docket=187,
             closures_per_night={
                 date(2026, 9, 29): 1,
+                date(2026, 10, 1): 1,
                 date(2026, 10, 2): 1,
                 date(2026, 10, 5): 1,
                 date(2026, 10, 7): 1,
                 date(2026, 10, 9): 2,
             },
             coded=5,
-            not_coded={"leak": 1},
+            not_coded={"leak": 1, "unreachable": 1},
             awaiting_ntsb=1,
         ),
         rows=tuple(rows),

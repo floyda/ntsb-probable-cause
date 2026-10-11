@@ -127,14 +127,17 @@
       {
         "tool": "describe_codes",
         "arguments": {
+          "kind": "occurrence",
           "codes": [
             "452240"
-          ]
+          ],
+          "reason": "Check the meaning of the first code before answering.",
+          "expected_effect": "Confirms the label matches the evidence read."
         },
-        "cost_usd": 0.0
+        "cost_usd": 0.0012
       }
     ],
-    "total_usd": 0.0138
+    "total_usd": 0.015
   },
   "not_coded": null
 }

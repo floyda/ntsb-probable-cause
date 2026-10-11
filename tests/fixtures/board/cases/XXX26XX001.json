@@ -194,7 +194,7 @@
             "position": 3,
             "title": "Wreckage examination",
             "decision": "skipped",
-            "note": null
+            "note": "Likely to repeat what the pilot statement already shows."
           },
           {
             "position": 4,
@@ -206,7 +206,7 @@
             "position": 5,
             "title": "Radar and radio record",
             "decision": "skipped",
-            "note": null
+            "note": "Long and unlikely to change the answer."
           }
         ],
         "cost_usd": 0.0033
@@ -243,7 +243,7 @@
             "position": 5,
             "title": "Radar and radio record",
             "decision": "skipped",
-            "note": null
+            "note": "Still unlikely to change the answer."
           }
         ],
         "cost_usd": 0.0029
@@ -253,29 +253,47 @@
       {
         "tool": "describe_codes",
         "arguments": {
+          "kind": "occurrence",
           "codes": [
             "452241"
-          ]
+          ],
+          "reason": "Check what the stall code covers before using it.",
+          "expected_effect": "Confirms the code fits a stall at low altitude."
         },
-        "cost_usd": 0.0
+        "cost_usd": 0.0011
       },
       {
         "tool": "occurrence_usage",
         "arguments": {
-          "phase": "452",
-          "event": "241"
+          "codes": [
+            "452241",
+            "452240"
+          ],
+          "reason": "See how often each code is coded first.",
+          "expected_effect": "Decides which code to put first."
         },
-        "cost_usd": 0.0
+        "cost_usd": 0.0013
       },
       {
         "tool": "past_findings",
         "arguments": {
-          "occurrence": "452241"
+          "occurrence": "452241",
+          "reason": "See which findings usually follow this code.",
+          "expected_effect": "Suggests the findings to list."
         },
-        "cost_usd": 0.0
+        "cost_usd": 0.0012
+      },
+      {
+        "tool": "suggest_codes",
+        "arguments": {
+          "phase_group": "Maneuvering",
+          "reason": "See the codes common in this phase of flight.",
+          "expected_effect": "Checks no common code was missed."
+        },
+        "cost_usd": 0.0014
       }
     ],
-    "total_usd": 0.0272
+    "total_usd": 0.0322
   },
   "not_coded": null
 }

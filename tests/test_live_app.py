@@ -359,7 +359,6 @@ def test_export_writes_the_files_and_prints_counts_only(
     assert re.search(r"[A-Z]{3}\d{2}[A-Z]{2}\d{3}", printed) is None
     assert "cases: 8" in printed
     assert "grade, same_first: 2" in printed
-    assert "left out, no event date: 0" in printed
     assert json.loads((out / "index.json").read_text())["format"] == "board/1"
     assert len(list((out / "cases").glob("*.json"))) == 8
 
@@ -369,3 +368,20 @@ def test_export_from_a_missing_folder_is_one_line(
 ) -> None:
     assert app.main(["export", "--from", str(tmp_path / "nope"), "--out", str(tmp_path)]) == 1
     assert "is not a folder" in capsys.readouterr().err
+
+
+def test_export_refuses_a_target_inside_the_checkout_that_git_does_not_ignore(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.test_live_board import _mirror  # noqa: PLC0415
+
+    mirror = _mirror(tmp_path)
+    before = Path("tests/fixtures/board/index.json").read_text()
+    assert app.main(["export", "--from", str(mirror), "--out", "tests/fixtures/board"]) == 1
+    assert "does not ignore it" in capsys.readouterr().err
+    assert Path("tests/fixtures/board/index.json").read_text() == before
+
+
+def test_export_allows_an_ignored_target_inside_the_checkout(tmp_path: Path) -> None:
+    app._check_export_target(Path("data/export-check"))  # data/ is git-ignored
+    app._check_export_target(tmp_path / "outside")

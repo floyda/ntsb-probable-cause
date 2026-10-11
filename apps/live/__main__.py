@@ -27,6 +27,7 @@ import argparse
 import fcntl
 import hashlib
 import re
+import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -119,11 +120,34 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _check_export_target(out: Path) -> None:
+    """Refuse an export target inside the checkout that git does not ignore.
+
+    The export is published and holds case numbers and the NTSB's causes: it must not sit where
+    a ``git add`` could take it (decision 0024). Inside the repository the target must be ignored
+    (``git check-ignore``); a git failure refuses too.
+    """
+    target = out.resolve()
+    if not target.is_relative_to(_REPO_ROOT):
+        return
+    ignored = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "-C", str(_REPO_ROOT), "check-ignore", "-q", "--", str(target)],  # noqa: S607
+        capture_output=True,
+        check=False,
+    )
+    if ignored.returncode != 0:
+        raise ConfigurationError(
+            "export: --out is inside the git checkout and git does not ignore it; "
+            "choose a folder outside the checkout or an ignored one (such as under data/)"
+        )
+
+
 def _export(args: argparse.Namespace) -> int:
     """Build the export from a mirror folder and print its counts; no store, no model call."""
     mirror = Path(args.source)
     if not mirror.is_dir():
         return _fail(f"export: {mirror} is not a folder")
+    _check_export_target(Path(args.out))
     now = datetime.now(UTC)
     sha, dirty = commit_state(_REPO_ROOT)
     report = write_export(
@@ -138,7 +162,6 @@ def _export(args: argparse.Namespace) -> int:
         f"cases: {report.cases}",
         *(f"grade, {name}: {count}" for name, count in report.grades.items()),
         f"unreachable: {report.unreachable}",
-        f"left out, no event date: {report.skipped_no_event_date}",
     ]
     print("\n".join(lines))
     return 0

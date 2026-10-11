@@ -19,21 +19,26 @@ free-text lookup argument passes ``names.board_text`` with that case's own ``Cas
 
 Open cases appear only as three counts, read from the store (decision 0024).
 
-S3.3's runs (closure record version 1) are included. A version 1 record has no event date, so
-the days from the accident to closure are filled from the run's own ``inputs.jsonl`` (the raw
-record's ``eventDate``). A version 1 case whose raw record is not in the run folder cannot have
-that figure, so it is left out and counted in :attr:`ExportReport.skipped_no_event_date`; the
-command prints the count. S4's later scoring does not follow version 1 cases (Task 8 skips them
-for the same reason), so a version 1 case without codes stays "awaiting the NTSB's codes".
+Only closure record version 2 is read. S3.3's version 1 folders stay on Andy's Mac and are never
+uploaded; its cases are coded again in the cloud (decision 0179), so a version 1 record in the
+mirror means something is wrong and the build raises ``ConfigurationError``.
 
-A coded case that is missing its ``cases.jsonl`` result (it cannot be: the record would say "not
-coded, missing result") has no trail. A failed model call that named no tool, at the coding step,
-has its cost added to the next lookup (or the last) so the trail's total is the sum of its parts.
+Fail closed: a case with no ``inputs.jsonl``, no raw record, a coded record with no result in
+``cases.jsonl``, or a raw record that ``split_record`` refuses, means the mirror is damaged or
+half pulled. The build raises ``ConfigurationError`` with counts only and writes nothing; the
+files are built in a temporary folder and moved into place on success, so a failed build leaves
+the previous export intact.
+
+Costs are assigned by tool and hypothesis, not by step: a ``submit_answer`` call at any step is
+the answer's, a refinement is the answer's, a failed coding call goes to the next lookup. Any
+cost left over is added to the last belief, so the trail's total is the sum of every call.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -45,7 +50,7 @@ from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments, DocumentDecision
 from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.title_vocab import known_title_words
-from ntsb_probable_cause.errors import LeakageError
+from ntsb_probable_cause.errors import ConfigurationError, LeakageError
 from ntsb_probable_cause.live.closure import CASES_FILE
 from ntsb_probable_cause.live.export import (
     BOARD_FORMAT,
@@ -75,6 +80,7 @@ from ntsb_probable_cause.live.export import (
 from ntsb_probable_cause.live.later import LaterScore
 from ntsb_probable_cause.live.morning import MODEL_ID, live_spec
 from ntsb_probable_cause.live.names import CaseNames, board_text, board_title, case_names
+from ntsb_probable_cause.live.queue import build_queue, closures_per_night
 from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
     INPUTS_FILE,
@@ -99,6 +105,18 @@ _EXCLUSIONS: Final = live_spec(1.0).exclusions
 _ENGINE_CHECKPOINT: Final = "checkpoint:"
 _BELIEF_KINDS: Final = ("h0", "h1", "h2", "answer")
 _SCAN_ONLY: Final = "unreadable: scan"
+_ANSWER_TOOL: Final = "submit_answer"
+_COST_EPSILON: Final = 1e-9
+
+
+_NO_INPUTS: Final = "no inputs file"
+_NO_RAW: Final = "no raw record"
+_NO_RESULT: Final = "coded with no result"
+_SPLIT_REFUSED: Final = "raw record refused by the split"
+
+
+class _Damaged(Exception):  # noqa: N818 -- internal signal, turned into ConfigurationError
+    """One case's sources are missing or unusable; ``args[0]`` is the kind (never a case)."""
 
 
 @dataclass(frozen=True)
@@ -106,7 +124,6 @@ class ExportReport:
     """What one export wrote: numbers only, never a case."""
 
     cases: int
-    skipped_no_event_date: int
     unreachable: int
     grades: Mapping[str, int]
 
@@ -130,18 +147,33 @@ def occurrence_marks(
     return mark(agent, ntsb), mark(ntsb, agent)
 
 
-def grade(record: ClosureRecord | ClosureRecordV1, later: LaterScore | None) -> Grade:
-    """The board's grade of a case, from its closure record and any later score (spec 10.3)."""
+def grade(
+    record: ClosureRecord, later: LaterScore | None, *, abstained: bool | None = None
+) -> Grade:
+    """The board's grade of a case, from its closure record and any later score (spec 10.3).
+
+    The order is: not coded, abstained, awaiting the NTSB's codes, then the codes' agreement.
+    An abstain is Ellery's own judgement, known when the case was coded, so it outranks waiting.
+
+    Args:
+        record: the closure record.
+        later: a later score, when the NTSB's codes arrived after the case was coded.
+        abstained: the final answer's abstain flag (``cases.jsonl``). The record holds none for
+            an unscored case, so the builder passes it; when None, the later score's or the
+            record's flag is used.
+    """
     if record.outcome == "not coded":
         return "not_coded"
+    if abstained is None:
+        abstained = later.abstained if later is not None else bool(record.abstained)
+    if abstained:
+        return "abstained"
     if later is not None:
-        abstained, top1, top3 = later.abstained, later.top1, later.top3
+        top1, top3 = later.top1, later.top3
     elif not record.scored:
         return "awaiting_ntsb"
     else:
-        abstained, top1, top3 = bool(record.abstained), bool(record.top1), bool(record.top3)
-    if abstained:
-        return "abstained"
+        top1, top3 = bool(record.top1), bool(record.top3)
     if top1:
         return "same_first"
     return "same_codes_other_order" if top3 else "different"
@@ -187,17 +219,16 @@ def _aircraft(raw: Mapping[str, object] | None) -> Aircraft:
 _Codes = tuple[tuple[str, ...], tuple[str, ...], str | None]
 
 
-def _record_verdict(raw: Mapping[str, object] | None) -> _Codes | None:
+def _record_verdict(raw: Mapping[str, object]) -> _Codes | None:
     """The NTSB's occurrence codes, finding codes and cause in ``raw``, through ``split_record``.
 
-    None when the record holds no occurrence codes.
+    None when the record holds no occurrence codes. A record the split refuses is damaged: the
+    build fails closed (:class:`_Damaged`).
     """
-    if raw is None:
-        return None
     try:
         verdict = split_record(raw, exclude=_EXCLUSIONS)[2]
     except LeakageError:
-        return None
+        raise _Damaged(_SPLIT_REFUSED) from None
     if not verdict.occurrence_codes:
         return None
     return verdict.occurrence_codes, verdict.finding_codes, verdict.probable_cause
@@ -268,13 +299,27 @@ def _answer(hypothesis: Hypothesis, names: CaseNames, tables: CodeTables) -> Ans
     )
 
 
+def _belief_costs(calls: Sequence[AgentCall]) -> dict[str, float]:
+    """Each call's cost to the hypothesis it belongs to, by tool and step.
+
+    A ``submit_answer`` call at any step, and a refinement, belong to the answer; a hypothesis
+    step's calls (failed ones too) to that hypothesis. Read choices and coding lookups are
+    costed apart (:func:`_read_choices`, :func:`_lookups`).
+    """
+    cost: defaultdict[str, float] = defaultdict(float)
+    for call in calls:
+        if call.tool == _ANSWER_TOOL or call.step == "refine":
+            cost["answer"] += call.cost_usd
+        elif call.step in _BELIEF_KINDS:
+            cost[call.step] += call.cost_usd
+    return cost
+
+
 def _beliefs(
     result: CaseResult, calls: Sequence[AgentCall], names: CaseNames, tables: CodeTables
 ) -> tuple[Belief, ...]:
     """One belief per checkpoint; the refinement is folded into the answer it refines."""
-    cost: defaultdict[str, float] = defaultdict(float)
-    for call in calls:
-        cost[call.step] += call.cost_usd
+    cost = _belief_costs(calls)
     beliefs: list[Belief] = []
     for step in result.steps:
         kind = step.tool.removeprefix(_ENGINE_CHECKPOINT)
@@ -289,7 +334,6 @@ def _beliefs(
                     "account": board_text(hypothesis.evidence_narrative, names),
                     "confidence": hypothesis.confidence,
                     "changed": before is not None and first.code != before,
-                    "cost_usd": round(beliefs[-1].cost_usd + cost["refine"], 6),
                 }
             )
             continue
@@ -313,7 +357,7 @@ def _beliefs(
 
 
 def _read_choices(
-    record: ClosureRecord | ClosureRecordV1,
+    record: ClosureRecord,
     calls: Sequence[AgentCall],
     names: CaseNames,
     known: frozenset[str],
@@ -332,7 +376,7 @@ def _read_choices(
         offered = set(call.offered)
         documents: list[DocumentChoice] = []
         for line in sorted(record.documents, key=lambda d: d.position):
-            title = board_title(line.title, known)
+            title = board_title(line.title, known, names)
             if line.position in offered:
                 d = decided.get(line.position)
                 read = d is not None and d.read
@@ -381,7 +425,7 @@ def _clean(value: object, names: CaseNames) -> object:
 def _lookups(calls: Sequence[AgentCall], names: CaseNames) -> tuple[Lookup, ...]:
     lookups: list[Lookup] = []
     pending: float = 0.0
-    for call in (c for c in calls if c.step == "coding"):
+    for call in (c for c in calls if c.step == "coding" and c.tool != _ANSWER_TOOL):
         if call.tool in CODING_TOOLS and call.protocol_error is None:
             lookups.append(
                 Lookup(
@@ -400,7 +444,7 @@ def _lookups(calls: Sequence[AgentCall], names: CaseNames) -> tuple[Lookup, ...]
 
 
 def _trail(  # noqa: PLR0913, PLR0917 -- one case's sources
-    record: ClosureRecord | ClosureRecordV1,
+    record: ClosureRecord,
     result: CaseResult,
     calls: Sequence[AgentCall],
     names: CaseNames,
@@ -410,22 +454,23 @@ def _trail(  # noqa: PLR0913, PLR0917 -- one case's sources
     beliefs = _beliefs(result, calls, names, tables)
     choices = _read_choices(record, calls, names, known)
     lookups = _lookups(calls, names)
-    total = sum(b.cost_usd for b in beliefs)
-    total += sum(c.cost_usd for c in choices) + sum(x.cost_usd for x in lookups)
-    return Trail(beliefs=beliefs, read_choices=choices, lookups=lookups, total_usd=round(total, 4))
+    parts = sum(b.cost_usd for b in beliefs)
+    parts += sum(c.cost_usd for c in choices) + sum(x.cost_usd for x in lookups)
+    left = sum(c.cost_usd for c in calls) - parts
+    if beliefs and abs(left) > _COST_EPSILON:
+        # A call no part claimed (a failed read choice, a failed coding call with no lookup after
+        # it): its cost is never dropped, it goes to the last belief.
+        last = beliefs[-1]
+        beliefs = (
+            *beliefs[:-1],
+            last.model_copy(update={"cost_usd": round(last.cost_usd + left, 6)}),
+        )
+        parts += left
+    return Trail(beliefs=beliefs, read_choices=choices, lookups=lookups, total_usd=round(parts, 4))
 
 
 def _took_days(closed_on: date, event_date: date) -> int:
     return (closed_on - event_date).days
-
-
-def _event_date(raw: Mapping[str, object] | None) -> date | None:
-    if raw is None:
-        return None
-    try:
-        return date.fromisoformat(str(raw.get("eventDate"))[:10])
-    except ValueError:
-        return None
 
 
 def _not_coded(kind: str) -> NotCoded:
@@ -455,6 +500,7 @@ def _row(case: CaseFile) -> BoardRow:
 @dataclass(frozen=True)
 class _Run:
     folder: Path
+    has_inputs: bool
     raws: Mapping[str, Mapping[str, object]]
     results: Mapping[str, CaseResult]
     calls: Mapping[str, Sequence[AgentCall]]
@@ -478,7 +524,9 @@ def _load_run(folder: Path) -> _Run:
             by_case.setdefault(call.case_id, []).append(call)
     for case_calls in by_case.values():
         case_calls.sort(key=lambda c: c.call_index)
-    return _Run(folder=folder, raws=raws, results=results, calls=by_case)
+    return _Run(
+        folder=folder, has_inputs=inputs.is_file(), raws=raws, results=results, calls=by_case
+    )
 
 
 def _later_scores(mirror: Path) -> dict[str, LaterScore]:
@@ -491,40 +539,44 @@ def _later_scores(mirror: Path) -> dict[str, LaterScore]:
     return found
 
 
-def _coded_case(  # noqa: PLR0913, PLR0917 -- one case's sources
-    record: ClosureRecord | ClosureRecordV1,
+def _coded_case(
+    record: ClosureRecord,
     run: _Run,
     later: LaterScore | None,
-    event: date,
     known: frozenset[str],
     tables: CodeTables,
 ) -> CaseFile:
+    """One case's file; raises :class:`_Damaged` when its sources are missing."""
+    if not run.has_inputs:
+        raise _Damaged(_NO_INPUTS)
     raw = run.raws.get(record.case_id)
-    names = case_names(raw) if raw is not None else CaseNames(owner_operator=())
+    if raw is None:
+        raise _Damaged(_NO_RAW)
+    names = case_names(raw)
     result = run.results.get(record.case_id)
+    coded = record.outcome == "coded"
+    if coded and (result is None or not result.steps):
+        raise _Damaged(_NO_RESULT)
     calls = run.calls.get(record.case_id, ())
-    the_grade = grade(record, later)
+    final = result.steps[-1].hypothesis if coded and result is not None else None
+    the_grade = grade(record, later, abstained=None if final is None else final.abstain)
     verdict = _verdict(_record_verdict(raw), later, names, tables)
     facts = Facts(
-        state=_text(raw, "eventStateOrRegion") if raw is not None else None,
-        kind_of_flight=(
-            _text(raw, "aircrafts[0].ownerOperators[0].flightOperationType")
-            if raw is not None
-            else None
-        ),
-        injury_level=_text(raw, "highestInjuryLevel") if raw is not None else None,
+        state=_text(raw, "eventStateOrRegion"),
+        kind_of_flight=_text(raw, "aircrafts[0].ownerOperators[0].flightOperationType"),
+        injury_level=_text(raw, "highestInjuryLevel"),
         documents_read=sum(1 for d in record.documents if d.ellery == "read"),
         documents_listed=len(record.documents),
     )
     base: dict[str, Any] = {
         "case_number": record.case_id,
         "closed_on": record.closed_on,
-        "took_days": _took_days(record.closed_on, event),
+        "took_days": _took_days(record.closed_on, record.event_date),
         "aircraft": _aircraft(raw),
         "grade": the_grade,
         "facts": facts,
     }
-    if record.outcome == "not coded" or result is None or not result.steps:
+    if final is None or result is None:
         kind = failure_kind(record.failure)
         return CaseFile(
             **base,
@@ -535,7 +587,6 @@ def _coded_case(  # noqa: PLR0913, PLR0917 -- one case's sources
             trail=None,
             not_coded=_not_coded(kind),
         )
-    final = result.steps[-1].hypothesis
     answer = _answer(final, names, tables)
     if later is not None:
         precision, recall = later.finding_precision_10, later.finding_recall_10
@@ -543,16 +594,6 @@ def _coded_case(  # noqa: PLR0913, PLR0917 -- one case's sources
         precision, recall = result.scores.finding_precision_10, result.scores.finding_recall_10
     else:
         precision = recall = None
-    replied = (
-        record.replied_models
-        if isinstance(record, ClosureRecord)
-        else tuple(sorted({c.reply_model for c in calls if c.reply_model is not None}))
-    )
-    providers = (
-        record.providers
-        if isinstance(record, ClosureRecord)
-        else tuple(sorted({c.reply_provider for c in calls if c.reply_provider is not None}))
-    )
     return CaseFile(
         **base,
         withheld=Withheld(
@@ -560,8 +601,8 @@ def _coded_case(  # noqa: PLR0913, PLR0917 -- one case's sources
             commit=record.commit_sha,
             prompt_version=record.prompt_version,
             model=record.model,
-            replied_models=replied,
-            providers=providers,
+            replied_models=record.replied_models,
+            providers=record.providers,
         ),
         answer=answer,
         verdict=verdict,
@@ -589,13 +630,18 @@ def _unreachable_case(case_number: str, closed: Closed) -> CaseFile:
 
 
 def _store_counts(store: Store | None, today: date) -> tuple[int, int, dict[date, int]]:
-    """Open watched, open with a docket, and closures per night: counts only (decision 0024)."""
+    """Open watched, open with a docket, and closures per night: counts only (decision 0024).
+
+    The per-night counts are the closures the queue takes (``queue.build_queue``'s own
+    selection: closed on or after the declared start), not every closure the store holds.
+    """
     if store is None:
         return 0, 0, {}
     closures = store.closures()
     closed = {c.mkey for c in closures}
     open_mkeys = [m for m in store.watched_mkeys(today=today.isoformat()) if m not in closed]
-    per_night = Counter(date.fromisoformat(c.closed_on) for c in closures)
+    taken = {q.mkey for q in build_queue(closures, frozenset())}
+    per_night = closures_per_night([c for c in closures if c.mkey in taken])
     with_docket = sum(1 for m in open_mkeys if store.documents_recorded(m) > 0)
     return len(open_mkeys), with_docket, dict(sorted(per_night.items()))
 
@@ -605,49 +651,65 @@ def _night_state(mirror: Path) -> NightState:
     return NightState.model_validate_json(path.read_text()) if path.is_file() else NightState()
 
 
-def _collect(mirror: Path) -> Iterable[tuple[ClosureRecord | ClosureRecordV1, _Run]]:
+def _collect(mirror: Path) -> Iterable[tuple[ClosureRecord, _Run]]:
     runs = mirror / "runs"
     for folder in sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []:
         closures = folder / CLOSURES_FILE
         if not closures.is_file():
             continue
         run = _load_run(folder)
+        version_1 = 0
         for record in read_closure_records(closures):
+            if isinstance(record, ClosureRecordV1):
+                version_1 += 1
+                continue
             yield record, run
+        if version_1:
+            raise ConfigurationError(
+                f"export refused: {version_1} closure records in the mirror are version 1; "
+                "S3.3's runs are never uploaded (decision 0179), so the mirror is wrong. "
+                "Nothing was written."
+            )
 
 
-def write_export(  # noqa: PLR0913 -- the builder's fixed interface plus the report
+def _damaged_error(damage: Counter[str]) -> ConfigurationError:
+    kinds = ", ".join(f"{count} {kind}" for kind, count in sorted(damage.items()))
+    return ConfigurationError(
+        f"export refused: the mirror is damaged or half pulled ({sum(damage.values())} cases: "
+        f"{kinds}). Nothing was written; the previous export is unchanged."
+    )
+
+
+def _build_files(  # noqa: PLR0913 -- the builder's fixed interface
     mirror: Path,
-    out: Path,
+    work: Path,
     *,
     store: Store | None,
     today: date,
     commit: str,
     now: datetime,
 ) -> ExportReport:
-    """Write the export under ``out`` and say what it holds, as numbers."""
+    """Write the whole export under ``work``, or raise before it is complete."""
     tables = load_tables()
     known, _ = known_title_words()
     later_scores = _later_scores(mirror)
     state = _night_state(mirror)
     cases: dict[str, CaseFile] = {}
-    skipped = 0
+    damage: Counter[str] = Counter()
     models: list[tuple[date, str]] = []
     for record, run in _collect(mirror):
         if record.case_id in cases:
             continue
-        event = (
-            record.event_date
-            if isinstance(record, ClosureRecord)
-            else _event_date(run.raws.get(record.case_id))
-        )
-        if event is None:
-            skipped += 1
+        try:
+            cases[record.case_id] = _coded_case(
+                record, run, later_scores.get(record.case_id), known, tables
+            )
+        except _Damaged as error:
+            damage[str(error.args[0])] += 1
             continue
-        cases[record.case_id] = _coded_case(
-            record, run, later_scores.get(record.case_id), event, known, tables
-        )
         models.append((record.closed_on, record.model))
+    if damage:
+        raise _damaged_error(damage)
     for case_number, closed in state.unreachable.items():
         cases.setdefault(case_number, _unreachable_case(case_number, closed))
 
@@ -677,19 +739,52 @@ def write_export(  # noqa: PLR0913 -- the builder's fixed interface plus the rep
         ),
         rows=tuple(rows),
     )
-    cases_dir = out / CASES_DIR
-    cases_dir.mkdir(parents=True, exist_ok=True)
-    for stale in cases_dir.glob("*.json"):
-        stale.unlink()
+    cases_dir = work / CASES_DIR
+    cases_dir.mkdir()
     for case in cases.values():
         (cases_dir / f"{case.case_number}.json").write_text(case.model_dump_json(indent=2) + "\n")
-    (out / INDEX_FILE).write_text(index.model_dump_json(indent=2) + "\n")
+    (work / INDEX_FILE).write_text(index.model_dump_json(indent=2) + "\n")
     return ExportReport(
         cases=len(cases),
-        skipped_no_event_date=skipped,
         unreachable=len(state.unreachable),
         grades=dict(sorted(grades.items())),
     )
+
+
+def _move_into_place(work: Path, out: Path) -> None:
+    """Replace ``out``'s ``cases/`` and ``index.json`` with the finished ones in ``work``."""
+    out.mkdir(parents=True, exist_ok=True)
+    old = work / "previous"
+    old.mkdir()
+    for name in (CASES_DIR, INDEX_FILE):
+        if (out / name).exists():
+            shutil.move(out / name, old / name)
+        shutil.move(work / name, out / name)
+
+
+def write_export(  # noqa: PLR0913 -- the builder's fixed interface plus the report
+    mirror: Path,
+    out: Path,
+    *,
+    store: Store | None,
+    today: date,
+    commit: str,
+    now: datetime,
+) -> ExportReport:
+    """Write the export under ``out`` and say what it holds, as numbers.
+
+    Raises:
+        ConfigurationError: when the mirror is damaged or holds a version 1 record. The message
+            holds counts only, nothing is written, and a previous export under ``out`` stays.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=f".{out.name}-build-", dir=out.parent))
+    try:
+        report = _build_files(mirror, work, store=store, today=today, commit=commit, now=now)
+        _move_into_place(work, out)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return report
 
 
 def build_export(  # noqa: PLR0913 -- the interface Task 10 calls
@@ -705,6 +800,9 @@ def build_export(  # noqa: PLR0913 -- the interface Task 10 calls
 
     The runs and scores come from the mirror, the open-case counts from the store's existing
     methods (counts only); ``store=None`` writes zero counts.
+
+    Raises:
+        ConfigurationError: as :func:`write_export`.
     """
     write_export(mirror, out, store=store, today=today, commit=commit, now=now)
     return out
