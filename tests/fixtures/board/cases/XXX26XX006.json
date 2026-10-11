@@ -1,0 +1,92 @@
+{
+  "format": "board/1",
+  "case_number": "XXX26XX006",
+  "closed_on": "2026-09-29",
+  "took_days": 54,
+  "aircraft": {
+    "category": "Airplane",
+    "engines": 1,
+    "engine_type": "Reciprocating"
+  },
+  "grade": "awaiting_ntsb",
+  "facts": {
+    "state": "AZ",
+    "kind_of_flight": "Personal",
+    "injury_level": "Minor",
+    "documents_read": 2,
+    "documents_listed": 2
+  },
+  "withheld": {
+    "coded_at": "2026-10-09T03:14:07Z",
+    "commit": "a1b2c3d",
+    "prompt_version": "s3-v1+ge17fecdc66ec+tdff9dea78f23",
+    "model": "openai/gpt-6-luna",
+    "replied_models": [
+      "openai/gpt-6-luna-2026-09-30"
+    ],
+    "providers": [
+      "ExampleProvider"
+    ]
+  },
+  "answer": {
+    "occurrence": [
+      {
+        "code": "402342",
+        "label": "Enroute-Cruise: Loss of engine power (partial)"
+      }
+    ],
+    "findings": [
+      {
+        "code": "0102282002",
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Malfunction"
+      }
+    ],
+    "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
+    "confidence": 0.57,
+    "abstained": false
+  },
+  "verdict": null,
+  "comparison": null,
+  "trail": {
+    "beliefs": [
+      {
+        "kind": "h0",
+        "first": {
+          "code": "402342",
+          "label": "Enroute-Cruise: Loss of engine power (partial)"
+        },
+        "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
+        "account": "The airplane landed off the airport after the engine lost power in cruise. The pilot's statement and the maintenance records both mention fuel selector use.",
+        "confidence": 0.47,
+        "changed": false,
+        "cost_usd": 0.0041
+      },
+      {
+        "kind": "answer",
+        "first": {
+          "code": "402342",
+          "label": "Enroute-Cruise: Loss of engine power (partial)"
+        },
+        "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
+        "account": "The airplane landed off the airport after the engine lost power in cruise. The pilot's statement and the maintenance records both mention fuel selector use.",
+        "confidence": 0.57,
+        "changed": false,
+        "cost_usd": 0.0066
+      }
+    ],
+    "read_choices": [],
+    "lookups": [
+      {
+        "tool": "describe_codes",
+        "arguments": {
+          "codes": [
+            "402342"
+          ]
+        },
+        "cost_usd": 0.0
+      }
+    ],
+    "total_usd": 0.0107
+  },
+  "not_coded": null
+}

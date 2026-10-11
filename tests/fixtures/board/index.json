@@ -1,0 +1,133 @@
+{
+  "format": "board/1",
+  "stamp": {
+    "built_at": "2026-10-10T06:00:00Z",
+    "commit": "a1b2c3d",
+    "model": "openai/gpt-6-luna",
+    "training_cutoff": "2026-05-18",
+    "training_cutoff_source": "https://developers.openai.com/api/docs/models/gpt-6-luna"
+  },
+  "counts": {
+    "open_watched": 212,
+    "open_with_docket": 187,
+    "closures_per_night": {
+      "2026-09-29": 1,
+      "2026-10-02": 1,
+      "2026-10-05": 1,
+      "2026-10-07": 1,
+      "2026-10-09": 2
+    },
+    "coded": 5,
+    "not_coded": {
+      "leak": 1
+    },
+    "awaiting_ntsb": 1
+  },
+  "rows": [
+    {
+      "case_number": "XXX26XX001",
+      "closed_on": "2026-10-09",
+      "took_days": 47,
+      "aircraft": {
+        "category": "Airplane",
+        "engines": 1,
+        "engine_type": "Reciprocating"
+      },
+      "agent_first": {
+        "code": "452241",
+        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+      },
+      "ntsb_first": {
+        "code": "452241",
+        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+      },
+      "grade": "same_first"
+    },
+    {
+      "case_number": "XXX26XX002",
+      "closed_on": "2026-10-09",
+      "took_days": 61,
+      "aircraft": {
+        "category": "Airplane",
+        "engines": 1,
+        "engine_type": "Reciprocating"
+      },
+      "agent_first": {
+        "code": "552230",
+        "label": "Landing-Landing Roll: Loss of control on ground"
+      },
+      "ntsb_first": {
+        "code": "551092",
+        "label": "Landing-Flare/Touchdown: Hard landing"
+      },
+      "grade": "same_codes_other_order"
+    },
+    {
+      "case_number": "XXX26XX003",
+      "closed_on": "2026-10-07",
+      "took_days": 88,
+      "aircraft": {
+        "category": "Airplane",
+        "engines": 1,
+        "engine_type": null
+      },
+      "agent_first": {
+        "code": "508370",
+        "label": "Approach-VFR Pattern Final: Landing area undershoot"
+      },
+      "ntsb_first": {
+        "code": "402192",
+        "label": "Enroute-Cruise: Fuel exhaustion"
+      },
+      "grade": "different"
+    },
+    {
+      "case_number": "XXX26XX004",
+      "closed_on": "2026-10-05",
+      "took_days": 102,
+      "aircraft": {
+        "category": "Airplane",
+        "engines": 2,
+        "engine_type": "Reciprocating"
+      },
+      "agent_first": null,
+      "ntsb_first": {
+        "code": "402341",
+        "label": "Enroute-Cruise: Loss of engine power (total)"
+      },
+      "grade": "abstained"
+    },
+    {
+      "case_number": "XXX26XX005",
+      "closed_on": "2026-10-02",
+      "took_days": 75,
+      "aircraft": {
+        "category": "Helicopter",
+        "engines": 1,
+        "engine_type": "Turbo shaft"
+      },
+      "agent_first": null,
+      "ntsb_first": {
+        "code": "300341",
+        "label": "Takeoff: Loss of engine power (total)"
+      },
+      "grade": "not_coded"
+    },
+    {
+      "case_number": "XXX26XX006",
+      "closed_on": "2026-09-29",
+      "took_days": 54,
+      "aircraft": {
+        "category": "Airplane",
+        "engines": 1,
+        "engine_type": "Reciprocating"
+      },
+      "agent_first": {
+        "code": "402342",
+        "label": "Enroute-Cruise: Loss of engine power (partial)"
+      },
+      "ntsb_first": null,
+      "grade": "awaiting_ntsb"
+    }
+  ]
+}

@@ -1,0 +1,976 @@
+{
+  "case": {
+    "$defs": {
+      "Aircraft": {
+        "additionalProperties": false,
+        "description": "The aircraft as category and engines. Never make, model or registration.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].aircraftCategory, e.g. 'Airplane'.",
+            "title": "Category"
+          },
+          "engine_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].engines[0].engineType.",
+            "title": "Engine Type"
+          },
+          "engines": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].aircraftNumberOfEngines.",
+            "title": "Engines"
+          }
+        },
+        "required": [
+          "category",
+          "engines",
+          "engine_type"
+        ],
+        "title": "Aircraft",
+        "type": "object"
+      },
+      "Answer": {
+        "additionalProperties": false,
+        "description": "Ellery's answer.",
+        "properties": {
+          "abstained": {
+            "title": "Abstained",
+            "type": "boolean"
+          },
+          "cause": {
+            "title": "Cause",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "occurrence": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Occurrence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "occurrence",
+          "findings",
+          "cause",
+          "confidence",
+          "abstained"
+        ],
+        "title": "Answer",
+        "type": "object"
+      },
+      "Belief": {
+        "additionalProperties": false,
+        "description": "The agent's belief at one checkpoint.",
+        "properties": {
+          "account": {
+            "description": "Ellery's evidence_narrative after the names step: the account that takes the place of the investigator's factual narrative.",
+            "title": "Account",
+            "type": "string"
+          },
+          "cause": {
+            "title": "Cause",
+            "type": "string"
+          },
+          "changed": {
+            "description": "The first code differs from the belief before.",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "first": {
+            "$ref": "#/$defs/Code"
+          },
+          "kind": {
+            "enum": [
+              "h0",
+              "h1",
+              "h2",
+              "answer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "first",
+          "cause",
+          "account",
+          "confidence",
+          "changed",
+          "cost_usd"
+        ],
+        "title": "Belief",
+        "type": "object"
+      },
+      "Code": {
+        "additionalProperties": false,
+        "description": "One occurrence or finding code and its label.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "Code",
+        "type": "object"
+      },
+      "Comparison": {
+        "additionalProperties": false,
+        "description": "The answer set against the verdict.",
+        "properties": {
+          "agent_occurrence": {
+            "items": {
+              "$ref": "#/$defs/MarkedCode"
+            },
+            "title": "Agent Occurrence",
+            "type": "array"
+          },
+          "finding_precision_10": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Precision 10"
+          },
+          "finding_recall_10": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Recall 10"
+          },
+          "findings_agent_only": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Findings Agent Only",
+            "type": "array"
+          },
+          "findings_both": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Findings Both",
+            "type": "array"
+          },
+          "findings_ntsb_only": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Findings Ntsb Only",
+            "type": "array"
+          },
+          "ntsb_occurrence": {
+            "items": {
+              "$ref": "#/$defs/MarkedCode"
+            },
+            "title": "Ntsb Occurrence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent_occurrence",
+          "ntsb_occurrence",
+          "findings_both",
+          "findings_ntsb_only",
+          "findings_agent_only",
+          "finding_precision_10",
+          "finding_recall_10"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
+      "DocumentChoice": {
+        "additionalProperties": false,
+        "description": "One document of the docket and what the agent did with it.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "read",
+              "skipped",
+              "scan_only",
+              "not_offered"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The agent's expected_effect, after the names step.",
+            "title": "Note"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "title": {
+            "description": "After the names step.",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "title",
+          "decision",
+          "note"
+        ],
+        "title": "DocumentChoice",
+        "type": "object"
+      },
+      "Facts": {
+        "additionalProperties": false,
+        "description": "The case's plain facts.",
+        "properties": {
+          "documents_listed": {
+            "title": "Documents Listed",
+            "type": "integer"
+          },
+          "documents_read": {
+            "title": "Documents Read",
+            "type": "integer"
+          },
+          "injury_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "highestInjuryLevel.",
+            "title": "Injury Level"
+          },
+          "kind_of_flight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].ownerOperators[0].flightOperationType.",
+            "title": "Kind Of Flight"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "eventStateOrRegion.",
+            "title": "State"
+          }
+        },
+        "required": [
+          "state",
+          "kind_of_flight",
+          "injury_level",
+          "documents_read",
+          "documents_listed"
+        ],
+        "title": "Facts",
+        "type": "object"
+      },
+      "Lookup": {
+        "additionalProperties": false,
+        "description": "One coding lookup the agent made.",
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "title": "Arguments",
+            "type": "object"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "arguments",
+          "cost_usd"
+        ],
+        "title": "Lookup",
+        "type": "object"
+      },
+      "MarkedCode": {
+        "additionalProperties": false,
+        "description": "An occurrence code marked against the other list: same place, other place, or absent.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mark": {
+            "enum": [
+              "same_place",
+              "other_place",
+              "not_in_other"
+            ],
+            "title": "Mark",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "mark"
+        ],
+        "title": "MarkedCode",
+        "type": "object"
+      },
+      "NotCoded": {
+        "additionalProperties": false,
+        "description": "Why a case was not coded: its failure kind and one fixed plain sentence.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sentence": {
+            "description": "Chosen in code from NOT_CODED_SENTENCES, never failure text.",
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "sentence"
+        ],
+        "title": "NotCoded",
+        "type": "object"
+      },
+      "ReadChoice": {
+        "additionalProperties": false,
+        "description": "One read-or-skip choice over the docket.",
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/$defs/DocumentChoice"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "step": {
+            "enum": [
+              "choice1",
+              "choice2"
+            ],
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "reason",
+          "documents",
+          "cost_usd"
+        ],
+        "title": "ReadChoice",
+        "type": "object"
+      },
+      "Trail": {
+        "additionalProperties": false,
+        "description": "The agent's steps and their cost.",
+        "properties": {
+          "beliefs": {
+            "items": {
+              "$ref": "#/$defs/Belief"
+            },
+            "title": "Beliefs",
+            "type": "array"
+          },
+          "lookups": {
+            "items": {
+              "$ref": "#/$defs/Lookup"
+            },
+            "title": "Lookups",
+            "type": "array"
+          },
+          "read_choices": {
+            "items": {
+              "$ref": "#/$defs/ReadChoice"
+            },
+            "title": "Read Choices",
+            "type": "array"
+          },
+          "total_usd": {
+            "title": "Total Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "beliefs",
+          "read_choices",
+          "lookups",
+          "total_usd"
+        ],
+        "title": "Trail",
+        "type": "object"
+      },
+      "Verdict": {
+        "additionalProperties": false,
+        "description": "The NTSB's verdict.",
+        "properties": {
+          "cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cause"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "occurrence": {
+            "items": {
+              "$ref": "#/$defs/Code"
+            },
+            "title": "Occurrence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "occurrence",
+          "findings",
+          "cause"
+        ],
+        "title": "Verdict",
+        "type": "object"
+      },
+      "Withheld": {
+        "additionalProperties": false,
+        "description": "The line that says when and how the case was coded.",
+        "properties": {
+          "coded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the first call was sent, UTC.",
+            "title": "Coded At"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "model": {
+            "description": "The model asked for.",
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "replied_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Replied Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coded_at",
+          "commit",
+          "prompt_version",
+          "model",
+          "replied_models",
+          "providers"
+        ],
+        "title": "Withheld",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "``cases/<case number>.json``: one closed case and its trail.",
+    "properties": {
+      "aircraft": {
+        "$ref": "#/$defs/Aircraft"
+      },
+      "answer": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Answer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "case_number": {
+        "title": "Case Number",
+        "type": "string"
+      },
+      "closed_on": {
+        "format": "date",
+        "title": "Closed On",
+        "type": "string"
+      },
+      "comparison": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Comparison"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "facts": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Facts"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "None when the record was unreachable."
+      },
+      "format": {
+        "const": "board/1",
+        "default": "board/1",
+        "title": "Format",
+        "type": "string"
+      },
+      "grade": {
+        "enum": [
+          "same_first",
+          "same_codes_other_order",
+          "different",
+          "abstained",
+          "not_coded",
+          "awaiting_ntsb"
+        ],
+        "title": "Grade",
+        "type": "string"
+      },
+      "not_coded": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/NotCoded"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "took_days": {
+        "description": "Days from the accident to closure.",
+        "title": "Took Days",
+        "type": "integer"
+      },
+      "trail": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Trail"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "verdict": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Verdict"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "withheld": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Withheld"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "case_number",
+      "closed_on",
+      "took_days",
+      "aircraft",
+      "grade",
+      "facts",
+      "withheld",
+      "answer",
+      "verdict",
+      "comparison",
+      "trail",
+      "not_coded"
+    ],
+    "title": "CaseFile",
+    "type": "object"
+  },
+  "index": {
+    "$defs": {
+      "Aircraft": {
+        "additionalProperties": false,
+        "description": "The aircraft as category and engines. Never make, model or registration.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].aircraftCategory, e.g. 'Airplane'.",
+            "title": "Category"
+          },
+          "engine_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].engines[0].engineType.",
+            "title": "Engine Type"
+          },
+          "engines": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "aircrafts[0].aircraftNumberOfEngines.",
+            "title": "Engines"
+          }
+        },
+        "required": [
+          "category",
+          "engines",
+          "engine_type"
+        ],
+        "title": "Aircraft",
+        "type": "object"
+      },
+      "BoardRow": {
+        "additionalProperties": false,
+        "description": "One closed case on the board.",
+        "properties": {
+          "agent_first": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Code"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aircraft": {
+            "$ref": "#/$defs/Aircraft"
+          },
+          "case_number": {
+            "title": "Case Number",
+            "type": "string"
+          },
+          "closed_on": {
+            "format": "date",
+            "title": "Closed On",
+            "type": "string"
+          },
+          "grade": {
+            "enum": [
+              "same_first",
+              "same_codes_other_order",
+              "different",
+              "abstained",
+              "not_coded",
+              "awaiting_ntsb"
+            ],
+            "title": "Grade",
+            "type": "string"
+          },
+          "ntsb_first": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Code"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "took_days": {
+            "description": "Days from the accident to closure: closed_on - event date.",
+            "title": "Took Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_number",
+          "closed_on",
+          "took_days",
+          "aircraft",
+          "agent_first",
+          "ntsb_first",
+          "grade"
+        ],
+        "title": "BoardRow",
+        "type": "object"
+      },
+      "BuildStamp": {
+        "additionalProperties": false,
+        "description": "When and from what the export was built.",
+        "properties": {
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "training_cutoff": {
+            "format": "date",
+            "title": "Training Cutoff",
+            "type": "string"
+          },
+          "training_cutoff_source": {
+            "title": "Training Cutoff Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "built_at",
+          "commit",
+          "model",
+          "training_cutoff",
+          "training_cutoff_source"
+        ],
+        "title": "BuildStamp",
+        "type": "object"
+      },
+      "Code": {
+        "additionalProperties": false,
+        "description": "One occurrence or finding code and its label.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "Code",
+        "type": "object"
+      },
+      "Counts": {
+        "additionalProperties": false,
+        "description": "The site-wide counts. The only thing the export says about open cases.",
+        "properties": {
+          "awaiting_ntsb": {
+            "title": "Awaiting Ntsb",
+            "type": "integer"
+          },
+          "closures_per_night": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "format": "date"
+            },
+            "title": "Closures Per Night",
+            "type": "object"
+          },
+          "coded": {
+            "title": "Coded",
+            "type": "integer"
+          },
+          "not_coded": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Failure kind to number of cases.",
+            "title": "Not Coded",
+            "type": "object"
+          },
+          "open_watched": {
+            "title": "Open Watched",
+            "type": "integer"
+          },
+          "open_with_docket": {
+            "title": "Open With Docket",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open_watched",
+          "open_with_docket",
+          "closures_per_night",
+          "coded",
+          "not_coded",
+          "awaiting_ntsb"
+        ],
+        "title": "Counts",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "``index.json``: the build stamp, the counts and the board.",
+    "properties": {
+      "counts": {
+        "$ref": "#/$defs/Counts"
+      },
+      "format": {
+        "const": "board/1",
+        "default": "board/1",
+        "title": "Format",
+        "type": "string"
+      },
+      "rows": {
+        "description": "Newest closure first, then case number.",
+        "items": {
+          "$ref": "#/$defs/BoardRow"
+        },
+        "title": "Rows",
+        "type": "array"
+      },
+      "stamp": {
+        "$ref": "#/$defs/BuildStamp"
+      }
+    },
+    "required": [
+      "stamp",
+      "counts",
+      "rows"
+    ],
+    "title": "BoardIndex",
+    "type": "object"
+  }
+}

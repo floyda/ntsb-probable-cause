@@ -308,7 +308,7 @@ def board_json_schema() -> dict[str, object]: ...         # {"index": ..., "case
 }
 ```
 
-- [ ] **Step 1: Failing tests** (`tests/test_live_export.py`):
+- [x] **Step 1: Failing tests** (`tests/test_live_export.py`):
 
 ```python
 def test_sample_index_validates() -> None:
@@ -339,11 +339,11 @@ def test_the_sample_holds_no_forbidden_value() -> None:
 ```
 
   where `SAMPLE = Path("tests/fixtures/board")`, `SCHEMA = Path("docs/schemas/board-1.schema.json")`.
-- [ ] **Step 2: Run** `uv run --locked pytest tests/test_live_export.py -v` — FAIL (module missing).
-- [ ] **Step 3: Write `live/export.py`** with the models above and `board_json_schema()` returning `{"index": BoardIndex.model_json_schema(), "case": CaseFile.model_json_schema()}`. Module docstring: what `board/1` is, the version rule (adding an optional field keeps `board/1`; removing, renaming or changing a meaning makes `board/2`), and the never-holds list (spec §10.2).
-- [ ] **Step 4: Write `tests/board_sample.py`**: invented cases `XXX26XX001` … `XXX26XX006`, one per grade, built as `CaseFile` and `BoardRow` values; the `same_first` case has two read choices and a `scan_only` document; one case is amateur-built (its `Aircraft` carries category and engines only); `FORBIDDEN = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")` names the values its source record would hold and the sample must not. `build() -> dict[str, str]` returns `{"index.json": ..., "cases/XXX26XX001.json": ...}`, each `model.model_dump_json(indent=2) + "\n"`. Add `if __name__ == "__main__":` writing them under `tests/fixtures/board/`.
-- [ ] **Step 5: Write `scripts/board_schema.py`** (`Status`: "Live tooling (S4 Task 3). Free. Writes `docs/schemas/board-1.schema.json` from `live.export`."), `main(argv)` writing `json.dumps(board_json_schema(), indent=2, sort_keys=True) + "\n"`. `Makefile`: `board-schema:` → `uv run --locked python -m scripts.board_schema`; `board-sample:` → `uv run --locked python -m tests.board_sample`. Run both.
-- [ ] **Step 6: Run** the tests — PASS. `make check`.
+- [x] **Step 2: Run** `uv run --locked pytest tests/test_live_export.py -v` — FAIL (module missing).
+- [x] **Step 3: Write `live/export.py`** with the models above and `board_json_schema()` returning `{"index": BoardIndex.model_json_schema(), "case": CaseFile.model_json_schema()}`. Module docstring: what `board/1` is, the version rule (adding an optional field keeps `board/1`; removing, renaming or changing a meaning makes `board/2`), and the never-holds list (spec §10.2).
+- [x] **Step 4: Write `tests/board_sample.py`**: invented cases `XXX26XX001` … `XXX26XX006`, one per grade, built as `CaseFile` and `BoardRow` values; the `same_first` case has two read choices and a `scan_only` document; one case is amateur-built (its `Aircraft` carries category and engines only); `FORBIDDEN = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")` names the values its source record would hold and the sample must not. `build() -> dict[str, str]` returns `{"index.json": ..., "cases/XXX26XX001.json": ...}`, each `model.model_dump_json(indent=2) + "\n"`. Add `if __name__ == "__main__":` writing them under `tests/fixtures/board/`.
+- [x] **Step 5: Write `scripts/board_schema.py`** (`Status`: "Live tooling (S4 Task 3). Free. Writes `docs/schemas/board-1.schema.json` from `live.export`."), `main(argv)` writing `json.dumps(board_json_schema(), indent=2, sort_keys=True) + "\n"`. `Makefile`: `board-schema:` → `uv run --locked python -m scripts.board_schema`; `board-sample:` → `uv run --locked python -m tests.board_sample`. Run both.
+- [x] **Step 6: Run** the tests — PASS. `make check`.
 - [ ] **Step 7:** commit: `S4 Task 3: the board/1 format, its JSON Schema and an invented sample (decision 0173)`. **Controller:** push the branch and tell Andy S5 can start from `docs/schemas/board-1.schema.json` and `tests/fixtures/board/`.
 
 ## Task 4: The names measurement on `dev-400` (decision 0180 item 4) — built by a subagent, run by the Controller
@@ -823,3 +823,4 @@ jobs:
 - 2026-10-11, Task 1 fix round: `make s33-mutation-sweep` reported `isDefiningEvent` at `fields.py:166-167` MISFILED, because the sweep keys literals by module and value, so the one `[selects]` entry covered three sites and two of them (in `_ordered_events`, feeding only the withheld `eventCode`) cannot move `+t`. Added `fields._is_defining` holding the only literal, mirroring `_sequence`; behaviour is unchanged.
 
 - 2026-10-11 (Task 2): `tests/test_sources_settings.py::test_no_module_but_sources_names_a_luna_model` forbade any `-luna` text outside `sources.py`, which the brief's literal in `live/morning.py` breaks. The test now allows `morning.py` and requires exactly one occurrence there. `request_sha256` mirrors `rendered_sha256`'s per-request cut and dump (rendered.py exposes no per-request helper); it reuses `MODEL_FACING_KEYS`.
+- 2026-10-11 (Task 3): in the sample, an abstained case's `BoardRow.agent_first` is `None` (its `answer` still holds the codes); the brief did not say. `_belief` in `tests/board_sample.py` carries a `noqa` for argument count. Neither changes the format.

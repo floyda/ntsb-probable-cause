@@ -1,0 +1,42 @@
+{
+  "format": "board/1",
+  "case_number": "XXX26XX005",
+  "closed_on": "2026-10-02",
+  "took_days": 75,
+  "aircraft": {
+    "category": "Helicopter",
+    "engines": 1,
+    "engine_type": "Turbo shaft"
+  },
+  "grade": "not_coded",
+  "facts": {
+    "state": "CO",
+    "kind_of_flight": "Aerial observation",
+    "injury_level": "Fatal",
+    "documents_read": 0,
+    "documents_listed": 4
+  },
+  "withheld": null,
+  "answer": null,
+  "verdict": {
+    "occurrence": [
+      {
+        "code": "300341",
+        "label": "Takeoff: Loss of engine power (total)"
+      }
+    ],
+    "findings": [
+      {
+        "code": "0102282001",
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+      }
+    ],
+    "cause": "A total loss of engine power on takeoff."
+  },
+  "comparison": null,
+  "trail": null,
+  "not_coded": {
+    "kind": "leak",
+    "sentence": "A document in the docket held the NTSB's probable cause, so the case could not be shown to the agent."
+  }
+}

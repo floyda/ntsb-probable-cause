@@ -1,0 +1,126 @@
+{
+  "format": "board/1",
+  "case_number": "XXX26XX004",
+  "closed_on": "2026-10-05",
+  "took_days": 102,
+  "aircraft": {
+    "category": "Airplane",
+    "engines": 2,
+    "engine_type": "Reciprocating"
+  },
+  "grade": "abstained",
+  "facts": {
+    "state": "FL",
+    "kind_of_flight": "Business",
+    "injury_level": "Fatal",
+    "documents_read": 0,
+    "documents_listed": 1
+  },
+  "withheld": {
+    "coded_at": "2026-10-09T03:14:07Z",
+    "commit": "a1b2c3d",
+    "prompt_version": "s3-v1+ge17fecdc66ec+tdff9dea78f23",
+    "model": "openai/gpt-6-luna",
+    "replied_models": [
+      "openai/gpt-6-luna-2026-09-30"
+    ],
+    "providers": [
+      "ExampleProvider"
+    ]
+  },
+  "answer": {
+    "occurrence": [
+      {
+        "code": "452240",
+        "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+      }
+    ],
+    "findings": [],
+    "cause": "The evidence read does not support a probable cause.",
+    "confidence": 0.12,
+    "abstained": true
+  },
+  "verdict": {
+    "occurrence": [
+      {
+        "code": "402341",
+        "label": "Enroute-Cruise: Loss of engine power (total)"
+      }
+    ],
+    "findings": [
+      {
+        "code": "0102282001",
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+      }
+    ],
+    "cause": "A total loss of engine power due to a fuel system failure."
+  },
+  "comparison": {
+    "agent_occurrence": [
+      {
+        "code": "452240",
+        "label": "Maneuvering-Low-alt flying: Loss of control in flight",
+        "mark": "not_in_other"
+      }
+    ],
+    "ntsb_occurrence": [
+      {
+        "code": "402341",
+        "label": "Enroute-Cruise: Loss of engine power (total)",
+        "mark": "not_in_other"
+      }
+    ],
+    "findings_both": [],
+    "findings_ntsb_only": [
+      {
+        "code": "0102282001",
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+      }
+    ],
+    "findings_agent_only": [],
+    "finding_precision_10": null,
+    "finding_recall_10": 0.0
+  },
+  "trail": {
+    "beliefs": [
+      {
+        "kind": "h0",
+        "first": {
+          "code": "452240",
+          "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+        },
+        "cause": "The evidence read does not support a probable cause.",
+        "account": "The record gives a twin-engine airplane that descended during cruise. The docket holds one document and it could not be read. There is not enough to name a cause.",
+        "confidence": 0.01999999999999999,
+        "changed": false,
+        "cost_usd": 0.0041
+      },
+      {
+        "kind": "answer",
+        "first": {
+          "code": "452240",
+          "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+        },
+        "cause": "The evidence read does not support a probable cause.",
+        "account": "The record gives a twin-engine airplane that descended during cruise. The docket holds one document and it could not be read. There is not enough to name a cause.",
+        "confidence": 0.12,
+        "changed": false,
+        "cost_usd": 0.0066
+      }
+    ],
+    "read_choices": [],
+    "lookups": [
+      {
+        "tool": "describe_codes",
+        "arguments": {
+          "codes": [
+            "452240"
+          ]
+        },
+        "cost_usd": 0.0
+      }
+    ],
+    "total_usd": 0.0107
+  },
+  "not_coded": null
+}
