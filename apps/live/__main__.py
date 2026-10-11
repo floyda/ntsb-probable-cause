@@ -4,23 +4,31 @@
 the bucket (``runs/``, ``scores/``, ``nights/``), with no store, so the open-case counts are zero.
 It reads files, calls no model and prints counts only, never a case number.
 
-``run``: one live morning (S3.3 spec sections 4 and 9, decisions 0158, 0160, 0163).
+``run``: one cloud night (S4 spec section 5, decisions 0171, 0172, 0177), in the live image
+only. Paid nights run only where ``NTSB_COMMIT_SHA`` and ``NTSB_LIVE_BUCKET`` are both set (the
+live image sets them); anywhere else ``run`` without ``--dry-run`` refuses with one line and
+does nothing (decision 0171). In the image it builds
+:class:`~ntsb_probable_cause.live.night.NightDeps`: a mirror of the bucket under
+``<data_dir>/live-mirror`` (boto3 S3, its listing paginated), the morning's sink a
+``MirrorSink`` over it and its runs folder the mirror's ``runs/``, the live key's spend from
+OpenRouter's key endpoint (httpx), alerts to SNS, the metric to CloudWatch, and an export built
+from the mirror into ``<data_dir>/live-export`` with its own store copy. The same-day marker
+in the bucket replaces the Mac's ``live.lock``. boto3 is imported only on that path.
 
-This builds the deployed :class:`~ntsb_probable_cause.live.morning.MorningDeps` from
-:class:`~ntsb_probable_cause.settings.Settings` and runs the morning. The store is pulled to a
-work file and never uploaded; spend and results are read from, and written to, the runs folder.
-The docket client uses ``settings.live_docket_dir``, never ``settings.docket_dir``.
-
-No two mornings at once: a morning holds an exclusive, non-blocking lock on
-``<runs_dir>/live.lock`` for its whole length. A second one exits at once with a plain message
-and does nothing else (a dry run takes the lock too: it replaces the same store work file).
+``run --dry-run``: with ``NTSB_LIVE_BUCKET`` set, the bucket is pulled into a temporary folder
+under ``data_dir`` through a bucket that refuses every write, and the morning's dry run reads
+it, the live key's spend and the store; alerts are printed. Without it, the S3.3 local dry run
+(S3.3 spec sections 4 and 9): the store pulled to a work file, spend and results read from the
+runs folder, under an exclusive, non-blocking lock on ``<runs_dir>/live.lock``. The docket client
+uses ``settings.live_docket_dir``, never ``settings.docket_dir``.
 
 A refusal (a ``ConfigurationError`` or ``BudgetError``, or an AWS login that has expired) is one
 line on stderr and exit code 1, never a traceback and never a value from the environment.
 
 No error line names a live case (decision 0160, the open-split fence): a ``FetchError`` or
-``DocketError`` is reported by its class alone, and every line printed for an error passes through
-:func:`scrubbed`, which replaces NTSB case numbers and docket and case keys.
+``DocketError`` is reported by its class alone, with its runbook row (decision 0175), and every
+line printed for an error passes through :func:`scrubbed`, which replaces NTSB case numbers and
+docket and case keys.
 """
 
 import argparse
@@ -29,10 +37,15 @@ import hashlib
 import re
 import subprocess
 import sys
-from collections.abc import Iterator, Sequence
+import tempfile
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Final
+
+import httpx
 
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
@@ -43,7 +56,17 @@ from ntsb_probable_cause.errors import (
     DocketError,
 )
 from ntsb_probable_cause.gitinfo import commit_state
-from ntsb_probable_cause.live.board import write_export
+from ntsb_probable_cause.live.board import build_export, write_export
+from ntsb_probable_cause.live.cloud import (
+    BucketLike,
+    BucketMirror,
+    MetricLike,
+    MirrorSink,
+    OpenRouterKeySpend,
+    PrintAlerts,
+    SnsAlerts,
+    SnsLike,
+)
 from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import (
     STORE_WORK_FILENAME,
@@ -52,6 +75,7 @@ from ntsb_probable_cause.live.local import (
     S3StoreSource,
 )
 from ntsb_probable_cause.live.morning import MorningDeps, MorningSummary, run_morning
+from ntsb_probable_cause.live.night import NightDeps, NightReport, run_night
 from ntsb_probable_cause.model.client import ModelClient
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
 from ntsb_probable_cause.scoring.runner import BatchRunner
@@ -59,6 +83,14 @@ from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.store.sync import Location
 
 LOCK_FILENAME = "live.lock"
+MIRROR_DIRNAME: Final = "live-mirror"
+EXPORT_DIRNAME: Final = "live-export"
+EXPORT_STORE_FILENAME: Final = "live-export-store.sqlite"
+IMAGE_ONLY: Final = (
+    "ntsb-live run: paid nights run only in the live image (decision 0171); use --dry-run here."
+)
+_HTTP_TIMEOUT_SECONDS: Final = 30.0
+_PRECONDITION_FAILED: Final = 412
 _CASE_NUMBER = re.compile(r"\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}\b")
 # "docket 1234567", "mKey 1234567", and the pairing guard's "not its own 1234567".
 _KEY = re.compile(r"\b(docket|mkey|own)([\s:=]+)\d+", re.IGNORECASE)
@@ -177,6 +209,204 @@ def _report(args: argparse.Namespace, settings: Settings) -> int:
         return report_main(["--out", args.out] if args.out else [])
 
 
+class S3Bucket:
+    """``cloud.BucketLike`` over a boto3 S3 client."""
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def list_keys(self, bucket: str, prefix: str) -> list[tuple[str, int]]:
+        """Every ``(key, size)`` under ``prefix``, from every page of the listing.
+
+        ``list_objects_v2`` answers at most 1,000 keys a page; a page left unread would hide
+        old runs, and their cases would be coded again (carried ruling 6, Task 9).
+        """
+        found: list[tuple[str, int]] = []
+        for page in self._client.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Prefix=prefix
+        ):
+            found.extend((str(item["Key"]), int(item["Size"])) for item in page.get("Contents", []))
+        return found
+
+    def download_file(self, bucket: str, key: str, filename: str) -> None:
+        """Download one object."""
+        self._client.download_file(bucket, key, filename)
+
+    def upload_file(self, filename: str, bucket: str, key: str) -> None:
+        """Upload one file, replacing any object there."""
+        self._client.upload_file(filename, bucket, key)
+
+    def put_if_absent(self, bucket: str, key: str, body: bytes) -> bool:
+        """``put_object`` with ``IfNoneMatch="*"``: one atomic check and write.
+
+        Returns False when the key exists (S3 answers ``PreconditionFailed``, HTTP 412); any
+        other error is raised (carried ruling 9, Task 9).
+        """
+        try:
+            self._client.put_object(Bucket=bucket, Key=key, Body=body, IfNoneMatch="*")
+        except Exception as error:
+            if _precondition_failed(error):
+                return False
+            raise
+        return True
+
+
+def _precondition_failed(error: Exception) -> bool:
+    response = getattr(error, "response", None)
+    if not isinstance(response, dict):
+        return False
+    code: object = response.get("Error", {}).get("Code")
+    status: object = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return bool(code == "PreconditionFailed" or status == _PRECONDITION_FAILED)
+
+
+class ReadOnlyBucket:
+    """A bucket that reads through and refuses every write (a dry run writes nothing)."""
+
+    def __init__(self, inner: BucketLike) -> None:
+        self._inner = inner
+
+    def list_keys(self, bucket: str, prefix: str) -> list[tuple[str, int]]:
+        """The inner bucket's listing."""
+        return self._inner.list_keys(bucket, prefix)
+
+    def download_file(self, bucket: str, key: str, filename: str) -> None:
+        """The inner bucket's download."""
+        self._inner.download_file(bucket, key, filename)
+
+    def upload_file(self, filename: str, bucket: str, key: str) -> None:
+        """Refused."""
+        raise ConfigurationError("a dry run writes nothing to the bucket")
+
+    def put_if_absent(self, bucket: str, key: str, body: bytes) -> bool:
+        """Refused."""
+        raise ConfigurationError("a dry run writes nothing to the bucket")
+
+
+def http_get(url: str, *, headers: Mapping[str, str]) -> tuple[int, object]:
+    """``cloud.HttpGet`` over ``httpx.get``: the status and the decoded body (None if not JSON)."""
+    response = httpx.get(url, headers=dict(headers), timeout=_HTTP_TIMEOUT_SECONDS)
+    try:
+        body: object = response.json()
+    except ValueError:
+        body = None
+    return response.status_code, body
+
+
+def _aws_clients() -> tuple[Any, SnsLike, MetricLike]:
+    """boto3's S3, SNS and CloudWatch clients, imported only for a cloud night or dry run."""
+    try:
+        import boto3  # noqa: PLC0415 -- the optional `aws` extra, as store/sync.py imports it
+    except ImportError as error:
+        raise ConfigurationError(
+            "boto3 is not installed; install the 'aws' extra (uv sync --extra aws)."
+        ) from error
+    return boto3.client("s3"), boto3.client("sns"), boto3.client("cloudwatch")
+
+
+def _key_spend(settings: Settings) -> OpenRouterKeySpend:
+    return OpenRouterKeySpend(
+        settings.require_openrouter_key(), settings.openrouter_base_url, http_get
+    )
+
+
+def _exporter(settings: Settings) -> Callable[[Path], Path]:
+    """The night's export: ``build_export`` with its own store copy, the commit and the day.
+
+    The store is pulled again to a work file of its own (the morning has discarded its copy)
+    and discarded after. The export goes to ``<data_dir>/live-export``, outside the mirror.
+    """
+    commit = settings.commit_sha or ""
+
+    def export(mirror: Path) -> Path:
+        source = S3StoreSource(Location(settings.store), settings.data_dir / EXPORT_STORE_FILENAME)
+        store = source.open()
+        try:
+            now = datetime.now(UTC)
+            return build_export(
+                mirror,
+                settings.data_dir / EXPORT_DIRNAME,
+                store=store,
+                today=now.date(),
+                commit=commit,
+                now=now,
+            )
+        finally:
+            source.discard()
+
+    return export
+
+
+def build_night_deps(settings: Settings) -> NightDeps:
+    """The deployed dependencies of a cloud night, built from ``settings`` (in the image only).
+
+    Raises:
+        ConfigurationError: the commit, the bucket or the alert topic is not set, or boto3 is
+            not installed.
+    """
+    sha, bucket, topic = settings.commit_sha, settings.live_bucket, settings.live_alert_topic_arn
+    if sha is None or bucket is None:
+        raise ConfigurationError(IMAGE_ONLY)
+    if topic is None:
+        raise ConfigurationError(
+            "NTSB_LIVE_ALERT_TOPIC_ARN is not set: a cloud night must be able to send its alerts"
+        )
+    s3, sns, cloudwatch = _aws_clients()
+    local = settings.data_dir / MIRROR_DIRNAME
+    mirror = BucketMirror(bucket, local, S3Bucket(s3))
+    night_settings = settings.model_copy(update={"runs_dir": local / "runs"})
+    morning = replace(
+        build_deps(night_settings),
+        spend=_key_spend(settings),
+        sink=MirrorSink(mirror, local),
+        commit=lambda: (sha, False),  # the image is built from a clean commit (decision 0171)
+    )
+    return NightDeps(
+        morning=morning,
+        mirror=mirror,
+        alerts=SnsAlerts(topic, sns),
+        metric=cloudwatch,
+        ntsb=morning.ntsb,
+        export=_exporter(settings),
+    )
+
+
+def _night(args: argparse.Namespace, settings: Settings) -> int:
+    """Run one cloud night; exit 1 when something stopped it, 0 otherwise."""
+    report: NightReport = run_night(build_night_deps(settings), limit=args.limit)
+    if not report.started:
+        return 0
+    if report.outcome is not None:
+        print(format_summary(report.outcome.summary))
+    else:
+        print(f"night stopped: {report.alerts[0]}")
+    print(f"later scores: {report.later_scored}")
+    for kind in report.alerts:
+        print(f"alert: {kind}")
+    return 0 if report.outcome is not None else 1
+
+
+def _cloud_dry_run(args: argparse.Namespace, settings: Settings) -> int:
+    """The morning's dry run on a temporary mirror of the bucket; nothing is written to it."""
+    bucket = settings.live_bucket
+    if bucket is None:  # the caller checked; kept for the type checker
+        raise ConfigurationError("NTSB_LIVE_BUCKET is not set")
+    s3, _sns, _metric = _aws_clients()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="live-dry-run-", dir=settings.data_dir) as work:
+        local = Path(work) / "mirror"
+        mirror = BucketMirror(bucket, local, ReadOnlyBucket(S3Bucket(s3)))
+        mirror.pull()
+        dry = settings.model_copy(update={"runs_dir": local / "runs"})
+        deps = replace(build_deps(dry), spend=_key_spend(settings), sink=MirrorSink(mirror, local))
+        outcome = run_morning(deps, dry_run=True, limit=args.limit)
+    print(format_summary(outcome.summary))
+    alerts = PrintAlerts()
+    for kind in outcome.alerts:
+        alerts.send([kind], {})
+    return 0
+
+
 def _models(settings: Settings) -> tuple[ModelClient, BatchRunner | None]:
     http = OpenRouterClient(
         settings.require_openrouter_key(), base_url=settings.openrouter_base_url
@@ -290,33 +520,52 @@ def _error_line(command: str, settings: Settings, error: Exception) -> str | Non
         # Its text names the case's docket key, so only its class is said.
         return (
             f"{command}: {type(error).__name__}: a case's record or docket could not be read; "
-            "no case is named here. Tell Claude if it happens again."
+            "no case is named here. See the runbook, 'fetch-failed'."
         )
     if isinstance(error, BudgetError | ConfigurationError | FileNotFoundError):
         return f"{command}: {error}"
     return _aws_message(command, error) if _is_aws_error(error) else None
 
 
+def _local_dry_run(args: argparse.Namespace, settings: Settings) -> int:
+    """S3.3's dry run on the local runs folder, under the morning lock."""
+    with morning_lock(settings.runs_dir):
+        outcome = run_morning(build_deps(settings), dry_run=True, limit=args.limit)
+    print(format_summary(outcome.summary))
+    for kind in outcome.alerts:
+        print(f"alert: {kind}")
+    return 0
+
+
+def _dispatch(args: argparse.Namespace, settings: Settings) -> int:
+    if args.command == "export":
+        return _export(args)
+    if args.command == "report":
+        return _report(args, settings)
+    if not args.dry_run:
+        return _night(args, settings)
+    if settings.live_bucket is not None:
+        return _cloud_dry_run(args, settings)
+    return _local_dry_run(args, settings)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse arguments and run one morning, or print the report. Returns the exit code."""
+    """Parse arguments and run one night or dry run, or a report or export; the exit code."""
     args = _build_parser().parse_args(argv)
     settings = Settings()
+    if (
+        args.command == "run"
+        and not args.dry_run
+        and (settings.commit_sha is None or settings.live_bucket is None)
+    ):
+        return _fail(IMAGE_ONLY)  # before anything else: paid calls only from the image (0171)
     try:
-        if args.command == "export":
-            return _export(args)
-        if args.command == "report":
-            return _report(args, settings)
-        with morning_lock(settings.runs_dir):
-            outcome = run_morning(build_deps(settings), dry_run=args.dry_run, limit=args.limit)
+        return _dispatch(args, settings)
     except Exception as error:
         line = _error_line(args.command, settings, error)
         if line is None:
             raise
         return _fail(line)
-    print(format_summary(outcome.summary))
-    for kind in outcome.alerts:
-        print(f"alert: {kind}")
-    return 0
 
 
 if __name__ == "__main__":

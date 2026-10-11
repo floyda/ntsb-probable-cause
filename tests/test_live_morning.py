@@ -8,6 +8,7 @@ scripted batch client. No test reaches the network, OpenRouter, the NTSB API or 
 
 import dataclasses
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -28,12 +29,13 @@ from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.agent.version import VERSION_1
 from ntsb_probable_cause.docket.listing import Listing, ListingEntry
 from ntsb_probable_cause.docket.manifest import Docket, DocumentRecord
-from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live import morning
 from ntsb_probable_cause.live.fetch import FetchError
 from ntsb_probable_cause.live.local import LocalFolderSink
 from ntsb_probable_cause.live.morning import (
+    ALERT_KINDS,
     LIVE_CAP_USD,
     LIVE_MARGIN_USD,
     LIVE_MONTH_CAP_USD,
@@ -805,6 +807,7 @@ def _real_runner_morning(
             docket=Dockets(),
             now=kwargs["now"],
             pass_reasoning=False,
+            on_reply=kwargs.get("on_reply"),
         )
 
     monkeypatch.setattr(morning, "AgentRunner", build)
@@ -826,6 +829,47 @@ def test_n_the_real_runners_folder_is_portable_and_its_manifest_sound(
     names = {p.name for p in folder.iterdir()}
     assert {INPUTS_FILE, CLOSURES_FILE, BACKFILL_FILE, "spec.json"} <= names
     assert len((folder / CLOSURES_FILE).read_text().splitlines()) == 2
+
+
+def test_the_reply_hook_is_given_the_folder_with_its_inputs_before_the_first_request(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S4 Task 10: the pending inputs and backfill are in the folder before any request."""
+    folders: list[Path] = []
+    told: list[set[str]] = []
+
+    def factory(folder: Path) -> Any:
+        folders.append(folder)
+        return lambda: told.append({p.name for p in folder.iterdir()})
+
+    rig_deps = rig.deps
+    monkeypatch.setattr(rig, "deps", lambda **c: rig_deps(on_reply_factory=factory, **c))
+    summary, fake = _real_runner_morning(rig, monkeypatch, RAWS)
+    assert summary.run_id is not None
+    assert folders == [rig.runs_dir / summary.run_id]
+    assert {INPUTS_FILE, BACKFILL_FILE, "spec.json"} <= told[0]
+    assert "replies.jsonl" not in told[0]
+    assert not (rig.runs_dir / PENDING).exists()
+    assert len(told) == fake.calls + 1
+
+
+def test_a_resumed_run_gives_the_hook_its_own_folder(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies = _sync_replies(_scripts())
+    with pytest.raises(_KilledError):
+        _real_runner_morning(rig, monkeypatch, RAWS, fake=_Recording(replies, die_at=4))
+    (folder,) = [p for p in rig.runs_dir.iterdir() if p.is_dir()]
+    folders: list[Path] = []
+
+    def factory(given: Path) -> Any:
+        folders.append(given)
+        return lambda: None
+
+    rig_deps = rig.deps
+    monkeypatch.setattr(rig, "deps", lambda **c: rig_deps(on_reply_factory=factory, **c))
+    _real_runner_morning(rig, monkeypatch, RAWS, fake=_Recording(replies[3:]))
+    assert folders == [folder]
 
 
 def test_a_cut_live_morning_resumes_on_the_real_runner_and_asks_only_for_the_rest(
@@ -950,9 +994,66 @@ def test_an_outage_night_counts_against_no_case(rig: Rig) -> None:
     assert outcome.summary.returned == 3
 
 
-def test_the_night_state_is_written_after_the_records(rig: Rig) -> None:
+def test_the_night_state_is_written_straight_after_the_fetches(rig: Rig) -> None:
+    """Carried ruling 3 (Task 7): before the run, so a night killed later keeps its counts."""
     night(rig.deps())
-    assert rig.events.index("write") < rig.events.index("state")
+    assert rig.events.index("state") < rig.events.index("write")
+    assert len(rig.sink.state_writes) == 1
+
+
+def test_a_night_killed_in_the_run_keeps_its_counted_failures(rig: Rig) -> None:
+    rig.fetch_fails = {"XXX26LA001"}
+    _StubRunner.raises = RuntimeError("killed")
+    with pytest.raises(RuntimeError, match="killed"):
+        night(rig.deps())
+    assert rig.sink.state.failures == {"XXX26LA001": 1}
+
+
+def test_returned_leaves_out_a_case_settled_final_tonight(rig: Rig) -> None:
+    """Carried ruling 2 (Task 7): a case moved to unreachable is not back in the queue."""
+    rig.fetch_fails = {"XXX26LA001", "XXX26LA002"}
+    rig.sink.state = NightState(failures={"XXX26LA001": 6})
+    summary = run_morning(rig.deps())
+    assert "XXX26LA001" in rig.sink.state.unreachable
+    assert summary.returned == 1  # XXX26LA002 only
+    assert summary.failures_counted == 2
+
+
+def test_an_outage_counts_no_failure(rig: Rig) -> None:
+    rig.fetch_fails = {"XXX26LA001", "XXX26LA002", "XXX26LA003"}
+    assert run_morning(rig.deps()).failures_counted == 0
+
+
+def test_the_runners_budget_guard_is_a_refusal_before_any_run_folder(
+    rig: Rig, tmp_path: Path
+) -> None:
+    """Carried ruling 1 (Task 7): kind ``budget-guard``, checked before the folder is made."""
+    rig.settings = Settings(data_dir=tmp_path / "data", monthly_budget_usd=0.5)
+    with pytest.raises(LiveRefusal) as caught:
+        run_morning(rig.deps())
+    assert caught.value.kind == "budget-guard"
+    assert all(not runner.runs for runner in _StubRunner.instances)
+    assert [p for p in rig.runs_dir.iterdir() if p.is_dir()] == []
+    assert rig.refusals()[-1]["kind"] == "budget-guard"
+
+
+def test_a_budget_error_from_the_runner_itself_is_a_refusal_too(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: Any, **_kwargs: Any) -> RunRecord:
+        raise BudgetError("projected over the budget")
+
+    monkeypatch.setattr(_StubRunner, "run", refuse)
+    with pytest.raises(LiveRefusal) as caught:
+        run_morning(rig.deps())
+    assert caught.value.kind == "budget-guard"
+
+
+def test_every_kind_is_listed_once_and_an_unlisted_kind_is_refused() -> None:
+    assert len(ALERT_KINDS) == len(set(ALERT_KINDS))
+    assert all(re.fullmatch(r"[a-z][a-z0-9-]*", kind) for kind in ALERT_KINDS)
+    with pytest.raises(ValueError, match="not an alert kind"):
+        LiveRefusal("Version Refused", "x")
 
 
 def test_a_dry_run_writes_no_state(rig: Rig) -> None:

@@ -1447,3 +1447,83 @@ class TestContextCeiling:
         assert len(resumed.submitted) == 2  # A's next call (index 2) is over: no round 3
         assert [len(o.calls) for o in _outcomes(loops)] == [2, 2]
         assert [o.stop_reason for o in _outcomes(loops)] == [CONTEXT_FAILURE, "done"]
+
+
+# --------------------------------------------------------------------------------------------
+# The observer the cloud night copies the folder out with (S4 Task 10, decision 0172)
+# --------------------------------------------------------------------------------------------
+
+
+class TestOnReply:
+    """``on_reply`` is told before the first request and after every row, and changes nothing."""
+
+    def _observed(self, folder: Path, client: ScriptedClient) -> list[int]:
+        """The number of rows on disk each time ``on_reply`` is told."""
+        seen: list[int] = []
+
+        def observe() -> None:
+            path = folder / REPLIES_FILE
+            seen.append(len(path.read_text().splitlines()) if path.is_file() else 0)
+
+        drive_sync(_loops(), client, folder=folder, now=Clock(), on_reply=observe)
+        return seen
+
+    def test_it_is_told_before_the_first_request_and_after_each_row(self, tmp_path: Path) -> None:
+        client = ScriptedClient(_sync_replies(_scripts()))
+        seen = self._observed(tmp_path / "run", client)
+        assert client.calls == 10
+        assert seen == list(range(11))  # 0 rows before the first call, then one per row
+
+    def test_a_failed_call_is_a_row_and_is_told_too(self, tmp_path: Path) -> None:
+        client = ScriptedClient(_sync_replies(_scripts([None, *B_REPLIES])))
+        seen = self._observed(tmp_path / "run", client)
+        assert client.calls == 11
+        assert seen == list(range(12))
+
+    def test_it_never_changes_the_requests_or_their_rows(self, tmp_path: Path) -> None:
+        plain = _loops()
+        drive_sync(
+            plain, ScriptedClient(_sync_replies(_scripts())), folder=tmp_path / "a", now=Clock()
+        )
+        self._observed(tmp_path / "b", ScriptedClient(_sync_replies(_scripts())))
+        assert (tmp_path / "a" / REPLIES_FILE).read_text() == (
+            tmp_path / "b" / REPLIES_FILE
+        ).read_text()
+
+    def test_a_resume_tells_it_once_before_the_first_new_request_only(self, tmp_path: Path) -> None:
+        folder = tmp_path / "run"
+        replies = _sync_replies(_scripts())
+        with pytest.raises(_KilledError):
+            drive_sync(_loops(), ScriptedClient(replies, die_at=4), folder=folder, now=Clock())
+        rest = ScriptedClient(replies[3:])
+        seen = self._observed(folder, rest)
+        assert rest.calls == 7
+        assert seen == list(range(3, 11))
+
+    def test_a_resume_with_nothing_left_to_send_tells_no_one(self, tmp_path: Path) -> None:
+        folder = tmp_path / "run"
+        drive_sync(_loops(), ScriptedClient(_sync_replies(_scripts())), folder=folder, now=Clock())
+        assert self._observed(folder, ScriptedClient([])) == []
+
+    def test_an_observer_that_fails_stops_the_run_before_the_next_request(
+        self, tmp_path: Path
+    ) -> None:
+        client = ScriptedClient(_sync_replies(_scripts()))
+        told: list[int] = []
+
+        def fail_on_second() -> None:
+            told.append(1)
+            if len(told) == 2:
+                raise OSError("bucket down")
+
+        with pytest.raises(OSError, match="bucket down"):
+            drive_sync(
+                _loops(), client, folder=tmp_path / "run", now=Clock(), on_reply=fail_on_second
+            )
+        assert client.calls == 1  # the row of the first call is on disk; no second call was sent
+        assert len(_replies(tmp_path / "run")) == 1
+
+    def test_absent_it_is_never_called(self, tmp_path: Path) -> None:
+        client = ScriptedClient(_sync_replies(_scripts()))
+        drive_sync(_loops(), client, folder=tmp_path / "run", now=Clock(), on_reply=None)
+        assert client.calls == 10

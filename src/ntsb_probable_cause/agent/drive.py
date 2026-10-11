@@ -243,6 +243,7 @@ def drive_sync(
     *,
     folder: Path,
     now: Callable[[], datetime],
+    on_reply: Callable[[], None] | None = None,
 ) -> None:
     """Run every loop to its end, one call at a time, each loop in turn.
 
@@ -260,6 +261,13 @@ def drive_sync(
         client: the model client.
         folder: the run folder; ``replies.jsonl`` is appended to.
         now: the clock; the only source of times.
+        on_reply: an observer, told (with no arguments) once before the first request this call
+            sends, and again after each ``replies.jsonl`` row is written, before that reply is
+            given to its loop. The cloud night copies the folder to its bucket with it, so the
+            folder a resume needs is there before every request (S4 Task 10). It is told
+            nothing else and changes no request or its order; if it raises, the run stops there
+            and no further request is sent. A resume with nothing left to send tells it
+            nothing. None tells no one.
 
     Raises:
         ConfigurationError: the folder does not match these loops, or holds a batch round that
@@ -270,11 +278,15 @@ def drive_sync(
             f"cannot continue: {folder / ROUNDS_FILE} holds a batch round that was never "
             "finished, so its calls may already be paid for. Resume it with drive_batch."
         )
+    told_before_first = False
     for loop in loops:
         while (call := loop.next_call()) is not None:
             if estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
                 loop.stop(CONTEXT_FAILURE)
                 break
+            if on_reply is not None and not told_before_first:
+                told_before_first = True
+                on_reply()
             sent_at = now()
             sha = request_sha256(call)
             reply: ModelReply | None = None
@@ -296,6 +308,8 @@ def drive_sync(
                 request_sha256=sha,
             )
             write_jsonl(folder / REPLIES_FILE, [row])
+            if on_reply is not None:
+                on_reply()
             _accept(loop, row)
 
 

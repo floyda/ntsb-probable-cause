@@ -226,7 +226,8 @@ def _checks(  # noqa: PLR0913, PLR0917 -- one section, six inputs.
     closures: Sequence[Closure],
 ) -> list[str]:
     (occ_codes, occ_cases), (find_codes, find_cases) = _missing_codes(runs, tables)
-    kinds = Counter(str(row.get("reason", "unknown")) for row in refusals)
+    # Rows since S4 Task 7 are ``{"at", "kind"}``; S3.3's held ``reason`` and are still read.
+    kinds = Counter(str(row.get("kind", row.get("reason", "unknown"))) for row in refusals)
     unscored = sum(1 for r in records if r.outcome == "coded" and not r.scored)
     na_numbers = {c.ntsb_number for c in closures if c.closed_as == "N/A"}
     na_coded = sum(1 for r in records if r.case_id in na_numbers)
@@ -317,7 +318,8 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
         folders: Live run folders, oldest first.
         closures: Every closure in the recorder's store.
         tables: The code tables Ellery and the scorer share.
-        refusals: Rows of ``live-refusals.jsonl`` (``{"at", "reason"}``).
+        refusals: Rows of ``live-refusals.jsonl`` (``{"at", "kind"}``; S3.3's older rows
+            are ``{"at", "reason"}`` and read the same way).
         today: The UTC date the report is read on (the closing rule's clock).
         counts: Rows of ``live-morning-counts.jsonl`` (counts and run ids only).
 

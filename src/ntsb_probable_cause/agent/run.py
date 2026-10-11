@@ -172,6 +172,9 @@ class AgentRunner:
         ledger_path: the held-out ledger; a held-out run needs it, as ``Runner``'s does.
         is_committed: whether a path is committed; git's unless a test gives another. A
             ``heldout-400`` run is refused until ``S32_REGISTRATION`` is (decision 0142).
+        on_reply: the sync driver's observer (``drive.drive_sync``): told before the run's
+            first request and after each reply row. Passed to ``drive_sync`` only; a batch run
+            never calls it. The live night copies the folder to its bucket with it (S4 Task 10).
     """
 
     def __init__(  # noqa: PLR0913 -- the plan's interface, plus the loop settings it records.
@@ -193,6 +196,7 @@ class AgentRunner:
         max_rounds: int = MAX_ROUNDS,
         ledger_path: Path | None = None,
         is_committed: Callable[[Path], bool] | None = None,
+        on_reply: Callable[[], None] | None = None,
     ) -> None:
         self._client = client
         self._batch = batch
@@ -211,6 +215,7 @@ class AgentRunner:
         self._ledger = ledger_path
         # Looked up when the runner is made, so a replaced ``gitinfo.is_committed`` reaches it.
         self._is_committed = is_committed if is_committed is not None else gitinfo.is_committed
+        self._on_reply = on_reply
 
     def run(
         self,
@@ -449,7 +454,7 @@ class AgentRunner:
         The loops are fresh: a resume is the same call (the plan's Task 9 Deviations).
         """
         if spec.sync:
-            drive_sync(loops, self._client, folder=folder, now=self._now)
+            drive_sync(loops, self._client, folder=folder, now=self._now, on_reply=self._on_reply)
             return
         if self._batch is None:  # refused up front; kept for the type checker
             raise ConfigurationError("a batch client is required for a non-sync run")

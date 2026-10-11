@@ -34,7 +34,7 @@ from ntsb_probable_cause.agent.schemas import Without
 from ntsb_probable_cause.agent.version import VERSION_1, prompt_version
 from ntsb_probable_cause.data.api import NtsbClient
 from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE, Prepared, build_records
 from ntsb_probable_cause.live.fetch import FetchError, fetch_record, prefetch_docket
@@ -52,11 +52,17 @@ from ntsb_probable_cause.live.records import (
 from ntsb_probable_cause.live.seams import MonthSpend, ResultSink, SpendCounter, StoreSource
 from ntsb_probable_cause.live.state import NightState, after_fetches
 from ntsb_probable_cause.model.client import ModelClient, ModelSettings
-from ntsb_probable_cause.scoring.budget import month_spent
+from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
-from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, RunSpec
+from ntsb_probable_cause.scoring.runner import (
+    BatchRunner,
+    CachedDocketReader,
+    RunSpec,
+    project_cost,
+    refuse_over_budget,
+)
 from ntsb_probable_cause.scoring.samples import load_seen_pairs
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import LUNA_6, TRAINING_CUTOFFS, ReasoningEffort
@@ -103,6 +109,30 @@ REFUSALS_FILE: Final = "live-refusals.jsonl"
 MORNING_COUNTS_FILE: Final = "live-morning-counts.jsonl"
 MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
+
+# Every alert kind a night or a morning can produce, each once (decision 0177; the S4 runbook's
+# rows are checked against this list). Before any spend: the first seven are the kinds of a
+# ``LiveRefusal``. During the night: ``state.after_fetches``'s kinds, ``money-held-back`` when the
+# queue is longer than the money allows, ``fetch-failed`` for a fetch error that stops the
+# night, ``awaiting-codes-7`` (``later.overdue``), ``export-failed`` and ``night-crashed``
+# (``night.run_night``). Kinds are lower-case words and hyphens: ``cloud.SnsAlerts`` sends no
+# other.
+ALERT_KINDS: Final = (
+    "version-refused",
+    "docket-folders",
+    "key-unreachable",
+    "store-unsound",
+    "recorder-not-finished",
+    "money-held-back",
+    "budget-guard",
+    "fetch-failed",
+    "outage",
+    "unreachable-3",
+    "unreachable-final",
+    "awaiting-codes-7",
+    "export-failed",
+    "night-crashed",
+)
 
 
 def cases_tonight(spend: MonthSpend) -> tuple[int, float]:
@@ -179,10 +209,17 @@ class LiveRefusal(ConfigurationError):  # noqa: N818 -- the name the S4 design f
     """A night that must not go on, with the kind an alert names (decision 0177).
 
     ``kind`` is one of ``"version-refused"``, ``"recorder-not-finished"``, ``"store-unsound"``,
-    ``"key-unreachable"``, ``"money-held-back"`` and ``"docket-folders"``.
+    ``"key-unreachable"``, ``"money-held-back"``, ``"budget-guard"`` (the runner's own monthly
+    guard, ``Settings.monthly_budget_usd``, checked before any run folder is made) and
+    ``"docket-folders"``.
+
+    Raises:
+        ValueError: ``kind`` is not in :data:`ALERT_KINDS`.
     """
 
     def __init__(self, kind: str, message: str) -> None:
+        if kind not in ALERT_KINDS:
+            raise ValueError(f"{kind!r} is not an alert kind (ALERT_KINDS)")
         super().__init__(message)
         self.kind = kind
 
@@ -202,6 +239,11 @@ class MorningDeps:
     commit: Callable[[], tuple[str, bool]]
     uv_lock_sha256: Callable[[], str]
     label: Callable[[], str] = lambda: prompt_version(GUIDANCE)
+    # Given the open run folder once its pending inputs and backfill are in it, before the run's
+    # first request; returns the observer the sync driver tells before that request and after
+    # every reply (``drive.drive_sync``). The cloud night copies the folder to its bucket with
+    # it (S4 Task 10). None: no observer.
+    on_reply_factory: Callable[[Path], Callable[[], None]] | None = None
 
 
 @dataclass(frozen=True)
@@ -219,6 +261,7 @@ class MorningSummary:
     freed_bytes: int
     warnings: tuple[str, ...]
     held_back: int  # queued past tonight's number of cases, by money
+    failures_counted: int = 0  # tonight's failed fetches that counted against a case (0175)
 
 
 @dataclass(frozen=True)
@@ -247,8 +290,9 @@ def run_morning(
         LiveRefusal: kind ``version-refused`` (the prompt-version label is not version 1, or a
             setting is not version 1's, :data:`VERSION_1_SETTINGS`), ``docket-folders``,
             ``key-unreachable`` (from the spend counter), ``store-unsound``,
-            ``recorder-not-finished``, or ``money-held-back`` (an unfinished run needs more than
-            the room).
+            ``recorder-not-finished``, ``money-held-back`` (an unfinished run needs more than
+            the room), or ``budget-guard`` (the run would pass the settings' monthly guard;
+            checked before any run folder is made).
         ConfigurationError: an unfinished live run cannot be resumed.
     """
     began = deps.now()
@@ -374,12 +418,17 @@ class _Morning:
         fetched, failed = self._fetch(take)
         self.new_state, kinds = after_fetches(state, take, failed, len(fetched))
         self.alerts.extend(kinds)
+        # Written now, before any run: a night killed later keeps tonight's counted failures,
+        # and a resume never counts them again (carried ruling 3, Task 7).
+        self.deps.sink.write_night_state(self.new_state)
+        # A case settled unreachable tonight is final, not returned (carried ruling 2, Task 7).
+        returned = len(failed - self.new_state.unreachable.keys())
+        counted = 0 if "outage" in kinds else len(failed)
         if not fetched:
-            self.deps.sink.write_night_state(self.new_state)
             summary = self._summary(
-                None, [], returned=len(failed), queued=len(queue), record=None, freed=0
+                None, [], returned=returned, queued=len(queue), record=None, freed=0
             )
-            summary = dataclasses.replace(summary, held_back=held_back)
+            summary = dataclasses.replace(summary, held_back=held_back, failures_counted=counted)
             return self._outcome(
                 self._log_counts(summary, queue_at_start=len(queue), taken=len(take))
             )
@@ -389,12 +438,14 @@ class _Morning:
             fetched,
             raws,
             resume=None,
-            returned=len(failed),
+            returned=returned,
             done=done | self.new_state.unreachable.keys(),
             queue_at_start=len(queue),
             taken=len(take),
         )
-        return self._outcome(dataclasses.replace(summary, held_back=held_back))
+        return self._outcome(
+            dataclasses.replace(summary, held_back=held_back, failures_counted=counted)
+        )
 
     def _outcome(self, summary: MorningSummary) -> NightOutcome:
         return NightOutcome(summary, tuple(dict.fromkeys(self.alerts)))
@@ -500,20 +551,78 @@ class _Morning:
             else:
                 shutil.move(pending, target)
 
-    def _settle_new_live_folder(self, before: set[str], error: BaseException) -> None:
-        """After a failed run: the one new live run folder takes the pending files.
+    def _new_live_folder(self, before: set[str]) -> Path | None:
+        """The one live run folder made since ``before``; None if none was.
 
-        Folders of other kinds (a development run started meanwhile) are never touched. None
-        new means the runner failed before it made a folder: the pending files stay.
+        Folders of other kinds (a development run started meanwhile) are never counted.
+
+        Raises:
+            ConfigurationError: more than one live run folder appeared.
         """
         new = [n for n in sorted(_folders(self.runs_dir) - before) if _is_live(self.runs_dir / n)]
         if len(new) > 1:
             raise ConfigurationError(
                 f"{len(new)} live run folders appeared during the run: the pending files are "
                 "not moved into any of them"
-            ) from error
-        if new:
-            self._settle_pending(self.runs_dir / new[0])
+            )
+        return self.runs_dir / new[0] if new else None
+
+    def _settle_new_live_folder(self, before: set[str], error: BaseException) -> None:
+        """After a failed run: the one new live run folder takes the pending files.
+
+        None new means the runner failed before it made a folder: the pending files stay.
+        """
+        try:
+            folder = self._new_live_folder(before)
+        except ConfigurationError as many:
+            raise many from error
+        if folder is not None:
+            self._settle_pending(folder)
+
+    def _reply_hook(self, resume: str | None, before: set[str]) -> Callable[[], None] | None:
+        """The observer the runner's sync driver tells, built on its first telling.
+
+        The first telling comes before the run's first request. The run folder exists by then
+        (the runner made it, or it is the resumed one), so the pending inputs and backfill move
+        into it first, and only then is the folder given to ``on_reply_factory``: a resume
+        needs those files, so they are in the folder before anything is paid for (S4 Task 10).
+        """
+        factory = self.deps.on_reply_factory
+        if factory is None:
+            return None
+        built: list[Callable[[], None]] = []
+
+        def hook() -> None:
+            if not built:
+                folder = self.runs_dir / resume if resume else self._new_live_folder(before)
+                if folder is None:
+                    raise ConfigurationError("the runner sent a request before it made a folder")
+                self._settle_pending(folder)
+                built.append(factory(folder))
+            built[0]()
+
+        return hook
+
+    def _check_budget(self, spec: RunSpec, cases: int, resume: str | None) -> None:
+        """The runner's own monthly guard, asked before it makes a folder (carried ruling 1).
+
+        The rule of ``scoring.runner.reserve_run_budget``: this month's spend, plus every other
+        run's open reservation, plus the projection, must fit ``spec.budget_usd``. A refusal
+        here leaves no run folder for later nights to resume and trip on.
+
+        Raises:
+            LiveRefusal: kind ``budget-guard``.
+        """
+        reserved = sum(v for k, v in open_reservations(self.runs_dir).items() if k != resume)
+        try:
+            refuse_over_budget(
+                project_cost(spec, cases),
+                month_spent(self.runs_dir, now=self.began),
+                spec.budget_usd,
+                reserved=reserved,
+            )
+        except BudgetError as error:
+            raise LiveRefusal("budget-guard", str(error)) from error
 
     def _resume(self, run_id: str) -> MorningSummary:
         folder = self.runs_dir / run_id
@@ -578,8 +687,10 @@ class _Morning:
         spec = self._spec()
         if spec.model not in TRAINING_CUTOFFS:
             raise ConfigurationError(f"no recorded training cut-off for {spec.model}")
+        self._check_budget(spec, len(raws), resume)
         client, batch = deps.models()
         spent = month_spent(self.runs_dir, now=self.began)
+        before = _folders(self.runs_dir)
         with deps.docket() as docket_client:
             runner = AgentRunner(
                 client,
@@ -594,18 +705,18 @@ class _Morning:
                 now=deps.now,
                 pass_reasoning=agent_loop.PASS_REASONING,
                 without=WITHOUT,
+                on_reply=self._reply_hook(resume, before),
             )
-            before = _folders(self.runs_dir)
             try:
                 record = runner.run(spec, raws, resume=resume)
+            except BudgetError as error:  # asked above, so a backstop only
+                raise LiveRefusal("budget-guard", str(error)) from error
             except BaseException as error:
                 self.interrupted = True
                 self._settle_new_live_folder(before, error)
                 raise
         self._settle_pending(self.runs_dir / record.run_id)
         records, freed = self._complete(record.run_id, prepared)
-        if self.new_state is not None:
-            deps.sink.write_night_state(self.new_state)
         freed += _store_bytes(self.store.path)
         ran = {p.case.case_id for p in prepared}
         queued = len(build_queue(self._closures(), done | ran))

@@ -45,6 +45,8 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("NTSB_STORE", "s3://bucket/key.sqlite")
     monkeypatch.setenv("NTSB_API_KEY", "test-key")
+    for name in ("NTSB_COMMIT_SHA", "NTSB_LIVE_BUCKET", "NTSB_LIVE_ALERT_TOPIC_ARN"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @dataclass
@@ -129,8 +131,8 @@ def test_the_factories_build_the_real_clients_from_settings(
     monkeypatch.setattr(app, "NtsbClient", Ntsb)
     monkeypatch.setattr(app, "DocketClient", Docket)
     monkeypatch.setattr(app, "OpenRouterClient", Http)
-    assert app.main(["run", "--limit", "3"]) == 0
-    assert calls.kwargs == {"dry_run": False, "limit": 3}
+    assert app.main(["run", "--dry-run", "--limit", "3"]) == 0
+    assert calls.kwargs == {"dry_run": True, "limit": 3}
     deps = calls.deps
     assert deps is not None
     settings = Settings()
@@ -162,7 +164,7 @@ def test_a_refusal_is_one_line_and_exit_one(
         raise BudgetError("the month is at its cap")
 
     monkeypatch.setattr(app, "run_morning", refuse)
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     assert "the month is at its cap" in capsys.readouterr().err
 
 
@@ -199,7 +201,7 @@ def test_an_expired_login_says_to_log_in_again(
     error: Exception, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(error))
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert "`aws login`" in err
     assert "ntsb-live" in err
@@ -223,7 +225,7 @@ def test_any_other_aws_error_is_named_and_does_not_say_to_log_in(
     error: Exception, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(error))
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert f"AWS error ({type(error).__name__})" in err
     assert "boom" in err
@@ -234,7 +236,7 @@ def test_a_cancelled_batch_stops_the_morning_and_says_to_run_it_again(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(BatchCancelledError("batch x cancelled")))
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert "batch x cancelled" in err
     assert "has no --resume option" in err
@@ -243,7 +245,7 @@ def test_a_cancelled_batch_stops_the_morning_and_says_to_run_it_again(
 def test_an_error_that_is_not_aws_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(RuntimeError("bug")))
     with pytest.raises(RuntimeError):
-        app.main(["run"])
+        app.main(["run", "--dry-run"])
 
 
 def test_a_second_morning_is_refused_while_the_first_holds_the_lock(
@@ -253,10 +255,10 @@ def test_a_second_morning_is_refused_while_the_first_holds_the_lock(
     runs.mkdir(parents=True)
     with (runs / "live.lock").open("a") as held:
         fcntl.flock(held, fcntl.LOCK_EX)
-        assert app.main(["run"]) == 1
+        assert app.main(["run", "--dry-run"]) == 1
     assert calls.deps is None  # nothing else was done
     assert "another morning" in capsys.readouterr().err
-    assert app.main(["run"]) == 0  # the lock is free again
+    assert app.main(["run", "--dry-run"]) == 0  # the lock is free again
 
 
 def test_report_calls_the_script_with_the_out_path_and_holds_the_lock(
@@ -289,11 +291,13 @@ def test_a_fetch_or_docket_error_is_reported_by_its_class_alone(
     monkeypatch.setattr(
         app, "run_morning", _raising(error_class("docket 9876543: listing not read (XXX26LA001)"))
     )
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert error_class.__name__ in err
     assert "9876543" not in err
     assert "XXX26LA001" not in err
+    assert err.rstrip().endswith("See the runbook, 'fetch-failed'.")  # decision 0175
+    assert "Tell Claude" not in err
 
 
 @pytest.mark.parametrize(
@@ -322,7 +326,7 @@ def test_every_error_line_is_scrubbed_of_case_numbers_and_keys(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(app, "run_morning", _raising(ConfigurationError(text)))
-    assert app.main(["run"]) == 1
+    assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert kept in err
     assert gone not in err
@@ -338,7 +342,7 @@ def test_the_lock_message_is_scrubbed_too(
     runs.mkdir(parents=True)
     with (runs / "live.lock").open("a") as held:
         fcntl.flock(held, fcntl.LOCK_EX)
-        assert app.main(["run"]) == 1
+        assert app.main(["run", "--dry-run"]) == 1
     err = capsys.readouterr().err
     assert "another morning is running" in err
     assert "XXX26LA003" not in err
@@ -385,3 +389,316 @@ def test_export_refuses_a_target_inside_the_checkout_that_git_does_not_ignore(
 def test_export_allows_an_ignored_target_inside_the_checkout(tmp_path: Path) -> None:
     app._check_export_target(Path("data/export-check"))  # data/ is git-ignored
     app._check_export_target(tmp_path / "outside")
+
+
+# --- S4 Task 10: paid nights only in the image (decision 0171) ---------------------------------
+
+IMAGE_ONLY = (
+    "ntsb-live run: paid nights run only in the live image (decision 0171); use --dry-run here."
+)
+
+
+@pytest.mark.parametrize(
+    "env",
+    [{}, {"NTSB_COMMIT_SHA": "abc1234"}, {"NTSB_LIVE_BUCKET": "live-bucket"}],
+)
+def test_a_paid_run_outside_the_image_refuses_and_calls_nothing(
+    env: dict[str, str],
+    calls: _Calls,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    nights: list[Any] = []
+    monkeypatch.setattr(app, "run_night", lambda *a, **k: nights.append(a))
+    monkeypatch.setattr(app, "_aws_clients", lambda: nights.append("aws"))
+    assert app.main(["run"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.strip() == IMAGE_ONLY
+    assert captured.out == ""
+    assert calls.deps is None
+    assert nights == []
+    assert not Settings().runs_dir.exists()  # not even the lock file
+
+
+class _Paginator:
+    def __init__(self, pages: list[dict[str, Any]]) -> None:
+        self.pages = pages
+        self.asked: list[dict[str, str]] = []
+
+    def paginate(self, **kwargs: str) -> list[dict[str, Any]]:
+        self.asked.append(kwargs)
+        return self.pages
+
+
+class _S3:
+    """A boto3 S3 client as far as the wrapper uses it."""
+
+    def __init__(self, pages: list[dict[str, Any]] | None = None) -> None:
+        self.paginator = _Paginator(pages or [])
+        self.puts: list[dict[str, Any]] = []
+        self.error: Exception | None = None
+        self.transfers: list[tuple[str, ...]] = []
+
+    def get_paginator(self, name: str) -> _Paginator:
+        assert name == "list_objects_v2"
+        return self.paginator
+
+    def put_object(self, **kwargs: Any) -> dict[str, Any]:
+        self.puts.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return {}
+
+    def download_file(self, bucket: str, key: str, filename: str) -> None:
+        self.transfers.append(("down", bucket, key, filename))
+
+    def upload_file(self, filename: str, bucket: str, key: str) -> None:
+        self.transfers.append(("up", filename, bucket, key))
+
+
+def _client_error(code: str, status: int) -> Exception:
+    error: Exception = _aws_error("ClientError", code=code)
+    error.response["ResponseMetadata"] = {"HTTPStatusCode": status}  # type: ignore[attr-defined]
+    return error
+
+
+def test_the_bucket_lists_every_page_not_only_the_first() -> None:
+    """Carried ruling 6: ``list_objects_v2`` stops at 1,000 keys a page."""
+    first = [{"Key": f"runs/r/{n}.json", "Size": n} for n in range(1000)]
+    pages = [{"Contents": first}, {"Contents": [{"Key": "runs/r/last.json", "Size": 7}]}, {}]
+    s3 = _S3(pages)
+    keys = app.S3Bucket(s3).list_keys("live-bucket", "runs/")
+    assert len(keys) == 1001
+    assert keys[-1] == ("runs/r/last.json", 7)
+    assert s3.paginator.asked == [{"Bucket": "live-bucket", "Prefix": "runs/"}]
+
+
+def test_the_bucket_passes_transfers_through() -> None:
+    s3 = _S3()
+    bucket = app.S3Bucket(s3)
+    bucket.download_file("b", "runs/x", "local-x")
+    bucket.upload_file("local-y", "b", "runs/y")
+    assert s3.transfers == [("down", "b", "runs/x", "local-x"), ("up", "local-y", "b", "runs/y")]
+
+
+def test_the_marker_is_a_conditional_put_and_a_precondition_failure_is_false() -> None:
+    """Carried ruling 9: ``IfNoneMatch="*"``; HTTP 412 means the day was already claimed."""
+    s3 = _S3()
+    bucket = app.S3Bucket(s3)
+    assert bucket.put_if_absent("b", "nights/2026-10-12/started", b"") is True
+    assert s3.puts == [
+        {"Bucket": "b", "Key": "nights/2026-10-12/started", "Body": b"", "IfNoneMatch": "*"}
+    ]
+    s3.error = _client_error("PreconditionFailed", 412)
+    assert bucket.put_if_absent("b", "nights/2026-10-12/started", b"") is False
+
+
+@pytest.mark.parametrize(
+    "error", [_client_error("AccessDenied", 403), _client_error("InternalError", 500), OSError()]
+)
+def test_any_other_put_error_is_raised(error: Exception) -> None:
+    s3 = _S3()
+    s3.error = error
+    with pytest.raises(type(error)):
+        app.S3Bucket(s3).put_if_absent("b", "nights/2026-10-12/started", b"")
+
+
+def test_a_read_only_bucket_refuses_every_write() -> None:
+    s3 = _S3([{"Contents": [{"Key": "runs/a", "Size": 1}]}])
+    bucket = app.ReadOnlyBucket(app.S3Bucket(s3))
+    assert bucket.list_keys("b", "runs/") == [("runs/a", 1)]
+    bucket.download_file("b", "runs/a", "local-a")
+    with pytest.raises(ConfigurationError, match="dry run"):
+        bucket.upload_file("local-a", "b", "runs/a")
+    with pytest.raises(ConfigurationError, match="dry run"):
+        bucket.put_if_absent("b", "nights/x/started", b"")
+    assert s3.puts == []
+    assert [t[0] for t in s3.transfers] == ["down"]
+
+
+def test_the_http_get_returns_the_status_and_the_decoded_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx  # noqa: PLC0415
+
+    seen: list[tuple[str, Any]] = []
+
+    def get(url: str, **kwargs: Any) -> httpx.Response:
+        seen.append((url, kwargs))
+        body = b'{"data": {"limit": 10}}' if "ok" in url else b"<html>"
+        return httpx.Response(200 if "ok" in url else 502, content=body)
+
+    monkeypatch.setattr(httpx, "get", get)
+    assert app.http_get("https://x/ok", headers={"A": "b"}) == (200, {"data": {"limit": 10}})
+    assert app.http_get("https://x/bad", headers={}) == (502, None)
+    assert seen[0][1]["headers"] == {"A": "b"}
+    assert seen[0][1]["timeout"] > 0
+
+
+@dataclass
+class _Night:
+    deps: Any = None
+    kwargs: dict[str, Any] | None = None
+    report: Any = None
+
+
+def _image_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NTSB_COMMIT_SHA", "abc1234")
+    monkeypatch.setenv("NTSB_LIVE_BUCKET", "live-bucket")
+    monkeypatch.setenv("NTSB_LIVE_ALERT_TOPIC_ARN", "arn:aws:sns:eu-west-2:1:alerts")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-live-key")
+
+
+@pytest.fixture
+def image(monkeypatch: pytest.MonkeyPatch) -> _Night:
+    """The image's environment, with fake AWS clients and a fake ``run_night``."""
+    _image_env(monkeypatch)
+    seen = _Night()
+    clients = (_S3(), _FakeSns(), _FakeMetric())
+    monkeypatch.setattr(app, "_aws_clients", lambda: clients)
+
+    def fake(deps: Any, **kwargs: Any) -> Any:
+        seen.deps, seen.kwargs = deps, kwargs
+        return seen.report
+
+    monkeypatch.setattr(app, "run_night", fake)
+    return seen
+
+
+class _FakeSns:
+    def publish(self, **kwargs: str) -> object:
+        return {}
+
+
+class _FakeMetric:
+    def put_metric_data(self, **kwargs: object) -> object:
+        return {}
+
+
+def test_in_the_image_run_builds_the_night_on_the_mirror_and_runs_it(
+    image: _Night, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from ntsb_probable_cause.live.cloud import (  # noqa: PLC0415
+        BucketMirror,
+        MirrorSink,
+        OpenRouterKeySpend,
+        SnsAlerts,
+    )
+    from ntsb_probable_cause.live.night import NightReport  # noqa: PLC0415
+
+    image.report = NightReport(
+        started=True,
+        outcome=NightOutcome(_summary(), ("money-held-back",)),
+        alerts=("money-held-back",),
+        later_scored=1,
+    )
+    assert app.main(["run"]) == 0
+    deps = image.deps
+    assert image.kwargs == {"limit": None}
+    settings = Settings()
+    mirror = deps.mirror
+    assert isinstance(mirror, BucketMirror)
+    assert mirror.local == settings.data_dir / "live-mirror"
+    assert deps.morning.settings.runs_dir == mirror.local / "runs"
+    assert isinstance(deps.morning.sink, MirrorSink)
+    assert isinstance(deps.morning.spend, OpenRouterKeySpend)
+    assert isinstance(deps.alerts, SnsAlerts)
+    assert deps.metric is not None
+    assert deps.morning.commit() == ("abc1234", False)
+    out = capsys.readouterr().out
+    assert "coded: 2" in out
+    assert "alert: money-held-back" in out
+    assert "later scores: 1" in out
+
+
+def test_in_the_image_a_stopped_night_exits_one_and_a_second_start_zero(
+    image: _Night, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from ntsb_probable_cause.live.night import NightReport  # noqa: PLC0415
+
+    image.report = NightReport(
+        started=True, outcome=None, alerts=("key-unreachable",), later_scored=0
+    )
+    assert app.main(["run"]) == 1
+    assert "night stopped: key-unreachable" in capsys.readouterr().out
+    image.report = NightReport(started=False, outcome=None, alerts=(), later_scored=0)
+    assert app.main(["run"]) == 0
+
+
+def test_in_the_image_a_missing_alert_topic_is_one_line(
+    image: _Night, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("NTSB_LIVE_ALERT_TOPIC_ARN")
+    assert app.main(["run"]) == 1
+    assert "NTSB_LIVE_ALERT_TOPIC_ARN" in capsys.readouterr().err
+    assert image.deps is None
+
+
+def test_the_nights_export_binds_the_store_the_commit_and_the_day(
+    image: _Night, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ntsb_probable_cause.live.night import NightReport  # noqa: PLC0415
+
+    image.report = NightReport(started=False, outcome=None, alerts=(), later_scored=0)
+    app.main(["run"])
+    seen: dict[str, Any] = {}
+    events: list[str] = []
+
+    class Source:
+        def __init__(self, location: Any, work: Path) -> None:
+            seen["work"] = work
+
+        def open(self) -> str:
+            events.append("open")
+            return "store"
+
+        def discard(self) -> None:
+            events.append("discard")
+
+    def build(mirror: Path, out: Path, **kwargs: Any) -> Path:
+        seen.update(mirror=mirror, out=out, **kwargs)
+        return out
+
+    monkeypatch.setattr(app, "S3StoreSource", Source)
+    monkeypatch.setattr(app, "build_export", build)
+    settings = Settings()
+    assert image.deps.export(tmp_path / "m") == settings.data_dir / "live-export"
+    assert seen["mirror"] == tmp_path / "m"
+    assert seen["store"] == "store"
+    assert seen["commit"] == "abc1234"
+    assert seen["today"] == seen["now"].date()
+    assert seen["work"] != settings.data_dir / STORE_WORK_FILENAME  # not the morning's copy
+    assert events == ["open", "discard"]
+
+
+def test_a_cloud_dry_run_reads_the_bucket_into_a_temporary_mirror_and_writes_nothing(
+    calls: _Calls, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from ntsb_probable_cause.live.cloud import MirrorSink, OpenRouterKeySpend  # noqa: PLC0415
+
+    monkeypatch.setenv("NTSB_LIVE_BUCKET", "live-bucket")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-live-key")
+    s3 = _S3([{"Contents": [{"Key": "runs/r1/spec.json", "Size": 2}]}])
+    monkeypatch.setattr(app, "_aws_clients", lambda: (s3, _FakeSns(), _FakeMetric()))
+    pulled: list[Path] = []
+
+    def download(bucket: str, key: str, filename: str) -> None:
+        pulled.append(Path(filename))
+        Path(filename).write_text("{}")
+
+    s3.download_file = download  # type: ignore[method-assign]
+    assert app.main(["run", "--dry-run"]) == 0
+    assert calls.kwargs == {"dry_run": True, "limit": None}
+    deps = calls.deps
+    assert deps is not None
+    assert isinstance(deps.sink, MirrorSink)
+    assert isinstance(deps.spend, OpenRouterKeySpend)
+    (path,) = pulled
+    assert deps.settings.runs_dir == path.parent.parent
+    assert not path.exists()  # the temporary mirror is gone afterwards
+    assert path.parents[4] == Settings().data_dir  # data/live-dry-run-*/mirror/runs/r1
+    assert s3.puts == []
+    assert [t for t in s3.transfers if t[0] == "up"] == []
+    assert "alert: money-held-back" in capsys.readouterr().out

@@ -161,9 +161,9 @@ def world(tmp_path: Path) -> World:
         _folder(tmp_path, "20261007-a", 7, first, backfill=backfill),
         _folder(tmp_path, "20261008-b", 8, second, results=results, cost=0.2, billed=None),
     ]
-    refusals = [
-        {"at": "2026-10-07T00:10:00+00:00", "reason": "daily-limit"},
-        {"at": "2026-10-08T00:10:00+00:00", "reason": "daily-limit"},
+    refusals = [  # rows since S4 Task 7 hold "kind"; S3.3's rows held "reason" and still read
+        {"at": "2026-10-07T00:10:00+00:00", "kind": "key-unreachable"},
+        {"at": "2026-10-08T00:10:00+00:00", "kind": "key-unreachable"},
         {"at": "2026-10-08T00:11:00+00:00", "reason": "monthly-cap"},
     ]
     closures = _closures(
@@ -226,7 +226,7 @@ def test_outcomes_have_the_three_grades_and_a_wilson_interval(world: World) -> N
 def test_the_new_checks(world: World) -> None:
     text = _text(world)
     assert "preliminary narrative present: 4 of 5" in text
-    assert "refusals, daily-limit: 2" in text
+    assert "refusals, key-unreachable: 2" in text
     assert "refusals, monthly-cap: 1" in text
     assert "verdict codes missing from the tables, occurrence: 1 code in 1 case" in text
     assert "verdict codes missing from the tables, finding: 1 code in 1 case" in text
@@ -330,7 +330,7 @@ def test_main_writes_the_file_from_the_folders_the_store_and_the_refusals(
     runs.mkdir()
     _folder(runs, "20261007-a", 7, [_graded("XXX26LA001", True, True)])
     (runs / "live-refusals.jsonl").write_text(
-        json.dumps({"at": "2026-10-07T00:00:00+00:00", "reason": "label"}) + "\n"
+        json.dumps({"at": "2026-10-07T00:00:00+00:00", "kind": "version-refused"}) + "\n"
     )
     monkeypatch.setenv("NTSB_RUNS_DIR", str(runs))
     monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path / "data"))
@@ -339,7 +339,7 @@ def test_main_writes_the_file_from_the_folders_the_store_and_the_refusals(
     out = tmp_path / "out.txt"
     assert module.main(["--out", str(out)]) == 0
     written = out.read_text()
-    assert "refusals, label: 1" in written
+    assert "refusals, version-refused: 1" in written
     assert "runs: 1" in written
     assert not PATTERN.search(written)
 

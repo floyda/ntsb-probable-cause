@@ -68,6 +68,11 @@ class BucketMirror:
         self._s3 = s3
         self._seen: dict[str, str] = {}  # key -> SHA-256 at the last pull or push
 
+    @property
+    def local(self) -> Path:
+        """The local folder the bucket's ``runs/``, ``scores/`` and ``nights/`` are held in."""
+        return self._local
+
     def pull(self) -> int:
         """Download every object under ``runs/``, ``scores/`` and ``nights/``, never ``export/``.
 
