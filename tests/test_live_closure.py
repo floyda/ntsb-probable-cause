@@ -39,9 +39,9 @@ def _run() -> RunRecord:
     )
 
 
-def _reply(n: int, sha: str | None) -> ReplyRow:
+def _reply(n: int, sha: str | None, case_id: str = CASE) -> ReplyRow:
     return ReplyRow(
-        case_id=CASE,
+        case_id=case_id,
         call_index=n,
         reply=None,
         error="x",
@@ -89,7 +89,7 @@ def test_record_carries_event_date_hashes_and_replies(tmp_path: Path) -> None:
     (record,) = build_records(folder, [prepared], "0" * 64, cache)
     assert record.format == "live-closure/2"
     assert record.event_date == date(2026, 9, 1)
-    assert record.request_sha256s == ("1" * 64, "2" * 64)
+    assert record.request_sha256s == ("1" * 64, None, "2" * 64)
     assert record.replied_models == ("m1", "m2")
     assert record.providers == ("alpha", "zeta")
     assert record.listing_sha256 == hashlib.sha256(b"page").hexdigest()
@@ -116,3 +116,49 @@ def test_a_case_with_no_cache_has_no_hashes(tmp_path: Path) -> None:
     assert record.listing_sha256 is None
     assert record.request_sha256s == ()
     assert record.documents[0].sha256 is None
+
+
+def _hashes(tmp_path: Path, rows: list[ReplyRow], case_id: str = CASE) -> tuple[str | None, ...]:
+    folder = tmp_path / "run"
+    folder.mkdir()
+    write_jsonl(folder / RUN_FILE, [_run()])
+    write_jsonl(folder / CASES_FILE, [_result(case_id)])
+    write_jsonl(folder / REPLIES_FILE, rows)
+    prepared = Prepared(
+        case=QueuedCase(
+            mkey=MKEY,
+            case_id=case_id,
+            event_date=date(2026, 9, 1),
+            closed_on=date(2026, 10, 5),
+            closure_run=1,
+        ),
+        raw={},
+        docket=_docket(MKEY, {1: "read"}),
+    )
+    (record,) = build_records(folder, [prepared], "0" * 64, tmp_path / "none")
+    return record.request_sha256s
+
+
+def test_a_row_without_a_hash_keeps_its_place(tmp_path: Path) -> None:
+    assert _hashes(tmp_path, [_reply(0, None), _reply(1, "1" * 64)]) == (None, "1" * 64)
+
+
+def test_a_retried_call_gives_two_hashes(tmp_path: Path) -> None:
+    # Two sent requests for one step: the retry is its own call_index.
+    assert _hashes(tmp_path, [_reply(0, "1" * 64), _reply(1, "2" * 64)]) == ("1" * 64, "2" * 64)
+
+
+def test_a_file_appended_across_two_nights_is_in_call_order(tmp_path: Path) -> None:
+    rows = [_reply(2, "3" * 64), _reply(3, "4" * 64), _reply(0, "1" * 64), _reply(1, "2" * 64)]
+    assert _hashes(tmp_path, rows) == ("1" * 64, "2" * 64, "3" * 64, "4" * 64)
+
+
+def test_rows_of_two_cases_interleaved_in_the_file(tmp_path: Path) -> None:
+    other = "XXX26LA002"
+    rows = [
+        _reply(1, "b" * 64, other),
+        _reply(1, "2" * 64),
+        _reply(0, "a" * 64, other),
+        _reply(0, "1" * 64),
+    ]
+    assert _hashes(tmp_path, rows) == ("1" * 64, "2" * 64)

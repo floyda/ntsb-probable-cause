@@ -87,8 +87,10 @@ def build_records(
                 listing_sha256=listing_sha,
                 request_sha256s=tuple(
                     r.request_sha256
-                    for r in replies
-                    if r.case_id == p.case.case_id and r.request_sha256 is not None
+                    for r in sorted(
+                        (r for r in replies if r.case_id == p.case.case_id),
+                        key=lambda r: r.call_index,
+                    )
                 ),
                 replied_models=tuple(
                     sorted({c.reply_model for c in case_calls if c.reply_model is not None})

@@ -106,7 +106,9 @@ class ClosureRecord(_ClosureCommon, frozen=True):
     format: Literal["live-closure/2"] = CLOSURE_FORMAT
     event_date: date
     listing_sha256: str | None
-    request_sha256s: tuple[str, ...]  # one per model call, in call order
+    # One per model call, in call_index order; None where the reply row carried no hash (a row
+    # written before decision 0176), so the length always equals the number of calls.
+    request_sha256s: tuple[str | None, ...]
     replied_models: tuple[str, ...]  # distinct, sorted
     providers: tuple[str, ...]  # distinct, sorted
 
