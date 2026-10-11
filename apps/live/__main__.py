@@ -1,5 +1,9 @@
 """``ntsb-live run`` (one live morning) and ``ntsb-live report`` (the counts-only report).
 
+``report --mirror DIR --export DIR --ledger PATH [--attest PATH] [--out PATH]``: the counts-only
+S4 report (``scripts/s4_live_report.py``) from local files; it prints no case number and takes no
+lock.
+
 ``export --from DIR --out DIR``: the public board's JSON export (``board/1``) from a local copy of
 the bucket (``runs/``, ``scores/``, ``nights/``), with no store, so the open-case counts are zero.
 It reads files, calls no model and prints counts only, never a case number.
@@ -151,7 +155,17 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--limit", type=_positive, default=None, metavar="N", help="take at most N cases"
     )
-    report = commands.add_parser("report", help="print the counts-only report of the live runs")
+    report = commands.add_parser("report", help="print the counts-only report of the live nights")
+    report.add_argument(
+        "--mirror", required=True, metavar="DIR", help="the local copy of the bucket"
+    )
+    report.add_argument(
+        "--export", dest="export_dir", required=True, metavar="DIR", help="the export"
+    )
+    report.add_argument("--ledger", required=True, metavar="PATH", help="ledger.jsonl")
+    report.add_argument(
+        "--attest", default=None, metavar="PATH", help="Andy's dated attestations (JSON)"
+    )
     report.add_argument("--out", default=None, metavar="PATH", help="also write it to PATH")
     export = commands.add_parser(
         "export", help="build the board/1 export from a local copy of the bucket"
@@ -235,13 +249,21 @@ def _verify_ledger(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _report(args: argparse.Namespace, settings: Settings) -> int:
-    """Run ``scripts.s33_live_report`` (S3.3 Task 10); it reads, calls no model, spends nothing."""
+    """Run ``scripts.s4_live_report`` (S4 Task 14); it reads local files, calls no model.
+
+    It reads a local copy of the bucket, the export built from it and the ledger, never the
+    bucket itself, so it needs no lock and no AWS key.
+    """
     if str(_REPO_ROOT) not in sys.path:  # `scripts` is in the checkout, not the installed package
         sys.path.insert(0, str(_REPO_ROOT))
-    from scripts.s33_live_report import main as report_main  # noqa: PLC0415
+    from scripts.s4_live_report import main as report_main  # noqa: PLC0415
 
-    with morning_lock(settings.runs_dir):  # it replaces the same store work file
-        return report_main(["--out", args.out] if args.out else [])
+    argv = ["--mirror", args.mirror, "--export", args.export_dir, "--ledger", args.ledger]
+    if args.attest:
+        argv += ["--attest", args.attest]
+    if args.out:
+        argv += ["--out", args.out]
+    return report_main(argv)
 
 
 class S3Bucket:
@@ -457,8 +479,14 @@ def _cloud_dry_run_locked(args: argparse.Namespace, settings: Settings, bucket: 
         mirror.pull()
         dry = settings.model_copy(update={"runs_dir": local / "runs"})
         deps = replace(build_deps(dry), spend=_key_spend(settings), sink=MirrorSink(mirror, local))
-        outcome = run_morning(deps, dry_run=True, limit=args.limit)
+        # The Mac's commit is not the image's, so the resume-across-commits check is skipped here
+        # and said so (a paid night keeps it).
+        outcome = run_morning(deps, dry_run=True, limit=args.limit, check_resume=False)
     print(format_summary(outcome.summary))
+    print(
+        "information: this dry run does not check whether an unfinished run began at another "
+        "commit (only the image's own night can say); see the runbook, 'resume-refused'."
+    )
     alerts = PrintAlerts()
     for kind in outcome.alerts:
         alerts.send([kind], {})

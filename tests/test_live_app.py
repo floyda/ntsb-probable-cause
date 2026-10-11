@@ -261,10 +261,10 @@ def test_a_second_morning_is_refused_while_the_first_holds_the_lock(
     assert app.main(["run", "--dry-run"]) == 0  # the lock is free again
 
 
-def test_report_calls_the_script_with_the_out_path_and_holds_the_lock(
+def test_report_calls_the_s4_script_with_its_three_inputs_and_needs_no_lock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import scripts.s33_live_report as script  # noqa: PLC0415
+    import scripts.s4_live_report as script  # noqa: PLC0415
 
     seen: list[list[str]] = []
 
@@ -273,12 +273,19 @@ def test_report_calls_the_script_with_the_out_path_and_holds_the_lock(
         return 0
 
     monkeypatch.setattr(script, "main", fake_main)
-    assert app.main(["report"]) == 0
-    assert app.main(["report", "--out", "x.txt"]) == 0
-    assert seen == [[], ["--out", "x.txt"]]
+    base = ["report", "--mirror", "m", "--export", "e", "--ledger", "l"]
+    assert app.main(base) == 0
+    assert app.main([*base, "--out", "x.txt"]) == 0
+    core = ["--mirror", "m", "--export", "e", "--ledger", "l"]
+    assert app.main([*base, "--attest", "a.json"]) == 0
+    assert seen == [core, [*core, "--out", "x.txt"], [*core, "--attest", "a.json"]]
     with app.morning_lock(Settings().runs_dir):
-        assert app.main(["report"]) == 1  # a morning holds the lock
-    assert seen == [[], ["--out", "x.txt"]]
+        assert app.main(base) == 0  # it reads local files only, so it does not take the lock
+
+
+def test_report_needs_its_three_inputs() -> None:
+    with pytest.raises(SystemExit):
+        app.main(["report"])
 
 
 @pytest.mark.parametrize("error_class", [FetchError, DocketError])
@@ -725,7 +732,7 @@ def test_a_cloud_dry_run_reads_the_bucket_into_a_temporary_mirror_and_writes_not
 
     s3.download_file = download  # type: ignore[method-assign]
     assert app.main(["run", "--dry-run"]) == 0
-    assert calls.kwargs == {"dry_run": True, "limit": None}
+    assert calls.kwargs == {"dry_run": True, "limit": None, "check_resume": False}
     deps = calls.deps
     assert deps is not None
     assert isinstance(deps.sink, MirrorSink)
@@ -736,13 +743,15 @@ def test_a_cloud_dry_run_reads_the_bucket_into_a_temporary_mirror_and_writes_not
     assert path.parents[4] == Settings().data_dir  # data/live-dry-run-*/mirror/runs/r1
     assert s3.puts == []
     assert [t for t in s3.transfers if t[0] == "up"] == []
-    assert "alert: money-held-back" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "alert: money-held-back" in out
+    assert "does not check whether an unfinished run began at another commit" in out
 
 
-def test_a_cloud_dry_run_holds_the_same_lock_as_run_and_report(
+def test_a_cloud_dry_run_holds_the_same_lock_as_the_local_run(
     calls: _Calls, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Fix round 1, item 8: it replaces the same store work file, so it takes ``live.lock``."""
+    """Fix round 1, item 8: it replaces the local run's store work file, so it takes the lock."""
     monkeypatch.setenv("NTSB_LIVE_BUCKET", "live-bucket")
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-live-key")
     built: list[str] = []

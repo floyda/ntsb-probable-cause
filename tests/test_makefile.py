@@ -246,38 +246,106 @@ def test_the_post_passes_name_the_registered_way_and_statistics() -> None:
     assert tools.endswith("ntsb-eval tools $(RUN)")
 
 
-def test_every_s33_target_is_phony_and_the_morning_checks_both_lines_first() -> None:
+def test_every_s33_target_is_phony_and_the_morning_and_dry_run_are_gone() -> None:
+    """S4 Task 14: paid nights run only in the cloud image (0171); s33-dry-run is s4-dry-run's."""
     text = Path("Makefile").read_text()
     s33 = {name for name in targets(text) if name.startswith("s33-")}
-    assert {"s33-dry-run", "s33-morning", "s33-report"} <= s33
+    assert {"s33-continuity", "s33-mutation-sweep", "s33-report"} <= s33
     assert s33 <= set(phony_words(text))
-    recipe = text.split("\ns33-morning:\n", 1)[1].split("\n\n", 1)[0]
-    lines = [line.strip() for line in recipe.splitlines() if line.startswith("\t")]
-    stages = [i for i, line in enumerate(lines) if "stage_spend" in line]
-    run = next(i for i, line in enumerate(lines) if "ntsb-live run" in line)
-    assert [("--stage s3 " in lines[i], "--stage s33 " in lines[i]) for i in stages] == [
-        (True, False),
-        (False, True),
-    ]
-    assert max(stages) < run
-    # decisions 0165 and 0167: 50 cases at the $0.04 projection
-    assert all(lines[i].endswith("--estimate 2.00") for i in stages)
+    assert "s33-morning" not in s33
+    assert "s33-dry-run" not in s33
+    assert "s33-morning" not in phony_words(text)
 
 
-def test_the_s33_recipes_reach_the_s3_store_through_live_env_and_the_aws_extra() -> None:
+def test_the_s33_report_runs_the_s33_script_through_live_env_and_the_aws_extra() -> None:
     text = Path("Makefile").read_text()
-    for name, command in (
-        ("s33-dry-run", "ntsb-live run"),
-        ("s33-morning", "ntsb-live run"),
-        ("s33-report", "ntsb-live report"),
-    ):
-        recipe = text.split(f"\n{name}:\n", 1)[1].split("\n\n", 1)[0]
-        (run,) = [line for line in recipe.splitlines() if command in line]
-        assert "scripts/live_env.sh" in run, name
-        assert "--extra aws" in run, name
-        assert "awscrt" not in run, name  # it is in the aws extra, pinned by uv.lock
-        assert run.index("live_env.sh") < run.index(command)
-        assert "&& eval" in run, name  # a failed lookup stops the recipe
+    (run,) = recipe(text, "s33-report")
+    assert "scripts/live_env.sh" in run
+    assert "--extra aws" in run
+    assert "awscrt" not in run  # it is in the aws extra, pinned by uv.lock
+    assert "python -m scripts.s33_live_report" in run  # `ntsb-live report` is the S4 report now
+    assert run.index("live_env.sh") < run.index("s33_live_report")
+    assert "&& eval" in run  # a failed lookup stops the recipe
+
+
+_S4 = ("s4-spend", "s4-dry-run", "s4-export", "s4-verify-ledger", "s4-report", "s4-image")
+
+
+def _comment_above(text: str, target: str) -> str:
+    """The comment lines directly above a target (blank lines end the block)."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if _TARGET.match(line) and _name(line) == target)
+    block: list[str] = []
+    i = start - 1
+    while i >= 0 and lines[i].startswith("#"):
+        block.insert(0, lines[i])
+        i -= 1
+    return "\n".join(block)
+
+
+def test_every_s4_target_is_defined_phony_and_commented() -> None:
+    text = Path("Makefile").read_text()
+    assert set(_S4) <= set(targets(text))
+    assert set(_S4) <= set(phony_words(text))
+    for name in _S4:
+        assert _comment_above(text, name), name
+
+
+def test_s4_spend_checks_the_s4_line() -> None:
+    (line,) = recipe(Path("Makefile").read_text(), "s4-spend")
+    assert "scripts.stage_spend --stage s4" in line
+    assert "--estimate $(or $(EST),0)" in line
+
+
+def test_the_s4_dry_run_uses_live_env_the_aws_extra_and_reads_both_keys_from_pass() -> None:
+    text = Path("Makefile").read_text()
+    (run,) = recipe(text, "s4-dry-run")
+    assert 'eval "$$env_out"' in run
+    assert run.index("live_env.sh") < run.index("ntsb-live run --dry-run")
+    assert "--extra aws" in run
+    assert "uv run --locked" in run
+    assert "NTSB_API_KEY=" in run
+    assert "OPENROUTER_API_KEY=" in run
+    assert "pass show $(PASS_LIVE_OPENROUTER)" in run  # the LIVE key, not the development one
+    assert "PASS_LIVE_OPENROUTER ?= api/openrouter-live" in text
+    assert "sk-" not in run  # no key text in the recipe
+    assert "NTSB_LIVE_BUCKET" in run  # never the local fallback by accident
+
+
+def test_the_s4_export_syncs_three_prefixes_with_the_ntsb_profile_then_exports() -> None:
+    text = Path("Makefile").read_text()
+    sync, build = recipe(text, "s4-export")
+    assert "for part in runs scores nights" in sync
+    assert "aws s3 sync" in sync
+    assert "--profile ntsb" in sync
+    assert "live-mirror" in sync
+    assert "ntsb-live export --from" in build
+    assert "live-export" in build
+
+
+def test_the_ledger_targets_read_the_ledger_branch_not_the_working_tree() -> None:
+    text = Path("Makefile").read_text()
+    for name, command in (("s4-verify-ledger", "verify-ledger"), ("s4-report", "report")):
+        body = recipe(text, name)
+        assert body[0] == "git fetch origin ledger", name
+        assert "git show origin/ledger:ledger.jsonl >" in body[1], name
+        assert f"ntsb-live {command}" in body[2], name
+    report = recipe(text, "s4-report")[2]
+    assert "--mirror" in report
+    assert "--export" in report
+    assert "--out docs/results/s4-live.txt" in report
+    assert "$(if $(wildcard $(ATTEST)),--attest $(ATTEST))" in report
+    assert "s4-export" in next(line for line in text.splitlines() if line.startswith("s4-report:"))
+
+
+def test_the_s4_image_asks_andy_first_and_does_not_run_by_accident() -> None:
+    text = Path("Makefile").read_text()
+    assert "asks Andy first" in _comment_above(text, "s4-image")
+    guard, build = recipe(text, "s4-image")
+    assert "$(error" in guard
+    assert "CONFIRM" in guard
+    assert build == "scripts/build_live_image.sh"
+    assert guard in recipe(text, "s4-image")[:1]  # the guard comes before the push
 
 
 def test_awscrt_is_in_the_aws_extra_and_so_in_the_lockfile() -> None:
@@ -286,3 +354,21 @@ def test_awscrt_is_in_the_aws_extra_and_so_in_the_lockfile() -> None:
     extra = tomllib.loads(Path("pyproject.toml").read_text())["project"]["optional-dependencies"]
     assert any(dep.startswith("awscrt") for dep in extra["aws"])
     assert 'name = "awscrt"' in Path("uv.lock").read_text()
+
+
+def test_make_refuses_the_s4_image_without_confirm_and_allows_it_with() -> None:
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    make = shutil.which("make")
+    assert make is not None
+    refused = subprocess.run(  # noqa: S603 -- fixed argv; `-n` prints, nothing is run
+        [make, "-n", "s4-image"], capture_output=True, text=True, check=False
+    )
+    assert refused.returncode != 0
+    assert "asks Andy first" in refused.stderr
+    allowed = subprocess.run(  # noqa: S603 -- fixed argv; `-n` prints, nothing is run
+        [make, "-n", "s4-image", "CONFIRM=yes"], capture_output=True, text=True, check=False
+    )
+    assert allowed.returncode == 0
+    assert "scripts/build_live_image.sh" in allowed.stdout

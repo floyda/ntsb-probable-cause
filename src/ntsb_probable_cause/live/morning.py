@@ -278,7 +278,11 @@ class NightOutcome:
 
 
 def run_morning(
-    deps: MorningDeps, *, dry_run: bool = False, limit: int | None = None
+    deps: MorningDeps,
+    *,
+    dry_run: bool = False,
+    limit: int | None = None,
+    check_resume: bool = True,
 ) -> NightOutcome:
     """Run one live morning.
 
@@ -287,6 +291,10 @@ def run_morning(
         dry_run: open the store, build the queue and fetch the first case and its docket, then
             print what a morning would do; no model is called and no run folder is written.
         limit: take at most this many cases (never more than tonight's number).
+        check_resume: refuse an unfinished live run that began at another commit. The cloud dry
+            run, started on the Mac whose commit is not the image's, passes False: a real
+            unfinished run would otherwise read as ``resume-refused`` there. A paid night
+            always checks.
 
     Returns:
         The morning's counts and the kinds of alert it raised.
@@ -305,14 +313,22 @@ def run_morning(
     began = deps.now()
     refusals = _Refusals(deps, enabled=not dry_run)
     try:
-        return _run_checked(deps, began, refusals, dry_run=dry_run, limit=limit)
+        return _run_checked(
+            deps, began, refusals, dry_run=dry_run, limit=limit, check_resume=check_resume
+        )
     except LiveRefusal as refusal:
         refusals.add(refusal.kind)
         raise
 
 
-def _run_checked(
-    deps: MorningDeps, began: datetime, refusals: _Refusals, *, dry_run: bool, limit: int | None
+def _run_checked(  # noqa: PLR0913 -- the morning's flags
+    deps: MorningDeps,
+    began: datetime,
+    refusals: _Refusals,
+    *,
+    dry_run: bool,
+    limit: int | None,
+    check_resume: bool,
 ) -> NightOutcome:
     label = deps.label()
     if label != VERSION_1:
@@ -337,7 +353,8 @@ def _run_checked(
             "docket-folders",
             "live_docket_dir must differ from docket_dir, and neither may sit inside the other",
         )
-    _refuse_resume_across_commits(deps)
+    if check_resume:
+        _refuse_resume_across_commits(deps)
     spend = deps.spend.month(began)  # before the store is opened; may raise key-unreachable
     morning = _Morning(
         deps, deps.store.open(), began, spend, refusals, dry_run=dry_run, limit=limit

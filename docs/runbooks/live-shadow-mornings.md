@@ -1,5 +1,11 @@
 # Runbook — Live shadow mornings
 
+> **2026-10-11 (S4 Task 14): this runbook is history.** The nights now run in the cloud, and the
+> Mac no longer codes cases: `make s33-morning` and `make s33-dry-run` are gone, and `ntsb-live
+> report` is the S4 report. Follow `docs/runbooks/live-cloud-nights.md`. The table of messages in
+> section 6 and the glossary still describe what S3.3 printed. The Mac's AWS key in section 9 is
+> removed by that runbook's section 11.
+
 *For S3.3. Specification: `docs/specs/2026-10-07-s3-3-live-shadow-design.md` (sections 4, 8
 and 9). Decisions: 0157 to 0166.*
 

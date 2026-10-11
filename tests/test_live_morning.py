@@ -1374,3 +1374,21 @@ def test_an_unfinished_run_with_no_readable_spec_is_left_to_the_resumes_own_chec
         run_morning(rig.deps())
     assert not isinstance(caught.value, LiveRefusal)
     assert _StubRunner.instances == []
+
+
+def test_the_cloud_dry_run_skips_the_resume_across_commits_check_and_a_paid_night_keeps_it(
+    rig: Rig,
+) -> None:
+    """Task 14, ruling 1: the Mac's commit is not the image's, so a dry run must not read an
+    unfinished run as ``resume-refused``; the default (a paid night) still refuses it."""
+    run_id = "20261007T050000-0ld5ha1-live-C"
+    folder = rig.runs_dir / run_id
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "spec.json").write_text(json.dumps({"sample": "live", "commit_sha": "0ld5ha1"}))
+    rig.sink.unfinished = run_id
+    with pytest.raises(LiveRefusal) as caught:
+        night(rig.deps(), dry_run=True)  # the default: the check runs
+    assert caught.value.kind == "resume-refused"
+    with pytest.raises(ConfigurationError, match="inputs") as skipped:
+        night(rig.deps(), dry_run=True, check_resume=False)  # past it, to the resume's own checks
+    assert not isinstance(skipped.value, LiveRefusal)
