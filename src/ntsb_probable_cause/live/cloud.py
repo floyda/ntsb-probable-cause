@@ -39,6 +39,7 @@ _SUBJECT_PREFIX: Final = "Ellery live night: "
 # would stay in the bucket and count against every later night's guard: it is never copied.
 _RUN_FILE: Final = "run.jsonl"
 _SPEC_FILE: Final = "spec.json"
+_MANIFEST_FILE: Final = "manifest.json"
 _NEVER_PUSHED: Final = frozenset({RESERVATION_FILE})
 
 
@@ -73,6 +74,8 @@ def _sha256(path: Path) -> str:
 def push_order(paths: Sequence[Path]) -> list[Path]:
     """``paths`` in the order a push uploads them: the rest by name, then specs, then run records.
 
+    A night folder's ``manifest.json`` is last of all (it lists ``night.json``).
+
     The order is explicit, not alphabetical (``run.jsonl`` sorts before ``spec.json`` and
     ``trail.jsonl``). A task killed between two uploads leaves a folder that is either not yet a
     live run (no ``spec.json``) or a live run that is resumed (no ``run.jsonl``), never a run that
@@ -80,6 +83,10 @@ def push_order(paths: Sequence[Path]) -> list[Path]:
     """
 
     def rank(path: Path) -> tuple[int, str]:
+        # A night manifest lists night.json, so it goes up after it: a kill between the two
+        # uploads must never leave a manifest whose folder can not be verified.
+        if path.name == _MANIFEST_FILE and path.parent.parent.name == "nights":
+            return 3, path.as_posix()
         return {_SPEC_FILE: 1, _RUN_FILE: 2}.get(path.name, 0), path.as_posix()
 
     return sorted(paths, key=rank)

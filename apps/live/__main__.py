@@ -4,6 +4,9 @@
 the bucket (``runs/``, ``scores/``, ``nights/``), with no store, so the open-case counts are zero.
 It reads files, calls no model and prints counts only, never a case number.
 
+``verify-ledger --ledger PATH [--mirror DIR]``: a local copy of the bucket (default
+``<data_dir>/live-mirror``) against the ledger (decision 0178); keys and problem kinds only.
+
 ``run``: one cloud night (S4 spec section 5, decisions 0171, 0172, 0177), in the live image
 only. Paid nights run only where ``NTSB_COMMIT_SHA`` and ``NTSB_LIVE_BUCKET`` are both set (the
 live image sets them); anywhere else ``run`` without ``--dry-run`` refuses with one line and
@@ -69,6 +72,7 @@ from ntsb_probable_cause.live.cloud import (
     SnsLike,
 )
 from ntsb_probable_cause.live.fetch import FetchError
+from ntsb_probable_cause.live.ledger import read_ledger, verify
 from ntsb_probable_cause.live.local import (
     STORE_WORK_FILENAME,
     LocalFolderSink,
@@ -154,6 +158,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     export.add_argument("--from", dest="source", required=True, metavar="DIR", help="the mirror")
     export.add_argument("--out", required=True, metavar="DIR", help="where to write the export")
+    verify_ledger = commands.add_parser(
+        "verify-ledger", help="check a local copy of the bucket against the ledger"
+    )
+    verify_ledger.add_argument("--ledger", required=True, metavar="PATH", help="ledger.jsonl")
+    verify_ledger.add_argument(
+        "--mirror", default=None, metavar="DIR", help="the local copy (default: the live mirror)"
+    )
     return parser
 
 
@@ -202,6 +213,22 @@ def _export(args: argparse.Namespace) -> int:
     ]
     print("\n".join(lines))
     return 0
+
+
+def _verify_ledger(args: argparse.Namespace, settings: Settings) -> int:
+    """Check a mirror against the ledger; problems are keys and kinds, never contents."""
+    mirror = Path(args.mirror) if args.mirror else settings.data_dir / MIRROR_DIRNAME
+    ledger = Path(args.ledger)
+    if not ledger.is_file():
+        return _fail(f"verify-ledger: {ledger} is not a file")
+    if not mirror.is_dir():
+        return _fail(f"verify-ledger: {mirror} is not a folder")
+    lines = read_ledger(ledger)
+    problems = verify(lines, mirror)
+    for problem in problems:
+        print(problem)
+    print(f"ledger lines: {len(lines)}; problems: {len(problems)}")
+    return 1 if problems else 0
 
 
 def _report(args: argparse.Namespace, settings: Settings) -> int:
@@ -570,6 +597,8 @@ def _dispatch(args: argparse.Namespace, settings: Settings) -> int:
         return _export(args)
     if args.command == "report":
         return _report(args, settings)
+    if args.command == "verify-ledger":
+        return _verify_ledger(args, settings)
     if not args.dry_run:
         return _night(args, settings)
     if settings.live_bucket is not None:

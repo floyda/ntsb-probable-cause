@@ -762,3 +762,51 @@ def test_a_cloud_dry_run_holds_the_same_lock_as_run_and_report(
     assert calls.deps is None
     assert app.main(["run", "--dry-run"]) == 0  # the lock is free again
     assert built == ["aws"]
+
+
+def _ledger_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    from ntsb_probable_cause.live import records  # noqa: PLC0415
+    from ntsb_probable_cause.live.ledger import new_lines, render_line  # noqa: PLC0415
+
+    mirror = tmp_path / "mirror"
+    folder = mirror / "runs" / "r1"
+    folder.mkdir(parents=True)
+    (folder / "run.jsonl").write_text("row\n")
+    records.write_manifest(folder)
+    key = "runs/r1/manifest.json"
+    lines = new_lines([], {key: (folder / "manifest.json").read_bytes()}, datetime.now(UTC))
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("".join(render_line(line) for line in lines))
+    return mirror, ledger
+
+
+def test_verify_ledger_is_clean_then_names_the_key_of_a_changed_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mirror, ledger = _ledger_fixture(tmp_path)
+    args = ["verify-ledger", "--ledger", str(ledger), "--mirror", str(mirror)]
+    assert app.main(args) == 0
+    assert capsys.readouterr().out == "ledger lines: 1; problems: 0\n"
+    (mirror / "runs/r1/run.jsonl").write_text("other\n")
+    assert app.main(args) == 1
+    assert capsys.readouterr().out == "runs/r1: run.jsonl: changed\nledger lines: 1; problems: 1\n"
+
+
+def test_verify_ledger_refuses_a_missing_ledger_or_mirror(tmp_path: Path) -> None:
+    mirror, ledger = _ledger_fixture(tmp_path)
+    assert (
+        app.main(["verify-ledger", "--ledger", str(tmp_path / "no"), "--mirror", str(mirror)]) == 1
+    )
+    assert (
+        app.main(["verify-ledger", "--ledger", str(ledger), "--mirror", str(tmp_path / "no")]) == 1
+    )
+
+
+def test_verify_ledger_defaults_to_the_live_mirror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _mirror, ledger = _ledger_fixture(tmp_path)
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    (tmp_path / "mirror").rename(tmp_path / "live-mirror")
+    assert app.main(["verify-ledger", "--ledger", str(ledger)]) == 0
+    assert "problems: 0" in capsys.readouterr().out

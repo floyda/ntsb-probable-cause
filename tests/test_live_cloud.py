@@ -140,6 +140,24 @@ def test_push_order_puts_specs_then_run_records_after_everything_else() -> None:
     ]
 
 
+def test_push_order_puts_a_night_manifest_after_the_files_it_lists() -> None:
+    paths = [
+        Path(p)
+        for p in (
+            "nights/2026-10-11/manifest.json",
+            "nights/2026-10-11/night.json",
+            "nights/2026-10-11/started",
+            "runs/r/manifest.json",
+            "runs/r/run.jsonl",
+            "runs/r/spec.json",
+        )
+    ]
+    ordered = [p.as_posix() for p in push_order(paths)]
+    assert ordered[-1] == "nights/2026-10-11/manifest.json"
+    # A run folder is unchanged: its manifest sorts before spec.json and run.jsonl.
+    assert ordered.index("runs/r/manifest.json") < ordered.index("runs/r/spec.json")
+
+
 def test_a_claimed_day_is_held_locally_and_never_uploaded_again(tmp_path: Path) -> None:
     mirror, bucket = _mirror(tmp_path, {})
     assert mirror.mark_started(date(2026, 10, 11)) is True
