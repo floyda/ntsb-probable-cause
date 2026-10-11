@@ -37,7 +37,10 @@ few hours). No command here prints a key.
 8. It builds the **export** (the board's data files) and copies it to the bucket.
 9. It writes `nights/<date>/night.json` and the night's **manifest**, publishes one **metric**
    (this means "a night finished"), and sends one email per alert kind.
-10. A GitHub job at 10:00 UTC adds the new manifests' hashes to the public **ledger**.
+10. A GitHub job adds the new manifests' hashes to the public **ledger**. GitHub runs a
+    schedule only from the repository's default branch, so the 10:00 UTC schedule starts only
+    after the stage is merged. Until then the job runs when a commit is pushed to the S4 branch
+    (section 9, "Run the job before the merge").
 
 Nothing that leaves the task names a case: emails, the ledger and the log hold kinds, counts,
 dates and hashes.
@@ -49,7 +52,8 @@ alarm changes state. To look at the state yourself, from the project folder with
 `NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data` set:
 
 ```
-make s4-export          # copies the bucket to data/live-mirror and builds data/live-export
+make s4-export          # copies the bucket to data/live-mirror, builds data/live-export,
+                        # and copies the night's own export to data/live-night-export
 make s4-verify-ledger   # checks the copy against the public ledger
 make s4-report          # writes docs/results/s4-live.txt (counts only)
 ```
@@ -122,11 +126,21 @@ spent. What you do:
    `aws s3 ls s3://<bucket>/runs/<run id>/ --profile ntsb --region eu-west-2` lists a folder.
    The bucket name is the output `LiveBucketName` of the stack (section 7, step 1). The run id is
    in the log line (section 2).
-2. To finish it, run the task definition revision that started it. Each deploy makes a new
-   revision, and each pins its image by digest (ECR keeps the 5 newest images). Find the
-   revisions with `aws ecs list-task-definitions --family-prefix ntsb-live --region eu-west-2
-   --profile ntsb`, then start that revision on a new day (section 8, "Start a task by hand").
-3. Once it has finished, the next night runs as normal on the current image.
+2. To finish it, run the image that started it. **Verify on first use.** A deploy replaces the
+   task definition and deregisters the older revision, so there is no older revision to run.
+   Instead, deploy `NtsbLiveStack` again with the full context (section 7) and
+   `-c live_image_digest=<the digest that started the run>`. ECR keeps the 5 newest images, so
+   that image is still there. Find the digest: the run's `spec.json` in the bucket names its
+   commit, and the image tag is `live-<commit>`:
+   ```
+   aws s3 cp s3://<bucket>/runs/<run id>/spec.json - --profile ntsb --region eu-west-2
+   aws ecr describe-images --repository-name ntsb-live --image-ids imageTag=live-<commit> --profile ntsb --region eu-west-2 --query "imageDetails[0].imageDigest" --output text
+   ```
+   (`spec.json` holds the commit and no case text. If the commit is longer than the tag, the tag
+   uses its first 7 characters.) Keep `-c live_schedule=enabled` in that deploy if the schedule
+   is on. Let the next night finish the run.
+3. Once it has finished, deploy again with the new digest (full context). The nights after that
+   run on the current image.
 
 **A failed night after the day's marker.** The marker `nights/<date>/started` exists, and the task
 cannot delete it. So a second task the same day stops at once. If the night failed early and you
@@ -135,6 +149,10 @@ want it to run again that day, delete the marker yourself, then start a task by 
 ```
 aws s3 rm s3://<bucket>/nights/<date>/started --profile ntsb --region eu-west-2
 ```
+
+**Verify on first use:** that the task can start again after you delete the marker (the task writes the
+marker with a conditional put, and the delete may leave a delete marker in a versioned bucket). If
+the new task still stops with "a night already started today", tell Claude.
 
 Then follow section 8, "Start a task by hand". If you do nothing, the next night runs as normal.
 
@@ -182,19 +200,19 @@ quotes the program's own text. A test checks that each quoted text is in the pro
 | `the agent's prompt version is` | The agent's text is not version 1's. | See `version-refused`. |
 | `these settings are not version 1's` | A setting that changes what Ellery receives is not version 1's. | See `version-refused`. |
 | `live_docket_dir must differ from docket_dir` | The two document folders are the same or nested. | See `docket-folders`. |
-| `began at commit` | An unfinished run began on another image. | See `resume-refused` and section 5. |
+| `began at commit` and `a run is resumed only` | An unfinished run began on another image. | See `resume-refused` and section 5. |
 | `the recorder has not finished a run on` | The recorder's store is not today's yet. | See `recorder-not-finished`. |
 | `no case row or no run row` | The store is not sound. | See `store-unsound`. |
 | `store schema version` | The store was written by newer code than the image's. | See `store-unsound`. |
-| `cases to answer` | An unfinished run needs more money than is left this month. | See `money-held-back`. |
+| `the unfinished run has` and `cases to answer` | An unfinished run needs more money than is left this month. | See `money-held-back`. |
 | `money holds back` | A warning: money holds back some queued cases tonight. | See `money-held-back`. |
-| `exceeds the` | The code's monthly guard refused. | See `budget-guard`. |
+| `reserved by other runs exceeds the` | The code's monthly guard refused. | See `budget-guard`. |
 | `a case's record or docket could not be read` | A fetch or document error. No case is named. | See `fetch-failed`. |
 | `AWS error (` | An AWS problem inside the task. The class name says which. | Tell Claude the line. |
 | `the AWS login has expired` | On your Mac: the sign-in ended. | Run `aws login`, then run the command again. |
 | `another morning is running` | On your Mac: a second dry run holds the lock. | Wait for it. A lock does not survive a restart. |
 | `information: this dry run does not check` | The dry run cannot tell whether an unfinished run began on another image. This is expected on the Mac. | Nothing. Only the cloud night can check it. |
-| `dry run:` | The dry run's lines: how many cases are queued, how many a night would code, and one fetch. | Read them (section 10, step 1). |
+| `cases queued; a morning would code` and `no model was called and no run folder was written` | The dry run's lines: how many cases are queued, how many a night would code, and one fetch. | Read them (section 10, step 1). |
 | `is resumed with no backfill held anywhere` | The folder of an unfinished run lacks its backfill list. | Do not delete it. Tell Claude. |
 | `resumed with the records it began with` | The folder of an unfinished run lacks the file that holds its cases. | Do not delete it. Tell Claude. |
 | `no recorded training cut-off for` | The model has no recorded training cut-off date. | Tell Claude. |
@@ -249,18 +267,39 @@ aws cloudformation describe-stacks --stack-name NtsbLiveStack --profile ntsb --r
 Confirmation" to `<alert email>`. Open it and choose "Confirm subscription". Until you do, no
 alert arrives.
 
+Then send a test alert. `<AlertTopicArn>` is the output `AlertTopicArn` of the stack (step 1;
+the `describe-stacks` command there lists it):
+
+```
+aws sns publish --topic-arn <AlertTopicArn> --subject "Ellery test" --message "test" --profile ntsb --region eu-west-2
+```
+
+An email with the subject "Ellery test" should arrive within a minute. Write today's date as
+`alert_email_received` in the attestation file (section 10, step 4).
+
 **Step 3: write the live key.** It lives in your `pass` store as `api/openrouter-live`. This line
 sends it straight into AWS **Parameter Store**. The value never appears on the screen:
 
 ```
-pass show api/openrouter-live | aws ssm put-parameter --name /ntsb/live/openrouter-key --type SecureString --value file:///dev/stdin --overwrite --profile ntsb --region eu-west-2
+pass show api/openrouter-live | head -n1 | tr -d '\n' | aws ssm put-parameter --name /ntsb/live/openrouter-key --type SecureString --value file:///dev/stdin --overwrite --profile ntsb --region eu-west-2
 ```
 
-The command prints a version number only. On OpenRouter, check the live key has a limit of $10
+`head -n1` keeps the first line of the `pass` entry only, and `tr -d '\n'` removes its newline.
+Without them AWS would store the newline, the `Authorization` header would hold it, and every
+night would stop with `key-unreachable`. (The recorder runbook writes its key with a short
+Python program for the same reason; this form was checked with aws-cli 2.36.44.) The command
+prints a version number only. Check what was stored, by name and type, never by value:
+
+```
+aws ssm describe-parameters --profile ntsb --region eu-west-2 --parameter-filters Key=Name,Values=/ntsb/live/openrouter-key
+```
+
+It must show the name `/ntsb/live/openrouter-key`, the type `SecureString` and a version. On OpenRouter, check the live key has a limit of $10
 and that its reset period is **monthly**. The code does not read the reset period (section 10 says
 where you confirm it).
 
-**Step 4: build and push the image.** This pushes an image to ECR, so `make` asks for `CONFIRM=yes`.
+**Step 4: build and push the image.** This pushes an image to ECR, so `make` asks for `CONFIRM=yes`. Run
+both commands from the project folder (`ntsb-probable-cause`, not `infra`).
 Commit first: the script refuses a tree with uncommitted changes. Sign Docker in to ECR (the
 password goes through a pipe and is not shown):
 
@@ -284,17 +323,22 @@ cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c 
 
 You need this for section 5 and for a first test. It runs the same command as the schedule.
 
-1. Find the schedule and read its network settings (the stack has no output for them):
+1. Find the schedule and read its network settings (the stack has no output for them). The
+   schedule's logical id in the stack is `Nightly`. **Verify on first use:** the physical id
+   should be the schedule's name; if the second command does not accept it, read the name in the
+   Amazon EventBridge Scheduler page of the console.
    ```
-   aws scheduler list-schedules --name-prefix NtsbLiveStack --region eu-west-2 --profile ntsb --query "Schedules[].Name" --output text
+   aws cloudformation describe-stack-resource --stack-name NtsbLiveStack --logical-resource-id Nightly --profile ntsb --region eu-west-2 --query "StackResourceDetail.PhysicalResourceId" --output text
    aws scheduler get-schedule --name <schedule name> --region eu-west-2 --profile ntsb --query "Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration"
    ```
-2. Start the task. Put the subnet ids and the security group id from the last output in place:
+2. Start the task. Put the subnet ids and the security group id from the last output in place.
+   **Verify on first use:** the `awsvpcConfiguration` key names in that output are in camelCase
+   (`subnets`, `securityGroups`, `assignPublicIp`); the command below uses the same spelling.
    ```
    aws ecs run-task --cluster ntsb-live --task-definition ntsb-live --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[<subnet ids>],securityGroups=[<security group>],assignPublicIp=ENABLED}" --region eu-west-2 --profile ntsb --no-cli-pager --query "tasks[0].taskArn" --output text
    ```
-   `--task-definition ntsb-live` runs the newest revision. To run an older one (section 5), give
-   `ntsb-live:<revision>`.
+   `--task-definition ntsb-live` runs the newest revision, which is the only one that exists
+   (section 5 says how to finish a run that began on an older image).
 3. Follow the log: `aws logs tail /ecs/ntsb-live --follow --since 10m --region eu-west-2 --profile ntsb`.
 
 Never start a task while the 06:00 UTC night is running. The marker stops it, but do not rely on it.
@@ -305,7 +349,10 @@ The ledger job (`.github/workflows/ledger.yml`) does nothing until the five part
 the variable last.
 
 1. **Two repository secrets** (secrets are masked in public logs; variables are not). These read
-   the values from AWS and send them straight to GitHub, so nothing is shown:
+   the values from AWS and send them straight to GitHub, so nothing is shown. **Verify on first
+   use:** run the inner CloudFormation `describe-stacks` command (the one inside `$(...)`) on its own first and check
+   that it prints an ARN (or a bucket name). With an expired login it prints nothing or `None`, and
+   `gh secret set --body "$(...)"` would store that empty or `None` value without complaint.
    ```
    gh secret set LEDGER_ROLE_ARN --repo floyda/ntsb-probable-cause --body "$(aws cloudformation describe-stacks --stack-name NtsbLiveStack --profile ntsb --region eu-west-2 --query "Stacks[0].Outputs[?OutputKey=='LedgerRoleArn'].OutputValue" --output text)"
    gh secret set LIVE_BUCKET --repo floyda/ntsb-probable-cause --body "$(aws cloudformation describe-stacks --stack-name NtsbLiveStack --profile ntsb --region eu-west-2 --query "Stacks[0].Outputs[?OutputKey=='LiveBucketName'].OutputValue" --output text)"
@@ -315,12 +362,14 @@ the variable last.
    ```
    dir="$(mktemp -d)" && git clone --quiet git@github.com:floyda/ntsb-probable-cause.git "$dir" && git -C "$dir" switch --orphan ledger && : > "$dir/ledger.jsonl" && git -C "$dir" add ledger.jsonl && git -C "$dir" commit --quiet -m "ledger: start" && git -C "$dir" push origin ledger
    ```
-3. **Protect the branch**: no force push and no deletion. Do **not** add "require a pull request" or
-   a push restriction: the job's bot pushes straight to the branch with the job's own token, and
-   either rule would stop it.
+3. **Protect the branch**: no force push and no deletion. **Verify on first use** (the `gh api`
+   call and its body). `enforce_admins` is `true`, so no administrator, you included, can force-push
+   or delete the branch either. This is tamper evidence; it does not block the job's bot, which
+   only adds commits. Do **not** add "require a pull request" or a push restriction: the bot
+   pushes straight to the branch with the job's own token, and either rule would stop it.
    ```
    gh api --method PUT repos/floyda/ntsb-probable-cause/branches/ledger/protection --input - <<'JSON'
-   {"required_status_checks": null, "enforce_admins": false, "required_pull_request_reviews": null, "restrictions": null, "allow_force_pushes": false, "allow_deletions": false}
+   {"required_status_checks": null, "enforce_admins": true, "required_pull_request_reviews": null, "restrictions": null, "allow_force_pushes": false, "allow_deletions": false}
    JSON
    ```
 4. **No GitHub environment.** The job does not use one. An environment changes the sign-in
@@ -331,9 +380,19 @@ the variable last.
    ```
    Before this variable is `true`, the workflow is a no-op.
 
-Check the job once: `gh workflow run ledger --repo floyda/ntsb-probable-cause --ref s4-predictions-and-resolution`
-then `gh run list --workflow ledger --repo floyda/ntsb-probable-cause`. It also runs on every push
-to the S4 branch. Its log holds hashes and counts, never contents.
+**Run the job before the merge.** The workflow file is not on `main` yet, so GitHub will not run
+its schedule, and a manual start cannot start it either. Before the merge the job runs on a
+push to the S4 branch. After a night has finished, push to the branch (or ask Claude to), for
+example from the project folder:
+
+```
+git commit --allow-empty -m "ledger: run the job" && git push origin s4-predictions-and-resolution
+gh run list --workflow ledger --branch s4-predictions-and-resolution --repo floyda/ntsb-probable-cause
+```
+
+Wait until the run shows as completed, then run `make s4-verify-ledger`. After the merge, the
+10:00 UTC schedule takes over and the push is not needed. The job's log holds hashes and counts,
+never contents.
 
 ## 10. Before the first night, and the first night
 
@@ -372,11 +431,15 @@ and not yet coded) takes about three nights because a night is limited by money 
 **Step 4: after the first night.**
 
 1. Read the night's email and the log (the command in section 2).
-2. `make s4-export`, then `make s4-verify-ledger` (after the 10:00 UTC ledger job), then
-   `make s4-report`. `docs/results/s4-live.txt` is counts only: commit it yourself or ask Claude.
+2. `make s4-export`. Then run the ledger job by a push to the S4 branch and wait for it to finish
+   (section 9, "Run the job before the merge"; the 10:00 UTC schedule does not run before the
+   merge). Then `make s4-verify-ledger`, then `make s4-report`. `docs/results/s4-live.txt` is
+   counts only: commit it yourself or ask Claude.
 3. **The alarm state test.** The alarm sits in `ALARM` from the deploy until the first finished
    night, which sends an `OK` email. Run the test only once the alarm shows `OK`, because an alarm
-   already in `ALARM` sends nothing. Find its name, then check its state:
+   already in `ALARM` sends nothing. Find its name, then check its state. **Verify on first use:** the name starts with the stack
+   name and the alarm's id `MissedNight`; if the command prints nothing, list all alarms
+   (`aws cloudwatch describe-alarms --region eu-west-2 --profile ntsb --query "MetricAlarms[].AlarmName"`).
    ```
    aws cloudwatch describe-alarms --alarm-name-prefix NtsbLiveStack-MissedNight --region eu-west-2 --profile ntsb --query "MetricAlarms[].[AlarmName,StateValue]" --output text
    ```
@@ -385,7 +448,9 @@ and not yet coded) takes about three nights because a night is limited by money 
    aws cloudwatch set-alarm-state --alarm-name <name> --state-value ALARM --state-reason "S4 test" --region eu-west-2 --profile ntsb
    ```
    An `ALARM` email should arrive within a minute or two. CloudWatch sets the alarm back to its
-   real state (`OK`) at its next check and sends an `OK` email.
+   real state (`OK`) at its next check and sends an `OK` email. **Verify on first use:** the next
+   check can take up to one 6-hour period (the alarm's period), so the `OK` email may come hours
+   later. Write the date of the `ALARM` email as `alarm_test_fired` in the attestation file.
 4. **Record what you saw.** Two of the closing conditions are your word; the report cannot see
    them. Write the dates in a small file the report reads:
    ```
@@ -393,7 +458,10 @@ and not yet coded) takes about three nights because a night is limited by money 
    {"alert_email_received": "YYYY-MM-DD", "alarm_test_fired": "YYYY-MM-DD", "mac_key_removed": ""}
    JSON
    ```
-   Fill `mac_key_removed` after section 11. The file is not committed.
+   Replace each `YYYY-MM-DD` with a real date written that way (`2026-10-14`). The report reads
+   each value as a date: a value that is not a date counts as "not met". Fill `mac_key_removed`
+   after section 11. The report prints the dates, and only the dates, in
+   `docs/results/s4-live.txt`. The attestation file is not committed.
 
 ## 11. Remove the Mac's key, then move to `main`
 
@@ -401,9 +469,10 @@ and not yet coded) takes about three nights because a night is limited by money 
 `ntsb-live-reader` and its access key let the Mac read the recorder's store for S3.3. Each
 command uses `--profile ntsb` (sign in first with `aws login`):
 
-1. List the key: `aws iam list-access-keys --user-name ntsb-live-reader --profile ntsb`. Note the
-   `AccessKeyId`.
-2. `aws iam delete-access-key --user-name ntsb-live-reader --access-key-id <id> --profile ntsb`
+1. List the keys: `aws iam list-access-keys --user-name ntsb-live-reader --profile ntsb`. It may
+   return two keys. Note each `AccessKeyId`.
+2. `aws iam delete-access-key --user-name ntsb-live-reader --access-key-id <id> --profile ntsb`,
+   once for each key. A user with a key left cannot be deleted in step 4.
 3. `aws iam delete-user-policy --user-name ntsb-live-reader --policy-name live-shadow-read-store --profile ntsb`
 4. `aws iam delete-user --user-name ntsb-live-reader --profile ntsb`
 5. `pass rm aws/ntsb-live-reader`
@@ -414,14 +483,15 @@ command uses `--profile ntsb` (sign in first with `aws login`):
 image built on the S4 branch to an image built from `main`, and the branch's trust in the ledger
 role is removed. From a clean `main` checkout (the `cdk` command from its `infra` folder):
 
-1. `make s4-image CONFIRM=yes` prints the new digest (Do this only when no live run is unfinished,
-   section 5).
+1. From the project folder, `make s4-image CONFIRM=yes` prints the new digest (do this only when
+   no live run is unfinished, section 5).
 2. Deploy once, with `main` as the only ledger branch and the schedule still on:
    ```
    cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<new digest> -c ledger_branches=main -c live_schedule=enabled
    ```
-3. The close-out commit removes the S4 branch from the ledger workflow's `push` trigger. Check
-   that the next 10:00 UTC run still signs in.
+3. The close-out commit removes the S4 branch from the ledger workflow's `push` trigger. From
+   now on the 10:00 UTC schedule runs the job, because the file is on `main`. Check that the
+   next 10:00 UTC run still signs in.
 
 ---
 

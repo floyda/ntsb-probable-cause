@@ -781,10 +781,13 @@ s4-dry-run:
 
 # S4 Task 14, free: copies the live bucket's runs/, scores/ and nights/ to $NTSB_DATA_DIR/live-mirror
 # (the `ntsb` profile) and builds the board/1 export from that copy into $NTSB_DATA_DIR/live-export.
-# Runs on the Mac because the export needs .git for its commit stamp (the night builds its own).
-# Both folders hold open-split text: they are ignored by git and never committed (decision 0024).
+# It also copies the night's own export (export/board-1/, built in the task with the store, so it
+# holds closures per night) to $NTSB_DATA_DIR/live-night-export, which the report reads for that
+# section and for closing condition 6 (decision 0181 item 6). The local build has no store.
+# Runs on the Mac because the local export needs .git for its commit stamp.
+# All three folders hold open-split text: they are ignored by git and never committed (decision 0024).
 s4-export:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-export: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && for part in runs scores nights; do aws s3 sync "s3://$$NTSB_LIVE_BUCKET/$$part" "$${NTSB_DATA_DIR:-data}/live-mirror/$$part" --profile ntsb --region eu-west-2 --no-progress; done
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-export: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && for part in runs scores nights; do aws s3 sync "s3://$$NTSB_LIVE_BUCKET/$$part" "$${NTSB_DATA_DIR:-data}/live-mirror/$$part" --profile ntsb --region eu-west-2 --no-progress; done && aws s3 sync "s3://$$NTSB_LIVE_BUCKET/export/board-1" "$${NTSB_DATA_DIR:-data}/live-night-export" --delete --profile ntsb --region eu-west-2 --no-progress
 	uv run --locked ntsb-live export --from "$${NTSB_DATA_DIR:-data}/live-mirror" --out "$${NTSB_DATA_DIR:-data}/live-export"
 
 # S4 Task 14, free: fetches the public ledger branch and checks the local mirror (run s4-export
@@ -795,13 +798,14 @@ s4-verify-ledger:
 	uv run --locked ntsb-live verify-ledger --ledger "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl"
 
 # S4 Task 14, free: the counts-only results file docs/results/s4-live.txt, from the local mirror,
-# the export (s4-export runs first) and the ledger branch. Reads local files; no key, no bucket.
+# the exports and the ledger branch. It depends on s4-export, which needs the AWS login (`aws login`)
+# and reads the live bucket; the report itself then reads only local files.
 # Andy's dated attestations (alert email received, alarm test fired, Mac key removed) are read from
 # ATTEST, default $NTSB_DATA_DIR/live-attest.json, when that file exists. See the runbook.
 s4-report: s4-export
 	git fetch origin ledger
 	git show origin/ledger:ledger.jsonl > "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl"
-	uv run --locked ntsb-live report --mirror "$${NTSB_DATA_DIR:-data}/live-mirror" --export "$${NTSB_DATA_DIR:-data}/live-export" --ledger "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl" $(if $(wildcard $(ATTEST)),--attest $(ATTEST)) --out docs/results/s4-live.txt
+	uv run --locked ntsb-live report --mirror "$${NTSB_DATA_DIR:-data}/live-mirror" --export "$${NTSB_DATA_DIR:-data}/live-export" --night-export "$${NTSB_DATA_DIR:-data}/live-night-export" --ledger "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl" $(if $(wildcard $(ATTEST)),--attest $(ATTEST)) --out docs/results/s4-live.txt
 
 # S4 Task 14: builds the live image and PUSHES it to ECR (scripts/build_live_image.sh), then prints
 # the digest for `cdk deploy`. It asks Andy first: it does not run unless CONFIRM=yes is given.

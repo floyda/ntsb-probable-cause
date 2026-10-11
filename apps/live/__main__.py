@@ -1,8 +1,8 @@
 """``ntsb-live run`` (one live morning) and ``ntsb-live report`` (the counts-only report).
 
-``report --mirror DIR --export DIR --ledger PATH [--attest PATH] [--out PATH]``: the counts-only
-S4 report (``scripts/s4_live_report.py``) from local files; it prints no case number and takes no
-lock.
+``report --mirror DIR --export DIR [--night-export DIR] --ledger PATH [--attest PATH]
+[--out PATH]``: the counts-only S4 report (``scripts/s4_live_report.py``) from local files; it
+prints no case number and takes no lock.
 
 ``export --from DIR --out DIR``: the public board's JSON export (``board/1``) from a local copy of
 the bucket (``runs/``, ``scores/``, ``nights/``), with no store, so the open-case counts are zero.
@@ -162,6 +162,12 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument(
         "--export", dest="export_dir", required=True, metavar="DIR", help="the export"
     )
+    report.add_argument(
+        "--night-export",
+        default=None,
+        metavar="DIR",
+        help="the night's own export, copied from the bucket (built with the store)",
+    )
     report.add_argument("--ledger", required=True, metavar="PATH", help="ledger.jsonl")
     report.add_argument(
         "--attest", default=None, metavar="PATH", help="Andy's dated attestations (JSON)"
@@ -259,6 +265,8 @@ def _report(args: argparse.Namespace, settings: Settings) -> int:
     from scripts.s4_live_report import main as report_main  # noqa: PLC0415
 
     argv = ["--mirror", args.mirror, "--export", args.export_dir, "--ledger", args.ledger]
+    if args.night_export:
+        argv += ["--night-export", args.night_export]
     if args.attest:
         argv += ["--attest", args.attest]
     if args.out:

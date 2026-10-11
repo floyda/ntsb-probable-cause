@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # checkout have `.git` and read the commit from it (`gitinfo.commit_state()`).
     commit_sha: str | None = None
 
+    @field_validator("ntsb_api_key", "openrouter_api_key", "typesafe_api_key", mode="before")
+    @classmethod
+    def _strip_key_whitespace(cls, value: object) -> object:
+        """Surrounding whitespace is not part of a key (S4 Task 14, fix round 1).
+
+        A key stored with its trailing newline (for example by a piped ``pass show``) would put
+        a newline in the ``Authorization`` header. Stripping here is defence in depth; it
+        changes no model text. A key of only whitespace becomes empty, which ``require_*`` refuse.
+        """
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
     @field_validator("commit_sha", mode="before")
     @classmethod
     def _empty_commit_sha_is_unset(cls, value: object) -> object:

@@ -397,8 +397,8 @@ def _refuse_resume_across_commits(deps: MorningDeps) -> None:
             "resume-refused",
             f"the unfinished live run {unfinished} began at commit {began_at} "
             f"(dirty: {began_dirty}), and this is {sha} (dirty: {dirty}): a run is resumed only "
-            "at the commit it began at (decisions 0018, 0033). Run the task-definition "
-            "revision it began on to finish it",
+            "at the commit it began at (decisions 0018, 0033). Deploy the image it began on "
+            "to finish it (runbook, resume-refused)",
         )
 
 

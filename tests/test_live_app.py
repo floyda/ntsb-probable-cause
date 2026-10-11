@@ -278,7 +278,13 @@ def test_report_calls_the_s4_script_with_its_three_inputs_and_needs_no_lock(
     assert app.main([*base, "--out", "x.txt"]) == 0
     core = ["--mirror", "m", "--export", "e", "--ledger", "l"]
     assert app.main([*base, "--attest", "a.json"]) == 0
-    assert seen == [core, [*core, "--out", "x.txt"], [*core, "--attest", "a.json"]]
+    assert app.main([*base, "--night-export", "n"]) == 0
+    assert seen == [
+        core,
+        [*core, "--out", "x.txt"],
+        [*core, "--attest", "a.json"],
+        [*core, "--night-export", "n"],
+    ]
     with app.morning_lock(Settings().runs_dir):
         assert app.main(base) == 0  # it reads local files only, so it does not take the lock
 

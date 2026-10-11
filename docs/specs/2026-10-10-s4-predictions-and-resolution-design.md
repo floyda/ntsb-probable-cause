@@ -200,6 +200,11 @@ moves to an image built from `main`.
   versions.
 - `scripts/live_env.sh` defaults to the `ntsb` profile. `make s33-morning` is removed;
   `make s33-dry-run` and `make s33-report` stay.
+  *Note, 2026-10-11 (Task 14):* `make s33-dry-run` was removed in Task 14. With the live stack
+  present it would read the live key's limit with the development key and refuse, and without the
+  stack it only repeats `make s4-dry-run`'s local fallback. `make s4-dry-run` replaces it.
+  `make s33-report` stays and runs S3.3's script directly, because `ntsb-live report` is now the
+  S4 report.
 - S3.3's rehearsal folders stay on the Mac and are never uploaded (§6.2).
 
 ## 5. One night

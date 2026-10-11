@@ -115,9 +115,15 @@ def test_every_aws_command_names_the_ntsb_profile_and_no_command_prints_a_secret
 def test_the_live_key_is_written_with_the_exact_command_and_the_note() -> None:
     text = RUNBOOK.read_text()
     assert (
-        "pass show api/openrouter-live | aws ssm put-parameter --name /ntsb/live/openrouter-key "
-        "--type SecureString --value file:///dev/stdin --overwrite --profile ntsb"
+        "pass show api/openrouter-live | head -n1 | tr -d '\\n' | aws ssm put-parameter "
+        "--name /ntsb/live/openrouter-key --type SecureString --value file:///dev/stdin "
+        "--overwrite --profile ntsb"
     ) in text
+    assert (
+        "aws ssm describe-parameters --profile ntsb --region eu-west-2 "
+        "--parameter-filters Key=Name,Values=/ntsb/live/openrouter-key"
+    ) in text
+    assert "--with-decryption" not in text
     assert "The value never appears on the screen" in text
 
 
@@ -181,7 +187,7 @@ def test_the_ledger_setup_matches_the_workflow() -> None:
 def test_the_runbook_covers_the_carried_situations() -> None:
     text = RUNBOOK.read_text()
     for needle in (
-        "`set-alarm-state`" if False else "aws cloudwatch set-alarm-state --alarm-name",
+        "aws cloudwatch set-alarm-state --alarm-name",
         '--state-value ALARM --state-reason "S4 test"',
         "Run the test only once the alarm shows `OK`",
         "an alarm\n   already in `ALARM` sends nothing",
@@ -209,6 +215,81 @@ def test_the_runbook_covers_the_carried_situations() -> None:
         "## Glossary",
     ):
         assert needle in text, needle
+
+
+def test_the_ledger_job_before_the_merge_runs_on_a_push_not_a_schedule_or_dispatch() -> None:
+    text = RUNBOOK.read_text()
+    workflow = (ROOT / ".github" / "workflows" / "ledger.yml").read_text()
+    assert "push:\n    branches: [s4-predictions-and-resolution]" in workflow
+    assert "gh workflow run" not in text  # the file is not on the default branch yet
+    assert "A GitHub job at 10:00 UTC" not in text
+    assert "(after the 10:00 UTC ledger job)" not in text
+    assert "GitHub runs a\n    schedule only from the repository's default branch" in text
+    assert "Before the merge the job runs on a push to the S4 branch" in " ".join(text.split())
+    assert "Wait until the run shows as completed, then run `make s4-verify-ledger`" in text
+    assert "the\n10:00 UTC schedule takes over" in text
+
+
+def test_resume_refused_redeploys_the_starting_digest_and_the_tag_matches_the_script() -> None:
+    text = RUNBOOK.read_text()
+    script = (ROOT / "scripts" / "build_live_image.sh").read_text()
+    assert '"$repo:live-$sha"' in script  # the tag format the runbook relies on
+    assert "-c live_image_digest=<the digest that started the run>" in text
+    assert (
+        "aws ecr describe-images --repository-name ntsb-live --image-ids imageTag=live-<commit> "
+        "--profile ntsb"
+    ) in text
+    assert "deregisters the older revision" in text
+    assert "ntsb-live:<revision>" not in text
+    assert "list-task-definitions" not in text
+
+
+def test_the_test_alert_and_the_parameter_check_are_steps() -> None:
+    text = RUNBOOK.read_text()
+    stack = (ROOT / "infra" / "live_stack.py").read_text()
+    assert '"AlertTopicArn"' in stack
+    assert (
+        'aws sns publish --topic-arn <AlertTopicArn> --subject "Ellery test" --message "test" '
+        "--profile ntsb --region eu-west-2"
+    ) in text
+    assert "the output `AlertTopicArn` of the stack" in text
+    assert text.index("aws sns publish") < text.index("Step 3: write the live key")
+    assert text.index("Step 3: write the live key") < text.index("aws ssm describe-parameters")
+    assert "`alert_email_received`" in text
+
+
+def test_the_schedule_lookup_uses_the_stacks_logical_id() -> None:
+    text = RUNBOOK.read_text()
+    stack = (ROOT / "infra" / "live_stack.py").read_text()
+    assert re.search(r'CfnSchedule\(\s*self,\s*"Nightly"', stack)
+    assert (
+        "aws cloudformation describe-stack-resource --stack-name NtsbLiveStack "
+        "--logical-resource-id Nightly --profile ntsb"
+    ) in text
+    assert "--name-prefix" not in text
+    assert "aws cloudwatch describe-alarms --alarm-name-prefix" in text
+
+
+def test_the_first_use_checks_and_the_small_fixes_are_in_the_runbook() -> None:
+    text = RUNBOOK.read_text()
+    assert text.count("Verify on first use") >= 7
+    for needle in (
+        "`awsvpcConfiguration` key names",
+        "the name starts with the stack\n   name and the alarm's id `MissedNight`",
+        "the next\n   check can take up to one 6-hour period",
+        "delete marker",
+        "**Verify on first use** (the `gh api`\n   call and its body)",
+        '`gh secret set --body "$(...)"` would store that empty or `None` value',
+        "`enforce_admins` is `true`",
+        "no administrator, you included, can force-push",
+        "It may\n   return two keys",
+        "once for each key",
+        "Run\nboth commands from the project folder",
+        "From the project folder, `make s4-image CONFIRM=yes`",
+    ):
+        assert needle in text, needle
+    assert '"enforce_admins": true' in text
+    assert '"enforce_admins": false' not in text
 
 
 def test_every_make_target_the_runbook_names_exists() -> None:

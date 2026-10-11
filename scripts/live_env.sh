@@ -10,7 +10,8 @@
 # `export NTSB_STORE=...` (an explicit value wins; otherwise `s3://<BucketName>/recorder.sqlite`
 # from the `NtsbRecorderStack` output); and, when the stack exists, `export NTSB_LIVE_BUCKET=...`
 # (an explicit value wins; otherwise `LiveBucketName` from the `NtsbLiveStack` output). A missing
-# live stack prints no live line and is not an error. If the recorder lookup fails or is empty
+# live stack prints no live line and is not an error; a live-stack lookup that fails because the
+# AWS login has expired prints one line saying so, exits 1 and prints no export. If the recorder lookup fails or is empty
 # (most likely `pass` is locked or the profile is missing) it prints a plain message and then
 # aws's own error on stderr, exits 1, and prints no export at all (decision 0166).
 set -euo pipefail
@@ -36,7 +37,13 @@ if [[ -z "${NTSB_LIVE_BUCKET:-}" ]]; then
   # Optional: before the first deploy the stack does not exist, and that is fine.
   live="$(aws cloudformation describe-stacks --profile "$profile" --region eu-west-2 \
     --stack-name NtsbLiveStack \
-    --query "Stacks[0].Outputs[?OutputKey=='LiveBucketName'].OutputValue" --output text 2>/dev/null)" || live=""
+    --query "Stacks[0].Outputs[?OutputKey=='LiveBucketName'].OutputValue" --output text 2>"$err_file")" || live=""
+  # A missing stack answers "does not exist" and is fine. An expired login is not: say so in one
+  # line and print no export, rather than let a caller read it as "the stack is not there".
+  if [[ -z "$live" || "$live" == "None" ]] && grep -Eiq 'expired|credentials|sso|token|login' "$err_file"; then
+    echo "live_env: AWS login expired: run 'aws login' (the $profile profile), then run this again." >&2
+    exit 1
+  fi
   if [[ -n "$live" && "$live" != "None" ]]; then
     live_line="$(printf 'export NTSB_LIVE_BUCKET=%q\n' "$live")"
   fi

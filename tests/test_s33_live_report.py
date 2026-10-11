@@ -476,3 +476,27 @@ def test_the_report_refuses_to_print_or_write_text_shaped_like_a_case_number(
     assert captured.out == ""
     assert "XXX26LA001" not in captured.err
     assert not out.exists()
+
+
+def test_an_expired_login_is_one_line_and_a_bug_still_propagates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("NTSB_RUNS_DIR", str(tmp_path))
+    monkeypatch.setenv("NTSB_DATA_DIR", str(tmp_path))
+    expired = type("TokenRetrievalError", (Exception,), {"__module__": "botocore.exceptions"})
+
+    def login_expired(settings: object) -> None:
+        raise expired("token")
+
+    monkeypatch.setattr(module, "_read_closures", login_expired)
+    assert module.main([]) == 1
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1
+    assert "s33_live_report: the AWS login has expired (TokenRetrievalError)" in err
+
+    def a_bug(settings: object) -> None:
+        raise ValueError("bug")
+
+    monkeypatch.setattr(module, "_read_closures", a_bug)
+    with pytest.raises(ValueError, match="bug"):
+        module.main([])

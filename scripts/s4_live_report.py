@@ -1,12 +1,14 @@
 """The counts-only report of the cloud live nights (S4 specification sections 8, 11 and 15).
 
 Status
-    Live tool (S4 Task 14). Counts only (decision 0024). Free: it reads three local things and
+    Live tool (S4 Task 14). Counts only (decision 0024). Free: it reads four local things and
     nothing else: a local copy of the live bucket (``--mirror``: ``runs/``, ``scores/``,
-    ``nights/``), the ``board/1`` export built from that copy (``--export``) and the ledger file
-    (``--ledger``). It never reads the bucket itself, calls no model and needs no key. With
-    ``--out`` it writes ``docs/results/s4-live.txt``. It prints no case number, no case key, no
-    title and no model text; a check on the finished text refuses to print or write anything
+    ``nights/``), the ``board/1`` export built from that copy on the Mac (``--export``, no
+    store), the night's own export copied from the bucket (``--night-export``, built with the
+    store; it supplies closures per night and condition 6) and the ledger file (``--ledger``). It
+    never reads the bucket itself, calls no model and needs no key. With ``--out`` it writes
+    ``docs/results/s4-live.txt``. It prints no case number, no case key, no title and no model
+    text; a check on the finished text refuses to print or write anything
     shaped like an NTSB case number. This is live tooling, so it reads live runs on purpose and is
     not behind ``scripts/_live_fence.py``.
 
@@ -32,7 +34,8 @@ Printed alone
 
 Usage
     make s4-report
-    uv run --locked ntsb-live report --mirror DIR --export DIR --ledger PATH [--out PATH]
+    uv run --locked ntsb-live report --mirror DIR --export DIR --night-export DIR --ledger PATH
+        [--attest PATH] [--out PATH]
 """
 
 import argparse
@@ -54,6 +57,7 @@ from ntsb_probable_cause.live.export import BoardIndex, CaseFile
 from ntsb_probable_cause.live.ledger import LedgerLine, read_ledger
 from ntsb_probable_cause.live.local import live_run_folders
 from ntsb_probable_cause.live.morning import ALERT_KINDS
+from ntsb_probable_cause.live.names import NAME_MARKER
 from ntsb_probable_cause.live.night import NIGHT_FILE, NIGHT_MANIFEST_FILE
 from ntsb_probable_cause.live.queue import DECLARED_START
 from ntsb_probable_cause.live.records import (
@@ -65,6 +69,7 @@ from ntsb_probable_cause.live.records import (
     ClosureRecordV1,
     read_closure_records,
 )
+from ntsb_probable_cause.live.state import NightState
 from ntsb_probable_cause.scoring.budget import spent_usd, stage_spent
 from ntsb_probable_cause.scoring.metrics import wilson
 from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl
@@ -82,7 +87,6 @@ GRADES: Final = (
     "awaiting_ntsb",
 )
 ATTESTATION_KEYS: Final = ("alert_email_received", "alarm_test_fired", "mac_key_removed")
-NAME_MARKER: Final = "[name]"
 CONTINUITY_FILE: Final = Path("docs") / "results" / "s33-fingerprint-continuity.txt"
 _REPO_ROOT: Final = Path(__file__).resolve().parents[1]
 
@@ -207,11 +211,13 @@ def _later_ids(mirror: Path) -> tuple[set[str], int]:
 class _Export:
     """The export: its index, its case files (validated), and the count of name markers."""
 
-    def __init__(self, folder: Path) -> None:
+    def __init__(self, folder: Path | None) -> None:
         self.index: BoardIndex | None = None
         self.cases: list[CaseFile] = []
         self.valid = False
         self.name_markers = 0
+        if folder is None:
+            return
         index = folder / "index.json"
         if not index.is_file():
             return
@@ -339,21 +345,44 @@ def _names_section(export: _Export) -> list[str]:
     return [
         "names (decisions 0180 item 5, 0182, 0183)",
         f"words replaced with a name marker in the export: {export.name_markers}, a floor: a name "
-        "that appears only in a document's text is not removed",
+        "the rule cannot recognise is not replaced",
     ]
 
 
-def _drained_on(runs: Sequence[_Run], backfill: Backfill | None) -> date | None:
-    """The UTC day the last backfill case was settled, or None while any is not."""
+def _unreachable_ids(mirror: Path) -> set[str]:
+    """The case ids ``nights/state.json`` settles as unreachable; none when it is absent."""
+    path = mirror / "nights" / "state.json"
+    if not path.is_file():
+        return set()
+    return set(NightState.model_validate_json(path.read_text()).unreachable)
+
+
+def _drained_on(
+    runs: Sequence[_Run],
+    backfill: Backfill | None,
+    unreachable: set[str],
+    last_night: date | None,
+) -> date | None:
+    """The UTC day the last backfill case was settled, or None while any is not.
+
+    A backfill case is settled when it has any closure record (coded or not coded, dated by
+    ``last_returned``, else ``first_sent``, else its run's start), or when ``nights/state.json``
+    holds it as unreachable. State does not date a settlement, so those cases count from the last
+    night folder in the mirror, an upper bound.
+    """
     if backfill is None:
         return None
     wanted = set(backfill.case_ids)
     settled: dict[str, date] = {}
     for run in runs:
         for record in run.closures:
+            if record.case_id not in wanted:
+                continue
             when = record.last_returned or record.first_sent
-            if record.case_id in wanted and when is not None:
-                settled[record.case_id] = when.astimezone(UTC).date()
+            day = when.astimezone(UTC).date() if when is not None else run.started
+            settled[record.case_id] = day or backfill.fixed_on
+    for case_id in unreachable & wanted:
+        settled.setdefault(case_id, last_night or backfill.fixed_on)
     if set(settled) != wanted:
         return None
     return max(settled.values()) if settled else backfill.fixed_on
@@ -400,7 +429,11 @@ def _backfill_section(backfill: Backfill | None) -> list[str]:
 def _per_night_section(export: _Export, today: date) -> list[str]:
     lines = ["closures per night (UTC), since 2026-09-23"]
     if export.index is None:
-        return [*lines, "no export was found"]
+        return [
+            *lines,
+            "no night export was found: the night builds the export with the store, and this "
+            "section reads that one (run make s4-export)",
+        ]
     counts = export.index.counts.closures_per_night
     last = max([today, *counts])
     day = DECLARED_START
@@ -417,20 +450,35 @@ def _met(ok: bool) -> str:
     return "met" if ok else "not met"
 
 
+def _attested(value: str | None) -> tuple[date | None, str | None]:
+    """An attestation as ``(date, problem)``: both None when it was not given."""
+    if not value:
+        return None, None
+    try:
+        return date.fromisoformat(value), None
+    except ValueError:
+        return None, "attestation value is not a date"
+
+
+def _stated(attested: tuple[date | None, str | None]) -> str:
+    day, problem = attested
+    return day.isoformat() if day is not None else (problem or "not given")
+
+
 def _closing_section(  # noqa: PLR0913, PLR0917 -- one section, seven conditions' inputs.
     runs: Sequence[_Run],
     nights: Sequence[_Night],
     backfill: Backfill | None,
-    export: _Export,
+    night_export: _Export,
     ledger: Sequence[LedgerLine],
     later_ids: set[str],
     attest: Mapping[str, str],
     continuity: str | None,
     today: date,
+    drained_on: date | None,
 ) -> list[str]:
     records = [r for run in runs for r in run.closures]
     held_ids = set(backfill.case_ids) if backfill is not None else set()
-    drained_on = _drained_on(runs, backfill)
 
     # 1. version 1 re-pinned, continuity shown
     pin = VERSION_1.rsplit("+t", 1)[-1]
@@ -469,12 +517,15 @@ def _closing_section(  # noqa: PLR0913, PLR0917 -- one section, seven conditions
         for run_id in fresh_runs
     )
 
-    # 5, 7. Andy's word, dated
-    five = bool(attest.get("alert_email_received")) and bool(attest.get("alarm_test_fired"))
-    seven = bool(attest.get("mac_key_removed"))
+    # 5, 7. Andy's word, dated: each value must be an ISO date
+    given = {key: _attested(attest.get(key)) for key in ATTESTATION_KEYS}
+    five = given["alert_email_received"][0] is not None and given["alarm_test_fired"][0] is not None
+    seven = given["mac_key_removed"][0] is not None
 
-    # 6. the export passes the board/1 models (the results file is Andy's commit)
-    six = export.valid and export.index is not None and len(export.index.rows) >= 1
+    # 6. an export built from the real store (the night's own) passes the board/1 models
+    six = (
+        night_export.valid and night_export.index is not None and len(night_export.index.rows) >= 1
+    )
 
     days = (today - drained_on).days if drained_on is not None else None
     limit_reached = (not three) and days is not None and days >= WAIT_LIMIT_DAYS
@@ -482,14 +533,18 @@ def _closing_section(  # noqa: PLR0913, PLR0917 -- one section, seven conditions
     lines = [
         "closing rule (decision 0181)",
         f"1. version 1 re-pinned with continuity shown, no other label run: {_met(one)}",
-        f"2. backfill drained by scheduled nights ({len(held_ids)} cases): {_met(two)}",
+        f"2. backfill drained by scheduled nights ({len(held_ids)} cases): {_met(two)} "
+        "(it counts any night manifest, so a hand-started night cannot be told apart)",
         f"3. a fresh closure coded and scored on the night after it closed "
         f"({fresh} such cases): {_met(three)}",
         f"4. the ledger holds those runs' manifest hashes: {_met(four)}",
-        f"5. test alert email received and the alarm shown to fire (Andy's attestation): "
+        f"5. test alert email received and the alarm shown to fire (Andy's attestation: "
+        f"{_stated(given['alert_email_received'])}; {_stated(given['alarm_test_fired'])}): "
         f"{_met(five)}",
-        f"6. the export passes board/1 and holds at least one case: {_met(six)}",
-        f"7. the Mac's key removed (Andy's attestation): {_met(seven)}",
+        f"6. the night's export, built from the real store, passes board/1 and holds at least "
+        f"one case: {_met(six)}",
+        f"7. the Mac's key removed (Andy's attestation: {_stated(given['mac_key_removed'])}): "
+        f"{_met(seven)}",
         "(condition 6 also needs this file committed by Andy from this script; "
         "conditions 5 and 7 are Andy's word, dated in the attestation file)",
         f"days since the backfill drained: {days if days is not None else 'not drained'}",
@@ -511,6 +566,7 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
     export: Path,
     ledger: Sequence[LedgerLine],
     *,
+    night_export: Path | None = None,
     today: date,
     dev_spend: Sequence[str] = (),
     attest: Mapping[str, str] | None = None,
@@ -520,8 +576,12 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
 
     Args:
         mirror: A local copy of the live bucket (``runs/``, ``scores/``, ``nights/``).
-        export: The ``board/1`` export built from it.
+        export: The ``board/1`` export built from it on the Mac (without the store).
         ledger: The ledger's lines, oldest first.
+        night_export: The night's own export, copied from ``export/board-1/`` in the bucket. It
+            is built with the store, so it holds ``closures_per_night``; the closures-per-night
+            section and closing condition 6 read it, and the cases, grades and names floor read
+            ``export``.
         today: The UTC date the report is read on (the closing rule's clock).
         dev_spend: S4's development spend, as printed lines.
         attest: Andy's dated attestations (:data:`ATTESTATION_KEYS`).
@@ -533,6 +593,9 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
     nights, runs = _nights(mirror), _runs(mirror)
     held = next((r.backfill for r in runs if r.backfill is not None), None)
     loaded = _Export(export)
+    nightly = _Export(night_export)
+    last_night = max((n.date for n in nights if n.started), default=None)
+    drained = _drained_on(runs, held, _unreachable_ids(mirror), last_night)
     later_ids, later_lines = _later_ids(mirror)
     sections = [
         [
@@ -547,11 +610,11 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
         _grades_section(loaded),
         _replies_section(runs),
         _names_section(loaded),
-        _money_section(runs, _drained_on(runs, held), dev_spend),
+        _money_section(runs, drained, dev_spend),
         _backfill_section(held),
-        _per_night_section(loaded, today),
+        _per_night_section(nightly, today),
         _closing_section(
-            runs, nights, held, loaded, ledger, later_ids, attest or {}, continuity, today
+            runs, nights, held, nightly, ledger, later_ids, attest or {}, continuity, today, drained
         ),
     ]
     return "\n\n".join("\n".join(section) for section in sections) + "\n"
@@ -586,11 +649,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="s4_live_report", description=__doc__)
     parser.add_argument("--mirror", required=True, help="a local copy of the live bucket")
     parser.add_argument("--export", required=True, help="the board/1 export built from it")
+    parser.add_argument(
+        "--night-export", default=None, help="the night's own export, built with the store"
+    )
     parser.add_argument("--ledger", required=True, help="ledger.jsonl")
     parser.add_argument("--attest", default=None, help="Andy's attestations (JSON)")
     parser.add_argument("--out", default=None, help="also write the text to this file")
     args = parser.parse_args(argv)
     mirror, export, ledger = Path(args.mirror), Path(args.export), Path(args.ledger)
+    night = Path(args.night_export) if args.night_export else None
     for label, folder in (("--mirror", mirror), ("--export", export)):
         if not folder.is_dir():
             print(f"s4_live_report: {label} {folder} is not a folder", file=sys.stderr)
@@ -603,6 +670,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         mirror,
         export,
         read_ledger(ledger),
+        night_export=night,
         today=datetime.now(UTC).date(),
         dev_spend=development_spend(),
         attest=_attestations(Path(args.attest) if args.attest else None),

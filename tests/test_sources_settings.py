@@ -88,6 +88,19 @@ def test_openrouter_key_is_required_when_used(monkeypatch: pytest.MonkeyPatch) -
     assert Settings(_env_file=None).require_openrouter_key() == "or-key"
 
 
+def test_a_key_is_stripped_of_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key\n")
+    monkeypatch.setenv("NTSB_API_KEY", " ntsb-key \r\n")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "\tts-key\n")
+    settings = Settings(_env_file=None)
+    assert settings.require_openrouter_key() == "or-key"
+    assert settings.require_api_key() == "ntsb-key"
+    assert settings.require_typesafe_key() == "ts-key"
+    monkeypatch.setenv("OPENROUTER_API_KEY", " \n")
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+        Settings(_env_file=None).require_openrouter_key()
+
+
 def test_openrouter_defaults() -> None:
     s = Settings(_env_file=None)
     assert s.openrouter_base_url == "https://openrouter.ai"

@@ -141,6 +141,12 @@ def _world(tmp_path: Path, *, fresh: bool = True) -> tuple[Path, Path, list[Ledg
     return mirror, EXPORT, ledger
 
 
+def _report(mirror: Path, export: Path, ledger: Any, **options: Any) -> str:
+    """``report_text`` with the night's export defaulting to the same invented export."""
+    options.setdefault("night_export", export)
+    return module.report_text(mirror, export, ledger, **options)
+
+
 def _text(tmp_path: Path, **changes: Any) -> str:
     mirror, export, ledger = _world(tmp_path)
     options: dict[str, Any] = {
@@ -149,7 +155,7 @@ def _text(tmp_path: Path, **changes: Any) -> str:
         "attest": ATTEST,
         "continuity": CONTINUITY,
     }
-    return module.report_text(mirror, export, changes.pop("ledger", ledger), **options | changes)
+    return _report(mirror, export, changes.pop("ledger", ledger), **options | changes)
 
 
 def test_every_section_prints_and_no_case_number_does(tmp_path: Path) -> None:
@@ -234,9 +240,7 @@ def test_each_condition_reads_not_met_when_its_file_is_missing(tmp_path: Path) -
             "continuity": CONTINUITY,
             "ledger": ledger,
         } | changes
-        text = module.report_text(
-            mirror, options.pop("export", export), options.pop("ledger"), **options
-        )
+        text = _report(mirror, options.pop("export", export), options.pop("ledger"), **options)
         return {x[0]: x.split(": ")[-1] for x in text.splitlines() if re.match(r"[1-7]\. ", x)}
 
     assert verdicts(continuity=None)["1"] == "not met"
@@ -255,23 +259,21 @@ def test_a_closure_that_waited_two_days_is_not_a_fresh_one(tmp_path: Path) -> No
     mirror, export, ledger = _world(tmp_path)
     path = mirror / "runs" / RUN_B / "closures.jsonl"
     path.write_text(_closure("FFF26LA003", waited_days=2))
-    text = module.report_text(
-        mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY
-    )
+    text = _report(mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
     assert "(0 such cases): not met" in text
     assert text.splitlines()[-1] == "closing rule: 5 of 7 conditions met"
 
 
 def test_the_time_limit_closes_on_the_rest_and_says_so(tmp_path: Path) -> None:
     mirror, export, ledger = _world(tmp_path, fresh=False)
-    text = module.report_text(
+    text = _report(
         mirror, export, ledger, today=date(2026, 10, 24), attest=ATTEST, continuity=CONTINUITY
     )
     lines = text.splitlines()
     assert "days since the backfill drained: 15" in lines
     assert any(x.startswith("time limit") and x.endswith("reached") for x in lines)
     assert lines[-1].startswith("closing rule: the six others met and the time limit reached")
-    early = module.report_text(
+    early = _report(
         mirror, export, ledger, today=date(2026, 10, 12), attest=ATTEST, continuity=CONTINUITY
     )
     assert early.splitlines()[-1] == "closing rule: 5 of 7 conditions met"
@@ -280,9 +282,7 @@ def test_the_time_limit_closes_on_the_rest_and_says_so(tmp_path: Path) -> None:
 def test_a_backfill_not_yet_drained_is_not_met(tmp_path: Path) -> None:
     mirror, export, ledger = _world(tmp_path)
     (mirror / "runs" / RUN_A / "closures.jsonl").write_text(_closure(BACKFILL[0]))
-    text = module.report_text(
-        mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY
-    )
+    text = _report(mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
     assert "2. backfill drained by scheduled nights (2 cases): not met" in text
     assert "days since the backfill drained: not drained" in text
 
@@ -290,7 +290,7 @@ def test_a_backfill_not_yet_drained_is_not_met(tmp_path: Path) -> None:
 def test_an_empty_world_reports_zeroes_and_not_met(tmp_path: Path) -> None:
     (tmp_path / "m").mkdir()
     (tmp_path / "e").mkdir()
-    text = module.report_text(tmp_path / "m", tmp_path / "e", [], today=TODAY)
+    text = _report(tmp_path / "m", tmp_path / "e", [], today=TODAY)
     assert "nights started: 0" in text
     assert "alerts: none" in text
     assert "backfill: not yet fixed" in text
@@ -304,10 +304,8 @@ def test_a_damaged_export_is_not_valid(tmp_path: Path) -> None:
     broken = tmp_path / "broken"
     shutil.copytree(EXPORT, broken)
     (broken / "index.json").write_text('{"format": "board/1"}')
-    text = module.report_text(
-        mirror, broken, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY
-    )
-    assert "6. the export passes board/1 and holds at least one case: not met" in text
+    text = _report(mirror, broken, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
+    assert "holds at least one case: not met" in text.split("6. ")[1].splitlines()[0]
 
 
 def test_main_writes_the_report_and_refuses_a_case_number(
@@ -376,3 +374,98 @@ def test_development_spend_prints_the_s4_line_or_says_it_is_unavailable(
 
     monkeypatch.setattr(spend, "stage_branches", broken)
     assert "not available here" in module.development_spend()[0]
+
+
+def _local_export_without_the_store(tmp_path: Path) -> Path:
+    """The Mac's export: built with no store, so it holds no closures per night."""
+    local = tmp_path / "local-export"
+    shutil.copytree(EXPORT, local)
+    index = json.loads((local / "index.json").read_text())
+    index["counts"]["closures_per_night"] = {}
+    (local / "index.json").write_text(json.dumps(index))
+    return local
+
+
+def test_closures_per_night_and_condition_6_read_the_nights_own_export(tmp_path: Path) -> None:
+    mirror, export, ledger = _world(tmp_path)
+    local = _local_export_without_the_store(tmp_path)
+    both = _report(
+        mirror,
+        local,
+        ledger,
+        night_export=export,
+        today=TODAY,
+        attest=ATTEST,
+        continuity=CONTINUITY,
+    ).splitlines()
+    assert "2026-10-09: 2" in both  # from the night's copy, not the empty local build
+    assert "cases coded: 5" in both  # the cases section still reads the local export
+    assert any(x.startswith("6. the night's export") and x.endswith(": met") for x in both)
+    alone = _report(
+        mirror, local, ledger, night_export=None, today=TODAY, attest=ATTEST, continuity=CONTINUITY
+    )
+    assert "no night export was found" in alone
+    assert "2026-10-09: 2" not in alone
+    assert "case: not met" in alone.split("6. ")[1].splitlines()[0]
+
+
+def _drain_world(tmp_path: Path, edit: Any) -> str:
+    mirror, export, ledger = _world(tmp_path)
+    edit(mirror)
+    return _report(mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
+
+
+def test_a_backfill_case_with_a_closure_but_no_dates_is_settled(tmp_path: Path) -> None:
+    def edit(mirror: Path) -> None:
+        both = [_closure(c, first_sent=None, last_returned=None) for c in BACKFILL]
+        (mirror / "runs" / RUN_A / "closures.jsonl").write_text("".join(both))
+
+    text = _drain_world(tmp_path, edit)
+    assert "2. backfill drained by scheduled nights (2 cases): met" in text
+    assert "days since the backfill drained: 3" in text  # the run started on 2026-10-09
+
+
+def test_a_not_coded_backfill_case_with_no_first_sent_is_settled(tmp_path: Path) -> None:
+    def edit(mirror: Path) -> None:
+        sent = _closure(BACKFILL[0])
+        gone = _closure(BACKFILL[1], outcome="not coded", failure="x", first_sent=None)
+        (mirror / "runs" / RUN_A / "closures.jsonl").write_text(sent + gone)
+
+    assert "(2 cases): met" in _drain_world(tmp_path, edit)
+
+
+def test_a_backfill_case_settled_unreachable_counts_as_settled(tmp_path: Path) -> None:
+    def edit(mirror: Path) -> None:
+        (mirror / "runs" / RUN_A / "closures.jsonl").write_text(_closure(BACKFILL[0]))
+        state = {
+            "format": "live-state/1",
+            "failures": {},
+            "unreachable": {
+                BACKFILL[1]: {"mkey": 2, "event_date": "2026-09-20", "closed_on": "2026-09-24"}
+            },
+        }
+        (mirror / "nights" / "state.json").write_text(json.dumps(state))
+
+    text = _drain_world(tmp_path, edit)
+    assert "(2 cases): met" in text
+    assert "days since the backfill drained: 0" in text  # the last night folder is 2026-10-12
+
+
+def test_condition_2_says_it_counts_any_night_manifest(tmp_path: Path) -> None:
+    text = _text(tmp_path)
+    assert "it counts any night manifest, so a hand-started night cannot be told apart" in text
+
+
+def test_an_attestation_that_is_not_a_date_is_not_met_and_dates_are_printed(
+    tmp_path: Path,
+) -> None:
+    mirror, export, ledger = _world(tmp_path)
+    template = dict.fromkeys(ATTEST, "YYYY-MM-DD")
+    bad = _report(mirror, export, ledger, today=TODAY, attest=template, continuity=CONTINUITY)
+    lines = bad.splitlines()
+    assert any(x.startswith("5. ") and x.endswith(": not met") for x in lines)
+    assert any(x.startswith("7. ") and x.endswith(": not met") for x in lines)
+    assert "attestation value is not a date" in bad
+    good = _report(mirror, export, ledger, today=TODAY, attest=ATTEST, continuity=CONTINUITY)
+    assert "2026-10-11; 2026-10-11" in good
+    assert "Andy's attestation: 2026-10-12" in good

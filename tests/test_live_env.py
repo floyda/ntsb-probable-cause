@@ -65,6 +65,33 @@ def test_a_missing_live_stack_is_not_an_error(tmp_path: Path) -> None:
         assert "NTSB_LIVE_BUCKET" not in out
 
 
+def test_an_expired_login_on_the_live_lookup_says_so_in_one_line(tmp_path: Path) -> None:
+    for extra in ({"STUB_BUCKET": "the-bucket"}, {"NTSB_STORE": "s3://mine/x.sqlite"}):
+        code, out, err, _ = _run(
+            tmp_path,
+            STUB_LIVE_FAIL="1",
+            STUB_AWS_STDERR="Error loading SSO Token: the token has expired",
+            **extra,
+        )
+        assert code == 1
+        assert out == ""  # no export, so the caller does not go on as if the stack were absent
+        assert "AWS login expired: run 'aws login'" in err
+        assert "not deployed" not in err
+        assert err.count("\n") == 1
+
+
+def test_a_missing_stack_message_is_not_taken_for_an_expired_login(tmp_path: Path) -> None:
+    code, out, err, _ = _run(
+        tmp_path,
+        STUB_BUCKET="the-bucket",
+        STUB_LIVE_FAIL="1",
+        STUB_AWS_STDERR="ValidationError: Stack with id NtsbLiveStack does not exist",
+    )
+    assert code == 0
+    assert "NTSB_LIVE_BUCKET" not in out
+    assert "expired" not in err
+
+
 def test_an_explicit_live_bucket_wins_and_is_not_looked_up(tmp_path: Path) -> None:
     code, out, _, calls = _run(tmp_path, STUB_BUCKET="b", NTSB_LIVE_BUCKET="mine")
     assert code == 0

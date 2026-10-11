@@ -19,7 +19,7 @@ Printed alone
 
 Usage
     make s33-report
-    uv run --locked --extra aws ntsb-live report [--out PATH]
+    uv run --locked --extra aws python -m scripts.s33_live_report [--out PATH]
 """
 
 import argparse
@@ -361,7 +361,24 @@ def _read_rows(runs_dir: Path, name: str) -> list[dict[str, Any]]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Print the report and, with ``--out``, write it. Returns the exit code."""
+    """Print the report and, with ``--out``, write it; an AWS error is one line, not a traceback.
+
+    Returns the exit code. The error text is ``ntsb-live``'s own (an expired login says to log in
+    again), so the two commands speak alike.
+    """
+    try:
+        return _main(argv)
+    except Exception as error:
+        from apps.live.__main__ import _error_line  # noqa: PLC0415 -- one shared wording
+
+        line = _error_line("s33_live_report", Settings(), error)
+        if line is None:
+            raise
+        print(line, file=sys.stderr)
+        return 1
+
+
+def _main(argv: Sequence[str] | None) -> int:
     parser = argparse.ArgumentParser(prog="s33_live_report", description=__doc__)
     parser.add_argument("--out", default=None, help="also write the text to this file")
     args = parser.parse_args(argv)

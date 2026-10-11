@@ -321,6 +321,8 @@ def test_the_s4_export_syncs_three_prefixes_with_the_ntsb_profile_then_exports()
     assert "live-mirror" in sync
     assert "ntsb-live export --from" in build
     assert "live-export" in build
+    assert 'sync "s3://$$NTSB_LIVE_BUCKET/export/board-1"' in sync  # the night's own export
+    assert "live-night-export" in sync
 
 
 def test_the_ledger_targets_read_the_ledger_branch_not_the_working_tree() -> None:
@@ -333,9 +335,14 @@ def test_the_ledger_targets_read_the_ledger_branch_not_the_working_tree() -> Non
     report = recipe(text, "s4-report")[2]
     assert "--mirror" in report
     assert "--export" in report
+    assert "--night-export" in report
     assert "--out docs/results/s4-live.txt" in report
     assert "$(if $(wildcard $(ATTEST)),--attest $(ATTEST))" in report
     assert "s4-export" in next(line for line in text.splitlines() if line.startswith("s4-report:"))
+    comment = _comment_above(text, "s4-report")
+    assert "depends on s4-export" in comment
+    assert "AWS login" in comment
+    assert "no key, no bucket" not in comment
 
 
 def test_the_s4_image_asks_andy_first_and_does_not_run_by_accident() -> None:
