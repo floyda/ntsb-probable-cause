@@ -3,23 +3,30 @@
 ``run_night`` is library code; every outside effect comes in through :class:`NightDeps`, so a
 test replaces each with a fake. In order:
 
-1. Claim the day with the conditional marker ``nights/<date>/started``. A second task on the
-   same day stops here, before the bucket is read or the store is opened (decision 0171).
-2. Pull the bucket's ``runs/``, ``scores/`` and ``nights/`` into the local mirror.
+1. Pull the bucket's ``runs/``, ``scores/`` and ``nights/`` into the local mirror. A pull only
+   reads the bucket, so one that fails leaves the day unclaimed (fix round 1 of Task 10).
+2. Claim the day with the conditional marker ``nights/<date>/started``. A second task on the
+   same day stops here, before the store is opened or anything is fetched (decision 0171).
 3. Run the morning (``morning.run_morning``) on the mirror. The sync driver tells an observer
    before the run's first request and after every reply; the observer copies the open run
    folder to the bucket, so a night killed at any point (the task's 3-hour limit) leaves what
    the next night's resume needs: the inputs before the first request, then every reply
-   (Review Focus 1). A refusal (``LiveRefusal``) or a fetch error that escapes the morning
-   stops it; its kind is the alert, and the steps below that need no store still run.
+   (Review Focus 1). Every copy uploads in ``cloud.push_order``: ``run.jsonl`` last, the
+   point at which a run reads as finished, and ``spec.json`` before it, the point at which a
+   folder reads as a live run. A refusal (``LiveRefusal``) or a fetch error that escapes the
+   morning stops it; its kind is the alert, and the steps below that need no store still run.
 4. Later scores: each coded case still waiting for the NTSB's codes is fetched again and, when
    the codes are there, scored into ``scores/<date>.jsonl`` (decision 0174). One bad record is
-   counted by kind and the others go on.
-5. Build the export from the mirror and push it to ``export/board-1/``; a damaged mirror
-   (``ConfigurationError``) is the alert ``export-failed`` and pushes nothing.
+   counted by kind and the others go on; any such error is the alert ``later-score-failed``.
+5. Build the export from the mirror and push it to ``export/board-1/``. Any failure (a damaged
+   mirror, the store, the bucket, the disk) is the alert ``export-failed``; it is not a
+   refusal, and the night goes on.
 6. Write and push ``nights/<date>/night.json`` and the night's manifest (counts only).
 7. Publish the one metric, unless something stopped the night (decision 0177 item 2).
 8. Send one alert per kind, each with its own counts (decision 0177 item 1).
+
+One date and one clock reading serve the whole night: the day claimed, the records, the scores
+file and the export are dated by the night's start, even when the night runs past midnight UTC.
 
 Any other exception sends ``night-crashed`` with no counts and is raised again; the missing-night
 alarm fires too, because no metric was published. Nothing that leaves the night (the records,
@@ -28,12 +35,13 @@ the manifest, the alerts, the printed line) names a case (decision 0024).
 
 import hashlib
 import json
+import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, replace
-from datetime import UTC, date
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 
@@ -67,9 +75,12 @@ NIGHT_MANIFEST_FILE: Final = "manifest.json"
 STATE_KEY: Final = Path("nights") / "state.json"
 FETCH_FAILED: Final = "fetch-failed"
 AWAITING_CODES: Final = "awaiting-codes-7"
+LATER_FAILED: Final = "later-score-failed"
 EXPORT_FAILED: Final = "export-failed"
 NIGHT_CRASHED: Final = "night-crashed"
-NIGHT_KINDS: Final = (FETCH_FAILED, AWAITING_CODES, EXPORT_FAILED, NIGHT_CRASHED)
+NIGHT_KINDS: Final = (FETCH_FAILED, AWAITING_CODES, LATER_FAILED, EXPORT_FAILED, NIGHT_CRASHED)
+_CAMEL: Final = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_COUNT_NAME: Final = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
 @dataclass(frozen=True)
@@ -78,8 +89,10 @@ class NightDeps:
 
     ``morning.settings.runs_dir`` must be ``<mirror.local>/runs`` (so the bucket sees the run's
     replies and trail); the morning's sink is a ``MirrorSink`` over ``mirror`` and its spend an
-    ``OpenRouterKeySpend``. ``export`` builds the export from the mirror folder it is given and
-    returns the folder it wrote (``board.build_export``, with its other arguments bound).
+    ``OpenRouterKeySpend``. ``export`` builds the export from the mirror folder it is given, on
+    the night's day and at the night's clock reading (so a night past midnight UTC dates its
+    export as it dates its records), and returns the folder it wrote (``board.build_export``,
+    with its other arguments bound).
     """
 
     morning: MorningDeps
@@ -87,7 +100,7 @@ class NightDeps:
     alerts: Alerts
     metric: MetricLike | None  # None outside the image
     ntsb: Callable[[], NtsbClient]  # for later scores
-    export: Callable[[Path], Path]
+    export: Callable[[Path, date, datetime], Path]  # (mirror, today, now) -> the export folder
 
 
 @dataclass(frozen=True)
@@ -106,6 +119,7 @@ class _Later:
     overdue: int
     errors: dict[str, int]  # error kind -> cases; never a case id
     path: Path | None  # tonight's scores file, if one was written
+    classes: dict[str, int] = field(default_factory=dict)  # error class -> cases
 
 
 def run_night(deps: NightDeps, *, limit: int | None = None) -> NightReport:
@@ -122,15 +136,19 @@ def run_night(deps: NightDeps, *, limit: int | None = None) -> NightReport:
         ConfigurationError: the morning's runs folder is not the mirror's ``runs/``; raised
             (after the ``night-crashed`` alert) before the day is claimed, so a corrected task
             can still run today.
-        Exception: anything the night did not expect, after the ``night-crashed`` alert.
+        Exception: anything the night did not expect, after the ``night-crashed`` alert; a
+            failed pull is raised before the day is claimed.
     """
     try:
         _check_runs_folder(deps)
-        today = deps.morning.now().astimezone(UTC).date()
+        began = deps.morning.now().astimezone(UTC)
+        today = began.date()
+        deps.mirror.pull()  # reads only: a failure here leaves the day unclaimed
         if not deps.mirror.mark_started(today):
+            # Pulled, but nothing opened: the store, NTSB and the model are never reached.
             _say("a night already started today: this task stops here and does nothing else")
             return NightReport(started=False, outcome=None, alerts=(), later_scored=0)
-        return _Night(deps, today, limit).run()
+        return _Night(deps, began, limit).run()
     except Exception:
         with suppress(Exception):  # a crash is reported if it can be; the alarm covers the rest
             deps.alerts.send([NIGHT_CRASHED], {})
@@ -147,19 +165,21 @@ def _check_runs_folder(deps: NightDeps) -> None:
 
 
 class _Night:
-    def __init__(self, deps: NightDeps, today: date, limit: int | None) -> None:
+    def __init__(self, deps: NightDeps, began: datetime, limit: int | None) -> None:
         self.deps = deps
-        self.today = today
+        self.began = began  # the night's one clock reading (fix round 1, item 7)
+        self.today = began.date()
         self.limit = limit
         self.local = deps.mirror.local
 
     def run(self) -> NightReport:
-        self.deps.mirror.pull()
         outcome, stop = self._morning()
         kinds = list(outcome.alerts) if outcome is not None else [stop or NIGHT_CRASHED]
         later = self._later_scores()
         if later.overdue:
             kinds.append(AWAITING_CODES)
+        if later.errors:
+            kinds.append(LATER_FAILED)
         if later.path is not None:
             self.deps.mirror.push(later.path.relative_to(self.local))
         if not self._export():
@@ -188,18 +208,18 @@ class _Night:
             return None, FETCH_FAILED
 
     def _pusher(self, folder: Path) -> Callable[[], None]:
-        """The observer for one run folder: push every file in it but a budget reservation.
+        """The observer for one run folder: push its changed files in ``cloud.push_order``.
 
-        A reservation is the runner's local lock on the month's budget, settled when the run
-        ends. The task role cannot delete, so one copied up would stay in the bucket and be
-        counted against every later night's budget; it is never copied.
+        The mirror never copies a budget reservation (the runner's local lock, which the task
+        role could not delete from the bucket), and it uploads ``spec.json`` after the other
+        files: on the first push, before the run's first request, a task killed part-way leaves
+        a folder no later night takes for a live run, and nothing has been sent.
         """
         mirror = self.deps.mirror
+        relative = folder.relative_to(self.local)
 
         def push() -> None:
-            for path in sorted(p for p in folder.rglob("*") if p.is_file()):
-                if path.name != RESERVATION_FILE:
-                    mirror.push(path.relative_to(self.local))
+            mirror.push(relative)
 
         return push
 
@@ -212,12 +232,14 @@ class _Night:
             return _Later(scored=0, overdue=0, errors={}, path=None)
         written: list[LaterScore] = []
         errors: Counter[str] = Counter()
+        classes: Counter[str] = Counter()
         with self.deps.ntsb() as client:
             for case in cases:
                 try:
                     score = score_later(fetch_record(client, _queued(case)), case, self.today)
                 except Exception as error:  # one bad record must not stop the rest (ruling 5)
                     errors[_error_kind(error)] += 1
+                    classes[class_count_name(error)] += 1
                     continue
                 if score is not None:
                     written.append(score)
@@ -234,17 +256,25 @@ class _Night:
             overdue=overdue(left, self.today),
             errors=dict(sorted(errors.items())),
             path=path,
+            classes=dict(sorted(classes.items())),
         )
 
     # --- the export ---
 
     def _export(self) -> bool:
-        """Build the export and push its folder; False when the mirror is damaged."""
+        """Build the export and push its folder; False when either fails, for any reason.
+
+        A damaged mirror (``ConfigurationError``), the store's pull, the bucket or the disk: each
+        is ``export-failed``, never a crash, so the night record is still written and pushed and
+        the metric still published (fix round 1, item 2). Only the error's class is printed; its
+        message can hold a path or a key.
+        """
         try:
-            out = self.deps.export(self.local)
-        except ConfigurationError:
+            out = self.deps.export(self.local, self.today, self.began)
+            self.deps.mirror.push_export(out)
+        except Exception as error:
+            _say(f"the export failed ({type(error).__name__}); the night goes on")
             return False
-        self.deps.mirror.push_export(out)
         return True
 
     # --- the night record and its manifest ---
@@ -316,7 +346,19 @@ def _alert_counts(kind: str, outcome: NightOutcome | None, later: _Later) -> dic
         return {"failures-counted": summary.failures_counted}
     if kind == AWAITING_CODES:
         return {"overdue": later.overdue}
+    if kind == LATER_FAILED:
+        return dict(later.classes)
     return {}
+
+
+def class_count_name(error: BaseException) -> str:
+    """An error's class name as an alert count name: ``LeakageError`` -> ``leakage-error``.
+
+    Alert count names are lower-case words and hyphens (``cloud.SnsAlerts``); a class name that
+    does not fit after the change (one made of other characters) is counted as ``error``.
+    """
+    name = _CAMEL.sub("-", type(error).__name__.strip("_")).replace("_", "-").lower()
+    return name if _COUNT_NAME.fullmatch(name) else "error"
 
 
 def _scored_ids(folder: Path) -> set[str]:

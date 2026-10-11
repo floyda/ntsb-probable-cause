@@ -170,6 +170,7 @@ class World:
     sns: FakeSns = field(default_factory=FakeSns)
     metric: FakeMetric = field(default_factory=FakeMetric)
     exports: list[Path] = field(default_factory=list)
+    export_dates: list[tuple[date, datetime]] = field(default_factory=list)
     nights: int = 0
     finished: bool = True
     store_closures: list[Closure] = field(default_factory=lambda: _closures(RAWS))
@@ -183,6 +184,8 @@ class World:
         key: Any = None,
         export: Any = None,
         local: Path | None = None,
+        commit: str = "abc1234",
+        step: timedelta = timedelta(seconds=1),
     ) -> tuple[NightReport, NightDeps, _Recording]:
         """One night on a fresh local folder (a new task), over the shared bucket."""
         self.nights += 1
@@ -195,7 +198,7 @@ class World:
         store_file = self.tmp / f"store-{self.nights}.sqlite"
         store_file.write_bytes(b"x")
         store = _Store(store_file, self.store_closures, finished=self.finished)
-        ticks = iter(now + timedelta(seconds=n) for n in range(100000))
+        ticks = iter(now + step * n for n in range(100000))
 
         def build(client: ModelClient, **kwargs: Any) -> AgentRunner:
             return AgentRunner(
@@ -215,12 +218,11 @@ class World:
 
         self.monkeypatch.setattr(morning, "AgentRunner", build)
 
-        def exported(folder: Path) -> Path:
+        def exported(folder: Path, today: date, at: datetime) -> Path:
             out = data / "live-export"
             self.exports.append(folder)
-            return build_export(
-                folder, out, store=None, today=now.date(), commit="abc1234", now=now
-            )
+            self.export_dates.append((today, at))
+            return build_export(folder, out, store=None, today=today, commit=commit, now=at)
 
         deps = NightDeps(
             morning=MorningDeps(
@@ -232,7 +234,7 @@ class World:
                 ntsb=ntsb,  # type: ignore[arg-type]
                 docket=_Client,  # type: ignore[arg-type]
                 models=lambda: (fake, None),
-                commit=lambda: ("abc1234", False),
+                commit=lambda: (commit, False),
                 uv_lock_sha256=lambda: "f" * 64,
             ),
             mirror=mirror,
@@ -385,8 +387,29 @@ def test_a_second_start_on_the_same_day_stops_before_the_store(
     assert world.sns.sent == []
     assert world.metric.points == []
     assert world.exports == []
-    assert not (world.tmp / "task-1" / "mirror" / "runs").exists()  # not even pulled
+    assert world.bucket.uploads == []
+    # Pulled before the claim (fix round 1, item 5): a pull only reads the bucket.
+    assert (world.tmp / "task-1" / "mirror" / "nights/2026-10-12/started").is_file()
     assert "a night already started today" in capsys.readouterr().out
+
+
+def test_a_pull_that_fails_leaves_the_day_unclaimed(world: World) -> None:
+    """Fix round 1, item 5: the pull comes before the marker, so a rerun today can claim it."""
+    world.bucket.objects["runs/r/x.json"] = b"{}"
+    real = world.bucket.download_file
+
+    def broken(bucket: str, key: str, filename: str) -> None:
+        raise OSError("the bucket could not be read")
+
+    world.bucket.download_file = broken  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="could not be read"):
+        world.night(DAY_1)
+    assert "nights/2026-10-12/started" not in world.bucket.objects
+    assert world.alerts() == ["night-crashed"]
+    assert "open" not in world.events
+    world.bucket.download_file = real  # type: ignore[method-assign]
+    report, _, _ = world.night(DAY_1)
+    assert report.started is True
 
 
 def test_an_outage_night_alerts_once_and_counts_no_failure(world: World) -> None:
@@ -481,10 +504,16 @@ def test_one_bad_record_does_not_stop_later_scoring(
     scored = sum(1 for r in RAWS if split_record(r)[2].occurrence_codes) - 1
     assert report.later_scored == scored
     assert not CASE_NUMBER.search(json.dumps(record))
+    # Fix round 1, item 6: its own alert, counted by error class.
+    assert report.alerts == ("later-score-failed",)
+    (sent,) = world.sns.sent
+    assert sent["Message"] == "kinds: later-score-failed\nleakage-error: 1"
+    assert record["alerts"] == ["later-score-failed"]
+    assert len(world.metric.points) == 2  # not a refusal: both nights finished
 
 
 def test_a_damaged_mirror_alerts_export_failed_and_pushes_no_export(world: World) -> None:
-    def broken(folder: Path) -> Path:
+    def broken(folder: Path, today: date, at: datetime) -> Path:
         raise ConfigurationError("export refused: the mirror is damaged (1 cases: no raw record)")
 
     report, _, _ = world.night(DAY_1, export=broken)
@@ -496,7 +525,7 @@ def test_a_damaged_mirror_alerts_export_failed_and_pushes_no_export(world: World
 
 
 def test_the_export_pushes_only_its_own_folder(world: World, tmp_path: Path) -> None:
-    def export(folder: Path) -> Path:
+    def export(folder: Path, today: date, at: datetime) -> Path:
         out = tmp_path / "work" / "live-export"
         (out / "cases").mkdir(parents=True)
         (out / "index.json").write_text("{}")
@@ -592,8 +621,9 @@ def test_a_later_fetch_that_fails_is_counted_and_the_night_goes_on(
     stripped = [_without_codes(RAWS[0]), *RAWS[1:]]
     world.night(DAY_1, ntsb=FakeNtsb(stripped))
     report, _, _ = world.night(DAY_2, ntsb=FakeNtsb(RAWS, down=True))  # nothing queued tonight
-    assert report.alerts == ()
+    assert report.alerts == ("later-score-failed",)
     assert world.json("nights/2026-10-13/night.json")["later_errors"] == {"fetch-failed": 1}
+    assert world.sns.sent[-1]["Message"] == "kinds: later-score-failed\nfetch-error: 1"
 
     def broken(raw: Mapping[str, object], case: Any, today: date) -> Any:
         raise ValueError("an unexpected shape")
@@ -601,6 +631,7 @@ def test_a_later_fetch_that_fails_is_counted_and_the_night_goes_on(
     monkeypatch.setattr(night, "score_later", broken)
     world.night(DAY_2 + timedelta(days=1), ntsb=FakeNtsb(RAWS))
     assert world.json("nights/2026-10-14/night.json")["later_errors"] == {"error": 1}
+    assert world.sns.sent[-1]["Message"] == "kinds: later-score-failed\nvalue-error: 1"
 
 
 def test_each_alert_carries_the_counts_of_its_own_condition() -> None:
@@ -621,3 +652,139 @@ def test_a_kind_not_in_the_list_is_refused_before_anything_is_sent() -> None:
     with pytest.raises(ConfigurationError, match="ALERT_KINDS"):
         night._check_kinds(["outage", "Not A Kind"])
     night._check_kinds(list(ALERT_KINDS))
+
+
+def test_a_kill_before_the_run_record_is_pushed_leaves_a_run_the_next_night_completes(
+    world: World,
+) -> None:
+    """Fix round 1, item 1: ``run.jsonl`` goes up last, so a run never reads finished but short."""
+    world.bucket.kill_on = lambda key: key.endswith("/run.jsonl")
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1)
+    (run_id,) = world.run_ids()
+    folder = f"runs/{run_id}/"
+    assert folder + "run.jsonl" not in world.bucket.objects
+    assert {folder + "trail.jsonl", folder + CLOSURES_FILE, folder + "manifest.json"} <= set(
+        world.keys(folder)
+    )
+    fresh = world.tmp / "half"
+    BucketMirror("live-bucket", fresh, world.bucket).pull()
+    assert MirrorSink(BucketMirror("b", fresh, FakeBucket()), fresh).unfinished_run() == run_id
+
+    idle = _Recording([])
+    report, _, _ = world.night(DAY_2, model=idle)
+    assert idle.calls == 0  # every reply is in the bucket: nothing is paid for again
+    assert report.outcome is not None
+    assert report.outcome.summary.run_id == run_id
+    assert report.outcome.summary.coded == 2
+    assert folder + "run.jsonl" in world.bucket.objects
+    assert world.run_ids() == [run_id]
+    ids = world.closure_ids()
+    assert sorted(ids) == sorted(str(r["ntsbNumber"]) for r in RAWS)
+    again = world.tmp / "again"
+    BucketMirror("live-bucket", again, world.bucket).pull()
+    assert verify_manifest(again / "runs" / run_id) == []
+    assert MirrorSink(BucketMirror("b", again, FakeBucket()), again).unfinished_run() is None
+
+
+def test_a_kill_before_the_first_spec_leaves_no_live_run_and_nothing_sent(world: World) -> None:
+    """Fix round 1, item 1: on a folder's first push ``spec.json`` goes last, before any call."""
+    world.bucket.kill_on = lambda key: key.startswith("runs/") and key.endswith("/spec.json")
+    first = _Recording(_sync_replies(_scripts()))
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=first)
+    assert first.calls == 0  # the first push precedes the first request
+    (dead,) = world.run_ids()
+    assert f"runs/{dead}/{INPUTS_FILE}" in world.bucket.objects
+    assert f"runs/{dead}/spec.json" not in world.bucket.objects
+    fresh = world.tmp / "half"
+    BucketMirror("live-bucket", fresh, world.bucket).pull()
+    sink = MirrorSink(BucketMirror("b", fresh, FakeBucket()), fresh)
+    assert sink.unfinished_run() is None  # not taken for a live run
+    assert sink.done_case_ids() == frozenset()
+
+    again = _Recording(_sync_replies(_scripts()))
+    report, _, _ = world.night(DAY_2, model=again)
+    assert again.calls == ALL_CALLS
+    assert report.outcome is not None
+    assert report.outcome.summary.coded == 2
+    assert report.outcome.summary.run_id != dead
+    ids = world.closure_ids()
+    assert sorted(ids) == sorted(str(r["ntsbNumber"]) for r in RAWS)  # each case once
+
+
+def test_an_export_that_raises_anything_is_export_failed_and_the_night_record_still_goes_up(
+    world: World, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, item 2: not only ``ConfigurationError``; the class is printed, not the text."""
+
+    def broken(folder: Path, today: date, at: datetime) -> Path:
+        raise OSError("/data/live-export-store.sqlite: no space left (XXX26LA001)")
+
+    report, _, _ = world.night(DAY_1, export=broken)
+    assert report.outcome is not None
+    assert report.alerts == ("export-failed",)
+    assert world.alerts() == ["export-failed"]
+    assert world.json("nights/2026-10-12/night.json")["alerts"] == ["export-failed"]
+    assert world.json("nights/2026-10-12/manifest.json")["finished"] is True
+    assert len(world.metric.points) == 1  # an export failure is not a refusal
+    out = capsys.readouterr().out
+    assert "the export failed (OSError)" in out
+    assert "no space" not in out
+    assert not CASE_NUMBER.search(out)
+
+
+def test_a_push_of_the_export_that_fails_is_export_failed_too(world: World) -> None:
+    real = world.bucket.upload_file
+
+    def upload(filename: str, bucket: str, key: str) -> None:
+        if key.startswith("export/"):
+            raise OSError("down")
+        real(filename, bucket, key)
+
+    world.bucket.upload_file = upload  # type: ignore[method-assign]
+    report, _, _ = world.night(DAY_1)
+    assert report.alerts == ("export-failed",)
+    assert "nights/2026-10-12/night.json" in world.bucket.objects
+    assert len(world.metric.points) == 1
+
+
+def test_an_unfinished_run_from_another_commit_is_refused_before_the_store(world: World) -> None:
+    """Fix round 1, item 3: never a resume across commits (decisions 0018, 0033)."""
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
+    (run_id,) = world.run_ids()
+    opened = world.events.count("open")
+
+    other = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=other, commit="def5678")
+    assert report.outcome is None
+    assert report.alerts == ("resume-refused",)
+    assert world.alerts() == ["resume-refused"]
+    assert other.calls == 0
+    assert world.events.count("open") == opened  # the store is not opened tonight
+    assert world.metric.points == []  # a refusal stopped the night
+    assert world.json("nights/2026-10-13/night.json")["alerts"] == ["resume-refused"]
+    assert world.json("nights/2026-10-13/manifest.json")["finished"] is False
+    assert len(world.exports) == 1  # the steps that need no store still run
+    assert world.run_ids() == [run_id]
+
+    same = _Recording(replies[1:])
+    later_night, _, _ = world.night(DAY_2 + timedelta(days=1), model=same)
+    assert same.calls == ALL_CALLS - 1  # the run's own commit resumes it
+    assert later_night.outcome is not None
+    assert later_night.outcome.summary.run_id == run_id
+
+
+def test_a_night_past_midnight_dates_everything_by_its_start(world: World) -> None:
+    """Fix round 1, item 7: the export takes the night's day and clock reading."""
+    start = datetime(2026, 10, 12, 23, 59, 30, tzinfo=UTC)
+    report, _, _ = world.night(start, step=timedelta(minutes=1))
+    assert report.outcome is not None
+    run_id = report.outcome.summary.run_id
+    assert run_id is not None
+    assert run_id.startswith("20261013T")  # the clock did pass midnight during the night
+    assert world.export_dates == [(start.date(), start)]
+    assert "nights/2026-10-12/night.json" in world.bucket.objects
+    assert world.keys("nights/2026-10-13/") == []

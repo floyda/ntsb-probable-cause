@@ -1,6 +1,6 @@
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from ntsb_probable_cause.live.cloud import (
     PrintAlerts,
     SnsAlerts,
     publish_finished,
+    push_order,
 )
 from ntsb_probable_cause.live.morning import LiveRefusal
 from ntsb_probable_cause.live.seams import MonthSpend
@@ -29,6 +30,7 @@ class FakeBucket:
         self.objects = dict(objects or {})
         self.uploads: list[str] = []
         self.fail_uploads = False
+        self.kill_on: Callable[[str], bool] | None = None  # a key whose upload kills the task
 
     def list_keys(self, bucket: str, prefix: str) -> list[tuple[str, int]]:
         return [(k, len(v)) for k, v in sorted(self.objects.items()) if k.startswith(prefix)]
@@ -39,6 +41,9 @@ class FakeBucket:
     def upload_file(self, filename: str, bucket: str, key: str) -> None:
         if self.fail_uploads:
             raise OSError("down")
+        if self.kill_on is not None and self.kill_on(key):
+            self.kill_on = None  # one kill: the next task's uploads go through
+            raise KeyboardInterrupt  # the task is stopped before this object is written
         self.objects[key] = Path(filename).read_bytes()
         self.uploads.append(key)
 
@@ -97,6 +102,52 @@ def test_mark_started_once_per_day(tmp_path: Path) -> None:
     assert mirror.mark_started(date(2026, 10, 11)) is False
     assert mirror.mark_started(date(2026, 10, 12)) is True
     assert "nights/2026-10-11/started" in bucket.objects
+
+
+def test_a_run_folder_is_pushed_spec_then_run_record_last_and_never_its_reservation(
+    tmp_path: Path,
+) -> None:
+    """Fix round 1, item 1: the order is explicit; ``run.jsonl`` is the commit point."""
+    mirror, bucket = _mirror(tmp_path, {})
+    folder = tmp_path / "runs" / "live-1"
+    folder.mkdir(parents=True)
+    names = [
+        "trail.jsonl", "spec.json", "run.jsonl", "cases.jsonl", "replies.jsonl",
+        "closures.jsonl", "manifest.json", "reservation.json", "steps.jsonl",
+    ]  # fmt: skip
+    for name in names:
+        (folder / name).write_text(name)
+    assert mirror.push(Path("runs/live-1")) == len(names) - 1
+    pushed = [k.removeprefix("runs/live-1/") for k in bucket.uploads]
+    assert pushed[-2:] == ["spec.json", "run.jsonl"]
+    assert pushed[:-2] == sorted(pushed[:-2])
+    assert "reservation.json" not in pushed
+    (folder / "trail.jsonl").write_text("more")
+    (folder / "run.jsonl").write_text("finished")
+    bucket.uploads.clear()
+    mirror.push(Path("runs/live-1"))
+    assert bucket.uploads == ["runs/live-1/trail.jsonl", "runs/live-1/run.jsonl"]
+
+
+def test_push_order_puts_specs_then_run_records_after_everything_else() -> None:
+    paths = [Path(p) for p in ("b/run.jsonl", "a/spec.json", "a/z.txt", "b/a.txt", "a/run.jsonl")]
+    assert [p.as_posix() for p in push_order(paths)] == [
+        "a/z.txt",
+        "b/a.txt",
+        "a/spec.json",
+        "a/run.jsonl",
+        "b/run.jsonl",
+    ]
+
+
+def test_a_claimed_day_is_held_locally_and_never_uploaded_again(tmp_path: Path) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    assert mirror.mark_started(date(2026, 10, 11)) is True
+    assert (tmp_path / "nights/2026-10-11/started").read_bytes() == b""
+    (tmp_path / "nights/2026-10-11/night.json").write_text("{}")
+    mirror.push(Path("nights/2026-10-11"))
+    assert bucket.uploads == ["nights/2026-10-11/night.json"]
+    assert mirror.mark_started(date(2026, 10, 11)) is False
 
 
 def test_mirror_sink_finds_a_half_written_run_and_pushes(tmp_path: Path) -> None:

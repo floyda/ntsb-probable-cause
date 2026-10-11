@@ -3,7 +3,7 @@
 import fcntl
 import hashlib
 from dataclasses import dataclass, replace
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -439,6 +439,7 @@ class _S3:
         self.paginator = _Paginator(pages or [])
         self.puts: list[dict[str, Any]] = []
         self.error: Exception | None = None
+        self.answers: list[Exception | None] = []
         self.transfers: list[tuple[str, ...]] = []
 
     def get_paginator(self, name: str) -> _Paginator:
@@ -447,6 +448,11 @@ class _S3:
 
     def put_object(self, **kwargs: Any) -> dict[str, Any]:
         self.puts.append(kwargs)
+        if self.answers:  # one scripted answer per call: an error to raise, or None for 200
+            answer = self.answers.pop(0)
+            if answer is not None:
+                raise answer
+            return {}
         if self.error is not None:
             raise self.error
         return {}
@@ -493,6 +499,33 @@ def test_the_marker_is_a_conditional_put_and_a_precondition_failure_is_false() -
     ]
     s3.error = _client_error("PreconditionFailed", 412)
     assert bucket.put_if_absent("b", "nights/2026-10-12/started", b"") is False
+
+
+def _conflict() -> Exception:
+    return _client_error("ConditionalRequestConflict", 409)
+
+
+@pytest.mark.parametrize(
+    ("answers", "claimed", "puts"),
+    [
+        ([_conflict(), _client_error("PreconditionFailed", 412)], False, 2),  # the other won
+        ([_conflict(), None], True, 2),  # the other write was not to this day after all
+        ([_conflict(), _conflict(), _conflict()], False, 3),  # still in conflict: fail closed
+    ],
+    ids=["409-then-412", "409-then-200", "409-three-times"],
+)
+def test_a_conflicting_conditional_write_is_retried_then_fails_closed(
+    answers: list[Exception | None], claimed: bool, puts: int
+) -> None:
+    """Fix round 1, item 4: S3's guide says to retry a 409 to a conditional write."""
+    s3 = _S3()
+    s3.answers = list(answers)
+    pauses: list[float] = []
+    bucket = app.S3Bucket(s3, sleep=pauses.append)
+    assert bucket.put_if_absent("b", "nights/2026-10-12/started", b"") is claimed
+    assert len(s3.puts) == puts
+    assert all(put["IfNoneMatch"] == "*" for put in s3.puts)
+    assert pauses == [0.5, 1.0][: puts - 1]
 
 
 @pytest.mark.parametrize(
@@ -664,11 +697,13 @@ def test_the_nights_export_binds_the_store_the_commit_and_the_day(
     monkeypatch.setattr(app, "S3StoreSource", Source)
     monkeypatch.setattr(app, "build_export", build)
     settings = Settings()
-    assert image.deps.export(tmp_path / "m") == settings.data_dir / "live-export"
+    at = datetime(2026, 10, 12, 23, 59, tzinfo=UTC)
+    out = image.deps.export(tmp_path / "m", at.date(), at)
+    assert out == settings.data_dir / "live-export"
     assert seen["mirror"] == tmp_path / "m"
     assert seen["store"] == "store"
     assert seen["commit"] == "abc1234"
-    assert seen["today"] == seen["now"].date()
+    assert (seen["today"], seen["now"]) == (at.date(), at)  # the night's, not the export's own
     assert seen["work"] != settings.data_dir / STORE_WORK_FILENAME  # not the morning's copy
     assert events == ["open", "discard"]
 
@@ -702,3 +737,28 @@ def test_a_cloud_dry_run_reads_the_bucket_into_a_temporary_mirror_and_writes_not
     assert s3.puts == []
     assert [t for t in s3.transfers if t[0] == "up"] == []
     assert "alert: money-held-back" in capsys.readouterr().out
+
+
+def test_a_cloud_dry_run_holds_the_same_lock_as_run_and_report(
+    calls: _Calls, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix round 1, item 8: it replaces the same store work file, so it takes ``live.lock``."""
+    monkeypatch.setenv("NTSB_LIVE_BUCKET", "live-bucket")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-live-key")
+    built: list[str] = []
+
+    def clients() -> tuple[Any, ...]:
+        built.append("aws")
+        return _S3(), _FakeSns(), _FakeMetric()
+
+    monkeypatch.setattr(app, "_aws_clients", clients)
+    runs = Settings().runs_dir
+    runs.mkdir(parents=True)
+    with (runs / "live.lock").open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        assert app.main(["run", "--dry-run"]) == 1
+    assert "another morning" in capsys.readouterr().err
+    assert built == []  # refused before any client or pull
+    assert calls.deps is None
+    assert app.main(["run", "--dry-run"]) == 0  # the lock is free again
+    assert built == ["aws"]

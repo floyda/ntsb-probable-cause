@@ -19,6 +19,7 @@ from ntsb_probable_cause.live.morning import LiveRefusal
 from ntsb_probable_cause.live.records import Backfill, ClosureRecord
 from ntsb_probable_cause.live.seams import MonthSpend
 from ntsb_probable_cause.live.state import NightState
+from ntsb_probable_cause.scoring.budget import RESERVATION_FILE
 
 PULLED_PREFIXES: Final = ("runs", "scores", "nights")
 EXPORT_PREFIX: Final = "export/board-1"
@@ -29,6 +30,16 @@ _OK: Final = 200
 _NAME: Final = re.compile(r"^[a-z][a-z0-9-]*$")
 _SUBJECT_MAX: Final = 99  # SNS subjects must be under 100 characters
 _SUBJECT_PREFIX: Final = "Ellery live night: "
+# The push order's two named files (fix round 1 of Task 10). ``run.jsonl`` is the commit point:
+# a run folder whose ``run.jsonl`` says finished is never resumed, so it goes up last, after every
+# file a finished run needs. ``spec.json`` is what makes a folder a live run at all (a folder
+# without ``run.jsonl`` is one when its spec says so), so it goes up after every other file, and
+# a half-copied folder is never taken for a live run. A reservation is the runner's local lock on
+# the month's budget, settled when the run ends; the task role cannot delete, so one copied up
+# would stay in the bucket and count against every later night's guard: it is never copied.
+_RUN_FILE: Final = "run.jsonl"
+_SPEC_FILE: Final = "spec.json"
+_NEVER_PUSHED: Final = frozenset({RESERVATION_FILE})
 
 
 class BucketLike(Protocol):
@@ -57,6 +68,21 @@ class BucketLike(Protocol):
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def push_order(paths: Sequence[Path]) -> list[Path]:
+    """``paths`` in the order a push uploads them: the rest by name, then specs, then run records.
+
+    The order is explicit, not alphabetical (``run.jsonl`` sorts before ``spec.json`` and
+    ``trail.jsonl``). A task killed between two uploads leaves a folder that is either not yet a
+    live run (no ``spec.json``) or a live run that is resumed (no ``run.jsonl``), never a run that
+    reads as finished with files missing.
+    """
+
+    def rank(path: Path) -> tuple[int, str]:
+        return {_SPEC_FILE: 1, _RUN_FILE: 2}.get(path.name, 0), path.as_posix()
+
+    return sorted(paths, key=rank)
 
 
 class BucketMirror:
@@ -98,8 +124,9 @@ class BucketMirror:
         """Upload the files changed since the last pull or push; return how many.
 
         ``relative`` is a file or a folder under the local folder; a folder means every file
-        under it. A file is changed when its SHA-256 differs from the one recorded; a missing
-        path uploads nothing.
+        under it, in :func:`push_order` (``run.jsonl`` last, ``spec.json`` just before it). A
+        file is changed when its SHA-256 differs from the one recorded; a missing path uploads
+        nothing, and a budget reservation (``reservation.json``) is never uploaded.
 
         Raises:
             ValueError: ``relative`` resolves outside ``runs/``, ``scores/`` and ``nights/``.
@@ -108,10 +135,10 @@ class BucketMirror:
         root = self._local.resolve()
         if not any(base.resolve().is_relative_to(root / prefix) for prefix in PULLED_PREFIXES):
             raise ValueError(f"{relative}: outside runs/, scores/ and nights/")
-        files = sorted(p for p in base.rglob("*") if p.is_file()) if base.is_dir() else [base]
+        files = [p for p in base.rglob("*") if p.is_file()] if base.is_dir() else [base]
         uploaded = 0
-        for path in files:
-            if not path.is_file():
+        for path in push_order(files):
+            if not path.is_file() or path.name in _NEVER_PUSHED:
                 continue
             key = path.relative_to(self._local).as_posix()
             digest = _sha256(path)
@@ -123,8 +150,20 @@ class BucketMirror:
         return uploaded
 
     def mark_started(self, day: date) -> bool:
-        """Claim the day: ``True`` the first time, ``False`` when a night already started."""
-        return self._s3.put_if_absent(self._bucket, f"nights/{day.isoformat()}/started", b"")
+        """Claim the day: ``True`` the first time, ``False`` when a night already started.
+
+        On ``True`` the empty marker is also written to the local folder and recorded as seen,
+        so the night's manifest lists it and a later push of the folder does not upload it again
+        (an unconditional upload would replace the conditional one's object).
+        """
+        key = f"nights/{day.isoformat()}/started"
+        if not self._s3.put_if_absent(self._bucket, key, b""):
+            return False
+        target = self._local / key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"")
+        self._seen[key] = _sha256(target)
+        return True
 
     def push_export(self, folder: Path) -> None:
         """Upload every file under ``folder`` to ``export/board-1/``, unconditionally."""
@@ -149,7 +188,7 @@ class MirrorSink(LocalFolderSink):
     def write(
         self, run_id: str, records: Sequence[ClosureRecord], backfill: Backfill | None
     ) -> None:
-        """Write the run folder as the local sink does, then push it."""
+        """Write the run folder as the local sink does, then push it (``run.jsonl`` last)."""
         super().write(run_id, records, backfill)
         self._mirror.push(Path("runs") / run_id)
 

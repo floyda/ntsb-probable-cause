@@ -38,10 +38,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -91,6 +92,10 @@ IMAGE_ONLY: Final = (
 )
 _HTTP_TIMEOUT_SECONDS: Final = 30.0
 _PRECONDITION_FAILED: Final = 412
+_CONFLICT: Final = 409
+# A 409 answer to a conditional write is retried (fix round 1 of Task 10, item 4): twice more,
+# after these pauses in seconds.
+_CONFLICT_PAUSES: Final = (0.5, 1.0)
 _CASE_NUMBER = re.compile(r"\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}\b")
 # "docket 1234567", "mKey 1234567", and the pairing guard's "not its own 1234567".
 _KEY = re.compile(r"\b(docket|mkey|own)([\s:=]+)\d+", re.IGNORECASE)
@@ -212,8 +217,9 @@ def _report(args: argparse.Namespace, settings: Settings) -> int:
 class S3Bucket:
     """``cloud.BucketLike`` over a boto3 S3 client."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, *, sleep: Callable[[float], None] = time.sleep) -> None:
         self._client = client
+        self._sleep = sleep  # injected, so a test of the conflict retry does not wait
 
     def list_keys(self, bucket: str, prefix: str) -> list[tuple[str, int]]:
         """Every ``(key, size)`` under ``prefix``, from every page of the listing.
@@ -239,25 +245,37 @@ class S3Bucket:
     def put_if_absent(self, bucket: str, key: str, body: bytes) -> bool:
         """``put_object`` with ``IfNoneMatch="*"``: one atomic check and write.
 
-        Returns False when the key exists (S3 answers ``PreconditionFailed``, HTTP 412); any
-        other error is raised (carried ruling 9, Task 9).
+        Returns True when the write succeeded and False when the key exists (S3 answers
+        ``PreconditionFailed``, HTTP 412). S3 answers HTTP 409 ``ConditionalRequestConflict``
+        when another conditional write to the key is in flight, and its guide says to retry:
+        https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html
+        A 409 is retried twice more after a short pause; a third 409 returns False, so the day
+        is taken as claimed and the night stops (fail closed). Any other error is raised
+        (carried ruling 9, Task 9).
         """
-        try:
-            self._client.put_object(Bucket=bucket, Key=key, Body=body, IfNoneMatch="*")
-        except Exception as error:
-            if _precondition_failed(error):
-                return False
-            raise
-        return True
+        for pause in (0.0, *_CONFLICT_PAUSES):
+            if pause:
+                self._sleep(pause)
+            try:
+                self._client.put_object(Bucket=bucket, Key=key, Body=body, IfNoneMatch="*")
+            except Exception as error:
+                if _answered(error, "PreconditionFailed", _PRECONDITION_FAILED):
+                    return False
+                if not _answered(error, "ConditionalRequestConflict", _CONFLICT):
+                    raise
+                continue  # another conditional write is in flight: try again
+            return True
+        return False  # still in conflict: never claim a day another task may hold
 
 
-def _precondition_failed(error: Exception) -> bool:
+def _answered(error: Exception, code: str, status: int) -> bool:
+    """Whether a botocore error carries S3's error ``code`` or HTTP ``status``."""
     response = getattr(error, "response", None)
     if not isinstance(response, dict):
         return False
-    code: object = response.get("Error", {}).get("Code")
-    status: object = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-    return bool(code == "PreconditionFailed" or status == _PRECONDITION_FAILED)
+    found: object = response.get("Error", {}).get("Code")
+    http: object = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return bool(found == code or http == status)
 
 
 class ReadOnlyBucket:
@@ -310,24 +328,25 @@ def _key_spend(settings: Settings) -> OpenRouterKeySpend:
     )
 
 
-def _exporter(settings: Settings) -> Callable[[Path], Path]:
-    """The night's export: ``build_export`` with its own store copy, the commit and the day.
+def _exporter(settings: Settings) -> Callable[[Path, date, datetime], Path]:
+    """The night's export: ``build_export`` with its own store copy and the commit bound.
 
-    The store is pulled again to a work file of its own (the morning has discarded its copy)
-    and discarded after. The export goes to ``<data_dir>/live-export``, outside the mirror.
+    The night passes its own day and clock reading, so a night that runs past midnight UTC
+    dates its export as it dates its records (fix round 1 of Task 10, item 7). The store is
+    pulled again to a work file of its own (the morning has discarded its copy) and discarded
+    after. The export goes to ``<data_dir>/live-export``, outside the mirror.
     """
     commit = settings.commit_sha or ""
 
-    def export(mirror: Path) -> Path:
+    def export(mirror: Path, today: date, now: datetime) -> Path:
         source = S3StoreSource(Location(settings.store), settings.data_dir / EXPORT_STORE_FILENAME)
         store = source.open()
         try:
-            now = datetime.now(UTC)
             return build_export(
                 mirror,
                 settings.data_dir / EXPORT_DIRNAME,
                 store=store,
-                today=now.date(),
+                today=today,
                 commit=commit,
                 now=now,
             )
@@ -387,10 +406,19 @@ def _night(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cloud_dry_run(args: argparse.Namespace, settings: Settings) -> int:
-    """The morning's dry run on a temporary mirror of the bucket; nothing is written to it."""
+    """The morning's dry run on a temporary mirror of the bucket; nothing is written to it.
+
+    It holds ``<runs_dir>/live.lock``, as the local ``run`` and ``report`` do: all three replace
+    the same store work file under ``data_dir`` (fix round 1 of Task 10, item 8).
+    """
     bucket = settings.live_bucket
     if bucket is None:  # the caller checked; kept for the type checker
         raise ConfigurationError("NTSB_LIVE_BUCKET is not set")
+    with morning_lock(settings.runs_dir):
+        return _cloud_dry_run_locked(args, settings, bucket)
+
+
+def _cloud_dry_run_locked(args: argparse.Namespace, settings: Settings, bucket: str) -> int:
     s3, _sns, _metric = _aws_clients()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="live-dry-run-", dir=settings.data_dir) as work:

@@ -338,7 +338,8 @@ class _StubRunner:
             reported_batch_cost_usd=0.5,
         )
         write_jsonl(folder / "run.jsonl", [record])
-        (folder / "spec.json").write_text(json.dumps({"sample": spec.sample}))
+        spec_json = {"sample": spec.sample, "commit_sha": "abc1234", "dirty": False}
+        (folder / "spec.json").write_text(json.dumps(spec_json))
         if self.side_folder is not None:
             side = runs_dir / self.side_folder
             side.mkdir()
@@ -1334,3 +1335,42 @@ def test_version_1_pins_the_model_by_name(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(morning, "MODEL_ID", "openai/other")
     assert morning.live_spec(1.0).model == "openai/other"
     assert settings_differences() == ["model"]
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [{"commit_sha": "0ld5ha1", "dirty": False}, {"commit_sha": "abc1234", "dirty": True}],
+    ids=["another-commit", "a-dirty-tree"],
+)
+def test_an_unfinished_run_from_another_commit_is_refused_before_the_key_and_store(
+    rig: Rig, recorded: dict[str, object]
+) -> None:
+    """Fix round 1 of Task 10, item 3: no resume across commits (decisions 0018, 0033)."""
+    run_id = "20261007T050000-0ld5ha1-live-C"
+    folder = rig.runs_dir / run_id
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "spec.json").write_text(json.dumps({"sample": "live", **recorded}))
+    (folder / INPUTS_FILE).write_text(json.dumps(_raw("XXX26LA001", 1001)) + "\n")
+    rig.sink.unfinished = run_id
+    rig.spend.refuse = True  # had the key been asked first, the kind would be key-unreachable
+    with pytest.raises(LiveRefusal) as caught:
+        run_morning(rig.deps())
+    assert caught.value.kind == "resume-refused"
+    assert "open" not in rig.events
+    assert rig.fetched == []
+    assert _StubRunner.instances == []
+    assert rig.refusals()[-1]["kind"] == "resume-refused"
+
+
+@pytest.mark.parametrize("text", ["{not json", "[1, 2]"], ids=["unreadable", "not-an-object"])
+def test_an_unfinished_run_with_no_readable_spec_is_left_to_the_resumes_own_checks(
+    rig: Rig, text: str
+) -> None:
+    run_id = "20261007T050000-abc1234-live-C"
+    (rig.runs_dir / run_id).mkdir(parents=True, exist_ok=True)
+    (rig.runs_dir / run_id / "spec.json").write_text(text)
+    rig.sink.unfinished = run_id
+    with pytest.raises(ConfigurationError, match="inputs") as caught:
+        run_morning(rig.deps())
+    assert not isinstance(caught.value, LiveRefusal)
+    assert _StubRunner.instances == []

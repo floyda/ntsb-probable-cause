@@ -3,10 +3,11 @@
 ``run_morning`` is library code. Every outside effect (the clock, the store, the spend counter,
 the sink, the three client factories, the commit, the lockfile checksum and the prompt-version
 label) comes in through :class:`MorningDeps`, so a test replaces each with a fake. The order is
-fixed: label and settings, docket folders, the live key's spend, the store, the recorder's run,
-a resume, the queue, the backfill, the fetches, the run, the closure records, the cleanup, the
-night state. The night's size comes from money alone (decision 0170); a refusal is a
-:class:`LiveRefusal` with a kind, and nothing that leaves the morning names a case (decision 0024).
+fixed: label and settings, docket folders, an unfinished run's commit, the live key's spend, the
+store, the recorder's run, a resume, the queue, the backfill, the fetches, the run, the closure
+records, the cleanup, the night state. The night's size comes from money alone (decision
+0170); a refusal is a :class:`LiveRefusal` with a kind, and nothing that leaves the morning names
+a case (decision 0024).
 
 The raw records of a run go to ``<runs_dir>/live-pending-inputs.jsonl`` before ``AgentRunner``
 makes its folder (it creates the folder itself), and move to ``<run folder>/inputs.jsonl``
@@ -111,15 +112,17 @@ MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
 
 # Every alert kind a night or a morning can produce, each once (decision 0177; the S4 runbook's
-# rows are checked against this list). Before any spend: the first seven are the kinds of a
-# ``LiveRefusal``. During the night: ``state.after_fetches``'s kinds, ``money-held-back`` when the
-# queue is longer than the money allows, ``fetch-failed`` for a fetch error that stops the
-# night, ``awaiting-codes-7`` (``later.overdue``), ``export-failed`` and ``night-crashed``
-# (``night.run_night``). Kinds are lower-case words and hyphens: ``cloud.SnsAlerts`` sends no
-# other.
+# rows are checked against this list). Before any spend: the first eight are the kinds of a
+# ``LiveRefusal`` (``resume-refused``: an unfinished run began at another commit). During the
+# night: ``state.after_fetches``'s kinds, ``money-held-back`` when the queue is longer than the
+# money allows, ``fetch-failed`` for a fetch error that stops the night, ``awaiting-codes-7``
+# (``later.overdue``), ``later-score-failed`` (a later score's error), ``export-failed`` and
+# ``night-crashed`` (``night.run_night``). Kinds are lower-case words and hyphens:
+# ``cloud.SnsAlerts`` sends no other.
 ALERT_KINDS: Final = (
     "version-refused",
     "docket-folders",
+    "resume-refused",
     "key-unreachable",
     "store-unsound",
     "recorder-not-finished",
@@ -130,6 +133,7 @@ ALERT_KINDS: Final = (
     "unreachable-3",
     "unreachable-final",
     "awaiting-codes-7",
+    "later-score-failed",
     "export-failed",
     "night-crashed",
 )
@@ -210,7 +214,8 @@ class LiveRefusal(ConfigurationError):  # noqa: N818 -- the name the S4 design f
 
     ``kind`` is one of ``"version-refused"``, ``"recorder-not-finished"``, ``"store-unsound"``,
     ``"key-unreachable"``, ``"money-held-back"``, ``"budget-guard"`` (the runner's own monthly
-    guard, ``Settings.monthly_budget_usd``, checked before any run folder is made) and
+    guard, ``Settings.monthly_budget_usd``, checked before any run folder is made),
+    ``"resume-refused"`` (an unfinished live run began at another commit) and
     ``"docket-folders"``.
 
     Raises:
@@ -291,8 +296,10 @@ def run_morning(
             setting is not version 1's, :data:`VERSION_1_SETTINGS`), ``docket-folders``,
             ``key-unreachable`` (from the spend counter), ``store-unsound``,
             ``recorder-not-finished``, ``money-held-back`` (an unfinished run needs more than
-            the room), or ``budget-guard`` (the run would pass the settings' monthly guard;
-            checked before any run folder is made).
+            the room), ``budget-guard`` (the run would pass the settings' monthly guard;
+            checked before any run folder is made), or ``resume-refused`` (an unfinished live
+            run's ``spec.json`` names another commit than the running one; checked before the
+            key, the store or any fetch).
         ConfigurationError: an unfinished live run cannot be resumed.
     """
     began = deps.now()
@@ -330,6 +337,7 @@ def _run_checked(
             "docket-folders",
             "live_docket_dir must differ from docket_dir, and neither may sit inside the other",
         )
+    _refuse_resume_across_commits(deps)
     spend = deps.spend.month(began)  # before the store is opened; may raise key-unreachable
     morning = _Morning(
         deps, deps.store.open(), began, spend, refusals, dry_run=dry_run, limit=limit
@@ -339,6 +347,42 @@ def _run_checked(
     finally:
         if not morning.interrupted:  # an interrupted run keeps its cache and store for a resume
             deps.store.discard()
+
+
+def _refuse_resume_across_commits(deps: MorningDeps) -> None:
+    """Refuse a night whose unfinished live run began at another commit (fix round 1, item 3).
+
+    Each run records one commit (decisions 0018, 0033), and the ``+t`` label does not cover the
+    loop's driver or the scoring code, so a run is resumed only at the commit it began at. The
+    runner would refuse such a resume too, but only after the store is opened and the run's
+    dockets fetched, and as a crash; this refusal comes first and has its own kind, so the night
+    still writes its record and later scores. To finish the run, the image it began on runs it.
+
+    A folder with no readable ``spec.json`` is left to the resume's own checks, which refuse it
+    before any call (the runner's ``refuse_unresumable`` reads the same file).
+
+    Raises:
+        LiveRefusal: kind ``resume-refused``.
+    """
+    unfinished = deps.sink.unfinished_run()
+    if unfinished is None:
+        return
+    try:
+        recorded = json.loads((deps.settings.runs_dir / unfinished / "spec.json").read_text())
+    except OSError, ValueError:
+        return
+    if not isinstance(recorded, dict):
+        return
+    began_at, began_dirty = recorded.get("commit_sha"), recorded.get("dirty")
+    sha, dirty = deps.commit()
+    if (began_at, began_dirty) != (sha, dirty):
+        raise LiveRefusal(
+            "resume-refused",
+            f"the unfinished live run {unfinished} began at commit {began_at} "
+            f"(dirty: {began_dirty}), and this is {sha} (dirty: {dirty}): a run is resumed only "
+            "at the commit it began at (decisions 0018, 0033). Run the task-definition "
+            "revision it began on to finish it",
+        )
 
 
 class _Refusals:
