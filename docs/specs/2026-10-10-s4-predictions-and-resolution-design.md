@@ -446,6 +446,10 @@ The registration; the explanation written for a non-expert; any document text; t
 personal names; and anything about an open case beyond the counts. A test reads every string in an
 export built from invented runs against this list, using the boundary test's method.
 
+*Amended 2026-10-11 (decision 0183):* "make and model" applies to the export's fields. Prose
+(Ellery's text, the coding lookups' free-text arguments, the NTSB's cause statement) may name them.
+The case's own registration is replaced with `[name]` in prose and titles.
+
 ### 10.3 The grades
 
 A case's grade is one of six: **same first code** (top-1), **same codes in another order** (in the
