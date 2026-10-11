@@ -35,11 +35,11 @@
       },
       "agent_first": {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
       },
       "ntsb_first": {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
       },
       "grade": "same_first"
     },
@@ -54,11 +54,11 @@
       },
       "agent_first": {
         "code": "552230",
-        "label": "Landing-Landing Roll: Loss of control on ground"
+        "label": "Landing-Landing Roll / Loss of control on ground"
       },
       "ntsb_first": {
         "code": "551092",
-        "label": "Landing-Flare/Touchdown: Hard landing"
+        "label": "Landing-Flare/Touchdown / Hard landing"
       },
       "grade": "same_codes_other_order"
     },
@@ -73,11 +73,11 @@
       },
       "agent_first": {
         "code": "508370",
-        "label": "Approach-VFR Pattern Final: Landing area undershoot"
+        "label": "Approach-VFR Pattern Final / Landing area undershoot"
       },
       "ntsb_first": {
         "code": "402192",
-        "label": "Enroute-Cruise: Fuel exhaustion"
+        "label": "Enroute-Cruise / Fuel exhaustion"
       },
       "grade": "different"
     },
@@ -93,7 +93,7 @@
       "agent_first": null,
       "ntsb_first": {
         "code": "402341",
-        "label": "Enroute-Cruise: Loss of engine power (total)"
+        "label": "Enroute-Cruise / Loss of engine power (total)"
       },
       "grade": "abstained"
     },
@@ -109,7 +109,7 @@
       "agent_first": null,
       "ntsb_first": {
         "code": "300341",
-        "label": "Takeoff: Loss of engine power (total)"
+        "label": "Takeoff / Loss of engine power (total)"
       },
       "grade": "not_coded"
     },
@@ -124,7 +124,7 @@
       },
       "agent_first": {
         "code": "402342",
-        "label": "Enroute-Cruise: Loss of engine power (partial)"
+        "label": "Enroute-Cruise / Loss of engine power (partial)"
       },
       "ntsb_first": null,
       "grade": "awaiting_ntsb"

@@ -43,7 +43,9 @@ CodeMark = Literal["same_place", "other_place", "not_in_other"]
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", json_schema_serialization_defaults_required=True
+    )
 
 
 class Code(_Model):
@@ -82,7 +84,9 @@ class Counts(_Model):
 
     open_watched: int
     open_with_docket: int
-    closures_per_night: dict[date, int]
+    closures_per_night: dict[date, int] = Field(
+        description="Cases closed on each night; the keys are ISO dates (YYYY-MM-DD)."
+    )
     coded: int
     not_coded: dict[str, int] = Field(description="Failure kind to number of cases.")
     awaiting_ntsb: int
@@ -257,5 +261,12 @@ NOT_CODED_SENTENCES: Final[Mapping[str, str]] = {
 
 
 def board_json_schema() -> dict[str, object]:
-    """The JSON Schemas of both file kinds: ``{"index": ..., "case": ...}``."""
-    return {"index": BoardIndex.model_json_schema(), "case": CaseFile.model_json_schema()}
+    """The JSON Schemas of both file kinds: ``{"index": ..., "case": ...}``.
+
+    Generated in serialization mode, so a defaulted field such as ``format`` is required: the
+    files are written by the export, and the site reads them as serialized.
+    """
+    return {
+        "index": BoardIndex.model_json_schema(mode="serialization"),
+        "case": CaseFile.model_json_schema(mode="serialization"),
+    }

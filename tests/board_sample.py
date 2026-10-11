@@ -15,7 +15,7 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel
 
@@ -45,6 +45,8 @@ from ntsb_probable_cause.live.export import (
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.sources import TRAINING_CUTOFFS
 
+Decision = Literal["read", "skipped", "scan_only", "not_offered"]
+
 # Values a real source record would hold. The sample must not contain them.
 FORBIDDEN: Final = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")
 
@@ -58,13 +60,13 @@ _TABLES = load_tables()
 
 def _occ(phase: str, event: str) -> Code:
     """An occurrence code (phase then event) with its label from the real tables."""
-    label = f"{_TABLES.phases[phase]}: {_TABLES.events[event]}"
+    label = f"{_TABLES.phases[phase]} / {_TABLES.events[event]}"
     return Code(code=_TABLES.compose_occurrence(phase, event), label=label)
 
 
 def _finding(item: str, modifier: str) -> Code:
     """A finding code (item then modifier) with its label from the real tables."""
-    label = f"{_TABLES.items[item]} — {_TABLES.modifiers[modifier]}"
+    label = f"{_TABLES.items[item]} - {_TABLES.modifiers[modifier]}"
     return Code(code=_TABLES.compose_finding(item, modifier), label=label)
 
 
@@ -116,15 +118,53 @@ def _belief(  # noqa: PLR0913, PLR0917 -- a flat constructor keeps the sample re
     )
 
 
-def _simple_trail(first: Code, cause: str, account: str, conf: float) -> Trail:
+def _trail(
+    beliefs: tuple[Belief, ...],
+    read_choices: tuple[ReadChoice, ...],
+    lookups: tuple[Lookup, ...],
+) -> Trail:
+    """A trail whose total is the sum of its parts, rounded to four places."""
+    total = sum(b.cost_usd for b in beliefs)
+    total += sum(r.cost_usd for r in read_choices) + sum(x.cost_usd for x in lookups)
     return Trail(
-        beliefs=(
+        beliefs=beliefs, read_choices=read_choices, lookups=lookups, total_usd=round(total, 4)
+    )
+
+
+def _simple_trail(
+    first: Code,
+    cause: str,
+    account: str,
+    conf: float,
+    docs: Sequence[tuple[str, Decision]] = (),
+) -> Trail:
+    """A short trail: one read choice over ``docs`` (title, decision), two beliefs, one lookup."""
+    choices: tuple[ReadChoice, ...] = ()
+    if docs:
+        documents = tuple(
+            DocumentChoice(
+                position=n,
+                title=title,
+                decision=decision,
+                note="May bear on the cause." if decision == "read" else None,
+            )
+            for n, (title, decision) in enumerate(docs, start=1)
+        )
+        choices = (
+            ReadChoice(
+                step="choice1",
+                reason="These documents are the likeliest to show what happened.",
+                documents=documents,
+                cost_usd=0.0031,
+            ),
+        )
+    return _trail(
+        (
             _belief("h0", first, cause, account, conf - 0.1, False, 0.0041),
             _belief("answer", first, cause, account, conf, False, 0.0066),
         ),
-        read_choices=(),
-        lookups=(Lookup(tool="describe_codes", arguments={"codes": [first.code]}, cost_usd=0.0),),
-        total_usd=0.0107,
+        choices,
+        (Lookup(tool="describe_codes", arguments={"codes": [first.code]}, cost_usd=0.0),),
     )
 
 
@@ -187,7 +227,7 @@ def _cases() -> tuple[CaseFile, ...]:
         answer=a1,
         verdict=v1,
         comparison=_comparison(a1, v1),
-        trail=Trail(
+        trail=_trail(
             beliefs=(
                 _belief(
                     "h0",
@@ -319,7 +359,6 @@ def _cases() -> tuple[CaseFile, ...]:
                     cost_usd=0.0,
                 ),
             ),
-            total_usd=0.0273,
         ),
         not_coded=None,
     )
@@ -361,6 +400,7 @@ def _cases() -> tuple[CaseFile, ...]:
             "says the aircraft veered before it reached taxi speed. No mechanical fault is "
             "recorded in the documents read.",
             0.55,
+            (("Instructor statement", "read"), ("Airworthiness records", "read")),
         ),
         not_coded=None,
     )
@@ -401,6 +441,11 @@ def _cases() -> tuple[CaseFile, ...]:
             "The airplane struck the ground short of the runway during an approach. The "
             "documents read describe the approach path but say little about the fuel on board.",
             0.41,
+            (
+                ("Pilot statement", "read"),
+                ("Wreckage examination", "skipped"),
+                ("Weather data", "skipped"),
+            ),
         ),
         not_coded=None,
     )
@@ -441,6 +486,7 @@ def _cases() -> tuple[CaseFile, ...]:
             "The record gives a twin-engine airplane that descended during cruise. The docket "
             "holds one document and it could not be read. There is not enough to name a cause.",
             0.12,
+            (("Handwritten pilot form", "scan_only"),),
         ),
         not_coded=None,
     )
@@ -503,6 +549,7 @@ def _cases() -> tuple[CaseFile, ...]:
             "The airplane landed off the airport after the engine lost power in cruise. The "
             "pilot's statement and the maintenance records both mention fuel selector use.",
             0.57,
+            (("Pilot statement", "read"), ("Maintenance records", "read")),
         ),
         not_coded=None,
     )

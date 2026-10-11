@@ -32,21 +32,21 @@
     "occurrence": [
       {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
       },
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight"
       }
     ],
     "findings": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       },
       {
         "code": "0206102011",
-        "label": "Personnel issues — Task performance — Planning/preparation — Weather planning — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Planning/preparation — Weather planning - Incorrect use/operation"
       }
     ],
     "cause": "The pilot's failure to maintain airspeed while maneuvering at low altitude, which resulted in an aerodynamic stall.",
@@ -57,21 +57,21 @@
     "occurrence": [
       {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
       },
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight"
       }
     ],
     "findings": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       },
       {
         "code": "0206103011",
-        "label": "Personnel issues — Task performance — Planning/preparation — Fuel planning — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Planning/preparation — Fuel planning - Incorrect use/operation"
       }
     ],
     "cause": "The pilot's failure to maintain airspeed during low-altitude maneuvering."
@@ -80,43 +80,43 @@
     "agent_occurrence": [
       {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin",
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin",
         "mark": "same_place"
       },
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight",
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight",
         "mark": "same_place"
       }
     ],
     "ntsb_occurrence": [
       {
         "code": "452241",
-        "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin",
+        "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin",
         "mark": "same_place"
       },
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight",
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight",
         "mark": "same_place"
       }
     ],
     "findings_both": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       }
     ],
     "findings_ntsb_only": [
       {
         "code": "0206103011",
-        "label": "Personnel issues — Task performance — Planning/preparation — Fuel planning — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Planning/preparation — Fuel planning - Incorrect use/operation"
       }
     ],
     "findings_agent_only": [
       {
         "code": "0206102011",
-        "label": "Personnel issues — Task performance — Planning/preparation — Weather planning — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Planning/preparation — Weather planning - Incorrect use/operation"
       }
     ],
     "finding_precision_10": 0.5,
@@ -128,7 +128,7 @@
         "kind": "h0",
         "first": {
           "code": "452240",
-          "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+          "label": "Maneuvering-Low-alt flying / Loss of control in flight"
         },
         "cause": "The pilot lost control of the airplane in flight.",
         "account": "A single-engine airplane was flying at low altitude when it struck the ground. The record gives the weather as clear and the flight as personal. It does not yet say what the airplane was doing before the impact.",
@@ -140,7 +140,7 @@
         "kind": "h1",
         "first": {
           "code": "452241",
-          "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+          "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
         },
         "cause": "The pilot allowed the airplane to stall while maneuvering.",
         "account": "The pilot's statement and the airworthiness records show no fault in the engine or controls. Witnesses saw the airplane bank steeply and slow before it descended. The evidence so far points to a stall.",
@@ -152,7 +152,7 @@
         "kind": "h2",
         "first": {
           "code": "452241",
-          "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+          "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
         },
         "cause": "The pilot failed to maintain airspeed, and the airplane stalled.",
         "account": "The wreckage examination found the flight controls connected and the engine producing power at impact. The flaps were retracted. The damage fits a steep nose-down impact after a stall at low altitude.",
@@ -164,7 +164,7 @@
         "kind": "answer",
         "first": {
           "code": "452241",
-          "label": "Maneuvering-Low-alt flying: Aerodynamic stall/spin"
+          "label": "Maneuvering-Low-alt flying / Aerodynamic stall/spin"
         },
         "cause": "The pilot's failure to maintain airspeed while maneuvering at low altitude, which resulted in an aerodynamic stall.",
         "account": "The airplane was maneuvering at low altitude with a working engine and intact controls. Airspeed fell below the stall speed in a steep turn. The pilot did not recover before the airplane reached the ground.",
@@ -275,7 +275,7 @@
         "cost_usd": 0.0
       }
     ],
-    "total_usd": 0.0273
+    "total_usd": 0.0272
   },
   "not_coded": null
 }

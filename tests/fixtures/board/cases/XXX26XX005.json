@@ -22,13 +22,13 @@
     "occurrence": [
       {
         "code": "300341",
-        "label": "Takeoff: Loss of engine power (total)"
+        "label": "Takeoff / Loss of engine power (total)"
       }
     ],
     "findings": [
       {
         "code": "0102282001",
-        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution - Failure"
       }
     ],
     "cause": "A total loss of engine power on takeoff."

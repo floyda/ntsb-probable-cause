@@ -32,7 +32,7 @@
     "occurrence": [
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight"
       }
     ],
     "findings": [],
@@ -44,13 +44,13 @@
     "occurrence": [
       {
         "code": "402341",
-        "label": "Enroute-Cruise: Loss of engine power (total)"
+        "label": "Enroute-Cruise / Loss of engine power (total)"
       }
     ],
     "findings": [
       {
         "code": "0102282001",
-        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution - Failure"
       }
     ],
     "cause": "A total loss of engine power due to a fuel system failure."
@@ -59,14 +59,14 @@
     "agent_occurrence": [
       {
         "code": "452240",
-        "label": "Maneuvering-Low-alt flying: Loss of control in flight",
+        "label": "Maneuvering-Low-alt flying / Loss of control in flight",
         "mark": "not_in_other"
       }
     ],
     "ntsb_occurrence": [
       {
         "code": "402341",
-        "label": "Enroute-Cruise: Loss of engine power (total)",
+        "label": "Enroute-Cruise / Loss of engine power (total)",
         "mark": "not_in_other"
       }
     ],
@@ -74,7 +74,7 @@
     "findings_ntsb_only": [
       {
         "code": "0102282001",
-        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Failure"
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution - Failure"
       }
     ],
     "findings_agent_only": [],
@@ -87,7 +87,7 @@
         "kind": "h0",
         "first": {
           "code": "452240",
-          "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+          "label": "Maneuvering-Low-alt flying / Loss of control in flight"
         },
         "cause": "The evidence read does not support a probable cause.",
         "account": "The record gives a twin-engine airplane that descended during cruise. The docket holds one document and it could not be read. There is not enough to name a cause.",
@@ -99,7 +99,7 @@
         "kind": "answer",
         "first": {
           "code": "452240",
-          "label": "Maneuvering-Low-alt flying: Loss of control in flight"
+          "label": "Maneuvering-Low-alt flying / Loss of control in flight"
         },
         "cause": "The evidence read does not support a probable cause.",
         "account": "The record gives a twin-engine airplane that descended during cruise. The docket holds one document and it could not be read. There is not enough to name a cause.",
@@ -108,7 +108,21 @@
         "cost_usd": 0.0066
       }
     ],
-    "read_choices": [],
+    "read_choices": [
+      {
+        "step": "choice1",
+        "reason": "These documents are the likeliest to show what happened.",
+        "documents": [
+          {
+            "position": 1,
+            "title": "Handwritten pilot form",
+            "decision": "scan_only",
+            "note": null
+          }
+        ],
+        "cost_usd": 0.0031
+      }
+    ],
     "lookups": [
       {
         "tool": "describe_codes",
@@ -120,7 +134,7 @@
         "cost_usd": 0.0
       }
     ],
-    "total_usd": 0.0107
+    "total_usd": 0.0138
   },
   "not_coded": null
 }

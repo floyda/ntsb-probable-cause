@@ -32,13 +32,13 @@
     "occurrence": [
       {
         "code": "402342",
-        "label": "Enroute-Cruise: Loss of engine power (partial)"
+        "label": "Enroute-Cruise / Loss of engine power (partial)"
       }
     ],
     "findings": [
       {
         "code": "0102282002",
-        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution — Malfunction"
+        "label": "Aircraft — Aircraft systems — Fuel system — Fuel distribution - Malfunction"
       }
     ],
     "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
@@ -53,7 +53,7 @@
         "kind": "h0",
         "first": {
           "code": "402342",
-          "label": "Enroute-Cruise: Loss of engine power (partial)"
+          "label": "Enroute-Cruise / Loss of engine power (partial)"
         },
         "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
         "account": "The airplane landed off the airport after the engine lost power in cruise. The pilot's statement and the maintenance records both mention fuel selector use.",
@@ -65,7 +65,7 @@
         "kind": "answer",
         "first": {
           "code": "402342",
-          "label": "Enroute-Cruise: Loss of engine power (partial)"
+          "label": "Enroute-Cruise / Loss of engine power (partial)"
         },
         "cause": "A partial loss of engine power in cruise flight, from a fuel system fault.",
         "account": "The airplane landed off the airport after the engine lost power in cruise. The pilot's statement and the maintenance records both mention fuel selector use.",
@@ -74,7 +74,27 @@
         "cost_usd": 0.0066
       }
     ],
-    "read_choices": [],
+    "read_choices": [
+      {
+        "step": "choice1",
+        "reason": "These documents are the likeliest to show what happened.",
+        "documents": [
+          {
+            "position": 1,
+            "title": "Pilot statement",
+            "decision": "read",
+            "note": "May bear on the cause."
+          },
+          {
+            "position": 2,
+            "title": "Maintenance records",
+            "decision": "read",
+            "note": "May bear on the cause."
+          }
+        ],
+        "cost_usd": 0.0031
+      }
+    ],
     "lookups": [
       {
         "tool": "describe_codes",
@@ -86,7 +106,7 @@
         "cost_usd": 0.0
       }
     ],
-    "total_usd": 0.0107
+    "total_usd": 0.0138
   },
   "not_coded": null
 }

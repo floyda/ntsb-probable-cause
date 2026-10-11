@@ -58,3 +58,28 @@ def test_sample_shape_for_the_site() -> None:
     assert len(first.trail.read_choices) == 2
     assert [b.kind for b in first.trail.beliefs] == ["h0", "h1", "h2", "answer"]
     assert any(d.decision == "scan_only" for rc in first.trail.read_choices for d in rc.documents)
+
+
+def test_trails_agree_with_the_facts() -> None:
+    for path in sorted((SAMPLE / "cases").glob("*.json")):
+        case = CaseFile.model_validate_json(path.read_text())
+        if case.trail is None or case.facts is None:
+            continue
+        docs = [d for rc in case.trail.read_choices for d in rc.documents]
+        listed = {d.position for d in docs}
+        read = {d.position for d in docs if d.decision == "read"}
+        if case.facts.documents_listed:
+            assert len(listed) == case.facts.documents_listed, path.name
+            assert len(read) == case.facts.documents_read, path.name
+        assert case.trail.total_usd == round(
+            sum(b.cost_usd for b in case.trail.beliefs)
+            + sum(r.cost_usd for r in case.trail.read_choices)
+            + sum(x.cost_usd for x in case.trail.lookups),
+            4,
+        ), path.name
+
+
+def test_schema_requires_the_format_field() -> None:
+    schema = board_json_schema()
+    assert "format" in schema["index"]["required"]  # type: ignore[index]
+    assert "format" in schema["case"]["required"]  # type: ignore[index]

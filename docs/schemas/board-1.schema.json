@@ -700,6 +700,7 @@
       }
     },
     "required": [
+      "format",
       "case_number",
       "closed_on",
       "took_days",
@@ -902,6 +903,7 @@
             "additionalProperties": {
               "type": "integer"
             },
+            "description": "Cases closed on each night; the keys are ISO dates (YYYY-MM-DD).",
             "propertyNames": {
               "format": "date"
             },
@@ -966,6 +968,7 @@
       }
     },
     "required": [
+      "format",
       "stamp",
       "counts",
       "rows"

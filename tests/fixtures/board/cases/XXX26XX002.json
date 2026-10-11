@@ -32,17 +32,17 @@
     "occurrence": [
       {
         "code": "552230",
-        "label": "Landing-Landing Roll: Loss of control on ground"
+        "label": "Landing-Landing Roll / Loss of control on ground"
       },
       {
         "code": "551092",
-        "label": "Landing-Flare/Touchdown: Hard landing"
+        "label": "Landing-Flare/Touchdown / Hard landing"
       }
     ],
     "findings": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       }
     ],
     "cause": "The pilot's loss of directional control during the landing roll.",
@@ -53,21 +53,21 @@
     "occurrence": [
       {
         "code": "551092",
-        "label": "Landing-Flare/Touchdown: Hard landing"
+        "label": "Landing-Flare/Touchdown / Hard landing"
       },
       {
         "code": "552230",
-        "label": "Landing-Landing Roll: Loss of control on ground"
+        "label": "Landing-Landing Roll / Loss of control on ground"
       }
     ],
     "findings": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       },
       {
         "code": "0206304020",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Not attained/maintained"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Not attained/maintained"
       }
     ],
     "cause": "The pilot's improper flare, which resulted in a hard landing and a loss of control."
@@ -76,37 +76,37 @@
     "agent_occurrence": [
       {
         "code": "552230",
-        "label": "Landing-Landing Roll: Loss of control on ground",
+        "label": "Landing-Landing Roll / Loss of control on ground",
         "mark": "other_place"
       },
       {
         "code": "551092",
-        "label": "Landing-Flare/Touchdown: Hard landing",
+        "label": "Landing-Flare/Touchdown / Hard landing",
         "mark": "other_place"
       }
     ],
     "ntsb_occurrence": [
       {
         "code": "551092",
-        "label": "Landing-Flare/Touchdown: Hard landing",
+        "label": "Landing-Flare/Touchdown / Hard landing",
         "mark": "other_place"
       },
       {
         "code": "552230",
-        "label": "Landing-Landing Roll: Loss of control on ground",
+        "label": "Landing-Landing Roll / Loss of control on ground",
         "mark": "other_place"
       }
     ],
     "findings_both": [
       {
         "code": "0206304011",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Incorrect use/operation"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Incorrect use/operation"
       }
     ],
     "findings_ntsb_only": [
       {
         "code": "0206304020",
-        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control — Not attained/maintained"
+        "label": "Personnel issues — Task performance — Use of equip/info — Aircraft control - Not attained/maintained"
       }
     ],
     "findings_agent_only": [],
@@ -119,7 +119,7 @@
         "kind": "h0",
         "first": {
           "code": "552230",
-          "label": "Landing-Landing Roll: Loss of control on ground"
+          "label": "Landing-Landing Roll / Loss of control on ground"
         },
         "cause": "The pilot's loss of directional control during the landing roll.",
         "account": "The airplane touched down and then left the runway. The instructor's statement says the aircraft veered before it reached taxi speed. No mechanical fault is recorded in the documents read.",
@@ -131,7 +131,7 @@
         "kind": "answer",
         "first": {
           "code": "552230",
-          "label": "Landing-Landing Roll: Loss of control on ground"
+          "label": "Landing-Landing Roll / Loss of control on ground"
         },
         "cause": "The pilot's loss of directional control during the landing roll.",
         "account": "The airplane touched down and then left the runway. The instructor's statement says the aircraft veered before it reached taxi speed. No mechanical fault is recorded in the documents read.",
@@ -140,7 +140,27 @@
         "cost_usd": 0.0066
       }
     ],
-    "read_choices": [],
+    "read_choices": [
+      {
+        "step": "choice1",
+        "reason": "These documents are the likeliest to show what happened.",
+        "documents": [
+          {
+            "position": 1,
+            "title": "Instructor statement",
+            "decision": "read",
+            "note": "May bear on the cause."
+          },
+          {
+            "position": 2,
+            "title": "Airworthiness records",
+            "decision": "read",
+            "note": "May bear on the cause."
+          }
+        ],
+        "cost_usd": 0.0031
+      }
+    ],
     "lookups": [
       {
         "tool": "describe_codes",
@@ -152,7 +172,7 @@
         "cost_usd": 0.0
       }
     ],
-    "total_usd": 0.0107
+    "total_usd": 0.0138
   },
   "not_coded": null
 }
