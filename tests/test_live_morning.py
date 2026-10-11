@@ -406,7 +406,7 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     monkeypatch.setattr(morning, "CachedDocketReader", lambda client, readings: object())
     monkeypatch.setattr(morning, "load_tables", lambda: TABLES)
     monkeypatch.setattr(morning, "load_stats", lambda name: STATS)
-    monkeypatch.setattr(morning, "seen_pairs", lambda processed: frozenset())
+    monkeypatch.setattr(morning, "load_seen_pairs", frozenset)
     return r
 
 

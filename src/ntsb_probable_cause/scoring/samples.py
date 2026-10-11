@@ -24,6 +24,7 @@ _FILES = {
     "dev-seal-s3-400": "dev_seal_s3_400_ids.csv",
 }
 EVAL_DIR = Path("tests/fixtures/eval")
+SEEN_PAIRS_FILE = "seen_pairs_dev.json"
 # Decisions 0095 and 0129: a sealed development sample opens once, when its own registration,
 # naming the setup it will be used on, is committed. Every command that would score, read,
 # fetch or transcribe one calls :func:`refuse_sealed` first. S2.7's registration does not open
@@ -188,6 +189,19 @@ def seen_pairs(processed: Path) -> frozenset[str]:
                 ):
                     seen.add(codes[0])
     return frozenset(seen)
+
+
+def load_seen_pairs() -> frozenset[str]:
+    """The development split's primary occurrence codes, from the committed table.
+
+    The table (``tables/seen_pairs_dev.json``, written by ``scripts/s4_seen_pairs.py``) holds
+    codes only, no case, so a container without the processed file can still score
+    ``pair_unseen``.
+    """
+    data = json.loads((Path(__file__).parent / "tables" / SEEN_PAIRS_FILE).read_text())
+    if data.get("format") != "seen-pairs/1":
+        raise ValueError(f"{SEEN_PAIRS_FILE}: unknown format {data.get('format')!r}")
+    return frozenset(data["codes"])
 
 
 def draw(

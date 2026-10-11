@@ -5,15 +5,17 @@ docket) and the lockfile checksum go in; ``ClosureRecord`` values come out. The 
 after a run, and again to complete a run whose records were not written.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
 from typing import Final
 
+from ntsb_probable_cause.agent.drive import REPLIES_FILE, ReplyRow
 from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import ChooseDocuments
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.docket.client import cached_hashes
 from ntsb_probable_cause.docket.manifest import Docket
 from ntsb_probable_cause.live.fetch import prelim_present
 from ntsb_probable_cause.live.queue import QueuedCase, waited_days
@@ -40,12 +42,20 @@ def run_record(folder: Path) -> RunRecord:
     return read_jsonl(folder / RUN_FILE, RunRecord)[-1]
 
 
-def build_records(folder: Path, prepared: Sequence[Prepared], lock_sha: str) -> list[ClosureRecord]:
-    """Return one closure record per prepared case, from the run folder's files."""
+def build_records(
+    folder: Path, prepared: Sequence[Prepared], lock_sha: str, docket_cache: Path
+) -> list[ClosureRecord]:
+    """Return one closure record per prepared case, from the run folder's files.
+
+    ``docket_cache`` holds each case's fetched documents; their hashes are read from it, so call
+    this before the cache is deleted.
+    """
     record = run_record(folder)
     results = {r.case_id: r for r in read_jsonl(folder / CASES_FILE, CaseResult)}
     trail = folder / TRAIL_FILE
     calls = read_jsonl(trail, AgentCall) if trail.is_file() else []
+    replies_path = folder / REPLIES_FILE
+    replies = read_jsonl(replies_path, ReplyRow) if replies_path.is_file() else []
     cutoff = TRAINING_CUTOFFS[record.model]
     out: list[ClosureRecord] = []
     for p in prepared:
@@ -54,6 +64,7 @@ def build_records(folder: Path, prepared: Sequence[Prepared], lock_sha: str) -> 
         scored = result is not None and bool(result.verdict_occurrence)
         scores = result.scores if scored and result is not None else None
         failure = "missing result" if result is None else result.failure
+        listing_sha, document_shas = cached_hashes(docket_cache, p.case.mkey)
         out.append(
             ClosureRecord(
                 case_id=p.case.case_id,
@@ -72,7 +83,20 @@ def build_records(folder: Path, prepared: Sequence[Prepared], lock_sha: str) -> 
                 training_cutoff=cutoff.day,
                 training_cutoff_source=cutoff.source,
                 uv_lock_sha256=lock_sha,
-                documents=document_lines(p.docket, case_calls),
+                event_date=p.case.event_date,
+                listing_sha256=listing_sha,
+                request_sha256s=tuple(
+                    r.request_sha256
+                    for r in replies
+                    if r.case_id == p.case.case_id and r.request_sha256 is not None
+                ),
+                replied_models=tuple(
+                    sorted({c.reply_model for c in case_calls if c.reply_model is not None})
+                ),
+                providers=tuple(
+                    sorted({c.reply_provider for c in case_calls if c.reply_provider is not None})
+                ),
+                documents=document_lines(p.docket, case_calls, document_shas),
                 prelim_present=prelim_present(p.raw),
                 outcome="not coded" if failure else "coded",
                 failure=failure,
@@ -87,8 +111,10 @@ def build_records(folder: Path, prepared: Sequence[Prepared], lock_sha: str) -> 
     return out
 
 
-def document_lines(docket: Docket, calls: Sequence[AgentCall]) -> tuple[DocumentLine, ...]:
-    """Each document's status, and what the agent decided: read, skipped, or never on offer."""
+def document_lines(
+    docket: Docket, calls: Sequence[AgentCall], hashes: Mapping[int, str] | None = None
+) -> tuple[DocumentLine, ...]:
+    """Each document's status, what the agent decided (read, skipped, never on offer), its hash."""
     offered: set[int] = set()
     read: set[int] = set()
     for call in calls:
@@ -105,6 +131,7 @@ def document_lines(docket: Docket, calls: Sequence[AgentCall]) -> tuple[Document
             ellery=("read" if d.entry.index in read else "skipped")
             if d.entry.index in offered
             else None,
+            sha256=(hashes or {}).get(d.entry.index),
         )
         for d in docket.documents
     )

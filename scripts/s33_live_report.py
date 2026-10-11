@@ -39,9 +39,10 @@ from ntsb_probable_cause.live.queue import DECLARED_START, closures_per_night
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
+    AnyClosureRecord,
     Backfill,
-    ClosureRecord,
     failure_kind,
+    read_closure_records,
 )
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.metrics import wilson
@@ -68,7 +69,7 @@ class _Run:
         cases = folder / "cases.jsonl"
         self.results = read_jsonl(cases, CaseResult) if cases.is_file() else []
         closures = folder / CLOSURES_FILE
-        self.closures = read_jsonl(closures, ClosureRecord) if closures.is_file() else []
+        self.closures = read_closure_records(closures) if closures.is_file() else []
         backfill = folder / BACKFILL_FILE
         self.backfill = (
             Backfill.model_validate_json(backfill.read_text()) if backfill.is_file() else None
@@ -80,7 +81,7 @@ def _pct(value: float) -> str:
 
 
 def _mornings(
-    runs: Sequence[_Run], counts: Sequence[Mapping[str, Any]], records: list[ClosureRecord]
+    runs: Sequence[_Run], counts: Sequence[Mapping[str, Any]], records: list[AnyClosureRecord]
 ) -> list[str]:
     lines = ["mornings", f"runs: {len(runs)}"]
     lines.append("cases per run: " + (", ".join(str(len(r.results)) for r in runs) or "none"))
@@ -154,7 +155,7 @@ def _money(runs: Sequence[_Run]) -> list[str]:
     return lines
 
 
-def _outcomes(records: Sequence[ClosureRecord]) -> list[str]:
+def _outcomes(records: Sequence[AnyClosureRecord]) -> list[str]:
     """Every case once: graded, abstained, coded with no verdict to grade, or not coded.
 
     The three grades count only cases Ellery coded (``outcome == "coded"``) that held a verdict
@@ -218,7 +219,7 @@ def _missing_codes(
 
 def _checks(  # noqa: PLR0913, PLR0917 -- one section, six inputs.
     runs: Sequence[_Run],
-    records: Sequence[ClosureRecord],
+    records: Sequence[AnyClosureRecord],
     tables: CodeTables,
     refusals: Sequence[Mapping[str, str]],
     counts: Sequence[Mapping[str, Any]],
@@ -269,7 +270,10 @@ def _per_night(closures: Sequence[Closure], today: date) -> list[str]:
 
 
 def _closing(
-    runs: Sequence[_Run], backfill: Backfill | None, records: Sequence[ClosureRecord], today: date
+    runs: Sequence[_Run],
+    backfill: Backfill | None,
+    records: Sequence[AnyClosureRecord],
+    today: date,
 ) -> list[str]:
     coded = {r.case_id for run in runs for r in run.results}
     drained = backfill is not None and set(backfill.case_ids) <= coded

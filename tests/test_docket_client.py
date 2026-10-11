@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.client import DocketClient, cached_hashes
 from ntsb_probable_cause.errors import DocketError
 
 MKEY = 73612
@@ -173,3 +173,20 @@ def test_two_documents_are_both_kept_in_the_manifest(
     assert fetch["documents"]["1"]["sha256"] == hashlib.sha256(b"document a").hexdigest()
     assert fetch["documents"]["2"]["href"] == href_b
     assert fetch["documents"]["2"]["sha256"] == hashlib.sha256(b"document b").hexdigest()
+
+
+def test_cached_hashes_read_back_what_was_recorded(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get(LISTING_URL).mock(return_value=httpx.Response(200, text=PAGE))
+    respx_mock.get(sources.docket_document_url(HREF)).mock(
+        return_value=httpx.Response(200, content=b"%PDF-1.4 x")
+    )
+    assert cached_hashes(tmp_path, MKEY) == (None, {})
+    with _client(tmp_path, []) as client:
+        client.listing_html(MKEY)
+        client.document(MKEY, 2, HREF)
+    assert cached_hashes(tmp_path, MKEY) == (
+        hashlib.sha256(PAGE.encode()).hexdigest(),
+        {2: hashlib.sha256(b"%PDF-1.4 x").hexdigest()},
+    )

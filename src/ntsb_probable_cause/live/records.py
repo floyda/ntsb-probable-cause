@@ -10,13 +10,14 @@ import re
 from collections.abc import Iterator
 from datetime import date, datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, TypeAdapter
 
 from ntsb_probable_cause.docket.manifest import Status
 
-CLOSURE_FORMAT: Final = "live-closure/1"
+CLOSURE_FORMAT: Final = "live-closure/2"
+CLOSURE_FORMAT_V1: Final = "live-closure/1"
 BACKFILL_FORMAT: Final = "live-backfill/1"
 MANIFEST_FORMAT: Final = "live-manifest/1"
 CLOSURES_FILE: Final = "closures.jsonl"
@@ -55,12 +56,12 @@ class DocumentLine(BaseModel, frozen=True):
     title: str
     status: Status  # the docket reader's five
     ellery: Literal["read", "skipped"] | None  # None when not on offer
+    sha256: str | None = None  # of the file as received; None when none was cached (decision 0176)
 
 
-class ClosureRecord(BaseModel, frozen=True):
-    """What one coded closed case leaves behind (counts and provenance, no document text)."""
+class _ClosureCommon(BaseModel, frozen=True):
+    """The fields version 1 and version 2 of the closure record share."""
 
-    format: Literal["live-closure/1"] = CLOSURE_FORMAT
     case_id: str
     mkey: int
     closed_on: date
@@ -87,6 +88,36 @@ class ClosureRecord(BaseModel, frozen=True):
     top3: bool | None
     abstained: bool | None
     cost_usd: float
+
+
+class ClosureRecordV1(_ClosureCommon, frozen=True):
+    """Closure record version 1, written by S3.3's runs; read-only, for the S3.3 report."""
+
+    format: Literal["live-closure/1"] = CLOSURE_FORMAT_V1
+
+
+class ClosureRecord(_ClosureCommon, frozen=True):
+    """What one coded closed case leaves behind (counts and provenance, no document text).
+
+    Version 2 (decision 0176) adds the hashes that let anyone holding the NTSB's files show they
+    are the ones the case was coded from. Only version 2 is written; a version 1 line fails here.
+    """
+
+    format: Literal["live-closure/2"] = CLOSURE_FORMAT
+    event_date: date
+    listing_sha256: str | None
+    request_sha256s: tuple[str, ...]  # one per model call, in call order
+    replied_models: tuple[str, ...]  # distinct, sorted
+    providers: tuple[str, ...]  # distinct, sorted
+
+
+AnyClosureRecord = Annotated[ClosureRecord | ClosureRecordV1, Field(discriminator="format")]
+_ANY_CLOSURE: Final[TypeAdapter[ClosureRecord | ClosureRecordV1]] = TypeAdapter(AnyClosureRecord)
+
+
+def read_closure_records(path: Path) -> list[ClosureRecord | ClosureRecordV1]:
+    """Every line of a ``closures.jsonl``, version 1 (S3.3's runs) or version 2 (S4's)."""
+    return [_ANY_CLOSURE.validate_json(line) for line in path.read_text().splitlines() if line]
 
 
 class Backfill(BaseModel, frozen=True):

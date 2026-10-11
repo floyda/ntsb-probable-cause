@@ -58,7 +58,7 @@ from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner, CachedDocketReader, RunSpec
-from ntsb_probable_cause.scoring.samples import seen_pairs
+from ntsb_probable_cause.scoring.samples import load_seen_pairs
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.sources import LUNA_6, TRAINING_CUTOFFS, ReasoningEffort
 from ntsb_probable_cause.store import Store
@@ -524,7 +524,7 @@ class _Morning:
         queue_at_start: int,
         taken: int,
     ) -> MorningSummary:
-        deps, settings = self.deps, self.deps.settings
+        deps = self.deps
         spec = self._spec()
         if spec.model not in TRAINING_CUTOFFS:
             raise ConfigurationError(f"no recorded training cut-off for {spec.model}")
@@ -535,7 +535,7 @@ class _Morning:
                 batch=batch,
                 tables=load_tables(),
                 stats=load_stats(agent_run.STATS),
-                seen_pairs=seen_pairs(settings.data_dir / "processed"),
+                seen_pairs=load_seen_pairs(),
                 runs_dir=self.runs_dir,
                 month_spent_usd=month_spent(self.runs_dir, now=self.began),
                 commit=deps.commit(),
@@ -592,7 +592,9 @@ class _Morning:
             if not inputs.is_file():
                 raise ConfigurationError(f"the finished live run {run_id} has no {INPUTS_FILE}")
             prepared = self._prepare(_read_inputs(inputs))
-        records = build_records(folder, prepared, self.lock_sha)
+        # The records take the documents' hashes from the cache, so they are built before
+        # _cleanup deletes it. Do not reorder these two.
+        records = build_records(folder, prepared, self.lock_sha, self.deps.settings.live_docket_dir)
         held = folder / BACKFILL_FILE
         backfill = Backfill.model_validate_json(held.read_text()) if held.is_file() else None
         self.deps.sink.write(run_id, records, backfill)

@@ -8,12 +8,15 @@ import pytest
 from ntsb_probable_cause.live.records import (
     BACKFILL_FORMAT,
     CLOSURE_FORMAT,
+    CLOSURE_FORMAT_V1,
     MANIFEST_FILE,
     MANIFEST_FORMAT,
     Backfill,
     ClosureRecord,
+    ClosureRecordV1,
     DocumentLine,
     portability_problems,
+    read_closure_records,
     verify_manifest,
     write_manifest,
 )
@@ -38,7 +41,9 @@ def _record() -> ClosureRecord:
         training_cutoff_source="page",
         uv_lock_sha256="0" * 64,
         documents=(
-            DocumentLine(position=1, title="Pilot form", status="read", ellery="read"),
+            DocumentLine(
+                position=1, title="Pilot form", status="read", ellery="read", sha256="d" * 64
+            ),
             DocumentLine(position=2, title="Photos", status="skipped: photo-only", ellery=None),
         ),
         prelim_present=True,
@@ -50,11 +55,16 @@ def _record() -> ClosureRecord:
         top3=None,
         abstained=None,
         cost_usd=0.5,
+        event_date=date(2026, 9, 1),
+        listing_sha256="a" * 64,
+        request_sha256s=("b" * 64, "c" * 64),
+        replied_models=("m",),
+        providers=("p",),
     )
 
 
 def test_formats() -> None:
-    assert CLOSURE_FORMAT == "live-closure/1"
+    assert CLOSURE_FORMAT == "live-closure/2"
     assert BACKFILL_FORMAT == "live-backfill/1"
     assert MANIFEST_FORMAT == "live-manifest/1"
     assert _record().format == CLOSURE_FORMAT
@@ -65,6 +75,26 @@ def test_closure_record_round_trips() -> None:
     again = ClosureRecord.model_validate_json(record.model_dump_json())
     assert again == record
     assert json.loads(record.model_dump_json())["closed_on"] == "2026-09-24"
+
+
+def test_a_version_1_line_fails_version_2_validation() -> None:
+    line = json.loads(_record().model_dump_json())
+    line["format"] = CLOSURE_FORMAT_V1
+    with pytest.raises(ValueError, match="live-closure/2"):
+        ClosureRecord.model_validate(line)
+
+
+def test_both_versions_are_read_back(tmp_path: Path) -> None:
+    v2 = _record()
+    v1_fields = json.loads(v2.model_dump_json(exclude={"event_date", "listing_sha256"}))
+    for name in ("request_sha256s", "replied_models", "providers"):
+        v1_fields.pop(name)
+    v1_fields["format"] = CLOSURE_FORMAT_V1
+    path = tmp_path / "closures.jsonl"
+    path.write_text(json.dumps(v1_fields) + "\n" + v2.model_dump_json() + "\n")
+    read = read_closure_records(path)
+    assert isinstance(read[0], ClosureRecordV1)
+    assert read[1] == v2
 
 
 def test_backfill_format() -> None:
