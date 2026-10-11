@@ -57,6 +57,9 @@ class DocumentLine(BaseModel, frozen=True):
     status: Status  # the docket reader's five
     ellery: Literal["read", "skipped"] | None  # None when not on offer
     sha256: str | None = None  # of the file as received; None when none was cached (decision 0176)
+    # Page count from the docket manifest. Added to version 2 as optional: no version 2 record had
+    # been written to the bucket when it was added (S4 Task 11b), so none lacks it unreadably.
+    pages: int | None = None
 
 
 class _ClosureCommon(BaseModel, frozen=True):

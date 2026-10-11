@@ -440,6 +440,16 @@ what was sent without publishing it.
 
 Titles, the agent's text and the NTSB's cause statement pass through the names step first (§12.2).
 
+*Added 2026-10-11 (Task 11b, at the S5 session's request; decision 0173 item 4, so still
+`board/1`):* five optional fields, all `null` when unknown. `mkey` (the NTSB's internal case key,
+for the docket link) on each row and each case file. `BuildStamp.launched_on` (the date the
+launch's backfill list was fixed, decision 0179) and `BoardRow.backfilled` (true, false, or null
+when there is no backfill); the list itself is never exported. `DocumentChoice.pages` (the
+docket manifest's page count, carried by closure record version 2's `DocumentLine`) and
+`DocumentChoice.not_offered_reason` (`not_pdf`, `photo_only` or `fetch_failed`, only on a
+`not_offered` document). `not_offered` means a document the reader could not offer as text,
+other than a scan; it never means a withheld document.
+
 ### 10.2 What the export never holds
 
 The registration; the explanation written for a non-expert; any document text; the evidence fingerprint; an aircraft's make and model;

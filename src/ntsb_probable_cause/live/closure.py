@@ -134,6 +134,7 @@ def document_lines(
             if d.entry.index in offered
             else None,
             sha256=(hashes or {}).get(d.entry.index),
+            pages=d.pages,
         )
         for d in docket.documents
     )

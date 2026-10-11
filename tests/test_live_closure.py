@@ -94,6 +94,7 @@ def test_record_carries_event_date_hashes_and_replies(tmp_path: Path) -> None:
     assert record.providers == ("alpha", "zeta")
     assert record.listing_sha256 == hashlib.sha256(b"page").hexdigest()
     assert [d.sha256 for d in record.documents] == [None, hashlib.sha256(b"doc").hexdigest()]
+    assert [d.pages for d in record.documents] == [2, 2]  # the docket manifest's counts
 
 
 def test_a_case_with_no_cache_has_no_hashes(tmp_path: Path) -> None:

@@ -77,6 +77,13 @@ class BuildStamp(_Model):
     model: str
     training_cutoff: date
     training_cutoff_source: str
+    launched_on: date | None = Field(
+        default=None,
+        description=(
+            "The date of the first cloud night: the date the launch's backfill list was fixed "
+            "(decision 0179). None when there is no backfill yet."
+        ),
+    )
 
 
 class Counts(_Model):
@@ -99,12 +106,27 @@ class BoardRow(_Model):
     """One closed case on the board."""
 
     case_number: str
+    mkey: int | None = Field(
+        default=None,
+        description=(
+            "The NTSB's internal case key; the docket link is built from it. None in a file "
+            "written before the field existed."
+        ),
+    )
     closed_on: date
     took_days: int = Field(description="Days from the accident to closure: closed_on - event date.")
     aircraft: Aircraft
     agent_first: Code | None
     ntsb_first: Code | None
     grade: Grade
+    backfilled: bool | None = Field(
+        default=None,
+        description=(
+            "True when the case closed before the live queue began and is in the launch's "
+            "backfill list, False when it is not, None when there is no backfill. The list "
+            "itself is never exported."
+        ),
+    )
 
 
 class BoardIndex(_Model):
@@ -190,7 +212,26 @@ class DocumentChoice(_Model):
     position: int
     title: str = Field(description="After the names step.")
     decision: Literal["read", "skipped", "scan_only", "not_offered"]
+    """What the agent did with the document.
+
+    ``read`` and ``skipped`` are the agent's choices over a document it was offered.
+    ``scan_only`` is a scan the reader could not turn into text. ``not_offered`` is a document
+    the reader could not offer as text, other than a scan (see ``not_offered_reason``); it never
+    means a withheld document. A docket document that holds the NTSB's probable cause makes the
+    whole case "not coded: leak" instead.
+    """
     note: str | None = Field(description="The agent's expected_effect, after the names step.")
+    pages: int | None = Field(
+        default=None,
+        description="The document's page count. None when not recorded.",
+    )
+    not_offered_reason: Literal["not_pdf", "photo_only", "fetch_failed"] | None = Field(
+        default=None,
+        description=(
+            "Why the document could not be offered as text; set only when decision is "
+            "not_offered and the docket reader gave one of three reasons, else None."
+        ),
+    )
 
 
 class ReadChoice(_Model):
@@ -233,6 +274,13 @@ class CaseFile(_Model):
 
     format: Literal["board/1"] = BOARD_FORMAT
     case_number: str
+    mkey: int | None = Field(
+        default=None,
+        description=(
+            "The NTSB's internal case key; the docket link is built from it. None in a file "
+            "written before the field existed."
+        ),
+    )
     closed_on: date
     took_days: int = Field(description="Days from the accident to closure.")
     aircraft: Aircraft
@@ -267,7 +315,10 @@ def board_json_schema() -> dict[str, object]:
     """The JSON Schemas of both file kinds: ``{"index": ..., "case": ...}``.
 
     Generated in serialization mode, so a defaulted field such as ``format`` is required: the
-    files are written by the export, and the site reads them as serialized.
+    files are written by the export, and the site reads them as serialized. The optional
+    fields added within ``board/1`` (``mkey``, ``launched_on``, ``backfilled``, ``pages``,
+    ``not_offered_reason``) are therefore listed as required too, and every file written
+    carries them (``null`` when unknown); the models still accept a file that lacks them.
     """
     return {
         "index": BoardIndex.model_json_schema(mode="serialization"),

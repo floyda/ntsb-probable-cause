@@ -1,6 +1,7 @@
 {
   "format": "board/1",
   "case_number": "XXX26XX006",
+  "mkey": 900106,
   "closed_on": "2026-09-29",
   "took_days": 54,
   "aircraft": {
@@ -14,7 +15,7 @@
     "kind_of_flight": "Personal",
     "injury_level": "Minor",
     "documents_read": 2,
-    "documents_listed": 2
+    "documents_listed": 3
   },
   "withheld": {
     "coded_at": "2026-10-09T03:14:07Z",
@@ -83,13 +84,25 @@
             "position": 1,
             "title": "Pilot statement",
             "decision": "read",
-            "note": "May bear on the cause."
+            "note": "May bear on the cause.",
+            "pages": 3,
+            "not_offered_reason": null
           },
           {
             "position": 2,
             "title": "Maintenance records",
             "decision": "read",
-            "note": "May bear on the cause."
+            "note": "May bear on the cause.",
+            "pages": 5,
+            "not_offered_reason": null
+          },
+          {
+            "position": 3,
+            "title": "Radar data",
+            "decision": "not_offered",
+            "note": null,
+            "pages": 7,
+            "not_offered_reason": "fetch_failed"
           }
         ],
         "cost_usd": 0.0031

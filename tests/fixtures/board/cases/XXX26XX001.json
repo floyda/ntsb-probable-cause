@@ -1,6 +1,7 @@
 {
   "format": "board/1",
   "case_number": "XXX26XX001",
+  "mkey": 900101,
   "closed_on": "2026-10-09",
   "took_days": 47,
   "aircraft": {
@@ -182,31 +183,41 @@
             "position": 1,
             "title": "Pilot statement",
             "decision": "read",
-            "note": "May describe the maneuver before the impact."
+            "note": "May describe the maneuver before the impact.",
+            "pages": 4,
+            "not_offered_reason": null
           },
           {
             "position": 2,
             "title": "Airworthiness records",
             "decision": "read",
-            "note": "Should show whether a mechanical fault is plausible."
+            "note": "Should show whether a mechanical fault is plausible.",
+            "pages": 12,
+            "not_offered_reason": null
           },
           {
             "position": 3,
             "title": "Wreckage examination",
             "decision": "skipped",
-            "note": "Likely to repeat what the pilot statement already shows."
+            "note": "Likely to repeat what the pilot statement already shows.",
+            "pages": 20,
+            "not_offered_reason": null
           },
           {
             "position": 4,
             "title": "Handwritten pilot form",
             "decision": "scan_only",
-            "note": null
+            "note": null,
+            "pages": 2,
+            "not_offered_reason": null
           },
           {
             "position": 5,
             "title": "Radar and radio record",
             "decision": "skipped",
-            "note": "Long and unlikely to change the answer."
+            "note": "Long and unlikely to change the answer.",
+            "pages": 31,
+            "not_offered_reason": null
           }
         ],
         "cost_usd": 0.0033
@@ -219,31 +230,41 @@
             "position": 1,
             "title": "Pilot statement",
             "decision": "not_offered",
-            "note": null
+            "note": null,
+            "pages": 4,
+            "not_offered_reason": null
           },
           {
             "position": 2,
             "title": "Airworthiness records",
             "decision": "not_offered",
-            "note": null
+            "note": null,
+            "pages": 12,
+            "not_offered_reason": null
           },
           {
             "position": 3,
             "title": "Wreckage examination",
             "decision": "read",
-            "note": "Would show engine power and control continuity at impact."
+            "note": "Would show engine power and control continuity at impact.",
+            "pages": 20,
+            "not_offered_reason": null
           },
           {
             "position": 4,
             "title": "Handwritten pilot form",
             "decision": "scan_only",
-            "note": null
+            "note": null,
+            "pages": 2,
+            "not_offered_reason": null
           },
           {
             "position": 5,
             "title": "Radar and radio record",
             "decision": "skipped",
-            "note": "Still unlikely to change the answer."
+            "note": "Still unlikely to change the answer.",
+            "pages": 31,
+            "not_offered_reason": null
           }
         ],
         "cost_usd": 0.0029

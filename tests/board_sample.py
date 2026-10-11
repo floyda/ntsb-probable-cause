@@ -47,6 +47,7 @@ from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.sources import TRAINING_CUTOFFS
 
 Decision = Literal["read", "skipped", "scan_only", "not_offered"]
+Reason = Literal["not_pdf", "photo_only", "fetch_failed"]
 
 # Values a real source record would hold. The sample must not contain them.
 FORBIDDEN: Final = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")
@@ -55,6 +56,11 @@ OUT: Final = Path("tests/fixtures/board")
 MODEL: Final = "openai/gpt-6-luna"
 COMMIT: Final = "a1b2c3d"
 PROMPT: Final = "s3-v1+ge17fecdc66ec+tdff9dea78f23"
+LAUNCHED_ON: Final = date(2026, 10, 9)
+# Cases in the invented launch backfill; every other sample case is not.
+BACKFILLED: Final = frozenset(
+    {"XXX26XX003", "XXX26XX004", "XXX26XX005", "XXX26XX006", "XXX26XX007"}
+)
 CODED_AT: Final = datetime(2026, 10, 9, 3, 14, 7, tzinfo=UTC)
 _TABLES = load_tables()
 
@@ -137,9 +143,13 @@ def _simple_trail(
     cause: str,
     account: str,
     conf: float,
-    docs: Sequence[tuple[str, Decision]] = (),
+    docs: Sequence[tuple[str, Decision] | tuple[str, Decision, Reason]] = (),
 ) -> Trail:
-    """A short trail: one read choice over ``docs`` (title, decision), two beliefs, one lookup."""
+    """A short trail: one read choice over ``docs``, two beliefs, one lookup.
+
+    A document is ``(title, decision)`` or, for a ``not_offered`` one, ``(title, decision,
+    reason)``. Each document has a page count of ``2 * position + 1``.
+    """
     choices: tuple[ReadChoice, ...] = ()
     if docs:
         documents = tuple(
@@ -154,8 +164,11 @@ def _simple_trail(
                     if decision == "skipped"
                     else None
                 ),
+                pages=2 * n + 1,
+                not_offered_reason=doc[2] if len(doc) == 3 else None,
             )
-            for n, (title, decision) in enumerate(docs, start=1)
+            for n, doc in enumerate(docs, start=1)
+            for title, decision in [doc[:2]]
         )
         choices = (
             ReadChoice(
@@ -230,6 +243,7 @@ def _cases() -> tuple[CaseFile, ...]:
     docs = ("Pilot statement", "Airworthiness records", "Wreckage examination")
     c1 = CaseFile(
         case_number="XXX26XX001",
+        mkey=900101,
         closed_on=date(2026, 10, 9),
         took_days=47,
         aircraft=Aircraft(category="Airplane", engines=1, engine_type="Reciprocating"),
@@ -303,30 +317,35 @@ def _cases() -> tuple[CaseFile, ...]:
                             title=docs[0],
                             decision="read",
                             note="May describe the maneuver before the impact.",
+                            pages=4,
                         ),
                         DocumentChoice(
                             position=2,
                             title=docs[1],
                             decision="read",
                             note="Should show whether a mechanical fault is plausible.",
+                            pages=12,
                         ),
                         DocumentChoice(
                             position=3,
                             title=docs[2],
                             decision="skipped",
                             note="Likely to repeat what the pilot statement already shows.",
+                            pages=20,
                         ),
                         DocumentChoice(
                             position=4,
                             title="Handwritten pilot form",
                             decision="scan_only",
                             note=None,
+                            pages=2,
                         ),
                         DocumentChoice(
                             position=5,
                             title="Radar and radio record",
                             decision="skipped",
                             note="Long and unlikely to change the answer.",
+                            pages=31,
                         ),
                     ),
                     cost_usd=0.0033,
@@ -337,28 +356,31 @@ def _cases() -> tuple[CaseFile, ...]:
                     "document that can confirm or rule out a mechanical cause.",
                     documents=(
                         DocumentChoice(
-                            position=1, title=docs[0], decision="not_offered", note=None
+                            position=1, title=docs[0], decision="not_offered", note=None, pages=4
                         ),
                         DocumentChoice(
-                            position=2, title=docs[1], decision="not_offered", note=None
+                            position=2, title=docs[1], decision="not_offered", note=None, pages=12
                         ),
                         DocumentChoice(
                             position=3,
                             title=docs[2],
                             decision="read",
                             note="Would show engine power and control continuity at impact.",
+                            pages=20,
                         ),
                         DocumentChoice(
                             position=4,
                             title="Handwritten pilot form",
                             decision="scan_only",
                             note=None,
+                            pages=2,
                         ),
                         DocumentChoice(
                             position=5,
                             title="Radar and radio record",
                             decision="skipped",
                             note="Still unlikely to change the answer.",
+                            pages=31,
                         ),
                     ),
                     cost_usd=0.0029,
@@ -422,6 +444,7 @@ def _cases() -> tuple[CaseFile, ...]:
     )
     c2 = CaseFile(
         case_number="XXX26XX002",
+        mkey=900102,
         closed_on=date(2026, 10, 9),
         took_days=61,
         aircraft=Aircraft(category="Airplane", engines=1, engine_type="Reciprocating"),
@@ -464,6 +487,7 @@ def _cases() -> tuple[CaseFile, ...]:
     )
     c3 = CaseFile(
         case_number="XXX26XX003",
+        mkey=900103,
         closed_on=date(2026, 10, 7),
         took_days=88,
         aircraft=Aircraft(category="Airplane", engines=1, engine_type=None),
@@ -473,7 +497,7 @@ def _cases() -> tuple[CaseFile, ...]:
             kind_of_flight="Personal",
             injury_level="Fatal",
             documents_read=1,
-            documents_listed=3,
+            documents_listed=5,
         ),
         withheld=_withheld(),
         answer=a3,
@@ -489,6 +513,8 @@ def _cases() -> tuple[CaseFile, ...]:
                 ("Pilot statement", "read"),
                 ("Wreckage examination", "skipped"),
                 ("Weather data", "skipped"),
+                ("Photograph log", "not_offered", "photo_only"),
+                ("Spreadsheet export", "not_offered", "not_pdf"),
             ),
         ),
         not_coded=None,
@@ -509,6 +535,7 @@ def _cases() -> tuple[CaseFile, ...]:
     )
     c4 = CaseFile(
         case_number="XXX26XX004",
+        mkey=900104,
         closed_on=date(2026, 10, 5),
         took_days=102,
         aircraft=Aircraft(category="Airplane", engines=2, engine_type="Reciprocating"),
@@ -543,6 +570,7 @@ def _cases() -> tuple[CaseFile, ...]:
     )
     c5 = CaseFile(
         case_number="XXX26XX005",
+        mkey=900105,
         closed_on=date(2026, 10, 2),
         took_days=75,
         aircraft=Aircraft(category="Helicopter", engines=1, engine_type="Turbo shaft"),
@@ -572,6 +600,7 @@ def _cases() -> tuple[CaseFile, ...]:
     )
     c6 = CaseFile(
         case_number="XXX26XX006",
+        mkey=900106,
         closed_on=date(2026, 9, 29),
         took_days=54,
         aircraft=Aircraft(category="Airplane", engines=1, engine_type="Reciprocating"),
@@ -581,7 +610,7 @@ def _cases() -> tuple[CaseFile, ...]:
             kind_of_flight="Personal",
             injury_level="Minor",
             documents_read=2,
-            documents_listed=2,
+            documents_listed=3,
         ),
         withheld=_withheld(),
         answer=a6,
@@ -593,7 +622,11 @@ def _cases() -> tuple[CaseFile, ...]:
             "The airplane landed off the airport after the engine lost power in cruise. The "
             "pilot's statement and the maintenance records both mention fuel selector use.",
             0.57,
-            (("Pilot statement", "read"), ("Maintenance records", "read")),
+            (
+                ("Pilot statement", "read"),
+                ("Maintenance records", "read"),
+                ("Radar data", "not_offered", "fetch_failed"),
+            ),
         ),
         not_coded=None,
     )
@@ -601,6 +634,7 @@ def _cases() -> tuple[CaseFile, ...]:
     # 007 settled unreachable: no record could be read, so there are no facts.
     c7 = CaseFile(
         case_number="XXX26XX007",
+        mkey=900107,
         closed_on=date(2026, 10, 1),
         took_days=57,
         aircraft=Aircraft(category=None, engines=None, engine_type=None),
@@ -626,9 +660,11 @@ def _row(case: CaseFile) -> BoardRow:
     ntsb_first = verdict.occurrence[0] if verdict is not None and verdict.occurrence else None
     return BoardRow(
         case_number=case.case_number,
+        mkey=case.mkey,
         closed_on=case.closed_on,
         took_days=case.took_days,
         aircraft=case.aircraft,
+        backfilled=case.case_number in BACKFILLED,
         agent_first=agent_first,
         ntsb_first=ntsb_first,
         grade=case.grade,
@@ -651,6 +687,7 @@ def build() -> dict[str, str]:
             model=MODEL,
             training_cutoff=cutoff.day,
             training_cutoff_source=cutoff.source,
+            launched_on=LAUNCHED_ON,
         ),
         counts=Counts(
             open_watched=212,

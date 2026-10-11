@@ -251,6 +251,24 @@
             "title": "Decision",
             "type": "string"
           },
+          "not_offered_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_pdf",
+                  "photo_only",
+                  "fetch_failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Why the document could not be offered as text; set only when decision is not_offered and the docket reader gave one of three reasons, else None.",
+            "title": "Not Offered Reason"
+          },
           "note": {
             "anyOf": [
               {
@@ -262,6 +280,19 @@
             ],
             "description": "The agent's expected_effect, after the names step.",
             "title": "Note"
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The document's page count. None when not recorded.",
+            "title": "Pages"
           },
           "position": {
             "title": "Position",
@@ -277,7 +308,9 @@
           "position",
           "title",
           "decision",
-          "note"
+          "note",
+          "pages",
+          "not_offered_reason"
         ],
         "title": "DocumentChoice",
         "type": "object"
@@ -653,6 +686,19 @@
         "title": "Grade",
         "type": "string"
       },
+      "mkey": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "The NTSB's internal case key; the docket link is built from it. None in a file written before the field existed.",
+        "title": "Mkey"
+      },
       "not_coded": {
         "anyOf": [
           {
@@ -702,6 +748,7 @@
     "required": [
       "format",
       "case_number",
+      "mkey",
       "closed_on",
       "took_days",
       "aircraft",
@@ -785,6 +832,19 @@
           "aircraft": {
             "$ref": "#/$defs/Aircraft"
           },
+          "backfilled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the case closed before the live queue began and is in the launch's backfill list, False when it is not, None when there is no backfill. The list itself is never exported.",
+            "title": "Backfilled"
+          },
           "case_number": {
             "title": "Case Number",
             "type": "string"
@@ -806,6 +866,19 @@
             "title": "Grade",
             "type": "string"
           },
+          "mkey": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The NTSB's internal case key; the docket link is built from it. None in a file written before the field existed.",
+            "title": "Mkey"
+          },
           "ntsb_first": {
             "anyOf": [
               {
@@ -824,12 +897,14 @@
         },
         "required": [
           "case_number",
+          "mkey",
           "closed_on",
           "took_days",
           "aircraft",
           "agent_first",
           "ntsb_first",
-          "grade"
+          "grade",
+          "backfilled"
         ],
         "title": "BoardRow",
         "type": "object"
@@ -846,6 +921,20 @@
           "commit": {
             "title": "Commit",
             "type": "string"
+          },
+          "launched_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The date of the first cloud night: the date the launch's backfill list was fixed (decision 0179). None when there is no backfill yet.",
+            "title": "Launched On"
           },
           "model": {
             "title": "Model",
@@ -866,7 +955,8 @@
           "commit",
           "model",
           "training_cutoff",
-          "training_cutoff_source"
+          "training_cutoff_source",
+          "launched_on"
         ],
         "title": "BuildStamp",
         "type": "object"

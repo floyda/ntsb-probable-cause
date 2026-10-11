@@ -184,3 +184,10 @@ def test_portability_reports_unreadable_json(tmp_path: Path) -> None:
 def test_portability_accepts_ordinary_strings(tmp_path: Path, value: str) -> None:
     (tmp_path / "a.json").write_text(json.dumps({"v": value}))
     assert portability_problems(tmp_path) == []
+
+
+def test_a_document_line_without_pages_still_loads() -> None:
+    older = '{"position": 1, "title": "T", "status": "read", "ellery": null, "sha256": null}'
+    assert DocumentLine.model_validate_json(older).pages is None
+    line = DocumentLine(position=1, title="T", status="read", ellery=None, pages=9)
+    assert DocumentLine.model_validate_json(line.model_dump_json()).pages == 9

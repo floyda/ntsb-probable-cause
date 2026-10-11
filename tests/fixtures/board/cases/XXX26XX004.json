@@ -1,6 +1,7 @@
 {
   "format": "board/1",
   "case_number": "XXX26XX004",
+  "mkey": 900104,
   "closed_on": "2026-10-05",
   "took_days": 102,
   "aircraft": {
@@ -117,7 +118,9 @@
             "position": 1,
             "title": "Handwritten pilot form",
             "decision": "scan_only",
-            "note": null
+            "note": null,
+            "pages": 3,
+            "not_offered_reason": null
           }
         ],
         "cost_usd": 0.0031

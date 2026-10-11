@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from tests.test_live_closure import _run as _run_record
 from tests.test_live_later import _closure, _raw_with_codes, _step
 from tests.test_live_morning import _call, _result, _scores
 
@@ -28,10 +29,11 @@ from ntsb_probable_cause.live.closure import CASES_FILE
 from ntsb_probable_cause.live.export import NOT_CODED_SENTENCES, BoardIndex, CaseFile
 from ntsb_probable_cause.live.later import LaterScore
 from ntsb_probable_cause.live.names import NAME_MARKER
-from ntsb_probable_cause.live.queue import build_queue
+from ntsb_probable_cause.live.queue import backfill_digest, build_queue
 from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
     INPUTS_FILE,
+    Backfill,
     ClosureRecord,
     ClosureRecordV1,
     DocumentLine,
@@ -121,8 +123,10 @@ def _no_codes(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _lines() -> tuple[DocumentLine, ...]:
     return (
-        DocumentLine(position=1, title="Statement of Smithers", status="read", ellery="read"),
-        DocumentLine(position=2, title="Weather data", status="read", ellery="skipped"),
+        DocumentLine(
+            position=1, title="Statement of Smithers", status="read", ellery="read", pages=4
+        ),
+        DocumentLine(position=2, title="Weather data", status="read", ellery="skipped", pages=17),
         DocumentLine(
             position=3, title="Handwritten pilot form", status="unreadable: scan", ellery=None
         ),
@@ -928,3 +932,89 @@ def test_a_failed_move_puts_the_previous_export_back(
     monkeypatch.undo()
     assert {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*.json")} == before
     assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".")] == []
+
+
+def test_the_key_and_the_page_counts_reach_the_export(tmp_path: Path) -> None:
+    out = _build(tmp_path)
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    rows = {r.case_number: r for r in index.rows}
+    assert rows["XXX26XX001"].mkey == 7  # the closure record's key (``_closure`` gives 7)
+    assert _case(out, "XXX26XX001").mkey == 7
+    # a case settled unreachable carries the key its closure was kept with
+    assert rows["XXX26XX008"].mkey == 8
+    assert _case(out, "XXX26XX008").mkey == 8
+    (choice,) = _case(out, "XXX26XX001").trail.read_choices  # type: ignore[union-attr]
+    assert [d.pages for d in choice.documents] == [4, 17, None]
+
+
+def _with_backfill(mirror: Path, case_ids: tuple[str, ...]) -> None:
+    folder = next((mirror / "runs").iterdir())
+    # The sink recognises a live run by its run record.
+    write_jsonl(folder / "run.jsonl", [_run_record()])
+    (folder / "backfill.json").write_text(
+        Backfill(
+            fixed_on=date(2026, 10, 1), case_ids=case_ids, sha256=backfill_digest(case_ids)
+        ).model_dump_json()
+    )
+
+
+def test_a_backfill_sets_launched_on_and_each_rows_flag_and_is_not_exported(
+    tmp_path: Path,
+) -> None:
+    mirror = _mirror(tmp_path)
+    _with_backfill(mirror, ("XXX26XX001", "XXX26XX008", "XXX26XX999"))
+    out = _build(tmp_path, mirror)
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    assert index.stamp.launched_on == date(2026, 10, 1)
+    flags = {r.case_number: r.backfilled for r in index.rows}
+    assert flags["XXX26XX001"] is True
+    assert flags["XXX26XX008"] is True
+    assert flags["XXX26XX002"] is False
+    assert "XXX26XX999" not in flags  # the list is used for the flag only
+    assert "XXX26XX999" not in "".join(p.read_text() for p in out.rglob("*.json"))
+
+
+def test_with_no_backfill_launched_on_and_the_flags_are_none(tmp_path: Path) -> None:
+    out = _build(tmp_path)
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    assert index.stamp.launched_on is None
+    assert {r.backfilled for r in index.rows} == {None}
+
+
+def test_not_offered_reasons_follow_the_readers_status(tmp_path: Path) -> None:
+    statuses = (
+        ("read", "read"),
+        ("read", "skipped"),
+        ("unreadable: scan", None),
+        ("unreadable: not a pdf", None),
+        ("skipped: photo-only", None),
+        ("fetch failed", None),
+        ("read", None),  # not offered although readable: no reason to give
+    )
+    lines = tuple(
+        DocumentLine(position=n, title=f"Doc {n}", status=status, ellery=ellery, pages=n)
+        for n, (status, ellery) in enumerate(statuses, start=1)
+    )
+    ev = date(2026, 8, 1)
+    mirror = _one_run(
+        tmp_path,
+        [
+            (
+                _record("XXX26XX001", date(2026, 10, 9), documents=lines),
+                _raw("XXX26XX001", ev),
+                _hypothesis(STALL),
+            )
+        ],
+    )
+    out = _build(tmp_path, mirror)
+    (choice,) = _case(out, "XXX26XX001").trail.read_choices  # type: ignore[union-attr]
+    got = [(d.decision, d.not_offered_reason, d.pages) for d in choice.documents]
+    assert got == [
+        ("read", None, 1),
+        ("skipped", None, 2),
+        ("scan_only", None, 3),
+        ("not_offered", "not_pdf", 4),
+        ("not_offered", "photo_only", 5),
+        ("not_offered", "fetch_failed", 6),
+        ("not_offered", None, 7),
+    ]

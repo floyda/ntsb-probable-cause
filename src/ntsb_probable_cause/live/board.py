@@ -44,7 +44,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments, DocumentDecision
@@ -78,6 +78,7 @@ from ntsb_probable_cause.live.export import (
     Withheld,
 )
 from ntsb_probable_cause.live.later import LaterScore
+from ntsb_probable_cause.live.local import LocalFolderSink
 from ntsb_probable_cause.live.morning import MODEL_ID, live_spec
 from ntsb_probable_cause.live.names import CaseNames, board_text, board_title, case_names
 from ntsb_probable_cause.live.queue import build_queue, closures_per_night
@@ -105,6 +106,12 @@ _EXCLUSIONS: Final = live_spec(1.0).exclusions
 _ENGINE_CHECKPOINT: Final = "checkpoint:"
 _BELIEF_KINDS: Final = ("h0", "h1", "h2", "answer")
 _SCAN_ONLY: Final = "unreadable: scan"
+# The docket reader's statuses that make a document "not offered", as the export names them.
+_NOT_OFFERED: Final[Mapping[str, Literal["not_pdf", "photo_only", "fetch_failed"]]] = {
+    "unreadable: not a pdf": "not_pdf",
+    "skipped: photo-only": "photo_only",
+    "fetch failed": "fetch_failed",
+}
 _ANSWER_TOOL: Final = "submit_answer"
 _COST_EPSILON: Final = 1e-9
 
@@ -391,6 +398,7 @@ def _read_choices(
                         title=title,
                         decision="read" if read else "skipped",
                         note=None if note is None else board_text(note, names),
+                        pages=line.pages,
                     )
                 )
             else:
@@ -400,6 +408,10 @@ def _read_choices(
                         title=title,
                         decision="scan_only" if line.status == _SCAN_ONLY else "not_offered",
                         note=None,
+                        pages=line.pages,
+                        not_offered_reason=(
+                            None if line.status == _SCAN_ONLY else _NOT_OFFERED.get(line.status)
+                        ),
                     )
                 )
         choices.append(
@@ -488,10 +500,12 @@ def _agent_first(case: CaseFile) -> Code | None:
     return answer.occurrence[0]
 
 
-def _row(case: CaseFile) -> BoardRow:
+def _row(case: CaseFile, backfilled: frozenset[str] | None) -> BoardRow:
     verdict = case.verdict
     return BoardRow(
         case_number=case.case_number,
+        mkey=case.mkey,
+        backfilled=None if backfilled is None else case.case_number in backfilled,
         closed_on=case.closed_on,
         took_days=case.took_days,
         aircraft=case.aircraft,
@@ -574,6 +588,7 @@ def _coded_case(
     )
     base: dict[str, Any] = {
         "case_number": record.case_id,
+        "mkey": record.mkey,
         "closed_on": record.closed_on,
         "took_days": _took_days(record.closed_on, record.event_date),
         "aircraft": _aircraft(raw),
@@ -619,6 +634,7 @@ def _coded_case(
 def _unreachable_case(case_number: str, closed: Closed) -> CaseFile:
     return CaseFile(
         case_number=case_number,
+        mkey=closed.mkey,
         closed_on=closed.closed_on,
         took_days=_took_days(closed.closed_on, closed.event_date),
         aircraft=_aircraft(None),
@@ -719,8 +735,12 @@ def _build_files(  # noqa: PLR0913 -- the builder's fixed interface
 
     model = max(models)[1] if models and max(models)[1] in TRAINING_CUTOFFS else MODEL_ID
     cutoff = TRAINING_CUTOFFS[model]
+    backfill = LocalFolderSink(mirror / "runs").backfill()
+    # The list is used only to set each row's flag; it never enters the export.
+    backfilled = None if backfill is None else frozenset(backfill.case_ids)
     rows = sorted(
-        (_row(c) for c in cases.values()), key=lambda r: (-r.closed_on.toordinal(), r.case_number)
+        (_row(c, backfilled) for c in cases.values()),
+        key=lambda r: (-r.closed_on.toordinal(), r.case_number),
     )
     not_coded = Counter(c.not_coded.kind for c in cases.values() if c.not_coded is not None)
     grades = Counter(c.grade for c in cases.values())
@@ -732,6 +752,7 @@ def _build_files(  # noqa: PLR0913 -- the builder's fixed interface
             model=model,
             training_cutoff=cutoff.day,
             training_cutoff_source=cutoff.source,
+            launched_on=None if backfill is None else backfill.fixed_on,
         ),
         counts=Counts(
             open_watched=open_watched,

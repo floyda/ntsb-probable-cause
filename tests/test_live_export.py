@@ -83,3 +83,41 @@ def test_schema_requires_the_format_field() -> None:
     schema = board_json_schema()
     assert "format" in schema["index"]["required"]  # type: ignore[index]
     assert "format" in schema["case"]["required"]  # type: ignore[index]
+
+
+def test_a_file_written_before_the_optional_fields_still_validates() -> None:
+    """Adding an optional field keeps ``board/1`` (decision 0173, item 4)."""
+    new = {"mkey", "launched_on", "backfilled", "pages", "not_offered_reason"}
+
+    def strip(value: object) -> object:
+        if isinstance(value, dict):
+            return {k: strip(v) for k, v in value.items() if k not in new}
+        if isinstance(value, list):
+            return [strip(v) for v in value]
+        return value
+
+    index = json.loads((SAMPLE / "index.json").read_text())
+    older_index = strip(index)
+    assert older_index != index
+    assert BoardIndex.model_validate(older_index).rows[0].mkey is None
+    for path in (SAMPLE / "cases").glob("*.json"):
+        case = json.loads(path.read_text())
+        assert CaseFile.model_validate(strip(case)).mkey is None
+
+
+def test_the_sample_exercises_every_optional_field() -> None:
+    index = BoardIndex.model_validate_json((SAMPLE / "index.json").read_text())
+    assert index.stamp.launched_on is not None
+    assert {r.backfilled for r in index.rows} == {True, False}
+    assert all(r.mkey is not None for r in index.rows)
+    cases = [CaseFile.model_validate_json(p.read_text()) for p in (SAMPLE / "cases").glob("*.json")]
+    assert all(c.mkey is not None for c in cases)
+    documents = [d for c in cases if c.trail for rc in c.trail.read_choices for d in rc.documents]
+    assert all(d.pages is not None for d in documents)
+    assert {d.not_offered_reason for d in documents} == {
+        None,
+        "not_pdf",
+        "photo_only",
+        "fetch_failed",
+    }
+    assert all(d.not_offered_reason is None for d in documents if d.decision != "not_offered")

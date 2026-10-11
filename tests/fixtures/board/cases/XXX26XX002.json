@@ -1,6 +1,7 @@
 {
   "format": "board/1",
   "case_number": "XXX26XX002",
+  "mkey": 900102,
   "closed_on": "2026-10-09",
   "took_days": 61,
   "aircraft": {
@@ -149,13 +150,17 @@
             "position": 1,
             "title": "Instructor statement",
             "decision": "read",
-            "note": "May bear on the cause."
+            "note": "May bear on the cause.",
+            "pages": 3,
+            "not_offered_reason": null
           },
           {
             "position": 2,
             "title": "Airworthiness records",
             "decision": "read",
-            "note": "May bear on the cause."
+            "note": "May bear on the cause.",
+            "pages": 5,
+            "not_offered_reason": null
           }
         ],
         "cost_usd": 0.0031
