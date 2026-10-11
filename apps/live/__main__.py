@@ -223,7 +223,10 @@ def _verify_ledger(args: argparse.Namespace, settings: Settings) -> int:
         return _fail(f"verify-ledger: {ledger} is not a file")
     if not mirror.is_dir():
         return _fail(f"verify-ledger: {mirror} is not a folder")
-    lines = read_ledger(ledger)
+    try:
+        lines = read_ledger(ledger)
+    except ValueError:
+        return _fail(f"verify-ledger: {ledger} is not a valid ledger")
     problems = verify(lines, mirror)
     for problem in problems:
         print(problem)

@@ -364,3 +364,15 @@ def test_push_of_a_missing_path_uploads_nothing(tmp_path: Path) -> None:
     mirror, _ = _mirror(tmp_path, {})
     assert mirror.push(Path("runs/none")) == 0
     assert mirror.push(Path("runs/none/file.txt")) == 0
+
+
+def test_a_night_folder_pushed_through_the_mirror_uploads_its_manifest_last(
+    tmp_path: Path,
+) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    folder = tmp_path / "nights" / "2026-10-11"
+    folder.mkdir(parents=True)
+    for name in ("manifest.json", "night.json", "started", "a-first.json"):
+        (folder / name).write_text(name)
+    assert mirror.push(Path("nights/2026-10-11")) == 4
+    assert bucket.uploads[-1] == "nights/2026-10-11/manifest.json"

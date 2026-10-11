@@ -4,9 +4,11 @@ name: ledger
 # `ledger.jsonl` on the `ledger` branch (decision 0178). Hashes are published, never contents.
 # The role may only list `runs/` and `nights/` and read their `manifest.json` files.
 #
-# Nothing here runs until Andy has created the role, the two repository variables
-# (LEDGER_ROLE_ARN, LIVE_BUCKET) and the protected `ledger` branch. No `environment:` is used:
-# it would change the OIDC subject the role's trust expects.
+# Nothing here runs until Andy has created the role, the two repository secrets
+# (LEDGER_ROLE_ARN, LIVE_BUCKET; secrets are masked in the public log, variables are not), the
+# protected `ledger` branch holding an empty `ledger.jsonl`, and last the repository variable
+# LEDGER_ENABLED=true. No `environment:` is used: it would change the OIDC subject the role's
+# trust expects.
 
 on:
   schedule:
@@ -23,7 +25,7 @@ concurrency:
 
 jobs:
   append:
-    if: vars.LEDGER_ROLE_ARN != '' && vars.LIVE_BUCKET != ''
+    if: vars.LEDGER_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -32,33 +34,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # This checkout must push, so it keeps its token (persist-credentials: true). The branch is Andy's to create and
-      # protect: if it does not exist the step fails, and this job never creates it.
+      # The branch is Andy's to create and protect: if it does not exist this step fails, and
+      # this job never creates it. No checkout keeps a token; only the commit step holds one.
       - name: Check out the ledger branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ledger
           path: ledger
-          persist-credentials: true
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          enable-cache: true
+          enable-cache: false
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ vars.LEDGER_ROLE_ARN }}
+          role-to-assume: ${{ secrets.LEDGER_ROLE_ARN }}
           aws-region: eu-west-2
       - name: Append new manifest hashes
         env:
-          LIVE_BUCKET: ${{ vars.LIVE_BUCKET }}
+          LIVE_BUCKET: ${{ secrets.LIVE_BUCKET }}
         run: |
           set -euo pipefail
-          uv run --locked --extra aws python -m scripts.ledger_append --bucket "$LIVE_BUCKET" --ledger ledger/ledger.jsonl
+          uv run --locked --no-dev --extra aws python -m scripts.ledger_append --bucket "$LIVE_BUCKET" --ledger ledger/ledger.jsonl
       - name: Commit the ledger
         working-directory: ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "ledger-bot"
           git config user.email "ledger-bot@users.noreply.github.com"
           git add ledger.jsonl
           git diff --cached --quiet || git commit -m "ledger: $(date -u +%Y-%m-%d)"
-          git push origin HEAD:ledger
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ledger

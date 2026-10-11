@@ -19,7 +19,6 @@ from pydantic import BaseModel
 from ntsb_probable_cause.live.records import MANIFEST_FILE, verify_manifest
 
 LEDGER_FORMAT: Final = "ledger/1"
-_NIGHT_RECORD: Final = "night.json"
 
 
 class LedgerLine(BaseModel, frozen=True):
@@ -102,12 +101,11 @@ def read_ledger(path: Path) -> list[LedgerLine]:
     return [LedgerLine.model_validate_json(t) for t in path.read_text().splitlines() if t.strip()]
 
 
-def _check_listed(folder: Path, mirror: Path, label: str) -> list[str]:
+def _check_listed(folder: Path, mirror: Path, label: str, problems: list[str]) -> None:
     """A night manifest's ``night_files`` (bucket paths) against the mirror."""
     manifest = json.loads((folder / MANIFEST_FILE).read_text())
-    problems: list[str] = []
     for entry in manifest.get("night_files", []):
-        path = mirror / entry["path"]
+        path = mirror / str(entry["path"])
         if not path.is_file():
             problems.append(f"{label}: {entry['path']}: missing")
         elif (
@@ -115,20 +113,20 @@ def _check_listed(folder: Path, mirror: Path, label: str) -> list[str]:
             or hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]
         ):
             problems.append(f"{label}: {entry['path']}: changed")
-    return problems
 
 
 def _check_folder(key: str, mirror: Path) -> list[str]:
     folder = (mirror / key).parent
     label = folder.relative_to(mirror).as_posix()
-    if key.startswith("nights/") and not (folder / _NIGHT_RECORD).is_file():
-        return [f"{label}: unfinished night"]
     try:
         problems = [f"{label}: {p}" for p in verify_manifest(folder)]
-        if key.startswith("nights/"):
-            problems += _check_listed(folder, mirror, label)
     except ValueError, KeyError, TypeError:
         return [f"{label}: manifest unreadable"]
+    if key.startswith("nights/"):
+        try:
+            _check_listed(folder, mirror, label, problems)
+        except ValueError, KeyError, TypeError, AttributeError:
+            problems.append(f"{label}: night_files unreadable")
     return problems
 
 
@@ -136,9 +134,8 @@ def verify(ledger: Sequence[LedgerLine], mirror: Path) -> list[str]:
     """Problems between the ledger and a local copy of the bucket; ``[]`` when sound.
 
     For each key's latest line: the manifest is present, its SHA-256 is the line's, and the
-    folder it lists matches it (``records.verify_manifest``). A night folder with no
-    ``night.json`` is an unfinished night, not a mismatch. Problems name keys and kinds, never
-    contents.
+    folder it lists matches it (``records.verify_manifest``; a listed ``night.json`` that is
+    absent is reported missing). Problems name keys and kinds, never contents.
     """
     problems: list[str] = []
     for key, line in sorted(_latest(ledger).items()):

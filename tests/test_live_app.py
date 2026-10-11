@@ -810,3 +810,14 @@ def test_verify_ledger_defaults_to_the_live_mirror(
     (tmp_path / "mirror").rename(tmp_path / "live-mirror")
     assert app.main(["verify-ledger", "--ledger", str(ledger)]) == 0
     assert "problems: 0" in capsys.readouterr().out
+
+
+def test_verify_ledger_on_a_malformed_ledger_fails_in_one_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mirror, ledger = _ledger_fixture(tmp_path)
+    ledger.write_text("not json\n")
+    assert app.main(["verify-ledger", "--ledger", str(ledger), "--mirror", str(mirror)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("\n") == 1

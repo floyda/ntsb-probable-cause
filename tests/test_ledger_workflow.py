@@ -57,11 +57,25 @@ def test_no_step_prints_a_downloaded_file() -> None:
         assert not re.search(r"\b(cat|head|tail|jq)\b", run), run
 
 
-def test_the_job_does_nothing_until_the_role_and_bucket_are_set() -> None:
-    condition = _job()["if"]
-    assert "vars.LEDGER_ROLE_ARN != ''" in condition
-    assert "vars.LIVE_BUCKET != ''" in condition
-    assert "&&" in condition
+def test_the_job_does_nothing_until_the_enabling_variable_is_set() -> None:
+    assert _job()["if"] == "vars.LEDGER_ENABLED == 'true'"
+
+
+def test_no_variable_but_the_enabling_one_is_read() -> None:
+    """Variables are not masked in the public log; the role ARN and bucket are secrets."""
+    text = WORKFLOW_PATH.read_text()
+    assert set(re.findall(r"vars\.(\w+)", text)) == {"LEDGER_ENABLED"}
+    assert set(re.findall(r"secrets\.(\w+)", text)) == {"LEDGER_ROLE_ARN", "LIVE_BUCKET"}
+
+
+def test_secrets_are_read_only_through_with_or_env() -> None:
+    for step in _steps():
+        assert "secrets." not in step.get("run", ""), step.get("name")
+        assert "github.token" not in step.get("run", ""), step.get("name")
+    for step in _steps():
+        for section in ("with", "env"):
+            for value in step.get(section, {}).values():
+                assert "vars." not in str(value) or "LEDGER_ENABLED" in str(value)
 
 
 def test_no_environment_is_used() -> None:
@@ -70,9 +84,11 @@ def test_no_environment_is_used() -> None:
     assert "environment:" not in WORKFLOW_PATH.read_text().replace("`environment:`", "")
 
 
-def test_only_the_ledger_checkout_keeps_credentials_and_it_never_creates_the_branch() -> None:
+def test_no_checkout_keeps_the_token_and_the_ledger_branch_is_never_created() -> None:
     checkouts = [s for s in _steps() if s.get("uses", "").startswith("actions/checkout")]
-    assert [c["with"]["persist-credentials"] for c in checkouts] == [False, True]
+    assert len(checkouts) == 2
+    for checkout in checkouts:
+        assert checkout["with"]["persist-credentials"] is False
     assert checkouts[1]["with"]["ref"] == "ledger"
     text = WORKFLOW_PATH.read_text()
     assert "git checkout -b" not in text
@@ -80,8 +96,20 @@ def test_only_the_ledger_checkout_keeps_credentials_and_it_never_creates_the_bra
     assert "--orphan" not in text
 
 
+def test_only_the_commit_step_holds_the_token() -> None:
+    holders = [s for s in _steps() if "github.token" in str(s)]
+    assert [s["name"] for s in holders] == ["Commit the ledger"]
+    assert holders[0]["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "extraheader" not in WORKFLOW_PATH.read_text()
+
+
+def test_setup_uv_caching_is_off() -> None:
+    step = next(s for s in _steps() if s.get("uses", "").startswith("astral-sh/setup-uv"))
+    assert step["with"]["enable-cache"] is False
+
+
 def test_the_bucket_name_reaches_the_script_through_the_environment() -> None:
     step = next(s for s in _steps() if "ledger_append" in s.get("run", ""))
-    assert step["env"] == {"LIVE_BUCKET": "${{ vars.LIVE_BUCKET }}"}
+    assert step["env"] == {"LIVE_BUCKET": "${{ secrets.LIVE_BUCKET }}"}
     assert "${{" not in step["run"]
-    assert "uv run --locked --extra aws" in step["run"]
+    assert "uv run --locked --no-dev --extra aws" in step["run"]

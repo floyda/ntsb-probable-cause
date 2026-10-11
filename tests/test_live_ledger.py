@@ -22,6 +22,7 @@ from ntsb_probable_cause.live.ledger import (
 NOW = datetime(2026, 10, 11, 10, 0, tzinfo=UTC)
 RUN_KEY = "runs/20261011T030000-abc1234-live-C/manifest.json"
 NIGHT_KEY = "nights/2026-10-11/manifest.json"
+RUN_KEY_R1 = "runs/r1/manifest.json"
 RUN_BODY = b'{"format": "live-manifest/1", "files": []}\n'
 NIGHT_BODY = json.dumps(
     {"format": "live-night-manifest/1", "counts": {"coded": 3, "x": 1}}
@@ -125,9 +126,6 @@ def test_verify_uses_the_latest_line_for_a_key(tmp_path: Path) -> None:
     assert verify(both, tmp_path) == []
 
 
-RUN_KEY_R1 = "runs/r1/manifest.json"
-
-
 def _night_folder(mirror: Path, *, with_record: bool = True) -> Path:
     folder = mirror / "nights" / "2026-10-11"
     folder.mkdir(parents=True)
@@ -149,9 +147,28 @@ def test_verify_checks_a_night_folder(tmp_path: Path) -> None:
     assert verify(_ledger_for(tmp_path), tmp_path) == []
 
 
-def test_a_night_without_night_json_is_unfinished_not_a_hash_mismatch(tmp_path: Path) -> None:
+def test_a_night_without_night_json_is_reported_missing(tmp_path: Path) -> None:
     _night_folder(tmp_path, with_record=False)
-    assert verify(_ledger_for(tmp_path), tmp_path) == ["nights/2026-10-11: unfinished night"]
+    assert verify(_ledger_for(tmp_path), tmp_path) == ["nights/2026-10-11: night.json: missing"]
+
+
+def test_a_malformed_night_files_keeps_the_problems_already_found(tmp_path: Path) -> None:
+    folder = _night_folder(tmp_path)
+    (folder / "night.json").write_bytes(b"changed\n")
+    manifest = json.loads((folder / "manifest.json").read_text())
+    manifest["night_files"] = [{"path": "scores/ok.jsonl"}, "not a mapping"]
+    (folder / "manifest.json").write_text(json.dumps(manifest))
+    assert verify(_ledger_for(tmp_path), tmp_path) == [
+        "nights/2026-10-11: night.json: changed",
+        "nights/2026-10-11: scores/ok.jsonl: missing",
+        "nights/2026-10-11: night_files unreadable",
+    ]
+
+
+def test_an_unreadable_manifest_is_one_problem(tmp_path: Path) -> None:
+    folder = _run_folder(tmp_path)
+    (folder / "manifest.json").write_text("not json")
+    assert verify(_ledger_for(tmp_path), tmp_path) == ["runs/r1: manifest unreadable"]
 
 
 def test_verify_checks_the_files_a_night_manifest_lists_by_bucket_path(tmp_path: Path) -> None:
@@ -231,7 +248,8 @@ def _bucket() -> FakeS3:
 
 def test_manifests_from_reads_every_page_and_only_manifest_keys() -> None:
     s3 = _bucket()
-    found = ledger_append.manifests_from(s3, "b")
+    found, skipped = ledger_append.manifests_from(s3, "b")
+    assert skipped == 0
     assert sorted(found) == [
         "nights/2026-10-11/manifest.json",
         "runs/r0/manifest.json",
@@ -262,5 +280,41 @@ def test_main_prints_appended_and_nothing_else(
     s3 = _bucket()
     monkeypatch.setattr(ledger_append, "_client", lambda: s3)
     ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("")
+    assert ledger_append.main(["--bucket", "b", "--ledger", str(ledger)]) == 0
+    assert capsys.readouterr().out == "appended: 4\n"
+
+
+def test_a_deeper_manifest_key_is_skipped_and_counted() -> None:
+    s3 = _bucket()
+    s3.objects["runs/r0/sub/manifest.json"] = b"deep"
+    s3.objects["nights/2026-10-11/x/y/manifest.json"] = b"deep"
+    found, skipped = ledger_append.manifests_from(s3, "b")
+    assert skipped == 2
+    assert "runs/r0/sub/manifest.json" not in found
+    assert "runs/r0/sub/manifest.json" not in s3.got
+
+
+def test_main_refuses_a_missing_ledger_and_one_without_a_final_newline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s3 = _bucket()
+    monkeypatch.setattr(ledger_append, "_client", lambda: s3)
+    ledger = tmp_path / "ledger.jsonl"
+    assert ledger_append.main(["--bucket", "b", "--ledger", str(ledger)]) == 1
+    assert not ledger.exists()
+    ledger.write_text('{"a": 1}')
+    assert ledger_append.main(["--bucket", "b", "--ledger", str(ledger)]) == 1
+    assert ledger.read_text() == '{"a": 1}'
+    assert s3.got == []
+    assert capsys.readouterr().out == ""
+
+
+def test_main_accepts_an_empty_ledger_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ledger_append, "_client", _bucket)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("")
     assert ledger_append.main(["--bucket", "b", "--ledger", str(ledger)]) == 0
     assert capsys.readouterr().out == "appended: 4\n"
