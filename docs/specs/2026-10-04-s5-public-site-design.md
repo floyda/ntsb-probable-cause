@@ -382,7 +382,8 @@ Accepted by Andy as a first draft on 2026-10-04.
 
 Two more sit outside the questions: a **docket strip** in the first page's trail stop, each
 document a block sized by pages and marked read, skipped, scan only or not offered (with its
-reason: not a PDF, photographs only, could not be fetched); and the
+reason: not a PDF, photographs only, could not be fetched, already read at the first read choice,
+or over the prompt-size limit); and the
 **run-twice band**, showing how far the same agent moves when run again
 (`docs/results/s3-noise-floor-dev.txt`), at question 7's stop and on Methods, not on the
 ladder, because it was measured on development cases. The ladder lights each step as the story reaches it,
@@ -884,6 +885,10 @@ The site reads two things, and nothing else.
    number is typed into a page. The Methods page is generated from the entries. The file changes
    only when results change, and its diff shows which numbers on the site moved.
 
+   The same script also copies the few **fixed sentences the site must quote from the code**,
+   so none is retyped by hand. The first is the limit of the names step, `live/names.py`'s
+   `NAMES_LIMIT` on S4's branch, which the Methods page states (§9, §11).
+
    *Ruled out:* **Astro reading the results files directly**, which are written for people, each
    laid out differently, so a change of wording could silently break a number. **Numbers typed
    into pages with a check** that each appears in its cited file, which is weak ("23.5%" can
@@ -1065,7 +1070,7 @@ Passed to the S4 session on 2026-10-11:
 3. **Read access for the site's build role** to `export/board-1/` only, if the live bucket's
    policy would otherwise refuse it.
 
-S4's answer, 2026-10-11 (items 1 and 2 in S4's final fixes, before its first deploy):
+S4's answer, 2026-10-11. Items 1 and 2 were pushed to S4's branch at `9c5be5d` on 2026-10-12.
 
 - **The mark is `export/board-1/_finished.json`**, holding `{"format": "board-finished/1",
   "built_at": …, "commit": …}`. S4 uploads `cases/*`, then `index.json`, then the mark, and
@@ -1080,7 +1085,10 @@ S4's answer, 2026-10-11 (items 1 and 2 in S4's final fixes, before its first dep
 Delivered by S4 on 2026-10-11, at Claude's request after reviewing the sample: optional `board/1`
 fields for the NTSB's internal case key (`mkey`, for the links of §5), the launch date and a
 backfill flag (§12, item 6), each document's page count (§7.4), and a reason for a document not
-offered.
+offered. S4's final review, 2026-10-12, added two reasons: `already_read` (at the second read
+choice, a document read at the first) and `over_size_limit` (left out by the prompt-size ceiling;
+the loop as built never produces it). It also replaced the case's owner, operator and registration
+in document titles, with a published limit (§17.3).
 
 ## Glossary
 
