@@ -30,9 +30,14 @@ repos:
       - {id: import-linter, name: import-linter, entry: uv run lint-imports, language: system, pass_filenames: false, types: [python]}
       - {id: deptry, name: deptry, entry: uv run deptry ., language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock|src/|apps/|scripts/)}
       - {id: vulture, name: vulture, entry: uv run vulture, language: system, pass_filenames: false, types: [python]}
-      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$|^tests/fixtures/docket/|^tests/fixtures/words\.txt$|^tests/fixtures/typesafe/.*\.json$}
+      - {id: typos, name: typos, entry: uv run typos, language: system, types: [text], exclude: ^tests/fixtures/(records|api|openrouter)/.*\.json$|^tests/fixtures/eval/.*\.csv$|^tests/fixtures/eval/README\.md$|^src/ntsb_probable_cause/scoring/tables/.*\.csv$|^tests/fixtures/docket/|^tests/fixtures/words\.txt$|^tests/fixtures/typesafe/.*\.json$|^site/pnpm-lock\.yaml$}
       - {id: actionlint, name: actionlint, entry: uv run actionlint, language: system, files: ^\.github/workflows/}
       - {id: zizmor, name: zizmor, entry: uv run zizmor, language: system, files: ^\.github/workflows/}
       - {id: check-docs, name: check-docs, entry: uv run python -m scripts.check_docs, language: system, pass_filenames: false, files: \.md$}
       - {id: check-fixtures-redacted, name: check-fixtures-redacted, entry: uv run python -m scripts.check_fixtures_redacted, language: system, files: ^tests/fixtures/, pass_filenames: false}
+      # The site (S5): checks run on any change under site/. The accessibility check needs a
+      # browser and a build, so it runs in `make check` and CI, not on every commit.
+      - {id: site-lint, name: site lint, entry: pnpm --dir site run lint, language: system, pass_filenames: false, files: ^site/}
+      - {id: site-format, name: site format, entry: pnpm --dir site run format:check, language: system, pass_filenames: false, files: ^site/}
+      - {id: site-check, name: site type check, entry: pnpm --dir site run check, language: system, pass_filenames: false, files: ^site/}
       - {id: uv-lock-check, name: uv lock --check, entry: uv lock --check, language: system, pass_filenames: false, files: ^(pyproject\.toml|uv\.lock)$}

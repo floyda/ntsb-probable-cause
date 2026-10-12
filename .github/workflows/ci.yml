@@ -19,7 +19,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - run: SKIP=no-commit-to-branch uv run pre-commit run --all-files --show-diff-on-failure
+      # The site's hooks need pnpm; the `site` job below runs the same checks.
+      - run: SKIP=no-commit-to-branch,site-lint,site-format,site-check uv run pre-commit run --all-files --show-diff-on-failure
       - run: uv run pre-commit run --hook-stage manual check-added-large-files-all --all-files --show-diff-on-failure
       - name: Download gitleaks (verified checksum)
         run: |
@@ -54,6 +55,35 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run pip-audit
+
+  # The site (S5 spec §17.2, §19.2): installs exactly the lockfile, then every check. No AWS
+  # credentials; nothing is published from CI (CodeBuild publishes, spec §18). No `cache:` on
+  # setup-node: a cache shared across branches is a poisoning route, and the install is small.
+  # setup-node is v7.0.0, not v7.1.0: the 7-day rule applies to actions too (v7.1.0 is from
+  # 2026-10-08).
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: site/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: site/.node-version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run check
+      - run: pnpm run build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:a11y
+      - run: pnpm audit --audit-level moderate
 
   # Builds the recorder's container image (Dockerfile, S2.5 Task 12) on every push and pull
   # request, so a broken Dockerfile is caught before merge -- the daemon this build needs is

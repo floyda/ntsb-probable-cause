@@ -12,3 +12,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    # Same cooldown as uv's, and as pnpm's own minimum release age (S5 spec §17.2).
+    cooldown:
+      default-days: 7
