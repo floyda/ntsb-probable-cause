@@ -61,3 +61,7 @@ Detail: the S4 specification, §9.3, and the plan's Deviations ("final review, w
 
 Accepted, 2026-10-12 (Controller ruling in the final review, under Andy's approval of the plan; put
 to Andy at the deploy hand-off).
+
+## Confirmed, 2026-10-12 (appended; nothing above is edited)
+
+Put to Andy at the deploy hand-off, as the Status says. Andy: "yes 0185 is fine, confirmed".
