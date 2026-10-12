@@ -1,6 +1,6 @@
 # S5 — The public site: structure, content and reader experience
 
-Status: Draft, 2026-10-04. Nothing here is built. This note is written early, on its own branch,
+Status: Approved (Andy, 2026-10-12), as S5's specification. Drafted 2026-10-04. Nothing here is built. This note is written early, on its own branch,
 while S3.2 runs, because the site's design is a large piece of work and its page list decides
 what S4's store must answer (roadmap §8). It is revised and approved as S5's specification when
 S5 starts. §1 to §16 cover what the site says and how a reader moves through it. *Added
