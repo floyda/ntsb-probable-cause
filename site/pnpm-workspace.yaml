@@ -1,0 +1,23 @@
+# Supply-chain safeguards (S5 spec §17.2; Andy, 2026-10-11). tests/test_site_supply_chain.py
+# fails if any is weakened.
+# A version must be 7 days old (10080 minutes) before pnpm installs it: most poisoned releases
+# are found and pulled within days.
+minimumReleaseAge: 10080
+# Fail if a package's release is less trusted than its earlier ones (e.g. published without
+# the usual provenance).
+trustPolicy: no-downgrade
+# Fail the install when a dependency has a build script nobody has reviewed.
+strictDepBuilds: true
+# Only a direct dependency may come from git or a download link.
+blockExoticSubdeps: true
+# Packages allowed to run a build script, each reviewed and logged in the plan's Deviations.
+allowBuilds:
+  # Its install script checks that the platform binary from its optional dependency is in
+  # place (plan Task 1, 2026-10-12).
+  esbuild: true
+# Trust-check exemptions, each one exact version, reviewed and approved by Andy.
+# chokidar@4.0.3 (Andy, 2026-10-12): 4.0.0 and 4.0.1 carry provenance; 4.0.2 and 4.0.3 were
+# published in December 2024 by the same maintainer account without it, and 5.0.0 carries it
+# again. Needed by @astrojs/check. Read from the registry with `npm view` on 2026-10-12.
+trustPolicyExclude:
+  - chokidar@4.0.3

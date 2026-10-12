@@ -1,0 +1,30 @@
+/* Colour tokens (S5 spec §10, §12 item 8). Every colour on the site comes from here. */
+:root {
+    color-scheme: light dark;
+    --ink: #1a1a1a;
+    --ink-muted: #4a4a4a;
+    --ground: #ffffff;
+    --rule: #c8c8c8;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #ececec;
+        --ink-muted: #b8b8b8;
+        --ground: #121212;
+        --rule: #3a3a3a;
+    }
+}
+
+html {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, sans-serif;
+    line-height: 1.5;
+}
+
+body {
+    margin: 0 auto;
+    max-width: 44rem;
+    padding: 1.5rem 1rem;
+}
