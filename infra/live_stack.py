@@ -40,7 +40,14 @@ from aws_cdk import aws_sns_subscriptions as subs
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
-GITHUB_REPOSITORY = "floyda/ntsb-probable-cause"
+# The OIDC subject GitHub sends for this repository, in GitHub's immutable form: the owner and
+# the repository by name and numeric id. The repository's OIDC setting has
+# `use_immutable_subject: true`; this prints the prefix:
+#   gh api repos/floyda/ntsb-probable-cause/actions/oidc/customization/sub
+# A role that trusts only `repo:floyda/ntsb-probable-cause:...` is refused (the first ledger run,
+# 2026-10-12). The ids also stop a deleted and re-created repository of the same name from taking
+# the role.
+GITHUB_SUBJECT_PREFIX = "repo:floyda@2824846/ntsb-probable-cause@1367368639"
 DEFAULT_LEDGER_BRANCHES = ("main", "s4-predictions-and-resolution")
 PLACEHOLDER_DIGEST = "sha256:" + "0" * 64
 DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")  # an image digest, nothing else (A14)
@@ -338,7 +345,7 @@ class NtsbLiveStack(Stack):
                     "StringEquals": {
                         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                         "token.actions.githubusercontent.com:sub": [
-                            f"repo:{GITHUB_REPOSITORY}:ref:refs/heads/{branch}"
+                            f"{GITHUB_SUBJECT_PREFIX}:ref:refs/heads/{branch}"
                             for branch in ledger_branches
                         ],
                     }

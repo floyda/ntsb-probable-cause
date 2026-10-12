@@ -292,8 +292,8 @@ def test_ledger_role_trust_and_permissions(tpl: Template) -> None:
     cond = trust["Condition"]["StringEquals"]
     assert cond["token.actions.githubusercontent.com:aud"] == "sts.amazonaws.com"
     assert cond["token.actions.githubusercontent.com:sub"] == [
-        "repo:floyda/ntsb-probable-cause:ref:refs/heads/main",
-        "repo:floyda/ntsb-probable-cause:ref:refs/heads/s4-predictions-and-resolution",
+        "repo:floyda@2824846/ntsb-probable-cause@1367368639:ref:refs/heads/main",
+        "repo:floyda@2824846/ntsb-probable-cause@1367368639:ref:refs/heads/s4-predictions-and-resolution",
     ]
     statements = _statements(tpl, "LedgerRole")
     assert len(statements) == 2
