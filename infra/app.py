@@ -41,6 +41,7 @@ free.
 import aws_cdk as cdk
 
 from recorder_stack import NtsbRecorderStack
+from site_stacks import NtsbSiteDnsStack, NtsbSiteEdgeStack, NtsbSiteStack
 
 
 def deploy_environment() -> cdk.Environment:
@@ -60,5 +61,25 @@ if __name__ == "__main__":
         env=deploy_environment(),
         github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
     )
+
+    # The public site (S5), deployed by docs/runbooks/site-deploy.md. The zone, certificate
+    # and web ACL are in us-east-1, where CloudFront takes them; the site stack is built only
+    # when `alert_email` is given, so a synth of the recorder alone needs no email.
+    edge_env = cdk.Environment(region="us-east-1")
+    dns = NtsbSiteDnsStack(app, "NtsbSiteDnsStack", env=edge_env)
+    edge = NtsbSiteEdgeStack(app, "NtsbSiteEdgeStack", env=edge_env, zone=dns.zone)
+    alert_email = app.node.try_get_context("alert_email")
+    if alert_email:
+        NtsbSiteStack(
+            app,
+            "NtsbSiteStack",
+            env=deploy_environment(),
+            zone=dns.zone,
+            certificate=edge.certificate,
+            web_acl_arn=edge.web_acl.attr_arn,
+            source_branch=app.node.try_get_context("site_source_branch") or "main",
+            alert_email=alert_email,
+            live_bucket_name=app.node.try_get_context("live_bucket_name"),
+        )
 
     app.synth()

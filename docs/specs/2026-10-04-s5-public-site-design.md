@@ -988,6 +988,25 @@ Pay-as-you-go pricing still bills a spike of readers; a flat-rate plan does not.
 and whether CDK can choose the plan or Andy sets it once in the console. The runbook records the
 answer.
 
+*Checked 2026-10-12 (S5 step 1, Task 5), from AWS's CloudFront developer guide on flat-rate
+plans and the CloudFormation reference, read that day:*
+
+- **The plan is set in code.** CloudFormation's `AWS::PricingPlanManager::Subscription` (in CDK as
+  `aws_pricingplanmanager.CfnSubscription`, available in `eu-west-2`) subscribes the distribution
+  to the `FREE` tier, active at once. No console step.
+- **It needs an AWS WAF web ACL** on the distribution, of `CLOUDFRONT` scope, so in `us-east-1`.
+  `NtsbSiteEdgeStack` adds one: allow by default, and one rule that blocks an address making more
+  than 600 requests in 5 minutes (the Free plan allows 5 rules; blocked requests never count
+  against the allowance). Without the plan a web ACL bills pay-as-you-go, so the runbook checks
+  the plan is active.
+- **The plan also covers the `demo.floyda.dev` zone**, whose DNS it includes, so the site's
+  expected bill is **$0 a month** rather than $0.50, while DNS queries stay within the plan's
+  allowance.
+- **Past the allowance** there is never an overage charge. AWS emails at 50%, 80% and 100% of the
+  allowance; usage that "consistently and significantly" exceeds it over months may see delivery
+  adjusted (served from fewer or more distant edge locations) until the plan is upgraded.
+- An account may hold at most 3 Free plans.
+
 ## 19. Failures and checks
 
 ### 19.1 When something goes wrong
