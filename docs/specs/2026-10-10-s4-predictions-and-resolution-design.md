@@ -18,7 +18,8 @@ each is labelled:
 
 **Decision records.** This design takes decisions 0168 to 0181, written with this document; §16
 lists them. *Added 2026-10-12 (final review):* decisions 0182, 0183 and 0184 were taken while the
-stage was built, on the names step; §16 lists them too.
+stage was built, on the names step; §16 lists them too. Decision 0185 (the resume's money and
+docket rules) was taken in the final review; §16 lists it.
 
 ---
 
@@ -708,6 +709,8 @@ and scored without anyone intervening.
   appear in prose; the registration is replaced. *Added 2026-10-12.*
 - [0184](../decisions/0184-names-in-document-titles.md): names in document titles: exact parts and
   the title rule, the limit published. *Added 2026-10-12.*
+- [0185](../decisions/0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md): a
+  resumed night pays only what is left, and codes the docket it began with. *Added 2026-10-12.*
 
 ## 17. Done means (S4)
 

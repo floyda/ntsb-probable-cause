@@ -30,8 +30,9 @@ Detail: the S4 specification, §9.3, and the plan's Deviations ("final review, w
    hashes and positions only, never a title or any text. The closure record's hashes come from it.
 3. **A resume compares the re-fetched dockets with `dockets.json`** before any model call, using
    the parsed entries and the document hashes, not the page bytes, which can change for unrelated
-   reasons. If any case's docket differs or no longer fetches, the night refuses the resume with
-   the alert `docket-changed`, and Andy tells Claude. The run is never finished on different
+   reasons. If any case's docket differs, the night refuses the resume with the alert
+   `docket-changed`, and Andy tells Claude. A docket that fails to fetch on resume stays the
+   `fetch-failed` stop (0175) and counts against no case. The run is never finished on different
    evidence.
 4. **A resume that fails for any other reason stops the night with the alert `resume-failed`.**
    The steps that need no store (later scores, the export, the night record) still run, so the
