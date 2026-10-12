@@ -18,3 +18,12 @@ ntsb_cause: (1) 0; (2) 1; (3) 70; (4) 71; cases with a text 401; texts scanned 4
 
 rule fixed before the run: if (3) is 0 for every kind, the rule stands; otherwise Andy chooses.
 result: the rule does not stand for: cause, account, note, reason, lookup_reason, lookup_effect, ntsb_cause; Andy chooses
+
+aircraft strings in Ellery's prose (causes and accounts of the evidence only; whole string, any case, any aircraft; a string under 3 characters is left out)
+cases counted: 401
+text holds the case's own make: 276
+text holds the case's own model: 273
+text holds the case's own registration: 1
+text holds any of the three: 320
+cases with an aircraft flagged amateur-built: 78
+of those, text holds the amateur-built make: 0
