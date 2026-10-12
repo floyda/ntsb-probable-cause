@@ -140,7 +140,7 @@ class NtsbSiteStack(Stack):
         certificate: acm.ICertificate,
         web_acl_arn: str,
         source_branch: str,
-        alert_email: str,
+        alert_email: str | None,
         live_bucket_name: str | None,
     ) -> None:
         super().__init__(scope, construct_id, env=env, cross_region_references=True)
@@ -250,8 +250,11 @@ class NtsbSiteStack(Stack):
         route53.AaaaRecord(self, "AliasAAAA", zone=zone, record_name=record_name, target=alias)
 
         # Alerts: an email when a build fails. SNS email: free at this volume.
+        # The subscription is added only when an address is given on the command line; the
+        # topic itself is always there, so the stack keeps one shape (runbook Stage 6).
         topic = sns.Topic(self, "AlertTopic")
-        topic.add_subscription(subscriptions.EmailSubscription(alert_email))
+        if alert_email:
+            topic.add_subscription(subscriptions.EmailSubscription(alert_email))
 
         # The build: smallest machine, 15-minute limit. 100 free minutes a month; about
         # 60 to 90 used (estimate, spec §18.3): about $0.
@@ -263,6 +266,8 @@ class NtsbSiteStack(Stack):
                 repo=_GITHUB_REPO,
                 branch_or_ref=source_branch,
                 webhook=True,
+                # No commit statuses written back to GitHub (review, 2026-10-12).
+                report_build_status=False,
                 # Anchored: `and_branch_is` writes an unanchored pattern, which would also match
                 # a push to, say, `<branch>-old`.
                 webhook_filters=[
@@ -290,8 +295,18 @@ class NtsbSiteStack(Stack):
                 }
             ),
         )
-        bucket.grant_read_write(project)
-        bucket.grant_delete(project)
+        # The site bucket: list, read, write and delete current files only. Never old versions,
+        # retention or legal holds: any push to the branch runs with this role, and the
+        # versions are the way back (review, 2026-10-12).
+        project.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+                resources=[bucket.arn_for_objects("*")],
+            )
+        )
+        project.add_to_role_policy(
+            iam.PolicyStatement(actions=["s3:ListBucket"], resources=[bucket.bucket_arn])
+        )
         project.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["cloudfront:CreateInvalidation"],

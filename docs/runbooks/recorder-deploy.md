@@ -285,14 +285,18 @@ aws iam list-open-id-connect-providers --profile ntsb --region eu-west-2
 - **If the list is empty**, skip to 4b — the stack creates the provider itself.
 - **If an entry's ARN ends in `oidc-provider/token.actions.githubusercontent.com`**, note its
   full ARN and pass it as context in 4b:
-  `cdk deploy --profile ntsb -c github_oidc_provider_arn=<that ARN>`.
+  `cdk deploy NtsbRecorderStack --profile ntsb -c github_oidc_provider_arn=<that ARN>`.
 
 ### 4b — Deploy
 
 ```
 cd infra   # if not already there
-cdk deploy --profile ntsb
+cdk deploy NtsbRecorderStack --profile ntsb
 ```
+
+*Note, 2026-10-12 (S5):* `infra/app.py` also holds the public site's three stacks, so always name
+`NtsbRecorderStack`; a bare `cdk deploy` now stops and asks which stack, and `--all` would deploy
+the site's stacks too (`docs/runbooks/site-deploy.md`).
 
 (Add `-c github_oidc_provider_arn=<arn>` from 4a if an existing provider was found.)
 
@@ -720,7 +724,7 @@ and CDK never deletes something it does not own, so the same import is needed ag
 ```
 aws ecr delete-repository --repository-name ntsb-recorder --force --region eu-west-2 --profile ntsb
 aws logs delete-log-group --log-group-name /ecs/ntsb-recorder --region eu-west-2 --profile ntsb
-cdk deploy --profile ntsb
+cdk deploy NtsbRecorderStack --profile ntsb
 ```
 
 **The S3 bucket is a different case, and matters much more.** It has no fixed name (CDK

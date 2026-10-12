@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,9 @@ _ACCOUNT = "123456789012"
 _LIVE_BUCKET = "test-live-bucket"
 
 
-def _templates(*, live_bucket_name: str | None) -> dict[str, Template]:
+def _templates(
+    *, live_bucket_name: str | None, alert_email: str | None = "alerts@example.invalid"
+) -> dict[str, Template]:
     app = cdk.App()
     edge_env = cdk.Environment(account=_ACCOUNT, region="us-east-1")
     dns = NtsbSiteDnsStack(app, "Dns", env=edge_env)
@@ -48,7 +51,7 @@ def _templates(*, live_bucket_name: str | None) -> dict[str, Template]:
         certificate=edge.certificate,
         web_acl_arn=edge.web_acl.attr_arn,
         source_branch="s5-public-site",
-        alert_email="alerts@example.invalid",
+        alert_email=alert_email,
         live_bucket_name=live_bucket_name,
     )
     return {
@@ -66,6 +69,11 @@ def stacks() -> dict[str, Template]:
 @pytest.fixture(scope="module")
 def stacks_without_export() -> dict[str, Template]:
     return _templates(live_bucket_name=None)
+
+
+@pytest.fixture(scope="module")
+def stacks_without_email() -> dict[str, Template]:
+    return _templates(live_bucket_name=_LIVE_BUCKET, alert_email=None)
 
 
 def _statements(tpl: Template) -> list[dict[str, Any]]:
@@ -325,3 +333,48 @@ def test_responses_carry_security_headers_and_a_self_only_policy(
     assert "default-src 'self'" in text
     assert "'unsafe-inline'" not in text
     assert "StrictTransportSecurity" in text
+
+
+def _app_stacks(context: dict[str, str]) -> dict[str, Mapping[str, Any]]:
+    import app as cdk_app  # noqa: PLC0415 -- infra/ is on sys.path only after the insert above
+
+    app = cdk.App(context=context)
+    cdk_app.add_site_stacks(app)
+    return {
+        stack.stack_name: Template.from_stack(stack).to_json()
+        for stack in app.node.children
+        if isinstance(stack, cdk.Stack)
+    }
+
+
+def test_every_stack_has_one_shape_whatever_context_is_given() -> None:
+    # Review finding (2026-10-12): the us-east-1 stacks gained or lost their cross-region
+    # export writers depending on `alert_email`, so a deploy without it would tear down what
+    # the site stack reads.
+    bare = _app_stacks({})
+    full = _app_stacks({"alert_email": "alerts@example.invalid"})
+    assert set(bare) == set(full) == {"NtsbSiteDnsStack", "NtsbSiteEdgeStack", "NtsbSiteStack"}
+    assert bare["NtsbSiteDnsStack"] == full["NtsbSiteDnsStack"]
+    assert bare["NtsbSiteEdgeStack"] == full["NtsbSiteEdgeStack"]
+
+
+def test_without_an_email_there_is_no_subscription(
+    stacks_without_email: dict[str, Template],
+) -> None:
+    stacks_without_email["site"].resource_count_is("AWS::SNS::Subscription", 0)
+
+
+def test_build_does_not_write_statuses_to_github(stacks: dict[str, Template]) -> None:
+    # Review finding (2026-10-12): CodeBuild reports build status to GitHub by default, a write.
+    project = next(iter(stacks["site"].find_resources("AWS::CodeBuild::Project").values()))
+    assert project["Properties"]["Source"]["ReportBuildStatus"] is False
+
+
+def test_build_role_cannot_erase_the_site_buckets_history(stacks: dict[str, Template]) -> None:
+    # Review finding (2026-10-12): any push to the branch runs with this role, so it must not
+    # delete old versions (the way back) or set retention and legal holds.
+    on_site = [s for s in _statements(stacks["site"]) if "SiteBucket" in _as_text(s["Resource"])]
+    actions = {
+        a for s in on_site for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"])
+    }
+    assert actions == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"}

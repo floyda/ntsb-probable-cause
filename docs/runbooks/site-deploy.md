@@ -90,8 +90,11 @@ console of the project account:
 2. **CodeBuild → Build projects → (any page) → Manage default source credential.** Source
    provider: GitHub. Credential type: **GitHub App**. Connection: `ntsb-site`. Save.
 
-This is the GitHub change of spec §18.2. It gives AWS read access to the one public repository
-and a webhook; it gives nothing write access to GitHub.
+This is the GitHub change of spec §18.2. Read the app's install screen before accepting: the
+AWS Connector for GitHub asks for access to the repository's code, commit statuses and webhooks,
+including write access. CodeBuild uses it to read the repository and to create one webhook, so
+pushes start a build. The build itself writes nothing back: the stack turns off commit-status
+reporting (`report_build_status=False`). Limit the installation to this one repository.
 
 ## Stage 6 — The site stack
 
@@ -102,11 +105,16 @@ uv run cdk deploy NtsbSiteStack \
   --profile ntsb
 ```
 
+- **Pass the same `-c` values on every deploy of `NtsbSiteStack`.** A deploy without
+  `alert_email` removes the email subscription; one without `live_bucket_name` removes the rule
+  on S4's export. The zone and certificate stacks do not depend on them.
 - After S5 merges, use `-c site_source_branch=main`.
 - After S4's live stack is deployed, add `-c live_bucket_name=<S4's LiveBucketName output>`.
   Without it the stack has no rule on S4's bucket and no access to it.
 - AWS emails a subscription request to the address: **confirm it**, or build failures reach no
   one.
+- Go straight on to Stage 7: until the first build, the bucket is empty and every address,
+  even a missing page, answers 403.
 
 **Check the plan is active.** CloudFront console → the distribution → **Pricing plan**: it must
 read **Free**, **Active**. If it does not, the web ACL bills pay-as-you-go (about $5 a month

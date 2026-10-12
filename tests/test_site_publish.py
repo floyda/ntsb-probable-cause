@@ -20,7 +20,12 @@ def _run(tmp_path: Path, mode: str) -> tuple[subprocess.CompletedProcess[str], l
     log = tmp_path / "aws.log"
     fake = tmp_path / "bin/aws"
     fake.parent.mkdir()
-    fake.write_text(f'#!/bin/sh\necho "$*" >> "{log}"\n')
+    fake.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> "{log}"\n'
+        # create-invalidation prints the invalidation's id, as `--query Invalidation.Id` does.
+        'case "$*" in *create-invalidation*) echo I2EXAMPLE ;; esac\n'
+    )
     fake.chmod(0o755)
     env = {
         **os.environ,
@@ -36,18 +41,28 @@ def _run(tmp_path: Path, mode: str) -> tuple[subprocess.CompletedProcess[str], l
     return result, calls
 
 
-def test_holding_publishes_assets_then_pages_then_removals_then_clears_cache(
-    tmp_path: Path,
-) -> None:
+def test_holding_publishes_in_an_order_no_reader_can_see_half_done(tmp_path: Path) -> None:
+    # Review finding (2026-10-12): files were deleted before CloudFront's copies were cleared,
+    # and nothing set how long a browser may keep a page.
     result, calls = _run(tmp_path, "holding")
     assert result.returncode == 0, result.stderr
-    assert len(calls) == 4
-    assert calls[0].startswith("s3 sync site/holding s3://test-site-bucket --exclude *.html")
-    assert calls[1].startswith(
-        "s3 sync site/holding s3://test-site-bucket --exclude * --include *.html"
-    )
-    assert calls[2].startswith("s3 sync site/holding s3://test-site-bucket --delete")
-    assert calls[3] == "cloudfront create-invalidation --distribution-id E000TEST --paths /*"
+    target = "s3://test-site-bucket"
+    assert calls == [
+        # Hashed assets first; their names change with their content, so a year is safe.
+        f"s3 sync site/holding {target} --exclude * --include _astro/* "
+        "--cache-control public, max-age=31536000, immutable",
+        # Other files (none in holding mode yet), cached briefly.
+        f"s3 sync site/holding {target} --exclude _astro/* --exclude *.html "
+        "--cache-control public, max-age=300",
+        # Then the pages, which a browser must check again each time.
+        f"s3 sync site/holding {target} --exclude * --include *.html --cache-control no-cache",
+        "cloudfront create-invalidation --distribution-id E000TEST --paths /* "
+        "--query Invalidation.Id --output text",
+        # Only once every edge has dropped the old pages are stale files removed, and never
+        # the hashed assets an old page might still name.
+        "cloudfront wait invalidation-completed --distribution-id E000TEST --id I2EXAMPLE",
+        f"s3 sync site/holding {target} --delete --exclude _astro/*",
+    ]
 
 
 @pytest.mark.parametrize("mode", ["site", "", "launch"])

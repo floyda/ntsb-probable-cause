@@ -17,11 +17,18 @@ case "${SITE_MODE:-}" in
 esac
 
 target="s3://${SITE_BUCKET}"
-# Styles, scripts and images first, so no page is ever served before the files it names.
-aws s3 sync "$out" "$target" --exclude "*.html"
-# Then the pages.
-aws s3 sync "$out" "$target" --exclude "*" --include "*.html"
-# Then remove what is no longer used.
-aws s3 sync "$out" "$target" --delete
-# Then clear CloudFront's copies: one path, "/*", counts as one invalidation.
-aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+# 1. Hashed assets first. Their names change with their content, so a year's caching is safe.
+aws s3 sync "$out" "$target" --exclude "*" --include "_astro/*" \
+  --cache-control "public, max-age=31536000, immutable"
+# 2. Other files, cached briefly.
+aws s3 sync "$out" "$target" --exclude "_astro/*" --exclude "*.html" \
+  --cache-control "public, max-age=300"
+# 3. Then the pages, which a browser must check again each time, so a new board shows at once.
+aws s3 sync "$out" "$target" --exclude "*" --include "*.html" --cache-control "no-cache"
+# 4. Clear CloudFront's copies ("/*" counts as one path) and wait until every edge has.
+invalidation=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" \
+  --paths "/*" --query Invalidation.Id --output text)
+aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$invalidation"
+# 5. Only then remove files no longer used, and never the hashed assets: an old page still held
+#    by a browser may name them (review, 2026-10-12).
+aws s3 sync "$out" "$target" --delete --exclude "_astro/*"
