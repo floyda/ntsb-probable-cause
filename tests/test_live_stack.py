@@ -347,3 +347,36 @@ def test_a_real_digest_with_the_schedule_enabled_is_allowed() -> None:
 def test_the_placeholder_digest_with_the_schedule_enabled_is_refused() -> None:
     with pytest.raises(ValueError, match="placeholder"):
         _build(enabled=True)
+
+
+def test_the_bucket_sends_its_events_to_eventbridge(tpl: Template) -> None:
+    """Item A12: S5 rebuilds the site when the export's finished mark lands."""
+    tpl.has_resource_properties(
+        "Custom::S3BucketNotifications",
+        {"NotificationConfiguration": {"EventBridgeConfiguration": {}}},
+    )
+
+
+@pytest.mark.parametrize(
+    "digest",
+    [
+        "sha256:" + "AB" * 32,  # upper case
+        "sha256:" + "ab" * 31,  # short
+        "ab" * 32,  # no prefix
+        "live-abc1234",  # a tag, not a digest
+        "sha256:" + "ab" * 32 + "\n",  # a trailing newline
+    ],
+)
+def test_a_digest_of_the_wrong_form_is_refused(digest: str) -> None:
+    """Item A14."""
+    with pytest.raises(ValueError, match="64 lower-case hex"):
+        _build(digest=digest)
+
+
+def test_the_placeholder_digest_given_explicitly_with_the_schedule_enabled_is_refused() -> None:
+    """Item A14: not only an absent digest; the zero digest by value too."""
+    from live_stack import PLACEHOLDER_DIGEST  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="placeholder"):
+        _build(enabled=True, digest=PLACEHOLDER_DIGEST)
+    _build(digest=PLACEHOLDER_DIGEST)  # with the schedule off it synthesises

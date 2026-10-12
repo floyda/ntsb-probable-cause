@@ -21,6 +21,7 @@ periods is 30 hours, inside both limits.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from aws_cdk import CfnOutput, Duration, Environment, Fn, RemovalPolicy, Stack
@@ -41,6 +42,7 @@ from constructs import Construct
 GITHUB_REPOSITORY = "floyda/ntsb-probable-cause"
 DEFAULT_LEDGER_BRANCHES = ("main", "s4-predictions-and-resolution")
 PLACEHOLDER_DIGEST = "sha256:" + "0" * 64
+DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")  # an image digest, nothing else (A14)
 
 _FAMILY = "ntsb-live"
 _TIMEOUT_SECONDS = "10800"  # 3 hours; the recorder's wrapper is 90 minutes
@@ -87,11 +89,17 @@ class NtsbLiveStack(Stack):
             ledger_branches: Branches whose workflows may assume the ledger role.
 
         Raises:
-            ValueError: No digest was given and the placeholder was not allowed, or the schedule
-                was enabled with the placeholder digest.
+            ValueError: No digest was given and the placeholder was not allowed, a digest is not
+                `sha256:` and 64 lower-case hex characters, or the schedule was enabled with no
+                digest or with the placeholder digest given explicitly.
         """
         super().__init__(scope, construct_id, env=env)
-        if schedule_enabled and image_digest is None:
+        if image_digest is not None and not DIGEST_PATTERN.fullmatch(image_digest):
+            raise ValueError(
+                "live_image_digest must be sha256: and 64 lower-case hex characters, as "
+                "scripts/build_live_image.sh prints it"
+            )
+        if schedule_enabled and image_digest in {None, PLACEHOLDER_DIGEST}:
             raise ValueError(
                 "live_schedule=enabled needs a real live_image_digest, not the placeholder"
             )
@@ -142,6 +150,8 @@ class NtsbLiveStack(Stack):
             versioned=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             enforce_ssl=True,
+            # S5's rebuild listens for the export's finished mark (final review, wave A, A12).
+            event_bridge_enabled=True,
             encryption=s3.BucketEncryption.S3_MANAGED,
             removal_policy=RemovalPolicy.RETAIN,
             lifecycle_rules=[

@@ -236,9 +236,15 @@ class FakeS3:
         return {"Body": _Body(self.objects[Key])}
 
 
+def _live_key(i: int) -> str:
+    return f"runs/2026101{i}T030000-abc1234-live-C"
+
+
 def _bucket() -> FakeS3:
-    objects = {f"runs/r{i}/{name}": b"x" for i in range(3) for name in ("spec.json", "run.jsonl")}
-    objects.update({f"runs/r{i}/manifest.json": f"m{i}".encode() for i in range(3)})
+    objects = {
+        f"{_live_key(i)}/{name}": b"x" for i in range(3) for name in ("spec.json", "run.jsonl")
+    }
+    objects.update({f"{_live_key(i)}/manifest.json": f"m{i}".encode() for i in range(3)})
     objects.update(
         {"nights/2026-10-11/manifest.json": NIGHT_BODY, "nights/2026-10-11/night.json": b"n"}
     )
@@ -252,9 +258,7 @@ def test_manifests_from_reads_every_page_and_only_manifest_keys() -> None:
     assert skipped == 0
     assert sorted(found) == [
         "nights/2026-10-11/manifest.json",
-        "runs/r0/manifest.json",
-        "runs/r1/manifest.json",
-        "runs/r2/manifest.json",
+        *(f"{_live_key(i)}/manifest.json" for i in range(3)),
     ]
     assert sorted(s3.got) == sorted(found)
     assert s3.listed == [("b", "runs/"), ("b", "nights/")]
@@ -287,12 +291,48 @@ def test_main_prints_appended_and_nothing_else(
 
 def test_a_deeper_manifest_key_is_skipped_and_counted() -> None:
     s3 = _bucket()
-    s3.objects["runs/r0/sub/manifest.json"] = b"deep"
+    deep = f"{_live_key(0)}/sub/manifest.json"
+    s3.objects[deep] = b"deep"
     s3.objects["nights/2026-10-11/x/y/manifest.json"] = b"deep"
     found, skipped = ledger_append.manifests_from(s3, "b")
     assert skipped == 2
-    assert "runs/r0/sub/manifest.json" not in found
-    assert "runs/r0/sub/manifest.json" not in s3.got
+    assert deep not in found
+    assert deep not in s3.got
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "runs/r1/manifest.json",
+        "runs/20261011T030000-abc1234-dev-400-C/manifest.json",  # not a live run
+        "runs/20261011T030000-abc1234-live-B/manifest.json",
+        "runs/20261011T030000-ABC1234-live-C/manifest.json",
+        "runs/20261011T030000-abc12-live-C/manifest.json",  # commit too short
+        "runs/XXX26LA001/manifest.json",
+        "nights/state/manifest.json",
+        "nights/2026-10-1/manifest.json",
+        "nights/2026-10-11x/manifest.json",
+    ],
+)
+def test_a_manifest_key_of_another_shape_is_never_ledgered(key: str) -> None:
+    """Item A16: only a live run's folder and a night's dated folder."""
+    s3 = _bucket()
+    s3.objects[key] = b"other"
+    found, skipped = ledger_append.manifests_from(s3, "b")
+    assert key not in found
+    assert key not in s3.got
+    assert skipped == 1
+
+
+def test_the_live_run_id_shape_is_the_runners() -> None:
+    from datetime import datetime  # noqa: PLC0415
+
+    started = datetime(2026, 10, 11, 3, 0, 0)
+    run_id = f"{started:%Y%m%dT%H%M%S}-{'abc1234'}-{'live'}-{'C'}"  # agent/run.py's run_id
+    assert ledger_append.MANIFEST_KEY.fullmatch(f"runs/{run_id}/manifest.json")
+    assert ledger_append.MANIFEST_KEY.fullmatch(
+        f"runs/{run_id.replace('abc1234', 'a' * 40)}/manifest.json"
+    )
 
 
 def test_main_refuses_a_missing_ledger_and_one_without_a_final_newline(

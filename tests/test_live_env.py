@@ -58,11 +58,41 @@ def test_it_adds_the_live_bucket_when_the_live_stack_exists(tmp_path: Path) -> N
     assert "LiveBucketName" in calls[1]
 
 
+_MISSING = "An error occurred (ValidationError): Stack with id NtsbLiveStack does not exist"
+
+
 def test_a_missing_live_stack_is_not_an_error(tmp_path: Path) -> None:
-    for extra in ({"STUB_LIVE_FAIL": "1"}, {"STUB_LIVE_BUCKET": "None"}, {"STUB_LIVE_BUCKET": ""}):
+    for extra in (
+        {"STUB_LIVE_FAIL": "1", "STUB_AWS_STDERR": _MISSING},
+        {"STUB_LIVE_BUCKET": "None"},
+        {"STUB_LIVE_BUCKET": ""},
+    ):
         code, out, _, _ = _run(tmp_path, STUB_BUCKET="the-bucket", **extra)
         assert code == 0
         assert "NTSB_LIVE_BUCKET" not in out
+
+
+def test_any_other_live_lookup_failure_names_its_kind_and_is_never_not_deployed(
+    tmp_path: Path,
+) -> None:
+    """Item A15: only "does not exist" means the stack is not deployed."""
+    for stderr, kind in (
+        ("An error occurred (AccessDenied): User is not authorized", "access denied"),
+        ("Unable to locate credentials", "access denied or no credentials"),
+        ("An error occurred (Throttling): Rate exceeded", "throttled"),
+        ('Could not connect to the endpoint URL: "https://cloudformation..."', "network"),
+        ("", "other (exit 254)"),
+        ("something unforeseen", "other (exit 254)"),
+    ):
+        code, out, err, _ = _run(
+            tmp_path, STUB_BUCKET="the-bucket", STUB_LIVE_FAIL="1", STUB_AWS_STDERR=stderr
+        )
+        assert code == 1, stderr
+        assert out == ""
+        assert kind in err, (stderr, err)
+        assert "not deployed" not in err
+        assert "does not exist" not in err
+        assert err.count("\n") == 1, err
 
 
 def test_an_expired_login_on_the_live_lookup_says_so_in_one_line(tmp_path: Path) -> None:

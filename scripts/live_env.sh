@@ -9,9 +9,10 @@
 # What it prints: `export AWS_PROFILE=...` (default `ntsb`, an explicit value wins);
 # `export NTSB_STORE=...` (an explicit value wins; otherwise `s3://<BucketName>/recorder.sqlite`
 # from the `NtsbRecorderStack` output); and, when the stack exists, `export NTSB_LIVE_BUCKET=...`
-# (an explicit value wins; otherwise `LiveBucketName` from the `NtsbLiveStack` output). A missing
-# live stack prints no live line and is not an error; a live-stack lookup that fails because the
-# AWS login has expired prints one line saying so, exits 1 and prints no export. If the recorder lookup fails or is empty
+# (an explicit value wins; otherwise `LiveBucketName` from the `NtsbLiveStack` output). A live
+# stack that AWS says "does not exist" prints no live line and is not an error; any other failed
+# live-stack lookup (an expired login, access denied, throttling, the network, anything else)
+# prints one line naming its kind, exits 1 and prints no export. If the recorder lookup fails or is empty
 # (most likely `pass` is locked or the profile is missing) it prints a plain message and then
 # aws's own error on stderr, exits 1, and prints no export at all (decision 0166).
 set -euo pipefail
@@ -35,14 +36,31 @@ if [[ -z "${NTSB_STORE:-}" ]]; then
 fi
 if [[ -z "${NTSB_LIVE_BUCKET:-}" ]]; then
   # Optional: before the first deploy the stack does not exist, and that is fine.
+  live_status=0
   live="$(aws cloudformation describe-stacks --profile "$profile" --region eu-west-2 \
     --stack-name NtsbLiveStack \
-    --query "Stacks[0].Outputs[?OutputKey=='LiveBucketName'].OutputValue" --output text 2>"$err_file")" || live=""
-  # A missing stack answers "does not exist" and is fine. An expired login is not: say so in one
-  # line and print no export, rather than let a caller read it as "the stack is not there".
-  if [[ -z "$live" || "$live" == "None" ]] && grep -Eiq 'expired|credentials|sso|token|login' "$err_file"; then
-    echo "live_env: AWS login expired: run 'aws login' (the $profile profile), then run this again." >&2
-    exit 1
+    --query "Stacks[0].Outputs[?OutputKey=='LiveBucketName'].OutputValue" --output text 2>"$err_file")" || live_status=$?
+  # Only an answer that the stack "does not exist" means it is not deployed, and that is fine.
+  # Any other failure says its kind in one line and prints no export, rather than let a caller
+  # read it as "the stack is not there" (final review, wave A, A15).
+  if [[ "$live_status" -ne 0 ]]; then
+    live=""
+    if ! grep -q 'does not exist' "$err_file"; then
+      if grep -Eiq 'expired|sso|token|login' "$err_file"; then
+        echo "live_env: AWS login expired: run 'aws login' (the $profile profile), then run this again." >&2
+        exit 1
+      elif grep -Eiq 'AccessDenied|not authorized|credentials' "$err_file"; then
+        kind="access denied or no credentials"
+      elif grep -Eiq 'Throttl|Rate exceeded' "$err_file"; then
+        kind="throttled"
+      elif grep -Eiq 'connect|timed out|timeout|endpoint|resolve' "$err_file"; then
+        kind="network"
+      else
+        kind="other (exit $live_status)"
+      fi
+      echo "live_env: the live stack could not be read ($kind) with the $profile profile; run this again, or tell Claude." >&2
+      exit 1
+    fi
   fi
   if [[ -n "$live" && "$live" != "None" ]]; then
     live_line="$(printf 'export NTSB_LIVE_BUCKET=%q\n' "$live")"

@@ -6,7 +6,8 @@ Status
 Why
     The ledger makes a rewritten run or night manifest visible in public: the job publishes
     each manifest's SHA-256, never its contents. It lists ``runs/`` and ``nights/`` (every page
-    of the listing), downloads only keys ending ``/manifest.json``, appends
+    of the listing), downloads only ``runs/<live run id>/manifest.json`` and
+    ``nights/<YYYY-MM-DD>/manifest.json`` keys, appends
     ``ntsb_probable_cause.live.ledger.new_lines`` to the ledger file, and prints
     ``appended: N`` and nothing else. The role it signs in with may list those two prefixes and
     read the two manifest patterns, so it needs nothing more. A ledger line holds the key
@@ -30,7 +31,12 @@ from typing import Any
 from ntsb_probable_cause.live.ledger import new_lines, read_ledger, render_line
 
 PREFIXES = ("runs/", "nights/")
-MANIFEST_KEY = re.compile(r"(runs|nights)/[^/]+/manifest\.json")
+# A live run id is ``<started %Y%m%dT%H%M%S>-<commit>-live-C`` (``agent/run.py``'s ``run_id``,
+# sample ``live``, arm C); a night folder is its ISO date. No other key is ledgered (A16).
+LIVE_RUN_ID = r"\d{8}T\d{6}-[0-9a-f]{7,40}-live-C"
+MANIFEST_KEY = re.compile(
+    rf"runs/{LIVE_RUN_ID}/manifest\.json|nights/\d{{4}}-\d{{2}}-\d{{2}}/manifest\.json"
+)
 
 
 def _client() -> Any:
@@ -42,8 +48,9 @@ def _client() -> Any:
 def manifests_from(s3: Any, bucket: str) -> tuple[dict[str, bytes], int]:
     """Every ``runs/`` and ``nights/`` manifest in the bucket, by key, from every page.
 
-    Only ``<prefix>/<one folder>/manifest.json`` keys are read; a deeper ``manifest.json`` is
-    skipped, and the second value counts those.
+    Only ``runs/<live run id>/manifest.json`` and ``nights/<YYYY-MM-DD>/manifest.json`` keys are
+    read; any other ``manifest.json`` (a deeper one, or a folder of another shape) is skipped,
+    and the second value counts those.
     """
     found: dict[str, bytes] = {}
     skipped = 0
