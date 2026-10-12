@@ -59,6 +59,7 @@ from ntsb_probable_cause.live.records import (
     ClosureRecord,
     DocketHashes,
     DocketsFile,
+    entries_sha256,
     portability_problems,
     verify_manifest,
 )
@@ -82,7 +83,14 @@ def _write_dockets(folder: Path, cases: Sequence[tuple[str, int]]) -> None:
     file = DocketsFile(
         cases=tuple(
             DocketHashes(
-                case_id=case_id, mkey=mkey, listing_sha256=None, documents={}, offered=(1, 2)
+                case_id=case_id,
+                mkey=mkey,
+                listing_sha256=None,
+                entries_sha256=entries_sha256(
+                    _docket(mkey, {1: "read", 2: "read"}).listing.entries
+                ),
+                documents={},
+                offered=(1, 2),
             )
             for case_id, mkey in cases
         )

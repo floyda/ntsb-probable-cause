@@ -45,7 +45,12 @@ def _run() -> RunRecord:
 def _no_hashes(case_id: str = CASE) -> dict[str, DocketHashes]:
     return {
         case_id: DocketHashes(
-            case_id=case_id, mkey=MKEY, listing_sha256=None, documents={}, offered=(1,)
+            case_id=case_id,
+            mkey=MKEY,
+            listing_sha256=None,
+            entries_sha256="0" * 64,
+            documents={},
+            offered=(1,),
         )
     }
 
@@ -100,7 +105,12 @@ def test_record_carries_event_date_hashes_and_replies(tmp_path: Path) -> None:
     listing, documents = cached_hashes(cache, MKEY)
     dockets = {
         CASE: DocketHashes(
-            case_id=CASE, mkey=MKEY, listing_sha256=listing, documents=documents, offered=(1, 2)
+            case_id=CASE,
+            mkey=MKEY,
+            listing_sha256=listing,
+            entries_sha256="0" * 64,
+            documents=documents,
+            offered=(1, 2),
         )
     }
     # The cache is fetched again after the run's first fetch (a resume): the hashes stay the

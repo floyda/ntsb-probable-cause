@@ -191,3 +191,25 @@ def test_a_document_line_without_pages_still_loads() -> None:
     assert DocumentLine.model_validate_json(older).pages is None
     line = DocumentLine(position=1, title="T", status="read", ellery=None, pages=9)
     assert DocumentLine.model_validate_json(line.model_dump_json()).pages == 9
+
+
+def test_the_entries_hash_ignores_page_bytes_outside_the_entries_and_sees_a_new_document() -> None:
+    """Follow-up to item A2, on a saved real listing page (a development fixture)."""
+    import hashlib  # noqa: PLC0415
+
+    from ntsb_probable_cause.docket.listing import parse_listing  # noqa: PLC0415
+    from ntsb_probable_cause.live.records import entries_sha256  # noqa: PLC0415
+
+    page = Path("tests/fixtures/docket/ERA17LA217/listing.html").read_bytes().decode("utf-8")
+    stamped = page.replace("</html>", "<!-- built 2026-10-13T06:00:00Z session=x1y2 --></html>")
+    assert stamped != page
+    assert hashlib.sha256(stamped.encode()).hexdigest() != hashlib.sha256(page.encode()).hexdigest()
+    first = parse_listing(page, mkey=95459)
+    again = parse_listing(stamped, mkey=95459)
+    assert entries_sha256(again.entries) == entries_sha256(first.entries)
+    added = first.entries[-1].model_copy(
+        update={"index": first.entries[-1].index + 1, "title": "Added document", "href": "/x"}
+    )
+    assert entries_sha256((*first.entries, added)) != entries_sha256(first.entries)
+    renamed = first.entries[0].model_copy(update={"title": first.entries[0].title + " (revised)"})
+    assert entries_sha256((renamed, *first.entries[1:])) != entries_sha256(first.entries)

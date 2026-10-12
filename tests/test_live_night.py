@@ -900,18 +900,67 @@ def test_the_run_records_its_dockets_before_the_first_request(world: World) -> N
     assert [c["listing_sha256"] for c in dockets["cases"]] == ["a" * 64] * len(RAWS)
     assert dockets["cases"][0]["documents"] == {"1": "d" * 64, "2": "e" * 64}
     assert dockets["cases"][0]["offered"] == [1, 2]
-    assert set(dockets["cases"][0]) == {"case_id", "mkey", "listing_sha256", "documents", "offered"}
+    assert set(dockets["cases"][0]) == {
+        "case_id",
+        "mkey",
+        "listing_sha256",
+        "entries_sha256",
+        "documents",
+        "offered",
+    }
+    assert "Doc 1" not in world.text(f"runs/{run_id}/dockets.json")  # no title, only its hash
 
 
-def test_a_docket_that_changes_before_the_resume_refuses_it_before_any_call(world: World) -> None:
-    """Item A2, the fallback: the runner compares a resume's whole spec, so no case is dropped."""
+def test_a_listing_page_that_differs_only_outside_its_entries_still_resumes(
+    world: World,
+) -> None:
+    """Follow-up to item A2: a page whose bytes moved (a timestamp, a session token) but whose
+    parsed entries and documents did not, is the same docket. The record keeps the first page's
+    hash (decision 0176)."""
     hashed = ["a" * 64]
     _listing_hash(world, hashed)
     replies = _sync_replies(_scripts())
     with pytest.raises(KeyboardInterrupt):
         world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
     (run_id,) = world.run_ids()
-    hashed[0] = "b" * 64  # the NTSB replaced the listing page
+    hashed[0] = "b" * 64  # the raw listing page's bytes changed
+    rest = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=rest)
+    assert report.outcome is not None
+    assert report.alerts == ()
+    assert rest.calls == ALL_CALLS - 1
+    (key,) = [k for k in world.keys(f"runs/{run_id}/") if k.endswith(CLOSURES_FILE)]
+    records = [ClosureRecord.model_validate_json(x) for x in world.text(key).splitlines()]
+    assert {r.listing_sha256 for r in records} == {"a" * 64}  # the run's first fetch
+    assert {d.sha256 for r in records for d in r.documents} == {"d" * 64, "e" * 64}
+
+
+def _docket_with(world: World, statuses: list[dict[int, str]]) -> None:
+    def prefetch_docket(client: object, mkey: int, *, known_documents: int) -> Any:
+        return _docket(mkey, statuses[0])
+
+    world.monkeypatch.setattr(morning, "prefetch_docket", prefetch_docket)
+
+
+@pytest.mark.parametrize("change", ["added document", "document hash"])
+def test_a_docket_that_changes_before_the_resume_refuses_it_before_any_call(
+    world: World, change: str
+) -> None:
+    """Item A2, the fallback: the runner compares a resume's whole spec, so no case is dropped."""
+    hashed = ["a" * 64]
+    _listing_hash(world, hashed)
+    statuses = [{1: "read", 2: "read"}]
+    _docket_with(world, statuses)
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
+    (run_id,) = world.run_ids()
+    if change == "added document":  # a new entry; nothing on offer changes
+        statuses[0] = {1: "read", 2: "read", 3: "unreadable: not a pdf"}
+    else:
+        world.monkeypatch.setattr(
+            morning, "cached_hashes", lambda cache, mkey: ("a" * 64, {1: "d" * 64, 2: "f" * 64})
+        )
     rest = _Recording(replies[1:])
     report, _, _ = world.night(DAY_2, model=rest)
     assert report.outcome is None
@@ -923,16 +972,6 @@ def test_a_docket_that_changes_before_the_resume_refuses_it_before_any_call(worl
     assert len(world.exports) == 1  # the steps that need no store still run
     assert world.run_ids() == [run_id]
     assert f"runs/{run_id}/run.jsonl" not in world.bucket.objects
-
-    hashed[0] = "a" * 64  # the same files again: the run resumes
-    again = _Recording(replies[1:])
-    later_night, _, _ = world.night(DAY_2 + timedelta(days=1), model=again)
-    assert again.calls == ALL_CALLS - 1
-    assert later_night.outcome is not None
-    (key,) = [k for k in world.keys(f"runs/{run_id}/") if k.endswith(CLOSURES_FILE)]
-    records = [ClosureRecord.model_validate_json(x) for x in world.text(key).splitlines()]
-    assert {r.listing_sha256 for r in records} == {"a" * 64}
-    assert {d.sha256 for r in records for d in r.documents} == {"d" * 64, "e" * 64}
 
 
 def test_a_docket_that_fails_to_fetch_on_resume_stops_the_night_and_resumes_later(

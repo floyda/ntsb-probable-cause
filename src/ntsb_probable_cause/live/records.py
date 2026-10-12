@@ -7,13 +7,14 @@ size and SHA-256 so a copy can be verified.
 import hashlib
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
+from ntsb_probable_cause.docket.listing import ListingEntry
 from ntsb_probable_cause.docket.manifest import Status
 
 CLOSURE_FORMAT: Final = "live-closure/2"
@@ -131,15 +132,44 @@ class DocketHashes(BaseModel, frozen=True):
     """One case's docket as the run first fetched it: hashes and indices only, never a title.
 
     ``listing_sha256`` and ``documents`` (listing index to SHA-256) are what the docket client's
-    ``fetch.json`` recorded, of the bytes as received (decision 0176); ``offered`` is the
-    listing indices the run's first read choice offers (``docket.filter.arm_b_documents``).
+    ``fetch.json`` recorded, of the bytes as received (decision 0176); ``listing_sha256`` is kept
+    for the record only. ``entries_sha256`` is :func:`entries_sha256` of the parsed listing, and
+    ``offered`` the listing indices the run's first read choice offers
+    (``docket.filter.arm_b_documents``).
     """
 
     case_id: str
     mkey: int
     listing_sha256: str | None
+    entries_sha256: str
     documents: dict[int, str]
     offered: tuple[int, ...]
+
+    def resume_view(self) -> tuple[object, ...]:
+        """What a resume compares: everything but the raw listing page's hash.
+
+        The page can carry bytes that change from one fetch to the next and say nothing about
+        the documents; the parsed entries and each document's hash are what the case was shown
+        (final review, wave A, follow-up).
+        """
+        return (
+            self.case_id,
+            self.mkey,
+            self.entries_sha256,
+            tuple(sorted(self.documents.items())),
+            self.offered,
+        )
+
+
+def entries_sha256(entries: Sequence[ListingEntry]) -> str:
+    """SHA-256 of a listing's entries in canonical form: ``[index, title, href]`` by index.
+
+    The form is compact JSON, so the hash depends on what ``docket.listing.parse_listing`` read
+    and on nothing else in the page.
+    """
+    rows = sorted([e.index, e.title, e.href] for e in entries)
+    canonical = json.dumps(rows, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 class DocketsFile(BaseModel, frozen=True):

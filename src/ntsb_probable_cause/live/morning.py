@@ -53,6 +53,7 @@ from ntsb_probable_cause.live.records import (
     ClosureRecord,
     DocketHashes,
     DocketsFile,
+    entries_sha256,
     failure_kind,
 )
 from ntsb_probable_cause.live.seams import MonthSpend, ResultSink, SpendCounter, StoreSource
@@ -626,6 +627,7 @@ class _Morning:
                     case_id=p.case.case_id,
                     mkey=p.case.mkey,
                     listing_sha256=listing,
+                    entries_sha256=entries_sha256(p.docket.listing.entries),
                     documents=documents,
                     offered=tuple(arm_b_documents(p.docket)),
                 )
@@ -651,6 +653,8 @@ class _Morning:
 
         The replay is sound only when every case is shown the documents it was first shown, and
         the closure records must name the files the case was coded from (decision 0176). The
+        comparison is of the parsed listing's entries, each document's hash and the first
+        offering (``DocketHashes.resume_view``), never of the raw listing page's bytes. The
         runner compares a resume's whole spec, so one case cannot be dropped from it; the run
         is refused instead, before any call.
 
@@ -659,9 +663,9 @@ class _Morning:
             ConfigurationError: the run folder holds no ``dockets.json``.
         """
         recorded = self._recorded_dockets(folder)
-        first = recorded.by_case()
-        now = self._dockets(prepared).by_case()
-        changed = sum(1 for case_id, hashes in now.items() if first.get(case_id) != hashes)
+        first = {k: v.resume_view() for k, v in recorded.by_case().items()}
+        now = {k: v.resume_view() for k, v in self._dockets(prepared).by_case().items()}
+        changed = sum(1 for case_id, view in now.items() if first.get(case_id) != view)
         if changed:
             raise LiveRefusal(
                 "docket-changed",
