@@ -66,3 +66,14 @@ the NTSB's cause statement). 0180's items 1, 3 and 5 stand. Detail: the S4 speci
 ## Status
 
 Accepted, 2026-10-11 (Andy: "Exact parts only").
+
+## Extended, 2026-10-12 (appended; nothing above is edited)
+
+- Item 2 (titles keep the title rule) is extended by [0184](0184-names-in-document-titles.md): titles first have the case's exact parts replaced (owner and operator strings and every registration, any case), then the title rule runs. Item 1 (prose has only the exact parts replaced) gained the registration in [0183](0183-make-and-model-in-prose-registration-replaced.md).
+
+## Note, 2026-10-12 (appended; nothing above is edited): two slips in the record, corrected
+
+Source for both: `docs/results/s4-names-dev.txt` (from `scripts/s4_names_probe.py`).
+
+- Why item 2 says the owner and operator strings "matched one case in each kind of text". The results file shows count (2) is 1 in five kinds (`cause`, `account`, `note`, `lookup_effect`, `ntsb_cause`) and 0 in the other three (`reason`, `lookup_reason`, `lookup_arg`). The reasoning stands, because the strings are rare in prose, but "each kind" was wrong.
+- Context item 4 says the review "found a seventh kind of text" (the coding lookups' free-text arguments). The results file has eight kinds, and the lookups are three of them (`lookup_reason`, `lookup_effect`, `lookup_arg`). The table in context item 2 lists the seven kinds whose count (3) is above zero, and it already holds two lookup rows (expected effects 55, reasons 34). So the lookups were counted, not a later addition; the review's finding was that `Lookup.arguments` reaches the board and needs the names step, and `lookup_arg` is 0 in count (3).

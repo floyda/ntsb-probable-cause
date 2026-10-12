@@ -85,3 +85,5 @@ item 4 still holds: a new text is a new version; a wider renderer on unchanged t
 continuity file.
 
 *Note, 2026-10-10 (decision 0168):* the invented inputs gained two records with several events, so `+t` now covers `fields.py`'s event selection; version 1 was re-pinned to `s3-v1+ge17fecdc66ec+tdff9dea78f23` with continuity on `fd6053f` shown again.
+
+*Note, 2026-10-12 (decision 0169):* version 1's model setting became the literal `"openai/gpt-6-luna"`, and each trail row records the reply's `model` and `provider`; the live run's setting check (`VERSION_1_SETTINGS`) pins the literal. Differences are counted, never refused.

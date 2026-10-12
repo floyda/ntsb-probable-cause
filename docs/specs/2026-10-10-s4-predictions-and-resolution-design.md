@@ -17,7 +17,8 @@ each is labelled:
 - **run records** are read from a run folder (not committed).
 
 **Decision records.** This design takes decisions 0168 to 0181, written with this document; §16
-lists them.
+lists them. *Added 2026-10-12 (final review):* decisions 0182, 0183 and 0184 were taken while the
+stage was built, on the names step; §16 lists them too.
 
 ---
 
@@ -403,6 +404,29 @@ SHA-256 of the request's messages, in call order. No document or text is kept. T
 trail: anyone holding the NTSB's file can show it is the one coded from, and the request hashes show
 what was sent without publishing it.
 
+*Added 2026-10-12 (final review, wave A):* two further files exist so a night killed part-way can
+be resumed exactly.
+
+- **`dockets.json`** (`live-dockets/1`), in the run folder. It is written before the run's first
+  request, and the first push carries it. For each case it holds the case number, the case key, the
+  SHA-256 of the raw listing page, the SHA-256 of the parsed listing (`entries_sha256`: each
+  entry's index, title and link, sorted by index; no title is stored), each document's SHA-256 by
+  listing index, and the indices of the first read choice. The closure records take their hashes
+  from this file, so they carry what the run first saw. A resume fetches the dockets again and
+  compares the case, the key, the parsed-listing hash, the document hashes and the first offering.
+  The raw page's hash is not compared, because a page can carry bytes that change from one fetch to
+  the next. Any difference refuses the night with the alert `docket-changed`, before any call. The
+  preferred design, dropping the one changed case and resuming the rest, could not be built:
+  the harness refuses to resume a run whose case list differs. So the whole run waits behind a
+  changed docket until a person decides (runbook, "Tell Claude").
+- **`nights/<date>/state.json`**, a copy of the shared `nights/state.json` taken at the night's
+  end. The night's manifest lists the copy, never the shared file, because the shared file is
+  rewritten the next night and would fail the ledger's check of a finished night.
+
+A resume that cannot proceed for a reason of its own (a missing `dockets.json`, an unreadable
+reply row) is refused as `resume-failed`, also with a runbook row. A docket that fails to fetch on
+resume stays the `fetch-failed` stop and counts against no case.
+
 ## 10. The export, `board/1`
 
 ### 10.1 Two kinds of file
@@ -455,6 +479,27 @@ docket manifest's page count, carried by closure record version 2's `DocumentLin
 `not_offered` document). `not_offered` means a document the reader could not offer as text,
 other than a scan; it never means a withheld document. The schema lists these fields as required because every file we write carries them; a reader should still treat a missing key as null.
 
+*Added 2026-10-12 (final review, wave A), `not_offered_reason`'s full set:* the field takes five
+values, still all inside `board/1`. The three above stand. `already_read` means the document was
+read at an earlier choice, so it was not offered again. `over_size_limit` means a readable
+document that was not on offer and not read before; in the loop as built a readable document is
+left out only by being read earlier (a call over the prompt-size ceiling stops the case instead,
+decision 0152), so S5 should treat `over_size_limit` as rare. The committed sample shows both new
+values.
+
+*Added 2026-10-12 (final review, wave A, at the S5 session's request):* two changes to the
+bucket, neither a change to a `board/1` file.
+
+- **The finished mark.** After a night's export is uploaded, the last upload is
+  `export/board-1/_finished.json`, `{"format": "board-finished/1", "built_at", "commit"}`, taken
+  from the index's build stamp. It is written after every case file and `index.json` has uploaded,
+  and only if all of them succeeded, so a reader that sees the mark newer than its last copy knows
+  the export is whole. A failed upload leaves the earlier mark in place.
+- **Bucket events.** The live bucket sends its events to EventBridge (`event_bridge_enabled`), so
+  S5 can rebuild the site when the mark changes. This adds CDK's bucket-notification helper (a
+  Lambda function and its role, with `s3:PutBucketNotification` on this bucket only), which Andy
+  sees at `cdk deploy`.
+
 ### 10.2 What the export never holds
 
 The registration; the explanation written for a non-expert; any document text; the evidence fingerprint; an aircraft's make and model;
@@ -464,6 +509,11 @@ export built from invented runs against this list, using the boundary test's met
 *Amended 2026-10-11 (decision 0183):* "make and model" applies to the export's fields. Prose
 (Ellery's text, the coding lookups' free-text arguments, the NTSB's cause statement) may name them.
 The case's own registration is replaced with `[name]` in prose and titles.
+
+*Added 2026-10-12 (final review, decision 0184):* the registration replaced is every aircraft's
+registration, not only the first, matched whole and without regard to case. A registration shorter
+than 3 characters is left out, because it would also match tokens such as "N1". The same exact
+parts apply to titles (§12.2).
 
 ### 10.3 The grades
 
@@ -528,7 +578,8 @@ statement reach the board, and any of them can hold a name.
 **What is done** (decision 0180):
 
 - **Titles:** every capitalised word that is neither in the committed title vocabulary nor in the
-  word list is replaced with `[name]` (`docket/title_vocab.py`'s rule, `redact_title`).
+  word list is replaced with `[name]` (`docket/title_vocab.py`'s rule, applied through
+  `live/names.board_title`, which takes the case's names as well).
 - **Ellery's text (cause statements, notes and accounts of the evidence) and the NTSB's cause
   statement:** the words that
   rule replaced in that case's own titles, and the owner and operator strings of decision
@@ -552,6 +603,14 @@ statement reach the board, and any of them can hold a name.
   seven kinds of text, and Andy chose exact parts only. Prose (Ellery's text, the coding lookups'
   free-text arguments, the NTSB's cause statement) has only owner and operator strings replaced;
   titles keep the title rule. The second bullet above is replaced.
+- *Amended 2026-10-12 (decision 0183):* prose has every aircraft's registration replaced as well as
+  the owner and operator strings, matched whole and without regard to case; a registration shorter
+  than 3 characters is left out.
+- *Added 2026-10-12 (final review, decision 0184):* titles have the case's exact parts replaced
+  first (owner and operator strings and every registration, any case), and then the title rule
+  runs. A name the rules cannot recognise is not replaced; in titles that includes a name made only
+  of ordinary words, such as a common surname or given name. `names.NAMES_LIMIT` holds the sentence
+  the S4 report prints, in place of the count "as a floor".
 - **The limit is published either way:** the rule replaces what it can recognise, the Methods page
   says so, and the S4 report gives the count of words replaced as a floor.
 
@@ -643,6 +702,12 @@ and scored without anyone intervening.
   night; no early runs.
 - [0180](../decisions/0180-names-on-the-board.md): names on the board.
 - [0181](../decisions/0181-s4s-closing-rule.md): S4's closing rule.
+- [0182](../decisions/0182-names-on-the-board-after-the-measurement.md): names on the board, after
+  the measurement: exact parts only. *Added 2026-10-12.*
+- [0183](../decisions/0183-make-and-model-in-prose-registration-replaced.md): make and model may
+  appear in prose; the registration is replaced. *Added 2026-10-12.*
+- [0184](../decisions/0184-names-in-document-titles.md): names in document titles: exact parts and
+  the title rule, the limit published. *Added 2026-10-12.*
 
 ## 17. Done means (S4)
 

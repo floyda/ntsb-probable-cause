@@ -18,7 +18,7 @@ repos:
       # as received, or the parser is written against a page the NTSB never sent. Documents
       # and PDFs land under the same tree in a later task, so the exclude covers all of it,
       # not just the listing HTML.
-      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text], exclude: ^tests/fixtures/(docket/|words\.txt$)}
+      - {id: end-of-file-fixer, name: end-of-file-fixer, entry: uv run end-of-file-fixer, language: system, types: [text], exclude: ^(tests/fixtures/docket/|src/ntsb_probable_cause/docket/vocab/words\.txt$)}
       - {id: trailing-whitespace, name: trailing-whitespace, entry: uv run trailing-whitespace-fixer, language: system, types: [text], exclude: ^tests/fixtures/docket/}
       - {id: check-merge-conflict, name: check-merge-conflict, entry: uv run check-merge-conflict, language: system, types: [text]}
       - {id: mixed-line-ending, name: mixed-line-ending, entry: uv run mixed-line-ending --fix=lf, language: system, types: [text], exclude: ^tests/fixtures/docket/}

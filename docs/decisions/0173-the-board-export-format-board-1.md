@@ -51,3 +51,7 @@ the investigator's factual narrative, the work the agent exists to do.
 ## Status
 
 Accepted, 2026-10-10 (Andy: "A").
+
+## Narrowed, 2026-10-12 (appended; nothing above is edited)
+
+- Item 3, "it never holds ... a make or model", is narrowed by [0183](0183-make-and-model-in-prose-registration-replaced.md): it applies to the export's fields. Prose (Ellery's text, the coding lookups' free-text arguments and the NTSB's cause statement) may name the make and model. The registration is still never held in a field, and the case's own registration is replaced with `[name]` in prose and titles. The rest of item 3 stands.

@@ -25,6 +25,12 @@ What it counts
     The rule fixed before the run: if count 3 is 0 for every kind the rule stands; otherwise
     Andy chooses. Output is counts and kind names only: never a word, a title or a case number.
 
+    A second section (decision 0183, final review wave B) counts, over Ellery's causes and
+    accounts of the evidence only, the cases whose text holds the case's own make, model or
+    registration string (whole string, any case, any aircraft; a string shorter than 3
+    characters is left out), and the cases flagged amateur-built whose text holds the recorded
+    make. These are the counts decision 0183 first took from the reviewer's uncommitted probe.
+
 Usage
     uv run python -m scripts.s4_names_probe [RUN_ID RUN_ID] [--out PATH]
 """
@@ -73,11 +79,19 @@ class NameCase:
         titles: the document titles of the case's cached docket listing.
         owner_operator: the record's owner and operator strings.
         texts: the texts to check, keyed by kind (``KINDS``).
+        makes: every aircraft's recorded make.
+        models: every aircraft's recorded model.
+        registrations: every aircraft's recorded registration.
+        amateur_makes: the recorded make of each aircraft flagged amateur-built.
     """
 
     titles: tuple[str, ...]
     owner_operator: tuple[str, ...]
     texts: Mapping[str, tuple[str, ...]]
+    makes: tuple[str, ...] = ()
+    models: tuple[str, ...] = ()
+    registrations: tuple[str, ...] = ()
+    amateur_makes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -112,6 +126,33 @@ class Loaded:
 
 
 Loader = Callable[[Sequence[str]], Loaded]
+
+_PROSE_KINDS: Final = ("cause", "account")
+_MIN_STRING_LEN: Final = 3
+
+
+@dataclass(frozen=True)
+class AircraftCounts:
+    """Cases whose Ellery prose (causes and accounts) holds the case's own aircraft strings.
+
+    Attributes:
+        cases: the cases counted.
+        make: cases whose prose holds a recorded make.
+        model: cases whose prose holds a recorded model.
+        registration: cases whose prose holds a recorded registration.
+        any_string: cases whose prose holds any of the three.
+        amateur_cases: cases with an aircraft flagged amateur-built (and a make of 3 or more
+            characters).
+        amateur_make: of those, cases whose prose holds the amateur-built make.
+    """
+
+    cases: int
+    make: int
+    model: int
+    registration: int
+    any_string: int
+    amateur_cases: int
+    amateur_make: int
 
 
 def _flagged(text: str, known: frozenset[str]) -> list[str]:
@@ -172,6 +213,93 @@ def count_names(cases: Sequence[NameCase], known: frozenset[str]) -> NameCounts:
             words += len(loose)
         by_kind[kind] = KindCounts(titles, owners, outside, words, with_text, texts, scanned_total)
     return NameCounts(len(cases), by_kind)
+
+
+def aircraft_strings(raw: Mapping[str, object]) -> tuple[tuple[str, ...], ...]:
+    """The record's makes, models, registrations and amateur-built makes, over every aircraft.
+
+    Args:
+        raw: a development record.
+
+    Returns:
+        Four tuples, in that order: each string stripped, once each, and left out if shorter than
+        3 characters. The fourth holds the make of each aircraft flagged amateur-built.
+    """
+    found: tuple[list[str], list[str], list[str], list[str]] = ([], [], [], [])
+    aircrafts = raw.get("aircrafts")
+    for aircraft in aircrafts if isinstance(aircrafts, list) else []:
+        if not isinstance(aircraft, dict):
+            continue
+        keys = ("aircraftMake", "aircraftModel", "aircraftRegistrationNumber")
+        for bucket, key in zip(found[:3], keys, strict=True):
+            value = aircraft.get(key)
+            if (
+                isinstance(value, str)
+                and len(value.strip()) >= _MIN_STRING_LEN
+                and value.strip() not in bucket
+            ):
+                bucket.append(value.strip())
+        make = aircraft.get("aircraftMake")
+        built = aircraft.get("aircraftAmateurBuilt")
+        if (
+            built not in (False, None)
+            and isinstance(make, str)
+            and len(make.strip()) >= _MIN_STRING_LEN
+            and make.strip() not in found[3]
+        ):
+            found[3].append(make.strip())
+    return (tuple(found[0]), tuple(found[1]), tuple(found[2]), tuple(found[3]))
+
+
+def _holds(texts: Sequence[str], values: Sequence[str]) -> bool:
+    patterns = [_owner_pattern(v) for v in values]
+    return any(p.search(t) for p in patterns for t in texts)
+
+
+def count_aircraft(cases: Sequence[NameCase]) -> AircraftCounts:
+    """Count the cases whose causes and accounts hold the case's own aircraft strings.
+
+    Args:
+        cases: the cases.
+
+    Returns:
+        The counts (``AircraftCounts``). Matching is whole string, any case, as
+        ``redact_known_names`` matches.
+    """
+    make = model = registration = any_string = amateur_cases = amateur_make = 0
+    for case in cases:
+        texts = tuple(t for kind in _PROSE_KINDS for t in case.texts.get(kind, ()))
+        hits = (
+            _holds(texts, case.makes),
+            _holds(texts, case.models),
+            _holds(texts, case.registrations),
+        )
+        make += hits[0]
+        model += hits[1]
+        registration += hits[2]
+        any_string += any(hits)
+        if case.amateur_makes:
+            amateur_cases += 1
+            amateur_make += _holds(texts, case.amateur_makes)
+    return AircraftCounts(
+        len(cases), make, model, registration, any_string, amateur_cases, amateur_make
+    )
+
+
+def aircraft_lines(counts: AircraftCounts) -> list[str]:
+    """The printed second section: counts only, never a make, model or registration."""
+    return [
+        "",
+        "aircraft strings in Ellery's prose (causes and accounts of the evidence only; whole "
+        "string, any case, any aircraft; a string under 3 characters is left out)",
+        f"cases counted: {counts.cases}",
+        f"text holds the case's own make: {counts.make}",
+        f"text holds the case's own model: {counts.model}",
+        f"text holds the case's own registration: {counts.registration}",
+        f"text holds any of the three: {counts.any_string}",
+        f"cases with an aircraft flagged amateur-built: {counts.amateur_cases}",
+        f"of those, text holds the amateur-built make: {counts.amateur_make}",
+    ]
 
 
 def report_lines(counts: NameCounts, loaded: Loaded, *, dictionary: bool) -> list[str]:
@@ -282,7 +410,18 @@ def load_dev_cases(run_ids: Sequence[str]) -> Loaded:  # pragma: no cover -- rea
             no_listing += 1
         kinds = {k: tuple(v) for k, v in texts[case_id].items()}
         kinds["ntsb_cause"] = (cause,) if cause else ()
-        cases.append(NameCase(titles, tuple(owner_operator_values(raw)), kinds))
+        makes, models, registrations, amateur = aircraft_strings(raw)
+        cases.append(
+            NameCase(
+                titles,
+                tuple(owner_operator_values(raw)),
+                kinds,
+                makes,
+                models,
+                registrations,
+                amateur,
+            )
+        )
     return Loaded(cases, tuple(run.record.run_id for run in runs), no_listing, skipped)
 
 
@@ -302,7 +441,8 @@ def main(argv: Sequence[str] | None = None, loader: Loader = load_dev_cases) -> 
     args = parser.parse_args(argv)
     known, dictionary = known_title_words()
     loaded = loader(args.runs)
-    text = "\n".join(report_lines(count_names(loaded.cases, known), loaded, dictionary=dictionary))
+    lines = report_lines(count_names(loaded.cases, known), loaded, dictionary=dictionary)
+    text = "\n".join([*lines, *aircraft_lines(count_aircraft(loaded.cases))])
     print(text)
     if args.out is not None:
         write_result(PROG, Path(args.out), text)

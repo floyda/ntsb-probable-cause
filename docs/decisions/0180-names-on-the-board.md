@@ -44,3 +44,9 @@ the S4 specification, §12.2.
 ## Status
 
 Accepted, 2026-10-10 (Andy: "A").
+
+## Replaced in part and extended, 2026-10-12 (appended; nothing above is edited)
+
+- Item 2 (Ellery's text and the NTSB's cause statement have the case's own flagged title words and the owner and operator strings replaced) is replaced by [0182](0182-names-on-the-board-after-the-measurement.md) item 1: prose has only the owner and operator strings replaced (and, from [0183](0183-make-and-model-in-prose-registration-replaced.md), the registration).
+- Item 1 (titles: flagged words replaced with `[name]`) is extended by [0184](0184-names-in-document-titles.md): the case's exact parts (owner and operator strings, every registration) are replaced first, then the title rule runs, and the limit is published.
+- Items 3, 4 and 5 stand; item 5's "count of words replaced as a floor" is now the limit sentence in `live/names.py` (`NAMES_LIMIT`), printed by the S4 report.

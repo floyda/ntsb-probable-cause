@@ -95,3 +95,67 @@ def test_empty_kind_means_cannot_conclude(tmp_path: Path) -> None:
     assert "cannot conclude: kind cause" in written
     assert "result: the rule stands" not in written
     assert "same detector as the rule" in written
+
+
+def test_aircraft_strings_read_every_aircraft_and_skip_short_ones() -> None:
+    raw = {
+        "aircrafts": [
+            {
+                "aircraftMake": " Cessna ",
+                "aircraftModel": "N1",
+                "aircraftRegistrationNumber": "N123XX",
+                "aircraftAmateurBuilt": False,
+            },
+            {
+                "aircraftMake": "Zorbo",
+                "aircraftModel": "Z-9",
+                "aircraftRegistrationNumber": "N456YY",
+                "aircraftAmateurBuilt": True,
+            },
+            "not an aircraft",
+        ]
+    }
+    makes, models, registrations, amateur = probe.aircraft_strings(raw)
+    assert makes == ("Cessna", "Zorbo")
+    assert models == ("Z-9",)
+    assert registrations == ("N123XX", "N456YY")
+    assert amateur == ("Zorbo",)
+    assert probe.aircraft_strings({"aircrafts": None}) == ((), (), (), ())
+
+
+def test_aircraft_counts_use_causes_and_accounts_only() -> None:
+    hit = NameCase(
+        (),
+        (),
+        {"cause": ("The Cessna lost power",), "account": ("registered n123xx",)},
+        makes=("Cessna",),
+        models=("172S",),
+        registrations=("N123XX",),
+        amateur_makes=("Cessna",),
+    )
+    elsewhere = NameCase(
+        (), (), {"note": ("Cessna N123XX",)}, ("Cessna",), (), ("N123XX",), ("Cessna",)
+    )
+    plain = NameCase((), (), {"cause": ("Loss of control",)})
+    counts = probe.count_aircraft([hit, elsewhere, plain])
+    assert counts == probe.AircraftCounts(
+        cases=3, make=1, model=0, registration=1, any_string=1, amateur_cases=2, amateur_make=1
+    )
+
+
+def test_main_prints_aircraft_counts_and_no_string(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def loader(run_ids: object) -> Loaded:
+        case = NameCase(
+            (), (), {"cause": ("The Zorbo failed",)}, makes=("Zorbo",), amateur_makes=("Zorbo",)
+        )
+        return Loaded([case], ("a", "b"))
+
+    out = tmp_path / "result.txt"
+    probe.main(["--out", str(out)], loader)
+    written = out.read_text()
+    assert "text holds the case's own make: 1" in written
+    assert "of those, text holds the amateur-built make: 1" in written
+    assert "Zorbo" not in written
+    assert written.strip() == capsys.readouterr().out.strip()

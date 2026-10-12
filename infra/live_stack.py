@@ -8,8 +8,9 @@ The recorder's stack is not touched. Andy runs every `cdk deploy`; the schedule 
 The image is pinned by digest (`live_image_digest`, printed by `scripts/build_live_image.sh`).
 The `Dockerfile` already bakes in `NTSB_COMMIT_SHA` (build-arg `COMMIT_SHA`), `NTSB_DATA_DIR`
 (`/tmp/ntsb`, writable) and the `aws` extra, and its entry point is `ntsb-record`; so this task
-overrides the *entry point* (not just the command) with `timeout 10800 ntsb-live` and gives the
-command `run`, so the container's argv is exactly `timeout 10800 ntsb-live run`.
+overrides the *entry point* (not just the command) with
+`timeout --signal=TERM --kill-after=60 10800 ntsb-live` and gives the command `run`, so the
+container's argv is `timeout --signal=TERM --kill-after=60 10800 ntsb-live run`.
 
 Alarm limits, checked on AWS's PutMetricAlarm API reference
 (https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html,

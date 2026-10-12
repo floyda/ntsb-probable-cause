@@ -47,3 +47,8 @@ From the S4 Task 11 review, 2026-10-11, with Andy. Narrows item 3 of
 ## Status
 
 Accepted, 2026-10-11 (Andy: "A: allow in prose").
+
+## Note, 2026-10-12 (appended; nothing above is edited)
+
+- Context item 2's figures (the case's own make in the accounts or causes of 268 of `dev-400`'s 401 cases, the registration in 1) and item 3's "no amateur-built make in the prose" were the reviewer's, from an uncommitted probe, as the item says. They now have a scripted source: `scripts/s4_names_probe.py` prints a second, counts-only section, and its result is in `docs/results/s4-names-dev.txt`. (Controller fills the counts after the re-run)
+- The decision's item 3 said the registration is replaced "in prose and in document titles". The code covered the first aircraft's registration only, and titles only in part. [0184](0184-names-in-document-titles.md) settles it: every aircraft's registration, any case, in prose and in titles; a registration shorter than 3 characters is left out.
