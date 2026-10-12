@@ -6,14 +6,17 @@ neither (an import-linter contract keeps it so), and its tests use in-memory fak
 """
 
 import hashlib
+import json
 import math
 import re
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Final, Protocol
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.live.local import LocalFolderSink
 from ntsb_probable_cause.live.morning import LiveRefusal
 from ntsb_probable_cause.live.records import Backfill, ClosureRecord
@@ -23,6 +26,9 @@ from ntsb_probable_cause.scoring.budget import RESERVATION_FILE
 
 PULLED_PREFIXES: Final = ("runs", "scores", "nights")
 EXPORT_PREFIX: Final = "export/board-1"
+FINISHED_MARK: Final = "_finished.json"  # export/board-1/_finished.json, uploaded last (A11)
+FINISHED_FORMAT: Final = "board-finished/1"
+_INDEX_FILE: Final = "index.json"
 NIGHT_STATE_FILE: Final = "state.json"
 METRIC_NAMESPACE: Final = "Ntsb/Live"
 METRIC_NAME: Final = "NightFinished"
@@ -30,6 +36,9 @@ _OK: Final = 200
 _NAME: Final = re.compile(r"^[a-z][a-z0-9-]*$")
 _SUBJECT_MAX: Final = 99  # SNS subjects must be under 100 characters
 _SUBJECT_PREFIX: Final = "Ellery live night: "
+_PLAIN_WORD: Final = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_ABSENT: Final = object()  # the key's answer has no limit_reset field
+_NOT_READ: Final = object()  # no good answer read yet
 # The push order's two named files (fix round 1 of Task 10). ``run.jsonl`` is the commit point:
 # a run folder whose ``run.jsonl`` says finished is never resumed, so it goes up last, after every
 # file a finished run needs. ``spec.json`` is what makes a folder a live run at all (a folder
@@ -173,10 +182,46 @@ class BucketMirror:
         return True
 
     def push_export(self, folder: Path) -> None:
-        """Upload every file under ``folder`` to ``export/board-1/``, unconditionally."""
-        for path in sorted(p for p in folder.rglob("*") if p.is_file()):
+        """Upload the export under ``folder`` to ``export/board-1/``, then its finished mark.
+
+        The case files go first, then ``index.json``, and last, once every upload succeeded,
+        ``export/board-1/_finished.json``: ``{"format": "board-finished/1", "built_at",
+        "commit"}``, from the index's stamp, overwritten each night (final review, wave A, item
+        A11). A failed upload raises before the mark, so the old mark stays and names the last
+        export that went up whole.
+
+        Raises:
+            ConfigurationError: ``index.json`` is missing or holds no readable stamp; nothing
+                is uploaded.
+        """
+        index = folder / _INDEX_FILE
+        mark = _finished_mark(index)
+        files = sorted(p for p in folder.rglob("*") if p.is_file() and p != index)
+        for path in [*files, index]:
             key = f"{EXPORT_PREFIX}/{path.relative_to(folder).as_posix()}"
             self._s3.upload_file(str(path), self._bucket, key)
+        with tempfile.TemporaryDirectory() as work:
+            written = Path(work) / FINISHED_MARK
+            written.write_text(json.dumps(mark, indent=2) + "\n")
+            self._s3.upload_file(str(written), self._bucket, f"{EXPORT_PREFIX}/{FINISHED_MARK}")
+
+
+def _finished_mark(index: Path) -> dict[str, str]:
+    """The finished mark's body, from ``index.json``'s stamp.
+
+    Raises:
+        ConfigurationError: the index is missing, not JSON, or its stamp lacks a text
+            ``built_at`` or ``commit``.
+    """
+    try:
+        stamp = json.loads(index.read_text()).get("stamp")
+    except (OSError, ValueError, AttributeError) as error:
+        raise ConfigurationError(f"the export's {_INDEX_FILE} is missing or unreadable") from error
+    built_at = stamp.get("built_at") if isinstance(stamp, dict) else None
+    commit = stamp.get("commit") if isinstance(stamp, dict) else None
+    if not isinstance(built_at, str) or not isinstance(commit, str):
+        raise ConfigurationError(f"the export's {_INDEX_FILE} holds no build stamp")
+    return {"format": FINISHED_FORMAT, "built_at": built_at, "commit": commit}
 
 
 class MirrorSink(LocalFolderSink):
@@ -237,6 +282,27 @@ class OpenRouterKeySpend:
         self._key = key
         self._url = f"{base_url.rstrip('/')}/api/v1/key"
         self._get = get
+        self._limit_reset: object = _NOT_READ
+
+    def limit_reset_line(self) -> str:
+        """One line naming the key's ``limit_reset`` as the last good answer gave it (item A5).
+
+        ``limit_reset: <value>`` for a plain word (``monthly``, say), ``limit_reset: null``,
+        ``limit_reset: absent`` when the field is not in the answer, ``limit_reset: not a plain
+        word`` for anything else, and ``limit_reset: not read`` before an answer was read. It
+        never holds the key. Nothing refuses on it: no saved answer shows the field (CLAUDE.md
+        rule 2), so the runbook has Andy confirm on OpenRouter that the reset is monthly.
+        """
+        value = self._limit_reset
+        if value is _NOT_READ:
+            return "limit_reset: not read"
+        if value is _ABSENT:
+            return "limit_reset: absent"
+        if value is None:
+            return "limit_reset: null"
+        if isinstance(value, str) and _PLAIN_WORD.fullmatch(value):
+            return f"limit_reset: {value}"
+        return "limit_reset: not a plain word"
 
     def month(self, now: datetime) -> MonthSpend:
         """The key's spend this month and its limit.
@@ -267,6 +333,7 @@ class OpenRouterKeySpend:
             raise LiveRefusal("key-unreachable", "the key's monthly usage is not a valid number")
         if limit is None or limit < 0:
             raise LiveRefusal("key-unreachable", "the key's limit is not a valid number")
+        self._limit_reset = data.get("limit_reset", _ABSENT)
         return MonthSpend(used_usd=used, limit_usd=limit)
 
 

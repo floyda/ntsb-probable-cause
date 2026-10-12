@@ -15,7 +15,7 @@
     "kind_of_flight": "Personal",
     "injury_level": "Minor",
     "documents_read": 2,
-    "documents_listed": 3
+    "documents_listed": 4
   },
   "withheld": {
     "coded_at": "2026-10-09T03:14:07Z",
@@ -103,6 +103,14 @@
             "note": null,
             "pages": 7,
             "not_offered_reason": "fetch_failed"
+          },
+          {
+            "position": 4,
+            "title": "Air traffic control transcript",
+            "decision": "not_offered",
+            "note": null,
+            "pages": 9,
+            "not_offered_reason": "over_size_limit"
           }
         ],
         "cost_usd": 0.0031

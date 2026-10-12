@@ -57,7 +57,7 @@ from ntsb_probable_cause.live.export import BoardIndex, CaseFile
 from ntsb_probable_cause.live.ledger import LedgerLine, read_ledger
 from ntsb_probable_cause.live.local import live_run_folders
 from ntsb_probable_cause.live.morning import ALERT_KINDS
-from ntsb_probable_cause.live.names import NAME_MARKER
+from ntsb_probable_cause.live.names import NAME_MARKER, NAMES_LIMIT
 from ntsb_probable_cause.live.night import NIGHT_FILE, NIGHT_MANIFEST_FILE
 from ntsb_probable_cause.live.queue import DECLARED_START
 from ntsb_probable_cause.live.records import (
@@ -343,9 +343,9 @@ def _replies_section(runs: Sequence[_Run]) -> list[str]:
 
 def _names_section(export: _Export) -> list[str]:
     return [
-        "names (decisions 0180 item 5, 0182, 0183)",
-        f"words replaced with a name marker in the export: {export.name_markers}, a floor: a name "
-        "the rule cannot recognise is not replaced",
+        "names (decisions 0180 item 5, 0182, 0183, 0184)",
+        f"words replaced with a name marker in the export: {export.name_markers}, a floor.",
+        f"limit: {NAMES_LIMIT}",
     ]
 
 

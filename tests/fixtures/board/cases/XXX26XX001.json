@@ -232,7 +232,7 @@
             "decision": "not_offered",
             "note": null,
             "pages": 4,
-            "not_offered_reason": null
+            "not_offered_reason": "already_read"
           },
           {
             "position": 2,
@@ -240,7 +240,7 @@
             "decision": "not_offered",
             "note": null,
             "pages": 12,
-            "not_offered_reason": null
+            "not_offered_reason": "already_read"
           },
           {
             "position": 3,

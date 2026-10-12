@@ -486,11 +486,14 @@ def _cloud_dry_run_locked(args: argparse.Namespace, settings: Settings, bucket: 
         mirror = BucketMirror(bucket, local, ReadOnlyBucket(S3Bucket(s3)))
         mirror.pull()
         dry = settings.model_copy(update={"runs_dir": local / "runs"})
-        deps = replace(build_deps(dry), spend=_key_spend(settings), sink=MirrorSink(mirror, local))
+        spend = _key_spend(settings)
+        deps = replace(build_deps(dry), spend=spend, sink=MirrorSink(mirror, local))
         # The Mac's commit is not the image's, so the resume-across-commits check is skipped here
         # and said so (a paid night keeps it).
         outcome = run_morning(deps, dry_run=True, limit=args.limit, check_resume=False)
     print(format_summary(outcome.summary))
+    # Item A5: the key's reset period, for Andy to confirm is monthly (runbook, section 10).
+    print(f"live key: {spend.limit_reset_line()}")
     print(
         "information: this dry run does not check whether an unfinished run began at another "
         "commit (only the image's own night can say); see the runbook, 'resume-refused'."

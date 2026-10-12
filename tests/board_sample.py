@@ -38,6 +38,7 @@ from ntsb_probable_cause.live.export import (
     Lookup,
     MarkedCode,
     NotCoded,
+    NotOfferedReason,
     ReadChoice,
     Trail,
     Verdict,
@@ -47,7 +48,7 @@ from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.sources import TRAINING_CUTOFFS
 
 Decision = Literal["read", "skipped", "scan_only", "not_offered"]
-Reason = Literal["not_pdf", "photo_only", "fetch_failed"]
+Reason = NotOfferedReason
 
 # Values a real source record would hold. The sample must not contain them.
 FORBIDDEN: Final = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")
@@ -356,10 +357,20 @@ def _cases() -> tuple[CaseFile, ...]:
                     "document that can confirm or rule out a mechanical cause.",
                     documents=(
                         DocumentChoice(
-                            position=1, title=docs[0], decision="not_offered", note=None, pages=4
+                            position=1,
+                            title=docs[0],
+                            decision="not_offered",
+                            note=None,
+                            pages=4,
+                            not_offered_reason="already_read",
                         ),
                         DocumentChoice(
-                            position=2, title=docs[1], decision="not_offered", note=None, pages=12
+                            position=2,
+                            title=docs[1],
+                            decision="not_offered",
+                            note=None,
+                            pages=12,
+                            not_offered_reason="already_read",
                         ),
                         DocumentChoice(
                             position=3,
@@ -610,7 +621,7 @@ def _cases() -> tuple[CaseFile, ...]:
             kind_of_flight="Personal",
             injury_level="Minor",
             documents_read=2,
-            documents_listed=3,
+            documents_listed=4,
         ),
         withheld=_withheld(),
         answer=a6,
@@ -626,6 +637,7 @@ def _cases() -> tuple[CaseFile, ...]:
                 ("Pilot statement", "read"),
                 ("Maintenance records", "read"),
                 ("Radar data", "not_offered", "fetch_failed"),
+                ("Air traffic control transcript", "not_offered", "over_size_limit"),
             ),
         ),
         not_coded=None,

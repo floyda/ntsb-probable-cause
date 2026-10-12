@@ -325,6 +325,19 @@ def test_the_s4_export_syncs_three_prefixes_with_the_ntsb_profile_then_exports()
     assert "live-night-export" in sync
 
 
+def test_every_aws_s3_sync_shows_only_errors() -> None:
+    """Item A8: a sync lists every key it copies, and a live key names a case (decision 0024)."""
+    syncs = [
+        part
+        for line in Path("Makefile").read_text().splitlines()
+        for part in line.split("aws s3 sync")[1:]
+    ]
+    assert len(syncs) >= 2  # the mirror's three prefixes and the night's own export
+    for part in syncs:
+        command = part.split("; ")[0].split(" && ")[0]
+        assert "--only-show-errors" in command, command
+
+
 def test_the_ledger_targets_read_the_ledger_branch_not_the_working_tree() -> None:
     text = Path("Makefile").read_text()
     for name, command in (("s4-verify-ledger", "verify-ledger"), ("s4-report", "report")):

@@ -1,3 +1,4 @@
+import json
 import math
 import re
 from collections.abc import Callable, Mapping
@@ -6,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.live.cloud import (
     METRIC_NAME,
     METRIC_NAMESPACE,
@@ -84,16 +86,72 @@ def test_pull_skips_export_and_push_uploads_only_changes(tmp_path: Path) -> None
     assert "runs/r2/new.txt" in bucket.objects
 
 
-def test_push_export_uploads_every_file(tmp_path: Path) -> None:
-    mirror, bucket = _mirror(tmp_path, {})
+_STAMP = {"stamp": {"built_at": "2026-10-12T06:00:00Z", "commit": "abc1234"}}
+
+
+def _export(tmp_path: Path, built_at: str = "2026-10-12T06:00:00Z") -> Path:
     out = tmp_path / "out"
-    (out / "d").mkdir(parents=True)
-    (out / "a.json").write_text("1")
-    (out / "d" / "b.json").write_text("2")
+    (out / "cases").mkdir(parents=True, exist_ok=True)
+    (out / "cases" / "XXX26LA001.json").write_text("1")
+    (out / "cases" / "XXX26LA002.json").write_text("2")
+    (out / "index.json").write_text(
+        json.dumps({"stamp": {"built_at": built_at, "commit": "abc1234"}})
+    )
+    return out
+
+
+def test_push_export_uploads_cases_then_the_index_then_the_finished_mark(tmp_path: Path) -> None:
+    """Item A11: the mark goes up last, once every file went up; it is overwritten each night."""
+    mirror, bucket = _mirror(tmp_path, {})
+    out = _export(tmp_path)
     mirror.push_export(out)
-    mirror.push_export(out)
-    assert sorted(set(bucket.uploads)) == ["export/board-1/a.json", "export/board-1/d/b.json"]
-    assert len(bucket.uploads) == 4
+    assert bucket.uploads == [
+        "export/board-1/cases/XXX26LA001.json",
+        "export/board-1/cases/XXX26LA002.json",
+        "export/board-1/index.json",
+        "export/board-1/_finished.json",
+    ]
+    assert json.loads(bucket.objects["export/board-1/_finished.json"]) == {
+        "format": "board-finished/1",
+        "built_at": "2026-10-12T06:00:00Z",
+        "commit": "abc1234",
+    }
+    mirror.push_export(_export(tmp_path, "2026-10-13T06:00:00Z"))
+    assert len(bucket.uploads) == 8
+    mark = json.loads(bucket.objects["export/board-1/_finished.json"])
+    assert mark["built_at"] == "2026-10-13T06:00:00Z"
+
+
+def test_a_failed_export_upload_leaves_the_old_finished_mark(tmp_path: Path) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    mirror.push_export(_export(tmp_path))
+    real = bucket.upload_file
+
+    def upload(filename: str, bucket: str, key: str) -> None:
+        if key.endswith("XXX26LA002.json"):
+            raise OSError("the bucket did not answer")
+        real(filename, bucket, key)
+
+    bucket.upload_file = upload  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="did not answer"):
+        mirror.push_export(_export(tmp_path, "2026-10-13T06:00:00Z"))
+    mark = json.loads(bucket.objects["export/board-1/_finished.json"])
+    assert mark["built_at"] == "2026-10-12T06:00:00Z"  # still names the last whole export
+
+
+@pytest.mark.parametrize("index", [None, "{not json", "{}", '{"stamp": {"built_at": 1}}'])
+def test_an_export_with_no_readable_stamp_uploads_nothing(
+    tmp_path: Path, index: str | None
+) -> None:
+    mirror, bucket = _mirror(tmp_path, {})
+    out = _export(tmp_path)
+    if index is None:
+        (out / "index.json").unlink()
+    else:
+        (out / "index.json").write_text(index)
+    with pytest.raises(ConfigurationError, match=r"index\.json"):
+        mirror.push_export(out)
+    assert bucket.uploads == []
 
 
 def test_mark_started_once_per_day(tmp_path: Path) -> None:
@@ -376,3 +434,28 @@ def test_a_night_folder_pushed_through_the_mirror_uploads_its_manifest_last(
         (folder / name).write_text(name)
     assert mirror.push(Path("nights/2026-10-11")) == 4
     assert bucket.uploads[-1] == "nights/2026-10-11/manifest.json"
+
+
+@pytest.mark.parametrize(
+    ("data", "line"),
+    [
+        ({"limit_reset": "monthly"}, "limit_reset: monthly"),
+        ({"limit_reset": None}, "limit_reset: null"),
+        ({}, "limit_reset: absent"),
+        ({"limit_reset": "sk-or-v1 secret text"}, "limit_reset: not a plain word"),
+        ({"limit_reset": 30}, "limit_reset: not a plain word"),
+    ],
+)
+def test_the_key_endpoints_limit_reset_is_named_and_never_refused(
+    data: dict[str, object], line: str
+) -> None:
+    """Item A5: printed by the cloud dry run; no saved answer shows the field, so no refusal."""
+
+    def get(url: str, *, headers: Mapping[str, str]) -> tuple[int, object]:
+        return 200, {"data": {"usage_monthly": 1.0, "limit": 10.0, **data}}
+
+    spend = OpenRouterKeySpend("sk-or-v1-live", "https://or.example", get)
+    assert spend.limit_reset_line() == "limit_reset: not read"
+    assert spend.month(datetime(2026, 10, 12, tzinfo=UTC)) == MonthSpend(1.0, 10.0)
+    assert spend.limit_reset_line() == line
+    assert "sk-or" not in spend.limit_reset_line()

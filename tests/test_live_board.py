@@ -21,6 +21,7 @@ from tests.test_live_morning import _call, _result, _scores
 from ntsb_probable_cause.docket.manifest import Status
 from ntsb_probable_cause.errors import ConfigurationError, LeakageError
 from ntsb_probable_cause.fields import EvidenceRole
+from ntsb_probable_cause.live import board
 from ntsb_probable_cause.live.board import (
     _NOT_OFFERED,
     _SCAN_ONLY,
@@ -29,7 +30,12 @@ from ntsb_probable_cause.live.board import (
     occurrence_marks,
 )
 from ntsb_probable_cause.live.closure import CASES_FILE
-from ntsb_probable_cause.live.export import NOT_CODED_SENTENCES, BoardIndex, CaseFile
+from ntsb_probable_cause.live.export import (
+    NOT_CODED_SENTENCES,
+    BoardIndex,
+    CaseFile,
+    NotOfferedReason,
+)
 from ntsb_probable_cause.live.later import LaterScore
 from ntsb_probable_cause.live.names import NAME_MARKER
 from ntsb_probable_cause.live.queue import backfill_digest, build_queue
@@ -51,6 +57,7 @@ NOW = datetime(2026, 10, 12, 6, 0, tzinfo=UTC)
 TODAY = NOW.date()
 FORBIDDEN = (
     "N123XX",
+    "N456YY",
     "Inventedmake",
     "INV-1",
     "Invented Owner",
@@ -110,6 +117,15 @@ def _raw(case_id: str, event: date, *, amateur: bool = False) -> dict[str, Any]:
             "operatorName": "Invented Owner",
             "flightOperationType": "Personal",
         }
+    ]
+    return raw
+
+
+def _two_more_aircraft(raw: dict[str, Any]) -> dict[str, Any]:
+    """Item A9: a second aircraft with its own registration, and a third with a short one."""
+    raw["aircrafts"] += [
+        {"aircraftRegistrationNumber": "N456YY", "ownerOperators": []},
+        {"aircraftRegistrationNumber": "N1", "ownerOperators": []},
     ]
     return raw
 
@@ -242,12 +258,13 @@ def _mirror(tmp_path: Path) -> Path:
     specs = [
         (
             _record("XXX26XX001", date(2026, 10, 9)),
-            _raw("XXX26XX001", ev),
+            _two_more_aircraft(_raw("XXX26XX001", ev)),
             _hypothesis(
                 LOC_FLIGHT,
                 OTHER,
                 cause="Invented Owner lost control of N123XX.",
-                account="Invented Owner flew N123XX low; the airplane struck the ground.",
+                # Item A9: the second aircraft's registration, any case, and a short one kept.
+                account="Invented Owner flew N123XX low past n456yy; the N1 gauge read low.",
             ),
         ),
         (
@@ -256,7 +273,22 @@ def _mirror(tmp_path: Path) -> Path:
             _hypothesis(OTHER, LOC_FLIGHT),
         ),
         (
-            _record("XXX26XX003", date(2026, 10, 7), top1=False, top3=False),
+            _record(
+                "XXX26XX003",
+                date(2026, 10, 7),
+                top1=False,
+                top3=False,
+                # Item A9: the owner string in capitals, in a title.
+                documents=(
+                    *_lines(),
+                    DocumentLine(
+                        position=4,
+                        title="Letter from INVENTED OWNER",
+                        status="unreadable: not a pdf",
+                        ellery=None,
+                    ),
+                ),
+            ),
             _raw("XXX26XX003", ev),
             _hypothesis(OTHER),
         ),
@@ -550,7 +582,10 @@ def _violations(files: Mapping[str, object]) -> list[str]:
     found: list[str] = []
     for name, data in files.items():
         for path, text in _strings(data):
-            found.extend(f"{name}: {bad!r} in {path}" for bad in FORBIDDEN if bad in text)
+            low_text = text.lower()  # a name in capitals is still the name (item A9)
+            found.extend(
+                f"{name}: {bad!r} in {path}" for bad in FORBIDDEN if bad.lower() in low_text
+            )
             if path and path[-1] == "<key>":
                 low = text.lower()
                 if any(part in low for part in FORBIDDEN_KEY_PARTS):
@@ -579,8 +614,12 @@ def test_the_never_holds_check_can_fail() -> None:
     planted: dict[str, object] = {
         "a.json": {"x": [{"note": "see N123XX"}], "registration": "n", "stamp": {"model": "m"}},
         "b.json": {"trail": {"model": "m"}, "payload_fingerprint": "f", "c": "Invented Owner"},
+        "c.json": {"documents": [{"title": "Letter from INVENTED OWNER"}]},
+        "d.json": {"beliefs": [{"account": "The second aircraft, n456yy, was parked."}]},
     }
     found = _violations(planted)
+    assert any("c.json" in f and "Invented Owner" in f for f in found)  # capitals (item A9)
+    assert any("d.json" in f and "N456YY" in f for f in found)
     assert any("N123XX" in f for f in found)
     assert any("'registration'" in f for f in found)
     assert any("'payload_fingerprint'" in f for f in found)
@@ -828,9 +867,8 @@ def test_a_planted_name_and_registration_never_reach_the_export(tmp_path: Path) 
     assert first.trail is not None
     assert first.answer is not None
     answer_belief = first.trail.beliefs[-1]
-    assert (
-        answer_belief.account
-        == f"{NAME_MARKER} flew {NAME_MARKER} low; the airplane struck the ground."
+    assert answer_belief.account == (
+        f"{NAME_MARKER} flew {NAME_MARKER} low past {NAME_MARKER}; the N1 gauge read low."
     )
     assert answer_belief.cause == f"{NAME_MARKER} lost control of {NAME_MARKER}."
     assert first.answer.cause == f"{NAME_MARKER} lost control of {NAME_MARKER}."
@@ -840,6 +878,12 @@ def test_a_planted_name_and_registration_never_reach_the_export(tmp_path: Path) 
     everything = "".join(p.read_text() for p in out.rglob("*.json"))
     assert "Invented Owner" not in everything
     assert "N123XX" not in everything
+    assert "n456yy" not in everything.lower()
+    assert "the N1 gauge read low" in everything  # a registration under 3 characters is kept
+    third = _case(out, "XXX26XX003")
+    assert third.trail is not None
+    titles = [d.title for c in third.trail.read_choices for d in c.documents]
+    assert "Letter from [name]" in titles
 
 
 def test_a_registration_in_a_title_is_replaced(tmp_path: Path) -> None:
@@ -993,7 +1037,7 @@ def test_not_offered_reasons_follow_the_readers_status(tmp_path: Path) -> None:
         ("unreadable: not a pdf", None),
         ("skipped: photo-only", None),
         ("fetch failed", None),
-        ("read", None),  # not offered although readable: no reason to give
+        ("read", None),  # readable and never on offer: left out by the prompt ceiling
     )
     lines = tuple(
         DocumentLine(position=n, title=f"Doc {n}", status=status, ellery=ellery, pages=n)
@@ -1020,7 +1064,63 @@ def test_not_offered_reasons_follow_the_readers_status(tmp_path: Path) -> None:
         ("not_offered", "not_pdf", 4),
         ("not_offered", "photo_only", 5),
         ("not_offered", "fetch_failed", 6),
-        ("not_offered", None, 7),
+        ("not_offered", "over_size_limit", 7),
+    ]
+
+
+def test_a_document_read_at_the_first_choice_is_already_read_at_the_second(
+    tmp_path: Path,
+) -> None:
+    """Item A7: never ``not_offered`` with no reason (the S5 contract)."""
+    lines = (
+        DocumentLine(position=1, title="Doc 1", status="read", ellery="read"),
+        DocumentLine(position=2, title="Doc 2", status="read", ellery="read"),
+        DocumentLine(position=3, title="Doc 3", status="read", ellery="skipped"),
+    )
+    case_id = "XXX26XX001"
+    second = {
+        "decisions": [
+            {"document": 2, "read": True, "expected_effect": "More detail."},
+            {"document": 3, "read": False, "expected_effect": "Not needed."},
+        ],
+        "reason": "One more document.",
+    }
+    first = {
+        "decisions": [
+            {"document": 1, "read": True, "expected_effect": "The key facts."},
+            {"document": 2, "read": False, "expected_effect": "Later, if needed."},
+            {"document": 3, "read": False, "expected_effect": "Not needed."},
+        ],
+        "reason": "The first document first.",
+    }
+    mirror = _one_run(
+        tmp_path,
+        [
+            (
+                _record(case_id, date(2026, 10, 9), documents=lines),
+                _raw(case_id, date(2026, 8, 1)),
+                _hypothesis(STALL),
+            )
+        ],
+    )
+    folder = next((mirror / "runs").iterdir())
+    calls = [
+        _call(case_id, "h0", 0, tool="record_hypothesis"),
+        _call(case_id, "choice1", 1, tool="choose_documents", arguments=first, offered=(1, 2, 3)),
+        _call(case_id, "choice2", 2, tool="choose_documents", arguments=second, offered=(2, 3)),
+        _call(case_id, "coding", 3, tool="submit_answer"),
+    ]
+    write_jsonl(folder / "trail.jsonl", calls)
+    one, two = _case(_build(tmp_path, mirror), case_id).trail.read_choices  # type: ignore[union-attr]
+    assert [(d.decision, d.not_offered_reason) for d in one.documents] == [
+        ("read", None),
+        ("skipped", None),
+        ("skipped", None),
+    ]
+    assert [(d.decision, d.not_offered_reason) for d in two.documents] == [
+        ("not_offered", "already_read"),
+        ("read", None),
+        ("skipped", None),
     ]
 
 
@@ -1036,6 +1136,9 @@ def test_a_corrupt_spec_in_the_mirror_is_refused_with_no_path(tmp_path: Path) ->
 
 def test_every_docket_status_has_a_not_offered_answer() -> None:
     assert set(_NOT_OFFERED) | {"read", _SCAN_ONLY} == set(get_args(Status))
+    # Item A7: the reader's three reasons, and the two the read choices give.
+    reasons = {*_NOT_OFFERED.values(), "already_read", "over_size_limit"}
+    assert reasons == set(get_args(NotOfferedReason))
 
 
 @pytest.mark.parametrize("run_file", ["absent", "unfinished"])
@@ -1057,3 +1160,14 @@ def test_a_run_folder_whose_run_record_is_not_finished_is_not_exported(
     index = BoardIndex.model_validate_json((out / "index.json").read_text())
     assert index.rows == ()
     assert not (out / "cases" / "XXX26XX001.json").exists()
+
+
+def test_a_missing_word_list_refuses_the_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Item A10: the title rule cannot run without its word list, so nothing is written."""
+    monkeypatch.setattr(board, "known_title_words", lambda: (frozenset(), False))
+    out = tmp_path / "out"
+    with pytest.raises(ConfigurationError, match="word list"):
+        _build(tmp_path)
+    assert not (out / "index.json").exists()

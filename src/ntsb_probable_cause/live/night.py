@@ -18,7 +18,9 @@ test replaces each with a fake. In order:
 4. Later scores: each coded case still waiting for the NTSB's codes is fetched again and, when
    the codes are there, scored into ``scores/<date>.jsonl`` (decision 0174). One bad record is
    counted by kind and the others go on; any such error is the alert ``later-score-failed``.
-5. Build the export from the mirror and push it to ``export/board-1/``. Any failure (a damaged
+5. Build the export from the mirror and push it to ``export/board-1/``: the case files, then
+   ``index.json``, then the finished mark ``_finished.json`` (``cloud.BucketMirror.push_export``).
+   Any failure (a damaged
    mirror, the store, the bucket, the disk) is the alert ``export-failed``; it is not a
    refusal, and the night goes on.
 6. Write and push ``nights/<date>/night.json``, ``nights/<date>/state.json`` (a snapshot of the

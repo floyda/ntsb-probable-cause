@@ -11,6 +11,7 @@ from ntsb_probable_cause.live.export import (
     BoardIndex,
     CaseFile,
     Grade,
+    NotOfferedReason,
     board_json_schema,
 )
 from ntsb_probable_cause.live.records import FAILURE_KINDS
@@ -114,10 +115,5 @@ def test_the_sample_exercises_every_optional_field() -> None:
     assert all(c.mkey is not None for c in cases)
     documents = [d for c in cases if c.trail for rc in c.trail.read_choices for d in rc.documents]
     assert all(d.pages is not None for d in documents)
-    assert {d.not_offered_reason for d in documents} == {
-        None,
-        "not_pdf",
-        "photo_only",
-        "fetch_failed",
-    }
+    assert {d.not_offered_reason for d in documents} == {None, *get_args(NotOfferedReason)}
     assert all(d.not_offered_reason is None for d in documents if d.decision != "not_offered")

@@ -752,6 +752,9 @@ def test_a_cloud_dry_run_reads_the_bucket_into_a_temporary_mirror_and_writes_not
     out = capsys.readouterr().out
     assert "alert: money-held-back" in out
     assert "does not check whether an unfinished run began at another commit" in out
+    # Item A5: the key's reset period is named (here never read: the morning is a fake).
+    assert "live key: limit_reset: not read" in out
+    assert "or-live-key" not in out
 
 
 def test_a_cloud_dry_run_holds_the_same_lock_as_the_local_run(

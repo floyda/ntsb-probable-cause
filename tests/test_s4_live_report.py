@@ -14,6 +14,7 @@ from tests.test_live_records import _record
 
 from ntsb_probable_cause.agent.version import VERSION_1
 from ntsb_probable_cause.live.ledger import LedgerLine
+from ntsb_probable_cause.live.names import NAMES_LIMIT
 from ntsb_probable_cause.live.records import Backfill
 from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 
@@ -213,6 +214,7 @@ def test_replies_names_money_and_the_backfill(tmp_path: Path) -> None:
     assert "replies whose model differs from the one asked for: 2" in lines
     assert "calls with no reply model recorded: 2" in lines
     assert any(x.startswith("words replaced with a name marker in the export: ") for x in lines)
+    assert f"limit: {NAMES_LIMIT}" in lines  # the published limit, as decision 0184 states it
     first = next(x for x in lines if x.startswith("live key, first cloud nights"))
     later = next(x for x in lines if x.startswith("live key, later nights"))
     assert "$0.5000 over 1 run records" in first  # the billed total of the backfill's run

@@ -326,6 +326,15 @@ def test_a_normal_night_codes_pushes_records_publishes_and_exports(world: World)
     assert world.metric.points[0][0]["MetricName"] == METRIC_NAME
     assert len(world.exports) == 1
     assert "export/board-1/index.json" in world.bucket.objects
+    mark = world.json("export/board-1/_finished.json")  # item A11, uploaded last
+    assert world.bucket.uploads.index("export/board-1/_finished.json") > world.bucket.uploads.index(
+        "export/board-1/index.json"
+    )
+    assert mark == {
+        "format": "board-finished/1",
+        "built_at": world.json("export/board-1/index.json")["stamp"]["built_at"],
+        "commit": "abc1234",
+    }
     # Item A10: the night's own export is valid board/1. The committed JSON Schema
     # (docs/schemas/board-1.schema.json) equals these models' own; a drift test checks that.
     BoardIndex.model_validate_json(world.bucket.objects["export/board-1/index.json"])
@@ -538,13 +547,13 @@ def test_the_export_pushes_only_its_own_folder(world: World, tmp_path: Path) -> 
     def export(folder: Path, today: date, at: datetime) -> Path:
         out = tmp_path / "work" / "live-export"
         (out / "cases").mkdir(parents=True)
-        (out / "index.json").write_text("{}")
+        (out / "index.json").write_text('{"stamp": {"built_at": "2026-10-12", "commit": "c"}}')
         (out.parent / ".live-export-build-x").mkdir()
         (out.parent / ".live-export-build-x" / "leftover.json").write_text("{}")
         return out
 
     world.night(DAY_1, export=export)
-    assert world.keys("export/") == ["export/board-1/index.json"]
+    assert world.keys("export/") == ["export/board-1/_finished.json", "export/board-1/index.json"]
 
 
 def test_a_crash_sends_night_crashed_with_no_counts_and_reraises(
@@ -755,6 +764,7 @@ def test_a_push_of_the_export_that_fails_is_export_failed_too(world: World) -> N
     world.bucket.upload_file = upload  # type: ignore[method-assign]
     report, _, _ = world.night(DAY_1)
     assert report.alerts == ("export-failed",)
+    assert "export/board-1/_finished.json" not in world.bucket.objects
     assert "nights/2026-10-12/night.json" in world.bucket.objects
     assert len(world.metric.points) == 1
 

@@ -40,6 +40,9 @@ Grade = Literal[
     "awaiting_ntsb",
 ]
 CodeMark = Literal["same_place", "other_place", "not_in_other"]
+NotOfferedReason = Literal[
+    "not_pdf", "photo_only", "fetch_failed", "already_read", "over_size_limit"
+]
 
 
 class _Model(BaseModel):
@@ -215,7 +218,7 @@ class DocumentChoice(_Model):
         description=(
             "What the agent did with the document. read and skipped are its choices over a "
             "document it was offered. scan_only is a scan the reader could not turn into text. "
-            "not_offered is a document the reader could not offer as text, other than a scan "
+            "not_offered is a document not on offer at this read choice, other than a scan "
             "(see not_offered_reason); it never means a withheld document. A docket document "
             "that holds the NTSB's probable cause makes the whole case not coded (leak) instead."
         )
@@ -225,11 +228,14 @@ class DocumentChoice(_Model):
         default=None,
         description="The document's page count. None when not recorded.",
     )
-    not_offered_reason: Literal["not_pdf", "photo_only", "fetch_failed"] | None = Field(
+    not_offered_reason: NotOfferedReason | None = Field(
         default=None,
         description=(
-            "Why the document could not be offered as text; set only when decision is "
-            "not_offered and the docket reader gave one of three reasons, else None."
+            "Why the document was not on offer at this read choice; set only when decision is "
+            "not_offered, else None. not_pdf, photo_only and fetch_failed: the docket reader "
+            "could not offer it as text. already_read: it was read at an earlier read choice, "
+            "and a document read is never offered again. over_size_limit: a readable document "
+            "left out by the prompt-size ceiling of decision 0152."
         ),
     )
 

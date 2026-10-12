@@ -75,6 +75,7 @@ from ntsb_probable_cause.live.export import (
     Lookup,
     MarkedCode,
     NotCoded,
+    NotOfferedReason,
     ReadChoice,
     Trail,
     Verdict,
@@ -109,6 +110,7 @@ _EXCLUSIONS: Final = live_spec(1.0).exclusions
 _ENGINE_CHECKPOINT: Final = "checkpoint:"
 _BELIEF_KINDS: Final = ("h0", "h1", "h2", "answer")
 _SCAN_ONLY: Final = "unreadable: scan"
+_READABLE: Final = "read"  # the docket reader's status for a document it could turn into text
 # The docket reader's statuses that make a document "not offered", as the export names them.
 _NOT_OFFERED: Final[Mapping[str, Literal["not_pdf", "photo_only", "fetch_failed"]]] = {
     "unreadable: not a pdf": "not_pdf",
@@ -377,6 +379,7 @@ def _read_choices(
     known: frozenset[str],
 ) -> tuple[ReadChoice, ...]:
     choices: list[ReadChoice] = []
+    read_before: set[int] = set()  # read at an earlier read choice: never offered again
     for step in ("choice1", "choice2"):
         step_calls = [c for c in calls if c.step == step]
         accepted = [c for c in step_calls if c.protocol_error is None and c.tool is not None]
@@ -412,11 +415,12 @@ def _read_choices(
                         decision="scan_only" if line.status == _SCAN_ONLY else "not_offered",
                         note=None,
                         pages=line.pages,
-                        not_offered_reason=(
-                            None if line.status == _SCAN_ONLY else _NOT_OFFERED.get(line.status)
+                        not_offered_reason=_not_offered_reason(
+                            line.status, line.position in read_before
                         ),
                     )
                 )
+        read_before.update(d.position for d in documents if d.decision == "read")
         choices.append(
             ReadChoice.model_validate(
                 {
@@ -428,6 +432,22 @@ def _read_choices(
             )
         )
     return tuple(choices)
+
+
+def _not_offered_reason(status: str, read_before: bool) -> NotOfferedReason | None:
+    """Why a document was not on offer at a read choice (item A7); None for a scan.
+
+    A document read at an earlier choice is ``already_read``. Any other readable document
+    missing from the offer is ``over_size_limit``: the prompt-size ceiling (decision 0152) is
+    the one other rule that leaves a readable document out.
+    """
+    if status == _SCAN_ONLY:
+        return None
+    if read_before:
+        return "already_read"
+    if status == _READABLE:
+        return "over_size_limit"
+    return _NOT_OFFERED.get(status)
 
 
 def _clean(value: object, names: CaseNames) -> object:
@@ -714,7 +734,12 @@ def _build_files(  # noqa: PLR0913 -- the builder's fixed interface
 ) -> ExportReport:
     """Write the whole export under ``work``, or raise before it is complete."""
     tables = load_tables()
-    known, _ = known_title_words()
+    known, found = known_title_words()
+    if not found:  # without the word list the title rule would mark nearly every word
+        raise ConfigurationError(
+            "export refused: the word list the title rule reads (docket/vocab/words.txt) is "
+            "missing. Nothing was written; the previous export is unchanged."
+        )
     later_scores = _later_scores(mirror)
     state = _night_state(mirror)
     cases: dict[str, CaseFile] = {}
@@ -819,8 +844,9 @@ def write_export(  # noqa: PLR0913 -- the builder's fixed interface plus the rep
     """Write the export under ``out`` and say what it holds, as numbers.
 
     Raises:
-        ConfigurationError: when the mirror is damaged or holds a version 1 record. The message
-            holds counts only, nothing is written, and a previous export under ``out`` stays.
+        ConfigurationError: when the mirror is damaged or holds a version 1 record, or the
+            title rule's word list is missing. The message holds counts only, nothing is
+            written, and a previous export under ``out`` stays.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=f".{out.name}-build-", dir=out.parent))

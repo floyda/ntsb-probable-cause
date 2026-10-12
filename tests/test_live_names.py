@@ -5,7 +5,13 @@ import sys
 from pathlib import Path
 
 from ntsb_probable_cause.docket.title_vocab import known_title_words
-from ntsb_probable_cause.live.names import NAME_MARKER, board_text, board_title, case_names
+from ntsb_probable_cause.live.names import (
+    NAME_MARKER,
+    NAMES_LIMIT,
+    board_text,
+    board_title,
+    case_names,
+)
 
 _RAW = {
     "aircrafts": [
@@ -70,7 +76,7 @@ _RAW_REG = {
 
 def test_registration_is_replaced_in_each_kind_of_prose() -> None:
     names = case_names(_RAW_REG)
-    assert names.registration == "N123XX"
+    assert names.registrations == ("N123XX",)
     for kind in ("cause", "account", "note", "reason"):
         text = f"The {kind} says n123xx, and Invented Aviation LLC flew N123XX."
         assert board_text(text, names) == f"The {kind} says [name], and [name] flew [name]."
@@ -86,5 +92,55 @@ def test_registration_is_replaced_in_a_title() -> None:
 
 def test_a_case_without_a_registration_replaces_none() -> None:
     names = case_names({"aircrafts": [{"aircraftRegistrationNumber": "  "}]})
-    assert names.registration is None
+    assert names.registrations == ()
     assert board_text("N123XX stays", names) == "N123XX stays"
+
+
+_TWO_AIRCRAFT = {
+    "aircrafts": [
+        {
+            "aircraftRegistrationNumber": "N123XX",
+            "ownerOperators": [{"registeredOwner": "Blue Sky Flying", "operatorName": "Zed Air"}],
+        },
+        {
+            "aircraftRegistrationNumber": " N456YY ",
+            "ownerOperators": [{"registeredOwner": "Second Owner Group"}],
+        },
+        {"aircraftRegistrationNumber": "N1"},
+        {"aircraftRegistrationNumber": "N123XX"},
+        "not an aircraft",
+    ]
+}
+
+
+def test_every_aircrafts_registration_is_replaced_once_and_a_short_one_never() -> None:
+    """Decision 0184 (item A6): every aircraft, not only the first; "N1" would hit tokens."""
+    names = case_names(_TWO_AIRCRAFT)
+    assert names.registrations == ("N123XX", "N456YY")
+    text = "N123XX hit n456yy; the N1 gauge read low, and Second Owner Group was told."
+    assert board_text(text, names) == (
+        "[name] hit [name]; the N1 gauge read low, and [name] was told."
+    )
+
+
+def test_a_titles_owner_and_operator_strings_are_replaced_any_case() -> None:
+    """Item A6: the exact parts go first; an owner made of ordinary words passes the title rule."""
+    known, _ = known_title_words()
+    names = case_names(_TWO_AIRCRAFT)
+    title = "Letter from BLUE SKY FLYING to zed air about N456YY"
+    assert board_title(title, known) == title  # ordinary words: the title rule keeps them
+    assert board_title(title, known, names) == "Letter from [name] to [name] about [name]"
+
+
+def test_the_published_limit_names_titles_prose_and_short_registrations() -> None:
+    assert NAMES_LIMIT.startswith("A name the rules cannot recognise is not replaced: in prose,")
+    assert "in titles, also a name made only of ordinary words" in NAMES_LIMIT
+    assert "shorter than 3 characters" in NAMES_LIMIT
+
+
+def test_a_common_given_name_and_surname_in_a_title_is_the_published_limit() -> None:
+    """The limit, pinned: a name made only of ordinary words is not caught by the title rule."""
+    known, _ = known_title_words()
+    assert board_title("Witness statement - John Smith", known) == (
+        "Witness statement - John Smith"
+    )
