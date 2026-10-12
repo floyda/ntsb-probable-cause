@@ -5,15 +5,18 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 from tests.test_live_morning import NOW, _call, _docket, _result
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent.drive import REPLIES_FILE, ReplyRow
 from ntsb_probable_cause.agent.run import TRAIL_FILE
-from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.client import DocketClient, cached_hashes
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE, Prepared, build_records
 from ntsb_probable_cause.live.queue import QueuedCase
+from ntsb_probable_cause.live.records import DocketHashes
 from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 
 MKEY = 4242
@@ -37,6 +40,14 @@ def _run() -> RunRecord:
         started=datetime(2026, 10, 8, 1, tzinfo=UTC),
         finished=datetime(2026, 10, 8, 2, tzinfo=UTC),
     )
+
+
+def _no_hashes(case_id: str = CASE) -> dict[str, DocketHashes]:
+    return {
+        case_id: DocketHashes(
+            case_id=case_id, mkey=MKEY, listing_sha256=None, documents={}, offered=(1,)
+        )
+    }
 
 
 def _reply(n: int, sha: str | None, case_id: str = CASE) -> ReplyRow:
@@ -86,7 +97,16 @@ def test_record_carries_event_date_hashes_and_replies(tmp_path: Path) -> None:
         raw={},
         docket=_docket(MKEY, {1: "read", 2: "read"}),
     )
-    (record,) = build_records(folder, [prepared], "0" * 64, cache)
+    listing, documents = cached_hashes(cache, MKEY)
+    dockets = {
+        CASE: DocketHashes(
+            case_id=CASE, mkey=MKEY, listing_sha256=listing, documents=documents, offered=(1, 2)
+        )
+    }
+    # The cache is fetched again after the run's first fetch (a resume): the hashes stay the
+    # run's own, from dockets.json (final review, wave A, item A2).
+    (cache / str(MKEY) / "listing.html").write_text("a later page")
+    (record,) = build_records(folder, [prepared], "0" * 64, dockets)
     assert record.format == "live-closure/2"
     assert record.event_date == date(2026, 9, 1)
     assert record.request_sha256s == ("1" * 64, None, "2" * 64)
@@ -113,10 +133,30 @@ def test_a_case_with_no_cache_has_no_hashes(tmp_path: Path) -> None:
         raw={},
         docket=_docket(MKEY, {1: "read"}),
     )
-    (record,) = build_records(folder, [prepared], "0" * 64, tmp_path / "none")
+    (record,) = build_records(folder, [prepared], "0" * 64, _no_hashes())
     assert record.listing_sha256 is None
     assert record.request_sha256s == ()
     assert record.documents[0].sha256 is None
+
+
+def test_a_case_missing_from_the_dockets_file_is_refused(tmp_path: Path) -> None:
+    folder = tmp_path / "run"
+    folder.mkdir()
+    write_jsonl(folder / RUN_FILE, [_run()])
+    write_jsonl(folder / CASES_FILE, [_result(CASE)])
+    prepared = Prepared(
+        case=QueuedCase(
+            mkey=MKEY,
+            case_id=CASE,
+            event_date=date(2026, 9, 1),
+            closed_on=date(2026, 10, 5),
+            closure_run=1,
+        ),
+        raw={},
+        docket=_docket(MKEY, {1: "read"}),
+    )
+    with pytest.raises(ConfigurationError, match=r"dockets\.json"):
+        build_records(folder, [prepared], "0" * 64, {})
 
 
 def _hashes(tmp_path: Path, rows: list[ReplyRow], case_id: str = CASE) -> tuple[str | None, ...]:
@@ -136,7 +176,7 @@ def _hashes(tmp_path: Path, rows: list[ReplyRow], case_id: str = CASE) -> tuple[
         raw={},
         docket=_docket(MKEY, {1: "read"}),
     )
-    (record,) = build_records(folder, [prepared], "0" * 64, tmp_path / "none")
+    (record,) = build_records(folder, [prepared], "0" * 64, _no_hashes(case_id))
     return record.request_sha256s
 
 

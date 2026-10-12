@@ -14,6 +14,9 @@ Sources, from the bucket mirror (``<mirror>/runs/<run>/`` and ``<mirror>/scores/
 - ``scores/*.jsonl``: a later score, when the NTSB's codes arrived after the case was coded;
 - ``nights/state.json``: the cases settled unreachable.
 
+Only a run folder whose ``run.jsonl`` says finished is read (``closure.is_finished``): the run
+record goes up last, so any other folder is a run still to resume.
+
 The names step: every title passes ``names.board_title``; every cause, account, note, reason and
 free-text lookup argument passes ``names.board_text`` with that case's own ``CaseNames``.
 
@@ -51,7 +54,7 @@ from ntsb_probable_cause.agent.schemas import CODING_TOOLS, ChooseDocuments, Doc
 from ntsb_probable_cause.agent.trail import AgentCall
 from ntsb_probable_cause.docket.title_vocab import known_title_words
 from ntsb_probable_cause.errors import ConfigurationError, LeakageError
-from ntsb_probable_cause.live.closure import CASES_FILE
+from ntsb_probable_cause.live.closure import CASES_FILE, is_finished
 from ntsb_probable_cause.live.export import (
     BOARD_FORMAT,
     NOT_CODED_SENTENCES,
@@ -675,7 +678,7 @@ def _collect(mirror: Path) -> Iterable[tuple[ClosureRecord, _Run]]:
     runs = mirror / "runs"
     for folder in sorted(p for p in runs.iterdir() if p.is_dir()) if runs.is_dir() else []:
         closures = folder / CLOSURES_FILE
-        if not closures.is_file():
+        if not closures.is_file() or not is_finished(folder):  # the commit point (item A3)
             continue
         run = _load_run(folder)
         version_1 = 0

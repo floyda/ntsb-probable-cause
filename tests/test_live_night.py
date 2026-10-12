@@ -38,7 +38,9 @@ from ntsb_probable_cause.live.cloud import (
     OpenRouterKeySpend,
     SnsAlerts,
 )
+from ntsb_probable_cause.live.export import BoardIndex, CaseFile
 from ntsb_probable_cause.live.later import LaterScore
+from ntsb_probable_cause.live.ledger import LedgerLine, new_lines, verify
 from ntsb_probable_cause.live.morning import ALERT_KINDS, MorningDeps, NightOutcome
 from ntsb_probable_cause.live.night import (
     NIGHT_FORMAT,
@@ -315,14 +317,22 @@ def test_a_normal_night_codes_pushes_records_publishes_and_exports(world: World)
     assert all(isinstance(v, int) for v in manifest["counts"].values())
     covered = {e["path"] for e in manifest["night_files"]}
     assert folder + "manifest.json" in covered
-    assert "nights/state.json" in covered
-    assert {e["path"] for e in manifest["files"]} == {"night.json", "started"}
+    assert "nights/2026-10-12/state.json" in covered  # the night's own snapshot (item A4)
+    assert "nights/state.json" not in covered  # never the shared file later nights rewrite
+    assert {e["path"] for e in manifest["files"]} == {"night.json", "started", "state.json"}
     for entry in manifest["night_files"]:
         assert world.bucket.objects[entry["path"]].__len__() == entry["size"]
     assert len(world.metric.points) == 1
     assert world.metric.points[0][0]["MetricName"] == METRIC_NAME
     assert len(world.exports) == 1
     assert "export/board-1/index.json" in world.bucket.objects
+    # Item A10: the night's own export is valid board/1. The committed JSON Schema
+    # (docs/schemas/board-1.schema.json) equals these models' own; a drift test checks that.
+    BoardIndex.model_validate_json(world.bucket.objects["export/board-1/index.json"])
+    case_keys = world.keys("export/board-1/cases/")
+    assert len(case_keys) == 2
+    for key in case_keys:
+        CaseFile.model_validate_json(world.bucket.objects[key])
     assert world.sns.sent == []
     assert report.alerts == ()
 
@@ -788,3 +798,201 @@ def test_a_night_past_midnight_dates_everything_by_its_start(world: World) -> No
     assert world.export_dates == [(start.date(), start)]
     assert "nights/2026-10-12/night.json" in world.bucket.objects
     assert world.keys("nights/2026-10-13/") == []
+
+
+# --- final review, wave A: a resume's money (A1) and its dockets (A2) ---
+
+
+def test_a_full_night_killed_mid_calls_resumes_the_next_night_and_is_not_refused(
+    world: World,
+) -> None:
+    """Item A1: room for exactly the two queued cases; killed after one reply, resumed next night.
+
+    The key's ``usage_monthly`` has grown by the one reply paid for; the resume needs only what
+    its cases may still cost, so it fits the room that is left.
+    """
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2), key=_key(usage=8.4))
+    (run_id,) = world.run_ids()
+    paid = 0.0011  # the first scripted reply's reported cost (tests.test_agent_drive)
+    rest = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=rest, key=_key(usage=8.4 + paid))
+    assert report.outcome is not None
+    assert report.outcome.summary.run_id == run_id
+    assert report.alerts == ()
+    assert rest.calls == ALL_CALLS - 1
+    ids = world.closure_ids()
+    assert sorted(ids) == sorted(str(r["ntsbNumber"]) for r in RAWS)
+    # A week later with nothing else spent, the finished run asks nothing of the room.
+    third, _, idle = world.night(DAY_2 + timedelta(days=7), key=_key(usage=8.4 + paid))
+    assert idle.calls == 0
+    assert third.outcome is not None
+
+
+def test_a_resume_that_could_pass_the_room_is_still_refused(world: World) -> None:
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2), key=_key(usage=8.4))
+    report, _, rest = world.night(DAY_2, model=_Recording(replies[1:]), key=_key(usage=8.45))
+    assert report.alerts == ("money-held-back",)
+    assert rest.calls == 0
+
+
+def test_a_push_that_fails_after_a_reply_row_resumes_and_pays_that_call_again(
+    world: World,
+) -> None:
+    """Item A1: the reply written but not uploaded is paid again; no case is coded twice."""
+    replies = _sync_replies(_scripts())
+    real = world.bucket.upload_file
+    uploads = {"replies": 0}
+
+    def upload(filename: str, bucket: str, key: str) -> None:
+        if key.endswith("/replies.jsonl"):
+            uploads["replies"] += 1
+            if uploads["replies"] == 2:  # the copy after the second reply row
+                raise OSError("the bucket did not answer")
+        real(filename, bucket, key)
+
+    world.bucket.upload_file = upload  # type: ignore[method-assign]
+    with pytest.raises(OSError, match="did not answer"):
+        world.night(DAY_1, model=_Recording(replies))
+    assert world.alerts() == ["night-crashed"]
+    (run_id,) = world.run_ids()
+    assert len(world.text(f"runs/{run_id}/replies.jsonl").splitlines()) == 1
+    world.bucket.upload_file = real  # type: ignore[method-assign]
+
+    rest = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=rest)
+    assert rest.calls == ALL_CALLS - 1  # the second call, written but not uploaded, went again
+    assert report.outcome is not None
+    assert report.outcome.summary.run_id == run_id
+    ids = world.closure_ids()
+    assert sorted(ids) == sorted(str(r["ntsbNumber"]) for r in RAWS)
+    assert len(ids) == len(set(ids))
+
+
+def _listing_hash(world: World, value: list[str]) -> None:
+    def hashes(cache: Path, mkey: int) -> tuple[str | None, dict[int, str]]:
+        return value[0], {1: "d" * 64, 2: "e" * 64}
+
+    world.monkeypatch.setattr(morning, "cached_hashes", hashes)
+
+
+def test_the_run_records_its_dockets_before_the_first_request(world: World) -> None:
+    _listing_hash(world, ["a" * 64])
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=1))
+    (run_id,) = world.run_ids()
+    dockets = world.json(f"runs/{run_id}/dockets.json")
+    assert dockets["format"] == "live-dockets/1"
+    assert [c["listing_sha256"] for c in dockets["cases"]] == ["a" * 64] * len(RAWS)
+    assert dockets["cases"][0]["documents"] == {"1": "d" * 64, "2": "e" * 64}
+    assert dockets["cases"][0]["offered"] == [1, 2]
+    assert set(dockets["cases"][0]) == {"case_id", "mkey", "listing_sha256", "documents", "offered"}
+
+
+def test_a_docket_that_changes_before_the_resume_refuses_it_before_any_call(world: World) -> None:
+    """Item A2, the fallback: the runner compares a resume's whole spec, so no case is dropped."""
+    hashed = ["a" * 64]
+    _listing_hash(world, hashed)
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
+    (run_id,) = world.run_ids()
+    hashed[0] = "b" * 64  # the NTSB replaced the listing page
+    rest = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=rest)
+    assert report.outcome is None
+    assert report.alerts == ("docket-changed",)
+    assert world.alerts() == ["docket-changed"]
+    assert rest.calls == 0
+    assert world.metric.points == []
+    assert world.json("nights/2026-10-13/night.json")["alerts"] == ["docket-changed"]
+    assert len(world.exports) == 1  # the steps that need no store still run
+    assert world.run_ids() == [run_id]
+    assert f"runs/{run_id}/run.jsonl" not in world.bucket.objects
+
+    hashed[0] = "a" * 64  # the same files again: the run resumes
+    again = _Recording(replies[1:])
+    later_night, _, _ = world.night(DAY_2 + timedelta(days=1), model=again)
+    assert again.calls == ALL_CALLS - 1
+    assert later_night.outcome is not None
+    (key,) = [k for k in world.keys(f"runs/{run_id}/") if k.endswith(CLOSURES_FILE)]
+    records = [ClosureRecord.model_validate_json(x) for x in world.text(key).splitlines()]
+    assert {r.listing_sha256 for r in records} == {"a" * 64}
+    assert {d.sha256 for r in records for d in r.documents} == {"d" * 64, "e" * 64}
+
+
+def test_a_docket_that_fails_to_fetch_on_resume_stops_the_night_and_resumes_later(
+    world: World,
+) -> None:
+    from ntsb_probable_cause.live.fetch import FetchError  # noqa: PLC0415
+
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
+    (run_id,) = world.run_ids()
+    working = morning.prefetch_docket  # type: ignore[attr-defined]  # the fixture's fake
+
+    def down(client: object, mkey: int, *, known_documents: int) -> Any:
+        raise FetchError(f"docket {mkey}: listing not read (http-503)")
+
+    world.monkeypatch.setattr(morning, "prefetch_docket", down)
+    rest = _Recording(replies[1:])
+    report, _, _ = world.night(DAY_2, model=rest)
+    assert report.outcome is None
+    assert report.alerts == ("fetch-failed",)
+    assert rest.calls == 0
+    assert world.json("nights/state.json")["failures"] == {}  # a resume's fetch counts nothing
+
+    world.monkeypatch.setattr(morning, "prefetch_docket", working)
+    again = _Recording(replies[1:])
+    later_night, _, _ = world.night(DAY_2 + timedelta(days=1), model=again)
+    assert again.calls == ALL_CALLS - 1
+    assert later_night.outcome is not None
+    assert later_night.outcome.summary.run_id == run_id
+
+
+def test_a_resume_that_cannot_go_on_is_resume_failed_not_a_crash(world: World) -> None:
+    """Item A2, part 3: the later scores, the export and the night record still run."""
+    replies = _sync_replies(_scripts())
+    with pytest.raises(KeyboardInterrupt):
+        world.night(DAY_1, model=KillOnCall(replies, kill_at=2))
+    (run_id,) = world.run_ids()
+    del world.bucket.objects[f"runs/{run_id}/dockets.json"]
+    report, _, rest = world.night(DAY_2, model=_Recording(replies[1:]))
+    assert report.outcome is None
+    assert report.alerts == ("resume-failed",)
+    assert world.alerts() == ["resume-failed"]
+    assert rest.calls == 0
+    assert world.json("nights/2026-10-13/night.json")["alerts"] == ["resume-failed"]
+    assert world.json("nights/2026-10-13/manifest.json")["finished"] is False
+    assert len(world.exports) == 1
+
+
+def test_a_later_night_changing_the_state_leaves_every_ledgered_manifest_sound(
+    world: World,
+) -> None:
+    """Item A4: each night's manifest lists its own state snapshot, never the shared file."""
+    ledger: list[LedgerLine] = []
+    world.night(DAY_1, ntsb=FakeNtsb(RAWS[:1]))  # the second case's record fails: counted
+    assert world.json("nights/state.json")["failures"] == {str(RAWS[1]["ntsbNumber"]): 1}
+
+    def manifests() -> dict[str, bytes]:
+        return {
+            k: v
+            for k, v in world.bucket.objects.items()
+            if k.endswith("/manifest.json") and k.startswith(("runs/", "nights/"))
+        }
+
+    ledger += new_lines(ledger, manifests(), DAY_1)
+    rest = _Recording(_sync_replies(_scripts())[8:])  # the second case's two calls
+    world.night(DAY_2, model=rest)
+    assert world.json("nights/state.json")["failures"] == {}  # the shared state moved on
+    ledger += new_lines(ledger, manifests(), DAY_2)
+    assert world.json("nights/2026-10-12/state.json")["failures"] != {}
+    fresh = world.tmp / "verify"
+    BucketMirror("live-bucket", fresh, world.bucket).pull()
+    assert verify(ledger, fresh) == []

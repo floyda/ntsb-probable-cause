@@ -20,6 +20,8 @@ CLOSURE_FORMAT: Final = "live-closure/2"
 CLOSURE_FORMAT_V1: Final = "live-closure/1"
 BACKFILL_FORMAT: Final = "live-backfill/1"
 MANIFEST_FORMAT: Final = "live-manifest/1"
+DOCKETS_FORMAT: Final = "live-dockets/1"
+DOCKETS_FILE: Final = "dockets.json"
 CLOSURES_FILE: Final = "closures.jsonl"
 BACKFILL_FILE: Final = "backfill.json"
 INPUTS_FILE: Final = "inputs.jsonl"
@@ -123,6 +125,36 @@ _ANY_CLOSURE: Final[TypeAdapter[ClosureRecord | ClosureRecordV1]] = TypeAdapter(
 def read_closure_records(path: Path) -> list[ClosureRecord | ClosureRecordV1]:
     """Every line of a ``closures.jsonl``, version 1 (S3.3's runs) or version 2 (S4's)."""
     return [_ANY_CLOSURE.validate_json(line) for line in path.read_text().splitlines() if line]
+
+
+class DocketHashes(BaseModel, frozen=True):
+    """One case's docket as the run first fetched it: hashes and indices only, never a title.
+
+    ``listing_sha256`` and ``documents`` (listing index to SHA-256) are what the docket client's
+    ``fetch.json`` recorded, of the bytes as received (decision 0176); ``offered`` is the
+    listing indices the run's first read choice offers (``docket.filter.arm_b_documents``).
+    """
+
+    case_id: str
+    mkey: int
+    listing_sha256: str | None
+    documents: dict[int, str]
+    offered: tuple[int, ...]
+
+
+class DocketsFile(BaseModel, frozen=True):
+    """``dockets.json``: each case's docket hashes, written before the run's first request.
+
+    The closure records take their hashes from here, never from a cache fetched again on a
+    resume, and a resume compares a fresh fetch with it (final review, wave A, item A2).
+    """
+
+    format: Literal["live-dockets/1"] = DOCKETS_FORMAT
+    cases: tuple[DocketHashes, ...]
+
+    def by_case(self) -> dict[str, DocketHashes]:
+        """The cases keyed by case id."""
+        return {c.case_id: c for c in self.cases}
 
 
 class Backfill(BaseModel, frozen=True):

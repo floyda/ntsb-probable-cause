@@ -15,11 +15,16 @@ from ntsb_probable_cause.agent.drive import REPLIES_FILE, ReplyRow
 from ntsb_probable_cause.agent.run import TRAIL_FILE
 from ntsb_probable_cause.agent.schemas import ChooseDocuments
 from ntsb_probable_cause.agent.trail import AgentCall
-from ntsb_probable_cause.docket.client import cached_hashes
 from ntsb_probable_cause.docket.manifest import Docket
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.live.fetch import prelim_present
 from ntsb_probable_cause.live.queue import QueuedCase, waited_days
-from ntsb_probable_cause.live.records import ClosureRecord, DocumentLine
+from ntsb_probable_cause.live.records import (
+    DOCKETS_FILE,
+    ClosureRecord,
+    DocketHashes,
+    DocumentLine,
+)
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord, read_jsonl
 from ntsb_probable_cause.sources import TRAINING_CUTOFFS
 
@@ -42,13 +47,33 @@ def run_record(folder: Path) -> RunRecord:
     return read_jsonl(folder / RUN_FILE, RunRecord)[-1]
 
 
+def is_finished(folder: Path) -> bool:
+    """Whether the run folder's ``run.jsonl`` says it finished: the run's commit point.
+
+    ``run.jsonl`` goes up to the bucket last (``cloud.push_order``), so a folder whose last run
+    record has no ``finished`` time, or that has none, is a run still to resume, and nothing
+    else in it is read as a result (final review, wave A, item A3).
+    """
+    path = folder / RUN_FILE
+    if not path.is_file():
+        return False
+    records = read_jsonl(path, RunRecord)
+    return bool(records) and records[-1].finished is not None
+
+
 def build_records(
-    folder: Path, prepared: Sequence[Prepared], lock_sha: str, docket_cache: Path
+    folder: Path,
+    prepared: Sequence[Prepared],
+    lock_sha: str,
+    dockets: Mapping[str, DocketHashes],
 ) -> list[ClosureRecord]:
     """Return one closure record per prepared case, from the run folder's files.
 
-    ``docket_cache`` holds each case's fetched documents; their hashes are read from it, so call
-    this before the cache is deleted.
+    ``dockets`` is the run's ``dockets.json`` by case id: the hashes the run first fetched, so a
+    resume that fetched the docket again never changes them (final review, wave A, item A2).
+
+    Raises:
+        ConfigurationError: a prepared case has no entry in ``dockets``.
     """
     record = run_record(folder)
     results = {r.case_id: r for r in read_jsonl(folder / CASES_FILE, CaseResult)}
@@ -64,7 +89,12 @@ def build_records(
         scored = result is not None and bool(result.verdict_occurrence)
         scores = result.scores if scored and result is not None else None
         failure = "missing result" if result is None else result.failure
-        listing_sha, document_shas = cached_hashes(docket_cache, p.case.mkey)
+        hashes = dockets.get(p.case.case_id)
+        if hashes is None:
+            raise ConfigurationError(
+                f"the run's {DOCKETS_FILE} holds no entry for one of its cases, so its closure "
+                "record cannot name the files it was coded from"
+            )
         out.append(
             ClosureRecord(
                 case_id=p.case.case_id,
@@ -84,7 +114,7 @@ def build_records(
                 training_cutoff_source=cutoff.source,
                 uv_lock_sha256=lock_sha,
                 event_date=p.case.event_date,
-                listing_sha256=listing_sha,
+                listing_sha256=hashes.listing_sha256,
                 request_sha256s=tuple(
                     r.request_sha256
                     for r in sorted(
@@ -98,7 +128,7 @@ def build_records(
                 providers=tuple(
                     sorted({c.reply_provider for c in case_calls if c.reply_provider is not None})
                 ),
-                documents=document_lines(p.docket, case_calls, document_shas),
+                documents=document_lines(p.docket, case_calls, hashes.documents),
                 prelim_present=prelim_present(p.raw),
                 outcome="not coded" if failure else "coded",
                 failure=failure,

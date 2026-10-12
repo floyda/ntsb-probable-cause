@@ -21,7 +21,9 @@ test replaces each with a fake. In order:
 5. Build the export from the mirror and push it to ``export/board-1/``. Any failure (a damaged
    mirror, the store, the bucket, the disk) is the alert ``export-failed``; it is not a
    refusal, and the night goes on.
-6. Write and push ``nights/<date>/night.json`` and the night's manifest (counts only).
+6. Write and push ``nights/<date>/night.json``, ``nights/<date>/state.json`` (a snapshot of the
+   shared ``nights/state.json`` at the night's end) and the night's manifest (counts only). The
+   manifest lists the snapshot, never the shared file, which later nights rewrite.
 7. Publish the one metric, unless something stopped the night (decision 0177 item 2).
 8. Send one alert per kind, each with its own counts (decision 0177 item 1).
 
@@ -73,6 +75,7 @@ NIGHT_MANIFEST_FORMAT: Final = "live-night-manifest/1"
 NIGHT_FILE: Final = "night.json"
 NIGHT_MANIFEST_FILE: Final = "manifest.json"
 STATE_KEY: Final = Path("nights") / "state.json"
+NIGHT_STATE_SNAPSHOT: Final = "state.json"  # nights/<date>/state.json, the state at the night's end
 FETCH_FAILED: Final = "fetch-failed"
 AWAITING_CODES: Final = "awaiting-codes-7"
 LATER_FAILED: Final = "later-score-failed"
@@ -304,7 +307,8 @@ class _Night:
         folder = self.local / "nights" / self.today.isoformat()
         folder.mkdir(parents=True, exist_ok=True)
         (folder / NIGHT_FILE).write_text(json.dumps(record, indent=2) + "\n")
-        night_files = self._night_files(summary.run_id if summary else None, later.path)
+        snapshot = self._snapshot_state(folder)
+        night_files = self._night_files(summary.run_id if summary else None, later.path, snapshot)
         manifest = {
             "format": NIGHT_MANIFEST_FORMAT,
             "date": self.today.isoformat(),
@@ -317,15 +321,31 @@ class _Night:
         }
         (folder / NIGHT_MANIFEST_FILE).write_text(json.dumps(manifest, indent=2) + "\n")
 
-    def _night_files(self, run_id: str | None, scores: Path | None) -> list[Path]:
+    def _snapshot_state(self, folder: Path) -> Path | None:
+        """Copy the shared night state into tonight's folder, as it is at the night's end.
+
+        The shared ``nights/state.json`` is rewritten by later nights, so a ledgered manifest
+        that listed it would read as changed (tampered) once it moved on. The manifest lists
+        this snapshot instead, which no later night rewrites (final review, wave A, item A4).
+        None when there is no state yet.
+        """
+        state = self.local / STATE_KEY
+        if not state.is_file():
+            return None
+        snapshot = folder / NIGHT_STATE_SNAPSHOT
+        snapshot.write_bytes(state.read_bytes())
+        return snapshot
+
+    def _night_files(
+        self, run_id: str | None, scores: Path | None, snapshot: Path | None
+    ) -> list[Path]:
         paths: list[Path] = []
         if run_id is not None:
             paths += [p for p in _files(self.local / "runs" / run_id) if p.name != RESERVATION_FILE]
         if scores is not None:
             paths.append(scores)
-        state = self.local / STATE_KEY
-        if state.is_file():
-            paths.append(state)
+        if snapshot is not None:  # never the shared nights/state.json (item A4)
+            paths.append(snapshot)
         return paths
 
 

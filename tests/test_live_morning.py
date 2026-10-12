@@ -53,9 +53,12 @@ from ntsb_probable_cause.live.queue import backfill_digest
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
+    DOCKETS_FILE,
     INPUTS_FILE,
     Backfill,
     ClosureRecord,
+    DocketHashes,
+    DocketsFile,
     portability_problems,
     verify_manifest,
 )
@@ -72,6 +75,19 @@ from ntsb_probable_cause.store import Closure
 NOW = datetime(2026, 10, 7, 6, 0, tzinfo=UTC)
 TODAY = NOW.date()
 PENDING = "live-pending-inputs.jsonl"
+
+
+def _write_dockets(folder: Path, cases: Sequence[tuple[str, int]]) -> None:
+    """The ``dockets.json`` a run with the rig's docket and no cache writes (item A2)."""
+    file = DocketsFile(
+        cases=tuple(
+            DocketHashes(
+                case_id=case_id, mkey=mkey, listing_sha256=None, documents={}, offered=(1, 2)
+            )
+            for case_id, mkey in cases
+        )
+    )
+    (folder / DOCKETS_FILE).write_text(file.model_dump_json())
 
 
 def run_morning(deps: MorningDeps, *, dry_run: bool = False, limit: int | None = None) -> Any:
@@ -489,6 +505,7 @@ def test_c_an_unfinished_run_is_resumed_with_its_inputs_and_no_new_run_starts(ri
     folder.mkdir(exist_ok=True)
     raws = [_raw("XXX26LA002", 1002), _raw("XXX26LA001", 1001)]
     (folder / INPUTS_FILE).write_text("".join(json.dumps(r) + "\n" for r in raws))
+    _write_dockets(folder, [("XXX26LA002", 1002), ("XXX26LA001", 1001)])
     rig.sink.unfinished = run_id
     rig.sink.held = Backfill(
         fixed_on=date(2026, 10, 1), case_ids=("X",), sha256=backfill_digest(["X"])
@@ -509,6 +526,7 @@ def test_c_a_pending_inputs_file_is_moved_into_the_unfinished_run_first(rig: Rig
     (rig.runs_dir / run_id).mkdir()
     raws = [_raw("XXX26LA001", 1001)]
     (rig.runs_dir / PENDING).write_text(json.dumps(raws[0]) + "\n")
+    _write_dockets(rig.runs_dir / run_id, [("XXX26LA001", 1001)])
     rig.sink.unfinished = run_id
     rig.sink.held = Backfill(
         fixed_on=date(2026, 10, 1), case_ids=("X",), sha256=backfill_digest(["X"])
@@ -521,8 +539,12 @@ def test_c_a_pending_inputs_file_is_moved_into_the_unfinished_run_first(rig: Rig
 def test_c_an_unfinished_run_with_no_inputs_is_refused(rig: Rig) -> None:
     (rig.runs_dir / "20261007T050000-abc1234-live-C").mkdir()
     rig.sink.unfinished = "20261007T050000-abc1234-live-C"
-    with pytest.raises(ConfigurationError, match="inputs"):
+    with pytest.raises(LiveRefusal) as caught:
         run_morning(rig.deps())
+    # A resume's error is the stop resume-failed, not a crash (final review, wave A, item A2).
+    assert caught.value.kind == "resume-failed"
+    assert "inputs" in str(caught.value.__cause__)
+    assert "XXX26" not in str(caught.value)
 
 
 def test_d_forty_queued_and_room_for_twenty_seven_codes_twenty_seven(rig: Rig) -> None:
@@ -1104,8 +1126,10 @@ def test_resume_without_a_backfill_anywhere_is_refused(rig: Rig) -> None:
     run_id = _first_morning_interrupted(rig)
     (rig.runs_dir / run_id / BACKFILL_FILE).unlink()
     rig.sink.unfinished = run_id
-    with pytest.raises(ConfigurationError, match="backfill"):
+    with pytest.raises(LiveRefusal) as caught:
         run_morning(rig.deps())
+    assert caught.value.kind == "resume-failed"
+    assert "backfill" in str(caught.value.__cause__)
 
 
 def test_a_failed_write_is_completed_at_the_start_of_the_next_morning(rig: Rig) -> None:
@@ -1370,9 +1394,10 @@ def test_an_unfinished_run_with_no_readable_spec_is_left_to_the_resumes_own_chec
     (rig.runs_dir / run_id).mkdir(parents=True, exist_ok=True)
     (rig.runs_dir / run_id / "spec.json").write_text(text)
     rig.sink.unfinished = run_id
-    with pytest.raises(ConfigurationError, match="inputs") as caught:
+    with pytest.raises(LiveRefusal) as caught:
         run_morning(rig.deps())
-    assert not isinstance(caught.value, LiveRefusal)
+    assert caught.value.kind == "resume-failed"  # the resume's own check, as a stop (item A2)
+    assert "inputs" in str(caught.value.__cause__)
     assert _StubRunner.instances == []
 
 
@@ -1389,6 +1414,7 @@ def test_the_cloud_dry_run_skips_the_resume_across_commits_check_and_a_paid_nigh
     with pytest.raises(LiveRefusal) as caught:
         night(rig.deps(), dry_run=True)  # the default: the check runs
     assert caught.value.kind == "resume-refused"
-    with pytest.raises(ConfigurationError, match="inputs") as skipped:
+    with pytest.raises(LiveRefusal) as skipped:
         night(rig.deps(), dry_run=True, check_resume=False)  # past it, to the resume's own checks
-    assert not isinstance(skipped.value, LiveRefusal)
+    assert skipped.value.kind == "resume-failed"
+    assert "inputs" in str(skipped.value.__cause__)

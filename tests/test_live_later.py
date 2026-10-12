@@ -6,11 +6,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import pytest
 from tests.conftest import load_record_fixtures
+from tests.test_live_closure import _run as _run_record
 from tests.test_live_morning import _result
 
 from ntsb_probable_cause.fields import EvidenceRole
-from ntsb_probable_cause.live.closure import CASES_FILE
+from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE
 from ntsb_probable_cause.live.later import (
     _EXCLUSIONS,
     AWAIT_ALERT_NIGHTS,
@@ -124,6 +126,7 @@ def _folder(tmp_path: Path, records: list[ClosureRecord], with_steps: bool = Tru
     write_jsonl(
         folder / CASES_FILE, [_result(r.case_id, steps=steps, scores=None) for r in records]
     )
+    write_jsonl(folder / RUN_FILE, [_run_record()])  # finished: the commit point (item A3)
     return folder
 
 
@@ -173,7 +176,7 @@ def test_awaiting_counts_a_case_once_across_folders(tmp_path: Path) -> None:
     one = _folder(tmp_path, [_closure("X")])
     two = tmp_path / "run2"
     two.mkdir()
-    for name in (CLOSURES_FILE, CASES_FILE):
+    for name in (CLOSURES_FILE, CASES_FILE, RUN_FILE):
         (two / name).write_text((one / name).read_text())
     assert len(awaiting([one, two], set())) == 1
 
@@ -220,6 +223,7 @@ def test_a_case_scored_in_another_folder_is_not_awaiting(tmp_path: Path) -> None
     done = _closure("X", scored=True, top1=True, top3=True, abstained=False)
     (two / CLOSURES_FILE).write_text(done.model_dump_json() + "\n")
     (two / CASES_FILE).write_text((one / CASES_FILE).read_text())
+    (two / RUN_FILE).write_text((one / RUN_FILE).read_text())
     assert awaiting([one, two], set()) == []
     assert awaiting([two, one], set()) == []
 
@@ -238,3 +242,16 @@ def test_a_case_with_no_coding_time_is_skipped(tmp_path: Path) -> None:
 
 def test_the_split_exclusions_are_the_live_runs() -> None:
     assert _EXCLUSIONS == live_spec(1.0).exclusions == frozenset({EvidenceRole.PRELIM_NARRATIVE})
+
+
+@pytest.mark.parametrize("run_file", ["absent", "unfinished"])
+def test_a_folder_whose_run_record_is_not_finished_is_never_read(
+    tmp_path: Path, run_file: str
+) -> None:
+    """Item A3: ``run.jsonl`` is the commit point; any other folder is a run still to resume."""
+    folder = _folder(tmp_path, [_closure("X")])
+    if run_file == "absent":
+        (folder / RUN_FILE).unlink()
+    else:
+        write_jsonl(folder / RUN_FILE, [_run_record().model_copy(update={"finished": None})])
+    assert awaiting([folder], set()) == []

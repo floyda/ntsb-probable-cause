@@ -19,7 +19,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel
 
-from ntsb_probable_cause.live.closure import CASES_FILE
+from ntsb_probable_cause.live.closure import CASES_FILE, is_finished
 from ntsb_probable_cause.live.morning import live_spec
 from ntsb_probable_cause.live.records import CLOSURES_FILE, ClosureRecord, read_closure_records
 from ntsb_probable_cause.records.split import split_record
@@ -78,7 +78,8 @@ def _coded_on(record: ClosureRecord) -> date | None:
 def awaiting(runs: Sequence[Path], scored: Set[str]) -> list[Awaiting]:
     """Coded cases whose closure record is unscored and that no later score covers.
 
-    ``runs`` are live run folders. A folder without a closures file is skipped. A case with any
+    ``runs`` are live run folders. A folder without a closures file, or whose ``run.jsonl`` does
+    not say finished (the commit point, ``closure.is_finished``), is skipped. A case with any
     scored record, or any record whose outcome is not "coded", in any folder given, is never
     awaiting. Version 1 records (S3.3's runs) carry no event date, which a later score's board
     row needs, so they are skipped; so is a coded case whose result holds no step (it has no
@@ -90,7 +91,7 @@ def awaiting(runs: Sequence[Path], scored: Set[str]) -> list[Awaiting]:
     for folder in runs:
         closures = folder / CLOSURES_FILE
         cases = folder / CASES_FILE
-        if not closures.is_file() or not cases.is_file():
+        if not closures.is_file() or not cases.is_file() or not is_finished(folder):
             continue
         results: dict[str, CaseResult] | None = None
         for record in read_closure_records(closures):

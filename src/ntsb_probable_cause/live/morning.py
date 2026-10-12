@@ -21,7 +21,7 @@ import json
 import math
 import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from importlib import resources
@@ -30,11 +30,13 @@ from typing import Any, Final
 
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
+from ntsb_probable_cause.agent.drive import REPLIES_FILE, ReplyRow
 from ntsb_probable_cause.agent.run import GUIDANCE, AgentRunner
 from ntsb_probable_cause.agent.schemas import Without
 from ntsb_probable_cause.agent.version import VERSION_1, prompt_version
 from ntsb_probable_cause.data.api import NtsbClient
-from ntsb_probable_cause.docket.client import DocketClient
+from ntsb_probable_cause.docket.client import DocketClient, cached_hashes
+from ntsb_probable_cause.docket.filter import arm_b_documents
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.live.closure import CASES_FILE, RUN_FILE, Prepared, build_records
@@ -44,15 +46,18 @@ from ntsb_probable_cause.live.queue import QueuedCase, backfill_digest, build_qu
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
+    DOCKETS_FILE,
     INPUTS_FILE,
     MANIFEST_FILE,
     Backfill,
     ClosureRecord,
+    DocketHashes,
+    DocketsFile,
     failure_kind,
 )
 from ntsb_probable_cause.live.seams import MonthSpend, ResultSink, SpendCounter, StoreSource
 from ntsb_probable_cause.live.state import NightState, after_fetches
-from ntsb_probable_cause.model.client import ModelClient, ModelSettings
+from ntsb_probable_cause.model.client import ModelClient, ModelSettings, cost_usd
 from ntsb_probable_cause.scoring.budget import month_spent, open_reservations
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
@@ -106,14 +111,17 @@ VERSION_1_SETTINGS: Final[Mapping[str, object]] = {
 }
 PENDING_BACKFILL_FILE: Final = "live-pending-backfill.json"
 PENDING_INPUTS_FILE: Final = "live-pending-inputs.jsonl"
+PENDING_DOCKETS_FILE: Final = "live-pending-dockets.json"
 REFUSALS_FILE: Final = "live-refusals.jsonl"
 MORNING_COUNTS_FILE: Final = "live-morning-counts.jsonl"
 MORNING_COUNTS_FORMAT: Final = "live-morning/1"
 _SIDE_SUFFIXES: Final = ("-wal", "-shm")
 
 # Every alert kind a night or a morning can produce, each once (decision 0177; the S4 runbook's
-# rows are checked against this list). Before any spend: the first eight are the kinds of a
-# ``LiveRefusal`` (``resume-refused``: an unfinished run began at another commit). During the
+# rows are checked against this list). Before any spend: the first ten are the kinds of a
+# ``LiveRefusal`` (``resume-refused``: an unfinished run began at another commit;
+# ``docket-changed``: a case's docket, fetched again for a resume, differs from the run's first
+# fetch; ``resume-failed``: the resume or a completion could not go on). During the
 # night: ``state.after_fetches``'s kinds, ``money-held-back`` when the queue is longer than the
 # money allows, ``fetch-failed`` for a fetch error that stops the night, ``awaiting-codes-7``
 # (``later.overdue``), ``later-score-failed`` (a later score's error), ``export-failed`` and
@@ -123,6 +131,8 @@ ALERT_KINDS: Final = (
     "version-refused",
     "docket-folders",
     "resume-refused",
+    "docket-changed",
+    "resume-failed",
     "key-unreachable",
     "store-unsound",
     "recorder-not-finished",
@@ -215,7 +225,9 @@ class LiveRefusal(ConfigurationError):  # noqa: N818 -- the name the S4 design f
     ``kind`` is one of ``"version-refused"``, ``"recorder-not-finished"``, ``"store-unsound"``,
     ``"key-unreachable"``, ``"money-held-back"``, ``"budget-guard"`` (the runner's own monthly
     guard, ``Settings.monthly_budget_usd``, checked before any run folder is made),
-    ``"resume-refused"`` (an unfinished live run began at another commit) and
+    ``"resume-refused"`` (an unfinished live run began at another commit), ``"docket-changed"``
+    (a resume's fresh fetch of a case's docket differs from the run's ``dockets.json``),
+    ``"resume-failed"`` (a resume or a completion raised a ``ConfigurationError``) and
     ``"docket-folders"``.
 
     Raises:
@@ -451,7 +463,8 @@ class _Morning:
     def run(self) -> NightOutcome:
         self.lock_sha = self.deps.uv_lock_sha256()  # read with the other checks, before any run
         if not self.dry_run:
-            self._complete_unrecorded()
+            with _resume_failures():
+                self._complete_unrecorded()
         if not self.store.run_finished_on(self.today):
             raise LiveRefusal(
                 "recorder-not-finished",
@@ -460,7 +473,8 @@ class _Morning:
             )
         unfinished = self.deps.sink.unfinished_run()
         if unfinished is not None:
-            return self._outcome(self._resume(unfinished))
+            with _resume_failures():
+                return self._outcome(self._resume(unfinished))
         state = self.deps.sink.night_state()
         done = self.deps.sink.done_case_ids()
         queue = build_queue(self._closures(), done | state.unreachable.keys())
@@ -494,7 +508,7 @@ class _Morning:
                 self._log_counts(summary, queue_at_start=len(queue), taken=len(take))
             )
         raws = [f.raw for f in fetched]
-        self._write_pending(raws)
+        self._write_pending(raws, fetched)
         summary = self._execute(
             fetched,
             raws,
@@ -590,16 +604,78 @@ class _Morning:
 
     # --- inputs and backfill, kept for an exact resume ---
 
-    def _write_pending(self, raws: Sequence[Mapping[str, object]]) -> None:
+    def _write_pending(
+        self, raws: Sequence[Mapping[str, object]], prepared: Sequence[Prepared]
+    ) -> None:
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         (self.runs_dir / PENDING_INPUTS_FILE).write_text(
             "".join(json.dumps(raw) + "\n" for raw in raws)
         )
+        (self.runs_dir / PENDING_DOCKETS_FILE).write_text(
+            self._dockets(prepared).model_dump_json(indent=1) + "\n"
+        )
+
+    def _dockets(self, prepared: Sequence[Prepared]) -> DocketsFile:
+        """Each case's docket hashes from the cache, and the indices its first choice offers."""
+        cache = self.deps.settings.live_docket_dir
+        cases: list[DocketHashes] = []
+        for p in prepared:
+            listing, documents = cached_hashes(cache, p.case.mkey)
+            cases.append(
+                DocketHashes(
+                    case_id=p.case.case_id,
+                    mkey=p.case.mkey,
+                    listing_sha256=listing,
+                    documents=documents,
+                    offered=tuple(arm_b_documents(p.docket)),
+                )
+            )
+        return DocketsFile(cases=tuple(cases))
+
+    def _recorded_dockets(self, folder: Path) -> DocketsFile:
+        """The run's ``dockets.json``.
+
+        Raises:
+            ConfigurationError: the run folder holds none.
+        """
+        path = folder / DOCKETS_FILE
+        if not path.is_file():
+            raise ConfigurationError(
+                f"the live run {folder.name} has no {DOCKETS_FILE}, so the files its cases were "
+                "coded from are not known"
+            )
+        return DocketsFile.model_validate_json(path.read_text())
+
+    def _check_dockets(self, folder: Path, prepared: Sequence[Prepared]) -> DocketsFile:
+        """Refuse a run whose dockets, fetched again, differ from its first fetch (item A2).
+
+        The replay is sound only when every case is shown the documents it was first shown, and
+        the closure records must name the files the case was coded from (decision 0176). The
+        runner compares a resume's whole spec, so one case cannot be dropped from it; the run
+        is refused instead, before any call.
+
+        Raises:
+            LiveRefusal: kind ``docket-changed``.
+            ConfigurationError: the run folder holds no ``dockets.json``.
+        """
+        recorded = self._recorded_dockets(folder)
+        first = recorded.by_case()
+        now = self._dockets(prepared).by_case()
+        changed = sum(1 for case_id, hashes in now.items() if first.get(case_id) != hashes)
+        if changed:
+            raise LiveRefusal(
+                "docket-changed",
+                f"{changed} of the unfinished run's {len(now)} cases have a docket that differs "
+                f"from the one the run first fetched ({DOCKETS_FILE}): the run is not resumed "
+                "(runbook, docket-changed)",
+            )
+        return recorded
 
     def _settle_pending(self, folder: Path) -> None:
         """Move the pending inputs and backfill into a live run's folder (or drop stale ones)."""
         for name, target_name in (
             (PENDING_INPUTS_FILE, INPUTS_FILE),
+            (PENDING_DOCKETS_FILE, DOCKETS_FILE),
             (PENDING_BACKFILL_FILE, BACKFILL_FILE),
         ):
             pending = self.runs_dir / name
@@ -700,17 +776,19 @@ class _Morning:
                 f"the unfinished live run {run_id} is resumed with no backfill held anywhere: "
                 "it is never recomputed from a later queue"
             )
-        unanswered = len(raws) - len(_answered(folder))
-        if unanswered * LIVE_CAP_USD > self.room + 1e-9:
+        unanswered, exposure = _remaining_exposure(folder, raws)
+        if exposure > self.room + 1e-9:
             raise LiveRefusal(
                 "money-held-back",
                 f"the unfinished run has {unanswered} cases to answer, which at the "
-                f"${LIVE_CAP_USD} cap a case needs more than the ${self.room:.2f} left this month",
+                f"${LIVE_CAP_USD} cap a case less what each has already spent need "
+                f"${exposure:.4f}, more than the ${self.room:.4f} left this month",
             )
         if self.dry_run:
             _say(f"dry run: a morning would resume the unfinished run with {len(raws)} cases.")
             return self._summary(None, [], returned=0, queued=0, record=None, freed=0)
         prepared = self._prepare(raws)
+        self._check_dockets(folder, prepared)
         hidden = self.deps.sink.night_state().unreachable.keys()
         done = (self.deps.sink.done_case_ids() | hidden) - {p.case.case_id for p in prepared}
         return self._execute(
@@ -817,9 +895,13 @@ class _Morning:
             if not inputs.is_file():
                 raise ConfigurationError(f"the finished live run {run_id} has no {INPUTS_FILE}")
             prepared = self._prepare(_read_inputs(inputs))
-        # The records take the documents' hashes from the cache, so they are built before
-        # _cleanup deletes it. Do not reorder these two.
-        records = build_records(folder, prepared, self.lock_sha, self.deps.settings.live_docket_dir)
+            dockets = self._check_dockets(folder, prepared)
+        else:
+            dockets = self._recorded_dockets(folder)
+        # The records take the documents' hashes from dockets.json, the run's first fetch, and
+        # their titles and statuses from the docket as prepared, which is built before _cleanup
+        # deletes the cache. Do not reorder these two.
+        records = build_records(folder, prepared, self.lock_sha, dockets.by_case())
         held = folder / BACKFILL_FILE
         backfill = Backfill.model_validate_json(held.read_text()) if held.is_file() else None
         self.deps.sink.write(run_id, records, backfill)
@@ -914,6 +996,53 @@ def _answered(folder: Path) -> set[str]:
         return set()
     results = read_jsonl(path, CaseResult)
     return {r.case_id for r in results if not (r.failure or "").startswith("aborted")}
+
+
+_PRICING: Final = ModelSettings(model=MODEL_ID, price_variant="standard")
+
+
+def _remaining_exposure(folder: Path, raws: Sequence[Mapping[str, object]]) -> tuple[int, float]:
+    """The unanswered cases and what they may still cost (final review, wave A, item A1).
+
+    Each unanswered case may cost ``LIVE_CAP_USD`` less the computed cost of the replies the
+    folder already holds for it. Those are replayed, not paid for again, and the replayed loop
+    caps the case on the same computed figure. The key's ``usage_monthly`` holds the billed
+    amount, which is at most the computed one, so the room has already lost them.
+    """
+    answered = _answered(folder)
+    spent: dict[str, float] = {}
+    path = folder / REPLIES_FILE
+    for row in read_jsonl(path, ReplyRow) if path.is_file() else []:
+        if row.reply is not None:
+            spent[row.case_id] = spent.get(row.case_id, 0.0) + cost_usd(row.reply, _PRICING)[0]
+    open_ids = [str(raw["ntsbNumber"]) for raw in raws if str(raw["ntsbNumber"]) not in answered]
+    exposure = sum(max(0.0, LIVE_CAP_USD - spent.get(case_id, 0.0)) for case_id in open_ids)
+    return len(open_ids), exposure
+
+
+@contextlib.contextmanager
+def _resume_failures() -> Iterator[None]:
+    """Turn a resume's or a completion's error into the stop ``resume-failed`` (item A2).
+
+    A ``ConfigurationError`` (``cannot resume``, a replay that diverges, a damaged folder) or a
+    ``ValueError`` (an unreadable row) there would otherwise come back every night as
+    ``night-crashed``; as a refusal, the night still runs its later scores, its export and its
+    record. A ``LiveRefusal`` passes unchanged. Only the error's class is said: its text can name
+    a case.
+
+    Raises:
+        LiveRefusal: kind ``resume-failed``, or the refusal raised inside.
+    """
+    try:
+        yield
+    except LiveRefusal:
+        raise
+    except (ConfigurationError, ValueError) as error:
+        raise LiveRefusal(
+            "resume-failed",
+            f"an unfinished or unrecorded live run could not be resumed or completed "
+            f"({type(error).__name__}); runbook, resume-failed",
+        ) from error
 
 
 def _store_bytes(path: Path) -> int:

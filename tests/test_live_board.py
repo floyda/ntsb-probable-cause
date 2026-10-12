@@ -211,6 +211,7 @@ def _write_run(
         calls.extend(_calls(record.case_id))
     write_jsonl(folder / CASES_FILE, results)
     write_jsonl(folder / "trail.jsonl", calls)
+    write_jsonl(folder / "run.jsonl", [_run_record()])  # finished: the commit point (item A3)
     (folder / "docket").mkdir()
     (folder / "docket" / "1.txt").write_text("DOC-TEXT-MARKER: the wreckage was examined.")
     return folder
@@ -1026,6 +1027,7 @@ def test_not_offered_reasons_follow_the_readers_status(tmp_path: Path) -> None:
 def test_a_corrupt_spec_in_the_mirror_is_refused_with_no_path(tmp_path: Path) -> None:
     mirror = _mirror(tmp_path)
     folder = next((mirror / "runs").iterdir())
+    (folder / "run.jsonl").unlink()  # a run with no record yet is told by its spec alone
     (folder / "spec.json").write_text("{not json")
     message = _refused(mirror, tmp_path / "out")
     assert "unreadable" in message
@@ -1034,3 +1036,24 @@ def test_a_corrupt_spec_in_the_mirror_is_refused_with_no_path(tmp_path: Path) ->
 
 def test_every_docket_status_has_a_not_offered_answer() -> None:
     assert set(_NOT_OFFERED) | {"read", _SCAN_ONLY} == set(get_args(Status))
+
+
+@pytest.mark.parametrize("run_file", ["absent", "unfinished"])
+def test_a_run_folder_whose_run_record_is_not_finished_is_not_exported(
+    tmp_path: Path, run_file: str
+) -> None:
+    """Item A3: ``run.jsonl`` is the commit point, so a half-pulled run is never on the board."""
+    ev = date(2026, 8, 1)
+    mirror = _one_run(
+        tmp_path,
+        [(_record("XXX26XX001", date(2026, 10, 9)), _raw("XXX26XX001", ev), _hypothesis(STALL))],
+    )
+    folder = next((mirror / "runs").iterdir())
+    if run_file == "absent":
+        (folder / "run.jsonl").unlink()
+    else:
+        write_jsonl(folder / "run.jsonl", [_run_record().model_copy(update={"finished": None})])
+    out = _build(tmp_path, mirror)
+    index = BoardIndex.model_validate_json((out / "index.json").read_text())
+    assert index.rows == ()
+    assert not (out / "cases" / "XXX26XX001.json").exists()
