@@ -38,3 +38,7 @@ Detail: the S4 specification, §7.1 and §7.3.
 ## Status
 
 Accepted, 2026-10-10 (Andy).
+
+## Amended, 2026-10-12 (appended; nothing above is edited)
+
+- A resume whose docket changed is refused with the alert `docket-changed`, and any other resume failure stops the night with `resume-failed`; both have runbook rows ([0185](0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md), items 3 and 4).

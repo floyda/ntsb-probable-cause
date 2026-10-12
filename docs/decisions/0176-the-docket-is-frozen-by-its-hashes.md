@@ -34,3 +34,7 @@ Detail: the S4 specification, §9.2 and §9.3.
 ## Status
 
 Accepted, 2026-10-10 (Andy).
+
+## Amended, 2026-10-12 (appended; nothing above is edited)
+
+- The hashes are taken before the first model call and kept in the run folder as `dockets.json` (hashes and positions only), and the closure record takes them from there, not from a later fetch ([0185](0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md), item 2).

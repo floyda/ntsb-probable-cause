@@ -57,3 +57,7 @@ specification, §8.
 ## Status
 
 Accepted, 2026-10-10 (Andy).
+
+## Amended, 2026-10-12 (appended; nothing above is edited)
+
+- On a resume, the full-cap rule is applied to the remaining exposure: for each unanswered case, $0.30 less the computed cost already recorded for it ([0185](0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md), item 1).
