@@ -18,6 +18,13 @@ Words in **bold** the first time they appear are in the glossary at the end. Eve
 here uses `--profile ntsb` and `--region eu-west-2`. Run `aws login` first (a sign-in lasts a
 few hours). No command here prints a key.
 
+**Where to run the commands until the stage is merged.** The S4 code is in its own git
+**worktree**, not in the main project folder:
+`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution`.
+Until the merge, "the project folder" in this runbook means that worktree, and "the `infra`
+folder" means its `infra` folder. The data stays in the main checkout's `data/` folder, so set
+`NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data` first.
+
 ---
 
 ## 1. What a night does
@@ -28,7 +35,8 @@ few hours). No command here prints a key.
 3. It checks before spending anything: the image is version 1, the recorder's store is sound, and
    the recorder finished its own run today.
 4. It finishes any **unfinished run** it finds in the bucket. Calls already answered are not paid
-   for again.
+   for again. A call in flight at a kill, and a reply written but not yet uploaded, are paid
+   again (about one call each).
 5. It reads how much the live key has spent this month and works out tonight's number of cases
    (section 4).
 6. It fetches each case's record and documents, and the agent codes them one at a time. After
@@ -102,6 +110,10 @@ the alarm sits in `ALARM` until the first finished night, which then sends the `
 an alarm that is already in `ALARM` sends nothing for a new problem. What you do: read the last
 night's email and log (section 2), then tell Claude.
 
+**After the first night you should get an `OK` email.** If no `OK` email comes, and the log has no
+stream for that date (`aws logs tail /ecs/ntsb-live --since 24h --region eu-west-2 --profile ntsb`
+shows nothing), the task never started. Tell Claude.
+
 ## 4. Money
 
 - Live runs use their own OpenRouter key, with a **$10 a month** limit that you set on OpenRouter,
@@ -111,6 +123,9 @@ night's email and log (section 2), then tell Claude.
   pass the key's limit.
 - A case costs about $0.005 billed. A month of 100 closures costs about $0.51.
 - If the key page cannot be read, or the key has no limit, the night refuses (`key-unreachable`).
+- A resumed run is held to what its unfinished cases may still cost: $0.30 each, less what each
+  has already spent. A call in flight at a kill, and a reply written but not yet uploaded, are
+  paid again (about one call each).
 - The report (`make s4-report`) gives the live key's spend in the first cloud nights apart from
   later nights. It counts from each night's run records, so a call that never reached a record is
   not in it.
@@ -132,8 +147,9 @@ spent. What you do:
    task definition and deregisters the older revision, so there is no older revision to run.
    Instead, deploy `NtsbLiveStack` again with the full context (section 7) and
    `-c live_image_digest=<the digest that started the run>`. ECR keeps the 5 newest images, so
-   that image is still there. Find the digest: the run's `spec.json` in the bucket names its
-   commit, and the image tag is `live-<commit>`:
+   that image is probably still there. Check with `describe-images` (the second command below):
+   if it prints nothing or `None`, the image is gone; tell Claude. Find the digest: the run's
+   `spec.json` in the bucket names its commit, and the image tag is `live-<commit>`:
    ```
    aws s3 cp s3://<bucket>/runs/<run id>/spec.json - --profile ntsb --region eu-west-2
    aws ecr describe-images --repository-name ntsb-live --image-ids imageTag=live-<commit> --profile ntsb --region eu-west-2 --query "imageDetails[0].imageDigest" --output text
@@ -202,6 +218,8 @@ quotes the program's own text. A test checks that each quoted text is in the pro
 | `these settings are not version 1's` | A setting that changes what Ellery receives is not version 1's. | See `version-refused`. |
 | `live_docket_dir must differ from docket_dir` | The two document folders are the same or nested. | See `docket-folders`. |
 | `began at commit` and `a run is resumed only` | An unfinished run began on another image. | See `resume-refused` and section 5. |
+| `have a docket that differs` | An unfinished run's documents, read again, are not the files it first read. | See `docket-changed`. |
+| `could not be resumed or completed` | An unfinished run, or a finished run's records, could not go on; the error's class follows. | See `resume-failed`. |
 | `the recorder has not finished a run on` | The recorder's store is not today's yet. | See `recorder-not-finished`. |
 | `no case row or no run row` | The store is not sound. | See `store-unsound`. |
 | `store schema version` | The store was written by newer code than the image's. | See `store-unsound`. |
@@ -220,6 +238,9 @@ quotes the program's own text. A test checks that each quoted text is in the pro
 | `live run folders appeared during the run` | Two live run folders were made during one night. | Do not delete anything. Tell Claude. |
 | `NTSB_API_KEY is not set` | On your Mac: the NTSB key was not read. | Use `make s4-dry-run`; check that the `pass` entry `api/ntsb` exists. |
 | `OPENROUTER_API_KEY is not set` | On your Mac: the live key was not read. | Check that the `pass` entry `api/openrouter-live` exists. |
+| `live key: ` and `limit_reset: absent` | The dry run's line naming the live key's reset period, as the key page gives it (`absent` when the page has no such field). | Check it reads `limit_reset: monthly`, and confirm on OpenRouter (section 10, "Check the reset period"). |
+| `the live stack could not be read (` | `scripts/live_env.sh` could not read the live stack, for the reason in brackets (not because the stack is missing). It prints no settings. | Run the command again. If it repeats, tell Claude the reason in brackets. |
+| `is not the one docker reported; do not deploy` | `make s4-image`: the digest ECR holds for the new tag is not the one the build reported. | Do not deploy. Tell Claude. |
 | `AWS login expired: run 'aws login'` | `scripts/live_env.sh` could not read the live stack because the sign-in ended. It prints no settings. | Run `aws login`, then run the command again. |
 | `profile could not read the stack` | `scripts/live_env.sh` could not read a stack's output. | Run `aws login`, and check that the `ntsb` profile exists (`aws configure list-profiles`). AWS's own error follows the line. |
 | `has no --resume option` | A batch run was cancelled. Live runs are not batches, so this should not appear. | Tell Claude. |
@@ -277,10 +298,22 @@ aws sns publish --topic-arn <AlertTopicArn> --subject "Ellery test" --message "t
 ```
 
 An email with the subject "Ellery test" should arrive within a minute. Write today's date as
-`alert_email_received` in the attestation file (section 10, step 4).
+`alert_email_received` in the attestation file (section 10, step 5).
 
-**Step 3: write the live key.** It lives in your `pass` store as `api/openrouter-live`. This line
-sends it straight into AWS **Parameter Store**. The value never appears on the screen:
+**Step 3: write the live key.** If the live key does not exist yet, make it first:
+
+1. On OpenRouter, open your account's API keys page and create a new key named `ellery-live`.
+   Give it a credit limit of **$10** that resets **monthly**. It is a separate key from the
+   development one.
+2. Copy the key once, and store it in `pass` (it asks for the value; paste it, then press
+   Ctrl-D). The value is not shown:
+   ```
+   pass insert -m api/openrouter-live
+   ```
+   Close OpenRouter's page; the key is not shown again there.
+
+The key lives in your `pass` store as `api/openrouter-live`. This line sends it straight into AWS
+**Parameter Store**. The value never appears on the screen:
 
 ```
 pass show api/openrouter-live | head -n1 | tr -d '\n' | aws ssm put-parameter --name /ntsb/live/openrouter-key --type SecureString --value file:///dev/stdin --overwrite --profile ntsb --region eu-west-2
@@ -324,7 +357,16 @@ cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c 
 
 ## 8. Start a task by hand
 
-You need this for section 5 and for a first test. It runs the same command as the schedule.
+**This is a paid night.** It runs the same command as the schedule, codes cases and spends money
+on the live key. Claude asks you before any hand start, and says what it costs. For a free test of
+the image, use section 10, step 2 (a dry run in the cloud) instead.
+
+You need this for section 5. Before any hand start, check that no task is running. This list must
+be empty:
+
+```
+aws ecs list-tasks --cluster ntsb-live --desired-status RUNNING --profile ntsb --region eu-west-2
+```
 
 1. Find the schedule and read its network settings (the stack has no output for them). The
    schedule's logical id in the stack is `Nightly`. **Verify on first use:** the physical id
@@ -387,11 +429,11 @@ the variable last.
 
 **Run the job before the merge.** The workflow file is not on `main` yet, so GitHub will not run
 its schedule, and a manual start cannot start it either. Before the merge the job runs on a
-push to the S4 branch. After a night has finished, push to the branch (or ask Claude to), for
-example from the project folder:
+push to the S4 branch. After a night has finished, push to the branch (or ask Claude to). The
+commands name the S4 worktree, so they work from any folder:
 
 ```
-git commit --allow-empty -m "ledger: run the job" && git push origin s4-predictions-and-resolution
+git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution commit --allow-empty -m "ledger: run the job" && git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution push origin HEAD:s4-predictions-and-resolution
 gh run list --workflow ledger --branch s4-predictions-and-resolution --repo floyda/ntsb-probable-cause
 ```
 
@@ -414,16 +456,52 @@ and its documents, calls no model and writes nothing to the bucket. Read the lin
   fresh $10 key, `Y` is 30: the cap is $9, and $9 divided by $0.30 is 30. A `Y` that is much
   lower means the key has already spent, or its limit is lower than $10.
 - It stops with a line from section 6 (`key-unreachable` and others) if a check fails.
+- `live key: limit_reset: <value>`: the key's reset period, as OpenRouter's key page gives it.
 
-**Check the reset period.** The dry run does not print the key's reset period; decision 0170
-assumes it is monthly. You confirm it: open OpenRouter, your account's API keys page, the live
-key, and read the limit and its reset setting. It must read $10 and monthly. This is for you to
-confirm; nothing in the code does.
+**Check the reset period.** Decision 0170 assumes the key's limit resets monthly. The dry run
+prints the key page's `limit_reset` value, or `limit_reset: absent` when the page has no such
+field; the code never refuses on it, because no saved answer of that page shows the field. You
+confirm it: the line should read `limit_reset: monthly`. Whatever it reads, also open OpenRouter,
+your account's API keys page, the live key, and read the limit and its reset setting. It must
+read $10 and monthly. This is for you to confirm; nothing in the code does.
 
-**Step 2: ask Claude to ask you.** Claude asks before the first cloud night, saying what it
+**Step 2: test the image in the cloud, free.** **Verify on first use.** This starts one task that
+runs the dry run of step 1 inside the image, so it calls no model and spends nothing on the live
+key (a few minutes of Fargate, under one cent). It checks what the Mac's dry run cannot: that the
+task pulls the image, reads its two secrets from Parameter Store, reads the recorder's store and
+the live bucket, reaches the key page and fetches one case from the NTSB. Take the subnet ids and
+the security group id from section 8, step 1, and check that no task is running (the
+`list-tasks` command in section 8). Then:
+
+```
+aws ecs run-task --cluster ntsb-live --task-definition ntsb-live --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[<subnet ids>],securityGroups=[<security group>],assignPublicIp=ENABLED}" --overrides '{"containerOverrides":[{"name":"live","command":["run","--dry-run"]}]}' --region eu-west-2 --profile ntsb --no-cli-pager --query "tasks[0].taskArn" --output text
+```
+
+The override replaces only the command (`run` becomes `run --dry-run`). The entry point stays
+`timeout ... ntsb-live`, because an ECS container override has no entry point field. So the task
+runs `timeout ... ntsb-live run --dry-run`. Read its log a few minutes later:
+
+```
+aws logs tail /ecs/ntsb-live --since 30m --region eu-west-2 --profile ntsb
+```
+
+Success is the same lines as step 1: `dry run: N cases queued; ...`, `dry run: fetched the first
+case's record and its docket (...)`, `dry run: no model was called and no run folder was
+written.`, the `information:` line and the `live key: limit_reset:` line, and no line starting
+`ntsb-live run:`. The task's exit code should be 0:
+
+```
+aws ecs describe-tasks --cluster ntsb-live --tasks <task arn> --region eu-west-2 --profile ntsb --query "tasks[0].containers[0].exitCode"
+```
+
+A dry run sends no alert, publishes no metric and writes nothing to the bucket, so the alarm and
+the next night are unchanged. If it fails, tell Claude the line that starts `ntsb-live run:`, not
+the log.
+
+**Step 3: ask Claude to ask you.** Claude asks before the first cloud night, saying what it
 costs (about 30 cases, about $0.15, about 45 minutes) and how long it runs.
 
-**Step 3: enable the schedule. This is the go-ahead.** From the `infra` folder, the full context,
+**Step 4: enable the schedule. This is the go-ahead.** From the `infra` folder, the full context,
 with the real digest:
 
 ```
@@ -433,9 +511,11 @@ cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c 
 The next 06:00 UTC night is the first one. The backfill (the cases closed since 23 September 2026
 and not yet coded) takes about three nights because a night is limited by money and time.
 
-**Step 4: after the first night.**
+**Step 5: after the first night.**
 
-1. Read the night's email and the log (the command in section 2).
+1. Read the night's email and the log (the command in section 2). The alarm should send an `OK`
+   email after this first finished night. If there is no `OK` email and no log stream for the
+   date, the task never started: tell Claude.
 2. `make s4-export`. Then run the ledger job by a push to the S4 branch and wait for it to finish
    (section 9, "Run the job before the merge"; the 10:00 UTC schedule does not run before the
    merge). Then `make s4-verify-ledger`, then `make s4-report`. `docs/results/s4-live.txt` is
@@ -482,7 +562,7 @@ command uses `--profile ntsb` (sign in first with `aws login`):
 4. `aws iam delete-user --user-name ntsb-live-reader --profile ntsb`
 5. `pass rm aws/ntsb-live-reader`
 6. Remove the `[profile ntsb-live]` block from `~/.aws/config`. The `ntsb` profile stays.
-7. Put today's date in `mac_key_removed` in `live-attest.json` (section 10, step 4).
+7. Put today's date in `mac_key_removed` in `live-attest.json` (section 10, step 5).
 
 **After the stage pull request is merged** (a merge commit, decision 0033), the task moves from an
 image built on the S4 branch to an image built from `main`, and the branch's trust in the ledger
@@ -532,3 +612,5 @@ role is removed. From a clean `main` checkout (the `cdk` command from its `infra
 - **Unfinished run.** A live run folder with no `run.jsonl`, or whose `run.jsonl` has no
   `finished` time.
 - **UTC.** The world time standard. UK summer time is UTC plus 1 hour.
+- **Worktree.** A second working folder of the same git repository, on its own branch. The S4
+  code is in one until the stage is merged.

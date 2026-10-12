@@ -338,3 +338,42 @@ def test_the_old_runbooks_quoted_refusal_texts_are_still_in_the_program() -> Non
     for row in rows:
         for quoted in re.findall(r"`([^`]+)`", row.split("|")[1]):
             assert quoted in sources, quoted
+
+
+def test_the_final_review_wave_a_steps_are_in_the_runbook() -> None:
+    """Items A17 to A24 (final review, wave A)."""
+    text = RUNBOOK.read_text()
+    flat = " ".join(text.split())
+    worktree = (
+        "/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/"
+        "s4-predictions-and-resolution"
+    )
+    # A17: the free test of the image, with the command override only.
+    assert (
+        """--overrides '{"containerOverrides":[{"name":"live","command":["run","--dry-run"]}]}'"""
+        in text
+    )
+    assert "The override replaces only the command" in flat
+    assert "/ecs/ntsb-live" in text
+    assert text.index("Step 2: test the image in the cloud, free") < text.index(
+        "Step 4: enable the schedule. This is the go-ahead"
+    )
+    # A18: the first night's OK email, or the task never started.
+    assert "After the first night you should get an `OK` email" in text
+    assert "the task never started" in text
+    # A19: a hand start is paid, asked first, and checked for a running task.
+    assert "**This is a paid night.**" in text
+    assert "Claude asks you before any hand start" in flat
+    assert "aws ecs list-tasks --cluster ntsb-live --desired-status RUNNING --profile ntsb" in text
+    # A20: the worktree is named, and the ledger trigger pushes HEAD to the S4 branch.
+    assert f"git -C {worktree} commit --allow-empty" in text
+    assert f"git -C {worktree} push origin HEAD:s4-predictions-and-resolution" in text
+    # A21: the live key is made with a $10 monthly limit and stored in pass.
+    assert "pass insert -m api/openrouter-live" in text
+    assert "credit limit of **$10** that resets **monthly**" in flat
+    # A22, A23, A24.
+    assert "that image is probably still there" in flat
+    assert "a reply written but not yet uploaded, are paid again (about one call each)" in flat
+    assert "`live key: limit_reset: <value>`" in text
+    assert "| `docket-changed` |" in text
+    assert "| `resume-failed` |" in text
