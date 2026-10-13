@@ -5,6 +5,7 @@ import type { CaseFile } from "./board-case-types";
 import type { BoardIndex } from "./board-index-types";
 import {
     aircraftLabel,
+    caseReportUrl,
     closedLabel,
     differenceSentence,
     docketUrl,
@@ -116,6 +117,13 @@ describe("the opened case's lines", () => {
     it("builds the docket address from the NTSB's case key, or none", () => {
         expect(docketUrl(900101)).toBe("https://data.ntsb.gov/Docket?ProjectID=900101");
         expect(docketUrl(null)).toBeNull();
+    });
+    it("builds the NTSB's final report address from the case key, or none", () => {
+        // Checked 2026-10-13 against a 2009 development case: a PDF final report naming the case.
+        expect(caseReportUrl(73354)).toBe(
+            "https://data.ntsb.gov/carol-repgen/api/Aviation/ReportMain/GenerateNewestReport/73354/pdf",
+        );
+        expect(caseReportUrl(null)).toBeNull();
     });
     it("never writes undefined or an empty item for any sample case", () => {
         for (const n of [1, 2, 3, 4, 5, 6, 7]) {

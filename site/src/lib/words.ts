@@ -190,3 +190,13 @@ export function withheldLine(c: CaseFile): string | null {
 export function docketUrl(mkey: number | null): string | null {
     return mkey === null ? null : `https://data.ntsb.gov/Docket?ProjectID=${String(mkey)}`;
 }
+
+/**
+ * The NTSB's final report for the case, a PDF. The address was checked on 2026-10-13 against a
+ * 2009 development-split case: it returned that case's "Aviation Investigation Final Report".
+ */
+export function caseReportUrl(mkey: number | null): string | null {
+    return mkey === null
+        ? null
+        : `https://data.ntsb.gov/carol-repgen/api/Aviation/ReportMain/GenerateNewestReport/${String(mkey)}/pdf`;
+}

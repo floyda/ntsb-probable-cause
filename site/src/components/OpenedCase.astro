@@ -1,7 +1,13 @@
 ---
 // One case: the agent's coding beside the NTSB's (spec §5), in plain type, from the export alone.
 import type { CaseFile, Code, MarkedCode } from "../lib/board-case-types";
-import { differenceSentence, docketUrl, factsLine, withheldLine } from "../lib/words";
+import {
+    caseReportUrl,
+    differenceSentence,
+    docketUrl,
+    factsLine,
+    withheldLine,
+} from "../lib/words";
 
 interface Props {
     kase: CaseFile;
@@ -14,6 +20,7 @@ const comparison = kase.comparison;
 const notCoded = kase.grade === "not_coded";
 const abstained = kase.grade === "abstained";
 const docket = docketUrl(kase.mkey);
+const report = caseReportUrl(kase.mkey);
 const withheld = withheldLine(kase);
 
 const MARK_WORDS: Record<MarkedCode["mark"], string> = {
@@ -137,9 +144,10 @@ const findingGroups: { heading: string; codes: readonly Code[] }[] = comparison
     )}
 
     {withheld !== null && <p class="withheld">{withheld}</p>}
-    {docket !== null && (
+    {docket !== null && report !== null && (
         <p class="sources">
-            Sources: <a href={docket}>the case's evidence files</a>
+            Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}
+            <a href={docket}>the case's evidence files</a>
             <span class="term"> · the docket</span>
         </p>
     )}

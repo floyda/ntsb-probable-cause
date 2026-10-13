@@ -494,9 +494,9 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 
 ## Task 7: The NTSB's case page (Controller)
 
-- [ ] **Step 1:** Take one development-split case's `mkey` from `tests/fixtures/records/` (event year 2019 or earlier). Request, once, with the project's user agent and nothing cached: `https://data.ntsb.gov/carol-repgen/api/Aviation/ReportMain/GenerateNewestReport/<mkey>/pdf` (the address CAROL's own report links use, to be confirmed here, not assumed). Record the date, status and content type in Deviations.
-- [ ] **Step 2:** If it returns a PDF report for that case, add `caseReportUrl(mkey)` to `words.ts` with a test, and the "the NTSB's case page" link to the sources line. If not, leave the docket as the only NTSB link and record why.
-- [ ] **Step 3: Commit** with the outcome.
+- [x] **Step 1:** Take one development-split case's `mkey` from `tests/fixtures/records/` (event year 2019 or earlier). Request, once, with the project's user agent and nothing cached: `https://data.ntsb.gov/carol-repgen/api/Aviation/ReportMain/GenerateNewestReport/<mkey>/pdf` (the address CAROL's own report links use, to be confirmed here, not assumed). Record the date, status and content type in Deviations.
+- [x] **Step 2:** If it returns a PDF report for that case, add `caseReportUrl(mkey)` to `words.ts` with a test, and the "the NTSB's case page" link to the sources line. If not, leave the docket as the only NTSB link and record why.
+- [x] **Step 3: Commit** with the outcome.
 
 ---
 
@@ -544,3 +544,10 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 - **2026-10-13, Task 6:** each new check was proved by sabotaging the built files (an extra case
   page, an inline script, a broken link, a registration-like string, a 2,000 px element): the four
   Vitest checks and the phone-width check failed, then all passed after a clean rebuild.
+- **2026-10-13, Task 7: the NTSB's report address is verified.** One request, with the project's
+  user agent, for development case ANC09CA020 (event 2009-02-16, `mkey` 73354):
+  `https://data.ntsb.gov/carol-repgen/api/Aviation/ReportMain/GenerateNewestReport/73354/pdf`
+  returned HTTP 200, `application/pdf`, 758,197 bytes, six pages headed "Aviation Investigation
+  Final Report", whose text holds the case number (read with `pypdfium2`). The file was kept in
+  the session's scratch folder only. `caseReportUrl` builds it, with a test; the link is labelled
+  "the NTSB's final report (PDF)", since it opens a report rather than a web page.
