@@ -51,7 +51,7 @@
 
 **Files:** Create `docs/schemas/board-1.schema.json`, `tests/fixtures/board/index.json`, `tests/fixtures/board/cases/XXX26XX00{1..7}.json`. Modify `Makefile`.
 
-- [ ] **Step 1: Add the sync target**
+- [x] **Step 1: Add the sync target**
 
 ```make
 # S4's export format and invented sample, copied from S4's branch until S4 merges (S5 step 2,
@@ -67,12 +67,12 @@ site-board-sync:
 
 Add `site-board-sync` to `.PHONY`.
 
-- [ ] **Step 2: Run it and check the copies**
+- [x] **Step 2: Run it and check the copies**
 
 Run: `make site-board-sync && git status --short docs/schemas tests/fixtures/board`
 Expected: the schema and eight sample files added. Then `SKIP=no-commit-to-branch uv run pre-commit run --files docs/schemas/board-1.schema.json tests/fixtures/board/**/*.json tests/fixtures/board/*.json`: `check-fixtures-redacted`, `check-json` and `typos` pass (they are S4's invented cases).
 
-- [ ] **Step 3: Commit** — `S5 step 2 Task 1: S4's board/1 schema and invented sample, copied from S4's branch`.
+- [x] **Step 3: Commit** — `S5 step 2 Task 1: S4's board/1 schema and invented sample, copied from S4's branch`.
 
 ---
 
@@ -510,4 +510,5 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 
 ## Deviations
 
-*None yet.*
+- **2026-10-13, Task 1:** copied from `origin/s4-predictions-and-resolution` at `b577bf3`. The
+  hooks pass on the copies, and the Python suite passes with them in place (4,399 tests).
