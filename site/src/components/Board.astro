@@ -1,0 +1,107 @@
+---
+// The board of recently closed cases (spec §4): a real table in the dot face on a dark panel.
+// Each row links to its case page, so the board works with scripts off; a small script on the
+// first page opens the chosen case beneath it instead.
+import "../styles/board.css";
+import type { BoardIndex, BoardRow } from "../lib/board-index-types";
+import {
+    aircraftLabel,
+    closedLabel,
+    closedLong,
+    eventOf,
+    stampLine,
+    tookLabel,
+    totalsLine,
+} from "../lib/words";
+import Mark from "./Mark.astro";
+
+interface Props {
+    index: BoardIndex;
+}
+
+const { index } = Astro.props;
+const anyBackfilled = index.rows.some((r) => r.backfilled === true);
+const launched = index.stamp.launched_on;
+
+function agentCell(row: BoardRow): string {
+    if (row.grade === "abstained") return "No answer";
+    if (row.agent_first === null) return "—";
+    return eventOf(row.agent_first.label);
+}
+
+function ntsbCell(row: BoardRow): string {
+    if (row.ntsb_first !== null) return eventOf(row.ntsb_first.label);
+    // Only an awaiting case is known to be unpublished; a case whose record could not be read
+    // says nothing about the NTSB's codes.
+    return row.grade === "awaiting_ntsb" ? "Not yet published" : "—";
+}
+---
+
+<figure class="board">
+    <div class="board-frame">
+        <table>
+            <caption>Recently closed cases</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Closed</th>
+                    <th scope="col" class="wide">
+                        Took
+                    </th>
+                    <th scope="col">Aircraft</th>
+                    <th scope="col" class="wide">
+                        Agent coded
+                    </th>
+                    <th scope="col" class="wide">
+                        NTSB coded
+                    </th>
+                    <th scope="col">Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {index.rows.map((row) => (
+                    <tr>
+                        <td>
+                            <a href={`/case/${row.case_number}/`} data-case={row.case_number}>
+                                {closedLabel(row.closed_on)}
+                                <span class="vh">, case {row.case_number}</span>
+                            </a>
+                            {row.backfilled === true && (
+                                <span
+                                    class="from-start"
+                                    title="coded after launch, from the declared start"
+                                >
+                                    ◦
+                                    <span class="vh">
+                                        {" "}
+                                        coded after launch, from the declared start
+                                    </span>
+                                </span>
+                            )}
+                        </td>
+                        <td class="wide">{tookLabel(row.took_days)}</td>
+                        <td>{aircraftLabel(row.aircraft)}</td>
+                        <td class="wide">{agentCell(row)}</td>
+                        <td class="wide">{ntsbCell(row)}</td>
+                        <td>
+                            <Mark grade={row.grade} />
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+    <figcaption>
+        <p class="stamp">{stampLine(index)}</p>
+        <p>{totalsLine(index.rows)}</p>
+        {anyBackfilled && launched !== null && (
+            <p>
+                ◦ Closed before the launch on {closedLong(launched)} and coded after it, from the
+                declared start of 23 Sep 2026.
+            </p>
+        )}
+        <p>
+            The NTSB's own coding is not fully consistent, so “different” does not simply mean
+            wrong.
+        </p>
+    </figcaption>
+</figure>

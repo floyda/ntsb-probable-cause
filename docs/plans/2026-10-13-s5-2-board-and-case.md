@@ -411,15 +411,15 @@ Implement each function to the tests. Rules not visible in the tests:
 
 **Files:** Create `site/src/components/Mark.astro`, `site/src/components/Board.astro`, `site/src/styles/board.css`. Modify `site/src/styles/tokens.css`, `site/package.json` (fonts).
 
-- [ ] **Step 1: Fonts**
+- [x] **Step 1: Fonts**
 
 `pnpm add @fontsource/doto @fontsource/atkinson-hyperlegible-next` (runtime dependencies: the build copies their files into `_astro/`). In `tokens.css`: `@import "@fontsource/atkinson-hyperlegible-next/400.css"; @import "@fontsource/atkinson-hyperlegible-next/700.css"; @import "@fontsource/doto/700.css";`, `--read: "Atkinson Hyperlegible Next", system-ui, sans-serif;`, `--board: "Doto", ui-monospace, monospace;`, and `html { font-family: var(--read); }`. Board tokens, the same in both themes because the board is a dark panel in both (§4): `--board-ground: #0d1117; --board-ink: #f2c94c; --board-dim: #b8c0cc; --board-rule: #2a3240;` (contrast checked by axe; if `--board-dim` fails AA on the ground, lighten it and log).
 
-- [ ] **Step 2: `Mark.astro`**
+- [x] **Step 2: `Mark.astro`**
 
 Props `grade: Grade`. Renders `<span class="mark"><svg aria-hidden="true" …>` + `<span>{GRADES[grade].word}</span></span>`: the word is always present (shape is never the only signal, §12 item 8). Shapes, 14 × 14, `currentColor`: filled circle; half-filled circle (left half); open circle; dashed circle; open square; open diamond. No colour encodes the grade (§11: nothing reads as good or bad).
 
-- [ ] **Step 3: `Board.astro`**
+- [x] **Step 3: `Board.astro`**
 
 Props `index: BoardIndex`. A `<figure class="board">` with: a `<table>` whose `<caption>` is "Recently closed cases", header cells Closed, Took, Aircraft, Agent coded, NTSB coded, Result (`scope="col"`), and one row per `index.rows` entry in their order:
 - Closed: `closedLabel`, and when `row.backfilled` a `<span class="from-start" aria-label="coded after launch, from the declared start">◦</span>`.
@@ -432,11 +432,11 @@ The table sits in `<div class="board-frame">` with `overflow-x: auto` (Review Fo
 
 `board.css`: the panel on `--board-ground`, cells in `--board` at 1.1rem, header cells in `--board-dim`, rows separated by `--board-rule`, a visible focus ring on the row link.
 
-- [ ] **Step 4: Build and look**
+- [x] **Step 4: Build and look**
 
 `pnpm run build`; put `<Board index={index} />` on `index.astro` temporarily if Task 5 is not done. Check no error; commit.
 
-- [ ] **Step 5: Commit** — `S5 step 2 Task 4: the result marks and the board`.
+- [x] **Step 5: Commit** — `S5 step 2 Task 4: the result marks and the board`.
 
 ---
 
@@ -526,3 +526,11 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
   `ajv-formats` (CommonJS) through a typed cast, so `format: date` and `date-time` are checked.
 - **2026-10-13, Task 3:** `words.ts` also exports `closedLong` (used by the facts and withheld
   lines); one day is written "1 day". Every expected sentence in the plan passed unchanged.
+- **2026-10-13, Task 4:** the fonts are imported in `Base.astro`, not `tokens.css`. The loader
+  finds the repository from the working directory, not its own file, because the build runs a
+  bundled copy from another folder. The page is a 72rem frame whose children keep the 44rem
+  reading width and the board alone uses the frame. On a case not coded because its record could
+  not be read, "NTSB coded" shows a dash: only an awaiting case is known to be unpublished.
+  Result words stay on one line above 640 px and wrap below, with the board text at 1rem. Lint
+  turns off `no-unsafe-return` for `.astro` files only, where the type-aware linter cannot type
+  JSX; `astro check` type-checks them.

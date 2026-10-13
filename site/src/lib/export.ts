@@ -10,7 +10,9 @@ import type { BoardIndex } from "./board-index-types";
 
 export class ExportError extends Error {}
 
-const REPO = resolve(import.meta.dirname, "../../..");
+// The repository's root. Astro and Vitest both run from site/; the build runs this module from
+// a bundled copy elsewhere, so a path relative to this file would point to the wrong place.
+const REPO = resolve(process.cwd(), "..");
 const SCHEMA_PATH = join(REPO, "docs/schemas/board-1.schema.json");
 
 /** The export to build from: `BOARD_EXPORT_DIR`, else S4's invented sample. */

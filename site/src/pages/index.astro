@@ -1,5 +1,9 @@
 ---
+import Board from "../components/Board.astro";
 import Base from "../layouts/Base.astro";
+import { exportDir, loadExport } from "../lib/export";
+
+const { index } = loadExport(exportDir());
 ---
 
 <Base
@@ -7,5 +11,5 @@ import Base from "../layouts/Base.astro";
     description="An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's."
 >
     <h1>Ellery</h1>
-    <p>The site is being built.</p>
+    <Board index={index} />
 </Base>

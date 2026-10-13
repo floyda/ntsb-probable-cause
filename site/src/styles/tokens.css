@@ -5,6 +5,13 @@
     --ink-muted: #4a4a4a;
     --ground: #ffffff;
     --rule: #c8c8c8;
+    --read: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    --board: "Doto", ui-monospace, monospace;
+    /* The board is a dark terminal panel in both themes (spec §4). */
+    --board-ground: #0d1117;
+    --board-ink: #f2c94c;
+    --board-dim: #b8c0cc;
+    --board-rule: #2a3240;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,12 +26,27 @@
 html {
     background: var(--ground);
     color: var(--ink);
-    font-family: system-ui, sans-serif;
+    font-family: var(--read);
     line-height: 1.5;
 }
 
 body {
     margin: 0 auto;
-    max-width: 44rem;
+    max-width: 72rem;
     padding: 1.5rem 1rem;
+}
+
+/* Reading text keeps about 65 characters a line; the board is wider (board.css). */
+main > * {
+    max-width: 44rem;
+    margin-inline: auto;
+}
+
+.vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }

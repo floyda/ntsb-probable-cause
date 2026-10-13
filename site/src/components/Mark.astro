@@ -1,0 +1,78 @@
+---
+// A result's mark and its word (spec §4): the shape carries the meaning, never colour (§11), and
+// the word is always there, so shape is never the only signal (§12 item 8).
+import { GRADES, type Grade } from "../lib/words";
+
+interface Props {
+    grade: Grade;
+}
+
+const { grade } = Astro.props;
+const { word, mark } = GRADES[grade];
+---
+
+<span class="mark">
+    <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false">
+        {mark === "filled" && <circle cx="7" cy="7" r="5.5" fill="currentColor" />}
+        {mark === "half" && (
+            <>
+                <path d="M7 1.5 A5.5 5.5 0 0 0 7 12.5 Z" fill="currentColor" />
+                <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                />
+            </>
+        )}
+        {mark === "open" && (
+            <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        )}
+        {mark === "dashed" && (
+            <circle
+                cx="7"
+                cy="7"
+                r="5.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-dasharray="2.2 2"
+            />
+        )}
+        {mark === "square" && (
+            <rect
+                x="2"
+                y="2"
+                width="10"
+                height="10"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+            />
+        )}
+        {mark === "diamond" && (
+            <polygon
+                points="7,1.5 12.5,7 7,12.5 1.5,7"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+            />
+        )}
+    </svg>
+    <span class="mark-word">{word}</span>
+</span>
+
+<style>
+    .mark {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 0.4em;
+    }
+    svg {
+        flex: none;
+        /* Level with the first line when the word wraps. */
+        margin-top: 0.25em;
+    }
+</style>

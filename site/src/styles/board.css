@@ -1,0 +1,101 @@
+/* The board (spec §4): an airport terminal display, the site's one pixel element (§10). */
+.board {
+    /* The board alone uses the page's full width, up to 72rem (tokens.css). */
+    max-width: none;
+    margin: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.board-frame {
+    /* Only the table's own frame may scroll sideways, never the page (plan Review Focus 4). */
+    overflow-x: auto;
+    background: var(--board-ground);
+    color: var(--board-ink);
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.board table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--board);
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: 0.02em;
+}
+
+.board caption {
+    text-align: left;
+    color: var(--board-dim);
+    font-size: 0.95rem;
+    padding-bottom: 0.5rem;
+}
+
+.board th {
+    color: var(--board-dim);
+    font-weight: 700;
+    text-align: left;
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--board-rule);
+    white-space: nowrap;
+}
+
+.board td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--board-rule);
+    vertical-align: top;
+}
+
+.board tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.board a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    white-space: nowrap;
+}
+
+.board a:focus-visible {
+    outline: 2px solid var(--board-ink);
+    outline-offset: 2px;
+}
+
+.board .from-start {
+    margin-left: 0.25em;
+    color: var(--board-dim);
+}
+
+.board figcaption {
+    display: grid;
+    gap: 0.35rem;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+}
+
+.board figcaption p {
+    margin: 0;
+}
+
+/* The phone keeps Closed, Aircraft and Result (spec §4). */
+@media (max-width: 640px) {
+    .board .wide {
+        display: none;
+    }
+    .board table {
+        font-size: 1rem;
+    }
+    .board th,
+    .board td {
+        padding-inline: 0.4rem;
+    }
+}
+
+/* A result's words stay on one line where there is room. */
+@media (min-width: 641px) {
+    .board .mark-word {
+        white-space: nowrap;
+    }
+}

@@ -42,6 +42,12 @@ export default defineConfig(
     },
     { files: ["**/*.js", "**/*.mjs"], extends: [tseslint.configs.disableTypeChecked] },
     {
+        // The type-aware linter cannot type JSX inside .astro files and reads each element as
+        // an error type; `astro check` type-checks these files instead (plan step 2, Task 4).
+        files: ["**/*.astro"],
+        rules: { "@typescript-eslint/no-unsafe-return": "off" },
+    },
+    {
         // Tests edit raw export JSON on purpose to build broken exports.
         files: ["**/*.test.ts"],
         rules: {
