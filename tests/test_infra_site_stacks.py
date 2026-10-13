@@ -251,6 +251,18 @@ def test_build_reads_github_through_the_named_connection(stacks: dict[str, Templ
     }
 
 
+def test_build_project_waits_for_its_connection_permission(stacks: dict[str, Template]) -> None:
+    # Third deploy, 2026-10-13: "User is not authorized to access connection". CodeBuild checks
+    # the role can use the connection when the project is created, and the role's default
+    # policy names the project, so it came after. The connection policy must come first.
+    tpl = stacks["site"]
+    policies = tpl.find_resources("AWS::IAM::Policy")
+    (name,) = [n for n, p in policies.items() if _CONNECTION in _as_text(p)]
+    assert "Build" not in _as_text(policies[name]["Properties"]["PolicyDocument"])
+    project = next(iter(tpl.find_resources("AWS::CodeBuild::Project").values()))
+    assert name in project.get("DependsOn", [])
+
+
 def test_without_a_connection_there_is_no_webhook(
     stacks_without_connection: dict[str, Template],
 ) -> None:

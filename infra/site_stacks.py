@@ -311,16 +311,31 @@ class NtsbSiteStack(Stack):
             cfn_project.add_property_override(
                 "Source.Auth", {"Type": "CODECONNECTIONS", "Resource": github_connection_arn}
             )
-            project.add_to_role_policy(
-                iam.PolicyStatement(
-                    actions=[
-                        "codeconnections:GetConnection",
-                        "codeconnections:GetConnectionToken",
-                        "codeconnections:UseConnection",
-                    ],
-                    resources=[github_connection_arn],
-                )
+            # Its own policy, which names no part of the project, so the project can wait for
+            # it: CodeBuild checks the role may use the connection as the project is created,
+            # and the role's default policy names the project, so it comes after (third
+            # deploy, 2026-10-13: "User is not authorized to access connection").
+            if project.role is None:
+                raise TypeError("the build project has no role")
+            connection_policy = iam.Policy(
+                self,
+                "BuildConnectionPolicy",
+                roles=[project.role],
+                statements=[
+                    iam.PolicyStatement(
+                        actions=[
+                            "codeconnections:GetConnection",
+                            "codeconnections:GetConnectionToken",
+                            "codeconnections:UseConnection",
+                        ],
+                        resources=[github_connection_arn],
+                    )
+                ],
             )
+            cfn_policy = connection_policy.node.default_child
+            if not isinstance(cfn_policy, iam.CfnPolicy):
+                raise TypeError("the connection policy has no CfnPolicy")
+            cfn_project.add_dependency(cfn_policy)
 
         # The site bucket: list, read, write and delete current files only. Never old versions,
         # retention or legal holds: any push to the branch runs with this role, and the
