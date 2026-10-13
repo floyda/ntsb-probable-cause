@@ -37,8 +37,13 @@ after S5 merges, from the main checkout.
 The recorder bootstrapped CDK in `eu-west-2` only. The zone, the certificate and the **web ACL**
 live in `us-east-1`, so CDK needs its bootstrap there too:
 
+Every command from here on runs in the **S5 worktree's** `infra` folder, not the main checkout,
+whose `main` branch has no site stacks until S5 merges ("No stacks match the name(s)" means the
+wrong folder). CDK's banner about an untested Node version is harmless; the `export` hides it.
+
 ```bash
-cd infra
+cd /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s5-public-site/infra
+export JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1
 uv run cdk bootstrap aws://$(aws sts get-caller-identity --profile ntsb --query Account --output text)/us-east-1 --profile ntsb
 ```
 
