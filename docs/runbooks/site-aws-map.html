@@ -1,0 +1,304 @@
+<title>Ellery on AWS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one reading column; each figure in its own sideways-scrolling frame. */
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --fg: #1b2330;
+    --muted: #5a6474;
+    --line: #9aa4b2;
+    --accent: #1f5f99;
+    --accent-soft: #e3edf7;
+    --faint: #c7cdd6;
+    --display: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+    --body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161d; --surface: #1a2029; --fg: #e4e8ee; --muted: #9ba5b4;
+      --line: #6d7888; --accent: #7fb2e5; --accent-soft: #1d2b3b; --faint: #3a4351;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --fg: #e4e8ee; --muted: #9ba5b4;
+    --line: #6d7888; --accent: #7fb2e5; --accent-soft: #1d2b3b; --faint: #3a4351;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+  main { max-width: 56rem; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 40px; }
+  header { display: grid; gap: 8px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 2rem; line-height: 1.15; margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 600; font-size: 1.3rem; margin: 0; text-wrap: balance; }
+  p { margin: 0; max-width: 65ch; }
+  .lede { color: var(--muted); font-size: 1.05rem; }
+  .eyebrow { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+  section { display: grid; gap: 14px; }
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  figure { margin: 0; display: grid; gap: 10px; }
+  .frame { overflow-x: auto; background: var(--surface); border: 1px solid var(--faint); border-radius: 8px; padding: 12px; }
+  .frame svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--fg); }
+  figcaption { color: var(--muted); font-size: 0.92rem; max-width: 65ch; }
+  /* SVG classes, styled from the page so both themes apply. */
+  .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+  .chip { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+  .group { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+  .col { fill: none; stroke: var(--faint); stroke-width: 1.2; }
+  .pending { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .t { fill: var(--fg); font-family: var(--body); font-size: 13px; font-weight: 600; }
+  .s { fill: var(--muted); font-family: var(--body); font-size: 11.5px; }
+  .m { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .lbl { fill: var(--fg); font-family: var(--body); font-size: 11.5px; }
+  .h { fill: var(--accent); font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; }
+  .arrow { stroke: currentColor; stroke-width: 1.3; fill: none; }
+  .arrow-dash { stroke: var(--line); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--faint); vertical-align: top; }
+  th { font-family: var(--mono); font-weight: 500; font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+  td.cost { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; max-width: 65ch; }
+  dl { margin: 0; display: grid; gap: 10px; max-width: 65ch; }
+  dt { font-weight: 600; }
+  dd { margin: 0; color: var(--muted); }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">S5 step 1 · deployed 13 October 2026</div>
+    <h1>Ellery on AWS</h1>
+    <p class="lede">What each AWS part does for <span class="mono">ellery.demo.floyda.dev</span>: how a reader's visit is served, how the site is published, and where each part lives. Today the site serves the holding page only; the board goes live when you decide to launch.</p>
+  </header>
+
+  <section>
+    <h2>A reader's visit</h2>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 840 320" role="img" aria-label="A reader's browser looks up the name through floyda.dev, which hands it to the demo.floyda.dev zone, which points at CloudFront. CloudFront checks the request against the web ACL, rewrites folder addresses, serves from its cache or fetches from the private site bucket, and adds the security headers on the way back.">
+          <defs>
+            <marker id="a1" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+          </defs>
+          <!-- DNS lane -->
+          <rect class="box" x="190" y="20" width="190" height="56" rx="6"/>
+          <text class="t" x="285" y="44" text-anchor="middle">floyda.dev zone</text>
+          <text class="s" x="285" y="62" text-anchor="middle">your personal account</text>
+          <rect class="box" x="450" y="20" width="200" height="56" rx="6"/>
+          <text class="t" x="550" y="44" text-anchor="middle">demo.floyda.dev zone</text>
+          <text class="s" x="550" y="62" text-anchor="middle">project account</text>
+          <line class="arrow" x1="380" y1="48" x2="446" y2="48" marker-end="url(#a1)"/>
+          <text class="lbl" x="413" y="40" text-anchor="middle">NS</text>
+          <!-- reader -->
+          <rect class="box" x="10" y="170" width="120" height="70" rx="6"/>
+          <text class="t" x="70" y="200" text-anchor="middle">Reader</text>
+          <text class="s" x="70" y="218" text-anchor="middle">phone or desktop</text>
+          <polyline class="arrow" points="70,170 70,48 186,48" marker-end="url(#a1)"/>
+          <text class="lbl" x="80" y="104">1 · look up the name</text>
+          <line class="arrow" x1="550" y1="76" x2="550" y2="136" marker-end="url(#a1)"/>
+          <text class="lbl" x="558" y="110">alias → CloudFront</text>
+          <!-- CloudFront group -->
+          <rect class="group" x="180" y="140" width="470" height="130" rx="10"/>
+          <text class="h" x="196" y="162">CLOUDFRONT · WORLDWIDE EDGE · FREE PLAN</text>
+          <rect class="chip" x="196" y="180" width="98" height="72" rx="5"/>
+          <text class="t" x="245" y="202" text-anchor="middle">web ACL</text>
+          <text class="s" x="245" y="220" text-anchor="middle">blocks over 600</text>
+          <text class="s" x="245" y="236" text-anchor="middle">requests / 5 min</text>
+          <rect class="chip" x="312" y="180" width="98" height="72" rx="5"/>
+          <text class="t" x="361" y="202" text-anchor="middle">URL rewrite</text>
+          <text class="m" x="361" y="220" text-anchor="middle">/methods →</text>
+          <text class="m" x="361" y="236" text-anchor="middle">…/index.html</text>
+          <rect class="chip" x="428" y="180" width="98" height="72" rx="5"/>
+          <text class="t" x="477" y="202" text-anchor="middle">cache</text>
+          <text class="s" x="477" y="220" text-anchor="middle">or fetch from</text>
+          <text class="s" x="477" y="236" text-anchor="middle">the bucket</text>
+          <rect class="chip" x="544" y="180" width="98" height="72" rx="5"/>
+          <text class="t" x="593" y="202" text-anchor="middle">headers</text>
+          <text class="s" x="593" y="220" text-anchor="middle">security headers</text>
+          <text class="s" x="593" y="236" text-anchor="middle">+ CSP function</text>
+          <line class="arrow" x1="294" y1="216" x2="310" y2="216" marker-end="url(#a1)"/>
+          <line class="arrow" x1="410" y1="216" x2="426" y2="216" marker-end="url(#a1)"/>
+          <line class="arrow" x1="526" y1="216" x2="542" y2="216" marker-end="url(#a1)"/>
+          <line class="arrow" x1="130" y1="205" x2="194" y2="205" marker-end="url(#a1)"/>
+          <text class="lbl" x="162" y="197" text-anchor="middle">2 · HTTPS</text>
+          <!-- bucket -->
+          <rect class="box" x="700" y="180" width="130" height="72" rx="6"/>
+          <text class="t" x="765" y="204" text-anchor="middle">Site bucket</text>
+          <text class="s" x="765" y="222" text-anchor="middle">private, London</text>
+          <text class="s" x="765" y="238" text-anchor="middle">CloudFront only</text>
+          <line class="arrow" x1="650" y1="216" x2="696" y2="216" marker-end="url(#a1)"/>
+          <text class="lbl" x="673" y="208" text-anchor="middle">3 · fetch</text>
+          <polyline class="arrow" points="593,252 593,298 70,298 70,244" marker-end="url(#a1)"/>
+          <text class="lbl" x="330" y="290" text-anchor="middle">4 · the page, with its security headers</text>
+        </svg>
+      </div>
+      <figcaption>Nothing runs on a server when someone visits. DNS finds CloudFront, CloudFront serves a ready-made file, and only CloudFront is allowed to read the bucket (origin access control). A missing page gets the site's 404 page with status 404.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>How the site is published</h2>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 840 400" role="img" aria-label="Three things start a build: a push to the branch through the GitHub webhook, S4's nightly export once it is connected, or you by hand. CodeBuild fetches the code and runs the publish script in five steps: hashed files, other files, pages, clearing CloudFront's copies and waiting, then removing stale files. A failed build emails you.">
+          <defs>
+            <marker id="a2" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+          </defs>
+          <!-- triggers -->
+          <rect class="box" x="10" y="30" width="200" height="64" rx="6"/>
+          <text class="t" x="24" y="54">A push to the branch</text>
+          <text class="s" x="24" y="72">GitHub webhook, through</text>
+          <text class="s" x="24" y="86">the connection</text>
+          <rect class="pending" x="10" y="130" width="200" height="64" rx="6"/>
+          <text class="t" x="24" y="154">S4's nightly export</text>
+          <text class="m" x="24" y="172">_finished.json lands</text>
+          <text class="s" x="24" y="186">connected after S4 deploys</text>
+          <rect class="box" x="10" y="230" width="200" height="64" rx="6"/>
+          <text class="t" x="24" y="254">You, by hand</text>
+          <text class="m" x="24" y="272">aws codebuild</text>
+          <text class="m" x="24" y="286">start-build</text>
+          <line class="arrow" x1="210" y1="62" x2="286" y2="62" marker-end="url(#a2)"/>
+          <text class="lbl" x="248" y="54" text-anchor="middle">webhook</text>
+          <line class="arrow-dash" x1="210" y1="162" x2="286" y2="162"/>
+          <polygon points="286,158 294,162 286,166" fill="var(--line)"/>
+          <text class="lbl" x="248" y="154" text-anchor="middle">event rule</text>
+          <line class="arrow" x1="210" y1="262" x2="286" y2="262" marker-end="url(#a2)"/>
+          <text class="lbl" x="248" y="254" text-anchor="middle">command</text>
+          <!-- CodeBuild -->
+          <rect class="group" x="296" y="20" width="284" height="300" rx="10"/>
+          <text class="h" x="312" y="44">CODEBUILD · LONDON</text>
+          <text class="m" x="312" y="62">runs site/scripts/publish.sh</text>
+          <text class="lbl" x="312" y="98">fetch the code from GitHub</text>
+          <text class="lbl" x="312" y="132">1  upload hashed files · cache a year</text>
+          <text class="lbl" x="312" y="164">2  upload other files · cache 5 min</text>
+          <text class="lbl" x="312" y="196">3  upload pages · always re-check</text>
+          <text class="lbl" x="312" y="228">4  clear CloudFront's copies, wait</text>
+          <text class="lbl" x="312" y="260">5  remove stale files, keep hashed</text>
+          <text class="s" x="312" y="296">holding mode: only the holding page</text>
+          <!-- targets -->
+          <rect class="box" x="650" y="104" width="180" height="64" rx="6"/>
+          <text class="t" x="740" y="130" text-anchor="middle">Site bucket</text>
+          <text class="s" x="740" y="148" text-anchor="middle">files, old versions kept</text>
+          <rect class="box" x="650" y="204" width="180" height="56" rx="6"/>
+          <text class="t" x="740" y="228" text-anchor="middle">CloudFront</text>
+          <text class="s" x="740" y="246" text-anchor="middle">drops its old copies</text>
+          <line class="arrow" x1="580" y1="140" x2="646" y2="136" marker-end="url(#a2)"/>
+          <text class="lbl" x="614" y="128" text-anchor="middle">1–3, 5</text>
+          <line class="arrow" x1="580" y1="228" x2="646" y2="230" marker-end="url(#a2)"/>
+          <text class="lbl" x="614" y="220" text-anchor="middle">4</text>
+          <!-- failure -->
+          <line class="arrow" x1="438" y1="320" x2="438" y2="346" marker-end="url(#a2)"/>
+          <text class="lbl" x="446" y="338">if any step fails</text>
+          <rect class="box" x="296" y="350" width="534" height="40" rx="6"/>
+          <text class="lbl" x="312" y="375">event rule → alert topic → an email to you · the site keeps its last good version</text>
+        </svg>
+      </div>
+      <figcaption>The order of steps 1 to 5 means a reader never gets a page whose styles have not arrived yet. Old copies of hashed files are never deleted, so a page someone loaded before a deploy still works.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Where each part lives</h2>
+    <figure>
+      <div class="frame">
+        <svg viewBox="0 0 840 440" role="img" aria-label="Your personal account holds the floyda.dev zone, which delegates demo.floyda.dev to the project account. In the project account, US East holds the zone stack and the edge stack with the certificate and web ACL; London holds the site stack, which uses the zone, certificate and web ACL across regions. GitHub reaches the site stack's connection.">
+          <defs>
+            <marker id="a3" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+          </defs>
+          <!-- columns -->
+          <rect class="col" x="10" y="20" width="200" height="340" rx="8"/>
+          <text class="h" x="24" y="44">PERSONAL ACCOUNT</text>
+          <rect class="col" x="230" y="20" width="290" height="340" rx="8"/>
+          <text class="h" x="244" y="44">PROJECT · US EAST (N. VIRGINIA)</text>
+          <rect class="col" x="540" y="20" width="290" height="340" rx="8"/>
+          <text class="h" x="554" y="44">PROJECT · LONDON</text>
+          <!-- personal -->
+          <rect class="box" x="24" y="84" width="172" height="56" rx="6"/>
+          <text class="t" x="110" y="108" text-anchor="middle">floyda.dev zone</text>
+          <text class="s" x="110" y="126" text-anchor="middle">NS record: demo</text>
+          <rect class="pending" x="24" y="164" width="172" height="56" rx="6"/>
+          <text class="t" x="110" y="188" text-anchor="middle">connection ntsb-site</text>
+          <text class="s" x="110" y="206" text-anchor="middle">unused · you can delete</text>
+          <!-- us-east-1 -->
+          <rect class="box" x="244" y="84" width="262" height="70" rx="6"/>
+          <text class="m" x="258" y="106">NtsbSiteDnsStack</text>
+          <text class="t" x="258" y="128">demo.floyda.dev zone</text>
+          <text class="s" x="258" y="144">its DNS is covered by the Free plan</text>
+          <rect class="box" x="244" y="180" width="262" height="70" rx="6"/>
+          <text class="m" x="258" y="202">NtsbSiteEdgeStack</text>
+          <text class="t" x="258" y="224">certificate · WAF web ACL</text>
+          <text class="s" x="258" y="240">US East because CloudFront needs it</text>
+          <!-- eu-west-2 -->
+          <rect class="box" x="554" y="84" width="262" height="196" rx="6"/>
+          <text class="m" x="568" y="106">NtsbSiteStack</text>
+          <text class="lbl" x="568" y="130">site bucket</text>
+          <text class="lbl" x="568" y="150">CloudFront + two functions</text>
+          <text class="lbl" x="568" y="170">Free plan subscription</text>
+          <text class="lbl" x="568" y="190">alias records → CloudFront</text>
+          <text class="lbl" x="568" y="210">CodeBuild project</text>
+          <text class="lbl" x="568" y="230">GitHub connection ntsb</text>
+          <text class="lbl" x="568" y="250">alert topic + event rules</text>
+          <rect class="box" x="554" y="292" width="262" height="28" rx="6"/>
+          <text class="s" x="568" y="311">NtsbRecorderStack · the recorder (S2.5)</text>
+          <rect class="pending" x="554" y="326" width="262" height="28" rx="6"/>
+          <text class="s" x="568" y="345">S4's live stack · the export (to come)</text>
+          <!-- arrows -->
+          <line class="arrow" x1="196" y1="112" x2="240" y2="116" marker-end="url(#a3)"/>
+          <text class="lbl" x="218" y="104" text-anchor="middle">NS</text>
+          <line class="arrow" x1="506" y1="119" x2="550" y2="119" marker-end="url(#a3)"/>
+          <text class="lbl" x="528" y="111" text-anchor="middle">zone</text>
+          <line class="arrow" x1="506" y1="215" x2="550" y2="200" marker-end="url(#a3)"/>
+          <text class="lbl" x="528" y="196" text-anchor="middle">cert, ACL</text>
+          <!-- github -->
+          <rect class="box" x="230" y="380" width="280" height="48" rx="6"/>
+          <text class="t" x="244" y="400">GitHub repository</text>
+          <text class="s" x="244" y="418">AWS Connector app, this repo only</text>
+          <polyline class="arrow" points="510,404 530,404 530,230 550,230" marker-end="url(#a3)"/>
+        </svg>
+      </div>
+      <figcaption>Three stacks because of two regions. CloudFront takes its certificate and web ACL only from US East, so those live there; the rest is in London beside the recorder. CDK passes the zone, certificate and web ACL across regions with two small helper functions it adds itself.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Each part and its cost</h2>
+    <p>Prices from AWS's pricing pages and the flat-rate plan guide, read 11 and 12 October 2026. Build minutes are an estimate.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>What it does</th><th>Cost a month</th></tr></thead>
+        <tbody>
+          <tr><td>CloudFront, on the flat-rate Free plan</td><td>Serves the files worldwide over HTTPS; up to 1 million requests and 100 GB a month, with no overage charges</td><td class="cost">$0</td></tr>
+          <tr><td>WAF web ACL</td><td>Blocks an address making more than 600 requests in 5 minutes; required by the plan</td><td class="cost">$0 on the plan</td></tr>
+          <tr><td>Two CloudFront functions</td><td>Turn <span class="mono">/methods</span> into its index page; add the Content-Security-Policy</td><td class="cost">$0 on the plan</td></tr>
+          <tr><td><span class="mono">demo.floyda.dev</span> zone</td><td>Answers DNS for the site's name; covered by the plan</td><td class="cost">$0 on the plan</td></tr>
+          <tr><td>Certificate</td><td>HTTPS for <span class="mono">ellery.demo.floyda.dev</span>, renewed automatically</td><td class="cost">$0</td></tr>
+          <tr><td>Site bucket</td><td>Holds the files; private; old versions kept 30 days</td><td class="cost">$0, inside the plan's 5 GB credit</td></tr>
+          <tr><td>CodeBuild</td><td>Builds and publishes the site, about a minute a run</td><td class="cost">about $0 (100 free minutes)</td></tr>
+          <tr><td>Event rules, alert topic</td><td>Start builds; email you if one fails</td><td class="cost">$0</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Not connected yet</h2>
+    <ul>
+      <li><strong>S4's nightly export.</strong> Once S4's live stack is deployed, redeploy the site stack with <span class="mono">-c live_bucket_name=…</span>, and the export's finished mark starts each morning's build.</li>
+      <li><strong>The real site.</strong> The publish script can only publish the holding page. The board, cases and Path pages arrive in later steps, and go public only when you decide to launch.</li>
+      <li><strong>Tidying.</strong> Four empty site buckets from the rolled-back attempts, and the unused <span class="mono">ntsb-site</span> connection in your personal account.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Terms</h2>
+    <dl>
+      <div><dt>Stack</dt><dd>A group of AWS parts that CDK creates, changes and removes together, from code in <span class="mono">infra/</span>.</dd></div>
+      <div><dt>Origin access control</dt><dd>The rule that only this CloudFront distribution may read the site bucket.</dd></div>
+      <div><dt>Invalidation</dt><dd>Telling CloudFront to drop its stored copies so readers get the new files.</dd></div>
+      <div><dt>Content-Security-Policy</dt><dd>A header telling the browser to load scripts, styles and images from the site itself only.</dd></div>
+      <div><dt>Webhook</dt><dd>GitHub's message to CodeBuild on each push to the branch.</dd></div>
+    </dl>
+  </section>
+</main>

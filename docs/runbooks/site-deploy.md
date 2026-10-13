@@ -5,7 +5,8 @@ spec §18) from nothing to `https://ellery.demo.floyda.dev` showing the holding 
 **CodeBuild**. Until you decide to launch (spec §20), the only thing the build can publish is
 the holding line: `site/scripts/publish.sh` refuses every other mode.
 
-Every term in **bold** the first time it appears is in the glossary at the end. Commands use
+Every term in **bold** the first time it appears is in the glossary at the end. A picture of every part and how they connect is in [`site-aws-map.html`](site-aws-map.html)
+(open it in a browser). Commands use
 `--profile ntsb`, the project's own AWS account (`docs/runbooks/aws-setup.md`), except Stage 3,
 which is in your **personal account**, the one holding `floyda.dev`. Run them from the S5
 worktree, `/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s5-public-site`;
