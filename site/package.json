@@ -12,7 +12,10 @@
     "lint": "eslint . --max-warnings 0",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "test:a11y": "playwright test"
+    "test:a11y": "playwright test",
+    "test": "vitest run",
+    "types": "node scripts/gen-types.mjs",
+    "types:check": "node scripts/gen-types.mjs --check"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
@@ -20,15 +23,19 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.19.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "astro": "^7.3.5",
     "astro-eslint-parser": "^3.2.0",
     "eslint": "^10.12.0",
     "eslint-plugin-astro": "^3.2.1",
     "globals": "^17.13.0",
+    "json-schema-to-typescript": "^16.0.0",
     "prettier": "^3.9.9",
     "prettier-plugin-astro": "^1.1.0",
     "serve-handler": "^6.1.7",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1"
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
   }
 }

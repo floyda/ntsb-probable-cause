@@ -84,7 +84,7 @@ Expected: the schema and eight sample files added. Then `SKIP=no-commit-to-branc
 - `board-types.ts`: `BoardIndex`, `BoardRow`, `CaseFile`, `Code`, `MarkedCode`, `Belief`, `DocumentChoice` (generated; names follow the schema's titles).
 - `export.ts`: `exportDir(): string` (from `BOARD_EXPORT_DIR`, default `../tests/fixtures/board`, resolved from `site/`); `loadExport(dir: string): { index: BoardIndex; cases: Map<string, CaseFile> }`; throws `ExportError` (message names the file and the first schema error) on any invalid, missing or unlisted-but-required file.
 
-- [ ] **Step 1: Add the tools**
+- [x] **Step 1: Add the tools**
 
 ```bash
 cd site
@@ -93,7 +93,7 @@ pnpm add -D vitest ajv json-schema-to-typescript
 
 Scripts in `package.json`: `"test": "vitest run"`, `"types": "node scripts/gen-types.mjs"`, `"types:check": "node scripts/gen-types.mjs --check"`.
 
-- [ ] **Step 2: Generate the types**
+- [x] **Step 2: Generate the types**
 
 `site/scripts/gen-types.mjs`:
 
@@ -123,7 +123,7 @@ if (process.argv.includes("--check")) {
 
 Run `pnpm run types`; then `pnpm run format` (Prettier may reformat the output; if so, have the script run Prettier's API on `out` before comparing, and log it in Deviations). Shared definitions such as `Code` and `Aircraft` appear in both parts; if the compiler emits a duplicate declaration, compile the `case` part with `declareExternallyReferenced: false` for definitions already emitted, and log it.
 
-- [ ] **Step 3: Write the failing loader tests**
+- [x] **Step 3: Write the failing loader tests**
 
 `site/src/lib/export.test.ts`:
 
@@ -200,7 +200,7 @@ export default defineConfig({ test: { include: ["src/**/*.test.ts", "tests/**/*.
 
 Run: `pnpm run test` — Expected: FAIL (`./export` does not exist).
 
-- [ ] **Step 4: Write the loader**
+- [x] **Step 4: Write the loader**
 
 `site/src/lib/export.ts`:
 
@@ -273,12 +273,12 @@ export function loadExport(dir: string): { index: BoardIndex; cases: Map<string,
 
 (Ajv needs `ajv-formats` for `format: date`; without it formats are not checked. Add `ajv-formats` and `addFormats(ajv)` so dates are checked; log in Deviations if its import shape differs.)
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm run test && pnpm run types:check && pnpm run check && pnpm run lint`
 Expected: 5 passed; types current; zero errors and warnings.
 
-- [ ] **Step 6: Commit** — `S5 step 2 Task 2: types generated from board/1 and the export loader`.
+- [x] **Step 6: Commit** — `S5 step 2 Task 2: types generated from board/1 and the export loader`.
 
 ---
 
@@ -512,3 +512,15 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 
 - **2026-10-13, Task 1:** copied from `origin/s4-predictions-and-resolution` at `b577bf3`. The
   hooks pass on the copies, and the Python suite passes with them in place (4,399 tests).
+- **2026-10-13, Task 2: two generated type files, not one.** `board-index-types.ts` and
+  `board-case-types.ts`, because both schemas define `Code` and `Aircraft` and one file would
+  declare them twice. The generator also drops every property's own `title` before compiling
+  (keeping the titles of the named definitions), or each property became a type alias of its own
+  (`TookDays`, `CaseNumber` and about forty more). It formats through Prettier's API with the
+  repository's `.editorconfig`, as Prettier's command line does, so `types:check` and
+  `format:check` agree. Imports change accordingly (`board-index-types`, `board-case-types`).
+- **2026-10-13, Task 2: lint skips the two generated files** (checked by `types:check` and the
+  compiler), and test files may use untyped JSON (`no-unsafe-assignment`,
+  `no-unsafe-member-access` off for `*.test.ts`), since the tests edit raw export JSON on purpose.
+- **2026-10-13, Task 2:** Ajv is imported as `{ Ajv2020 } from "ajv/dist/2020.js"`, and
+  `ajv-formats` (CommonJS) through a typed cast, so `format: date` and `date-time` are checked.
