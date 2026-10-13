@@ -1,0 +1,2 @@
+{"format":"ledger/1","appended_at":"2026-10-13T20:08:23.094862Z","key":"nights/2026-10-13/manifest.json","sha256":"c99e436f7abb80311c70ee5357055c8f17f1b4b855fb1bb1d452bc7f8ffa4f4f","size":2842,"counts":{"coded":29,"not_coded":1,"held_back":32,"later_scored":0,"failures_counted":0}}
+{"format":"ledger/1","appended_at":"2026-10-13T20:08:23.094862Z","key":"runs/20261013T061355-9c5be5d-live-C/manifest.json","sha256":"3cf749e244e71eebff2a76c4865c2b88efaffb08196c4bf4904acc5a224f5280","size":1517,"counts":null}
