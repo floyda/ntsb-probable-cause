@@ -444,7 +444,7 @@ The table sits in `<div class="board-frame">` with `overflow-x: auto` (Review Fo
 
 **Files:** Create `site/src/components/OpenedCase.astro`, `site/src/pages/case/[case].astro`, `site/src/scripts/open-row.ts`. Modify `site/src/pages/index.astro`, `site/astro.config.mjs`.
 
-- [ ] **Step 1: `OpenedCase.astro`**
+- [x] **Step 1: `OpenedCase.astro`**
 
 Props `kase: CaseFile`. An `<article class="opened" id="opened" data-case={case_number}>` with, in order (§5):
 1. Facts: `factsLine` as a `<ul class="facts">`.
@@ -454,25 +454,25 @@ Props `kase: CaseFile`. An `<article class="opened" id="opened" data-case={case_
 5. "Why it happened · NTSB findings": three lists — both named, only the NTSB, only the agent — each left out with a sentence when empty ("None."), never an empty list (Review Focus 3).
 Then the withheld line (when not null) and the sources line: "Sources: the case's docket" linking `docketUrl(mkey)` when not null, plus the NTSB's case page if Task 7 verified it. No Methods or trail link yet.
 
-- [ ] **Step 2: The case page**
+- [x] **Step 2: The case page**
 
 `site/src/pages/case/[case].astro`: `getStaticPaths()` returns one path per row of `loadExport(exportDir())`, with the case file as a prop; renders `Base` with title `"{case_number} · Ellery"` and the `<OpenedCase>`; a back link to `/`.
 
-- [ ] **Step 3: The first page**
+- [x] **Step 3: The first page**
 
 `index.astro`: the caveat of §3.1 (Andy's wording, verbatim), the `<Board>`, then the newest row's `<OpenedCase>` under the heading "One case". (The scrolling route, the rail and the motion come in step 6.)
 
-- [ ] **Step 4: A chosen row opens beneath the board**
+- [x] **Step 4: A chosen row opens beneath the board**
 
 `site/src/scripts/open-row.ts`, loaded by `index.astro` as `<script src="../scripts/open-row.ts"></script>` (Astro bundles it into a file, so the CSP's `'self'` allows it): on a click on a row link, fetch `/case/<n>/`, take its `article#opened`, replace the page's, move focus to it, and `history.pushState` to `/case/<n>/`; on `popstate` reload. If the fetch fails, follow the link. Without script, links navigate (Review Focus 5). In `astro.config.mjs` set `vite: { build: { assetsInlineLimit: 0 } }` so no script or style is inlined.
 
-- [ ] **Step 5: A render test**
+- [x] **Step 5: A render test**
 
 In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for each of the seven sample cases, `dist/case/<n>/index.html` exists and contains its difference sentence and no `undefined`, `null` or `NaN` in visible text.
 
-- [ ] **Step 6: Run** — `pnpm run build && pnpm run test && pnpm run test:a11y && pnpm run lint && pnpm run check` — Expected: all pass (axe now covers 9 pages in three projects).
+- [x] **Step 6: Run** — `pnpm run build && pnpm run test && pnpm run test:a11y && pnpm run lint && pnpm run check` — Expected: all pass (axe now covers 9 pages in three projects).
 
-- [ ] **Step 7: Commit** — `S5 step 2 Task 5: the opened case, its own page, and the first page`.
+- [x] **Step 7: Commit** — `S5 step 2 Task 5: the opened case, its own page, and the first page`.
 
 ---
 
@@ -534,3 +534,10 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
   Result words stay on one line above 640 px and wrap below, with the board text at 1rem. Lint
   turns off `no-unsafe-return` for `.astro` files only, where the type-aware linter cannot type
   JSX; `astro check` type-checks them.
+- **2026-10-13, Task 5:** the caveat (§3.1) is Andy's approved wording, verbatim, so its "400"
+  and "one case in four" are typed for now; step 4 quotes them from the numbers file. The agent's
+  cause column is headed "The agent's reason for not answering" on an abstained case, as §4 asks
+  ("its opened case gives the agent's stated reason"). Without a comparison (awaiting, not coded)
+  each side lists its own codes plainly. Playwright now runs only `*.spec.ts`, since Vitest's
+  `tests/dist.test.ts` sits in the same folder. The render test was proved by emptying the
+  difference sentence: 7 failed, then 27 passed once restored.

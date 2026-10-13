@@ -15,4 +15,7 @@ export default defineConfig({
     },
     // No telemetry, no third-party requests at build or read time.
     devToolbar: { enabled: false },
+    // Nothing inlined: every script and asset is its own file, so the Content-Security-Policy
+    // can stay `default-src 'self'`.
+    vite: { build: { assetsInlineLimit: 0 } },
 });

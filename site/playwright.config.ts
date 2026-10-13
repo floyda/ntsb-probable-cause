@@ -4,6 +4,8 @@ import { defineConfig } from "@playwright/test";
 // plain files the way S3 serves them.
 export default defineConfig({
     testDir: "tests",
+    // Playwright runs the *.spec.ts files; Vitest runs the *.test.ts files.
+    testMatch: "**/*.spec.ts",
     fullyParallel: true,
     forbidOnly: true,
     reporter: [["list"]],

@@ -1,0 +1,33 @@
+---
+// One case's own page, at its NTSB case number (spec §12 item 12).
+import type { GetStaticPaths } from "astro";
+import OpenedCase from "../../components/OpenedCase.astro";
+import Base from "../../layouts/Base.astro";
+import type { CaseFile } from "../../lib/board-case-types";
+import { exportDir, loadExport } from "../../lib/export";
+
+export const getStaticPaths = (() => {
+    const { cases } = loadExport(exportDir());
+    return [...cases.values()].map((kase) => ({
+        params: { case: kase.case_number },
+        props: { kase },
+    }));
+}) satisfies GetStaticPaths;
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+---
+
+<Base
+    title={`${kase.case_number} · Ellery`}
+    description="One closed case: the agent's coding beside the NTSB's."
+>
+    <p>
+        <a href="/">Back to the board</a>
+    </p>
+    <h1>{kase.case_number}</h1>
+    <OpenedCase kase={kase} />
+</Base>

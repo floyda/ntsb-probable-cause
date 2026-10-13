@@ -1,9 +1,12 @@
 ---
 import Board from "../components/Board.astro";
+import OpenedCase from "../components/OpenedCase.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 
-const { index } = loadExport(exportDir());
+const { index, cases } = loadExport(exportDir());
+const newest = index.rows[0];
+const newestCase = newest === undefined ? undefined : cases.get(newest.case_number);
 ---
 
 <Base
@@ -11,5 +14,25 @@ const { index } = loadExport(exportDir());
     description="An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's."
 >
     <h1>Ellery</h1>
+    <section class="caveat" aria-labelledby="caveat-heading">
+        <h2 id="caveat-heading">Read this first</h2>
+        <p>
+            The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same
+            tools, as a simpler fixed method. On 400 accidents it had never seen, its first code
+            matched the investigator's in about one case in four. The fixed method matched in about
+            one case in three. It runs here because it is the version being improved, and each new
+            version is measured against that fixed method. This site is the record of how.
+        </p>
+    </section>
     <Board index={index} />
+    {newestCase !== undefined && (
+        <section aria-labelledby="one-case">
+            <h2 id="one-case">One case</h2>
+            <OpenedCase kase={newestCase} />
+        </section>
+    )}
 </Base>
+
+<script>
+    import "../scripts/open-row.ts";
+</script>
