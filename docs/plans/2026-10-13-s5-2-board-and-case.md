@@ -502,9 +502,9 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 
 ## Task 8: Preview (Controller)
 
-- [ ] **Step 1:** Build against the sample. Screenshot the first page and two case pages (same first code; not coded) at 390 × 844 and 1280 × 900, light and dark, with Playwright as in step 1; look at each.
-- [ ] **Step 2:** Send them to Andy with the wording choices that need his eye: the six result words and marks, the difference sentences, the facts line, the dot font on the board, and the backfill note.
-- [ ] **Step 3:** Record his answers as rulings or follow-up edits, and push the branch.
+- [x] **Step 1:** Build against the sample. Screenshot the first page and two case pages (same first code; not coded) at 390 × 844 and 1280 × 900, light and dark, with Playwright as in step 1; look at each.
+- [x] **Step 2:** Send them to Andy with the wording choices that need his eye: the six result words and marks, the difference sentences, the facts line, the dot font on the board, and the backfill note.
+- [x] **Step 3:** Record his answers as rulings or follow-up edits, and push the branch.
 
 ---
 
@@ -565,3 +565,8 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
      when the path changes, and a Playwright test covers a row opened with scripts on.
   6. *The code version* now links to its commit (§5); the reviewer had it as minor.
   Nine smaller points are deferred, listed in the session's final report.
+- **2026-10-13, Task 8: Andy's answers on the preview.** All six choices are fine as built: the
+  result words and marks, the difference sentences, the facts line, the dot face on the dark
+  board, the backfill marker and its note, and the sources line. Abstained cases keep "No answer:
+  the agent abstained." with no leaning codes (confirming the review-fix ruling). Andy finds the
+  pages "a bit plain"; visual polish comes later, with the scrolling route and motion of step 6.
