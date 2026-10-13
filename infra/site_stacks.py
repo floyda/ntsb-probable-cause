@@ -143,6 +143,7 @@ class NtsbSiteStack(Stack):
         source_branch: str,
         alert_email: str | None,
         live_bucket_name: str | None,
+        github_connection_arn: str | None = None,
     ) -> None:
         super().__init__(scope, construct_id, env=env, cross_region_references=True)
 
@@ -265,16 +266,21 @@ class NtsbSiteStack(Stack):
                 owner=_GITHUB_OWNER,
                 repo=_GITHUB_REPO,
                 branch_or_ref=source_branch,
-                webhook=True,
+                # A push starts a build only through the named connection (below).
+                webhook=github_connection_arn is not None,
                 # No commit statuses written back to GitHub (review, 2026-10-12).
                 report_build_status=False,
                 # Anchored: `and_branch_is` writes an unanchored pattern, which would also match
                 # a push to, say, `<branch>-old`.
-                webhook_filters=[
-                    codebuild.FilterGroup.in_event_of(codebuild.EventAction.PUSH).and_head_ref_is(
-                        f"^refs/heads/{re.escape(source_branch)}$"
-                    )
-                ],
+                webhook_filters=(
+                    [
+                        codebuild.FilterGroup.in_event_of(
+                            codebuild.EventAction.PUSH
+                        ).and_head_ref_is(f"^refs/heads/{re.escape(source_branch)}$")
+                    ]
+                    if github_connection_arn is not None
+                    else None
+                ),
             ),
             environment=codebuild.BuildEnvironment(
                 build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
@@ -295,6 +301,27 @@ class NtsbSiteStack(Stack):
                 }
             ),
         )
+        if github_connection_arn is not None:
+            # GitHub through the connection Andy approved (runbook Stage 5), named on the project
+            # itself: the account's default credential was not used for the webhook (first
+            # deploy, 2026-10-13). Free.
+            cfn_project = project.node.default_child
+            if not isinstance(cfn_project, codebuild.CfnProject):
+                raise TypeError("the build project has no CfnProject to override")
+            cfn_project.add_property_override(
+                "Source.Auth", {"Type": "CODECONNECTIONS", "Resource": github_connection_arn}
+            )
+            project.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=[
+                        "codeconnections:GetConnection",
+                        "codeconnections:GetConnectionToken",
+                        "codeconnections:UseConnection",
+                    ],
+                    resources=[github_connection_arn],
+                )
+            )
+
         # The site bucket: list, read, write and delete current files only. Never old versions,
         # retention or legal holds: any push to the branch runs with this role, and the
         # versions are the way back (review, 2026-10-12).

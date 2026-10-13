@@ -36,8 +36,14 @@ _ACCOUNT = "123456789012"
 _LIVE_BUCKET = "test-live-bucket"
 
 
+_CONNECTION = "arn:aws:codeconnections:eu-west-2:123456789012:connection/0000-test"
+
+
 def _templates(
-    *, live_bucket_name: str | None, alert_email: str | None = "alerts@example.invalid"
+    *,
+    live_bucket_name: str | None,
+    alert_email: str | None = "alerts@example.invalid",
+    github_connection_arn: str | None = _CONNECTION,
 ) -> dict[str, Template]:
     app = cdk.App()
     edge_env = cdk.Environment(account=_ACCOUNT, region="us-east-1")
@@ -53,6 +59,7 @@ def _templates(
         source_branch="s5-public-site",
         alert_email=alert_email,
         live_bucket_name=live_bucket_name,
+        github_connection_arn=github_connection_arn,
     )
     return {
         "dns": Template.from_stack(dns),
@@ -69,6 +76,11 @@ def stacks() -> dict[str, Template]:
 @pytest.fixture(scope="module")
 def stacks_without_export() -> dict[str, Template]:
     return _templates(live_bucket_name=None)
+
+
+@pytest.fixture(scope="module")
+def stacks_without_connection() -> dict[str, Template]:
+    return _templates(live_bucket_name=_LIVE_BUCKET, github_connection_arn=None)
 
 
 @pytest.fixture(scope="module")
@@ -216,6 +228,37 @@ def test_merge_to_the_branch_starts_a_build(stacks: dict[str, Template]) -> None
     assert re.fullmatch(head, "refs/heads/s5-public-site")
     assert not re.search(head, "refs/heads/s5-public-site-old")
     assert not re.search(head, "refs/heads/old-s5-public-site")
+
+
+def test_build_reads_github_through_the_named_connection(stacks: dict[str, Template]) -> None:
+    # First deploy, 2026-10-13: "Access token not found in CodeBuild project for server type
+    # github" -- the account's default credential was not used, so the project names its own.
+    project = next(iter(stacks["site"].find_resources("AWS::CodeBuild::Project").values()))
+    assert project["Properties"]["Source"]["Auth"] == {
+        "Type": "CODECONNECTIONS",
+        "Resource": _CONNECTION,
+    }
+    on_connection = [s for s in _statements(stacks["site"]) if _CONNECTION in _as_text(s)]
+    actions = {
+        a
+        for s in on_connection
+        for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"])
+    }
+    assert actions == {
+        "codeconnections:GetConnection",
+        "codeconnections:GetConnectionToken",
+        "codeconnections:UseConnection",
+    }
+
+
+def test_without_a_connection_there_is_no_webhook(
+    stacks_without_connection: dict[str, Template],
+) -> None:
+    project = next(
+        iter(stacks_without_connection["site"].find_resources("AWS::CodeBuild::Project").values())
+    )
+    assert "Auth" not in project["Properties"]["Source"]
+    assert project["Properties"].get("Triggers", {}).get("Webhook", False) is False
 
 
 def test_only_the_finished_mark_starts_a_build(stacks: dict[str, Template]) -> None:

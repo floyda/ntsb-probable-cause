@@ -85,21 +85,32 @@ than 30 minutes, Stage 3's records are not visible yet: check `dig` again.
 
 ## Stage 5 — Connect CodeBuild to GitHub (once)
 
-CodeBuild needs to read the repository and receive a message on each push. In the `eu-west-2`
-console of the project account:
+CodeBuild needs to read the repository and receive a message on each push. **Make the connection
+in the project account.** Signing in to the console puts you in your personal account; switch
+role to the project account first (`docs/runbooks/recorder-deploy.md`, "Console access"). On
+2026-10-13 the first connection was made in the personal account by mistake, and the site
+stack's webhook failed with "Access token not found".
 
-1. **Developer Tools → Settings → Connections → Create connection.** Provider: GitHub. Name:
-   `ntsb-site`. Choose **Install a new app**, and in GitHub install the **AWS Connector for
-   GitHub** for the `floyda/ntsb-probable-cause` repository **only**, not all repositories.
-   Finish; the connection's status must read **Available**.
-2. **CodeBuild → Build projects → (any page) → Manage default source credential.** Source
-   provider: GitHub. Credential type: **GitHub App**. Connection: `ntsb-site`. Save.
+1. With the console in the **project account**, region **Europe (London)**: **Developer Tools →
+   Settings → Connections → Create connection.** Provider: GitHub. Name: `ntsb-site`. GitHub
+   offers the **AWS Connector for GitHub** app; if it is already installed, choose the existing
+   installation. Its repository access must be **Only select repositories**:
+   `floyda/ntsb-probable-cause`. Finish; the status must read **Available**.
+2. Copy the connection's ARN:
 
-This is the GitHub change of spec §18.2. Read the app's install screen before accepting: the
-AWS Connector for GitHub asks for access to the repository's code, commit statuses and webhooks,
-including write access. CodeBuild uses it to read the repository and to create one webhook, so
-pushes start a build. The build itself writes nothing back: the stack turns off commit-status
-reporting (`report_build_status=False`). Limit the installation to this one repository.
+   ```bash
+   aws codeconnections list-connections --region eu-west-2 --profile ntsb \
+     --query 'Connections[?ConnectionName==`ntsb-site`].ConnectionArn' --output text
+   ```
+
+   The site stack names this connection on the build project (`github_connection_arn`), so no
+   account-wide CodeBuild setting is needed.
+
+Read the app's install screen before accepting: the AWS Connector for GitHub asks for access to
+the repository's code, commit statuses and webhooks, including write access. CodeBuild uses it to
+read the repository and to create one webhook, so pushes start a build. The build itself writes
+nothing back: the stack turns off commit-status reporting (`report_build_status=False`). Limit
+the installation to this one repository.
 
 ## Stage 6 — The site stack
 
@@ -107,12 +118,13 @@ reporting (`report_build_status=False`). Limit the installation to this one repo
 uv run cdk deploy NtsbSiteStack \
   -c alert_email=<your address> \
   -c site_source_branch=s5-public-site \
+  -c github_connection_arn=<the ARN from Stage 5> \
   --profile ntsb
 ```
 
 - **Pass the same `-c` values on every deploy of `NtsbSiteStack`.** A deploy without
   `alert_email` removes the email subscription; one without `live_bucket_name` removes the rule
-  on S4's export. The zone and certificate stacks do not depend on them.
+  on S4's export; one without `github_connection_arn` removes the push webhook. The zone and certificate stacks do not depend on them.
 - After S5 merges, use `-c site_source_branch=main`.
 - After S4's live stack is deployed, add `-c live_bucket_name=<S4's LiveBucketName output>`.
   Without it the stack has no rule on S4's bucket and no access to it.
