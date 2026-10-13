@@ -100,10 +100,11 @@ stack's webhook failed with "Access token not found".
 
    ```bash
    aws codeconnections list-connections --region eu-west-2 --profile ntsb \
-     --query 'Connections[?ConnectionName==`ntsb-site`].ConnectionArn' --output text
+     --query 'Connections[].[ConnectionName,ConnectionStatus,ConnectionArn]' --output text
    ```
 
-   The site stack names this connection on the build project (`github_connection_arn`), so no
+   It lists every connection in the project account, whatever its name; use the GitHub one
+   whose status is `AVAILABLE`. The site stack names this connection on the build project (`github_connection_arn`), so no
    account-wide CodeBuild setting is needed.
 
 Read the app's install screen before accepting: the AWS Connector for GitHub asks for access to
