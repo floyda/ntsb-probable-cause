@@ -299,7 +299,7 @@ Expected: 5 passed; types current; zero errors and warnings.
 - `withheldLine(c: CaseFile): string | null` — null when not coded.
 - `docketUrl(mkey: number | null): string | null`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `site/src/lib/words.test.ts` (the sample's seven cases are the fixtures; every expected string is written out):
 
@@ -391,7 +391,7 @@ describe("the opened case's lines", () => {
 
 Run: `pnpm run test` — Expected: FAIL (`./words` does not exist).
 
-- [ ] **Step 2: Write `words.ts`**
+- [x] **Step 2: Write `words.ts`**
 
 Implement each function to the tests. Rules not visible in the tests:
 - Months and weekdays in English; dates are calendar dates, never shifted by time zone (parse `YYYY-MM-DD` by its parts, not `new Date(string)`).
@@ -401,9 +401,9 @@ Implement each function to the tests. Rules not visible in the tests:
 - Facts: case number, closed (long), took, aircraft, then state, kind of flight, injury level and "N of M documents read" only when `facts` is not null and each value is not null.
 - Withheld: `coded_at` in UTC as `9 Oct 2026, 03:14 UTC`, `commit` as given.
 
-- [ ] **Step 3: Run the tests** — `pnpm run test && pnpm run check && pnpm run lint` — Expected: all pass.
+- [x] **Step 3: Run the tests** — `pnpm run test && pnpm run check && pnpm run lint` — Expected: all pass.
 
-- [ ] **Step 4: Commit** — `S5 step 2 Task 3: the board's and the opened case's words, from the export`.
+- [x] **Step 4: Commit** — `S5 step 2 Task 3: the board's and the opened case's words, from the export`.
 
 ---
 
@@ -524,3 +524,5 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
   `no-unsafe-member-access` off for `*.test.ts`), since the tests edit raw export JSON on purpose.
 - **2026-10-13, Task 2:** Ajv is imported as `{ Ajv2020 } from "ajv/dist/2020.js"`, and
   `ajv-formats` (CommonJS) through a typed cast, so `format: date` and `date-time` are checked.
+- **2026-10-13, Task 3:** `words.ts` also exports `closedLong` (used by the facts and withheld
+  lines); one day is written "1 day". Every expected sentence in the plan passed unchanged.
