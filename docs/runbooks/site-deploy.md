@@ -96,6 +96,9 @@ stack's webhook failed with "Access token not found".
    offers the **AWS Connector for GitHub** app; if it is already installed, choose the existing
    installation. Its repository access must be **Only select repositories**:
    `floyda/ntsb-probable-cause`. Finish; the status must read **Available**.
+   Then, on GitHub, open **Settings → Applications → Installed GitHub Apps → AWS Connector for
+   GitHub → Configure**, and **accept any pending permission request**. Without the webhook
+   permission, Stage 6 fails with "Failed to create webhook" (2026-10-13).
 2. Copy the connection's ARN:
 
    ```bash
@@ -141,7 +144,7 @@ plus $1 a rule); delete `NtsbSiteStack` and ask in the session before trying aga
 ## Stage 7 — The first build
 
 ```bash
-aws codebuild start-build --project-name <BuildProjectName output> --profile ntsb --region eu-west-2
+aws codebuild start-build --project-name "$(aws cloudformation describe-stacks --stack-name NtsbSiteStack --region eu-west-2 --profile ntsb --query 'Stacks[0].Outputs[?OutputKey==`BuildProjectName`].OutputValue' --output text)" --profile ntsb --region eu-west-2
 ```
 
 Watch it in the CodeBuild console; it takes about a minute. Then open

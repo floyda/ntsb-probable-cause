@@ -483,3 +483,16 @@ def test_build_role_cannot_erase_the_site_buckets_history(stacks: dict[str, Temp
         a for s in on_site for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"])
     }
     assert actions == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"}
+
+
+def test_build_role_may_clear_and_wait_for_cloudfronts_copies(stacks: dict[str, Template]) -> None:
+    # First build, 2026-10-13: publish.sh waits for the invalidation, which needs GetInvalidation.
+    on_cloudfront = [
+        s for s in _statements(stacks["site"]) if "cloudfront" in _as_text(s["Action"])
+    ]
+    actions = {
+        a
+        for s in on_cloudfront
+        for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"])
+    }
+    assert actions == {"cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"}

@@ -351,7 +351,8 @@ class NtsbSiteStack(Stack):
         )
         project.add_to_role_policy(
             iam.PolicyStatement(
-                actions=["cloudfront:CreateInvalidation"],
+                # Create the invalidation, then wait for it (publish.sh step 4).
+                actions=["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"],
                 resources=[
                     f"arn:aws:cloudfront::{self.account}:distribution/{distribution.distribution_id}"
                 ],
