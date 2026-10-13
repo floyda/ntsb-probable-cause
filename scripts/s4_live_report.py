@@ -271,7 +271,14 @@ def _alerts_section(nights: Sequence[_Night]) -> list[str]:
     return lines
 
 
-def _cases_section(export: _Export, nights: Sequence[_Night], later_lines: int) -> list[str]:
+def _cases_section(
+    export: _Export, nightly: _Export, nights: Sequence[_Night], later_lines: int
+) -> list[str]:
+    """The case counts from the local export; the open-case counts from the night's own export.
+
+    The Mac's export is built with no store, so its open-case counts are always 0; the night's
+    export is built in the task with the store (as for the closures per night).
+    """
     lines = ["cases"]
     if export.index is None:
         return [*lines, "no export was found: the case counts are not available"]
@@ -287,10 +294,15 @@ def _cases_section(export: _Export, nights: Sequence[_Night], later_lines: int) 
         f"awaiting the NTSB's codes: {counts.awaiting_ntsb}",
         f"later scores written (night records): {later_recorded}",
         f"later scores held (score files): {later_lines}",
-        f"open cases watched, counts only: {counts.open_watched}",
-        f"open cases holding a docket, counts only: {counts.open_with_docket}",
     ]
-    return lines
+    if nightly.index is None:
+        return [*lines, "open cases: no night export was found, so they are not counted here"]
+    stored = nightly.index.counts
+    return [
+        *lines,
+        f"open cases watched, counts only: {stored.open_watched}",
+        f"open cases holding a docket, counts only: {stored.open_with_docket}",
+    ]
 
 
 def _grades_section(export: _Export) -> list[str]:
@@ -619,7 +631,7 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
         ],
         _nights_section(nights),
         _alerts_section(nights),
-        _cases_section(loaded, nights, later_lines),
+        _cases_section(loaded, nightly, nights, later_lines),
         _grades_section(loaded),
         _replies_section(runs),
         _names_section(loaded),

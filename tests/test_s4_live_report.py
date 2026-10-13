@@ -379,11 +379,13 @@ def test_development_spend_prints_the_s4_line_or_says_it_is_unavailable(
 
 
 def _local_export_without_the_store(tmp_path: Path) -> Path:
-    """The Mac's export: built with no store, so it holds no closures per night."""
+    """The Mac's export: built with no store, so it holds no closures per night or open cases."""
     local = tmp_path / "local-export"
     shutil.copytree(EXPORT, local)
     index = json.loads((local / "index.json").read_text())
     index["counts"]["closures_per_night"] = {}
+    index["counts"]["open_watched"] = 0
+    index["counts"]["open_with_docket"] = 0
     (local / "index.json").write_text(json.dumps(index))
     return local
 
@@ -402,11 +404,15 @@ def test_closures_per_night_and_condition_6_read_the_nights_own_export(tmp_path:
     ).splitlines()
     assert "2026-10-09: 2" in both  # from the night's copy, not the empty local build
     assert "cases coded: 5" in both  # the cases section still reads the local export
+    assert "open cases watched, counts only: 212" in both  # but its open counts, the night's
+    assert "open cases holding a docket, counts only: 187" in both
     assert any(x.startswith("6. the night's export") and x.endswith(": met") for x in both)
     alone = _report(
         mirror, local, ledger, night_export=None, today=TODAY, attest=ATTEST, continuity=CONTINUITY
     )
     assert "no night export was found" in alone
+    assert "open cases: no night export was found, so they are not counted here" in alone
+    assert "open cases watched" not in alone
     assert "2026-10-09: 2" not in alone
     assert "case: not met" in alone.split("6. ")[1].splitlines()[0]
 
