@@ -325,14 +325,64 @@ def test_both_holding_pages_share_one_style_block() -> None:
     assert len({m.group(1) for m in styles.values() if m is not None}) == 1
 
 
-def test_responses_carry_security_headers_and_a_self_only_policy(
-    stacks: dict[str, Template],
-) -> None:
-    policies = stacks["site"].find_resources("AWS::CloudFront::ResponseHeadersPolicy")
-    text = _as_text(policies)
-    assert "default-src 'self'" in text
-    assert "'unsafe-inline'" not in text
-    assert "StrictTransportSecurity" in text
+def test_no_custom_response_headers_policy(stacks: dict[str, Template]) -> None:
+    # The flat-rate Free plan refuses a distribution with custom response header rules (deploy
+    # of 2026-10-13: "not eligible for this subscription tier"; the plan's feature table).
+    stacks["site"].resource_count_is("AWS::CloudFront::ResponseHeadersPolicy", 0)
+
+
+def test_distribution_uses_the_managed_security_headers_policy(stacks: dict[str, Template]) -> None:
+    # AWS's managed SecurityHeadersPolicy: HSTS, nosniff, frame options, referrer policy.
+    stacks["site"].has_resource_properties(
+        "AWS::CloudFront::Distribution",
+        {
+            "DistributionConfig": Match.object_like(
+                {
+                    "DefaultCacheBehavior": Match.object_like(
+                        {"ResponseHeadersPolicyId": "67f7725c-6f97-4210-82d7-5512b31e9d03"}
+                    )
+                }
+            )
+        },
+    )
+
+
+def _viewer_response_code(tpl: Template) -> str:
+    functions = tpl.find_resources("AWS::CloudFront::Function")
+    codes = [f["Properties"]["FunctionCode"] for f in functions.values()]
+    (code,) = [c for c in codes if "content-security-policy" in c]
+    assert isinstance(code, str)
+    return code
+
+
+def test_responses_get_a_self_only_content_security_policy(stacks: dict[str, Template]) -> None:
+    # Runs the viewer-response function's own code in Node.
+    program = (
+        _viewer_response_code(stacks["site"])
+        + "\nconst out = handler({response: {headers: {}}});"
+        + "\nprocess.stdout.write(out.headers['content-security-policy'].value);"
+    )
+    node = shutil.which("node")
+    assert node is not None
+    result = subprocess.run(  # noqa: S603 -- fixed program, test input only
+        [node, "-e", program], capture_output=True, text=True, check=True
+    )
+    policy = result.stdout
+    assert policy.startswith("default-src 'self';")
+    assert "'unsafe-inline'" not in policy
+    assert "frame-ancestors 'none'" in policy
+    assert "'sha256-" in policy
+
+
+def test_viewer_response_function_is_associated(stacks: dict[str, Template]) -> None:
+    dist = next(iter(stacks["site"].find_resources("AWS::CloudFront::Distribution").values()))
+    events = {
+        a["EventType"]
+        for a in dist["Properties"]["DistributionConfig"]["DefaultCacheBehavior"][
+            "FunctionAssociations"
+        ]
+    }
+    assert events == {"viewer-request", "viewer-response"}
 
 
 def _app_stacks(context: dict[str, str]) -> dict[str, Mapping[str, Any]]:

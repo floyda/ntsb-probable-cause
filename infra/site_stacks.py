@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -168,33 +169,28 @@ class NtsbSiteStack(Stack):
             runtime=cloudfront.FunctionRuntime.JS_2_0,
         )
 
-        # Security headers and a Content-Security-Policy that allows the site's own files only.
-        headers = cloudfront.ResponseHeadersPolicy(
+        # Security headers. The flat-rate Free plan refuses custom response header rules (deploy
+        # of 2026-10-13), so the standard headers come from AWS's managed SecurityHeadersPolicy
+        # (HSTS, nosniff, frame options, referrer policy) and the Content-Security-Policy, which
+        # allows the site's own files only, is added by a viewer-response function. Both are
+        # included in the plan.
+        content_security_policy = (
+            "default-src 'self'; img-src 'self' data:; "
+            f"style-src 'self' {_holding_style_hash()}; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        )
+        add_policy = cloudfront.Function(
             self,
-            "Headers",
-            security_headers_behavior=cloudfront.ResponseSecurityHeadersBehavior(
-                content_security_policy=cloudfront.ResponseHeadersContentSecurityPolicy(
-                    content_security_policy=(
-                        "default-src 'self'; img-src 'self' data:; "
-                        f"style-src 'self' {_holding_style_hash()}; "
-                        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-                    ),
-                    override=True,
-                ),
-                content_type_options=cloudfront.ResponseHeadersContentTypeOptions(override=True),
-                frame_options=cloudfront.ResponseHeadersFrameOptions(
-                    frame_option=cloudfront.HeadersFrameOption.DENY, override=True
-                ),
-                referrer_policy=cloudfront.ResponseHeadersReferrerPolicy(
-                    referrer_policy=cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-                    override=True,
-                ),
-                strict_transport_security=cloudfront.ResponseHeadersStrictTransportSecurity(
-                    access_control_max_age=Duration.days(365),
-                    include_subdomains=False,
-                    override=True,
-                ),
+            "ContentSecurityPolicy",
+            code=cloudfront.FunctionCode.from_inline(
+                "function handler(event) {\n"
+                "  var response = event.response;\n"
+                "  response.headers['content-security-policy'] = "
+                f"{{ value: {json.dumps(content_security_policy)} }};\n"
+                "  return response;\n"
+                "}\n"
             ),
+            runtime=cloudfront.FunctionRuntime.JS_2_0,
         )
 
         # The distribution: $0 on the flat-rate Free plan (spec §18.3), chosen below.
@@ -207,9 +203,13 @@ class NtsbSiteStack(Stack):
                 function_associations=[
                     cloudfront.FunctionAssociation(
                         function=rewrite, event_type=cloudfront.FunctionEventType.VIEWER_REQUEST
-                    )
+                    ),
+                    cloudfront.FunctionAssociation(
+                        function=add_policy,
+                        event_type=cloudfront.FunctionEventType.VIEWER_RESPONSE,
+                    ),
                 ],
-                response_headers_policy=headers,
+                response_headers_policy=cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
             ),
             domain_names=[SITE_DOMAIN],
             certificate=certificate,

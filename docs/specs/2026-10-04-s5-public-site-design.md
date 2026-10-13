@@ -1006,6 +1006,9 @@ plans and the CloudFormation reference, read that day:*
   allowance; usage that "consistently and significantly" exceeds it over months may see delivery
   adjusted (served from fewer or more distant edge locations) until the plan is upgraded.
 - An account may hold at most 3 Free plans.
+- *Found at the first deploy, 2026-10-13:* the Free plan (and Pro) refuses **custom response
+  header rules**. The standard security headers come from AWS's managed `SecurityHeadersPolicy`,
+  and the Content-Security-Policy is added by a CloudFront Function, both allowed on Free.
 
 ## 19. Failures and checks
 
