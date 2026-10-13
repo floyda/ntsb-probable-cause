@@ -3,9 +3,11 @@
 import type { CaseFile, Code, MarkedCode } from "../lib/board-case-types";
 import {
     caseReportUrl,
+    commitUrl,
     differenceSentence,
     docketUrl,
     factsLine,
+    ntsbMissing,
     withheldLine,
 } from "../lib/words";
 
@@ -31,26 +33,47 @@ const MARK_WORDS: Record<MarkedCode["mark"], string> = {
 
 const agentCauseHeading = abstained ? "The agent's reason for not answering" : "The agent's cause";
 const agentCause = notCoded ? "Not coded." : (answer?.cause ?? "No answer.");
-const ntsbCause = verdict?.cause ?? "Not yet published.";
+const ntsbCause = verdict?.cause ?? ntsbMissing(kase.grade);
+// What the agent's side says when it has no codes to show. An abstained case shows none: its
+// leaning codes, marked against the NTSB's, would read as a graded answer beside the board's
+// "No answer" (review, 2026-10-13).
+const agentEmpty = notCoded
+    ? "Not coded."
+    : abstained
+      ? "No answer: the agent abstained."
+      : "No answer.";
 
-function whyEmpty(side: "agent" | "ntsb"): string {
-    if (side === "agent") return notCoded ? "Not coded." : "No answer.";
-    return "Not yet published.";
-}
+// Marks against the other list exist only where both sides answered.
+const graded = comparison !== null && !abstained;
+const agentCodes: readonly MarkedCode[] = graded ? comparison.agent_occurrence : [];
+const ntsbCodes: readonly MarkedCode[] = graded ? comparison.ntsb_occurrence : [];
+const agentPlain: readonly Code[] = graded || abstained ? [] : (answer?.occurrence ?? []);
+const ntsbPlain: readonly Code[] = graded ? [] : (verdict?.occurrence ?? []);
 
-const agentCodes: readonly MarkedCode[] = comparison?.agent_occurrence ?? [];
-const ntsbCodes: readonly MarkedCode[] = comparison?.ntsb_occurrence ?? [];
-// Without a comparison (awaiting the NTSB, or not coded) the agent's own list still shows.
-const agentPlain: readonly Code[] = comparison === null ? (answer?.occurrence ?? []) : [];
-const ntsbPlain: readonly Code[] = comparison === null ? (verdict?.occurrence ?? []) : [];
-
-const findingGroups: { heading: string; codes: readonly Code[] }[] = comparison
+// Findings: three groups where both answered; otherwise each side's own list.
+const findingGroups: { heading: string; codes: readonly Code[]; empty: string }[] = graded
     ? [
-          { heading: "Both named", codes: comparison.findings_both },
-          { heading: "Only the NTSB named", codes: comparison.findings_ntsb_only },
-          { heading: "Only the agent named", codes: comparison.findings_agent_only },
+          { heading: "Both named", codes: comparison.findings_both, empty: "None." },
+          { heading: "Only the NTSB named", codes: comparison.findings_ntsb_only, empty: "None." },
+          {
+              heading: "Only the agent named",
+              codes: comparison.findings_agent_only,
+              empty: "None.",
+          },
       ]
-    : [];
+    : [
+          {
+              heading: "The agent's findings",
+              codes: abstained ? [] : (answer?.findings ?? []),
+              empty: agentEmpty,
+          },
+          {
+              heading: "The NTSB's findings",
+              codes: verdict?.findings ?? [],
+              empty: verdict === null ? ntsbMissing(kase.grade) : "None.",
+          },
+      ];
+const commit = kase.withheld?.commit ?? null;
 ---
 
 <article class="opened" id="opened" data-case={kase.case_number}>
@@ -94,7 +117,7 @@ const findingGroups: { heading: string; codes: readonly Code[] }[] = comparison
                     ))}
                 </ol>
             ) : (
-                <p>{whyEmpty("agent")}</p>
+                <p>{agentEmpty}</p>
             )}
         </section>
         <section>
@@ -114,7 +137,7 @@ const findingGroups: { heading: string; codes: readonly Code[] }[] = comparison
                     ))}
                 </ol>
             ) : (
-                <p>{whyEmpty("ntsb")}</p>
+                <p>{ntsbMissing(kase.grade)}</p>
             )}
         </section>
     </div>
@@ -122,28 +145,34 @@ const findingGroups: { heading: string; codes: readonly Code[] }[] = comparison
     <h3>
         Why it happened <span class="term">· NTSB findings</span>
     </h3>
-    {findingGroups.length > 0 ? (
-        <div class="triple">
-            {findingGroups.map((group) => (
-                <section>
-                    <h4>{group.heading}</h4>
-                    {group.codes.length > 0 ? (
-                        <ul>
-                            {group.codes.map((c) => (
-                                <li>{c.label}</li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <p>None.</p>
-                    )}
-                </section>
-            ))}
-        </div>
-    ) : (
-        <p>{notCoded ? "Not coded." : "The NTSB has not published its findings yet."}</p>
-    )}
+    <div class={findingGroups.length === 3 ? "triple" : "pair"}>
+        {findingGroups.map((group) => (
+            <section>
+                <h4>{group.heading}</h4>
+                {group.codes.length > 0 ? (
+                    <ul>
+                        {group.codes.map((c) => (
+                            <li>{c.label}</li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p>{group.empty}</p>
+                )}
+            </section>
+        ))}
+    </div>
 
-    {withheld !== null && <p class="withheld">{withheld}</p>}
+    {withheld !== null && (
+        <p class="withheld">
+            {withheld}
+            {commit !== null && (
+                <>
+                    {" "}
+                    <a href={commitUrl(commit)}>Code version {commit}</a>.
+                </>
+            )}
+        </p>
+    )}
     {docket !== null && report !== null && (
         <p class="sources">
             Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}

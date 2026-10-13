@@ -8,7 +8,7 @@ import {
     aircraftLabel,
     closedLabel,
     closedLong,
-    eventOf,
+    firstNames,
     stampLine,
     tookLabel,
     totalsLine,
@@ -26,11 +26,13 @@ const launched = index.stamp.launched_on;
 function agentCell(row: BoardRow): string {
     if (row.grade === "abstained") return "No answer";
     if (row.agent_first === null) return "—";
-    return eventOf(row.agent_first.label);
+    return firstNames(row.agent_first, row.ntsb_first).agent ?? "—";
 }
 
 function ntsbCell(row: BoardRow): string {
-    if (row.ntsb_first !== null) return eventOf(row.ntsb_first.label);
+    if (row.ntsb_first !== null) {
+        return firstNames(row.agent_first, row.ntsb_first).ntsb ?? "—";
+    }
     // Only an awaiting case is known to be unpublished; a case whose record could not be read
     // says nothing about the NTSB's codes.
     return row.grade === "awaiting_ntsb" ? "Not yet published" : "—";

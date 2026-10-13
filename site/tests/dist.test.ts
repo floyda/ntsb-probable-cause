@@ -51,6 +51,43 @@ function builtFileFor(href: string): string {
     return last.includes(".") ? join(DIST, path) : join(DIST, path, "index.html");
 }
 
+describe.skipIf(!built)("the opened case says only what is known (review, 2026-10-13)", () => {
+    const { cases } = loadExport(exportDir());
+    const page = (n: string): string =>
+        visibleText(readFileSync(join(DIST, "case", n, "index.html"), "utf8"));
+    const get = (n: string) => {
+        const k = cases.get(n);
+        if (k === undefined) throw new Error(`sample lacks ${n}`);
+        return k;
+    };
+
+    it("an awaiting case still lists the agent's findings", () => {
+        const label = get("XXX26XX006").answer?.findings[0]?.label ?? "missing";
+        expect(page("XXX26XX006")).toContain(label);
+    });
+
+    it("a not-coded case still lists the NTSB's findings", () => {
+        const label = get("XXX26XX005").verdict?.findings[0]?.label ?? "missing";
+        expect(page("XXX26XX005")).toContain(label);
+    });
+
+    it("an abstained case shows no graded agent codes", () => {
+        const leaning = get("XXX26XX004").answer?.occurrence[0]?.label ?? "missing";
+        expect(page("XXX26XX004")).not.toContain(leaning);
+    });
+
+    it("an unreadable case never claims the NTSB has not published", () => {
+        expect(page("XXX26XX007")).not.toContain("Not yet published");
+    });
+
+    it("the code version links to its commit", () => {
+        const html = readFileSync(join(DIST, "case", "XXX26XX001", "index.html"), "utf8");
+        expect(html).toContain(
+            'href="https://github.com/floyda/ntsb-probable-cause/commit/a1b2c3d"',
+        );
+    });
+});
+
 describe.skipIf(!built)("checks over every built page (needs `pnpm run build` first)", () => {
     const pages = built ? htmlFiles() : [];
 

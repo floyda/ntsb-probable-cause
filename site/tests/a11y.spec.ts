@@ -57,3 +57,24 @@ test.describe("with scripts off (plan Review Focus 5)", () => {
         await expect(page.locator(`article#opened[data-case="${n ?? ""}"]`)).toBeVisible();
     });
 });
+
+test.describe("with scripts on: choosing a row (review, 2026-10-13)", () => {
+    test("opens the case beneath the board, and an anchor change does not reload", async ({
+        page,
+    }) => {
+        await page.goto("/");
+        const second = page.locator("a[data-case]").nth(1);
+        const n = (await second.getAttribute("data-case")) ?? "";
+        await second.click();
+        await expect(page).toHaveURL(new RegExp(`/case/${n}/$`));
+        await expect(page.locator(`article#opened[data-case="${n}"]`)).toBeFocused();
+        await expect(page.locator("table")).toBeVisible();
+        await page.evaluate(() => {
+            (window as unknown as { marker: number }).marker = 1;
+            window.location.hash = "somewhere";
+        });
+        await page.goBack();
+        const marker = await page.evaluate(() => (window as unknown as { marker?: number }).marker);
+        expect(marker).toBe(1);
+    });
+});

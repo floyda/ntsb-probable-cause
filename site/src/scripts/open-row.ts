@@ -17,6 +17,7 @@ function openCase(link: HTMLAnchorElement): void {
             adopted.tabIndex = -1;
             adopted.focus();
             history.pushState({ case: link.dataset["case"] }, "", link.href);
+            shownPath = window.location.pathname;
         })
         .catch(() => {
             window.location.href = link.href;
@@ -33,6 +34,10 @@ document.addEventListener("click", (event) => {
     openCase(link);
 });
 
+// The path of the case on show. A change of anchor also fires popstate, so reload only when the
+// path itself changes (review, 2026-10-13: the rail of step 6 links to anchors).
+let shownPath = window.location.pathname;
+
 window.addEventListener("popstate", () => {
-    window.location.reload();
+    if (window.location.pathname !== shownPath) window.location.reload();
 });

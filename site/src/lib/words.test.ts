@@ -7,6 +7,9 @@ import {
     aircraftLabel,
     caseReportUrl,
     closedLabel,
+    commitUrl,
+    firstNames,
+    ntsbMissing,
     differenceSentence,
     docketUrl,
     eventOf,
@@ -110,7 +113,7 @@ describe("the opened case's lines", () => {
     });
     it("says when the case was coded and that the verdict was withheld", () => {
         expect(withheldLine(kase(1))).toBe(
-            "Coded 9 Oct 2026, 03:14 UTC, from the docket as published at closure. The NTSB's cause and codes were withheld from the agent. Code version a1b2c3d.",
+            "Coded 9 Oct 2026, 03:14 UTC, from the docket as published at closure. The NTSB's cause and codes were withheld from the agent.",
         );
         expect(withheldLine(kase(5))).toBeNull();
     });
@@ -133,5 +136,45 @@ describe("the opened case's lines", () => {
                 expect(text.trim()).not.toBe("");
             }
         }
+    });
+});
+
+describe("review fixes (2026-10-13)", () => {
+    const takeoff = { code: "100001", label: "Takeoff / Loss of engine power" };
+    const climb = { code: "200001", label: "Initial climb / Loss of engine power" };
+
+    it("names the phase too when two different codes share their event", () => {
+        expect(firstNames(takeoff, climb)).toEqual({
+            agent: "Takeoff / Loss of engine power",
+            ntsb: "Initial climb / Loss of engine power",
+        });
+        expect(firstNames(takeoff, { code: "300001", label: "Takeoff / Fuel exhaustion" })).toEqual(
+            {
+                agent: "Loss of engine power",
+                ntsb: "Fuel exhaustion",
+            },
+        );
+        expect(firstNames(null, climb)).toEqual({ agent: null, ntsb: "Loss of engine power" });
+    });
+
+    it("writes a phase-only difference so it reads as one", () => {
+        const c = kase(3);
+        if (c.answer === null || c.verdict === null) throw new Error("sample changed");
+        c.answer.occurrence = [takeoff];
+        c.verdict.occurrence = [climb];
+        expect(differenceSentence(c)).toBe(
+            "The NTSB put “Initial climb / Loss of engine power” first. The agent put “Takeoff / Loss of engine power” first and did not name the NTSB's first code.",
+        );
+    });
+
+    it("says not yet published only when the NTSB is known not to have published", () => {
+        expect(ntsbMissing("awaiting_ntsb")).toBe("Not yet published.");
+        expect(ntsbMissing("not_coded")).toBe("Not available.");
+    });
+
+    it("links the code version to its commit (spec §5)", () => {
+        expect(commitUrl("a1b2c3d")).toBe(
+            "https://github.com/floyda/ntsb-probable-cause/commit/a1b2c3d",
+        );
     });
 });

@@ -551,3 +551,17 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
   Final Report", whose text holds the case number (read with `pypdfium2`). The file was kept in
   the session's scratch folder only. `caseReportUrl` builds it, with a test; the link is labelled
   "the NTSB's final report (PDF)", since it opens a report rather than a web page.
+- **2026-10-13, final review (a fresh reviewer over the step): one fix pass**, each fix from a
+  test that failed first.
+  1. *Codes differing only in phase* read as the same code; `firstNames` names both in full when
+     two different codes share an event, in the sentence and on the board.
+  2. *An unreadable case* claimed the NTSB had not published; `ntsbMissing` says so only for an
+     awaiting case, else "Not available."
+  3. *Findings* showed neither side without a comparison; each side's own list now shows.
+  4. *An abstained case* listed the agent's leaning codes with marks, which read as a graded
+     answer; it now shows "No answer: the agent abstained." and the NTSB's side only (Claude's
+     ruling, for Andy to confirm).
+  5. *Back and forward* reloaded on any history change, anchors included; the script reloads only
+     when the path changes, and a Playwright test covers a row opened with scripts on.
+  6. *The code version* now links to its commit (§5); the reviewer had it as minor.
+  Nine smaller points are deferred, listed in the session's final report.

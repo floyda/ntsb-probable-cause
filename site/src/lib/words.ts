@@ -112,8 +112,33 @@ export function totalsLine(rows: readonly BoardRow[]): string {
         : `Since launch: ${parts.join(", ")}.`;
 }
 
-function quoted(code: Code): string {
-    return `“${eventOf(code.label)}”`;
+/**
+ * How to name two first codes side by side: by their event, unless the two codes differ but
+ * share an event, when only the phase tells them apart and both are named in full (review,
+ * 2026-10-13: S2.7 put 15 of 40 misses down to the wrong phase).
+ */
+export function firstNames(
+    agent: Code | null,
+    ntsb: Code | null,
+): { agent: string | null; ntsb: string | null } {
+    const full =
+        agent !== null &&
+        ntsb !== null &&
+        agent.code !== ntsb.code &&
+        eventOf(agent.label) === eventOf(ntsb.label);
+    const name = (c: Code | null): string | null =>
+        c === null ? null : full ? c.label : eventOf(c.label);
+    return { agent: name(agent), ntsb: name(ntsb) };
+}
+
+/** What to say where the NTSB's part is missing: unpublished only when that is known. */
+export function ntsbMissing(grade: Grade): string {
+    return grade === "awaiting_ntsb" ? "Not yet published." : "Not available.";
+}
+
+/** The commit that coded the case, in the public repository (spec §5). */
+export function commitUrl(commit: string): string {
+    return `https://github.com/floyda/ntsb-probable-cause/commit/${commit}`;
 }
 
 /** One sentence on where the two codings differ, written from the codes alone (spec §5). */
@@ -125,17 +150,19 @@ export function differenceSentence(c: CaseFile): string {
     const ntsb = c.verdict?.occurrence ?? [];
     const agentFirst = agent[0];
     const ntsbFirst = ntsb[0];
+    const names = firstNames(agentFirst ?? null, ntsbFirst ?? null);
+    const q = (name: string | null): string => `“${name ?? ""}”`;
     const ntsbClause =
         ntsbFirst === undefined
             ? "The NTSB has not published its codes yet."
-            : `The NTSB put ${quoted(ntsbFirst)} first.`;
+            : `The NTSB put ${q(names.ntsb)} first.`;
 
     if (c.grade === "abstained") {
         return `The agent abstained: it judged the evidence too thin to code. ${ntsbClause}`;
     }
     if (c.grade === "awaiting_ntsb" || ntsbFirst === undefined) {
         const agentClause =
-            agentFirst === undefined ? "" : ` The agent put ${quoted(agentFirst)} first.`;
+            agentFirst === undefined ? "" : ` The agent put ${q(names.agent)} first.`;
         return `The NTSB has not published its codes yet.${agentClause}`;
     }
     if (agentFirst === undefined) return ntsbClause;
@@ -145,17 +172,17 @@ export function differenceSentence(c: CaseFile): string {
             ...(c.comparison?.ntsb_occurrence ?? []),
         ].every((m) => m.mark === "same_place");
         const tail = allSame ? "and their sequences match" : "and their later codes differ";
-        return `Both put ${quoted(ntsbFirst)} first, ${tail}.`;
+        return `Both put ${q(names.ntsb)} first, ${tail}.`;
     }
     if (c.grade === "same_codes_other_order") {
-        return `Both name ${quoted(ntsbFirst)}. The NTSB put it first; the agent put ${quoted(agentFirst)} first.`;
+        return `Both name ${q(names.ntsb)}. The NTSB put it first; the agent put ${q(names.agent)} first.`;
     }
     const at = agent.findIndex((code) => code.code === ntsbFirst.code);
     const named =
         at === -1
             ? "did not name the NTSB's first code"
             : "named the NTSB's first code, but not in its first three";
-    return `${ntsbClause} The agent put ${quoted(agentFirst)} first and ${named}.`;
+    return `${ntsbClause} The agent put ${q(names.agent)} first and ${named}.`;
 }
 
 /** The opened case's line of facts, as separate items (spec §5 part 1). */
@@ -182,7 +209,7 @@ export function withheldLine(c: CaseFile): string | null {
     if (w === null || w.coded_at === null) return null;
     return (
         `Coded ${closedLong(w.coded_at)}, ${timeOf(w.coded_at)} UTC, from the docket as published` +
-        ` at closure. The NTSB's cause and codes were withheld from the agent. Code version ${w.commit}.`
+        " at closure. The NTSB's cause and codes were withheld from the agent."
     );
 }
 
