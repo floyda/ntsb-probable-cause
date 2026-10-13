@@ -480,15 +480,15 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
 
 **Files:** Modify `site/tests/dist.test.ts`, `site/tests/a11y.spec.ts`, `Makefile` (`site-check`), `.github/workflows/ci.yml` (`site` job).
 
-- [ ] **Step 1: The dist checks** (Vitest, reading `dist/` after a build; skipped with a stated reason if `dist/` is absent):
+- [x] **Step 1: The dist checks** (Vitest, reading `dist/` after a build; skipped with a stated reason if `dist/` is absent):
 - every `dist/case/*/index.html` belongs to a row of the export the build read (Review Focus 2);
 - no built HTML holds an inline `<script>` without `src` or a `<style>` element (the CSP);
 - every `href` starting with `/` resolves to a built file (internal links);
 - no built text matches a US registration (`\bN[1-9][0-9A-HJ-NP-Z]{2,5}\b` with at least two digits).
-- [ ] **Step 2: Playwright additions** in `a11y.spec.ts`: at 390 px, `document.documentElement.scrollWidth <= 390` on every page (Review Focus 4); with JavaScript disabled (`test.use({ javaScriptEnabled: false })` in a `noscript` describe), `/` shows the opened case and the first row's link goes to its case page (Review Focus 5).
-- [ ] **Step 3: Wire them in:** `site-check` and the CI `site` job run `pnpm run types:check` and `pnpm run test` after `build`.
-- [ ] **Step 4: Run** — `make check` — Expected: green.
-- [ ] **Step 5: Commit** — `S5 step 2 Task 6: checks over the built pages`.
+- [x] **Step 2: Playwright additions** in `a11y.spec.ts`: at 390 px, `document.documentElement.scrollWidth <= 390` on every page (Review Focus 4); with JavaScript disabled (`test.use({ javaScriptEnabled: false })` in a `noscript` describe), `/` shows the opened case and the first row's link goes to its case page (Review Focus 5).
+- [x] **Step 3: Wire them in:** `site-check` and the CI `site` job run `pnpm run types:check` and `pnpm run test` after `build`.
+- [x] **Step 4: Run** — `make check` — Expected: green.
+- [x] **Step 5: Commit** — `S5 step 2 Task 6: checks over the built pages`.
 
 ---
 
@@ -541,3 +541,6 @@ In `site/tests/dist.test.ts` (Task 6's file; start it here): after a build, for 
   each side lists its own codes plainly. Playwright now runs only `*.spec.ts`, since Vitest's
   `tests/dist.test.ts` sits in the same folder. The render test was proved by emptying the
   difference sentence: 7 failed, then 27 passed once restored.
+- **2026-10-13, Task 6:** each new check was proved by sabotaging the built files (an extra case
+  page, an inline script, a broken link, a registration-like string, a 2,000 px element): the four
+  Vitest checks and the phone-width check failed, then all passed after a clean rebuild.

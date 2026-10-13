@@ -35,8 +35,25 @@ for (const address of addresses) {
             .analyze();
         expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
         if (info.project.name === "phone") {
+            // Only the board's own frame may scroll sideways, never the page (plan Review Focus 4).
+            const width = await page.evaluate(() => document.documentElement.scrollWidth);
+            expect(width).toBeLessThanOrEqual(390);
             const name = address.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home";
             await page.screenshot({ path: `test-results/phone/${name}.png`, fullPage: true });
         }
     });
 }
+
+test.describe("with scripts off (plan Review Focus 5)", () => {
+    test.use({ javaScriptEnabled: false });
+
+    test("the first page still shows a case, and a row still opens its page", async ({ page }) => {
+        await page.goto("/");
+        await expect(page.locator("article#opened")).toBeVisible();
+        const first = page.locator("a[data-case]").first();
+        const n = await first.getAttribute("data-case");
+        await first.click();
+        await expect(page).toHaveURL(new RegExp(`/case/${n ?? ""}/$`));
+        await expect(page.locator(`article#opened[data-case="${n ?? ""}"]`)).toBeVisible();
+    });
+});

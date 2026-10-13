@@ -80,7 +80,9 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run format:check
       - run: pnpm run check
+      - run: pnpm run types:check
       - run: pnpm run build
+      - run: pnpm run test
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run test:a11y
       - run: pnpm audit --audit-level moderate

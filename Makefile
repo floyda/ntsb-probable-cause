@@ -8,7 +8,9 @@ site-check:
 	pnpm --dir site run lint
 	pnpm --dir site run format:check
 	pnpm --dir site run check
+	pnpm --dir site run types:check
 	pnpm --dir site run build
+	pnpm --dir site run test
 	pnpm --dir site run test:a11y
 
 # S4's export format and invented sample, copied from S4's branch until S4 merges (S5 step 2,
