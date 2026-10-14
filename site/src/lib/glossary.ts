@@ -51,7 +51,7 @@ export const GLOSSARY: readonly Term[] = [
     },
     {
         term: "Fixed pipeline",
-        means: "Arm B: it reads every docket document with readable text, answers, calls every coding tool in a fixed order, then runs the ordering check.",
+        means: "Arm B: it reads every docket document with readable text, as far as the cost cap and the prompt-size limit allow, answers, calls every coding tool in a fixed order, then runs the ordering check.",
     },
     {
         term: "Held-out cases",

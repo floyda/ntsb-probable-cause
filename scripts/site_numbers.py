@@ -379,7 +379,8 @@ _SPECS: tuple[_Spec, ...] = (
         "held-out (all)",
         "none",
         f"{_EVAL} (ntsb-eval baseline)",
-        "always guess the commonest code: occurrence top-1",
+        "no model: the commonest first code for the case's phase of flight and weather, "
+        "learned from development cases: occurrence top-1",
     ),
     _Spec(
         "ladder.no_docket.top1",
@@ -686,10 +687,11 @@ def _one_sentence_codes(results_dir: Path) -> list[dict[str, str | int]]:
 
 _PREDICTIONS: Final = "s32.predictions"
 # The registration's items: "1. **Top-1** (held-out): the loop ...", wrapped onto lines indented
-# three spaces. Item 8 has no colon after its scope.
+# three spaces. Item 8 has no colon after its scope, and the page keeps it that way (review).
 _ITEM = re.compile(
-    r"^(?P<number>\d+)\. \*\*(?P<title>[^*]+)\*\* \((?P<scope>[^)]+)\):? (?P<text>.+)$"
+    r"^(?P<number>\d+)\. \*\*(?P<title>[^*]+)\*\* \((?P<scope>[^)]+)\)(?P<colon>:?) (?P<text>.+)$"
 )
+_REGISTRATION_PATH: Final = "docs/rounds/s3-registration.md"
 _OUTCOME = re.compile(r"^P(?P<number>\d+): (?P<outcome>met|not met) -- (?P<result>.+)$")
 
 
@@ -706,6 +708,9 @@ def _predictions(results_dir: Path, registration: Path) -> list[dict[str, str | 
     """
     lines = registration.read_text().splitlines()
     start = lines.index("## The predictions")
+    after = [line for line in lines[start + 1 :] if line.startswith("Not predicted")]
+    if len(after) != 1:
+        raise ExtractError(_PREDICTIONS, registration.name, "^Not predicted", len(after))
     items: list[list[str]] = []
     for line in lines[start + 1 :]:
         if line.startswith(("## ", "Not predicted")):
@@ -729,6 +734,7 @@ def _predictions(results_dir: Path, registration: Path) -> list[dict[str, str | 
             "number": int(m["number"]),
             "title": _plain(m["title"]),
             "scope": _plain(m["scope"]),
+            "colon": m["colon"],
             "text": _plain(m["text"]),
             "outcome": outcomes[m["number"]]["outcome"],
             "result": outcomes[m["number"]]["result"],
@@ -750,7 +756,9 @@ def build(
         results_dir: where the results files are read from.
         recorded: the commit that last changed a repository-relative path; ``recorded_in``
             unless a test reads copies outside the repository.
-        registration: S3.2's registration, the predictions' words.
+        registration: the file the predictions' words are read from; a test passes the
+            registration as it was at an earlier commit. The commits printed beside them, and
+            the refusal of uncommitted changes, are always the committed registration's.
         added: the commit that added a path, and its date; the registration's is printed
             beside the predictions, to show they were written before the held-out run.
     """
@@ -763,9 +771,16 @@ def build(
         _PREDICTIONS: _predictions(results_dir, registration),
     }
     sentence = _one(results_dir, _ONE_FILE, r"^sentence: (?P<text>.+)$", "q6.one.sentence")
-    registered_in, registered_on = added(_REGISTRATION.relative_to(_REPO).as_posix())
+    once(_REGISTRATION_PATH)  # refuses a registration with uncommitted changes (review)
+    registered_in, registered_on = added(_REGISTRATION_PATH)
+    not_predicted = next(
+        _plain(line)
+        for line in registration.read_text().splitlines()
+        if line.startswith("Not predicted")
+    )
     texts = {
         "q6.one.sentence": sentence.group("text"),
+        "s32.not_predicted": not_predicted,
         "s32.registered_in": registered_in,
         "s32.registered_on": registered_on,
     }

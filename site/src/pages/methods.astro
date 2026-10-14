@@ -16,6 +16,7 @@ import { entry, list, pointsOn, text, usd, withInterval } from "../lib/numbers";
 import {
     closedLong,
     commitUrl,
+    pullUrl,
     fileAtUrl,
     gradeCounts,
     GRADES,
@@ -151,10 +152,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     <section aria-labelledby="board">
         <h2 id="board">The board</h2>
         <p>
-            The board lists the cases the NTSB has closed most recently. When the NTSB closes a
-            case, it publishes its codes. The agent codes the same case once, at closure, from the
-            docket as published, with the NTSB's cause and codes withheld. The board puts the two
-            side by side.
+            The board lists the cases the NTSB has closed most recently. When the NTSB closes a case
+            it publishes its cause and codes, though the codes can come later. The agent codes the
+            same case once, at closure, from the docket as published, with the NTSB's cause and
+            codes withheld. The board puts the two side by side.
         </p>
         <h3 id="grades">How each case is graded</h3>
         <ul class="grades">
@@ -200,10 +201,12 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <h2 id="ladder">The ladder</h2>
         <p>
             Four ways of coding an accident, each with more machinery than the one before. The model
-            steps are S3.2's held-out runs on the same {String(ladderCases)} cases, under one rule:
-            a case that failed counts as wrong. The first step uses no model: it always guesses the
-            commonest code, and is scored on every held-out case. The case record alone has no bill
-            in a committed file, so it shows none.
+            steps are S3.2's held-out runs on the same {String(ladderCases)} cases, under one rule
+            registered before they ran: a case that failed counts as wrong, and a case the guard
+            refused is left out of both sides of a comparison (none was, in these runs). The first
+            step uses no model: for each case it guesses the commonest first code among development
+            cases with the same phase of flight and weather, and it is scored on every held-out
+            case. The case record alone has no bill in a committed file, so it shows none.
         </p>
         <MethodsGroup id="ladder" />
     </section>
@@ -266,7 +269,7 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             {predictions.map((p) => (
                 <li>
                     <p>
-                        <strong>{p["title"]}</strong> ({p["scope"]}): {p["text"]}
+                        <strong>{p["title"]}</strong> ({p["scope"]}){p["colon"]} {p["text"]}
                     </p>
                     <p class="outcome">
                         <strong>{p["outcome"] === "met" ? "Met." : "Not met."}</strong>{" "}
@@ -275,15 +278,16 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
                 </li>
             ))}
         </ol>
+        <p>{text("s32.not_predicted")}</p>
     </section>
 
     <section aria-labelledby="history">
         <h2 id="history">History</h2>
         <p>
-            Before S3.2, the bars to beat were S1's one-shot ceiling and S2.4's fixed pipeline. The
-            ladder replaced them. S1 ran on an earlier model. S2.4's pipeline had no coding tools,
-            and it left failed cases out of its count ({String(s24Scored)} cases scored), where S3.2
-            counts a failed case as wrong.
+            Before S3.2, the ladder's middle steps were S1's one-shot ceiling and S2.4's fixed
+            pipeline. S3.2's runs replaced them. S1 ran on an earlier model. S2.4's pipeline had no
+            coding tools, and it left failed cases out of its count ({String(s24Scored)} cases
+            scored), where S3.2 counts a failed case as wrong.
         </p>
         <MethodsGroup id="history" />
         {s1Commit !== null && (
@@ -293,8 +297,7 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
                 <a href={repoUrl("docs/decisions/0033-stage-pull-requests-keep-their-commits.md")}>
                     0033
                 </a>
-                ), so GitHub keeps that commit through{" "}
-                <a href="https://github.com/floyda/ntsb-probable-cause/pull/5">S1's pull request</a>{" "}
+                ), so GitHub keeps that commit through <a href={pullUrl(5)}>S1's pull request</a>{" "}
                 instead.
             </p>
         )}
@@ -311,11 +314,14 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         </p>
         <p>
             <strong>The cost cap.</strong> Every S3.2 run had a cap of {usd("limits.cap")} a case,
-            enforced in code: a case that reaches it stops, and counts as failed.
+            enforced in code. It is checked before each model call, on an estimate at the list
+            price, not on the bill. The fixed pipeline leaves documents out to stay under it; the
+            loop stops instead, and the case counts as failed.
         </p>
         <p>
             <strong>Failures.</strong> A failed case counts as wrong in every S3.2 figure. The
-            counts:
+            counts, for the loop's held-out run and for its two development runs (S3.1's run-twice
+            pair):
         </p>
         <MethodsGroup id="limits" />
     </section>

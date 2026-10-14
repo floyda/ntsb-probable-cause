@@ -158,6 +158,11 @@ export function repoUrl(path: string): string {
         : `${REPO_URL}/blob/main/${path}`;
 }
 
+/** A pull request in the public repository. */
+export function pullUrl(n: number): string {
+    return `${REPO_URL}/pull/${String(n)}`;
+}
+
 /** A file as it was at a commit: the results file a number was read from. */
 export function fileAtUrl(sha: string, path: string): string {
     return `${REPO_URL}/blob/${sha}/${path}`;

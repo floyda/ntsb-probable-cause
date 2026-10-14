@@ -220,6 +220,32 @@ def test_every_commit_named_is_in_the_branch_history() -> None:
                 assert _git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, key
 
 
+def test_recorded_in_refuses_a_changed_or_untracked_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review, 2026-10-14: the refusal itself, in a real repository, not an injected one.
+    def git(*args: str) -> None:
+        subprocess.run(  # noqa: S603 -- fixed argv, no shell
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    (tmp_path / "kept.txt").write_text("one\n")
+    git("add", "kept.txt")
+    git("commit", "-q", "-m", "kept")
+    monkeypatch.setattr(site_numbers, "_REPO", tmp_path)
+    assert re.fullmatch(r"[0-9a-f]{40}", site_numbers.recorded_in("kept.txt"))
+    (tmp_path / "kept.txt").write_text("two\n")
+    with pytest.raises(site_numbers.UncommittedError, match=r"kept\.txt"):
+        site_numbers.recorded_in("kept.txt")
+    (tmp_path / "new.txt").write_text("new\n")
+    with pytest.raises(site_numbers.UncommittedError, match=r"new\.txt"):
+        site_numbers.recorded_in("new.txt")
+
+
 def test_a_results_file_with_uncommitted_changes_is_refused() -> None:
     def dirty(path: str) -> str:
         raise site_numbers.UncommittedError(path)
@@ -276,6 +302,10 @@ def test_the_nine_predictions_are_the_registrations_words() -> None:
     assert first["scope"] == "held-out"
     assert str(first["text"]).startswith("the loop matches but does not beat arm B")
     assert first["outcome"] == "not met"
+    assert [p["colon"] for p in items] == [":"] * 7 + [""] + [":"]  # item 8 has none
+    assert site_numbers.build(_RESULTS).texts["s32.not_predicted"] == (
+        "Not predicted: the level of top-1."
+    )
     assert str(first["result"]).startswith("top-1: the loop matches but does not beat arm B")
     met = [p["number"] for p in items if p["outcome"] == "met"]
     assert met == [3, 7, 8, 9]

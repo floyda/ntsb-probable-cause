@@ -20,6 +20,9 @@ const scriptPath = e.script.split(" ")[0] ?? e.script;
 const isDir = statSync(join(resolve(process.cwd(), ".."), scriptPath)).isDirectory();
 const scriptHref = repoUrl(isDir ? `${scriptPath}/` : scriptPath);
 const fileName = e.results_file.split("/").at(-1) ?? e.results_file;
+// A derived run ("...-tools-check-luna") is a chain of post-passes over a first run; the commit in
+// its name is that first run's, and each later part ran from its own (review, 2026-10-14).
+const derived = e.run !== null && /-(tools|check)(-|$)/.test(e.run);
 ---
 
 <li class="entry" id={anchorFor(key)}>
@@ -38,7 +41,7 @@ const fileName = e.results_file.split("/").at(-1) ?? e.results_file;
             <div>
                 <dt>Run</dt>
                 <dd>
-                    <code>{e.run}</code>, started from{" "}
+                    <code>{e.run}</code>, {derived ? "its first part started from" : "started from"}{" "}
                     <a href={commitUrl(e.run_commit)}>
                         <code>{e.run_commit}</code>
                     </a>

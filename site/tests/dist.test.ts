@@ -1,4 +1,5 @@
 // Checks over the built pages (S5 step 2): run after `pnpm run build`.
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -331,6 +332,8 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
     // Every entry has exactly one row, and the row shows its value as the other pages do.
     it.each(Object.keys(entries))("gives %s one row with its value", (key) => {
         const anchor = anchorFor(key);
+        // One id on the whole page, then the row it opens (review, 2026-10-14).
+        expect([...methods().matchAll(new RegExp(`\\sid="${anchor}"`, "g"))]).toHaveLength(1);
         const rows = [
             ...methods().matchAll(
                 new RegExp(`<li[^>]*\\sid="${anchor}"[^>]*>([\\s\\S]*?)</li>`, "g"),
@@ -338,8 +341,15 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
         ];
         expect(rows).toHaveLength(1);
         const row = visibleText(rows[0]?.[1] ?? "");
+        const e = entries[key];
         expect(row).toContain(shown(key));
-        expect(row).toContain(entries[key]?.sample ?? "missing");
+        for (const field of [e?.sample, e?.script, e?.results_file.split("/").at(-1)]) {
+            expect(row).toContain(field ?? "missing");
+        }
+        expect(row).toContain(
+            e?.model === "none" ? "none: no model call" : (e?.model ?? "missing"),
+        );
+        if (e?.run != null) expect(row).toContain(e.run);
     });
 
     it("resolves every link into Methods, from every page", () => {
@@ -378,7 +388,14 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
             const target = join(REPO_ROOT, path ?? "");
             expect(existsSync(target), path).toBe(true);
             expect(statSync(target).isDirectory(), path).toBe(kind === "tree");
-            if (ref !== "main") expect(known.has(ref ?? ""), ref).toBe(true);
+            if (ref === "main") continue;
+            expect(known.has(ref ?? ""), ref).toBe(true);
+            // The file as it was at that commit, not only as it is now (review, 2026-10-14).
+            const type = execFileSync("git", ["cat-file", "-t", `${ref ?? ""}:${path ?? ""}`], {
+                cwd: REPO_ROOT,
+                encoding: "utf8",
+            }).trim();
+            expect(type, `${ref ?? ""}:${path ?? ""}`).toBe(kind === "tree" ? "tree" : "blob");
         }
         const commits = [
             ...html.matchAll(
@@ -391,10 +408,23 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
 
     it("prints each prediction in the registration's words, with its outcome", () => {
         const text = visibleText(methods());
+        // Read from the registration itself, not from the numbers file, so a parse that changed
+        // a word or a colon is caught (review, 2026-10-14).
+        const plain = (md: string): string => md.replace(/[*`]/g, "").replace(/\s+/g, " ").trim();
+        const lines = readFileSync(join(REPO_ROOT, "docs/rounds/s3-registration.md"), "utf8").split(
+            "\n",
+        );
+        const items: string[] = [];
+        for (const line of lines.slice(lines.indexOf("## The predictions") + 1)) {
+            if (line.startsWith("## ")) break;
+            if (/^\d+\. /.test(line)) items.push(line.replace(/^\d+\. /, ""));
+            else if (line.startsWith("   ") && items.length > 0)
+                items.push(`${items.pop() ?? ""} ${line}`);
+            else if (line.startsWith("Not predicted")) expect(text).toContain(plain(line));
+        }
+        expect(items).toHaveLength(9);
+        for (const item of items) expect(text).toContain(plain(item));
         for (const p of lists["s32.predictions"] ?? []) {
-            expect(text).toContain(
-                `${String(p["title"])} (${String(p["scope"])}): ${String(p["text"])}`,
-            );
             expect(text).toContain(
                 `${p["outcome"] === "met" ? "Met." : "Not met."} ${String(p["result"])}`,
             );

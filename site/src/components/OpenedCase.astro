@@ -181,14 +181,18 @@ const commit = kase.withheld?.commit ?? null;
             what it believed, read and spent.
         </p>
     )}
-    {docket !== null && report !== null && (
-        <p class="sources">
-            Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}
-            <a href={docket}>the case's evidence files</a>
-            <span class="term"> · the docket</span> ·{" "}
-            <a href={methodsLink("grades")}>how this case was graded</a>
-        </p>
-    )}
+    <p class="sources">
+        {docket !== null && report !== null && (
+            <>
+                Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}
+                <a href={docket}>the case's evidence files</a>
+                <span class="term"> · the docket</span> ·{" "}
+            </>
+        )}
+        <a href={methodsLink("grades")}>
+            {docket !== null && report !== null ? "how" : "How"} this case was graded
+        </a>
+    </p>
 </article>
 
 <style>

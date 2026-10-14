@@ -47,7 +47,7 @@
     },
     "ladder.baseline.top1": {
       "high": 18.9,
-      "label": "always guess the commonest code: occurrence top-1",
+      "label": "no model: the commonest first code for the case's phase of flight and weather, learned from development cases: occurrence top-1",
       "low": 16.6,
       "model": "none",
       "n": 4241,
@@ -866,6 +866,7 @@
     ],
     "s32.predictions": [
       {
+        "colon": ":",
         "number": 1,
         "outcome": "not met",
         "result": "top-1: the loop matches but does not beat arm B (outcome worse; interval [-14.0, -5.2])",
@@ -874,6 +875,7 @@
         "title": "Top-1"
       },
       {
+        "colon": ":",
         "number": 2,
         "outcome": "not met",
         "result": "cost: the loop's bill is more than 10% below arm B's (loop 2.0610 USD, arm B 2.1347 USD, band equal)",
@@ -882,6 +884,7 @@
         "title": "Cost"
       },
       {
+        "colon": ":",
         "number": 3,
         "outcome": "met",
         "result": "top-3: the loop is below arm B, the interval wholly below zero (top of the interval -11.2 points)",
@@ -890,6 +893,7 @@
         "title": "Top-3"
       },
       {
+        "colon": ":",
         "number": 4,
         "outcome": "not met",
         "result": "findings: recall@10 is level, the interval including zero ([-6.5, -1.4])",
@@ -898,6 +902,7 @@
         "title": "Findings"
       },
       {
+        "colon": ":",
         "number": 5,
         "outcome": "not met",
         "result": "without the docket the loop loses at least 10.0 points of top-1 (without - with -8.5 points)",
@@ -906,6 +911,7 @@
         "title": "Without the docket"
       },
       {
+        "colon": ":",
         "number": 6,
         "outcome": "not met",
         "result": "the loop without its coding tools is worse on top-1 than each noise-floor run, each interval wholly below zero (ablation minus noise run; noise run a: -0.3 points [-4.3, +3.8], n=399; noise run b: -1.8 points [-6.0, +2.3], n=399)",
@@ -914,6 +920,7 @@
         "title": "Without coding tools"
       },
       {
+        "colon": ":",
         "number": 7,
         "outcome": "met",
         "result": "result 1: reads every offered document on more than half (245 of 375 (65.3%)) and uses arm B's exact order on fewer than 5% (0 of 400 (0.0%))",
@@ -922,6 +929,7 @@
         "title": "Result 1"
       },
       {
+        "colon": "",
         "number": 8,
         "outcome": "met",
         "result": "the three-group test passes (yes) and the abstain cut-off fires on fewer than 5% of scored cases (0 of 394) (the abstain half is met by construction: the curve's lowest value is 0.171, above the 0.164 cut-off; registration disclosure)",
@@ -930,6 +938,7 @@
         "title": "Calibration"
       },
       {
+        "colon": ":",
         "number": 9,
         "outcome": "met",
         "result": "format: at most 8 cases fail for format or tool reasons in the loop run (4 of 400)",
@@ -941,6 +950,7 @@
   },
   "texts": {
     "q6.one.sentence": "A loss of engine power for undetermined reasons.",
+    "s32.not_predicted": "Not predicted: the level of top-1.",
     "s32.registered_in": "f0e78b7eafabc978003928054d3416fb97467f2d",
     "s32.registered_on": "2026-10-04"
   }
