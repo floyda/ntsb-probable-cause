@@ -104,7 +104,7 @@ Built to choice 4's answer. The first option is described here; the second adds 
 
 ## Task 6: Preview (Controller)
 
-- [ ] **Step 1:** Andy reads question 1's cause and question 6's sentence for names before anything is pushed.
+- [x] **Step 1:** Andy reads question 1's cause and question 6's sentence for names before anything is pushed.
 - [ ] **Step 2:** Phone and desktop screenshots, light and dark, with the choices for his eye.
 - [ ] **Step 3:** Record his answers; run the final review and its fix pass; push.
 
@@ -155,3 +155,4 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - Each count is its own numbers-file entry. A guard in `claims.ts` (`q7.path_adds_up`) fails the build unless each move carries one checkpoint's count to the next over every case. It is tested to fail when a count moves.
   - The figure is three bars, one per checkpoint, each of all 394 cases with the right ones dark, and each step's fixed and broken counts between them. Hidden tables carry the same counts.
 - **Task 5:** built along the way in Tasks 1 to 4, as each figure's checks went in with it: question 1's cause word for word, no other case number, question 6's sentence and codes, and every new entry on the page in its format.
+- **Task 6, names check (Andy, 2026-10-14):** question 1's cause and question 6's sentence are clear of names.
