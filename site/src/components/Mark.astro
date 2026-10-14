@@ -5,9 +5,11 @@ import { GRADES, type Grade } from "../lib/words";
 
 interface Props {
     grade: Grade;
+    /** The shape alone, where a table beside it carries the words (question 8's strip). */
+    bare?: boolean;
 }
 
-const { grade } = Astro.props;
+const { grade, bare = false } = Astro.props;
 const { word, mark } = GRADES[grade];
 ---
 
@@ -61,7 +63,7 @@ const { word, mark } = GRADES[grade];
             />
         )}
     </svg>
-    <span class="mark-word">{word}</span>
+    {!bare && <span class="mark-word">{word}</span>}
 </span>
 
 <style>

@@ -215,10 +215,10 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
 
 **Files:** Create `site/src/pages/path.astro`, `site/src/components/PathStop.astro`, `site/src/components/ClosuresStrip.astro`. Modify `site/src/pages/index.astro` (a link: "How the project decided what to build: the Path").
 
-- [ ] **Step 1: `PathStop.astro`.**
+- [x] **Step 1: `PathStop.astro`.**
   - **Props:** `id` (the short anchor, §12 item 12), `n`, `question`, `answer` (a slot), `decision`, `results` (paths) and `scripts` (paths).
   - **It renders:** a `<section id>` with the question as an `h2` ("1. Is there an answer key nobody had to write?"); the answer, the decision, and a slot for the figure; then a sources line "Results: <file> · Script: <file>", linked to GitHub.
-- [ ] **Step 2: `path.astro`.** The page reads, top to bottom:
+- [x] **Step 2: `path.astro`.** The page reads, top to bottom:
   1. **The ladder,** all steps lit.
   2. **The eight stops.** Each answer is §7.2's text, with its numbers from the file, and §7.4's figure where this step builds it.
      - `#answer-key` (Q1): text only (figure in 4b).
@@ -232,9 +232,9 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   3. **"What could come next"** (§7.3): its four candidates, as plain text.
 
   The page title is "The path · Ellery".
-- [ ] **Step 3: `ClosuresStrip.astro`.** One mark per closed case in closure order, using the board's `Mark` shapes and words. It reads "Since 23 Sep 2026: {totalsLine}", has a data table behind it, and is drawn from the export only (§7.4). It never shows a percentage (§12 item 10).
-- [ ] **Step 4: Build and run** every site check. The internal-link check covers `/path/` and its anchors. The phone-width and axe checks cover the new page.
-- [ ] **Step 5: Commit** — `S5 step 4 Task 4: the Path page: the ladder, eight questions, what could come next`.
+- [x] **Step 3: `ClosuresStrip.astro`.** One mark per closed case in closure order, using the board's `Mark` shapes and words. It reads "Since 23 Sep 2026: {totalsLine}", has a data table behind it, and is drawn from the export only (§7.4). It never shows a percentage (§12 item 10).
+- [x] **Step 4: Build and run** every site check. The internal-link check covers `/path/` and its anchors. The phone-width and axe checks cover the new page.
+- [x] **Step 5: Commit** — `S5 step 4 Task 4: the Path page: the ladder, eight questions, what could come next`.
 
 ---
 
@@ -288,3 +288,13 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - Text widths are estimated (0.6 em a character, 0.64 bold) to wrap and test the labels. Task 5 adds a check of the rendered boxes in the browser, so a wrong estimate fails there.
   - The sentence under the ladder also gives the two rates and the two bills. If a re-run put the loop level with or above the fixed pipeline, the sentence would change to a plain statement of both rates rather than keep claiming "not a step up".
   - The colour tokens `--bar` and `--bar-dim` are added for both themes.
+- **Task 4 (2026-10-14): the page as built.**
+  - Question 4's page-kind bar is its own component, `PageKinds.astro`, not in the file map. It refuses to build if the four kinds do not add up to the total.
+  - `Mark` gains `bare` (the shape alone) for question 8's strip, whose words are in a table under a disclosure.
+  - `repoUrl` in `words.ts` builds every GitHub link. A folder (`apps/eval/`, `docs/rounds/`) links as a tree, a file as a blob.
+  - The ladder's hidden table is wrapped in a hidden `div`. A table ignores the 1px width of `.vh`, so the phone page had grown to 1,226px wide; the phone check caught it.
+  - **Wording beyond §7.2:**
+    - Q4: "far more than answering" stands in for decision 0120's "about ten times", which is not in the numbers file.
+    - Q7: the no-docket figure is worded as "the same loop without it was −8.5 points … on the first code", because "lost −8.5" reads as a double negative.
+    - Q1, Q6 and Q8 have decisions written for the page. §7.2 gives answers, not decisions. They are for Andy's preview.
+  - **Sources:** Q1 links `s1-bars.txt` and the eval harness, the first scoring against the NTSB's codes. Q8 has no results file, since its figure is the export.

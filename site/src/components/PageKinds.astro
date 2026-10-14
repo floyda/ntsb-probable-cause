@@ -1,0 +1,105 @@
+---
+// Question 4's figure (spec §7.4): the pages in dev-400's dockets by kind, as one bar split into
+// parts, with the counts in a table beside it. Counts from the numbers file only.
+import { count, entry } from "../lib/numbers";
+
+const KINDS = [
+    { key: "q4.pages.text_only", label: "text only", cls: "text" },
+    { key: "q4.pages.text_and_image", label: "text and image", cls: "both" },
+    { key: "q4.pages.image_only", label: "image only: a scan, no text to read", cls: "image" },
+    { key: "q4.pages.blank", label: "blank", cls: "blank" },
+];
+const total = entry("q4.pages.total").value;
+const parts = KINDS.reduce(
+    (acc: { x: number; w: number; kind: (typeof KINDS)[number] }[], kind) => {
+        const x = acc.reduce((sum, p) => sum + p.w, 0);
+        return [...acc, { x, w: (entry(kind.key).value / total) * 100, kind }];
+    },
+    [],
+);
+const sum = KINDS.reduce((s, k) => s + entry(k.key).value, 0);
+if (sum !== total) throw new Error(`page kinds add to ${String(sum)}, not ${String(total)}`);
+---
+
+<figure class="kinds">
+    <svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        {parts.map((p) => (
+            <rect class={p.kind.cls} x={p.x} y="0" width={p.w} height="6" />
+        ))}
+    </svg>
+    <table>
+        <caption>
+            Pages in the development sample's dockets, by kind ({count("q4.pages.total")})
+        </caption>
+        <tbody>
+            {KINDS.map((k) => (
+                <tr>
+                    <th scope="row">
+                        <span class={`swatch ${k.cls}`} aria-hidden="true" />
+                        {k.label}
+                    </th>
+                    <td>{count(k.key)}</td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</figure>
+
+<style>
+    .kinds {
+        margin: 0;
+        display: grid;
+        gap: 0.5rem;
+    }
+    svg {
+        width: 100%;
+        height: 1.25rem;
+        display: block;
+    }
+    /* Kinds differ by lightness only, never by a colour that reads good or bad (§11). */
+    .text {
+        fill: var(--bar-dim);
+        background: var(--bar-dim);
+    }
+    .both {
+        fill: var(--bar);
+        background: var(--bar);
+    }
+    .image {
+        fill: var(--ink);
+        background: var(--ink);
+    }
+    .blank {
+        fill: var(--ground);
+        background: var(--ground);
+        stroke: var(--rule);
+        stroke-width: 0.2;
+    }
+    table {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+    }
+    caption {
+        text-align: left;
+        color: var(--ink-muted);
+        padding-bottom: 0.25rem;
+    }
+    th,
+    td {
+        text-align: left;
+        font-weight: 400;
+        padding: 0.2rem 0.75rem 0.2rem 0;
+    }
+    td {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+    .swatch {
+        display: inline-block;
+        width: 0.8em;
+        height: 0.8em;
+        margin-right: 0.4em;
+        border: 1px solid var(--rule);
+        vertical-align: -0.05em;
+    }
+</style>

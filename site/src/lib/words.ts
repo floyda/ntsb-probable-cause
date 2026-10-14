@@ -137,8 +137,17 @@ export function ntsbMissing(grade: Grade): string {
 }
 
 /** The commit that coded the case, in the public repository (spec §5). */
+const REPO_URL = "https://github.com/floyda/ntsb-probable-cause";
+
 export function commitUrl(commit: string): string {
-    return `https://github.com/floyda/ntsb-probable-cause/commit/${commit}`;
+    return `${REPO_URL}/commit/${commit}`;
+}
+
+/** A repository path on GitHub's main branch: a file as a blob, a folder (ending "/") as a tree. */
+export function repoUrl(path: string): string {
+    return path.endsWith("/")
+        ? `${REPO_URL}/tree/main/${path.replace(/\/$/, "")}`
+        : `${REPO_URL}/blob/main/${path}`;
 }
 
 /** One sentence on where the two codings differ, written from the codes alone (spec §5). */

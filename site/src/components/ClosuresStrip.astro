@@ -1,0 +1,86 @@
+---
+// Question 8's figure (spec §7.4): one mark per case the NTSB has closed since the board began,
+// in the order they closed, shaped by result. Drawn from the export alone; counts only, never a
+// percentage (§12 item 10). The table beneath carries the same in words (§12 item 8).
+import type { BoardRow } from "../lib/board-index-types";
+import { closedLong, GRADES, totalsLine } from "../lib/words";
+import Mark from "./Mark.astro";
+
+interface Props {
+    rows: readonly BoardRow[];
+}
+
+const { rows } = Astro.props;
+const ordered = [...rows].sort(
+    (a, b) => a.closed_on.localeCompare(b.closed_on) || a.case_number.localeCompare(b.case_number),
+);
+---
+
+<div class="strip-figure">
+    <p class="totals">{totalsLine(rows)}</p>
+    <ol class="strip" aria-hidden="true">
+        {ordered.map((row) => (
+            <li>
+                <Mark grade={row.grade} bare />
+            </li>
+        ))}
+    </ol>
+    <p class="key">Each mark is one closed case, oldest closure first.</p>
+    <details>
+        <summary>The cases in order of closure</summary>
+        <table>
+            <caption class="vh">Closed cases in order of closure, with their results</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Closed</th>
+                    <th scope="col">Case</th>
+                    <th scope="col">Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {ordered.map((row) => (
+                    <tr>
+                        <td>{closedLong(row.closed_on)}</td>
+                        <td>
+                            <a href={`/case/${row.case_number}/`}>{row.case_number}</a>
+                        </td>
+                        <td>{GRADES[row.grade].word}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </details>
+</div>
+
+<style>
+    .strip-figure {
+        display: grid;
+        gap: 0.5rem;
+    }
+    p {
+        margin: 0;
+    }
+    .key {
+        color: var(--ink-muted);
+        font-size: 0.92rem;
+    }
+    .strip {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+    table {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+        margin-top: 0.5rem;
+    }
+    th,
+    td {
+        text-align: left;
+        padding: 0.3rem 0.75rem 0.3rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+</style>

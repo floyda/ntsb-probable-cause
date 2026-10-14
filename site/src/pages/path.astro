@@ -1,0 +1,313 @@
+---
+// The Path page (spec §7): how the project decided what to build. The ladder, then the eight
+// questions, each with its measured answer, the decision taken and its sources, then what could
+// come next. Every figure is read from the numbers file by key; none is typed here.
+import ClosuresStrip from "../components/ClosuresStrip.astro";
+import Ladder from "../components/Ladder.astro";
+import PageKinds from "../components/PageKinds.astro";
+import PathStop from "../components/PathStop.astro";
+import Base from "../layouts/Base.astro";
+import { exportDir, loadExport } from "../lib/export";
+import { caseCount, containsValue, countOf, list, points, usd, withInterval } from "../lib/numbers";
+import { repoUrl } from "../lib/words";
+
+const { index } = loadExport(exportDir());
+
+// Question 2 says "no better than guessing" only while the no-docket interval holds the
+// baseline's rate (plan Review Focus 5); a re-run that breaks this stops the build.
+if (!containsValue("ladder.no_docket.top1", "ladder.baseline.top1")) {
+    throw new Error("question 2: the case record alone is no longer level with guessing");
+}
+
+const R = "docs/results/";
+const pairs = list("q5.pairs");
+---
+
+<Base
+    title="The path · Ellery"
+    description="How the project decided what to build: eight questions, each with its measured answer and the decision taken."
+>
+    <h1>The path</h1>
+    <p class="lede">
+        How the project decided what to build. Four ways of coding an accident, each with more
+        machinery than the one before, then the eight questions that led from one to the next. Every
+        figure links to the results file and the script that produced it.
+    </p>
+
+    <section aria-labelledby="ladder-heading">
+        <h2 id="ladder-heading">The ladder</h2>
+        <p>
+            How often each way's first code matched the NTSB's, on held-out accidents, and what it
+            cost. The whisker on each bar is its 95 percent interval.
+        </p>
+        <Ladder id="ladder-top" />
+    </section>
+
+    <PathStop
+        id="answer-key"
+        n={1}
+        question="Is there an answer key nobody had to write?"
+        decision="Score every answer against the NTSB's own codes, exactly, so the headline needs no judge."
+        results={[`${R}s1-bars.txt`]}
+        scripts={["apps/eval/"]}
+    >
+        <p>
+            Yes. The NTSB codes every closed case: occurrence codes for what happened, in order,
+            finding codes for why, and a one- or two-sentence probable cause.
+        </p>
+    </PathStop>
+
+    <PathStop
+        id="case-record"
+        n={2}
+        question="Is the case record enough?"
+        decision="Give the agent the docket: the documents the investigators gathered."
+        results={[`${R}s32-claims-heldout.txt`, `${R}s1-baseline.txt`, `${R}s1-bars.txt`]}
+        scripts={["scripts/s32_claims.py", "apps/eval/"]}
+    >
+        <p>
+            No. With the recorded facts alone, the agent matched the NTSB's first code in{" "}
+            {withInterval("ladder.no_docket.top1")}. Always guessing the commonest code matched in{" "}
+            {withInterval("ladder.baseline.top1")}. The agent did no better than guessing.
+        </p>
+        <p>S1's one-shot ceiling, on an earlier stack, scored below that guess.</p>
+        <Ladder id="ladder-q2" lit={["baseline", "no_docket"]} sentence={false} slot="figure" />
+    </PathStop>
+
+    <PathStop
+        id="docket"
+        n={3}
+        question="Does reading the docket help?"
+        decision="Build every version on the docket, then ask whether choosing what to read beats reading it all (question 7)."
+        results={[`${R}s24-bars.txt`]}
+        scripts={["apps/eval/"]}
+    >
+        <p>
+            Yes. It is the largest gain on the ladder. Against the one-shot ceiling on the same{" "}
+            {caseCount("q3.docket_gain")} cases, reading the docket raised the first-code match by{" "}
+            {points("q3.docket_gain")}.
+        </p>
+        <Ladder id="ladder-q3" lit={["fixed"]} sentence={false} slot="figure" />
+    </PathStop>
+
+    <PathStop
+        id="scanned-pages"
+        n={4}
+        question="Does reading words in scanned pages help?"
+        decision="Paused: transcription is off by default. It is a candidate to return as a measured improvement."
+        results={[`${R}s26-armB-v2-dev.txt`, `${R}s26-page-kinds.txt`]}
+        scripts={["apps/eval/", "scripts/page_kinds.py"]}
+    >
+        <p>
+            On development cases it was not shown to help. Adding the words read from page images
+            changed the first-code match by {points("q4.v2_gain")} on {caseCount("q4.v2_gain")}{" "}
+            cases, an interval that includes zero, and transcribing the pages cost far more than
+            answering (decision{" "}
+            <a
+                href={repoUrl(
+                    "docs/decisions/0120-qwen-stays-and-transcription-is-off-by-default.md",
+                )}
+            >
+                0120
+            </a>
+            ).
+        </p>
+        <PageKinds slot="figure" />
+    </PathStop>
+
+    <PathStop
+        id="coding"
+        n={5}
+        question="Are the misses about evidence or about coding?"
+        decision="Coding guidance and an ordering check followed. Of five guidance rounds, three were dropped."
+        results={[`${R}s26-occurrence-misses-dev.txt`, "docs/rounds/"]}
+        scripts={["scripts/occurrence_misses.py"]}
+    >
+        <p>
+            Mostly coding order. On development cases the fixed pipeline's first guess was somewhere
+            in the NTSB's ordered sequence of codes in {countOf("q5.in_sequence")} cases, but was
+            the NTSB's first code in only {countOf("q5.first_right")}.
+        </p>
+        <div slot="figure" class="frame" tabindex="0" role="region" aria-labelledby="pairs-cap">
+            <table class="pairs">
+                <caption id="pairs-cap">
+                    The commonest misses: the NTSB's first event and the agent's
+                </caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Cases</th>
+                        <th scope="col">The NTSB put first</th>
+                        <th scope="col">The agent put first</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {pairs.map((p) => (
+                        <tr>
+                            <td>{p["count"]}</td>
+                            <td>{p["ntsb"]}</td>
+                            <td>{p["agent"]}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </PathStop>
+
+    <PathStop
+        id="consistency"
+        n={6}
+        question="How consistent is the answer key itself?"
+        decision="Precedent alone cannot settle the first code, so the precedent tool waits for a measured second version, after the live board."
+        results={[`${R}s3-coding-consistency-dev.txt`, `${R}s3-finding-consistency-dev.txt`]}
+        scripts={[
+            "scripts/exploratory/s3_coding_consistency.py",
+            "scripts/exploratory/s3_finding_consistency.py",
+        ]}
+    >
+        <p>
+            Cases whose NTSB probable-cause sentences match word for word share their first code in
+            only {withInterval("q6.twins")}. Their flagged findings agree far more.
+        </p>
+        <p>
+            This does not say the NTSB was inconsistent: the same sentence can follow accidents
+            whose sequences of events differ. It bounds what any coder reading only the sentence
+            could score.
+        </p>
+    </PathStop>
+
+    <PathStop
+        id="choosing"
+        n={7}
+        question="Does choosing what to read beat reading everything?"
+        decision="Not shown, so the loop is not warranted. Version 1 runs on the board unchanged, as the version being improved, and the fixed pipeline is the bar for the next."
+        results={[
+            `${R}s32-claims-heldout.txt`,
+            `${R}s32-heldout-diagnosis.txt`,
+            `${R}s3-noise-floor-dev.txt`,
+        ]}
+        scripts={[
+            "scripts/s32_claims.py",
+            "scripts/exploratory/s32_heldout_diagnosis.py",
+            "scripts/s3_noise_floor.py",
+        ]}
+    >
+        <p>
+            No. On held-out cases the loop was worse on the first code, the top three and the
+            findings. Against the fixed pipeline its first-code match was{" "}
+            {points("q7.loop_vs_fixed")} on {caseCount("q7.loop_vs_fixed")} cases.
+        </p>
+        <p>
+            Its bill was equal, but only through the provider's discount on cached prompts:{" "}
+            {usd("ladder.loop.billed")} billed against the pipeline's {usd("ladder.fixed.billed")},
+            and at list price {usd("ladder.loop.cost")} against {usd("ladder.fixed.cost")}.
+        </p>
+        <p>
+            Reading the docket still mattered: the same loop without it was{" "}
+            {points("q7.no_docket_loss")} on the first code. The loop read every offered document in{" "}
+            {countOf("q7.read_all")} cases that had documents on offer, and skipped most often on
+            large fatal dockets.
+        </p>
+        <p>
+            Most of the pipeline's lead came from its coding-tools step. Against the pipeline's
+            first answer alone, before that step, the loop was {points("q7.loop_vs_answer")}{" "}
+            (exploratory).
+        </p>
+        <p class="band">
+            How far the same agent moves when run again: two identical runs on development cases
+            differed by {points("q7.noise_band")}. This was measured on development cases, so it is
+            not drawn on the ladder.
+        </p>
+    </PathStop>
+
+    <PathStop
+        id="newly-closed"
+        n={8}
+        question="Does it hold on newly closed cases?"
+        decision="Each case the NTSB closes is coded once, at closure, by version 1, and set beside the NTSB's codes, counted and never scored as a percentage."
+    >
+        <p>The board answers this in public.</p>
+        <ClosuresStrip rows={index.rows} slot="figure" />
+    </PathStop>
+
+    <section class="next" aria-labelledby="next-heading">
+        <h2 id="next-heading">What could come next</h2>
+        <p>Each would be run as a registered, measured experiment against the fixed pipeline.</p>
+        <ul>
+            <li>Transcription of scanned pages, back as a measured improvement.</li>
+            <li>
+                The precedent tool, which the agent questions (decision{" "}
+                <a
+                    href={repoUrl(
+                        "docs/decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md",
+                    )}
+                >
+                    0140
+                </a>
+                ).
+            </li>
+            <li>The weather archive.</li>
+            <li>The model comparison.</li>
+        </ul>
+        <p>
+            When a second version of the agent runs, this site will show the first against the
+            second on the same cases.
+        </p>
+    </section>
+</Base>
+
+<style>
+    .lede {
+        font-size: 1.1rem;
+    }
+    section[aria-labelledby="ladder-heading"],
+    .next {
+        display: grid;
+        gap: 0.6rem;
+        padding-block: 1.5rem;
+    }
+    .next {
+        border-top: 1px solid var(--rule);
+    }
+    h2 {
+        font-size: 1.25rem;
+        margin: 0;
+    }
+    /* Block margins only: main's children keep their centring margin (tokens.css). */
+    p {
+        margin-block: 0;
+    }
+    .band {
+        color: var(--ink-muted);
+    }
+    .frame {
+        overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    .pairs {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+        width: 100%;
+    }
+    .pairs caption {
+        text-align: left;
+        color: var(--ink-muted);
+        padding-bottom: 0.25rem;
+    }
+    .pairs th,
+    .pairs td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.3rem 0.6rem 0.3rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    .pairs td:first-child {
+        font-variant-numeric: tabular-nums;
+    }
+    .next ul {
+        margin: 0;
+        padding-left: 1.2rem;
+    }
+</style>

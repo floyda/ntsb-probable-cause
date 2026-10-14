@@ -1,0 +1,88 @@
+---
+// One question's stop on the Path page (spec §7.2): the question, its measured answer, the
+// decision taken from it, its figure where there is one, and its sources on GitHub.
+import { repoUrl } from "../lib/words";
+
+interface Props {
+    /** The short anchor (§12 item 12), e.g. "docket". */
+    id: string;
+    n: number;
+    question: string;
+    decision: string;
+    /** Repository paths of the results files behind the answer. */
+    results?: string[];
+    /** Repository paths of the scripts that wrote them. */
+    scripts?: string[];
+}
+
+const { id, n, question, decision, results = [], scripts = [] } = Astro.props;
+const name = (path: string): string => path.replace(/\/$/, "").split("/").at(-1) ?? path;
+const sources = [
+    { kind: "Results", paths: results },
+    { kind: "Script", paths: scripts },
+].filter((s) => s.paths.length > 0);
+---
+
+<section class="stop" id={id} aria-labelledby={`${id}-q`}>
+    <h2 id={`${id}-q`}>
+        {String(n)}. {question}
+    </h2>
+    <div class="answer">
+        <slot />
+    </div>
+    <p class="decision">
+        <strong>Decision:</strong> {decision}
+    </p>
+    {Astro.slots.has("figure") && (
+        <div class="figure">
+            <slot name="figure" />
+        </div>
+    )}
+    {sources.length > 0 && (
+        <p class="sources">
+            {sources.map((s, i) => (
+                <>
+                    {i > 0 && " · "}
+                    {s.kind}:{" "}
+                    {s.paths.map((path, j) => (
+                        <>
+                            {j > 0 && ", "}
+                            <a href={repoUrl(path)}>{name(path)}</a>
+                        </>
+                    ))}
+                </>
+            ))}
+        </p>
+    )}
+</section>
+
+<style>
+    .stop {
+        display: grid;
+        gap: 0.6rem;
+        padding-block: 1.5rem;
+        border-top: 1px solid var(--rule);
+    }
+    h2 {
+        font-size: 1.25rem;
+        margin: 0;
+        text-wrap: balance;
+    }
+    .answer {
+        display: grid;
+        gap: 0.5rem;
+    }
+    .answer :global(p),
+    .decision,
+    .sources {
+        margin: 0;
+    }
+    .sources {
+        color: var(--ink-muted);
+        font-size: 0.92rem;
+        overflow-wrap: anywhere;
+    }
+    .figure {
+        min-width: 0;
+    }
+</style>

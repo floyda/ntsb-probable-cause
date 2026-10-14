@@ -73,7 +73,7 @@ const lower = entry(loop).value < entry(fixed).value;
                             y2={mid + 5}
                         />
                         <line
-                            class="guess"
+                            class="guess-mark"
                             x1={g.baselineX}
                             x2={g.baselineX}
                             y1={mark[0]}
@@ -115,29 +115,32 @@ const lower = entry(loop).value < entry(fixed).value;
             </>
         )}
     </figcaption>
-    <table class="vh">
-        <caption>The ladder's figures</caption>
-        <thead>
-            <tr>
-                <th scope="col">Step</th>
-                <th scope="col">First code matched, with its interval and cases</th>
-                <th scope="col">Cost for the cases, list price</th>
-                <th scope="col">Cost billed</th>
-            </tr>
-        </thead>
-        <tbody>
-            {LADDER.map((s) => (
+    <!-- A table ignores the 1px width of .vh, so the wrapper is what is hidden. -->
+    <div class="vh">
+        <table>
+            <caption>The ladder's figures</caption>
+            <thead>
                 <tr>
-                    <th scope="row">
-                        {s.label}: {s.plain}
-                    </th>
-                    <td>{withInterval(s.rate)}</td>
-                    <td>{s.cost === null ? "no model cost" : usd(s.cost)}</td>
-                    <td>{s.billed === null ? "—" : usd(s.billed)}</td>
+                    <th scope="col">Step</th>
+                    <th scope="col">First code matched, with its interval and cases</th>
+                    <th scope="col">Cost for the cases, list price</th>
+                    <th scope="col">Cost billed</th>
                 </tr>
-            ))}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                {LADDER.map((s) => (
+                    <tr>
+                        <th scope="row">
+                            {s.label}: {s.plain}
+                        </th>
+                        <td>{withInterval(s.rate)}</td>
+                        <td>{s.cost === null ? "no model cost" : usd(s.cost)}</td>
+                        <td>{s.billed === null ? "—" : usd(s.billed)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
 </figure>
 
 <style>
@@ -175,7 +178,7 @@ const lower = entry(loop).value < entry(fixed).value;
     .dim .whisker {
         stroke: var(--ink-muted);
     }
-    .guess {
+    .guess-mark {
         stroke: var(--ink);
         stroke-width: 1.5;
         stroke-dasharray: 3 2;
