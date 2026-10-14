@@ -1,10 +1,26 @@
 # A coding memory learned from closed cases: design note
 
-Status: Draft, 2026-10-08. Nothing here is built and nothing here is decided. This note
-proposes a declared experiment on development cases. If Andy approves it, the decisions listed
-in §10 are written as records first, and a plan follows. The memory reaches the agent only in
-its second version (v2), beside the precedent tool of decision
+Status: Draft, 2026-10-08; refreshed 2026-10-14. Nothing here is built. This note proposes a
+declared experiment on development cases. Andy chose on 2026-10-14 to run its pilot now, as a
+side track beside S4 (§11, question 1); the other open questions in §11 are answered before the
+decisions in §10 are written as records, and a plan follows. The memory reaches the agent only
+in a later version, beside the precedent tool of decision
 [0140](../decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md).
+
+**What changed since 2026-10-08.** S3 is complete: S3.3's live shadow closed on 2026-10-09
+(`docs/results/s33-live-shadow.txt`). S4 (predictions and resolution) is being built on its own
+branch, and runs Ellery version 1 unchanged on every live case, with its fingerprint and model
+pinned (decisions 0156 and 0161; S4 re-pinned the fingerprint on its branch, and its label
+is now `s3-v1+ge17fecdc66ec+tdff9dea78f23`). Version 2 is
+outside S4. So nothing in this note can reach a live run: a memory can enter only a later
+version, measured as one. §5 adds that live cases never feed the learner (decision 0024).
+
+**What the pilot must not touch** (S4, 2026-10-14). Version 1's fingerprint (`+t`) covers the
+text of the two guidance files `r3-loc-stall` and `r6-aircraft-control`, the code tables, S3's
+statistics file `scoring/tables/coding_stats_s3.json`, and the model-facing text in `agent/` and
+`model/tool_text.py`. Every live night refuses to run if that fingerprint moves. The pilot edits
+none of them. A new guidance file does not move it, because only those two are fingerprinted; a
+memory run therefore needs its own registration, as guidance rounds do.
 
 ## 1. The idea in one paragraph
 
@@ -159,6 +175,15 @@ the `agent` and `model` packages may not import it, and an import-linter contrac
 A memory snapshot reaches an answering run only as a named, fingerprinted file, the way guidance
 does, so the run's prompt version changes when the memory changes.
 
+**Live cases never feed the learner.** Every live case is in the open split, and an open-split
+case may enter a measurement only as numbers: no case number, no text
+([0024](../decisions/0024-open-split-enters-measurements-only-as-numbers.md)). A lesson written
+from a live verdict would carry its text into development work. So the learner reads development
+verdicts only, and the idea that started this note, an agent that keeps learning from the
+NTSB's feedback on live cases, needs its own decision later: either a record that amends 0024
+for the learner, with its own guard, or live learning limited to counts. The pilot needs
+neither.
+
 **What this does not guard against.** GPT-6 Luna and the learner were both very likely trained
 on public NTSB reports. The memory can be shown to improve on the same model without a memory.
 It cannot be shown to work from nothing. Only cases closed after the models were trained, on
@@ -265,7 +290,13 @@ docket. The transfer check, if reached: about one arm B run, $2–3.
 **Spend records.** Every learning call writes a spend row with its own kind and transport. Credit
 spend is counted at its real price, never as zero, so the record stays honest about what the
 method costs. It is fenced twice: by the project's budget guard, against a monthly line no larger
-than the credit, and by a spend limit on its own Claude Console workspace.
+than the credit, and by a spend limit on its own Claude Console workspace. The coding tests and
+the transfer check run on the development OpenRouter key and count against its $40 monthly guard
+([0083](../decisions/0083-the-monthly-budget-is-forty-dollars-in-development.md)), as every
+development run does; that line is shared with any S4 development run, of which S4 plans none.
+S4's live key, with its own limit, is never used. A new spend kind extends the kinds in
+`scoring/budget.py`; S4 counts its live money from its own run records and key, never from
+development spend rows, so a new kind does not reach it.
 
 ## 9. What this rules out, and what it does not settle
 
@@ -274,8 +305,9 @@ than the credit, and by a spend limit on its own Claude Console workspace.
 - **It does not learn from the agent's own answers.** That is a second design ("B"): run the
   agent once over pool cases, store its answers, and learn from its mistakes. It costs one paid
   answering pass over the pool and is worth testing only if this design shows promise.
-- **It does not change the frozen loop, S3.3 or the bar.** The pilot touches development cases
-  only and adds nothing to any run that S3.3 or S4 depend on.
+- **It does not change Ellery version 1, S4's nights, the board export or the bar.** The pilot
+  touches development cases only and adds nothing to the `agent`, `live` or `store` packages
+  or to any run S4 depends on.
 - **It may compete with the precedent tool.** Both draw on past verdicts: the precedent tool
   hands the agent raw earlier cases; the memory hands it distilled lessons. v2 should test them
   apart and together.
@@ -284,6 +316,10 @@ than the credit, and by a spend limit on its own Claude Console workspace.
   file, not the transport, is the product of this work.
 
 ## 10. Decisions to record if approved
+
+They take numbers from the block S4 agreed on 2026-10-14, **numbers 200 to 209**, so that no record
+collides when the branches merge (S4's branch holds the records numbered 168 to 199, S5's 186
+to 189).
 
 1. **Verdict text as learning input.** A model may read pool cases' verdicts to write lessons
    and in the coding test, on development cases only, under the reading table in §5.
@@ -298,9 +334,8 @@ than the credit, and by a spend limit on its own Claude Console workspace.
 
 ## 11. Open questions for Andy
 
-1. **When.** The pilot touches nothing S3.3 or S4 need, so it could run now as a side track.
-   Or it waits until after S4 and is built with v2. The note assumes now, on its own branch, with
-   its own spend line.
+1. **When.** *Answered 2026-10-14 (Andy): now*, as a side track beside S4, on its own branch,
+   with its own spend line, the pilot only. Andy has claimed the plan's API credits.
 2. **The learner's model.** Sonnet 5.5 for proposing and revising, Haiku 5.5 for deciding which
    lessons apply? Or Opus 5.5 for revising, where the reasoning is hardest, at twice Sonnet's
    price?
