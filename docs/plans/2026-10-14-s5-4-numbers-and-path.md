@@ -14,7 +14,8 @@ The first page's caveat is tied to the numbers file, and the first page links to
 **Out of this step, to step 4b:** three figures of §7.4 need new analysis scripts:
 - question 1's published development case;
 - question 6's one sentence with many first codes, a new development-only script;
-- question 7's beliefs against the NTSB's first code, a new script over S3.2's trails on Andy's Mac.
+- question 7's beliefs against the NTSB's first code, a new script over S3.2's trails on Andy's Mac;
+- question 5's misses rerun on S3's runs (§7.4), in place of S2.6's arm B run (Andy, 2026-10-14).
 
 Their stops carry their measured answers in this step and gain their figures in 4b.
 
@@ -318,3 +319,8 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - Q1: "Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
   - Q6: unchanged.
   - Q8: "Code each newly closed case once, at closure, and show it beside the NTSB's codes as counts, never a percentage."
+- **Task 6, choice 4:** Andy kept both wordings that differ from §7.2: Q4's "far more than answering" and Q7's "the same loop without it was −8.5 points … on the first code".
+- **Task 6, choice 5 (Andy, 2026-10-14):**
+  - Q4's labels are now "image only: no text to read", since the count cannot tell a scan from a photograph, and "text and image: text readable".
+  - Q5's column reads "The fixed pipeline put first", since the counts are S2.6's arm B, not Ellery's. The rerun on S3's runs moves to step 4b.
+  - Q8's counts line shows each result's mark beside its count, so it doubles as the strip's key.

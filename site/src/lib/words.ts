@@ -100,12 +100,20 @@ export function stampLine(index: BoardIndex): string {
         : `${updated} · last closures ${closedLabel(latest)}`;
 }
 
-/** Counts since launch for each grade, abstains and failures included; no percentage (§12 item 10). */
-export function totalsLine(rows: readonly BoardRow[]): string {
+/** The grades present, in the board's order, each with its count. */
+export function gradeCounts(rows: readonly BoardRow[]): { grade: Grade; count: number }[] {
     const counts = new Map<Grade, number>();
     for (const row of rows) counts.set(row.grade, (counts.get(row.grade) ?? 0) + 1);
-    const parts = GRADE_ORDER.filter((g) => (counts.get(g) ?? 0) > 0).map(
-        (g) => `${String(counts.get(g) ?? 0)} ${GRADES[g].word}`,
+    return GRADE_ORDER.filter((g) => (counts.get(g) ?? 0) > 0).map((g) => ({
+        grade: g,
+        count: counts.get(g) ?? 0,
+    }));
+}
+
+/** Counts since launch for each grade, abstains and failures included; no percentage (§12 item 10). */
+export function totalsLine(rows: readonly BoardRow[]): string {
+    const parts = gradeCounts(rows).map(
+        ({ grade, count }) => `${String(count)} ${GRADES[grade].word}`,
     );
     return parts.length === 0
         ? "Since launch: no cases yet."
