@@ -482,6 +482,16 @@ scrolling route, so a link from any page lands beside the entries around it:
    sentence or code appears in what the agent would see, while a sentence shared with the
    analysis write-up only marks the case. A last line says a test deliberately breaks the
    split to prove the checks catch it.
+
+   *Note, 2026-10-14 (Andy, step 5 preview):* the page draws the mechanism as built, not the
+   draft above. No docket document is classed or held back by its title: decision 0056 found the
+   deny-list cannot be filled from titles, and `docket/filter.py` admits every document whose
+   text could be extracted. The evidence route reads "the recorded facts, and every docket
+   document with readable text", and the last check is what stops a document holding the
+   verdict, by refusing the whole case. The fifth check is worded from `records/guard.py`:
+   sentences of the factual write-up may appear in docket documents and weather reports, which
+   it quotes; a sentence of the analysis write-up in a docket document only marks the case
+   (0077).
 8. **Glossary**, with the NTSB terms that the other pages show in small type (§12, item 4).
 
 Closed-case numbers from the board and held-out numbers from evaluation never share a figure
