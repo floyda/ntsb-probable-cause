@@ -15,7 +15,13 @@ function stripPropertyTitles(node, keep) {
     const out = {};
     for (const [key, value] of Object.entries(node)) {
         if (key === "title" && !keep) continue;
-        if (key === "$defs") {
+        if (key === "properties" && value !== null && typeof value === "object") {
+            // Property names are data, never the `title` keyword: a property may itself be
+            // called `title` (DocumentChoice.title), and must keep its name.
+            out[key] = Object.fromEntries(
+                Object.entries(value).map(([n, d]) => [n, stripPropertyTitles(d, false)]),
+            );
+        } else if (key === "$defs") {
             out[key] = Object.fromEntries(
                 Object.entries(value).map(([n, d]) => [n, stripPropertyTitles(d, true)]),
             );

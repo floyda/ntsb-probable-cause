@@ -184,6 +184,10 @@ export interface DocumentChoice {
      */
     pages: number | null;
     position: number;
+    /**
+     * After the names step.
+     */
+    title: string;
 }
 /**
  * The NTSB's verdict.
