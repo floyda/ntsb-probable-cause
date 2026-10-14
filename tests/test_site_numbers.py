@@ -53,17 +53,15 @@ def test_a_missing_line_fails_loudly_naming_entry_and_file(tmp_path: Path) -> No
     with pytest.raises(
         site_numbers.ExtractError, match=r"ladder\.loop\.top1.*s32-heldout-diagnosis"
     ):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
 
 
 def test_a_changed_number_is_read_as_changed(tmp_path: Path) -> None:
     _copy_results(tmp_path)
     target = tmp_path / "s32-heldout-diagnosis.txt"
     target.write_text(target.read_text().replace("the loop top-1: 23.5%", "the loop top-1: 24.0%"))
-    assert (
-        site_numbers.build(tmp_path, recorded=_fake_recorded).entries["ladder.loop.top1"].value
-        == 24.0
-    )
+    built = site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
+    assert built.entries["ladder.loop.top1"].value == 24.0
 
 
 def test_a_line_matched_twice_fails(tmp_path: Path) -> None:
@@ -73,7 +71,7 @@ def test_a_line_matched_twice_fails(tmp_path: Path) -> None:
     line = next(x for x in target.read_text().splitlines() if x.startswith("the loop top-1:"))
     target.write_text(target.read_text() + line + "\n")
     with pytest.raises(site_numbers.ExtractError, match=r"ladder\.loop\.top1.*2 lines"):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
 
 
 def test_check_names_the_first_stale_key(tmp_path: Path) -> None:
@@ -95,7 +93,7 @@ def test_a_missing_overall_block_is_not_read_from_the_fatal_block(tmp_path: Path
     del lines[start + 1 : start + 5]  # the overall "paired difference" line and its three rows
     target.write_text("\n".join(lines) + "\n")
     with pytest.raises(site_numbers.ExtractError, match=r"q4\.v2_gain.*no line"):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
 
 
 def test_ties_at_the_cut_off_are_all_shown() -> None:
@@ -143,7 +141,7 @@ def test_question_6s_counts_must_add_up(tmp_path: Path) -> None:
     target = tmp_path / "s5-one-sentence-dev.txt"
     target.write_text(target.read_text().replace("cases: 33", "cases: 34"))
     with pytest.raises(site_numbers.ExtractError, match=r"q6\.one\.codes"):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
 
 
 def test_question_7s_belief_path_is_read_from_decision_0186s_reading() -> None:
@@ -175,6 +173,10 @@ _FAKE_SHA = "0" * 40
 
 def _fake_recorded(_path: str) -> str:
     return _FAKE_SHA
+
+
+def _fake_added(_path: str) -> tuple[str, str]:
+    return _FAKE_SHA, "2026-01-01"
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -249,7 +251,7 @@ def test_a_block_printed_twice_must_read_the_same_both_times(tmp_path: Path) -> 
     last = text.rindex("| all | 336 | 26.5%")
     target.write_text(text[:last] + text[last:].replace("26.5%", "26.6%", 1))
     with pytest.raises(site_numbers.ExtractError, match=r"history\.s24_fixed\.top1"):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
 
 
 def test_the_limits_entries() -> None:
@@ -286,4 +288,18 @@ def test_predictions_must_be_nine_on_both_sides(tmp_path: Path) -> None:
         "\n".join(x for x in target.read_text().splitlines() if not x.startswith("P9:")) + "\n"
     )
     with pytest.raises(site_numbers.ExtractError, match=r"s32\.predictions"):
-        site_numbers.build(tmp_path, recorded=_fake_recorded)
+        site_numbers.build(tmp_path, recorded=_fake_recorded, added=_fake_added)
+
+
+def test_the_predictions_read_as_they_did_before_the_held_out_run(tmp_path: Path) -> None:
+    # The registration gained a dated note after its first commit; the predictions above it must
+    # be the words committed before any S3.2 run.
+    numbers = site_numbers.build(_RESULTS)
+    first = numbers.texts["s32.registered_in"]
+    then = tmp_path / "s3-registration.md"
+    then.write_text(_git("show", f"{first}:docs/rounds/s3-registration.md").stdout)
+    before = site_numbers.build(_RESULTS, registration=then).lists["s32.predictions"]
+    assert before == numbers.lists["s32.predictions"]
+    assert numbers.texts["s32.registered_on"] == "2026-10-04"
+    log = _git("log", "--diff-filter=A", "--format=%H", "--", "docs/rounds/s3-registration.md")
+    assert first == log.stdout.strip()

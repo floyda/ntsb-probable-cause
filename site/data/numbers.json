@@ -940,6 +940,8 @@
     ]
   },
   "texts": {
-    "q6.one.sentence": "A loss of engine power for undetermined reasons."
+    "q6.one.sentence": "A loss of engine power for undetermined reasons.",
+    "s32.registered_in": "f0e78b7eafabc978003928054d3416fb97467f2d",
+    "s32.registered_on": "2026-10-04"
   }
 }

@@ -146,6 +146,22 @@ def recorded_in(path: str) -> str:
     return sha
 
 
+def first_recorded(path: str) -> tuple[str, str]:
+    """The commit that added ``path`` (repository-relative), and its date: ``(sha, YYYY-MM-DD)``."""
+    shown = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "log", "--diff-filter=A", "--format=%H %cs", "--", path],  # noqa: S607
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    match shown:  # one commit and its date; nothing when never added, more when added twice
+        case [sha, date]:
+            return sha, date
+        case _:
+            raise UncommittedError(path)
+
+
 _RUN_COMMIT = re.compile(r"^\d{8}T\d{6}-(?P<sha>[0-9a-f]{7})-")
 
 
@@ -726,6 +742,7 @@ def build(
     *,
     recorded: Callable[[str], str] = recorded_in,
     registration: Path = _REGISTRATION,
+    added: Callable[[str], tuple[str, str]] = first_recorded,
 ) -> Numbers:
     """Read every entry from the results files under ``results_dir``.
 
@@ -734,6 +751,8 @@ def build(
         recorded: the commit that last changed a repository-relative path; ``recorded_in``
             unless a test reads copies outside the repository.
         registration: S3.2's registration, the predictions' words.
+        added: the commit that added a path, and its date; the registration's is printed
+            beside the predictions, to show they were written before the held-out run.
     """
     once = functools.cache(recorded)  # one git lookup per results file, not per entry
     entries = {spec.key: _entry(results_dir, spec, once) for spec in _SPECS}
@@ -744,7 +763,12 @@ def build(
         _PREDICTIONS: _predictions(results_dir, registration),
     }
     sentence = _one(results_dir, _ONE_FILE, r"^sentence: (?P<text>.+)$", "q6.one.sentence")
-    texts = {"q6.one.sentence": sentence.group("text")}
+    registered_in, registered_on = added(_REGISTRATION.relative_to(_REPO).as_posix())
+    texts = {
+        "q6.one.sentence": sentence.group("text"),
+        "s32.registered_in": registered_in,
+        "s32.registered_on": registered_on,
+    }
     codes = lists["q6.one.codes"]
     if entries["q6.one.distinct"].value != len(codes) or entries["q6.one.cases"].value != sum(
         int(row["count"]) for row in codes

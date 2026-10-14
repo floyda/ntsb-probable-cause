@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertPathClaims, claimHolds, pathClaims } from "./claims";
-import { entry, type Entry } from "./numbers";
+import { assertPathClaims, assertPredictionsAsRead, claimHolds, pathClaims } from "./claims";
+import { entry, list, type Entry } from "./numbers";
 
 // The numbers file with one entry's fields replaced, as a re-run might move them.
 const moved =
@@ -31,5 +31,26 @@ describe("the Path page's claims", () => {
         expect(() => {
             assertPathClaims(get);
         }).toThrow(id);
+    });
+});
+
+describe("S3.2's predictions as the Methods page was read (S5 step 5, Task 3)", () => {
+    it("hold on the committed numbers file", () => {
+        expect(() => {
+            assertPredictionsAsRead();
+        }).not.toThrow();
+    });
+    it("stop the build when a prediction's outcome changes", () => {
+        const flipped = list("s32.predictions").map((p) =>
+            p["number"] === 1 ? { ...p, outcome: "met" } : p,
+        );
+        expect(() => {
+            assertPredictionsAsRead(flipped);
+        }).toThrow(/1, 3, 7, 8, 9/);
+    });
+    it("stop the build when a prediction goes missing", () => {
+        expect(() => {
+            assertPredictionsAsRead(list("s32.predictions").slice(0, 8));
+        }).toThrow(/read the Methods page again/);
     });
 });

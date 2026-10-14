@@ -1,7 +1,7 @@
 // The Path page's worded claims (spec §7.2), each tied to the figures it rests on. A page that
 // says "no better than guessing" or "about the same bill" must stop building when a re-run
 // makes that untrue, rather than print it (plan Review Focus 5; review, 2026-10-14).
-import { entry, NumbersError, type Entry } from "./numbers";
+import { entry, list, NumbersError, type Entry } from "./numbers";
 
 /** How far two bills may differ and still be "about the same": S3.2's registered band (0145). */
 export const SAME_BILL_BAND = 0.1;
@@ -95,4 +95,23 @@ export function claimHolds(id: string, get: (key: string) => Entry = entry): boo
     const claim = pathClaims(get).find((c) => c.id === id);
     if (claim === undefined) throw new NumbersError(`no claim ${id}`);
     return claim.holds;
+}
+
+/**
+ * The predictions the Methods page was read against (S5 step 5, Task 3): those S3.2's claims
+ * file scores met. The page prints every outcome from the numbers file; this stops the build when
+ * a changed file would change which were met, until the page is read again.
+ */
+export const PREDICTIONS_MET: readonly number[] = [3, 7, 8, 9];
+
+/** Throws unless the predictions met are exactly `PREDICTIONS_MET`. */
+export function assertPredictionsAsRead(
+    items: readonly Record<string, string | number>[] = list("s32.predictions"),
+): void {
+    const met = items.filter((p) => p["outcome"] === "met").map((p) => p["number"]);
+    if (items.length !== 9 || met.join(",") !== PREDICTIONS_MET.join(",")) {
+        throw new NumbersError(
+            `S3.2's predictions met are now ${met.join(", ")}, not ${PREDICTIONS_MET.join(", ")}: read the Methods page again`,
+        );
+    }
 }
