@@ -31,7 +31,7 @@ Their stops carry their measured answers in this step and gain their figures in 
 - **No number is typed into a page** (§17.3). Path and the caveat take every figure from `numbers.json` by key. A Vitest test fails if a page source under `site/src/pages/` or `site/src/components/` holds a percentage or dollar literal (`\d%` or `\$\d`).
 - **Every reported number comes from a script** (rule 3). Each entry's `results_file` exists, its `script` exists in the repository, and its value is read from that file by the extractor. Nothing is copied by hand.
 - **Held-out and live never share a figure** (§9, decision 0021). The ladder is held-out only; the noise-floor band is development and goes to question 7's text, not the ladder (§7.1); question 8's strip is live only.
-- **Every score carries its interval and count** (§12 item 9). Costs show list price and billed (§7.1).
+- **Every score carries its interval and count** (§12 item 9). Costs show billed only (Andy, 2026-10-14, superseding §7.1's list price and billed; see Deviations).
 - **Links:** each question links its results file and script on GitHub (`https://github.com/floyda/ntsb-probable-cause/blob/main/<path>`; every path checked to exist). Methods links come in step 5 (the step 2 rule: no link to a page not yet built).
 - **Wording:** the measured answers are §7.2's approved text, with every number replaced by its key. "Points" is never used on the first page (Andy, 2026-10-05). Path may say "points", with Methods (step 5) defining it.
 
@@ -308,3 +308,8 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
     - a link to a missing script;
     - every title moved outside its drawing.
   - Each failed. A clean build passes again.
+- **Task 6 (2026-10-14), Andy's preview, choice 1: billed costs only.** "Our estimate list cost is there for budgeting, what gets charged is what matters."
+  - `ladder.*.cost` (list price) leave the numbers file; a test keeps any `.cost` entry out.
+  - The ladder's cost line reads "billed $2.06". Step 1 reads "no model cost". Step 2 reads "bill not recorded", because S3.2's claims file holds only its list price.
+  - Question 7 drops the list-price figures and the clause "only through the provider's discount on cached prompts", which needs them. It reads "Its bill was about the same: $2.06 against the pipeline's $2.13."
+  - The spec's §7.1 has a dated note.

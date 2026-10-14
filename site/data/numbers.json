@@ -26,19 +26,6 @@
       "unit": "usd",
       "value": 2.1347
     },
-    "ladder.fixed.cost": {
-      "high": null,
-      "label": "the fixed pipeline (arm B): cost at list price, its three parts",
-      "low": null,
-      "model": "openai/gpt-6-luna",
-      "n": null,
-      "results_file": "docs/results/s32-claims-heldout.txt",
-      "run": null,
-      "sample": "heldout-400",
-      "script": "scripts/s32_claims.py",
-      "unit": "usd",
-      "value": 2.3439
-    },
     "ladder.fixed.top1": {
       "high": 37.5,
       "label": "the fixed pipeline (arm B): occurrence top-1",
@@ -65,19 +52,6 @@
       "unit": "usd",
       "value": 2.061
     },
-    "ladder.loop.cost": {
-      "high": null,
-      "label": "the loop, version 1: cost at list price",
-      "low": null,
-      "model": "openai/gpt-6-luna",
-      "n": null,
-      "results_file": "docs/results/s32-claims-heldout.txt",
-      "run": "20261004T140804-e0dc881-heldout-400-C",
-      "sample": "heldout-400",
-      "script": "scripts/s32_claims.py",
-      "unit": "usd",
-      "value": 3.927
-    },
     "ladder.loop.top1": {
       "high": 27.5,
       "label": "the loop, version 1: occurrence top-1",
@@ -90,19 +64,6 @@
       "script": "scripts/exploratory/s32_heldout_diagnosis.py",
       "unit": "percent",
       "value": 23.5
-    },
-    "ladder.no_docket.cost": {
-      "high": null,
-      "label": "the loop without the docket: cost at list price",
-      "low": null,
-      "model": "openai/gpt-6-luna",
-      "n": 400,
-      "results_file": "docs/results/s32-claims-heldout.txt",
-      "run": "20261004T184547-80c539e-heldout-400-C",
-      "sample": "heldout-400",
-      "script": "scripts/s32_claims.py",
-      "unit": "usd",
-      "value": 0.9774
     },
     "ladder.no_docket.top1": {
       "high": 18.5,

@@ -322,6 +322,11 @@ figure's point is that a step up in machinery is not a step up in result. Costs 
 and list price, because the loop's bill equals the pipeline's only through the provider's
 discount on cached prompts; at list price it does about two-thirds more work.
 
+*Note, 2026-10-14 (Andy, step 4 preview):* the site shows **billed costs only**, on the ladder
+and in question 7. The list price is the project's budgeting estimate; what was charged is
+what matters. Step 2's bill is in its run folder, not a committed results file, so its cost
+line reads "bill not recorded". The list price stays in `docs/results/s32-claims-heldout.txt`.
+
 **How it is drawn.** Each step is a bar from zero with a thin whisker for its 95% interval. A
 faint line at the no-model rate runs across all four bars, so every step reads against
 "better than guessing?". The run-twice band does not go on the ladder: it was measured on

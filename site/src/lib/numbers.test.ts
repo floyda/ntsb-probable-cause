@@ -29,7 +29,7 @@ describe("formatting by key, on the committed numbers file", () => {
     });
     it("prints dollars to the cent", () => {
         expect(usd("ladder.loop.billed")).toBe("$2.06");
-        expect(usd("ladder.fixed.cost")).toBe("$2.34");
+        expect(usd("ladder.fixed.billed")).toBe("$2.13");
     });
     it("prints counts, alone and out of their total", () => {
         expect(count("q4.pages.total")).toBe("16,790");

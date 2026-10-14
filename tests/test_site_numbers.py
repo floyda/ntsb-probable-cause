@@ -25,7 +25,9 @@ def test_reads_the_ladder_from_the_committed_results() -> None:
     no_docket = numbers.entries["ladder.no_docket.top1"]
     assert (no_docket.value, no_docket.low, no_docket.high) == (15.0, 11.5, 18.5)
     assert numbers.entries["ladder.loop.billed"].value == pytest.approx(2.0610)
-    assert numbers.entries["ladder.fixed.cost"].value == pytest.approx(2.3439)
+    assert numbers.entries["ladder.fixed.billed"].value == pytest.approx(2.1347)
+    # Billed costs only (Andy, 2026-10-14): no list-price entry reaches the site.
+    assert not [key for key in numbers.entries if key.endswith(".cost")]
 
 
 def test_every_entry_names_a_file_and_script_that_exist() -> None:

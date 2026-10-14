@@ -9,8 +9,10 @@ export interface LadderStep {
     label: string;
     plain: string;
     rate: string;
-    cost: string | null;
+    /** The numbers-file key of the step's billed cost, if it was recorded. */
     billed: string | null;
+    /** What the cost line says when there is no bill. */
+    withoutBill: string;
 }
 
 /** The four steps, in order of machinery (spec §7.1; Andy, 2026-10-05). */
@@ -20,32 +22,33 @@ export const LADDER: readonly LadderStep[] = [
         label: "1. No model",
         plain: "always guess the commonest code",
         rate: "ladder.baseline.top1",
-        cost: null,
         billed: null,
+        withoutBill: "no model cost",
     },
     {
         key: "no_docket",
         label: "2. The case record only",
         plain: "the agent with the recorded facts, no documents",
         rate: "ladder.no_docket.top1",
-        cost: "ladder.no_docket.cost",
+        // S3.2 recorded this run's list price only; its bill is in the run folder, not a results file.
         billed: null,
+        withoutBill: "bill not recorded",
     },
     {
         key: "fixed",
         label: "3. Every document, fixed order",
         plain: "the fixed pipeline",
         rate: "ladder.fixed.top1",
-        cost: "ladder.fixed.cost",
         billed: "ladder.fixed.billed",
+        withoutBill: "",
     },
     {
         key: "loop",
         label: "4. Choosing what to read",
         plain: "the loop, version 1",
         rate: "ladder.loop.top1",
-        cost: "ladder.loop.cost",
         billed: "ladder.loop.billed",
+        withoutBill: "",
     },
 ];
 
@@ -128,10 +131,9 @@ function wrap(text: string, size: number, bold: boolean, width: number): string[
     return lines;
 }
 
+// Billed costs only: the list price is a budgeting estimate (Andy, 2026-10-14).
 function costText(step: LadderStep): string {
-    if (step.cost === null) return "no model cost";
-    const list = `list ${usd(step.cost)}`;
-    return step.billed === null ? list : `${list} · billed ${usd(step.billed)}`;
+    return step.billed === null ? step.withoutBill : `billed ${usd(step.billed)}`;
 }
 
 /** The ladder's geometry at one drawing width. */

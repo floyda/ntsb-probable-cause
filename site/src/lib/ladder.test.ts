@@ -65,9 +65,11 @@ describe.each(WIDTHS)("the ladder at a width of %i", (width) => {
     it("prints each step's rate with its interval and count, and its cost", () => {
         const text = g.labels.map((l) => l.text).join("\n");
         expect(text).toContain("23.5% [19.2%, 27.5%], 400 cases");
-        expect(text).toContain("list $2.34 · billed $2.13");
-        expect(text).toContain("list $3.93 · billed $2.06");
+        expect(text).toContain("billed $2.13");
+        expect(text).toContain("billed $2.06");
         expect(text).toContain("no model cost");
+        expect(text).toContain("bill not recorded");
+        expect(text).not.toMatch(/list/); // billed costs only (Andy, 2026-10-14)
         expect(text).toContain("always guessing");
     });
 });

@@ -10,7 +10,9 @@ Status
 Why
     Rule 3: every reported number comes from a script. The results files are that record;
     this script only carries their figures to the site, each with its interval, count,
-    sample, model, run, results file and the script that wrote that file.
+    sample, model, run, results file and the script that wrote that file. Costs are billed
+    costs only: the list price is a budgeting estimate, and what was charged is what the site
+    reports (Andy, 2026-10-14).
 
 Failures
     A pattern that matches no line, or more than one, raises ``ExtractError`` naming the
@@ -220,17 +222,6 @@ _SPECS: tuple[_Spec, ...] = (
         run_source=_NO_DOCKET,
     ),
     _Spec(
-        "ladder.no_docket.cost",
-        _NO_DOCKET,
-        rf"^cases={_N} total_cost_usd={_V}$",
-        "usd",
-        "heldout-400",
-        _LUNA,
-        _CLAIMS,
-        "the loop without the docket: cost at list price",
-        run=_RUN_LINE,
-    ),
-    _Spec(
         "ladder.fixed.top1",
         _DIAG,
         rf"^arm B check top-1: {_PCT_CI} ",
@@ -253,16 +244,6 @@ _SPECS: tuple[_Spec, ...] = (
         run=r"^the loop: (?P<run>\S+)$",
     ),
     _Spec(
-        "ladder.fixed.cost",
-        _CLAIMS_FILE,
-        rf"^arm B computed {_V} USD$",
-        "usd",
-        "heldout-400",
-        _LUNA,
-        _CLAIMS,
-        "the fixed pipeline (arm B): cost at list price, its three parts",
-    ),
-    _Spec(
         "ladder.fixed.billed",
         _CLAIMS_FILE,
         rf"^arm B billed {_V} USD \(",
@@ -271,18 +252,6 @@ _SPECS: tuple[_Spec, ...] = (
         _LUNA,
         _CLAIMS,
         "the fixed pipeline (arm B): cost billed, its three parts",
-    ),
-    _Spec(
-        "ladder.loop.cost",
-        _CLAIMS_FILE,
-        rf"^cost, billed \(spec §6\): loop billed {_NUM} USD, computed {_V} USD$",
-        "usd",
-        "heldout-400",
-        _LUNA,
-        _CLAIMS,
-        "the loop, version 1: cost at list price",
-        run=_RUN_LINE,
-        run_source=_LOOP_BLOCK,
     ),
     _Spec(
         "ladder.loop.billed",

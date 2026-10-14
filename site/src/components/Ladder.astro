@@ -123,8 +123,7 @@ const lower = entry(loop).value < entry(fixed).value;
                 <tr>
                     <th scope="col">Step</th>
                     <th scope="col">First code matched, with its interval and cases</th>
-                    <th scope="col">Cost for the cases, list price</th>
-                    <th scope="col">Cost billed</th>
+                    <th scope="col">Cost billed for the cases</th>
                 </tr>
             </thead>
             <tbody>
@@ -134,8 +133,7 @@ const lower = entry(loop).value < entry(fixed).value;
                             {s.label}: {s.plain}
                         </th>
                         <td>{withInterval(s.rate)}</td>
-                        <td>{s.cost === null ? "no model cost" : usd(s.cost)}</td>
-                        <td>{s.billed === null ? "—" : usd(s.billed)}</td>
+                        <td>{s.billed === null ? s.withoutBill : usd(s.billed)}</td>
                     </tr>
                 ))}
             </tbody>
