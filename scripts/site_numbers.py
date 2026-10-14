@@ -185,6 +185,7 @@ _LOOP_BLOCK = _Source("s32-claims-heldout.txt", r"^\[the loop\]$")
 _DIAG = _Source("s32-heldout-diagnosis.txt")
 _PAGES = _Source("s26-page-kinds.txt", r"^## pages by kind$")
 _MISS_FILE = _Source("s26-occurrence-misses-dev.txt")
+_MISS_S3_FILE = _Source("s5-occurrence-misses-s3-dev.txt")
 
 _RUN_LINE = r"^run (?P<run>\S+) \[complete\]$"
 
@@ -199,6 +200,34 @@ def _page_kind(slug: str, words: str) -> _Spec:
         "none",
         "scripts/page_kinds.py",
         f"pages in dev-400's dockets: {words}",
+    )
+
+
+def _misses(prefix: str, source: _Source, who: str) -> tuple[_Spec, _Spec]:
+    """Question 5's two counts from one ``occurrence_misses`` results file."""
+    return (
+        _Spec(
+            f"{prefix}.first_right",
+            source,
+            rf"^first guess = the NTSB's first code: {_V} of {_N} \(",
+            "count",
+            "dev-400",
+            _LUNA,
+            _MISSES,
+            f"{who}: the first guess is the NTSB's first code",
+            run=_RUN_LINE,
+        ),
+        _Spec(
+            f"{prefix}.in_sequence",
+            source,
+            rf"^first guess anywhere in the NTSB's sequence: {_V} of {_N} \(",
+            "count",
+            "dev-400",
+            _LUNA,
+            _MISSES,
+            f"{who}: the first guess is somewhere in the NTSB's sequence",
+            run=_RUN_LINE,
+        ),
     )
 
 
@@ -299,28 +328,10 @@ _SPECS: tuple[_Spec, ...] = (
     _page_kind("text_and_image", "text and image"),
     _page_kind("blank", "blank"),
     _page_kind("total", "total"),
-    _Spec(
-        "q5.first_right",
-        _MISS_FILE,
-        rf"^first guess = the NTSB's first code: {_V} of {_N} \(",
-        "count",
-        "dev-400",
-        _LUNA,
-        _MISSES,
-        "the first guess is the NTSB's first code",
-        run=_RUN_LINE,
-    ),
-    _Spec(
-        "q5.in_sequence",
-        _MISS_FILE,
-        rf"^first guess anywhere in the NTSB's sequence: {_V} of {_N} \(",
-        "count",
-        "dev-400",
-        _LUNA,
-        _MISSES,
-        "the first guess is somewhere in the NTSB's sequence",
-        run=_RUN_LINE,
-    ),
+    # Question 5: S2.6's misses, which led to coding guidance, and the rerun on S3's fixed
+    # pipeline after it (Andy, 2026-10-14: keep the history and add S3).
+    *_misses("q5", _MISS_FILE, "S2.6's fixed pipeline"),
+    *_misses("q5.s3", _MISS_S3_FILE, "S3's fixed pipeline"),
     _Spec(
         "q6.twins",
         _Source("s3-coding-consistency-dev.txt"),
@@ -388,9 +399,8 @@ _PAIR_LINE = r"^- (?P<count>\d+)  (?P<ntsb>.+?) -> (?P<agent>.+)$"
 _PAIRS_SHOWN = 5
 
 
-def _pairs(results_dir: Path) -> list[dict[str, str | int]]:
-    key = "q5.pairs"
-    source = _Source(_MISS_FILE.file, r"^most common misses by event, ")
+def _pairs(results_dir: Path, key: str, file: _Source) -> list[dict[str, str | int]]:
+    source = _Source(file.file, r"^most common misses by event, ")
     rows = [m for line in _lines(results_dir, source, key) if (m := re.search(_PAIR_LINE, line))]
     if len(rows) < _PAIRS_SHOWN:
         raise ExtractError(key, source.file, _PAIR_LINE, len(rows))
@@ -406,7 +416,11 @@ def _pairs(results_dir: Path) -> list[dict[str, str | int]]:
 def build(results_dir: Path) -> Numbers:
     """Read every entry from the results files under ``results_dir``."""
     entries = {spec.key: _entry(results_dir, spec) for spec in _SPECS}
-    return Numbers(entries=entries, lists={"q5.pairs": _pairs(results_dir)})
+    lists = {
+        "q5.pairs": _pairs(results_dir, "q5.pairs", _MISS_FILE),
+        "q5.s3.pairs": _pairs(results_dir, "q5.s3.pairs", _MISS_S3_FILE),
+    }
+    return Numbers(entries=entries, lists=lists)
 
 
 def render(numbers: Numbers) -> str:

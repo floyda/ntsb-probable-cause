@@ -171,7 +171,7 @@
     },
     "q5.first_right": {
       "high": null,
-      "label": "the first guess is the NTSB's first code",
+      "label": "S2.6's fixed pipeline: the first guess is the NTSB's first code",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": 399,
@@ -184,7 +184,7 @@
     },
     "q5.in_sequence": {
       "high": null,
-      "label": "the first guess is somewhere in the NTSB's sequence",
+      "label": "S2.6's fixed pipeline: the first guess is somewhere in the NTSB's sequence",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": 399,
@@ -194,6 +194,32 @@
       "script": "scripts/occurrence_misses.py",
       "unit": "count",
       "value": 140.0
+    },
+    "q5.s3.first_right": {
+      "high": null,
+      "label": "S3's fixed pipeline: the first guess is the NTSB's first code",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "results_file": "docs/results/s5-occurrence-misses-s3-dev.txt",
+      "run": "20260929T053953-674c92e-dev-400-B-tools-check-luna",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 110.0
+    },
+    "q5.s3.in_sequence": {
+      "high": null,
+      "label": "S3's fixed pipeline: the first guess is somewhere in the NTSB's sequence",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "results_file": "docs/results/s5-occurrence-misses-s3-dev.txt",
+      "run": "20260929T053953-674c92e-dev-400-B-tools-check-luna",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 148.0
     },
     "q6.twins": {
       "high": 39.9,
@@ -306,6 +332,53 @@
         "agent": "Control flight into terr/obj",
         "count": 7,
         "ntsb": "Loss of control in flight"
+      }
+    ],
+    "q5.s3.pairs": [
+      {
+        "agent": "Loss of control in flight",
+        "count": 14,
+        "ntsb": "Aerodynamic stall/spin"
+      },
+      {
+        "agent": "Aerodynamic stall/spin",
+        "count": 11,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Loss of control in flight",
+        "count": 8,
+        "ntsb": "Control flight into terr/obj"
+      },
+      {
+        "agent": "Loss of engine power (partial)",
+        "count": 7,
+        "ntsb": "Loss of engine power (total)"
+      },
+      {
+        "agent": "Loss of control on ground",
+        "count": 6,
+        "ntsb": "Nose over/nose down"
+      },
+      {
+        "agent": "Loss of engine power (total)",
+        "count": 6,
+        "ntsb": "Fuel starvation"
+      },
+      {
+        "agent": "Control flight into terr/obj",
+        "count": 6,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Loss of control in flight",
+        "count": 6,
+        "ntsb": "Loss of engine power (total)"
+      },
+      {
+        "agent": "Loss of engine power (total)",
+        "count": 6,
+        "ntsb": "Loss of engine power (partial)"
       }
     ]
   }

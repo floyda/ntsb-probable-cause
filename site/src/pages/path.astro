@@ -4,13 +4,14 @@
 // come next. Every figure is read from the numbers file by key; none is typed here.
 import ClosuresStrip from "../components/ClosuresStrip.astro";
 import ExampleCase from "../components/ExampleCase.astro";
+import MissPairs from "../components/MissPairs.astro";
 import Ladder from "../components/Ladder.astro";
 import PageKinds from "../components/PageKinds.astro";
 import PathStop from "../components/PathStop.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { assertPathClaims } from "../lib/claims";
-import { countOf, list, pointsOn, usd, withInterval } from "../lib/numbers";
+import { countOf, pointsOn, usd, withInterval } from "../lib/numbers";
 import { repoUrl } from "../lib/words";
 
 const { index } = loadExport(exportDir());
@@ -22,7 +23,6 @@ const { index } = loadExport(exportDir());
 assertPathClaims();
 
 const R = "docs/results/";
-const pairs = list("q5.pairs");
 ---
 
 <Base
@@ -123,7 +123,11 @@ const pairs = list("q5.pairs");
         n={5}
         question="Are the misses about evidence or about coding?"
         decision="Coding guidance and an ordering check followed. Of five guidance rounds, three were dropped."
-        results={[`${R}s26-occurrence-misses-dev.txt`, "docs/rounds/"]}
+        results={[
+            `${R}s26-occurrence-misses-dev.txt`,
+            `${R}s5-occurrence-misses-s3-dev.txt`,
+            "docs/rounds/",
+        ]}
         scripts={["scripts/occurrence_misses.py"]}
     >
         <p>
@@ -131,28 +135,22 @@ const pairs = list("q5.pairs");
             in the NTSB's ordered sequence of codes in {countOf("q5.in_sequence")} cases, but was
             the NTSB's first code in only {countOf("q5.first_right")}.
         </p>
-        <div slot="figure" class="frame" tabindex="0" role="region" aria-labelledby="pairs-cap">
-            <table class="pairs">
-                <caption id="pairs-cap">
-                    The commonest misses: the NTSB's first event and the fixed pipeline's
-                </caption>
-                <thead>
-                    <tr>
-                        <th scope="col">Cases</th>
-                        <th scope="col">The NTSB put first</th>
-                        <th scope="col">The fixed pipeline put first</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {pairs.map((p) => (
-                        <tr>
-                            <td>{p["count"]}</td>
-                            <td>{p["ntsb"]}</td>
-                            <td>{p["agent"]}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+        <p>
+            After the guidance and the check, on S3's fixed pipeline, the first guess was the NTSB's
+            first code in {countOf("q5.s3.first_right")} cases, and somewhere in its sequence in{" "}
+            {countOf("q5.s3.in_sequence")}.
+        </p>
+        <div slot="figure" class="tables">
+            <MissPairs
+                listKey="q5.pairs"
+                id="pairs-s26"
+                caption="The commonest misses, S2.6: the NTSB's first event and the fixed pipeline's"
+            />
+            <MissPairs
+                listKey="q5.s3.pairs"
+                id="pairs-s3"
+                caption="After the guidance and the check, S3: the commonest misses"
+            />
         </div>
     </PathStop>
 
@@ -281,32 +279,9 @@ const pairs = list("q5.pairs");
     .band {
         color: var(--ink-muted);
     }
-    .frame {
-        overflow-x: auto;
-    }
-    .frame:focus-visible {
-        outline: 2px solid currentColor;
-        outline-offset: 2px;
-    }
-    .pairs {
-        border-collapse: collapse;
-        font-size: 0.93rem;
-        width: 100%;
-    }
-    .pairs caption {
-        text-align: left;
-        color: var(--ink-muted);
-        padding-bottom: 0.25rem;
-    }
-    .pairs th,
-    .pairs td {
-        text-align: left;
-        vertical-align: top;
-        padding: 0.3rem 0.6rem 0.3rem 0;
-        border-bottom: 1px solid var(--rule);
-    }
-    .pairs td:first-child {
-        font-variant-numeric: tabular-nums;
+    .tables {
+        display: grid;
+        gap: 1rem;
     }
     .next ul {
         margin: 0;

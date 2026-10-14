@@ -99,3 +99,19 @@ def test_ties_at_the_cut_off_are_all_shown() -> None:
     assert counts == sorted(counts, reverse=True)
     assert len(pairs) >= 5
     assert counts[-1] == counts[4]
+
+
+def test_question_5_holds_s26_and_s3_side_by_side() -> None:
+    # Andy, 2026-10-14: keep S2.6's figure, which led to coding guidance, and add S3's rerun.
+    numbers = site_numbers.build(_RESULTS)
+    s26, s3 = numbers.entries["q5.first_right"], numbers.entries["q5.s3.first_right"]
+    assert (s26.value, s26.n) == (88, 399)
+    assert (s3.value, s3.n) == (110, 399)
+    assert s26.run == "20260926T085904-d19aafa-dev-400-B"
+    assert s3.run == "20260929T053953-674c92e-dev-400-B-tools-check-luna"
+    assert numbers.entries["q5.s3.in_sequence"].value == 148
+    assert numbers.lists["q5.s3.pairs"][0] == {
+        "count": 14,
+        "ntsb": "Aerodynamic stall/spin",
+        "agent": "Loss of control in flight",
+    }

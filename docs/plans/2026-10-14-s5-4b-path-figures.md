@@ -74,9 +74,9 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 
 ## Task 2: Question 5's rerun
 
-- [ ] **Step 1:** Run `uv run python -m scripts.occurrence_misses --run 20260929T053953-674c92e-dev-400-B-tools-check-luna --out docs/results/s5-occurrence-misses-s3-dev.txt`, with `NTSB_DATA_DIR` pointed at the main checkout's `data/`. If the script does not read a derived run, extend it with a test, and log the extension.
-- [ ] **Step 2:** Entries `q5.s3.first_right`, `q5.s3.in_sequence` and list `q5.s3.pairs` in `site_numbers.py`, with tests.
-- [ ] **Step 3:** Commit `S5 step 4b Task 2: question 5's misses rerun on S3's fixed pipeline`.
+- [x] **Step 1:** Run `uv run python -m scripts.occurrence_misses --run 20260929T053953-674c92e-dev-400-B-tools-check-luna --out docs/results/s5-occurrence-misses-s3-dev.txt`, with `NTSB_DATA_DIR` pointed at the main checkout's `data/`. If the script does not read a derived run, extend it with a test, and log the extension.
+- [x] **Step 2:** Entries `q5.s3.first_right`, `q5.s3.in_sequence` and list `q5.s3.pairs` in `site_numbers.py`, with tests.
+- [x] **Step 3:** Commit `S5 step 4b Task 2: question 5's misses rerun on S3's fixed pipeline`.
 
 ## Task 3: Question 6's sentence
 
@@ -137,3 +137,8 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - The names check allows only "NTSB", "FAA", "VFR", "IFR", "VMC" and "IMC" mid-sentence. The plan's "aircraft and part names from the code tables" was not needed for this cause.
   - `make site-example-case` regenerates the file.
   - The dist test also checks that the page names no case number except question 1's and the board's own closed cases in question 8's strip.
+- **Task 2 (2026-10-14):**
+  - `occurrence_misses.py` read the derived run unchanged; no extension was needed.
+  - On S3's fixed pipeline, the first guess was the NTSB's first code in 110 of 399 cases (S2.6: 88) and in its sequence in 148 of 399 (S2.6: 140). The commonest misses now run both ways between stall/spin and loss of control (14 and 11).
+  - The review's tie rule (keep every pair tied with the fifth) shows nine rows for S3, because five pairs have 6 cases each. Both tables are drawn by one component, `MissPairs.astro`.
+  - The page adds one line of counts and no claim about them.
