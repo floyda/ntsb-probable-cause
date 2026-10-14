@@ -30,7 +30,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -192,6 +192,9 @@ _PAGES = _Source("s26-page-kinds.txt", r"^## pages by kind$")
 _MISS_FILE = _Source("s26-occurrence-misses-dev.txt")
 _MISS_S3_FILE = _Source("s5-occurrence-misses-s3-dev.txt")
 _ONE_FILE = _Source("s5-one-sentence-dev.txt")
+_PATH_FILE = _Source("s5-belief-path-heldout.txt")
+_PATH_SCRIPT = "scripts/exploratory/s5_belief_path.py"
+_PATH_RUN = r"^the loop: (?P<run>\S+)$"
 
 _RUN_LINE = r"^run (?P<run>\S+) \[complete\]$"
 
@@ -235,6 +238,39 @@ def _misses(prefix: str, source: _Source, who: str) -> tuple[_Spec, _Spec]:
             run=_RUN_LINE,
         ),
     )
+
+
+def _path_count(key: str, pattern: str, label: str) -> _Spec:
+    """One of question 7's counts from decision 0186's reading."""
+    return _Spec(
+        f"q7.path.{key}",
+        _PATH_FILE,
+        pattern,
+        "count",
+        "heldout-400",
+        _LUNA,
+        _PATH_SCRIPT,
+        f"the loop's beliefs against the NTSB's first code: {label}",
+        run=_PATH_RUN,
+    )
+
+
+_MOVES: Final = ("stayed right", "fixed", "broken", "stayed wrong")
+
+
+def _path_moves(key: str, words: str) -> tuple[_Spec, ...]:
+    """The four ways a case moved between two checkpoints, one entry each."""
+    specs: list[_Spec] = []
+    for move in _MOVES:
+        parts = [rf"{m} {_V if m == move else r'\d+'}" for m in _MOVES]
+        specs.append(
+            _path_count(
+                f"{key}.{move.replace(' ', '_')}",
+                rf"^{words}: {', '.join(parts)}$",
+                f"{words}, {move}",
+            )
+        )
+    return tuple(specs)
 
 
 _SPECS: tuple[_Spec, ...] = (
@@ -369,6 +405,18 @@ _SPECS: tuple[_Spec, ...] = (
         "scripts/exploratory/s5_one_sentence.py",
         "the chosen sentence: how many cases it was written for",
     ),
+    # Question 7's figure (decision 0186): three checkpoints and the moves between them.
+    _path_count("cases", rf"^cases: the {_V} the loop answered;", "the cases counted"),
+    _path_count(
+        "no_belief_after",
+        rf"^cases with no belief after a read choice \(after reading is before reading\): {_V}$",
+        "cases with no belief after a read choice",
+    ),
+    _path_count("before", rf"^- before reading: {_V}$", "right before reading"),
+    _path_count("after", rf"^- after reading: {_V}$", "right after reading"),
+    _path_count("answer", rf"^- the answer: {_V}$", "right at the answer"),
+    *_path_moves("reading", "before reading -> after reading"),
+    *_path_moves("coding", "after reading -> the answer"),
     _Spec(
         "q7.loop_vs_fixed",
         _DIAG,

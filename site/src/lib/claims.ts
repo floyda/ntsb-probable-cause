@@ -26,6 +26,16 @@ export function pathClaims(get: (key: string) => Entry = entry): Claim[] {
     const fixedBill = get("ladder.fixed.billed").value;
     const vsFixed = get("q7.loop_vs_fixed").value;
     const vsAnswer = get("q7.loop_vs_answer").value;
+    const n = (key: string): number => get(`q7.path.${key}`).value;
+    // Each move must carry its checkpoint's count to the next, over every case counted.
+    const carries = (move: string, from: string, to: string): boolean =>
+        n(`${move}.stayed_right`) + n(`${move}.broken`) === n(from) &&
+        n(`${move}.stayed_right`) + n(`${move}.fixed`) === n(to) &&
+        n(`${move}.stayed_right`) +
+            n(`${move}.fixed`) +
+            n(`${move}.broken`) +
+            n(`${move}.stayed_wrong`) ===
+            n("cases");
     return [
         {
             id: "q2.no_better_than_guessing",
@@ -51,6 +61,11 @@ export function pathClaims(get: (key: string) => Entry = entry): Claim[] {
             id: "q7.same_bill",
             says: "the loop's bill was about the same as the pipeline's",
             holds: Math.abs(loopBill / fixedBill - 1) <= SAME_BILL_BAND,
+        },
+        {
+            id: "q7.path_adds_up",
+            says: "question 7's figure: each checkpoint's count carries to the next",
+            holds: carries("reading", "before", "after") && carries("coding", "after", "answer"),
         },
         {
             id: "q7.lead_from_tools",

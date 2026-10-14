@@ -1,0 +1,146 @@
+---
+// Question 7's figure (spec §7.4; decision 0186): the loop's belief before reading, after
+// reading and at the answer, against the NTSB's first code, on the held-out cases it answered.
+// Each checkpoint is one bar of every case, the right ones drawn dark; between the bars, how many
+// cases each step fixed and broke. Counts only, from the numbers file; it can go either way.
+import { count, entry } from "../lib/numbers";
+
+const value = (key: string): number => entry(`q7.path.${key}`).value;
+const cases = value("cases");
+const checkpoints = [
+    { key: "before", name: "Before reading" },
+    { key: "after", name: "After reading" },
+    { key: "answer", name: "The answer" },
+];
+const moves: Record<string, { key: string; name: string }> = {
+    after: { key: "reading", name: "Reading the documents it chose" },
+    answer: { key: "coding", name: "The coding step" },
+};
+---
+
+<figure class="belief-path" aria-labelledby="belief-path-caption">
+    <figcaption id="belief-path-caption">
+        How often the loop's first code was the NTSB's, at three points, on the{" "}
+        {count("q7.path.cases")} held-out cases it answered.
+    </figcaption>
+    <ol class="points" aria-hidden="true">
+        {checkpoints.map((c) => {
+            const move = moves[c.key];
+            return (
+                <>
+                    {move !== undefined && (
+                        <li class="move">
+                            {move.name}: fixed {count(`q7.path.${move.key}.fixed`)}, broke{" "}
+                            {count(`q7.path.${move.key}.broken`)}
+                        </li>
+                    )}
+                    <li class="point">
+                        <span class="name">
+                            {c.name}: <strong>{count(`q7.path.${c.key}`)}</strong> of{" "}
+                            {count("q7.path.cases")} right
+                        </span>
+                        <svg viewBox={`0 0 ${String(cases)} 10`} preserveAspectRatio="none">
+                            <rect class="right" x="0" y="0" width={value(c.key)} height="10" />
+                            <rect
+                                class="rest"
+                                x={value(c.key)}
+                                y="0"
+                                width={cases - value(c.key)}
+                                height="10"
+                            />
+                        </svg>
+                    </li>
+                </>
+            );
+        })}
+    </ol>
+    <p class="note">
+        {count("q7.path.no_belief_after")} cases recorded no belief after a read choice; for them,
+        after reading is the same as before.
+    </p>
+    <div class="vh">
+        <table>
+            <caption>The loop's first code against the NTSB's, at three points</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Point</th>
+                    <th scope="col">Right</th>
+                    <th scope="col">Cases</th>
+                </tr>
+            </thead>
+            <tbody>
+                {checkpoints.map((c) => (
+                    <tr>
+                        <th scope="row">{c.name}</th>
+                        <td>{count(`q7.path.${c.key}`)}</td>
+                        <td>{count("q7.path.cases")}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+        <table>
+            <caption>How the cases moved between the points</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Step</th>
+                    <th scope="col">Stayed right</th>
+                    <th scope="col">Fixed</th>
+                    <th scope="col">Broken</th>
+                    <th scope="col">Stayed wrong</th>
+                </tr>
+            </thead>
+            <tbody>
+                {Object.values(moves).map((m) => (
+                    <tr>
+                        <th scope="row">{m.name}</th>
+                        <td>{count(`q7.path.${m.key}.stayed_right`)}</td>
+                        <td>{count(`q7.path.${m.key}.fixed`)}</td>
+                        <td>{count(`q7.path.${m.key}.broken`)}</td>
+                        <td>{count(`q7.path.${m.key}.stayed_wrong`)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+</figure>
+
+<style>
+    .belief-path {
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+    }
+    figcaption,
+    .note {
+        color: var(--ink-muted);
+        margin: 0;
+    }
+    .points {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.4rem;
+    }
+    .point {
+        display: grid;
+        gap: 0.2rem;
+    }
+    .move {
+        color: var(--ink-muted);
+        font-size: 0.92rem;
+        padding-left: 1rem;
+        border-left: 2px solid var(--rule);
+    }
+    svg {
+        width: 100%;
+        height: 1rem;
+        display: block;
+    }
+    .right {
+        fill: var(--ink);
+    }
+    .rest {
+        fill: var(--bar-dim);
+    }
+</style>

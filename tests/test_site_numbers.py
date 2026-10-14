@@ -139,3 +139,25 @@ def test_question_6s_counts_must_add_up(tmp_path: Path) -> None:
     target.write_text(target.read_text().replace("cases: 33", "cases: 34"))
     with pytest.raises(site_numbers.ExtractError, match=r"q6\.one\.codes"):
         site_numbers.build(tmp_path)
+
+
+def test_question_7s_belief_path_is_read_from_decision_0186s_reading() -> None:
+    e = site_numbers.build(_RESULTS).entries
+    got = {k.removeprefix("q7.path."): v.value for k, v in e.items() if k.startswith("q7.path.")}
+    assert got == {
+        "cases": 394,
+        "no_belief_after": 25,
+        "before": 43,
+        "after": 82,
+        "answer": 94,
+        "reading.stayed_right": 35,
+        "reading.fixed": 47,
+        "reading.broken": 8,
+        "reading.stayed_wrong": 304,
+        "coding.stayed_right": 74,
+        "coding.fixed": 20,
+        "coding.broken": 8,
+        "coding.stayed_wrong": 292,
+    }
+    assert e["q7.path.before"].run == "20261004T140804-e0dc881-heldout-400-C"
+    assert e["q7.path.before"].sample == "heldout-400"

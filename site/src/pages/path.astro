@@ -2,6 +2,7 @@
 // The Path page (spec §7): how the project decided what to build. The ladder, then the eight
 // questions, each with its measured answer, the decision taken and its sources, then what could
 // come next. Every figure is read from the numbers file by key; none is typed here.
+import BeliefPath from "../components/BeliefPath.astro";
 import ClosuresStrip from "../components/ClosuresStrip.astro";
 import ExampleCase from "../components/ExampleCase.astro";
 import FirstCodes from "../components/FirstCodes.astro";
@@ -191,11 +192,13 @@ const R = "docs/results/";
         results={[
             `${R}s32-claims-heldout.txt`,
             `${R}s32-heldout-diagnosis.txt`,
+            `${R}s5-belief-path-heldout.txt`,
             `${R}s3-noise-floor-dev.txt`,
         ]}
         scripts={[
             "scripts/s32_claims.py",
             "scripts/exploratory/s32_heldout_diagnosis.py",
+            "scripts/exploratory/s5_belief_path.py",
             "scripts/s3_noise_floor.py",
         ]}
     >
@@ -224,6 +227,7 @@ const R = "docs/results/";
             differed by {pointsOn("q7.noise_band")}. This was measured on development cases, so it
             is not drawn on the ladder.
         </p>
+        <BeliefPath slot="figure" />
     </PathStop>
 
     <PathStop

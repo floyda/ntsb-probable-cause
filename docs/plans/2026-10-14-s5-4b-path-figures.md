@@ -98,9 +98,9 @@ Built to choice 4's answer. The first option is described here; the second adds 
 
 ## Task 5: The stops and checks
 
-- [ ] **Step 1:** `path.astro`: question 1 gains `ExampleCase`, question 5 the line and table from choice 2, question 6 `FirstCodes` and question 7 `BeliefPath`. Each stop's sources list its new results file and script.
-- [ ] **Step 2:** `dist.test.ts`: the new entries appear in their formats; question 1's cause is on the page word for word; the page holds no case number other than question 1's.
-- [ ] **Step 3:** `make check`; commit `S5 step 4b Task 5: the figures on the Path page`.
+- [x] **Step 1:** `path.astro`: question 1 gains `ExampleCase`, question 5 the line and table from choice 2, question 6 `FirstCodes` and question 7 `BeliefPath`. Each stop's sources list its new results file and script.
+- [x] **Step 2:** `dist.test.ts`: the new entries appear in their formats; question 1's cause is on the page word for word; the page holds no case number other than question 1's.
+- [x] **Step 3:** `make check`; commit `S5 step 4b Task 5: the figures on the Path page`.
 
 ## Task 6: Preview (Controller)
 
@@ -121,9 +121,9 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - [x] Step 1: decision 0186 is committed before the script exists (`401e384`).
   - [x] Step 2: failing tests over invented trails, covering the checkpoints, the cases left out and the cross-check against the diagnosis's committed counts.
   - [x] Step 3: `scripts/exploratory/s5_belief_path.py` reuses `s32_heldout_diagnosis.py`'s `loop_cases`, `hypothesis_top1`, `answer_point` and `transition`. It reads through the same held-out path and refusals.
-  - Step 4: one run from a clean commit writes `docs/results/s5-belief-path-heldout.txt`, committed alone.
-  - Step 5: its entries go in the numbers file. The claims guard checks that before + fixed − broken = after for each move.
-  - Step 6: `BeliefPath.astro` draws three columns, before reading, after reading and the answer, with the moves between them.
+  - [x] Step 4: one run from a clean commit writes `docs/results/s5-belief-path-heldout.txt`, committed alone.
+  - [x] Step 5: its entries go in the numbers file. The claims guard checks that before + fixed − broken = after for each move.
+  - [x] Step 6: `BeliefPath.astro` draws three columns, before reading, after reading and the answer, with the moves between them.
 
 ## Glossary
 
@@ -148,3 +148,10 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - The numbers file moves to format `site-numbers/2`, adding `texts` for the sentence.
   - `q6.one.distinct` (18) and `q6.one.cases` (33) are two plain counts. A count with an `n` reads as "18 of 33", which would be wrong here.
   - The build refuses the file unless the codes' counts add up to the cases and their number equals the distinct count.
+- **Task 4 (2026-10-14):**
+  - Decision 0186's one reading ran from the clean commit `bfcc8fa`, and its result was committed alone (`2c70cf5`). It agreed with the diagnosis's committed figures.
+  - Of 394 answered cases, right before reading 43, after reading 82, at the answer 94. Reading fixed 47 and broke 8; the coding step fixed 20 and broke 8. 25 cases recorded no belief after a read choice.
+  - The coding step's 8 broken, against the diagnosis's 7, counts right and wrong alone. It includes the diagnosis's one "score changed with the first code kept" case. The cross-check uses the diagnosis's own count (a change of first code), which agrees.
+  - Each count is its own numbers-file entry. A guard in `claims.ts` (`q7.path_adds_up`) fails the build unless each move carries one checkpoint's count to the next over every case. It is tested to fail when a count moves.
+  - The figure is three bars, one per checkpoint, each of all 394 cases with the right ones dark, and each step's fixed and broken counts between them. Hidden tables carry the same counts.
+- **Task 5:** built along the way in Tasks 1 to 4, as each figure's checks went in with it: question 1's cause word for word, no other case number, question 6's sentence and codes, and every new entry on the page in its format.
