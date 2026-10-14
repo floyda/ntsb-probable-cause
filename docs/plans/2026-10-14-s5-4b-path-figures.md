@@ -118,9 +118,9 @@ Built to choice 4's answer. The first option is described here; the second adds 
   3. Question 6: **B**, the sentence whose cases received the most different first codes, "as it proves the point". Ties go to the group with more cases, then to the sentence that sorts first. The figure says plainly how it was chosen ("This is the sentence whose cases received the most different first codes. Across all repeated sentences, the first code matched in about one case in three."), so it is never passed off as typical.
   4. Question 7: **B**, a new counts-only reading with three checkpoints, recorded first as decision 0186. S4 reserved four numbers for S5, from 0186, so there is no clash at merge. Task 4 is rewritten below.
 - **Task 4, rewritten for choice 4 B:**
-  - Step 1: decision 0186 is committed before the script exists.
-  - Step 2: failing tests over invented trails, covering the checkpoints, the cases left out and the cross-check against the diagnosis's committed counts.
-  - Step 3: `scripts/exploratory/s5_belief_path.py` reuses `s32_heldout_diagnosis.py`'s `loop_cases`, `hypothesis_top1`, `answer_point` and `transition`. It reads through the same held-out path and refusals.
+  - [x] Step 1: decision 0186 is committed before the script exists (`401e384`).
+  - [x] Step 2: failing tests over invented trails, covering the checkpoints, the cases left out and the cross-check against the diagnosis's committed counts.
+  - [x] Step 3: `scripts/exploratory/s5_belief_path.py` reuses `s32_heldout_diagnosis.py`'s `loop_cases`, `hypothesis_top1`, `answer_point` and `transition`. It reads through the same held-out path and refusals.
   - Step 4: one run from a clean commit writes `docs/results/s5-belief-path-heldout.txt`, committed alone.
   - Step 5: its entries go in the numbers file. The claims guard checks that before + fixed − broken = after for each move.
   - Step 6: `BeliefPath.astro` draws three columns, before reading, after reading and the answer, with the moves between them.
