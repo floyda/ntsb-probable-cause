@@ -5,6 +5,9 @@
     --ink-muted: #4a4a4a;
     --ground: #ffffff;
     --rule: #c8c8c8;
+    /* The ladder's bars (spec §7.1): lit and dimmed, by lightness only, never good or bad. */
+    --bar: #7d8996;
+    --bar-dim: #d5d9de;
     --read: "Atkinson Hyperlegible Next", system-ui, sans-serif;
     --board: "Doto", ui-monospace, monospace;
     /* The board is a dark terminal panel in both themes (spec §4). */
@@ -20,6 +23,8 @@
         --ink-muted: #b8b8b8;
         --ground: #121212;
         --rule: #3a3a3a;
+        --bar: #5f6b78;
+        --bar-dim: #2c3238;
     }
 }
 

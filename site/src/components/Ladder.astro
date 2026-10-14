@@ -1,0 +1,195 @@
+---
+// The ladder (spec §7.1), drawn at build time from the numbers file. Two drawings, one laid out
+// for a phone and one for a wider screen, so text is never scaled down to fit; CSS shows one.
+// A visually hidden table carries the same figures for a screen reader (§12 item 8). No colour
+// marks a step good or bad (§11): a lit step is darker, a dimmed one lighter, and that is all.
+import { LADDER, ladderLayout } from "../lib/ladder";
+import { entry, pct, usd, withInterval } from "../lib/numbers";
+
+interface Props {
+    /** A unique id for this ladder on its page. */
+    id: string;
+    /** The steps lit; the rest are dimmed (questions 2 and 3, spec §7.4). Default: all. */
+    lit?: string[];
+    /** Whether to print the plain sentence beneath. */
+    sentence?: boolean;
+}
+
+const { id, lit = LADDER.map((s) => s.key), sentence = true } = Astro.props;
+const drawings = [
+    { name: "narrow", g: ladderLayout(LADDER, 340) },
+    { name: "wide", g: ladderLayout(LADDER, 640) },
+];
+const loop = "ladder.loop.top1";
+const fixed = "ladder.fixed.top1";
+const summary =
+    LADDER.map((s) => `${s.label.replace(/^\d+\. /, "")}: ${pct(s.rate)}`).join("; ") +
+    `. The loop matched less often than the fixed pipeline.`;
+const lower = entry(loop).value < entry(fixed).value;
+---
+
+<figure class="ladder" aria-labelledby={`${id}-caption`}>
+    {drawings.map(({ name, g }) => (
+        <svg
+            class={`drawing ${name}`}
+            viewBox={`0 0 ${String(g.width)} ${String(g.height)}`}
+            width={g.width}
+            height={g.height}
+            role="img"
+            aria-label={`The ladder. ${summary}`}
+        >
+            {g.bars.map((bar, i) => {
+                const on = lit.includes(bar.key);
+                const mark = g.marks[i] ?? [bar.y, bar.y + bar.height];
+                const mid = bar.y + bar.height / 2;
+                return (
+                    <g class={on ? "step lit" : "step dim"}>
+                        <rect
+                            class="bar"
+                            x={bar.x}
+                            y={bar.y}
+                            width={bar.width}
+                            height={bar.height}
+                        />
+                        <line
+                            class="whisker"
+                            x1={bar.whisker[0]}
+                            x2={bar.whisker[1]}
+                            y1={mid}
+                            y2={mid}
+                        />
+                        <line
+                            class="whisker"
+                            x1={bar.whisker[0]}
+                            x2={bar.whisker[0]}
+                            y1={mid - 5}
+                            y2={mid + 5}
+                        />
+                        <line
+                            class="whisker"
+                            x1={bar.whisker[1]}
+                            x2={bar.whisker[1]}
+                            y1={mid - 5}
+                            y2={mid + 5}
+                        />
+                        <line
+                            class="guess"
+                            x1={g.baselineX}
+                            x2={g.baselineX}
+                            y1={mark[0]}
+                            y2={mark[1]}
+                        />
+                    </g>
+                );
+            })}
+            <line class="axis" x1="0" x2={g.plotWidth} y1={g.axisY} y2={g.axisY} />
+            {g.ticks.map((tx) => (
+                <line class="axis" x1={tx} x2={tx} y1={g.axisY} y2={g.axisY + 4} />
+            ))}
+            {g.labels.map((label) => (
+                <text
+                    class={`label ${label.role}`}
+                    x={label.x}
+                    y={label.y}
+                    text-anchor={label.anchor}
+                    font-size={label.size}
+                    font-weight={label.bold ? 700 : 400}
+                >
+                    {label.text}
+                </text>
+            ))}
+        </svg>
+    ))}
+    <figcaption id={`${id}-caption`} class={sentence ? "sentence" : "vh"}>
+        {lower ? (
+            <>
+                A step up in machinery is not a step up in result: the loop matched the
+                investigator's first code less often than the fixed pipeline ({pct(loop)} against{" "}
+                {pct(fixed)}), at about the same bill ({usd("ladder.loop.billed")} against{" "}
+                {usd("ladder.fixed.billed")}).
+            </>
+        ) : (
+            <>
+                The loop matched the investigator's first code in {pct(loop)} of cases; the fixed
+                pipeline in {pct(fixed)}.
+            </>
+        )}
+    </figcaption>
+    <table class="vh">
+        <caption>The ladder's figures</caption>
+        <thead>
+            <tr>
+                <th scope="col">Step</th>
+                <th scope="col">First code matched, with its interval and cases</th>
+                <th scope="col">Cost for the cases, list price</th>
+                <th scope="col">Cost billed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {LADDER.map((s) => (
+                <tr>
+                    <th scope="row">
+                        {s.label}: {s.plain}
+                    </th>
+                    <td>{withInterval(s.rate)}</td>
+                    <td>{s.cost === null ? "no model cost" : usd(s.cost)}</td>
+                    <td>{s.billed === null ? "—" : usd(s.billed)}</td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</figure>
+
+<style>
+    .ladder {
+        margin: 0;
+        display: grid;
+        gap: 0.75rem;
+    }
+    .drawing {
+        max-width: 100%;
+        height: auto;
+        overflow: visible;
+    }
+    .wide {
+        display: none;
+    }
+    @media (min-width: 680px) {
+        .narrow {
+            display: none;
+        }
+        .wide {
+            display: block;
+        }
+    }
+    .bar {
+        fill: var(--bar);
+    }
+    .dim .bar {
+        fill: var(--bar-dim);
+    }
+    .whisker {
+        stroke: var(--ink);
+        stroke-width: 1.5;
+    }
+    .dim .whisker {
+        stroke: var(--ink-muted);
+    }
+    .guess {
+        stroke: var(--ink);
+        stroke-width: 1.5;
+        stroke-dasharray: 3 2;
+    }
+    .axis {
+        stroke: var(--rule);
+    }
+    .label {
+        fill: var(--ink-muted);
+    }
+    .label.title {
+        fill: var(--ink);
+    }
+    .sentence {
+        margin: 0;
+    }
+</style>

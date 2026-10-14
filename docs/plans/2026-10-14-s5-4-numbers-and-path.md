@@ -188,18 +188,18 @@ Run: `uv run pytest tests/test_site_numbers.py --no-cov -q` — Expected: FAIL (
 
 **Files:** Create `site/src/lib/ladder.ts`, `site/src/lib/ladder.test.ts`, `site/src/components/Ladder.astro`.
 
-**Interfaces — Produces:** `ladderLayout(steps: LadderStep[], width: number): LadderGeometry`. Here `LadderStep` is `{ key, label, plain, top1Key, costKey, billedKey | null }`, and the geometry gives each bar's x, width and y, its whisker's two x values, the baseline line's x, the label positions and the drawing's height.
+**Interfaces — Produces:** `ladderLayout(steps: LadderStep[], width: number): LadderGeometry`. Here `LadderStep` is `{ key, label, plain, rate, cost | null, billed | null }` (keys into the numbers file), and the geometry gives each bar's x, width and y, its whisker's two x values, the baseline line's x, the label positions and the drawing's height.
 
 The four steps, in order (§7.1): "1. No model · always guess the commonest code"; "2. The case record only · the agent with the recorded facts, no documents"; "3. Every document, fixed order · the fixed pipeline"; "4. Choosing what to read · the loop, version 1".
 
-- [ ] **Step 1: Failing geometry tests:**
+- [x] **Step 1: Failing geometry tests:**
   - every bar starts at x = 0 of the plot;
   - a bar's length is proportional to its value on one scale, from 0 to the largest whisker high rounded up to the next 10%;
   - every whisker lies inside the plot;
   - the baseline line sits at the baseline's value;
   - at a width of 340 no two labels overlap and every label sits inside the width.
-- [ ] **Step 2: Implement** `ladderLayout`, horizontal bars with labels above each bar, so phone width needs no rotated text.
-- [ ] **Step 3: `Ladder.astro`.** Props: `lit` (which steps are lit; the rest are dimmed, for questions 2 and 3, §7.4), `width` (default 640). It renders:
+- [x] **Step 2: Implement** `ladderLayout`, horizontal bars with labels above each bar, so phone width needs no rotated text.
+- [x] **Step 3: `Ladder.astro`.** Props: `lit` (which steps are lit; the rest are dimmed, for questions 2 and 3, §7.4), `width` (default 640). It renders:
   - an inline `<svg>` with `role="img"` and an `aria-label` stating the result;
   - each bar, its whisker, its value with interval as text, and its cost as "list $2.34 · billed $2.13" (step 1: "no model cost");
   - the faint baseline line labelled "always guessing";
@@ -207,7 +207,7 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - beneath it, the plain sentence: "A step up in machinery is not a step up in result: the loop matched the investigator's first code less often than the fixed pipeline, at about the same bill." Its rates come from the numbers file.
 
   Colours are theme tokens. No colour marks good or bad (§11).
-- [ ] **Step 4: Run** the tests and build; commit — `S5 step 4 Task 3: the ladder, drawn at build time from the numbers file`.
+- [x] **Step 4: Run** the tests and build; commit — `S5 step 4 Task 3: the ladder, drawn at build time from the numbers file`.
 
 ---
 
@@ -282,3 +282,9 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - `count` ("16,790"), `countOf` ("88 of 399"), `caseCount` (an entry's `n`, for the caveat's "400 accidents", which was also typed) and `list` (question 5's pairs) are added to the plan's set.
   - `oneIn` refuses a rate more than a fifth away from the nearest "one in N", so a re-run that moves the rate to, say, 41% fails the build instead of printing "about one case in three". This is Review Focus 3, stated as a rule rather than as today's two values only.
   - The no-typed-number test also reads `src/layouts`, and it strips `<style>` blocks, where `width: 100%` is not a figure.
+- **Task 3 (2026-10-14): two drawings, and a dashed mark per bar.**
+  - The ladder is laid out twice, at 340 and 640, and CSS shows one by screen width. One drawing scaled to fit a phone would shrink its text to about half size.
+  - The always-guessing line is drawn as a short dashed mark across each bar, not one line through the whole figure, so it never crosses a label. Its label, "dashed mark: always guessing", sits in its own row under the axis.
+  - Text widths are estimated (0.6 em a character, 0.64 bold) to wrap and test the labels. Task 5 adds a check of the rendered boxes in the browser, so a wrong estimate fails there.
+  - The sentence under the ladder also gives the two rates and the two bills. If a re-run put the loop level with or above the fixed pipeline, the sentence would change to a plain statement of both rates rather than keep claiming "not a step up".
+  - The colour tokens `--bar` and `--bar-dim` are added for both themes.
