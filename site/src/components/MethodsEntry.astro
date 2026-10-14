@@ -1,0 +1,116 @@
+---
+// One number's row on the Methods page (S5 spec §9): what it measures, its value as the other
+// pages show it, and where it came from: its cases, model, run, script and results file, each
+// commit linked (plan step 5 choice 2: the run's commit and the commit that recorded the file).
+import { statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { anchorFor, shown } from "../lib/methods";
+import { entry } from "../lib/numbers";
+import { commitUrl, fileAtUrl, repoUrl } from "../lib/words";
+
+interface Props {
+    key: string;
+}
+
+const { key } = Astro.props;
+const e = entry(key);
+const label = e.label.charAt(0).toUpperCase() + e.label.slice(1);
+// The script field may carry a command after the path: "apps/eval (ntsb-eval report)".
+const scriptPath = e.script.split(" ")[0] ?? e.script;
+const isDir = statSync(join(resolve(process.cwd(), ".."), scriptPath)).isDirectory();
+const scriptHref = repoUrl(isDir ? `${scriptPath}/` : scriptPath);
+const fileName = e.results_file.split("/").at(-1) ?? e.results_file;
+---
+
+<li class="entry" id={anchorFor(key)}>
+    <p class="what">{label}</p>
+    <p class="value">{shown(key)}</p>
+    <dl>
+        <div>
+            <dt>Cases</dt>
+            <dd>{e.sample}</dd>
+        </div>
+        <div>
+            <dt>Model</dt>
+            <dd>{e.model === "none" ? "none: no model call" : e.model}</dd>
+        </div>
+        {e.run !== null && e.run_commit !== null && (
+            <div>
+                <dt>Run</dt>
+                <dd>
+                    <code>{e.run}</code>, started from{" "}
+                    <a href={commitUrl(e.run_commit)}>
+                        <code>{e.run_commit}</code>
+                    </a>
+                </dd>
+            </div>
+        )}
+        <div>
+            <dt>Script</dt>
+            <dd>
+                <a href={scriptHref}>
+                    <code>{e.script}</code>
+                </a>
+            </dd>
+        </div>
+        <div>
+            <dt>Results file</dt>
+            <dd>
+                <a href={fileAtUrl(e.recorded_in, e.results_file)}>
+                    <code>{fileName}</code>
+                </a>
+                , recorded in{" "}
+                <a href={commitUrl(e.recorded_in)}>
+                    <code>{e.recorded_in.slice(0, 7)}</code>
+                </a>
+            </dd>
+        </div>
+    </dl>
+</li>
+
+<style>
+    .entry {
+        display: grid;
+        gap: 0.25rem;
+        padding-block: 0.75rem;
+        border-top: 1px solid var(--rule);
+    }
+    .what,
+    .value {
+        margin: 0;
+    }
+    .value {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+    }
+    /* Rows far enough apart that each link keeps a 24px touch target (WCAG 2.2, 2.5.8). */
+    dl {
+        display: grid;
+        gap: 0.3rem;
+        line-height: 1.6;
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--ink-muted);
+    }
+    dl div {
+        display: grid;
+        grid-template-columns: 7.5rem 1fr;
+        gap: 0.5rem;
+    }
+    dd {
+        margin: 0;
+        min-width: 0;
+    }
+    code {
+        overflow-wrap: anywhere;
+    }
+    @media (max-width: 30rem) {
+        dl div {
+            grid-template-columns: 1fr;
+            gap: 0;
+        }
+        dl div + div {
+            margin-top: 0.3rem;
+        }
+    }
+</style>

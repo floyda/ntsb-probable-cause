@@ -1,0 +1,26 @@
+---
+// One group's rows on the Methods page: every entry the group holds, in the numbers file's
+// order (lib/methods.ts). The page writes the group's heading, which carries its anchor.
+import { keysOf } from "../lib/methods";
+import MethodsEntry from "./MethodsEntry.astro";
+
+interface Props {
+    id: string;
+}
+
+const keys = keysOf(Astro.props.id);
+---
+
+<ol class="entries">
+    {keys.map((key) => (
+        <MethodsEntry key={key} />
+    ))}
+</ol>
+
+<style>
+    .entries {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+</style>

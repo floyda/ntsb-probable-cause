@@ -144,7 +144,7 @@ export function ntsbMissing(grade: Grade): string {
     return grade === "awaiting_ntsb" ? "Not yet published." : "Not available.";
 }
 
-/** The commit that coded the case, in the public repository (spec §5). */
+/** A commit in the public repository: the one that coded a case (spec §5), or a Methods entry's. */
 const REPO_URL = "https://github.com/floyda/ntsb-probable-cause";
 
 export function commitUrl(commit: string): string {
@@ -156,6 +156,11 @@ export function repoUrl(path: string): string {
     return path.endsWith("/")
         ? `${REPO_URL}/tree/main/${path.replace(/\/$/, "")}`
         : `${REPO_URL}/blob/main/${path}`;
+}
+
+/** A file as it was at a commit: the results file a number was read from. */
+export function fileAtUrl(sha: string, path: string): string {
+    return `${REPO_URL}/blob/${sha}/${path}`;
 }
 
 /** One sentence on where the two codings differ, written from the codes alone (spec §5). */
