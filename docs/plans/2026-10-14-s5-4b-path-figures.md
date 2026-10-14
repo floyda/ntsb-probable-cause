@@ -1,0 +1,122 @@
+# S5 step 4b — The Path page's last figures: implementation plan
+
+**Spec:** docs/specs/2026-10-04-s5-public-site-design.md
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (Andy's choice for S5: Claude runs the tasks in the session, one fresh review at the end). Steps use checkbox (`- [ ]`) syntax. Tick a step in the same commit as its code (decision 0017). Log every departure in **Deviations**. Tasks marked **Controller** need Andy.
+
+**Goal:** Step 4 left three of §7.4's figures and one rerun for later, because each needs a new script. This step builds them:
+
+- **Question 1:** one closed, non-fatal development case as the NTSB published it: its cause and its codes.
+- **Question 5:** the misses rerun on S3's fixed pipeline (§7.4, "rerun on S3's runs"; Andy, 2026-10-14).
+- **Question 6:** one cause sentence the NTSB used word for word on many cases, with the different first codes those cases received.
+- **Question 7:** each case's belief before reading and at the answer, against the NTSB's first code.
+
+No model call is made, and nothing is paid for. Every figure follows step 4's rule: a script writes it from committed or local data, the site reads it by key, and a test fails when the committed file is stale.
+
+## Choices for Andy before execution
+
+Each is set out with its trade-off. I will take them one at a time in the chat. The recommended option is first.
+
+1. **Question 1's case.** Nine development records are committed as test fixtures (`tests/fixtures/records/`), already redacted of owner and operator by `scripts/make_fixture.py` (decision 0015). Taking the case from a fixture means the site never reads raw data for it.
+   - **(Recommended)** `ANC09CA020`: no injuries; the cause is "The pilot's misidentification of the runway surface during landing", with a contributing factor. It is the case whose final-report link was verified in step 2.
+   - Another non-fatal fixture: `ANC09CA024` (a ground loop), `ANC09CA027` (an unsuitable landing area), `ANC09LA022`, `ANC10LA044` or `CEN11CA664`.
+   - **Why non-fatal:** §7.4 says a non-fatal case keeps the first example gentle.
+2. **Question 5's framing.** S2.6's figure is the measurement that led to coding guidance and the ordering check. A rerun on S3's fixed pipeline shows the misses that remain after those changes. The two answer different questions.
+   - **(Recommended)** Keep S2.6's figure as the answer (the Path is a history of decisions), and add one line and a second table: "after the guidance and the check, on S3's fixed pipeline: …".
+   - Replace S2.6's figure with S3's. The page is then current, but it loses the measurement that justified the decision.
+3. **Question 6's sentence.** The rule that picks the sentence must be fixed before the script looks at the data. Otherwise the page could show the most dramatic group and call it typical.
+   - **(Recommended)** The largest group of cases that share an identical probable-cause sentence, in S3's statistics pool (development only). If two groups tie, the one whose sentence sorts first.
+   - The group with the most different first codes. It is more striking, but it is chosen for being striking.
+4. **Question 7's source.** Decision 0153 fixed the held-out diagnosis's six breakdowns before any was read, and "prints those six and no others". A new reading of S3.2's held-out trails needs its own decision record first.
+   - **(Recommended)** Draw the figure from counts already committed in `docs/results/s32-heldout-diagnosis.txt`. Before reading: 43 of 394 cases right. At the answer: 94 of 394. From the first to the second, 60 fixed and 9 broken. Of those, the coding step fixed 20 and broke 7. This needs no new held-out reading. It shows "before reading" and "the answer" but not "after reading" as its own checkpoint.
+   - A new counts-only reading with three checkpoints (before reading, after the last read choice, the answer) and every transition between them. A decision record, registered before the script runs, would name the breakdowns. This gives the figure §7.4 describes, but adds a decision and a second reading of a used held-out sample.
+
+## Global Constraints
+
+- **The step 1–4 constraints hold.** Every number on a page comes from the numbers file by key. Every paired figure carries its cases. Every worded claim is a guard in `lib/claims.ts`. Billed costs only.
+- **Development and held-out never share a figure** (§9). Questions 1, 5 and 6 are development. Question 7 is held-out.
+- **Counts only for exploratory readings** (decision 0024, 0059): no case number and no model text. Question 1's case is the exception: §7.4 publishes one development case on purpose, from a redacted fixture.
+- **No victim names** (rule 6). Question 1's cause and question 6's sentence are NTSB text. A test fails if either holds a capitalised word that is not at the start of a sentence and not on a short allow list ("NTSB", aircraft and part names found in the code tables). Andy reads both before they are committed (Task 6).
+- **Clinical tone.** Question 7's figure can go either way, and its words say what it shows without praise or blame.
+
+## Review Focus
+
+1. **Question 1's text on the page is the fixture's, word for word,** and every code's label comes from the project's code tables, not from typing.
+2. **Question 6's rule was fixed before the data was read.** The script prints the rule first, and its output does not depend on the order of rows.
+3. **Question 7's figure adds up.** If choice 4's first option is taken: 43 + 60 − 9 = 94. A build-time guard fails when the committed counts stop adding up.
+4. **Question 5's rerun reads a development run only.** `scripts/occurrence_misses.py` already refuses held-out runs. The rerun must name the derived run (`…-tools-check-luna`) that is S3's full fixed pipeline.
+
+## File map
+
+| file | responsibility |
+|---|---|
+| `scripts/site_example_case.py`, `tests/test_site_example_case.py`, `site/data/example-case.json` | question 1's case from a fixture (Task 1) |
+| `docs/results/s5-occurrence-misses-s3-dev.txt` | question 5's rerun, written by `scripts/occurrence_misses.py` (Task 2) |
+| `scripts/exploratory/s5_one_sentence.py`, `docs/results/s5-one-sentence-dev.txt` | question 6's sentence and its first codes (Task 3) |
+| `scripts/site_numbers.py`, `site/data/numbers.json` | new entries and lists; format `site-numbers/2` adds `texts` for question 6's sentence (Tasks 2–4) |
+| `site/src/components/ExampleCase.astro`, `FirstCodes.astro`, `BeliefPath.astro` | the three figures (Tasks 1, 3, 4) |
+| `site/src/pages/path.astro`, `site/src/lib/claims.ts`, `site/tests/dist.test.ts` | the stops, guards and checks (Task 5) |
+
+---
+
+## Task 1: Question 1's case
+
+- [ ] **Step 1: Failing tests** in `tests/test_site_example_case.py`:
+  - the written file holds the fixture's probable cause word for word, its event date, and its occurrence codes in the NTSB's order, each with its table label;
+  - its findings are listed with whether each is in the probable cause;
+  - the case is development split and non-fatal, or the script refuses it;
+  - the names check: no capitalised word outside a sentence start and the allow list;
+  - the committed `site/data/example-case.json` is current.
+- [ ] **Step 2: The script.** `scripts/site_example_case.py --case <number>` reads `tests/fixtures/records/<number>.json` through the project's record parsing (never a second assembler, rule 1), labels codes from the code tables, and writes `site/data/example-case.json`. Status paragraph (decision 0059): free, offline, reads one committed fixture.
+- [ ] **Step 3: `ExampleCase.astro`.** The case number linked to its NTSB final report (`caseReportUrl`), the date, "no injuries", the cause, the occurrence codes in order (event words first, the full label in small type, as on the board), and the findings in two groups: in the probable cause, and other findings.
+- [ ] **Step 4:** `make check`; commit `S5 step 4b Task 1: question 1's case, from a committed fixture`.
+
+## Task 2: Question 5's rerun
+
+- [ ] **Step 1:** Run `uv run python -m scripts.occurrence_misses --run 20260929T053953-674c92e-dev-400-B-tools-check-luna --out docs/results/s5-occurrence-misses-s3-dev.txt`, with `NTSB_DATA_DIR` pointed at the main checkout's `data/`. If the script does not read a derived run, extend it with a test, and log the extension.
+- [ ] **Step 2:** Entries `q5.s3.first_right`, `q5.s3.in_sequence` and list `q5.s3.pairs` in `site_numbers.py`, with tests.
+- [ ] **Step 3:** Commit `S5 step 4b Task 2: question 5's misses rerun on S3's fixed pipeline`.
+
+## Task 3: Question 6's sentence
+
+- [ ] **Step 1:** The rule from choice 3 is written into the script's docstring and printed at the top of its output, in a commit before the script first runs.
+- [ ] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output; held-out rows are refused.
+- [ ] **Step 3: The script.** `scripts/exploratory/s5_one_sentence.py` reuses `s3_coding_consistency.py`'s exact-twin grouping over S3's statistics pool. It writes the sentence, the group's size and each first code with its label and count, most common first. Counts only, with no case number.
+- [ ] **Step 4:** Run it (free, offline) to write `docs/results/s5-one-sentence-dev.txt`. Add `q6.sentence` (a text), `q6.group` (a count) and list `q6.codes` to the numbers file.
+- [ ] **Step 5: `FirstCodes.astro`.** The sentence in quotation marks, then one bar per first code, sized by count, with the counts in a table. The page repeats the results file's own caution.
+- [ ] **Step 6:** `make check`; commit `S5 step 4b Task 3: question 6's sentence and its first codes`.
+
+## Task 4: Question 7's figure
+
+Built to choice 4's answer. The first option is described here; the second adds a decision record and an exploratory script, and is planned in Deviations if chosen.
+
+- [ ] **Step 1:** Entries from `s32-heldout-diagnosis.txt`: `q7.h0_right` (43 of 394), `q7.answer_right` (94 of 394), `q7.h0_answer.fixes` (60), `q7.h0_answer.breaks` (9), `q7.coding.fixes` (20), `q7.coding.breaks` (7), with tests.
+- [ ] **Step 2: A guard** in `claims.ts`: before-reading right + fixes − breaks = answer right. It is tested to fail when a count moves.
+- [ ] **Step 3: `BeliefPath.astro`.** Two columns, "before reading" and "the answer", each split into cases that matched the NTSB's first code and cases that did not. The fixed and broken cases are drawn between them, with the coding step's share named. The same counts are in a table. Its sentence states the counts, with no claim beyond them.
+- [ ] **Step 4:** Commit `S5 step 4b Task 4: question 7's figure from the committed diagnosis`.
+
+## Task 5: The stops and checks
+
+- [ ] **Step 1:** `path.astro`: question 1 gains `ExampleCase`, question 5 the line and table from choice 2, question 6 `FirstCodes` and question 7 `BeliefPath`. Each stop's sources list its new results file and script.
+- [ ] **Step 2:** `dist.test.ts`: the new entries appear in their formats; question 1's cause is on the page word for word; the page holds no case number other than question 1's.
+- [ ] **Step 3:** `make check`; commit `S5 step 4b Task 5: the figures on the Path page`.
+
+## Task 6: Preview (Controller)
+
+- [ ] **Step 1:** Andy reads question 1's cause and question 6's sentence for names before anything is pushed.
+- [ ] **Step 2:** Phone and desktop screenshots, light and dark, with the choices for his eye.
+- [ ] **Step 3:** Record his answers; run the final review and its fix pass; push.
+
+---
+
+## Deviations
+
+*None yet.*
+
+## Glossary
+
+- **Fixture:** a real development record committed to the repository for tests, with owner and operator fields removed (decision 0015).
+- **Exact twins:** cases whose NTSB probable-cause sentences are the same word for word, ignoring case and punctuation (`s3-coding-consistency-dev.txt`).
+- **First code:** the NTSB's first occurrence code for a case, its defining event; the one the headline scores.
+- **Fixed / broken:** a case whose first code went from not matching the NTSB's to matching it (fixed), or the other way round (broken), between two of the agent's beliefs.
+- **Derived run:** a run folder made by a post-pass over an earlier run (`-tools`, `-check-luna`); S3's full fixed pipeline is the run ending `-tools-check-luna`.
