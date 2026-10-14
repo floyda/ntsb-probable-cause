@@ -5,13 +5,7 @@ same for every case of a run (the provider's prompt cache depends on it), and th
 numbers keyed by listing index, never a title.
 """
 
-import copy
-import hashlib
 import importlib
-import json
-import os
-import subprocess
-import sys
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
@@ -19,11 +13,9 @@ from typing import Any
 import grimp
 import pytest
 
-from ntsb_probable_cause.agent import schemas, texts
 from ntsb_probable_cause.agent.facts import DocumentFacts
-from ntsb_probable_cause.agent.schemas import TOOL_DEFINITIONS, ExtraDecision
+from ntsb_probable_cause.agent.schemas import ExtraDecision
 from ntsb_probable_cause.agent.texts import (
-    AGENT_PROMPT_VERSION,
     ANSWER_NOW,
     CHOOSE,
     CHOOSE_AGAIN,
@@ -37,22 +29,16 @@ from ntsb_probable_cause.agent.texts import (
     PROTOCOL,
     RECORD_NOW,
     TEXT_SOURCES,
-    agent_text_sha256,
     extras_lines,
-    is_plain,
     menu,
     not_accepted,
-    prompt_version,
     read_summary,
-    source_text,
     system_text,
-    text_mark,
 )
 from ntsb_probable_cause.agent.tools import describe_codes, occurrence_usage
-from ntsb_probable_cause.scoring import hypothesis, prompt
+from ntsb_probable_cause.scoring import prompt
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.coding_stats import load_stats
-from ntsb_probable_cause.scoring.hypothesis import REFINEMENT_SCHEMA
 
 TABLES = load_tables()
 GUIDANCE = ("r3-loc-stall", "r6-aircraft-control")
@@ -164,72 +150,6 @@ class TestProtocol:
         assert PROTOCOL.isascii()
 
 
-class TestPromptVersion:
-    """Andy, 2026-10-01: the version fingerprints the model-facing text (``+p``)."""
-
-    def test_is_the_base_version_and_the_text_fingerprint_with_no_guidance(self) -> None:
-        assert AGENT_PROMPT_VERSION == "s3-v1"
-        assert prompt_version(()) == "s3-v1+p" + agent_text_sha256()[:12]
-
-    def test_carries_twelve_characters_of_the_guidance_then_the_text_fingerprint(self) -> None:
-        sha = prompt.guidance_sha256(GUIDANCE)
-        assert sha is not None
-        text = agent_text_sha256()
-        assert prompt_version(GUIDANCE) == f"s3-v1+g{sha[:12]}+p{text[:12]}"
-
-    def test_a_tuning_round_adds_its_number_last(self) -> None:
-        sha = prompt.guidance_sha256(GUIDANCE)
-        assert sha is not None
-        text = agent_text_sha256()[:12]
-        assert prompt_version(GUIDANCE, 2) == f"s3-v1+g{sha[:12]}+p{text}+r2"
-        assert prompt_version((), 2) == f"s3-v1+p{text}+r2"
-        assert prompt_version(GUIDANCE, None) == prompt_version(GUIDANCE)
-
-    def test_a_different_guidance_changes_the_guidance_part_only(self) -> None:
-        mine, other = prompt_version(GUIDANCE), prompt_version(("r3-loc-stall",))
-        assert mine != other
-        assert mine.partition("+p")[2] == other.partition("+p")[2], "guidance is not in +p"
-
-    @pytest.mark.parametrize("name", ["texts.py", "tools.py", "prompt.py"])
-    def test_an_edited_text_module_changes_the_text_part_only(
-        self, monkeypatch: pytest.MonkeyPatch, name: str
-    ) -> None:
-        """A kept tuning round that edits the protocol or a tool's wording shows in later plain
-        runs' version (decision 0133)."""
-        before = prompt_version(GUIDANCE)
-        _edit_source(monkeypatch, name)
-        after = prompt_version(GUIDANCE)
-        assert after != before
-        assert after.partition("+p")[0] == before.partition("+p")[0]
-
-    def test_a_plain_version_is_the_guidance_with_no_round_on_any_agent_text(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        current = prompt_version(GUIDANCE)
-        with monkeypatch.context() as patched:
-            _edit_source(patched, "texts.py")
-            earlier = prompt_version(GUIDANCE)
-        assert earlier != current
-        assert prompt_version(GUIDANCE) == current
-        assert is_plain(current, GUIDANCE)
-        assert is_plain(earlier, GUIDANCE), "the text fingerprint is not compared"
-        assert not is_plain(prompt_version(GUIDANCE, 1), GUIDANCE)
-        assert not is_plain(prompt_version(("r3-loc-stall",)), GUIDANCE)
-        assert not is_plain(current.partition("+p")[0], GUIDANCE), "the text part is required"
-        assert not is_plain(f"{current}x", GUIDANCE)
-        assert is_plain(prompt_version(()), ())
-
-
-def _edit_source(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
-    """Make the fingerprint read one covered file with a comment line added to it."""
-    original = texts.source_text
-
-    def edited(package: str, file: str) -> str:
-        return original(package, file) + ("# an edit\n" if file == name else "")
-
-    monkeypatch.setattr(texts, "source_text", edited)
-
-
 _EXPECTED_SOURCES = (
     ("ntsb_probable_cause.scoring", "prompt.py"),
     ("ntsb_probable_cause.scoring", "hypothesis.py"),
@@ -244,103 +164,17 @@ _EXPECTED_SOURCES = (
 )
 
 
-class TestAgentTextFingerprint:
-    """``agent_text_sha256``: the source of the modules that hold or compose the agent's text.
+class TestTextSources:
+    """``TEXT_SOURCES``: the modules whose literals the rendered-text reach test reads."""
 
-    Decision 0133: any edit to a covered file changes the version, a comment included; a false
-    change only separates runs, it never merges two different prompts.
-    """
-
-    def test_covers_the_modules_that_hold_or_compose_the_text_in_a_fixed_order(self) -> None:
+    def test_names_the_modules_that_hold_or_compose_the_text_in_a_fixed_order(self) -> None:
         assert TEXT_SOURCES == _EXPECTED_SOURCES
 
-    def test_reads_each_module_as_its_file(self) -> None:
+    def test_each_names_a_python_module_of_the_package(self) -> None:
         for package, name in TEXT_SOURCES:
             module = importlib.import_module(f"{package}.{name.removesuffix('.py')}")
             assert module.__file__ is not None
-            assert source_text(package, name) == Path(module.__file__).read_text(encoding="utf-8")
-
-    def test_is_the_sha256_of_the_sources_and_the_schemas_as_sent(self) -> None:
-        parts = [[f"{p}/{n}", source_text(p, n)] for p, n in TEXT_SOURCES]
-        parts.append(["TOOL_DEFINITIONS", json.dumps(TOOL_DEFINITIONS, sort_keys=True)])
-        parts.append(["REFINEMENT_SCHEMA", json.dumps(REFINEMENT_SCHEMA, sort_keys=True)])
-        digest = agent_text_sha256()
-        assert digest == hashlib.sha256(json.dumps(parts).encode()).hexdigest()
-        assert len(digest) == 64
-        assert text_mark() == f"+p{digest[:12]}"
-
-    @pytest.mark.parametrize(
-        ("package", "name"), _EXPECTED_SOURCES, ids=[n for _, n in _EXPECTED_SOURCES]
-    )
-    def test_an_edit_to_any_covered_file_changes_it_even_a_comment(
-        self, tmp_path: Path, package: str, name: str
-    ) -> None:
-        """Hashed over a copy of the files, with one of them edited by a comment line."""
-        for p, n in TEXT_SOURCES:
-            copy_of = tmp_path / p / n
-            copy_of.parent.mkdir(parents=True, exist_ok=True)
-            copy_of.write_text(source_text(p, n), encoding="utf-8")
-
-        def read(p: str, n: str) -> str:
-            return (tmp_path / p / n).read_text(encoding="utf-8")
-
-        before = agent_text_sha256(read)
-        assert before == agent_text_sha256(), "the copy hashes as the package does"
-        edited = tmp_path / package / name
-        edited.write_text(f"{edited.read_text(encoding='utf-8')}# an edit\n", encoding="utf-8")
-        assert agent_text_sha256(read) != before
-
-    def test_a_file_is_read_once_per_process_so_a_later_edit_is_not_seen(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A covered file edited while a run is in flight must not change what any other caller
-        in the process reads (decision 0133): the first reading is the text that was imported."""
-        package = tmp_path / "read_once_probe"
-        package.mkdir()
-        module = package / "a.py"
-        module.write_text("one\n", encoding="utf-8")
-        monkeypatch.setattr("importlib.resources.files", lambda name: tmp_path / str(name))
-        assert source_text("read_once_probe", "a.py") == "one\n"
-        module.write_text("two\n", encoding="utf-8")
-        assert source_text("read_once_probe", "a.py") == "one\n"
-        source_text.cache_clear()  # what a fresh interpreter starts with
-        assert source_text("read_once_probe", "a.py") == "two\n"
-        source_text.cache_clear()
-
-    def test_the_tool_definitions_as_sent_are_in_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        before = agent_text_sha256()
-        changed = copy.deepcopy(TOOL_DEFINITIONS)
-        function = changed[0]["function"]
-        assert isinstance(function, dict)
-        function["description"] = f"{function['description']} (changed)"
-        monkeypatch.setattr(schemas, "TOOL_DEFINITIONS", changed)
-        assert agent_text_sha256() != before
-
-    def test_the_refinement_schema_as_sent_is_in_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        before = agent_text_sha256()
-        monkeypatch.setattr(hypothesis, "REFINEMENT_SCHEMA", {"changed": True})
-        assert agent_text_sha256() != before
-
-    def test_no_data_or_guidance_file_is_in_it(self) -> None:
-        """Tables and statistics are data (the commit SHA); guidance has its own ``+g``."""
-        assert all(name.endswith(".py") for _, name in TEXT_SOURCES)
-        assert prompt.guidance_text(GUIDANCE) not in json.dumps(
-            [source_text(*s) for s in TEXT_SOURCES]
-        )
-
-    def test_is_stable_across_two_fresh_interpreters(self) -> None:
-        code = (
-            "from ntsb_probable_cause.agent.texts import agent_text_sha256\n"
-            "print(agent_text_sha256())"
-        )
-        seen: set[str] = set()
-        for seed in ("0", "1"):
-            env = {**os.environ, "PYTHONHASHSEED": seed}
-            done = subprocess.run(  # noqa: S603 -- the interpreter running these tests, fixed code
-                [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env
-            )
-            seen.add(done.stdout.strip())
-        assert seen == {agent_text_sha256()}
+            assert Path(module.__file__).name == name
 
 
 class TestMenu:
@@ -498,7 +332,6 @@ class TestFixedStrings:
             read_summary([1], []),
             extras_lines((ExtraDecision(document=3, kind="unknown"),)),
             not_accepted("x"),
-            prompt_version(GUIDANCE),
         ):
             assert type(value) is str
 

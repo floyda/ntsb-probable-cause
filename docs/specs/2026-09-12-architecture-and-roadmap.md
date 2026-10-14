@@ -305,6 +305,14 @@ problem.
 
 ## 8. The public surface
 
+*Note, 2026-10-06:* S5's Draft specification,
+`docs/specs/2026-10-04-s5-public-site-design.md`, proposes six pages in place of the five
+below: a first page that leads with a board of recently closed cases, an opened case, the
+trail view, a Path page, an Open cases page and Methods. Decisions 0154 to 0156 already bind
+S3.3 and S4: the live run is at closure, the board is backfilled from 23 September 2026, and
+it runs the loop as Ellery, version 1. This section is rewritten when that specification is
+approved.
+
 Five pages. This list is also the complete set of questions the store must be able to
 answer, which is why it is settled before the store is designed.
 
@@ -600,7 +608,7 @@ once (0095). Specification: `docs/specs/2026-09-26-s27-coding-guidance-design.md
 
 *Done means:* the specification's §15. The bar S3's loop faces is set after this stage (0089).
 
-### S3. The agent loop
+### S3. The agent loop — done
 
 Tool interface, step budget, abstain path, hard cost cap enforced in code, trajectory log.
 The deterministic narrative router planned here is removed (0013): no case carries a
@@ -674,6 +682,12 @@ at equal billed cost, so it is not warranted (`docs/results/s32-claims-heldout.t
 arm B is the bar. The sealed sample stays sealed for v2 (0141); a prompt-size ceiling bounds every
 request (0152). S3.3, live shadow, is next.
 
+*S3.3 — done (2026-10-09, pull request #29).* As built: see the
+[S3.3 specification's As-built section](2026-10-07-s3-3-live-shadow-design.md#as-built-s33-2026-10-09).
+Ellery version 1 coded the 47-case backfill and 13 fresh closures once each, at closure, scored
+as counts only (`docs/results/s33-live-shadow.txt`); live runs use the standard price (0165) and a
+read-only AWS key (0166). S3 is complete. S4, predictions and resolution, is next.
+
 ### S4. Predictions and resolution
 
 Predictions store with case, evidence fingerprint, timestamp, answer, cost and commit
@@ -694,6 +708,10 @@ design §7.2 (0021).
 
 *Done means:* a public URL, rebuilt from the store, with hosting cost that does not move
 with traffic.
+
+*Note, 2026-10-06:* the site's design is the Draft
+`docs/specs/2026-10-04-s5-public-site-design.md`, written early while S3.2 ran; the public URL
+is `ellery.demo.floyda.dev` (0156).
 
 ---
 

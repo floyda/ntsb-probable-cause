@@ -1,0 +1,142 @@
+<title>S5 Case Comparison</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800&family=Overpass:wght@400;600;800&display=swap">
+<style>
+/* Layout: two framed options. Each holds the board (dot-matrix, dark) and a plain-type
+   comparison panel for the selected case: prose side by side, then codes, then findings. */
+:root{
+  --bg:#f1f4f5; --panel:#ffffff; --fg:#1a2228; --muted:#586570; --line:#cdd5da; --soft:#e8edf0;
+  --sign:#f5b800; --sign-fg:#15191c; --blue:#1d4f7a;
+  --board:#14181b; --board-fg:#ebe6d6; --board-dim:#8d958f; --board-amber:#f2b632; --board-line:#2a3035; --board-sel:#232a2f;
+  --sans:"Overpass","Helvetica Neue",Arial,sans-serif; --dot:"Doto","Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --soft:#202a31; --blue:#8fc0ea; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#11161a; --panel:#182026; --fg:#e7ecef; --muted:#97a4ad; --line:#2c373e; --soft:#202a31; --blue:#8fc0ea; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.5;padding-inline:16px;padding-block:28px 56px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:36px}
+h1{font-size:1.6rem;line-height:1.2;margin:0;font-weight:800;text-wrap:balance}
+p{margin:0;max-width:65ch}
+.intro{display:flex;flex-direction:column;gap:10px}
+.note{color:var(--muted);font-size:.92rem}
+.opt{display:flex;flex-direction:column;gap:12px}
+.opt-head{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.tag{background:var(--sign);color:var(--sign-fg);font-weight:800;padding:2px 10px;letter-spacing:.04em}
+.opt-head h2{margin:0;font-size:1.15rem;font-weight:800}
+.frame{background:var(--panel);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+.procon{display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:.92rem}
+.procon b,.cap{display:block;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:2px}
+/* board */
+.board{background:var(--board);color:var(--board-fg);padding:14px 8px;font-family:var(--dot);font-weight:800;font-size:.95rem;min-width:0}
+.board-title{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--board-amber);padding:0 10px 10px}
+.brow{display:grid;grid-template-columns:4.4rem 3.8rem 1fr 1.25fr 1.25fr 10.5rem;gap:12px;padding:10px;border-top:1px solid var(--board-line);align-items:baseline;width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;font:inherit;cursor:pointer}
+.brow>*{min-width:0}
+.brow.head{cursor:default;color:var(--board-amber);font-size:.8rem;border-top:0}
+.brow[aria-pressed="true"]{background:var(--board-sel);box-shadow:inset 3px 0 0 var(--board-amber)}
+.brow:focus-visible{outline:2px solid var(--board-amber);outline-offset:-2px}
+.compact .brow{grid-template-columns:4.6rem 1fr}
+.compact .brow .x{display:none}
+.compact .brow .res{grid-column:2}
+.mark{display:inline-block;width:.62em;height:.62em;border:2px solid currentColor;margin-right:.5em;flex:none}
+.mark.full{background:currentColor}
+.mark.half{background:linear-gradient(90deg,currentColor 50%,transparent 50%)}
+.res.full{color:var(--board-amber)} .res.none{color:var(--board-dim)}
+/* detail */
+.detail{display:flex;flex-direction:column;gap:18px;min-width:0}
+.dhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
+.dhead .meta{color:var(--muted);font-size:.9rem}
+.dhead a{color:var(--blue);font-weight:600}
+.differ{background:var(--soft);padding:12px 14px;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.two>div{min-width:0}
+.prose{font-size:1rem}
+ol.codes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+ol.codes li{display:flex;align-items:baseline;gap:0}
+ol.codes .n{color:var(--muted);width:1.4em;flex:none;font-variant-numeric:tabular-nums}
+.f3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.f3>div{min-width:0}
+.f3 ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:.92rem}
+.none-txt{color:var(--muted)}
+.key{display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.key span{display:inline-flex;align-items:baseline}
+hr{border:0;border-top:1px solid var(--line);margin:0;width:100%}
+@media (max-width:760px){
+  .split,.two,.f3,.procon{grid-template-columns:1fr}
+  .brow{grid-template-columns:4.4rem 1fr}
+  .brow .x{display:none}
+  .brow .res{grid-column:2}
+}
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>The board with basic facts, and the case beneath it</h1>
+    <p>The board stays short. Choosing a row opens the case in plain type: both cause statements, then where the codes agree and where they do not. Choose a row to change the case shown.</p>
+    <p class="note">Every case below is an invented example. No real case appears on this page.</p>
+  </div>
+
+  <section class="opt">
+    <div class="opt-head"><span class="tag">A</span><h2>The board with basic facts, the case beneath it</h2></div>
+    <div class="frame">
+      <div class="board" data-board="a"></div>
+      <div class="detail" data-detail="a"></div>
+    </div>
+    <div class="procon">
+      <p><b>What it gives</b>Each row now states when the case closed, how long the investigation took and the aircraft type, before the two codes. On a phone the board keeps the date, the aircraft and the result.</p>
+      <p><b>The risk</b>Six columns is near the limit for dot letters. Any further fact belongs in the opened case, not on the board.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const cases=[
+ {d:"12 Sep",took:"14 mo",bac:"Aeroplane, 1 piston",more:"Texas &middot; personal flight &middot; 9 documents read &middot; $0.01",ac:"Aeroplane, one piston engine",grade:"half",word:"Same codes, other order",
+  differ:"Both name the same event. The NTSB put loss of control first. The agent put the stall first.",
+  agent:"The pilot did not maintain airspeed in the turn from base to final. The aeroplane exceeded its critical angle of attack and stalled at a height too low for recovery.",
+  ntsb:"The pilot's failure to maintain adequate airspeed during the turn to final, which resulted in an exceedance of the critical angle of attack and an aerodynamic stall.",
+  ac_codes:[["Aerodynamic stall/spin","half"],["Loss of control in flight","half"],["Collision with terrain or object","full"]],
+  nt_codes:[["Loss of control in flight","half"],["Aerodynamic stall/spin","half"],["Collision with terrain or object","full"]],
+  both:["Airspeed: not attained or maintained","Angle of attack: not attained or maintained"],onlyN:["Aircraft control: pilot"],onlyA:["Decision making: pilot"]},
+ {d:"11 Sep",took:"22 mo",bac:"Helicopter",more:"Alaska &middot; aerial observation &middot; 14 documents read &middot; $0.02",ac:"Helicopter",grade:"none",word:"Different",
+  differ:"The two differ on what happened. The NTSB found the fuel ran out. The agent found an engine failure with no stated reason.",
+  agent:"A total loss of engine power during cruise for reasons the available evidence did not establish, which led to an autorotation onto unsuitable terrain.",
+  ntsb:"The pilot's inadequate preflight fuel planning, which resulted in fuel exhaustion and a total loss of engine power.",
+  ac_codes:[["Loss of engine power (total)","half"],["Off-field or emergency landing","full"],["Collision during landing","none"]],
+  nt_codes:[["Fuel exhaustion","none"],["Off-field or emergency landing","full"],["Loss of engine power (total)","half"]],
+  both:[],onlyN:["Fuel: fluid level","Fuel planning: pilot"],onlyA:["Engine (general): unknown or not determined"]},
+ {d:"11 Sep",took:"7 mo",bac:"Aeroplane, 1 piston",more:"Ohio &middot; instructional flight &middot; 4 documents read &middot; $0.01",ac:"Aeroplane, one piston engine",grade:"full",word:"Same first code",
+  differ:"Both put the same event first. The agent missed one of the NTSB's two findings.",
+  agent:"The pilot did not keep directional control during the landing roll in a gusting crosswind, and the aeroplane left the side of the runway.",
+  ntsb:"The pilot's failure to maintain directional control during landing in gusting crosswind conditions, which resulted in a runway excursion.",
+  ac_codes:[["Loss of control on ground","full"],["Runway excursion","full"]],
+  nt_codes:[["Loss of control on ground","full"],["Runway excursion","full"]],
+  both:["Directional control: not attained or maintained"],onlyN:["Crosswind: effect on operation"],onlyA:[]}
+];
+const mark=g=>`<span class="mark ${g}"></span>`;
+const list=a=>a.length?`<ul>${a.map(x=>`<li>${x}</li>`).join('')}</ul>`:`<p class="none-txt">None</p>`;
+const codes=a=>`<ol class="codes">${a.map((c,i)=>`<li><span class="n">${i+1}</span>${mark(c[1])}<span>${c[0]}</span></li>`).join('')}</ol>`;
+function board(id,sel){
+  return `<div class="board-title"><span>CLOSED CASES</span><span>UPDATED 03:00 UTC</span></div>
+  <div class="brow head"><span>CLOSED</span><span class="x">TOOK</span><span>AIRCRAFT</span><span class="x">AGENT CODED</span><span class="x">NTSB CODED</span><span>RESULT</span></div>`+
+  cases.map((c,i)=>`<button class="brow" data-b="${id}" data-i="${i}" aria-pressed="${i===sel}"><span>${c.d}</span><span class="x">${c.took}</span><span>${c.bac}</span><span class="x">${c.ac_codes[0][0]}</span><span class="x">${c.nt_codes[0][0]}</span><span class="res ${c.grade}">${mark(c.grade)}${c.word}</span></button>`).join('');
+}
+function detail(c){
+  return `<div class="dhead"><span class="meta">Closed ${c.d} &middot; ${c.took} after the accident &middot; ${c.ac} &middot; ${c.more}</span><a href="#" onclick="return false">Open the agent's trail</a></div>
+  <div class="differ">${c.differ}</div>
+  <div class="two"><div><span class="cap">The agent's cause</span><p class="prose">${c.agent}</p></div><div><span class="cap">The NTSB's probable cause</span><p class="prose">${c.ntsb}</p></div></div>
+  <hr>
+  <div class="two"><div><span class="cap">What happened, agent's order</span>${codes(c.ac_codes)}</div><div><span class="cap">What happened, NTSB's order</span>${codes(c.nt_codes)}</div></div>
+  <div class="key"><span>${mark('full')}same code, same place</span><span>${mark('half')}same code, other place</span><span>${mark('none')}not in the other list</span></div>
+  <hr>
+  <div class="f3"><div><span class="cap">Findings both named</span>${list(c.both)}</div><div><span class="cap">Only the NTSB</span>${list(c.onlyN)}</div><div><span class="cap">Only the agent</span>${list(c.onlyA)}</div></div>`;
+}
+const sel={a:0};
+function draw(id){
+  document.querySelector(`[data-board="${id}"]`).innerHTML=board(id,sel[id]);
+  document.querySelector(`[data-detail="${id}"]`).innerHTML=detail(cases[sel[id]]);
+}
+document.addEventListener('click',e=>{const b=e.target.closest('button.brow');if(!b)return;sel[b.dataset.b]=+b.dataset.i;draw(b.dataset.b);});
+draw('a');
+</script>

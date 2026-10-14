@@ -1,7 +1,7 @@
 # S3 — The agent loop: design
 
 *Drafted 2026-09-30 from a design session with Andy (2026-09-29 to 2026-09-30), after S2.7
-closed and the S3 learning probe merged (pull request #18). Status: Approved (2026-09-30, Andy: "Spec looks good").
+closed and the S3 learning probe merged (pull request #18). Status: Implemented (2026-10-09, pull request #29: S3.1, S3.2 and S3.3 closed).
 This is the specification for build stage S3 of
 `docs/specs/2026-09-12-architecture-and-roadmap.md` (§S3). S3 is split into three sub-stages
 (§3). This document holds the design all three share, and S3.1 in full. S3.2 and S3.3 each get

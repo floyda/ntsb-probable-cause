@@ -23,6 +23,7 @@ from pathlib import Path
 from ntsb_probable_cause.scoring.metrics import wilson
 from ntsb_probable_cause.scoring.records import CaseResult, read_jsonl
 from ntsb_probable_cause.settings import Settings
+from scripts._live_fence import refuse_live
 
 PREDICTED_LOW, PREDICTED_HIGH = 0.30, 0.36
 MAX_DROP_POINTS = 5.0
@@ -48,6 +49,7 @@ def prediction_lines(dev_top1: float, sealed_top1: float, misread_moved: bool | 
 def _scored(run_id: str) -> list[CaseResult]:
     if "heldout" in run_id:
         raise SystemExit(f"sealed_report: {run_id} is a held-out run; development runs only")
+    refuse_live("sealed_report", Settings().runs_dir / run_id)
     return [
         c
         for c in read_jsonl(Settings().runs_dir / run_id / "cases.jsonl", CaseResult)

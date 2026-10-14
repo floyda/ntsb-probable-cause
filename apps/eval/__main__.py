@@ -16,8 +16,8 @@ from ntsb_probable_cause.agent import armb
 from ntsb_probable_cause.agent import loop as agent_loop
 from ntsb_probable_cause.agent import run as agent_run
 from ntsb_probable_cause.agent.run import AgentRunner
-from ntsb_probable_cause.agent.texts import is_plain as is_plain_agent_prompt
 from ntsb_probable_cause.agent.trail import AgentCall
+from ntsb_probable_cause.agent.version import is_plain as is_plain_agent_prompt
 from ntsb_probable_cause.docket.client import DocketClient
 from ntsb_probable_cause.docket.documents import CachedDocuments
 from ntsb_probable_cause.docket.render import RESOLUTION
@@ -76,6 +76,10 @@ from ntsb_probable_cause.settings import Settings
 # it from here, so it is named explicitly to satisfy mypy's strict re-export check.
 __all__ = ["main", "month_spent"]
 
+# The sample name a live run records (``live/local.py`` owns it; the library does not import
+# ``live``, so the string is repeated here and held equal by tests/test_live_fence.py).
+LIVE_SAMPLE = "live"
+
 ClientFactory = Callable[[Settings], tuple[ModelClient, BatchRunner | None]]
 
 
@@ -95,6 +99,31 @@ def _default_jev_factory(settings: Settings) -> TypeSafeClient:
     return TypeSafeClient(settings.require_typesafe_key(), base_url=settings.typesafe_base_url)
 
 
+def _refuse_live(record: RunRecord) -> None:
+    """Refuse a live run: the evaluation commands never read the open split (decision 0024).
+
+    Every command that reads a run's record goes through :func:`answering_run_record`, so the
+    refusal sits there once. Live results are scored by the live report alone (S3.3 spec 9).
+
+    Raises:
+        ConfigurationError: the record's sample is ``live``.
+    """
+    if record.sample == LIVE_SAMPLE:
+        raise ConfigurationError(
+            f"{record.run_id} is a live run on the open split: the evaluation commands do not "
+            "read it (decision 0024); the live report scores it (S3.3 spec section 9)"
+        )
+
+
+def _refuse_live_sample(sample: str) -> None:
+    """Refuse to resolve "the latest live run": it would only read as "no completed run"."""
+    if sample == LIVE_SAMPLE:
+        raise ConfigurationError(
+            "a live run cannot be resolved: the evaluation commands do not read the open split "
+            "(decision 0024)"
+        )
+
+
 def answering_run_record(folder: Path) -> RunRecord:
     """The answering run's own ``RunRecord`` -- always the first row in ``run.jsonl``.
 
@@ -103,8 +132,9 @@ def answering_run_record(folder: Path) -> RunRecord:
     already exists -- so the first row is always the answering run, whether or not the
     folder has since been judged.
     """
-    records = read_jsonl(folder / "run.jsonl", RunRecord)
-    return records[0]
+    record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+    _refuse_live(record)
+    return record
 
 
 def _recorded_spec(folder: Path) -> dict[str, object]:
@@ -138,9 +168,9 @@ def _plain_prompt(record: RunRecord) -> bool:
 
     Arms A, B and the ceiling: no guidance (a guided run, S2.7, is not the plain arm). Arm C
     always reads S3's guidance (spec §20), so its plain prompt is that guidance and no tuning
-    round (``+r``). The text fingerprint (``+p``, Andy 2026-10-01) is not compared, as arms A
-    and B's prompt versions are not: a run made before a kept round changed the agent's text is
-    still the plain arm of its day (``texts.is_plain``).
+    round (``+r``). The text fingerprint (``+p`` or ``+t``, Andy 2026-10-01) is not compared,
+    as arms A and B's prompt versions are not: a run made before a kept round changed the
+    agent's text is still the plain arm of its day (``version.is_plain``).
     """
     if record.arm != "C":
         return not record.guidance
@@ -194,12 +224,14 @@ def resolve_latest(
     ``+tools-`` (the tool post-pass, ``<source>+tools-s3``) is a derived run, not a new
     answering run.
     """
+    _refuse_live_sample(sample)
     candidates: list[tuple[str, str]] = []
     for folder in sorted(runs_dir.glob(f"*-{sample}-{arm}")):
         if not folder.is_dir() or not (folder / "run.jsonl").exists():
             continue
-        record = answering_run_record(folder)
-        if record.run_id != folder.name or _derived(record):
+        record = read_jsonl(folder / "run.jsonl", RunRecord)[0]
+        # A live record is skipped whatever its folder is called (decision 0024).
+        if record.sample == LIVE_SAMPLE or record.run_id != folder.name or _derived(record):
             continue
         if record.finished is None:
             continue
@@ -685,8 +717,8 @@ def _cached_share(folder: Path) -> str:
 def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
     run_id = _resolve_run_id(settings.runs_dir, args.run_id, args.latest)
     folder = settings.runs_dir / run_id
+    run_record = answering_run_record(folder)  # first: it refuses a live run (decision 0024)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
-    run_record = answering_run_record(folder)
     floor, floor_note = _floor_for_report(settings, run_record.sample)
     text = report.provenance(run_record) + _ablation_line(folder)
     text += "\n" + report.summarise(cases, floor=floor) + floor_note
@@ -714,8 +746,8 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
         text += f"\n\nweighted headline (fatal-share top-1): {report.fmt_n(cell)}"
     if args.against or args.against_latest:
         other_id = args.against or resolve_latest(settings.runs_dir, *args.against_latest)
+        other_record = answering_run_record(settings.runs_dir / other_id)  # refuses a live run
         other_cases = read_jsonl(settings.runs_dir / other_id / "cases.jsonl", CaseResult)
-        other_record = answering_run_record(settings.runs_dir / other_id)
         report.refuse_cross_version(
             run_record, other_record, versions_compared=args.versions_compared
         )
@@ -756,13 +788,14 @@ def _cmd_report(args: argparse.Namespace, settings: Settings) -> None:
 
 def _cmd_threshold(args: argparse.Namespace, settings: Settings) -> None:
     folder = settings.runs_dir / args.run_id
+    run_record = answering_run_record(folder)  # first: it refuses a live run (decision 0024)
     cases = read_jsonl(folder / "cases.jsonl", CaseResult)
     # The same provenance header `report` writes. Without it the committed curve names
     # neither the run nor the sample it came from, so a reader cannot tell a development
     # curve from a held-out one, and rule 3's "every reported number comes from a script"
     # has nothing to point at (the close-out review found exactly this gap).
     curve = report.threshold_curve(cases)
-    lines = [report.provenance(answering_run_record(folder)), ""]
+    lines = [report.provenance(run_record), ""]
     lines.append("threshold\tmean score\tcases answered")
     lines += [f"{t:.2f}\t{v:+.3f}\t{report.answered_at(cases, t)}" for t, v in curve]
     chosen = report.choose_threshold(cases)

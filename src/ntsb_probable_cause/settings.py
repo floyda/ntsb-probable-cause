@@ -36,6 +36,8 @@ class Settings(BaseSettings):
         validation_alias="NTSB_HELDOUT_LEDGER_PATH",
     )
     docket_dir: Path = Path("data/docket")
+    # S3.3: the live shadow's own document cache, apart from the development one.
+    live_docket_dir: Path = Path("data/live-docket")
     # S2.6 (decision 0081): the per-page transcription cache; never committed.
     transcription_dir: Path = Path("data/transcriptions")
     # `str`, not `Path`: the recorder's sync step (Task 10) accepts an `s3://bucket/key`
@@ -93,6 +95,8 @@ class Settings(BaseSettings):
             object.__setattr__(self, "runs_dir", self.data_dir / "runs")
         if "docket_dir" not in self.model_fields_set:
             object.__setattr__(self, "docket_dir", self.data_dir / "docket")
+        if "live_docket_dir" not in self.model_fields_set:
+            object.__setattr__(self, "live_docket_dir", self.data_dir / "live-docket")
         if "transcription_dir" not in self.model_fields_set:
             object.__setattr__(self, "transcription_dir", self.data_dir / "transcriptions")
         if "store" not in self.model_fields_set:

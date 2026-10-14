@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from hypothesis import settings
 
+from ntsb_probable_cause.agent.rendered import rendered_sha256
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
 
@@ -98,3 +99,14 @@ def case_result() -> CaseResult:
         cost_usd=0.001,
         failure=None,
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _fill_the_rendered_text_hash_before_any_patch() -> None:
+    """Hash the model-facing text once, from unpatched module state, before any test runs.
+
+    ``rendered_sha256`` is cached for the process and reads live module globals; a test that
+    patches one of them and then reaches ``text_mark()`` first would freeze a wrong label for
+    the whole session, and the frozen-label test would fail by test order alone.
+    """
+    rendered_sha256()

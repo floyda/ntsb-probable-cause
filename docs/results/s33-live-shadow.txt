@@ -1,0 +1,66 @@
+S3.3 live shadow: counts only (decision 0024). Live and held-out numbers are never shown together (decision 0021); at this size the interval is wide.
+
+mornings
+runs: 4
+cases per run: 1, 9, 10, 40
+mornings recorded: 4
+queue at the start of each morning: 47, 46, 52, 42
+mornings per day: 2026-10-08: 2, 2026-10-09: 2
+days waited: p50 7, max 15
+minutes, first round to last: 786, 9, 8, 28
+
+money
+computed: $0.3082 in all, $0.0051 per case
+billed: sync runs report no billed figure, so the computed cost is the figure
+billed (1 of 4 runs reported): $0.0433 in all, $0.0433 per case
+2026-10: computed $0.3082, billed $0.0433 (1 of 4 runs reported)
+
+outcomes
+cases: 60
+first code right: 19
+right code in another position: 3
+different: 37
+abstained: 0
+coded, no verdict to grade: 0
+not coded: 1
+not coded, leak: 1
+95% interval for first code right (19 of 60 cases with a verdict, a not-coded case counting as not right): 21% to 44%
+
+checks
+preliminary narrative present: 0 of 60
+refusals before a run: 0
+cases returned to the queue: 0
+verdict codes missing from the tables, occurrence: 0 codes in 0 cases
+verdict codes missing from the tables, finding: 0 codes in 0 cases
+closures without a verdict: 0
+closures as N/A, coded in live runs: 0
+closures as N/A, all in the store: 0
+
+backfill
+backfill: 47 cases, SHA-256 bd23bae62863dd51d33bd5a6667cfbfe377efe870ce2c5244a7f7a5d00835909
+fixed on 2026-10-08
+
+closures per night (UTC), since 2026-09-23
+2026-09-23: 7
+2026-09-24: 0
+2026-09-25: 0
+2026-09-26: 0
+2026-09-27: 0
+2026-09-28: 0
+2026-09-29: 0
+2026-09-30: 0
+2026-10-01: 13
+2026-10-02: 27
+2026-10-03: 0
+2026-10-04: 0
+2026-10-05: 0
+2026-10-06: 0
+2026-10-07: 0
+2026-10-08: 0
+2026-10-09: 15
+
+closing rule inputs
+backfill drained: yes
+fresh closures coded: 13
+days since the backfill was fixed: 1
+closing rule: met (fresh closure)

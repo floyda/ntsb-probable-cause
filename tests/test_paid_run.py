@@ -144,3 +144,122 @@ def test_the_dirty_checkout_message_says_commit_never_discard() -> None:
     message = _lines()[_index("git status --porcelain") + 1]
     assert "commit (never discard) a ledger row" in message.lower()
     assert "Commit or discard" not in message
+
+
+_STUB_GIT = """#!/bin/bash
+echo "git $*" >> "$STUB_LOG"
+case "$1 $2" in
+  "rev-parse --verify") exit 0 ;;
+  "rev-list --count") echo "${STUB_UNPUSHED:-0}" ;;
+  "status --porcelain") printf '%s' "${STUB_STATUS:-}" ;;
+  "rev-parse --short") echo "abc1234" ;;
+  "diff --quiet") exit 0 ;;
+esac
+exit 0
+"""
+_STUB_UV = '#!/bin/bash\necho "uv $*" >> "$STUB_LOG"\n'
+_STUB_KEYSTORE = """#!/bin/bash
+echo "pass $*" >> "$STUB_LOG"
+case "$2" in
+  api/ntsb|custom/ntsb) echo ntsb-test-not-a-key ;;
+  *) echo sk-or-test-not-a-key ;;
+esac
+"""
+_STUB_MAKE = """#!/bin/bash
+echo "make $* UV_LOCKED=${UV_LOCKED:-unset}" >> "$STUB_LOG"
+echo "env NTSB_API_KEY=${NTSB_API_KEY:-unset}" >> "$STUB_LOG"
+"""
+_FAKE_KEY = "sk-or-test-not-a-key"
+_FAKE_NTSB_KEY = "ntsb-test-not-a-key"
+
+
+def _run(
+    tmp_path: Path, branch: str = "s3-3-live-shadow", target: str = "s33-dry-run", **extra: str
+) -> tuple[int, str, list[str]]:
+    """Run the script against stand-in commands; return exit code, output, and the call log."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    for name, body in (
+        ("git", _STUB_GIT),
+        ("uv", _STUB_UV),
+        ("pass", _STUB_KEYSTORE),
+        ("make", _STUB_MAKE),
+    ):
+        stub = bin_dir / name
+        stub.write_text(body)
+        stub.chmod(0o755)
+    (tmp_path / "checkout" / ".git").mkdir(parents=True, exist_ok=True)
+    log = tmp_path / "calls.log"
+    log.unlink(missing_ok=True)
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "NTSB_PAID_BRANCH": branch,
+        "NTSB_PAID_CHECKOUT": str(tmp_path / "checkout"),
+        "NTSB_DATA_DIR": str(tmp_path / "data"),
+        "STUB_LOG": str(log),
+        **extra,
+    }
+    done = subprocess.run(  # noqa: S603 -- fixed argv; every external command is a stand-in
+        ["/bin/bash", str(SCRIPT), target],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    calls = log.read_text().splitlines() if log.exists() else []
+    return done.returncode, done.stdout + done.stderr, calls
+
+
+def test_a_run_installs_locked_and_makes_with_uv_locked(tmp_path: Path) -> None:
+    code, output, calls = _run(tmp_path)
+    assert code == 0, output
+    assert "uv sync --quiet --locked" in calls
+    assert not any("--frozen" in call for call in calls)
+    assert "make s33-dry-run UV_LOCKED=1" in calls
+    assert calls.index("uv sync --quiet --locked") < calls.index("pass show api/openrouter")
+    assert calls.index("pass show api/openrouter") < calls.index("make s33-dry-run UV_LOCKED=1")
+    assert _FAKE_KEY not in output
+
+
+def test_main_is_refused_before_any_git_call(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, branch="main")
+    assert code == 1
+    assert not any(call.startswith("git") for call in calls)
+
+
+def test_a_dirty_checkout_is_refused_before_make(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, STUB_STATUS=" M x\n")
+    assert code == 1
+    assert not any(call.startswith("make") for call in calls)
+
+
+def test_unpushed_commits_are_refused_before_checkout(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, STUB_UNPUSHED="2")
+    assert code == 1
+    assert not any(call.startswith("git checkout") for call in calls)
+    assert not any(call.startswith("make") for call in calls)
+
+
+def test_an_s33_target_gets_the_ntsb_key_from_pass_and_it_is_never_printed(tmp_path: Path) -> None:
+    code, output, calls = _run(tmp_path)
+    assert code == 0, output
+    assert "pass show api/ntsb" in calls
+    assert "env NTSB_API_KEY=ntsb-test-not-a-key" in calls
+    assert calls.index("pass show api/ntsb") < calls.index("make s33-dry-run UV_LOCKED=1")
+    assert _FAKE_NTSB_KEY not in output
+    assert _FAKE_KEY not in output
+
+
+def test_the_ntsb_pass_entry_can_be_overridden(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, NTSB_PASS_NTSB="custom/ntsb")  # noqa: S106
+    assert code == 0
+    assert "pass show custom/ntsb" in calls
+    assert "env NTSB_API_KEY=ntsb-test-not-a-key" in calls
+
+
+def test_another_target_never_reads_the_ntsb_key(tmp_path: Path) -> None:
+    code, _, calls = _run(tmp_path, target="s32-heldout-a")
+    assert code == 0
+    assert "pass show api/ntsb" not in calls
+    assert "env NTSB_API_KEY=unset" in calls
