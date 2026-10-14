@@ -5,6 +5,7 @@
 // marks a step good or bad (§11): a lit step is darker, a dimmed one lighter, and that is all.
 import { LADDER, ladderLayout } from "../lib/ladder";
 import { claimHolds } from "../lib/claims";
+import { entryLink } from "../lib/methods";
 import { entry, pct, usd, withInterval } from "../lib/numbers";
 
 interface Props {
@@ -121,6 +122,17 @@ const summary =
             </>
         )}
     </figcaption>
+    {sentence && (
+        <p class="steps">
+            How each step was measured:{" "}
+            {LADDER.map((s, i) => (
+                <>
+                    {i > 0 && " · "}
+                    <a href={entryLink(s.rate)}>{s.label}</a>
+                </>
+            ))}
+        </p>
+    )}
     <!-- A table ignores the 1px width of .vh, so the wrapper is what is hidden. -->
     <div class="vh">
         <table>
@@ -195,6 +207,11 @@ const summary =
     }
     .label.title {
         fill: var(--ink);
+    }
+    .steps {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--ink-muted);
     }
     .sentence {
         margin: 0;

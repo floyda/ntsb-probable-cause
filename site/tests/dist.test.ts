@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { exampleCase } from "../src/lib/example-case";
 import { exportDir, loadExport } from "../src/lib/export";
 import { LADDER } from "../src/lib/ladder";
+import { anchorFor, shown } from "../src/lib/methods";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
@@ -317,5 +318,94 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
             const text = visibleText(body ?? "");
             for (const step of LADDER) expect(text).toContain(`${step.label}: ${step.plain}`);
         }
+    });
+});
+
+describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
+    const methods = (): string => readFileSync(join(DIST, "methods", "index.html"), "utf8");
+    const REPO_ROOT = join(process.cwd(), "..");
+    const { entries, lists, texts } = numbers();
+    const ids = (html: string): Set<string> =>
+        new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1] ?? ""));
+
+    // Every entry has exactly one row, and the row shows its value as the other pages do.
+    it.each(Object.keys(entries))("gives %s one row with its value", (key) => {
+        const anchor = anchorFor(key);
+        const rows = [
+            ...methods().matchAll(
+                new RegExp(`<li[^>]*\\sid="${anchor}"[^>]*>([\\s\\S]*?)</li>`, "g"),
+            ),
+        ];
+        expect(rows).toHaveLength(1);
+        const row = visibleText(rows[0]?.[1] ?? "");
+        expect(row).toContain(shown(key));
+        expect(row).toContain(entries[key]?.sample ?? "missing");
+    });
+
+    it("resolves every link into Methods, from every page", () => {
+        const targets = ids(methods());
+        const broken: string[] = [];
+        for (const page of htmlFiles()) {
+            const html = readFileSync(page, "utf8");
+            const own = page === join(DIST, "methods", "index.html");
+            for (const m of html.matchAll(/href="(\/methods\/)?#([^"]+)"/g)) {
+                if (m[1] === undefined && !own) continue; // another page's own anchor
+                if (!targets.has(m[2] ?? ""))
+                    broken.push(`${relative(DIST, page)} -> #${m[2] ?? ""}`);
+            }
+        }
+        expect(broken).toEqual([]);
+    });
+
+    it("links every Path question to Methods", () => {
+        const path = readFileSync(join(DIST, "path", "index.html"), "utf8");
+        expect([...path.matchAll(/>How this was measured</g)]).toHaveLength(8);
+    });
+
+    it("links only to files and commits that exist", () => {
+        const html = methods();
+        const known = new Set(
+            Object.values(entries).flatMap((e) => [e.recorded_in, e.run_commit ?? ""]),
+        );
+        known.add(texts["s32.registered_in"] ?? "");
+        const files = [
+            ...html.matchAll(
+                /href="https:\/\/github\.com\/floyda\/ntsb-probable-cause\/(blob|tree)\/([0-9a-f]{40}|main)\/([^"#]+)"/g,
+            ),
+        ];
+        expect(files.length).toBeGreaterThan(Object.keys(entries).length);
+        for (const [, kind, ref, path] of files) {
+            const target = join(REPO_ROOT, path ?? "");
+            expect(existsSync(target), path).toBe(true);
+            expect(statSync(target).isDirectory(), path).toBe(kind === "tree");
+            if (ref !== "main") expect(known.has(ref ?? ""), ref).toBe(true);
+        }
+        const commits = [
+            ...html.matchAll(
+                /href="https:\/\/github\.com\/floyda\/ntsb-probable-cause\/commit\/([^"]+)"/g,
+            ),
+        ];
+        expect(commits.length).toBeGreaterThan(Object.keys(entries).length);
+        for (const [, sha] of commits) expect(known.has(sha ?? ""), sha).toBe(true);
+    });
+
+    it("prints each prediction in the registration's words, with its outcome", () => {
+        const text = visibleText(methods());
+        for (const p of lists["s32.predictions"] ?? []) {
+            expect(text).toContain(
+                `${String(p["title"])} (${String(p["scope"])}): ${String(p["text"])}`,
+            );
+            expect(text).toContain(
+                `${p["outcome"] === "met" ? "Met." : "Not met."} ${String(p["result"])}`,
+            );
+        }
+    });
+
+    it("keeps evaluation numbers out of the board's section", () => {
+        const board = /<section[^>]*aria-labelledby="board"[^>]*>([\s\S]*?)<\/section>/.exec(
+            methods(),
+        );
+        expect(board).not.toBeNull();
+        expect(board?.[1]).not.toMatch(/\sid="n-/);
     });
 });

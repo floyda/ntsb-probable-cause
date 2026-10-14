@@ -1,5 +1,6 @@
 ---
 // One case: the agent's coding beside the NTSB's (spec §5), in plain type, from the export alone.
+import { methodsLink } from "../lib/methods";
 import type { CaseFile, Code, MarkedCode } from "../lib/board-case-types";
 import {
     caseReportUrl,
@@ -170,7 +171,8 @@ const commit = kase.withheld?.commit ?? null;
                     {" "}
                     <a href={commitUrl(commit)}>Code version {commit}</a>.
                 </>
-            )}
+            )}{" "}
+            <a href={methodsLink("withheld")}>How the verdict is withheld</a>.
         </p>
     )}
     {kase.trail !== null && (
@@ -183,7 +185,8 @@ const commit = kase.withheld?.commit ?? null;
         <p class="sources">
             Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}
             <a href={docket}>the case's evidence files</a>
-            <span class="term"> · the docket</span>
+            <span class="term"> · the docket</span> ·{" "}
+            <a href={methodsLink("grades")}>how this case was graded</a>
         </p>
     )}
 </article>

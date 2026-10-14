@@ -1,6 +1,7 @@
 ---
 // One question's stop on the Path page (spec §7.2): the question, its measured answer, the
 // decision taken from it, its figure where there is one, and its sources on GitHub.
+import { methodsLink } from "../lib/methods";
 import { repoUrl } from "../lib/words";
 
 interface Props {
@@ -13,9 +14,12 @@ interface Props {
     results?: string[];
     /** Repository paths of the scripts that wrote them. */
     scripts?: string[];
+    /** The Methods group or section holding this question's numbers (plan step 5 choice 1). */
+    methods: string;
 }
 
-const { id, n, question, decision, results = [], scripts = [] } = Astro.props;
+const { id, n, question, decision, results = [], scripts = [], methods } = Astro.props;
+const measured = methodsLink(methods);
 const name = (path: string): string => path.replace(/\/$/, "").split("/").at(-1) ?? path;
 const sources = [
     { kind: "Results", paths: results },
@@ -38,22 +42,21 @@ const sources = [
             <slot name="figure" />
         </div>
     )}
-    {sources.length > 0 && (
-        <p class="sources">
-            {sources.map((s, i) => (
-                <>
-                    {i > 0 && " · "}
-                    {s.kind}:{" "}
-                    {s.paths.map((path, j) => (
-                        <>
-                            {j > 0 && ", "}
-                            <a href={repoUrl(path)}>{name(path)}</a>
-                        </>
-                    ))}
-                </>
-            ))}
-        </p>
-    )}
+    <p class="sources">
+        {sources.map((s) => (
+            <>
+                {s.kind}:{" "}
+                {s.paths.map((path, j) => (
+                    <>
+                        {j > 0 && ", "}
+                        <a href={repoUrl(path)}>{name(path)}</a>
+                    </>
+                ))}
+                {" · "}
+            </>
+        ))}
+        <a href={measured}>How this was measured</a>
+    </p>
 </section>
 
 <style>

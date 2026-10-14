@@ -7,12 +7,17 @@ export interface Group {
     /** The anchor; a Path question's group uses that question's Path anchor. */
     id: string;
     title: string;
-    /** Key prefixes the group holds. */
+    /** Key prefixes the group holds, in the order its rows are shown. */
     prefixes: readonly string[];
 }
 
 export const GROUPS: readonly Group[] = [
-    { id: "ladder", title: "The ladder", prefixes: ["ladder."] },
+    {
+        id: "ladder",
+        title: "The ladder",
+        // The ladder's own order: no model, the case record only, the fixed pipeline, the loop.
+        prefixes: ["ladder.baseline.", "ladder.no_docket.", "ladder.fixed.", "ladder.loop."],
+    },
     { id: "docket", title: "3. Does reading the docket help?", prefixes: ["q3."] },
     {
         id: "scanned-pages",
@@ -24,7 +29,22 @@ export const GROUPS: readonly Group[] = [
     {
         id: "choosing",
         title: "7. Does choosing what to read beat reading everything?",
-        prefixes: ["q7."],
+        // The order question 7 tells it in, then its figure's counts, checkpoint by checkpoint.
+        prefixes: [
+            "q7.loop_vs_fixed",
+            "q7.no_docket_loss",
+            "q7.read_all",
+            "q7.loop_vs_answer",
+            "q7.noise_band",
+            "q7.path.cases",
+            "q7.path.no_belief_after",
+            "q7.path.before",
+            "q7.path.reading.",
+            "q7.path.after",
+            "q7.path.coding.",
+            "q7.path.answer",
+            "q7.",
+        ],
     },
     { id: "history", title: "History", prefixes: ["history."] },
     { id: "limits", title: "Limits", prefixes: ["limits."] },
@@ -37,15 +57,42 @@ export function groupOf(key: string): Group {
     return group;
 }
 
-/** The keys one group holds, in the numbers file's order. */
+/** The keys one group holds, in its prefixes' order, then the numbers file's. */
 export function keysOf(id: string): string[] {
-    return Object.keys(numbers().entries).filter((k) => groupOf(k).id === id);
+    const group = GROUPS.find((g) => g.id === id);
+    if (group === undefined) throw new Error(`methods: no group ${id}`);
+    const rank = (key: string): number => group.prefixes.findIndex((p) => key.startsWith(p));
+    return Object.keys(numbers().entries)
+        .filter((k) => groupOf(k).id === id)
+        .sort((a, b) => rank(a) - rank(b));
 }
 
-/** The link to a group on the Methods page; throws for a group that does not exist. */
+/** The Methods page's own sections and the questions with no group (methods.astro). */
+export const SECTIONS: readonly string[] = [
+    "reading",
+    "board",
+    "grades",
+    "questions",
+    "answer-key",
+    "case-record",
+    "newly-closed",
+    "predictions",
+    "withheld",
+    "glossary",
+];
+
+/** The link to a group or a section on the Methods page; throws for one that does not exist. */
 export function methodsLink(id: string): string {
-    if (!GROUPS.some((g) => g.id === id)) throw new Error(`methods: no group ${id}`);
+    if (!GROUPS.some((g) => g.id === id) && !SECTIONS.includes(id)) {
+        throw new Error(`methods: no group or section ${id}`);
+    }
     return `/methods/#${id}`;
+}
+
+/** The link to one entry's row on the Methods page (an unknown key fails, as `entry` does). */
+export function entryLink(key: string): string {
+    entry(key);
+    return `/methods/#${anchorFor(key)}`;
 }
 
 /** An entry's anchor: "ladder.loop.top1" -> "n-ladder-loop-top1". */

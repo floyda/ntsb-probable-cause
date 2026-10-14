@@ -14,6 +14,7 @@ import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { assertPathClaims } from "../lib/claims";
 import { countOf, pointsOn, usd, withInterval } from "../lib/numbers";
+import { entryLink } from "../lib/methods";
 import { repoUrl } from "../lib/words";
 
 const { index } = loadExport(exportDir());
@@ -49,6 +50,7 @@ const R = "docs/results/";
 
     <PathStop
         id="answer-key"
+        methods="answer-key"
         n={1}
         question="Is there an answer key nobody had to write?"
         decision="Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
@@ -64,6 +66,7 @@ const R = "docs/results/";
 
     <PathStop
         id="case-record"
+        methods="ladder"
         n={2}
         question="Is the case record enough?"
         decision="Give the agent the docket: the documents the investigators gathered."
@@ -81,6 +84,7 @@ const R = "docs/results/";
 
     <PathStop
         id="docket"
+        methods="docket"
         n={3}
         question="Does reading the docket help?"
         decision="Build every version on the docket, then ask whether choosing what to read beats reading it all (question 7)."
@@ -98,6 +102,7 @@ const R = "docs/results/";
 
     <PathStop
         id="scanned-pages"
+        methods="scanned-pages"
         n={4}
         question="Does reading words in scanned pages help?"
         decision="Paused: transcription is off by default. It is a candidate to return as a measured improvement."
@@ -122,6 +127,7 @@ const R = "docs/results/";
 
     <PathStop
         id="coding"
+        methods="coding"
         n={5}
         question="Are the misses about evidence or about coding?"
         decision="Coding guidance and an ordering check followed. Of five guidance rounds, three were dropped."
@@ -160,6 +166,7 @@ const R = "docs/results/";
 
     <PathStop
         id="consistency"
+        methods="consistency"
         n={6}
         question="How consistent is the answer key itself?"
         decision="Precedent alone cannot settle the first code, so the precedent tool waits for a measured second version, after the live board."
@@ -188,6 +195,7 @@ const R = "docs/results/";
 
     <PathStop
         id="choosing"
+        methods="choosing"
         n={7}
         question="Does choosing what to read beat reading everything?"
         decision="Not shown, so the loop is not warranted. Version 1 runs on the board unchanged, as the version being improved, and the fixed pipeline is the bar for the next."
@@ -227,13 +235,15 @@ const R = "docs/results/";
         <p class="band">
             How far the same agent moves when run again: two identical runs on development cases
             differed by {pointsOn("q7.noise_band")}. This was measured on development cases, so it
-            is not drawn on the ladder.
+            is not drawn on the ladder. Methods:{" "}
+            <a href={entryLink("q7.noise_band")}>the run-twice band</a>.
         </p>
         <BeliefPath slot="figure" />
     </PathStop>
 
     <PathStop
         id="newly-closed"
+        methods="board"
         n={8}
         question="Does it hold on newly closed cases?"
         decision="Code each newly closed case once, at closure, and show it beside the NTSB's codes as counts, never a percentage."

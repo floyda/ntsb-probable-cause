@@ -3,6 +3,7 @@ import Board from "../components/Board.astro";
 import OpenedCase from "../components/OpenedCase.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
+import { methodsLink } from "../lib/methods";
 import { caseCount, oneIn } from "../lib/numbers";
 
 const { index, cases } = loadExport(exportDir());
@@ -26,7 +27,8 @@ const newestCase = newest === undefined ? undefined : cases.get(newest.case_numb
             each new version is measured against that fixed method. This site is the record of how.
         </p>
         <p>
-            <a href="/path/">How the project decided what to build: the Path</a>
+            <a href="/path/">How the project decided what to build: the Path</a> ·{" "}
+            <a href={methodsLink("ladder")}>how these were measured</a>
         </p>
     </section>
     <Board index={index} />
