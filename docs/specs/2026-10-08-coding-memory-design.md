@@ -1,11 +1,22 @@
 # A coding memory learned from closed cases: design note
 
-Status: Draft, 2026-10-08; refreshed 2026-10-14. Nothing here is built. This note proposes a
-declared experiment on development cases. Andy chose on 2026-10-14 to run its pilot now, as a
-side track beside S4 (§11, question 1); the other open questions in §11 are answered before the
-decisions in §10 are written as records, and a plan follows. The memory reaches the agent only
-in a later version, beside the precedent tool of decision
+Status: Approved (Andy, 2026-10-14). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
+beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
+in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
+only in a later version, beside the precedent tool of decision
 [0140](../decisions/0140-the-precedent-tool-after-s4-as-a-measured-v2.md).
+
+**How it is built** (Andy, 2026-10-14). A narrow experiment, to the repository's standard, not a
+throwaway spike: the result decides something, so it must come from committed, typed, tested
+code (rules 3 and 9; exploratory scripts decide nothing,
+[0059](../decisions/0059-every-script-states-its-status.md)). The parts a later version would
+reuse (the memory file format, its checks and stamp, the gated Claude client) are a small
+package of their own, which `agent`, `model` and `live` may not import. The learner loop and the
+coding test are committed scripts that state their status. Nothing connects the memory to the
+agent, the run harness or the board until the pilot passes and Andy decides on a later version.
+If the pilot fails, the code stays as the record of how its result was produced, or a record
+removes it and names the commit that produced the result.
 
 **What changed since 2026-10-08.** S3 is complete: S3.3's live shadow closed on 2026-10-09
 (`docs/results/s33-live-shadow.txt`). S4 (predictions and resolution) is being built on its own
