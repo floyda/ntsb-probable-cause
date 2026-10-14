@@ -95,7 +95,7 @@ Where the abridged line above is not the file's exact wording, Task 1 matches th
 - `build(results_dir: Path) -> Numbers`; `main()` with `--check` (exit 1 and name the first differing key when `site/data/numbers.json` differs from `build`).
 - `ExtractError(entry key, file, pattern)`, raised when a pattern matches zero or several lines.
 
-- [ ] **Step 1: Write the failing tests** — `tests/test_site_numbers.py`:
+- [x] **Step 1: Write the failing tests** — `tests/test_site_numbers.py`:
 
 ```python
 """The site's numbers file (S5 spec §17.3): every number from a committed results file."""
@@ -157,11 +157,11 @@ def test_a_changed_number_is_read_as_changed(tmp_path: Path) -> None:
 
 Run: `uv run pytest tests/test_site_numbers.py --no-cov -q` — Expected: FAIL (module missing).
 
-- [ ] **Step 2: Write the script.** It has one extractor per entry in **The entries** table: a compiled pattern, a file name, and the fields the match fills. `_one(path, pattern, key)` returns the single match or raises `ExtractError`. A section-aware read (for `[the loop without the docket]`'s cost) finds the section header first and then the next `cases=` line. The script carries a `Status` paragraph (decision 0059) saying it reads committed results only and computes nothing. It prints nothing but the path written, or the first stale key under `--check`. It writes JSON with sorted keys and a trailing newline.
-- [ ] **Step 3: Generate and test** — `uv run python -m scripts.site_numbers && uv run pytest tests/test_site_numbers.py --no-cov -q` — Expected: 5 passed.
-- [ ] **Step 4: The make target** — `site-numbers: uv run python -m scripts.site_numbers`. (CI needs no new job: pytest's staleness test is the check.)
-- [ ] **Step 5:** `make check` — Expected: green (ruff, mypy strict, vulture and deptry over the new script).
-- [ ] **Step 6: Commit** — `S5 step 4 Task 1: the numbers script and file, from committed results only`.
+- [x] **Step 2: Write the script.** It has one extractor per entry in **The entries** table: a compiled pattern, a file name, and the fields the match fills. `_one(path, pattern, key)` returns the single match or raises `ExtractError`. A section-aware read (for `[the loop without the docket]`'s cost) finds the section header first and then the next `cases=` line. The script carries a `Status` paragraph (decision 0059) saying it reads committed results only and computes nothing. It prints nothing but the path written, or the first stale key under `--check`. It writes JSON with sorted keys and a trailing newline.
+- [x] **Step 3: Generate and test** — `uv run python -m scripts.site_numbers && uv run pytest tests/test_site_numbers.py --no-cov -q` — Expected: 5 passed.
+- [x] **Step 4: The make target** — `site-numbers: uv run python -m scripts.site_numbers`. (CI needs no new job: pytest's staleness test is the check.)
+- [x] **Step 5:** `make check` — Expected: green (ruff, mypy strict, vulture and deptry over the new script).
+- [x] **Step 6: Commit** — `S5 step 4 Task 1: the numbers script and file, from committed results only`.
 
 ---
 
@@ -267,4 +267,14 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
 
 ## Deviations
 
-*None yet.*
+- **Task 1 (2026-10-14): how the entries are read.**
+  - Counts are stored as counts, not as rates: `q5.first_right` is 88 with `n` 399, `q5.in_sequence` 140 of 399, and `q7.read_all` 245 of 375. The page prints "88 of 399", so nothing is rounded twice.
+  - `q4.pages.*` also holds `blank` (109), so the page-kind bar adds up to `total` (16,790).
+  - Some lines appear more than once in a file. These are read inside one section: a header line found exactly once, ending at a blank line, a `[name]` block, a heading or the next block's header line.
+    - `q3.docket_gain`: under `against …-heldout-400-ceiling:` in `s24-bars.txt`, which holds three paired top-1 lines.
+    - `q4.v2_gain`: under the evidence-version comparison.
+    - `q7.noise_band`: under the overall `paired difference` header, not its fatal and non-fatal blocks.
+    - `q4.pages.*`: under `## pages by kind`, not the photo-only section.
+  - `q7.no_docket_loss` is `no-docket - loop, top-1: -8.5 points [-13.0, -3.8], n=400`, which is without minus with.
+  - `run` is filled only where the file names exactly one run behind the figure. A paired figure, arm B's three-part cost and the pool counts carry `null`.
+- **Task 1: two tests beyond the plan's five.** A line matched twice fails. `first_difference`, behind `--check`, names the first stale key.
