@@ -245,10 +245,12 @@ all? Each step is small, and the stop rule is registered before step 4 runs.
 3. **Coding test, tables and counts, twice each**, on the steering slice. GPT-6 Luna batch.
 4. **Learn 2009 and 2010** (about 2,300 learning-part cases), then run the coding test with the
    memory after each period.
-5. **Read it by the registered stop rule.** Proposed: the pilot stops, and is reported as it
-   stands, unless the memory condition beats the counts condition by more than the counts runs'
-   difference on at least one of top-1, top-3 or finding recall@10, and is not worse beyond that
-   difference on any of them.
+5. **Read it by the registered stop rule** (Andy, 2026-10-14): the pilot passes only if the
+   memory condition beats the counts condition on finding recall@10 by more than the two counts
+   runs differ by, and is not worse beyond that difference on occurrence top-1 or top-3.
+   Otherwise it stops and is reported as it stands. Top-1 and top-3 are reported either way; a
+   gain there without a finding gain is "not passed", and any override is Andy's, made openly
+   in a record.
 6. **If it passes:** learn the remaining periods to 2019, drawing the full curve; run the coding
    test once on `dev-400`; then run the transfer check (§6).
 
@@ -315,35 +317,54 @@ development spend rows, so a new kind does not reach it.
   2026-06-15 and paused the same day. The learning transport is kept replaceable: the memory
   file, not the transport, is the product of this work.
 
-## 10. Decisions to record if approved
+## 10. Decisions
 
 They take numbers from the block S4 agreed on 2026-10-14, **numbers 200 to 209**, so that no record
 collides when the branches merge (S4's branch holds the records numbered 168 to 199, S5's 186
-to 189).
+to 189). Written 2026-10-14:
 
-1. **Verdict text as learning input.** A model may read pool cases' verdicts to write lessons
-   and in the coding test, on development cases only, under the reading table in §5.
-2. **The coding memory as guidance.** A memory snapshot enters an answering run only as a named,
-   fingerprinted guidance file that has passed the checks in §5.
-3. **The second transport.** The Claude API, paid from plan credits, for learning calls on
-   development cases only.
-4. **The steering slice and the rebuilt statistics.** Drawn once, by a stated seed, excluded
-   from learning and from the counts.
-5. **The coding test and its reading rule.** The three conditions, the noise floor and the
-   pilot's stop rule, registered before step 4.
+1. [0200](../decisions/0200-a-model-may-read-development-verdicts-to-learn-coding-lessons.md):
+   a model may read development verdicts to learn coding lessons, under the reading table in §5.
+2. [0201](../decisions/0201-the-coding-memory-reaches-a-run-only-as-registered-guidance.md): a
+   memory snapshot reaches a run only as registered, fingerprinted guidance, after the checks
+   in §5, capped at about 6,000 tokens.
+3. [0202](../decisions/0202-the-claude-api-for-learning-calls-paid-from-plan-credits.md): the
+   Claude API, paid from plan credits, for learning calls only; Sonnet 5.5 and Haiku 5.5.
+4. [0203](../decisions/0203-the-steering-slice-and-statistics-without-it.md): the steering slice
+   `pool-steer-400`, and the statistics rebuilt without it.
+5. [0204](../decisions/0204-the-coding-test-and-the-pilots-stop-rule.md): the coding test, the
+   agreement check and the pilot's stop rule.
 
 ## 11. Open questions for Andy
 
 1. **When.** *Answered 2026-10-14 (Andy): now*, as a side track beside S4, on its own branch,
    with its own spend line, the pilot only. Andy has claimed the plan's API credits.
-2. **The learner's model.** Sonnet 5.5 for proposing and revising, Haiku 5.5 for deciding which
-   lessons apply? Or Opus 5.5 for revising, where the reasoning is hardest, at twice Sonnet's
-   price?
-3. **The memory's size.** About 6,000 tokens to start, which is about the size of the code
-   tables the agent already reads. Larger holds more lessons and costs more on every agent call.
-4. **The stop rule.** Is §7 step 5 the right rule, or should the pilot have to show a gain on
-   finding recall specifically, since that is where the consistency results say the room is?
-5. **Periods.** One event year each (eleven periods, a finer curve, more calls), or two?
+2. **The learner's model.** *Answered 2026-10-14 (Andy):* Sonnet 5.5 proposes and revises;
+   Haiku 5.5 decides which lessons apply, once it agrees closely with Sonnet on the same 100
+   learning-part cases (the agreement check, registered with the stop rule). *Effort, agreed
+   the same day:* Sonnet at `high`, Haiku at `low`, with one retry at `medium` if Haiku misses
+   the agreement bar, then Sonnet; GPT-6 Luna stays at reasoning `medium` in the coding test, as
+   the agent runs. Opus 5.5 is not
+   used in the pilot; it is the first thing to try if the lessons come out poor. Why: the apply
+   step runs once per case and dominates the cost, while it asks the simplest question; the
+   agreement check catches a weak judge before its errors reach the support counts.
+3. **The memory's size.** *Answered 2026-10-14 (Andy): about 6,000 tokens*, roughly 60 lessons
+   (an estimate at about 100 tokens a lesson). The pilot reports how many lessons the cap pushed
+   out and their support, so a later change of cap rests on a measurement. The question as
+   asked: about 6,000 tokens to start, about twice the main code tables the
+   agent reads when it answers (the phase and event tables about 900 tokens, the category table
+   about 2,000; S1 specification §3.2 and §3.3). Larger holds more lessons and costs more on
+   every agent call.
+4. **The stop rule.** *Answered 2026-10-14 (Andy): a gain on finding recall@10 is required*
+   (§7 step 5). Why: findings are what the NTSB codes most consistently, so they are the most
+   learnable; they are the live board's headline
+   ([0029](../decisions/0029-live-headline-is-the-finding-score.md)); and one named measure is
+   harder to pass by luck than any one of three.
+5. **Periods.** *Answered 2026-10-14 (Andy): one event year each.* The pilot learns 2009, then
+   2010, giving three points on the curve (empty, after 2009, after 2010); a full pass has
+   eleven. Why: two points show a change, not a curve, and the extra cost is time, not money. If
+   the full pass is too slow, it may move to two-year periods, with the pilot's timings as the
+   reason.
 
 ## Glossary
 
