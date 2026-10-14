@@ -25,7 +25,7 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
    - **(Recommended)** Keep S2.6's figure as the answer (the Path is a history of decisions), and add one line and a second table: "after the guidance and the check, on S3's fixed pipeline: …".
    - Replace S2.6's figure with S3's. The page is then current, but it loses the measurement that justified the decision.
 3. **Question 6's sentence.** The rule that picks the sentence must be fixed before the script looks at the data. Otherwise the page could show the most dramatic group and call it typical.
-   - **(Recommended)** The largest group of cases that share an identical probable-cause sentence, in S3's statistics pool (development only). If two groups tie, the one whose sentence sorts first.
+   - The largest group of cases that share an identical probable-cause sentence, in S3's statistics pool (development only). If two groups tie, the one whose sentence sorts first.
    - The group with the most different first codes. It is more striking, but it is chosen for being striking.
 4. **Question 7's source.** Decision 0153 fixed the held-out diagnosis's six breakdowns before any was read, and "prints those six and no others". A new reading of S3.2's held-out trails needs its own decision record first.
    - **(Recommended)** Draw the figure from counts already committed in `docs/results/s32-heldout-diagnosis.txt`. Before reading: 43 of 394 cases right. At the answer: 94 of 394. From the first to the second, 60 fixed and 9 broken. Of those, the coding step fixed 20 and broke 7. This needs no new held-out reading. It shows "before reading" and "the answer" but not "after reading" as its own checkpoint.
@@ -55,6 +55,7 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 | `scripts/exploratory/s5_one_sentence.py`, `docs/results/s5-one-sentence-dev.txt` | question 6's sentence and its first codes (Task 3) |
 | `scripts/site_numbers.py`, `site/data/numbers.json` | new entries and lists; format `site-numbers/2` adds `texts` for question 6's sentence (Tasks 2–4) |
 | `site/src/components/ExampleCase.astro`, `FirstCodes.astro`, `BeliefPath.astro` | the three figures (Tasks 1, 3, 4) |
+| `docs/decisions/0186-…`, `scripts/exploratory/s5_belief_path.py`, `docs/results/s5-belief-path-heldout.txt` | question 7's reading (Task 4, choice 4 B) |
 | `site/src/pages/path.astro`, `site/src/lib/claims.ts`, `site/tests/dist.test.ts` | the stops, guards and checks (Task 5) |
 
 ---
@@ -111,7 +112,18 @@ Built to choice 4's answer. The first option is described here; the second adds 
 
 ## Deviations
 
-*None yet.*
+- **Andy's choices (2026-10-14):**
+  1. Question 1's case is `ANC09CA020`.
+  2. Question 5: keep S2.6's figure and add S3's rerun ("keep the history and add S3").
+  3. Question 6: **B**, the sentence whose cases received the most different first codes, "as it proves the point". Ties go to the group with more cases, then to the sentence that sorts first. The figure says plainly how it was chosen ("This is the sentence whose cases received the most different first codes. Across all repeated sentences, the first code matched in about one case in three."), so it is never passed off as typical.
+  4. Question 7: **B**, a new counts-only reading with three checkpoints, recorded first as decision 0186. S4 reserved four numbers for S5, from 0186, so there is no clash at merge. Task 4 is rewritten below.
+- **Task 4, rewritten for choice 4 B:**
+  - Step 1: decision 0186 is committed before the script exists.
+  - Step 2: failing tests over invented trails, covering the checkpoints, the cases left out and the cross-check against the diagnosis's committed counts.
+  - Step 3: `scripts/exploratory/s5_belief_path.py` reuses `s32_heldout_diagnosis.py`'s `loop_cases`, `hypothesis_top1`, `answer_point` and `transition`. It reads through the same held-out path and refusals.
+  - Step 4: one run from a clean commit writes `docs/results/s5-belief-path-heldout.txt`, committed alone.
+  - Step 5: its entries go in the numbers file. The claims guard checks that before + fixed − broken = after for each move.
+  - Step 6: `BeliefPath.astro` draws three columns, before reading, after reading and the answer, with the moves between them.
 
 ## Glossary
 
