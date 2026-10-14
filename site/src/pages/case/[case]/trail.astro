@@ -1,0 +1,32 @@
+---
+// One case's trail page, for every case that has a trail (spec §6); none for a case not coded.
+import type { GetStaticPaths } from "astro";
+import Base from "../../../layouts/Base.astro";
+import Trail from "../../../components/Trail.astro";
+import type { CaseFile } from "../../../lib/board-case-types";
+import { exportDir, loadExport } from "../../../lib/export";
+
+export const getStaticPaths = (() => {
+    const { cases } = loadExport(exportDir());
+    return [...cases.values()]
+        .filter((kase) => kase.trail !== null)
+        .map((kase) => ({ params: { case: kase.case_number }, props: { kase } }));
+}) satisfies GetStaticPaths;
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+---
+
+<Base
+    title={`${kase.case_number} trail · Ellery`}
+    description="What Ellery believed, read and spent on one closed case, step by step."
+>
+    <p>
+        <a href={`/case/${kase.case_number}/`}>Back to the case</a>
+    </p>
+    <h1>{kase.case_number} · Ellery's trail</h1>
+    <Trail kase={kase} />
+</Base>

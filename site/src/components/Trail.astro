@@ -1,0 +1,240 @@
+---
+// One case's trail (spec §6): what Ellery believed, read and spent, step by step. Beliefs are
+// the spine; the read choices and coding lookups sit between them; the NTSB's verdict is last.
+import type { CaseFile } from "../lib/board-case-types";
+import {
+    closestLine,
+    confidenceLabel,
+    costLabel,
+    documentLine,
+    lookupName,
+    trailSteps,
+} from "../lib/trail";
+import { eventOf } from "../lib/words";
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+const steps = trailSteps(kase);
+const total = kase.trail === null ? null : costLabel(kase.trail.total_usd);
+const ntsbFirst = kase.verdict?.occurrence[0];
+const closest = closestLine(kase);
+
+/** A lookup's argument as text, or null when it has none of that name. */
+function arg(args: Record<string, unknown>, key: string): string | null {
+    const value = args[key];
+    if (typeof value === "string" && value.trim() !== "") return value;
+    if (Array.isArray(value) && value.length > 0) return value.map(String).join(", ");
+    return null;
+}
+
+const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
+---
+
+<div class="trail">
+    <p class="total">Total cost {total}</p>
+
+    <ol class="steps">
+        {steps.map((step) => (
+            <li class={`step step-${step.kind}`}>
+                {step.kind === "belief" && (
+                    <section>
+                        <header>
+                            <h2>{step.name}</h2>
+                            <span class="cost">{costLabel(step.belief.cost_usd)}</span>
+                        </header>
+                        <p class="first">
+                            First code: <strong>{eventOf(step.belief.first.label)}</strong>
+                            <span class="term"> · {step.belief.first.label}</span>
+                        </p>
+                        <p>{step.belief.cause}</p>
+                        <p class="meta">
+                            {confidenceLabel(step.belief.confidence)}
+                            {step.changed !== null && <> · {step.changed}</>}
+                        </p>
+                        <details>
+                            <summary>Ellery's account of the evidence at this point</summary>
+                            <p>{step.belief.account}</p>
+                        </details>
+                    </section>
+                )}
+                {step.kind === "read" && (
+                    <section>
+                        <header>
+                            <h2>{step.name}</h2>
+                            <span class="cost">{costLabel(step.choice.cost_usd)}</span>
+                        </header>
+                        <p>{step.choice.reason}</p>
+                        <div class="frame">
+                            <table>
+                                <caption class="vh">
+                                    Documents at the {step.name.toLowerCase()}
+                                </caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">
+                                            Document <span class="term">· the docket</span>
+                                        </th>
+                                        <th scope="col">Decision</th>
+                                        <th scope="col">Detail</th>
+                                        <th scope="col">The agent's note</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {step.choice.documents.map((doc) => {
+                                        const line = documentLine(doc);
+                                        return (
+                                            <tr>
+                                                <td>{doc.title}</td>
+                                                <td>{line.decision}</td>
+                                                <td>{line.detail ?? "—"}</td>
+                                                <td>{doc.note ?? "—"}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
+                {step.kind === "lookups" && (
+                    <section>
+                        <header>
+                            <h2>
+                                Coding lookups{" "}
+                                <span class="term">· the code tables and past usage</span>
+                            </h2>
+                            <span class="cost">{costLabel(step.cost_usd)}</span>
+                        </header>
+                        <ul class="lookups">
+                            {step.lookups.map((lookup) => {
+                                const codes = arg(lookup.arguments, "codes");
+                                const about = ABOUT_KEYS.map((k) =>
+                                    arg(lookup.arguments, k),
+                                ).filter((v): v is string => v !== null);
+                                const why = arg(lookup.arguments, "reason");
+                                const note = arg(lookup.arguments, "expected_effect");
+                                return (
+                                    <li>
+                                        <p class="lookup-name">
+                                            {lookupName(lookup.tool)}
+                                            {codes !== null && <> · codes {codes}</>}
+                                            {about.length > 0 && <> · about {about.join(", ")}</>}
+                                            <span class="cost">{costLabel(lookup.cost_usd)}</span>
+                                        </p>
+                                        {why !== null && <p>Why: {why}</p>}
+                                        {note !== null && <p>The agent's note: {note}</p>}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </section>
+                )}
+            </li>
+        ))}
+    </ol>
+
+    <section class="verdict" aria-labelledby="verdict-heading">
+        <h2 id="verdict-heading">The NTSB's verdict</h2>
+        {kase.verdict === null || ntsbFirst === undefined ? (
+            <p>The NTSB has not published its codes yet.</p>
+        ) : (
+            <>
+                <p class="first">
+                    First code: <strong>{eventOf(ntsbFirst.label)}</strong>
+                    <span class="term"> · {ntsbFirst.label}</span>
+                </p>
+                {kase.verdict.cause !== null && <p>{kase.verdict.cause}</p>}
+                {closest !== null && <p class="closest">{closest}</p>}
+            </>
+        )}
+    </section>
+</div>
+
+<style>
+    .trail {
+        display: grid;
+        gap: 1.25rem;
+    }
+    .total {
+        font-weight: 700;
+        margin: 0;
+    }
+    .steps {
+        margin: 0;
+        padding-left: 1.5rem;
+        display: grid;
+        gap: 1.25rem;
+    }
+    .step section,
+    .verdict {
+        display: grid;
+        gap: 0.4rem;
+        min-width: 0;
+    }
+    header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+    }
+    h2 {
+        font-size: 1.1rem;
+        margin: 0;
+        text-wrap: balance;
+    }
+    p {
+        margin: 0;
+    }
+    .cost {
+        font-variant-numeric: tabular-nums;
+        color: var(--ink-muted);
+        margin-left: auto;
+    }
+    .term,
+    .meta {
+        color: var(--ink-muted);
+        font-size: 0.92em;
+        font-weight: 400;
+    }
+    .frame {
+        overflow-x: auto;
+    }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+    }
+    th,
+    td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.35rem 0.5rem;
+        border-bottom: 1px solid var(--rule);
+    }
+    th {
+        color: var(--ink-muted);
+        font-weight: 700;
+    }
+    .lookups {
+        margin: 0;
+        padding-left: 1.2rem;
+        display: grid;
+        gap: 0.6rem;
+    }
+    .lookup-name {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+    details summary {
+        cursor: pointer;
+        color: var(--ink-muted);
+    }
+    details p {
+        margin-top: 0.4rem;
+    }
+</style>

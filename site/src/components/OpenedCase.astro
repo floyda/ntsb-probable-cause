@@ -173,6 +173,12 @@ const commit = kase.withheld?.commit ?? null;
             )}
         </p>
     )}
+    {kase.trail !== null && (
+        <p class="trail-link">
+            How Ellery reached this: <a href={`/case/${kase.case_number}/trail/`}>its trail</a>,
+            what it believed, read and spent.
+        </p>
+    )}
     {docket !== null && report !== null && (
         <p class="sources">
             Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}

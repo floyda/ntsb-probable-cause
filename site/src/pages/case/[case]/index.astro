@@ -1,10 +1,10 @@
 ---
 // One case's own page, at its NTSB case number (spec §12 item 12).
 import type { GetStaticPaths } from "astro";
-import OpenedCase from "../../components/OpenedCase.astro";
-import Base from "../../layouts/Base.astro";
-import type { CaseFile } from "../../lib/board-case-types";
-import { exportDir, loadExport } from "../../lib/export";
+import OpenedCase from "../../../components/OpenedCase.astro";
+import Base from "../../../layouts/Base.astro";
+import type { CaseFile } from "../../../lib/board-case-types";
+import { exportDir, loadExport } from "../../../lib/export";
 
 export const getStaticPaths = (() => {
     const { cases } = loadExport(exportDir());
