@@ -4,6 +4,7 @@
 // come next. Every figure is read from the numbers file by key; none is typed here.
 import ClosuresStrip from "../components/ClosuresStrip.astro";
 import ExampleCase from "../components/ExampleCase.astro";
+import FirstCodes from "../components/FirstCodes.astro";
 import MissPairs from "../components/MissPairs.astro";
 import Ladder from "../components/Ladder.astro";
 import PageKinds from "../components/PageKinds.astro";
@@ -159,10 +160,15 @@ const R = "docs/results/";
         n={6}
         question="How consistent is the answer key itself?"
         decision="Precedent alone cannot settle the first code, so the precedent tool waits for a measured second version, after the live board."
-        results={[`${R}s3-coding-consistency-dev.txt`, `${R}s3-finding-consistency-dev.txt`]}
+        results={[
+            `${R}s3-coding-consistency-dev.txt`,
+            `${R}s3-finding-consistency-dev.txt`,
+            `${R}s5-one-sentence-dev.txt`,
+        ]}
         scripts={[
             "scripts/exploratory/s3_coding_consistency.py",
             "scripts/exploratory/s3_finding_consistency.py",
+            "scripts/exploratory/s5_one_sentence.py",
         ]}
     >
         <p>
@@ -174,6 +180,7 @@ const R = "docs/results/";
             whose sequences of events differ. It bounds what any coder reading only the sentence
             could score.
         </p>
+        <FirstCodes slot="figure" />
     </PathStop>
 
     <PathStop

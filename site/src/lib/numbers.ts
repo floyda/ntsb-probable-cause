@@ -23,9 +23,11 @@ export interface Entry {
 }
 
 export interface Numbers {
-    format: "site-numbers/1";
+    format: "site-numbers/2";
     entries: Record<string, Entry>;
     lists: Record<string, Record<string, string | number>[]>;
+    /** A figure's words read from a results file (format 2): question 6's one sentence. */
+    texts: Record<string, string>;
 }
 
 // As in export.ts: Astro and Vitest run from site/, and the build bundles this module elsewhere.
@@ -57,18 +59,17 @@ function checkEntry(key: string, raw: unknown): Entry {
 /** Checks a parsed numbers file; throws NumbersError on another format or a malformed entry. */
 export function parseNumbers(raw: unknown): Numbers {
     const file = raw as Record<string, unknown> | null;
-    if (file === null || typeof file !== "object" || file["format"] !== "site-numbers/1") {
-        throw new NumbersError("numbers.json: not a site-numbers/1 file");
+    if (file === null || typeof file !== "object" || file["format"] !== "site-numbers/2") {
+        throw new NumbersError("numbers.json: not a site-numbers/2 file");
     }
-    const entries = file["entries"];
-    const lists = file["lists"];
-    if (
-        entries === null ||
-        typeof entries !== "object" ||
-        lists === null ||
-        typeof lists !== "object"
-    ) {
-        throw new NumbersError("numbers.json: entries or lists missing");
+    const parts = [file["entries"], file["lists"], file["texts"]];
+    if (parts.some((p) => p === null || typeof p !== "object")) {
+        throw new NumbersError("numbers.json: entries, lists or texts missing");
+    }
+    const entries = parts[0] as Record<string, unknown>;
+    for (const [key, value] of Object.entries(parts[2] as Record<string, unknown>)) {
+        if (typeof value !== "string")
+            throw new NumbersError(`numbers.json: text ${key} is malformed`);
     }
     for (const [key, value] of Object.entries(entries)) checkEntry(key, value);
     return file as unknown as Numbers;
@@ -86,6 +87,13 @@ export function numbers(): Numbers {
 export function entry(key: string): Entry {
     const found = numbers().entries[key];
     if (found === undefined) throw new NumbersError(`numbers.json has no entry ${key}`);
+    return found;
+}
+
+/** One text by key (question 6's sentence); an unknown key throws. */
+export function text(key: string): string {
+    const found = numbers().texts[key];
+    if (found === undefined) throw new NumbersError(`numbers.json has no text ${key}`);
     return found;
 }
 

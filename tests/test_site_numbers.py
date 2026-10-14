@@ -115,3 +115,27 @@ def test_question_5_holds_s26_and_s3_side_by_side() -> None:
         "ntsb": "Aerodynamic stall/spin",
         "agent": "Loss of control in flight",
     }
+
+
+def test_question_6_carries_its_sentence_and_codes_from_the_results_file() -> None:
+    numbers = site_numbers.build(_RESULTS)
+    sentence = numbers.texts["q6.one.sentence"]
+    assert sentence == "A loss of engine power for undetermined reasons."
+    assert numbers.entries["q6.one.distinct"].value == 18
+    assert numbers.entries["q6.one.cases"].value == 33
+    codes = numbers.lists["q6.one.codes"]
+    assert len(codes) == 18
+    assert sum(int(c["count"]) for c in codes) == 33
+    assert codes[0] == {
+        "count": 4,
+        "code": "350342",
+        "label": "Initial Climb / Loss of engine power (partial)",
+    }
+
+
+def test_question_6s_counts_must_add_up(tmp_path: Path) -> None:
+    _copy_results(tmp_path)
+    target = tmp_path / "s5-one-sentence-dev.txt"
+    target.write_text(target.read_text().replace("cases: 33", "cases: 34"))
+    with pytest.raises(site_numbers.ExtractError, match=r"q6\.one\.codes"):
+        site_numbers.build(tmp_path)

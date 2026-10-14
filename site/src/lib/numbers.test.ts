@@ -65,16 +65,23 @@ describe("question 2's claim, no better than guessing (plan Review Focus 5)", ()
 
 describe("the file's shape", () => {
     it("refuses another format or a malformed entry", () => {
-        expect(() => parseNumbers({ format: "site-numbers/2", entries: {}, lists: {} })).toThrow(
-            NumbersError,
-        );
+        expect(() =>
+            parseNumbers({ format: "site-numbers/1", entries: {}, lists: {}, texts: {} }),
+        ).toThrow(NumbersError);
         expect(() =>
             parseNumbers({
-                format: "site-numbers/1",
+                format: "site-numbers/2",
                 entries: { a: { value: "1" } },
                 lists: {},
+                texts: {},
             }),
         ).toThrow(/a/);
+        expect(() => parseNumbers({ format: "site-numbers/2", entries: {}, lists: {} })).toThrow(
+            /texts/,
+        );
+        expect(() =>
+            parseNumbers({ format: "site-numbers/2", entries: {}, lists: {}, texts: { t: 1 } }),
+        ).toThrow(/text t/);
     });
 });
 

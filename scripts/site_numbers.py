@@ -84,13 +84,18 @@ class Entry(BaseModel):
 
 
 class Numbers(BaseModel):
-    """The numbers file: entries by key, and short lists (the commonest miss pairs)."""
+    """The numbers file: entries by key, short lists, and texts (question 6's one sentence).
+
+    Format 2 added ``texts`` (S5 step 4b): a figure's words read from a results file, never
+    typed into a page.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    format: Literal["site-numbers/1"] = "site-numbers/1"
+    format: Literal["site-numbers/2"] = "site-numbers/2"
     entries: dict[str, Entry]
     lists: dict[str, list[dict[str, str | int]]]
+    texts: dict[str, str]
 
 
 class ExtractError(Exception):
@@ -186,6 +191,7 @@ _DIAG = _Source("s32-heldout-diagnosis.txt")
 _PAGES = _Source("s26-page-kinds.txt", r"^## pages by kind$")
 _MISS_FILE = _Source("s26-occurrence-misses-dev.txt")
 _MISS_S3_FILE = _Source("s5-occurrence-misses-s3-dev.txt")
+_ONE_FILE = _Source("s5-one-sentence-dev.txt")
 
 _RUN_LINE = r"^run (?P<run>\S+) \[complete\]$"
 
@@ -344,6 +350,26 @@ _SPECS: tuple[_Spec, ...] = (
         "identical NTSB cause sentences that share the first code",
     ),
     _Spec(
+        "q6.one.distinct",
+        _ONE_FILE,
+        rf"^different first codes: {_V}$",
+        "count",
+        "development pool",
+        "none",
+        "scripts/exploratory/s5_one_sentence.py",
+        "the chosen sentence's cases: how many different first codes they received",
+    ),
+    _Spec(
+        "q6.one.cases",
+        _ONE_FILE,
+        rf"^cases: {_V}$",
+        "count",
+        "development pool",
+        "none",
+        "scripts/exploratory/s5_one_sentence.py",
+        "the chosen sentence: how many cases it was written for",
+    ),
+    _Spec(
         "q7.loop_vs_fixed",
         _DIAG,
         rf"^top-1, loop - arm B check: {_PTS_CI}$",
@@ -413,14 +439,37 @@ def _pairs(results_dir: Path, key: str, file: _Source) -> list[dict[str, str | i
     ]
 
 
+_ONE_CODE = r"^- (?P<count>\d+)  (?P<code>\d{6})  (?P<label>.+)$"
+
+
+def _one_sentence_codes(results_dir: Path) -> list[dict[str, str | int]]:
+    key = "q6.one.codes"
+    source = _Source(_ONE_FILE.file, r"^first codes, most common first ")
+    rows = [m for line in _lines(results_dir, source, key) if (m := re.search(_ONE_CODE, line))]
+    if not rows:
+        raise ExtractError(key, source.file, _ONE_CODE, 0)
+    return [
+        {"count": int(m.group("count")), "code": m.group("code"), "label": m.group("label")}
+        for m in rows
+    ]
+
+
 def build(results_dir: Path) -> Numbers:
     """Read every entry from the results files under ``results_dir``."""
     entries = {spec.key: _entry(results_dir, spec) for spec in _SPECS}
     lists = {
         "q5.pairs": _pairs(results_dir, "q5.pairs", _MISS_FILE),
         "q5.s3.pairs": _pairs(results_dir, "q5.s3.pairs", _MISS_S3_FILE),
+        "q6.one.codes": _one_sentence_codes(results_dir),
     }
-    return Numbers(entries=entries, lists=lists)
+    sentence = _one(results_dir, _ONE_FILE, r"^sentence: (?P<text>.+)$", "q6.one.sentence")
+    texts = {"q6.one.sentence": sentence.group("text")}
+    codes = lists["q6.one.codes"]
+    if entries["q6.one.distinct"].value != len(codes) or entries["q6.one.cases"].value != sum(
+        int(row["count"]) for row in codes
+    ):
+        raise ExtractError("q6.one.codes", _ONE_FILE.file, "the counts add up", 0)
+    return Numbers(entries=entries, lists=lists, texts=texts)
 
 
 def render(numbers: Numbers) -> str:

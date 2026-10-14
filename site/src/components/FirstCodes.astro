@@ -1,0 +1,109 @@
+---
+// Question 6's figure (spec §7.4): one cause sentence the NTSB used word for word on many cases,
+// and the different first codes those cases received. The sentence is the one whose cases
+// received the most different first codes (Andy, 2026-10-14), and the figure says so, so it is
+// never read as typical. Everything comes from the numbers file.
+import { count, list, oneIn, text } from "../lib/numbers";
+
+const codes = list("q6.one.codes");
+const most = Math.max(...codes.map((c) => Number(c["count"])));
+---
+
+<figure class="first-codes" aria-labelledby="first-codes-caption">
+    <blockquote>{text("q6.one.sentence")}</blockquote>
+    <figcaption id="first-codes-caption">
+        This is the sentence whose cases received the most different first codes:{" "}
+        {count("q6.one.distinct")} different first codes across its {count("q6.one.cases")} cases.
+        Across all repeated sentences, the first code matched in about {oneIn("q6.twins")}.
+    </figcaption>
+    <div class="frame" tabindex="0" role="region" aria-labelledby="first-codes-table">
+        <table>
+            <caption id="first-codes-table" class="vh">
+                The first codes the NTSB gave the cases with this sentence, most common first
+            </caption>
+            <thead>
+                <tr>
+                    <th scope="col">Cases</th>
+                    <th scope="col">
+                        First code <span class="term">· phase / event</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {codes.map((c) => (
+                    <tr>
+                        <td class="n">
+                            <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+                                <rect
+                                    x="0"
+                                    y="0"
+                                    width={(Number(c["count"]) / most) * 100}
+                                    height="10"
+                                />
+                            </svg>
+                            {c["count"]}
+                        </td>
+                        <td>{c["label"]}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    </div>
+</figure>
+
+<style>
+    .first-codes {
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+    }
+    blockquote {
+        margin: 0;
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--rule);
+        font-weight: 700;
+    }
+    figcaption {
+        color: var(--ink-muted);
+    }
+    .frame {
+        overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    table {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+        width: 100%;
+    }
+    th,
+    td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.25rem 0.6rem 0.25rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    th {
+        color: var(--ink-muted);
+    }
+    .n {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        width: 6rem;
+    }
+    .n svg {
+        display: inline-block;
+        width: 3.5rem;
+        height: 0.7rem;
+        margin-right: 0.4rem;
+        vertical-align: baseline;
+    }
+    rect {
+        fill: var(--bar);
+    }
+    .term {
+        font-weight: 400;
+    }
+</style>

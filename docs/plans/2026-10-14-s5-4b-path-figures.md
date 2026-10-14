@@ -82,10 +82,10 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 
 - [x] **Step 1:** The rule from choice 3 is written into the script's docstring and printed at the top of its output, in a commit before the script first runs.
 - [x] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output; held-out rows are refused.
-- [ ] **Step 3: The script.** `scripts/exploratory/s5_one_sentence.py` reuses `s3_coding_consistency.py`'s exact-twin grouping over S3's statistics pool. It writes the sentence, the group's size and each first code with its label and count, most common first. Counts only, with no case number.
-- [ ] **Step 4:** Run it (free, offline) to write `docs/results/s5-one-sentence-dev.txt`. Add `q6.sentence` (a text), `q6.group` (a count) and list `q6.codes` to the numbers file.
-- [ ] **Step 5: `FirstCodes.astro`.** The sentence in quotation marks, then one bar per first code, sized by count, with the counts in a table. The page repeats the results file's own caution.
-- [ ] **Step 6:** `make check`; commit `S5 step 4b Task 3: question 6's sentence and its first codes`.
+- [x] **Step 3: The script.** `scripts/exploratory/s5_one_sentence.py` reuses `s3_coding_consistency.py`'s exact-twin grouping over S3's statistics pool. It writes the sentence, the group's size and each first code with its label and count, most common first. Counts only, with no case number.
+- [x] **Step 4:** Run it (free, offline) to write `docs/results/s5-one-sentence-dev.txt`. Add `q6.sentence` (a text), `q6.group` (a count) and list `q6.codes` to the numbers file.
+- [x] **Step 5: `FirstCodes.astro`.** The sentence in quotation marks, then one bar per first code, sized by count, with the counts in a table. The page repeats the results file's own caution.
+- [x] **Step 6:** `make check`; commit `S5 step 4b Task 3: question 6's sentence and its first codes`.
 
 ## Task 4: Question 7's figure
 
@@ -142,3 +142,9 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - On S3's fixed pipeline, the first guess was the NTSB's first code in 110 of 399 cases (S2.6: 88) and in its sequence in 148 of 399 (S2.6: 140). The commonest misses now run both ways between stall/spin and loss of control (14 and 11).
   - The review's tie rule (keep every pair tied with the fifth) shows nine rows for S3, because five pairs have 6 cases each. Both tables are drawn by one component, `MissPairs.astro`.
   - The page adds one line of counts and no claim about them.
+- **Task 3 (2026-10-14):**
+  - The rule and its tests were committed (`37f3459`) before the one run.
+  - The rule chose "A loss of engine power for undetermined reasons.": 33 cases with 18 different first codes, out of 374 exact-twin groups. The codes differ mostly by phase of flight and by total against partial power, which the sentence does not state. The page's caution ("the same sentence can follow accidents whose sequences of events differ") covers this, and it is raised for Andy's preview.
+  - The numbers file moves to format `site-numbers/2`, adding `texts` for the sentence.
+  - `q6.one.distinct` (18) and `q6.one.cases` (33) are two plain counts. A count with an `n` reads as "18 of 33", which would be wrong here.
+  - The build refuses the file unless the codes' counts add up to the cases and their number equals the distinct count.

@@ -221,6 +221,32 @@
       "unit": "count",
       "value": 148.0
     },
+    "q6.one.cases": {
+      "high": null,
+      "label": "the chosen sentence: how many cases it was written for",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "results_file": "docs/results/s5-one-sentence-dev.txt",
+      "run": null,
+      "sample": "development pool",
+      "script": "scripts/exploratory/s5_one_sentence.py",
+      "unit": "count",
+      "value": 33.0
+    },
+    "q6.one.distinct": {
+      "high": null,
+      "label": "the chosen sentence's cases: how many different first codes they received",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "results_file": "docs/results/s5-one-sentence-dev.txt",
+      "run": null,
+      "sample": "development pool",
+      "script": "scripts/exploratory/s5_one_sentence.py",
+      "unit": "count",
+      "value": 18.0
+    },
     "q6.twins": {
       "high": 39.9,
       "label": "identical NTSB cause sentences that share the first code",
@@ -300,7 +326,7 @@
       "value": 245.0
     }
   },
-  "format": "site-numbers/1",
+  "format": "site-numbers/2",
   "lists": {
     "q5.pairs": [
       {
@@ -380,6 +406,101 @@
         "count": 6,
         "ntsb": "Loss of engine power (partial)"
       }
+    ],
+    "q6.one.codes": [
+      {
+        "code": "350342",
+        "count": 4,
+        "label": "Initial Climb / Loss of engine power (partial)"
+      },
+      {
+        "code": "402341",
+        "count": 4,
+        "label": "Enroute-Cruise / Loss of engine power (total)"
+      },
+      {
+        "code": "350341",
+        "count": 3,
+        "label": "Initial Climb / Loss of engine power (total)"
+      },
+      {
+        "code": "402342",
+        "count": 3,
+        "label": "Enroute-Cruise / Loss of engine power (partial)"
+      },
+      {
+        "code": "506341",
+        "count": 3,
+        "label": "Approach-VFR Pattern Downwind / Loss of engine power (total)"
+      },
+      {
+        "code": "300341",
+        "count": 2,
+        "label": "Takeoff / Loss of engine power (total)"
+      },
+      {
+        "code": "400341",
+        "count": 2,
+        "label": "Enroute / Loss of engine power (total)"
+      },
+      {
+        "code": "600470",
+        "count": 2,
+        "label": "Emergency Descent / Collision with terr/obj (non-CFIT)"
+      },
+      {
+        "code": "300342",
+        "count": 1,
+        "label": "Takeoff / Loss of engine power (partial)"
+      },
+      {
+        "code": "450342",
+        "count": 1,
+        "label": "Maneuvering / Loss of engine power (partial)"
+      },
+      {
+        "code": "500341",
+        "count": 1,
+        "label": "Approach / Loss of engine power (total)"
+      },
+      {
+        "code": "505341",
+        "count": 1,
+        "label": "Approach-VFR Pattern Crosswind / Loss of engine power (total)"
+      },
+      {
+        "code": "507341",
+        "count": 1,
+        "label": "Approach-VFR Pattern Base / Loss of engine power (total)"
+      },
+      {
+        "code": "507342",
+        "count": 1,
+        "label": "Approach-VFR Pattern Base / Loss of engine power (partial)"
+      },
+      {
+        "code": "509341",
+        "count": 1,
+        "label": "Approach-VFR Go-Around / Loss of engine power (total)"
+      },
+      {
+        "code": "551095",
+        "count": 1,
+        "label": "Landing-Flare/Touchdown / Landing gear not configured"
+      },
+      {
+        "code": "600341",
+        "count": 1,
+        "label": "Emergency Descent / Loss of engine power (total)"
+      },
+      {
+        "code": "990120",
+        "count": 1,
+        "label": "Unknown / Control flight into terr/obj"
+      }
     ]
+  },
+  "texts": {
+    "q6.one.sentence": "A loss of engine power for undetermined reasons."
   }
 }

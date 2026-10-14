@@ -267,6 +267,15 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
         for (const n of found) expect(allowed.has(n), n).toBe(true);
     });
 
+    it("shows question 6's sentence and every first code it received", () => {
+        const text = visibleText(html());
+        expect(text).toContain(numbers().texts["q6.one.sentence"] ?? "missing");
+        for (const row of numbers().lists["q6.one.codes"] ?? []) {
+            expect(text).toContain(String(row["label"]));
+        }
+        expect(text).toContain("the most different first codes");
+    });
+
     it("gives the ladder's data table all four steps", () => {
         const tables = [
             ...html().matchAll(/<caption[^>]*>The ladder's figures<\/caption>([\s\S]*?)<\/table>/g),
