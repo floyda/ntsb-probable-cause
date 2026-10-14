@@ -78,3 +78,40 @@ test.describe("with scripts on: choosing a row (review, 2026-10-13)", () => {
         expect(marker).toBe(1);
     });
 });
+
+// The ladder's labels are wrapped from an estimate of their width (lib/ladder.ts); this checks the
+// rendered text, in the real font, in whichever drawing the screen shows (plan Task 3, Task 5).
+test("the ladder's rendered labels stay inside the drawing and never overlap", async ({ page }) => {
+    await page.goto("/path/");
+    await page.evaluate(() => document.fonts.ready);
+    const faults = await page.evaluate(() => {
+        const found: string[] = [];
+        let checked = 0;
+        for (const svg of document.querySelectorAll<SVGSVGElement>("svg.drawing")) {
+            if (svg.getBoundingClientRect().width === 0) continue; // the drawing not shown
+            checked++;
+            const width = svg.viewBox.baseVal.width;
+            const boxes = [...svg.querySelectorAll<SVGTextElement>("text")].map((t) => ({
+                text: t.textContent,
+                box: t.getBBox(),
+            }));
+            for (const { text, box } of boxes) {
+                if (box.x < 0 || box.x + box.width > width) found.push(`outside: ${text}`);
+            }
+            for (const [i, a] of boxes.entries()) {
+                for (const b of boxes.slice(i + 1)) {
+                    const apart =
+                        a.box.x + a.box.width <= b.box.x ||
+                        b.box.x + b.box.width <= a.box.x ||
+                        a.box.y + a.box.height <= b.box.y ||
+                        b.box.y + b.box.height <= a.box.y;
+                    if (!apart) found.push(`overlap: ${a.text} | ${b.text}`);
+                }
+            }
+        }
+        // Three ladders on the page (top, question 2, question 3), one drawing shown of each.
+        if (checked !== 3) found.push(`checked ${String(checked)} drawings, not 3`);
+        return found;
+    });
+    expect(faults).toEqual([]);
+});

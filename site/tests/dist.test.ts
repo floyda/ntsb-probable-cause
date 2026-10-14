@@ -3,6 +3,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exportDir, loadExport } from "../src/lib/export";
+import { LADDER } from "../src/lib/ladder";
+import { count, countOf, numbers, points, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
 
@@ -196,6 +198,68 @@ describe.skipIf(!built)("scrolling frames (review, 2026-10-14)", () => {
             expect(frame).toMatch(/tabindex="0"/);
             expect(frame).toMatch(/role="region"/);
             expect(frame).toMatch(/aria-label(?:ledby)?="[^"]+"/);
+        }
+    });
+});
+
+describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
+    const html = (): string => readFileSync(join(DIST, "path", "index.html"), "utf8");
+    const REPO_ROOT = join(process.cwd(), "..");
+
+    it.each([
+        "answer-key",
+        "case-record",
+        "docket",
+        "scanned-pages",
+        "coding",
+        "consistency",
+        "choosing",
+        "newly-closed",
+    ])("holds the question anchor #%s", (id) => {
+        expect(html()).toContain(`id="${id}"`);
+    });
+
+    // Every entry in the numbers file is on the page, formatted as numbers.ts formats it, so a
+    // figure cannot be dropped or retyped without this failing (spec §17.3).
+    const { entries } = numbers();
+    it.each(Object.keys(entries))("shows %s as the numbers file has it", (key) => {
+        const e = entries[key];
+        if (e === undefined) throw new Error(key);
+        const shown =
+            e.unit === "percent"
+                ? withInterval(key)
+                : e.unit === "points"
+                  ? points(key)
+                  : e.unit === "usd"
+                    ? usd(key)
+                    : e.n === null
+                      ? count(key)
+                      : countOf(key);
+        expect(visibleText(html())).toContain(shown);
+    });
+
+    it("links only to repository paths that exist", () => {
+        const links = [
+            ...html().matchAll(
+                /href="https:\/\/github\.com\/floyda\/ntsb-probable-cause\/(blob|tree)\/main\/([^"#]+)"/g,
+            ),
+        ];
+        expect(links.length).toBeGreaterThan(10);
+        for (const [, kind, path] of links) {
+            const target = join(REPO_ROOT, path ?? "");
+            expect(existsSync(target), path).toBe(true);
+            expect(statSync(target).isDirectory(), path).toBe(kind === "tree");
+        }
+    });
+
+    it("gives the ladder's data table all four steps", () => {
+        const tables = [
+            ...html().matchAll(/<caption[^>]*>The ladder's figures<\/caption>([\s\S]*?)<\/table>/g),
+        ];
+        expect(tables.length).toBeGreaterThan(0);
+        for (const [, body] of tables) {
+            const text = visibleText(body ?? "");
+            for (const step of LADDER) expect(text).toContain(`${step.label}: ${step.plain}`);
         }
     });
 });

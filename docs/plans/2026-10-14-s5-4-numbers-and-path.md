@@ -242,13 +242,13 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
 
 **Files:** Modify `site/tests/dist.test.ts`.
 
-- [ ] **Step 1:**
+- [x] **Step 1:**
   - `/path/` holds every question's anchor;
   - every number entry the page uses appears in its text, formatted as `numbers.ts` formats it;
   - every GitHub link on the page points to a path that exists in the repository;
   - the ladder's data table holds all four steps.
-- [ ] **Step 2: Prove they can fail:** remove an anchor, alter a value in a built page, and point a link at a missing file. Then restore with a clean build.
-- [ ] **Step 3:** `make check`; commit — `S5 step 4 Task 5: checks over the Path page`.
+- [x] **Step 2: Prove they can fail:** remove an anchor, alter a value in a built page, and point a link at a missing file. Then restore with a clean build.
+- [x] **Step 3:** `make check`; commit — `S5 step 4 Task 5: checks over the Path page`.
 
 ---
 
@@ -298,3 +298,13 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
     - Q7: the no-docket figure is worded as "the same loop without it was −8.5 points … on the first code", because "lost −8.5" reads as a double negative.
     - Q1, Q6 and Q8 have decisions written for the page. §7.2 gives answers, not decisions. They are for Andy's preview.
   - **Sources:** Q1 links `s1-bars.txt` and the eval harness, the first scoring against the NTSB's codes. Q8 has no results file, since its figure is the export.
+- **Task 5 (2026-10-14): wider than planned.**
+  - "Every number entry the page uses" became every entry in the numbers file: each must appear on `/path/` in its unit's format. A figure added to the file but never shown fails too.
+  - A GitHub link must name a folder as a tree and a file as a blob.
+  - A browser check in `a11y.spec.ts` (all three projects) measures the ladder's rendered labels with `getBBox`. It confirms they stay inside the shown drawing and never overlap, and that three drawings were checked.
+  - **Proved able to fail** on a built page:
+    - a removed anchor (`#coding`);
+    - an altered value (−9.6 for −9.5);
+    - a link to a missing script;
+    - every title moved outside its drawing.
+  - Each failed. A clean build passes again.
