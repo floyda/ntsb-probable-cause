@@ -138,20 +138,22 @@ const R = "docs/results/";
             the NTSB's first code in only {countOf("q5.first_right")}.
         </p>
         <p>
-            After the guidance and the check, on S3's fixed pipeline, the first guess was the NTSB's
-            first code in {countOf("q5.s3.first_right")} cases, and somewhere in its sequence in{" "}
-            {countOf("q5.s3.in_sequence")}.
+            Later, on S3's fixed pipeline, the first guess was the NTSB's first code in{" "}
+            {countOf("q5.s3.first_right")} cases, and somewhere in its sequence in{" "}
+            {countOf("q5.s3.in_sequence")}. That pipeline added coding guidance, the coding tools
+            and the ordering check, and read the documents' text only, where S2.6's run also read
+            words from page images; so the change is not the guidance alone.
         </p>
         <div slot="figure" class="tables">
             <MissPairs
                 listKey="q5.pairs"
                 id="pairs-s26"
-                caption="The commonest misses, S2.6: the NTSB's first event and the fixed pipeline's"
+                caption="S2.6's fixed pipeline (text and words from page images): the commonest misses, the NTSB's first event and the pipeline's"
             />
             <MissPairs
                 listKey="q5.s3.pairs"
                 id="pairs-s3"
-                caption="After the guidance and the check, S3: the commonest misses"
+                caption="S3's fixed pipeline (guidance, coding tools, ordering check; text only): the commonest misses"
             />
         </div>
     </PathStop>

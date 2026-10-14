@@ -13,7 +13,7 @@ const other = c.findings.filter((f) => !f.in_cause);
 <figure class="example" aria-labelledby="example-caption">
     <figcaption id="example-caption">
         One closed case as the NTSB published it:{" "}
-        {report === null ? c.case_number : <a href={report}>{c.case_number}</a>},{" "}
+        {report === null ? c.case_number : <a href={report}>{c.case_number}</a>}, an accident on{" "}
         {closedLong(c.event_date)}. {injuryWords(c)}.
     </figcaption>
     <section>

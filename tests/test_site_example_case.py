@@ -58,6 +58,10 @@ def test_the_names_check_flags_a_capitalised_word_inside_a_sentence() -> None:
     assert sec.unexpected_capitals("The NTSB found the pilot's error.") == []
     assert sec.unexpected_capitals("The pilot, Smith, lost control.") == ["Smith"]
     assert sec.unexpected_capitals("The pilot\u2019s error. Contributing was Jones.") == ["Jones"]
+    # Review, 2026-10-14: an accented capital, a name opening a sentence, and a title.
+    assert sec.unexpected_capitals("The pilot, Ólafsson, lost control.") == ["Ólafsson"]
+    assert sec.unexpected_capitals("Smith's failure to maintain control.") == ["Smith's"]
+    assert "Mr" in sec.unexpected_capitals("The pilot, Mr. Smith, lost control.")
 
 
 def test_the_chosen_cause_passes_the_names_check() -> None:

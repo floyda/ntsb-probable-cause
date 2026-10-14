@@ -20,8 +20,8 @@ const moves: Record<string, { key: string; name: string }> = {
 
 <figure class="belief-path" aria-labelledby="belief-path-caption">
     <figcaption id="belief-path-caption">
-        How often the loop's first code was the NTSB's, at three points, on the{" "}
-        {count("q7.path.cases")} held-out cases it answered.
+        How often the loop's first code scored right against the NTSB's, at three points, on the{" "}
+        {count("q7.path.cases")} held-out cases it answered (an abstained answer counts as wrong).
     </figcaption>
     <ol class="points" aria-hidden="true">
         {checkpoints.map((c) => {

@@ -28,15 +28,19 @@ Refusals, in this order, before any held-out run is opened
     1. The ids, as ``s32_claims`` refuses them.
     2. ``docs/decisions/0186-...`` is not committed.
     3. ``docs/rounds/s3-registration.md`` (the S3.2 registration) is not committed.
-    4. The tree has an uncommitted change outside ``docs/results/``.
+    4. Its result, ``docs/results/s5-belief-path-heldout.txt``, is committed: 0186 allows one
+       reading, made on 2026-10-14 (added after that reading; review, 2026-10-14).
+    5. The tree has an uncommitted change outside ``docs/results/``.
+    The cross-check reads the diagnosis as committed at ``HEAD``, never the working tree.
 
 Usage
     uv run python -m scripts.exploratory.s5_belief_path --loop RUN --nodocket RUN --arm-a RUN \\
-        --armb-answer RUN --armb-tools RUN --armb-check RUN [--diagnosis PATH] [--out PATH]
+        --armb-answer RUN --armb-tools RUN --armb-check RUN [--out PATH]
 """
 
 import argparse
 import re
+import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +61,7 @@ DECISION: Final = Path(
     "docs/decisions/0186-a-counts-only-reading-of-s32s-held-out-trail-for-the-path-page.md"
 )
 DIAGNOSIS: Final = Path("docs/results/s32-heldout-diagnosis.txt")
+RESULT: Final = Path("docs/results/s5-belief-path-heldout.txt")
 _AFTER_READING: Final = frozenset({"h1", "h2"})
 _H0_LINE: Final = re.compile(r"^- H0 right (\d+) of (\d+) \(.*\); answer right (\d+) of (\d+) \(")
 _CODING_LINE: Final = re.compile(
@@ -195,18 +200,38 @@ def report(found: Path3, loop_run: str) -> str:
     return "\n".join(lines)
 
 
+def committed_diagnosis() -> str:
+    """The diagnosis as committed at ``HEAD``: an edit in the working tree is never read."""
+    shown = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", "show", f"HEAD:{DIAGNOSIS.as_posix()}"],  # noqa: S607 -- git from PATH
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return shown.stdout
+
+
 def main(
-    argv: Sequence[str] | None = None, *, is_committed: Callable[[Path], bool] | None = None
+    argv: Sequence[str] | None = None,
+    *,
+    is_committed: Callable[[Path], bool] | None = None,
+    diagnosis: Callable[[], str] = committed_diagnosis,
 ) -> int:
-    """Print, and with ``--out`` also write, 0186's counts."""
+    """Print, and with ``--out`` also write, 0186's counts.
+
+    Args:
+        argv: the command line.
+        is_committed: whether a path is committed; ``gitinfo.is_committed`` unless a test
+            passes its own.
+        diagnosis: the committed diagnosis's text; a test passes its own.
+    """
     parser = argparse.ArgumentParser(prog=PROG)
     for flag in ("loop", "nodocket", "arm-a", "armb-answer", "armb-tools", "armb-check"):
         parser.add_argument(f"--{flag}", required=True)
-    parser.add_argument("--diagnosis", type=Path, default=DIAGNOSIS)
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
     committed = is_committed or gitinfo.is_committed
-    dg.refuse_ids(argparse.Namespace(**{k: v for k, v in vars(args).items() if k != "diagnosis"}))
+    dg.refuse_ids(args)
     if not committed(DECISION):
         refuse(PROG, f"{DECISION} is not committed: this reading runs only once it is")
     if not committed(checkpass.S32_REGISTRATION):
@@ -215,13 +240,15 @@ def main(
             f"{checkpass.S32_REGISTRATION} is not committed: the held-out runs are read only "
             "after the registration is on record (decision 0142)",
         )
+    if committed(RESULT):
+        refuse(PROG, f"{RESULT} is committed: decision 0186 allows one reading, and it is made")
     dg.refuse_dirty_tree()
-    held = load_heldout(argparse.Namespace(**{k: v for k, v in vars(args).items() if k != "diagnosis"}))
+    held = load_heldout(args)
     try:
         found = belief_path(held.loop.calls, held.loop.cases, load_tables())
     except ValueError as error:
         refuse(PROG, str(error))
-    check(found, args.diagnosis.read_text())
+    check(found, diagnosis())
     text = report(found, held.loop.record.run_id)
     print(text)
     if args.out is not None:

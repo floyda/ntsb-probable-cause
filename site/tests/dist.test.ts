@@ -267,6 +267,36 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
         for (const n of found) expect(allowed.has(n), n).toBe(true);
     });
 
+    it("labels question 7's counts where they are drawn, so a swapped count fails", () => {
+        // Review, 2026-10-14: a bare small count can appear anywhere on the page, so each of the
+        // figure's counts is checked inside its own labelled phrase.
+        const text = visibleText(html());
+        const c = (key: string): string => count(`q7.path.${key}`);
+        const cases = c("cases");
+        for (const [name, key] of [
+            ["Before reading", "before"],
+            ["After reading", "after"],
+            ["The answer", "answer"],
+        ] as const) {
+            expect(text).toContain(`${name}: ${c(key)} of ${cases} right`);
+        }
+        expect(text).toContain(
+            `Reading the documents it chose: fixed ${c("reading.fixed")}, broke ${c("reading.broken")}`,
+        );
+        expect(text).toContain(
+            `The coding step: fixed ${c("coding.fixed")}, broke ${c("coding.broken")}`,
+        );
+        for (const move of ["reading", "coding"]) {
+            const row = ["stayed_right", "fixed", "broken", "stayed_wrong"]
+                .map((k) => c(`${move}.${k}`))
+                .join(" ");
+            expect(text).toContain(row);
+        }
+        expect(text).toContain(
+            `${count("q6.one.distinct")} different first codes across its ${count("q6.one.cases")} cases`,
+        );
+    });
+
     it("shows question 6's sentence and every first code it received", () => {
         const text = visibleText(html());
         expect(text).toContain(numbers().texts["q6.one.sentence"] ?? "missing");

@@ -51,7 +51,11 @@ _CHOSEN = "ANC09CA020"
 
 # Capitalised words a probable cause may hold mid-sentence without naming anyone.
 _ALLOWED = frozenset({"NTSB", "FAA", "VFR", "IFR", "VMC", "IMC"})
-_WORD = re.compile("[A-Za-z][A-Za-z'\u2019-]*")  # straight or curly apostrophe
+# Any letter, accented capitals included, then letters, digits, apostrophes or hyphens.
+_WORD = re.compile("[^\\W\\d_][\\w'\u2019-]*")
+# A title before a name, which would also end a "sentence" at its full stop.
+_TITLES = frozenset({"Mr", "Mrs", "Ms", "Miss", "Dr", "Capt", "Sgt"})
+_POSSESSIVE = re.compile("['\u2019]s$")
 
 
 class Code(BaseModel):
@@ -85,11 +89,18 @@ class ExampleCase(BaseModel):
 
 
 def unexpected_capitals(text: str) -> list[str]:
-    """Capitalised words that start no sentence and are not allowed: where a name could be."""
+    """Words where a name could be, so a probable cause holding one is refused.
+
+    A capitalised word mid-sentence that is not on the allow list; a title such as "Mr"; and a
+    sentence's first word in the possessive ("Smith's failure"; review, 2026-10-14).
+    """
     found: list[str] = []
     for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
         words = _WORD.findall(sentence)
+        if words and _POSSESSIVE.search(words[0]):
+            found.append(words[0])
         found += [w for w in words[1:] if w[0].isupper() and w not in _ALLOWED]
+        found += [w for w in words[:1] if w in _TITLES]
     return found
 
 

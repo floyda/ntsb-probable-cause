@@ -81,7 +81,7 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 ## Task 3: Question 6's sentence
 
 - [x] **Step 1:** The rule from choice 3 is written into the script's docstring and printed at the top of its output, in a commit before the script first runs.
-- [x] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output; held-out rows are refused.
+- [x] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output. (Held-out rows are refused by the pool reader itself, tested in `tests/test_s3_coding_consistency.py`, not here; corrected after the review.)
 - [x] **Step 3: The script.** `scripts/exploratory/s5_one_sentence.py` reuses `s3_coding_consistency.py`'s exact-twin grouping over S3's statistics pool. It writes the sentence, the group's size and each first code with its label and count, most common first. Counts only, with no case number.
 - [x] **Step 4:** Run it (free, offline) to write `docs/results/s5-one-sentence-dev.txt`. Add `q6.sentence` (a text), `q6.group` (a count) and list `q6.codes` to the numbers file.
 - [x] **Step 5: `FirstCodes.astro`.** The sentence in quotation marks, then one bar per first code, sized by count, with the counts in a table. The page repeats the results file's own caution.
@@ -106,7 +106,7 @@ Built to choice 4's answer. The first option is described here; the second adds 
 
 - [x] **Step 1:** Andy reads question 1's cause and question 6's sentence for names before anything is pushed.
 - [x] **Step 2:** Phone and desktop screenshots, light and dark, with the choices for his eye.
-- [ ] **Step 3:** Record his answers; run the final review and its fix pass; push.
+- [x] **Step 3:** Record his answers; run the final review and its fix pass; push.
 
 ---
 
@@ -161,3 +161,14 @@ Built to choice 4's answer. The first option is described here; the second adds 
   2. Question 5 keeps both tables, S3's nine rows included; it may be shortened later (A).
   3. Question 6 shows "the top 50%": the commonest first codes until they cover at least half the sentence's cases, keeping any code tied with the last one shown. That is 5 codes, covering 17 of 33 cases. The other 13 codes, covering 16 cases, sit behind a disclosure, "And 13 more codes, across the other 16 cases", so nothing is removed from the page. The rule is `lib/first-codes.ts`, tested, and both tables are `FirstCodesTable.astro` on one scale.
   4. Question 7 keeps its figure and adds one line (A): "This shows the loop improving as it works. It does not compare the loop with the fixed pipeline: against that, the loop was −9.5 points [−14.0, −5.2] on 400 cases, as above." "Improving" is the guarded claim `q7.path_improves` (before < after < the answer), tested to fail.
+- **Final review (2026-10-14, one fresh reviewer), and its fix pass.** No critical finding.
+  - **Important, fixed:**
+    - Question 5's S3 line credited the change to "the guidance and the check". S3's fixed pipeline also adds the coding tools, and it read text only, where S2.6's run (evidence v2) also read words from page images. The line and both table captions now say so, and that the change is "not the guidance alone".
+    - The "every entry is on the page" test checks a substring, so small bare counts (8, 20, 33, …) passed even with question 7's figure removed. A new dist test checks each of question 7's counts inside its labelled phrase, and question 6's two counts likewise. Swapping fixed and broken in a built page was shown to fail it.
+  - **Minor, fixed:**
+    - Question 7's caption reads "scored right against the NTSB's … (an abstained answer counts as wrong)". One answer kept the NTSB's first code but scored wrong, which is the coding step's 8 broken against the diagnosis's 7. The results file cannot be rerun and keeps its wording.
+    - `s5_belief_path.py` now refuses once its result is committed, since 0186 allows one reading. Its cross-check reads the diagnosis as committed at `HEAD`, through a parameter, not the `--diagnosis` flag. These were added after the one reading, which is not rerun.
+    - The names check reads accented capitals, flags a sentence's first word in the possessive ("Smith's") and flags titles ("Mr"). Both texts still pass, and Andy read them.
+    - Question 1's caption names the date as "an accident on 16 Feb 2009".
+    - Task 3 Step 2's claim about held-out rows is corrected above.
+  - **Logged, not changed:** the reviewer suggested pinning the diagnosis's 88 changed codes, its 1 score-only case and its H0 → answer 60/9 in the cross-check. The one reading has been made and the script now refuses to run again, so checks added now could never run; they are left out.

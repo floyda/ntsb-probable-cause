@@ -26,23 +26,25 @@ _DIAGNOSIS = (
 )
 
 
+def _before_the_reading(path: Path) -> bool:
+    """Everything committed but the reading's own result, as before its one run."""
+    return path != bp.RESULT
+
+
 def _read(
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     diagnosis: str = _DIAGNOSIS,
-    is_committed: Callable[[Path], bool] = _always,
+    is_committed: Callable[[Path], bool] = _before_the_reading,
 ) -> str:
-    path = tmp_path / "diagnosis.txt"
-    path.write_text(diagnosis)
-    assert bp.main([*_argv(), "--diagnosis", str(path)], is_committed=is_committed) == 0
+    assert bp.main(_argv(), is_committed=is_committed, diagnosis=lambda: diagnosis) == 0
     return capsys.readouterr().out
 
 
 def test_the_three_checkpoints_and_the_moves(
-    runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    runs: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     build(runs)
-    out = _read(tmp_path, capsys)
+    out = _read(capsys)
     assert "cases: the 19 the loop answered; left out, no belief before reading: 0" in out
     assert "(after reading is before reading): 4" in out
     assert "- before reading: 3\n- after reading: 4\n- the answer: 3" in out
@@ -52,12 +54,10 @@ def test_the_three_checkpoints_and_the_moves(
     assert "after reading -> the answer: stayed right 3, fixed 0, broken 1, stayed wrong 15" in out
 
 
-def test_it_prints_these_and_no_others(
-    runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_it_prints_these_and_no_others(runs: Path, capsys: pytest.CaptureFixture[str]) -> None:
     # 0186 item 4: the right counts and the two moves, and nothing else.
     build(runs)
-    out = _read(tmp_path, capsys)
+    out = _read(capsys)
     counted = [line for line in out.splitlines() if any(ch.isdigit() for ch in line)]
     allowed = (
         "S5 question 7",
@@ -78,10 +78,10 @@ def test_it_prints_these_and_no_others(
 
 
 def test_no_case_number_or_model_text_appears(
-    runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    runs: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     build(runs)
-    out = _read(tmp_path, capsys)
+    out = _read(capsys)
     assert TEXT not in out
     for case_id in _IDS:
         assert case_id not in out
@@ -94,24 +94,35 @@ def test_a_reading_that_disagrees_with_the_diagnosis_writes_nothing(
     build(runs)
     out = tmp_path / "result.txt"
     wrong = _DIAGNOSIS.replace("fixes 0, breaks 1", "fixes 0, breaks 2")
-    (tmp_path / "diagnosis.txt").write_text(wrong)
-    argv = [*_argv(), "--diagnosis", str(tmp_path / "diagnosis.txt"), "--out", str(out)]
     with pytest.raises(SystemExit, match="does not match"):
-        bp.main(argv, is_committed=_always)
+        bp.main(
+            [*_argv(), "--out", str(out)],
+            is_committed=_before_the_reading,
+            diagnosis=lambda: wrong,
+        )
     assert not out.exists()
 
 
 def test_an_uncommitted_decision_0186_is_refused_before_any_run_is_read(
-    runs: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    runs: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # No run folder exists: a refusal after reading would fail differently.
     with pytest.raises(SystemExit, match="0186"):
-        _read(tmp_path, capsys, is_committed=lambda path: path != bp.DECISION)
+        _read(capsys, is_committed=lambda path: path not in {bp.DECISION, bp.RESULT})
 
 
 def test_a_dirty_tree_is_refused_before_any_run_is_read(
-    runs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    runs: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(sr, "changed_files", lambda: ["scripts/exploratory/s5_belief_path.py"])
     with pytest.raises(SystemExit, match="uncommitted"):
-        _read(tmp_path, capsys)
+        _read(capsys)
+
+
+def test_a_second_reading_is_refused_once_the_result_is_committed(
+    runs: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Decision 0186 allows one reading. No run folder exists, so a refusal after reading would
+    # fail differently.
+    with pytest.raises(SystemExit, match="one reading"):
+        _read(capsys, is_committed=_always)
